@@ -52,7 +52,7 @@ vi.mock("@/components/news/NewsCategoryBadge", () => ({
 }))
 
 vi.mock("@/features/news/categories", () => ({
-  inferCategory: () => "science",
+  inferNewsCategory: () => "science",
 }))
 
 vi.mock("@/utils/date", () => ({

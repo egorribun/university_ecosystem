@@ -10,6 +10,10 @@ from fastapi import HTTPException, Response
 
 from app.api import events as api
 from app.schemas import schemas
+from app.services.vector_service import (
+    SEMANTIC_SEARCH_UNAVAILABLE_DETAIL,
+    SemanticSearchUnavailableError,
+)
 from tests.conftest import call_injected
 
 
@@ -64,11 +68,23 @@ def _result(*, rows: list[object] | None = None, scalar: object = 0) -> MagicMoc
 
 
 def test_id_and_cache_helpers_cover_boundaries() -> None:
-    api._validate_id_type(-(2**63))
-    api._validate_id_type(2**63 - 1)
+    request = SimpleNamespace(query_params={})
+    api._validate_id_type(-(2**63), request)
+    api._validate_id_type(2**63 - 1, request)
     with pytest.raises(HTTPException) as exc:
-        api._validate_id_type(2**63)
+        api._validate_id_type(2**63, request)
     assert exc.value.status_code == 422
+
+
+def test_event_attachment_storage_key_rejects_unrecognized_nested_layout() -> None:
+    event_id = uuid.uuid4()
+    storage_url = f"/static/event_files/event_{event_id}/nested/agenda.pdf"
+
+    assert not api._event_attachment_url_matches_resource(
+        storage_url,
+        event_id,
+        "agenda.pdf",
+    )
 
 
 @pytest.mark.asyncio
@@ -97,24 +113,22 @@ async def test_create_event_success_and_role_guard() -> None:
     service = MagicMock()
     service.create_event = AsyncMock(return_value=record)
     service.serialize_event.return_value = {"id": str(record.id)}
-    notifications = MagicMock()
-    notifications.dispatch_event_created = AsyncMock()
     request = _request()
+    data = _event_create()
     with (
         patch.object(api, "resolve_locale", return_value="en"),
         patch.object(api, "_increment_events_list_version", AsyncMock()) as bump,
     ):
         result = await call_injected(
             api.create_event,
-            data=_event_create(),
+            data=data,
             request=request,
-            background=MagicMock(),
             user=user,
-            provides={"NotificationService": notifications, "EventService": service},
+            provides={"EventService": service},
         )
     assert result == {"id": str(record.id)}
+    service.create_event.assert_awaited_once_with(data, user_id=user.id, locale="en")
     bump.assert_awaited_once()
-    notifications.dispatch_event_created.assert_awaited_once()
 
     # An app that carries no cache still creates the event; the version bump is
     # simply a no-op.  This is the branch ``if request:`` used to stand in for.
@@ -129,13 +143,13 @@ async def test_create_event_success_and_role_guard() -> None:
     ):
         result = await call_injected(
             api.create_event,
-            data=_event_create(),
+            data=data,
             request=cacheless,
-            background=MagicMock(),
             user=user,
-            provides={"NotificationService": notifications, "EventService": service},
+            provides={"EventService": service},
         )
     assert result == {"id": str(record.id)}
+    assert service.create_event.await_args.kwargs["locale"] == "en"
     cacheless_bump.assert_awaited_once_with(None)
 
     # ...and the helper itself is the no-op in that case.
@@ -147,12 +161,8 @@ async def test_create_event_success_and_role_guard() -> None:
                 api.create_event,
                 data=_event_create(),
                 request=None,
-                background=MagicMock(),
                 user=_user(),
-                provides={
-                    "NotificationService": notifications,
-                    "EventService": service,
-                },
+                provides={"EventService": service},
             )
     assert exc.value.status_code == 403
 
@@ -474,7 +484,10 @@ async def test_update_event_success_permissions_and_errors() -> None:
     db.execute.side_effect = [_result(rows=[]), _result(scalar=3)]
     with (
         patch.object(api, "resolve_locale", return_value="en"),
-        patch.object(api, "delete_static_file", AsyncMock()) as delete,
+        patch.object(
+            api, "delete_unreferenced_owned_event_image", AsyncMock()
+        ) as delete_owned,
+        patch.object(api, "delete_static_file", AsyncMock()) as delete_generic,
     ):
         result = await call_injected(
             api.update_event,
@@ -486,7 +499,8 @@ async def test_update_event_success_permissions_and_errors() -> None:
             provides={"AsyncDatabaseSession": db, "EventService": service},
         )
     assert result == {"id": str(event_id)}
-    delete.assert_awaited_once_with("/old.png")
+    delete_owned.assert_awaited_once_with("/old.png", event_id=event_id, db_session=db)
+    delete_generic.assert_not_awaited()
     assert service.serialize_event.call_args.kwargs["participant_count"] == 3
 
     existing.image_url = "/same.png"
@@ -498,6 +512,10 @@ async def test_update_event_success_permissions_and_errors() -> None:
     with (
         patch.object(api, "resolve_locale", return_value="en"),
         patch.object(api, "_increment_events_list_version", AsyncMock()) as bump,
+        patch.object(
+            api, "delete_unreferenced_owned_event_image", AsyncMock()
+        ) as delete_owned,
+        patch.object(api, "delete_static_file", AsyncMock()) as delete_generic,
     ):
         result = await call_injected(
             api.update_event,
@@ -510,6 +528,8 @@ async def test_update_event_success_permissions_and_errors() -> None:
         )
     assert result == {"id": str(event_id)}
     bump.assert_awaited_once()
+    delete_owned.assert_not_awaited()
+    delete_generic.assert_not_awaited()
 
     checker.check_permission = AsyncMock(return_value=False)
     with patch.object(api, "resolve_locale", return_value="en"):
@@ -740,3 +760,122 @@ async def test_semantic_search_full_and_event_etag() -> None:
     assert response.headers["ETag"] == '"etag"'
     assert response.headers["Content-Language"] == "ru"
     vector.get_embedding.assert_awaited_once_with("term")
+
+
+@pytest.mark.asyncio
+async def test_semantic_search_unavailability_precedes_matching_etag() -> None:
+    vector = MagicMock()
+    vector.get_embedding = AsyncMock(
+        side_effect=SemanticSearchUnavailableError(
+            "provider credentials and error details must remain private"
+        )
+    )
+    service = MagicMock()
+    response = Response()
+    cache = MagicMock()
+    get_version = AsyncMock(return_value="v1")
+    etag_matches = MagicMock(return_value=True)
+    with (
+        patch.object(api, "resolve_locale", return_value="en"),
+        patch.object(api, "normalize_locale", return_value="en"),
+        patch.object(api, "get_cache", return_value=cache),
+        patch.object(api, "_get_events_list_version", get_version),
+        patch.object(api, "etag_matches", etag_matches),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await call_injected(
+                api.semantic_search,
+                _request(),
+                response,
+                query="term",
+                limit=5,
+                min_score=0.7,
+                if_none_match='"match"',
+                _user=_user(),
+                provides={
+                    "AsyncDatabaseSession": AsyncMock(),
+                    "VectorService": vector,
+                    "EventService": service,
+                },
+            )
+
+    assert exc.value.status_code == 503
+    assert exc.value.detail == SEMANTIC_SEARCH_UNAVAILABLE_DETAIL
+    vector.get_embedding.assert_awaited_once_with("term")
+    get_version.assert_not_awaited()
+    etag_matches.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_semantic_search_etag_is_locale_specific_and_reuses_same_locale() -> None:
+    query_event = SimpleNamespace(id=uuid.uuid4())
+    vector = MagicMock()
+    vector.get_embedding = AsyncMock(return_value=[0.1, 0.2])
+    vector.search_similar = AsyncMock(return_value=[query_event])
+    service = MagicMock()
+    service.serialize_event.side_effect = lambda _item, locale: {"locale": locale}
+    ru_response = Response()
+    en_response = Response()
+    repeated_en_response = Response()
+    cache = MagicMock()
+    dependencies = {
+        "AsyncDatabaseSession": AsyncMock(),
+        "VectorService": vector,
+        "EventService": service,
+    }
+    ru_request = _request()
+    ru_request.headers["Accept-Language"] = "ru-RU"
+    en_request = _request()
+    en_request.headers["Accept-Language"] = "en-US"
+    repeated_en_request = _request()
+    repeated_en_request.headers["Accept-Language"] = "en-US"
+
+    with (
+        patch.object(api, "get_cache", return_value=cache),
+        patch.object(api, "_get_events_list_version", AsyncMock(return_value="v1")),
+    ):
+        ru_result = await call_injected(
+            api.semantic_search,
+            ru_request,
+            ru_response,
+            query="term",
+            limit=5,
+            min_score=0.7,
+            if_none_match=None,
+            _user=_user(),
+            provides=dependencies,
+        )
+        en_result = await call_injected(
+            api.semantic_search,
+            en_request,
+            en_response,
+            query="term",
+            limit=5,
+            min_score=0.7,
+            if_none_match=ru_response.headers["ETag"],
+            _user=_user(),
+            provides=dependencies,
+        )
+        repeated_en_result = await call_injected(
+            api.semantic_search,
+            repeated_en_request,
+            repeated_en_response,
+            query="term",
+            limit=5,
+            min_score=0.7,
+            if_none_match=en_response.headers["ETag"],
+            _user=_user(),
+            provides=dependencies,
+        )
+
+    assert ru_result == [{"locale": "ru"}]
+    assert en_result == [{"locale": "en"}]
+    assert ru_response.headers["Content-Language"] == "ru"
+    assert en_response.headers["Content-Language"] == "en"
+    assert "Accept-Language" in en_response.headers["Vary"]
+    assert ru_response.headers["ETag"] != en_response.headers["ETag"]
+    assert isinstance(repeated_en_result, Response)
+    assert repeated_en_result.status_code == 304
+    assert repeated_en_result.headers["ETag"] == en_response.headers["ETag"]
+    assert repeated_en_result.headers["Content-Language"] == "en"
+    assert "Accept-Language" in repeated_en_result.headers["Vary"]

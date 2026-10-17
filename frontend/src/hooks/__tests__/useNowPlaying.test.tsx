@@ -1,5 +1,5 @@
 import { focusManager, QueryClientProvider } from "@tanstack/react-query"
-import { renderHook, waitFor, act } from "@testing-library/react"
+import { renderHook, waitFor, act, cleanup } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 import { renderToString } from "react-dom/server"
@@ -11,10 +11,15 @@ import {
   __testing as nowPlayingTesting,
 } from "@/hooks/useNowPlaying"
 import type { NowPlaying } from "@/types/spotify"
+import type { UserState } from "@/types/Auth"
+import { useAuthStore } from "@/stores/useAuthStore"
+import { acceptBrowserSessionGeneration, invalidateSessionEpoch } from "@/stores/sessionEpoch"
 
-const STORAGE_KEY = "spotify:now-playing:last"
+const STORAGE_KEY = "spotify:now-playing:last:account:spotify-test-user"
 
 afterEach(() => {
+  cleanup()
+  useAuthStore.setState({ user: null, loading: false })
   localStorage.clear()
   vi.restoreAllMocks()
   vi.useRealTimers()
@@ -23,6 +28,9 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.useRealTimers()
+  acceptBrowserSessionGeneration()
+  invalidateSessionEpoch()
+  useAuthStore.setState({ user: { id: "spotify-test-user" } as UserState, loading: false })
   Object.defineProperty(document, "visibilityState", {
     configurable: true,
     get: () => "visible",
@@ -340,13 +348,13 @@ describe("useNowPlaying", () => {
     }
   })
 
-  it("keeps SSR persistence safe and resolves placeholder branches explicitly", () => {
+  it("keeps SSR persistence and polling safe", () => {
     const browserWindow = window
     const browserDocument = document
     vi.stubGlobal("window", undefined)
     vi.stubGlobal("document", undefined)
     try {
-      expect(nowPlayingTesting.persistNowPlaying(null)).toBeUndefined()
+      expect(nowPlayingTesting.persistNowPlaying("spotify-test-user", null)).toBeUndefined()
       expect(
         nowPlayingTesting.computeRefetchInterval({
           enabled: true,
@@ -354,12 +362,6 @@ describe("useNowPlaying", () => {
           isTestEnvironment: false,
         })
       ).toBe(3_000)
-
-      const cached = { track_id: "cached" } as NowPlaying
-      const previous = { track_id: "previous" } as NowPlaying
-      expect(nowPlayingTesting.resolvePlaceholderData(previous, cached)).toBe(previous)
-      expect(nowPlayingTesting.resolvePlaceholderData(null, cached)).toBeNull()
-      expect(nowPlayingTesting.resolvePlaceholderData(undefined, cached)).toBe(cached)
     } finally {
       vi.stubGlobal("window", browserWindow)
       vi.stubGlobal("document", browserDocument)

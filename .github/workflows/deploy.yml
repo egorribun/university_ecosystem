@@ -68,7 +68,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+        image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test  # pragma: allowlist secret
@@ -127,7 +127,7 @@ jobs:
           rm -rf -- artifacts/coverage
 
       - name: Download SHA-bound quality evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: quality-evidence-${{ inputs.release-sha }}-attempt-${{ steps.quality-run.outputs.run-attempt }}
           run-id: ${{ inputs.quality-run-id }}
@@ -272,7 +272,7 @@ jobs:
             --expected-name "release-image-provenance-$RELEASE_SHA-attempt-$BUILD_RUN_ATTEMPT"
 
       - name: Download exact canonical image manifest
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-image-provenance-${{ inputs.release-sha }}-attempt-${{ inputs.image-build-run-attempt }}
           run-id: ${{ inputs.image-build-run-id }}
@@ -382,7 +382,7 @@ jobs:
 
       - name: Download production field certification
         if: ${{ inputs.environment == 'production' }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: cwv-field-certificate-${{ inputs.release-sha }}-attempt-${{ inputs.cwv-certification-run-attempt }}
           run-id: ${{ inputs.cwv-certification-run-id }}
@@ -616,8 +616,8 @@ jobs:
         env:
           KUBECTL_VERSION: ${{ vars.KUBECTL_VERSION }}
           KUBECTL_SHA256: ${{ vars.KUBECTL_SHA256 }}
-          HELM_VERSION: v3.17.0
-          HELM_ARCHIVE_SHA256: fb5d12662fde6eeff36ac4ccacbf3abed96b0ee2de07afdde4edb14e613aee24 # pragma: allowlist secret -- public Helm release checksum
+          HELM_VERSION: v4.2.4
+          HELM_ARCHIVE_SHA256: c306b46f719b0a4da32d0f78ee21bf90ce8d602f15b22ab753f0674d1670a7f3 # public Helm release checksum
         run: |
           set -euo pipefail
           [[ "$KUBECTL_VERSION" =~ ^v1\.[0-9]+\.[0-9]+$ ]]
@@ -660,17 +660,17 @@ jobs:
           set -euo pipefail
           requirements_file="$RUNNER_TEMP/deploy-smoke.requirements.txt"
           printf '%s\n' \
-            'requests==2.33.1 --hash=sha256:4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a' \
-            'certifi==2026.4.22 --hash=sha256:3cb2210c8f88ba2318d29b0388d1023c8492ff72ecdde4ebdaddbb13a31b1c4a' \
-            'charset-normalizer==3.4.7 --hash=sha256:bd6c2a1c7573c64738d716488d2cdd3c00e340e4835707d8fdb8dc1a66ef164e' \
-            'idna==3.18 --hash=sha256:7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2' \
-            'urllib3==2.7.0 --hash=sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897' \
+            'requests==2.34.2 --hash=sha256:2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0' \
+            'certifi==2026.7.22 --hash=sha256:62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775' \
+            'charset-normalizer==3.5.2 --hash=sha256:34276fd796040bf0993ab33a369aa572e6979c7aab225a88893667ad8eac8f7a' \
+            'idna==3.20 --hash=sha256:ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c' \
+            'urllib3==2.8.0 --hash=sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3' \
             >"$requirements_file"
           python -m pip --isolated install --disable-pip-version-check \
             --index-url https://pypi.org/simple \
             --require-hashes --only-binary=:all: --no-deps --force-reinstall \
             --requirement "$requirements_file"
-          python -c 'import requests; assert requests.__version__ == "2.33.1"'
+          python -c 'import requests; assert requests.__version__ == "2.34.2"'
 
       - name: Reverify trusted release source before OIDC
         shell: bash
@@ -763,12 +763,14 @@ jobs:
           test -s "$chart/Chart.lock"
           lock_digest_before="$(sha256sum "$chart/Chart.lock" | awk '{print $1}')"
           python3 scripts/ci/helm_dependency_build.py --skip-refresh "$chart"
+          test -s "$chart/charts/redis-0.1.0.tgz"
+          test -s "$chart/charts/nats-2.15.0.tgz"
           lock_digest_after="$(sha256sum "$chart/Chart.lock" | awk '{print $1}')"
           test "$lock_digest_after" = "$lock_digest_before"
           git diff --exit-code -- "$chart/Chart.yaml" "$chart/Chart.lock"
           dependency_status="$(helm dependency list "$chart")"
           actual_dependencies="$(awk 'NR > 1 && NF {print $1 "|" $3 "|" $4}' <<< "$dependency_status")"
-          expected_dependencies=$'redis|oci://registry-1.docker.io/bitnamicharts|ok\nnats|oci://registry-1.docker.io/bitnamicharts|ok'
+          expected_dependencies=$'redis|file://../redis-compat|ok\nnats|https://nats-io.github.io/k8s/helm/charts/|ok'
           if [[ "$actual_dependencies" != "$expected_dependencies" ]]; then
             echo "::error::Helm dependencies do not match the reviewed Chart.lock contract."
             printf '%s\n' "$dependency_status" >&2
@@ -1140,6 +1142,7 @@ jobs:
           HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
           REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
           REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
         run: |
           set -euo pipefail
           rendered="$(mktemp "$RUNNER_TEMP/rendered-revocation-store.XXXXXX.yaml")"
@@ -1173,6 +1176,7 @@ jobs:
           HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
           REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
           REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
         run: |
           set -euo pipefail
           bash .github/scripts/deploy-revocation-store.sh lint
@@ -1186,6 +1190,7 @@ jobs:
           HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
           REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
           REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
         run: |
           set -euo pipefail
           contract="$(bash .github/scripts/deploy-revocation-store.sh render-contract)"
@@ -1361,14 +1366,14 @@ jobs:
           )
           dependency_images="$(contract_literal dependency-images.json | jq --raw-output '.')"
           jq --exit-status \
-            --arg redis "docker.io/bitnami/redis@$REDIS_IMAGE_DIGEST" \
-            --arg redis_metrics "docker.io/bitnami/redis-exporter@$REDIS_METRICS_IMAGE_DIGEST" \
-            --arg nats "docker.io/bitnami/nats@$NATS_IMAGE_DIGEST" \
+            --arg redis "docker.io/redis@$REDIS_IMAGE_DIGEST" \
+            --arg redis_metrics "docker.io/oliver006/redis_exporter@$REDIS_METRICS_IMAGE_DIGEST" \
+            --arg nats "docker.io/nats@$NATS_IMAGE_DIGEST" \
             '. == {"redis": $redis, "redis.metrics": $redis_metrics,
                    "nats": $nats}' <<< "$dependency_images" >/dev/null
           dependency_chart_versions="$(contract_literal dependency-chart-versions.json | jq --raw-output '.')"
           jq --exit-status \
-            '. == {"redis": "20.13.4", "nats": "8.5.4"}' \
+            '. == {"redis": "0.1.0", "nats": "2.15.0"}' \
             <<< "$dependency_chart_versions" >/dev/null
           grpc_gateway_client_secret_name="$(contract_literal internal-grpc-gateway-client-secret-name | jq --raw-output '.')"
           grpc_file_processor_server_secret_name="$(contract_literal internal-grpc-file-processor-server-secret-name | jq --raw-output '.')"
@@ -1391,6 +1396,27 @@ jobs:
           require_secret_keys "$connection_secret_name" "${connection_secret_keys[@]}"
           require_secret_keys "$redis_secret_name" "${redis_secret_keys[@]}"
           require_secret_keys "$nats_config_secret_name" "${nats_config_secret_keys[@]}"
+          # The mounted NATS config must keep JetStream on the existing PVC path.
+          # Decode and inspect in memory only; never emit authentication config.
+          if ! kubectl get secret "$nats_config_secret_name" --namespace "$K8S_NAMESPACE" --output json \
+            | jq --raw-output --exit-status --arg key "nats-server.conf" \
+                '.data[$key] | select(type == "string" and length > 0)' \
+            | base64 --decode \
+            | python3 -c '
+          import sys
+          config = sys.stdin.read()
+          values = []
+          for line in config.splitlines():
+              if line.lstrip().startswith("store_dir:"):
+                  value = line.split(":", 1)[1].split("#", 1)[0].strip()
+                  if value.startswith(chr(34)) and value.endswith(chr(34)):
+                      value = value[1:-1]
+                  values.append(value)
+          raise SystemExit(0 if values == ["/data/jetstream"] else 1)
+          '; then
+            echo "::error::NATS authentication config must set the existing JetStream store path to /data/jetstream."
+            exit 1
+          fi
           require_secret_keys "$grpc_gateway_client_secret_name" "${grpc_gateway_client_secret_keys[@]}"
           require_secret_keys "$grpc_file_processor_server_secret_name" "${grpc_file_processor_server_secret_keys[@]}"
 
@@ -1712,7 +1738,7 @@ jobs:
 
       - name: Upload staging field-evidence metadata
         if: ${{ inputs.environment == 'staging' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: staging-deployment-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}
           path: |
@@ -1797,7 +1823,7 @@ jobs:
     if: ${{ inputs.environment == 'staging' }}
     services:
       postgres:
-        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+        image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test  # pragma: allowlist secret

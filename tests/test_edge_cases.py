@@ -489,43 +489,6 @@ async def test_memory_cache_update_existing_key() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_cache_entry_no_ttl_no_refresh() -> None:
-    from app.deps.cache import CacheEntry
-
-    entry = CacheEntry(etag="e", payload=None, stored_at=time.time(), ttl_seconds=0.0)
-    # ttl_seconds <= 0 → always False
-    assert entry.should_refresh_probabilistic() is False
-
-
-def test_cache_entry_already_expired_always_refresh() -> None:
-    from app.deps.cache import CacheEntry
-
-    # stored 100 seconds ago, TTL was 60 → remaining < 0
-    entry = CacheEntry(
-        etag="e",
-        payload=None,
-        stored_at=time.time() - 100,
-        ttl_seconds=60.0,
-    )
-    assert entry.should_refresh_probabilistic() is True
-
-
-def test_cache_entry_fresh_rarely_refreshes() -> None:
-    from app.deps.cache import CacheEntry
-
-    # Fresh entry — should almost never refresh (beta=1.0)
-    entry = CacheEntry(
-        etag="e",
-        payload=None,
-        stored_at=time.time(),
-        ttl_seconds=3600.0,
-    )
-    # Run 20 times — statistically it should not always refresh
-    results = [entry.should_refresh_probabilistic(beta=0.001) for _ in range(20)]
-    # With tiny beta, very unlikely all 20 return True
-    assert not all(results)
-
-
 # ---------------------------------------------------------------------------
 # RedisCache — RedisError → returns None (graceful degradation)
 # ---------------------------------------------------------------------------

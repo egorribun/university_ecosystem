@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 from datetime import UTC, datetime, timedelta, tzinfo
@@ -533,6 +534,35 @@ def test_oidc_verifier_requires_exact_github_main_staging_claims(
         issuer="https://token.actions.githubusercontent.com",
         options={"require": ["exp", "iat", "sub", "repository", "ref", "sha"]},
     )
+
+
+def test_oidc_verifier_rejects_deeply_nested_jwt_before_jwks_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    header = base64.urlsafe_b64encode(b'{"alg":"RS256","kid":"fixture"}')
+    header_segment = header.rstrip(b"=").decode("ascii")
+    nested_depth = 20_000
+    payload = ("[" * nested_depth + "0" + "]" * nested_depth).encode("ascii")
+    payload_segment = base64.urlsafe_b64encode(payload).rstrip(b"=").decode("ascii")
+    token = f"{header_segment}.{payload_segment}."
+
+    repository = "example/university-ecosystem"
+    workflow_ref = (
+        f"{repository}/.github/workflows/cwv-field-certification.yml@refs/heads/main"
+    )
+    verifier = GithubActionsOidcVerifier(
+        enabled=True,
+        repository=repository,
+        workflow_ref=workflow_ref,
+        subject=f"repo:{repository}:environment:staging",
+    )
+    fetch_jwks = Mock(side_effect=AssertionError("malformed JWT must not fetch JWKS"))
+    monkeypatch.setattr(verifier._jwks, "fetch_data", fetch_jwks)
+
+    with pytest.raises(CwvEnvelopeError, match="CWV exporter identity is invalid"):
+        verifier.verify(token, expected_sha=SHA)
+
+    fetch_jwks.assert_not_called()
 
 
 def test_oidc_verifier_is_disabled_until_exact_policy_is_configured() -> None:

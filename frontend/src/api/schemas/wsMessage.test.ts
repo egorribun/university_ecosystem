@@ -650,7 +650,7 @@ describe("parseWsMessage — remaining server frame variants and contracts", () 
     read_at: null,
   }
 
-  it("accepts presence, online, online_list, typing, pong, and reaction frames", () => {
+  it("accepts presence, online_list, typing, pong, and reaction frames", () => {
     expect(parseWsMessage(JSON.stringify({ type: "pong" }))).toStrictEqual({ type: "pong" })
     expect(
       parseWsMessage(
@@ -664,7 +664,7 @@ describe("parseWsMessage — remaining server frame variants and contracts", () 
     ).toEqual({ type: "typing", chat_id: CHAT_ID, user_id: USER_ID, user_name: "Alex" })
     expect(
       parseWsMessage(JSON.stringify({ type: "online", user_id: USER_ID, status: true }))
-    ).toEqual({ type: "online", user_id: USER_ID, status: true })
+    ).toBeNull()
     expect(
       parseWsMessage(JSON.stringify({ type: "online_list", users: [USER_ID, SENDER_ID] }))
     ).toEqual({ type: "online_list", users: [USER_ID, SENDER_ID] })

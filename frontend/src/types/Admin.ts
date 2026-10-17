@@ -23,6 +23,12 @@ export interface AuditLog {
   user_agent?: string
   created_at: string
   is_valid: boolean
+  /** Signature format reported by the verifier; unknown future values fail closed in the UI. */
+  signature_scheme?: string
+  /** Persisted-row fields covered by this signature. */
+  authenticated_fields?: string[]
+  /** Persisted-row or joined display fields not covered by this signature. */
+  unauthenticated_fields?: string[]
 }
 
 export interface AuditLogList {

@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-SPIRE_VERSION = "1.15.2"
+SPIRE_VERSION = "1.15.3"
 
 
 def _document(path: str, kind: str) -> dict:
@@ -26,7 +26,7 @@ def test_spire_agent_uses_a_shell_capable_init_image_and_least_privilege() -> No
     init = pod["initContainers"][0]
     agent = pod["containers"][0]
 
-    assert init["image"].startswith("busybox:1.37.0-musl@sha256:")
+    assert init["image"].startswith("busybox:1.38.0-musl@sha256:")
     assert "spire-agent" not in init["image"]
     assert init["securityContext"]["allowPrivilegeEscalation"] is False
     assert init["securityContext"]["readOnlyRootFilesystem"] is True

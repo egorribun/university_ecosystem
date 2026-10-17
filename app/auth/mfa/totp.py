@@ -21,6 +21,7 @@ from app.auth.constants import (
     MFA_METHOD_TOTP,
 )
 from app.auth.mfa.challenge import (
+    _enforce_totp_attempt_budget,
     _ensure_challenge_not_locked,
     _extract_attempt_limit,
     _register_failed_attempt,
@@ -436,6 +437,10 @@ async def verify_totp_for_user(
                 limit=limit,
                 locale=locale,
             )
+            if loaded_challenge is not None:
+                # Charge before testing the supplied code so successes and failures
+                # both consume one slot; challenge rotation cannot reset the budget.
+                await _enforce_totp_attempt_budget(user_id=user.id, locale=locale)
 
             # P0-W5-02: Iterate ALL enrollments unconditionally — no early return on match.
             # This eliminates the timing oracle where returning on the first match leaks

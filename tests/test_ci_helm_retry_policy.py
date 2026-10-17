@@ -11,6 +11,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / "scripts" / "ci" / "helm_dependency_build.py"
+CURRENT_HELM_ARCHIVES = ("redis-0.1.0.tgz", "nats-2.15.0.tgz")
 
 
 def _load_helper() -> ModuleType:
@@ -33,12 +34,95 @@ def _load_helper() -> ModuleType:
         ("401 Unauthorized", False),
         ("404 Not Found", False),
         ("chart metadata is invalid", False),
+        (
+            "no repository definition for https://nats-io.github.io/k8s/helm/charts/",
+            False,
+        ),
     ],
 )
 def test_helm_failure_classifier_is_narrow(output: str, expected: bool) -> None:
     helper = _load_helper()
 
     assert helper.is_transient_failure(output) is expected
+
+
+def test_helm_helper_registers_only_official_nats_repo_in_isolated_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _load_helper()
+    chart = tmp_path / "chart"
+    chart.mkdir()
+    (chart / "Chart.yaml").write_text(
+        'dependencies:\n  - name: nats\n    version: "2.15.0"\n'
+        '    repository: "https://nats-io.github.io/k8s/helm/charts/"\n',
+        encoding="utf-8",
+    )
+    (chart / "Chart.lock").write_text(
+        "dependencies:\n- name: nats\n"
+        "  repository: https://nats-io.github.io/k8s/helm/charts/\n"
+        "  version: 2.15.0\n",
+        encoding="utf-8",
+    )
+    charts = chart / "charts"
+    charts.mkdir()
+    for archive in CURRENT_HELM_ARCHIVES:
+        (charts / archive).write_bytes(b"locked dependency archive")
+
+    calls: list[list[str]] = []
+    helm_roots: list[tuple[str, str, str]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        environment = kwargs["env"]
+        assert isinstance(environment, dict)
+        roots = tuple(environment[name] for name in helper.HELM_HOME_VARIABLES)
+        assert len(set(roots)) == 3
+        assert all(Path(path).is_dir() for path in roots)
+        helm_roots.append(roots)
+        return subprocess.CompletedProcess(command, 0, stdout="ok\n", stderr="")
+
+    monkeypatch.setenv("HELM_CONFIG_HOME", str(tmp_path / "ambient-config"))
+    monkeypatch.setattr(helper.subprocess, "run", run)
+
+    assert helper.main(["--skip-refresh", str(chart), *CURRENT_HELM_ARCHIVES]) == 0
+    assert calls == [
+        [
+            "helm",
+            "repo",
+            "add",
+            "nats",
+            "https://nats-io.github.io/k8s/helm/charts/",
+            "--force-update",
+        ],
+        ["helm", "dependency", "build", "--skip-refresh", str(chart)],
+    ]
+    assert helm_roots[0] == helm_roots[1]
+    assert str(tmp_path / "ambient-config") not in helm_roots[0]
+
+
+def test_helm_helper_does_not_register_unreviewed_remote_repositories(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _load_helper()
+    chart = tmp_path / "chart"
+    chart.mkdir()
+    (chart / "Chart.yaml").write_text(
+        "dependencies:\n  - name: example\n"
+        "    repository: https://charts.example.invalid/\n",
+        encoding="utf-8",
+    )
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        helper.subprocess,
+        "run",
+        lambda command, **kwargs: (
+            calls.append(command)
+            or subprocess.CompletedProcess(command, 0, stdout="ok\n", stderr="")
+        ),
+    )
+
+    assert helper.main([str(chart)]) == 0
+    assert calls == [["helm", "dependency", "build", str(chart)]]
 
 
 def test_helm_helper_retries_transient_failure_and_keeps_first_output(
@@ -64,6 +148,54 @@ def test_helm_helper_retries_transient_failure_and_keeps_first_output(
     output = capsys.readouterr().out
     assert "first: i/o timeout" in output
     assert "attempt 2" in output
+
+
+def test_helm_helper_retries_transient_nats_repository_bootstrap(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _load_helper()
+    chart = tmp_path / "chart"
+    chart.mkdir()
+    (chart / "Chart.yaml").write_text(
+        "dependencies:\n  - name: nats\n"
+        "    repository: https://nats-io.github.io/k8s/helm/charts/\n",
+        encoding="utf-8",
+    )
+    charts = chart / "charts"
+    charts.mkdir()
+    for archive in CURRENT_HELM_ARCHIVES:
+        (charts / archive).write_bytes(b"locked dependency archive")
+    outcomes = iter(
+        [
+            subprocess.CompletedProcess(
+                ["helm", "repo", "add"],
+                1,
+                stdout="",
+                stderr="failed to fetch index: i/o timeout\n",
+            ),
+            subprocess.CompletedProcess(
+                ["helm", "repo", "add"], 0, stdout="ok\n", stderr=""
+            ),
+            subprocess.CompletedProcess(
+                ["helm", "dependency", "build"], 0, stdout="ok\n", stderr=""
+            ),
+        ]
+    )
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        return next(outcomes)
+
+    monkeypatch.setattr(helper.subprocess, "run", run)
+    monkeypatch.setenv("HELM_RETRY_SLEEP_BASE_SECONDS", "0")
+
+    assert helper.main([str(chart), *CURRENT_HELM_ARCHIVES]) == 0
+    assert calls == [
+        ["helm", "repo", "add", "nats", helper.NATS_REPOSITORY_URL, "--force-update"],
+        ["helm", "repo", "add", "nats", helper.NATS_REPOSITORY_URL, "--force-update"],
+        ["helm", "dependency", "build", str(chart)],
+    ]
 
 
 def test_helm_helper_fails_fast_on_permanent_failure(
@@ -103,21 +235,102 @@ def test_helm_helper_requires_declared_archives_after_success(
         ),
     )
 
-    assert helper.main([str(chart), "redis-20.13.4.tgz"]) == 1
+    assert helper.main([str(chart), *CURRENT_HELM_ARCHIVES]) == 1
 
 
-@pytest.mark.parametrize(
-    "workflow",
-    [
-        ".github/workflows/ci.yml",
-        ".github/workflows/deploy.yml",
-        ".github/workflows/nightly-full-gate.yml",
-        ".github/workflows/reusable-backend-tests.yml",
-        ".github/workflows/reusable-security-audit.yml",
-    ],
+def test_helm_helper_accepts_the_current_archive_pair_when_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _load_helper()
+    chart = tmp_path / "chart"
+    charts = chart / "charts"
+    charts.mkdir(parents=True)
+    for archive in CURRENT_HELM_ARCHIVES:
+        (charts / archive).write_bytes(b"verified chart archive")
+    monkeypatch.setattr(
+        helper.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            ["helm"], 0, stdout="ok\n", stderr=""
+        ),
+    )
+
+    assert helper.main([str(chart), *CURRENT_HELM_ARCHIVES]) == 0
+
+
+DIRECT_HELM_HELPER_WORKFLOWS = (
+    ".github/workflows/ci.yml",
+    ".github/workflows/deploy.yml",
+    ".github/workflows/reusable-backend-tests.yml",
+    ".github/workflows/reusable-security-audit.yml",
+    ".github/workflows/reusable-full-backend-mutation.yml",
+    ".github/workflows/reusable-helm-dependencies.yml",
 )
+
+
+def _workflow_job_block(source: str, job_name: str) -> str:
+    lines = source.splitlines()
+    header = f"  {job_name}:"
+    starts = [index for index, line in enumerate(lines) if line == header]
+    if len(starts) != 1:
+        raise AssertionError("expected_one_helm_workflow_job")
+    start = starts[0]
+    end = next(
+        (
+            index
+            for index in range(start + 1, len(lines))
+            if lines[index].startswith("  ")
+            and not lines[index].startswith("    ")
+            and lines[index].endswith(":")
+        ),
+        len(lines),
+    )
+    return "\n".join(lines[start:end])
+
+
+@pytest.mark.parametrize("workflow", DIRECT_HELM_HELPER_WORKFLOWS)
 def test_helm_workflows_use_the_fail_closed_retry_helper(workflow: str) -> None:
     source = (ROOT / workflow).read_text(encoding="utf-8")
 
     assert "scripts/ci/helm_dependency_build.py" in source
+    assert all(archive in source for archive in CURRENT_HELM_ARCHIVES)
     assert "helm dependency build" not in source
+
+
+@pytest.mark.parametrize(
+    ("workflow", "producer_job", "consumer_job"),
+    [
+        (
+            ".github/workflows/nightly-full-gate.yml",
+            "nightly-helm-dependencies",
+            "mutation-tests-full",
+        ),
+        (
+            ".github/workflows/manual-mutation-evidence.yml",
+            "manual-full-helm-dependencies",
+            "manual-full-backend-mutation",
+        ),
+    ],
+)
+def test_helm_workflow_callers_preserve_source_and_artifact_contract(
+    workflow: str, producer_job: str, consumer_job: str
+) -> None:
+    source = (ROOT / workflow).read_text(encoding="utf-8")
+    producer = _workflow_job_block(source, producer_job)
+    consumer = _workflow_job_block(source, consumer_job)
+
+    assert "uses: ./.github/workflows/reusable-helm-dependencies.yml" in producer
+    assert "source_sha: ${{ github.sha }}" in producer
+    assert producer_job in consumer
+    expected_artifact = (
+        "helm_artifact_name: ${{ needs." + producer_job + ".outputs.artifact_name }}"
+    )
+    assert expected_artifact in consumer
+
+    reusable = (ROOT / ".github/workflows/reusable-helm-dependencies.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "source_sha != github_sha" in reusable
+    assert 'artifact_prefix = "nightly-helm-dependencies-"' in reusable
+    assert 'artifact_prefix = "manual-full-helm-dependencies-"' in reusable
+    assert "value: ${{ jobs.produce.outputs.artifact_name }}" in reusable

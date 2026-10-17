@@ -14,6 +14,7 @@ _LESSON_TYPE_TRANSLATIONS: Mapping[str, str] = {
     "lab": "schedule.lesson.type.lab",
     "seminar": "schedule.lesson.type.seminar",
     "consultation": "schedule.lesson.type.consultation",
+    "project": "schedule.lesson.type.project",
 }
 
 _LESSON_TYPE_ALIASES: Mapping[str, str] = {
@@ -34,6 +35,9 @@ _LESSON_TYPE_ALIASES: Mapping[str, str] = {
     "лабораторнаяработа": "lab",
     "консультация": "consultation",
     "consultation": "consultation",
+    "project": "project",
+    "проектнаядеятельность": "project",
+    "projectwork": "project",
 }
 
 _WEEKDAY_INDEX: Mapping[str, int] = {

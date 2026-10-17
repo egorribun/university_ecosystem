@@ -4,12 +4,12 @@
 redis:
   image:
     registry: docker.io
-    repository: bitnami/redis
-    digest: REQUIRED_SHA256_DIGEST
+    repository: redis
+    digest: sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     pullPolicy: Always
   metrics:
     image:
       registry: docker.io
-      repository: bitnami/redis-exporter
-      digest: REQUIRED_SHA256_DIGEST
+      repository: oliver006/redis_exporter
+      digest: sha256:6ca518a72f30f7f576ef92963de1b91d3c3f5fd3aeac949f878bfda183587820
       pullPolicy: Always

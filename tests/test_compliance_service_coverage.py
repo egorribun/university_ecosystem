@@ -13,7 +13,7 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, StatementError
 
 from app.core.exceptions.domain import (
     BusinessRuleViolation,
@@ -103,7 +103,7 @@ async def test_delete_user_data_requires_confirmation(svc):
 
 @pytest.mark.asyncio
 async def test_delete_user_data_missing_user_raises(svc, repo):
-    repo._get_orm.return_value = None
+    repo.get_orm_for_anonymization.return_value = None
     user = MagicMock(id=uuid.uuid4())
     with pytest.raises(EntityNotFound):
         await svc.delete_user_data(user, request=_request(), confirm=True)
@@ -175,6 +175,64 @@ async def test_register_user_wraps_generic_failure(svc, repo, fast_hash):
     with pytest.raises(BusinessRuleViolation):
         await svc.register_user(_user_create())
     svc.uow.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("preserve_logging_configuration")
+async def test_register_user_failure_log_omits_exception_data(
+    svc, repo, fast_hash, caplog, monkeypatch
+):
+    import json
+    import logging
+
+    import app.core.logging as logging_module
+
+    synthetic_hash = f"synthetic-hash-{uuid.uuid4().hex}"
+    synthetic_email = f"registration-{uuid.uuid4().hex}@example.com"
+    failure = StatementError(
+        "synthetic database failure",
+        "INSERT INTO users (email, hashed_password) VALUES (:email, :hashed_password)",
+        {"email": synthetic_email, "hashed_password": synthetic_hash},
+        RuntimeError("synthetic database failure"),
+    )
+    repo.check_email_exists.return_value = False
+    repo.create_with_invite.side_effect = failure
+    monkeypatch.setattr(
+        compliance_module,
+        "get_password_hash",
+        AsyncMock(return_value=synthetic_hash),
+    )
+    monkeypatch.setattr(logging_module, "_configured", False)
+    logging_module.configure_logging(level=logging.ERROR, json_output=True)
+    monkeypatch.setattr(
+        compliance_module,
+        "logger",
+        logging_module.get_logger("app.services.user.compliance_service"),
+    )
+    caplog.clear()
+
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(BusinessRuleViolation) as raised:
+            await svc.register_user(_user_create(email=synthetic_email))
+
+    assert raised.value.__cause__ is failure
+    svc.uow.rollback.assert_awaited_once()
+    rendered = caplog.text.strip()
+    records = [json.loads(line) for line in rendered.splitlines() if line.strip()]
+    event = next(
+        record
+        for record in records
+        if record.get("message") == "user_registration_failed"
+    )
+    assert event["exception_type"] == "StatementError"
+    for forbidden in (
+        synthetic_hash,
+        synthetic_email,
+        "synthetic database failure",
+        "INSERT INTO users",
+        "Traceback",
+    ):
+        assert forbidden not in rendered
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 
 import { weatherQueryOptions } from "@/api/hooks/weather"
@@ -73,6 +73,7 @@ export interface UseWeatherResult {
  */
 export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult => {
   const { coordinates: overrideCoordinates, cacheTtlMs = WEATHER_CACHE_TTL_MS } = options
+  const [hasHydrated, setHasHydrated] = useState(false)
   const coordinates = useMemo<WeatherCoordinates>(
     () =>
       overrideCoordinates
@@ -84,7 +85,9 @@ export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult =>
   const forceRefreshRef = useRef(false)
 
   const query = useQuery({
-    ...weatherQueryOptions(coordinates, cacheTtlMs),
+    ...weatherQueryOptions(coordinates, cacheTtlMs, {
+      allowSessionCachePlaceholder: hasHydrated,
+    }),
     queryFn: async ({ signal }: { signal?: AbortSignal }): Promise<WeatherSnapshot> => {
       if (import.meta.env.VITE_LHCI === "true") return LHCI_WEATHER_SNAPSHOT
       const force = forceRefreshRef.current
@@ -92,6 +95,10 @@ export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult =>
       return fetchWeatherSnapshot({ coordinates, cacheTtlMs, forceRefresh: force, signal })
     },
   })
+
+  useEffect(() => {
+    setHasHydrated(true)
+  }, [])
 
   const data = useMemo<WeatherData | null>(() => {
     const snapshot = query.data

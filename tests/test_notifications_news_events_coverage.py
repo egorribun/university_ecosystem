@@ -9,14 +9,19 @@ module-level imports on news_events and are patched there.
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy import select
 
+from app.models import Notification, PushSubscription
+from app.models.domain_events import StoredEvent
 from app.services.notifications import core as notifications_core
+from app.services.notifications import delivery as notifications_delivery
 from app.services.notifications import news_events
 
 
@@ -31,7 +36,7 @@ def _make_news(**overrides):
 
 
 def _make_comment(content: str = "Great article!"):
-    return SimpleNamespace(content=content)
+    return SimpleNamespace(id=uuid.uuid4(), content=content)
 
 
 def _make_event(**overrides):
@@ -64,6 +69,11 @@ def _make_author(**overrides):
 def fake_create(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     mock = AsyncMock(return_value=3)
     monkeypatch.setattr(news_events, "create_notifications_for_users", mock)
+
+    async def _allow_unnotified(_db, _key, user_ids):
+        return list(user_ids)
+
+    monkeypatch.setattr(news_events, "_unnotified_user_ids", _allow_unnotified)
     return mock
 
 
@@ -196,6 +206,8 @@ async def test_notify_about_comment_payload_defaults_missing_data(
     )
     kwargs = fake_create.await_args.kwargs
     assert kwargs["payload_data"] == {}
+    assert kwargs["dedupe_key"].startswith("news.comment:")
+    assert kwargs["push_via_outbox_only"] is True
 
 
 @pytest.mark.asyncio
@@ -220,6 +232,8 @@ async def test_notify_about_news_uses_localized_fallback_and_active_users(
     assert kwargs["url"] == f"/news/{news.id}"
     assert kwargs["body"] == "Краткое содержание"
     assert kwargs["payload_data"]["category"] == "news"
+    assert kwargs["dedupe_key"] == f"news.created:{news.id}"
+    assert kwargs["push_via_outbox_only"] is True
 
 
 @pytest.mark.asyncio
@@ -288,6 +302,8 @@ async def test_notify_about_event_uses_default_payload_and_active_users(
     assert kwargs["payload_data"]["location"] == "Корпус А"
     assert kwargs["payload_data"]["speaker"] == "Иван Петров"
     assert kwargs["payload_data"]["eventType"] == "Лекция"
+    assert kwargs["dedupe_key"] == f"events.created:{event.id}"
+    assert kwargs["push_via_outbox_only"] is True
 
 
 @pytest.mark.asyncio
@@ -386,3 +402,125 @@ async def test_news_and_event_translation_loops_handle_empty_localized_values(
     await news_events.notify_about_event(AsyncMock(), empty_event, locale="ru")
 
     assert fake_create.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("topic", "entity_kind", "entity_id_key", "template_fallback"),
+    [
+        ("news.published", "news", "newsId", False),
+        ("events.published", "event", "eventId", False),
+        ("news.published", "news", "newsId", True),
+        ("events.published", "event", "eventId", True),
+    ],
+)
+async def test_news_and_event_push_metadata_is_json_serializable(
+    db_session,
+    user_factory,
+    monkeypatch: pytest.MonkeyPatch,
+    topic: str,
+    entity_kind: str,
+    entity_id_key: str,
+    template_fallback: bool,
+) -> None:
+    """Producer metadata must survive the durable push-outbox JSON boundary."""
+    user = await user_factory()
+    entity = _make_news() if entity_kind == "news" else _make_event()
+    subscription = PushSubscription(
+        user_id=user.id,
+        endpoint="https://8.8.8.8/push-test",
+        p256dh="test-p256dh",
+        auth="test-auth",
+        created_at=datetime.now(UTC),
+        topics=[topic],
+    )
+    db_session.add(subscription)
+    await db_session.flush()
+
+    monkeypatch.setattr(notifications_delivery, "_is_push_configured", lambda: True)
+    if template_fallback:
+        # Exercise the producer's no-template path as well as the registered template.
+        monkeypatch.setattr(
+            news_events, "render_notification_template", lambda *a, **k: None
+        )
+
+    if entity_kind == "news":
+        created = await news_events.notify_about_news(db_session, entity)
+    else:
+        created = await news_events.notify_about_event(db_session, entity)
+
+    assert created == 1
+    await db_session.flush()
+    notification = await db_session.scalar(
+        select(Notification).where(Notification.user_id == user.id)
+    )
+    assert notification is not None
+    delivery_events = list(
+        (
+            await db_session.scalars(
+                select(StoredEvent).where(
+                    StoredEvent.event_type == "notification.delivery_requested"
+                )
+            )
+        ).all()
+    )
+    delivery_event = next(
+        event
+        for event in delivery_events
+        if str(notification.id) in event.payload["notification_ids"]
+    )
+    serialized_payload = json.loads(json.dumps(delivery_event.payload["payload_data"]))
+    assert serialized_payload[entity_id_key] == str(entity.id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["news", "event", "comment"])
+async def test_notification_dedupe_skips_recipients_already_notified(
+    fake_create, monkeypatch, kind
+):
+    db = AsyncMock()
+    recipients = [uuid.uuid4(), uuid.uuid4()]
+    monkeypatch.setattr(
+        news_events,
+        "_unnotified_user_ids",
+        AsyncMock(return_value=[]),
+    )
+
+    if kind == "news":
+        entity = _make_news()
+        key = f"news.created:{entity.id}"
+        monkeypatch.setattr(
+            news_events, "_fetch_active_user_ids", AsyncMock(return_value=recipients)
+        )
+        result = await news_events.notify_about_news(db, entity, locale="en")
+    elif kind == "event":
+        entity = _make_event()
+        key = f"events.created:{entity.id}"
+        monkeypatch.setattr(
+            news_events, "_fetch_active_user_ids", AsyncMock(return_value=recipients)
+        )
+        result = await news_events.notify_about_event(db, entity, locale="en")
+    else:
+        entity = _make_news()
+        comment = _make_comment()
+        key = f"news.comment:{comment.id}"
+        monkeypatch.setattr(
+            notifications_core, "_fetch_admin_ids", AsyncMock(return_value=recipients)
+        )
+        monkeypatch.setattr(
+            news_events,
+            "render_notification_template",
+            lambda *args, **kwargs: {
+                "title": "Comment",
+                "body": "A new comment",
+                "url": f"/news/{entity.id}",
+                "tag": "news-comment",
+            },
+        )
+        result = await news_events.notify_about_comment(
+            db, entity, comment, _make_author(), locale="en"
+        )
+
+    assert result == 0
+    news_events._unnotified_user_ids.assert_awaited_once_with(db, key, recipients)
+    fake_create.assert_not_awaited()

@@ -117,15 +117,157 @@ def test_s3_proxy_allows_only_public_media_prefixes() -> None:
         ), f"Public S3 allowlist must precede proxy in {relative_path}"
 
 
-def test_websocket_ticket_is_redacted_from_access_logs() -> None:
-    """One-time WS tickets must never be persisted as raw bearer credentials."""
+def _caddy_uri_filter_blocks(content: str) -> list[list[tuple[str, str]]]:
+    """Read configured sequential URI redactors for static contract checks."""
+    blocks = re.findall(
+        r"request>uri\s+multi_regexp\s*\{(.*?)(?=\n[ \t]*\})",
+        content,
+        re.DOTALL,
+    )
+    assert len(blocks) == 2, "Expected separate runtime-error and access URI filters"
+    parsed = [
+        re.findall(r"^\s*regexp\s+(\S+)\s+(\S+)\s*$", block, re.MULTILINE)
+        for block in blocks
+    ]
+    assert all(len(operations) == 5 for operations in parsed)
+    return parsed
+
+
+def _apply_caddy_uri_filter(operations: list[tuple[str, str]], uri: str) -> str:
+    """Apply the RE2-compatible rules as a static config test, not a Caddy proof."""
+    result = uri
+    for pattern, replacement in operations:
+        python_replacement = re.sub(
+            r"\$\{(\d+)\}",
+            lambda match: rf"\g<{match.group(1)}>",
+            replacement,
+        )
+        result = re.sub(pattern, python_replacement, result)
+    return result
+
+
+def _one_encoded_character(word: str, index: int) -> str:
+    char = word[index]
+    return f"{word[:index]}%{ord(char):02x}{word[index + 1 :]}"
+
+
+def test_reset_password_uri_filter_covers_encoded_route_characters_and_separators() -> (
+    None
+):
+    """Configured rules must hide reset tokens across supported URL spellings."""
+    from uuid import uuid4
+
+    marker = f"audit-redaction-{uuid4().hex}"
+    encoded_routes = [
+        _one_encoded_character("reset-password", index)
+        for index in range(len("reset-password"))
+    ]
+    route_paths = [
+        f"/reset-password/{marker}",
+        f"/app/reset-password/{marker}",
+        *(f"/app/{route}/{marker}" for route in encoded_routes),
+        f"/app/%2f%72eset-password%2f{marker}",
+        f"/app\\reset-password\\{marker}",
+        f"/app%5creset-password%5c{marker}",
+        f"/app\\reset-password%5c{marker}",
+        f"/app%5creset-password\\{marker}",
+        f"\\app\\reset-password\\{marker}",
+        f"/reset-password//{marker}",
+        f"/reset-password/%2F/{marker}",
+        f"/reset-password%2/{marker}",
+        f"/app/reset-password?token={marker}",
+    ]
     for relative_path in ("infrastructure/Caddyfile", "services/caddy/Caddyfile"):
         content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        for operations in _caddy_uri_filter_blocks(content):
+            for uri in route_paths:
+                assert marker not in _apply_caddy_uri_filter(operations, uri), (
+                    f"Reset marker leaked for {uri!r} in {relative_path}"
+                )
+
+
+def test_query_uri_filter_redacts_each_encoded_credential_key_character() -> None:
+    """Configured rules redact known query credentials despite malformed siblings."""
+    from uuid import uuid4
+
+    marker = f"audit-redaction-{uuid4().hex}"
+    cases: list[tuple[str, str]] = []
+    for name in ("token", "ticket", "code", "password"):
+        variants = [_one_encoded_character(name, index) for index in range(len(name))]
+        variants.append("".join(f"%{ord(char):02x}" for char in name))
+        for encoded_name in variants:
+            uri = f"/dashboard?tab=calendar&{encoded_name}={marker}&theme=dark&bad=%2"
+            expected = f"/dashboard?tab=calendar&{name}=REDACTED&theme=dark&bad=%2"
+            cases.append((uri, expected))
+    cases.extend(
+        (
+            (
+                f"/ws/chat?token={marker}&token={marker}",
+                "/ws/chat?token=REDACTED&token=REDACTED",
+            ),
+            (
+                f"/dashboard?not_token={marker}&tab=calendar",
+                f"/dashboard?not_token={marker}&tab=calendar",
+            ),
+        )
+    )
+    for relative_path in ("infrastructure/Caddyfile", "services/caddy/Caddyfile"):
+        content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        for operations in _caddy_uri_filter_blocks(content):
+            for uri, expected in cases:
+                assert _apply_caddy_uri_filter(operations, uri) == expected, (
+                    f"Unexpected query redaction for {uri!r} in {relative_path}"
+                )
+
+
+def test_uri_filter_preserves_ordinary_non_reset_diagnostics() -> None:
+    """Ordinary navigation URIs and similarly named non-reset routes stay useful."""
+    from uuid import uuid4
+
+    marker = f"ordinary-uri-{uuid4().hex}"
+    safe_uris = (
+        f"/dashboard?tab=events&marker={marker}",
+        f"/reset-password-help/{marker}?tab=events",
+    )
+    for relative_path in ("infrastructure/Caddyfile", "services/caddy/Caddyfile"):
+        content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        for operations in _caddy_uri_filter_blocks(content):
+            for uri in safe_uris:
+                assert _apply_caddy_uri_filter(operations, uri) == uri
+
+
+def test_tls_edge_sets_the_shared_browser_security_headers() -> None:
+    """The public TLS edge must protect frontend SSR and proxied responses."""
+    content = (REPO_ROOT / "services" / "caddy" / "Caddyfile").read_text(
+        encoding="utf-8"
+    )
+    _global_options, separator, site_config = content.partition("\n}\n")
+    assert separator, "Expected the TLS site after Caddy's global options"
+
+    required_headers = (
+        r"^\s*header\s+X-Content-Type-Options\s+nosniff\s*$",
+        r"^\s*header\s+X-Frame-Options\s+DENY\s*$",
+        r'^\s*header\s+X-XSS-Protection\s+"0"\s*$',
+        r"^\s*header\s+Referrer-Policy\s+no-referrer\s*$",
+    )
+    for pattern in required_headers:
+        assert re.search(pattern, site_config, re.MULTILINE), (
+            f"TLS Caddy site is missing required browser security header matching {pattern!r}"
+        )
+
+    for relative_path in ("services/caddy/Caddyfile", "infrastructure/Caddyfile"):
+        edge_config = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
         assert re.search(
-            r"format\s+filter\s*\{[^}]*request>uri\s+query\s*\{[^}]*replace\s+ticket\s+REDACTED",
-            content,
-            re.DOTALL,
-        ), f"Caddy access-log URI must redact ticket query values in {relative_path}"
+            r"^\s*(?:header\s+)?Referrer-Policy\s+no-referrer\s*$",
+            edge_config,
+            re.MULTILINE,
+        ), f"{relative_path} must not override the reset page's no-referrer policy"
+
+    assert re.search(
+        r'^\s*header\s+Strict-Transport-Security\s+"max-age=31536000; includeSubDomains; preload"\s*$',
+        site_config,
+        re.MULTILINE,
+    ), "TLS Caddy site must retain its HSTS policy"
 
 
 def test_ws_ticket_precedes_general_ws_block() -> None:
@@ -152,3 +294,28 @@ def test_ws_chat_precedes_general_ws_block() -> None:
         f"W173 polish-v1 invariant violated: /ws/chat* (line {chat_line}) must "
         f"appear BEFORE /ws/* (line {general_ws_line})"
     )
+
+
+def test_caddy_uri_redaction_rules_keep_path_first_and_sensitive_keys_ordered() -> None:
+    """Both log filters redact reset paths before each known query credential."""
+    expected_replacements = (
+        "${1}token=REDACTED",
+        "${1}ticket=REDACTED",
+        "${1}code=REDACTED",
+        "${1}password=REDACTED",
+    )
+    for relative_path in ("infrastructure/Caddyfile", "services/caddy/Caddyfile"):
+        content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        for operations in _caddy_uri_filter_blocks(content):
+            path_pattern, path_replacement = operations[0]
+            assert path_pattern.startswith("(?i)^")
+            assert path_replacement == "[REDACTED]"
+
+            query_operations = operations[1:]
+            assert (
+                tuple(replacement for _, replacement in query_operations)
+                == expected_replacements
+            )
+            for pattern, _replacement in query_operations:
+                assert pattern.startswith("(?i)([?&])")
+                assert pattern.endswith("=[^&]*")

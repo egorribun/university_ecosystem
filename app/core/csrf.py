@@ -413,9 +413,30 @@ class CSRFMiddleware:
                         headers.append(
                             (
                                 b"set-cookie",
-                                self._build_anon_nonce_cookie(new_anon_nonce),
+                                self._build_anon_nonce_cookie(
+                                    new_anon_nonce,
+                                    max_age=(
+                                        self._cookie_max_age
+                                        if should_rotate
+                                        else _ANON_NONCE_MAX_AGE
+                                    ),
+                                ),
                             )
                         )
+                    elif should_rotate:
+                        # Refresh the existing anonymous binding without changing
+                        # its value, so the rotated CSRF token remains bound to the
+                        # same principal for the same effective cookie lifetime.
+                        anon_nonce = request.cookies.get(_ANON_NONCE_COOKIE_NAME, "")
+                        if _ANON_NONCE_RE.fullmatch(anon_nonce):
+                            headers.append(
+                                (
+                                    b"set-cookie",
+                                    self._build_anon_nonce_cookie(
+                                        anon_nonce, max_age=self._cookie_max_age
+                                    ),
+                                )
+                            )
                     message = {**message, "headers": headers}
             await send(message)
 
@@ -435,7 +456,9 @@ class CSRFMiddleware:
         # in JavaScript to forward it as the X-CSRF-Token request header.
         return "; ".join(parts).encode("latin-1")
 
-    def _build_anon_nonce_cookie(self, nonce: str) -> bytes:
+    def _build_anon_nonce_cookie(
+        self, nonce: str, *, max_age: int = _ANON_NONCE_MAX_AGE
+    ) -> bytes:
         """Build a raw ``Set-Cookie`` header value for the anonymous session nonce.
 
         RZ-W9-04: Unlike the CSRF token, the nonce cookie IS HttpOnly — the
@@ -446,7 +469,7 @@ class CSRFMiddleware:
         parts = [
             f"{_ANON_NONCE_COOKIE_NAME}={nonce}",
             "Path=/",
-            f"Max-Age={_ANON_NONCE_MAX_AGE}",
+            f"Max-Age={max_age}",
             "SameSite=" + self._cookie_samesite,
             "HttpOnly",
         ]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ try:
         check_anti_patterns,
         check_python_duplicates_and_imports,
         find_python_repository_references,
+        find_typescript_repository_references,
         matches_source,
     )
     from scripts.quality.generate_test_inventory import (
@@ -131,6 +133,48 @@ def test_api_dependency_contract_is_backed_by_repository_references() -> None:
     )
 
 
+def test_typescript_contract_is_backed_by_repository_references() -> None:
+    contract_path = (
+        "frontend/src/__tests__/events-history-scroll-restoration.contract.test.ts"
+    )
+    contract = Path(contract_path)
+    scenario = "frontend/tests/e2e/events-history-scroll-restoration.spec.ts"
+    references = find_typescript_repository_references(contract)
+
+    assert references == {scenario}
+    assert matches_source(
+        contract_path,
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={scenario},
+    )
+
+
+def test_typescript_repository_references_reject_dynamic_and_outside_paths(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repository = tmp_path / "repository"
+    contract = repository / "frontend" / "src" / "contract.test.ts"
+    contract.parent.mkdir(parents=True)
+    (repository / "frontend" / "package.json").write_text("{}", encoding="utf-8")
+    outside = tmp_path / "outside.ts"
+    outside.write_text("export {}", encoding="utf-8")
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    contract.write_text(
+        'readFileSync(resolve(process.cwd(), target), "utf8")',
+        encoding="utf-8",
+    )
+    assert find_typescript_repository_references(contract) == set()
+
+    contract.write_text(
+        'readFileSync(resolve(process.cwd(), "../../outside.ts"), "utf8")',
+        encoding="utf-8",
+    )
+    assert find_typescript_repository_references(contract) == set()
+
+
 def test_inventory_ignores_root_output_backups_but_keeps_authored_artifact_modules(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -161,6 +205,10 @@ def test_inventory_prunes_dependency_and_hidden_directories(
     (tmp_path / "node_modules" / "pkg" / "hidden.ts").write_text(
         "export {}", encoding="utf-8"
     )
+    (tmp_path / "mutants" / "tests").mkdir(parents=True)
+    (tmp_path / "mutants" / "tests" / "test_generated_copy.py").write_text(
+        "pass", encoding="utf-8"
+    )
     (tmp_path / ".codex" / "cache").mkdir(parents=True)
     (tmp_path / ".codex" / "cache" / "hidden.py").write_text("pass", encoding="utf-8")
     (tmp_path / ".github" / "workflows").mkdir(parents=True)
@@ -188,10 +236,45 @@ def test_inventory_prunes_dependency_and_hidden_directories(
         "app/visible.py",
     }
     assert should_prune_directory("node_modules") is True
+    assert should_prune_directory("mutants") is True
     assert should_prune_directory(".codex") is True
     assert should_prune_directory("stryker-tmp") is True
     assert should_prune_directory(".github") is False
     assert should_prune_directory(".husky") is False
+
+
+def test_inventory_indexes_authored_hooks_but_prunes_agent_state(
+    tmp_path: Path, monkeypatch
+) -> None:
+    files = {
+        ".agents/hooks/common.py": "def helper(): pass\n",
+        ".agents/hooks/post_tool_linter.py": "def lint(): pass\n",
+        ".agents/hooks/.gate_state.json": "{}\n",
+        ".agents/hooks/.gate_state.json.lock": "\n",
+        ".agents/skills/notauthored.py": "pass\n",
+        ".agents/subagents/notauthored.py": "pass\n",
+        ".agents/hooks.json": "{}\n",
+        ".agents/subagents.json": "{}\n",
+    }
+    for relative_path, contents in files.items():
+        path = tmp_path / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(contents, encoding="utf-8")
+    cached_hook = tmp_path / ".agents" / "hooks" / "__pycache__" / "cached.py"
+    cached_hook.parent.mkdir(parents=True)
+    cached_hook.write_text("pass\n", encoding="utf-8")
+
+    monkeypatch.setattr(inventory, "REPOSITORY_ROOT", tmp_path)
+    records = scan_repository(
+        {"teams": {}, "tier0_rules": [], "generated_patterns": []}
+    )
+
+    assert {
+        (str(record["path"]), str(record["classification"])) for record in records
+    } == {
+        (".agents/hooks/common.py", "utility"),
+        (".agents/hooks/post_tool_linter.py", "utility"),
+    }
 
 
 def test_check_anti_patterns(tmp_path: Path) -> None:
@@ -405,6 +488,25 @@ HOOK = Path(".husky/pre-commit")
             "alembic/versions/202608250001_expand_email_otp_mfa.py",
         },
     )
+
+
+def test_python_contract_visits_keyword_only_defaults_with_missing_defaults(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        """
+from pathlib import Path
+ROOT = Path(__file__).resolve().parents[1]
+def helper(*, required, target=ROOT / "quality" / "quality-contract.json"):
+    return required, target
+""",
+    )
+
+    assert find_python_repository_references(contract_test) == {
+        "quality/quality-contract.json"
+    }
 
 
 def test_python_contract_path_match_requires_a_real_inventory_target(
@@ -876,3 +978,227 @@ def test_fixture_contract_declares_its_actual_repository_support_target(
         repository_references=references,
         reference_paths={support_path},
     )
+
+
+@pytest.fixture
+def generated_quality_inventory(tmp_path: Path, monkeypatch) -> tuple[Path, Path, Path]:
+    repository = tmp_path / "repository"
+    for relative_path, content in {
+        "app/sample.py": "VALUE = 1\n",
+        "tests/test_sample.py": "def test_sample():\n    assert True\n",
+        "frontend/src/routeTree.gen.ts": "export {}\n",
+        "README.md": "Inventory fixture\n",
+    }.items():
+        path = repository / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    monkeypatch.setattr(inventory, "REPOSITORY_ROOT", repository)
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+    mapping_path = tmp_path / "mapping.json"
+    mapping_path.write_text(
+        json.dumps(
+            {
+                "teams": {"app/": "@owner", "tests/": "@owner"},
+                "generated_patterns": ["**/routeTree.gen.ts"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    inventory_path = tmp_path / "inventory.json"
+    assert (
+        inventory.main(
+            ["--mapping", str(mapping_path), "--output", str(inventory_path)]
+        )
+        == 0
+    )
+    return repository, inventory_path, mapping_path
+
+
+def test_checker_accepts_generated_inventory(
+    generated_quality_inventory, capsys
+) -> None:
+    _, inventory_path, mapping_path = generated_quality_inventory
+    manifest = json.loads(inventory_path.read_text(encoding="utf-8"))
+    assert {record["classification"] for record in manifest["files"]} == {
+        "source",
+        "test",
+        "generated",
+        "utility",
+    }
+    assert (
+        checker.main(
+            ["--inventory", str(inventory_path), "--mapping", str(mapping_path)]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    assert "Quality inventory validation passed" in captured.out
+    assert captured.err == ""
+
+
+@pytest.mark.parametrize(
+    ("manifest", "error"),
+    [
+        (None, "manifest must be an object"),
+        ([], "manifest must be an object"),
+        ({}, "files must be a non-empty list"),
+        (
+            {"command": "generate_test_inventory.py", "returncode": 0},
+            "files must be a non-empty list",
+        ),
+        ({"files": []}, "files must be a non-empty list"),
+        ({"files": None}, "files must be a non-empty list"),
+        ({"files": {}}, "files must be a non-empty list"),
+        ({"files": "app/sample.py"}, "files must be a non-empty list"),
+        ({"files": [None]}, "files[0] must be an object"),
+        ({"files": ["app/sample.py"]}, "files[0] must be an object"),
+        ({"files": [[]]}, "files[0] must be an object"),
+        ({"files": [{}]}, "files[0].path"),
+    ],
+)
+def test_checker_rejects_invalid_inventory_structure(
+    generated_quality_inventory, capsys, manifest: object, error: str
+) -> None:
+    _, inventory_path, mapping_path = generated_quality_inventory
+    inventory_path.write_text(json.dumps(manifest), encoding="utf-8")
+    assert (
+        checker.main(
+            ["--inventory", str(inventory_path), "--mapping", str(mapping_path)]
+        )
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert "ERROR: invalid inventory manifest:" in captured.err
+    assert error in captured.err
+    assert "validation passed" not in captured.out
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("path", None),
+        ("path", []),
+        ("path", 1),
+        ("path", ""),
+        ("path", "."),
+        ("path", "/outside.py"),
+        ("path", "../outside.py"),
+        ("path", "app/../../outside.py"),
+        ("path", "app\\sample.py"),
+        ("classification", None),
+        ("classification", []),
+        ("classification", 1),
+        ("classification", ""),
+        ("classification", "soruce"),
+        ("owner", []),
+        ("owner", 1),
+        ("owner", ""),
+        ("owner", " "),
+    ],
+)
+def test_checker_rejects_invalid_generated_record_fields(
+    generated_quality_inventory, capsys, field: str, value: object
+) -> None:
+    _, inventory_path, mapping_path = generated_quality_inventory
+    manifest = json.loads(inventory_path.read_text(encoding="utf-8"))
+    record_index = next(
+        index
+        for index, record in enumerate(manifest["files"])
+        if record["path"] == "app/sample.py"
+    )
+    manifest["files"][record_index][field] = value
+    inventory_path.write_text(json.dumps(manifest), encoding="utf-8")
+    assert (
+        checker.main(
+            ["--inventory", str(inventory_path), "--mapping", str(mapping_path)]
+        )
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert (
+        f"ERROR: invalid inventory manifest: files[{record_index}].{field}"
+        in captured.err
+    )
+    assert "validation passed" not in captured.out
+
+
+@pytest.mark.parametrize("field", ["path", "classification", "owner"])
+def test_checker_rejects_missing_generated_record_fields(
+    generated_quality_inventory, capsys, field: str
+) -> None:
+    _, inventory_path, mapping_path = generated_quality_inventory
+    manifest = json.loads(inventory_path.read_text(encoding="utf-8"))
+    del manifest["files"][0][field]
+    inventory_path.write_text(json.dumps(manifest), encoding="utf-8")
+    assert (
+        checker.main(
+            ["--inventory", str(inventory_path), "--mapping", str(mapping_path)]
+        )
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert f"ERROR: invalid inventory manifest: files[0].{field}" in captured.err
+    assert "validation passed" not in captured.out
+
+
+@pytest.mark.parametrize("classification", ["source", "test"])
+def test_checker_keeps_null_owner_as_quality_violation(
+    generated_quality_inventory, capsys, classification: str
+) -> None:
+    _, inventory_path, mapping_path = generated_quality_inventory
+    manifest = json.loads(inventory_path.read_text(encoding="utf-8"))
+    record = next(
+        record
+        for record in manifest["files"]
+        if record["classification"] == classification
+    )
+    record["owner"] = None
+    inventory_path.write_text(json.dumps(manifest), encoding="utf-8")
+    assert (
+        checker.main(
+            ["--inventory", str(inventory_path), "--mapping", str(mapping_path)]
+        )
+        == 1
+    )
+    assert f"unowned {classification} file path" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("content", "error", "allowlist"),
+    [
+        ("import time\ntime.sleep(1)\n", "Python test sleep", "allowed_sleeps"),
+        (
+            "import pytest\npytest.skip('unavailable')\n",
+            "Python dynamic skip",
+            "allowed_dynamic_skips",
+        ),
+        (
+            "def test_sample():\n    assert True\n",
+            "orphaned test file",
+            "allowed_orphans",
+        ),
+    ],
+)
+def test_checker_preserves_violations_and_explicit_allowlists(
+    generated_quality_inventory, capsys, content: str, error: str, allowlist: str
+) -> None:
+    repository, inventory_path, mapping_path = generated_quality_inventory
+    test_path = repository / "tests/test_sample.py"
+    test_path.write_text(content, encoding="utf-8")
+    if allowlist == "allowed_orphans":
+        (repository / "app/sample.py").unlink()
+        assert (
+            inventory.main(
+                ["--mapping", str(mapping_path), "--output", str(inventory_path)]
+            )
+            == 0
+        )
+    arguments = ["--inventory", str(inventory_path), "--mapping", str(mapping_path)]
+    assert checker.main(arguments) == 1
+    assert error in capsys.readouterr().err
+
+    mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
+    mapping[allowlist] = ["tests/test_sample.py"]
+    mapping_path.write_text(json.dumps(mapping), encoding="utf-8")
+    assert checker.main(arguments) == 0
+    assert capsys.readouterr().err == ""

@@ -306,6 +306,7 @@ def test_quality_gate_uses_only_contract_owned_go_coverage_job() -> None:
     assert isinstance(jobs, dict)
     assert jobs["coverage-policy-gate"]["needs"] == [
         "backend-tests",
+        "db-migration-gate",
         "frontend-tests",
         "go-tests",
         "rust-tests",

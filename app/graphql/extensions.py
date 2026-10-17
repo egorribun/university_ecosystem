@@ -537,9 +537,14 @@ class PersistedQueryExtension(SchemaExtension):
             computed_hash = _hash_query(current_query)
             query_stripped = current_query.strip()
 
+            # A known hash must never authorize a different submitted body.
+            # Keep hash-only resolution above and legacy query-key manifests,
+            # but bind any supplied APQ hash to this normalized operation.
+            if client_hash and client_hash != computed_hash:
+                raise GraphQLError("Query not found in persisted query allowlist")
+
             is_in_allowlist = (
-                (client_hash and client_hash in manifest)
-                or (computed_hash in manifest)
+                (computed_hash in manifest)
                 or (current_query in manifest)
                 or (query_stripped in manifest)
             )

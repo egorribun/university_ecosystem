@@ -50,7 +50,9 @@ def auth_service():
     audit = MagicMock()
     auth_repo = MagicMock()
     user_repo = MagicMock()
+    user_repo.change_password_if_current = AsyncMock(return_value=1)
     session_repo = MagicMock()
+    session_repo.update = AsyncMock()
     uow = MagicMock()
     uow.__aenter__.return_value = uow
     uow.__aexit__.return_value = None
@@ -688,6 +690,31 @@ async def test_confirm_email_change_success(auth_service, request_mock, monkeypa
     monkeypatch.setattr(auth_module, "attach_pending_email", attach_mock)
     monkeypatch.setattr(auth_module, "ensure_mfa_relationships_loaded", AsyncMock())
     monkeypatch.setattr(auth_module, "refresh_user_mfa_preferences", AsyncMock())
+    revocation = object()
+    revocations = [revocation]
+    lifecycle_events: list[str] = []
+    collect_revocations = AsyncMock(
+        side_effect=lambda *args, **kwargs: (
+            lifecycle_events.append("collect"),
+            revocations,
+        )[1]
+    )
+    publish_revocations = AsyncMock(
+        side_effect=lambda pending: lifecycle_events.append("publish")
+    )
+    monkeypatch.setattr(
+        auth_module,
+        "collect_mfa_session_revocations",
+        collect_revocations,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        auth_module,
+        "publish_mfa_session_revocations",
+        publish_revocations,
+        raising=False,
+    )
+    auth_service.uow.commit.side_effect = lambda: lifecycle_events.append("commit")
     csrf_mock = MagicMock()
     monkeypatch.setattr(csrf_module, "signal_csrf_rotation", csrf_mock)
 
@@ -699,6 +726,14 @@ async def test_confirm_email_change_success(auth_service, request_mock, monkeypa
     assert db_user.email_verified_at >= datetime.now(UTC) - timedelta(seconds=2)
     assert db_user.mfa_default_method is None
     auth_service.auth_repo.mark_email_change_token_used.assert_awaited_once_with(12)
+    collect_revocations.assert_awaited_once_with(
+        auth_service.auth_repo.db,
+        user_id=db_user.id,
+        current_session_id=None,
+    )
+    publish_revocations.assert_awaited_once_with(revocations)
+    assert lifecycle_events.index("collect") < lifecycle_events.index("commit")
+    assert lifecycle_events.index("publish") < lifecycle_events.index("commit")
     # db_user is not the original user → second attach call fires (L359-360)
     assert attach_mock.await_count == 2
     csrf_mock.assert_called_once_with(request_mock)
@@ -751,6 +786,41 @@ async def test_change_password_same_password(auth_service, request_mock, monkeyp
         await auth_service.change_password(user, payload, request_mock)
 
     assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_change_password_rejects_same_runtime_argon2_password_without_writes(
+    auth_service, request_mock, monkeypatch
+):
+    password = f"Q7!{uuid.uuid4().hex}z"
+    hashed_password = await security_module.get_password_hash(password)
+    user = SimpleNamespace(id=uuid.uuid4(), hashed_password=hashed_password)
+    payload = schemas.UserPasswordChangeIn(
+        current_password=password, new_password=password
+    )
+    request_mock.state.active_session = None
+    request_mock.headers = {"Accept-Language": "en"}
+    monkeypatch.setattr(auth_module, "validate_password_hibp", AsyncMock())
+    monkeypatch.setattr(
+        auth_module,
+        "get_password_hash",
+        AsyncMock(return_value="replacement-hash"),
+    )
+    monkeypatch.setattr(csrf_module, "signal_csrf_rotation", MagicMock())
+    auth_service.session_repo.revoke_all_for_user = AsyncMock(return_value=0)
+
+    denied = None
+    try:
+        await auth_service.change_password(user, payload, request_mock)
+    except HTTPException as exc:
+        denied = (exc.status_code, exc.detail)
+
+    assert denied == (
+        400,
+        "Choose a new password that's different from the current one",
+    )
+    auth_service.user_repo.change_password_if_current.assert_not_awaited()
+    auth_service.uow.commit.assert_not_awaited()
 
 
 async def test_change_password_hibp_rejection(auth_service, request_mock, monkeypatch):

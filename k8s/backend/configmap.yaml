@@ -6,7 +6,10 @@ metadata:
 data:
   ENVIRONMENT: "production"
   LOG_LEVEL: "info"
-  CORS_ALLOWED_ORIGINS: "https://university.example.com"
+  # Public frontend origin: base of emailed links and the API CORS allow-list.
+  APP_BASE_URL: "https://university.example.com"
+  FRONTEND_ORIGIN: "https://university.example.com"
+  FRONTEND_ORIGINS: "https://university.example.com"
   ENABLE_METRICS_ENDPOINT: "true"
   RATE_LIMIT_ENABLED: "true"
   RATE_LIMIT_STORAGE_BACKEND: "redis"

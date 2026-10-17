@@ -288,8 +288,13 @@ class TestWebSocketAuth:
         """Test inactive user returns None."""
         from app.api.ws.auth import get_user_from_token
 
-        user = await user_factory(is_active=False)
+        user = await user_factory(is_active=True)
         token, _ = await create_access_token(str(user.id), db=db_session)
+
+        user.is_active = False
+        await db_session.commit()
+        await db_session.refresh(user, attribute_names=["is_active"])
+        assert user.is_active is False
 
         result_user, _session_jti = await get_user_from_token(token)
 

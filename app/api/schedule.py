@@ -19,7 +19,9 @@ from app.api.deps import (
     get_current_user_from_dishka,
     get_current_user_optional_from_dishka,
 )
+from app.api.deps.auth import ensure_admin, get_permission_checker
 from app.api.validation import ensure_exists, raise_forbidden, require_teacher_or_admin
+from app.auth.rbac import PermissionChecker
 from app.core.localization import resolve_locale
 from app.cqrs.bus import CommandBus, QueryBus
 from app.cqrs.commands.schedule import (
@@ -125,9 +127,12 @@ async def update_schedule(
     request: Request,
     command_bus: FromDishka[CommandBus],
     user: models.User = Depends(get_current_user_from_dishka),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ) -> schemas.ScheduleOut:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
+    if user.role == UserRole.ADMIN:
+        await ensure_admin(checker, user, request)
 
     try:
         command = UpdateScheduleCommand(
@@ -153,12 +158,22 @@ async def delete_schedule(
     request: Request,
     command_bus: FromDishka[CommandBus],
     user: models.User = Depends(get_current_user_from_dishka),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
+    if user.role == UserRole.ADMIN:
+        await ensure_admin(checker, user, request)
 
-    command = DeleteScheduleCommand(schedule_id=id)
-    deleted = await command_bus.execute(command)
+    try:
+        command = DeleteScheduleCommand(
+            schedule_id=id,
+            actor_id=user.id,
+            actor_role=UserRole(user.role) if user.role else UserRole.STUDENT,
+        )
+        deleted = await command_bus.execute(command)
+    except PermissionError:
+        raise_forbidden(locale)
     if not deleted:
         ensure_exists(None, "schedule", locale)
 

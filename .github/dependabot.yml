@@ -1,6 +1,9 @@
 version: 2
+# Dependency updates target the integration branch; main receives them through
+# the reviewed egorribun -> main pull request (owner decision 2026-09-25).
 updates:
   - package-ecosystem: "npm"
+    target-branch: "egorribun"
     directories:
       - "/"
       - "/frontend"
@@ -22,6 +25,7 @@ updates:
   # without regenerating uv.lock, which leaves `uv lock --check` failing; the
   # "uv" ecosystem updates both files together.
   - package-ecosystem: "uv"
+    target-branch: "egorribun"
     directory: "/"
     schedule:
       interval: "weekly"
@@ -46,6 +50,7 @@ updates:
           - "*"
   # The hash-pinned detect-secrets runner requirements are a plain pip file.
   - package-ecosystem: "pip"
+    target-branch: "egorribun"
     directory: "/security"
     schedule:
       interval: "weekly"
@@ -62,6 +67,7 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: "github-actions"
+    target-branch: "egorribun"
     directory: "/"
     schedule:
       interval: "weekly"
@@ -81,6 +87,7 @@ updates:
   # Without these entries, Go module dependencies (go.mod / go.sum) are never
   # scanned for outdated or vulnerable packages.
   - package-ecosystem: "gomod"
+    target-branch: "egorribun"
     directory: "/services/ws-hub"
     schedule:
       interval: "weekly"
@@ -97,6 +104,7 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: "gomod"
+    target-branch: "egorribun"
     directory: "/services/gateway"
     schedule:
       interval: "weekly"
@@ -113,6 +121,7 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: "gomod"
+    target-branch: "egorribun"
     directory: "/services/file-processor"
     schedule:
       interval: "weekly"

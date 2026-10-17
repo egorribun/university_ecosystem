@@ -7,7 +7,8 @@
 import { m, AnimatePresence } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { Calendar, MapPin, Users } from "lucide-react"
-import { formatDate } from "@/utils/date"
+import { formatCampusDate } from "@/utils/campusTimezone"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import { useTranslation } from "react-i18next"
 import { EventCategoryBadge } from "./EventCategoryBadge"
 import type { EventCategory } from "@/features/events/categories"
@@ -24,18 +25,6 @@ interface EventQuickViewProps {
   position?: "top" | "bottom"
 }
 
-function formatShortDate(s: string): string {
-  return (
-    formatDate(s, {
-      day: "numeric",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }) || ""
-  )
-}
-
 export function EventQuickView({
   visible,
   title,
@@ -47,7 +36,8 @@ export function EventQuickView({
   category,
   position = "top",
 }: EventQuickViewProps) {
-  const { t } = useTranslation(["events"])
+  const { t, i18n } = useTranslation(["events"])
+  const timeZone = useCampusTimezone()
   const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   return (
@@ -75,10 +65,21 @@ export function EventQuickView({
             {/* Category + date */}
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <EventCategoryBadge category={category} size="sm" />
-              {startsAt && (
+              {startsAt && timeZone && (
                 <span className="flex items-center gap-1 text-[11px] text-(--text-secondary)">
                   <Calendar size={11} />
-                  {formatShortDate(startsAt)}
+                  {formatCampusDate(
+                    startsAt,
+                    {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: false,
+                    },
+                    i18n.language === "ru" ? "ru-RU" : "en-US",
+                    timeZone
+                  )}
                 </span>
               )}
             </div>

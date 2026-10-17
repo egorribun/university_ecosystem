@@ -1,8 +1,9 @@
-"""Keep every relative link in the authored Markdown documentation resolvable.
+"""Keep current authored Markdown links resolvable and test checker behavior.
 
-The unit tests pin the behaviour of ``scripts/docs/check_markdown_links.py``;
-the repository contract runs it over every tracked ``*.md`` file outside the
-vendored agent skill catalogs, including heading anchors.
+The unit tests pin ``scripts/docs/check_markdown_links.py`` behavior. Legacy
+archives have been retired from the working tree. Archive inclusion remains a
+diagnostic mode for restored snapshots, covered by a temporary-directory test
+rather than a repository-specific allowlist.
 """
 
 from __future__ import annotations
@@ -20,36 +21,6 @@ from scripts.docs.check_markdown_links import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-
-# Links that were already broken when the dated audit evidence was recorded
-# (session-memory or machine-local paths, and wave-local design notes, scripts
-# and tests deleted after the wave). The reports are never rewritten, so the
-# links stay verbatim; docs/audits/INDEX.md records the same set.
-HISTORICAL_BROKEN_LINKS = frozenset(
-    {
-        "docs/audits/archive/AUDIT_WAVE120.md:539 -> memory/wave121_backlog.md",
-        "docs/audits/archive/AUDIT_WAVE140.md:382 -> "
-        "docs/plans/2026-05-11-wave140-tier123-design.md",
-        "docs/audits/archive/AUDIT_WAVE140.md:581 -> "
-        "docs/plans/2026-05-11-wave140-tier123-design.md",
-        "docs/audits/archive/AUDIT_WAVE143.md:38 -> "
-        "../../tests/test_wave143_jwks_roundtrip.py",
-        "docs/audits/archive/AUDIT_WAVE143.md:124 -> "
-        "../../frontend/scripts/wave138-visual-audit.mjs",
-        "docs/audits/archive/AUDIT_WAVE143.md:317 -> "
-        "../../tests/test_wave143_jwks_roundtrip.py",
-        "docs/audits/archive/AUDIT_WAVE145.md:15 -> "
-        "../../frontend/scripts/wave138-visual-audit.mjs:384",
-        "docs/audits/archive/AUDIT_WAVE145.md:260 -> "
-        "../plans/2026-05-12-wave145-tier15-design.md",
-        "docs/audits/archive/AUDIT_WAVE163.md:28 -> ../../C:\\Users\\egorribun"
-        ".claude\\projects\\C--Users-egorribun-Documents-university-ecosystem"
-        "\\memory\\wave163_opening_prompt.md",
-        "docs/audits/archive/AUDIT_WAVE192.md:272 -> .claude",
-        "docs/audits/archive/AUDIT_WAVE192.md:273 -> .claude",
-        "docs/audits/archive/AUDIT_WAVE192.md:274 -> .claude",
-    }
-)
 
 
 def test_find_missing_reports_relative_file_target(tmp_path: Path) -> None:
@@ -171,19 +142,16 @@ def test_heading_anchors_follow_github_slug_rules() -> None:
     }
 
 
-def test_authored_markdown_relative_links_resolve() -> None:
+def test_current_authored_markdown_relative_links_resolve() -> None:
     documents = tracked_markdown(ROOT)
     tracked = tracked_targets(ROOT)
     names = {document.relative_to(ROOT).as_posix() for document in documents}
     if tracked is None or "docs/README.md" not in names:
         # QUALITY-123 @egorribun — mutmut's isolated copy and the test image
         # omit docs/ and the Git metadata; the full-suite checkout runs this.
-        pytest.skip("authored documentation tree is unavailable in this checkout")
+        pytest.skip(  # QUALITY-123 @egorribun — isolated mutant copies omit docs and Git metadata
+            "authored documentation tree is unavailable in this checkout"
+        )
 
-    missing = find_missing(ROOT, documents, include_archives=True, tracked=tracked)
-
-    assert sorted(set(missing) - HISTORICAL_BROKEN_LINKS) == []
-    assert sorted(HISTORICAL_BROKEN_LINKS - set(missing)) == [], (
-        "a historical broken link was fixed or moved; update the allowlist and "
-        "docs/audits/INDEX.md"
-    )
+    missing = find_missing(ROOT, documents, tracked=tracked)
+    assert missing == []

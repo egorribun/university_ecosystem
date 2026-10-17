@@ -407,15 +407,16 @@ class S3Storage(StorageBackend):
             async with asyncio.timeout(_S3_READ_TIMEOUT):  # RZ-29-01
                 async with self._build_aioboto3_client() as s3:
                     response = await s3.get_object(Bucket=self.bucket, Key=key)
-                    async with response["Body"] as stream:
+                    body_stream = response["Body"]
+                    async with body_stream:
                         if max_bytes is None:
-                            body: bytes = await stream.read()
+                            body: bytes = await body_stream.read()
                             return body
                         content = bytearray()
                         limit = max_bytes + 1
                         while len(content) < limit:
                             remaining = limit - len(content)
-                            chunk: bytes = await stream.read(remaining)
+                            chunk: bytes = await body_stream.read(remaining)
                             if not chunk:
                                 break
                             content.extend(chunk[:remaining])

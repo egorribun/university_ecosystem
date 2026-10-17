@@ -124,6 +124,18 @@ fn scrypt_dk_len_is_honored() {
 }
 
 #[test]
+fn scrypt_minimum_legacy_output_len_matches_rfc_vector_prefix() {
+    let out = scrypt_derive(b"", b"", 16, 1, 1, 10).expect("minimum legacy length is valid");
+    assert_eq!(hex::encode(out), &SCRYPT_V1[..20]);
+}
+
+#[test]
+fn scrypt_maximum_legacy_output_len_matches_rfc_vector() {
+    let out = scrypt_derive(b"", b"", 16, 1, 1, 64).expect("maximum legacy length is valid");
+    assert_eq!(hex::encode(out), SCRYPT_V1);
+}
+
+#[test]
 fn hmac_sha256_sign_with_modified_key_fails_verification() {
     let key1 = "my-secure-key";
     let key2 = "my-secure-key-damaged"; // modified key
@@ -158,6 +170,21 @@ fn scrypt_invalid_params_and_output_len() {
     assert!(scrypt_derive(b"pw", b"salt", 16, 0, 1, 64).is_err());
     assert!(scrypt_derive(b"pw", b"salt", 16, 8, 0, 64).is_err());
     assert!(scrypt_derive(b"pw", b"salt", 16, 8, 1, 0).is_err());
+    assert!(scrypt_derive(b"pw", b"salt", 16, 8, 1, 9).is_err());
+    assert!(scrypt_derive(b"pw", b"salt", 16, 8, 1, 65).is_err());
+    // The exact legacy upper bound also keeps an untrusted usize from reaching
+    // Vec allocation after scrypt 0.12 removed len validation from Params.
+    assert!(scrypt_derive(b"pw", b"salt", 16, 8, 1, usize::MAX).is_err());
+}
+
+#[test]
+fn scrypt_rejects_cost_outside_legacy_log_n_bound() {
+    // This costs roughly 8 MiB if the guard regresses, so the failing case is
+    // bounded while proving the old log_n < r * 16 rejection is preserved.
+    assert_eq!(
+        scrypt_derive(b"pw", b"salt", 1 << 16, 1, 1, 32).unwrap_err(),
+        "Invalid scrypt params: InvalidParams"
+    );
 }
 
 proptest! {

@@ -16,8 +16,8 @@ const state = vi.hoisted(() => ({
   storiesLoading: false,
   weatherAnimation: undefined as string | undefined,
   scheduleQuery: { isLoading: false },
-  newsQuery: { isLoading: false },
-  eventsQuery: { isLoading: false },
+  newsQuery: { isPending: false, isLoading: false },
+  eventsQuery: { isPending: false, isLoading: false },
   queryClient: { id: "dashboard-test-client" },
   prefetch: vi.fn(),
 }))
@@ -32,7 +32,9 @@ vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => state.queryClient,
 }))
 
-vi.mock("framer-motion", () => {
+vi.mock("framer-motion", async () => {
+  const { useRef, useState } = await import("react")
+
   const MotionDiv = ({
     children,
     className,
@@ -40,6 +42,7 @@ vi.mock("framer-motion", () => {
     onMouseMove,
     onMouseLeave,
     initial,
+    animate,
   }: {
     children?: ReactNode
     className?: string
@@ -47,6 +50,7 @@ vi.mock("framer-motion", () => {
     onMouseMove?: MouseEventHandler<HTMLDivElement>
     onMouseLeave?: MouseEventHandler<HTMLDivElement>
     initial?: unknown
+    animate?: { status?: string }
   }) => (
     <div
       className={className}
@@ -54,13 +58,51 @@ vi.mock("framer-motion", () => {
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
       data-testid="motion-card"
-      data-cascade={initial ? "active" : "idle"}
+      data-cascade={initial || animate?.status === "hidden" ? "active" : "idle"}
     >
       {children}
     </div>
   )
 
-  return { m: { div: MotionDiv } }
+  function useAnimationControls() {
+    const [status, setStatus] = useState("visible")
+    const statusRef = useRef(status)
+    statusRef.current = status
+    const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+    const resolveRef = useRef<(() => void) | undefined>(undefined)
+    const [controls] = useState(() => ({
+      get status() {
+        return statusRef.current
+      },
+      set(target: { opacity?: number }) {
+        setStatus(target.opacity === 0 ? "hidden" : "visible")
+      },
+      start(definition: { transition?: { duration?: number; delay?: number } }) {
+        return new Promise<void>((resolve) => {
+          resolveRef.current = resolve
+          timerRef.current = setTimeout(
+            () => {
+              timerRef.current = undefined
+              resolveRef.current = undefined
+              setStatus("visible")
+              resolve()
+            },
+            ((definition.transition?.duration ?? 0) + (definition.transition?.delay ?? 0)) * 1000
+          )
+        })
+      },
+      stop() {
+        if (timerRef.current !== undefined) clearTimeout(timerRef.current)
+        timerRef.current = undefined
+        const resolve = resolveRef.current
+        resolveRef.current = undefined
+        resolve?.()
+      },
+    }))
+    return controls
+  }
+
+  return { m: { div: MotionDiv }, useAnimationControls }
 })
 
 vi.mock("@/components/ui/SEO", () => ({
@@ -85,7 +127,13 @@ vi.mock("@/contexts/LanguageContext", () => ({
 }))
 
 vi.mock("@/hooks/useClock", () => ({
-  useClock: () => ({ hh: "10", mm: "30", dateStr: "Friday", time: "10:30" }),
+  useClock: () => ({
+    hh: "10",
+    mm: "30",
+    dateStr: "Friday",
+    time: new Date(2026, 7, 3, 10, 30),
+    isReady: true,
+  }),
 }))
 
 vi.mock("@/hooks/useMediaQuery", () => ({
@@ -123,9 +171,9 @@ vi.mock("@/hooks/useWeather", () => ({
 }))
 
 vi.mock("@/components/dashboard/DashboardHero", () => ({
-  DashboardHero: ({ time, storiesSlot }: { time: string; storiesSlot?: ReactNode }) => (
+  DashboardHero: ({ time, storiesSlot }: { time: Date; storiesSlot?: ReactNode }) => (
     <section data-testid="dashboard-hero">
-      <span data-testid="hero-time">{time}</span>
+      <span data-testid="hero-time">{time.toISOString()}</span>
       {storiesSlot ? <div data-testid="hero-stories">{storiesSlot}</div> : null}
     </section>
   ),
@@ -242,8 +290,8 @@ beforeEach(() => {
   state.storiesLoading = false
   state.weatherAnimation = undefined
   state.scheduleQuery = { isLoading: false }
-  state.newsQuery = { isLoading: false }
-  state.eventsQuery = { isLoading: false }
+  state.newsQuery = { isPending: false, isLoading: false }
+  state.eventsQuery = { isPending: false, isLoading: false }
   state.prefetch.mockClear()
   window.sessionStorage.clear()
   vi.useRealTimers()
@@ -287,8 +335,8 @@ describe("Dashboard closure behavior", () => {
   it("renders an honest stories loading state, stable widgets, and a restrained cascade reveal", () => {
     vi.useFakeTimers()
     state.scheduleQuery = { isLoading: true }
-    state.newsQuery = { isLoading: true }
-    state.eventsQuery = { isLoading: true }
+    state.newsQuery = { isPending: true, isLoading: true }
+    state.eventsQuery = { isPending: true, isLoading: true }
     state.storiesLoading = true
     state.weatherAnimation = "drizzle"
 
@@ -482,5 +530,51 @@ describe("Dashboard closure behavior", () => {
     expect(screen.getAllByTestId("motion-card").at(0)).toHaveAttribute("data-cascade", "idle")
     expect(window.sessionStorage.getItem("dash-cascade-done")).toBeNull()
     unmount()
+  })
+
+  it("keeps the dashboard mounted when session storage cannot save the cascade marker", async () => {
+    vi.stubEnv("VITE_E2E_MODE", "0")
+    vi.stubEnv("VITE_LHCI", "false")
+    state.narrow = false
+    state.reduced = false
+    state.storiesInHero = true
+    vi.resetModules()
+
+    const quotaStorage = globalThis.sessionStorage
+    quotaStorage.clear()
+    expect(quotaStorage.getItem("dash-cascade-done")).toBeNull()
+    vi.spyOn(window, "matchMedia").mockImplementation((media) => ({
+      matches: false,
+      media,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+    const originalSetItem = Storage.prototype.setItem
+    const quotaStorageWrite = vi.fn()
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string
+    ) {
+      if (this === quotaStorage && key === "dash-cascade-done") {
+        quotaStorageWrite()
+        throw new DOMException("Storage quota exceeded", "QuotaExceededError")
+      }
+      return originalSetItem.call(this, key, value)
+    })
+    const { default: QuotaDashboard } = await import("../Dashboard")
+
+    expect(() => render(<QuotaDashboard />)).not.toThrow()
+    expect(setItem).toHaveBeenCalledWith("dash-cascade-done", "1")
+    expect(quotaStorageWrite).toHaveBeenCalledOnce()
+    expect(screen.getAllByTestId("motion-card").at(0)).toHaveAttribute("data-cascade", "active")
+    expect(quotaStorage.getItem("dash-cascade-done")).toBeNull()
+    expect(screen.getByTestId("schedule-card")).toBeInTheDocument()
+    expect(screen.getByTestId("news-card")).toBeInTheDocument()
+    expect(screen.getByTestId("events-card")).toBeInTheDocument()
   })
 })

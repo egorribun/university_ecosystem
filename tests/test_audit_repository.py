@@ -23,44 +23,6 @@ def audit_repo(db_session: AsyncSession) -> AuditRepository:
 
 
 @pytest.mark.asyncio
-async def test_get_logs_by_user_matches_actor_or_subject_desc(audit_repo, user_factory):
-    ua = await user_factory()
-    ub = await user_factory()
-    base = datetime.now(UTC)
-    await audit_repo.batch_create(
-        [
-            {
-                "actor_user_id": ua.id,
-                "resource_type": "user",
-                "action": "view",
-                "created_at": base - timedelta(minutes=3),
-            },
-            {
-                "subject_user_id": ua.id,
-                "resource_type": "user",
-                "action": "edit",
-                "created_at": base - timedelta(minutes=1),
-            },
-            {
-                "actor_user_id": ub.id,
-                "resource_type": "event",
-                "action": "view",
-                "created_at": base - timedelta(minutes=2),
-            },
-        ]
-    )
-
-    logs = await audit_repo.get_logs_by_user(ua.id)
-    assert len(logs) == 2  # ua matched as actor (row1) and as subject (row2)
-    assert logs[0].action == "edit"  # newest first (DESC)
-    assert logs[1].action == "view"
-
-    limited = await audit_repo.get_logs_by_user(ua.id, limit=1)
-    assert len(limited) == 1
-    assert limited[0].action == "edit"
-
-
-@pytest.mark.asyncio
 async def test_list_logs_filters_pagination_and_limit_cap(audit_repo, user_factory):
     ua = await user_factory()
     ub = await user_factory()

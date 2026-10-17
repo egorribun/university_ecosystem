@@ -1,4 +1,22 @@
 {{- if .Values.migrations.enabled }}
+{{- $connectionSecret := required "connections.existingSecret must be set before Helm install" .Values.connections.existingSecret -}}
+{{- $applicationSecret := include "university-ecosystem.applicationSecretName" . -}}
+{{- $connectionSecretKeys := list
+  (required "connections.databaseURLKey must be set" .Values.connections.databaseURLKey)
+  (required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey)
+  (required "connections.redisBackendURLKey must be set" .Values.connections.redisBackendURLKey)
+  (required "connections.natsAuthTokenKey must be set" .Values.connections.natsAuthTokenKey)
+-}}
+{{- $applicationSecretKeys := list
+  "jwt-secret"
+  "audit-log-secret"
+  "elasticsearch-password"
+  "ws-hub-internal-secret"
+  "internal-hmac-secret"
+  "spicedb-preshared-key"
+  "spotify-token-secret"
+  "token-hmac-secret"
+-}}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -44,23 +62,42 @@ spec:
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           command: ["alembic", "upgrade", "head"]
           env:
-            - name: DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ required "connections.existingSecret must be set before Helm install" .Values.connections.existingSecret | quote }}
-                  key: {{ required "connections.databaseURLKey must be set" .Values.connections.databaseURLKey | quote }}
+            - name: DATABASE_URL_FILE
+              value: {{ printf "/run/secrets/%s/%s" $connectionSecret (required "connections.databaseURLKey must be set" .Values.connections.databaseURLKey) | quote }}
             # Contract retirement may revoke already-issued bearer JTIs before
             # altering their database rows. This must target the dedicated,
             # persistent noeviction datastore, never the cache Redis instance.
-            - name: REVOCATION_REDIS_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ required "connections.existingSecret must be set before Helm install" .Values.connections.existingSecret | quote }}
-                  key: {{ required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey | quote }}
-            # Development mode prevents unrelated runtime-service secret
-            # validators from blocking the isolated migration Job.
+            - name: REVOCATION_REDIS_URL_FILE
+              value: {{ printf "/run/secrets/%s/%s" $connectionSecret (required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey) | quote }}
+            - name: CACHE_REDIS_URL_FILE
+              value: {{ printf "/run/secrets/%s/%s" $connectionSecret (required "connections.redisBackendURLKey must be set" .Values.connections.redisBackendURLKey) | quote }}
+            # Alembic constructs the shared Settings object. Keep the migration
+            # process in the authentication-capable role and supply its actual
+            # environment so production/staging validation cannot be bypassed.
+            - name: APP_PROCESS_ROLE
+              value: "api"
+            - name: REVOCATION_REDIS_ACCESS_ENABLED
+              value: "true"
             - name: ENVIRONMENT
-              value: development
+              value: {{ .Values.global.environment | quote }}
+            - name: EVENT_FILE_SCANNER_ENABLED
+              value: {{ .Values.backend.config.eventFileScannerEnabled | quote }}
+            - name: MINIO_SECURE
+              value: {{ .Values.backend.config.minioSecure | quote }}
+            - name: ELASTICSEARCH_URL
+              value: {{ .Values.backend.config.elasticsearchURL | quote }}
+            # SECRET_KEY must be stable across migration and backend processes;
+            # do not let Settings(_allow_missing=True) generate a local fallback.
+            - name: SECRET_KEY_FILE
+              value: {{ printf "/run/secrets/%s/%s" $applicationSecret "jwt-secret" | quote }}
+            # The shared settings validators require these secret values in
+            # staging/production before Alembic can initialize.
+            {{- range $variable, $key := dict "AUDIT_LOG_SECRET" "audit-log-secret" "ELASTICSEARCH_PASSWORD" "elasticsearch-password" "INTERNAL_AUTH_TOKEN" "ws-hub-internal-secret" "INTERNAL_HMAC_SECRET" "internal-hmac-secret" "SPICEDB_PRESHARED_KEY" "spicedb-preshared-key" "SPOTIFY_TOKEN_SECRET" "spotify-token-secret" "TOKEN_HMAC_SECRET" "token-hmac-secret" "WS_HUB_INTERNAL_SECRET" "ws-hub-internal-secret" }}
+            - name: {{ printf "%s_FILE" $variable }}
+              value: {{ printf "/run/secrets/%s/%s" $applicationSecret $key | quote }}
+            {{- end }}
+            - name: NATS_AUTH_TOKEN_FILE
+              value: {{ printf "/run/secrets/%s/%s" $connectionSecret (required "connections.natsAuthTokenKey must be set" .Values.connections.natsAuthTokenKey) | quote }}
             - name: AUTO_CREATE_SCHEMA
               value: "false"
           securityContext:
@@ -73,9 +110,11 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- include "university-ecosystem.secretVolumeMounts" (dict "secrets" (list (dict "id" "connections" "secretName" $connectionSecret "keys" $connectionSecretKeys) (dict "id" "application" "secretName" $applicationSecret "keys" $applicationSecretKeys))) | nindent 12 }}
       volumes:
         - name: tmp
           emptyDir:
             medium: Memory
             sizeLimit: 64Mi
+        {{- include "university-ecosystem.secretVolumes" (dict "secrets" (list (dict "id" "connections" "secretName" $connectionSecret "keys" $connectionSecretKeys) (dict "id" "application" "secretName" $applicationSecret "keys" $applicationSecretKeys))) | nindent 8 }}
 {{- end }}

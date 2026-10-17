@@ -2,21 +2,20 @@ apiVersion: v2
 name: university-ecosystem
 description: A Helm chart for the University Ecosystem microservices platform
 type: application
-version: 0.2.1
+version: 0.2.2
 appVersion: "1.0.0"
 maintainers:
   - name: antigravity
     email: bot@example.com
 
-# PERF-W18-03 / Wave 18.1: bitnami subcharts for Redis and NATS with resource limits.
-# Install: helm dependency update charts/university-ecosystem/
-# Disable with: --set redis.enabled=false --set nats.enabled=false
+# Cache uses the first-party Redis wrapper to preserve Redis service and PVC identities.
+# NATS uses the official NATS-maintained chart with a reviewed immutable server image.
 dependencies:
   - name: redis
-    version: "~20.x"
-    repository: oci://registry-1.docker.io/bitnamicharts
+    version: "0.1.0"
+    repository: "file://../redis-compat"
     condition: redis.enabled
   - name: nats
-    version: "~8.x"
-    repository: oci://registry-1.docker.io/bitnamicharts
+    version: "2.15.0"
+    repository: "https://nats-io.github.io/k8s/helm/charts/"
     condition: nats.enabled

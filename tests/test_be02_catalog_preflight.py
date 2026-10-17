@@ -18,9 +18,11 @@ def test_loads_the_reviewed_migration_specs() -> None:
     assert len(migration.DEFAULT_SPECS) == 12
 
 
-def test_rejects_a_missing_migration_file(tmp_path) -> None:
+def test_rejects_a_missing_migration_file(tmp_path, monkeypatch) -> None:
+    monkeypatch.setitem(preflight.MIGRATION_PATHS, 4, tmp_path / "missing.py")
+
     with pytest.raises(FileNotFoundError):
-        preflight.load_migration(tmp_path / "missing.py")
+        preflight.load_migration(4)
 
 
 def test_uses_the_synchronous_driver_for_async_urls() -> None:
@@ -108,7 +110,7 @@ def test_main_reports_json_and_fails_closed_on_drift(
 
     monkeypatch.setenv("DATABASE_URL", " postgresql+asyncpg://u@h/db ")
     monkeypatch.setattr(preflight, "run", fake_run)
-    monkeypatch.setattr(preflight, "load_migration", lambda: object())
+    monkeypatch.setattr(preflight, "load_migration", lambda _phase=4: object())
 
     assert preflight.main([]) == exit_code
     assert seen == ["postgresql+asyncpg://u@h/db"]

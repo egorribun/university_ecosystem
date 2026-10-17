@@ -1,6 +1,6 @@
 import typer
 
-from app.cli import db, infra, migrate_passwords, tests
+from app.cli import db, infra, migrate_passwords, search, tests
 
 app = typer.Typer(
     help="University Ecosystem Unified CLI",
@@ -11,6 +11,7 @@ app = typer.Typer(
 # Add command groups
 app.add_typer(db.app, name="db")
 app.add_typer(infra.app, name="infra")
+app.add_typer(search.app, name="search")
 app.add_typer(tests.app, name="test")
 app.add_typer(migrate_passwords.app, name="migrate-passwords")
 

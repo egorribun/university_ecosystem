@@ -54,27 +54,3 @@ func FuzzParseMessage(f *testing.F) {
 		_ = len(msg.Payload)
 	})
 }
-
-// FuzzExtractAlgFromHeader verifies that extractAlgFromHeader never panics.
-// Inputs include malformed base64, truncated headers, and adversarial JWTs.
-func FuzzExtractAlgFromHeader(f *testing.F) {
-	// Valid JWT header: {"alg":"RS256","typ":"JWT"} base64url-encoded.
-	f.Add("eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.signature")
-	// HS256 variant.
-	f.Add("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.signature")
-	// Malformed: only 2 parts.
-	f.Add("eyJhbGciOiJSUzI1NiJ9.payload")
-	// Malformed: invalid base64.
-	f.Add("!!!.payload.signature")
-	// Empty string.
-	f.Add("")
-	// Header with missing alg.
-	f.Add("e30K.payload.signature") // base64url of '{}'
-	// Algorithm injection attempt.
-	f.Add(`eyJhbGciOiJub25lIn0.payload.signature`) // {"alg":"none"}
-
-	f.Fuzz(func(t *testing.T, token string) {
-		// Must not panic on any input.
-		_, _ = extractAlgFromHeader(token) //nolint:errcheck // fuzz: intentionally ignore errors
-	})
-}

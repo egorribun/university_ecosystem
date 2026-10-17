@@ -68,23 +68,15 @@ class NotificationSettings(BaseAppSettings):
     notifications_scheduler_poll_seconds: int = 30
     notifications_scheduler_window_minutes: int = 6
     notifications_scheduler_max_backoff_seconds: int = 300
-    notifications_scheduler_inline_enabled: bool = True
     notifications_worker_metrics_host: str = "0.0.0.0"  # nosec B104
     notifications_worker_metrics_port: int = 9101
-    notifications_webpush_concurrency_limit: int = 10
     notifications_retention_days: int = 90
-    notifications_retention_cleanup_interval_seconds: int = 86_400
     notifications_retention_batch_size: int = 500
     notification_queue_dead_letter_retention_days: int = 30
-    notification_queue_dead_letter_cleanup_interval_seconds: int = 86_400
-    notifications_queue_max_size: int = 1024
-    notifications_queue_enqueue_timeout_seconds: float = 0.5
     notifications_queue_in_memory_only: bool = False
-    notifications_queue_retry_base_seconds: float = 1.0
     notifications_allowed_push_topics: list[str] | str = Field(
         default_factory=lambda: list(CANONICAL_NOTIFICATION_TOPICS)
     )
-    notifications_queue_max_attempts: int = 5
 
     # Outbox worker tuning (PERF-04)
     outbox_poll_interval_seconds: float = 5.0

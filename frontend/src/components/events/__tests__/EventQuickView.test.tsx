@@ -35,15 +35,22 @@ const { reducedMotion, mediaQueryMock } = vi.hoisted(() => ({
   reducedMotion: vi.fn(() => false),
   mediaQueryMock: vi.fn(),
 }))
-const { useTranslationMock, translationMock, formatDateMock } = vi.hoisted(() => {
+const { useTranslationMock, translationMock, formatDateMock, language } = vi.hoisted(() => {
   const translationMock = vi.fn((key: string) => key)
+  const language = { current: "en" }
   return {
     useTranslationMock: vi.fn(() => ({
       t: translationMock,
-      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+      i18n: {
+        get language() {
+          return language.current
+        },
+        changeLanguage: () => Promise.resolve(),
+      },
     })),
     translationMock,
     formatDateMock: vi.fn((value: string) => `date:${value}`),
+    language,
   }
 })
 
@@ -55,6 +62,9 @@ vi.mock("@/hooks/useMediaQuery", () => ({
 }))
 vi.mock("react-i18next", () => ({ useTranslation: useTranslationMock }))
 vi.mock("@/utils/date", () => ({ formatDate: formatDateMock }))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => "Europe/Istanbul",
+}))
 
 import { EventQuickView } from "@/components/events/EventQuickView"
 
@@ -72,6 +82,7 @@ const baseProps = {
 describe("EventQuickView", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    language.current = "en"
   })
 
   afterEach(() => {
@@ -91,13 +102,18 @@ describe("EventQuickView", () => {
     expect(useTranslationMock.mock.calls[0]).toEqual([["events"]])
     expect(mediaQueryMock).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
     expect(translationMock).toHaveBeenCalledWith("events:quickView.viewDetails")
-    expect(formatDateMock).toHaveBeenCalledWith(baseProps.startsAt, {
-      day: "numeric",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    })
+    expect(formatDateMock).toHaveBeenCalledWith(
+      baseProps.startsAt,
+      expect.objectContaining({
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: "Europe/Istanbul",
+      }),
+      "en-US"
+    )
     expect(screen.getByText(`date:${baseProps.startsAt}`)).toBeInTheDocument()
     // category branch — badge renders the localized label key
     expect(screen.getByText("events:categories.lecture")).toBeInTheDocument()
@@ -226,7 +242,9 @@ describe("EventQuickView", () => {
         hour: "2-digit",
         minute: "2-digit",
         hour12: false,
-      })
+        timeZone: "Europe/Istanbul",
+      }),
+      "en-US"
     )
   })
 
@@ -238,5 +256,14 @@ describe("EventQuickView", () => {
     const calendar = container.querySelector("svg.lucide-calendar")
     expect(calendar?.parentElement?.textContent).toBe("")
     expect(screen.queryByText(`date:${baseProps.startsAt}`)).not.toBeInTheDocument()
+  })
+
+  it("formats the quick-view date with the Russian locale when selected", () => {
+    language.current = "ru"
+    formatDateMock.mockClear()
+
+    render(<EventQuickView {...baseProps} />)
+
+    expect(formatDateMock).toHaveBeenCalledWith(baseProps.startsAt, expect.any(Object), "ru-RU")
   })
 })

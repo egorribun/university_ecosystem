@@ -61,8 +61,8 @@ def verify_manifest(
     }
     expected_frontend = {
         "VITE_APP_RELEASE": expected_sha,
-        "VITE_ENABLE_WEB_VITALS": "true",
-        "VITE_CWV_TRUSTED_RUM": "true",
+        "VITE_ENABLE_WEB_VITALS": "false",
+        "VITE_CWV_TRUSTED_RUM": "false",
         "VITE_WEB_VITALS_ENDPOINT": "/api/v1/cwv",
     }
     if manifest.get("schema_version") != 2:
@@ -120,16 +120,24 @@ def verify_manifest(
     return outputs
 
 
-def verify_checksum(manifest_path: Path, checksum_path: Path) -> str:
-    """Verify the exact sha256sum record and return the manifest digest."""
+def _verify_checksum_bytes(
+    manifest_path: Path, checksum_path: Path, manifest_bytes: bytes
+) -> str:
     line = checksum_path.read_text(encoding="utf-8")
     match = _CHECKSUM_LINE.fullmatch(line)
     if match is None or match.group(2) != manifest_path.name:
         raise ValueError("release image manifest checksum record is malformed")
-    actual = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    actual = hashlib.sha256(manifest_bytes).hexdigest()
     if match.group(1) != actual:
         raise ValueError("release image manifest checksum does not match")
     return actual
+
+
+def verify_checksum(manifest_path: Path, checksum_path: Path) -> str:
+    """Verify the exact sha256sum record and return the manifest digest."""
+    return _verify_checksum_bytes(
+        manifest_path, checksum_path, manifest_path.read_bytes()
+    )
 
 
 def main() -> int:
@@ -144,8 +152,11 @@ def main() -> int:
     parser.add_argument("--github-output", type=Path, required=True)
     args = parser.parse_args()
     try:
-        manifest_sha256 = verify_checksum(args.manifest, args.checksum)
-        manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+        manifest_bytes = args.manifest.read_bytes()
+        manifest_sha256 = _verify_checksum_bytes(
+            args.manifest, args.checksum, manifest_bytes
+        )
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
         outputs = verify_manifest(
             manifest,
             expected_repository=args.repository,

@@ -6,6 +6,7 @@ from httpx import AsyncClient
 
 from app.auth.security import get_password_hash
 from app.core.database import get_db, get_read_db
+from app.core.localization.dictionary import TRANSLATIONS
 from app.main import app
 from app.models.chat import Chat, Message
 from app.services.chat.query_service import ChatQueryService
@@ -38,7 +39,7 @@ async def test_create_chat_errors(async_client, user_factory):
     )
     assert resp.status_code == 400
     detail = resp.json()["detail"]
-    assert "errors.chat.self_chat" in detail or "Cannot create" in detail
+    assert detail in TRANSLATIONS["errors.chat.self_chat"].values()
 
     # 2. Create chat with non-existent user
     resp = await async_client.post(
@@ -46,7 +47,7 @@ async def test_create_chat_errors(async_client, user_factory):
     )
     assert resp.status_code == 404
     detail = resp.json()["detail"]
-    assert "errors.users.not_found" in detail or "User not found" in detail
+    assert detail in TRANSLATIONS["errors.users.not_found"].values()
 
 
 @pytest.mark.asyncio
@@ -160,6 +161,44 @@ async def test_send_message_errors(async_client, user_factory, db_session, monke
         or "Too many attachments" in str(resp.content)
         or "too many" in str(resp.content).lower()
     )
+
+
+@pytest.mark.asyncio
+async def test_oversized_attachment_returns_413_without_persisting_message(
+    async_client, user_factory, db_session, monkeypatch
+):
+    password = "TestPassword123!"
+    user = await user_factory(hashed_password=await get_password_hash(password))
+    peer = await user_factory()
+    headers = await _login(async_client, user.email, password)
+
+    chat = Chat()
+    chat.participants.extend([user, peer])
+    db_session.add(chat)
+    await db_session.commit()
+    await db_session.refresh(chat)
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "chat_attachment_max_size_bytes", 4)
+    monkeypatch.setattr(settings, "chat_attachment_max_total_bytes", 10)
+    monkeypatch.setattr(settings, "event_file_scanner_enabled", False)
+    monkeypatch.setattr(settings, "chat_attachment_allowed_mime_types", ["text/plain"])
+    monkeypatch.setattr(settings, "chat_attachment_allowed_extensions", [".txt"])
+
+    response = await async_client.post(
+        f"/chats/{chat.id}/messages",
+        data={"content": "oversized attachment must not persist"},
+        files=[("files", ("oversized.txt", b"12345", "text/plain"))],
+        headers=headers,
+    )
+
+    assert response.status_code == 413
+    messages = await async_client.get(
+        f"/chats/{chat.id}/messages?limit=100", headers=headers
+    )
+    assert messages.status_code == 200
+    assert messages.json()["items"] == []
 
 
 @pytest.mark.asyncio

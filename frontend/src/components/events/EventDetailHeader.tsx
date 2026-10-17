@@ -5,7 +5,8 @@
 
 import { Calendar, MapPin, Users, Mic2, Share2, Pencil, Trash2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { formatDate } from "@/utils/date"
+import { formatCampusDate } from "@/utils/campusTimezone"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import { Button } from "@/components/ui/Button"
 import { EventCategoryBadge } from "./EventCategoryBadge"
 import { inferEventCategory } from "@/features/events/categories"
@@ -30,16 +31,6 @@ interface EventDetailHeaderProps {
   onDeleteOpen: () => void
 }
 
-const formatShortDateTime = (s: string) =>
-  formatDate(s, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  })
-
 export function EventDetailHeader({
   title,
   eventType,
@@ -59,7 +50,22 @@ export function EventDetailHeader({
   onEditOpen,
   onDeleteOpen,
 }: EventDetailHeaderProps) {
-  const { t } = useTranslation(["events", "common"])
+  const { t, i18n } = useTranslation(["events", "common"])
+  const timeZone = useCampusTimezone()
+  const formatShortDateTime = (value: string) =>
+    formatCampusDate(
+      value,
+      {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      },
+      i18n.language === "ru" ? "ru-RU" : "en-US",
+      timeZone
+    )
   const category = inferEventCategory(eventType ?? eventTypeEn)
 
   return (
@@ -81,7 +87,7 @@ export function EventDetailHeader({
         </span>
 
         {/* Date range */}
-        {startsAt && (
+        {startsAt && timeZone && (
           <time
             dateTime={new Date(startsAt).toISOString()}
             className="matte-chip flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"

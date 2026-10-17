@@ -24,7 +24,7 @@ class ParticipationStatsDTO(SecureBaseModel):
 
     event_id: uuid.UUID
     title: str
-    event_type: str
+    event_type: str | None
     starts_at: datetime
     ends_at: datetime
 

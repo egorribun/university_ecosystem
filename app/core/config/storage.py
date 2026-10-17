@@ -51,8 +51,6 @@ class StorageSettings(BaseAppSettings):
     )
 
     image_proxy_enabled: bool = True
-    image_proxy_cache_dir: str = "cache/images"
-    image_proxy_cache_size_gb: float = 2.0
     image_proxy_allowed_widths: str | list[int] = "100,200,400,800,1200,1600"
 
     event_file_allowed_mime_types: str | list[str] = (

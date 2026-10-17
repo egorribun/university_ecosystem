@@ -17,7 +17,9 @@ const { registerRouteMock, getSessionHashMock, fetchMock, publicCache, privateCa
       publicCache,
       privateCache,
       cachesMock: {
-        open: vi.fn(async (name: string) => (name === "media-public" ? publicCache : privateCache)),
+        open: vi.fn(async (name: string) =>
+          name === "media-public:v2" ? publicCache : privateCache
+        ),
         has: vi.fn(),
       },
     }
@@ -53,13 +55,23 @@ vi.mock("workbox-strategies", () => ({
 }))
 
 vi.mock("@/sw/api", () => ({
-  getSessionHash: getSessionHashMock,
+  getSessionCacheScope: getSessionHashMock,
+  ensureSessionIdentity: vi.fn(
+    async (event?: Event) => (event as FetchEvent | undefined)?.clientId === "controlled"
+  ),
+  allowsStorage: (response: Response) =>
+    response.status === 200 &&
+    !/no-store|no-cache/i.test(response.headers.get("Cache-Control") ?? ""),
 }))
 
 const loadMediaModule = async () => {
   vi.resetModules()
   const { handleMediaRequest, initMediaCaching } = await import("../media")
-  return { handleMediaRequest, initMediaCaching }
+  return {
+    handleMediaRequest: (input: RequestInfo | URL) =>
+      handleMediaRequest(input, { clientId: "controlled" } as FetchEvent),
+    initMediaCaching,
+  }
 }
 
 beforeEach(() => {
@@ -83,7 +95,7 @@ describe("service-worker media cache", () => {
 
     await expect(handleMediaRequest("https://cdn.example.test/photo.jpg")).resolves.toBe(cached)
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(cachesMock.open).toHaveBeenCalledWith("media-public")
+    expect(cachesMock.open).toHaveBeenCalledWith("media-public:v2")
   })
 
   it("serves an authenticated private cache hit when the session cache exists", async () => {
@@ -96,7 +108,7 @@ describe("service-worker media cache", () => {
     await expect(
       handleMediaRequest(new Request("https://cdn.example.test/private.jpg"))
     ).resolves.toBe(cached)
-    expect(cachesMock.has).toHaveBeenCalledWith("media-private:session-123")
+    expect(cachesMock.open).toHaveBeenCalledWith("media-private:session-123")
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -130,11 +142,11 @@ describe("service-worker media cache", () => {
       })
     )
     await handleMediaRequest("https://app.test/media/signed.jpg")
-    expect(publicCache.put).toHaveBeenCalledTimes(2)
+    expect(publicCache.put).toHaveBeenCalledTimes(1)
 
     fetchMock.mockResolvedValueOnce(new Response("not-found", { status: 404 }))
     await handleMediaRequest("https://app.test/media/missing.jpg")
-    expect(publicCache.put).toHaveBeenCalledTimes(2)
+    expect(publicCache.put).toHaveBeenCalledTimes(1)
     expect(privateCache.put).toHaveBeenCalledTimes(1)
   })
 
@@ -172,11 +184,15 @@ describe("service-worker media cache", () => {
 
     const explicitHandler = registerRouteMock.mock.calls[1]?.[1] as (input: {
       request: Request
+      event: FetchEvent
     }) => Promise<Response>
     const cached = new Response("explicit-cache")
     publicCache.match.mockResolvedValue(cached)
     await expect(
-      explicitHandler({ request: new Request("https://app.test/media/explicit.jpg") })
+      explicitHandler({
+        request: new Request("https://app.test/media/explicit.jpg"),
+        event: { clientId: "controlled" } as FetchEvent,
+      })
     ).resolves.toBe(cached)
   })
 
@@ -193,19 +209,22 @@ describe("service-worker media cache", () => {
     Object.defineProperty(request, "destination", { value: "image" })
 
     const matchingRoute = registerRouteMock.mock.calls.find(([matcher]) =>
-      (matcher as (input: { request: Request; url: URL }) => boolean)({ request, url })
+      (matcher as (input: { request: Request; url: URL; event?: FetchEvent }) => boolean)({
+        request,
+        url,
+      })
     )
     expect(matchingRoute).toBeDefined()
 
     const handler = matchingRoute?.[1] as
-      | ((input: { request: Request; url: URL }) => Promise<Response>)
-      | { handle: (input: { request: Request; url: URL }) => Promise<Response> }
+      | ((input: { request: Request; url: URL; event?: FetchEvent }) => Promise<Response>)
+      | { handle: (input: { request: Request; url: URL; event?: FetchEvent }) => Promise<Response> }
     const response =
       typeof handler === "function"
-        ? await handler({ request, url })
+        ? await handler({ request, url, event: { clientId: "controlled" } as FetchEvent })
         : await handler.handle({ request, url })
 
     expect(response).toBe(cached)
-    expect(cachesMock.has).toHaveBeenCalledWith("media-private:session-123")
+    expect(cachesMock.open).toHaveBeenCalledWith("media-private:session-123")
   })
 })

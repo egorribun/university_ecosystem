@@ -1,6 +1,4 @@
 import types
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
 
 import pytest
@@ -79,14 +77,11 @@ async def test_s3_preserves_case_sensitive_object_keys_across_operations(
     key: str,
 ) -> None:
     client = AsyncMock()
-    stream = AsyncMock()
-    stream.read.return_value = b"payload"
-
-    @asynccontextmanager
-    async def body() -> AsyncIterator[AsyncMock]:
-        yield stream
-
-    client.get_object.return_value = {"Body": body()}
+    body = AsyncMock()
+    body.read.return_value = b"payload"
+    body.__aenter__.return_value = body
+    body.__aexit__.return_value = None
+    client.get_object.return_value = {"Body": body}
     storage = S3Storage(
         bucket="uploads", client=client, base_url="https://cdn.example/uploads"
     )

@@ -134,11 +134,20 @@ class SessionService:
         # We perform a dummy lock-fetch of the user record to take the row lock.
         # This lock is held until the current transaction commits.
         lock_stmt = (
-            select(User.id, User.mfa_epoch).where(User.id == user_id).with_for_update()
+            select(User.id, User.mfa_epoch, User.is_active)
+            .where(User.id == user_id)
+            .with_for_update()
         )
         lock_result = await self.db.execute(lock_stmt)
         locked_user = lock_result.one_or_none()
-        current_mfa_epoch = int(locked_user[1] or 0) if locked_user else 0
+        if locked_user is None or not bool(locked_user[2]):
+            from fastapi import HTTPException, status
+
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="credentials_invalid",
+            )
+        current_mfa_epoch = int(locked_user[1] or 0)
 
         # Never mint a session from a stale login/MFA DTO.  Password resets and
         # MFA lifecycle mutations advance User.mfa_epoch while holding this same

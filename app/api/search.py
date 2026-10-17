@@ -20,8 +20,24 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/search", tags=["search"])
 
-_NEWS_FIELDS = ["title", "content", "summary", "author_name", "tags"]
-_EVENTS_FIELDS = ["title", "description", "location", "organizer_name", "category"]
+_NEWS_FIELDS = [
+    "title",
+    "title_en",
+    "content",
+    "content_en",
+    "summary",
+    "author_name",
+    "tags",
+]
+_EVENTS_FIELDS = [
+    "title",
+    "title_en",
+    "description",
+    "description_en",
+    "location",
+    "organizer_name",
+    "category",
+]
 _MAX_RESULTS = 10
 
 

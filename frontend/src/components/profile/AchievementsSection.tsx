@@ -35,7 +35,16 @@ export const AchievementsSection = ({
             </div>
             <div className="min-w-0">
               <h3 className="text-sm font-bold text-text-primary truncate group-hover:text-brand transition-colors">
-                {ach.name}
+                <button
+                  type="button"
+                  className="inline-flex min-h-11 min-w-11 items-center rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onAchievementClick(ach)
+                  }}
+                >
+                  {ach.name}
+                </button>
               </h3>
               <p className="text-label-md text-(--text-secondary) opacity-strong mt-0.5 line-clamp-1">
                 {ach.issuer || "Academic Board"}

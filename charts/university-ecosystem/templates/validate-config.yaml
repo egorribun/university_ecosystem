@@ -2,6 +2,54 @@
 {{- if not (has $environment (list "development" "staging" "production")) -}}
   {{- fail "global.environment must be one of: development, staging, production" -}}
 {{- end -}}
+{{- if .Values.gatewayApi.enabled -}}
+  {{- if .Values.ingress.enabled -}}
+    {{- fail "gatewayApi.enabled and ingress.enabled cannot both be true; disable Ingress before validating the Gateway API preview" -}}
+  {{- end -}}
+  {{- if or (eq (len .Values.gatewayApi.networkPolicy.namespaceSelector) 0) (eq (len .Values.gatewayApi.networkPolicy.podSelector) 0) -}}
+    {{- fail "gatewayApi.networkPolicy namespaceSelector and podSelector must both select the Envoy data-plane pods" -}}
+  {{- end -}}
+  {{- if or (not (.Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1/Gateway")) (not (.Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1/HTTPRoute")) (not (.Capabilities.APIVersions.Has "gateway.envoyproxy.io/v1alpha1/ClientTrafficPolicy")) (not (.Capabilities.APIVersions.Has "gateway.envoyproxy.io/v1alpha1/BackendTrafficPolicy")) (not (.Capabilities.APIVersions.Has "cert-manager.io/v1/Certificate")) -}}
+    {{- fail "Gateway API and Envoy Gateway CRDs must be installed and declared to Helm before enabling gatewayApi" -}}
+  {{- end -}}
+  {{- if eq (len .Values.ingress.tls) 0 -}}
+    {{- fail "ingress.tls must contain host certificates when gatewayApi is enabled" -}}
+  {{- end -}}
+  {{- range $host := .Values.ingress.hosts -}}
+    {{- $certificateFound := false -}}
+    {{- range $.Values.ingress.tls -}}
+      {{- if has $host.host .hosts -}}
+        {{- $certificateFound = true -}}
+      {{- end -}}
+    {{- end -}}
+    {{- if not $certificateFound -}}
+      {{- fail (printf "gatewayApi has no ingress.tls certificate covering host %q" $host.host) -}}
+    {{- end -}}
+    {{- range $path := $host.paths -}}
+      {{- if not (has $path.pathType (list "Exact" "Prefix")) -}}
+        {{- fail (printf "gatewayApi supports only Exact and Prefix ingress pathTypes; host %q path %q uses %q" $host.host $path.path $path.pathType) -}}
+      {{- end -}}
+      {{- if and (eq $path.service "ws-hub") (not $.Values.wsHub.enabled) -}}
+        {{- fail (printf "gatewayApi host %q routes to ws-hub but wsHub.enabled is false" $host.host) -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+  {{- $gatewayAPICatchAllFound := false -}}
+  {{- range $host := .Values.ingress.hosts -}}
+    {{- range $path := $host.paths -}}
+      {{- if and (eq $path.path "/") (eq $path.pathType "Prefix") (eq $path.service "gateway") -}}
+        {{- $gatewayAPICatchAllFound = true -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if not $gatewayAPICatchAllFound -}}
+    {{- fail "gatewayApi request buffering requires an ingress host with a Prefix / route to the Go Gateway" -}}
+  {{- end -}}
+  {{- if ne (len .Values.gatewayApi.clientIPDetection) 1 -}}
+    {{- fail "gatewayApi.clientIPDetection must select exactly one of directSourceIP or xForwardedFor based on the actual load-balancer chain; no client-IP source is assumed" -}}
+  {{- end -}}
+  {{- fail "gatewayApi.enabled is blocked: the retained ingress contract of 50 requests/second with 5x per-client burst is not preserved by the local sourceCIDR Distinct rule rendered here. Envoy Gateway v1.9.2 keeps local counters per Envoy proxy and per route and RateLimitValue has no burst field, so the partial 50 requests/second per-IP limit does not preserve the burst across proxy/route boundaries. A global source-CIDR limit requires separately configured Envoy rate-limit service and datastore. The retained 20 concurrent connections per client contract cannot be represented by ClientTrafficPolicy.connection.connectionLimit, which is per Gateway/listener and proxy; setting it to 20 would cap the whole listener and conflict with WebSocket capacity. requestBuffer is attached only to the isolated /api/v1 HTTPRoute, fully buffers each request, can increase Envoy memory use, and is incompatible with streaming/WebSocket; the chart has no accepted concurrent-buffer memory budget and does not prove the ingress-wide 50 MiB limit on other paths." -}}
+{{- end -}}
 {{- $mfaSecretKeys := list .Values.applicationSecrets.keys.mfaEmailOtpHMACKeys .Values.applicationSecrets.keys.mfaEmailOtpActiveHMACKeyId .Values.applicationSecrets.keys.mfaEmailDeliveryKEKs .Values.applicationSecrets.keys.mfaEmailDeliveryActiveKEKId .Values.applicationSecrets.keys.mfaTrustedDeviceHMACKeys .Values.applicationSecrets.keys.mfaTrustedDeviceActiveHMACKeyId -}}
 {{- if not .Values.applicationSecrets.keys.cwvManualTesterUserIds -}}
   {{- fail "applicationSecrets.keys.cwvManualTesterUserIds must be set" -}}
@@ -21,6 +69,24 @@
   {{- end -}}
   {{- if or .Values.gateway.config.jwtSecret .Values.backend.config.jwtPrivateKeyPEM .Values.backend.config.internalHMACSecret .Values.backend.config.wsHubInternalSecret .Values.backend.config.csrfHMACSecret .Values.backend.config.spotifyTokenSecret .Values.backend.config.elasticsearchPassword .Values.backend.config.spicedbPresharedKey .Values.backend.config.auditLogSecret .Values.backend.config.tokenHMACSecret .Values.backend.config.idempotencyHMACSecret .Values.fileProcessor.config.rsaPublicKeyPEM .Values.fileProcessor.config.minioAccessKey .Values.fileProcessor.config.minioSecretKey .Values.fileProcessor.config.temporalAPIKey -}}
     {{- fail "Application secret material must not be stored in Helm values when applicationSecrets.existingSecret is configured" -}}
+  {{- end -}}
+{{- end -}}
+{{- if .Values.nats.enabled -}}
+  {{- if or
+    (ne .Values.nats.image.registry .Values.nats.container.image.registry)
+    (ne .Values.nats.image.repository .Values.nats.container.image.repository)
+    (ne .Values.nats.image.tag .Values.nats.container.image.tag)
+    (ne .Values.nats.image.digest .Values.nats.container.image.digest)
+    (ne .Values.nats.image.pullPolicy .Values.nats.container.image.pullPolicy)
+  -}}
+    {{- fail "nats.image metadata must exactly match nats.container.image because the official chart renders nats.container.image" -}}
+  {{- end -}}
+  {{- $expectedNATSStatefulSetPatch := list (dict "op" "remove" "path" "/spec/selector/matchLabels/app.kubernetes.io~1component") -}}
+  {{- if not (deepEqual .Values.nats.statefulSet.patch $expectedNATSStatefulSetPatch) -}}
+    {{- fail "NATS StatefulSet selector patch must remove only the chart-added component label and preserve the old name and instance selector" -}}
+  {{- end -}}
+  {{- if or .Values.nats.reloader.enabled .Values.nats.natsBox.enabled .Values.nats.promExporter.enabled -}}
+    {{- fail "NATS reloader, natsBox, and Prometheus exporter helper containers must remain disabled until their images are explicitly pinned and reviewed" -}}
   {{- end -}}
 {{- end -}}
 {{- if and .Values.nats.existingSecret (or .Values.nats.auth.token .Values.nats.auth.password .Values.nats.auth.usersCredentials .Values.nats.cluster.auth.password) -}}
@@ -101,9 +167,37 @@
       {{- fail "every wsHub.config.allowedOrigins entry must use https:// in staging/production" -}}
     {{- end -}}
   {{- end -}}
+  {{- if and (not .Values.ingress.enabled) (not .Values.gatewayApi.enabled) -}}
+    {{- fail "ingress.enabled, ingress.className, and ingress.tls are required in staging/production" -}}
+  {{- end -}}
+  {{- if and .Values.ingress.enabled (or (not .Values.ingress.className) (not .Values.ingress.tls)) -}}
+    {{- fail "ingress.enabled, ingress.className, and ingress.tls are required in staging/production" -}}
+  {{- end -}}
+  {{- if .Values.ingress.enabled -}}
+    {{- $routesToGateway := false -}}
+    {{- $routesToEnabledWsHub := false -}}
+    {{- range $host := .Values.ingress.hosts -}}
+      {{- range $path := $host.paths -}}
+        {{- if eq $path.service "gateway" -}}
+          {{- $routesToGateway = true -}}
+        {{- else if and (eq $path.service "ws-hub") $.Values.wsHub.enabled -}}
+          {{- $routesToEnabledWsHub = true -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+    {{- if $routesToGateway -}}
+      {{- $_ := include "university-ecosystem.requireIngressProxyPeers" (dict "fieldPath" "gateway.config.trustedProxies" "proxies" .Values.gateway.config.trustedProxies) -}}
+    {{- end -}}
+    {{- if $routesToEnabledWsHub -}}
+      {{- $_ := include "university-ecosystem.requireIngressProxyPeers" (dict "fieldPath" "wsHub.config.trustedProxies" "proxies" .Values.wsHub.config.trustedProxies) -}}
+    {{- end -}}
+  {{- end -}}
   {{- $frontendOrigin := printf "https://%s" (index .Values.ingress.hosts 0).host -}}
   {{- if or (ne (len .Values.wsHub.config.allowedOrigins) 1) (ne (index .Values.wsHub.config.allowedOrigins 0) $frontendOrigin) -}}
     {{- fail "wsHub.config.allowedOrigins must exactly equal the frontend ingress origin" -}}
+  {{- end -}}
+  {{- if ne (include "university-ecosystem.frontendOrigin" .) $frontendOrigin -}}
+    {{- fail "backend.config.frontendOrigin must be empty or exactly equal the frontend ingress origin in staging/production" -}}
   {{- end -}}
   {{- if .Values.wsHub.config.otelInsecure -}}
     {{- fail "wsHub.config.otelInsecure=false is required in staging/production" -}}
@@ -148,7 +242,7 @@
   {{- if .Values.global.security.allowInsecureImages -}}
     {{- fail "global.security.allowInsecureImages=true is forbidden in staging/production" -}}
   {{- end -}}
-  {{- $expectedDependencyRepositories := dict "redis" "docker.io/bitnami/redis" "redis.metrics" "docker.io/bitnami/redis-exporter" "nats" "docker.io/bitnami/nats" -}}
+  {{- $expectedDependencyRepositories := dict "redis" "docker.io/redis" "redis.metrics" "docker.io/oliver006/redis_exporter" "nats" "docker.io/nats" -}}
   {{- range $component, $image := $dependencyImages -}}
     {{- $registry := default $image.registry $.Values.global.imageRegistry -}}
     {{- $repository := printf "%s/%s" $registry $image.repository -}}
@@ -177,6 +271,43 @@
     {{- if lt (int .Values.nats.replicaCount) 3 -}}
       {{- fail "nats.replicaCount must be at least 3 in staging/production" -}}
     {{- end -}}
+    {{- if or
+      (not .Values.nats.config.cluster.enabled)
+      (ne (int .Values.nats.config.cluster.replicas) (int .Values.nats.replicaCount))
+      (not .Values.nats.config.jetstream.enabled)
+      (not .Values.nats.config.jetstream.fileStore.enabled)
+      (not .Values.nats.config.jetstream.fileStore.pvc.enabled)
+      (ne .Values.nats.config.jetstream.fileStore.pvc.name "data")
+      (ne .Values.nats.config.jetstream.fileStore.pvc.size .Values.nats.persistence.size)
+      (ne .Values.nats.config.jetstream.fileStore.dir "/data")
+      (ne .Values.nats.config.jetstream.merge.store_dir "/data/jetstream")
+      (not .Values.nats.config.jetstream.memoryStore.enabled)
+      (ne (toString .Values.nats.config.jetstream.memoryStore.maxSize) (toString .Values.nats.jetstream.maxMemory))
+      (ne .Values.nats.statefulSet.merge.spec.podManagementPolicy "OrderedReady")
+      (ne .Values.nats.statefulSet.merge.spec.persistentVolumeClaimRetentionPolicy.whenDeleted "Retain")
+      (ne .Values.nats.statefulSet.merge.spec.persistentVolumeClaimRetentionPolicy.whenScaled "Retain")
+      (.Values.nats.podTemplate.merge.spec.automountServiceAccountToken)
+    }}
+      {{- fail "official NATS chart config must preserve the staged 3-node JetStream storage at /data/jetstream on the existing /data PVC mount, rollout ordering, PVC retention, and pod-token contract" -}}
+    {{- end -}}
+    {{- if ne .Values.nats.container.image.pullPolicy "Always" -}}
+      {{- fail "nats.container.image.pullPolicy=Always is required in staging/production" -}}
+    {{- end -}}
+    {{- $expectedNATSContainerPatches := list
+      (dict "op" "replace" "path" "/args" "value" (list "--config" "/etc/nats-auth/nats-server.conf"))
+      (dict "op" "add" "path" "/volumeMounts/-" "value" (dict "name" "nats-auth-config" "mountPath" "/etc/nats-auth" "readOnly" true))
+    -}}
+    {{- if not (deepEqual .Values.nats.container.patch $expectedNATSContainerPatches) -}}
+      {{- fail "staging NATS container.patch must only load the externally managed nats-server.conf and must not alter its pinned image, resources, probes, or security context" -}}
+    {{- end -}}
+    {{- $expectedNATSSecretVolume := dict "name" "nats-auth-config" "secret" (dict "secretName" .Values.nats.existingSecret "items" (list (dict "key" "nats-server.conf" "path" "nats-server.conf"))) -}}
+    {{- if or
+      (ne (len .Values.nats.podTemplate.patch) 1)
+      (not (deepEqual (index .Values.nats.podTemplate.patch 0) (dict "op" "add" "path" "/spec/volumes/-" "value" $expectedNATSSecretVolume)))
+      (ne .Values.nats.container.env.NATS_SERVER_NAME.valueFrom.fieldRef.fieldPath "metadata.name")
+    -}}
+      {{- fail "staging NATS pod patch must only mount the existing config Secret and bind NATS_SERVER_NAME from the pod name" -}}
+    {{- end -}}
   {{- end -}}
   {{- if and .Values.backend.autoscaling.enabled (lt (int .Values.backend.autoscaling.maxReplicas) (int .Values.backend.autoscaling.minReplicas)) -}}
     {{- fail "backend.autoscaling.maxReplicas must be greater than or equal to minReplicas" -}}
@@ -189,9 +320,6 @@
     {{- if or (lt (int $autoscaling.minReplicas) 2) (lt (int $autoscaling.maxReplicas) (int $autoscaling.minReplicas)) -}}
       {{- fail (printf "%s.autoscaling requires minReplicas>=2 and maxReplicas>=minReplicas in staging/production" $component) -}}
     {{- end -}}
-  {{- end -}}
-  {{- if or (not .Values.ingress.enabled) (not .Values.ingress.className) (not .Values.ingress.tls) -}}
-    {{- fail "ingress.enabled, ingress.className, and ingress.tls are required in staging/production" -}}
   {{- end -}}
   {{- if or (hasKey .Values.ingress.annotations "cert-manager.io/issuer") (hasKey .Values.ingress.annotations "cert-manager.io/cluster-issuer") -}}
     {{- fail "cert-manager issuer annotations are generated from ingress.issuer and must not be duplicated in ingress.annotations" -}}
@@ -267,5 +395,15 @@
   {{- end -}}
   {{- if and .Values.backup.enabled (not (hasPrefix "https://" .Values.backup.minioEndpoint)) -}}
     {{- fail "backup.minioEndpoint must use https:// in staging/production" -}}
+  {{- end -}}
+{{- end -}}
+{{- if and .Values.redis.enabled .Values.redis.metrics.enabled -}}
+  {{- $backendImageRef := include "university-ecosystem.image" (dict "root" . "image" .Values.backend.image) -}}
+  {{- $passwordFileInitImageRef := include "university-ecosystem.image" (dict "root" . "image" .Values.redis.metrics.passwordFileInitImage) -}}
+  {{- if ne $passwordFileInitImageRef $backendImageRef -}}
+    {{- fail "redis.metrics.passwordFileInitImage must resolve exactly to backend.image" -}}
+  {{- end -}}
+  {{- if ne .Values.redis.metrics.passwordFileInitImage.pullPolicy "Always" -}}
+    {{- fail "redis.metrics.passwordFileInitImage.pullPolicy=Always is required" -}}
   {{- end -}}
 {{- end -}}

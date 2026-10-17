@@ -1,5 +1,3 @@
-const RESET_PASSWORD_TOKEN = /^(\/reset-password\/)[^/]+/iu
-
 /**
  * Return a safe request path for access logs.
  *
@@ -12,7 +10,23 @@ export function sanitizeRequestTarget(requestTarget) {
   try {
     pathname = new URL(requestTarget ?? "/", "http://request.local").pathname
   } catch {
-    pathname = String(requestTarget ?? "/").split(/[?#]/u, 1)[0] || "/"
+    return "[REDACTED]"
   }
-  return pathname.replace(RESET_PASSWORD_TOKEN, "$1[REDACTED]")
+
+  let decodedPath
+  try {
+    decodedPath = decodeURIComponent(pathname).replaceAll("\\", "/")
+  } catch {
+    return "[REDACTED]"
+  }
+
+  const segments = decodedPath.split("/").filter(Boolean)
+  const resetPasswordIndex = segments.findIndex(
+    (segment) => segment.toLowerCase() === "reset-password"
+  )
+  if (resetPasswordIndex < 0) return pathname
+
+  const safeSegments = segments.slice(0, resetPasswordIndex + 1)
+  if (resetPasswordIndex + 1 < segments.length) safeSegments.push("[REDACTED]")
+  return `/${safeSegments.join("/")}`
 }

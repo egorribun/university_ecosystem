@@ -17,14 +17,15 @@ SPEC.loader.exec_module(MODULE)
 
 COMMIT_SHA = "a" * 40
 WORKFLOW = ".github/workflows/nightly-full-gate.yml"
+CURRENT_ARCHIVE_NAMES = ("redis-0.1.0.tgz", "nats-2.15.0.tgz")
 
 
 def _stage_archives(root: Path) -> dict[str, str]:
     archive_root = root / "charts"
     archive_root.mkdir(parents=True)
     contents = {
-        "redis-20.13.4.tgz": b"redis archive",
-        "nats-8.5.4.tgz": b"nats archive",
+        "redis-0.1.0.tgz": b"redis archive",
+        "nats-2.15.0.tgz": b"nats archive",
     }
     for name, content in contents.items():
         (archive_root / name).write_bytes(content)
@@ -55,6 +56,7 @@ def test_create_and_validate_binds_archive_hashes_and_producer_identity(
         "run_attempt": "2",
         "workflow": WORKFLOW,
     }
+    assert MODULE.ARCHIVE_NAMES == CURRENT_ARCHIVE_NAMES
     assert payload["archives"] == expected_files
     assert (
         MODULE.validate_artifact_manifest(
@@ -80,7 +82,7 @@ def test_validate_rejects_archive_hash_tampering(tmp_path: Path) -> None:
         run_attempt="1",
         workflow=WORKFLOW,
     )
-    (tmp_path / "charts" / "nats-8.5.4.tgz").write_bytes(b"tampered")
+    (tmp_path / "charts" / "nats-2.15.0.tgz").write_bytes(b"tampered")
 
     with pytest.raises(MODULE.ArtifactValidationError, match="hash mismatch"):
         MODULE.validate_artifact_manifest(
@@ -128,7 +130,7 @@ def test_validate_rejects_malformed_archive_inventory(tmp_path: Path) -> None:
         workflow=WORKFLOW,
     )
     payload = json.loads(manifest.read_text(encoding="utf-8"))
-    del payload["archives"]["charts/nats-8.5.4.tgz"]
+    del payload["archives"]["charts/nats-2.15.0.tgz"]
     manifest.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(MODULE.ArtifactValidationError, match="required set"):
@@ -324,10 +326,10 @@ def test_validate_rejects_symlinked_archive(tmp_path: Path) -> None:
         run_attempt="1",
         workflow=WORKFLOW,
     )
-    target = tmp_path / "charts" / "nats-8.5.4.tgz"
+    target = tmp_path / "charts" / "nats-2.15.0.tgz"
     target.unlink()
     try:
-        target.symlink_to(tmp_path / "charts" / "redis-20.13.4.tgz")
+        target.symlink_to(tmp_path / "charts" / "redis-0.1.0.tgz")
     except (OSError, NotImplementedError) as error:
         pytest.skip(  # QUALITY-123 @egorribun — filesystem capability varies by runner
             f"symlinks unavailable: {error}"

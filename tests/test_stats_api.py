@@ -1,4 +1,3 @@
-import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -104,11 +103,12 @@ async def test_attendance_stats_returns_expected_payload(
     assert response.status_code == 200
     payload = response.json()
 
-    # The fallback in UserAnalyticsService now caps these at the number of recent items (max 5)
-    assert payload["present"] == 5
-    assert payload["total"] == 5
-    assert payload["percent"] == pytest.approx(100.0, rel=1e-2)
-    assert payload["trend"] == pytest.approx(0.0, rel=1e-2)
+    # Attendance == registration: 6 of the 7 active events of the current window,
+    # against 1 of 2 in the previous window (50 %).
+    assert payload["present"] == 6
+    assert payload["total"] == 7
+    assert payload["percent"] == pytest.approx(85.71, rel=1e-3)
+    assert payload["trend"] == pytest.approx(35.71, rel=1e-3)
     assert payload["period_key"] == "30d"
     assert payload["period_label"] == "Last 30 days"
     assert len(payload["recent"]) == 5
@@ -135,60 +135,31 @@ async def test_attendance_stats_period_label_localized(async_client, user_factor
 
 
 @pytest.mark.asyncio
-async def test_grade_stats_parse_notifications(async_client, db_session, user_factory):
+async def test_grade_stats_aggregate_grades_table(
+    async_client, db_session, user_factory
+):
     now = datetime.now(UTC)
     password = "GradesPass456!"
     hashed = await get_password_hash(password)
     student = await user_factory(hashed_password=hashed, is_active=True)
 
-    current_grade_one = models.Notification(
-        user_id=student.id,
-        title="Physics",
-        type="grade",
-        body=json.dumps(
-            {
-                "course": "Physics",
-                "score": 5,
-                "max": 5,
-                "date": (now - timedelta(days=4)).isoformat(),
-            }
-        ),
-        created_at=now - timedelta(days=4),
-        _allow_system_managed_assignment=True,
+    db_session.add_all(
+        [
+            models.Grade(
+                student_id=student.id,
+                subject=subject,
+                score=score,
+                created_at=now - timedelta(days=days),
+            )
+            for subject, score, days in [
+                ("Physics", 5, 4),
+                ("Chemistry", 4.5, 2),
+                ("History", 3, 3),
+                # previous window (31-60 days ago): average 4.0
+                ("Algebra", 4, 40),
+            ]
+        ]
     )
-    current_grade_two = models.Notification(
-        user_id=student.id,
-        title="Chemistry",
-        type="grade",
-        body=json.dumps(
-            {
-                "course": "Chemistry",
-                "score": 4.5,
-                "max": 5,
-                "date": (now - timedelta(days=2)).isoformat(),
-            }
-        ),
-        created_at=now - timedelta(days=2),
-        _allow_system_managed_assignment=True,
-    )
-    # Third grade within 30-day window (inside existing Jan 2026 partition)
-    third_grade = models.Notification(
-        user_id=student.id,
-        title="History",
-        type="grade",
-        body=json.dumps(
-            {
-                "course": "History",
-                "score": 3,
-                "max": 5,
-                "date": (now - timedelta(days=3)).isoformat(),
-            }
-        ),
-        created_at=now - timedelta(days=3),
-        _allow_system_managed_assignment=True,
-    )
-
-    db_session.add_all([current_grade_one, current_grade_two, third_grade])
     await db_session.commit()
 
     await _login(async_client, student.email, password)
@@ -196,16 +167,16 @@ async def test_grade_stats_parse_notifications(async_client, db_session, user_fa
     assert response.status_code == 200
     payload = response.json()
 
-    # Average of 3 grades: (5 + 4.5 + 3) / 3 = 4.17
+    # (5 + 4.5 + 3) / 3 = 4.17 now vs 4.0 before.
     assert payload["average"] == pytest.approx(4.17, rel=1e-2)
+    assert payload["total_grades"] == 3
+    assert payload["trend"] == pytest.approx(0.17, abs=1e-2)
     assert payload["scale"] == "5"
-    # All 3 grades are recent
-    assert len(payload["recent"]) == 3
-    assert {item["course"] for item in payload["recent"]} == {
-        "Physics",
+    assert [item["course"] for item in payload["recent"]] == [
         "Chemistry",
         "History",
-    }
+        "Physics",
+    ]
 
 
 @pytest.mark.asyncio
@@ -277,11 +248,9 @@ async def test_participation_stats_summarize_events(
     payload = response.json()
 
     assert payload["events"] == 2
-    assert payload["hours"] == pytest.approx(
-        0.0, rel=1e-3
-    )  # Expected zero due to lack of UserStats
-    assert payload["groups"] == 0  # Expected zero due to lack of UserStats
-    assert payload["trend"] == 0
+    assert payload["hours"] == pytest.approx(9.0, rel=1e-3)  # 4 h + 5 h
+    assert payload["groups"] == 2  # club + volunteer
+    assert payload["trend"] == 1  # 2 events now vs 1 in the previous window
     assert len(payload["recent"]) == 2
     assert {item["title"] for item in payload["recent"]} == {
         "Hackathon",

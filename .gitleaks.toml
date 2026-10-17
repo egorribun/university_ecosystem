@@ -1,5 +1,8 @@
 title = "university ecosystem gitleaks configuration"
 
+[extend]
+useDefault = true
+
 [allowlist]
 description = "Allow generated dependency lockfiles; source and example files remain scanned"
 paths = ["uv.lock", "package-lock.json", "go.sum"]

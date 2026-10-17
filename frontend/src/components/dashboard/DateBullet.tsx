@@ -1,7 +1,8 @@
 import { useTranslation } from "react-i18next"
 import { Tooltip } from "@/components/ui/Tooltip"
 import { cn } from "@/utils/cn"
-import { pad } from "@/utils/scheduleUtils"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
+import { formatCampusDate } from "@/utils/campusTimezone"
 
 interface DateBulletProps {
   date?: string
@@ -12,18 +13,25 @@ interface DateBulletProps {
 
 export function DateBullet({ date, locale, size }: DateBulletProps) {
   const { t } = useTranslation("common")
+  const timeZone = useCampusTimezone()
   const d = date ? new Date(date) : null
-  const dd = d ? pad(d.getDate()) : "—"
-  const mmLabel = d ? new Intl.DateTimeFormat(locale, { month: "short" }).format(d) : "--"
   const fallback = t("dateUnknown")
-  const full = d
-    ? d.toLocaleString(locale, {
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
+  const hasCampusDate = Boolean(d && !Number.isNaN(d.getTime()) && timeZone)
+  const dd = hasCampusDate ? formatCampusDate(d!, { day: "2-digit" }, locale, timeZone) : "—"
+  const mmLabel = hasCampusDate ? formatCampusDate(d!, { month: "short" }, locale, timeZone) : "--"
+  const full = hasCampusDate
+    ? formatCampusDate(
+        d!,
+        {
+          day: "2-digit",
+          month: "long",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        },
+        locale,
+        timeZone
+      )
     : fallback
 
   const isCompact = size === "compact"

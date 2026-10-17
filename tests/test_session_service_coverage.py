@@ -180,7 +180,7 @@ async def test_create_access_token_persists_session_and_metadata(
 
     monkeypatch.setattr(session_service_module, "register_session_bg", _fake_register)
 
-    user = await user_factory()
+    user = await user_factory(is_active=True)
     svc = _make_session_service(db_session)
     now = datetime.now(UTC)
     token, session_dto = await svc.create_access_token(

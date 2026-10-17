@@ -81,7 +81,7 @@ class ChatAttachmentService:
                     raise AttachmentCleanupError
                 try:
                     await backend.delete_file(url)
-                except Exception:
+                except Exception:  # RZ-22-01-JUSTIFIED: storage SDKs raise heterogeneous errors; the verified-absent probe below decides
                     # A concurrent replay may have removed the object while
                     # this delete returned an ambiguous storage error. Only
                     # the verified absent postcondition can acknowledge it;

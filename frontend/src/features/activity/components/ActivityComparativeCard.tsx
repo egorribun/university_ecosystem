@@ -11,7 +11,7 @@ type ActivityComparativeCardProps = {
   colorVar: string
 }
 
-function formatValue(value: number, format: "percent" | "decimal" | "count"): string {
+function formatValue(value: number, format: ActivityComparativeCardProps["format"]): string {
   const safe = Number.isFinite(value) ? value : 0 // NaN guard (L4)
   if (format === "percent") return `${Math.round(safe)}%`
   if (format === "decimal") return safe.toFixed(1)
@@ -23,10 +23,10 @@ export function ActivityComparativeCard({
   current,
   previous,
   delta,
-  format = "count",
+  format,
   colorVar,
 }: ActivityComparativeCardProps) {
-  const { t } = useTranslation(["activity"])
+  const { t } = useTranslation("activity")
 
   const isPositive = delta > 0
   const isNegative = delta < 0
@@ -45,7 +45,7 @@ export function ActivityComparativeCard({
           {formatValue(current, format)}
         </span>
         <span className="mb-0.5 text-xs text-text-tertiary">
-          {t("activity:comparative.vsPrevious", { value: formatValue(previous, format) })}
+          {t("comparative.vsPrevious", { value: formatValue(previous, format) })}
         </span>
       </div>
       <div className="mt-1.5 flex items-center gap-1">
@@ -72,9 +72,7 @@ export function ActivityComparativeCard({
             isNeutral && "text-text-tertiary"
           )}
         >
-          {isNeutral
-            ? t("activity:comparative.unchanged")
-            : `${isPositive ? "+" : ""}${delta.toFixed(1)}%`}
+          {isNeutral ? t("comparative.unchanged") : `${isPositive ? "+" : ""}${delta.toFixed(1)}%`}
         </span>
       </div>
     </div>

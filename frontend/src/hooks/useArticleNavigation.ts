@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import { useQueryClient } from "@tanstack/react-query"
+import { isCurrentBrowserSession } from "@/stores/sessionEpoch"
 import { type NewsItem } from "@/api/news"
 
 interface ArticleNav {
@@ -15,9 +16,11 @@ interface ArticleNav {
  */
 export function useArticleNavigation(currentId: string): ArticleNav {
   const queryClient = useQueryClient()
+  const sessionIsCurrent = typeof window === "undefined" || isCurrentBrowserSession()
 
   return useMemo(() => {
     const fallback: ArticleNav = { prevId: null, nextId: null, prevTitle: null, nextTitle: null }
+    if (!sessionIsCurrent) return fallback
 
     // Pull from cached news list queries
     const queries = queryClient.getQueriesData<{ pages?: Array<{ items?: NewsItem[] }> }>({
@@ -55,5 +58,5 @@ export function useArticleNavigation(currentId: string): ArticleNav {
       prevTitle: prev?.title ?? null,
       nextTitle: next?.title ?? null,
     }
-  }, [queryClient, currentId])
+  }, [queryClient, currentId, sessionIsCurrent])
 }

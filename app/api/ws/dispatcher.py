@@ -1,10 +1,12 @@
 import uuid
 from typing import Any
 
+from dishka import AsyncContainer, Scope
 from fastapi import WebSocket
 
 from app.api.ws.auth import update_last_seen
 from app.api.ws.presence import PRESENCE_SOURCE_PING
+from app.auth.rbac import PermissionChecker, SpiceDBUnavailableError
 from app.core.database import async_session
 from app.core.logging import get_logger
 from app.models.enums import UserRole
@@ -17,8 +19,9 @@ logger = get_logger(__name__)
 class MessageDispatcher:
     """Dispatches incoming WebSocket messages to appropriate handlers."""
 
-    def __init__(self, manager: Any):
+    def __init__(self, manager: Any, container: AsyncContainer | None = None) -> None:
         self.manager = manager
+        self.container = container
 
     async def _get_online_users_for_user(self, user_id: uuid.UUID) -> list[uuid.UUID]:
         """Return online user IDs limited to the current user's chat participants."""
@@ -64,9 +67,12 @@ class MessageDispatcher:
             chat_id = data.get("chat_id")
             if chat_id:
                 try:
-                    chat_uuid = (
-                        uuid.UUID(chat_id) if isinstance(chat_id, str) else chat_id
-                    )
+                    if isinstance(chat_id, str):
+                        chat_uuid = uuid.UUID(chat_id)
+                    elif isinstance(chat_id, uuid.UUID):
+                        chat_uuid = chat_id
+                    else:
+                        raise ValueError("chat_id must be a UUID string")
                 except ValueError:
                     await websocket.send_json(
                         {"type": "error", "message": "Invalid chat_id format"}
@@ -110,13 +116,59 @@ class MessageDispatcher:
                     )
 
         elif msg_type == "get_online":
+            audit_context = self._get_websocket_audit_context(websocket)
             if user.role != UserRole.ADMIN:
                 audit_service.log(
                     SecurityEvent.ACCESS_DENIED,
                     user_id=user.id,
                     reason="admin_required",
                     action="presence.get_online",
-                    **self._get_websocket_audit_context(websocket),
+                    **audit_context,
+                )
+                await websocket.send_json({"type": "error", "message": "Access denied"})
+                return
+
+            container = self.container
+            if container is None:
+                audit_service.log(
+                    SecurityEvent.ACCESS_DENIED,
+                    user_id=user.id,
+                    reason="authorization_unavailable",
+                    action="presence.get_online",
+                    **audit_context,
+                )
+                await websocket.send_json(
+                    {"type": "error", "message": "Authorization service unavailable"}
+                )
+                return
+
+            try:
+                # The WebSocket middleware container is Scope.SESSION; resolve
+                # the REQUEST-scoped checker from the APP container for each
+                # privileged frame so the decision is live and the scope closes.
+                async with container(scope=Scope.REQUEST) as request_container:
+                    checker = await request_container.get(PermissionChecker)
+                    is_admin = await checker.check_admin(str(user.id), user=user)
+            except SpiceDBUnavailableError:
+                audit_service.log(
+                    SecurityEvent.ACCESS_DENIED,
+                    user_id=user.id,
+                    reason="spicedb_unavailable",
+                    action="presence.get_online",
+                    **audit_context,
+                )
+                await websocket.send_json(
+                    {"type": "error", "message": "Authorization service unavailable"}
+                )
+                return
+
+            if not is_admin:
+                audit_service.log(
+                    SecurityEvent.ACCESS_DENIED,
+                    user_id=user.id,
+                    reason="admin_required",
+                    action="presence.get_online",
+                    **audit_context,
                 )
                 await websocket.send_json({"type": "error", "message": "Access denied"})
                 return
@@ -128,7 +180,7 @@ class MessageDispatcher:
                 action="presence.get_online",
                 result_count=len(online),
                 scope="chat_participants",
-                **self._get_websocket_audit_context(websocket),
+                **audit_context,
             )
             # RZ-33-08: Convert UUIDs to strings — json.dumps cannot serialize uuid.UUID.
             await websocket.send_json(

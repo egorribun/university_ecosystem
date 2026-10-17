@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { UserState } from "@/types/Auth"
 import { useNotifications } from "../useNotifications"
 import type { NotificationEntry, NotificationsListResult } from "@/api/notifications"
 
@@ -94,6 +96,7 @@ function setup() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  useAuthStore.setState({ user: { id: "notifications-test-user" } as UserState, loading: false })
   generatedCheckSchedule.mockResolvedValue(checkScheduleSuccess)
   vi.mocked(markNotificationRead).mockResolvedValue(undefined as never)
   vi.mocked(markAllNotificationsRead).mockResolvedValue(undefined as never)
@@ -119,7 +122,11 @@ describe("useNotifications — list query", () => {
     expect(fetchNotificationsList).toHaveBeenCalledTimes(1)
 
     const message = new MessageEvent("message", {
-      data: { type: "PUSH_NOTIFICATION", notificationId: "018f10c0-0000-7000-8000-000000000001" },
+      data: {
+        type: "PUSH_NOTIFICATION",
+        notificationId: "018f10c0-0000-7000-8000-000000000001",
+        recipientUserId: "notifications-test-user",
+      },
     })
     for (const listener of listeners) listener(message)
     for (const listener of listeners) listener(message)

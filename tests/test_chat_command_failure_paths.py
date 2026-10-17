@@ -3,8 +3,8 @@
 AsyncMock repo + fake-UoW harness (mirrors tests/test_chat_command_service.py
 style) targeting the previously-uncovered error branches:
 
-- L156-159  send_message idempotency cache hit with a corrupt / legacy entry
-            (falls through to the normal send path);
+- send_message idempotency cache hit with a corrupt / legacy entry
+  (occupied slots fail closed rather than duplicating a message);
 - L207      send_message total attachment payload size guard;
 - L234-239  idempotency "pending" slot pre-reservation (Redis SET NX);
 - L278      upload TimeoutError -> errors.files.upload_timeout (except* arm);
@@ -30,11 +30,14 @@ import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
+import fakeredis.aioredis
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.deps.cache as cache_module
 import app.services.chat.command_service as cs_module
+from app.repositories.unit_of_work import uow_from_session
 from app.services.chat.command_service import (
     ChatMaintenanceService,
     ChatMessageDispatcher,
@@ -43,6 +46,12 @@ from app.services.chat.command_service import (
 # ---------------------------------------------------------------------------
 # Helpers (mirroring tests/test_chat_command_service.py)
 # ---------------------------------------------------------------------------
+
+
+def _attachment_reference_result(urls: list[str]) -> MagicMock:
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = urls
+    return result
 
 
 def _mock_uow():
@@ -110,10 +119,9 @@ def _patch_ws(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     return ws
 
 
-def _patch_cache(monkeypatch: pytest.MonkeyPatch, *, get_value=None) -> AsyncMock:
-    """Patch get_cache_client at its source module (lazily imported per call)."""
-    cache = AsyncMock()
-    cache.get.return_value = get_value
+async def _patch_cache(monkeypatch: pytest.MonkeyPatch):
+    """Use real fakeredis transaction behavior at the cache boundary."""
+    cache = fakeredis.aioredis.FakeRedis(decode_responses=True)
     monkeypatch.setattr(cache_module, "get_cache_client", AsyncMock(return_value=cache))
     return cache
 
@@ -172,8 +180,7 @@ async def test_send_message_total_size_exceeded(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# send_message — corrupt idempotency cache entry falls through (L156-159)
-# plus pending-slot reservation (L234-239) + completed store (L430-436)
+# send_message — corrupt and pending entries cannot bypass slot ownership
 # ---------------------------------------------------------------------------
 
 
@@ -185,71 +192,33 @@ async def test_send_message_total_size_exceeded(monkeypatch):
         '{"message_id": "zzz"}',  # ValueError from uuid.UUID
     ],
 )
-async def test_send_message_corrupt_idempotency_entry_falls_through(
+async def test_send_message_existing_idempotency_entry_is_not_overwritten(
     monkeypatch, cached
 ):
-    """A legacy / pending / corrupt cached value must NOT short-circuit the send.
-
-    The except (ValueError, KeyError, TypeError) arm passes through to the
-    normal flow, which then pre-reserves the pending slot (SET NX) and finally
-    promotes it to the slim completed entry (SETEX).
-    """
-    cache = _patch_cache(monkeypatch, get_value=cached)
-    _patch_ws(monkeypatch)
-
+    """A pending or malformed entry cannot grant ownership of an occupied key."""
+    cache = await _patch_cache(monkeypatch)
     uow = _mock_uow()
     user = _mock_user()
     chat = _mock_chat(user.id)
     uow.chats.get_by_id = AsyncMock(return_value=chat)
     uow.chats.check_participant = AsyncMock(return_value=True)
-    uow.chats.update_timestamp_by_id = AsyncMock()
-    uow.chats.add = MagicMock()
-    created = _capture_create_message(uow)
-
-    async def _get_last(ids):
-        m = created[0]
-        resp = MagicMock()
-        resp.model_dump.return_value = {
-            "id": m.id,
-            "chat_id": m.chat_id,
-            "sender_id": m.sender_id,
-            "content": m.content,
-            "created_at": m.created_at,
-            "read_status": False,
-            "sender": None,
-            "attachments": [],
-        }
-        resp.replied_to = None
-        return {m.id: resp}
-
-    uow.chats.get_last_messages = AsyncMock(side_effect=_get_last)
-
+    key = cs_module._make_idempotency_key(chat.id, user.id, "idem-corrupt")
+    await cache.set(key, cached)
     dispatcher = ChatMessageDispatcher(uow, _mock_attachment_service(), MagicMock())
-    result = await dispatcher.send_message(
-        chat.id, user, "Hello", [], "en", idempotency_key="idem-corrupt"
-    )
-
-    assert result is not None
-    uow.chats.create_message.assert_awaited_once()
-    # Pending-slot pre-reservation (L234-239): SET NX with a 300 s TTL.
-    cache.set.assert_awaited_once()
-    set_args, set_kwargs = cache.set.await_args
-    assert set_args[0].startswith("idm:msg:")
-    assert json.loads(set_args[1]) == {"status": "pending"}
-    assert set_kwargs == {"nx": True, "ex": 300}
-    # Completed-slot promotion (L430-436): SETEX with the slim format.
-    cache.setex.assert_awaited_once()
-    key, ttl, slim = cache.setex.await_args.args
-    assert key.startswith("idm:msg:")
-    assert ttl == 86400
-    assert json.loads(slim) == {
-        "status": "completed",
-        "message_id": str(result.id),
-    }
+    try:
+        with pytest.raises(HTTPException) as exc:
+            await dispatcher.send_message(
+                chat.id, user, "Hello", [], "en", idempotency_key="idem-corrupt"
+            )
+        assert exc.value.status_code == 409
+        assert await cache.get(key) == cached
+        uow.chats.create_message.assert_not_called()
+    finally:
+        await cache.aclose()
 
 
 # ---------------------------------------------------------------------------
-# send_message — upload TimeoutError maps to errors.files.upload_timeout (L278)
+# send_message — upload TimeoutError maps to errors.files.upload_timeout
 # ---------------------------------------------------------------------------
 
 
@@ -268,16 +237,111 @@ async def test_send_message_upload_timeout_maps_to_400(monkeypatch):
 
     dispatcher = ChatMessageDispatcher(uow, attachment_svc, MagicMock())
 
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(HTTPException) as excinfo:
         await dispatcher.send_message(
             chat.id, user, "with file", [MagicMock(size=10)], "en"
         )
 
-    leaves = _leaves(excinfo.value)
-    assert any(
-        isinstance(leaf, HTTPException) and leaf.status_code == 400 for leaf in leaves
-    )
+    assert excinfo.value.status_code == 400
     uow.chats.create_message.assert_not_called()
+
+
+async def test_send_message_uses_first_original_http_failure_from_upload_group(
+    monkeypatch,
+):
+    monkeypatch.setattr(cs_module.settings, "chat_attachment_max_files", 5)
+    _patch_ws(monkeypatch)
+
+    uow = _mock_uow()
+    user = _mock_user()
+    chat = _mock_chat(user.id)
+    uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.check_participant = AsyncMock(return_value=True)
+
+    first_file, second_file = MagicMock(size=10), MagicMock(size=10)
+    first_error = HTTPException(status_code=413, detail="first upload rejected")
+    second_error = HTTPException(status_code=415, detail="second upload rejected")
+    second_started = asyncio.Event()
+
+    async def process_upload(upload, *_args, **_kwargs):
+        if upload is first_file:
+            await second_started.wait()
+            raise first_error
+        second_started.set()
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            raise second_error from None
+
+    attachment_svc = _mock_attachment_service()
+    attachment_svc.process_upload = AsyncMock(side_effect=process_upload)
+    dispatcher = ChatMessageDispatcher(uow, attachment_svc, MagicMock())
+
+    with pytest.raises(HTTPException) as excinfo:
+        await dispatcher.send_message(
+            chat.id, user, "with files", [first_file, second_file], "en"
+        )
+
+    assert excinfo.value is first_error
+    assert excinfo.value.status_code == 413
+    uow.chats.create_message.assert_not_called()
+
+
+async def test_send_message_preserves_mixed_nested_upload_group_and_releases_slot(
+    monkeypatch,
+):
+    monkeypatch.setattr(cs_module.settings, "chat_attachment_max_files", 5)
+    cache = await _patch_cache(monkeypatch)
+    _patch_ws(monkeypatch)
+
+    uow = _mock_uow()
+    user = _mock_user()
+    chat = _mock_chat(user.id)
+    uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.check_participant = AsyncMock(return_value=True)
+
+    first_file, second_file = MagicMock(size=10), MagicMock(size=10)
+    first_error = HTTPException(status_code=413, detail="first upload rejected")
+    nested_error = ExceptionGroup(
+        "nested upload failure",
+        [
+            HTTPException(status_code=415, detail="second upload rejected"),
+            RuntimeError("scanner failure"),
+        ],
+    )
+    second_started = asyncio.Event()
+
+    async def process_upload(upload, *_args, **_kwargs):
+        if upload is first_file:
+            await second_started.wait()
+            raise first_error
+        second_started.set()
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            raise nested_error from None
+
+    attachment_svc = _mock_attachment_service()
+    attachment_svc.process_upload = AsyncMock(side_effect=process_upload)
+    dispatcher = ChatMessageDispatcher(uow, attachment_svc, MagicMock())
+
+    try:
+        with pytest.raises(ExceptionGroup) as excinfo:
+            await dispatcher.send_message(
+                chat.id,
+                user,
+                "with files",
+                [first_file, second_file],
+                "en",
+                idempotency_key="mixed-upload-failure",
+            )
+
+        assert excinfo.value.exceptions == (first_error, nested_error)
+        assert nested_error.exceptions[1].args == ("scanner failure",)
+        assert not await cache.keys("idm:msg:*")
+        uow.chats.create_message.assert_not_called()
+    finally:
+        await cache.aclose()
 
 
 # ---------------------------------------------------------------------------
@@ -291,7 +355,7 @@ async def test_send_message_phase1_failure_cleans_partial_uploads_and_slot(
     """One upload succeeds, the second fails: the saved url must be cleaned up
     and the idempotency pending slot released (cache DELETE)."""
     monkeypatch.setattr(cs_module.settings, "chat_attachment_max_files", 5)
-    cache = _patch_cache(monkeypatch, get_value=None)
+    cache = await _patch_cache(monkeypatch)
     _patch_ws(monkeypatch)
 
     uow = _mock_uow()
@@ -336,7 +400,8 @@ async def test_send_message_phase1_failure_cleans_partial_uploads_and_slot(
         ["https://s3.example.com/ok.bin"]
     )
     # Pending slot released (L284-290).
-    cache.delete.assert_awaited_once()
+    assert not await cache.keys("idm:msg:*")
+    await cache.aclose()
     uow.chats.create_message.assert_not_called()
 
 
@@ -345,9 +410,11 @@ async def test_send_message_phase1_failure_cleans_partial_uploads_and_slot(
 # ---------------------------------------------------------------------------
 
 
-async def test_send_message_phase2_failure_cleans_files_and_slot(monkeypatch):
+async def test_send_message_phase2_failure_cleans_only_unreferenced_files_and_keeps_pending_lease(
+    monkeypatch,
+):
     monkeypatch.setattr(cs_module.settings, "chat_attachment_max_files", 5)
-    cache = _patch_cache(monkeypatch, get_value=None)
+    cache = await _patch_cache(monkeypatch)
     _patch_ws(monkeypatch)
 
     uow = _mock_uow()
@@ -358,28 +425,385 @@ async def test_send_message_phase2_failure_cleans_files_and_slot(monkeypatch):
     uow.chats.update_timestamp_by_id = AsyncMock()
     uow.chats.add = MagicMock()
     _capture_create_message(uow)
-    uow.commit = AsyncMock(side_effect=RuntimeError("db down"))
+    uow.commit = AsyncMock(side_effect=ConnectionError("commit outcome unknown"))
+    shared_url = "https://s3.example.com/shared.bin"
+    orphan_url = "https://s3.example.com/orphan.bin"
+    first_file = MagicMock(size=10)
+    second_file = MagicMock(size=10)
+
+    async def process_upload(upload, _chat_id, *, locale):
+        if upload is first_file:
+            return {
+                "url": shared_url,
+                "file_type": "application/octet-stream",
+                "filename": "shared.bin",
+                "size": 10,
+            }
+        return {
+            "url": orphan_url,
+            "file_type": "application/octet-stream",
+            "filename": "orphan.bin",
+            "size": 10,
+        }
 
     attachment_svc = _mock_attachment_service()
+    attachment_svc.process_upload = AsyncMock(side_effect=process_upload)
+    order = []
+
+    async def rollback():
+        order.append("rollback")
+
+    async def lookup(_statement):
+        order.append("reference_lookup")
+        return _attachment_reference_result([shared_url])
+
+    uow.rollback.side_effect = rollback
+    uow.session.execute = AsyncMock(side_effect=lookup)
     dispatcher = ChatMessageDispatcher(uow, attachment_svc, MagicMock())
 
-    with pytest.raises(RuntimeError, match="db down"):
+    with pytest.raises(ConnectionError, match="commit outcome unknown"):
         await dispatcher.send_message(
             chat.id,
             user,
-            "with file",
-            [MagicMock(size=10)],
+            "with files",
+            [first_file, second_file],
             "en",
             idempotency_key="idem-phase2",
         )
 
-    # Uploaded file cleaned up (L363-364) + pending slot released (L365-371).
-    attachment_svc.cleanup_files.assert_awaited_once_with(
-        ["https://s3.example.com/file.pdf"]
+    assert order == ["rollback", "reference_lookup"]
+    attachment_svc.cleanup_files.assert_awaited_once_with([orphan_url])
+    idempotency_keys = await cache.keys("idm:msg:*")
+    assert len(idempotency_keys) == 1
+    pending = json.loads(await cache.get(idempotency_keys[0]))
+    assert pending["status"] == "pending"
+    assert 0 < await cache.ttl(idempotency_keys[0]) <= 300
+    await cache.aclose()
+
+
+async def test_send_message_ambiguous_commit_keeps_pending_lease_with_real_uow(
+    monkeypatch,
+):
+    cache = await _patch_cache(monkeypatch)
+    _patch_ws(monkeypatch)
+    session = AsyncMock(spec=AsyncSession)
+    uow = uow_from_session(session)
+    user = _mock_user()
+    chat = _mock_chat(user.id)
+    uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.check_participant = AsyncMock(return_value=True)
+    uow.chats.update_timestamp_by_id = AsyncMock()
+    uow.chats.add = MagicMock()
+    created = _capture_create_message(uow)
+    commit_applied = False
+
+    async def commit_with_lost_acknowledgement():
+        nonlocal commit_applied
+        commit_applied = True
+        raise ConnectionError("commit outcome unknown")
+
+    rollback_count = 0
+
+    async def fail_first_rollback():
+        nonlocal rollback_count
+        rollback_count += 1
+        if rollback_count == 1:
+            raise OSError("rollback connection lost")
+
+    session.commit.side_effect = commit_with_lost_acknowledgement
+    session.rollback.side_effect = fail_first_rollback
+    dispatcher = ChatMessageDispatcher(uow, _mock_attachment_service(), MagicMock())
+
+    try:
+        with pytest.raises(ConnectionError, match="commit outcome unknown"):
+            await dispatcher.send_message(
+                chat.id,
+                user,
+                "Hello",
+                [],
+                "en",
+                idempotency_key="idem-ambiguous-commit",
+            )
+
+        assert commit_applied is True
+        assert rollback_count == 1
+        assert session.commit.await_count == 1
+        assert len(created) == 1
+        key = cs_module._make_idempotency_key(chat.id, user.id, "idem-ambiguous-commit")
+        pending = json.loads(await cache.get(key))
+        assert pending["status"] == "pending"
+        assert 0 < await cache.ttl(key) <= 300
+
+        with pytest.raises(HTTPException) as retry_error:
+            await dispatcher.send_message(
+                chat.id,
+                user,
+                "Hello",
+                [],
+                "en",
+                idempotency_key="idem-ambiguous-commit",
+            )
+        assert retry_error.value.status_code == 409
+        assert retry_error.value.detail["error"] == "idempotency_in_progress"
+        assert session.commit.await_count == 1
+        assert len(created) == 1
+    finally:
+        await cache.aclose()
+
+
+async def test_send_message_precommit_repository_failure_releases_owned_pending_lease(
+    monkeypatch,
+):
+    cache = await _patch_cache(monkeypatch)
+    _patch_ws(monkeypatch)
+    real_change = cs_module._change_idempotency_slot
+    change_calls = []
+
+    async def track_change(key, expected, replacement=None, *, ttl=300):
+        result = await real_change(key, expected, replacement, ttl=ttl)
+        change_calls.append((key, expected, replacement, result))
+        return result
+
+    monkeypatch.setattr(cs_module, "_change_idempotency_slot", track_change)
+    uow = _mock_uow()
+    user = _mock_user()
+    chat = _mock_chat(user.id)
+    uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.check_participant = AsyncMock(return_value=True)
+    repository_error = RuntimeError("repository write failed before commit")
+    uow.chats.create_message = AsyncMock(side_effect=repository_error)
+    dispatcher = ChatMessageDispatcher(uow, _mock_attachment_service(), MagicMock())
+    client_key = "idem-precommit-repository-failure"
+
+    try:
+        with pytest.raises(RuntimeError) as excinfo:
+            await dispatcher.send_message(
+                chat.id, user, "Hello", [], "en", idempotency_key=client_key
+            )
+
+        assert excinfo.value is repository_error
+        uow.chats.create_message.assert_awaited_once()
+        uow.rollback.assert_awaited_once()
+        uow.commit.assert_not_awaited()
+        key = cs_module._make_idempotency_key(chat.id, user.id, client_key)
+        assert len(change_calls) == 2
+        acquired_key, acquired_owner, acquired_replacement, acquired = change_calls[0]
+        released_key, released_owner, released_replacement, released = change_calls[1]
+        assert acquired_key == released_key == key
+        assert acquired_owner == released_owner
+        assert acquired_replacement == acquired_owner
+        assert acquired is True
+        assert released_replacement is None
+        assert released is True
+        assert await cache.get(key) is None
+    finally:
+        await cache.aclose()
+
+
+async def test_send_message_cache_renewal_failure_preserves_commit_error(
+    monkeypatch,
+):
+    cache = await _patch_cache(monkeypatch)
+    _patch_ws(monkeypatch)
+    real_change = cs_module._change_idempotency_slot
+    change_calls = []
+
+    async def fail_best_effort_renewal(key, expected, replacement=None, *, ttl=300):
+        if not change_calls:
+            result = await real_change(key, expected, replacement, ttl=ttl)
+            change_calls.append((key, expected, replacement, result))
+            return result
+        change_calls.append((key, expected, replacement, None))
+        raise OSError("Redis unavailable during pending lease renewal")
+
+    monkeypatch.setattr(cs_module, "_change_idempotency_slot", fail_best_effort_renewal)
+    uow = _mock_uow()
+    user = _mock_user()
+    chat = _mock_chat(user.id)
+    uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.check_participant = AsyncMock(return_value=True)
+    uow.chats.update_timestamp_by_id = AsyncMock()
+    uow.chats.add = MagicMock()
+    _capture_create_message(uow)
+    commit_error = ConnectionError("commit outcome unknown")
+    uow.commit = AsyncMock(side_effect=commit_error)
+    dispatcher = ChatMessageDispatcher(uow, _mock_attachment_service(), MagicMock())
+    client_key = "idem-renewal-failure"
+
+    try:
+        with pytest.raises(ConnectionError) as excinfo:
+            await dispatcher.send_message(
+                chat.id, user, "Hello", [], "en", idempotency_key=client_key
+            )
+
+        assert excinfo.value is commit_error
+        assert uow.commit.await_count == 1
+        uow.rollback.assert_awaited_once()
+        assert len(change_calls) == 2
+        key, owner, replacement, initial_renewal = change_calls[0]
+        cleanup_key, cleanup_owner, cleanup_replacement, cleanup_result = change_calls[
+            1
+        ]
+        assert (
+            key
+            == cleanup_key
+            == cs_module._make_idempotency_key(chat.id, user.id, client_key)
+        )
+        assert replacement == owner == cleanup_owner
+        assert initial_renewal is True
+        assert cleanup_replacement == owner
+        assert cleanup_result is None
+        pending = json.loads(await cache.get(key))
+        assert pending["status"] == "pending"
+        assert 0 < await cache.ttl(key) <= 300
+    finally:
+        await cache.aclose()
+
+
+async def test_send_message_cleanup_failure_preserves_commit_error_and_lease(
+    monkeypatch,
+):
+    cache = await _patch_cache(monkeypatch)
+    _patch_ws(monkeypatch)
+    uow = _mock_uow()
+    user = _mock_user()
+    chat = _mock_chat(user.id)
+    uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.check_participant = AsyncMock(return_value=True)
+    uow.chats.update_timestamp_by_id = AsyncMock()
+    uow.chats.add = MagicMock()
+    _capture_create_message(uow)
+    uow.commit = AsyncMock(side_effect=ConnectionError("commit outcome unknown"))
+    uow.session.execute = AsyncMock(return_value=_attachment_reference_result([]))
+    attachment_service = _mock_attachment_service()
+    attachment_service.cleanup_files = AsyncMock(
+        side_effect=RuntimeError("object-store cleanup failed")
     )
-    cache.delete.assert_awaited_once()
-    # No completed-slot promotion after a Phase 2 failure.
-    cache.setex.assert_not_awaited()
+    dispatcher = ChatMessageDispatcher(uow, attachment_service, MagicMock())
+
+    try:
+        with pytest.raises(ConnectionError, match="commit outcome unknown"):
+            await dispatcher.send_message(
+                chat.id,
+                user,
+                "with file",
+                [MagicMock(size=10)],
+                "en",
+                idempotency_key="idem-cleanup-failure",
+            )
+
+        attachment_service.cleanup_files.assert_awaited_once_with(
+            ["https://s3.example.com/file.pdf"]
+        )
+        pending = await cache.get(
+            cs_module._make_idempotency_key(chat.id, user.id, "idem-cleanup-failure")
+        )
+        assert json.loads(pending)["status"] == "pending"
+    finally:
+        await cache.aclose()
+
+
+async def test_send_message_reference_lookup_failure_retains_saved_file(monkeypatch):
+    _patch_ws(monkeypatch)
+    uow = _mock_uow()
+    user = _mock_user()
+    chat = _mock_chat(user.id)
+    uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.check_participant = AsyncMock(return_value=True)
+    uow.chats.update_timestamp_by_id = AsyncMock()
+    uow.chats.add = MagicMock()
+    _capture_create_message(uow)
+    uow.commit = AsyncMock(side_effect=ConnectionError("commit outcome unknown"))
+    order = []
+
+    async def rollback():
+        order.append("rollback")
+
+    async def lookup(_statement):
+        order.append("reference_lookup")
+        raise OSError("reference query unavailable")
+
+    uow.rollback.side_effect = rollback
+    uow.session.execute = AsyncMock(side_effect=lookup)
+    attachment_svc = _mock_attachment_service()
+    dispatcher = ChatMessageDispatcher(uow, attachment_svc, MagicMock())
+
+    with pytest.raises(ConnectionError, match="commit outcome unknown"):
+        await dispatcher.send_message(
+            chat.id, user, "with file", [MagicMock(size=10)], "en"
+        )
+
+    assert order == ["rollback", "reference_lookup"]
+    attachment_svc.cleanup_files.assert_not_awaited()
+
+
+@pytest.mark.parametrize("urls", [[], ["", ""]], ids=("empty", "blank"))
+@pytest.mark.asyncio
+async def test_cleanup_unreferenced_uploads_skips_database_and_storage_for_empty_urls(
+    urls: list[str],
+) -> None:
+    uow = _mock_uow()
+    attachment_service = _mock_attachment_service()
+    dispatcher = ChatMessageDispatcher(uow, attachment_service, MagicMock())
+
+    await dispatcher._cleanup_unreferenced_uploaded_files(urls)
+
+    uow.session.execute.assert_not_awaited()
+    attachment_service.cleanup_files.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_unreferenced_uploads_retains_all_referenced_urls() -> None:
+    referenced_urls = [
+        "https://s3.example.com/shared-a.bin",
+        "https://s3.example.com/shared-b.bin",
+    ]
+    uow = _mock_uow()
+    uow.session.execute = AsyncMock(
+        return_value=_attachment_reference_result(referenced_urls)
+    )
+    attachment_service = _mock_attachment_service()
+    dispatcher = ChatMessageDispatcher(uow, attachment_service, MagicMock())
+
+    await dispatcher._cleanup_unreferenced_uploaded_files(
+        [referenced_urls[0], referenced_urls[1], referenced_urls[0]]
+    )
+
+    uow.session.execute.assert_awaited_once()
+    attachment_service.cleanup_files.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_send_message_real_uow_rollback_failure_retains_uploaded_file():
+    session = AsyncMock(spec=AsyncSession)
+    uow = uow_from_session(session)
+    user = _mock_user()
+    chat = _mock_chat(user.id)
+    uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.check_participant = AsyncMock(return_value=True)
+    uow.chats.update_timestamp_by_id = AsyncMock()
+    uow.chats.add = MagicMock()
+    _capture_create_message(uow)
+    session.commit.side_effect = ConnectionError("commit acknowledgement lost")
+    session.rollback.side_effect = OSError("rollback connection lost")
+    attachment_service = _mock_attachment_service()
+    dispatcher = ChatMessageDispatcher(uow, attachment_service, MagicMock())
+    upload = MagicMock(size=10)
+
+    with pytest.raises(ConnectionError, match="commit acknowledgement lost"):
+        await dispatcher.send_message(
+            chat.id, user, "with uploaded file", [upload], "en"
+        )
+
+    session.commit.assert_awaited_once()
+    session.rollback.assert_awaited_once()
+    # Both repository lookups were stubbed, so any SQL here would be the
+    # post-rollback Attachment ownership probe that must be skipped on failure.
+    session.execute.assert_not_awaited()
+    attachment_service.process_upload.assert_awaited_once_with(
+        upload, chat.id, locale="en"
+    )
+    attachment_service.cleanup_files.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -461,6 +885,7 @@ async def test_forward_messages_degraded_reload_refreshes_orm(monkeypatch):
     src.sender_id = uuid.uuid4()
     src.content = "forwarded text"
     src.attachments = []
+    src.deleted_at = None
 
     uow.chats.get_by_id = AsyncMock(return_value=dest_chat)
     uow.chats.check_participant = AsyncMock(return_value=True)

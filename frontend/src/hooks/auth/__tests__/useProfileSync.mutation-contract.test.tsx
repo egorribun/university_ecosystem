@@ -1,21 +1,35 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest"
 import { act, renderHook, waitFor } from "@testing-library/react"
-import type { MutableRefObject, PropsWithChildren } from "react"
+import {
+  StrictMode,
+  startTransition,
+  Suspense,
+  type MutableRefObject,
+  type PropsWithChildren,
+} from "react"
 import { renderToString } from "react-dom/server"
-import { QueryClientProvider } from "@tanstack/react-query"
+import { isCancelledError, QueryClientProvider } from "@tanstack/react-query"
 import { hmac } from "@noble/hashes/hmac.js"
 import { sha256 } from "@noble/hashes/sha2.js"
 import { utf8ToBytes } from "@noble/hashes/utils.js"
-import { AxiosError } from "axios"
+import { AxiosError, type GenericAbortSignal } from "axios"
 
+import { ENCRYPTED_CACHE_PLACEHOLDER_USER_ID } from "@/stores/authIdentity"
+import {
+  acceptBrowserSessionGeneration,
+  hasStaleBrowserSessionBinding,
+  rotateBrowserSession,
+} from "@/stores/sessionEpoch"
+import { useAuthStore } from "@/stores/useAuthStore"
 import api from "@/api/client"
 import * as apiClient from "@/api/client"
-import { createQueryClient } from "@/app/queryClient"
+import { createQueryClient, getQueryCacheIdentity } from "@/app/queryClient"
 import * as logger from "@/app/logger"
 import * as etagCache from "@/api/interceptors/etagCache"
 import * as legacyTokenCleanup from "@/hooks/auth/legacyTokenCleanup"
 import { testUser } from "@/tests/mocks/handlers"
 import { withExpectedConsole } from "@/tests/strictConsole"
+import { collectWindowErrors } from "@/tests/helpers/windowErrors"
 import type { UserState } from "@/types/Auth"
 import {
   PROFILE_CACHE_SCHEMA_VERSION,
@@ -104,7 +118,11 @@ const writeEncryptedEnvelope = async (
 
 const renderProfile = (
   key: string | null = signingKey,
-  queryOutcome: { value?: unknown; error?: unknown; promise?: Promise<unknown> } = {},
+  queryOutcome: {
+    value?: unknown
+    error?: unknown
+    promise?: Promise<unknown>
+  } = {},
   providedQueryClient?: ReturnType<typeof createQueryClient>
 ) => {
   const queryClient = providedQueryClient ?? createQueryClient()
@@ -137,6 +155,168 @@ const renderProfile = (
   return { ...view, queryClient, fetchQuery, updateSessionSigningKey }
 }
 
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((complete) => {
+    resolve = complete
+  })
+  return { promise, resolve }
+}
+
+const createLifecycleWork = () => {
+  const operations: Array<Promise<PromiseSettledResult<unknown>>> = []
+  const releases: Array<() => void> = []
+  const disposers: Array<() => Promise<void>> = []
+  const keyImports: Array<string | null> = []
+  const track = <T,>(promise: Promise<T>): Promise<T> => {
+    operations.push(
+      promise.then(
+        (value) => ({ status: "fulfilled" as const, value }),
+        (reason: unknown) => ({ status: "rejected" as const, reason })
+      )
+    )
+    return promise
+  }
+  return { operations, releases, disposers, keyImports, track }
+}
+let lifecycleWork: ReturnType<typeof createLifecycleWork> | undefined
+
+const trackLifecycleCrypto = (work: ReturnType<typeof createLifecycleWork>) => {
+  const subtle = window.crypto.subtle
+  const importKey = subtle.importKey.bind(subtle)
+  const deriveKey = subtle.deriveKey.bind(subtle)
+  const encrypt = subtle.encrypt.bind(subtle)
+  const decrypt = subtle.decrypt.bind(subtle)
+  const verify = subtle.verify.bind(subtle)
+  // Include derivation/import work: an operation started by the previous test
+  // must not arrive late and consume the next test's one-shot primitive gate.
+  vi.spyOn(subtle, "importKey").mockImplementation((...args) => {
+    const algorithm = args[2]
+    work.keyImports.push(
+      typeof algorithm === "object" && algorithm !== null && "name" in algorithm
+        ? String(algorithm.name).toUpperCase()
+        : typeof algorithm === "string"
+          ? algorithm.toUpperCase()
+          : null
+    )
+    return work.track(Reflect.apply(importKey, subtle, args) as Promise<CryptoKey>)
+  })
+  vi.spyOn(subtle, "deriveKey").mockImplementation((...args) => work.track(deriveKey(...args)))
+  vi.spyOn(subtle, "encrypt").mockImplementation((...args) => work.track(encrypt(...args)))
+  vi.spyOn(subtle, "decrypt").mockImplementation((...args) => work.track(decrypt(...args)))
+  vi.spyOn(subtle, "verify").mockImplementation((...args) => work.track(verify(...args)))
+}
+
+// Let the browser primitive finish, then hold its result at the async boundary.
+// This preserves real encryption/decryption while controlling completion order.
+const pauseNextCryptoResult = (method: "encrypt" | "decrypt") => {
+  const subtle = window.crypto.subtle
+  const operation = subtle[method].bind(subtle)
+  const started = deferred<void>()
+  const release = deferred<void>()
+  const owner = lifecycleWork
+  owner?.releases.push(release.resolve)
+  let completion!: Promise<ArrayBuffer>
+  let invocationCount = 0
+  vi.spyOn(subtle, method).mockImplementationOnce((...args) => {
+    invocationCount += 1
+    completion = (async () => {
+      const value = await operation(...args)
+      started.resolve()
+      await release.promise
+      return value
+    })()
+    owner?.track(completion)
+    return completion
+  })
+  onTestFinished(async () => {
+    await act(async () => {
+      release.resolve()
+      await completion
+    })
+  })
+  return {
+    started: started.promise,
+    getInvocationCount: () => invocationCount,
+    finish: async () => {
+      release.resolve()
+      await completion
+    },
+  }
+}
+
+const renderProfileLifecycle = () => {
+  const queryClient = createQueryClient()
+  const response = deferred<{ data: typeof testUser }>()
+  vi.spyOn(api, "get").mockReturnValue(response.promise as never)
+  const fetchQuery = vi.spyOn(queryClient, "fetchQuery")
+  const signingKeyRef = { current: signingKey } as MutableRefObject<string | null>
+  const signingKeyPromiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+  const updateSessionSigningKey = (key: string | null) => {
+    signingKeyRef.current = key
+  }
+  const ensureSessionSigningKey = async () => signingKeyRef.current
+  const props = { signingKeyRef, updateSessionSigningKey }
+  const wrapper = ({ children }: PropsWithChildren) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  )
+  const view = renderHook(
+    (current: typeof props) =>
+      useProfileSync(
+        current.updateSessionSigningKey,
+        current.signingKeyRef,
+        signingKeyPromiseRef,
+        ensureSessionSigningKey
+      ),
+    { initialProps: props, wrapper }
+  )
+  let disposal: Promise<void> | undefined
+  const dispose = () => {
+    disposal ??= (async () => {
+      const failures: unknown[] = []
+      try {
+        view.unmount()
+      } catch (error) {
+        failures.push(error)
+      } finally {
+        try {
+          await act(async () => {
+            response.resolve({ data: testUser })
+            const outcomes = await Promise.allSettled(
+              fetchQuery.mock.results.map((result) => result.value)
+            )
+            for (const outcome of outcomes) {
+              // Identity changes intentionally cancel this fixture's held
+              // bootstrap query. Other request failures remain test failures.
+              if (outcome.status === "rejected" && !isCancelledError(outcome.reason)) {
+                failures.push(outcome.reason)
+              }
+            }
+          })
+        } catch (error) {
+          failures.push(error)
+        } finally {
+          try {
+            queryClient.clear()
+          } catch (error) {
+            failures.push(error)
+          }
+        }
+      }
+      if (failures.length) throw new AggregateError(failures, "Profile lifecycle disposal failed")
+    })()
+    return disposal
+  }
+  lifecycleWork?.disposers.push(dispose)
+  onTestFinished(dispose)
+  return {
+    ...view,
+    props,
+    queryClient,
+    dispose,
+  }
+}
+
 describe("useProfileSync mutation contracts", () => {
   beforeEach(() => {
     localStorage.clear()
@@ -158,7 +338,9 @@ describe("useProfileSync mutation contracts", () => {
       type: "mfa-pending",
       payload: pending,
     })
-    expect(buildPendingMfaBroadcast(pending, null)).toEqual({ type: "mfa-cleared" })
+    expect(buildPendingMfaBroadcast(pending, null)).toEqual({
+      type: "mfa-cleared",
+    })
   })
 
   it("does not mark a cached profile as loading during its background refresh", async () => {
@@ -188,6 +370,13 @@ describe("useProfileSync mutation contracts", () => {
 
   it("refreshes the user ref after an asynchronous cache restore", async () => {
     await writeEncryptedEnvelope(snapshot("ref-restored-user"))
+    const subtle = window.crypto.subtle
+    const decrypt = subtle.decrypt.bind(subtle)
+    let decryption!: Promise<ArrayBuffer>
+    vi.spyOn(subtle, "decrypt").mockImplementationOnce((...args) => {
+      decryption = decrypt(...args)
+      return decryption
+    })
 
     let resolveFetch!: (value: unknown) => void
     const pendingFetch = new Promise<unknown>((resolve) => {
@@ -195,7 +384,11 @@ describe("useProfileSync mutation contracts", () => {
     })
     const queryClient = createQueryClient()
     const view = renderProfile(signingKey, { promise: pendingFetch }, queryClient)
-    await waitFor(() => expect(view.result.current.user?.id).toBe("ref-restored-user"))
+    await waitFor(() => expect(decryption).toBeDefined())
+    await act(async () => {
+      await decryption
+    })
+    expect(view.result.current.user?.id).toBe("ref-restored-user")
     const restoredUser = view.result.current.user
     expect(restoredUser).not.toBeNull()
 
@@ -203,10 +396,9 @@ describe("useProfileSync mutation contracts", () => {
     setQueryData.mockClear()
     await act(async () => {
       resolveFetch(restoredUser)
-      await Promise.resolve()
-      await Promise.resolve()
+      await pendingFetch
     })
-    await waitFor(() => expect(view.result.current.loading).toBe(false))
+    expect(view.result.current.loading).toBe(false)
 
     // A stale userStateRef would call setUser again for this equal result and
     // therefore write the query cache. The ref-sync effect must prevent that
@@ -218,27 +410,52 @@ describe("useProfileSync mutation contracts", () => {
   it.each([
     [
       "cold browser",
-      { userState: null, hasCache: false, initializing: false, attempted: false },
+      {
+        userState: null,
+        hasCache: false,
+        initializing: false,
+        attempted: false,
+      },
       true,
     ],
     [
       "cached browser",
-      { userState: null, hasCache: true, initializing: false, attempted: false },
+      {
+        userState: null,
+        hasCache: true,
+        initializing: false,
+        attempted: false,
+      },
       false,
     ],
     [
       "hydrated user",
-      { userState: testUser, hasCache: false, initializing: false, attempted: false },
+      {
+        userState: testUser,
+        hasCache: false,
+        initializing: false,
+        attempted: false,
+      },
       false,
     ],
     [
       "initializing",
-      { userState: null, hasCache: false, initializing: true, attempted: false },
+      {
+        userState: null,
+        hasCache: false,
+        initializing: true,
+        attempted: false,
+      },
       false,
     ],
     [
       "already attempted",
-      { userState: null, hasCache: false, initializing: false, attempted: true },
+      {
+        userState: null,
+        hasCache: false,
+        initializing: false,
+        attempted: true,
+      },
       false,
     ],
   ] as const)(
@@ -392,26 +609,32 @@ describe("useProfileSync mutation contracts", () => {
       return <output>{`${state.user?.id ?? "none"}:${state.loading}`}</output>
     }
 
-    const lhciHtml = renderToString(
-      <QueryClientProvider client={createQueryClient()}>
-        <Probe />
-      </QueryClientProvider>
-    )
-    expect(lhciHtml).toContain("lhci-mock-user:false")
+    const originalWindow = globalThis.window
+    vi.stubGlobal("window", undefined)
+    try {
+      const lhciHtml = renderToString(
+        <QueryClientProvider client={createQueryClient()}>
+          <Probe />
+        </QueryClientProvider>
+      )
+      expect(lhciHtml).toContain("lhci-mock-user:false")
 
-    vi.stubEnv("VITE_LHCI", "false")
-    const authenticatedSsrHtml = renderToString(
-      <QueryClientProvider client={createQueryClient()}>
-        <Probe hint={{ isAuth: true, user: { role: "teacher" } }} />
-      </QueryClientProvider>
-    )
-    const anonymousSsrHtml = renderToString(
-      <QueryClientProvider client={createQueryClient()}>
-        <Probe hint={{ isAuth: false, user: null }} />
-      </QueryClientProvider>
-    )
-    expect(authenticatedSsrHtml).toContain("ssr-stub:false")
-    expect(anonymousSsrHtml).toContain("none:true")
+      vi.stubEnv("VITE_LHCI", "false")
+      const authenticatedSsrHtml = renderToString(
+        <QueryClientProvider client={createQueryClient()}>
+          <Probe hint={{ isAuth: true, user: { role: "teacher" } }} />
+        </QueryClientProvider>
+      )
+      const anonymousSsrHtml = renderToString(
+        <QueryClientProvider client={createQueryClient()}>
+          <Probe hint={{ isAuth: false, user: null }} />
+        </QueryClientProvider>
+      )
+      expect(authenticatedSsrHtml).toContain("ssr-stub:false")
+      expect(anonymousSsrHtml).toContain("none:true")
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
   })
 
   it("keeps the SSR stub defaults non-sensitive and deterministic", () => {
@@ -461,7 +684,12 @@ describe("useProfileSync mutation contracts", () => {
     ],
     [
       "anonymous SSR",
-      { lhci: false, isServer: true, signingKey: null, ssrAuthHint: { isAuth: false, user: null } },
+      {
+        lhci: false,
+        isServer: true,
+        signingKey: null,
+        ssrAuthHint: { isAuth: false, user: null },
+      },
       null,
     ],
     [
@@ -546,7 +774,13 @@ describe("useProfileSync mutation contracts", () => {
     writeSignedEnvelope(payload, signEnvelopeForKey(payload, key ?? signingKey))
     const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
 
-    expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey: key })).toBeNull()
+    expect(
+      resolveInitialUserState({
+        lhci: false,
+        isServer: false,
+        signingKey: key,
+      })
+    ).toBeNull()
     expect(warningSpy).not.toHaveBeenCalled()
     expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).not.toBeNull()
   })
@@ -771,7 +1005,12 @@ describe("useProfileSync mutation contracts", () => {
     ],
     [
       "anonymous SSR",
-      { lhci: false, isServer: true, ssrAuthHint: { isAuth: false, user: null }, userState: null },
+      {
+        lhci: false,
+        isServer: true,
+        ssrAuthHint: { isAuth: false, user: null },
+        userState: null,
+      },
       true,
     ],
     ["hydrated user", { lhci: false, isServer: false, userState: testUser }, false],
@@ -892,7 +1131,12 @@ describe("useProfileSync mutation contracts", () => {
       avatar_url: "https://cdn.example.test/avatar.png",
       cover_url: "https://cdn.example.test/cover.png",
       spotify_connected: true,
-      preferences: { dnd_enabled: true, timezone: "Europe/Moscow", dnd_start: null, dnd_end: null },
+      preferences: {
+        dnd_enabled: true,
+        timezone: "Europe/Moscow",
+        dnd_start: null,
+        dnd_end: null,
+      },
       is_active: true,
       mfa_required: true,
       mfa_default_method: "totp" as const,
@@ -981,7 +1225,9 @@ describe("useProfileSync mutation contracts", () => {
 
       expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
       expect(localStorage.getItem(PROFILE_CACHE_VERSION_KEY)).toBeNull()
-      expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", { reason: "parse_error" })
+      expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", {
+        reason: "parse_error",
+      })
     }
   )
 
@@ -1171,14 +1417,17 @@ describe("useProfileSync mutation contracts", () => {
       warningSpy.mockClear()
       vi.stubGlobal("localStorage", undefined)
 
-      act(() => {
+      await act(async () => {
         window.dispatchEvent(
           new StorageEvent("storage", {
             key: PROFILE_CACHE_STORAGE_KEY,
           })
         )
       })
-      await waitFor(() => expect(result.current.user).toBeNull())
+      // With no key or storage, the cache read resolves immediately. Awaiting
+      // act settles that result and its state update; polling cannot recover
+      // from a listener that discarded the completed read.
+      expect(result.current.user).toBeNull()
 
       expect(warningSpy).not.toHaveBeenCalledWith(
         "profile_cache.cleared",
@@ -1363,7 +1612,9 @@ describe("useProfileSync mutation contracts", () => {
   )
 
   it("clears the complete auth state without broadcasting when logout is local", async () => {
-    const { result, updateSessionSigningKey, unmount } = renderProfile(null, { value: testUser })
+    const { result, updateSessionSigningKey, unmount } = renderProfile(null, {
+      value: testUser,
+    })
     await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
 
     const pending = { ticket: "logout-ticket", methods: ["totp"] } as never
@@ -1433,7 +1684,10 @@ describe("useProfileSync mutation contracts", () => {
     })
     expect(channels).toHaveLength(1) // the inbound subscription
 
-    const localPending = { ticket: "local-only-ticket", methods: ["totp"] } as never
+    const localPending = {
+      ticket: "local-only-ticket",
+      methods: ["totp"],
+    } as never
     await act(async () => {
       result.current.updatePendingMfa(localPending, { broadcast: false })
     })
@@ -1501,7 +1755,9 @@ describe("useProfileSync mutation contracts", () => {
       result.current.handleUnauthorized({ broadcast: false, persist: true })
     })
 
-    expect(cancelQueriesSpy).toHaveBeenCalledWith({ queryKey: currentUserQueryKey })
+    expect(cancelQueriesSpy).toHaveBeenCalledWith({
+      queryKey: currentUserQueryKey,
+    })
     expect(clearCachesOnLogoutSpy).toHaveBeenCalledTimes(1)
     expect(resetEtagCacheSpy).toHaveBeenCalledTimes(1)
     expect(clearLegacyAccessTokenSpy).toHaveBeenCalledTimes(1)
@@ -1544,10 +1800,178 @@ describe("useProfileSync mutation contracts", () => {
       await Promise.resolve()
     })
 
-    await waitFor(() => expect(setQueryDataSpy).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(setQueryDataSpy).toHaveBeenCalledTimes(1))
     expect(setQueryDataSpy).toHaveBeenNthCalledWith(1, currentUserQueryKey, null)
-    expect(setQueryDataSpy).toHaveBeenNthCalledWith(2, currentUserQueryKey, null)
     view.unmount()
+  })
+
+  it("keeps a committed profile when a canceled transport resolves late", async () => {
+    const queryClient = createQueryClient()
+    const pendingResponse = deferred<{ data: UserState }>()
+    let requestSignal: GenericAbortSignal | undefined
+    const profileA = {
+      ...testUser,
+      id: "late-query-account-a",
+      email: "a@example.invalid",
+    }
+    const profileB = {
+      ...testUser,
+      id: "committed-query-account-b",
+      email: "b@example.invalid",
+    }
+    vi.spyOn(api, "get").mockImplementation((url, config) => {
+      if (url === "/users/me") {
+        requestSignal = config?.signal ?? undefined
+        // This transport deliberately ignores AbortSignal. Its late response
+        // must not survive TanStack's canceled query or replace committed B.
+        return pendingResponse.promise as never
+      }
+      throw new Error(`Unexpected url: ${url}`)
+    })
+    const fetchQuery = vi.spyOn(queryClient, "fetchQuery")
+    const signingKeyRef = { current: signingKey } as MutableRefObject<string | null>
+    const signingKeyPromiseRef = { current: null } as MutableRefObject<Promise<
+      string | null
+    > | null>
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+    const view = renderHook(
+      () => useProfileSync(vi.fn(), signingKeyRef, signingKeyPromiseRef, async () => signingKey),
+      { wrapper }
+    )
+
+    try {
+      await waitFor(() => expect(requestSignal).toBeDefined())
+      expect(queryClient.getQueryData(currentUserQueryKey)).toBeUndefined()
+
+      act(() => view.result.current.setUser(profileB))
+
+      expect(requestSignal?.aborted).toBe(true)
+      expect(view.result.current.user?.id).toBe(profileB.id)
+      expect(queryClient.getQueryData<UserState>(currentUserQueryKey)?.id).toBe(profileB.id)
+      await waitFor(async () => {
+        await expect(readCachedUserAsync(signingKey)).resolves.toMatchObject({
+          id: profileB.id,
+        })
+      })
+
+      await act(async () => {
+        pendingResponse.resolve({ data: profileA })
+        await Promise.allSettled(fetchQuery.mock.results.map((result) => result.value))
+      })
+      await waitFor(async () => {
+        expect(view.result.current.user?.id).toBe(profileB.id)
+        expect(queryClient.getQueryData<UserState>(currentUserQueryKey)?.id).toBe(profileB.id)
+        await expect(readCachedUserAsync(signingKey)).resolves.toMatchObject({
+          id: profileB.id,
+        })
+      })
+      expect(queryClient.getQueryData<UserState>(currentUserQueryKey)?.id).not.toBe(profileA.id)
+    } finally {
+      view.unmount()
+      await queryClient.cancelQueries()
+      queryClient.clear()
+    }
+  })
+
+  it("does not publish or persist a suspended profile transition abandoned by unmount", async () => {
+    const queryClient = createQueryClient()
+    const pendingResponse = deferred<{ data: UserState }>()
+    let requestSignal: GenericAbortSignal | undefined
+    const abandonedProfile = {
+      ...testUser,
+      id: "abandoned-transition-account",
+    }
+    vi.spyOn(api, "get").mockImplementation((url, config) => {
+      if (url !== "/users/me") throw new Error(`Unexpected url: ${url}`)
+      requestSignal = config?.signal ?? undefined
+      return pendingResponse.promise as never
+    })
+    const fetchQuery = vi.spyOn(queryClient, "fetchQuery")
+    const storageWrites = vi.spyOn(Storage.prototype, "setItem")
+    const queryWrites = vi.spyOn(queryClient, "setQueryData")
+    const queryClear = vi.spyOn(queryClient, "clear")
+    const signingKeyRef = { current: signingKey } as MutableRefObject<string | null>
+    const signingKeyPromiseRef = { current: null } as MutableRefObject<Promise<
+      string | null
+    > | null>
+    const suspend = deferred<void>()
+    let suspendedRenderAttempts = 0
+    let blocked = true
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>
+        <Suspense fallback={<div>Waiting for abandoned transition</div>}>{children}</Suspense>
+      </QueryClientProvider>
+    )
+    const view = renderHook(
+      () => {
+        const profile = useProfileSync(
+          vi.fn(),
+          signingKeyRef,
+          signingKeyPromiseRef,
+          async () => signingKey
+        )
+        if (blocked && profile.user?.id === abandonedProfile.id) {
+          suspendedRenderAttempts += 1
+          throw suspend.promise
+        }
+        return profile
+      },
+      { wrapper }
+    )
+
+    try {
+      await waitFor(() => expect(requestSignal).toBeDefined())
+      // Ignore the initial owner synchronization; only the suspended transition is under test.
+      queryClear.mockClear()
+      const initialAuthUser = useAuthStore.getState().user
+      const initialGeneration = localStorage.getItem("ecosystem.session.generation.v1")
+      act(() => startTransition(() => view.result.current.setUser(abandonedProfile)))
+
+      expect(suspendedRenderAttempts).toBeGreaterThan(0)
+      expect(view.result.current.user?.id).not.toBe(abandonedProfile.id)
+      expect(requestSignal?.aborted).toBe(false)
+      expect(localStorage.getItem("ecosystem.session.generation.v1")).toBe(initialGeneration)
+      expect(queryClient.getQueryData(currentUserQueryKey)).toBeUndefined()
+      expect(queryWrites.mock.calls.filter(([key]) => key === currentUserQueryKey)).toHaveLength(0)
+      expect(queryClear).not.toHaveBeenCalled()
+      expect(
+        storageWrites.mock.calls.filter(([key]) => key === PROFILE_CACHE_STORAGE_KEY)
+      ).toHaveLength(0)
+
+      // Removing the suspended owner abandons its uncommitted state update.
+      // Resolve the suspended render and transport inside act after unmount so
+      // React never commits the abandoned profile or reports an external wakeup.
+      await act(async () => {
+        blocked = false
+        view.unmount()
+        suspend.resolve()
+        await suspend.promise
+        pendingResponse.resolve({ data: abandonedProfile })
+        await Promise.allSettled(fetchQuery.mock.results.map((result) => result.value))
+      })
+
+      expect(queryClear).not.toHaveBeenCalled()
+      expect(queryClient.getQueryData(currentUserQueryKey)).toBeUndefined()
+      expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+      expect(
+        storageWrites.mock.calls.filter(([key]) => key === PROFILE_CACHE_STORAGE_KEY)
+      ).toHaveLength(0)
+      expect(useAuthStore.getState().user?.id).not.toBe(abandonedProfile.id)
+      expect(useAuthStore.getState().user).toBe(initialAuthUser)
+    } finally {
+      await act(async () => {
+        blocked = false
+        view.unmount()
+        suspend.resolve()
+        await suspend.promise
+        pendingResponse.resolve({ data: abandonedProfile })
+        await Promise.allSettled(fetchQuery.mock.results.map((result) => result.value))
+      })
+      await queryClient.cancelQueries()
+      queryClient.clear()
+    }
   })
 
   it("keeps BroadcastChannel diagnostics generic while retaining the failure context", async () => {
@@ -1570,7 +1994,10 @@ describe("useProfileSync mutation contracts", () => {
     warningSpy.mockClear()
 
     await act(async () => {
-      result.current.updatePendingMfa({ ticket: "channel-error", methods: [] } as never)
+      result.current.updatePendingMfa({
+        ticket: "channel-error",
+        methods: [],
+      } as never)
     })
 
     expect(warningSpy).toHaveBeenCalledWith(
@@ -1880,10 +2307,14 @@ describe("useProfileSync mutation contracts", () => {
     const { result, unmount } = renderProfile(signingKey)
 
     await waitFor(() => expect(result.current.user?.id).toBe("parsed-hex-user"))
-    const algorithm = deriveKeySpy.mock.calls[0]?.[0] as unknown as { salt: Uint8Array }
+    const algorithm = deriveKeySpy.mock.calls[0]?.[0] as unknown as {
+      salt: Uint8Array
+    }
     expect(Array.from(algorithm.salt)).toEqual([0xab, 0x0c])
     expect(deriveKeySpy.mock.calls[0]?.[3]).toBe(false)
-    const decryptAlgorithm = decryptSpy.mock.calls[0]?.[0] as unknown as { iv: Uint8Array }
+    const decryptAlgorithm = decryptSpy.mock.calls[0]?.[0] as unknown as {
+      iv: Uint8Array
+    }
     expect(Array.from(decryptAlgorithm.iv)).toEqual([0xde, 0x0f])
     unmount()
   })
@@ -1952,7 +2383,9 @@ describe("useProfileSync mutation contracts", () => {
 
     await expect(encryptData(snapshot("encryption-error-user"), signingKey)).resolves.toBeNull()
 
-    expect(errorSpy).toHaveBeenCalledWith("Encryption failed", { error: encryptionError })
+    expect(errorSpy).toHaveBeenCalledWith("Encryption failed", {
+      error: encryptionError,
+    })
   })
 
   it("performs encryption when Web Crypto is available", async () => {
@@ -2151,7 +2584,9 @@ describe("useProfileSync mutation contracts", () => {
     })
 
     await waitFor(() =>
-      expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", { reason: "parse_error" })
+      expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", {
+        reason: "parse_error",
+      })
     )
     expect(importKeySpy).not.toHaveBeenCalled()
     unmount()
@@ -2236,7 +2671,9 @@ describe("useProfileSync mutation contracts", () => {
     const { unmount } = renderProfile(signingKey)
 
     await waitFor(() =>
-      expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", { reason: "expired" })
+      expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", {
+        reason: "expired",
+      })
     )
     unmount()
   })
@@ -2371,7 +2808,10 @@ describe("useProfileSync mutation contracts", () => {
       data: 42,
     } as unknown as CacheSignaturePayload
     const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
-    const serialized = JSON.stringify({ ...payload, signature: signEnvelope(payload) })
+    const serialized = JSON.stringify({
+      ...payload,
+      signature: signEnvelope(payload),
+    })
     localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, serialized)
     localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
 
@@ -2465,4 +2905,1160 @@ describe("useProfileSync mutation contracts", () => {
     expect(warningSpy).toHaveBeenCalledWith("profile_cache.signature_verification_failed")
     unmount()
   })
+})
+
+describe("profile effect lifecycle ownership", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    acceptBrowserSessionGeneration()
+    lifecycleWork = createLifecycleWork()
+    trackLifecycleCrypto(lifecycleWork)
+  })
+
+  afterEach(async () => {
+    const work = lifecycleWork!
+    const failures: unknown[] = []
+    const attempt = (action: () => void) => {
+      try {
+        action()
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    try {
+      for (const dispose of work.disposers) {
+        try {
+          await dispose()
+        } catch (error) {
+          failures.push(error)
+        }
+      }
+      for (const release of work.releases) attempt(release)
+      await act(async () => {
+        let drained = 0
+        while (drained < work.operations.length) {
+          const batch = work.operations.slice(drained)
+          drained = work.operations.length
+          for (const outcome of await Promise.all(batch)) {
+            if (outcome.status === "rejected") failures.push(outcome.reason)
+          }
+        }
+      })
+    } finally {
+      lifecycleWork = undefined
+      attempt(() => vi.restoreAllMocks())
+      attempt(() => vi.unstubAllGlobals())
+      attempt(() => localStorage.clear())
+      attempt(() => sessionStorage.clear())
+      attempt(acceptBrowserSessionGeneration)
+    }
+    if (failures.length) throw new AggregateError(failures, "Profile lifecycle cleanup failed")
+  })
+
+  it("keeps the replacement initializer's profile when the previous effect finishes later", async () => {
+    await writeEncryptedEnvelope({
+      ...snapshot(),
+      full_name: "Previous initializer",
+    })
+    const previous = pauseNextCryptoResult("decrypt")
+    const view = renderProfileLifecycle()
+    await act(async () => {
+      await previous.started
+    })
+
+    await writeEncryptedEnvelope({
+      ...snapshot(),
+      full_name: "Current initializer",
+    })
+    const current = pauseNextCryptoResult("decrypt")
+    view.rerender({ ...view.props, signingKeyRef: { current: signingKey } })
+    await act(async () => {
+      await current.started
+    })
+    await act(current.finish)
+    expect(view.result.current.user?.full_name).toBe("Current initializer")
+
+    await act(previous.finish)
+    expect(view.result.current.user?.full_name).toBe("Current initializer")
+    expect(useAuthStore.getState().user?.full_name).toBe("Current initializer")
+    await view.dispose()
+  })
+
+  it("keeps the committed account when a suspended update resumes during cache restoration", async () => {
+    const firstProfile = snapshot("account-a")
+    const nextProfile = {
+      ...testUser,
+      id: "account-b",
+      full_name: "Account B",
+    }
+    writeSignedEnvelope({
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: firstProfile,
+    })
+    const queryClient = createQueryClient()
+    const fetchQuery = vi.spyOn(queryClient, "fetchQuery")
+    const verification = vi.spyOn(window.crypto.subtle, "verify")
+    const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+    const initialKeyRef = { current: signingKey } as MutableRefObject<string | null>
+    const updateKey = (key: string | null) => {
+      initialKeyRef.current = key
+    }
+    const ensureKey = async () => initialKeyRef.current
+    const suspend = deferred<void>()
+    let blocked = true
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>
+        <Suspense fallback={<div>Waiting for account</div>}>{children}</Suspense>
+      </QueryClientProvider>
+    )
+    const view = renderHook(
+      ({ keyRef }) => {
+        const profile = useProfileSync(updateKey, keyRef, promiseRef, ensureKey)
+        if (blocked && profile.user?.id === nextProfile.id) throw suspend.promise
+        return profile
+      },
+      { initialProps: { keyRef: initialKeyRef }, wrapper }
+    )
+    onTestFinished(async () => {
+      await act(async () => {
+        blocked = false
+        view.unmount()
+        suspend.resolve()
+        await suspend.promise
+      })
+      queryClient.clear()
+    })
+    await act(async () => {
+      await Promise.allSettled(fetchQuery.mock.results.map((result) => result.value))
+      await Promise.allSettled(verification.mock.results.map((result) => result.value))
+    })
+    expect(view.result.current.user?.id).toBe(firstProfile.id)
+
+    // Model another tab rotating the origin generation without this tab yet
+    // accepting it. A suspended profile update must not accept that session.
+    localStorage.setItem(
+      "ecosystem.session.generation.v1",
+      JSON.stringify({ nonce: "accepted-generation", hash: null })
+    )
+    acceptBrowserSessionGeneration()
+    localStorage.setItem(
+      "ecosystem.session.generation.v1",
+      JSON.stringify({ nonce: "pending-generation", hash: null })
+    )
+    await writeEncryptedEnvelope(firstProfile)
+    const beforeTransitionStorage = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+    const pbkdfImportsBefore = lifecycleWork!.keyImports.filter((name) => name === "PBKDF2").length
+    const queryClear = vi.spyOn(queryClient, "clear")
+    const queryWrites = vi.spyOn(queryClient, "setQueryData")
+    const storageWrites = vi.spyOn(Storage.prototype, "setItem")
+    const firstWrite = pauseNextCryptoResult("encrypt")
+    act(() => {
+      startTransition(() => view.result.current.setUser(nextProfile))
+    })
+    expect(view.result.current.user?.id).toBe(firstProfile.id)
+    expect(firstWrite.getInvocationCount()).toBe(0)
+    expect(lifecycleWork!.keyImports.filter((name) => name === "PBKDF2")).toHaveLength(
+      pbkdfImportsBefore
+    )
+    expect(queryClear).not.toHaveBeenCalled()
+    expect(queryWrites.mock.calls.filter(([key]) => key === currentUserQueryKey)).toHaveLength(0)
+    expect(hasStaleBrowserSessionBinding()).toBe(true)
+
+    // A dependency update commits while the account transition is suspended.
+    // Its initializer starts reading the previous account's browser snapshot.
+    const cachedRead = pauseNextCryptoResult("decrypt")
+    view.rerender({ keyRef: { current: signingKey } })
+    await act(async () => {
+      await cachedRead.started
+    })
+    expect(view.result.current.user?.id).toBe(firstProfile.id)
+    expect(firstWrite.getInvocationCount()).toBe(0)
+    expect(lifecycleWork!.keyImports.filter((name) => name === "PBKDF2")).toHaveLength(
+      pbkdfImportsBefore + 1
+    )
+    expect(queryClear).toHaveBeenCalledTimes(1)
+    const ownerRetirementWrites = queryWrites.mock.calls.filter(
+      ([key]) => key === currentUserQueryKey
+    )
+    expect(ownerRetirementWrites).toHaveLength(1)
+    expect(ownerRetirementWrites[0]?.[1]).toBeNull()
+    expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
+    expect(
+      storageWrites.mock.calls.filter(([key]) => key === PROFILE_CACHE_STORAGE_KEY)
+    ).toHaveLength(0)
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(beforeTransitionStorage)
+    expect(hasStaleBrowserSessionBinding()).toBe(true)
+
+    await act(async () => {
+      blocked = false
+      suspend.resolve()
+      await suspend.promise
+    })
+    expect(view.result.current.user?.id).toBe(nextProfile.id)
+    await act(async () => {
+      await firstWrite.started
+    })
+    expect(firstWrite.getInvocationCount()).toBe(1)
+    expect(lifecycleWork!.keyImports.filter((name) => name === "PBKDF2")).toHaveLength(
+      pbkdfImportsBefore + 2
+    )
+    expect(hasStaleBrowserSessionBinding()).toBe(false)
+    await act(firstWrite.finish)
+    await act(cachedRead.finish)
+
+    expect(view.result.current.user?.id).toBe(nextProfile.id)
+    expect(useAuthStore.getState().user?.id).toBe(nextProfile.id)
+    expect(
+      storageWrites.mock.calls.filter(([key]) => key === PROFILE_CACHE_STORAGE_KEY)
+    ).toHaveLength(1)
+    await expect(readCachedUserAsync(signingKey)).resolves.toMatchObject({
+      id: nextProfile.id,
+    })
+    view.unmount()
+    queryClient.clear()
+  })
+
+  it("keeps a rebased account switch consistent after a changed same-owner cache restore", async () => {
+    const initialProfile = snapshot("revision-race-account-a")
+    const refreshedSnapshot = {
+      ...initialProfile,
+      full_name: "Account A refreshed from cache",
+    }
+    const nextProfile = {
+      ...testUser,
+      id: "revision-race-account-b",
+      full_name: "Account B committed",
+    }
+    writeSignedEnvelope({
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: initialProfile,
+    })
+
+    const queryClient = createQueryClient()
+    const fetchQuery = vi.spyOn(queryClient, "fetchQuery")
+    const verification = vi.spyOn(window.crypto.subtle, "verify")
+    const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+    const keyRef = { current: signingKey } as MutableRefObject<string | null>
+    const suspend = deferred<void>()
+    let blocked = true
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>
+        <Suspense fallback={<div>Waiting for account switch</div>}>{children}</Suspense>
+      </QueryClientProvider>
+    )
+    const updateSessionSigningKey = vi.fn()
+    const view = renderHook(
+      () => {
+        const profile = useProfileSync(
+          updateSessionSigningKey,
+          keyRef,
+          promiseRef,
+          async () => signingKey
+        )
+        if (blocked && profile.user?.id === nextProfile.id) {
+          throw suspend.promise
+        }
+        return profile
+      },
+      { wrapper }
+    )
+    let disposed = false
+    lifecycleWork!.disposers.push(async () => {
+      if (disposed) return
+      disposed = true
+      await act(async () => {
+        blocked = false
+        view.unmount()
+        suspend.resolve()
+        await suspend.promise
+      })
+      await queryClient.cancelQueries()
+      queryClient.clear()
+    })
+
+    await act(async () => {
+      await Promise.allSettled(fetchQuery.mock.results.map((result) => result.value))
+      await Promise.allSettled(verification.mock.results.map((result) => result.value))
+    })
+    const initialUser = view.result.current.user
+    if (!initialUser) throw new Error("Expected the initial account to be committed")
+
+    await act(async () => {
+      view.result.current.setUser({ ...initialUser, full_name: "Account A committed" })
+    })
+    await waitFor(() => expect(useAuthStore.getState().user?.full_name).toBe("Account A committed"))
+    expect(getQueryCacheIdentity()).toBe(initialProfile.id)
+
+    await writeEncryptedEnvelope(refreshedSnapshot)
+    const cacheRead = pauseNextCryptoResult("decrypt")
+    act(() => startTransition(() => view.result.current.setUser(nextProfile)))
+    expect(view.result.current.user?.id).toBe(initialProfile.id)
+
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: PROFILE_CACHE_STORAGE_KEY,
+          newValue: localStorage.getItem(PROFILE_CACHE_STORAGE_KEY),
+          storageArea: localStorage,
+        })
+      )
+      await cacheRead.started
+    })
+    expect(view.result.current.user?.full_name).toBe("Account A committed")
+
+    await act(cacheRead.finish)
+    await waitFor(() =>
+      expect(view.result.current.user?.full_name).toBe(refreshedSnapshot.full_name)
+    )
+    expect(view.result.current.user?.id).toBe(initialProfile.id)
+    expect(queryClient.getQueryData<UserState>(currentUserQueryKey)).toMatchObject({
+      id: initialProfile.id,
+      full_name: refreshedSnapshot.full_name,
+    })
+
+    await act(async () => {
+      blocked = false
+      suspend.resolve()
+      await suspend.promise
+    })
+    await waitFor(() => expect(view.result.current.user?.id).toBe(nextProfile.id))
+    await waitFor(() => expect(useAuthStore.getState().user?.id).toBe(nextProfile.id))
+
+    expect(view.result.current.user).toMatchObject(nextProfile)
+    expect(useAuthStore.getState().user).toMatchObject(nextProfile)
+    expect(getQueryCacheIdentity()).toBe(nextProfile.id)
+    expect(queryClient.getQueryData<UserState>(currentUserQueryKey)).toMatchObject(nextProfile)
+    await waitFor(async () => {
+      const restored = await readCachedUserAsync(signingKey)
+      expect(restored).toMatchObject({
+        id: nextProfile.id,
+        full_name: nextProfile.full_name,
+        group_id: nextProfile.group_id ?? null,
+        avatar_url: nextProfile.avatar_url ?? null,
+        cover_url: nextProfile.cover_url ?? null,
+        spotify_connected: nextProfile.spotify_connected,
+        preferences: nextProfile.preferences ?? null,
+        is_active: false,
+        mfa_required: Boolean(nextProfile.mfa_required),
+        mfa_default_method: nextProfile.mfa_default_method ?? null,
+        mfa_last_verified_at: nextProfile.mfa_last_verified_at ?? null,
+        totp_enrollments: nextProfile.totp_enrollments ?? [],
+      })
+      expect(restored?.email).toBe("")
+      expect(restored?.role).toBe("student")
+      expect(restored?.profile_detail).toBeUndefined()
+      expect(restored?.education_path).toBeUndefined()
+    })
+  })
+
+  it("preserves an urgent update when a suspended profile transition rebases", async () => {
+    const initialProfile = snapshot("account-s")
+    const transitionProfile = {
+      ...testUser,
+      id: "account-a",
+      full_name: "Account A transition",
+    }
+    const urgentProfile = {
+      ...testUser,
+      id: "account-b",
+      spotify_connected: true,
+    }
+    const finalProfile = {
+      id: "account-b",
+      full_name: "Account A transition",
+      spotify_connected: true,
+    }
+    writeSignedEnvelope({
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: initialProfile,
+    })
+    const queryClient = createQueryClient()
+    const fetchQuery = vi.spyOn(queryClient, "fetchQuery")
+    const verification = vi.spyOn(window.crypto.subtle, "verify")
+    const signingKeyRef = { current: signingKey } as MutableRefObject<string | null>
+    const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+    const ensureKey = async () => signingKeyRef.current
+    const suspend = deferred<void>()
+    let blocked = true
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>
+        <Suspense fallback={<div>Waiting for transition</div>}>{children}</Suspense>
+      </QueryClientProvider>
+    )
+    const view = renderHook(
+      () => {
+        const profile = useProfileSync(() => undefined, signingKeyRef, promiseRef, ensureKey)
+        if (blocked && profile.user?.full_name === transitionProfile.full_name)
+          throw suspend.promise
+        return profile
+      },
+      { wrapper }
+    )
+    onTestFinished(async () => {
+      await act(async () => {
+        blocked = false
+        view.unmount()
+        suspend.resolve()
+        await suspend.promise
+      })
+      queryClient.clear()
+    })
+    await act(async () => {
+      await Promise.allSettled(fetchQuery.mock.results.map((result) => result.value))
+      await Promise.allSettled(verification.mock.results.map((result) => result.value))
+    })
+    const committedInitialUser = view.result.current.user
+    if (committedInitialUser === null) {
+      throw new Error("Expected the initial profile to be committed before the transition")
+    }
+    expect(committedInitialUser.id).toBe(initialProfile.id)
+    await writeEncryptedEnvelope(initialProfile)
+    localStorage.setItem(
+      "ecosystem.session.generation.v1",
+      JSON.stringify({ nonce: "accepted-generation", hash: null })
+    )
+    acceptBrowserSessionGeneration()
+    localStorage.setItem(
+      "ecosystem.session.generation.v1",
+      JSON.stringify({ nonce: "pending-generation", hash: null })
+    )
+    const storageWrites = vi.spyOn(Storage.prototype, "setItem")
+    const queryWrites = vi.spyOn(queryClient, "setQueryData")
+    const queryClear = vi.spyOn(queryClient, "clear")
+    const pbkdfImportsBefore = lifecycleWork!.keyImports.filter((name) => name === "PBKDF2").length
+    const transitionWrite = pauseNextCryptoResult("encrypt")
+
+    act(() => {
+      startTransition(() =>
+        view.result.current.setUser((previous) => ({
+          ...previous,
+          ...transitionProfile,
+        }))
+      )
+    })
+    expect(view.result.current.user).toEqual(committedInitialUser)
+    expect(transitionWrite.getInvocationCount()).toBe(0)
+    expect(lifecycleWork!.keyImports.filter((name) => name === "PBKDF2")).toHaveLength(
+      pbkdfImportsBefore
+    )
+    expect(hasStaleBrowserSessionBinding()).toBe(true)
+    expect(queryClear).not.toHaveBeenCalled()
+    expect(queryWrites.mock.calls.filter(([key]) => key === currentUserQueryKey)).toHaveLength(0)
+    expect(
+      storageWrites.mock.calls.filter(([key]) => key === PROFILE_CACHE_STORAGE_KEY)
+    ).toHaveLength(0)
+
+    act(() =>
+      view.result.current.setUser((previous) => ({
+        ...(previous ?? committedInitialUser),
+        id: urgentProfile.id,
+        spotify_connected: urgentProfile.spotify_connected,
+      }))
+    )
+    expect(view.result.current.user).toMatchObject({
+      id: urgentProfile.id,
+      full_name: committedInitialUser.full_name,
+      spotify_connected: true,
+    })
+    await act(async () => {
+      await transitionWrite.started
+    })
+    expect(transitionWrite.getInvocationCount()).toBe(1)
+    expect(lifecycleWork!.keyImports.filter((name) => name === "PBKDF2")).toHaveLength(
+      pbkdfImportsBefore + 1
+    )
+    expect(hasStaleBrowserSessionBinding()).toBe(false)
+    expect(queryClear).toHaveBeenCalledTimes(1)
+    expect(queryWrites.mock.calls.filter(([key]) => key === currentUserQueryKey)).toHaveLength(1)
+    expect(
+      storageWrites.mock.calls.filter(([key]) => key === PROFILE_CACHE_STORAGE_KEY)
+    ).toHaveLength(0)
+    const beforeAcceptedCacheCommit = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+
+    const rebasedWrite = pauseNextCryptoResult("encrypt")
+    await act(async () => {
+      blocked = false
+      suspend.resolve()
+      await suspend.promise
+    })
+    expect(view.result.current.user).toMatchObject(finalProfile)
+    expect(queryClient.getQueryData(currentUserQueryKey)).toMatchObject(finalProfile)
+    await act(async () => {
+      await rebasedWrite.started
+    })
+    expect(rebasedWrite.getInvocationCount()).toBe(1)
+    expect(transitionWrite.getInvocationCount()).toBe(1)
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(beforeAcceptedCacheCommit)
+
+    // The newer rebased commit completes first. The earlier same-revision write
+    // must then be discarded rather than replacing its final merged snapshot.
+    await act(rebasedWrite.finish)
+    const committedStorage = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+    expect(committedStorage).not.toBe(beforeAcceptedCacheCommit)
+    await act(transitionWrite.finish)
+    await expect(readCachedUserAsync(signingKey)).resolves.toMatchObject(finalProfile)
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(committedStorage)
+    expect(
+      storageWrites.mock.calls.filter(([key]) => key === PROFILE_CACHE_STORAGE_KEY)
+    ).toHaveLength(1)
+    expect(queryClear).toHaveBeenCalledTimes(1)
+    expect(queryWrites.mock.calls.filter(([key]) => key === currentUserQueryKey)).toHaveLength(2)
+    expect(lifecycleWork!.keyImports.filter((name) => name === "PBKDF2")).toHaveLength(
+      pbkdfImportsBefore + 3
+    )
+    view.unmount()
+    queryClient.clear()
+  })
+
+  it("does not persist a stale suspended revision after an urgent profile replacement", async () => {
+    const initialProfile = snapshot("account-s")
+    const staleProfile = {
+      ...testUser,
+      id: "account-a",
+      full_name: "Stale account A",
+    }
+    const urgentProfile = {
+      ...testUser,
+      id: "account-b",
+      full_name: "Current account B",
+    }
+    writeSignedEnvelope({
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: initialProfile,
+    })
+    const queryClient = createQueryClient()
+    const fetchQuery = vi.spyOn(queryClient, "fetchQuery")
+    const verification = vi.spyOn(window.crypto.subtle, "verify")
+    const signingKeyRef = { current: signingKey } as MutableRefObject<string | null>
+    const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+    const ensureKey = async () => signingKeyRef.current
+    const suspend = deferred<void>()
+    let blocked = true
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>
+        <Suspense fallback={<div>Waiting for stale revision</div>}>{children}</Suspense>
+      </QueryClientProvider>
+    )
+    const view = renderHook(
+      () => {
+        const profile = useProfileSync(() => undefined, signingKeyRef, promiseRef, ensureKey)
+        if (blocked && profile.user?.id === staleProfile.id) throw suspend.promise
+        return profile
+      },
+      { wrapper }
+    )
+    onTestFinished(async () => {
+      await act(async () => {
+        blocked = false
+        view.unmount()
+        suspend.resolve()
+        await suspend.promise
+      })
+      queryClient.clear()
+    })
+    await act(async () => {
+      await Promise.allSettled(fetchQuery.mock.results.map((result) => result.value))
+      await Promise.allSettled(verification.mock.results.map((result) => result.value))
+    })
+    expect(view.result.current.user?.id).toBe(initialProfile.id)
+    await writeEncryptedEnvelope(initialProfile)
+    localStorage.setItem(
+      "ecosystem.session.generation.v1",
+      JSON.stringify({ nonce: "accepted-generation", hash: null })
+    )
+    acceptBrowserSessionGeneration()
+    localStorage.setItem(
+      "ecosystem.session.generation.v1",
+      JSON.stringify({ nonce: "pending-generation", hash: null })
+    )
+    const storageWrites = vi.spyOn(Storage.prototype, "setItem")
+    const queryWrites = vi.spyOn(queryClient, "setQueryData")
+    const queryClear = vi.spyOn(queryClient, "clear")
+    const pbkdfImportsBefore = lifecycleWork!.keyImports.filter((name) => name === "PBKDF2").length
+    const urgentWrite = pauseNextCryptoResult("encrypt")
+
+    act(() => {
+      startTransition(() => view.result.current.setUser(staleProfile))
+    })
+    expect(view.result.current.user?.id).toBe(initialProfile.id)
+    expect(queryClear).not.toHaveBeenCalled()
+    expect(queryWrites.mock.calls.filter(([key]) => key === currentUserQueryKey)).toHaveLength(0)
+    expect(
+      storageWrites.mock.calls.filter(([key]) => key === PROFILE_CACHE_STORAGE_KEY)
+    ).toHaveLength(0)
+    expect(lifecycleWork!.keyImports.filter((name) => name === "PBKDF2")).toHaveLength(
+      pbkdfImportsBefore
+    )
+    expect(hasStaleBrowserSessionBinding()).toBe(true)
+
+    act(() => view.result.current.setUser(urgentProfile))
+    expect(view.result.current.user?.id).toBe(urgentProfile.id)
+    await act(async () => {
+      await urgentWrite.started
+    })
+    expect(urgentWrite.getInvocationCount()).toBe(1)
+    expect(queryClear).toHaveBeenCalledTimes(1)
+    expect(queryWrites.mock.calls.filter(([key]) => key === currentUserQueryKey)).toHaveLength(1)
+    expect(lifecycleWork!.keyImports.filter((name) => name === "PBKDF2")).toHaveLength(
+      pbkdfImportsBefore + 1
+    )
+    expect(hasStaleBrowserSessionBinding()).toBe(false)
+    await act(urgentWrite.finish)
+    const committedStorage = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+    await expect(readCachedUserAsync(signingKey)).resolves.toMatchObject({
+      id: urgentProfile.id,
+    })
+    const pbkdfImportsAfterCommittedRead = lifecycleWork!.keyImports.filter(
+      (name) => name === "PBKDF2"
+    ).length
+    expect(
+      storageWrites.mock.calls.filter(([key]) => key === PROFILE_CACHE_STORAGE_KEY)
+    ).toHaveLength(1)
+
+    await act(async () => {
+      blocked = false
+      suspend.resolve()
+      await suspend.promise
+    })
+    expect(view.result.current.user).toMatchObject(urgentProfile)
+    expect(queryClient.getQueryData(currentUserQueryKey)).toMatchObject(urgentProfile)
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(committedStorage)
+    expect(
+      storageWrites.mock.calls.filter(([key]) => key === PROFILE_CACHE_STORAGE_KEY)
+    ).toHaveLength(1)
+    expect(queryClear).toHaveBeenCalledTimes(1)
+    expect(queryWrites.mock.calls.filter(([key]) => key === currentUserQueryKey)).toHaveLength(1)
+    expect(lifecycleWork!.keyImports.filter((name) => name === "PBKDF2")).toHaveLength(
+      pbkdfImportsAfterCommittedRead
+    )
+    view.unmount()
+    queryClient.clear()
+  })
+
+  it("deduplicates profile cache effects when StrictMode replays committed effects", async () => {
+    const queryClient = createQueryClient()
+    const fetchQuery = vi.spyOn(queryClient, "fetchQuery").mockResolvedValue(testUser as never)
+    const signingKeyRef = { current: signingKey } as MutableRefObject<string | null>
+    const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+    const ensureKey = async () => signingKeyRef.current
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <StrictMode>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      </StrictMode>
+    )
+    const view = renderHook(
+      () => useProfileSync(() => undefined, signingKeyRef, promiseRef, ensureKey),
+      { wrapper }
+    )
+    await waitFor(() => expect(view.result.current.user?.id).toBe(testUser.id))
+    await waitFor(async () => {
+      expect(await readCachedUserAsync(signingKey)).toMatchObject({
+        id: testUser.id,
+      })
+    })
+    expect(fetchQuery).toHaveBeenCalledOnce()
+    const storageWrites = vi.spyOn(Storage.prototype, "setItem")
+    const queryWrites = vi.spyOn(queryClient, "setQueryData")
+    const strictProfile = { ...testUser, full_name: "Committed once" }
+
+    act(() => view.result.current.setUser(strictProfile))
+    await waitFor(async () => {
+      expect(await readCachedUserAsync(signingKey)).toMatchObject({
+        full_name: strictProfile.full_name,
+      })
+    })
+
+    expect(view.result.current.user).toEqual(strictProfile)
+    expect(queryWrites.mock.calls.filter(([key]) => key === currentUserQueryKey)).toHaveLength(1)
+    expect(
+      storageWrites.mock.calls.filter(([key]) => key === PROFILE_CACHE_STORAGE_KEY)
+    ).toHaveLength(1)
+    view.unmount()
+    queryClient.clear()
+  })
+
+  it.each(["signing key", "browser generation"] as const)(
+    "does not restore an initial cache after its %s changes during decryption",
+    async (transition) => {
+      await writeEncryptedEnvelope(snapshot("outgoing-profile"))
+      const serialized = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+      const paused = pauseNextCryptoResult("decrypt")
+      const view = renderProfileLifecycle()
+      await act(async () => {
+        await paused.started
+      })
+      const initialUser = view.result.current.user
+
+      if (transition === "signing key") view.props.signingKeyRef.current = "replacement-key"
+      else rotateBrowserSession()
+      await act(paused.finish)
+
+      expect(view.result.current.user).toBe(initialUser)
+      expect(useAuthStore.getState().user).toBe(initialUser)
+      expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(serialized)
+      await view.dispose()
+    }
+  )
+
+  it("keeps a local same-account edit when initial cache verification completes later", async () => {
+    writeSignedEnvelope({
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: { ...snapshot(testUser.id), full_name: "Cached name" },
+    })
+    const started = deferred<void>()
+    const release = deferred<void>()
+    const subtle = window.crypto.subtle
+    const verify = subtle.verify.bind(subtle)
+    let completion!: Promise<boolean>
+    vi.spyOn(subtle, "verify").mockImplementationOnce((...args) => {
+      completion = (async () => {
+        const valid = await verify(...args)
+        started.resolve()
+        await release.promise
+        return valid
+      })()
+      return completion
+    })
+    onTestFinished(async () => {
+      await act(async () => {
+        release.resolve()
+        await completion
+      })
+    })
+    const view = renderProfileLifecycle()
+    await act(async () => {
+      await started.promise
+    })
+    const persistence = pauseNextCryptoResult("encrypt")
+    act(() => view.result.current.setUser({ ...testUser, full_name: "Edited name" }))
+    await act(async () => {
+      await persistence.started
+    })
+    await act(persistence.finish)
+    const editedEnvelope = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+
+    await act(async () => {
+      release.resolve()
+      await completion
+    })
+    expect(view.result.current.user?.full_name).toBe("Edited name")
+    expect(useAuthStore.getState().user?.full_name).toBe("Edited name")
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(editedEnvelope)
+    await view.dispose()
+  })
+
+  it.each(["subscription replacement", "signing key", "local edit", "unmount"] as const)(
+    "does not dispatch a stale storage read after %s",
+    async (transition) => {
+      const view = renderProfileLifecycle()
+      const initialPersistence = pauseNextCryptoResult("encrypt")
+      act(() =>
+        view.result.current.setUser({
+          ...testUser,
+          full_name: "Current profile",
+        })
+      )
+      await act(async () => {
+        await initialPersistence.started
+      })
+      await act(initialPersistence.finish)
+      await writeEncryptedEnvelope({
+        ...snapshot(testUser.id),
+        full_name: "Stale tab profile",
+      })
+      const paused = pauseNextCryptoResult("decrypt")
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: PROFILE_CACHE_STORAGE_KEY,
+            storageArea: localStorage,
+          })
+        )
+      })
+      await act(async () => {
+        await paused.started
+      })
+
+      if (transition === "subscription replacement") {
+        view.rerender({
+          ...view.props,
+          updateSessionSigningKey: (key) => {
+            view.props.signingKeyRef.current = key
+          },
+        })
+      } else if (transition === "signing key") {
+        view.props.signingKeyRef.current = "replacement-key"
+      } else if (transition === "local edit") {
+        const persistence = pauseNextCryptoResult("encrypt")
+        act(() =>
+          view.result.current.setUser({
+            ...testUser,
+            full_name: "New local edit",
+          })
+        )
+        await act(async () => {
+          await persistence.started
+        })
+        await act(persistence.finish)
+      } else {
+        view.unmount()
+      }
+      const expectedUser = view.result.current.user
+      const expectedQuery = view.queryClient.getQueryData(currentUserQueryKey)
+      const expectedStorage = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+      const updates: UserState[] = []
+      const unsubscribe = useAuthStore.subscribe((state) => updates.push(state.user))
+      onTestFinished(unsubscribe)
+      await act(paused.finish)
+
+      expect(view.result.current.user).toBe(expectedUser)
+      expect(view.queryClient.getQueryData(currentUserQueryKey)).toBe(expectedQuery)
+      expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(expectedStorage)
+      expect(updates).toEqual([])
+      unsubscribe()
+      await view.dispose()
+    }
+  )
+
+  it("applies a completed storage read while its subscription still owns the profile", async () => {
+    const view = renderProfileLifecycle()
+    act(() =>
+      view.result.current.setUser({
+        ...testUser,
+        full_name: "Current profile",
+      })
+    )
+    // Observe this profile's complete signed publication before introducing a
+    // remote envelope; finishing one encryption primitive is not that boundary.
+    await waitFor(async () => {
+      expect(await readCachedUserAsync(signingKey)).toMatchObject({
+        id: testUser.id,
+        full_name: "Current profile",
+      })
+    })
+    await writeEncryptedEnvelope({
+      ...snapshot(testUser.id),
+      full_name: "Updated in another tab",
+    })
+    const serialized = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+    act(() => {
+      expect(
+        collectWindowErrors(() => {
+          window.dispatchEvent(
+            new StorageEvent("storage", {
+              key: PROFILE_CACHE_STORAGE_KEY,
+              storageArea: localStorage,
+            })
+          )
+        })
+      ).toEqual([])
+    })
+    await waitFor(() => {
+      expect(view.result.current.user).toMatchObject({
+        id: testUser.id,
+        full_name: "Updated in another tab",
+        email: testUser.email,
+        role: testUser.role,
+      })
+    })
+    expect(useAuthStore.getState().user).toEqual(view.result.current.user)
+    expect(view.queryClient.getQueryData(currentUserQueryKey)).toEqual(view.result.current.user)
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(serialized)
+    await view.dispose()
+  })
+
+  it("keeps the newest persisted same-account edit when encryption finishes out of order", async () => {
+    const view = renderProfileLifecycle()
+    const previous = pauseNextCryptoResult("encrypt")
+    act(() => view.result.current.setUser({ ...testUser, full_name: "Previous edit" }))
+    await act(async () => {
+      await previous.started
+    })
+    const current = pauseNextCryptoResult("encrypt")
+    act(() => view.result.current.setUser({ ...testUser, full_name: "Latest edit" }))
+    await act(async () => {
+      await current.started
+    })
+    await act(current.finish)
+    const latestEnvelope = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+    expect(latestEnvelope).not.toBeNull()
+
+    await act(previous.finish)
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(latestEnvelope)
+    await expect(readCachedUserAsync(signingKey)).resolves.toMatchObject({
+      full_name: "Latest edit",
+    })
+    expect(view.result.current.user?.full_name).toBe("Latest edit")
+    await view.dispose()
+  })
+
+  it("does not persist a profile after its signing key changes during encryption", async () => {
+    const view = renderProfileLifecycle()
+    const paused = pauseNextCryptoResult("encrypt")
+    act(() => view.result.current.setUser(testUser))
+    await act(async () => {
+      await paused.started
+    })
+    view.props.signingKeyRef.current = "replacement-key"
+    await act(paused.finish)
+
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+    expect(view.result.current.user).toEqual(testUser)
+    expect(view.queryClient.getQueryData(currentUserQueryKey)).toEqual(testUser)
+    await view.dispose()
+  })
+
+  it("does not repopulate the profile cache after a peer changes the shared generation during encryption", async () => {
+    await writeEncryptedEnvelope(snapshot("previous-peer-session"))
+    const previousEnvelopePresent = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY) !== null
+    expect(previousEnvelopePresent).toBe(true)
+
+    // A peer has retired its old encrypted cache. Keep the physical cache empty
+    // while this tab's already-committed encryption is still pending.
+    localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+    localStorage.removeItem(PROFILE_CACHE_VERSION_KEY)
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY) === null).toBe(true)
+    expect(localStorage.getItem(PROFILE_CACHE_VERSION_KEY) === null).toBe(true)
+
+    const generationKey = "ecosystem.session.generation.v1"
+    localStorage.setItem(generationKey, JSON.stringify({ nonce: "owner-generation", hash: null }))
+    acceptBrowserSessionGeneration()
+
+    const view = renderProfileLifecycle()
+    const storageWrites = vi.spyOn(Storage.prototype, "setItem")
+    const pendingWrite = pauseNextCryptoResult("encrypt")
+    act(() => view.result.current.setUser(testUser))
+    await act(async () => {
+      await pendingWrite.started
+    })
+
+    expect(pendingWrite.getInvocationCount()).toBe(1)
+    const cacheWritesBeforePeerRotation = storageWrites.mock.calls.filter(
+      ([key]) => key === PROFILE_CACHE_STORAGE_KEY
+    ).length
+    expect(cacheWritesBeforePeerRotation).toBe(0)
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY) === null).toBe(true)
+
+    const storageWriteCallCountBeforePeerRotation = storageWrites.mock.calls.length
+
+    // Model the other tab's logout clear and shared-generation write. Do not invalidate the
+    // local epoch, change this hook's key, unmount it, or dispatch a cache event.
+    localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+    localStorage.removeItem(PROFILE_CACHE_VERSION_KEY)
+    localStorage.setItem(generationKey, JSON.stringify({ nonce: "peer-generation", hash: null }))
+    expect(hasStaleBrowserSessionBinding()).toBe(true)
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY) === null).toBe(true)
+    expect(localStorage.getItem(PROFILE_CACHE_VERSION_KEY) === null).toBe(true)
+
+    await act(async () => {
+      await pendingWrite.finish()
+      let drained = 0
+      while (drained < lifecycleWork!.operations.length) {
+        const batch = lifecycleWork!.operations.slice(drained)
+        drained = lifecycleWork!.operations.length
+        for (const outcome of await Promise.all(batch)) {
+          if (outcome.status === "rejected") throw outcome.reason
+        }
+      }
+    })
+
+    const staleCacheWriteOccurred = storageWrites.mock.calls
+      .slice(storageWriteCallCountBeforePeerRotation)
+      .some(([key]) => key === PROFILE_CACHE_STORAGE_KEY)
+    expect(staleCacheWriteOccurred).toBe(false)
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY) === null).toBe(true)
+    expect(localStorage.getItem(PROFILE_CACHE_VERSION_KEY) === null).toBe(true)
+    expect(view.result.current.user).toEqual(testUser)
+    await view.dispose()
+  })
+
+  it("clears cached query data when another tab removes an encrypted profile placeholder", async () => {
+    await writeEncryptedEnvelope(snapshot("cross-tab-cache-owner"))
+    const restoration = pauseNextCryptoResult("decrypt")
+    const view = renderProfileLifecycle()
+
+    await act(async () => {
+      await restoration.started
+    })
+    expect(view.result.current.user?.id).toBe(ENCRYPTED_CACHE_PLACEHOLDER_USER_ID)
+    await waitFor(() =>
+      expect(useAuthStore.getState().user?.id).toBe(ENCRYPTED_CACHE_PLACEHOLDER_USER_ID)
+    )
+
+    const privateQueryKey = ["events", "saved"] as const
+    view.queryClient.setQueryData(privateQueryKey, [{ id: "saved-event" }])
+    expect(view.queryClient.getQueryData(privateQueryKey)).toEqual([{ id: "saved-event" }])
+
+    localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+    localStorage.removeItem(PROFILE_CACHE_VERSION_KEY)
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: PROFILE_CACHE_STORAGE_KEY,
+          newValue: null,
+          storageArea: localStorage,
+        })
+      )
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(view.result.current.user).toBeNull())
+    expect(view.queryClient.getQueryData(privateQueryKey)).toBeUndefined()
+    expect(view.queryClient.getQueryData(currentUserQueryKey)).toBeNull()
+
+    await act(restoration.finish)
+    expect(view.result.current.user).toBeNull()
+    expect(view.queryClient.getQueryData(privateQueryKey)).toBeUndefined()
+    await view.dispose()
+  })
+})
+
+describe("asynchronous profile envelope ownership", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    localStorage.clear()
+    sessionStorage.clear()
+    acceptBrowserSessionGeneration()
+  })
+
+  it("reads a valid signed snapshot through the standalone cache API", async () => {
+    writeSignedEnvelope({
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("verified"),
+    })
+    vi.spyOn(window.crypto.subtle, "verify").mockResolvedValue(true)
+    await expect(readCachedUserAsync(signingKey)).resolves.toMatchObject({
+      id: "verified",
+    })
+  })
+
+  it.each(["origin rotation", "replacement envelope", "removed envelope"] as const)(
+    "does not erase current storage after %s during signature verification",
+    async (transition) => {
+      writeSignedEnvelope({
+        version: PROFILE_CACHE_SCHEMA_VERSION,
+        expiresAt: Date.now() + 60_000,
+        data: snapshot("old"),
+      })
+      let finish!: (valid: boolean) => void
+      vi.spyOn(window.crypto.subtle, "verify").mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve
+          })
+      )
+      const pending = readCachedUserAsync(signingKey)
+      await waitFor(() => expect(finish).toBeDefined())
+      if (transition === "origin rotation") rotateBrowserSession()
+      if (transition === "replacement envelope") {
+        writeSignedEnvelope({
+          version: PROFILE_CACHE_SCHEMA_VERSION,
+          expiresAt: Date.now() + 60_000,
+          data: snapshot("successor"),
+        })
+      } else if (transition === "removed envelope") {
+        localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      }
+      const successor = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+      finish(false)
+      await expect(pending).resolves.toBeUndefined()
+      expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(successor)
+    }
+  )
+
+  it.each(["verification", "decryption"] as const)(
+    "does not return a cached user when the read is cancelled during %s",
+    async (phase) => {
+      await writeEncryptedEnvelope(snapshot("cancelled-cache-read"))
+      const serialized = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+      const controller = new AbortController()
+      let finish!: () => void
+      const pauseCompletion = () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        })
+      const subtle = window.crypto.subtle
+      if (phase === "verification") {
+        const verify = subtle.verify.bind(subtle)
+        vi.spyOn(subtle, "verify").mockImplementationOnce(async (...args) => {
+          const valid = await verify(...args)
+          await pauseCompletion()
+          return valid
+        })
+      } else {
+        const decrypt = subtle.decrypt.bind(subtle)
+        vi.spyOn(subtle, "decrypt").mockImplementationOnce(async (...args) => {
+          const decrypted = await decrypt(...args)
+          await pauseCompletion()
+          return decrypted
+        })
+      }
+
+      const pending = readCachedUserAsync(signingKey, () => !controller.signal.aborted)
+      await waitFor(() => expect(finish).toBeDefined())
+      controller.abort()
+      finish()
+
+      await expect(pending).resolves.toBeUndefined()
+      expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(serialized)
+      await expect(readCachedUserAsync(signingKey)).resolves.toMatchObject({
+        id: "cancelled-cache-read",
+      })
+    }
+  )
+
+  it.each(["missing", "throwing accessor"] as const)(
+    "settles an invalid cache read when storage becomes %s during verification",
+    async (unavailable) => {
+      const payload = {
+        version: PROFILE_CACHE_SCHEMA_VERSION,
+        expiresAt: Date.now() + 60_000,
+        data: snapshot("unavailable-storage"),
+      }
+      writeSignedEnvelope(payload, signEnvelopeForKey(payload, "different-session-key"))
+      const storage = localStorage
+      const serialized = storage.getItem(PROFILE_CACHE_STORAGE_KEY)
+      const version = storage.getItem(PROFILE_CACHE_VERSION_KEY)
+      const warning = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+      const subtle = window.crypto.subtle
+      const verify = subtle.verify.bind(subtle)
+      let finish!: () => void
+      vi.spyOn(subtle, "verify").mockImplementationOnce(async (...args) => {
+        const valid = await verify(...args)
+        await new Promise<void>((resolve) => {
+          finish = resolve
+        })
+        return valid
+      })
+      const pending = readCachedUserAsync(signingKey)
+      await waitFor(() => expect(finish).toBeDefined())
+      vi.stubGlobal("localStorage", undefined)
+      if (unavailable === "throwing accessor") {
+        Object.defineProperty(globalThis, "localStorage", {
+          configurable: true,
+          get() {
+            throw new DOMException("Storage is unavailable", "SecurityError")
+          },
+        })
+      }
+      finish()
+
+      await expect(pending).resolves.toBeUndefined()
+      expect(storage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(serialized)
+      expect(storage.getItem(PROFILE_CACHE_VERSION_KEY)).toBe(version)
+      expect(warning).not.toHaveBeenCalledWith("profile_cache.cleared", expect.anything())
+    }
+  )
 })

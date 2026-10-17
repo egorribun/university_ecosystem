@@ -2,6 +2,8 @@ import { render, screen, fireEvent, waitFor, act } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
+import { currentUserQueryKey } from "@/api/hooks/users"
+import { AppShellProvider } from "@/contexts/AppShellContext"
 
 /**
  * Wave 183 SW10 — NewChatModal unit tests.
@@ -62,7 +64,11 @@ const wrapper = ({ children }: { children: ReactNode }) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  return (
+    <AppShellProvider>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </AppShellProvider>
+  )
 }
 
 beforeEach(() => {
@@ -95,6 +101,23 @@ describe("NewChatModal", () => {
     const descriptionId = dialog.getAttribute("aria-describedby")
     expect(descriptionId).toBeTruthy()
     expect(document.getElementById(descriptionId!)).toHaveTextContent("messenger:searchUsers")
+  })
+
+  it("locks page scrolling while open and restores the previous overflow on close", async () => {
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "auto"
+    const props = { onClose: () => {}, onSelect: () => {} }
+
+    try {
+      const { rerender, unmount } = render(<NewChatModal open {...props} />, { wrapper })
+      await waitFor(() => expect(document.body.style.overflow).toBe("hidden"))
+
+      rerender(<NewChatModal open={false} {...props} />)
+      await waitFor(() => expect(document.body.style.overflow).toBe("auto"))
+      unmount()
+    } finally {
+      document.body.style.overflow = previousOverflow
+    }
   })
 
   it("close button has aria-label + 44x44 touch target (W183 SW4)", () => {
@@ -358,23 +381,63 @@ describe("NewChatModal", () => {
       expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
     })
 
-    it("does not query or show empty state for a one-character search", async () => {
-      render(<NewChatModal open={true} onClose={() => {}} onSelect={() => {}} />, { wrapper })
-      const searchInput = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+    it("keeps the current-user cache separate when searching for the text me", async () => {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      })
+      const currentUser = { id: "current-user", full_name: "Current User" }
+      queryClient.setQueryData(currentUserQueryKey, currentUser)
+      mocks.apiGet.mockResolvedValue({
+        data: [
+          { id: "search-result", full_name: "Search Result", email: "result@example.invalid" },
+        ],
+      })
 
-      fireEvent.change(searchInput, { target: { value: "a" } })
-      await waitFor(() => expect(mocks.apiGet).not.toHaveBeenCalled())
-      expect(screen.queryByText("messenger:noUsersFound")).toBeNull()
+      const { unmount } = render(
+        <AppShellProvider>
+          <QueryClientProvider client={queryClient}>
+            <NewChatModal open onClose={() => {}} onSelect={() => {}} />
+          </QueryClientProvider>
+        </AppShellProvider>
+      )
+
+      try {
+        fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+          target: { value: "me" },
+        })
+
+        expect(await screen.findByRole("option", { name: /Search Result/ })).toBeInTheDocument()
+        expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&full_name=me")
+        expect(queryClient.getQueryData(currentUserQueryKey)).toBe(currentUser)
+      } finally {
+        unmount()
+        queryClient.clear()
+      }
     })
 
-    it("URL-encodes the user search query before requesting the API", async () => {
+    it.each(["a", " a ", "😀"])(
+      "does not query or show empty state for one trimmed code point: %s",
+      async (query) => {
+        render(<NewChatModal open={true} onClose={() => {}} onSelect={() => {}} />, { wrapper })
+        const searchInput = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+
+        fireEvent.change(searchInput, { target: { value: query } })
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 250))
+        })
+        expect(mocks.apiGet).not.toHaveBeenCalled()
+        expect(screen.queryByText("messenger:noUsersFound")).toBeNull()
+      }
+    )
+
+    it("uses and URL-encodes the backend-supported full_name filter", async () => {
       render(<NewChatModal open={true} onClose={() => {}} onSelect={() => {}} />, { wrapper })
       fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
         target: { value: "a&b=c" },
       })
 
       await waitFor(() =>
-        expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&search=a%26b%3Dc")
+        expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&full_name=a%26b%3Dc")
       )
       expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
     })

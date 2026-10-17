@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -11,6 +12,7 @@ from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.core.localization import translate
 from app.models import FailedLoginAttempt
+from app.services.auth.lockout import LockoutService
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -41,6 +43,16 @@ async def _login(async_client, email: str, password: str):
     )
 
 
+async def test_malformed_database_url_uses_non_postgresql_lockout_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "database_url", "malformed database URL")
+
+    service = LockoutService(AsyncMock())  # type: ignore[arg-type]
+
+    assert service._is_postgresql is False
+
+
 async def test_login_lockout_enforced(
     async_client, user_factory, db_session, monkeypatch, caplog
 ):
@@ -50,7 +62,11 @@ async def test_login_lockout_enforced(
     caplog.clear()
 
     hashed = await get_password_hash("ValidPass123!")
-    user = await user_factory(hashed_password=hashed, is_active=True)
+    user = await user_factory(
+        hashed_password=hashed,
+        is_active=True,
+        email_verified_at=datetime.now(UTC),
+    )
 
     first = await _login(async_client, user.email, "WrongPass!1")
     assert first.status_code == status.HTTP_401_UNAUTHORIZED

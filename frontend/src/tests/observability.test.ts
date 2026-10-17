@@ -125,7 +125,7 @@ describe("initObservability", () => {
       expect.objectContaining({
         environment: "production",
         tracesSampleRate: 0.25,
-        profilesSampleRate: undefined,
+        profileSessionSampleRate: undefined,
       })
     )
   })
@@ -143,7 +143,35 @@ describe("initObservability", () => {
     expect(Sentry.init).toHaveBeenCalledWith(
       expect.objectContaining({
         tracesSampleRate: undefined,
-        profilesSampleRate: undefined,
+        profileSessionSampleRate: undefined,
+      })
+    )
+  })
+
+  it("keeps v10 data-collection defaults and trace-based profiling under Sentry v11", () => {
+    initObservability({
+      DEV: false,
+      PROD: true,
+      BASE_URL: "http://localhost",
+      MODE: "production",
+      VITE_SENTRY_DSN: "https://examplePublicKey.ingest.sentry.io/123",
+      VITE_SENTRY_PROFILES_SAMPLE_RATE: "0.25",
+    } as unknown as ImportMetaEnv)
+
+    expect(Sentry.init).toHaveBeenCalledWith(
+      expect.objectContaining({
+        profileSessionSampleRate: 0.25,
+        profileLifecycle: "trace",
+        dataCollection: expect.objectContaining({
+          userInfo: false,
+          cookies: false,
+          httpBodies: [],
+          databaseQueryData: false,
+          queues: false,
+          genAI: { inputs: false, outputs: false },
+          graphQL: { document: false, variables: false },
+          urlQueryParams: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+        }),
       })
     )
   })
@@ -202,7 +230,7 @@ describe("initObservability", () => {
 
     expect(result).toBe(true)
     expect(Sentry.init).toHaveBeenCalledWith(
-      expect.objectContaining({ tracesSampleRate: 0, profilesSampleRate: 1 })
+      expect.objectContaining({ tracesSampleRate: 0, profileSessionSampleRate: 1 })
     )
 
     resetObservabilityForTesting()
@@ -219,7 +247,7 @@ describe("initObservability", () => {
 
     expect(emptyResult).toBe(true)
     expect(Sentry.init).toHaveBeenCalledWith(
-      expect.objectContaining({ tracesSampleRate: undefined, profilesSampleRate: undefined })
+      expect.objectContaining({ tracesSampleRate: undefined, profileSessionSampleRate: undefined })
     )
   })
 
@@ -240,7 +268,7 @@ describe("initObservability", () => {
       expect.objectContaining({
         environment: "development",
         tracesSampleRate: undefined,
-        profilesSampleRate: undefined,
+        profileSessionSampleRate: undefined,
       })
     )
     expect(initTelemetry).toHaveBeenCalledTimes(1)

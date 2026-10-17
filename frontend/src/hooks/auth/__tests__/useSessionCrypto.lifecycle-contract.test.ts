@@ -51,7 +51,7 @@ describe("useSessionCrypto lifecycle contracts", () => {
   it("keeps callback and effect dependencies explicit and stable", () => {
     const { rerender, unmount } = renderHook(() => useSessionCrypto())
 
-    expect(contracts.callbacks).toHaveLength(4)
+    expect(contracts.callbacks).toHaveLength(5)
     const [sendServiceWorkerMessage, sendSessionCacheUpdate, updateSessionSigningKey, ensure] =
       contracts.callbacks
 
@@ -64,7 +64,7 @@ describe("useSessionCrypto lifecycle contracts", () => {
     expect(contracts.effects).toContainEqual([])
 
     rerender()
-    expect(contracts.callbacks).toHaveLength(8)
+    expect(contracts.callbacks).toHaveLength(10)
     expect(contracts.effects).toHaveLength(4)
     expect(contracts.effects.slice(2)).toEqual(contracts.effects.slice(0, 2))
 

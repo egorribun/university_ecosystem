@@ -1,17 +1,14 @@
-import contextlib
 import uuid
 
 from app.core.localization import localized_text, normalize_locale
-from app.core.logging import get_logger
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import StoryDTO
-from app.utils.files import delete_static_file
-
-_logger = get_logger(__name__)
 
 
 class StoryService:
+    """Story operations retain covers until exclusive ownership is verifiable."""
+
     def __init__(self, uow: UnitOfWork):
         self.uow = uow
         self.repo = uow.stories
@@ -78,8 +75,6 @@ class StoryService:
         # LOW-W19: removed `assert story is not None` — it is dead code because
         # the `raise` on the line above unconditionally exits when story is falsy.
 
-        old_cover = story.cover_url
-
         updates = data.model_dump(exclude_unset=True)
 
         if updates.get("published_at"):
@@ -93,17 +88,8 @@ class StoryService:
         async with self.uow:
             await self.uow.commit()
 
-        # LOW-W19: old cover deletion moved to AFTER commit.  Deleting the
-        # file before commit means a subsequent DB rollback would leave the
-        # cover permanently lost.  Deleting after commit is safe — if the
-        # delete_static_file call fails the new cover is already persisted and
-        # the old file can be cleaned up by a scheduled sweep.
-        if old_cover and updated_story.cover_url != old_cover:
-            try:
-                await delete_static_file(str(old_cover))
-            except (FileNotFoundError, OSError) as exc:
-                # RZ-20-04: Narrowed — stale files are cleaned by scheduled sweep.
-                _logger.debug("Failed to delete old story cover: %s", exc)  # nosec B110
+        # Cover URLs can be shared across story rows. Retain the prior object
+        # because this row alone cannot prove exclusive ownership.
 
         return updated_story
 
@@ -112,12 +98,8 @@ class StoryService:
         if not story:
             return False
 
-        cover_url = story.cover_url
         await self.repo.delete(story_id)
         async with self.uow:
             await self.uow.commit()
 
-        if cover_url:
-            with contextlib.suppress(Exception):
-                await delete_static_file(str(cover_url))
         return True

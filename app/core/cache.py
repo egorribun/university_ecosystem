@@ -246,7 +246,7 @@ class MultiLayerCache:
             try:
                 # PERF-W19-01: serialize with orjson so Redis stores valid bytes,
                 # not the str() representation of a Python object.
-                await self._redis.setex(key, int(self.l2_ttl), orjson.dumps(value))
+                await self._redis.set(key, orjson.dumps(value), ex=int(self.l2_ttl))
             except (
                 ConnectionError,
                 TimeoutError,

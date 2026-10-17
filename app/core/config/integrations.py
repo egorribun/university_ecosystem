@@ -20,7 +20,6 @@ class IntegrationSettings(BaseAppSettings):
     spotify_oauth_state_secret: str = ""
     spotify_redirect_uri: str = "http://localhost:8000/spotify/callback"
     spotify_scopes: str = "user-read-currently-playing user-read-playback-state"
-    rust_optimizer_url: str = "http://rust-optimizer:8080"
     spicedb_endpoint: str = "spicedb:50051"
     spicedb_preshared_key: str = "development-preshared-key"
     flagd_host: str = "localhost"
@@ -32,7 +31,6 @@ class IntegrationSettings(BaseAppSettings):
     elasticsearch_password: str = ""
 
     # ws-hub internal API (TD-NEW-07: cache invalidation on participant removal)
-    ws_hub_internal_url: str = "http://ws-hub:8081"
     ws_hub_internal_secret: str = (
         ""  # Must match WS_HUB_INTERNAL_SECRET in ws-hub config
     )

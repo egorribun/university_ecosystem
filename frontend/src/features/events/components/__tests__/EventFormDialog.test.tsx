@@ -52,7 +52,7 @@ describe("EventFormDialog", () => {
     await act(async () => mocks.props?.onCreated(draft))
 
     expect(mocks.createEvent).toHaveBeenCalledWith(draft)
-    expect(onClose).toHaveBeenCalledOnce()
+    expect(onClose).not.toHaveBeenCalled()
     expect(onSuccess).toHaveBeenCalledOnce()
     expect(scrollTo).not.toHaveBeenCalled()
   })
@@ -64,10 +64,32 @@ describe("EventFormDialog", () => {
     mocks.createEvent.mockRejectedValue(error)
 
     render(<EventFormDialog open onClose={onClose} onSuccess={onSuccess} language="ru" />)
-    await act(async () => mocks.props?.onCreated(draft))
+    const onCreated = mocks.props?.onCreated
+    expect(onCreated).toBeDefined()
+    await expect(onCreated?.(draft)).rejects.toBe(error)
 
     expect(mocks.logError).toHaveBeenCalledWith("[EventFormDialog] createEvent failed:", error)
     expect(onClose).not.toHaveBeenCalled()
     expect(onSuccess).not.toHaveBeenCalled()
+  })
+
+  it("does not turn a post-create refresh error into a create failure", async () => {
+    const refreshError = new Error("refresh unavailable")
+    const onClose = vi.fn()
+    const onSuccess = vi.fn(async () => {
+      throw refreshError
+    })
+    mocks.createEvent.mockResolvedValue({ id: "event-2" })
+
+    render(<EventFormDialog open onClose={onClose} onSuccess={onSuccess} language="en" />)
+    await expect(mocks.props?.onCreated(draft)).resolves.toBeUndefined()
+
+    expect(mocks.createEvent).toHaveBeenCalledWith(draft)
+    expect(onSuccess).toHaveBeenCalledOnce()
+    expect(mocks.logError).toHaveBeenCalledWith(
+      "[EventFormDialog] refresh after create failed:",
+      refreshError
+    )
+    expect(onClose).not.toHaveBeenCalled()
   })
 })

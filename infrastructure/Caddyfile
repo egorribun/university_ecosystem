@@ -7,6 +7,21 @@
 	# Development mode - disable HTTPS for local testing
 	# Remove this block in production
 	auto_https off
+
+	# Error entries can include the original request URI. Retain useful request
+	# details while redacting login passwords and bearer values.
+	log default {
+		format filter {
+			request>uri multi_regexp {
+				regexp (?i)^[^?]*(?:^|/|%2f|\x5c|%5c)(?:r|%72)(?:e|%65)(?:s|%73)(?:e|%65)(?:t|%74)(?:-|%2d)(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)(?:$|/|%2f|\x5c|%5c|\?|%3f|%).*$ [REDACTED]
+				regexp (?i)([?&])(?:t|%74)(?:o|%6f)(?:k|%6b)(?:e|%65)(?:n|%6e)=[^&]* ${1}token=REDACTED
+				regexp (?i)([?&])(?:t|%74)(?:i|%69)(?:c|%63)(?:k|%6b)(?:e|%65)(?:t|%74)=[^&]* ${1}ticket=REDACTED
+				regexp (?i)([?&])(?:c|%63)(?:o|%6f)(?:d|%64)(?:e|%65)=[^&]* ${1}code=REDACTED
+				regexp (?i)([?&])(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)=[^&]* ${1}password=REDACTED
+			}
+		}
+		exclude http.log.access
+	}
 }
 
 # Development: localhost
@@ -34,11 +49,11 @@
 	encode zstd gzip
 
 	# Security headers
+	header Referrer-Policy no-referrer
 	header {
 		X-Content-Type-Options nosniff
 		X-Frame-Options DENY
 		X-XSS-Protection "0"
-		Referrer-Policy strict-origin-when-cross-origin
 		-Server
 	}
 
@@ -56,10 +71,6 @@
 		reverse_proxy gateway:8080
 	}
 
-	# GraphQL endpoint (via Gateway)
-	handle /graphql* {
-		reverse_proxy gateway:8080
-	}
 
 	# Wave 173 SW1 — /ws/ticket is an HTTP POST endpoint on backend (via gateway)
 	# that issues short-lived OTT (one-time-tickets) for WS upgrade authentication
@@ -156,13 +167,16 @@
 		}
 	}
 
-	# Access logging is opt-in in this development edge config. If an operator
-	# enables it, redact the short-lived WebSocket ticket before it reaches any
-	# log sink; the query parameter is a bearer credential during its TTL.
+	# Preserve useful request details while redacting passwords, reset tokens,
+	# and WebSocket tickets from access-log URI values.
 	log {
 		format filter {
-			request>uri query {
-				replace ticket REDACTED
+			request>uri multi_regexp {
+				regexp (?i)^[^?]*(?:^|/|%2f|\x5c|%5c)(?:r|%72)(?:e|%65)(?:s|%73)(?:e|%65)(?:t|%74)(?:-|%2d)(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)(?:$|/|%2f|\x5c|%5c|\?|%3f|%).*$ [REDACTED]
+				regexp (?i)([?&])(?:t|%74)(?:o|%6f)(?:k|%6b)(?:e|%65)(?:n|%6e)=[^&]* ${1}token=REDACTED
+				regexp (?i)([?&])(?:t|%74)(?:i|%69)(?:c|%63)(?:k|%6b)(?:e|%65)(?:t|%74)=[^&]* ${1}ticket=REDACTED
+				regexp (?i)([?&])(?:c|%63)(?:o|%6f)(?:d|%64)(?:e|%65)=[^&]* ${1}code=REDACTED
+				regexp (?i)([?&])(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)=[^&]* ${1}password=REDACTED
 			}
 		}
 	}
@@ -177,15 +191,11 @@
 #         X-Content-Type-Options nosniff
 #         X-Frame-Options DENY
 #         X-XSS-Protection "0"
-#         Referrer-Policy strict-origin-when-cross-origin
+#         Referrer-Policy no-referrer
 #         -Server
 #     }
 #
 #     handle /api/* {
-#         reverse_proxy backend:8000
-#     }
-#
-#     handle /graphql* {
 #         reverse_proxy backend:8000
 #     }
 #

@@ -12,6 +12,10 @@ import {
   mutationPatternsFromPolicy,
 } from "./validate-stryker-inventory.mjs"
 import {
+  canonicalTypeScriptCheckerConfig,
+  canonicalTypeScriptCheckerToolchain,
+} from "./stryker-checker-config.mjs"
+import {
   resolveEvidencePath,
   selectValidatedEvidenceCandidate,
   verifyEvidenceDocuments,
@@ -24,20 +28,52 @@ import {
 const hash = (value) => createHash("sha256").update(value).digest("hex")
 const jsonText = (value) => `${JSON.stringify(value, null, 2)}\n`
 const instrumenterOptions = canonicalInstrumenterConfig
+const canonicalCheckerToolchain = {
+  typescriptChecker: {
+    packageName: canonicalTypeScriptCheckerToolchain.checkerPackageName,
+    pluginName: canonicalTypeScriptCheckerToolchain.checkerPluginName,
+    dependencySpec: canonicalTypeScriptCheckerToolchain.checkerDependencySpec,
+    packageVersion: canonicalTypeScriptCheckerToolchain.checkerPackageVersion,
+    lockVersion: canonicalTypeScriptCheckerToolchain.checkerLockVersion,
+    lockIntegrity: `sha512-${createHash("sha512").update("checker fixture").digest("base64")}`,
+  },
+  typescript: {
+    dependencySpec: canonicalTypeScriptCheckerToolchain.typescriptDependencySpec,
+    packageName: canonicalTypeScriptCheckerToolchain.typescriptPackageName,
+    packageVersion: canonicalTypeScriptCheckerToolchain.typescriptPackageVersion,
+    lockVersion: canonicalTypeScriptCheckerToolchain.typescriptLockVersion,
+    runtimeVersion: canonicalTypeScriptCheckerToolchain.typescriptRuntimeVersion,
+  },
+}
+const checkerConfigFixture = () => ({
+  checkers: [...canonicalTypeScriptCheckerConfig.checkers],
+  tsconfigFile: canonicalTypeScriptCheckerConfig.tsconfigFile,
+  typescriptChecker: { ...canonicalTypeScriptCheckerConfig.typescriptChecker },
+})
+const cloneToolchain = (value) => ({
+  ...value,
+  tools: {
+    ...value.tools,
+    typescriptChecker: { ...value.tools.typescriptChecker },
+    typescript: { ...value.tools.typescript },
+  },
+})
 const toolchain = {
   node: "v24.15.0",
   platform: "linux",
   arch: "x64",
   tools: {
-    stryker: "9.6.1",
-    instrumenter: "9.6.1",
-    vitest: "4.1.10",
+    stryker: "10.0.0",
+    instrumenter: "10.0.0",
+    vitest: "4.1.11",
+    ...canonicalCheckerToolchain,
   },
 }
 
 function reportConfig(mutate) {
   return {
     mutate,
+    ...checkerConfigFixture(),
     coverageAnalysis: "perTest",
     incremental: false,
     mutator: { plugins: null, excludedMutations: [] },
@@ -58,13 +94,14 @@ function serializePreflight(preflightByFile) {
 }
 
 async function fixture() {
+  const evidenceToolchain = cloneToolchain(toolchain)
   const sha = "a".repeat(40)
   const sourceHeadSha = "b".repeat(40)
   const baseSha = "c".repeat(40)
   const baseRef = "main"
   const sourceFile = "src/a.ts"
   const sourcePath = `frontend/${sourceFile}`
-  const source = "export const choose = (value: boolean) => (value ? 1 : 2)\n"
+  const source = "export const choose = (value: boolean) => (value ? 1 : 2) + (value ? 3 : 4)\n"
   const policyPath = "quality/coverage-source-policy.json"
   const configPath = "frontend/stryker.config.mjs"
   const policy = { frontend: { include: ["src/**/*.ts"], exclude: [] } }
@@ -179,8 +216,8 @@ async function fixture() {
     provenance: {
       workflowRunId: "42",
       workflowRunAttempt: "3",
-      ...toolchain,
-      tools: { ...toolchain.tools },
+      ...evidenceToolchain,
+      tools: cloneToolchain(evidenceToolchain).tools,
     },
     sourcePolicy: {
       path: policyPath,
@@ -190,6 +227,7 @@ async function fixture() {
     config: {
       path: configPath,
       sha256: hash(configText),
+      ...checkerConfigFixture(),
       coverageAnalysis: "perTest",
       instrumenterOptions,
       incremental: false,
@@ -251,7 +289,7 @@ async function fixture() {
     expectedWorkflowRunId: "42",
     expectedWorkflowRunAttempt: "3",
     inputHashes,
-    toolchain: { ...toolchain, tools: { ...toolchain.tools } },
+    toolchain: cloneToolchain(evidenceToolchain),
     marker,
     inventory,
     inventoryText,
@@ -266,6 +304,8 @@ async function fixture() {
     shardEvidenceTexts,
     gitStatus: "",
     sourceFiles,
+    sourceByFile,
+    preflightByFile,
     expectedPatterns,
     mergedPath,
     shardPath,
@@ -293,6 +333,34 @@ function mutateReports(evidence, mutate) {
     mutate(report.files["src/a.ts"].mutants)
     evidence.reportTexts.set(reportPath, jsonText(report))
   }
+  resealReportBindings(evidence)
+}
+
+function refreshDerivedInventory(evidence) {
+  const report = JSON.parse(evidence.reportTexts.get(evidence.mergedPath))
+  const derived = buildMutationInventory({
+    sourceFiles: evidence.sourceFiles,
+    sourceByFile: evidence.sourceByFile,
+    report,
+    expectedPatterns: evidence.expectedPatterns,
+    preflightByFile: evidence.preflightByFile,
+    toolchain: evidence.toolchain.tools,
+  })
+  evidence.inventory.files = derived.files
+  evidence.inventory.summary = derived.summary
+  reseal(evidence)
+}
+
+function mutateReportConfigs(evidence, mutate) {
+  for (const reportPath of [evidence.mergedPath, evidence.shardPath]) {
+    const report = JSON.parse(evidence.reportTexts.get(reportPath))
+    mutate(report.config)
+    evidence.reportTexts.set(reportPath, jsonText(report))
+  }
+  resealReportBindings(evidence)
+}
+
+function resealReportBindings(evidence) {
   reseal(evidence)
   const producer = JSON.parse(evidence.shardEvidenceTexts.get(evidence.shardEvidencePath))
   producer.reportSha256 = evidence.inventory.reports.find(
@@ -375,6 +443,161 @@ test("independently accepts SHA-bound complete release evidence", async () => {
     reportCount: 2,
     sourceFileCount: 1,
   })
+})
+
+test("accepts a CompileError only with canonical checker settings and a reason", async (t) => {
+  for (const candidateMode of [false, true]) {
+    const evidence = await fixture()
+    mutateReports(evidence, (mutants) => {
+      mutants[0].status = "CompileError"
+      mutants[0].statusReason = "TypeScript checker rejected the mutant"
+    })
+    refreshDerivedInventory(evidence)
+
+    if (!candidateMode) {
+      assert.equal((await verifyEvidenceDocuments(evidence)).runId, "run-a")
+      continue
+    }
+
+    const candidateRoot = await mkdtemp(path.join(os.tmpdir(), "stryker-validated-candidates-"))
+    t.after(() => rm(candidateRoot, { recursive: true, force: true }))
+    await writeValidatedEvidenceCandidate(candidateRoot, evidence)
+    const candidate = await selectValidatedEvidenceCandidate(
+      candidateSelectionOptions(evidence, candidateRoot)
+    )
+    assert.equal((await verifyEvidenceDocuments({ ...evidence, ...candidate })).runId, "run-a")
+  }
+
+  const missingReason = await fixture()
+  mutateReports(missingReason, (mutants) => {
+    mutants[0].status = "CompileError"
+    delete mutants[0].statusReason
+  })
+  await assert.rejects(verifyEvidenceDocuments(missingReason), /lacks a status reason/u)
+
+  const missingCandidateReason = await fixture()
+  mutateReports(missingCandidateReason, (mutants) => {
+    mutants[0].status = "CompileError"
+    mutants[0].statusReason = "  "
+  })
+  const candidateRoot = await mkdtemp(path.join(os.tmpdir(), "stryker-validated-candidates-"))
+  t.after(() => rm(candidateRoot, { recursive: true, force: true }))
+  await writeValidatedEvidenceCandidate(candidateRoot, missingCandidateReason)
+  const candidate = await selectValidatedEvidenceCandidate(
+    candidateSelectionOptions(missingCandidateReason, candidateRoot)
+  )
+  await assert.rejects(
+    verifyEvidenceDocuments({ ...missingCandidateReason, ...candidate }),
+    /lacks a status reason/u
+  )
+})
+
+test("binds checker configuration and lock metadata in normal and candidate evidence", async (t) => {
+  const inventoryConfigDrift = await fixture()
+  inventoryConfigDrift.inventory.config.typescriptChecker.experimentalNativePreview = true
+  reseal(inventoryConfigDrift)
+  await assert.rejects(
+    verifyEvidenceDocuments(inventoryConfigDrift),
+    /canonical TypeScript checker configuration/u
+  )
+
+  const reportConfigDrift = await fixture()
+  mutateReportConfigs(reportConfigDrift, (config) => {
+    config.checkers = []
+  })
+  await assert.rejects(
+    verifyEvidenceDocuments(reportConfigDrift),
+    /canonical TypeScript checker configuration/u
+  )
+
+  const lockDrift = await fixture()
+  lockDrift.inventory.provenance.tools.typescriptChecker.lockIntegrity = `sha512-${createHash("sha512").update("different checker lock").digest("base64")}`
+  reseal(lockDrift)
+  await assert.rejects(
+    verifyEvidenceDocuments(lockDrift),
+    /checker toolchain provenance does not match/u
+  )
+
+  const candidateConfigDrift = await fixture()
+  candidateConfigDrift.inventory.config.checkers = []
+  reseal(candidateConfigDrift)
+  const candidateRoot = await mkdtemp(path.join(os.tmpdir(), "stryker-validated-candidates-"))
+  t.after(() => rm(candidateRoot, { recursive: true, force: true }))
+  await writeValidatedEvidenceCandidate(candidateRoot, candidateConfigDrift)
+  await assert.rejects(
+    () =>
+      selectValidatedEvidenceCandidate(
+        candidateSelectionOptions(candidateConfigDrift, candidateRoot)
+      ),
+    /canonical TypeScript checker configuration/u
+  )
+
+  const candidateReportConfigDrift = await fixture()
+  mutateReportConfigs(candidateReportConfigDrift, (config) => {
+    config.typescriptChecker.prioritizePerformanceOverAccuracy = true
+  })
+  const reportRoot = await mkdtemp(path.join(os.tmpdir(), "stryker-validated-candidates-"))
+  t.after(() => rm(reportRoot, { recursive: true, force: true }))
+  await writeValidatedEvidenceCandidate(reportRoot, candidateReportConfigDrift)
+  const selectedReportDrift = await selectValidatedEvidenceCandidate(
+    candidateSelectionOptions(candidateReportConfigDrift, reportRoot)
+  )
+  await assert.rejects(
+    verifyEvidenceDocuments({ ...candidateReportConfigDrift, ...selectedReportDrift }),
+    /canonical TypeScript checker configuration/u
+  )
+
+  const candidateToolchainDrift = await fixture()
+  candidateToolchainDrift.inventory.provenance.tools.typescript.runtimeVersion = "6.0.4"
+  reseal(candidateToolchainDrift)
+  const toolchainRoot = await mkdtemp(path.join(os.tmpdir(), "stryker-validated-candidates-"))
+  t.after(() => rm(toolchainRoot, { recursive: true, force: true }))
+  await writeValidatedEvidenceCandidate(toolchainRoot, candidateToolchainDrift)
+  await assert.rejects(
+    () =>
+      selectValidatedEvidenceCandidate(
+        candidateSelectionOptions(candidateToolchainDrift, toolchainRoot)
+      ),
+    /checker toolchain provenance/u
+  )
+
+  const normalCrossHost = await fixture()
+  normalCrossHost.toolchain.platform = "win32"
+  normalCrossHost.toolchain.arch = "arm64"
+  assert.equal((await verifyEvidenceDocuments(normalCrossHost)).runId, "run-a")
+
+  const malformedRuntime = await fixture()
+  malformedRuntime.inventory.provenance.platform = "linux/host"
+  reseal(malformedRuntime)
+  await assert.rejects(
+    verifyEvidenceDocuments(malformedRuntime),
+    /producer runtime provenance is malformed/u
+  )
+})
+
+test("normal evidence binds every producer tool version and requires each tool record", async () => {
+  const cases = [
+    ["stryker", (tools) => (tools.stryker = "10.0.1")],
+    ["instrumenter", (tools) => (tools.instrumenter = "10.0.1")],
+    ["vitest", (tools) => (tools.vitest = "4.1.12")],
+    [
+      "typescript checker lock integrity",
+      (tools) => {
+        tools.typescriptChecker.lockIntegrity = `sha512-${createHash("sha512")
+          .update("different checker lock")
+          .digest("base64")}`
+      },
+    ],
+    ["TypeScript runtime", (tools) => (tools.typescript.runtimeVersion = "6.0.4")],
+    ["missing tool", (tools) => delete tools.vitest],
+  ]
+
+  for (const [name, mutate] of cases) {
+    const evidence = await fixture()
+    mutate(evidence.inventory.provenance.tools)
+    reseal(evidence)
+    await assert.rejects(verifyEvidenceDocuments(evidence), /toolchain provenance/u, name)
+  }
 })
 
 test("rejects local markers, dirty repositories, stale sources, and report hash drift", async () => {
@@ -596,7 +819,15 @@ test("rejects malformed, foreign, future, and tampered validated artifact candid
     {
       name: "toolchain mismatch",
       prepare: (evidence) => {
-        evidence.inventory.provenance.tools.instrumenter = "9.6.2"
+        evidence.inventory.provenance.tools.instrumenter = "10.0.1"
+        reseal(evidence)
+      },
+      expected: /toolchain/u,
+    },
+    {
+      name: "producer runtime mismatch",
+      prepare: (evidence) => {
+        evidence.inventory.provenance.platform = "win32"
         reseal(evidence)
       },
       expected: /toolchain/u,

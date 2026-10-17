@@ -3,10 +3,12 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -25,7 +27,7 @@ import (
 // For now, keeping it here and exporting.
 type ProcessJob struct {
 	ID        string `json:"id"`
-	Type      string `json:"type"` // resize, thumbnail, optimize
+	Type      string `json:"type"` // image_resize; validated by each ingress
 	SourceKey string `json:"source_key"`
 	DestKey   string `json:"dest_key"`
 	// Capability is retained in the wire shape for backwards-compatible job
@@ -167,6 +169,9 @@ const (
 	// PERF-W5-01: A 4096×4096 RGBA image = 64 MB. Under 20 concurrent workflows that
 	// becomes 1.28 GB. 8 MP (≈ 3264×2448) keeps peak per-workflow at ~32 MB RGBA.
 	maxImagePixels = 8_000_000
+	// maxImageConfigBytes bounds how much untrusted image metadata can be scanned
+	// before DecodeConfig returns the dimensions needed to enforce the pixel limits.
+	maxImageConfigBytes = 1 << 20
 )
 
 // imageMIMETypes is an explicit allowlist for Content-Type headers written to MinIO.
@@ -231,7 +236,7 @@ func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob
 	height, errH := getValidatedDimension(job.Options, "height", 600)
 
 	if errW != nil || errH != nil {
-		return nil, temporal.NewApplicationError("invalid dimensions", "InvalidInput", errW, errH)
+		return nil, temporal.NewApplicationError("invalid dimensions", "InvalidInputError", errW, errH)
 	}
 	// PERF-W5-01: Reject images whose total pixel count would exceed the memory budget.
 	if width*height > maxImagePixels {
@@ -294,7 +299,7 @@ func (a *FileActivities) downloadAndDecodeImage(ctx context.Context, key string)
 		}()
 
 		applyDecodeDeadline(obj, ctx)
-		img, format, err := image.Decode(obj)
+		img, format, err := decodeBoundedImage(obj)
 		doneCh <- decodeResult{img, format, err}
 	}()
 
@@ -306,10 +311,62 @@ func (a *FileActivities) downloadAndDecodeImage(ctx context.Context, key string)
 		return nil, "", temporal.NewApplicationError("context cancelled during image decode", "ContextCancelled")
 	case res := <-doneCh:
 		if res.err != nil {
+			var applicationErr *temporal.ApplicationError
+			if errors.As(res.err, &applicationErr) {
+				return nil, "", res.err
+			}
 			return nil, "", fmt.Errorf("failed to decode image: %w", res.err)
 		}
 		return res.img, res.format, nil
 	}
+}
+
+// decodeBoundedImage checks source dimensions before image.Decode can allocate
+// pixel buffers. DecodeConfig consumes a prefix from the streaming object, so a
+// bounded tee keeps exactly those bytes and replays them with the unread body.
+func decodeBoundedImage(source io.Reader) (image.Image, string, error) {
+	var prefix bytes.Buffer
+	configLimit := &io.LimitedReader{
+		R: io.TeeReader(source, &prefix),
+		N: maxImageConfigBytes,
+	}
+	config, _, err := image.DecodeConfig(configLimit)
+	if err != nil {
+		if configLimit.N == 0 {
+			return nil, "", temporal.NewApplicationError(
+				"image metadata exceeds size limit",
+				"FileTooLargeError",
+			)
+		}
+		return nil, "", err
+	}
+	if err := validateImageConfig(config); err != nil {
+		return nil, "", err
+	}
+
+	return image.Decode(io.MultiReader(bytes.NewReader(prefix.Bytes()), source))
+}
+
+func validateImageConfig(config image.Config) error {
+	if config.Width <= 0 || config.Height <= 0 {
+		return temporal.NewApplicationError(
+			"source image dimensions must be positive",
+			"InvalidInputError",
+		)
+	}
+	if config.Width > maxImageDimension ||
+		config.Height > maxImageDimension ||
+		config.Width > maxImagePixels/config.Height {
+		return temporal.NewApplicationError(
+			fmt.Sprintf(
+				"source image dimensions %dx%d exceed image limits",
+				config.Width,
+				config.Height,
+			),
+			"FileTooLargeError",
+		)
+	}
+	return nil
 }
 
 func applyDecodeDeadline(obj any, ctx context.Context) {

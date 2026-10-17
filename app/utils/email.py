@@ -2,6 +2,7 @@ import logging
 import smtplib
 import ssl
 from email.message import EmailMessage
+from html import escape
 from typing import Any
 
 from app.core.config import settings
@@ -60,7 +61,7 @@ def build_reset_email_content(
     link: str, full_name: str = "", *, locale: str | None = None
 ) -> tuple[str, str, str]:
     resolved_locale = resolve_locale(locale=locale)
-    name_suffix = f", {full_name}" if full_name else ""
+    name_suffix = f", {escape(full_name)}" if full_name else ""
     subject = translate("email.reset.subject", locale=resolved_locale)
     heading = translate("email.reset.heading", locale=resolved_locale)
     greeting = translate(
@@ -191,7 +192,7 @@ def build_lockout_email_content(
     full_name: str = "", *, locale: str | None = None
 ) -> tuple[str, str, str]:
     resolved_locale = resolve_locale(locale=locale)
-    name_suffix = f", {full_name}" if full_name else ""
+    name_suffix = f", {escape(full_name)}" if full_name else ""
     subject = translate("email.lockout.subject", locale=resolved_locale)
     heading = translate("email.lockout.heading", locale=resolved_locale)
     greeting = translate(

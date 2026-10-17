@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "approval": {
+    "status": "owner-approved",
+    "date": "2026-10-09",
+    "scope": "Home12"
+  },
+  "provenance": {
+    "captureTarget": "home-empty",
+    "collectorVersion": 10,
+    "browser": {
+      "engine": "chromium",
+      "platform": "Linux x86_64",
+      "version": "153.0.8010.12",
+      "linuxPlatformVerified": true
+    },
+    "sourceCommit": "https://github.com/egorribun/university_ecosystem/commit/ddbbc84d8444fa06aee1485fb1ddc0d1ca308d1f",
+    "sourceManifestDigest": "sha256:c3658940002dbf6febfc3cfa2477782577dd575894a17d30ecf572233bb27ea5"
+  },
+  "matrix": {
+    "locales": ["ru", "en"],
+    "themes": ["light", "dark"],
+    "widths": [390, 768, 1440],
+    "height": 800,
+    "captureCount": 12
+  },
+  "checks": {
+    "allDashboardCardsVisible": true,
+    "allDashboardAnimationsSettled": true,
+    "seriousOrCriticalAxeViolations": 0,
+    "ownedSessionCleanup": "complete",
+    "cleanupFailureCount": 0
+  },
+  "consumption": {
+    "type": "manual-visual-comparison",
+    "automatedConsumer": false
+  },
+  "captures": [
+    {
+      "file": "home-empty_ru_light_w390.png",
+      "locale": "ru",
+      "theme": "light",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "digest": "sha256:f398bd08bd5353f86e3016ef1bb5f3f555e13bc60552463cfddd7ba6e1e50540"
+    },
+    {
+      "file": "home-empty_ru_light_w768.png",
+      "locale": "ru",
+      "theme": "light",
+      "viewport": {
+        "width": 768,
+        "height": 800
+      },
+      "digest": "sha256:56f22eebeb45b403e6db30c01a3f415daf72e15077e782b25f35ca77f4a4fed1"
+    },
+    {
+      "file": "home-empty_ru_light_w1440.png",
+      "locale": "ru",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 800
+      },
+      "digest": "sha256:4fa7a962c8b66b250e609c942dacf1d69420aab38c9c7f96ac83ad1768773e39"
+    },
+    {
+      "file": "home-empty_ru_dark_w390.png",
+      "locale": "ru",
+      "theme": "dark",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "digest": "sha256:00f0a43bd3c8fd3e1c48d023f7a73ab6b91cdfb89867d4a7a1d155625ffbfe7c"
+    },
+    {
+      "file": "home-empty_ru_dark_w768.png",
+      "locale": "ru",
+      "theme": "dark",
+      "viewport": {
+        "width": 768,
+        "height": 800
+      },
+      "digest": "sha256:b6fd224aef51a8055ab66afbcc65062539c01d8281f0515064710d7d61c6ef95"
+    },
+    {
+      "file": "home-empty_ru_dark_w1440.png",
+      "locale": "ru",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 800
+      },
+      "digest": "sha256:c5151c0ada1d34f70a75b2a572f7d2a2991db328308aa5fbd4b687bb6d8c22b4"
+    },
+    {
+      "file": "home-empty_en_light_w390.png",
+      "locale": "en",
+      "theme": "light",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "digest": "sha256:9d54057dbedd23a7f56434a987e2e11c525c894e89d15f6f12c75d162906ab80"
+    },
+    {
+      "file": "home-empty_en_light_w768.png",
+      "locale": "en",
+      "theme": "light",
+      "viewport": {
+        "width": 768,
+        "height": 800
+      },
+      "digest": "sha256:f246c4235750368e8cd2d2851dc2176673d8d9fe542349540a124bbebad2c6c7"
+    },
+    {
+      "file": "home-empty_en_light_w1440.png",
+      "locale": "en",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 800
+      },
+      "digest": "sha256:3ee1b2cc8f57172d26633cbb7a3b274b5b2cfc22a3cb0539ac7940a0b3d73ef3"
+    },
+    {
+      "file": "home-empty_en_dark_w390.png",
+      "locale": "en",
+      "theme": "dark",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "digest": "sha256:78449890ad0f2619db419ab3afe063c11a37877cf8f714fe59a46e602221f1c2"
+    },
+    {
+      "file": "home-empty_en_dark_w768.png",
+      "locale": "en",
+      "theme": "dark",
+      "viewport": {
+        "width": 768,
+        "height": 800
+      },
+      "digest": "sha256:658819356edb5e36bef0cdc0eebd725d6d4fddbd10450e0ec851b7e500e2782e"
+    },
+    {
+      "file": "home-empty_en_dark_w1440.png",
+      "locale": "en",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 800
+      },
+      "digest": "sha256:b914e9b803398176f8ddfe0a459f562e3d199ba3bd231e658970b8dc24a6016e"
+    }
+  ]
+}

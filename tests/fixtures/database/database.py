@@ -25,6 +25,79 @@ def _compile_jsonb_sqlite(_element, _compiler, **_kwargs):
 _TEST_DATABASE_NAME = re.compile(r"(?:^test|[-_]test(?:[-_]|$))", re.IGNORECASE)
 
 
+_PURE_PARSER_TEST_CASES = {
+    "tests/test_live_stand.py": frozenset(
+        {
+            "test_live_playwright_page_errors_accept_only_fixed_domains",
+            "test_live_playwright_http_status_accepts_only_fixed_domains",
+            "test_live_playwright_page_errors_accept_admin_hydration_domains",
+            "test_live_playwright_email_otp_and_mfa_http_statuses_are_closed",
+            "test_live_playwright_auth_http_parser_accepts_closed_status_mismatches",
+            "test_live_playwright_story_setup_parser_accepts_closed_stages",
+            "test_live_playwright_a11y_contrast_accepts_bounded_closed_records",
+            "test_live_playwright_http_status_accepts_auth_status_checks",
+            "test_live_playwright_http_status_rejects_malformed_records",
+            "test_live_playwright_page_errors_reject_malformed_records",
+            "test_live_playwright_push_observation_accepts_closed_records",
+            "test_live_playwright_retry_diagnostics_accept_bounded_integer_decisions",
+            "test_live_playwright_counts_reject_malformed_summary_records",
+            "test_live_playwright_auth_status_rows_accept_lf_and_crlf",
+            "test_live_playwright_profile_save_diagnostics_reject_malformed_records",
+            "test_live_playwright_retry_diagnostics_reject_malformed_records",
+            "test_live_playwright_page_errors_reject_cross_scenario_domains",
+            "test_live_playwright_footer_parser_rejects_malformed_rows",
+            "test_live_playwright_counts_accept_all_bounded_summary_categories",
+            "test_live_playwright_rate_limit_metadata_rejects_malformed_or_unterminated_rows",
+            "test_live_playwright_a11y_contrast_rejects_malformed_records",
+            "test_live_playwright_story_setup_parser_accepts_closed_exception_kinds",
+            "test_live_playwright_page_errors_accept_auth_roles_domain",
+            "test_live_playwright_a11y_paint_parser_rejects_malformed_rows",
+            "test_live_playwright_a11y_phase_parser_rejects_malformed_rows",
+            "test_live_playwright_auth_ui_parser_accepts_exact_failure_records",
+            "test_live_playwright_auth_registration_parser_rejects_inconsistent_phases",
+            "test_live_playwright_rate_limit_metadata_accepts_bounded_logout_headers",
+            "test_live_playwright_counts_accept_numeric_durations",
+        }
+    ),
+    "tests/test_cwv_contract_vectors.py": frozenset(
+        {
+            "test_route_group_allowlist_is_complete_and_normalizes_url_delimiters",
+            "test_origin_parser_rejects_credentials_paths_and_non_https_exactly",
+        }
+    ),
+    "tests/test_logging_pii_redaction_contract.py": frozenset(
+        {
+            "test_field_names_normalize_across_naming_styles",
+        }
+    ),
+    "tests/test_backup_paired_snapshot_restore.py": frozenset(
+        {
+            "test_storage_public_base_url_rejects_unsafe_root_relative_paths",
+            "test_storage_public_base_url_rejects_invalid_unparsed_values",
+            "test_application_storage_key_rejects_keys_outside_app_contract",
+        }
+    ),
+}
+
+
+def _is_pure_parser_profile_case(node: object) -> bool:
+    original_name = getattr(node, "originalname", None)
+    node_path = getattr(node, "path", None)
+    root_path = getattr(getattr(node, "config", None), "rootpath", None)
+    if original_name is None or node_path is None or root_path is None:
+        return False
+    try:
+        absolute_node_path = Path(node_path).absolute()
+        absolute_root_path = Path(root_path).absolute()
+        for relative_path, test_names in _PURE_PARSER_TEST_CASES.items():
+            expected_path = (absolute_root_path / relative_path).absolute()
+            if absolute_node_path == expected_path:
+                return original_name in test_names
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+    return False
+
+
 def _is_sqlite_memory_database(database_url: str) -> bool:
     parsed = make_url(database_url)
     return parsed.get_backend_name() == "sqlite" and parsed.database in {
@@ -489,7 +562,7 @@ async def prepare_database() -> AsyncIterator[None]:
                 event_type_en VARCHAR,
                 starts_at DATETIME NOT NULL,
                 ends_at DATETIME NOT NULL,
-                created_by VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_by VARCHAR(36) REFERENCES users(id) ON DELETE SET NULL,
                 search_vector TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 is_active BOOLEAN DEFAULT 1,
@@ -622,7 +695,9 @@ async def db_session() -> AsyncIterator[AsyncSession]:
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def clean_database(prepare_database: None) -> AsyncIterator[None]:
+async def clean_database(
+    prepare_database: None, request: pytest.FixtureRequest
+) -> AsyncIterator[None]:
     """
     Clean up tables between tests to ensure isolation.
     Uses TRUNCATE on PostgreSQL or DELETE on SQLite.
@@ -633,6 +708,9 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
     from sqlalchemy.exc import OperationalError
 
     yield
+
+    if _is_pure_parser_profile_case(request.node):
+        return
 
     database_url = os.environ.get("DATABASE_URL", "")
     is_postgresql = (

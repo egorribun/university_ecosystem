@@ -181,23 +181,37 @@ describe("Route Loaders & validateSearch validation", () => {
       expect(parsedValid).toEqual({ tab: 2, spotify: "connected" })
     })
 
-    it("maps search params to loader dependencies", () => {
+    it("strips only the default tab from navigation search", () => {
+      const middlewares = (SettingsRoute.options as any).search.middlewares
+      expect(middlewares).toHaveLength(1)
+      const stripDefaultTab = middlewares[0]
+      const next = (search: Record<string, unknown>) => search
+
+      expect(stripDefaultTab({ search: { tab: 0 }, next })).toEqual({})
+      expect(stripDefaultTab({ search: { tab: 2, spotify: "connected" }, next })).toEqual({
+        tab: 2,
+        spotify: "connected",
+      })
+    })
+
+    it("keeps in-page settings tab changes in one route match", () => {
       const loaderDeps = SettingsRoute.options.loaderDeps
       expect(loaderDeps).toBeTypeOf("function")
 
-      const search = { tab: 2, spotify: "connected" }
-      const deps = (loaderDeps as any)({ search })
-      expect(deps).toEqual({ tab: 2 })
+      for (const tab of Object.values(SETTINGS_TAB)) {
+        expect((loaderDeps as any)({ search: { tab } })).toEqual({})
+      }
+      expect(SettingsRoute.options.shouldReload).toBe(false)
     })
 
-    it("prefetches current user only when on a non-sessions tab", async () => {
+    it("prefetches current user on a General entry without sessions data", async () => {
       const loader = SettingsRoute.options.loader
       expect(loader).toBeTypeOf("function")
 
       const context = { queryClient: mockQueryClient }
-      const deps = { tab: SETTINGS_TAB.GENERAL }
+      const location = { search: { tab: SETTINGS_TAB.GENERAL } }
 
-      await (loader as any)({ context, deps })
+      await (loader as any)({ context, location })
 
       expect(mockQueryClient.ensureQueryData).toHaveBeenCalledWith(
         expect.objectContaining({ queryKey: ["user", "me"] })
@@ -219,9 +233,9 @@ describe("Route Loaders & validateSearch validation", () => {
       })
 
       const context = { queryClient: mockQueryClient }
-      const deps = { tab: SETTINGS_TAB.SESSIONS }
+      const location = { search: { tab: SETTINGS_TAB.SESSIONS } }
 
-      await (loader as any)({ context, deps })
+      await (loader as any)({ context, location })
 
       expect(mockQueryClient.ensureQueryData).toHaveBeenCalledWith(
         expect.objectContaining({ queryKey: ["user", "me"] })
@@ -236,13 +250,19 @@ describe("Route Loaders & validateSearch validation", () => {
       const context = { queryClient: mockQueryClient }
 
       mockQueryClient.ensureQueryData.mockRejectedValueOnce(new Error("user offline"))
-      await (loader as any)({ context, deps: { tab: SETTINGS_TAB.SESSIONS } })
+      await (loader as any)({
+        context,
+        location: { search: { tab: SETTINGS_TAB.SESSIONS } },
+      })
 
       mockQueryClient.ensureQueryData = vi.fn().mockImplementation((options: any) => {
         if (options.queryKey[0] === "user") return Promise.resolve({ id: "user-456" })
         return Promise.reject(new Error("sessions offline"))
       })
-      await (loader as any)({ context, deps: { tab: SETTINGS_TAB.SESSIONS } })
+      await (loader as any)({
+        context,
+        location: { search: { tab: SETTINGS_TAB.SESSIONS } },
+      })
 
       expect(mockQueryClient.ensureQueryData).toHaveBeenCalledWith(
         expect.objectContaining({ queryKey: ["sessions", "user-456"] })

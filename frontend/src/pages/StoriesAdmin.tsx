@@ -163,9 +163,7 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
-  const handleCoverUpdate = async () => {
-    if (!coverFile) return
-    const selectedCover = coverFile
+  const handleCoverUpdate = async (selectedCover: File) => {
     const telemetryContext = captureActiveTelemetryContext()
     setActionError(null)
     setUpdatingCover(true)
@@ -314,7 +312,7 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
                   size="sm"
                   className="w-full"
                   disabled={!coverFile || updatingCover}
-                  onClick={handleCoverUpdate}
+                  onClick={coverFile ? () => handleCoverUpdate(coverFile) : undefined}
                   loading={updatingCover}
                 >
                   {t("stories:list.actions.updateCover")}

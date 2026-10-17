@@ -33,10 +33,12 @@ def is_private_static_path(path: str) -> bool:
         if decoded == normalized:
             break
         normalized = decoded
-    # ``StaticFiles.lookup_path`` resolves dot-segments with
-    # ``os.path.realpath`` before serving a file.  Normalize the same URL
-    # shape here so an attachment prefix cannot be hidden behind a harmless
-    # looking parent-directory segment (for example ``foo/../chat_uploads``).
+    # A parent segment can leave the mounted directory and then re-enter it
+    # under a different spelling (for example ``../static/chat_uploads``).
+    # Reject traversal before Starlette resolves the path against its mount
+    # directory, so private prefixes cannot be hidden behind that alias.
+    if ".." in normalized.split("/"):
+        return True
     normalized = posixpath.normpath(normalized)
     if normalized.startswith("static/"):
         normalized = normalized[len("static/") :]

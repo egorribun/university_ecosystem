@@ -1,12 +1,13 @@
 """Parsed contracts for the canonical Chaos app-lane runtime and safety gates."""
 
-import ast
 import shlex
 from pathlib import Path
 
 import yaml
 
-WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml"
+WORKFLOW = (
+    Path(__file__).resolve().parents[1] / ".github/workflows/nightly-full-gate.yml"
+)
 SETUP_PYTHON = "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
 
 
@@ -15,8 +16,14 @@ def _job() -> dict[str, object]:
     return document["jobs"]["chaos-tests"]
 
 
-def test_chaos_job_pins_uv_python_for_all_consumers() -> None:
-    assert _job().get("env", {}).get("UV_PYTHON") == "3.14"
+def test_chaos_job_is_main_only_and_fail_closed() -> None:
+    job = _job()
+    assert job["if"] == "${{ github.ref == 'refs/heads/main' }}"
+    assert job["runs-on"] == "ubuntu-24.04"
+    assert job["timeout-minutes"] == 30
+    assert job["permissions"] == {"contents": "read"}
+    assert "continue-on-error" not in job
+    assert all("continue-on-error" not in step for step in job["steps"])
 
 
 def test_chaos_installs_pinned_python_before_dependency_sync() -> None:
@@ -32,44 +39,40 @@ def test_chaos_installs_pinned_python_before_dependency_sync() -> None:
     assert "if" not in setup[0]
     assert "continue-on-error" not in setup[0]
     sync = next(step for step in steps if step.get("name") == "Install dependencies")
-    assert sync["run"] == "uv sync --frozen"
+    assert sync["run"] == "uv sync --frozen --group dev"
     assert steps.index(setup[0]) < steps.index(sync)
 
 
-def test_chaos_reads_back_synced_runtime_before_tests() -> None:
-    steps = _job()["steps"]
-    guards = [step for step in steps if step.get("name") == "Verify Python runtime"]
-    assert len(guards) == 1
-    guard = guards[0]
-    assert "if" not in guard
-    assert "continue-on-error" not in guard
-    command = shlex.split(guard["run"])
-    assert command[:6] == ["uv", "run", "--frozen", "--no-sync", "python", "-c"]
-    assert len(command) == 7
-    expected = ast.parse(
-        "import sys; print(sys.version); "
-        "assert sys.version_info[:2] == (3, 14), sys.version"
-    )
-    assert ast.dump(ast.parse(command[6])) == ast.dump(expected)
-    sync_index = next(
-        index
-        for index, step in enumerate(steps)
-        if step.get("name") == "Install dependencies"
-    )
-    assert steps.index(guard) == sync_index + 1
-    tests = next(step for step in steps if step.get("name") == "Run chaos tests")
-    assert steps.index(guard) < steps.index(tests)
-
-
-def test_chaos_keeps_existing_services_tests_and_explicit_reset_safety() -> None:
+def test_chaos_uses_pinned_minio_and_toxiproxy_services() -> None:
     job = _job()
-    assert job["needs"] == ["backend-tests"]
-    assert job["runs-on"] == "ubuntu-24.04"
-    assert job["timeout-minutes"] == 15
-    assert "if" not in job
-    assert "continue-on-error" not in job
-    assert set(job["services"]) == {"postgres", "redis", "nats", "minio", "toxiproxy"}
-    tests = next(step for step in job["steps"] if step.get("name") == "Run chaos tests")
+    services = job["services"]
+    assert set(services) == {"minio", "toxiproxy"}
+
+    minio = services["minio"]
+    assert "@sha256:" in minio["image"]
+    assert minio["command"] == "mini -dir=/data -s3.port=9000"
+    assert minio["ports"] == ["9000:9000"]
+
+    toxiproxy = services["toxiproxy"]
+    assert "@sha256:" in toxiproxy["image"]
+    assert toxiproxy["ports"] == ["8474:8474", "9003:9003"]
+
+
+def test_chaos_configures_proxy_before_fail_closed_tests_and_keeps_reset_safety() -> (
+    None
+):
+    job = _job()
+    assert job["env"]["DATABASE_URL"] == "sqlite+aiosqlite:///./test_chaos.db"
+    assert job["env"]["UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"] == "1"
+    steps = job["steps"]
+    configure = next(
+        step for step in steps if step.get("name") == "Configure ToxiProxy proxies"
+    )
+    assert "for _attempt in {1..30}" in configure["run"]
+    assert "curl --fail --silent http://localhost:9000/status" in configure["run"]
+    assert "--request POST http://localhost:8474/proxies" in configure["run"]
+
+    tests = next(step for step in steps if step.get("name") == "Run chaos tests")
     assert shlex.split(tests["run"]) == [
         "uv",
         "run",
@@ -80,6 +83,10 @@ def test_chaos_keeps_existing_services_tests_and_explicit_reset_safety() -> None
         "chaos",
         "--tb=short",
     ]
+    assert steps.index(configure) < steps.index(tests)
     assert tests["env"]["UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"] == "1"
+    assert tests["env"]["MINIO_PROXY_ENDPOINT"] == "http://localhost:9003"
+    assert tests["env"]["MINIO_DIRECT_ENDPOINT"] == "localhost:9000"
+    assert tests["env"]["STORAGE_S3_ENDPOINT_URL"] == "http://localhost:9003"
     assert "if" not in tests
     assert "continue-on-error" not in tests

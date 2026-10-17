@@ -25,7 +25,7 @@ repos:
     hooks:
       - id: detect-secrets
         name: detect-secrets scan
-        entry: python scripts/run_detect_secrets.py
+        entry: python -X utf8 scripts/run_detect_secrets.py
         args: ["--baseline", ".secrets.baseline"]
         require_serial: true
         # Generated WASM provenance contains SHA-256 digests rather than
@@ -35,7 +35,7 @@ repos:
         exclude: "^(?:\\.secrets\\.baseline|\\.env\\.docker\\.example|\\.env\\.example|uv\\.lock|frontend/WASM_SOURCE_PROVENANCE\\.json)$"
 
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.30.0
+    rev: v8.30.1
     hooks:
       - id: gitleaks
 
@@ -50,7 +50,7 @@ repos:
         exclude: ^tests/
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.15.0
+    rev: v2.4.0
     hooks:
       - id: mypy
         name: mypy type-check (auth + services)
@@ -62,7 +62,7 @@ repos:
         additional_dependencies:
           - "pydantic>=2"
           - "pydantic-settings"
-          - "sqlalchemy[mypy]>=2"
+          - "sqlalchemy>=2.0.54,<2.1"
           # CDC publication DDL uses psycopg.sql.Identifier for safe quoting;
           # mirror the declared runtime driver in this isolated mypy env.
           - "psycopg[binary]>=3.3.3,<4"
@@ -76,7 +76,7 @@ repos:
           # app/cli is part of the CI mypy tree; keep its runtime imports
           # available in the isolated pre-commit environment as well.
           - "rich==15.0.0"
-          - "typer==0.25.1"
+          - "typer==0.27.3"
           - "fastapi"
           - "starlette"
           - "nh3"
@@ -116,16 +116,18 @@ repos:
         pass_filenames: false
         always_run: true
 
+  # Temporary upstream PR #745 pin; return to a supported release once it includes cache-mode.
   - repo: https://github.com/rhysd/actionlint
-    rev: v1.7.12
+    rev: 5dc52e8daa4ef51bfd76a648128474bd41d65df0  #  -- immutable upstream source revision
     hooks:
       - id: actionlint
 
   - repo: https://github.com/semgrep/pre-commit
-    rev: v1.168.0
+    rev: v1.179.0
     hooks:
       - id: semgrep-docker
         name: semgrep-sast
+        entry: -e SEMGREP_LOG_FILE=/tmp/out.log -e SEMGREP_VERSION_CACHE_PATH=/tmp/cache semgrep/semgrep:1.179.0@sha256:93963d9295a366f59e4850127b1550400ee7b388f04fe144e4a1f6325d96e01b semgrep
         args: ["--config", "auto", "--error", "--oss-only"]
         exclude: (^|/)tests/|^alembic/|^native/rust_ext/fuzz/|_test\.go$|^frontend/coverage-[^/]+/
         # pre-commit may split --all-files into several invocations. Running
@@ -134,14 +136,14 @@ repos:
         require_serial: true
 
   - repo: https://github.com/renovatebot/pre-commit-hooks
-    rev: 43.268.4 # ece9d8611e4e7da8cbcf7ea28039ec7928316032
+    rev: 44.142.1 # 79024b1a7a706341245d73344bf413ee29bf5013
     hooks:
       - id: renovate-config-validator
         args: [--strict]
         pass_filenames: false
 
   - repo: https://github.com/mxab/pre-commit-trivy
-    rev: v0.18.0
+    rev: v0.73.0
     hooks:
       - id: trivyfs-docker
         name: trivy-fs-scan

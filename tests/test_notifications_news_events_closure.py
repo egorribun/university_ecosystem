@@ -84,6 +84,11 @@ async def test_news_template_data_and_payload_filtering() -> None:
         patch.object(
             news_events, "_fetch_active_user_ids", AsyncMock(return_value=[uuid4()])
         ),
+        patch.object(
+            news_events,
+            "_unnotified_user_ids",
+            AsyncMock(side_effect=lambda _db, _key, candidate_ids: candidate_ids),
+        ),
         patch.object(news_events, "create_notifications_for_users", create),
     ):
         result = await news_events.notify_about_news(AsyncMock(), news, locale="en")
@@ -118,6 +123,11 @@ async def test_event_default_template_covers_optional_details() -> None:
         patch.object(
             news_events, "_fetch_active_user_ids", AsyncMock(return_value=[uuid4()])
         ),
+        patch.object(
+            news_events,
+            "_unnotified_user_ids",
+            AsyncMock(side_effect=lambda _db, _key, candidate_ids: candidate_ids),
+        ),
         patch.object(news_events, "create_notifications_for_users", create),
     ):
         result = await news_events.notify_about_event(AsyncMock(), event, locale="en")
@@ -145,6 +155,11 @@ async def test_event_template_mapping_and_empty_audience() -> None:
         patch.object(
             news_events, "_fetch_active_user_ids", AsyncMock(return_value=[uuid4()])
         ),
+        patch.object(
+            news_events,
+            "_unnotified_user_ids",
+            AsyncMock(side_effect=lambda _db, _key, candidate_ids: candidate_ids),
+        ),
         patch.object(news_events, "create_notifications_for_users", create),
     ):
         result = await news_events.notify_about_event(AsyncMock(), event, locale="ru")
@@ -171,3 +186,21 @@ async def test_event_template_mapping_and_empty_audience() -> None:
         patch.object(news_events, "_fetch_active_user_ids", AsyncMock(return_value=[])),
     ):
         assert await news_events.notify_about_event(AsyncMock(), event) == 0
+
+
+@pytest.mark.asyncio
+async def test_unnotified_user_ids_skips_dedupe_when_no_work_is_needed() -> None:
+    candidates = [uuid4(), uuid4()]
+    db = AsyncMock()
+    with patch.object(
+        news_events, "lock_notification_dedupe", new_callable=AsyncMock
+    ) as lock:
+        assert (
+            await news_events._unnotified_user_ids(db, None, candidates) == candidates
+        )
+        assert (
+            await news_events._unnotified_user_ids(db, "news.created:empty", []) == []
+        )
+
+    lock.assert_not_awaited()
+    db.execute.assert_not_awaited()

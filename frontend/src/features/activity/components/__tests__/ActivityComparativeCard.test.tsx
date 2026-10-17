@@ -9,6 +9,25 @@ import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 // sign-based trend branch (up / down / unchanged) and a NaN-guarded formatter.
 
 describe("ActivityComparativeCard", () => {
+  it("defaults both current and previous values to counts when format is omitted", async () => {
+    await renderWithRouter({
+      ui: () => (
+        <ActivityComparativeCard
+          label="Events"
+          current={12}
+          previous={9}
+          delta={100 / 3}
+          colorVar="var(--x)"
+        />
+      ),
+      authProvider: false,
+    })
+
+    expect(screen.getByText("12")).toBeVisible()
+    expect(screen.getByText("vs 9")).toBeVisible()
+    expect(screen.getByText("+33.3%")).toBeVisible()
+  })
+
   it("renders a positive delta as an up-trend", async () => {
     await renderWithRouter({
       ui: () => (

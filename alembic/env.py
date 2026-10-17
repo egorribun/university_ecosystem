@@ -20,13 +20,14 @@ from app.core.db.schema_drift import (
 )
 from app.core.config import Settings
 import app.models as models
+from app.core.db.retained_table_metadata import build_migration_metadata
 
 _settings = Settings(_allow_missing=True)
 config: Config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
-target_metadata = models.Base.metadata
+target_metadata = build_migration_metadata(models.Base.metadata)
 
 
 class _OfflineInspector:
@@ -86,9 +87,6 @@ def _offline_inspect(subject: Any, *args: Any, **kwargs: Any) -> Any:
         raise
 
 
-sa.inspect = _offline_inspect
-
-
 class _OfflineResult:
     """Mock result object for op.get_bind().execute() in Alembic offline mode."""
 
@@ -134,9 +132,6 @@ def _offline_get_bind(*args: Any, **kwargs: Any) -> Any:
     return bind
 
 
-_alembic_op.get_bind = _offline_get_bind
-
-
 def get_url() -> str:
     env_url = os.getenv("DATABASE_URL", "")
     if env_url:
@@ -162,8 +157,19 @@ def run_migrations_offline() -> None:
         transaction_per_migration=True,
         process_revision_directives=filter_check_backed_nullable_diffs,
     )
-    with context.begin_transaction():
-        context.run_migrations()
+
+    # Keep these offline compatibility shims scoped to the migration run. They
+    # replace process-global APIs and must not affect later Alembic contexts.
+    previous_inspect = sa.inspect
+    previous_get_bind = _alembic_op.get_bind
+    try:
+        sa.inspect = _offline_inspect
+        _alembic_op.get_bind = _offline_get_bind
+        with context.begin_transaction():
+            context.run_migrations()
+    finally:
+        sa.inspect = previous_inspect
+        _alembic_op.get_bind = previous_get_bind
 
 
 def _configure_context(connection: SyncConnection) -> None:

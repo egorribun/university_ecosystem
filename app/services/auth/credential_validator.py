@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import logging
-import secrets
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, NoReturn
 
 from fastapi import BackgroundTasks, Request, status
 
-from app.auth.security import verify_and_update_password
+from app.auth.security import verify_and_update_password, verify_dummy_password
 from app.core import metrics
 from app.core.logging import get_logger
 
@@ -87,7 +85,8 @@ class CredentialValidator:
             )
 
         if not user:
-            await asyncio.sleep(0.1 + (secrets.randbelow(100) / 1000.0))
+            # Equalise timing with the known-user path (no account enumeration).
+            await verify_dummy_password(password)
             await self._handle_invalid_user(normalized_email, request, locale, bg_tasks)
 
         verified, new_hash = await verify_and_update_password(
@@ -103,7 +102,15 @@ class CredentialValidator:
             )
 
         if new_hash:
-            await self.user_repo.update(user.id, {"hashed_password": new_hash})
+            upgraded = await self.user_repo.rehash_password_if_current(
+                user.id, expected_hash=str(user.hashed_password), new_hash=new_hash
+            )
+            if not upgraded:
+                # A password change/reset won the account lock after credential
+                # verification. Never restore the old credential through rehash.
+                from app.api.validation import raise_unauthorized
+
+                raise_unauthorized(locale, "errors.auth.credentials_invalid")
             await self.uow.commit()
 
         if await self.lockout_service.clear_failed_attempts(normalized_email) > 0:
@@ -126,7 +133,7 @@ class CredentialValidator:
         (
             lock_until,
             triggered,
-            attempts,
+            _,
         ) = await self.lockout_service.register_failed_attempt(email, None)
         self.audit.log(
             "auth.login.failure",
@@ -149,7 +156,9 @@ class CredentialValidator:
                 reason="lockout",
                 until=lock_until.isoformat(),
             )
-            await self._trigger_lockout_alert(email, "", lock_until, attempts, locale)
+            # This email is only an unverified login identifier, not a trusted
+            # account address; notifying it would let attackers send arbitrary
+            # lockout messages by submitting nonexistent accounts.
             from app.api.validation import raise_http_error
 
             raise_http_error(
@@ -214,9 +223,12 @@ class CredentialValidator:
                 reason="lockout",
                 until=lock_until.isoformat(),
             )
-            await self._trigger_lockout_alert(
-                email, user.full_name or "", lock_until, attempts, locale
-            )
+            # Do not send a security notification to an address the account has
+            # not proven it controls.
+            if getattr(user, "email_verified_at", None) is not None:
+                await self._trigger_lockout_alert(
+                    email, user.full_name or "", lock_until, attempts, locale
+                )
             from app.api.validation import raise_http_error
 
             raise_http_error(

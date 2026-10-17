@@ -1,7 +1,7 @@
-# syntax=docker/dockerfile:1.12
+# syntax=docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
 # Build stage
-FROM golang:1.26.6-alpine3.24@sha256:af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df AS builder
+FROM golang:1.26.9-alpine3.24@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS builder
 
 WORKDIR /app
 
@@ -37,8 +37,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # Build the health probe from checksum-verified source with the same patched Go
 # toolchain as the service. Upstream release binaries can lag behind Go and
 # transitive security patches even when the release itself is current.
-FROM golang:1.26.6-alpine3.24@sha256:af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df AS health-probe
-ARG GRPC_HEALTH_PROBE_VERSION=v0.4.51
+FROM golang:1.26.9-alpine3.24@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS health-probe
+ARG GRPC_HEALTH_PROBE_VERSION=v0.4.57
 ENV GOTOOLCHAIN=local
 WORKDIR /probe
 RUN probe_module="github.com/grpc-ecosystem/grpc-health-probe@${GRPC_HEALTH_PROBE_VERSION}" && \
@@ -52,10 +52,10 @@ RUN probe_module="github.com/grpc-ecosystem/grpc-health-probe@${GRPC_HEALTH_PROB
     cp -R "$(go env GOMODCACHE)/${probe_module}/." . && \
     chmod -R u+w . && \
     go get \
-      github.com/spiffe/go-spiffe/v2@v2.7.0 \
-      google.golang.org/grpc@v1.83.2 \
-      golang.org/x/net@v0.58.0 \
-      golang.org/x/text@v0.41.0 && \
+      github.com/spiffe/go-spiffe/v2@v2.9.0 \
+      google.golang.org/grpc@v1.84.0 \
+      golang.org/x/net@v0.60.0 \
+      golang.org/x/text@v0.42.0 && \
     go mod tidy && \
     CGO_ENABLED=0 GOOS=linux go build \
       -trimpath \
@@ -80,7 +80,7 @@ COPY --from=health-probe /grpc_health_probe /usr/local/bin/grpc_health_probe
 # the gRPC bind and causes the healthcheck to fail.
 COPY --from=builder /app/services/file-processor/schema.graphql ./schema.graphql
 
-USER nonroot:nonroot
+USER 65532:65532
 
 #checkov:skip=CKV_DOCKER_2:health is enforced by the Kubernetes probes and compose grpc-health-probe.
 

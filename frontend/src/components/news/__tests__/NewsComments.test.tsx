@@ -76,7 +76,7 @@ describe("NewsComments", () => {
     expect(addComment).toHaveBeenCalledWith("Looking forward to it!")
   })
 
-  it("does not submit whitespace and supports cancelling an empty edit", async () => {
+  it("keeps whitespace comments disabled and supports cancelling an empty edit", async () => {
     const user = userEvent.setup()
     const addComment = vi.fn()
     render(<NewsComments {...baseProps} addComment={addComment} />)
@@ -85,8 +85,7 @@ describe("NewsComments", () => {
     await user.type(textarea, "   ")
     const postButton = screen.getByRole("button", { name: "news:actions.postComment" })
     expect(postButton).toBeDisabled()
-    postButton.removeAttribute("disabled")
-    fireEvent.click(postButton)
+    await user.click(postButton)
     expect(addComment).not.toHaveBeenCalled()
 
     await user.click(screen.getAllByLabelText("news:actions.editComment")[0]!)

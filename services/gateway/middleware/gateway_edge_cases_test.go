@@ -46,7 +46,7 @@ import (
 // The middleware's token-extraction logic (auth.go:661-673) accepts only the
 // "Bearer <token>" scheme — anything else must result in 401.
 func TestValidate_MalformedAuthorizationHeader(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret, nil)
+	middleware := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 
 	malformedCases := []struct {
 		name   string
@@ -94,7 +94,7 @@ func TestValidate_MalformedAuthorizationHeader(t *testing.T) {
 // confirms that the error is mapped to 401 (not 200 or 500) and that the
 // response body surfaces the expected error context.
 func TestValidate_ExpiredJWT_Returns401(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret, nil)
+	middleware := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	router := createTestRouter(middleware.Validate(context.Background()))
 
 	// Mint a token that expired 1 hour ago.
@@ -151,7 +151,7 @@ func contains(s, substr string) bool {
 // rather than the header. If a future iteration adds WWW-Authenticate, this
 // test should be tightened to assert the header value as well.
 func TestValidate_ExpiredJWT_BodyIsJSON(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret, nil)
+	middleware := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	router := createTestRouter(middleware.Validate(context.Background()))
 
 	expiredClaims := Claims{
@@ -256,7 +256,7 @@ func TestCORSPreflight_ForbiddenOrigin(t *testing.T) {
 // to the malformed-header test so the full header-parsing decision tree is
 // visible in one place.
 func TestValidate_NoAuthorizationHeader_Returns401(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret, nil)
+	middleware := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	router := createTestRouter(middleware.Validate(context.Background()))
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)

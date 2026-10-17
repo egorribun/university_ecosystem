@@ -2,6 +2,7 @@ import { renderHook, act } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
+import { acceptBrowserSessionGeneration, getBrowserSessionGeneration } from "@/stores/sessionEpoch"
 import { cryptoWorker } from "@/utils/cryptoWorker"
 import {
   clearLegacySessionSigningKey,
@@ -31,8 +32,8 @@ describe("useSessionCrypto mutation contracts", () => {
   })
 
   afterEach(() => {
-    vi.useRealTimers()
     vi.restoreAllMocks()
+    vi.useRealTimers()
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
   })
@@ -309,7 +310,98 @@ describe("useSessionCrypto mutation contracts", () => {
     expect(postMessage).toHaveBeenCalledWith({
       type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
       sessionHash: "mock_pbkdf2",
+      sessionScope: expect.any(String),
     })
+  })
+
+  it("keeps the latest explicit signing key when cache hashes resolve out of order", async () => {
+    const storageKey = "ecosystem.session.generation.v1"
+    const previousGeneration = localStorage.getItem(storageKey)
+    localStorage.removeItem(storageKey)
+    acceptBrowserSessionGeneration()
+
+    const postMessage = vi.fn()
+    vi.stubGlobal("navigator", {
+      serviceWorker: { controller: { postMessage }, ready: undefined },
+    })
+    let resolveFirstHash!: (value: string) => void
+    let resolveLatestHash!: (value: string) => void
+    const firstHash = new Promise<string>((resolve) => {
+      resolveFirstHash = resolve
+    })
+    const latestHash = new Promise<string>((resolve) => {
+      resolveLatestHash = resolve
+    })
+    vi.mocked(cryptoWorker.pbkdf2).mockReturnValueOnce(firstHash).mockReturnValueOnce(latestHash)
+
+    const { result, unmount } = renderHook(() => useSessionCrypto())
+    let firstUpdate: Promise<void> | undefined
+    let latestUpdate: Promise<void> | undefined
+
+    try {
+      await act(async () => {
+        await Promise.resolve()
+      })
+      postMessage.mockClear()
+
+      await act(async () => {
+        firstUpdate = result.current.updateSessionSigningKey("signing-key-a")
+        latestUpdate = result.current.updateSessionSigningKey("signing-key-b")
+        resolveFirstHash("session-hash-a")
+        await firstUpdate
+      })
+
+      expect(result.current.sessionSigningKey).toBe("signing-key-b")
+      expect(result.current.sessionSigningKeyRef.current).toBe("signing-key-b")
+      expect(getBrowserSessionGeneration()).toBeNull()
+      expect(postMessage.mock.calls.map(([message]) => message)).toEqual([
+        { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
+        { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
+      ])
+
+      await act(async () => {
+        resolveLatestHash("session-hash-b")
+        await latestUpdate
+      })
+
+      const generationNonce = getBrowserSessionGeneration()
+      const storedGeneration = JSON.parse(localStorage.getItem(storageKey) ?? "null") as {
+        nonce: string
+        hash: string
+      } | null
+      expect(result.current.sessionSigningKey).toBe("signing-key-b")
+      expect(result.current.sessionSigningKeyRef.current).toBe("signing-key-b")
+      expect(result.current.isCurrentSigningSession()).toBe(true)
+      expect(generationNonce).not.toBeNull()
+      expect(storedGeneration).toEqual({
+        nonce: generationNonce,
+        hash: "session-hash-b",
+      })
+      expect(postMessage.mock.calls.map(([message]) => message)).toEqual([
+        { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
+        { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
+        {
+          type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
+          sessionHash: "session-hash-b",
+          sessionScope: `session-hash-b:${generationNonce}`,
+        },
+      ])
+      expect(cryptoWorker.pbkdf2).toHaveBeenCalledTimes(2)
+    } finally {
+      resolveFirstHash("session-hash-a")
+      resolveLatestHash("session-hash-b")
+      await act(async () => {
+        await Promise.allSettled(
+          [firstUpdate, latestUpdate].filter(
+            (update): update is Promise<void> => update !== undefined
+          )
+        )
+      })
+      unmount()
+      if (previousGeneration === null) localStorage.removeItem(storageKey)
+      else localStorage.setItem(storageKey, previousGeneration)
+      acceptBrowserSessionGeneration()
+    }
   })
 
   it("clears the cache and sends an explicit undefined key when the session is removed", async () => {
@@ -333,6 +425,40 @@ describe("useSessionCrypto mutation contracts", () => {
     ])
   })
 
+  it("does not create a session generation when purging without a signing key", async () => {
+    const storageKey = "ecosystem.session.generation.v1"
+    const previousGeneration = localStorage.getItem(storageKey)
+    localStorage.removeItem(storageKey)
+    acceptBrowserSessionGeneration()
+
+    const postMessage = vi.fn()
+    vi.stubGlobal("navigator", {
+      serviceWorker: { controller: { postMessage }, ready: undefined },
+    })
+    const { result, unmount } = renderHook(() => useSessionCrypto())
+
+    try {
+      await act(async () => {
+        await Promise.resolve()
+      })
+      postMessage.mockClear()
+
+      await act(async () => {
+        await result.current.sendSessionCacheUpdate(null, { purge: true, force: true })
+      })
+
+      expect(getBrowserSessionGeneration()).toBeNull()
+      expect(postMessage.mock.calls).toEqual([
+        [{ type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE }],
+        [{ type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY, sessionHash: undefined }],
+      ])
+    } finally {
+      unmount()
+      if (previousGeneration === null) localStorage.removeItem(storageKey)
+      else localStorage.setItem(storageKey, previousGeneration)
+      acceptBrowserSessionGeneration()
+    }
+  })
   it("synchronizes the empty session cache key on browser mount", async () => {
     const postMessage = vi.fn()
     vi.stubGlobal("navigator", {
@@ -344,11 +470,7 @@ describe("useSessionCrypto mutation contracts", () => {
       await Promise.resolve()
     })
 
-    expect(postMessage).toHaveBeenCalledTimes(1)
-    expect(postMessage).toHaveBeenCalledWith({
-      type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
-      sessionHash: undefined,
-    })
+    expect(postMessage).not.toHaveBeenCalled()
   })
 
   it("purges the previous cache before publishing a key from an explicit update", async () => {
@@ -372,6 +494,7 @@ describe("useSessionCrypto mutation contracts", () => {
         {
           type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
           sessionHash: "mock_pbkdf2",
+          sessionScope: expect.any(String),
         },
       ],
     ])
@@ -489,6 +612,7 @@ describe("useSessionCrypto mutation contracts", () => {
     expect(postMessage).toHaveBeenCalledWith({
       type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
       sessionHash: "mock_pbkdf2",
+      sessionScope: expect.any(String),
     })
   })
 
@@ -624,31 +748,45 @@ describe("useSessionCrypto mutation contracts", () => {
     }
   })
 
-  it("publishes the first exponential backoff delay and resets after its deadline", async () => {
-    vi.useFakeTimers()
-    vi.stubEnv("DEV", false)
-    const dispatchEvent = vi.spyOn(window, "dispatchEvent")
-    mocks.apiGet.mockRejectedValue(new Error("service unavailable"))
-    const { result } = renderHook(() => useSessionCrypto())
+  it.each([false, true])(
+    "suppresses requests until the backoff deadline (StrictMode: %s)",
+    async (reactStrictMode) => {
+      vi.useFakeTimers()
+      vi.stubEnv("DEV", false)
+      const dispatchEvent = vi.spyOn(window, "dispatchEvent")
+      mocks.apiGet.mockRejectedValue(new Error("service unavailable"))
+      const { result } = renderHook(() => useSessionCrypto(), { reactStrictMode })
 
-    await act(async () => {
-      await result.current.ensureSessionSigningKey()
-      await result.current.ensureSessionSigningKey()
-      await result.current.ensureSessionSigningKey()
-    })
+      await act(async () => {
+        await result.current.ensureSessionSigningKey()
+        await result.current.ensureSessionSigningKey()
+        await result.current.ensureSessionSigningKey()
+      })
 
-    const failureEvent = dispatchEvent.mock.calls
-      .map(([event]) => event)
-      .find((event): event is CustomEvent => event instanceof CustomEvent)
-    expect(failureEvent?.type).toBe("auth:session-crypto-failed")
-    expect(failureEvent?.detail).toEqual({ reason: "max_retries_exceeded", backoffMs: 5000 })
-    expect(result.current.signingKeyRetryCountRef.current).toBe(3)
+      const failureEvent = dispatchEvent.mock.calls
+        .map(([event]) => event)
+        .find((event): event is CustomEvent => event instanceof CustomEvent)
+      expect(failureEvent?.type).toBe("auth:session-crypto-failed")
+      expect(failureEvent?.detail).toEqual({ reason: "max_retries_exceeded", backoffMs: 5000 })
+      expect(mocks.apiGet).toHaveBeenCalledTimes(3)
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(5000)
-    })
-    expect(result.current.signingKeyRetryCountRef.current).toBe(0)
-  })
+      await act(async () => {
+        await expect(result.current.ensureSessionSigningKey()).resolves.toBeNull()
+        await vi.advanceTimersByTimeAsync(4999)
+        await expect(result.current.ensureSessionSigningKey()).resolves.toBeNull()
+      })
+      expect(mocks.apiGet).toHaveBeenCalledTimes(3)
+      expect(dispatchEvent).toHaveBeenCalledTimes(1)
+
+      mocks.apiGet.mockResolvedValue({ data: { signing_key: "recovered-key" } })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+        await expect(result.current.ensureSessionSigningKey()).resolves.toBe("recovered-key")
+      })
+      expect(mocks.apiGet).toHaveBeenCalledTimes(4)
+      expect(result.current.sessionSigningKey).toBe("recovered-key")
+    }
+  )
 
   it("doubles backoff on repeated circuit openings and caps it at one minute", async () => {
     vi.useFakeTimers()
@@ -657,51 +795,90 @@ describe("useSessionCrypto mutation contracts", () => {
     mocks.apiGet.mockRejectedValue(new Error("service unavailable"))
     const { result } = renderHook(() => useSessionCrypto())
 
-    // Each call is a fresh request after the previous promise settles. The
-    // fourth and later failures deliberately exercise the circuit-open path
-    // again, so the delay contract is observable without waiting in real time.
-    await act(async () => {
-      for (let attempt = 0; attempt < 9; attempt += 1) {
+    const delays = [5_000, 10_000, 20_000, 40_000, 60_000, 60_000, 60_000]
+    for (const [windowIndex, delay] of delays.entries()) {
+      await act(async () => {
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          await expect(result.current.ensureSessionSigningKey()).resolves.toBeNull()
+        }
+      })
+      expect(mocks.apiGet).toHaveBeenCalledTimes((windowIndex + 1) * 3)
+      expect(dispatchEvent).toHaveBeenCalledTimes(windowIndex + 1)
+      expect(dispatchEvent).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          type: "auth:session-crypto-failed",
+          detail: { reason: "max_retries_exceeded", backoffMs: delay },
+        })
+      )
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(delay - 1)
+        await expect(result.current.ensureSessionSigningKey()).resolves.toBeNull()
+      })
+      expect(mocks.apiGet).toHaveBeenCalledTimes((windowIndex + 1) * 3)
+      expect(dispatchEvent).toHaveBeenCalledTimes(windowIndex + 1)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+      })
+    }
+  })
+
+  it.each([null, "manual-key"])(
+    "resets a pending backoff on an explicit key update to %s",
+    async (key) => {
+      vi.useFakeTimers()
+      vi.stubEnv("DEV", false)
+      const dispatchEvent = vi.spyOn(window, "dispatchEvent")
+      mocks.apiGet.mockRejectedValue(new Error("service unavailable"))
+      const { result } = renderHook(() => useSessionCrypto())
+
+      await act(async () => {
         await result.current.ensureSessionSigningKey()
+        await result.current.ensureSessionSigningKey()
+        await result.current.ensureSessionSigningKey()
+      })
+      expect(vi.getTimerCount()).toBe(1)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000)
+        await result.current.updateSessionSigningKey(key)
+      })
+      expect(result.current.sessionSigningKey).toBe(key)
+      expect(vi.getTimerCount()).toBe(0)
+
+      if (key !== null) {
+        await expect(result.current.ensureSessionSigningKey()).resolves.toBe(key)
+        expect(mocks.apiGet).toHaveBeenCalledTimes(3)
+        await act(() => result.current.updateSessionSigningKey(null))
       }
-    })
 
-    const delays = dispatchEvent.mock.calls
-      .map(([event]) => event)
-      .filter((event): event is CustomEvent => event instanceof CustomEvent)
-      .map((event) => (event.detail as { backoffMs?: number }).backoffMs)
-    expect(delays).toEqual([5_000, 10_000, 20_000, 40_000, 60_000, 60_000, 60_000])
+      await act(async () => {
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          await expect(result.current.ensureSessionSigningKey()).resolves.toBeNull()
+        }
+      })
+      expect(mocks.apiGet).toHaveBeenCalledTimes(6)
+      const failureDelays = dispatchEvent.mock.calls
+        .map(([event]) => event)
+        .filter((event): event is CustomEvent => event.type === "auth:session-crypto-failed")
+        .map((event) => (event.detail as { backoffMs: number }).backoffMs)
+      expect(failureDelays).toEqual([5000, 5000])
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(60_000)
-    })
-    expect(result.current.signingKeyRetryCountRef.current).toBe(0)
-  })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4000)
+        await expect(result.current.ensureSessionSigningKey()).resolves.toBeNull()
+      })
+      expect(mocks.apiGet).toHaveBeenCalledTimes(6)
 
-  it("clears the previous circuit timer before opening a new backoff window", async () => {
-    vi.useFakeTimers()
-    vi.stubEnv("DEV", false)
-    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout").mockImplementation((handle) => {
-      if ((handle as unknown) === null) {
-        throw new Error("null timer handle must never be cleared")
-      }
-    })
-    mocks.apiGet.mockRejectedValue(new Error("service unavailable"))
-    const { result } = renderHook(() => useSessionCrypto())
-
-    await act(async () => {
-      await result.current.ensureSessionSigningKey()
-      await result.current.ensureSessionSigningKey()
-      await result.current.ensureSessionSigningKey()
-    })
-    expect(clearTimeoutSpy).not.toHaveBeenCalled()
-
-    await act(async () => {
-      await result.current.ensureSessionSigningKey()
-    })
-    expect(clearTimeoutSpy).toHaveBeenCalledTimes(1)
-    expect(clearTimeoutSpy).toHaveBeenCalledWith(expect.anything())
-  })
+      mocks.apiGet.mockResolvedValue({ data: { signing_key: "new-session-key" } })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000)
+        await expect(result.current.ensureSessionSigningKey()).resolves.toBe("new-session-key")
+      })
+      expect(mocks.apiGet).toHaveBeenCalledTimes(7)
+    }
+  )
 
   it("clears the pending backoff timer when the hook unmounts", async () => {
     vi.useFakeTimers()

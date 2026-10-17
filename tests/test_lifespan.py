@@ -7,7 +7,6 @@ from fastapi import FastAPI
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.lifespan import (
-    RuntimeFeatureOverrides,
     _handle_schema_and_extensions,
     _periodic_scheduler_loop,
     _prewarm_jwt_public_key_cache,
@@ -20,29 +19,6 @@ from app.core.lifespan import (
     lifespan,
 )
 from app.workers.outbox import OutboxWorker
-
-
-class TestRuntimeFeatureOverrides:
-    def test_resolve(self) -> None:
-        overrides = RuntimeFeatureOverrides()
-        # Default fallback: None in override, should return the default value passed
-        assert overrides.resolve("semantic_search_enabled", default=True) is True
-        assert overrides.resolve("semantic_search_enabled", default=False) is False
-
-        # Set override
-        overrides.semantic_search_enabled = True
-        assert overrides.resolve("semantic_search_enabled", default=False) is True
-
-        overrides.semantic_search_enabled = False
-        assert overrides.resolve("semantic_search_enabled", default=True) is False
-
-    def test_disable(self) -> None:
-        overrides = RuntimeFeatureOverrides()
-        overrides.disable("semantic_search_enabled")
-        assert overrides.semantic_search_enabled is False
-
-        with pytest.raises(AttributeError):
-            overrides.disable("non_existent_flag")
 
 
 @pytest.mark.asyncio
@@ -652,7 +628,6 @@ async def test_startup_background_workers_production() -> None:
     # 1. Success path (NATS connected)
     with (
         patch("app.core.lifespan.settings") as mock_settings,
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
         patch("app.core.lifespan.ensure_partitions_exist", new_callable=AsyncMock),
         patch(
             "app.core.lifespan.start_partition_management_scheduler",
@@ -688,7 +663,6 @@ async def test_startup_background_workers_production() -> None:
     mock_nats.is_connected = False
     with (
         patch("app.core.lifespan.settings") as mock_settings,
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
         patch("app.core.lifespan.ensure_partitions_exist", new_callable=AsyncMock),
         patch(
             "app.core.lifespan.start_partition_management_scheduler",
@@ -708,7 +682,7 @@ async def test_startup_background_workers_production() -> None:
         task_names = {t.get_name() for t in app2.state.background_tasks}
         assert "periodic_scheduler" in task_names
         assert "outbox_worker" in task_names
-        assert "nats_worker" not in task_names
+        assert "nats_worker" in task_names
 
         # Clean up tasks
         for t in app2.state.background_tasks:
@@ -721,7 +695,6 @@ async def test_startup_background_workers_production() -> None:
     app3.state.dishka_container = mock_container
     with (
         patch("app.core.lifespan.settings") as mock_settings,
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
         patch(
             "app.core.lifespan.ensure_partitions_exist",
             side_effect=Exception("partitions fail"),
@@ -1087,7 +1060,6 @@ async def test_lifespan_edge_cases_coverage() -> None:
             "app.core.lifespan.ensure_partitions_exist",
             side_effect=Exception("Partition error"),
         ),
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
     ):
         mock_settings.environment = "testing"
         mock_settings.partition_management_enabled = True
@@ -1155,11 +1127,11 @@ async def test_periodic_scheduler_loop_execution() -> None:
         patch("app.tasks.cleanups.cleanup_password_reset_tokens_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_email_change_tokens_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_mfa_challenges_task", AsyncMock()),
+        patch("app.tasks.cleanups.refresh_business_gauges_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_sessions_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_notifications_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_dead_letter_jobs_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_privacy_artifacts_task", AsyncMock()),
-        patch("app.tasks.cleanups.manage_partitions_task", AsyncMock()),
         patch("app.core.metrics.record_background_task_error") as mock_record,
     ):
         await _periodic_scheduler_loop()
@@ -1200,7 +1172,6 @@ async def test_prewarm_jwt_public_key_cache_error() -> None:
 async def test_startup_background_workers_partition_disabled() -> None:
     with (
         patch("app.core.lifespan.settings") as mock_settings,
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
     ):
         mock_settings.environment = "testing"
         mock_settings.embedded_cdc_outbox_worker_enabled = False
@@ -1231,7 +1202,6 @@ async def test_startup_background_workers_can_disable_embedded_outbox() -> None:
 
     with (
         patch("app.core.lifespan.settings") as mock_settings,
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
     ):
         mock_settings.environment = "production"
         # ``settings`` is a MagicMock, so every unset boolean reads
@@ -1255,7 +1225,6 @@ async def test_startup_background_workers_can_disable_embedded_outbox() -> None:
 async def test_startup_background_workers_production_env() -> None:
     with (
         patch("app.core.lifespan.settings") as mock_settings,
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
         patch("app.core.lifespan.ensure_partitions_exist", new_callable=AsyncMock),
         patch(
             "app.core.lifespan.start_partition_management_scheduler",
@@ -1336,11 +1305,11 @@ async def test_periodic_scheduler_loop_all_hours() -> None:
         patch("app.tasks.cleanups.cleanup_password_reset_tokens_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_email_change_tokens_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_mfa_challenges_task", AsyncMock()),
+        patch("app.tasks.cleanups.refresh_business_gauges_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_sessions_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_notifications_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_dead_letter_jobs_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_privacy_artifacts_task", AsyncMock()),
-        patch("app.tasks.cleanups.manage_partitions_task", AsyncMock()),
     ):
         await _periodic_scheduler_loop()
 
@@ -1353,11 +1322,11 @@ async def test_periodic_scheduler_loop_all_hours() -> None:
         patch("app.tasks.cleanups.cleanup_password_reset_tokens_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_email_change_tokens_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_mfa_challenges_task", AsyncMock()),
+        patch("app.tasks.cleanups.refresh_business_gauges_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_sessions_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_notifications_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_dead_letter_jobs_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_privacy_artifacts_task", AsyncMock()),
-        patch("app.tasks.cleanups.manage_partitions_task", AsyncMock()),
     ):
         await _periodic_scheduler_loop()
 
@@ -1423,7 +1392,6 @@ async def test_lifespan_warm_cache_testing() -> None:
 async def test_startup_background_workers_partition_enabled_testing_env() -> None:
     with (
         patch("app.core.lifespan.settings") as mock_settings,
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
         patch("app.core.lifespan.ensure_partitions_exist", new_callable=AsyncMock),
         patch(
             "app.core.lifespan.start_partition_management_scheduler",
@@ -1443,6 +1411,26 @@ async def test_startup_background_workers_partition_enabled_testing_env() -> Non
         await _startup_background_workers(mock_app)
         assert not hasattr(mock_app.state, "partition_stopper")
         mock_scheduler.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_lifespan_rejects_unsupported_cdc_before_startup_resources() -> None:
+    app = FastAPI()
+    with (
+        patch("app.core.lifespan.settings") as settings,
+        patch("app.core.lifespan._SCHEDULER_STOP") as scheduler_stop,
+        patch("app.core.lifespan._reset_closed_dishka_container") as reset,
+        patch("app.core.lifespan._startup_database_and_di", new=AsyncMock()) as startup,
+    ):
+        settings.embedded_cdc_outbox_worker_enabled = True
+
+        with pytest.raises(RuntimeError, match="CDC outbox transport is unsupported"):
+            async with lifespan(app):
+                pytest.fail("unsupported CDC must not enter the lifespan")
+
+        scheduler_stop.clear.assert_not_called()
+        reset.assert_not_called()
+        startup.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1484,7 +1472,6 @@ async def test_cdc_outbox_worker_replaces_the_polling_worker_when_enabled() -> N
         # test_cdc_safety.py and must reject this selection today.
         patch("app.core.lifespan.require_supported_cdc_transport"),
         patch("app.core.lifespan.settings") as mock_settings,
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
         patch(
             "app.core.lifespan.CdcOutboxWorker", return_value=mock_cdc
         ) as mock_cdc_cls,
@@ -1601,3 +1588,329 @@ async def test_shutdown_is_unaffected_when_no_cdc_worker_was_started() -> None:
         await _shutdown_subsystems(app)
 
     assert not hasattr(app.state, "cdc_outbox_worker")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("role", "expected"),
+    [("api", True), ("worker", False), ("outbox", False)],
+)
+async def test_startup_runs_spicedb_watch_only_in_api_processes(
+    role: str, expected: bool
+) -> None:
+    """ADR-020: the permission Watch stream belongs to request-serving processes."""
+    app = FastAPI()
+    app.state.dishka_container = AsyncMock()
+    nats = AsyncMock()
+    nats.is_connected = False
+
+    async def container_get(svc_type):
+        from app.core.nats_broker import NatsTaskBroker
+
+        return nats if svc_type == NatsTaskBroker else AsyncMock()
+
+    app.state.dishka_container.get.side_effect = container_get
+
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.spicedb_watch.start_permission_watch", new=AsyncMock()),
+    ):
+        mock_settings.environment = "production"
+        mock_settings.app_process_role = role
+        mock_settings.partition_management_enabled = False
+        mock_settings.embedded_outbox_worker_enabled = False
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
+
+        await _startup_background_workers(app)
+
+        names = {task.get_name() for task in app.state.background_tasks}
+        assert ("spicedb_watch" in names) is expected
+
+        for task in app.state.background_tasks:
+            task.cancel()
+        await asyncio.gather(*app.state.background_tasks, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_startup_attaches_dead_letter_queue_to_event_bus() -> None:
+    """Failed non-durable handlers must land in the DLQ instead of vanishing."""
+    from app.core.event_dlq import dead_letter_queue
+    from app.core.events import event_bus
+
+    app = FastAPI()
+    app.state.dishka_container = AsyncMock()
+    nats = AsyncMock()
+    nats.is_connected = False
+    app.state.dishka_container.get.return_value = nats
+    previous = event_bus._dlq
+
+    try:
+        with (
+            patch("app.core.lifespan.settings") as mock_settings,
+            patch("app.core.spicedb_watch.start_permission_watch", new=AsyncMock()),
+        ):
+            mock_settings.environment = "production"
+            mock_settings.app_process_role = "worker"
+            mock_settings.partition_management_enabled = False
+            mock_settings.embedded_outbox_worker_enabled = False
+            mock_settings.embedded_cdc_outbox_worker_enabled = False
+
+            await _startup_background_workers(app)
+
+            assert event_bus._dlq is dead_letter_queue
+            for task in app.state.background_tasks:
+                task.cancel()
+            await asyncio.gather(*app.state.background_tasks, return_exceptions=True)
+    finally:
+        event_bus._dlq = previous
+
+
+@pytest.mark.asyncio
+async def test_di_connect_timeout_yields_broker_and_lifespan_worker_reconnects() -> (
+    None
+):
+    """A startup timeout must leave the lifespan worker able to reconnect."""
+    from types import SimpleNamespace
+
+    from app.core.di.infrastructure import InfrastructureProvider
+    from app.core.events import event_bus
+    from app.core.nats_broker import NatsTaskBroker
+
+    broker = NatsTaskBroker()
+    jetstream = AsyncMock()
+    subscription = AsyncMock()
+    subscription.fetch.side_effect = asyncio.CancelledError()
+    subscribed = asyncio.Event()
+    scheduler_release = asyncio.Event()
+
+    async def pull_subscribe(*, subject: str, durable: str) -> AsyncMock:
+        assert broker._js is jetstream
+        subscribed.set()
+        return subscription
+
+    jetstream.pull_subscribe.side_effect = pull_subscribe
+    first_client = AsyncMock()
+    second_client = AsyncMock()
+    second_client.jetstream = MagicMock(return_value=jetstream)
+    first_client.connect.side_effect = TimeoutError("controlled startup timeout")
+    attempts = 0
+
+    async def legacy_connect_impl(*args: object, **kwargs: object) -> AsyncMock:
+        nonlocal attempts
+        attempts += 1
+        client = first_client if attempts == 1 else second_client
+        await client.connect(*args, **kwargs)
+        return client
+
+    legacy_connect = AsyncMock(side_effect=legacy_connect_impl)
+    previous_dlq = event_bus._dlq
+    app = FastAPI()
+    app.state.dishka_container = AsyncMock()
+    provider_generator = InfrastructureProvider().nats_broker()
+
+    async def idle_scheduler() -> None:
+        await asyncio.wait_for(scheduler_release.wait(), timeout=1)
+
+    try:
+        with (
+            patch("app.core.nats_broker.broker", broker),
+            patch("app.core.nats_broker.nats.connect", new=legacy_connect),
+            patch(
+                "app.core.nats_broker.NATS",
+                side_effect=[first_client, second_client],
+            ) as nats_factory,
+            patch("app.core.nats_broker._CONNECT_TIMEOUT_S", 0.01, create=True),
+            patch(
+                "app.core.nats_broker.settings",
+                SimpleNamespace(
+                    nats_url="nats://example.invalid",
+                    nats_auth_token="synthetic-token",
+                ),
+            ),
+            patch(
+                "app.core.config.settings",
+                SimpleNamespace(environment="production"),
+            ),
+        ):
+            provided_broker = await asyncio.wait_for(
+                provider_generator.__anext__(), timeout=1
+            )
+            assert provided_broker is broker
+            assert broker._nc is None
+            assert broker._js is None
+            first_client.close.assert_awaited_once()
+
+            app.state.dishka_container.get.return_value = provided_broker
+            with (
+                patch("app.core.lifespan.settings") as startup_settings,
+                patch("app.core.lifespan._periodic_scheduler_loop", idle_scheduler),
+            ):
+                startup_settings.environment = "production"
+                startup_settings.app_process_role = "worker"
+                startup_settings.partition_management_enabled = False
+                startup_settings.embedded_outbox_worker_enabled = False
+                startup_settings.embedded_cdc_outbox_worker_enabled = False
+                await asyncio.wait_for(_startup_background_workers(app), timeout=1)
+
+            worker_tasks = [
+                task
+                for task in app.state.background_tasks
+                if task.get_name() == "nats_worker"
+            ]
+            assert len(worker_tasks) == 1
+            await asyncio.wait_for(subscribed.wait(), timeout=1)
+            assert nats_factory.call_count + legacy_connect.await_count == 2
+            assert first_client.connect.await_count == 1
+            assert second_client.connect.await_count == 1
+            jetstream.pull_subscribe.assert_awaited_once_with(
+                subject="tasks.>", durable="python-worker"
+            )
+    finally:
+        scheduler_release.set()
+        tasks = list(getattr(app.state, "background_tasks", set()))
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        try:
+            if tasks:
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True), timeout=1
+                )
+        finally:
+            try:
+                await asyncio.wait_for(provider_generator.aclose(), timeout=1)
+            finally:
+                event_bus._dlq = previous_dlq
+
+    second_client.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_di_no_servers_error_yields_broker_for_worker_retry() -> None:
+    """A concrete NATS outage must not abort DI before the worker can retry."""
+    from types import SimpleNamespace
+
+    from nats.errors import NoServersError
+
+    from app.core.di.infrastructure import InfrastructureProvider
+    from app.core.nats_broker import NatsTaskBroker
+
+    broker = NatsTaskBroker()
+    client = AsyncMock()
+    client.connect.side_effect = NoServersError()
+
+    async def legacy_connect_impl(*args: object, **kwargs: object) -> AsyncMock:
+        await client.connect(*args, **kwargs)
+        return client
+
+    legacy_connect = AsyncMock(side_effect=legacy_connect_impl)
+    provider = InfrastructureProvider().nats_broker()
+
+    try:
+        with (
+            patch("app.core.nats_broker.broker", broker),
+            patch("app.core.nats_broker.nats.connect", new=legacy_connect),
+            patch("app.core.nats_broker.NATS", return_value=client) as nats_factory,
+            patch("app.core.nats_broker._CONNECT_TIMEOUT_S", 0.1, create=True),
+            patch(
+                "app.core.nats_broker.settings",
+                SimpleNamespace(
+                    nats_url="nats://example.invalid",
+                    nats_auth_token=None,
+                ),
+            ),
+            patch(
+                "app.core.config.settings",
+                SimpleNamespace(environment="production"),
+            ),
+        ):
+            provided = await asyncio.wait_for(provider.__anext__(), timeout=1)
+            assert provided is broker
+            assert nats_factory.call_count + legacy_connect.await_count == 1
+            client.close.assert_awaited_once()
+    finally:
+        await asyncio.wait_for(provider.aclose(), timeout=1)
+
+
+@pytest.mark.parametrize("shutdown", ["aclose", "cancel"])
+@pytest.mark.asyncio
+async def test_infrastructure_provider_closes_broker_on_generator_shutdown(
+    shutdown: str,
+) -> None:
+    from types import SimpleNamespace
+
+    from app.core.di.infrastructure import InfrastructureProvider
+
+    broker = AsyncMock()
+    provider = InfrastructureProvider().nats_broker()
+
+    with (
+        patch("app.core.nats_broker.broker", broker),
+        patch(
+            "app.core.config.settings",
+            SimpleNamespace(environment="testing"),
+        ),
+    ):
+        assert await provider.__anext__() is broker
+        if shutdown == "aclose":
+            await provider.aclose()
+        else:
+            with pytest.raises(asyncio.CancelledError):
+                await provider.athrow(asyncio.CancelledError)
+
+    broker.close.assert_awaited_once_with()
+
+
+@pytest.mark.parametrize(
+    "error_kind",
+    ["invalid_url", "authorization", "invalid_credentials", "bad_subject"],
+)
+async def test_di_propagates_permanent_nats_errors_before_yield(
+    error_kind: str,
+) -> None:
+    """Configuration/auth/API errors must not be treated as an outage."""
+    from types import SimpleNamespace
+
+    import nats.errors
+    from nats.aio.client import Client
+
+    from app.core.di.infrastructure import InfrastructureProvider
+    from app.core.nats_broker import NatsTaskBroker
+
+    if error_kind == "invalid_url":
+        # The pinned NATS client maps malformed URL ports to its generic Error.
+        with pytest.raises(nats.errors.Error) as parsed_error:
+            Client._parse_server_uri("nats://example.invalid:not-a-port")
+        assert type(parsed_error.value) is nats.errors.Error
+        error = parsed_error.value
+    else:
+        error_type = {
+            "authorization": nats.errors.AuthorizationError,
+            "invalid_credentials": nats.errors.InvalidUserCredentialsError,
+            "bad_subject": nats.errors.BadSubjectError,
+        }[error_kind]
+        error = error_type()
+
+    broker = NatsTaskBroker()
+    connect = AsyncMock(side_effect=error)
+    close = AsyncMock()
+    provider = InfrastructureProvider().nats_broker()
+
+    with (
+        patch("app.core.nats_broker.broker", broker),
+        patch.object(broker, "connect", new=connect),
+        patch.object(broker, "close", new=close),
+        patch(
+            "app.core.config.settings",
+            SimpleNamespace(environment="production"),
+        ),
+    ):
+        try:
+            with pytest.raises(type(error)) as raised_error:
+                await asyncio.wait_for(provider.__anext__(), timeout=0.5)
+            assert raised_error.value is error
+        finally:
+            # If a regression yields the broker, close the generator cleanly.
+            await asyncio.wait_for(provider.aclose(), timeout=0.5)
+
+    connect.assert_awaited_once_with()

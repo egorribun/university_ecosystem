@@ -1,4 +1,8 @@
-import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "@/app/pwaEvents"
+import {
+  PWA_REFRESH_EVENT,
+  dispatchServiceWorkerBootstrap,
+  type ServiceWorkerUpdateEventDetail,
+} from "@/app/pwaEvents"
 import { createTrustedScriptURL } from "@/utils/trustedTypes"
 import { logError } from "@/app/logger"
 import {
@@ -42,7 +46,11 @@ const requestQueueProcessing = (registration: ServiceWorkerRegistration) => {
 }
 
 export async function registerServiceWorker(path = "/sw.js") {
-  if (!("serviceWorker" in navigator)) return null
+  if (!("serviceWorker" in navigator)) {
+    dispatchServiceWorkerBootstrap("unsupported")
+    return null
+  }
+  const hadController = Boolean(navigator.serviceWorker.controller)
 
   try {
     const scriptUrl = createTrustedScriptURL(path)
@@ -106,17 +114,25 @@ export async function registerServiceWorker(path = "/sw.js") {
       })
     }
 
+    // A first install only begins controlling this already-current document;
+    // reloading here can discard a form the user started while precaching ran.
+    // Reload only when an existing controller is replaced by an update.
     let reloaded = false
+    let hasObservedController = hadController
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (reloaded) return
-      // Prevent infinite reload loop in E2E tests where SW is unregistered on every load
-      if (window.name === "__mock_api_initialized__") return
+      if (!hasObservedController) {
+        hasObservedController = true
+        return
+      }
       reloaded = true
       window.location.reload()
     })
 
+    dispatchServiceWorkerBootstrap("ready")
     return registration
   } catch (error) {
+    dispatchServiceWorkerBootstrap("failed")
     logError("Service worker registration failed", error)
     return null
   }

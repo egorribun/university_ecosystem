@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
@@ -229,6 +230,17 @@ def _write_universe(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
+    # Mutmut classifies an existing generated source as unmodified only when
+    # its mtime is strictly newer than the source. Pin that fixture relation
+    # explicitly instead of relying on filesystem timestamp resolution.
+    for name in ("example.py", "noop.py"):
+        source = tmp_path / "app" / name
+        generated = tmp_path / "mutants/app" / name
+        source_stat = source.stat()
+        os.utime(
+            generated,
+            ns=(source_stat.st_atime_ns, source_stat.st_mtime_ns + 1_000_000_000),
+        )
     (tmp_path / "mutants/mutmut-stats.json").write_text(
         json.dumps(
             {

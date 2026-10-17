@@ -22,12 +22,13 @@ const ITEMS: EventItem[] = [{ id: "a" }, { id: "b" }, { id: "c" }]
 // Default dispatch goes through a real <body>-attached element so the event
 // bubbles to the document listener with a proper HTMLElement target (the source
 // calls e.target.closest / e.target.tagName, which Document lacks in jsdom).
-function dispatchKey(key: string, target?: EventTarget) {
+function dispatchKey(key: string, target?: EventTarget): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", { key, bubbles: true })
   act(() => {
-    const event = new KeyboardEvent("keydown", { key, bubbles: true })
     const emitter = (target as Element | undefined) ?? document.body
     emitter.dispatchEvent(event)
   })
+  return event
 }
 
 describe("useEventsKeyboardNav", () => {
@@ -118,6 +119,22 @@ describe("useEventsKeyboardNav", () => {
     dispatchKey("Enter", select)
 
     expect(mockNavigateFn).not.toHaveBeenCalled()
+  })
+
+  it("leaves Enter activation to a focused button", () => {
+    const { result } = renderHook(() => useEventsKeyboardNav(ITEMS))
+    dispatchKey("j")
+
+    const button = document.createElement("button")
+    const icon = document.createElement("span")
+    button.appendChild(icon)
+    document.body.appendChild(button)
+
+    const event = dispatchKey("Enter", icon)
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(mockNavigateFn).not.toHaveBeenCalled()
+    expect(result.current.activeIndex).toBe(0)
   })
 
   it("ignores keydown when target is inside a [role='dialog'] (line 40)", () => {

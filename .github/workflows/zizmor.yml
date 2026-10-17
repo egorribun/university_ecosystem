@@ -50,6 +50,7 @@ jobs:
             "native/rust_ext/deny.toml"
             "zizmor.yml"
             "quality/ci-check-catalog.json"
+            "quality/security-false-positive-dispositions.json"
             "security/audit-allowlist.yaml"
           )
           changed=()

@@ -31,14 +31,14 @@ interface GroupInfoPanelProps {
 }
 
 const USERS_PAGE_LIMIT = 10
-const MIN_SEARCH_LENGTH = 1
+const MIN_SEARCH_LENGTH = 2
 
 /** Keep the user-search gate explicit and independently contract-testable. */
 export const shouldSearchGroupUsers = (
   open: boolean,
   showAddSearch: boolean,
   query: string
-): boolean => open && showAddSearch && query.length > MIN_SEARCH_LENGTH
+): boolean => open && showAddSearch && Array.from(query.trim()).length >= MIN_SEARCH_LENGTH
 
 /**
  * Wave 211 G4 (SW10) — group info / member-management panel. Mirrors
@@ -105,10 +105,10 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
 
   // Add-member search — exclude existing members from the results.
   const { data: searchResults = [], isLoading: searchLoading } = useQuery({
-    queryKey: ["users", debouncedSearch],
+    queryKey: ["users", "search", debouncedSearch],
     queryFn: async () => {
       const response = await client.get<User[]>(
-        `/users?limit=${USERS_PAGE_LIMIT}&search=${encodeURIComponent(debouncedSearch)}`
+        `/users?limit=${USERS_PAGE_LIMIT}&full_name=${encodeURIComponent(debouncedSearch)}`
       )
       // TanStack Query requires query functions to resolve a defined value;
       // treat a malformed/empty API payload as an empty result set instead of
@@ -251,7 +251,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                     </div>
                     {!searchLoading &&
                       addableResults.length === 0 &&
-                      search.length > MIN_SEARCH_LENGTH && (
+                      Array.from(search.trim()).length >= MIN_SEARCH_LENGTH && (
                         <p className="px-2 py-3 text-center text-xs font-medium text-(--text-secondary) opacity-medium">
                           {t("messenger:noUsersFound")}
                         </p>

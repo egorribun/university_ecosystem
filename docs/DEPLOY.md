@@ -12,25 +12,34 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Чтобы передать идентификатор релиза в Sentry, задайте `VITE_APP_RELEASE`. Значение подставляется на этапе сборки.
 - Для включения клиентского мониторинга ошибок задайте `VITE_SENTRY_DSN` и, при необходимости, `VITE_ENVIRONMENT`. В дев-сборке SDK автоматически не активируется.
 - Логгер на фронтенде (`src/app/logger.ts`) автоматически отправляет `logError`/`logWarning` в Sentry и дублирует вывод в консоль. Необработанные `Promise`/`axios` ошибки перехватываются глобальными хендлерами (`initGlobalErrorHandlers()` вызывается в `src/main.tsx`).
-- Чтобы собирать Web Vitals, установите `VITE_ENABLE_WEB_VITALS=true`. При необходимости отправляйте метрики на собственный эндпоинт через `VITE_WEB_VITALS_ENDPOINT` (иначе они пишутся в консоль). Флаг игнорируется в dev/test средах, поэтому CI не упадёт даже при включённой переменной.
-- Release-blocking полевые Core Web Vitals сертифицируются отдельно workflow
-  `cwv-field-certification.yml`. URL exporter выводится только из проверенных,
-  привязанных к SHA staging deployment metadata; отдельный export URL не
-  принимается. Exporter обязан проверять GitHub OIDC audience
-  `university-cwv-exporter`, repository, protected `main` ref и environment
-  `staging`, а затем возвращать только наблюдения точных `release_sha`, frontend
-  image digest и deploy run/attempt. Поддерживаемый collector contract:
-  `web-vitals` 6.1.1 и exporter schema version `1`. Deploy workflow создаёт
-  неизменяемый `staging-deployment-<sha>` artifact только после rollout, smoke и
-  Kyverno-проверок. Сертификация принимает его по точному run ID/attempt,
-  отклоняет старое/частичное/чужое evidence, проверяет p75 LCP/INP/CLS и публикует
-  SHA-bound artifact с build-provenance attestation. Ручная загрузка отчёта не
-  является допустимым источником release evidence.
+- Для отдельной диагностики Web Vitals можно при сборке задать `VITE_ENABLE_WEB_VITALS=true` и, при необходимости, `VITE_WEB_VITALS_ENDPOINT`; без эндпоинта метрики пишутся в консоль. Canonical MVP release image задаёт endpoint `/api/v1/cwv`, но отключает сбор через `VITE_ENABLE_WEB_VITALS=false` и `VITE_CWV_TRUSTED_RUM=false`.
+- Field Core Web Vitals (field CWV) и их сертификация находятся вне MVP: приёмка
+  не использует внешнее staging/production или измерения на реальных устройствах,
+  а canonical release frontend не включает сбор field CWV. Для MVP применяются
+  локальные Lighthouse/CI проверки и текущие Compose/Core-проверки. Полная
+  приёмка опубликованных образов в kind остаётся планом v1.1 и не является
+  текущим сертификатом. Ручная сертификация в `cwv-field-certification.yml` и
+  production-only certificate guard остаются для будущих внешних развёртываний;
+  они не являются предусловием выпуска `v1.0.0`.
 - Backend и фронтенд должны работать по HTTPS, иначе браузер заблокирует загрузку `/static` и `/storage`.
 - Для лимитирования запросов настройте backend с помощью `RATE_LIMIT_STORAGE_BACKEND` и `RATE_LIMIT_STORAGE_URI`. Значение `redis` и URI, полученный из защищённого хранилища через переменные окружения, включает общий сторедж для middleware и чувствительных эндпоинтов; не помещайте учётные данные в URL или историю shell. Установите `memory` или `memory://` для простого однопроцессного режима без внешнего Redis.
 - Хранилище отзыва сессий обязано быть единым и выделенным для всех сервисов: backend, gateway и ws-hub используют только `REVOCATION_REDIS_URL`. В штатных Compose/Helm-конфигурациях это отдельный Redis/Valkey с AOF, персистентным томом и `maxmemory-policy noeviction`; кэш (`CACHE_REDIS_URL`) и rate-limit Redis (`REDIS_URL`, DB 3) не являются источниками security-state. Совместное использование cache/rate-limit процесса запрещено: вытеснение `revoked:jti:*` может повторно сделать отозванный JWT действительным.
 - Для продакшена есть override (`docker-compose.prod.yml`) с обязательными секретами. <!-- pragma: allowlist secret --> Создайте Compose-секреты `secret_key`, `database_url` и `nats_auth_token`, а путь к файлу пароля PostgreSQL передайте через `POSTGRES_PASSWORD_SOURCE_FILE`. Значение `database_url` должно указывать на `postgresql+asyncpg://...@pgbouncer:5432/university`. Затем запускайте `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d`, явно задав `FRONTEND_ORIGIN` и `FRONTEND_ORIGINS`; Go overlay обязателен, потому что Caddy направляет API и WebSocket-трафик через gateway/ws-hub.
 - Helm chart читает подключения из заранее созданного Secret `university-connections` (полный список ключей приведён в `charts/university-ecosystem/values.yaml`). <!-- pragma: allowlist secret --> В production обязательно задайте `applicationSecrets.existingSecret`; этот Secret должен содержать JWT/RSA-ключи, отдельные HMAC/интеграционные секреты, S3 credentials (ключи `minio-access-key`/`minio-secret-key`) и Temporal API key, перечисленные там же. Production-render отклоняет plaintext S3, Temporal, gRPC и OTLP. Так секреты не попадают в Helm release state, а небезопасная конфигурация не доходит до кластера.
+
+В Kubernetes chart передаёт значения Secret backend, outbox worker, migration Job,
+gateway, ws-hub и file-processor как projected files. Каждый workload получает
+только используемые им ключи в `items`; файлы доступны по пути
+`/run/secrets/<secret-name>/<key>` через read-only mount с режимом `0440`.
+Переменные `*_FILE` указывают на эти пути; `JWT_PRIVATE_KEY_PATH` backend также указывает на файл ключа в этом mount. Приложения читают настроенные файлы
+при старте; отсутствующий или некорректный настроенный файл завершает запуск
+ошибкой, без перехода к plain environment fallback. Существующие plain env
+настройки остаются поддержаны в Compose. После обновления Secret используйте
+контролируемый restart/rollout, чтобы процессы загрузили новые значения.
+
+Для PostgreSQL scaler KEDA `TriggerAuthentication` берёт параметр `connection`
+из Secret, заданного `connections.existingSecret`, по ключу
+`connections.kedaPostgresqlURLKey`.
 
 ## Локальный Docker: режимы ресурсов
 
@@ -69,8 +78,8 @@ GitHub Environment `APPLICATION_EXTERNAL_SECRET_NAME`. Указанный
 Наблюдение за Deployment дополнительно требует `get/list/watch/patch`.
 Workflow проверяет эти права до мутаций и принудительно запускает reconciliation,
 ждёт condition `Ready`, новое `status.refreshTime` и изменение
-`resourceVersion` целевого Secret, после чего сверяет каждый фактически
-отрендеренный Helm `secretKeyRef` до upgrade.
+`resourceVersion` целевого Secret. До upgrade он проверяет имена Secret и
+необходимые наборы ключей из отрендеренного `deploymentContract`.
 
 Порядок безопасной ротации:
 
@@ -199,14 +208,17 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
 
 ### Офлайн-режим PWA
 
-- Service Worker кеширует SPA-shell (`_shell.html`) и выдаёт его для любых SPA-навигаций при
-  отсутствии сети; если shell недоступен, отдаётся `offline.html` из precache.
-- Запросы к API для расписания, новостей и событий (`/api/schedule`, `/api/news`,
-  `/api/events`) работают по стратегии stale-while-revalidate: при сбое сети
-  возвращаются сохранённые ответы, а при их отсутствии — пустые офлайн-плейсхолдеры
-  с заголовками `X-Offline-Fallback`/`X-Offline-Resource`.
-- Эндпоинты медиа/статических файлов остаются в NetworkFirst с ограничением размера кеша
-  (24 часа, до 200 записей).
+- При ошибке сетевой навигации Service Worker возвращает precache SPA-shell
+  (`_shell.html`); если shell недоступен, обработчик возвращает ошибку. Отдельную
+  страницу `offline.html` можно открыть напрямую, но это не навигационный fallback.
+- Кешируемые GET-запросы в `/api/` используют NetworkFirst-кеш в области текущей
+  сессии только после подтверждения её Service Worker. Предел — 100 записей и один
+  час; запросы без подтверждённой идентичности и с `no-store` идут в сеть без этого
+  кеша. Worker не создаёт пустые API-плейсхолдеры и заголовки
+  `X-Offline-Fallback`/`X-Offline-Resource`.
+- Ресурсы `/static/` используют StaleWhileRevalidate (100 записей, семь дней).
+  Для явных `/media/` действуют правила публичного или приватного кеша сессии,
+  а обычные изображения используют CacheFirst (200 записей, 30 дней).
 - Интерактивная карта и её lazy-чанки MapLibre намеренно не входят в install-time precache:
   это удерживает манифест ниже консервативного лимита CacheStorage. Offline-shell и
   общая fallback-страница остаются доступными без сети; маршрут карты (включая
@@ -347,6 +359,56 @@ server {
 
 > Для браузера предпочтителен same-origin edge. `BACKEND_ORIGIN` предназначен для runtime SSR, а `VITE_BACKEND_ORIGIN` — только build-time fallback; внутренние service DNS нельзя публиковать в клиентский bundle.
 
+## Часовой пояс кампуса
+
+`CAMPUS_TIMEZONE` задаёт часовой пояс IANA для повторяющихся занятий,
+напоминаний и экспорта календаря; значение по умолчанию — `UTC`.
+В Compose задайте его в `.env.docker`, в Helm — в
+`backend.env.CAMPUS_TIMEZONE`. Сервер рассчитывает даты занятий по часовому
+поясу кампуса, браузер форматирует полученные моменты времени для отображения.
+
+## Настройка доверия к proxy IP для rate limit
+
+Код rate limit использует forwarded-заголовки только при явной настройке
+непосредственного peer и цепочки proxy. В Compose GATEWAY_TRUSTED_PROXIES
+задаёт точные адреса proxy, видимые Gateway, WS_HUB_TRUSTED_PROXIES — адреса,
+видимые ws-hub, а backend получает TRUSTED_PROXIES из .env.docker. Полный
+Compose-стек использует динамические адреса общих сетей, а
+scripts/live_stand.py не обнаруживает адреса proxy. Не доверяйте всей сети
+public или широкой private-сети. Задавайте адреса по фактической топологии и
+обновляйте настройки при их изменении. Если перед Caddy стоит внешний
+балансировщик, настройте доверие Caddy только к его реальным адресам и
+проверьте очищенную forwarded-цепочку.
+
+В Helm задайте gateway.config.trustedProxies и wsHub.config.trustedProxies по
+реальным адресам/CIDR ingress. В backend.env.TRUSTED_PROXIES задайте Gateway и
+только те upstream hops, которые остаются в очищенной цепочке. NetworkPolicy
+ограничивает доступ, но не настраивает доверие приложения к заголовкам.
+Не используйте предполагаемые адреса или CIDR всего кластера/private-сети.
+Staging values намеренно не содержат предположительных внешних адресов. В
+staging/production Helm render проверяет значения `trustedProxies` для каждого
+включённого Ingress-маршрута к Gateway или ws-hub. Перед проверкой длина CIDR
+префикса нормализуется, включая запись с ведущими нулями. Render завершается
+ошибкой, если после нормализации список пуст или содержит только loopback,
+универсальный маршрут `/0`, любую половину IPv6 `/1`, полный RFC1918-блок или
+суперсеть, покрывающую `10.0.0.0/8`, `172.16.0.0/12` или `192.168.0.0/16`,
+полный IPv6 ULA-блок `fc00::/7` или суперсеть, покрывающую его, либо полный блок
+IPv6 Global Unicast `2000::/3` или суперсеть, покрывающую его (см. [реестр
+адресного пространства IPv6 IANA](https://www.iana.org/assignments/ipv6-address-space/)),
+IPv4-mapped диапазон, покрывающий все IPv4 адреса, либо IPv4-mapped peer вне
+loopback. Для mapped non-loopback peer задавайте native IPv4 адрес или CIDR.
+IPv4-mapped `127.0.0.0/8` считается loopback: сам по себе он не удовлетворяет
+требованию non-loopback peer, но может сосуществовать с отдельным допустимым
+non-loopback адресом. Более узкие private IPv4 и IPv6 CIDR остаются допустимыми;
+произвольного минимального размера подсети нет.
+
+Эта fail-closed проверка валидирует входные значения, но не обнаруживает и не
+подтверждает текущую топологию или фактические source IP ingress. Оператор должен
+получить реальные peers из конфигурации развертывания. Адреса TEST-NET и IPv6
+documentation prefixes в contract tests являются только тестовыми фикстурами и
+не предназначены для deployment. Для development и direct-mode render диапазоны
+ingress proxy не требуются.
+
 ## Системные зависимости backend
 
 - Для серверной проверки контента файлов используется `python-magic`, поэтому на хостах с backend нужно установить пакеты `libmagic` (например, `apt install libmagic1 libmagic-dev` для Debian/Ubuntu или `apk add file` в Alpine).
@@ -363,18 +425,20 @@ server {
 ## Notifications worker
 
 - Для корректной отправки push-уведомлений запустите отдельный воркер: `python -m app.workers.notifications`.
-- При запуске API и воркера в разных процессах выключите встроенный планировщик в API, установив `NOTIFICATIONS_SCHEDULER_INLINE_ENABLED=false`.
 - Воркер публикует здоровье и метрики Prometheus на `http://<host>:9101/healthz` и `http://<host>:9101/metrics` (порт можно изменить через `NOTIFICATIONS_WORKER_METRICS_PORT`).
 - В docker-compose уже добавлен сервис `notifications-worker` с политикой перезапуска `unless-stopped`.
-- Задания из dead-letter очереди автоматически удаляются по истечении 30 дней (управляется `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`). Периодичность проверки задаётся `NOTIFICATION_QUEUE_DEAD_LETTER_CLEANUP_INTERVAL_SECONDS` (минимум 300 секунд; значение `0` отключает планировщик).
+- Задания из dead-letter очереди автоматически удаляются по истечении 30 дней (управляется `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`).
 
-## Очистка сессий пользователей
+## Расписание периодической очистки
 
-- API автоматически удаляет устаревшие записи из `active_sessions` при старте и затем каждые 15 минут.
-- Частоту можно изменить переменной `SESSION_CLEANUP_INTERVAL_SECONDS` (минимум 30 секунд). Значение `0` выключает фоновой планировщик; при этом скрипт очистки можно запускать вручную, вызвав `python -m app.services.session_cleanup` внутри контейнера/виртуального окружения.
+API запускает один почасовой планировщик (`app/core/lifespan.py::_periodic_scheduler_loop`; стартовый джиттер 0–60 с разносит нагрузку при rolling deploy). Периодичность задана в коде и не настраивается для отдельных задач:
 
-## Очистка MFA-челленджей
+| Периодичность | Задачи |
+|---|---|
+| каждый час | истёкшие stories, устаревшие токены сброса пароля, токены смены e-mail, MFA-челленджи, продуктовые gauge (активные пользователи, MFA) |
+| каждые 6 часов | истёкшие и отозванные сессии |
+| ежедневно в 02:00 UTC | устаревшие уведомления, задания notification-queue из dead-letter, privacy-артефакты (и CWV-наблюдения) |
 
-- Утилита `cleanup_stale_mfa_challenges` удаляет записи, у которых и срок действия, и отметка `consumed_at` старше `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`.
-- Планировщик запускается каждые 10 минут по умолчанию (`MFA_CHALLENGE_CLEANUP_INTERVAL_SECONDS`, минимум 30 секунд). Значение `0` отключает фоновой цикл, но задачу можно запускать вручную через `python -m app.services.mfa_challenge_cleanup`.
-- Рекомендуется выдерживать интервал 5–10 минут, чтобы база не разрасталась и не блокировала логин-формы. Следите за метриками `periodic_task_mfa_challenge_cleanup_runs_total`, `_errors_total` и `_deleted_total`, чтобы замечать аномальные пики или ошибки очистки.
+Окна хранения настраиваются (`NOTIFICATIONS_RETENTION_DAYS`, `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`, `PASSWORD_RESET_CLEANUP_RETENTION_MINUTES`, `EMAIL_CHANGE_CLEANUP_RETENTION_MINUTES`, `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`, `SESSION_RETENTION_DAYS`, ...). Каждую задачу можно запустить вручную, например `python -m app.services.session_cleanup` или `python -m app.services.mfa_challenge_cleanup`. Следите за метриками `periodic_task_*_runs_total`, `_errors_total` и `_deleted_total`.
+
+Отзыв сессий (logout, `/auth/sessions/*`) удаляет строки в БД сразу; после обновления с релиза, где строки только помечались отозванными, один раз запустите очистку сессий, чтобы `/auth/sessions` и операторские дашборды были согласованы.

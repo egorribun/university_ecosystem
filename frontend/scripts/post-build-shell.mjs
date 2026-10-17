@@ -10,13 +10,10 @@
 //      `transformIndexHtml`, which TanStack Start's spa shell skips
 //      because it generates the HTML via React SSR. Re-implementing
 //      here prevents a flash of invisible text.
-//   2. Inject CSP nonce placeholders. The `withStrictCspNonce` Vite plugin
-//      also binds to
-//      `transformIndexHtml` and thus does not fire on the React-SSR
-//      shell). Adds `nonce="__CSP_NONCE__"` to every `<script>` tag in
-//      the shell so the FastAPI CSP middleware can swap in a per-
-//      request nonce, preserving the strict-dynamic CSP posture from
-//      DEBT-05 (audit 2026-03-06).
+//   2. Keep nonce placement at trusted script creation. TanStack's SSR
+//      renderer receives the per-request nonce through RouterOptions.ssr;
+//      this script does not rewrite rendered markup. The explicitly
+//      controlled not-found script receives a nonce marker below.
 //   3. Replace the VITE_LHCI placeholder. The visibility CSS keeps the
 //      static shell measurable without introducing a synthetic diagnostic
 //      element into Lighthouse's largest-contentful-paint candidate set.
@@ -33,10 +30,11 @@ import path from "node:path"
 import process from "node:process"
 
 import { renderNotFoundPage } from "./not-found-page.mjs"
+import { CSP_NONCE_PLACEHOLDER } from "./server-csp.mjs"
 
 const FONT_PRELOAD_PATTERN = /^(inter-cyrillic-wght-normal-|outfit-latin-wght-normal-)[^/]*\.woff2$/
 
-const CSP_NONCE_PLACEHOLDER = "__CSP_NONCE__"
+const NOT_FOUND_SCRIPT_TAG = '<script type="module" src="/not-found-i18n.js" defer></script>'
 
 function findShellHtml(cwd) {
   // Prefer Nitro's canonical output, then support the active Vite fallback.
@@ -61,19 +59,16 @@ function findCriticalFontFiles(assetsDir) {
     .sort()
 }
 
-function injectCspNoncePlaceholders(html) {
-  // PERF-W16-02 / DEBT-05 — every `<script>` tag without an existing
-  // `nonce=` attribute gets a `__CSP_NONCE__` placeholder. The FastAPI
-  // CSP middleware (`app/core/policies/csp.py`) replaces this placeholder
-  // per-request with a base64 nonce that matches the response's
-  // Content-Security-Policy header, enabling strict-dynamic CSP.
-  // dotAll (s) flag handles multi-line script attributes.
-  return html.replace(/<script\b(?![^>]*\bnonce=)[^>]*>/gis, (tag) => {
-    const insertion = tag.indexOf("<script") + "<script".length
-    const before = tag.slice(0, insertion)
-    const after = tag.slice(insertion)
-    return `${before} nonce="${CSP_NONCE_PLACEHOLDER}"${after}`
-  })
+function markNotFoundTrustedScript(html) {
+  const first = html.indexOf(NOT_FOUND_SCRIPT_TAG)
+  if (first < 0 || html.indexOf(NOT_FOUND_SCRIPT_TAG, first + NOT_FOUND_SCRIPT_TAG.length) >= 0) {
+    throw new Error("Expected exactly one controlled not-found translation script")
+  }
+  return html.replace(
+    NOT_FOUND_SCRIPT_TAG,
+    `<script nonce="${CSP_NONCE_PLACEHOLDER}" type="module" ` +
+      'src="/not-found-i18n.js" defer></script>'
+  )
 }
 
 function injectFontPreloads(html, fontFiles) {
@@ -137,7 +132,7 @@ const safeCopyFileSync = (src, dest) => {
 
 function writeNotFoundPage(outputDir) {
   const notFoundPath = path.join(outputDir, "not-found.html")
-  safeWriteFileSync(notFoundPath, renderNotFoundPage())
+  safeWriteFileSync(notFoundPath, markNotFoundTrustedScript(renderNotFoundPage()))
   return notFoundPath
 }
 
@@ -147,7 +142,7 @@ function main() {
   if (!shellPath) {
     console.warn(
       "Post-build: no spa shell HTML found in .output/public/ or dist/. " +
-        "Skipping font preload + CSP + LHCI replacements."
+        "Skipping font preload + LHCI replacements."
     )
     return
   }
@@ -158,7 +153,6 @@ function main() {
 
   let html = readFileSync(shellPath, "utf8")
   const originalSize = html.length
-  html = injectCspNoncePlaceholders(html)
   html = injectFontPreloads(html, fontFiles)
   html = applyLhciReplacements(html, isLHCI)
   html = markStaticSpaShell(html)

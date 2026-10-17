@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-// Mock the generated SDK so the api/mfa wrappers run against canned responses
-// (no MSW / contract validator needed — per the api-logic batch guidance).
+// Mock the generated SDK and configured API client so wrappers run against canned
+// responses (no MSW / contract validator needed — per the api-logic batch guidance).
 vi.mock("@/api/generated", () => ({
   confirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost: vi.fn(),
   deletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDelete: vi.fn(),
@@ -14,10 +14,14 @@ vi.mock("@/api/generated", () => ({
   startEmailMfaEnablementApiV1AuthMfaEmailEnablePost: vi.fn(),
   startEmailVerificationApiV1AuthMfaEmailVerificationStartPost: vi.fn(),
   startTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost: vi.fn(),
-  verifyMfaChallengeApiV1AuthMfaVerifyPost: vi.fn(),
+}))
+
+vi.mock("@/api/client", () => ({
+  default: { post: vi.fn() },
 }))
 
 import * as gen from "@/api/generated"
+import api from "@/api/client"
 import {
   confirmTotpEnrollment,
   deletePendingTotpEnrollment,
@@ -116,14 +120,39 @@ describe("api/mfa — TOTP enrollment wrappers", () => {
 
 describe("api/mfa — verify + step-up wrappers", () => {
   it("verifyMfaChallenge posts the payload and returns the token bundle", async () => {
-    const payload = { challenge_id: "c1", code: "654321" } as never
+    const payload = {
+      challenge_token: "challenge-token",
+      code: "654321",
+      method: "totp",
+    } as const
     const token = { access_token: "jwt", token_type: "bearer" }
-    vi.mocked(gen.verifyMfaChallengeApiV1AuthMfaVerifyPost).mockResolvedValue(ok(token) as never)
+    const response = ok(token)
+    vi.mocked(api.post).mockResolvedValue(response as never)
 
-    await expect(verifyMfaChallenge(payload)).resolves.toEqual(token)
-    expect(gen.verifyMfaChallengeApiV1AuthMfaVerifyPost).toHaveBeenCalledWith({
-      body: payload,
-      throwOnError: true,
+    const result = await verifyMfaChallenge(payload)
+
+    expect(result).toBe(token)
+    expect(api.post).toHaveBeenCalledTimes(1)
+    expect(api.post).toHaveBeenCalledWith("/auth/mfa/verify", payload, {
+      skipRateLimitQueue: true,
+    })
+  })
+
+  it("propagates a rate-limit rejection from MFA verification", async () => {
+    const payload = {
+      challenge_token: "challenge-token",
+      code: "654321",
+      method: "email_otp",
+    } as const
+    const rateLimitError = Object.assign(new Error("Rate limited"), {
+      response: { status: 429 },
+    })
+    vi.mocked(api.post).mockRejectedValueOnce(rateLimitError as never)
+
+    await expect(verifyMfaChallenge(payload)).rejects.toBe(rateLimitError)
+    expect(api.post).toHaveBeenCalledTimes(1)
+    expect(api.post).toHaveBeenCalledWith("/auth/mfa/verify", payload, {
+      skipRateLimitQueue: true,
     })
   })
 

@@ -427,14 +427,14 @@ async def test_get_session_backend_null_in_testing(monkeypatch):
 
     monkeypatch.setattr(settings, "session_storage_backend", "memory")
     backend = await get_session_backend()
-    # NullSessionBackend.is_session_valid always returns True
+    # An unrevoked JTI is accepted by the cache-free revocation check.
     assert await backend.is_session_valid("any-jti") is True
 
 
 async def test_get_session_backend_null_warns_once(monkeypatch, caplog):
     """Branch: NullSessionBackend emits a warning on first is_session_valid call.
 
-    WHY: operators must know when session revocation is effectively disabled;
+    WHY: operators must know when session caching is disabled;
     the single-warning guard prevents log spam while keeping visibility.
     """
     import logging

@@ -1,3 +1,4 @@
+import { useProfileSessionGuard } from "@/hooks/useProfileSessionGuard"
 import { useCallback, useMemo, useRef, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
@@ -51,6 +52,7 @@ export function useSessionManagement({
   const { t } = useTranslation(["settings"])
   const { user, logout } = useAuth()
   const queryClient = useQueryClient()
+  const captureOperation = useProfileSessionGuard()
 
   // Wave 134 SW2 — sessions queryKey + queryFn now provided by the
   // sessionsQueryOptions factory at api/hooks/sessions.ts so the SSR
@@ -125,8 +127,11 @@ export function useSessionManagement({
 
   const handleRevokeSession = useCallback(
     async (sessionId: string, options?: { skipStepUp?: boolean }) => {
+      const isCurrent = captureOperation()
+      if (!isCurrent()) return
       try {
         const result = await revokeSessionMutateAsync(sessionId)
+        if (!isCurrent()) return
         setSnackbar({ text: t("settings:sessions.snackbar.revoked"), severity: "success" })
 
         // Wave 135 SW1 — factory-routed cache mutation. The previous
@@ -135,13 +140,16 @@ export function useSessionManagement({
         // (closes W134 §Honesty #5).
         updateSessionInCache(queryClient, userId, result)
         await invalidateSessions(queryClient, userId)
+        if (!isCurrent()) return
 
         if (result?.is_current) {
           await logout()
         }
       } catch (error) {
+        if (!isCurrent()) return
         if (!options?.skipStepUp && isStepUpError(error) && openStepUpFor) {
           openStepUpFor(async () => {
+            if (!isCurrent()) return
             await handleRevokeSessionRef.current?.(sessionId, { skipStepUp: true })
           })
           return
@@ -152,15 +160,28 @@ export function useSessionManagement({
         })
       }
     },
-    [logout, openStepUpFor, queryClient, revokeSessionMutateAsync, setSnackbar, t, userId]
+    [
+      captureOperation,
+      logout,
+      openStepUpFor,
+      queryClient,
+      revokeSessionMutateAsync,
+      setSnackbar,
+      t,
+      userId,
+    ]
   )
 
   const handleRevokeAllSessions = useCallback(
     async (options?: { skipStepUp?: boolean }) => {
+      const isCurrent = captureOperation()
+      if (!isCurrent()) return
       try {
         const result = await revokeAllSessionsMutateAsync()
+        if (!isCurrent()) return
         // Wave 135 SW1 — factory-routed invalidation (closes W134 §Honesty #5).
         await invalidateSessions(queryClient, userId)
+        if (!isCurrent()) return
         setSnackbar({
           text: t("settings:sessions.snackbar.revokedAll", {
             count: result?.revoked ?? 0,
@@ -168,8 +189,10 @@ export function useSessionManagement({
           severity: "success",
         })
       } catch (error) {
+        if (!isCurrent()) return
         if (!options?.skipStepUp && isStepUpError(error) && openStepUpFor) {
           openStepUpFor(async () => {
+            if (!isCurrent()) return
             await handleRevokeAllSessionsRef.current?.({ skipStepUp: true })
           })
           return
@@ -180,7 +203,15 @@ export function useSessionManagement({
         })
       }
     },
-    [openStepUpFor, queryClient, revokeAllSessionsMutateAsync, setSnackbar, t, userId]
+    [
+      captureOperation,
+      openStepUpFor,
+      queryClient,
+      revokeAllSessionsMutateAsync,
+      setSnackbar,
+      t,
+      userId,
+    ]
   )
 
   useEffect(() => {

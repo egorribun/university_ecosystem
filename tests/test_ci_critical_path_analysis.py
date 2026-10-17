@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
+import sys
 from pathlib import Path
 from typing import cast
 
@@ -19,10 +21,209 @@ from scripts.quality.analyze_ci_critical_path import (
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "quality" / "github-actions-jobs.json"
+RERUN_FIXTURE = FIXTURE.with_name("github-actions-partial-rerun-jobs.json")
 
 
 def _payload() -> object:
     return json.loads(FIXTURE.read_text(encoding="utf-8"))
+
+
+def _rerun_payload() -> dict[str, object]:
+    # Public run 37184644787, attempt 2: copied success, copied failure,
+    # copied skipped job, and newly executed failure. Source identity is
+    # normalized to the established synthetic head_sha; run ID, attempt,
+    # timestamps and steps are unchanged. Unrelated metadata is removed.
+    return cast(dict[str, object], json.loads(RERUN_FIXTURE.read_text()))
+
+
+def test_partial_rerun_preserves_execution_and_marks_queue_unavailable() -> None:
+    payload = _rerun_payload()
+    original = json.dumps(payload, sort_keys=True)
+    jobs = parse_jobs(payload)
+    report = analyze_jobs(
+        jobs,
+        repository="egorribun/university_ecosystem",
+        run_id=37184644787,
+        concurrency_cap=20,
+        diagnostic_lower_bound=True,
+    )
+    assert json.dumps(payload, sort_keys=True) == original
+    rows = {row["id"]: row for row in report["jobs"]}
+    copied = rows[111447697162]
+    assert copied["duration_seconds"] == 74.0
+    assert copied["github_queue_wait_seconds"] is None
+    assert copied["github_timing_evidence"] == {
+        "kind": "rerun_record_created_after_execution",
+        "queue_wait_reason": "original_queue_timestamp_unavailable",
+        "created_at": "2026-10-04T13:35:38+00:00",
+        "started_at": "2026-10-04T07:08:07+00:00",
+        "completed_at": "2026-10-04T07:09:21+00:00",
+    }
+    assert rows[111447705003]["conclusion"] == "failure"
+    assert rows[111447705003]["duration_seconds"] > 0
+    assert rows[111447705003]["github_queue_wait_seconds"] is None
+    skipped = rows[111447697537]
+    assert skipped["conclusion"] == "skipped"
+    assert skipped["duration_seconds"] == 0.0
+    assert skipped["github_queue_wait_seconds"] is None
+    assert skipped["github_timing_evidence"]["kind"] == (
+        "rerun_skipped_record_with_prior_completion"
+    )
+    assert skipped["github_timing_evidence"]["completed_at"] == (
+        "2026-10-04T07:03:29+00:00"
+    )
+    assert rows[111467937995]["github_queue_wait_seconds"] == 3.0
+    assert report["summary"]["job_count"] == 4
+    assert report["summary"]["timing_seconds"]["queue"] == {
+        "count": 1,
+        "total_seconds": 3.0,
+        "p50_seconds": 3.0,
+        "p95_seconds": 3.0,
+        "max_seconds": 3.0,
+    }
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"run_attempt": 1},
+        {"run_attempt": None},
+        {"run_attempt": True},
+        {"run_id": None},
+        {"head_sha": None},
+        {"status": "in_progress"},
+        {"status": None},
+        {"conclusion": None},
+        {"conclusion": "unknown"},
+        {"conclusion": "skipped"},
+        {"created_at": "2026-10-04T07:09:21Z"},
+        {"created_at": "2026-10-04T07:08:30Z"},
+        {"completed_at": None},
+        {"completed_at": "2026-10-04T07:08:06Z"},
+        {"queued_at": "2026-10-04T13:35:38Z"},
+        {"steps": []},
+        {"created_at": "not-a-timestamp"},
+        {"head_sha": "not-a-sha"},
+        {"steps": [{"name": "Run tests", "started_at": None}]},
+        {
+            "steps": [
+                {
+                    "name": "Run tests",
+                    "started_at": "2026-10-04T07:08:06Z",
+                    "completed_at": "2026-10-04T07:09:21Z",
+                }
+            ]
+        },
+        {
+            "steps": [
+                {
+                    "name": "Run tests",
+                    "started_at": "2026-10-04T07:08:07Z",
+                    "completed_at": "2026-10-04T07:09:22Z",
+                }
+            ]
+        },
+    ],
+)
+def test_partial_rerun_does_not_accept_other_queue_inversions(
+    change: dict[str, object],
+) -> None:
+    record = cast(list[dict[str, object]], _rerun_payload()["jobs"])[0]
+    record.update(change)
+    with pytest.raises(AnalysisError):
+        parse_jobs({"jobs": [record]})
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"run_attempt": 1},
+        {"run_attempt": None},
+        {"run_id": None},
+        {"head_sha": None},
+        {"status": "in_progress"},
+        {"conclusion": "success"},
+        {"conclusion": "failure"},
+        {"conclusion": "cancelled"},
+        {"runner_id": 1},
+        {"created_at": "2026-10-04T13:35:38Z"},
+        {"queued_at": "2026-10-04T13:35:39Z"},
+        {"steps": [{"name": "Run tests"}]},
+    ],
+)
+def test_partial_rerun_does_not_accept_other_completion_inversions(
+    change: dict[str, object],
+) -> None:
+    record = cast(list[dict[str, object]], _rerun_payload()["jobs"])[1]
+    assert record["conclusion"] == "skipped"
+    record.update(change)
+    with pytest.raises(AnalysisError):
+        parse_jobs({"jobs": [record]})
+
+
+@pytest.mark.parametrize("field", ["runner_id", "steps", "status"])
+def test_partial_rerun_requires_explicit_skipped_record_evidence(field: str) -> None:
+    record = cast(list[dict[str, object]], _rerun_payload()["jobs"])[1]
+    del record[field]
+    with pytest.raises(AnalysisError, match="ends before it starts"):
+        parse_jobs({"jobs": [record]})
+
+
+def test_partial_rerun_preserves_an_explicit_valid_queue_timestamp() -> None:
+    record = cast(list[dict[str, object]], _rerun_payload()["jobs"])[0]
+    record["queued_at"] = "2026-10-04T07:08:00Z"
+    parsed = parse_jobs({"jobs": [record]})
+    assert parsed[0].queue_wait_seconds == 7.0
+
+
+def test_partial_rerun_cli_produces_hashed_ledger_and_rendered_summary(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "ci-health-report.json"
+    rendered_path = tmp_path / "ci-health-report.md"
+    analyzed = subprocess.run(  # noqa: S603 - fixed local script and fixture paths
+        [
+            sys.executable,
+            str(ROOT / "scripts/quality/analyze_ci_critical_path.py"),
+            "--repository",
+            "egorribun/university_ecosystem",
+            "--run-id",
+            "37184644787",
+            "--concurrency-cap",
+            "20",
+            "--jobs-json",
+            str(RERUN_FIXTURE),
+            "--diagnostic-lower-bound",
+            "--output",
+            str(report_path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert analyzed.returncode == 0, analyzed.stderr
+    rendered = subprocess.run(  # noqa: S603 - fixed local script and report paths
+        [
+            sys.executable,
+            str(ROOT / "scripts/quality/render_ci_health_report.py"),
+            "--input",
+            str(report_path),
+            "--output",
+            str(rendered_path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert rendered.returncode == 0, rendered.stderr
+    report = json.loads(report_path.read_text())
+    assert report["provenance"]["run_attempt"] == 2
+    assert report["summary"]["job_count"] == 4
+    text = rendered_path.read_text()
+    assert "| failure | 2 |" in text
+    assert "| skipped | 1 |" in text
+    assert "| queue | 1 | 3.0 | 3.0 | 3.0 | 3.0 |" in text
+    assert report["report_sha256"] in text
 
 
 def _bound_payload(payload: object, *, run_id: int = 33349026009) -> dict[str, object]:
@@ -37,7 +238,13 @@ def _bound_payload(payload: object, *, run_id: int = 33349026009) -> dict[str, o
     return payload
 
 
-def _dag_payload(payload: object, *, run_id: int = 33349026009) -> dict[str, object]:
+def _dag_payload(
+    payload: object,
+    *,
+    run_id: int = 33349026009,
+    run_attempt: int = 1,
+    source_head_sha: str = "a" * 40,
+) -> dict[str, object]:
     assert isinstance(payload, dict)
     records = payload["jobs"]
     assert isinstance(records, list)
@@ -62,8 +269,8 @@ def _dag_payload(payload: object, *, run_id: int = 33349026009) -> dict[str, obj
         "schema_version": 1,
         "repository": "egorribun/university_ecosystem",
         "run_id": run_id,
-        "run_attempt": 1,
-        "source_head_sha": "a" * 40,
+        "run_attempt": run_attempt,
+        "source_head_sha": source_head_sha,
         "tested_commit_sha": "b" * 40,
         "workflow_path": ".github/workflows/ci.yml",
         "workflow_ref": "egorribun/university_ecosystem/.github/workflows/ci.yml@refs/pull/1/merge",
@@ -94,6 +301,95 @@ def _trusted_provenance(dag: dict[str, object]) -> dict[str, object]:
         "producer_attempt": dag["run_attempt"],
         "dag_sha256": dag["dag_sha256"],
     }
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("run_id", 42, "run_id does not match"),
+        ("run_attempt", 3, "cannot mix run_attempt"),
+        ("head_sha", "b" * 40, "cannot mix source head"),
+    ],
+)
+def test_partial_rerun_keeps_diagnostic_identity_fail_closed(
+    field: str, value: object, message: str
+) -> None:
+    payload = _rerun_payload()
+    records = cast(list[dict[str, object]], payload["jobs"])
+    records[0][field] = value
+    with pytest.raises(AnalysisError, match=message):
+        analyze_jobs(
+            parse_jobs(payload),
+            repository="egorribun/university_ecosystem",
+            run_id=37184644787,
+            concurrency_cap=20,
+            diagnostic_lower_bound=True,
+        )
+
+
+def test_partial_rerun_rejects_an_incomplete_paginated_ledger() -> None:
+    payload = _rerun_payload()
+    records = cast(list[dict[str, object]], payload["jobs"])
+    records.pop()
+    with pytest.raises(AnalysisError, match="pagination is incomplete"):
+        parse_jobs(payload)
+
+
+@pytest.mark.parametrize("invalid", [None, "nodes", "attempt", "provenance"])
+def test_partial_rerun_keeps_strict_dag_and_provenance_fail_closed(
+    invalid: str | None,
+) -> None:
+    payload = _rerun_payload()
+    records = cast(list[dict[str, object]], payload["jobs"])
+    records[2]["core_failure"] = True
+    dag = _dag_payload(
+        payload,
+        run_id=37184644787,
+        run_attempt=2,
+        source_head_sha="a" * 40,
+    )
+    trusted = _trusted_provenance(dag)
+    if invalid == "nodes":
+        cast(list[object], dag["nodes"]).pop()
+    elif invalid == "attempt":
+        dag["run_attempt"] = 3
+    elif invalid == "provenance":
+        trusted["producer_attempt"] = 3
+    canonical = dict(dag)
+    canonical.pop("dag_sha256")
+    dag["dag_sha256"] = hashlib.sha256(
+        json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    kwargs = {
+        "repository": "egorribun/university_ecosystem",
+        "run_id": 37184644787,
+        "concurrency_cap": 20,
+        "dag": dag,
+        "trusted_provenance": trusted,
+    }
+    if invalid is not None:
+        message = {
+            "nodes": "exactly one node per job",
+            "attempt": "run_attempt does not match",
+            "provenance": "producer_attempt",
+        }[invalid]
+        with pytest.raises(AnalysisError, match=message):
+            analyze_jobs(parse_jobs(payload), **kwargs)
+        return
+    report = analyze_jobs(parse_jobs(payload), **kwargs)
+    assert report["analysis_mode"] == "strict"
+    assert report["provenance"]["run_attempt"] == 2
+    assert report["summary"]["job_count"] == 4
+    rows = {row["id"]: row for row in report["jobs"]}
+    assert rows[111447697162]["duration_seconds"] == 74.0
+    assert rows[111447697162]["github_queue_wait_seconds"] is None
+    assert rows[111447697162]["github_timing_evidence"]["kind"] == (
+        "rerun_record_created_after_execution"
+    )
+    assert rows[111447697537]["duration_seconds"] == 0.0
+    assert rows[111447697537]["continued_after_core_failure"] is False
+    assert rows[111447705003]["conclusion"] == "failure"
+    assert report["summary"]["jobs_continued_after_core_failure"] == [111467937995]
 
 
 def test_analyzer_reports_dependency_wait_utilization_and_duplicates() -> None:

@@ -7,13 +7,15 @@ and allow manual intervention for job processing.
 
 from __future__ import annotations
 
-from datetime import UTC
+import uuid
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from dishka import FromComponent
 from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
+from sqlalchemy import func, select, update
 
 # Imported at runtime rather than under TYPE_CHECKING: Dishka resolves an
 # injected endpoint's annotations with typing.get_type_hints() when the route
@@ -23,12 +25,19 @@ from app.api.deps import (
     get_current_admin_user_from_dishka,
     get_locale,
 )
-from app.api.validation import raise_not_found, raise_validation_error
+from app.api.validation import (
+    raise_conflict,
+    raise_not_found,
+    raise_validation_error,
+)
 from app.core.di.read_replica import READ_COMPONENT
 from app.core.event_dlq import dead_letter_queue as in_memory_dlq
+from app.core.nats_broker import NatsTaskBroker
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit.circuit_breaker import get_circuit_breaker
 from app.models import DeadLetterJob, JobStatus
+from app.models.domain_events import StoredEvent
+from app.models.failed_outbox_events import FailedOutboxEvent
 from app.workers.dead_letter_queue import DeadLetterQueue
 
 router = APIRouter(prefix="/admin/dlq", tags=["admin"])
@@ -55,6 +64,7 @@ class DLQStatusResponse(BaseModel):
     db_failed: int
     db_completed: int
     db_total_active: int
+    outbox_unresolved: int
     circuit_breaker_state: str
     circuit_breaker_failures: int
     is_replaying: bool
@@ -102,6 +112,15 @@ class DLQJobsListResponse(BaseModel):
     total: int
 
 
+async def _count_unresolved_outbox_failures(db: AsyncDatabaseSession) -> int:
+    result = await db.execute(
+        select(func.count(FailedOutboxEvent.id)).where(
+            FailedOutboxEvent.resolved_at.is_(None)
+        )
+    )
+    return int(result.scalar() or 0)
+
+
 @router.get(
     "/status",
     response_model=DLQStatusResponse,
@@ -129,6 +148,7 @@ async def get_dlq_status(
     db_failed = db_stats.get(JobStatus.FAILED.value, 0)
     db_completed = db_stats.get(JobStatus.COMPLETED.value, 0)
     db_active = db_pending + db_retrying
+    outbox_unresolved = await _count_unresolved_outbox_failures(db)
 
     is_replaying = bool(in_mem_status.get("is_replaying", False)) or bool(
         getattr(DeadLetterQueue, "_is_replaying", False)
@@ -143,6 +163,7 @@ async def get_dlq_status(
         db_failed=db_failed,
         db_completed=db_completed,
         db_total_active=db_active,
+        outbox_unresolved=outbox_unresolved,
         circuit_breaker_state=cb_state,
         circuit_breaker_failures=getattr(cb, "_failure_count", 0),
         is_replaying=is_replaying,
@@ -161,6 +182,7 @@ async def get_dlq_status(
 @inject
 async def trigger_dlq_replay(
     db: FromDishka[AsyncDatabaseSession],
+    broker: FromDishka[NatsTaskBroker],
     request: DLQReplayRequest = DLQReplayRequest(),
     locale: str = Depends(get_locale),
     _: models.User = Depends(get_current_admin_user_from_dishka),
@@ -186,6 +208,7 @@ async def trigger_dlq_replay(
         db_dlq = DeadLetterQueue(db)
         cb = get_circuit_breaker()
         db_success, db_failed = await db_dlq.auto_replay_jobs(
+            broker.replay_dead_letter,
             batch_size=request.batch_size,
             circuit_breaker=cb,
             force=request.force,
@@ -260,8 +283,6 @@ async def list_dlq_jobs(
 
     Optionally filter by status (pending, retrying, failed, completed).
     """
-    from sqlalchemy import func, select
-
     query = select(DeadLetterJob)
 
     if status:
@@ -328,10 +349,6 @@ async def retry_dlq_job(
 
     Resets the job status to pending for immediate retry.
     """
-    from datetime import datetime
-
-    from sqlalchemy import select
-
     result = await db.execute(select(DeadLetterJob).where(DeadLetterJob.id == job_id))
     job = result.scalar_one_or_none()
 
@@ -357,6 +374,135 @@ async def retry_dlq_job(
         "message": translate("success.dlq.retry_queued", locale=locale, job_id=job_id),
         "job_type": job.job_type,
     }
+
+
+class OutboxFailureResponse(BaseModel):
+    """A transactional-outbox event that exhausted its delivery retries."""
+
+    id: str
+    original_event_id: str
+    event_type: str
+    aggregate_type: str
+    aggregate_id: str
+    error_message: str
+    retry_count: int
+    failed_at: str
+    resolved_at: str | None
+    resolution_note: str | None
+
+
+class OutboxFailuresListResponse(BaseModel):
+    failures: list[OutboxFailureResponse]
+    total: int
+
+
+# Terminal MFA e-mail events had their one-time secrets shredded when they were
+# dead-lettered (see OutboxWorker._move_to_dlq); replaying them is impossible.
+_NON_REPLAYABLE_OUTBOX_EVENTS = frozenset({"auth.mfa_email.requested"})
+
+
+@router.get(
+    "/outbox",
+    response_model=OutboxFailuresListResponse,
+    summary="List Failed Outbox Events",
+    description=(
+        "Lists transactional-outbox events that exhausted their delivery retries "
+        "(newest first). Unresolved entries need operator attention."
+    ),
+)
+@inject
+async def list_outbox_failures(
+    db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
+    include_resolved: bool = False,
+    limit: int = Query(default=20, ge=1, le=500),
+    _: models.User = Depends(get_current_admin_user_from_dishka),
+) -> OutboxFailuresListResponse:
+    condition = [] if include_resolved else [FailedOutboxEvent.resolved_at.is_(None)]
+    rows = (
+        (
+            await db.execute(
+                select(FailedOutboxEvent)
+                .where(*condition)
+                .order_by(FailedOutboxEvent.failed_at.desc())
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    total = (
+        await db.execute(select(func.count(FailedOutboxEvent.id)).where(*condition))
+    ).scalar() or 0
+    return OutboxFailuresListResponse(
+        failures=[
+            OutboxFailureResponse(
+                id=str(row.id),
+                original_event_id=str(row.original_event_id),
+                event_type=row.event_type,
+                aggregate_type=row.aggregate_type,
+                aggregate_id=row.aggregate_id,
+                error_message=row.error_message[:200],
+                retry_count=row.retry_count,
+                failed_at=row.failed_at.isoformat(),
+                resolved_at=row.resolved_at.isoformat() if row.resolved_at else None,
+                resolution_note=row.resolution_note,
+            )
+            for row in rows
+        ],
+        total=total,
+    )
+
+
+@router.post(
+    "/outbox/{failure_id}/requeue",
+    summary="Requeue Failed Outbox Event",
+    description=(
+        "Puts the original outbox event back into the pending state with a fresh "
+        "retry budget and marks the failure as resolved."
+    ),
+)
+@inject
+async def requeue_outbox_failure(
+    failure_id: uuid.UUID,
+    db: FromDishka[AsyncDatabaseSession],
+    locale: str = Depends(get_locale),
+    _: models.User = Depends(get_current_admin_user_from_dishka),
+) -> dict[str, Any]:
+    failure = (
+        await db.execute(
+            select(FailedOutboxEvent)
+            .where(FailedOutboxEvent.id == failure_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if failure is None:
+        raise_not_found(
+            "dlq_job",
+            locale,
+            resource_id=failure_id,
+            exact_key="errors.events.not_found",
+        )
+    if failure.resolved_at is not None:
+        raise_conflict("errors.dlq.already_resolved", locale)
+    if failure.event_type in _NON_REPLAYABLE_OUTBOX_EVENTS:
+        raise_conflict("errors.dlq.not_replayable", locale)
+
+    restored = await db.execute(
+        update(StoredEvent)
+        .where(StoredEvent.id == failure.original_event_id)
+        .values(processed_at=None, error_count=0, last_error=None, status="pending")
+    )
+    if not getattr(restored, "rowcount", 0):
+        raise_not_found(
+            "dlq_job",
+            locale,
+            resource_id=failure_id,
+            exact_key="errors.events.not_found",
+        )
+    failure.resolved_at = datetime.now(UTC)
+    failure.resolution_note = "requeued by administrator"
+    await db.commit()
+    return {"success": True, "event_type": failure.event_type}
 
 
 @router.delete(

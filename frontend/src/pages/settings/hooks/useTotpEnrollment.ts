@@ -1,11 +1,11 @@
+import { useProfileSessionGuard } from "@/hooks/useProfileSessionGuard"
+import { useSessionProfileRefresh } from "./useSessionProfileRefresh"
 import { useState, useCallback, useEffect, useMemo } from "react"
-import { useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { extractApiError } from "@/utils/error"
 import { formatDate } from "@/utils/date"
 
 import { useAuth } from "@/contexts/AuthContext"
-import { currentUserQueryKey, fetchCurrentUser } from "@/hooks/auth/useProfileSync"
 import {
   startTotpEnrollment,
   confirmTotpEnrollment,
@@ -17,7 +17,6 @@ import type {
   TotpEnrollmentStart,
   TotpEnrollmentStartPayload,
 } from "@/types/Mfa"
-import type { User } from "@/types/User"
 import type { SetSnackbar } from "@/pages/settings/types"
 
 export interface UseTotpEnrollmentOptions {
@@ -60,11 +59,18 @@ export function useTotpEnrollment({
 }: UseTotpEnrollmentOptions): UseTotpEnrollmentReturn {
   const { t } = useTranslation(["settings", "common"])
   const { user, setUser } = useAuth()
-  const queryClient = useQueryClient()
+  const captureOperation = useProfileSessionGuard()
+  const refreshUser = useSessionProfileRefresh()
 
   const [totpDraft, setTotpDraft] = useState<TotpEnrollmentStart | null>(null)
   const [totpBusy, setTotpBusy] = useState(false)
   const [totpError, setTotpError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setTotpDraft(null)
+    setTotpBusy(false)
+    setTotpError(null)
+  }, [captureOperation])
 
   const resolveDetailMessage = useCallback((error: unknown, fallback: string) => {
     const apiError = extractApiError(error)
@@ -85,16 +91,6 @@ export function useTotpEnrollment({
       hour12: false,
     })
   }, [])
-
-  const refreshUser = useCallback(async () => {
-    const fresh = await queryClient.fetchQuery<User>({
-      queryKey: currentUserQueryKey,
-      queryFn: fetchCurrentUser,
-      staleTime: 0,
-    })
-    setUser(fresh)
-    return fresh
-  }, [queryClient, setUser])
 
   // Computed values
   const activeTotp = useMemo(
@@ -144,15 +140,19 @@ export function useTotpEnrollment({
   // Handlers
   const handleStartTotp = useCallback(
     async (options?: { skipStepUp?: boolean; payload?: TotpEnrollmentStartPayload }) => {
-      if (totpBusy || totpLimitReached) return
+      const isCurrent = captureOperation()
+      if (totpBusy || totpLimitReached || !isCurrent()) return
       setTotpBusy(true)
       setTotpError(null)
       try {
         const data = await startTotpEnrollment(options?.payload)
+        if (!isCurrent()) return
         setTotpDraft(data)
       } catch (error) {
+        if (!isCurrent()) return
         if (!options?.skipStepUp && isStepUpError(error)) {
           openStepUpFor(async () => {
+            if (!isCurrent()) return
             await handleStartTotp({ skipStepUp: true, payload: options?.payload })
           })
           return
@@ -161,10 +161,18 @@ export function useTotpEnrollment({
         setTotpError(message)
         setSnackbar({ text: message, severity: "error" })
       } finally {
-        setTotpBusy(false)
+        if (isCurrent()) setTotpBusy(false)
       }
     },
-    [openStepUpFor, resolveDetailMessage, setSnackbar, t, totpBusy, totpLimitReached]
+    [
+      captureOperation,
+      openStepUpFor,
+      resolveDetailMessage,
+      setSnackbar,
+      t,
+      totpBusy,
+      totpLimitReached,
+    ]
   )
 
   // Auto-resume pending enrollment
@@ -175,50 +183,69 @@ export function useTotpEnrollment({
 
   const handleConfirmTotp = useCallback(
     async (code: string) => {
+      const isCurrent = captureOperation()
       const enrollmentId = totpDraft?.enrollment.id ?? pendingTotpId
-      if (!enrollmentId) return
+      if (!enrollmentId || !isCurrent()) return
       setTotpBusy(true)
       setTotpError(null)
       try {
         await confirmTotpEnrollment({ enrollment_id: enrollmentId, code })
+        if (!isCurrent()) return
         setTotpDraft(null)
-        await refreshUser()
+        if (!(await refreshUser(isCurrent)) || !isCurrent()) return
         setSnackbar({ text: t("settings:security.snackbar.totpEnabled"), severity: "success" })
       } catch (error) {
+        if (!isCurrent()) return
         setTotpError(resolveDetailMessage(error, t("settings:security.snackbar.totpConfirmFailed")))
       } finally {
-        setTotpBusy(false)
+        if (isCurrent()) setTotpBusy(false)
       }
     },
-    [pendingTotpId, refreshUser, resolveDetailMessage, setSnackbar, t, totpDraft]
+    [captureOperation, pendingTotpId, refreshUser, resolveDetailMessage, setSnackbar, t, totpDraft]
   )
 
   const handleCancelTotp = useCallback(async () => {
+    const isCurrent = captureOperation()
     const enrollmentId = totpDraft?.enrollment.id ?? pendingTotpId
-    if (!enrollmentId || totpBusy) return
+    if (!enrollmentId || totpBusy || !isCurrent()) return
     setTotpBusy(true)
     setTotpError(null)
     try {
       await deletePendingTotpEnrollment(enrollmentId)
+      if (!isCurrent()) return
       setTotpDraft(null)
-      await refreshUser()
+      if (!(await refreshUser(isCurrent)) || !isCurrent()) return
     } catch (error) {
+      if (!isCurrent()) return
       const message = resolveDetailMessage(error, t("settings:security.snackbar.totpCancelFailed"))
       setTotpError(message)
       setSnackbar({ text: message, severity: "error" })
     } finally {
-      setTotpBusy(false)
+      if (isCurrent()) setTotpBusy(false)
     }
-  }, [pendingTotpId, refreshUser, resolveDetailMessage, setSnackbar, t, totpBusy, totpDraft])
+  }, [
+    captureOperation,
+    pendingTotpId,
+    refreshUser,
+    resolveDetailMessage,
+    setSnackbar,
+    t,
+    totpBusy,
+    totpDraft,
+  ])
 
   const handleDisableTotp = useCallback(
     (enrollmentId: string) => {
+      const isCurrent = captureOperation()
+      if (!isCurrent()) return
       const action = async () => {
+        if (!isCurrent()) return
         try {
           const data = await deleteTotpEnrollment(enrollmentId)
+          if (!isCurrent()) return
           if (data) {
             setUser((previous) =>
-              previous
+              previous && isCurrent() && previous.id === user?.id
                 ? {
                     ...previous,
                     mfa_default_method: data.mfa_default_method,
@@ -227,9 +254,10 @@ export function useTotpEnrollment({
                 : previous
             )
           }
-          await refreshUser()
+          if (!(await refreshUser(isCurrent)) || !isCurrent()) return
           setSnackbar({ text: t("settings:security.snackbar.totpDisabled"), severity: "success" })
         } catch (error) {
+          if (!isCurrent()) return
           setSnackbar({
             text: resolveDetailMessage(error, t("settings:security.snackbar.totpDisableFailed")),
             severity: "error",
@@ -238,7 +266,16 @@ export function useTotpEnrollment({
       }
       openStepUpFor(action)
     },
-    [openStepUpFor, refreshUser, resolveDetailMessage, setSnackbar, setUser, t]
+    [
+      captureOperation,
+      openStepUpFor,
+      refreshUser,
+      resolveDetailMessage,
+      setSnackbar,
+      setUser,
+      t,
+      user?.id,
+    ]
   )
 
   return {

@@ -86,9 +86,12 @@ describe("UserMenu mutation contracts", () => {
     expect(screen.getByRole("status")).toHaveAttribute("aria-busy", "true")
     expect(screen.getByLabelText("common:aria.loadingUserMenu")).toBeInTheDocument()
     expect(screen.getAllByTestId("skeleton")).toHaveLength(2)
+    expect(screen.getByRole("status")).toHaveClass("ml-3", "flex-1", "justify-end", "gap-3")
 
     rerender(<UserMenu user={null} isAuth={false} loading isCompact go={vi.fn()} t={t} />)
     expect(screen.getAllByTestId("skeleton")).toHaveLength(1)
+    expect(screen.getByRole("status")).toHaveClass("ml-auto", "gap-2")
+    expect(screen.getByRole("status")).not.toHaveClass("flex-1")
   })
 
   it.each([
@@ -203,8 +206,16 @@ describe("UserMenu mutation contracts", () => {
     // The icon-only settings control names itself for screen readers and pointer tooltips.
     expect(settingsButton).toHaveAttribute("aria-label", "navigation:menu.settings")
     expect(settingsButton).toHaveAttribute("title", "navigation:menu.settings")
-    expect(root).toHaveClass("gap-3", "duration-500", "ease-[var(--ease-premium)]")
-    expect(inner).toHaveClass("gap-3", "ml-3", "h-10")
+    expect(settingsButton).toHaveClass("shrink-0")
+    expect(root).toHaveClass(
+      "ml-3",
+      "flex-1",
+      "justify-end",
+      "gap-3",
+      "duration-500",
+      "ease-[var(--ease-premium)]"
+    )
+    expect(inner).toHaveClass("min-w-0", "gap-3", "ml-3", "h-10")
     expect(avatarButton).toHaveClass(
       "size-11",
       "duration-500",
@@ -212,10 +223,22 @@ describe("UserMenu mutation contracts", () => {
       "active:scale-95"
     )
     expect(avatar).toHaveClass("h-9", "w-9", "object-cover", "pointer-events-none")
-    expect(container.querySelector(".navbar-user-name")).toHaveClass("max-w-48", "opacity-100")
+    expect(container.querySelector(".navbar-user-name")).toHaveClass(
+      "min-w-0",
+      "max-w-48",
+      "opacity-100"
+    )
     expect(
       screen.getByRole("button", { name: "navigation:aria.openProfile: Ada Lovelace" })
-    ).toHaveClass("min-h-11", "font-bold", "text-base", "hover:text-brand")
+    ).toHaveClass(
+      "min-h-11",
+      "max-w-full",
+      "overflow-hidden",
+      "text-ellipsis",
+      "font-bold",
+      "text-base",
+      "hover:text-brand"
+    )
     expect(settingsButton).toHaveClass(
       "size-11",
       "duration-500",
@@ -234,8 +257,9 @@ describe("UserMenu mutation contracts", () => {
     const avatarButton = screen.getByRole("button", { name: "navigation:aria.openProfile" })
     const settingsButton = screen.getByRole("button", { name: "navigation:menu.settings" })
 
-    expect(root).toHaveClass("gap-2", "duration-0")
-    expect(inner).toHaveClass("gap-2", "ml-1", "h-8", "duration-0")
+    expect(root).toHaveClass("ml-auto", "gap-2", "duration-0")
+    expect(root).not.toHaveClass("flex-1")
+    expect(inner).toHaveClass("min-w-0", "gap-2", "ml-1", "h-8", "duration-0")
     expect(container.querySelector(".navbar-user-name")).toHaveClass("max-w-0", "opacity-0")
     expect(screen.getByTestId("smart-image")).toHaveClass("h-7", "w-7")
     expect(avatarButton).toHaveClass("size-11", "duration-0")

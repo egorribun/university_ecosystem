@@ -77,9 +77,9 @@ const meta: Meta<typeof MfaChallengeView> = {
   component: MfaChallengeView,
   parameters: {
     layout: "fullscreen",
-    // W201: renders the live ParticleAuthBackground canvas — pauseAnimationAtEnd
-    // can't freeze a particle swarm, so skip the snapshot (loses glass-card UI
-    // coverage; accepted vs a perpetual false-positive — AUDIT_WAVE201 §Honesty).
+    // The live ParticleAuthBackground canvas cannot be frozen into a stable
+    // image. Omit this snapshot to avoid perpetual visual diffs; it does not
+    // replace separate behavior and accessibility checks.
     chromatic: { disableSnapshot: true },
   },
   tags: ["autodocs"],

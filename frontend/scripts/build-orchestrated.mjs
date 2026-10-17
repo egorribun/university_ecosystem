@@ -17,6 +17,8 @@ import { rename, rm } from "node:fs/promises"
 import path from "node:path"
 import process from "node:process"
 import { execFile, spawn } from "node:child_process"
+import { createHash } from "node:crypto"
+import { fileURLToPath } from "node:url"
 
 import { injectManifest } from "workbox-build"
 import * as esbuild from "esbuild"
@@ -28,6 +30,111 @@ import { buildWasmArtifacts } from "./build-wasm.mjs"
 const cwd = process.cwd()
 const wantsReport = process.argv.includes("--report")
 const sanitizedArgs = process.argv.slice(2).filter((a) => a !== "--report")
+
+const ARTIFACT_METADATA_FIELDS = ["dev", "ino", "mode", "size", "mtimeNs", "ctimeNs", "birthtimeNs"]
+
+function artifactMetadataToken(stats) {
+  return ARTIFACT_METADATA_FIELDS.map((field) => String(stats[field] ?? "")).join(":")
+}
+
+function readStableArtifact(filePath, { startedAt, freshnessGraceMs }, io) {
+  try {
+    const before = io.statSync(filePath, { bigint: true })
+    if (!before.isFile()) return null
+
+    if (startedAt !== null && startedAt !== undefined) {
+      const modifiedAtMs = Number(before.mtimeNs) / 1_000_000
+      if (!Number.isFinite(modifiedAtMs) || modifiedAtMs < startedAt - freshnessGraceMs) {
+        return null
+      }
+    }
+
+    const contents = io.readFileSync(filePath)
+    if (!(contents instanceof Uint8Array)) return null
+
+    const after = io.statSync(filePath, { bigint: true })
+    const beforeToken = artifactMetadataToken(before)
+    const afterToken = artifactMetadataToken(after)
+    if (
+      !after.isFile() ||
+      beforeToken !== afterToken ||
+      before.size !== BigInt(contents.byteLength)
+    ) {
+      return null
+    }
+
+    return {
+      metadata: afterToken,
+      digest: createHash("sha256").update(contents).digest("hex"),
+      text: Buffer.isBuffer(contents)
+        ? contents.toString("utf8")
+        : Buffer.from(contents).toString("utf8"),
+    }
+  } catch {
+    // The build can replace or remove an artifact while a poll samples it.
+    return null
+  }
+}
+
+/**
+ * Capture a usable, fresh (when startedAt is provided), paired Vite artifact
+ * snapshot. Content hashes make same-size writes visible even when timestamp
+ * resolution is too coarse to distinguish them.
+ */
+export function captureViteArtifactSnapshot(
+  { shellPath, serverPath, assetsDir, startedAt = null, freshnessGraceMs = 1500 } = {},
+  io = { statSync, readFileSync, readdirSync }
+) {
+  if (
+    typeof shellPath !== "string" ||
+    typeof serverPath !== "string" ||
+    typeof assetsDir !== "string" ||
+    !Number.isFinite(freshnessGraceMs) ||
+    freshnessGraceMs < 0 ||
+    (startedAt !== null && startedAt !== undefined && !Number.isFinite(startedAt))
+  ) {
+    return null
+  }
+
+  const options = { startedAt, freshnessGraceMs }
+  const shell = readStableArtifact(shellPath, options, io)
+  const server = readStableArtifact(serverPath, options, io)
+  if (!shell || !server || !/<html\b/i.test(shell.text) || server.text.trim().length <= 32) {
+    return null
+  }
+
+  try {
+    const hasClientAsset = io.readdirSync(assetsDir).some((file) => /\.(?:js|css|wasm)$/.test(file))
+    if (!hasClientAsset) return null
+  } catch {
+    return null
+  }
+
+  const fingerprint = createHash("sha256")
+    .update(
+      JSON.stringify([
+        ["shell", shell.metadata, shell.digest],
+        ["server", server.metadata, server.digest],
+      ])
+    )
+    .digest("hex")
+
+  return { fingerprint }
+}
+
+/** Count consecutive identical usable paired snapshots. */
+export function advanceArtifactStability(previousState, snapshot, requiredTicks = 4) {
+  const fingerprint =
+    typeof snapshot?.fingerprint === "string" && snapshot.fingerprint.length > 0
+      ? snapshot.fingerprint
+      : null
+  if (!fingerprint) return { fingerprint: null, count: 0, stable: false }
+
+  const previousCount =
+    Number.isInteger(previousState?.count) && previousState.count > 0 ? previousState.count : 0
+  const count = previousState?.fingerprint === fingerprint ? previousCount + 1 : 1
+  return { fingerprint, count, stable: count >= requiredTicks }
+}
 
 const parseMemoryLimit = (rawValue, fallback) => {
   const parsed = Number.parseInt(rawValue ?? "", 10)
@@ -135,21 +242,9 @@ async function step3_viteBuild() {
   const shellPath = path.join(cwd, "dist/client/_shell.html")
   const serverPath = path.join(cwd, "dist/server/server.js")
 
-  const hasUsableViteArtifacts = () => {
-    if (!existsSync(shellPath) || !existsSync(serverPath)) return false
-    try {
-      const shell = readFileSync(shellPath, "utf8")
-      const server = readFileSync(serverPath, "utf8")
-      const assetsDir = path.join(cwd, "dist", "client", "assets")
-      const hasClientAsset =
-        existsSync(assetsDir) &&
-        readdirSync(assetsDir).some((file) => /\.(?:js|css|wasm)$/.test(file))
-      return /<html\b/i.test(shell) && server.trim().length > 32 && hasClientAsset
-    } catch {
-      // Vite can still be replacing an artifact while the poll runs.
-      return false
-    }
-  }
+  const assetsDir = path.join(cwd, "dist", "client", "assets")
+  const hasUsableViteArtifacts = () =>
+    captureViteArtifactSnapshot({ shellPath, serverPath, assetsDir }) !== null
 
   // Optionally inject the hang-trace agent into the Vite subprocess.
   // Set BUILD_HANG_TRACE=1 to enable. The agent reports active handles
@@ -185,6 +280,7 @@ async function step3_viteBuild() {
   // production via tanstackStart's top-level define + no environments.server
   // override here).
   const isReactDevMode = process.env.FRONTEND_REACT_DEV_MODE === "true"
+  const rolldownWorkerThreads = process.env.ROLLDOWN_WORKER_THREADS?.trim() || "4"
 
   const nodeOptions = [
     inheritedNodeOptions,
@@ -205,6 +301,8 @@ async function step3_viteBuild() {
       FRONTEND_BUILD_UNMINIFIED: isUnminified ? "true" : "",
       // See isReactDevMode above.
       FRONTEND_REACT_DEV_MODE: isReactDevMode ? "true" : "",
+      // Bound Rolldown's native Tokio pool independently of the host CPU count.
+      ROLLDOWN_WORKER_THREADS: rolldownWorkerThreads,
       NODE_OPTIONS: nodeOptions,
     }
 
@@ -230,27 +328,15 @@ async function step3_viteBuild() {
 
     let killed = false
     let resolved = false
-    let stableCount = 0
+    let stabilityState = { fingerprint: null, count: 0, stable: false }
     let memoryProbeInFlight = false
     const POLL_INTERVAL_MS = 500
     const STABLE_DEBOUNCE_TICKS = 4 // 4 × 500ms = 2s of stability
     const MAX_WAIT_MS = Number(process.env.BUILD_MAX_WAIT_MS || 360_000) // 6 minutes cap before giving up
 
     const startTime = Date.now()
-    // Never terminate a build based on stale artifacts
-    // from a previous build. The poll only considers an artifact "fresh"
-    // if its mtime is >= startTime — vite must have written it during this
-    // build, not during a prior run.
+    // Never terminate a build based on stale artifacts from a previous run.
     const FRESH_MTIME_GRACE_MS = 1500 // tolerate filesystem mtime quantization
-
-    const isArtifactFresh = (file) => {
-      try {
-        const st = statSync(file)
-        return st.mtimeMs >= startTime - FRESH_MTIME_GRACE_MS
-      } catch {
-        return false
-      }
-    }
 
     let memoryPoll
     const checkMemory = async () => {
@@ -279,49 +365,52 @@ async function step3_viteBuild() {
       if (resolved) return
       const elapsed = Date.now() - startTime
 
-      if (hasUsableViteArtifacts() && isArtifactFresh(shellPath) && isArtifactFresh(serverPath)) {
-        stableCount += 1
-        if (stableCount >= STABLE_DEBOUNCE_TICKS) {
-          // Artifacts present + stable. Send SIGTERM to break out of
-          // post-prerender hang. The vite process has already written
-          // _shell.html + server.js to disk; killing here is safe.
-          if (!killed) {
-            // If tracing is enabled, request a handle dump via IPC
-            // BEFORE killing, then exit gracefully. The agent's reply
-            // (handled above) provides diagnostic data.
-            if (useIpc && typeof child.send === "function") {
-              console.log(
-                `\n[orchestrator] Artifacts stable after ${(elapsed / 1000).toFixed(1)}s — requesting hang trace via IPC, then graceful exit`
-              )
-              try {
-                child.send({
-                  type: "build-hang-trace-dump",
-                  reason: "orchestrator-artifact-stable",
-                  thenExit: true,
-                })
-              } catch {
-                // IPC may have closed; fall through to SIGTERM
-              }
-              killed = true
-              // Give the agent ~3s to dump + exit, then SIGTERM as fallback
-              setTimeout(() => {
-                try {
-                  child.kill("SIGTERM")
-                } catch {
-                  // best-effort
-                }
-              }, 3000)
-            } else {
-              console.log(
-                `\n[orchestrator] Artifacts stable after ${(elapsed / 1000).toFixed(1)}s — sending SIGTERM to vite subprocess`
-              )
-              killed = true
-              terminateProcessTree(child.pid)
+      const snapshot = captureViteArtifactSnapshot({
+        shellPath,
+        serverPath,
+        assetsDir,
+        startedAt: startTime,
+        freshnessGraceMs: FRESH_MTIME_GRACE_MS,
+      })
+      stabilityState = advanceArtifactStability(stabilityState, snapshot, STABLE_DEBOUNCE_TICKS)
+      if (stabilityState.stable) {
+        // Artifacts present + stable. Send SIGTERM to break out of
+        // post-prerender hang. The vite process has already written
+        // _shell.html + server.js to disk; killing here is safe.
+        if (!killed) {
+          // If tracing is enabled, request a handle dump via IPC
+          // BEFORE killing, then exit gracefully. The agent's reply
+          // (handled above) provides diagnostic data.
+          if (useIpc && typeof child.send === "function") {
+            console.log(
+              `\n[orchestrator] Artifacts stable after ${(elapsed / 1000).toFixed(1)}s — requesting hang trace via IPC, then graceful exit`
+            )
+            try {
+              child.send({
+                type: "build-hang-trace-dump",
+                reason: "orchestrator-artifact-stable",
+                thenExit: true,
+              })
+            } catch {
+              // IPC may have closed; fall through to SIGTERM
             }
+            killed = true
+            // Give the agent ~3s to dump + exit, then SIGTERM as fallback
+            setTimeout(() => {
+              try {
+                child.kill("SIGTERM")
+              } catch {
+                // best-effort
+              }
+            }, 3000)
+          } else {
+            console.log(
+              `\n[orchestrator] Artifacts stable after ${(elapsed / 1000).toFixed(1)}s — sending SIGTERM to vite subprocess`
+            )
+            killed = true
+            terminateProcessTree(child.pid)
           }
         }
-      } else {
-        stableCount = 0
       }
 
       if (elapsed > MAX_WAIT_MS) {
@@ -523,7 +612,17 @@ async function main() {
   console.log("✓ Build orchestrated successfully — no Windows hang, no watch+kill required")
 }
 
-main().catch((error) => {
-  console.error(error)
-  process.exitCode = 1
-})
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : null
+const modulePath = fileURLToPath(import.meta.url)
+const isEntrypoint =
+  invokedPath !== null &&
+  (process.platform === "win32"
+    ? invokedPath.toLowerCase() === modulePath.toLowerCase()
+    : invokedPath === modulePath)
+
+if (isEntrypoint) {
+  main().catch((error) => {
+    console.error(error)
+    process.exitCode = 1
+  })
+}

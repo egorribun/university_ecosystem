@@ -556,7 +556,13 @@ describe("useMessengerController — branch top-up", () => {
         result.current.handleSendMessage("my reply", [])
       })
 
-      expect(mocks.chatApi.sendMessage).toHaveBeenCalledWith("chat-1", "my reply", [], "msg-target")
+      expect(mocks.chatApi.sendMessage).toHaveBeenCalledWith(
+        "chat-1",
+        "my reply",
+        [],
+        "msg-target",
+        expect.any(String)
+      )
       // Reply context cleared once the send is dispatched.
       expect(result.current.replyingTo).toBeNull()
     })
@@ -639,7 +645,8 @@ describe("useMessengerController — branch top-up", () => {
         "chat-1",
         "optimistic payload",
         [image, documentFile],
-        "msg-target"
+        "msg-target",
+        expect.any(String)
       )
 
       await act(async () => {
@@ -670,6 +677,31 @@ describe("useMessengerController — branch top-up", () => {
     expect(mocks.createObjectURL).not.toHaveBeenCalled()
     expect(mocks.chatApi.sendMessage).not.toHaveBeenCalled()
     expect(result.current.messages).toEqual([])
+  })
+
+  it("assigns a distinct idempotency key to each logical message send", async () => {
+    seedChat("chat-1")
+
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+    await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+    await act(async () => {
+      result.current.handleSendMessage("first logical send", [])
+    })
+    await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      result.current.handleSendMessage("second logical send", [])
+    })
+    await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(2))
+
+    const keys = mocks.chatApi.sendMessage.mock.calls.map((call) => call[4])
+    expect(keys).toHaveLength(2)
+    expect(keys[0]).toEqual(expect.any(String))
+    expect(keys[0]).not.toBe("")
+    expect(keys[1]).toEqual(expect.any(String))
+    expect(keys[1]).not.toBe("")
+    expect(keys[1]).not.toBe(keys[0])
   })
 
   describe("forward (842-864, 444-460)", () => {

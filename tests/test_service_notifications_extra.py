@@ -247,7 +247,14 @@ async def test_generate_schedule_reminders(monkeypatch):
     mock_schedule = Schedule()
     mock_schedule.id = "s1"
     mock_schedule.group_id = "g1"
-    mock_schedule.start_time = dt.datetime.now(UTC) + dt.timedelta(minutes=2)
+    lesson_start = dt.datetime.now(UTC) + dt.timedelta(minutes=2)
+    reference_date = dt.date(1970, 1, 5) + dt.timedelta(days=lesson_start.weekday())
+    mock_schedule.weekday = lesson_start.strftime("%A").lower()
+    mock_schedule.parity = "both"
+    mock_schedule.start_time = dt.datetime.combine(
+        reference_date, lesson_start.time()
+    ).replace(tzinfo=UTC)
+    mock_schedule.end_time = mock_schedule.start_time + dt.timedelta(hours=1)
     mock_schedule.lesson_type = "Lecture"
 
     mock_scalars = MagicMock()

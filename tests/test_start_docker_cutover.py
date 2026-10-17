@@ -84,6 +84,8 @@ def run_launcher(
         f"& '{script}' {command_args}"
     )
     env = os.environ.copy()
+    # -NoProfile still uses the .NET startup cache on Unix.
+    env["XDG_CACHE_HOME"] = str(script_root / ".powershell-cache")
     # Simulate an old shell still carrying the retired one-shot bypass.
     env["S3_CUTOVER_ACK"] = "VERIFIED_S3_CUTOVER"
     env.pop("COMPOSE_PROJECT_NAME", None)
@@ -369,13 +371,26 @@ def compose_argv(result: subprocess.CompletedProcess[str]) -> list[str]:
     return json.loads(calls[0])
 
 
-def test_logs_use_only_the_full_compose_file() -> None:
+def test_logs_use_only_the_full_compose_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    shared_cache = tmp_path / "shared-cache"
+    profile = shared_cache / "powershell" / "StartupProfileData-NonInteractive"
+    profile.parent.mkdir(parents=True)
+    sentinel = b"parent-process-startup-cache"
+    profile.write_bytes(sentinel)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(shared_cache))
+    parent_environment = os.environ.copy()
+
     result = run_launcher("-Logs")
+
     assert result.returncode == 0, result.stdout + result.stderr
     args = compose_argv(result)
     assert args[:3] == ["compose", "-f", "docker-compose.full.yml"]
     assert args.count("-f") == 2  # the compose file and the follow flag
     assert args[-2:] == ["logs", "-f"]
+    assert profile.read_bytes() == sentinel
+    assert os.environ == parent_environment
 
 
 def _reports(result: subprocess.CompletedProcess[str], reason: str) -> bool:

@@ -249,7 +249,13 @@ test("empty and malformed report input is represented as a violation", () => {
   assert.doesNotMatch(redacted.violations.join("\n"), /do-not-log/u)
 
   const missingAudit = evaluateLhciRoutePolicy(
-    [{ finalUrl: "https://example.test/login", categories: { seo: { score: 1 } } }],
+    [
+      {
+        finalUrl: "https://example.test/login",
+        requestedUrl: "https://example.test/login",
+        categories: { seo: { score: 1 } },
+      },
+    ],
     { robotsText: ROBOTS, expectedPaths: ["/login"] }
   )
   assert.ok(missingAudit.violations.length > 1)
@@ -257,7 +263,7 @@ test("empty and malformed report input is represented as a violation", () => {
   assert.match(missingAudit.violations.join("\n"), /must be crawlable/u)
 })
 
-test("route inventory rejects partial collections and honors redirected requests", () => {
+test("route inventory rejects partial collections and honors the index route redirect", () => {
   const partial = evaluateLhciRoutePolicy([report("/news")], {
     robotsText: ROBOTS,
     expectedPaths: ["/news", "/events"],
@@ -273,6 +279,57 @@ test("route inventory rejects partial collections and honors redirected requests
     expectedPaths: ["/"],
   })
   assert.deepEqual(complete.violations, [])
+})
+
+test("protected-to-login redirects do not satisfy route completeness", () => {
+  const redirected = {
+    ...report("/login"),
+    requestedUrl: "https://example.test/news/?token=do-not-log",
+  }
+  const outcome = evaluateLhciRoutePolicy([redirected, report("/events", { crawl: 0 })], {
+    robotsText: ROBOTS,
+    expectedPaths: ["/news", "/events"],
+    expectedRuns: 1,
+  })
+
+  assert.match(outcome.violations.join("\n"), /requested and final Lighthouse paths do not match/u)
+  assert.match(
+    outcome.violations.join("\n"),
+    /expected Lighthouse route \/news has 0 report\(s\); expected 1/u
+  )
+  assert.doesNotMatch(outcome.violations.join("\n"), /do-not-log/u)
+})
+
+test("direct protected route reports pass when requested and final paths match", () => {
+  const outcome = evaluateLhciRoutePolicy([report("/news/", { crawl: 0 })], {
+    robotsText: ROBOTS,
+    expectedPaths: ["/news"],
+    expectedRuns: 1,
+  })
+
+  assert.deepEqual(outcome.violations, [])
+})
+
+test("requested and final Lighthouse URLs must have the same origin", () => {
+  const crossOrigin = {
+    ...report("/news", { crawl: 0 }),
+    requestedUrl: "https://other.example.test/news",
+  }
+  const outcome = evaluateLhciRoutePolicy([crossOrigin], {
+    robotsText: ROBOTS,
+    expectedPaths: ["/news"],
+    expectedRuns: 1,
+  })
+
+  assert.match(
+    outcome.violations.join("\n"),
+    /requested and final Lighthouse URLs have different origins/u
+  )
+  assert.match(
+    outcome.violations.join("\n"),
+    /expected Lighthouse route \/news has 0 report\(s\); expected 1/u
+  )
+  assert.doesNotMatch(outcome.violations.join("\n"), /other\.example/u)
 })
 
 test("run-count contract rejects partial Lighthouse evidence", () => {

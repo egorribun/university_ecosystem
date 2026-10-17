@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime
+from hashlib import sha256
 from typing import Annotated
 
 from dishka.integrations.fastapi import FromDishka, inject
@@ -14,7 +15,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_user_from_dishka
+from app.api.deps import (
+    get_current_admin_user_from_dishka,
+    get_current_user_from_dishka,
+)
 from app.core.config import settings
 from app.core.localization import resolve_locale, translate
 from app.core.logging import get_logger
@@ -25,9 +29,8 @@ from app.core.ratelimit import (
     enforce_rate_limit,
     get_default_strategy,
 )
-from app.core.ssrf import validate_public_https_url, validate_url_not_internal_async
+from app.core.ssrf import validate_public_https_url
 from app.models import PushSubscription, User, UserPushTopic
-from app.models.enums import UserRole
 from app.schemas.notifications import (
     AdminUserTopicsResponse,
     AdminUserTopicsUpdate,
@@ -43,7 +46,10 @@ from app.schemas.notifications import (
     ReleaseAnnouncementResponse,
     SendTestResponse,
 )
-from app.services.notifications.delivery import deliver_and_process_push_results
+from app.services.notifications.delivery import (
+    deliver_and_process_push_results,
+    push_subscription_query,
+)
 from app.services.notifications.system_release import announce_release
 from app.services.push_service import deliver_push_to_subscriptions
 from app.services.push_topics import (
@@ -54,11 +60,19 @@ from app.services.push_topics import (
     sort_topics,
     synchronize_user_topics,
 )
-from app.services.webpush import WebPushResult
+from app.services.webpush import (
+    WebPushResult,
+    _validate_public_endpoint_dns,
+)
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/push", tags=["push"])
+
+
+def _endpoint_fingerprint(endpoint: str) -> str:
+    """Return a stable log reference without exposing the bearer endpoint."""
+    return sha256(endpoint.encode("utf-8")).hexdigest()[:12]
 
 
 def _serialize_subscription(subscription: PushSubscription) -> PushSubscriptionOut:
@@ -121,7 +135,7 @@ async def _bind_subscription_to_user(
             "push.subscribe.owner_changed",
             extra={
                 "subscription_id": subscription.id,
-                "endpoint_prefix": subscription.endpoint[:50],
+                "endpoint_fingerprint": _endpoint_fingerprint(subscription.endpoint),
             },
         )
     subscription.p256dh = p256dh
@@ -161,10 +175,10 @@ async def _validate_subscription_payload(
         try:
             validate_public_https_url(endpoint)
             # Development/test fixtures may use non-resolving provider
-            # placeholders, but a hostname that resolves to an internal
-            # address is rejected in every environment.
+            # placeholders. Resolved hostnames must have only globally
+            # routable answers before the subscription can be persisted.
             try:
-                await validate_url_not_internal_async(endpoint)
+                await _validate_public_endpoint_dns(endpoint)
             except ValueError as exc:
                 if not (
                     getattr(settings, "is_development", False)
@@ -232,10 +246,6 @@ async def subscribe(
     user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> PushSubscriptionOut:
     locale = resolve_locale(request=request, user=user)
-    endpoint, p256dh, auth = await _validate_subscription_payload(
-        payload, locale=locale
-    )
-
     client_host = request.client.host if request.client else None
     try:
         await enforce_rate_limit(
@@ -262,6 +272,12 @@ async def subscribe(
             },
         ) from None
 
+    # Charge the authenticated caller before DNS validation, which may block
+    # on an attacker-controlled endpoint hostname.
+    endpoint, p256dh, auth = await _validate_subscription_payload(
+        payload, locale=locale
+    )
+
     user_agent = payload.user_agent or request.headers.get("user-agent") or ""
     user_agent = user_agent.strip()
     if len(user_agent) > 512:
@@ -273,7 +289,10 @@ async def subscribe(
 
     logger.info(
         "push.subscribe.start",
-        extra={"endpoint_prefix": endpoint[:50], "user_id": user.id},
+        extra={
+            "endpoint_fingerprint": _endpoint_fingerprint(endpoint),
+            "user_id": user.id,
+        },
     )
 
     for attempt in range(max_attempts):
@@ -292,7 +311,7 @@ async def subscribe(
                 extra={
                     "attempt": attempt + 1,
                     "existing": existing is not None,
-                    "endpoint_prefix": endpoint[:50],
+                    "endpoint_fingerprint": _endpoint_fingerprint(endpoint),
                 },
             )
 
@@ -321,7 +340,7 @@ async def subscribe(
                 extra={
                     "attempt": attempt + 1,
                     "subscription_id": subscription.id,
-                    "endpoint_prefix": endpoint[:50],
+                    "endpoint_fingerprint": _endpoint_fingerprint(endpoint),
                 },
             )
             break  # Success, exit retry loop
@@ -331,8 +350,8 @@ async def subscribe(
                 "push.subscribe.integrity_error",
                 extra={
                     "attempt": attempt + 1,
-                    "error": str(e)[:200],
-                    "endpoint_prefix": endpoint[:50],
+                    "error_type": type(e).__name__,
+                    "endpoint_fingerprint": _endpoint_fingerprint(endpoint),
                 },
             )
             await db.rollback()
@@ -369,7 +388,7 @@ async def subscribe(
                     "push.subscribe.recovered",
                     extra={
                         "subscription_id": existing.id,
-                        "endpoint_prefix": endpoint[:50],
+                        "endpoint_fingerprint": _endpoint_fingerprint(endpoint),
                     },
                 )
             else:
@@ -377,7 +396,10 @@ async def subscribe(
                 # but we couldn't find it due to transaction isolation
                 logger.warning(
                     "push.subscribe.not_found_after_error",
-                    extra={"endpoint_prefix": endpoint[:50], "user_id": user.id},
+                    extra={
+                        "endpoint_fingerprint": _endpoint_fingerprint(endpoint),
+                        "user_id": user.id,
+                    },
                 )
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -546,18 +568,10 @@ async def get_push_topics(
 async def send_test(
     request: Request,
     db: FromDishka[AsyncDatabaseSession],
-    user: Annotated[User, Depends(get_current_user_from_dishka)],
+    user: Annotated[User, Depends(get_current_admin_user_from_dishka)],
     payload: PushTestRequest | None = None,
 ) -> SendTestResponse:
     locale = resolve_locale(request=request, user=user)
-    if user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "forbidden",
-                "message": translate("errors.forbidden", locale=locale),
-            },
-        )
 
     vapid_ready = bool(settings.VAPID_PRIVATE_KEY and settings.VAPID_PUBLIC_KEY)
     allow_missing_credentials = str(settings.environment).lower() in {
@@ -610,13 +624,7 @@ async def send_test(
     subscriptions = (
         (
             await db.execute(
-                select(PushSubscription)
-                .options(
-                    selectinload(PushSubscription.user).selectinload(
-                        User.push_topic_preferences
-                    )
-                )
-                .where(PushSubscription.user_id == target.id)
+                push_subscription_query().where(PushSubscription.user_id == target.id)
             )
         )
         .scalars()
@@ -686,17 +694,9 @@ async def admin_get_user_topics(
     user_id: uuid.UUID,
     request: Request,
     db: FromDishka[AsyncDatabaseSession],
-    user: Annotated[User, Depends(get_current_user_from_dishka)],
+    user: Annotated[User, Depends(get_current_admin_user_from_dishka)],
 ) -> AdminUserTopicsResponse:
     locale = resolve_locale(request=request, user=user)
-    if user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "forbidden",
-                "message": translate("errors.forbidden", locale=locale),
-            },
-        )
     target = (
         await db.execute(
             select(User)
@@ -731,17 +731,9 @@ async def admin_update_user_topics(
     payload: AdminUserTopicsUpdate,
     request: Request,
     db: FromDishka[AsyncDatabaseSession],
-    user: Annotated[User, Depends(get_current_user_from_dishka)],
+    user: Annotated[User, Depends(get_current_admin_user_from_dishka)],
 ) -> AdminUserTopicsResponse:
     locale = resolve_locale(request=request, user=user)
-    if user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "forbidden",
-                "message": translate("errors.forbidden", locale=locale),
-            },
-        )
     target = (
         await db.execute(
             select(User)
@@ -782,17 +774,9 @@ async def disable_user_push(
     payload: DisableUserPushRequest,
     request: Request,
     db: FromDishka[AsyncDatabaseSession],
-    user: Annotated[User, Depends(get_current_user_from_dishka)],
+    user: Annotated[User, Depends(get_current_admin_user_from_dishka)],
 ) -> dict[str, int | bool]:
     locale = resolve_locale(request=request, user=user)
-    if user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "forbidden",
-                "message": translate("errors.forbidden", locale=locale),
-            },
-        )
 
     target = await db.get(User, payload.user_id)
     if not target:
@@ -837,18 +821,10 @@ async def announce_platform_release(
     data: ReleaseAnnouncementRequest,
     request: Request,
     db: FromDishka[AsyncDatabaseSession],
-    user: Annotated[User, Depends(get_current_user_from_dishka)],
+    user: Annotated[User, Depends(get_current_admin_user_from_dishka)],
 ) -> ReleaseAnnouncementResponse:
     """Announce a released platform version once to every active user."""
     locale = resolve_locale(request=request, user=user)
-    if user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "forbidden",
-                "message": translate("errors.forbidden", locale=locale),
-            },
-        )
     try:
         await enforce_rate_limit(
             strategy=get_default_strategy(),
@@ -894,19 +870,11 @@ async def broadcast(
     data: NotifyBody,
     request: Request,
     db: FromDishka[AsyncDatabaseSession],
-    user: Annotated[User, Depends(get_current_user_from_dishka)],
+    user: Annotated[User, Depends(get_current_admin_user_from_dishka)],
 ) -> SendTestResponse:
     locale = resolve_locale(request=request, user=user)
     # RZ-33-18: Auth check BEFORE rate limit — prevents unauthenticated users
     # from exhausting the admin's rate-limit budget.
-    if user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "forbidden",
-                "message": translate("errors.forbidden", locale=locale),
-            },
-        )
 
     # RZ-W19-18: rate limit broadcast — max 5 per hour to prevent DB/WebPush saturation
     try:
@@ -942,15 +910,7 @@ async def broadcast(
     last_subscription_id: uuid.UUID | None = None
 
     while True:
-        statement = (
-            select(PushSubscription)
-            .options(
-                selectinload(PushSubscription.user).selectinload(
-                    User.push_topic_preferences
-                )
-            )
-            .order_by(PushSubscription.id)
-        )
+        statement = push_subscription_query().order_by(PushSubscription.id)
         if last_subscription_id is not None:
             # Keyset pagination remains correct when the previous batch's
             # result processing removed stale subscriptions in a separate

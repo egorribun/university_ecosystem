@@ -17,7 +17,7 @@ const wasmPath = path.resolve(__dirname, "../pkg/wasm_sanitizer_bg.wasm")
 const wasmBuffer = fs.readFileSync(wasmPath)
 initSync(wasmBuffer)
 
-// 2. Test battery (25 test cases)
+// 2. Sanitizer safety test cases.
 const testCases = [
   { name: "empty string", input: "" },
   { name: "plain text", input: "Hello world, no HTML tags." },
@@ -52,6 +52,10 @@ const testCases = [
     input: '<a href="https://google.com" target="_blank" title="Google">Safe Link</a>',
   },
   { name: "style attribute", input: '<p style="color: red; background: blue;">styled text</p>' },
+  {
+    name: "uppercase CSS URL style bypass",
+    input: "<p style='background-image:URL(\"https://evil.example/pixel\")'>styled text</p>",
+  },
   { name: "Cyrillic Unicode", input: "<p>Привет, мир! <b>Как дела?</b></p>" },
   { name: "Japanese Unicode", input: "<span>こんにちは、世界！</span>" },
   { name: "Emojis preservation", input: "Hello Emojis 🚀 🌟 👋 🌍 🎉" },

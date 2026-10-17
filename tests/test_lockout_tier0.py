@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
+from tests.helpers.async_events import wait_for_task_event
 
 
 def _attempt(attempted_at: datetime) -> SimpleNamespace:
@@ -252,6 +255,9 @@ def test_active_lockout_message_includes_retry_details(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_register_failed_attempt_uses_postgres_advisory_lock(monkeypatch) -> None:
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.sql.elements import TextClause
+
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
@@ -264,14 +270,21 @@ async def test_register_failed_attempt_uses_postgres_advisory_lock(monkeypatch) 
     attempt = _attempt(datetime.now(UTC))
     service.repo.create_failed_attempt = AsyncMock(return_value=attempt)
 
-    lock_until, triggered, count = await service.register_failed_attempt(
-        "postgres@example.com", None
-    )
+    email = "postgres@example.com"
+    lock_until, triggered, count = await service.register_failed_attempt(email, None)
 
     assert lock_until is not None
     assert triggered is True
     assert count == 1
     db.execute.assert_awaited_once()
+    execute_call = db.execute.await_args
+    assert execute_call is not None
+    assert len(execute_call.args) == 2, "postgres_advisory_lock_binding_argument_count"
+    statement, parameters = execute_call.args
+    assert isinstance(statement, TextClause), "postgres_advisory_lock_text_clause"
+    compiled = statement.compile(dialect=postgresql.dialect())
+    assert set(compiled.params) == {"email"}, "postgres_advisory_lock_named_bind"
+    assert parameters == {"email": email}, "postgres_advisory_lock_email_binding"
     db.flush.assert_awaited_once()
     db.commit.assert_awaited_once()
 
@@ -315,3 +328,91 @@ async def test_clear_failed_attempts_commits_and_returns_count(monkeypatch) -> N
     assert count == 4
     service.repo.clear_failed_attempts.assert_awaited_once_with("clear@example.com")
     db.commit.assert_awaited_once()
+
+
+class _FakePostgresLockoutSession:
+    def __init__(self, advisory_lock: asyncio.Lock) -> None:
+        self.advisory_lock = advisory_lock
+        self.has_lock = False
+
+    async def execute(self, statement, _parameters=None) -> None:
+        assert "pg_advisory_xact_lock" in str(statement)
+        await self.advisory_lock.acquire()
+        self.has_lock = True
+
+    async def flush(self) -> None:
+        return None
+
+    async def commit(self) -> None:
+        if self.has_lock:
+            self.advisory_lock.release()
+            self.has_lock = False
+
+
+class _InterleavedLockoutRepository:
+    def __init__(self) -> None:
+        self.rows: list[tuple[str, SimpleNamespace]] = []
+        self.insert_started = asyncio.Event()
+        self.allow_insert = asyncio.Event()
+        self.clear_started = asyncio.Event()
+
+    async def prune_stale_failed_attempts(self, _email, _cutoff) -> None:
+        return None
+
+    async def get_failed_attempts(self, email: str, limit: int):
+        matches = [attempt for row_email, attempt in self.rows if row_email == email]
+        return sorted(matches, key=lambda item: item.attempted_at, reverse=True)[:limit]
+
+    async def create_failed_attempt(self, *, email: str, user_id) -> SimpleNamespace:
+        self.insert_started.set()
+        await self.allow_insert.wait()
+        attempt = _attempt(datetime.now(UTC))
+        self.rows.append((email, attempt))
+        return attempt
+
+    async def clear_failed_attempts(self, email: str) -> int:
+        self.clear_started.set()
+        before = len(self.rows)
+        self.rows = [
+            (row_email, row) for row_email, row in self.rows if row_email != email
+        ]
+        return before - len(self.rows)
+
+
+@pytest.mark.asyncio
+async def test_successful_clear_serializes_after_inflight_failed_attempt(
+    monkeypatch,
+) -> None:
+    """A success clear must not miss a failed attempt already in its locked insert."""
+    from app.core.config import settings
+    from app.services.auth.lockout import LockoutService
+
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "1:30")
+    monkeypatch.setattr(settings.security, "auth_lockout_history_minutes", 0)
+    advisory_lock = asyncio.Lock()
+    repository = _InterleavedLockoutRepository()
+
+    failed_service = LockoutService(_FakePostgresLockoutSession(advisory_lock))
+    failed_service._is_postgresql = True
+    failed_service.repo = repository
+    clear_service = LockoutService(_FakePostgresLockoutSession(advisory_lock))
+    clear_service._is_postgresql = True
+    clear_service.repo = repository
+
+    async with asyncio.TaskGroup() as tasks:
+        failed_attempt = tasks.create_task(
+            failed_service.register_failed_attempt("race@example.com", None)
+        )
+        try:
+            await wait_for_task_event(failed_attempt, repository.insert_started)
+            successful_clear = tasks.create_task(
+                clear_service.clear_failed_attempts("race@example.com")
+            )
+            await asyncio.sleep(0)
+            assert repository.clear_started.is_set() is False
+            assert successful_clear.done() is False
+        finally:
+            repository.allow_insert.set()
+
+    assert successful_clear.result() == 1
+    assert repository.rows == []

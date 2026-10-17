@@ -20,6 +20,7 @@ const translationCalls = vi.hoisted(() => ({
 }))
 const translationNamespaces = vi.hoisted(() => ({ calls: [] as unknown[] }))
 const parseMinutesCalls = vi.hoisted(() => ({ values: [] as Array<string | undefined> }))
+const parityCalls = vi.hoisted(() => ({ times: [] as Array<Date | undefined> }))
 const { preloadRoute, routerState } = vi.hoisted(() => {
   const routePreload = vi.fn()
   return { preloadRoute: routePreload, routerState: { current: { preloadRoute: routePreload } } }
@@ -69,7 +70,10 @@ vi.mock("@/hooks/useDashboardSchedule", () => ({
 
 vi.mock("@/utils/scheduleUtils", () => ({
   fmtTime: (value: string) => value,
-  nowParity: () => "odd",
+  nowParity: (time?: Date) => {
+    parityCalls.times.push(time)
+    return "odd"
+  },
   parseMinutes: (value: string | undefined) => {
     parseMinutesCalls.values.push(value)
     const [hours = Number.NaN, minutes = Number.NaN] = (value ?? "").split(":").map(Number)
@@ -143,6 +147,7 @@ describe("ScheduleCard", () => {
     translationCalls.entries = []
     translationNamespaces.calls = []
     parseMinutesCalls.values = []
+    parityCalls.times = []
     routerState.current = { preloadRoute }
     preloadRoute.mockReset()
     preloadRoute.mockResolvedValue(undefined)
@@ -153,6 +158,14 @@ describe("ScheduleCard", () => {
 
     expect(container.querySelector('[style*="animation"]')).toBeNull()
     expect(container.querySelector(".dash-orb-reactive")).toBeNull()
+  })
+
+  it("derives week parity from the same clock snapshot as the schedule", () => {
+    const time = new Date(2026, 6, 31, 10, 30)
+
+    renderCard({ time })
+
+    expect(parityCalls.times).toContain(time)
   })
 
   it("gates loading to student accounts with a group", () => {

@@ -342,6 +342,8 @@ class ConnectionManager:
         chat_id: uuid.UUID,
         message: dict[str, Any],
         exclude_user_id: uuid.UUID | None = None,
+        *,
+        propagate_nats_failure: bool = False,
     ) -> int:
         """Broadcast a message to all participants of a chat. Returns total sends.
 
@@ -392,6 +394,7 @@ class ConnectionManager:
                     "room": str(chat_id),
                     "payload": message,
                 },
+                strict=propagate_nats_failure,
             )
         except (ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
             # RZ-20-04: narrowed — NATS infra/connect errors. Never breaks the
@@ -401,6 +404,8 @@ class ConnectionManager:
                 chat_id,
                 exc,
             )
+            if propagate_nats_failure:
+                raise
 
         return sum(r for r in results if isinstance(r, int))
 

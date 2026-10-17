@@ -15,11 +15,11 @@ const buttonVariants = cva(
     variants: {
       variant: {
         solid: cn(
-          "bg-linear-brand text-inverse-text shadow-surface ring-brand/(--opacity-dim) transition-all duration-slow",
-          "hover:shadow-premium-lift hover:scale-hover hover:opacity-heavy",
+          "bg-(image:--gradient-brand) text-inverse-text shadow-surface ring-brand/(--opacity-dim) transition-all duration-slow",
+          "hover:shadow-premium-lift hover:scale-hover hover:opacity-(--opacity-heavy)",
           "active:scale-95",
           "motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:active:translate-y-0 motion-reduce:active:scale-100",
-          "disabled:bg-(--border-subtle) disabled:text-(--text-tertiary)"
+          "disabled:bg-none disabled:bg-(--border-subtle) disabled:text-(--text-tertiary)"
         ),
         outline: cn(
           "border border-border-subtle text-text-primary shadow-surface bg-transparent",
@@ -40,15 +40,15 @@ const buttonVariants = cva(
           "active:scale-95 transition-all duration-base"
         ),
         gradient: cn(
-          "bg-linear-brand text-inverse-text shadow-lg border-none",
-          "hover:shadow-premium-lift hover:saturate-150 hover:scale-hover hover:opacity-heavy",
+          "bg-(image:--gradient-brand) text-inverse-text shadow-lg border-none",
+          "hover:shadow-premium-lift hover:saturate-150 hover:scale-hover hover:opacity-(--opacity-heavy)",
           "active:scale-95 transition-all duration-slow"
         ),
       },
       size: {
-        sm: "min-h-11 min-w-11 px-3 py-2 text-(--fs-sm)",
-        md: "min-h-12 px-5 py-2.5 text-(--fs-base)",
-        lg: "min-h-14 px-7 py-3 text-(--fs-lg)",
+        sm: "min-h-11 min-w-11 px-3 py-2 text-(length:--fs-sm)",
+        md: "min-h-12 px-5 py-2.5 text-(length:--fs-base)",
+        lg: "min-h-14 px-7 py-3 text-(length:--fs-lg)",
         icon: "h-11 w-11 min-h-11 min-w-11 p-0 rounded-lg",
       },
       fullWidth: {
@@ -108,7 +108,10 @@ const ButtonBase = <T extends ElementType = "button">(
   const isDisabled = Boolean(disabled || loading)
 
   const handleClick = (e: MouseEvent) => {
-    if (isDisabled) return
+    if (isDisabled) {
+      e.preventDefault()
+      return
+    }
 
     onClick?.(e)
   }
@@ -123,7 +126,7 @@ const ButtonBase = <T extends ElementType = "button">(
       ref={ref}
       className={cn(
         buttonVariants({ variant, size, fullWidth }),
-        isDisabled && "pointer-events-none opacity-strong",
+        isDisabled && "pointer-events-none opacity-(--opacity-strong)",
         className
       )}
       disabled={isButtonElement ? isDisabled : undefined}

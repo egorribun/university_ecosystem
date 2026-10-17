@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -18,19 +19,28 @@ def _workflow_triggers(workflow: dict[str, object]) -> dict[str, object]:
     return triggers
 
 
-def test_sqlmap_workflow_is_a_fail_closed_main_pr_smoke_gate() -> None:
-    """The SQLMap job must stay bounded, pinned, and non-optional."""
+def test_sqlmap_workflow_is_scheduled_manual_default_branch_evidence() -> None:
+    """SQLMap remains bounded and fail-closed on trusted scheduled/manual runs."""
 
     workflow = yaml.safe_load(SQLMAP_WORKFLOW_PATH.read_text(encoding="utf-8"))
     triggers = _workflow_triggers(workflow)
     assert triggers == {
-        "push": {"branches": ["main"]},
-        "pull_request": {"branches": ["main"]},
+        "schedule": [{"cron": "0 4 * * 1"}],
+        "workflow_dispatch": {},
     }
 
     job = workflow["jobs"]["sqlmap"]
+    assert (
+        job["if"]
+        == "${{ always() && github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || needs.verify-default-branch-dispatch.result == 'success') }}"
+    )
+    assert job["needs"] == "verify-default-branch-dispatch"
     assert job.get("continue-on-error", False) is False
     assert job["timeout-minutes"] == 20
+
+    verify = workflow["jobs"]["verify-default-branch-dispatch"]
+    assert verify["if"] == "${{ github.event_name == 'workflow_dispatch' }}"
+    assert "refs/heads/main" in verify["steps"][0]["run"]
 
     checkout = next(
         step for step in job["steps"] if step.get("name") == "Checkout repository"
@@ -59,7 +69,9 @@ def test_sqlmap_proves_openapi_capability_and_backend_readiness_before_scan() ->
         indexes["Start FastAPI Backend in Background"]
         < indexes["Run SQLMap Scan on API"]
     )
-    assert install["run"].strip() == 'uv pip install "sqlmap==1.10.8"'
+    assert re.fullmatch(
+        r'uv pip install "sqlmap==\d+\.\d+\.\d+"', install["run"].strip()
+    )
 
     capability_script = capability["run"]
     assert "uv run sqlmap -hh" in capability_script

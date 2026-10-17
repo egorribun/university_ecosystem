@@ -192,6 +192,23 @@ async def test_schedule_api_coverage(
             assert res.status_code == 200
             assert mock_schedule_service.update_schedule.called
 
+            # The public PATCH route must retain FastAPI's 422 contract for
+            # JSON values that cannot represent a ScheduleUpdate object. This
+            # exercises the before-validator's non-Mapping passthrough while
+            # proving malformed bodies never reach the mutation command.
+            update_calls = mock_schedule_service.update_schedule.await_count
+            command_calls = mock_command_bus.execute.await_count
+            for invalid_body in ([], "not-an-object", 7, None):
+                invalid = await ac.patch(
+                    f"/api/v1/schedule/{sid}",
+                    json=invalid_body,
+                )
+                assert invalid.status_code == 422
+                assert isinstance(invalid.json()["detail"], list)
+
+            assert mock_schedule_service.update_schedule.await_count == update_calls
+            assert mock_command_bus.execute.await_count == command_calls
+
             # Test delete schedule
             res = await ac.delete(f"/api/v1/schedule/{sid}")
             assert res.status_code == 200

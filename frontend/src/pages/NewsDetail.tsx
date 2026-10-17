@@ -34,7 +34,7 @@ import { useRelatedNews } from "@/hooks/useRelatedNews"
 import { useArticleNavigation } from "@/hooks/useArticleNavigation"
 import { captureActiveTelemetryContext } from "@/utils/telemetryContext"
 import { useSwipe } from "@/hooks/useSwipe"
-import { inferCategory } from "@/features/news/categories"
+import { inferNewsCategory } from "@/features/news/categories"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
@@ -219,7 +219,7 @@ export default function NewsDetail() {
   const createdAtLabel = useMemo(() => (createdAt ? getMoscowDate(createdAt) : ""), [createdAt])
 
   const category = useMemo(
-    () => (query.data ? inferCategory(query.data.title, query.data.content) : ("general" as const)),
+    () => (query.data ? inferNewsCategory(query.data) : ("general" as const)),
     [query.data]
   )
   const relatedArticles = useRelatedNews(id, category, 3)

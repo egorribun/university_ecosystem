@@ -210,42 +210,6 @@ class TestCleanupTasks:
             mock_cleanup.assert_awaited_once()
             mock_cwv_cleanup.assert_awaited_once_with(retention_days=30)
 
-    @pytest.mark.asyncio
-    async def test_manage_partitions_task_enabled(self) -> None:
-        with (
-            patch("app.tasks.cleanups.settings") as mock_settings,
-            patch(
-                "app.tasks.cleanups.ensure_partitions_exist", new_callable=AsyncMock
-            ) as mock_ensure,
-        ):
-            mock_settings.partition_management_enabled = True
-            from app.tasks.cleanups import manage_partitions_task
-
-            await manage_partitions_task()
-            mock_ensure.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_manage_partitions_task_disabled(self) -> None:
-        with (
-            patch("app.tasks.cleanups.settings") as mock_settings,
-            patch(
-                "app.tasks.cleanups.ensure_partitions_exist", new_callable=AsyncMock
-            ) as mock_ensure,
-        ):
-            mock_settings.partition_management_enabled = False
-            from app.tasks.cleanups import manage_partitions_task
-
-            await manage_partitions_task()
-            mock_ensure.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_setup_periodic_cleanups_logs(self) -> None:
-        """setup_periodic_cleanups is a no-op entrypoint; assert it doesn't raise."""
-        from app.tasks.cleanups import setup_periodic_cleanups
-
-        # Should execute without raising any exception.
-        await setup_periodic_cleanups()
-
 
 # ---------------------------------------------------------------------------
 # app/tasks/notifications.py

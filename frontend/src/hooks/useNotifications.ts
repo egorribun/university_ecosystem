@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { logWarning } from "@/app/logger"
 import { resolveNotificationAppPath } from "@/notifications/contract"
+import { getCurrentPushUserId } from "@/push/pushMessageBus"
 import {
   clearNotifications as clearNotificationsRequest,
   fetchNotificationsList,
@@ -61,8 +62,18 @@ export function useNotifications() {
     if (typeof navigator === "undefined" || !navigator.serviceWorker) return
     const handlePushMessage = (event: MessageEvent<unknown>) => {
       if (!event.data || typeof event.data !== "object") return
-      const message = event.data as { type?: unknown; notificationId?: unknown }
-      if (message.type !== "PUSH_NOTIFICATION" || typeof message.notificationId !== "string") {
+      const message = event.data as {
+        type?: unknown
+        notificationId?: unknown
+        recipientUserId?: unknown
+      }
+      if (
+        message.type !== "PUSH_NOTIFICATION" ||
+        typeof message.notificationId !== "string" ||
+        typeof message.recipientUserId !== "string" ||
+        message.recipientUserId.length === 0 ||
+        message.recipientUserId !== getCurrentPushUserId()
+      ) {
         return
       }
       const notificationId = message.notificationId.trim()

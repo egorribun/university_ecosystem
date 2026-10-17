@@ -173,7 +173,8 @@ export const chatApi = {
     chatId: string,
     content: string,
     files?: File[],
-    replyToMessageId?: string
+    replyToMessageId?: string,
+    idempotencyKey?: string
   ) => {
     const formData = new FormData()
     formData.append("content", content)
@@ -186,7 +187,11 @@ export const chatApi = {
     if (replyToMessageId) {
       formData.append("reply_to_message_id", replyToMessageId)
     }
-    const response = await client.post<Message>(`/chats/${chatId}/messages`, formData)
+    const response = idempotencyKey
+      ? await client.post<Message>(`/chats/${chatId}/messages`, formData, {
+          headers: { "Idempotency-Key": idempotencyKey },
+        })
+      : await client.post<Message>(`/chats/${chatId}/messages`, formData)
     return response.data
   },
 

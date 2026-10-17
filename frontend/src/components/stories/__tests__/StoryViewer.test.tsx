@@ -155,16 +155,38 @@ describe("StoryViewer", () => {
   }
 
   it("renders nothing when activeStoryIndex is null", async () => {
-    const { container } = await renderViewer({ activeStoryIndex: null })
-    // TanStack Router renders an <Outlet /> which wraps the ui; even when the
-    // tested component returns null the container still has the router shell.
-    // Assert the StoryViewer-specific dialog is absent instead.
-    expect(container.querySelector("[role='dialog']")).toBeNull()
+    await renderViewer({ activeStoryIndex: null })
+    // The viewer is portaled to document.body, outside the router container.
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Close")).not.toBeInTheDocument()
+    expect(document.body.style.overflow).toBe("")
   })
 
   it("renders nothing for an out-of-range active story index", async () => {
-    const { container } = await renderViewer({ activeStoryIndex: 99 })
-    expect(container.querySelector("[role='dialog']")).toBeNull()
+    await renderViewer({ activeStoryIndex: 99 })
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Close")).not.toBeInTheDocument()
+  })
+
+  it("closes and reopens the mounted viewer with the current story and progress", () => {
+    document.body.style.overflow = "scroll"
+    const { rerender } = renderViewerDirect({ progress: 25 })
+    expect(screen.getByRole("dialog", { name: "Story 1" })).toBeInTheDocument()
+
+    rerender(<StoryViewer {...defaultProps} activeStoryIndex={null} />)
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Close")).not.toBeInTheDocument()
+    expect(document.body.style.overflow).toBe("scroll")
+
+    rerender(<StoryViewer {...defaultProps} activeStoryIndex={1} progress={65} />)
+
+    expect(screen.getByRole("dialog", { name: "Story 2" })).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Story 1" })).not.toBeInTheDocument()
+    expect(
+      screen.getAllByRole("progressbar").map((bar) => bar.getAttribute("aria-valuenow"))
+    ).toEqual(["100", "65"])
+    expect(document.body.style.overflow).toBe("hidden")
   })
 
   it("is inert during server rendering and uses the browser integration contracts", async () => {

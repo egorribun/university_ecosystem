@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	cryptorand "crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -12,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/moby/moby/api/types/container"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -22,42 +25,71 @@ import (
 	"go.temporal.io/sdk/client"
 )
 
-func startFileProcessorJetStream(t *testing.T) (*nats.Conn, nats.JetStreamContext, func()) {
+func fileProcessorNATSContainerOptions(t *testing.T) []testcontainers.ContainerCustomizer {
+	t.Helper()
+	var uniqueID [16]byte
+	if _, err := cryptorand.Read(uniqueID[:]); err != nil {
+		t.Fatalf("generate unique NATS test-container owner: %v", err)
+	}
+
+	return []testcontainers.ContainerCustomizer{
+		testcontainers.WithLabels(map[string]string{
+			"university-ecosystem.dev/test-owner":   "file-processor-nats-" + hex.EncodeToString(uniqueID[:]),
+			"university-ecosystem.dev/test-purpose": "file-processor-nats-integration",
+		}),
+		testcontainers.WithHostConfigModifier(func(hostConfig *container.HostConfig) {
+			hostConfig.Memory = 1 << 30
+			hostConfig.MemorySwap = 1 << 30
+			hostConfig.NanoCPUs = 2_000_000_000
+		}),
+		testcontainers.WithLogger(tclog.TestLogger(t)),
+	}
+}
+
+func startFileProcessorJetStream(t *testing.T) (*nats.Conn, nats.JetStreamContext) {
 	t.Helper()
 	ctx := context.Background()
 
 	container, err := tcnats.Run(
 		ctx,
-		"nats:2.12.6-alpine@sha256:1cfc36e2e5e638243d8c722f72c954cd0ec4b15ee82fadbc718ce12e2b3c1652",
-		testcontainers.WithLogger(tclog.TestLogger(t)),
+		"nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4",
+		fileProcessorNATSContainerOptions(t)...,
 	)
+	if container != nil {
+		t.Cleanup(func() {
+			if err := container.Terminate(context.Background()); err != nil {
+				t.Logf("JetStream NATS container cleanup: %v", err)
+			}
+		})
+	}
 	require.NoError(t, err)
+	require.NotNil(t, container, "NATS container start must return a container")
 
 	connectionString, err := container.ConnectionString(ctx)
-	if err != nil {
-		_ = container.Terminate(ctx)
-		t.Fatalf("JetStream NATS connection string: %v", err)
-	}
+	require.NoError(t, err)
 
 	nc, err := nats.Connect(connectionString)
-	if err != nil {
-		_ = container.Terminate(ctx)
-		t.Fatalf("JetStream NATS connect: %v", err)
+	if nc != nil {
+		t.Cleanup(nc.Close)
 	}
+	require.NoError(t, err)
 	js, err := nc.JetStream()
-	if err != nil {
-		nc.Close()
-		_ = container.Terminate(ctx)
-		t.Fatalf("JetStream context: %v", err)
-	}
+	require.NoError(t, err)
 
-	cleanup := func() {
-		nc.Close()
-		if err := container.Terminate(context.Background()); err != nil {
-			t.Logf("JetStream NATS container cleanup: %v", err)
-		}
-	}
-	return nc, js, cleanup
+	return nc, js
+}
+
+func startFileProcessStream(t *testing.T) (*nats.Conn, nats.JetStreamContext) {
+	t.Helper()
+	nc, js := startFileProcessorJetStream(t)
+	_, err := js.AddStream(&nats.StreamConfig{
+		Name:      "FILE_EVENTS",
+		Subjects:  []string{fileProcessSubject},
+		Storage:   nats.MemoryStorage,
+		Retention: nats.LimitsPolicy,
+	})
+	require.NoError(t, err)
+	return nc, js
 }
 
 type integrationTemporalClient struct {
@@ -100,19 +132,6 @@ func (m *integrationTemporalClient) ExecuteWorkflow(
 		return nil, errors.New("transient Temporal outage")
 	}
 	return nil, nil
-}
-
-func startFileProcessStream(t *testing.T) (*nats.Conn, nats.JetStreamContext, func()) {
-	t.Helper()
-	nc, js, cleanup := startFileProcessorJetStream(t)
-	_, err := js.AddStream(&nats.StreamConfig{
-		Name:      "FILE_EVENTS",
-		Subjects:  []string{fileProcessSubject},
-		Storage:   nats.MemoryStorage,
-		Retention: nats.LimitsPolicy,
-	})
-	require.NoError(t, err)
-	return nc, js, cleanup
 }
 
 func validIntegrationJob(id string) workflow.ProcessJob {
@@ -162,8 +181,7 @@ func requireNatsAckPendingToSettle(
 }
 
 func TestIntegration_StartNatsSubscriberExecutesWorkflow(t *testing.T) {
-	nc, js, cleanup := startFileProcessStream(t)
-	t.Cleanup(cleanup)
+	nc, js := startFileProcessStream(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -205,8 +223,7 @@ func TestIntegration_StartNatsSubscriberExecutesWorkflow(t *testing.T) {
 }
 
 func TestIntegration_StartNatsSubscriberConfiguresBoundedConsumer(t *testing.T) {
-	nc, js, cleanup := startFileProcessStream(t)
-	t.Cleanup(cleanup)
+	nc, js := startFileProcessStream(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	clientStub := &integrationTemporalClient{calls: make(chan workflow.ProcessJob, 1)}
@@ -221,8 +238,7 @@ func TestIntegration_StartNatsSubscriberConfiguresBoundedConsumer(t *testing.T) 
 }
 
 func TestIntegration_StartNatsSubscriberTerminatesPoisonWithoutTemporal(t *testing.T) {
-	nc, js, cleanup := startFileProcessStream(t)
-	t.Cleanup(cleanup)
+	nc, js := startFileProcessStream(t)
 	advisorySubject := "$JS.EVENT.ADVISORY.CONSUMER.MSG_TERMINATED.FILE_EVENTS." + fileProcessConsumer
 	advisory, err := nc.SubscribeSync(advisorySubject)
 	require.NoError(t, err)
@@ -248,8 +264,7 @@ func TestIntegration_StartNatsSubscriberTerminatesPoisonWithoutTemporal(t *testi
 }
 
 func TestIntegration_StartNatsSubscriberTerminatesSemanticPoison(t *testing.T) {
-	nc, js, cleanup := startFileProcessStream(t)
-	t.Cleanup(cleanup)
+	nc, js := startFileProcessStream(t)
 	advisorySubject := "$JS.EVENT.ADVISORY.CONSUMER.MSG_TERMINATED.FILE_EVENTS." + fileProcessConsumer
 	advisory, err := nc.SubscribeSync(advisorySubject)
 	require.NoError(t, err)
@@ -274,8 +289,7 @@ func TestIntegration_StartNatsSubscriberTerminatesSemanticPoison(t *testing.T) {
 }
 
 func TestIntegration_StartNatsSubscriberDelaysTransientRedelivery(t *testing.T) {
-	nc, js, cleanup := startFileProcessStream(t)
-	t.Cleanup(cleanup)
+	nc, js := startFileProcessStream(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	calls := make(chan workflow.ProcessJob, 2)
@@ -304,8 +318,7 @@ func TestIntegration_StartNatsSubscriberDelaysTransientRedelivery(t *testing.T) 
 }
 
 func TestIntegration_StartNatsSubscriberMigratesLegacyDurableInPlace(t *testing.T) {
-	nc, js, cleanup := startFileProcessStream(t)
-	t.Cleanup(cleanup)
+	nc, js := startFileProcessStream(t)
 	deliverSubject := nc.NewInbox()
 	_, err := js.AddConsumer("FILE_EVENTS", &nats.ConsumerConfig{
 		Name:           fileProcessConsumer,

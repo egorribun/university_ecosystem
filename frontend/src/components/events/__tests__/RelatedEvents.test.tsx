@@ -4,6 +4,9 @@ import { describe, it, expect, vi } from "vitest"
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => "Europe/Istanbul",
+}))
 
 import {
   RELATED_EVENT_CARD_TRANSLATION_NAMESPACES,
@@ -176,7 +179,9 @@ describe("RelatedEvents", () => {
 
   it("keeps the primary title for the Russian locale", async () => {
     const previousLanguage = window.localStorage.getItem("ue:language")
+    const previousSelectedLanguage = Object.getOwnPropertyDescriptor(window, "__UE_SELECTED_LANG__")
     window.localStorage.setItem("ue:language", "ru")
+    window.__UE_SELECTED_LANG__ = "ru"
 
     try {
       await renderWithRouter({ ui: () => <RelatedEvents items={[ITEMS[0]!]} />, extraRoutes })
@@ -184,6 +189,11 @@ describe("RelatedEvents", () => {
     } finally {
       if (previousLanguage === null) window.localStorage.removeItem("ue:language")
       else window.localStorage.setItem("ue:language", previousLanguage)
+      if (previousSelectedLanguage) {
+        Object.defineProperty(window, "__UE_SELECTED_LANG__", previousSelectedLanguage)
+      } else {
+        Reflect.deleteProperty(window, "__UE_SELECTED_LANG__")
+      }
     }
   })
 })

@@ -13,6 +13,7 @@ import { cn } from "@/utils/cn"
 interface NewsListProps {
   newsList: News[]
   isInitialLoading: boolean
+  isError?: boolean
   isFetching: boolean
   isFetchingNextPage: boolean
   hasNextPage: boolean
@@ -31,6 +32,7 @@ const NEXT_PAGE_SKELETON_COUNT = 3
 export const NewsList = ({
   newsList,
   isInitialLoading,
+  isError = false,
   isFetching,
   isFetchingNextPage,
   hasNextPage,
@@ -81,6 +83,22 @@ export const NewsList = ({
     )
   }
 
+  /* ── Failed load ── */
+  if (isError && newsList.length === 0) {
+    if (!isOnline) return <OfflineFallback onRetry={handleRetry} />
+
+    return (
+      <div className="w-full flex justify-center py-20">
+        <div role="alert" className="flex max-w-md flex-col items-center gap-4 px-4 text-center">
+          <p className="text-lg font-semibold text-(--error-text)">{t("news:states.loadError")}</p>
+          <Button variant="outline" onClick={handleRetry}>
+            {t("common:statuses.tryAgain")}
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   /* ── Empty state ── */
   if (showEmptyState) {
     return (
@@ -116,6 +134,17 @@ export const NewsList = ({
 
   return (
     <section aria-label={t("news:pageTitle")}>
+      {isError && (
+        <div
+          role="alert"
+          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-(--error-border) bg-error-bg/(--opacity-subtle) px-4 py-3"
+        >
+          <p className="text-sm text-(--error-text)">{t("news:states.loadError")}</p>
+          <Button variant="outline" size="sm" onClick={handleRetry}>
+            {t("common:statuses.tryAgain")}
+          </Button>
+        </div>
+      )}
       {/* Refetch indicator — thin bar during background refresh */}
       {showRefetchBar && (
         <div

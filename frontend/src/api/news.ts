@@ -1,4 +1,5 @@
 import * as v from "valibot"
+import "@/api/client"
 
 import {
   createNewsApiV1NewsPost,
@@ -21,6 +22,7 @@ type FetchNewsOptions = {
 type FetchNewsItemOptions = {
   ifNoneMatch?: string | null
   signal?: AbortSignal
+  language?: string
 }
 
 export type CreateNewsPayload = NewsCreate
@@ -65,11 +67,17 @@ export const fetchNews = ({ ifNoneMatch, signal }: FetchNewsOptions = {}) =>
 
 export const fetchNewsItem = async (
   id: string,
-  { ifNoneMatch, signal }: FetchNewsItemOptions = {}
+  { ifNoneMatch, signal, language }: FetchNewsItemOptions = {}
 ) => {
   const response = await getNewsApiV1NewsIdGet({
     path: { id },
-    headers: ifNoneMatch ? { "if-none-match": ifNoneMatch } : undefined,
+    headers:
+      ifNoneMatch || language
+        ? {
+            ...(ifNoneMatch ? { "if-none-match": ifNoneMatch } : {}),
+            ...(language ? { "accept-language": language } : {}),
+          }
+        : undefined,
     signal,
     throwOnError: true,
     validateStatus: (status: number) => status === 304 || (status >= 200 && status < 300),

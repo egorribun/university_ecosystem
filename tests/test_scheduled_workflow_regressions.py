@@ -12,6 +12,7 @@ from scripts.quality.generate_dashboard import main as generate_dashboard
 ROOT = Path(__file__).resolve().parents[1]
 QUALITY_HISTORY = ROOT / ".github" / "workflows" / "quality-history.yml"
 NIGHTLY = ROOT / ".github" / "workflows" / "nightly-full-gate.yml"
+FULL_BACKEND = ROOT / ".github" / "workflows" / "reusable-full-backend-mutation.yml"
 
 
 def _workflow(path: Path) -> dict[str, object]:
@@ -43,7 +44,16 @@ def test_quality_history_is_sha_addressed_tracked_and_idempotent() -> None:
 
 
 def test_nightly_full_mutation_uses_audited_monotonic_test_reduction() -> None:
-    workflow = _workflow(NIGHTLY)
+    nightly = _workflow(NIGHTLY)
+    caller = nightly["jobs"]["mutation-tests-full"]
+    assert (
+        caller["if"]
+        == "${{ github.repository == 'egorribun/university_ecosystem' && github.ref == 'refs/heads/main' }}"
+    )
+    assert caller["uses"] == "./.github/workflows/reusable-full-backend-mutation.yml"
+    assert caller["with"]["source_sha"] == "${{ github.sha }}"
+
+    workflow = _workflow(FULL_BACKEND)
     plan_job = workflow["jobs"]["mutation-tests-full-plan"]
     job = workflow["jobs"]["mutation-tests-full"]
     plan_steps = plan_job["steps"]
@@ -67,8 +77,15 @@ def test_nightly_full_mutation_uses_audited_monotonic_test_reduction() -> None:
     assert "--tests-per-function 2" in reduction
     assert "mutants/mutmut-stats-full.json" in reduction
     assert "mutants/mutmut-stats-reduction.json" in reduction
-    assert plan_job["needs"] == "mutation-tests-full-stats"
-    assert job["needs"] == ["mutation-tests-full-plan", "nightly-helm-dependencies"]
+    assert plan_job["needs"] == [
+        "verify-full-mutation-provenance",
+        "mutation-tests-full-stats",
+    ]
+    assert job["needs"] == [
+        "verify-full-mutation-provenance",
+        "mutation-tests-full-plan",
+    ]
+    assert "nightly-helm-dependencies" not in job["needs"]
     assert "--output-directory mutants/mutmut-full-plan" in preflight
     assert "for shard in $(seq 1 128)" in preflight
     assert "scripts/mutmut_shard_budget.py" in preflight
@@ -83,45 +100,46 @@ def test_nightly_full_mutation_uses_audited_monotonic_test_reduction() -> None:
     assert "--metadata-startup-reserve-seconds 120" in run_script
     assert "--max-timeout-seconds 20970" in run_script
     assert "--max-children 8" in run_script
-    assert "--control-cycle-reserve-seconds 1" in run_script
-    assert "--metadata-startup-reserve-seconds 120" in run_script
-    assert "--max-timeout-seconds 20970" in run_script
-    assert "scripts/run_mutmut_with_stats.py --max-children 8" in run_script
-    # The nightly plan artifact currently carries stats/IDs, not the generated
-    # source+metadata manifest required by the fail-closed reuse mode.
-    assert "--reuse-generated-universe" not in run_script
-    assert (
-        "generated source/metadata manifest is intentionally not uploaded" in run_script
+    # The primary pass executes the stats-reduced exact shard against the
+    # already validated generated universe. Full-map confirmation below must
+    # use the complete mapping for each primary survivor.
+    primary_run = (
+        "uv run python scripts/run_mutmut_with_stats.py "
+        '--reuse-generated-universe --max-children 8 "${MUTANT_NAMES[@]}"'
     )
+    assert primary_run in run_script
+    full_map_start = run_script.index('if [ "$survivor_count" -gt 0 ]; then')
+    full_map_run = run_script[full_map_start:]
+    assert "cp mutants/mutmut-stats-full.json mutants/mutmut-stats.json" in full_map_run
+    assert 'for survivor in "${FULL_MAP_SURVIVORS[@]}"' in full_map_run
+    assert (
+        'uv run python scripts/run_mutmut_with_stats.py --max-children 2 "$survivor"'
+        in full_map_run
+    )
+    assert "--reuse-generated-universe" not in full_map_run
+    generation_selection = next(
+        step["run"]
+        for step in steps
+        if step.get("name") == "Select retry-safe full mutmut generation base"
+    )
+    assert "scripts.mutmut_retry_artifacts select-universe" in generation_selection
+    assert "--expected-mode generation" in generation_selection
+    assert 'test "$SOURCE_REVISION" = "$COMMIT_SHA"' in generation_selection
+    for binding in (
+        '--source-revision "$SOURCE_REVISION"',
+        '--commit-sha "$COMMIT_SHA"',
+        '--run-id "$RUN_ID"',
+        '--run-attempt "$RUN_ATTEMPT"',
+        '--workflow "$WORKFLOW"',
+        '--workflow-ref "$WORKFLOW_REF"',
+        '--workflow-sha "$WORKFLOW_SHA"',
+    ):
+        assert binding in generation_selection
     assert "full-map-survivors.txt" in run_script
     assert '.status == "survived"' in run_script
     assert "--stats mutants/mutmut-stats-full.json" in run_script
     assert "--metadata-startup-reserve-seconds 120" in run_script
     assert "scripts/run_mutmut_with_stats.py --max-children 2" in run_script
-    assert "full-map survivor confirmation cannot fit" in run_script
-    assert "refusing unconfirmed evidence" in run_script
-    assert run_script.index("mutmut-primary-cicd-stats.json") < run_script.index(
-        "--output mutants/mutmut-cicd-stats.json"
-    )
-    assert workflow["jobs"]["mutation-tests-full"]["strategy"]["matrix"][
-        "shard"
-    ] == list(range(1, 129))
-
-    plan_upload = next(
-        step
-        for step in plan_steps
-        if step.get("name") == "Upload preflighted full mutation plan"
-    )
-    assert "mutants/mutmut-full-plan/" in plan_upload["with"]["path"]
-    assert "mutants/mutmut-stats-reduction.json" in plan_upload["with"]["path"]
-
-    upload = next(
-        step
-        for step in steps
-        if step.get("name") == "Upload full mutation shard evidence"
-    )
-    assert "mutants/mutmut-stats-reduction.json" in upload["with"]["path"]
-    assert "mutants/mutmut-stats-full.json" in upload["with"]["path"]
 
 
 def test_quality_dashboard_links_tracked_history_relative_to_its_output(

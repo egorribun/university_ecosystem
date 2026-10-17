@@ -1,0 +1,64 @@
+enabled: true
+architecture: standalone
+image:
+  registry: docker.io
+  repository: redis
+  tag: 7.4.11-alpine
+  digest: sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+  pullPolicy: Always
+networkPolicy:
+  enabled: true
+  allowExternal: false
+  allowExternalEgress: false
+auth:
+  enabled: true
+  existingSecret: redis-credentials
+  existingSecretPasswordKey: redis-password
+master:
+  replicas: 1
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "1", memory: 2Gi}
+  aclInitResources:
+    requests: {cpu: 50m, memory: 32Mi}
+    limits: {cpu: 250m, memory: 128Mi}
+  persistence:
+    enabled: true
+    size: 8Gi
+  podSecurityContext:
+    fsGroup: 1001
+    fsGroupChangePolicy: Always
+    runAsNonRoot: true
+    seccompProfile: {type: RuntimeDefault}
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities: {drop: [ALL]}
+    readOnlyRootFilesystem: true
+    runAsGroup: 1001
+    runAsNonRoot: true
+    runAsUser: 10001
+    seccompProfile: {type: RuntimeDefault}
+commonConfiguration: |-
+  dir /data
+  maxmemory 1536mb
+  maxmemory-policy volatile-lru
+  save ""
+  appendonly no
+  rename-command FLUSHDB ""
+  rename-command FLUSHALL ""
+metrics:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: oliver006/redis_exporter
+    tag: v1.93.0
+    digest: sha256:6ca518a72f30f7f576ef92963de1b91d3c3f5fd3aeac949f878bfda183587820
+    pullPolicy: Always
+  passwordFileInitImage:
+    repository: university-backend
+    tag: ""
+    digest: ""
+    pullPolicy: Always
+  resources:
+    requests: {cpu: 50m, memory: 32Mi}
+    limits: {cpu: 100m, memory: 64Mi}

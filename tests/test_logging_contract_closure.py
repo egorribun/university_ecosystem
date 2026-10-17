@@ -8,9 +8,12 @@ import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 import structlog
 
 import app.core.logging as logging_mod
+
+pytestmark = pytest.mark.usefixtures("preserve_logging_configuration")
 
 
 def test_standalone_entrypoints_use_the_central_logging_bridge():

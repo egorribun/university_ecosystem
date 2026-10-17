@@ -34,9 +34,13 @@ concurrency:
 
 jobs:
   spectral-lint:
-    name: Spectral — OpenAPI lint
+    name: Spectral - OpenAPI lint
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+      ENVIRONMENT: testing
+      SECRET_KEY: ""
     permissions:
       contents: read
       security-events: write
@@ -56,6 +60,14 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --frozen
 
+      - name: Configure ephemeral application secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          echo "::add-mask::$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
+
       - name: Generate OpenAPI spec from FastAPI app
         run: |
           uv run python -c "
@@ -73,7 +85,7 @@ jobs:
         id: spectral
         continue-on-error: true
         run: |
-          docker run --rm -v /tmp:/tmp -v "${PWD}:/work" -w /work stoplight/spectral:6.15.0@sha256:b3d5a530f83c4a72df69e682c5ac928bc9821b5ca3c42529e81d926c80fa50ab lint /tmp/backend-openapi.json \
+          docker run --rm -v /tmp:/tmp -v "${PWD}:/work" -w /work stoplight/spectral:6.17.0@sha256:c8ffae6ee561b70e80402f1ea669e8b37c74fee48a3dbe2147b71359ed987239 lint /tmp/backend-openapi.json \
             --ruleset .spectral.yml \
             --format sarif \
             --output spectral-results.sarif
@@ -91,14 +103,14 @@ jobs:
         # Re-raise on errors (severity ERROR) but not warnings.
         # Spectral exit codes: 0=clean, 1=warnings, 2=errors.
         run: |
-          docker run --rm -v /tmp:/tmp -v "${PWD}:/work" -w /work stoplight/spectral:6.15.0@sha256:b3d5a530f83c4a72df69e682c5ac928bc9821b5ca3c42529e81d926c80fa50ab lint /tmp/backend-openapi.json \
+          docker run --rm -v /tmp:/tmp -v "${PWD}:/work" -w /work stoplight/spectral:6.17.0@sha256:c8ffae6ee561b70e80402f1ea669e8b37c74fee48a3dbe2147b71359ed987239 lint /tmp/backend-openapi.json \
             --ruleset .spectral.yml \
             --format text \
             --fail-severity error
 
   # Wave 2 / Task 2.3 — openapi-diff backward-compatibility gate.
-  # Compares the current PR spec against the committed snapshot to prevent
-  # accidental breaking changes (removed paths, changed required fields, etc.).
+  # Compares the generated spec against the event's immutable baseline snapshot
+  # to prevent accidental breaking changes (removed paths, required fields, etc.).
   openapi-diff:
     name: OpenAPI Backward Compatibility Check
     runs-on: ubuntu-24.04
@@ -161,14 +173,49 @@ jobs:
         # Pinned to exact npm wrapper and native binary versions for reproducibility.
         run: npm install --global @oasdiff-js/oasdiff-js@1.0.0
 
-      - name: Check for breaking changes against committed snapshot
-        # The canonical snapshot represents the
-        # "old" (main-branch) spec.  The generated spec is the "new" (PR) spec.
+      - name: Extract OpenAPI snapshot from event baseline
+        id: openapi_baseline
+        env:
+          EVENT_NAME: "${{ github.event_name }}"
+          PR_BASE_SHA: "${{ github.event.pull_request.base.sha }}"
+          PUSH_BEFORE_SHA: "${{ github.event.before }}"
+        # Extract after candidate generation so refreshing the candidate's
+        # checked-in snapshot cannot redefine the old comparison surface.
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request) baseline_sha="$PR_BASE_SHA" ;;
+            push) baseline_sha="$PUSH_BEFORE_SHA" ;;
+            *)
+              echo "::error::Unsupported event for OpenAPI baseline selection."
+              exit 1
+              ;;
+          esac
+          if [[ ! "$baseline_sha" =~ ^[0-9a-f]{40}$ || "$baseline_sha" == "0000000000000000000000000000000000000000" ]]; then
+            echo "::error::OpenAPI baseline requires a nonzero immutable commit SHA."
+            exit 1
+          fi
+          git fetch --no-tags --depth=1 origin "$baseline_sha"
+          git cat-file -e "$baseline_sha^{commit}"
+          baseline_path=$(mktemp "$RUNNER_TEMP/base-openapi.XXXXXX.json")
+          git show "$baseline_sha:tests/contracts/snapshots/api_openapi_v1.json" > "$baseline_path"
+          if [[ ! -s "$baseline_path" ]]; then
+            echo "::error::The event baseline OpenAPI snapshot is empty."
+            exit 1
+          fi
+          printf 'path=%s\n' "$baseline_path" >> "$GITHUB_OUTPUT"
+
+      - name: Check for breaking changes against event baseline
+        env:
+          BASELINE_OPENAPI: "${{ steps.openapi_baseline.outputs.path }}"
+        # The exact PR base or pre-push snapshot is the "old" spec.
+        # The generated candidate schema is the "new" spec.
         # --fail-on ERR exits non-zero only on breaking changes.
         # Additive changes (new paths, new optional fields) are allowed.
         run: |
           oasdiff breaking \
-            tests/contracts/snapshots/api_openapi_v1.json \
+            "$BASELINE_OPENAPI" \
             /tmp/pr-openapi.json \
             --fail-on ERR || {
             echo "::error::Breaking OpenAPI changes detected in this PR."

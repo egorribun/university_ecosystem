@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import socket
 import uuid
 from datetime import UTC, datetime
+from hashlib import sha256
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -79,8 +82,12 @@ async def test_binding_transfers_endpoint_to_caller_preferences():
     resolver.assert_awaited_once_with(db, user_id=caller, requested_topics=None)
     logger.info.assert_called_once_with(
         "push.subscribe.owner_changed",
-        extra={"subscription_id": subscription.id, "endpoint_prefix": endpoint[:50]},
+        extra={
+            "subscription_id": subscription.id,
+            "endpoint_fingerprint": sha256(endpoint.encode("utf-8")).hexdigest()[:12],
+        },
     )
+    assert endpoint not in str(logger.info.call_args)
 
 
 @pytest.mark.asyncio
@@ -105,16 +112,22 @@ async def test_binding_does_not_report_a_transfer_without_a_new_owner(owner):
 
 
 @pytest.mark.asyncio
-async def test_final_integrity_recovery_binds_the_endpoint_to_the_caller():
+async def test_final_integrity_recovery_binds_the_endpoint_to_the_caller(
+    monkeypatch: pytest.MonkeyPatch,
+):
     from app.routers import notifications
     from app.schemas.notifications import PushSubscriptionIn
 
     previous, caller = uuid.uuid4(), uuid.uuid4()
-    existing = _subscription(user_id=previous)
+    endpoint_token = "subscription-" + "marker-" + uuid.uuid4().hex
+    endpoint = f"https://push.example.com/{endpoint_token}"
+    existing = _subscription(user_id=previous, endpoint=endpoint)
     payload = PushSubscriptionIn(
-        endpoint="https://push.example.com/device",
+        endpoint=endpoint,
         keys={"p256dh": "p256dh", "auth": "auth"},
     )
+    mock_logger = MagicMock()
+    monkeypatch.setattr(notifications, "logger", mock_logger)
     request = MagicMock()
     request.client = None
     request.headers.get.return_value = None
@@ -124,14 +137,19 @@ async def test_final_integrity_recovery_binds_the_endpoint_to_the_caller():
         _result(scalar_one_or_none=existing)
     ]
     db.flush.side_effect = [
-        IntegrityError("insert", {}, RuntimeError("duplicate")) for _ in range(3)
+        IntegrityError(
+            "insert",
+            {"endpoint": endpoint, "auth": "synthetic-auth-marker"},
+            RuntimeError("duplicate"),
+        )
+        for _ in range(3)
     ] + [None]
 
     with (
         patch.object(
             notifications,
             "_validate_subscription_payload",
-            new=AsyncMock(return_value=("https://push.example.com/device", "k", "a")),
+            new=AsyncMock(return_value=(endpoint, "k", "a")),
         ),
         patch.object(notifications, "enforce_rate_limit", new=AsyncMock()),
         patch.object(notifications.asyncio, "sleep", new=AsyncMock()),
@@ -158,6 +176,8 @@ async def test_final_integrity_recovery_binds_the_endpoint_to_the_caller():
     resolver.assert_awaited_once_with(db, user_id=caller, requested_topics=None)
     db.commit.assert_awaited_once()
     db.refresh.assert_awaited_once_with(existing)
+    assert endpoint_token not in str(mock_logger.mock_calls)
+    assert "synthetic-auth-marker" not in str(mock_logger.mock_calls)
 
 
 @pytest.mark.asyncio
@@ -204,7 +224,7 @@ async def test_subscription_validation_rejects_private_resolution_failure():
     with (
         patch.object(
             notifications,
-            "validate_url_not_internal_async",
+            "_validate_public_endpoint_dns",
             new=AsyncMock(side_effect=ValueError("SSRF blocked")),
         ),
         patch.object(
@@ -219,6 +239,127 @@ async def test_subscription_validation_rejects_private_resolution_failure():
     assert exc.value.status_code == 400
     assert exc.value.detail["error"] == "invalid_subscription"
     assert exc.value.detail["fields"][0]["field"] == "endpoint"
+
+
+@pytest.mark.asyncio
+async def test_subscription_validation_rejects_reserved_dns_answer_once(monkeypatch):
+    from app.routers import notifications
+    from app.schemas.notifications import PushSubscriptionIn
+
+    payload = PushSubscriptionIn(
+        endpoint="https://push.example.test/subscription",
+        keys={"p256dh": "public-key", "auth": "auth-key"},
+    )
+    resolver = AsyncMock(
+        return_value=[
+            (
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+                socket.IPPROTO_TCP,
+                "",
+                ("93.184.216.34", 443),
+            ),
+            (
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+                socket.IPPROTO_TCP,
+                "",
+                ("198.18.0.1", 443),
+            ),
+        ]
+    )
+    monkeypatch.setattr(asyncio.BaseEventLoop, "getaddrinfo", resolver)
+
+    with pytest.raises(notifications.HTTPException) as exc:
+        await notifications._validate_subscription_payload(payload, locale="en")
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail["error"] == "invalid_subscription"
+    assert exc.value.detail["fields"][0]["field"] == "endpoint"
+    resolver.assert_awaited_once_with(
+        "push.example.test",
+        443,
+        type=socket.SOCK_STREAM,
+        proto=socket.IPPROTO_TCP,
+    )
+
+
+@pytest.mark.asyncio
+async def test_subscription_validation_rejects_ipv6_unspecified_endpoint():
+    from app.routers import notifications
+    from app.schemas.notifications import PushSubscriptionIn
+
+    payload = PushSubscriptionIn(
+        endpoint="https://[::]/subscription-token-fixture",
+        keys={"p256dh": "public-key", "auth": "auth-key"},
+    )
+
+    with pytest.raises(notifications.HTTPException) as exc:
+        await notifications._validate_subscription_payload(payload, locale="en")
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail["error"] == "invalid_subscription"
+    assert exc.value.detail["fields"][0]["field"] == "endpoint"
+
+
+@pytest.mark.asyncio
+async def test_subscription_validation_rejects_non_global_endpoint_before_dns(
+    monkeypatch,
+):
+    from app.routers import notifications
+    from app.schemas.notifications import PushSubscriptionIn
+
+    payload = PushSubscriptionIn(
+        endpoint="https://255.255.255.255/push-fixture",
+        keys={"p256dh": "public-key", "auth": "auth-key"},
+    )
+    resolve = AsyncMock()
+    monkeypatch.setattr(asyncio.BaseEventLoop, "getaddrinfo", resolve)
+
+    with pytest.raises(notifications.HTTPException) as exc:
+        await notifications._validate_subscription_payload(payload, locale="en")
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail["error"] == "invalid_subscription"
+    assert exc.value.detail["fields"][0]["field"] == "endpoint"
+    resolve.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_subscribe_rate_limit_runs_before_endpoint_dns_validation():
+    from app.core.ratelimit import RateLimitExceeded, RateLimitInfo
+    from app.routers import notifications
+    from app.schemas.notifications import PushSubscriptionIn
+
+    payload = PushSubscriptionIn(
+        endpoint="https://push.example.test/rate-limit-order",
+        keys={"p256dh": "public-key", "auth": "auth-key"},
+    )
+    request = MagicMock()
+    request.client = None
+    user = SimpleNamespace(id=uuid.uuid4())
+    validation = AsyncMock(
+        return_value=(payload.endpoint, payload.keys.p256dh, payload.keys.auth)
+    )
+    rate_limit = AsyncMock(side_effect=RateLimitExceeded(RateLimitInfo(False, 0, 17)))
+
+    with (
+        patch.object(notifications, "resolve_locale", return_value="en"),
+        patch.object(notifications, "_validate_subscription_payload", new=validation),
+        patch.object(notifications, "enforce_rate_limit", new=rate_limit),
+    ):
+        with pytest.raises(notifications.HTTPException) as exc:
+            await call_injected(
+                notifications.subscribe,
+                payload=payload,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": AsyncMock()},
+            )
+
+    assert exc.value.status_code == 429
+    validation.assert_not_awaited()
+    rate_limit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

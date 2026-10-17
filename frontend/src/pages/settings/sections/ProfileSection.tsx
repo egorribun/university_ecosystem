@@ -163,7 +163,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
       <input
         ref={avatarInputRef}
         type="file"
-        accept="image/*"
+        accept="image/png,image/jpeg,image/webp"
         hidden
         onChange={(e) => {
           const f = e.currentTarget.files?.[0]
@@ -177,7 +177,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
       <input
         ref={coverInputRef}
         type="file"
-        accept="image/*"
+        accept="image/png,image/jpeg,image/webp"
         hidden
         onChange={(e) => {
           const f = e.currentTarget.files?.[0]

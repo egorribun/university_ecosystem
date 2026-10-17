@@ -207,8 +207,11 @@ describe("TextField", () => {
 
     expect(TextField.displayName).toBe("TextField")
     expect(wrapper).toHaveClass("flex", "flex-col", "gap-1.5")
+    expect([...wrapper!.classList].sort()).toEqual(["flex", "flex-col", "gap-1.5"])
     expect(wrapper).not.toHaveClass("w-full")
     expect(input).toHaveAttribute("type", "text")
+    const { container: defaultInputContainer } = render(<Input fullWidth={false} />)
+    expect(input.className).toBe(defaultInputContainer.querySelector("input")?.className)
     expect(input).toBeEnabled()
     expect(input).toHaveClass("w-auto", "min-h-12", "text-base")
 

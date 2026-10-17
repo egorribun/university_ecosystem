@@ -4,14 +4,29 @@ import { useNewsInteraction } from "@/hooks/useNewsInteraction"
 import { useBookmarks } from "@/hooks/useBookmarks"
 import { sanitizeNewsText } from "@/utils/sanitize"
 import { localizeField } from "@/utils/localize"
-import { inferCategory } from "@/features/news/categories"
+import { inferNewsCategory } from "@/features/news/categories"
 import { estimateReadingTime } from "@/utils/readingTime"
-import { FC, memo, useCallback, useEffect, useMemo, useState, lazy } from "react"
+import { fetchNewsItem } from "@/api/news"
+import { FC, memo, useCallback, useEffect, useMemo, useRef, useState, lazy } from "react"
 import { useTranslation } from "react-i18next"
 import api from "@/api/client"
 import { useAuth } from "@/contexts/AuthContext"
 
 const NewsCardView = lazy(() => import("./NewsCardView").then((m) => ({ default: m.NewsCardView })))
+
+type NewsEditData = {
+  title: string
+  content: string
+  title_en: string
+  content_en: string
+  image_url: string
+}
+
+type NewsEditSession = {
+  id: string
+  locale: string
+  initialData: NewsEditData
+}
 
 export type NewsCardProps = {
   id: string
@@ -44,13 +59,16 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   priority,
 }) => {
   const { user } = useAuth()
+  const isAdmin = user?.role === "admin"
   const { t } = useTranslation(["news", "common"])
   const { language } = useLanguage()
 
-  const [editOpen, setEditOpen] = useState(false)
+  const [editSession, setEditSession] = useState<NewsEditSession | null>(null)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const editSourceRequestRef = useRef<AbortController | null>(null)
+  const isMountedRef = useRef(false)
 
   const editData = useMemo(
     () => ({
@@ -62,6 +80,25 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     }),
     [title, content, title_en, content_en, image_url]
   )
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      editSourceRequestRef.current?.abort()
+    }
+  }, [])
+
+  useEffect(
+    () => () => {
+      editSourceRequestRef.current?.abort()
+    },
+    [id, language]
+  )
+
+  useEffect(() => {
+    if (!isAdmin && editSession) setEditSession(null)
+  }, [editSession, isAdmin])
 
   const { interactions, toggleLike } = useNewsInteraction(id, {
     initialData: {
@@ -88,7 +125,10 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     [language, content, content_en]
   )
 
-  const category = useMemo(() => inferCategory(title, content), [title, content])
+  const category = useMemo(
+    () => inferNewsCategory({ title, content, title_en, content_en }),
+    [content, content_en, title, title_en]
+  )
   const readingTime = useMemo(() => estimateReadingTime(localizedContent), [localizedContent])
 
   const [sanitizedPreview, setSanitizedPreview] = useState("")
@@ -116,8 +156,52 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     }
   }, [id, onChange, t])
 
-  const openEdit = useCallback(() => setEditOpen(true), [])
-  const closeEdit = useCallback(() => setEditOpen(false), [])
+  const openEdit = useCallback(async () => {
+    setError("")
+    if (!isAdmin || editSession) return
+    if (language !== "en") {
+      setEditSession({ id, locale: language, initialData: { ...editData } })
+      return
+    }
+
+    if (editSourceRequestRef.current && !editSourceRequestRef.current.signal.aborted) return
+    const controller = new AbortController()
+    editSourceRequestRef.current = controller
+    setLoading(true)
+    try {
+      const response = await fetchNewsItem(id, { language: "ru", signal: controller.signal })
+      if (
+        controller.signal.aborted ||
+        editSourceRequestRef.current !== controller ||
+        !isMountedRef.current
+      ) {
+        return
+      }
+      if (response.status === 304) throw new Error("Russian source was not returned")
+      setEditSession({
+        id,
+        locale: language,
+        initialData: {
+          title: response.data.title,
+          content: response.data.content,
+          title_en: response.data.title_en ?? "",
+          content_en: response.data.content_en ?? "",
+          image_url: response.data.image_url ?? "",
+        },
+      })
+    } catch {
+      if (!controller.signal.aborted && editSourceRequestRef.current === controller) {
+        setError(t("common:errors.generic"))
+      }
+    } finally {
+      if (editSourceRequestRef.current === controller) {
+        editSourceRequestRef.current = null
+        if (isMountedRef.current) setLoading(false)
+      }
+    }
+  }, [editData, editSession, id, isAdmin, language, t])
+  const closeEdit = useCallback(() => setEditSession(null), [])
+  const activeEditSession = isAdmin ? editSession : null
 
   const openDeletePrompt = useCallback(() => setConfirmDeleteOpen(true), [])
   const closeDeletePrompt = useCallback(() => setConfirmDeleteOpen(false), [])
@@ -138,15 +222,16 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       likesCount={likesCount}
       commentsCount={commentsCount}
       isBookmarked={isBookmarked(id)}
-      isAdmin={user?.role === "admin"}
+      isAdmin={isAdmin}
       loading={loading}
       error={error}
-      hoveringDisabled={editOpen}
+      hoveringDisabled={Boolean(activeEditSession)}
       readingTime={readingTime}
       category={category}
-      editOpen={editOpen}
+      editOpen={Boolean(activeEditSession)}
+      editTargetId={activeEditSession?.id}
       confirmDeleteOpen={confirmDeleteOpen}
-      editData={editData}
+      editData={activeEditSession?.initialData ?? editData}
       spotlight={spotlight}
       onToggleLike={toggleLike}
       onToggleBookmark={handleToggleBookmark}

@@ -1,8 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, renderHook, waitFor } from "@testing-library/react"
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import type { PropsWithChildren } from "react"
-import { describe, expect, it } from "vitest"
+import { beforeEach, afterEach, describe, expect, it } from "vitest"
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { UserState } from "@/types/Auth"
 
 import { resetEtagCache } from "@/api/client"
 import { useEventsListQuery } from "@/api/hooks/events"
@@ -23,6 +25,13 @@ const cloneEvents = (source: Event[], label: string, offset: number): Event[] =>
   }))
 
 describe("useEventsListQuery", () => {
+  beforeEach(() =>
+    useAuthStore.setState({ user: { id: "etag-user" } as UserState, loading: false })
+  )
+  afterEach(() => {
+    cleanup()
+    useAuthStore.setState({ user: null, loading: true })
+  })
   it("forces a revalidation after resetEtagCache for the next user session", async () => {
     const baseEvents = testEvents.slice(0, 4)
     const firstUserEvents = cloneEvents(baseEvents, "First", 0)

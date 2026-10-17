@@ -1,9 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { StrictMode } from "react"
 import InstallPrompt from "@/components/pwa/InstallPrompt"
 import { useAuthStore } from "@/stores/useAuthStore"
 import type { User } from "@/types/User"
-import { requestPushEducation } from "@/app/pwaEvents"
+import { consumePendingPushEducation, requestPushEducation } from "@/app/pwaEvents"
 
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
@@ -38,15 +39,30 @@ vi.mock("@/hooks/usePushPreferences", () => ({
 
 const requestEducation = (userId = "1") => act(() => requestPushEducation(userId))
 const user: User = { id: "1", email: "student@example.test", is_active: true }
+let previousAuth: Pick<ReturnType<typeof useAuthStore.getState>, "user" | "loading">
+let previousUrl: string
+let previousHistoryState: unknown
 
 describe("contextual push education", () => {
   beforeEach(() => {
+    const auth = useAuthStore.getState()
+    previousAuth = { user: auth.user, loading: auth.loading }
+    previousUrl = window.location.href
+    previousHistoryState = window.history.state
     localStorage.clear()
+    consumePendingPushEducation(user.id)
     pushState.supported = true
     pushState.permission = "default"
     pushState.enable.mockClear()
     useAuthStore.setState({ user: null, loading: false })
     window.history.replaceState(null, "", "/events")
+  })
+
+  afterEach(() => {
+    cleanup()
+    consumePendingPushEducation(user.id)
+    useAuthStore.setState(previousAuth)
+    window.history.replaceState(previousHistoryState, "", previousUrl)
   })
 
   it("does not appear automatically for an authenticated user", () => {
@@ -69,6 +85,19 @@ describe("contextual push education", () => {
     requestPushEducation(user.id)
     render(<InstallPrompt />)
     expect(screen.getByText("system:installPrompt.notificationsTitle")).toBeInTheDocument()
+  })
+
+  it("preserves a queued offer through StrictMode effect replay", () => {
+    useAuthStore.setState({ user })
+    requestPushEducation(user.id)
+    render(
+      <StrictMode>
+        <InstallPrompt />
+      </StrictMode>
+    )
+
+    expect(screen.getByText("system:installPrompt.notificationsTitle")).toBeInTheDocument()
+    expect(pushState.enable).not.toHaveBeenCalled()
   })
 
   it("ignores a queued registration request for another account", () => {
@@ -104,6 +133,24 @@ describe("contextual push education", () => {
 
     act(() => useAuthStore.setState({ user: { ...user, id: "2" } }))
     rerender(<InstallPrompt />)
+    requestEducation("2")
+    expect(screen.getByText("system:installPrompt.notificationsTitle")).toBeInTheDocument()
+  })
+
+  it("closes an existing offer when the authenticated account changes", () => {
+    useAuthStore.setState({ user })
+    render(<InstallPrompt />)
+    requestEducation()
+    expect(screen.getByText("system:installPrompt.notificationsTitle")).toBeInTheDocument()
+
+    act(() => useAuthStore.setState({ user: { ...user, id: "2" } }))
+
+    expect(screen.queryByText("system:installPrompt.notificationsTitle")).not.toBeInTheDocument()
+    expect(pushState.enable).not.toHaveBeenCalled()
+    act(() => useAuthStore.setState({ user }))
+    expect(screen.queryByText("system:installPrompt.notificationsTitle")).not.toBeInTheDocument()
+
+    act(() => useAuthStore.setState({ user: { ...user, id: "2" } }))
     requestEducation("2")
     expect(screen.getByText("system:installPrompt.notificationsTitle")).toBeInTheDocument()
   })

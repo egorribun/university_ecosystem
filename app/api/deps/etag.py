@@ -34,15 +34,45 @@ def generate_cache_key(
     return f"{cache_prefix}:{normalized_version}:{normalized_locale}:{digest}"
 
 
+def _ensure_vary_headers(response: Response, *header_names: str) -> None:
+    """Merge Vary fields without case-insensitive duplicates."""
+    existing = response.headers.get("Vary", "")
+    values: list[str] = []
+    seen: set[str] = set()
+    for value in existing.split(","):
+        name = value.strip()
+        normalized = name.casefold()
+        if name and normalized not in seen:
+            values.append(name)
+            seen.add(normalized)
+
+    # RFC 9110's wildcard already covers every request field and must stand alone.
+    if "*" in seen:
+        response.headers["Vary"] = "*"
+        return
+
+    for name in header_names:
+        normalized = name.casefold()
+        if normalized not in seen:
+            values.append(name)
+            seen.add(normalized)
+
+    response.headers["Vary"] = ", ".join(values)
+
+
 def _set_language_headers(response: Response, locale: str) -> None:
     response.headers["Content-Language"] = locale
+    # These endpoints can vary by locale and authenticated identity. The cookie
+    # and Authorization dimensions also keep anonymous variants distinct from
+    # credentialed requests in HTTP caches.
+    _ensure_vary_headers(response, "Accept-Language", "Cookie", "Authorization")
 
-    # Inline _ensure_vary_header logic here to prevent circular imports with app.main
-    vary = response.headers.get("Vary")
-    if not vary:
-        response.headers["Vary"] = "Accept-Language"
-    elif "Accept-Language" not in vary:
-        response.headers["Vary"] = f"{vary}, Accept-Language"
+
+def _response_cache_control(cache_control: str, user: Any, tenant_id: str) -> str:
+    """Prevent HTTP reuse of identity- or tenant-scoped endpoint responses."""
+    if user is not None or tenant_id:
+        return "private, no-store"
+    return cache_control
 
 
 def cached_endpoint(
@@ -81,8 +111,12 @@ def cached_endpoint(
                 "if-none-match"
             )
 
+            tenant_id = get_current_tenant()
+            response_cache_control = _response_cache_control(
+                cache_control, user, tenant_id
+            )
             _set_language_headers(response, locale)
-            response.headers["Cache-Control"] = cache_control
+            response.headers["Cache-Control"] = response_cache_control
 
             # 2. Check Cache
             cache = get_cache()
@@ -124,7 +158,7 @@ def cached_endpoint(
                 # but a cache hit bypasses that query entirely. Include the
                 # request's tenant context so one tenant can never receive a
                 # cached payload populated by another tenant (SEC-09).
-                cacheable_kwargs["__tenant_id"] = get_current_tenant()
+                cacheable_kwargs["__tenant_id"] = tenant_id
 
                 cache_key = generate_cache_key(
                     cache_prefix=cache_prefix,
@@ -141,7 +175,7 @@ def cached_endpoint(
                             status_code=status.HTTP_304_NOT_MODIFIED
                         )
                         not_modified.headers["ETag"] = etag_header
-                        not_modified.headers["Cache-Control"] = cache_control
+                        not_modified.headers["Cache-Control"] = response_cache_control
                         _set_language_headers(not_modified, locale)
                         return not_modified
                     response.headers["ETag"] = etag_header
@@ -150,8 +184,14 @@ def cached_endpoint(
             # 3. Execute Core Business Logic
             payload = await func(*args, **kwargs)
 
-            # If the endpoint returned a raw Starlette Response (e.g., streaming), return it immediately
+            # If the endpoint returned a raw Starlette Response (e.g., streaming),
+            # preserve its body while enforcing the same cache privacy dimensions.
             if isinstance(payload, Response):
+                _set_language_headers(payload, locale)
+                if user is not None or tenant_id:
+                    payload.headers["Cache-Control"] = "private, no-store"
+                elif "Cache-Control" not in payload.headers:
+                    payload.headers["Cache-Control"] = cache_control
                 return payload
 
             # 4. Process the Payload (PERF-02 Optimization)
@@ -198,7 +238,7 @@ def cached_endpoint(
                 if etag_matches(entry.etag, if_none_match):
                     not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
                     not_modified.headers["ETag"] = etag_header
-                    not_modified.headers["Cache-Control"] = cache_control
+                    not_modified.headers["Cache-Control"] = response_cache_control
                     _set_language_headers(not_modified, locale)
                     return not_modified
 
@@ -206,14 +246,14 @@ def cached_endpoint(
                     content=serialized_bytes, media_type="application/json"
                 )
                 final_response.headers["ETag"] = etag_header
-                final_response.headers["Cache-Control"] = cache_control
+                final_response.headers["Cache-Control"] = response_cache_control
                 _set_language_headers(final_response, locale)
                 return final_response
 
             if etag_matches(digest, if_none_match):
                 not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
                 not_modified.headers["ETag"] = weak_header
-                not_modified.headers["Cache-Control"] = cache_control
+                not_modified.headers["Cache-Control"] = response_cache_control
                 _set_language_headers(not_modified, locale)
                 return not_modified
 
@@ -221,7 +261,7 @@ def cached_endpoint(
                 content=serialized_bytes, media_type="application/json"
             )
             final_response.headers["ETag"] = weak_header
-            final_response.headers["Cache-Control"] = cache_control
+            final_response.headers["Cache-Control"] = response_cache_control
             _set_language_headers(final_response, locale)
             return final_response
 

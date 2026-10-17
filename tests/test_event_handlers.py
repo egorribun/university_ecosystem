@@ -1,10 +1,13 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 
 from app.core.events import (
     AttachmentCleanupRequested,
     ChatDeleted,
+    ChatParticipantRemoved,
     EventCreated,
     EventRegistration,
     MessageSent,
@@ -22,6 +25,7 @@ from app.services.event_handlers import (
     generate_news_embedding,
     handle_attachment_cleanup_requested,
     handle_chat_deleted,
+    handle_chat_participant_removed,
     handle_event_created,
     handle_event_registration,
     handle_message_sent,
@@ -32,6 +36,20 @@ from app.services.event_handlers import (
     handle_user_logged_in,
     log_all_events,
 )
+
+
+def _configure_message_rls_mock(db: AsyncMock) -> None:
+    member_id = uuid4()
+
+    async def execute(statement, parameters=None):
+        if "chat_participants" in str(statement):
+            return SimpleNamespace(scalar_one_or_none=lambda: member_id)
+        return SimpleNamespace()
+
+    db.execute.side_effect = execute
+    db.get_bind = MagicMock(
+        return_value=SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    )
 
 
 @pytest.mark.asyncio
@@ -144,14 +162,25 @@ async def test_handle_message_sent(monkeypatch):
         lambda db: mock_service,
     )
 
-    mock_msg = Message(id=1, sender_id=1, chat_id=1, reply_to_message_id=None)
-    mock_sender = User(id=1)
+    message_id = uuid4()
+    chat_id = uuid4()
+    sender_id = uuid4()
+    mock_msg = Message(
+        id=message_id,
+        sender_id=sender_id,
+        chat_id=chat_id,
+        reply_to_message_id=None,
+    )
+    mock_sender = User(id=sender_id)
     mock_db.get.side_effect = [mock_msg, mock_sender]
+    _configure_message_rls_mock(mock_db)
 
     mock_chat = MagicMock()
     mock_repo.get_by_id.return_value = mock_chat
 
-    await handle_message_sent(MessageSent(message_id=1, chat_id=1, sender_id=1))
+    await handle_message_sent(
+        MessageSent(message_id=message_id, chat_id=chat_id, sender_id=sender_id)
+    )
 
     mock_service.notify_new_message.assert_called_once()
     mock_db.commit.assert_called_once()
@@ -166,6 +195,40 @@ async def test_handle_chat_deleted(monkeypatch):
 
     await handle_chat_deleted(ChatDeleted(chat_id="chat1", participant_id="p1"))
     mock_invalidate.assert_called_once_with("p1", "chat1")
+
+
+@pytest.mark.asyncio
+async def test_handle_chat_participant_removed_requests_signed_room_eviction(
+    monkeypatch,
+):
+    mock_invalidate = AsyncMock()
+    monkeypatch.setattr(
+        "app.services.ws_hub_client.invalidate_ws_hub_cache", mock_invalidate
+    )
+    event = ChatParticipantRemoved(chat_id="chat1", user_id="user1")
+
+    await handle_chat_participant_removed(event)
+
+    mock_invalidate.assert_awaited_once_with(
+        "user1",
+        "chat1",
+        evict_room=True,
+        event_id=event.event_id,
+        raise_on_failure=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_chat_participant_removed_propagates_publish_failure(monkeypatch):
+    mock_invalidate = AsyncMock(side_effect=ConnectionError("NATS unavailable"))
+    monkeypatch.setattr(
+        "app.services.ws_hub_client.invalidate_ws_hub_cache", mock_invalidate
+    )
+
+    with pytest.raises(ConnectionError, match="NATS unavailable"):
+        await handle_chat_participant_removed(
+            ChatParticipantRemoved(chat_id="chat1", user_id="user1")
+        )
 
 
 @pytest.mark.asyncio

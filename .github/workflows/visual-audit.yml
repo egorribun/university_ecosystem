@@ -104,7 +104,7 @@ jobs:
       RATE_LIMIT_STORAGE_URI: "redis://127.0.0.1:6379/1"
     services:
       postgres:
-        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+        image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test # pragma: allowlist secret
@@ -134,7 +134,7 @@ jobs:
       # converge. Default port 4222, no auth (matches backend default
       # nats_url "nats://127.0.0.1:4222").
       nats:
-        image: nats:2.10.25-alpine@sha256:3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228
+        image: nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4
         ports:
           - 4222:4222
         options: >-
@@ -178,16 +178,16 @@ jobs:
       # the action since both ultimately fetch from rustwasm/wasm-pack
       # GitHub release assets.
       - name: Install wasm-pack
-        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
+        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
-          tool: wasm-pack@0.13.1
+          tool: wasm-pack@0.15.0
 
       - name: Setup Rust toolchain
         # Keep the visual-audit build aligned with the canonical provenance
         # producer rather than the mutable hosted `stable` channel.
         uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # pinned action
         with:
-          toolchain: 1.97.1
+          toolchain: 1.99.0
           targets: wasm32-unknown-unknown
 
       - name: Install frontend dependencies
@@ -327,10 +327,9 @@ jobs:
           exit 1
 
       - name: Verify JWKS endpoint
-        # JWKS endpoint MUST serve at least 1 RS256 key. authenticated-visual-audit.mjs
-        # checks both /api/v1/.well-known/jwks.json and /.well-known/jwks.json
-        # paths (W137 SW4 pattern). Linux backend serves at the same paths
-        # as Caddy-fronted dev compose.
+        # JWKS endpoint MUST serve at least 1 RS256 key at /.well-known/jwks.json,
+        # the single path authenticated-visual-audit.mjs checks. The Linux backend
+        # serves it at the same path as Caddy-fronted dev compose.
         run: |
           if ! curl -sf http://127.0.0.1:8000/.well-known/jwks.json | python -c "import sys, json; d = json.load(sys.stdin); keys = d.get('keys', []); assert len(keys) > 0, 'JWKS empty'; print(f'OK: JWKS has {len(keys)} key(s)')"; then
             echo "::error::JWKS endpoint not serving keys (RS256 backend setup broken)"
@@ -429,7 +428,7 @@ jobs:
             }
           }
           EOF
-          docker run -d --name caddy --network host -v /tmp/Caddyfile:/etc/caddy/Caddyfile caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+          docker run -d --name caddy --network host -v /tmp/Caddyfile:/etc/caddy/Caddyfile caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
           # Wait for Caddy proxy chain
           for i in {1..15}; do
             if curl -sf http://localhost/healthz > /dev/null && curl -sf http://localhost/.well-known/jwks.json > /dev/null; then
@@ -528,7 +527,7 @@ jobs:
 
       - name: Upload audit reports
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: visual-audit-reports
           path: frontend/.screenshots/authenticated-visual-audit

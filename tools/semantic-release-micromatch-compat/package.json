@@ -1,0 +1,10 @@
+{
+  "name": "micromatch",
+  "version": "4.0.8",
+  "private": true,
+  "description": "A bounded micromatch-compatible subset for the repository's semantic-release consumers",
+  "main": "index.cjs",
+  "type": "commonjs",
+  "engines": { "node": ">=20.0.0" },
+  "dependencies": { "picomatch": "2.3.2" }
+}

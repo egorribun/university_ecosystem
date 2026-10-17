@@ -136,3 +136,8 @@ def test_resolve_weekday_index_none_input() -> None:
 
 def test_resolve_weekday_index_unknown() -> None:
     assert resolve_weekday_index("Caturday") is None
+
+
+def test_translate_project_lesson_type_matches_public_schedule_labels() -> None:
+    assert translate_lesson_type("project", locale="en") == "Project work"
+    assert translate_lesson_type("project", locale="ru") == "Проектная работа"

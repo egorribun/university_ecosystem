@@ -422,8 +422,8 @@ def test_repository_migrations_have_a_valid_fail_closed_downgrade_plan() -> None
 
     plan = policy.build_downgrade_plan(MIGRATIONS_DIR)
 
-    assert plan.safe_target == "202608250002"
-    assert plan.boundary_parent == "202608250001"
+    assert plan.safe_target == "202610120001"
+    assert plan.boundary_parent == "202610010001"
 
 
 def test_all_postgres_gates_exercise_safe_range_and_declared_boundary() -> None:

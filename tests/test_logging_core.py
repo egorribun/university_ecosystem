@@ -1,6 +1,8 @@
 import logging
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import app.core.logging as logging_mod
 from app.core.logging import (
     _orjson_serializer,
@@ -12,6 +14,8 @@ from app.core.logging import (
     get_logger,
     is_logger_enabled,
 )
+
+pytestmark = pytest.mark.usefixtures("preserve_logging_configuration")
 
 
 def test_redact_pii():

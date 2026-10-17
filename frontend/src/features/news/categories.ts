@@ -70,6 +70,24 @@ export function inferCategory(title: string, content: string): NewsCategory {
   return FALLBACK.id
 }
 
+export type NewsCategoryItem = {
+  title: string
+  content: string
+  title_en?: string | null
+  content_en?: string | null
+}
+
+/**
+ * Infer categories from stable English fields when present. The API localizes
+ * `title` and `content` per request but preserves the explicit English fields;
+ * blank translations fall back to those localized primary values.
+ */
+export function inferNewsCategory(item: NewsCategoryItem): NewsCategory {
+  const title = item.title_en?.trim() ? item.title_en : item.title
+  const content = item.content_en?.trim() ? item.content_en : item.content
+  return inferCategory(title, content)
+}
+
 /** Get display metadata for a category */
 export function getCategoryMeta(category: NewsCategory) {
   const rule = RULES.find((r) => r.id === category) ?? FALLBACK

@@ -55,7 +55,9 @@ async def test_validate_credentials_active_lockout(validator, mocks):
 
 
 @pytest.mark.asyncio
-async def test_validate_credentials_invalid_user_triggers_lockout(validator, mocks):
+async def test_validate_credentials_invalid_user_locks_out_without_alert(
+    validator, mocks
+):
     mocks["lockout_service"].get_active_lockout.return_value = None
     mocks["profile_service"].get_auth_user_by_email.return_value = None
 
@@ -77,7 +79,10 @@ async def test_validate_credentials_invalid_user_triggers_lockout(validator, moc
             )
 
         assert exc.value.status_code == 423
-        mock_kick.assert_awaited_once_with("test@example.com", "", "en")
+        mocks["lockout_service"].register_failed_attempt.assert_awaited_once_with(
+            "test@example.com", None
+        )
+        mock_kick.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -174,9 +179,8 @@ async def test_validate_credentials_success_with_new_hash(
     )
 
     assert res_user == user
-    mocks["user_repo"].update.assert_awaited_once_with(
-        "123",
-        {"hashed_password": "new_hash"},  # pragma: allowlist secret
+    mocks["user_repo"].rehash_password_if_current.assert_awaited_once_with(
+        "123", expected_hash="old_hash", new_hash="new_hash"
     )
     mocks["uow"].commit.assert_awaited_once()
 
@@ -199,3 +203,86 @@ async def test_validate_credentials_success_no_new_hash(mock_verify, validator, 
     assert res_user == user
     mocks["user_repo"].update.assert_not_awaited()
     mocks["uow"].commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unknown_account_dummy_argon2_check_uses_submitted_password(
+    validator: CredentialValidator, mocks: dict[str, AsyncMock | MagicMock]
+) -> None:
+    from uuid import uuid4
+
+    from app.auth import security
+
+    attempted = uuid4().hex
+    mocks["lockout_service"].get_active_lockout.return_value = None
+    mocks["profile_service"].get_auth_user_by_email.return_value = None
+    mocks["lockout_service"].register_failed_attempt.return_value = (None, False, 1)
+    mocks["session_manager"].extract_client_info.return_value = (
+        "127.0.0.1",
+        "test-agent",
+    )
+
+    with (
+        patch.object(security, "_dummy_password_hash", None),
+        patch.object(
+            security,
+            "verify_password_sync",
+            wraps=security.verify_password_sync,
+        ) as verify,
+        pytest.raises(HTTPException) as rejected,
+    ):
+        await validator.validate_credentials(
+            "missing@example.invalid",
+            attempted,
+            mocks["request"],
+            "en",
+            mocks["bg_tasks"],
+        )
+
+    assert rejected.value.status_code == 401
+    verify.assert_called_once()
+    verification = verify.call_args
+    assert verification is not None
+    assert verification.args[0] == attempted
+
+
+@pytest.mark.asyncio
+async def test_rehash_compare_and_swap_loser_gets_generic_unauthorized(
+    validator: CredentialValidator,
+    mocks: dict[str, AsyncMock | MagicMock],
+) -> None:
+    from uuid import uuid4
+
+    from app.core.localization import translate
+
+    old_hash = uuid4().hex
+    new_hash = uuid4().hex
+    attempted_password = uuid4().hex
+    user = MagicMock(id=uuid4(), hashed_password=old_hash)
+    mocks["lockout_service"].get_active_lockout.return_value = None
+    mocks["profile_service"].get_auth_user_by_email.return_value = user
+    mocks["user_repo"].rehash_password_if_current.return_value = False
+
+    with patch(
+        "app.services.auth.credential_validator.verify_and_update_password",
+        return_value=(True, new_hash),
+    ) as verify_password:
+        with pytest.raises(HTTPException) as rejected:
+            await validator.validate_credentials(
+                "test@example.invalid",
+                attempted_password,
+                mocks["request"],
+                "ru",
+                mocks["bg_tasks"],
+            )
+
+    assert rejected.value.status_code == 401
+    assert rejected.value.detail == translate(
+        "errors.auth.credentials_invalid", locale="ru"
+    )
+    verify_password.assert_awaited_once_with(attempted_password, old_hash)
+    mocks["user_repo"].rehash_password_if_current.assert_awaited_once_with(
+        user.id, expected_hash=old_hash, new_hash=new_hash
+    )
+    mocks["uow"].commit.assert_not_awaited()
+    mocks["lockout_service"].clear_failed_attempts.assert_not_awaited()

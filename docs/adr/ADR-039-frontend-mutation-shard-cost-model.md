@@ -71,15 +71,37 @@ universe with per-source costs derived from its own reports lowers the
 measured cost imbalance from **48.9x to 8.4x** and the largest lane from 1,418
 to 1,259 mutants.
 
-That path is implemented — `buildHistoricalCostArtifact`,
-`historicalCostModelCosts` and the `STRYKER_HISTORICAL_COSTS_ARTIFACT`
-contract all exist in `run-stryker.mjs`. The workflow already publishes the
-historical-cost artifact and can restore compatible evidence from an earlier
-attempt of the same run and SHA. It does not yet restore a compatible artifact
-across runs, so a new run's first attempt still uses the fallback planner.
-`validatedHistoricalCosts` requires a cost for every viable source; partial
-reports must not silently become complete cost evidence. The measured run
-above lacked one shard, which prevented bootstrapping from that particular run.
+The planner, `buildHistoricalCostArtifact`, `historicalCostModelCosts`, and the
+`STRYKER_HISTORICAL_COSTS_ARTIFACT` input are implemented in
+`frontend/scripts/run-stryker.mjs`. The active `ci.yml` preflight now searches
+recent successful runs on the PR branch, downloads a compatible cost/preflight
+pair, verifies it offline, and replans the current run's preflight when a
+candidate passes. Shard execution remains fresh: historical timings are advice,
+not reused mutation results. If no candidate is usable, the baseline planner
+remains the fallback. `validatedHistoricalCosts` requires a cost for every
+viable source; partial reports must not silently become complete cost evidence.
+
+The active workflow bounds the cross-run search to a 30-second deadline, at
+most three candidate runs, one 50-run listing page, at most five artifact pages
+per candidate, 400 artifacts, and 64 MiB per downloaded archive. It binds the
+cost and preflight artifacts to the same successful run, attempt, and tested
+SHA, and checks the server-provided artifact digests. The offline selector then
+checks compatibility, freshness, complete viable-source coverage, and the
+archive contents. The cost archive must contain exactly one regular
+`HISTORICAL_COSTS.json`; the materialized candidate directory must contain only
+that one unlinked regular file. Any invalid, incomplete, stale, or over-budget
+candidate must leave the baseline planner in place.
+
+One O2 bound is not yet satisfied by the active workflow: the credential-bearing
+cross-run discovery step measures its 30-second deadline with JavaScript
+`Date.now()`, which is a wall clock and can move. The Python selector has a
+`time.monotonic()` request budget, but the workflow invokes it only in
+`--offline-snapshot` mode after discovery and download. The live discovery path
+must use a monotonic deadline, and its contract tests must prove the complete
+request/download budget expires fail-closed. Until then, bounded search and
+artifact validation are implemented, but O2 is not fully closed. The measured
+run above lacked one shard, which prevented bootstrapping from that particular
+run.
 
 ## Decision
 
@@ -113,12 +135,13 @@ every lane, and a reshuffle cannot be validated offline against wall time. It
 is frozen, not deleted; its entries retain their provenance comments as
 history.
 
-Cross-run historical-cost reuse remains open work. The existing producer and
-same-run retry consumer are not sufficient: a later run needs explicit
-compatibility, source-inventory and aging validation before using prior costs.
-Historical timing is planning advice, never a substitute for fresh mutation
-results. The larger envelope is a temporary completion/diagnostic measure,
-not certification that timeouts or load imbalance are resolved.
+Cross-run historical-cost selection is now wired into the PR preflight, with
+compatibility, source-inventory, age, run/attempt, digest, and archive-member
+checks. The active network discovery still needs a monotonic end-to-end deadline
+before the O2 selector contract is complete. Historical timing is planning
+advice, never a substitute for fresh mutation results. The larger envelope is a
+temporary completion/diagnostic measure, not certification that timeouts or load
+imbalance are resolved.
 
 ## References
 

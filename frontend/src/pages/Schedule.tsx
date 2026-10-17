@@ -29,9 +29,11 @@ import {
   useWeekOffset,
   useScheduleDisplayPreferences,
   useScheduleUIActions,
+  useHiddenWeekdays,
 } from "@/stores/scheduleUIStore"
 import { useLessonNotesMap } from "@/hooks/useLessonNotes"
 import api from "@/api/client"
+import { buildTable } from "@/components/schedule/scheduleUtils"
 
 function ScheduleContent() {
   const { t } = useTranslation(["schedule", "common"])
@@ -43,6 +45,7 @@ function ScheduleContent() {
   const weekOffset = useWeekOffset()
   const { showPastLessons } = useScheduleDisplayPreferences()
   const { resetPreferences } = useScheduleUIActions()
+  const hiddenWeekdays = useHiddenWeekdays()
 
   const scheduleData = useScheduleData()
   const {
@@ -115,16 +118,29 @@ function ScheduleContent() {
     }
   }, [schedule, showPastLessons, hasToday, todayIdx, weekdayBackend, minutesNow])
 
+  const visibleWeekdayBackend = useMemo(
+    () => weekdayBackend.filter((_, index) => !hiddenWeekdays.includes(index)),
+    [weekdayBackend, hiddenWeekdays]
+  )
+
   /* ── Keyboard navigation ──────────────────────────────── */
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
-  // PERF-70-05: compute rowCount inline — avoids duplicate buildTable() call (also in DesktopTable)
-  const rowCount = useMemo(() => {
-    const counts = weekdayBackend.map(
-      (day) => displaySchedule.filter((l) => l.weekday === day).length
-    )
-    return Math.max(...counts, 0)
-  }, [displaySchedule, weekdayBackend])
+  const keyboardRows = useMemo(
+    () => buildTable(displaySchedule, visibleWeekdayBackend),
+    [displaySchedule, visibleWeekdayBackend]
+  )
+  const todayVisibleColIdx = hasToday
+    ? visibleWeekdayBackend.indexOf(weekdayBackend[todayIdx] ?? "")
+    : -1
+
+  const handleKbOpen = useCallback(
+    (row: number, col: number) => {
+      const lesson = keyboardRows[row]?.[col]
+      if (lesson) openDialog("details", lesson)
+    },
+    [keyboardRows, openDialog]
+  )
 
   const handleKbEdit = useCallback(() => {
     if (selectedLesson && (user?.role === "admin" || user?.role === "teacher")) {
@@ -146,9 +162,9 @@ function ScheduleContent() {
   }, [selectedLesson, user?.role, requestDeleteLesson])
 
   useScheduleKeyboardNav({
-    colCount: weekdayBackend.length,
-    rowCount,
-    todayColIdx: todayIdx,
+    colCount: visibleWeekdayBackend.length,
+    rowCount: keyboardRows.length,
+    todayColIdx: todayVisibleColIdx,
     enabled:
       !isMobile &&
       !shortcutsOpen &&
@@ -157,6 +173,7 @@ function ScheduleContent() {
       pendingDeleteId === null,
     onEdit: handleKbEdit,
     onDelete: handleKbDelete,
+    onOpen: handleKbOpen,
     onToggleShortcuts: handleToggleShortcuts,
   })
 

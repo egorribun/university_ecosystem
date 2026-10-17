@@ -9,6 +9,8 @@ import { useEventRegistration } from "@/hooks/useEventRegistration"
 import { useSpotlight } from "@/components/ui/Spotlight"
 import type { Event, EventEditDraft } from "@/types/Event"
 import { captureActiveTelemetryContext } from "@/utils/telemetryContext"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
+import { eventDateErrorTranslationKey, resolveCampusEventDateRange } from "@/utils/eventDateTime"
 
 // dayjs extensions removed
 
@@ -43,8 +45,9 @@ export function useEventCardLogic({
   onChange,
 }: UseEventCardLogicProps) {
   const { user } = useAuth()
+  const campusTimezone = useCampusTimezone()
   const navigate = useNavigate()
-  const { t } = useTranslation(["events", "common"])
+  const { t, i18n } = useTranslation(["events", "common"])
   const spotlight = useSpotlight()
 
   // -- UI State --
@@ -122,6 +125,19 @@ export function useEventCardLogic({
 
   // -- Handlers --
   const handleEdit = async () => {
+    const dateRange = resolveCampusEventDateRange(
+      editData.starts_at ?? "",
+      editData.ends_at ?? "",
+      campusTimezone,
+      { startsAt: starts_at, endsAt: ends_at }
+    )
+    if (!dateRange.valid || !dateRange.startsAt || !dateRange.endsAt) {
+      const field = dateRange.startError ? "start" : "end"
+      const error = dateRange.startError ?? dateRange.endError ?? "invalid"
+      setSnackbar(t(eventDateErrorTranslationKey(error, field)))
+      return
+    }
+
     const telemetryContext = captureActiveTelemetryContext()
     setLoading(true)
     try {
@@ -139,9 +155,18 @@ export function useEventCardLogic({
       }
       const payload = {
         ...editData,
-        starts_at: parseDate(editData.starts_at).toISOString(),
-        ends_at: parseDate(editData.ends_at).toISOString(),
+        starts_at: dateRange.startsAt,
+        ends_at: dateRange.endsAt,
         image_url: imgUrl,
+      }
+      if (i18n.language === "en") {
+        // Event API responses localize the source fields for the active
+        // language. The card editor only exposes the active locale, so an
+        // English save must leave the persisted Russian fields untouched.
+        delete payload.title
+        delete payload.description
+        delete payload.event_type
+        delete payload.location
       }
       await telemetryContext.run(() => api.patch(`/events/${id}`, payload))
       setEditOpen(false)

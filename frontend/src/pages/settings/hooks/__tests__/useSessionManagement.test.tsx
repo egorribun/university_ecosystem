@@ -1,3 +1,4 @@
+import { rotateBrowserSession } from "@/stores/sessionEpoch"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { AxiosError } from "axios"
 import { act, renderHook, waitFor } from "@testing-library/react"
@@ -14,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   deleteSession: vi.fn(),
   postRevokeAll: vi.fn(),
   updateSessionInCache: vi.fn(),
-  invalidateSessions: vi.fn(async () => undefined),
+  invalidateSessions: vi.fn(async (): Promise<void> => undefined),
   t: vi.fn((key: string, options?: { count?: number }) =>
     options?.count === undefined ? key : `${key}:${options.count}`
   ),
@@ -82,6 +83,7 @@ const renderSessionHook = (options: Partial<Parameters<typeof useSessionManageme
 }
 
 beforeEach(() => {
+  rotateBrowserSession()
   vi.clearAllMocks()
   mocks.user = { id: "user-1" }
   mocks.fetchSessions.mockResolvedValue([])
@@ -337,3 +339,206 @@ describe("useSessionManagement — revoke all and formatting", () => {
     expect(result.current.formatSessionTimestamp("2026-07-30T00:00:00Z")).toContain("formatted:")
   })
 })
+
+it("does not log account B out after account A's pending revoke invalidation completes", async () => {
+  let resolveInvalidation!: () => void
+  const pending = new Promise<void>((resolve) => {
+    resolveInvalidation = resolve
+  })
+  mocks.deleteSession.mockResolvedValue({ data: baseSession({ is_current: true }) })
+  mocks.invalidateSessions.mockReturnValueOnce(pending)
+  const { result, rerender } = renderSessionHook()
+  let operation!: Promise<void>
+  act(() => {
+    operation = result.current.handleRevokeSession("session-1")
+  })
+  await waitFor(() => expect(mocks.invalidateSessions).toHaveBeenCalled())
+  rotateBrowserSession()
+  mocks.user = { id: "user-2" }
+  rerender()
+  await act(async () => {
+    resolveInvalidation()
+    await operation
+  })
+  expect(mocks.logout).not.toHaveBeenCalled()
+})
+
+it.each(["single", "all"] as const)(
+  "does not dispatch %s session revocation from an obsolete tab",
+  async (kind) => {
+    const { result, setSnackbar } = renderSessionHook()
+    localStorage.setItem(
+      "ecosystem.session.generation.v1",
+      JSON.stringify({ nonce: "other-tab", hash: null })
+    )
+    await act(() =>
+      kind === "single"
+        ? result.current.handleRevokeSession("session-1")
+        : result.current.handleRevokeAllSessions()
+    )
+    expect(mocks.deleteSession).not.toHaveBeenCalled()
+    expect(mocks.postRevokeAll).not.toHaveBeenCalled()
+    expect(setSnackbar).not.toHaveBeenCalled()
+  }
+)
+
+it.each([
+  ["single", "success"],
+  ["single", "failure"],
+  ["all", "success"],
+  ["all", "failure"],
+] as const)("ignores an obsolete %s revocation %s", async (kind, outcome) => {
+  let resolve!: (value: unknown) => void
+  let reject!: (reason: unknown) => void
+  const pending = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  const request = kind === "single" ? mocks.deleteSession : mocks.postRevokeAll
+  request.mockReturnValueOnce(pending)
+  const { result, rerender, setSnackbar } = renderSessionHook()
+  let operation!: Promise<void>
+  act(() => {
+    operation =
+      kind === "single"
+        ? result.current.handleRevokeSession("session-1")
+        : result.current.handleRevokeAllSessions()
+  })
+  await waitFor(() => expect(request).toHaveBeenCalledOnce())
+  rotateBrowserSession()
+  mocks.user = { id: "user-2" }
+  rerender()
+  await act(async () => {
+    if (outcome === "success")
+      resolve({ data: kind === "single" ? baseSession({ is_current: true }) : { revoked: 2 } })
+    else reject(new Error("Account A failed"))
+    await operation
+  })
+  expect(mocks.updateSessionInCache).not.toHaveBeenCalled()
+  expect(mocks.invalidateSessions).not.toHaveBeenCalled()
+  expect(mocks.logout).not.toHaveBeenCalled()
+  expect(setSnackbar).not.toHaveBeenCalled()
+})
+
+it.each(["single", "all"] as const)(
+  "does not replay a %s revocation step-up for account B",
+  async (kind) => {
+    const request = kind === "single" ? mocks.deleteSession : mocks.postRevokeAll
+    request.mockRejectedValueOnce({ isAxiosError: true, response: { status: 428 } })
+    const openStepUpFor = vi.fn()
+    const { result, rerender } = renderSessionHook({ openStepUpFor })
+    await act(() =>
+      kind === "single"
+        ? result.current.handleRevokeSession("session-1")
+        : result.current.handleRevokeAllSessions()
+    )
+    expect(openStepUpFor).toHaveBeenCalledOnce()
+    rotateBrowserSession()
+    mocks.user = { id: "user-2" }
+    rerender()
+    await act(() => openStepUpFor.mock.calls[0]![0]())
+    expect(request).toHaveBeenCalledOnce()
+  }
+)
+
+it("suppresses revoke-all completion after account change during invalidation", async () => {
+  let resolve!: () => void
+  mocks.invalidateSessions.mockReturnValueOnce(
+    new Promise<void>((done) => {
+      resolve = done
+    })
+  )
+  mocks.postRevokeAll.mockResolvedValueOnce({ data: { revoked: 2 } })
+  const { result, rerender, setSnackbar } = renderSessionHook()
+  let operation!: Promise<void>
+  act(() => {
+    operation = result.current.handleRevokeAllSessions()
+  })
+  await waitFor(() => expect(mocks.invalidateSessions).toHaveBeenCalledOnce())
+  rotateBrowserSession()
+  mocks.user = { id: "user-2" }
+  rerender()
+  await act(async () => {
+    resolve()
+    await operation
+  })
+  expect(setSnackbar).not.toHaveBeenCalled()
+})
+
+it.each(["single", "all"] as const)(
+  "does not reopen step-up when a resumed %s revocation is still unauthorized",
+  async (kind) => {
+    let resume: (() => Promise<void>) | undefined
+    const openStepUpFor = vi.fn((action: () => Promise<void>) => {
+      resume = action
+    })
+    const request = kind === "single" ? mocks.deleteSession : mocks.postRevokeAll
+    const stepUpError = { isAxiosError: true, response: { status: 428 } }
+    request.mockRejectedValueOnce(stepUpError).mockRejectedValueOnce(stepUpError)
+    const { result, setSnackbar } = renderSessionHook({ openStepUpFor })
+
+    await act(async () => {
+      if (kind === "single") await result.current.handleRevokeSession("session-1")
+      else await result.current.handleRevokeAllSessions()
+    })
+    expect(openStepUpFor).toHaveBeenCalledOnce()
+
+    await act(async () => {
+      await resume?.()
+    })
+
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(openStepUpFor).toHaveBeenCalledOnce()
+    expect(setSnackbar).toHaveBeenLastCalledWith(expect.objectContaining({ severity: "error" }))
+  }
+)
+
+it.each(["single", "all"] as const)(
+  "reports an ordinary %s revocation denial without opening step-up",
+  async (kind) => {
+    const request = kind === "single" ? mocks.deleteSession : mocks.postRevokeAll
+    const error = new AxiosError("denied")
+    error.response = {
+      status: 403,
+      data: { detail: "Forbidden" },
+    } as AxiosError["response"]
+    request.mockRejectedValueOnce(error)
+    const openStepUpFor = vi.fn()
+    const { result, setSnackbar } = renderSessionHook({ openStepUpFor })
+
+    await act(async () => {
+      if (kind === "single") await result.current.handleRevokeSession("session-1")
+      else await result.current.handleRevokeAllSessions()
+    })
+
+    expect(openStepUpFor).not.toHaveBeenCalled()
+    expect(setSnackbar).toHaveBeenCalledWith({ text: "Forbidden", severity: "error" })
+  }
+)
+
+it.each(["single", "all"] as const)(
+  "reports response-less Axios transport errors during %s session revocation",
+  async (kind) => {
+    const request = kind === "single" ? mocks.deleteSession : mocks.postRevokeAll
+    const openStepUpFor = vi.fn()
+    request.mockRejectedValueOnce(new AxiosError("network unavailable"))
+    const { result, setSnackbar } = renderSessionHook({ openStepUpFor })
+
+    let actionFailure: unknown
+    await act(async () => {
+      try {
+        if (kind === "single") await result.current.handleRevokeSession("session-1")
+        else await result.current.handleRevokeAllSessions()
+      } catch (error) {
+        actionFailure = error
+      }
+    })
+
+    expect(actionFailure).toBeUndefined()
+    expect(openStepUpFor).not.toHaveBeenCalled()
+    expect(setSnackbar).toHaveBeenCalledWith({
+      text: "network unavailable",
+      severity: "error",
+    })
+  }
+)

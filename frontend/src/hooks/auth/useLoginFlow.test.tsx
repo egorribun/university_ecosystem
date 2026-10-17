@@ -1,10 +1,11 @@
-import { renderHook, act, waitFor } from "@testing-library/react"
+import { render, renderHook, act, waitFor, screen } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { AxiosError } from "axios"
 
 import { resolveAuthErrorMessage, useLoginForm, useMfaFlow } from "./useLoginFlow"
 import { ChallengeLockedError } from "@/types/Auth"
 import type { PendingMfaState } from "@/types/Auth"
+import { MfaChallengeView } from "@/components/auth/MfaChallengeView"
 
 // ---------------------------------------------------------------------------
 // Module mocks — auth API + router. No real network.
@@ -58,8 +59,10 @@ vi.mock("react-i18next", () => ({
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.login.mockResolvedValue(null)
-  mocks.submitMfaChallenge.mockResolvedValue(undefined)
-  mocks.resendEmailMfaChallenge.mockResolvedValue({
+  // A case may queue both actions but exercise only one. Clear unused once
+  // responses as well as call history before installing the next defaults.
+  mocks.submitMfaChallenge.mockReset().mockResolvedValue(undefined)
+  mocks.resendEmailMfaChallenge.mockReset().mockResolvedValue({
     method: "email_otp",
     challenge_token: "ct-email-rotated",
     challenge_expires_at: "2026-08-25T16:00:00Z",
@@ -277,6 +280,33 @@ describe("useLoginForm.onSubmit", () => {
     })
     await waitFor(() => expect(result.current.submitError).toBe("Invalid credentials"))
   })
+
+  it.each(["Could not validate credentials", "Не удалось подтвердить учётные данные"])(
+    "uses the UI's generic login message for a backend 401 (%s)",
+    async (detail) => {
+      const error = new AxiosError("Request failed with status code 401")
+      error.response = {
+        status: 401,
+        headers: {},
+        data: { detail },
+        statusText: "Unauthorized",
+        config: {} as never,
+      }
+      mocks.login.mockRejectedValue(error)
+      const { result } = renderHook(() => useLoginForm())
+      act(() => {
+        result.current.form.setValue("email", "a@b.dev")
+        result.current.form.setValue("password", "Password123!")
+      })
+
+      await act(async () => {
+        await result.current.onSubmit()
+      })
+
+      await waitFor(() => expect(result.current.submitError).toBe("auth:login.error"))
+      expect(mocks.navigate).not.toHaveBeenCalled()
+    }
+  )
 
   it("keeps the translated fallback when login rejects with a non-Error value", async () => {
     mocks.login.mockRejectedValue("authentication unavailable")
@@ -514,6 +544,39 @@ describe("useMfaFlow.handleRecoveryVerify", () => {
 
     expect(result.current.mfaError).toBe("Recovery locked")
     expect(result.current.mfaErrorSource).toBe("general")
+  })
+
+  it("keeps an oversized recovery-code validation response render-safe", async () => {
+    mocks.pendingMfa = mfaLogin()
+    const validationError = new AxiosError("Request failed")
+    validationError.response = {
+      status: 422,
+      headers: {},
+      data: {
+        detail: [
+          {
+            loc: ["body", "code"],
+            msg: "String should have at most 19 characters",
+            type: "string_too_long",
+          },
+        ],
+      },
+      statusText: "Unprocessable Entity",
+      config: {} as never,
+    }
+    mocks.submitMfaChallenge.mockRejectedValue(validationError)
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(async () => {
+      result.current.setShowRecoveryInput(true)
+      await result.current.handleRecoveryVerify("x".repeat(20))
+    })
+
+    render(<MfaChallengeView activeEmail="student@example.invalid" mfa={result.current} />)
+    expect(screen.getByRole("alert")).toHaveTextContent("auth:mfa.errors.generic")
+    expect(mocks.submitMfaChallenge).toHaveBeenCalledWith(
+      expect.objectContaining({ method: "recovery_code", code: "x".repeat(20) })
+    )
   })
 
   it("keeps a generic recovery error in the general banner", async () => {

@@ -6,7 +6,30 @@ import { StoryCircle } from "@/components/ui/StoryCircle"
 describe("StoryCircle polymorphic and sizing branches", () => {
   it.each(["sm", "md", "lg"] as const)("renders the %s size", (size) => {
     render(<StoryCircle size={size}>avatar</StoryCircle>)
-    expect(screen.getByText("avatar").closest("div")).toHaveClass(`h-(--size-story-${size})`)
+    const circle = screen.getByText("avatar").closest("div")
+    for (const dimension of ["h", "w", "min-h", "min-w"]) {
+      expect(circle).toHaveClass(`${dimension}-(--size-story-${size})`)
+      for (const other of ["sm", "md", "lg"].filter((candidate) => candidate !== size)) {
+        expect(circle).not.toHaveClass(`${dimension}-(--size-story-${other})`)
+      }
+    }
+  })
+
+  it.each([
+    ["omitted", {}],
+    ["undefined", { size: undefined }],
+  ] as const)("uses medium diameter when size is %s", (_label, props) => {
+    render(
+      <StoryCircle as="button" aria-label="story" {...props}>
+        avatar
+      </StoryCircle>
+    )
+    const circle = screen.getByRole("button", { name: "story" })
+    for (const dimension of ["h", "w", "min-h", "min-w"]) {
+      expect(circle).toHaveClass(`${dimension}-(--size-story-md)`)
+      expect(circle).not.toHaveClass(`${dimension}-(--size-story-sm)`)
+      expect(circle).not.toHaveClass(`${dimension}-(--size-story-lg)`)
+    }
   })
 
   it("supports a polymorphic element, numeric border, and style override", () => {

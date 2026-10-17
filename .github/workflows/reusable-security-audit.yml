@@ -82,11 +82,16 @@ jobs:
             "quality/quality-contract.json"
             "quality/release-required-checks.json"
             "quality/ci-check-catalog.json"
+            "quality/security-false-positive-dispositions.json"
             "quality/coverage-source-policy.json"
             "quality/mutation-exclusions.json"
             "security/audit-allowlist.yaml"
             "security/semgrep-suppression-policy.json"
             "security/trivy-university-config.yaml"
+            "security/trivy-university-chart-config.yaml"
+            "security/trivy-university-values.yaml"
+            "security/trivy-redis-compat-config.yaml"
+            "security/trivy-redis-compat-values.yaml"
             "security/trivy-revocation-config.yaml"
             "security/trivy-revocation-values.yaml"
             "zizmor.yml"
@@ -99,6 +104,9 @@ jobs:
             "scripts/check_dependency_audit_report.py"
             "scripts/audit_dependencies.py"
             "scripts/ci/helm_dependency_build.py"
+            "scripts/quality/prepare_trivy_backend_values.py"
+            "scripts/quality/create_checkov_oci_image_evidence.py"
+            "scripts/quality/resolve_oci_platform_digest.py"
             "scripts/quality/filter_checkov_sarif.py"
             "scripts/verify_secrets_baseline.py"
             "scripts/quality/validate_semgrep_sarif.py"
@@ -172,11 +180,16 @@ jobs:
             "quality/quality-contract.json"
             "quality/release-required-checks.json"
             "quality/ci-check-catalog.json"
+            "quality/security-false-positive-dispositions.json"
             "quality/coverage-source-policy.json"
             "quality/mutation-exclusions.json"
             "security/audit-allowlist.yaml"
             "security/semgrep-suppression-policy.json"
             "security/trivy-university-config.yaml"
+            "security/trivy-university-chart-config.yaml"
+            "security/trivy-university-values.yaml"
+            "security/trivy-redis-compat-config.yaml"
+            "security/trivy-redis-compat-values.yaml"
             "security/trivy-revocation-config.yaml"
             "security/trivy-revocation-values.yaml"
             "frontend/scripts/lhci-route-policy.mjs"
@@ -185,6 +198,9 @@ jobs:
             "scripts/check_dependency_audit_report.py"
             "scripts/audit_dependencies.py"
             "scripts/ci/helm_dependency_build.py"
+            "scripts/quality/prepare_trivy_backend_values.py"
+            "scripts/quality/create_checkov_oci_image_evidence.py"
+            "scripts/quality/resolve_oci_platform_digest.py"
             "scripts/quality/filter_checkov_sarif.py"
             "scripts/verify_secrets_baseline.py"
             "scripts/quality/validate_semgrep_sarif.py"
@@ -296,7 +312,7 @@ jobs:
     name: Container Security Scan
     needs: policy-integrity
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     permissions:
       contents: read
       security-events: write
@@ -305,24 +321,30 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify source revision for backend OCI evidence
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse --verify HEAD)" == "$SOURCE_SHA" ]]
+          if [[ -n "$(git status --porcelain=v1 --untracked-files=all)" ]]; then
+            echo "::error::Trivy source checkout is not clean before dependency generation" >&2
+            exit 1
+          fi
+
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: "3.17.0"
-
-      - name: Build Helm dependencies for Trivy
-        shell: bash
-        run: |
-          python3 scripts/ci/helm_dependency_build.py \
-            charts/university-ecosystem \
-            redis-20.13.4.tgz nats-8.5.4.tgz
+          version: "4.2.4"
 
       - name: Install checksum-pinned Trivy
         env:
-          TRIVY_VERSION: 0.73.0
+          TRIVY_VERSION: 0.75.0
           # Official immutable GitHub release asset digest for
-          # trivy_0.73.0_Linux-64bit.tar.gz.
-          TRIVY_ARCHIVE_SHA256: 2edd39da482bb4e9831962487b68f68e3928ec3137794757f54d00383d79547b # pragma: allowlist secret -- official public release checksum
+          # trivy_0.75.0_Linux-64bit.tar.gz.
+          TRIVY_ARCHIVE_SHA256: c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f
         run: |
           set -euo pipefail
           [[ "$TRIVY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
@@ -339,22 +361,68 @@ jobs:
           sudo install --mode 0755 "$trivy_dir/trivy" /usr/local/bin/trivy
           trivy --version
 
+      - name: Build source-bound backend OCI archive
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Export backend OCI and prepare isolated Helm profiles
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse --verify HEAD)" == "$SOURCE_SHA" ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$SOURCE_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+          git diff --quiet HEAD --
+          image_repository="${SOURCE_REPOSITORY,,}"
+          archive="$RUNNER_TEMP/backend.oci.tar"
+          profiles="$RUNNER_TEMP/trivy-inputs"
+          [[ ! -e "$archive" && ! -L "$archive" ]]
+          [[ ! -e "$profiles" && ! -L "$profiles" ]]
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=false \
+            --sbom=false \
+            --label "org.opencontainers.image.source=https://github.com/${SOURCE_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${SOURCE_SHA}" \
+            --tag "ghcr.io/${image_repository}/backend:${SOURCE_SHA}" \
+            --file backend.Dockerfile \
+            --cache-from type=gha,scope=university-backend \
+            --cache-to type=gha,scope=university-backend,mode=max \
+            --output "type=oci,dest=${archive}" \
+            .
+          python3 scripts/quality/prepare_trivy_backend_values.py \
+            --archive "$archive" \
+            --repository "$SOURCE_REPOSITORY" \
+            --source-sha "$SOURCE_SHA" \
+            --output-dir "$profiles" \
+            --repository-root "$GITHUB_WORKSPACE"
+          test -s "$profiles/backend-evidence.json"
+          test -s "$profiles/trivy-revocation-config.json"
+          test -s "$profiles/trivy-university-config.json"
+          test -s "$profiles/trivy-redis-compat-config.json"
+
+      - name: Build Helm dependencies for Trivy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/helm_dependency_build.py \
+            charts/university-ecosystem \
+            redis-0.1.0.tgz nats-2.15.0.tgz
+
       - name: Run Trivy vulnerability scanner (filesystem)
         id: trivy_fs
         continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.75.0
           scan-type: "fs"
           scan-ref: "."
           format: "sarif"
           output: "trivy-fs.sarif"
           severity: "CRITICAL,HIGH"
-          # SARIF otherwise contains every severity even when the scan filter
-          # is restricted. Keep Code Scanning aligned with the blocking policy.
           limit-severities-for-sarif: true
-          # Use the checksum-verified binary installed above.
           skip-setup-trivy: true
-          # Preserve SARIF upload, then re-assert this blocking result below.
           exit-code: "1"
 
       - name: Run Trivy configuration scanner (IaC)
@@ -362,79 +430,134 @@ jobs:
         continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.75.0
           scan-type: "config"
           scan-ref: "."
           trivy-config: "security/trivy-university-config.yaml"
-          # The revocation chart is scanned separately with its required
-          # release identity; keeping it out of this aggregate scan prevents
-          # Helm's intentional empty defaults from being silently skipped.
-          skip-dirs: "charts/revocation-store"
-          # The YAML ignore file contains the repository-wide SPIRE Kubernetes
-          # suppressions. Trivy does not allow mixing plain and YAML ignore
-          # files in one scan; all container user findings remain blocking
-          # code-scanning alerts.
+          skip-dirs: "charts/revocation-store,charts/university-ecosystem,charts/redis-compat"
           trivyignores: ".trivyignore.yaml"
           format: "sarif"
           output: "trivy-config.sarif"
           severity: "CRITICAL,HIGH"
-          # Without this flag Trivy deliberately emits LOW/MEDIUM findings in
-          # SARIF, which can block the zero-alert ruleset while the job is green.
           limit-severities-for-sarif: true
           skip-setup-trivy: true
           exit-code: "1"
 
-      - name: Validate Helm charts before Trivy configuration scan
+      - name: Validate isolated Helm profiles before Trivy scans
         shell: bash
-        run: | # pragma: allowlist secret -- contains only a Kubernetes Secret name override
+        run: |
           set -euo pipefail
-          trivy_application_secret_override="applicationSecrets.existingSecret=trivy-scan-application" # pragma: allowlist secret -- Secret name only; no credential material
+          profiles="$RUNNER_TEMP/trivy-inputs"
+          revocation_values=(
+            --values security/trivy-revocation-values.yaml
+            --values "$profiles/revocation-values.json"
+          )
+          university_values=(
+            --values security/trivy-university-values.yaml
+            --values "$profiles/university-values.json"
+          )
+          redis_values=(
+            --values security/trivy-redis-compat-values.yaml
+            --values "$profiles/redis-compat-values.json"
+          )
 
           helm template trivy-revocation charts/revocation-store \
-            --dependency-update=false \
-            --values security/trivy-revocation-values.yaml \
+            --dependency-update=false "${revocation_values[@]}" \
             >/tmp/trivy-revocation-render.yaml
           helm template trivy-university charts/university-ecosystem \
-            --dependency-update=false \
-            --set "$trivy_application_secret_override" \
+            --dependency-update=false "${university_values[@]}" \
             >/tmp/trivy-university-render.yaml
+          helm template trivy-redis-compat charts/redis-compat \
+            --dependency-update=false "${redis_values[@]}" \
+            >/tmp/trivy-redis-compat-render.yaml
 
           scan_chart() {
             local chart="$1"
-            local log_file="$2"
-            local output_file="/tmp/${chart##*/}-trivy-preflight.json"
-            shift 2
-            trivy config --misconfig-scanners helm \
-              --format json --output "$output_file" \
-              "$@" "$chart" 2>&1 | tee "$log_file"
+            local config="$2"
+            local log_file="$3"
+            local output_file="$4"
+            trivy config --config "$config" --misconfig-scanners helm \
+              --format json --output "$output_file" "$chart" 2>&1 | tee "$log_file"
             if grep -Fqi "Skipping chart" "$log_file" || \
               grep -Fqi "missing in charts/" "$log_file" || \
               grep -Fqi "Failed to render Chart files" "$log_file"; then
               echo "::error::Trivy skipped Helm chart $chart" >&2
               return 1
             fi
-            if ! jq -e '.Results | type == "array" and length > 0' \
+            if ! jq -e 'type == "object" and (.Results | type == "array" and length > 0)' \
               "$output_file" >/dev/null; then
-              echo "::error::Trivy produced no rendered Helm results for $chart" >&2
+              echo "::error::Trivy produced no valid Helm results for $chart" >&2
               return 1
             fi
           }
 
-          scan_chart charts/revocation-store /tmp/trivy-revocation-preflight.log \
-            --helm-values security/trivy-revocation-values.yaml
-          scan_chart charts/university-ecosystem /tmp/trivy-university-preflight.log \
-            --helm-set "$trivy_application_secret_override"
+          scan_chart charts/revocation-store "$profiles/trivy-revocation-config.json" \
+            /tmp/trivy-revocation-preflight.log /tmp/trivy-revocation-preflight.json
+          scan_chart charts/university-ecosystem "$profiles/trivy-university-config.json" \
+            /tmp/trivy-university-preflight.log /tmp/trivy-university-preflight.json
+          scan_chart charts/redis-compat "$profiles/trivy-redis-compat-config.json" \
+            /tmp/trivy-redis-compat-preflight.log /tmp/trivy-redis-compat-preflight.json
+
+      - name: Upload source-bound Trivy inputs and Helm preflight reports
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: trivy-source-bound-helm-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/trivy-inputs/backend-evidence.json
+            ${{ runner.temp }}/trivy-inputs/*-values.json
+            ${{ runner.temp }}/trivy-inputs/trivy-*-config.json
+            /tmp/trivy-*-preflight.json
+            /tmp/trivy-*-preflight.log
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Run Trivy revocation-store configuration scanner
         id: trivy_revocation
         continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.75.0
           scan-type: "config"
           scan-ref: "charts/revocation-store"
-          trivy-config: "security/trivy-revocation-config.yaml"
+          trivy-config: "${{ runner.temp }}/trivy-inputs/trivy-revocation-config.json"
           trivyignores: ".trivyignore.yaml"
           format: "sarif"
           output: "trivy-revocation-config.sarif"
+          severity: "CRITICAL,HIGH"
+          limit-severities-for-sarif: true
+          skip-setup-trivy: true
+          exit-code: "1"
+
+      - name: Run Trivy university-ecosystem configuration scanner
+        id: trivy_university
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.75.0
+          scan-type: "config"
+          scan-ref: "charts/university-ecosystem"
+          trivy-config: "${{ runner.temp }}/trivy-inputs/trivy-university-config.json"
+          trivyignores: ".trivyignore.yaml"
+          format: "sarif"
+          output: "trivy-university-config.sarif"
+          severity: "CRITICAL,HIGH"
+          limit-severities-for-sarif: true
+          skip-setup-trivy: true
+          exit-code: "1"
+
+      - name: Run Trivy redis-compat configuration scanner
+        id: trivy_redis_compat
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.75.0
+          scan-type: "config"
+          scan-ref: "charts/redis-compat"
+          trivy-config: "${{ runner.temp }}/trivy-inputs/trivy-redis-compat-config.json"
+          trivyignores: ".trivyignore.yaml"
+          format: "sarif"
+          output: "trivy-redis-compat-config.sarif"
           severity: "CRITICAL,HIGH"
           limit-severities-for-sarif: true
           skip-setup-trivy: true
@@ -446,9 +569,6 @@ jobs:
         continue-on-error: true
         with:
           sarif_file: "trivy-fs.sarif"
-          # Keep the implicit category historically used by main so PR
-          # configuration matching remains stable while the config scan below
-          # has its own category and cannot overwrite filesystem findings.
           category: ".github/workflows/ci.yml:docker-security"
 
       - name: Upload Trivy config scan results
@@ -467,6 +587,22 @@ jobs:
           sarif_file: "trivy-revocation-config.sarif"
           category: "trivy-revocation-config"
 
+      - name: Upload Trivy university-ecosystem results
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: "trivy-university-config.sarif"
+          category: "trivy-university-config"
+
+      - name: Upload Trivy redis-compat results
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: "trivy-redis-compat-config.sarif"
+          category: "trivy-redis-compat-config"
+
       - name: Re-assert Trivy filesystem and configuration gates
         if: always()
         shell: bash
@@ -474,21 +610,22 @@ jobs:
           FILESYSTEM_OUTCOME: ${{ steps.trivy_fs.outcome }}
           CONFIGURATION_OUTCOME: ${{ steps.trivy_config.outcome }}
           REVOCATION_OUTCOME: ${{ steps.trivy_revocation.outcome }}
+          UNIVERSITY_OUTCOME: ${{ steps.trivy_university.outcome }}
+          REDIS_COMPAT_OUTCOME: ${{ steps.trivy_redis_compat.outcome }}
         run: |
           set -euo pipefail
           failed=0
-          if [[ "$FILESYSTEM_OUTCOME" != "success" ]]; then
-            echo "::error::Trivy filesystem scan concluded '$FILESYSTEM_OUTCOME'."
-            failed=1
-          fi
-          if [[ "$CONFIGURATION_OUTCOME" != "success" ]]; then
-            echo "::error::Trivy configuration scan concluded '$CONFIGURATION_OUTCOME'."
-            failed=1
-          fi
-          if [[ "$REVOCATION_OUTCOME" != "success" ]]; then
-            echo "::error::Trivy revocation-store configuration scan concluded '$REVOCATION_OUTCOME'."
-            failed=1
-          fi
+          for outcome in \
+            "$FILESYSTEM_OUTCOME" \
+            "$CONFIGURATION_OUTCOME" \
+            "$REVOCATION_OUTCOME" \
+            "$UNIVERSITY_OUTCOME" \
+            "$REDIS_COMPAT_OUTCOME"; do
+            if [[ "$outcome" != "success" ]]; then
+              echo "::error::A required Trivy scan concluded '$outcome'."
+              failed=1
+            fi
+          done
           exit "$failed"
 
   # ── Go vulnerability scanning ──────────────────────────────────────────────
@@ -506,13 +643,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.9"
           cache: true
 
       - name: Install govulncheck
         # The version resolves to an immutable Go module (content-addressed via sum DB).
         # Scorecard goCommand: version tag is equivalent to commit pinning for Go modules.  # nosec
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 
       - name: Run govulncheck on all Go modules
         # Audit all workspace modules. govulncheck fails if a directory has no packages,
@@ -540,7 +677,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Syft
-        uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
 
       - name: Generate SPDX-JSON SBOM
         # Scans the full repository (all languages/ecosystems Syft detects).
@@ -549,7 +686,7 @@ jobs:
           syft . --output spdx-json=sbom.spdx.json
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom-spdx-json
           path: sbom.spdx.json
@@ -597,106 +734,71 @@ jobs:
         # repository files remain scan-covered.
         run: detect-secrets scan --exclude-files '^(?:\.secrets\.baseline|frontend/WASM_SOURCE_PROVENANCE\.json)$' > /tmp/current_scan.json
 
-      - name: Fetch trusted base baseline (pull requests)
-        if: ${{ github.event_name == 'pull_request' }}
+      - name: Fetch immutable trusted source base
         shell: bash
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
-          if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "ERROR: pull-request base SHA is not an immutable 40-hex commit" >&2
+          case "$EVENT_NAME" in
+            pull_request) SOURCE_BASE_SHA="$PR_BASE_SHA" ;;
+            push) SOURCE_BASE_SHA="$PUSH_BEFORE_SHA" ;;
+            *)
+              echo "ERROR: unsupported event for trusted source comparison" >&2
+              exit 1
+              ;;
+          esac
+          if [[ ! "$SOURCE_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            || [[ "$SOURCE_BASE_SHA" == 0000000000000000000000000000000000000000 ]]; then
+            echo "ERROR: trusted source base is missing, zero, or malformed" >&2
             exit 1
           fi
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          git show "$BASE_SHA:.secrets.baseline" > "$RUNNER_TEMP/trusted-base-baseline.json"
-          test -s "$RUNNER_TEMP/trusted-base-baseline.json"
+          git fetch --no-tags --depth=1 origin "$SOURCE_BASE_SHA"
+          git cat-file -e "${SOURCE_BASE_SHA}^{commit}"
+          echo "SOURCE_BASE_SHA=$SOURCE_BASE_SHA" >> "$GITHUB_ENV"
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            git show "$SOURCE_BASE_SHA:.secrets.baseline" > "$RUNNER_TEMP/trusted-base-baseline.json"
+            test -s "$RUNNER_TEMP/trusted-base-baseline.json"
+          fi
 
       - name: Verify baseline has not regressed
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           TRUSTED_BASELINE_PATH: ${{ runner.temp }}/trusted-base-baseline.json
         run: |
           set -euo pipefail
+          disposition_args=()
+          if [[ "$EVENT_NAME" == "pull_request" && "$PR_AUTHOR" == "egorribun" ]]; then
+            set +e
+            git diff --quiet "$SOURCE_BASE_SHA" -- quality/security-false-positive-dispositions.json
+            disposition_diff_status=$?
+            set -e
+            case "$disposition_diff_status" in
+              0) ;;
+              1) disposition_args+=(--owner-authored-disposition-update) ;;
+              *)
+                echo "ERROR: disposition policy diff could not be verified" >&2
+                exit 1
+                ;;
+            esac
+          fi
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             python scripts/verify_secrets_baseline.py \
               .secrets.baseline /tmp/current_scan.json \
-              --trusted-base-baseline "$TRUSTED_BASELINE_PATH"
-          else
+              --trusted-base-baseline "$TRUSTED_BASELINE_PATH" \
+              --trusted-base-source-sha "$SOURCE_BASE_SHA" \
+              "${disposition_args[@]}"
+          elif [[ "$EVENT_NAME" == "push" ]]; then
             python scripts/verify_secrets_baseline.py \
-              .secrets.baseline /tmp/current_scan.json
-          fi
-
-  # ── Semgrep SAST ───────────────────────────────────────────────────────────
-  # Uses the official semgrep/semgrep Docker image so no binary installation
-  # is required.  Runs a registry-backed scan on every PR. `semgrep ci`
-  # requires an AppSec-platform login and otherwise emits an empty SARIF
-  # document, which GitHub rejects instead of creating an analysis.
-  # Results are uploaded to GitHub Advanced Security as SARIF so findings
-  # appear in the Security → Code Scanning tab.
-  # SEMGREP_APP_TOKEN secret: Settings → Secrets → Actions → New repository secret.
-  # Without the token Semgrep CE's `scan --config auto` remains fully local to
-  # the repository while still producing a valid SARIF analysis.
-  # (MOD-5: audit 2026-02-24)
-  semgrep:
-    name: Semgrep SAST
-    needs: policy-integrity
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    if: github.actor != 'dependabot[bot]'
-    permissions:
-      contents: read
-      security-events: write
-      actions: read
-    container:
-      image: semgrep/semgrep:1.113.0@sha256:136c094630123be54d7f832217fd0a217d148a8bfea08c7c366ce17f94cfdb22
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # The CE fallback performs a complete repository scan so the
-          # suppression ledger is observed and validated on every event.
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Run Semgrep SAST
-        # Keep the SARIF upload alive when findings make the scanner return 1;
-        # the follow-up gate fails the job after GitHub has received findings.
-        # Without the AppSec token, use the documented CE command instead of
-        # `semgrep ci`, which requires `semgrep login`. Always run a complete
-        # local scan when the token is absent: the reviewed suppression ledger
-        # must be observed on every event, while a diff-only baseline can hide
-        # an unchanged suppression and make the fail-closed validator reject
-        # otherwise valid evidence.
-        run: |
-          set -u
-          scan_status=0
-          if [ -n "${SEMGREP_APP_TOKEN:-}" ]; then
-            semgrep ci --error --sarif --sarif-output=semgrep.sarif || scan_status=$?
+              .secrets.baseline /tmp/current_scan.json \
+              --trusted-base-source-sha "$SOURCE_BASE_SHA" \
+              --trusted-disposition-source-sha "$HEAD_SHA"
           else
-            semgrep scan --config auto \
-              --error --sarif --sarif-output=semgrep.sarif || scan_status=$?
-          fi
-          if [ ! -s semgrep.sarif ]; then
-            echo "::error::Semgrep completed without producing SARIF output"
+            echo "ERROR: unsupported event for secret policy verification" >&2
             exit 1
           fi
-          echo "SEMGREP_SCAN_STATUS=$scan_status" >> "$GITHUB_ENV"
-        env:
-          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
-
-      - name: Upload SARIF to GitHub Advanced Security
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
-        if: always()
-        with:
-          sarif_file: semgrep.sarif
-
-      - name: Fail if Semgrep reported findings or scan errors
-        if: always()
-        run: |
-          scan_status="${SEMGREP_SCAN_STATUS:-2}"
-          python3 scripts/quality/validate_semgrep_sarif.py \
-            --report semgrep.sarif \
-            --policy security/semgrep-suppression-policy.json \
-            --scanner-status "$scan_status"

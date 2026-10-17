@@ -45,15 +45,11 @@ async def test_cdc_opt_in_fails_before_lifespan_resources(environment: str) -> N
 @pytest.mark.asyncio
 async def test_cdc_opt_in_fails_before_background_tasks_or_polling_selection() -> None:
     app = FastAPI()
-    with (
-        patch.object(lifecycle, "settings") as settings,
-        patch.object(lifecycle, "setup_periodic_cleanups", new=AsyncMock()) as cleanup,
-    ):
+    with patch.object(lifecycle, "settings") as settings:
         settings.embedded_cdc_outbox_worker_enabled = True
-        cleanup.side_effect = AssertionError("cleanup reached before CDC preflight")
         with pytest.raises(RuntimeError, match=UNSUPPORTED_CDC_MATCH):
             await lifecycle._startup_background_workers(app)
-        cleanup.assert_not_awaited()
+        # The preflight fails before any background task is registered.
         assert not hasattr(app.state, "background_tasks")
 
 

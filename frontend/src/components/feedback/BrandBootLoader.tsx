@@ -138,6 +138,7 @@ export function BrandBootLoader() {
       data-brand-boot-loader=""
       data-state={phase}
       data-paused={paused ? "true" : undefined}
+      aria-hidden={phase === "exiting" ? true : undefined}
       role="status"
       aria-label="Загрузка"
       aria-live="polite"

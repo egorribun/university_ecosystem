@@ -16,6 +16,22 @@
 #      "app.kubernetes.io/name: ingress-nginx" set by the nginx-ingress Helm chart.
 #      Adjust to match the ingress controller deployed in your cluster.
 
+{{- if or (eq (len .Values.networkPolicy.dns.namespaceSelector) 0) (eq (len .Values.networkPolicy.dns.podSelector) 0) -}}
+  {{- fail "networkPolicy.dns namespaceSelector and podSelector must both identify the cluster DNS pods" -}}
+{{- end -}}
+{{- if has .Values.global.environment (list "staging" "production") -}}
+  {{- if eq (len .Values.networkPolicy.gatewayJWKS.egressCIDRs) 0 -}}
+    {{- fail "networkPolicy.gatewayJWKS.egressCIDRs must contain owner-verified CIDRs for the external HTTPS JWKS issuer in staging/production" -}}
+  {{- end -}}
+  {{- range $cidr := .Values.networkPolicy.gatewayJWKS.egressCIDRs -}}
+    {{- $validIPv4 := regexMatch "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])/([1-9]|[12][0-9]|3[0-2])$" (toString $cidr) -}}
+    {{- $validIPv6Syntax := regexMatch "^([0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){7}|::([0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,6})?|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,6}::|[0-9A-Fa-f]{1,4}::[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,5}|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){1}::[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,4}|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){2}::[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,3}|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){3}::[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,2}|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){4}::[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,1}|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){5}::[0-9A-Fa-f]{1,4})/([1-9]|[1-9][0-9]|1[01][0-9]|12[0-8])$" (toString $cidr) -}}
+    {{- if not (or $validIPv4 $validIPv6Syntax) -}}
+      {{- fail (printf "networkPolicy.gatewayJWKS.egressCIDRs entry %q must be a non-/0 IPv4 or IPv6 CIDR (Kubernetes validates address semantics)" $cidr) -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
 ---
 # Default deny: block all ingress AND egress for every pod bearing release labels.
 apiVersion: networking.k8s.io/v1
@@ -52,6 +68,7 @@ spec:
     - Ingress
     - Egress
   ingress:
+    {{- if and .Values.ingress.enabled (not .Values.gatewayApi.enabled) }}
     # Accept traffic from the ingress controller.
     # Labels are configured in values.yaml under networkPolicy.ingressController
     # so the chart works with nginx, Traefik, AWS ALB, or Istio.
@@ -69,6 +86,24 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+    {{- end }}
+    {{- if .Values.gatewayApi.enabled }}
+    # Envoy Gateway data plane selected explicitly by gatewayApi.networkPolicy.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.gatewayApi.networkPolicy.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.gatewayApi.networkPolicy.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8080
+    {{- end }}
     # Internal health-check / Prometheus scraping from the monitoring namespace.
     - from:
         - namespaceSelector:
@@ -121,15 +156,29 @@ spec:
         - protocol: TCP
           port: 4317
     {{- if or (eq .Values.global.environment "staging") (eq .Values.global.environment "production") }}
-    # Release JWKS discovery uses the canonical HTTPS API origin. The egress
-    # rule is intentionally protocol/port scoped; the destination host is
-    # selected by the release's TLS ingress and JWT issuer configuration.
-    - ports:
+    # Release JWKS discovery can reach only owner-configured issuer CIDRs.
+    {{- range $cidr := .Values.networkPolicy.gatewayJWKS.egressCIDRs }}
+    - to:
+        - ipBlock:
+            cidr: {{ $cidr | quote }}
+      ports:
         - protocol: TCP
           port: 443
     {{- end }}
-    # DNS — required for service discovery and hostname resolution.
-    - ports:
+    {{- end }}
+    # DNS is limited to the configured cluster DNS pods.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
@@ -156,6 +205,7 @@ spec:
     - Ingress
     - Egress
   ingress:
+    {{- if and .Values.ingress.enabled (not .Values.gatewayApi.enabled) }}
     - from:
         - namespaceSelector:
             matchLabels:
@@ -170,6 +220,23 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.wsHub.service.port }}
+    {{- end }}
+    {{- if .Values.gatewayApi.enabled }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.gatewayApi.networkPolicy.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.gatewayApi.networkPolicy.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.wsHub.service.port }}
+    {{- end }}
   egress:
     - to:
         - podSelector:
@@ -208,7 +275,18 @@ spec:
       ports:
         - protocol: TCP
           port: 4317
-    - ports:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
@@ -254,7 +332,18 @@ spec:
     - ports:
         - protocol: TCP
           port: 443
-    - ports:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
@@ -306,7 +395,18 @@ spec:
       ports:
         - protocol: TCP
           port: 6379
-    - ports:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
@@ -314,9 +414,8 @@ spec:
 {{- end }}
 
 ---
-# Backend: accepts traffic from the gateway and the ingress controller for the
-# public JWKS discovery path; calls postgres, redis, NATS, and external HTTPS
-# endpoints (HIBP, Spotify OAuth, etc.).
+# Backend: accepts gateway traffic, public JWKS discovery from ingress, and
+# the default JWKS refresh from this release's file-processor.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -328,6 +427,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: backend
   policyTypes:
     - Ingress
@@ -340,6 +440,18 @@ spec:
       ports:
         - protocol: TCP
           port: 8000
+    {{- if and .Values.fileProcessor.enabled (not .Values.fileProcessor.config.jwksURL) }}
+    # The default file-processor JWKS URL targets this release's backend service.
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "university-ecosystem.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: file-processor
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.service.port }}
+    {{- end }}
+    {{- if and .Values.ingress.enabled (not .Values.gatewayApi.enabled) }}
     # The ingress controller terminates TLS for the public API origin and
     # forwards only the explicitly routed /.well-known discovery path here.
     # Keep the selector configurable for nginx, Traefik, AWS ALB, or Istio.
@@ -357,6 +469,24 @@ spec:
       ports:
         - protocol: TCP
           port: 8000
+    {{- end }}
+    {{- if .Values.gatewayApi.enabled }}
+    # The Gateway API route sends /.well-known directly to the backend.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.gatewayApi.networkPolicy.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.gatewayApi.networkPolicy.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8000
+    {{- end }}
     - from:
         - podSelector:
             matchLabels:
@@ -428,7 +558,18 @@ spec:
         - protocol: TCP
           port: 443
     # DNS.
-    - ports:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
@@ -447,6 +588,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: file-processor
   policyTypes:
     - Ingress
@@ -467,6 +609,17 @@ spec:
         - protocol: TCP
           port: 8080
   egress:
+    {{- if and .Values.fileProcessor.enabled (not .Values.fileProcessor.config.jwksURL) }}
+    # The default JWKS endpoint is the same release backend over its service port.
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "university-ecosystem.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: backend
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.service.port }}
+    {{- end }}
     - to:
         - podSelector:
             matchLabels:
@@ -481,6 +634,17 @@ spec:
       ports:
         - protocol: TCP
           port: 7233
+    # File-processor JWT validation uses the dedicated persistent revocation
+    # store; keep this release-bound and narrower than cache Redis access.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: revocation-redis
+              app.kubernetes.io/component: master
+              university-ecosystem.io/revocation-store-for: {{ .Release.Name | quote }}
+      ports:
+        - protocol: TCP
+          port: 6379
     - to:
         - podSelector:
             matchLabels:
@@ -498,7 +662,18 @@ spec:
     - ports:
         - protocol: TCP
           port: 443
-    - ports:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
@@ -522,6 +697,7 @@ spec:
     - Ingress
     - Egress
   ingress:
+    {{- if and .Values.ingress.enabled (not .Values.gatewayApi.enabled) }}
     - from:
         - namespaceSelector:
             matchLabels:
@@ -536,6 +712,23 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.frontend.service.port }}
+    {{- end }}
+    {{- if .Values.gatewayApi.enabled }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.gatewayApi.networkPolicy.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.gatewayApi.networkPolicy.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.frontend.service.port }}
+    {{- end }}
   egress:
     - to:
         - podSelector:
@@ -545,7 +738,18 @@ spec:
         - protocol: TCP
           port: {{ .Values.backend.service.port }}
     # DNS for in-cluster backend service discovery.
-    - ports:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
@@ -608,7 +812,18 @@ spec:
     - ports:
         - protocol: TCP
           port: 443
-    - ports:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.dns.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP

@@ -11,22 +11,15 @@ const Login = () => {
   const form = useLoginForm()
   const mfa = useMfaFlow()
 
-  // Wave 177 SW1 — close W174 §Honesty #3 edge case (authed user
-  // hard-navigates to /login from bookmark / search / external link).
-  // useAuthStore.ts:24 initializes loading:true → _public.tsx:19-25
-  // beforeLoad returns without redirect → Login renders. Once
-  // AuthProvider's useProfileSync settles GET /users/me and calls
-  // setUser, this reactive effect catches the user transition null→set
-  // and navigates to redirect target with replace:true (no /login in
-  // history for authed users). DIFFERS from reverted W175 SW10 by
-  // including targeted msw /users/me→401 overrides in the 7 tests that
-  // mount Login.tsx (Login.test.tsx renderLogin helper + pageTranslations
-  // login case) — see W177 SW2/SW3 + AUDIT_WAVE177.md.
+  // If an authenticated user opens /login directly, wait for profile sync
+  // before navigating to the validated destination. `replace` keeps /login
+  // out of history, and the redirect guard below prevents the fallback target
+  // from overriding the requested destination when navigation clears search.
+  // Tests that need the login form to remain visible return 401 from /users/me.
   //
-  // Wave 179 SW4 — honor `search.redirect` param (TanStack canonical
-  // written by _auth.tsx:47 beforeLoad) to preserve user's intended
-  // destination (e.g., /events) across unauth-deflect → re-auth → land
-  // on /events (NOT hardcoded /dashboard). Closes W177 §Honesty #3 race.
+  // Honor `search.redirect` (written by _auth.tsx beforeLoad) to preserve the
+  // user's intended destination across sign-out deflection and re-authentication
+  // instead of always using /dashboard.
   // resolveRedirectPath defaults to /dashboard for missing/malformed/
   // cross-origin redirect param (see frontend/src/utils/redirect.ts).
   //

@@ -1,0 +1,408 @@
+{{- $name := include "redis.fullname" . -}}
+{{- $selector := include "redis.masterSelectorLabels" . -}}
+{{- $passwordKey := .Values.auth.existingSecretPasswordKey -}}
+{{- if .Values.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: {{ .Release.Namespace | quote }}
+  name: {{ $name }}-configuration
+  labels:
+    {{- include "redis.commonLabels" . | nindent 4 }}
+data:
+  redis.conf: |
+{{ .Values.commonConfiguration | indent 4 }}
+    aclfile /run/redis-runtime/users.acl
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  namespace: {{ .Release.Namespace | quote }}
+  name: {{ $name }}-master
+  labels:
+    {{- include "redis.commonLabels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: {{ .Release.Namespace | quote }}
+  name: {{ $name }}-headless
+  labels:
+    {{- include "redis.commonLabels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: tcp-redis
+      port: 6379
+      targetPort: redis
+      protocol: TCP
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/name: redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: {{ .Release.Namespace | quote }}
+  name: {{ $name }}-master
+  labels:
+    {{- include "redis.commonLabels" . | nindent 4 }}
+    app.kubernetes.io/component: master
+spec:
+  type: ClusterIP
+  internalTrafficPolicy: Cluster
+  sessionAffinity: None
+  ports:
+    - name: tcp-redis
+      port: 6379
+      targetPort: redis
+      protocol: TCP
+  selector:
+    {{- $selector | nindent 4 }}
+{{- if .Values.metrics.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: {{ .Release.Namespace | quote }}
+  name: {{ $name }}-metrics
+  labels:
+    {{- include "redis.commonLabels" . | nindent 4 }}
+    app.kubernetes.io/component: master
+spec:
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: 9121
+      targetPort: metrics
+      protocol: TCP
+  selector:
+    {{- $selector | nindent 4 }}
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  namespace: {{ .Release.Namespace | quote }}
+  name: {{ $name }}
+  labels:
+    {{- include "redis.commonLabels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/name: redis
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 6379
+      from:
+        - podSelector:
+            matchLabels:
+              {{ printf "%s-redis-client" .Release.Name }}: "true"
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/name: redis
+    {{- if .Values.metrics.enabled }}
+    - ports:
+        - protocol: TCP
+          port: 9121
+    {{- end }}
+  egress: []
+{{- end }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  namespace: {{ .Release.Namespace | quote }}
+  name: {{ $name }}-master
+  labels:
+    {{- include "redis.commonLabels" . | nindent 4 }}
+    app.kubernetes.io/component: master
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  namespace: {{ .Release.Namespace | quote }}
+  name: {{ $name }}-master
+  labels:
+    {{- include "redis.commonLabels" . | nindent 4 }}
+    app.kubernetes.io/component: master
+spec:
+  replicas: {{ .Values.master.replicas }}
+  revisionHistoryLimit: 10
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+  serviceName: {{ $name }}-headless
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        {{- include "redis.commonLabels" . | nindent 8 }}
+        app.kubernetes.io/component: master
+      annotations:
+        checksum/config: {{ .Values.commonConfiguration | sha256sum | quote }}
+        checksum/secret-ref: {{ printf "%s/%s" .Values.auth.existingSecret $passwordKey | sha256sum | quote }}
+        prometheus.io/port: "9121"
+        prometheus.io/scrape: "true"
+    spec:
+      securityContext:
+        {{- toYaml .Values.master.podSecurityContext | nindent 8 }}
+      serviceAccountName: {{ $name }}-master
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    {{- $selector | nindent 20 }}
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: redis-auth-acl
+          image: {{ include "redis.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              password="$(cat /run/redis-auth-source/password)"
+              test -n "$password"
+              password_sha256="$(printf '%s' "$password" | sha256sum | cut -d ' ' -f 1)"
+              test -n "$password_sha256"
+              printf 'user default on #%s ~* &* +@all\n' "$password_sha256" > /run/redis-runtime/users.acl
+              chmod 0440 /run/redis-runtime/users.acl
+          securityContext:
+            {{- toYaml .Values.master.containerSecurityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.master.aclInitResources | nindent 12 }}
+          volumeMounts:
+            - name: redis-password
+              mountPath: /run/redis-auth-source
+              readOnly: true
+            - name: redis-runtime
+              mountPath: /run/redis-runtime
+        - name: redis-exporter-password-file
+          image: {{ include "redis.metricsPasswordFileInitImage" . | quote }}
+          imagePullPolicy: {{ .Values.metrics.passwordFileInitImage.pullPolicy | quote }}
+          command: ["python"]
+          args:
+            - "-I"
+            - "-S"
+            - "-c"
+            - |
+              import json
+              import os
+              import pathlib
+              import sys
+              import tempfile
+
+              def read_password(path):
+                  return path.read_bytes().rstrip(b"\n").decode("utf-8", errors="strict")
+
+              source_path = pathlib.Path("/run/redis-auth-source/password")
+              target_path = pathlib.Path("/run/redis-exporter-auth/passwords.json")
+              temporary_path = None
+              try:
+                  password = read_password(source_path)
+                  if not password:
+                      raise ValueError("empty Redis credential")
+                  descriptor, temporary_name = tempfile.mkstemp(
+                      prefix=".passwords.", suffix=".tmp", dir=target_path.parent
+                  )
+                  temporary_path = pathlib.Path(temporary_name)
+                  with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+                      json.dump(
+                          {"redis://127.0.0.1:6379": password},
+                          output,
+                          ensure_ascii=True,
+                          separators=(",", ":"),
+                      )
+                      output.flush()
+                      os.fsync(output.fileno())
+                  os.chmod(temporary_path, 0o440)
+                  os.replace(temporary_path, target_path)
+              except Exception:
+                  if temporary_path is not None:
+                      try:
+                          temporary_path.unlink(missing_ok=True)
+                      except OSError:
+                          pass
+                  try:
+                      target_path.unlink(missing_ok=True)
+                  except OSError:
+                      pass
+                  print("failed to materialize Redis exporter credential file", file=sys.stderr)
+                  raise SystemExit(1)
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+            runAsGroup: 1001
+            runAsNonRoot: true
+            runAsUser: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            {{- toYaml .Values.master.aclInitResources | nindent 12 }}
+          volumeMounts:
+            - name: redis-password
+              mountPath: /run/redis-auth-source
+              readOnly: true
+            - name: redis-exporter-auth
+              mountPath: /run/redis-exporter-auth
+      containers:
+        - name: redis
+          image: {{ include "redis.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - exec redis-server /etc/redis/redis.conf
+          securityContext:
+            {{- toYaml .Values.master.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - export REDISCLI_AUTH="$(cat /run/redis-auth-source/password)"; redis-cli --no-auth-warning ping | grep -qx PONG
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            timeoutSeconds: 6
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - export REDISCLI_AUTH="$(cat /run/redis-auth-source/password)"; redis-cli --no-auth-warning ping | grep -qx PONG
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.master.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/redis
+              readOnly: true
+            - name: redis-password
+              mountPath: /run/redis-auth-source
+              readOnly: true
+            - name: redis-runtime
+              mountPath: /run/redis-runtime
+            - name: redis-data
+              mountPath: /data
+            - name: empty-dir
+              mountPath: /tmp
+        {{- if .Values.metrics.enabled }}
+        - name: metrics
+          image: {{ include "redis.metricsImage" . | quote }}
+          imagePullPolicy: {{ .Values.metrics.image.pullPolicy | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+            runAsGroup: 1001
+            runAsNonRoot: true
+            runAsUser: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          env:
+            - name: REDIS_ADDR
+              value: redis://127.0.0.1:6379
+            - name: REDIS_USER
+              value: default
+            - name: REDIS_PASSWORD_FILE
+              value: /run/redis-exporter-auth/passwords.json
+            - name: REDIS_EXPORTER_WEB_LISTEN_ADDRESS
+              value: :9121
+          ports:
+            - name: metrics
+              containerPort: 9121
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: metrics
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.metrics.resources | nindent 12 }}
+          volumeMounts:
+            - name: redis-exporter-auth
+              mountPath: /run/redis-exporter-auth
+              readOnly: true
+            - name: empty-dir
+              mountPath: /tmp
+        {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $name }}-configuration
+        - name: redis-password
+          secret:
+            secretName: {{ .Values.auth.existingSecret | quote }}
+            defaultMode: 0440
+            items:
+              - key: {{ $passwordKey | quote }}
+                path: password
+        - name: redis-runtime
+          emptyDir:
+            sizeLimit: 8Mi
+        - name: redis-exporter-auth
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Mi
+        - name: empty-dir
+          emptyDir:
+            sizeLimit: 16Mi
+  {{- if .Values.master.persistence.enabled }}
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: redis-data
+        labels:
+          app.kubernetes.io/component: master
+          app.kubernetes.io/instance: {{ .Release.Name }}
+          app.kubernetes.io/name: redis
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.master.persistence.size | quote }}
+  {{- end }}
+{{- end }}

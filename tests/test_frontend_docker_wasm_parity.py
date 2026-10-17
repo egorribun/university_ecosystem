@@ -30,10 +30,10 @@ def test_frontend_image_wasm_toolchain_matches_canonical_producer() -> None:
     binaryen_install = _step(steps, "Install pinned wasm-opt")["run"]
     binaryen_version = re.search(r'binaryen_version="(version_\d+)"', binaryen_install)
     binaryen_checksum = re.search(r'binaryen_sha256="([0-9a-f]{64})"', binaryen_install)
-    assert rust_version == "1.97.1"
-    assert wasm_pack == "wasm-pack@0.13.1"
+    assert rust_version == "1.99.0"
+    assert wasm_pack == "wasm-pack@0.15.0"
     assert binaryen_version is not None
-    assert binaryen_version.group(1) == "version_117"
+    assert binaryen_version.group(1) == "version_133"
     assert binaryen_checksum is not None
 
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
@@ -43,9 +43,9 @@ def test_frontend_image_wasm_toolchain_matches_canonical_producer() -> None:
         r"@sha256:[0-9a-f]{64} AS wasm-builder$",
         dockerfile,
     )
-    official_digest = "2775a09d208ff0d7c1f50490c45b62db929e87ba1dcbc3f2132ac71a704bcdd3"  # pragma: allowlist secret - public Docker image digest
-    assert f"rust:1.97.1-slim-bookworm@sha256:{official_digest}" in dockerfile
-    assert "cargo install wasm-pack --version 0.13.1 --locked" in dockerfile
+    official_digest = "2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa"  # public Docker registry digest from verified manifest receipt
+    assert f"rust:1.99.0-slim-bookworm@sha256:{official_digest}" in dockerfile
+    assert "cargo install wasm-pack --version 0.15.0 --locked" in dockerfile
     binaryen_url = (
         f"https://github.com/WebAssembly/binaryen/releases/download/{binaryen_version.group(1)}/"
         f"binaryen-{binaryen_version.group(1)}-x86_64-linux.tar.gz"
@@ -70,7 +70,7 @@ def test_frontend_image_wasm_toolchain_matches_canonical_producer() -> None:
         "tar -xzf /tmp/binaryen.tar.gz --strip-components=1 -C /opt/binaryen"
         in dockerfile
     )
-    assert '/opt/binaryen/bin/wasm-opt --version | grep -Fq "version 117"' in dockerfile
+    assert '/opt/binaryen/bin/wasm-opt --version | grep -Fq "version 133"' in dockerfile
     assert 'ENV PATH="/opt/binaryen/bin:${PATH}"' in dockerfile
     assert "--remap-path-prefix=/root/.cargo=/usr/local/cargo" in dockerfile
     assert "--remap-path-prefix=/wasm=/work/frontend" in dockerfile

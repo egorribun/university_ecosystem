@@ -54,12 +54,6 @@ class MfaSettingsMixin:
     #     of all passwords changed during fail-open windows.
     password_hibp_fail_open: bool = False
 
-    auth_dummy_hash: str = (
-        "$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$"
-        "RytvY29SUnlxS3V5dWdyS3V5dWdyS3V5dWdyS3V5dWdyS3V5dw"
-    )
-    auth_min_response_time: float = 0.5  # Seconds. Used to mitigate timing attacks.
-
     @field_validator("mfa_totp_issuer")
     @classmethod
     def _validate_mfa_totp_issuer(cls, value: str) -> str:
@@ -69,6 +63,7 @@ class MfaSettingsMixin:
         "mfa_challenge_ttl_seconds",
         "mfa_challenge_max_attempts",
         "mfa_step_up_ttl_seconds",
+        "mfa_totp_attempt_limit",
     )
     @classmethod
     def _validate_positive_mfa_values(cls, value: int, info: ValidationInfo) -> int:

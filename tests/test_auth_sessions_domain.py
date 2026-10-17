@@ -1,3 +1,6 @@
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 import pytest
 from fastapi import HTTPException, status
 from starlette.requests import Request
@@ -11,6 +14,7 @@ def _make_request(headers: list[tuple[bytes, bytes]] | None = None) -> Request:
         "type": "http",
         "method": "GET",
         "path": "/",
+        "query_string": b"",
         "headers": headers or [],
         "client": ("127.0.0.1", 1234),
     }
@@ -27,6 +31,8 @@ async def test_resolve_target_user_rejects_non_admin(db_session, user_factory):
             user_repo=UserRepository(db_session),
             current_user=current_user,
             requested_user_id=target_user.id,
+            checker=SimpleNamespace(check_admin=AsyncMock(return_value=False)),
+            request=_make_request(),
             locale="en",
         )
 
@@ -42,6 +48,8 @@ async def test_resolve_target_user_allows_admin(db_session, user_factory):
         user_repo=UserRepository(db_session),
         current_user=admin,
         requested_user_id=target_user.id,
+        checker=SimpleNamespace(check_admin=AsyncMock(return_value=True)),
+        request=_make_request(),
         locale="en",
     )
 

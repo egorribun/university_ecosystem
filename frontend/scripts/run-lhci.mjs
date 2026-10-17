@@ -195,152 +195,17 @@ async function createConfig() {
         : targetPaths,
     chromePath,
     settings: {
-      // W162 SW1 (Tier 1 Path d) — W160 §Honesty NEW #1 CLOSED via "platform
-      // limitation accepted" honest framing per W141 anti-pattern #4 +
-      // feedback_perfectionism.md ("if you can't measure, defer honestly").
+      // Linux Lighthouse 13.1.0/headless Chrome has returned a null composite
+      // Performance score when screenshot audits cannot collect frames, while
+      // trace-based CLS/LCP/TBT remain available. Track upstream context at
+      // https://github.com/GoogleChrome/lighthouse/issues/17021 and verify the
+      // current toolchain before changing assertions or runner configuration.
+      // Keep current quality thresholds below; historical measurement runs are
+      // not evidence for a different release gate.
       //
-      // ## Empirical evidence justifying closure
-      //
-      // Linux CI Lighthouse Perf=null was structurally reproduced across
-      // THREE measurement attempts in W160-W161:
-      //
-      //   1. W160 SW2 baseline: 3 sessions × 3 runs × 9 URLs = 81 LHRs.
-      //      ALL Perf scores null (speed-index + screenshot-thumbnails +
-      //      metrics audits errored with "Chrome didn't collect any
-      //      screenshots during the page load"). Runs `25988551157` +
-      //      `25989078530` + `25989579477`. CLS/LCP/TBT measured cleanly.
-      //
-      //   2. W161 SW1 Approach A (restore GPU-backed capture): CI run
-      //      `25997872114` Perf=null at run 1; workflow cancelled at 25m.
-      //
-      //   3. W161 SW1 Approach B (swap `--headless=new` → `--headless=chrome`
-      //      + timeout 25→30): CI run `25998541600` completed 25m15s but
-      //      Perf STILL null across 21 LHRs (7 URLs × 3 runs).
-      //
-      // Chrome flag tuning is structurally insufficient. Lighthouse 13.1.0
-      // + headless Chrome + ubuntu-latest CI runner combo cannot collect
-      // screenshots required by the speed-index audit. Other paths considered
-      // and deferred:
-      //
-      //   - Path (a) Upstream Lighthouse issue → weeks of response cadence;
-      //     unclear ownership (Google Lighthouse vs Chromium); W163+ candidate.
-      //   - Path (b) Alternate CI runner (ubuntu-22.04 / windows-latest /
-      //     self-hosted) → unknown root cause; lighthouse-ci's own CI uses
-      //     ubuntu-latest without screenshot failures, so root cause is
-      //     non-obvious; W163+ candidate.
-      //   - Path (c) `lhci --collect.method=node` → STRUCTURALLY INFEASIBLE;
-      //     `@lhci/cli@0.15.1` source has zero `--collect.method` matches
-      //     (verified W162 Phase 3 Review via grep on node_modules). Would
-      //     require forking lighthouse-ci or upgrading to a version that
-      //     doesn't yet exist.
-      //
-      // ## Canonical Perf measurement: Windows wrapper
-      //
-      // `npm run lhci:windows` (frontend/scripts/lhci-windows-fallback.mjs)
-      // IS the canonical Perf measurement tool. W159 SW2 baseline (post-W158
-      // SW1 canonical minified PROD bundle restoration):
-      //
-      //   /           Perf 0.96  CLS 0.001
-      //   /dashboard  Perf 0.96  CLS 0.001
-      //   /login      Perf 0.96  CLS 0.000
-      //   /events     Perf 0.94  CLS 0.062
-      //
-      // Windows wrapper bypasses EPERM + screenshot-collection issues via
-      // direct `npx lighthouse` invocation per URL × per run (LHR written
-      // to --output-path BEFORE chrome-launcher's destroyTmp fires).
-      //
-      // ## Production CI gate (asymmetric measurement by design)
-      //
-      // Production gates CLS `error@0.05` (W160 SW2 ratchet) — Linux CI
-      // hard-blocks on CLS regression. Perf composite is `warn@0.40` only,
-      // measured via Windows wrapper per-wave (asymmetric measurement
-      // intentional). 81-LHR Linux baseline preserves CLS/LCP/TBT data
-      // points for cross-wave comparability.
-      //
-      // chromeFlags PRESERVED at W160 SW2 baseline (cross-wave 81-LHR
-      // comparability). lhci-linux.yml `timeout-minutes: 30` PRESERVED
-      // (independent structural improvement; W161 SW1-fix retains margin).
-      //
-      // W163+ may revisit via Path (a) upstream issue OR Path (b) alternate
-      // runner experiment if measurement-parity demand emerges. See
-      // CLAUDE.md ## Gotchas "Linux CI Lighthouse Perf=null platform
-      // limitation" entry for the full closure narrative.
-      //
-      // W166 SW3 — Path (a) Lighthouse upstream issue FILED at
-      // https://github.com/GoogleChrome/lighthouse/issues/17021 with 108-LHR
-      // reproducibility evidence (81 LHRs W160 baseline + 27 LHRs W165
-      // ubuntu-22.04 cross-OS + W161 SW1 disproof attempts). State shifts
-      // from "permanent platform limitation accepted" (W162 SW1) to
-      // "tracked-upstream" — see also memory/wave166_lighthouse_upstream_issue.md
-      // for the full draft + anticipated maintainer-response timeline.
-      //
-      // Monitoring snapshot (2026-05-21): the upstream issue remained OPEN
-      // without maintainer activity. The GitHub issue state is the source of
-      // truth for future reassessment. Until upstream behavior changes, Linux
-      // The current MVP contract supersedes this historical advisory floor.
-      //
-      // W180 SW1 — monitoring tick at W180 open (2026-05-21). WebFetch re-
-      // verified at session start: state OPEN, still NO triage, NO maintainer
-      // comments, NO reactions, NO labels since 2026-05-18 filing. 3 calendar
-      // days elapsed since last check; well within W180-W184 expected window
-      // per W179 SW3 calibration. Push next monitoring window to W181-W185
-      // (sliding 1-week cadence per W170 SW3 calibration framework — re-check
-      // 1-2 calendar weeks from this tick). State stays "tracked-upstream".
-      // See memory/wave180_lighthouse_upstream_check.md for full snapshot +
-      // pre-flight evidence captured at W180 Phase 1 Explore Agent 1.
-      //
-      // W188 SW5 — monitoring tick at W188 open (2026-05-26). WebFetch re-
-      // verified: state OPEN, 0 comments, 0 maintainer responses, 0 labels,
-      // 0 reactions since 2026-05-18 filing (8 calendar days elapsed). Per
-      // W180 SW1 calibration the W181-W185 window already closed (W181=
-      // 2026-05-22 → W185=2026-05-23; W187 closed 2026-05-24). Push next
-      // monitoring window to W189-W193 (sliding 1-week cadence preserved
-      // per W170 SW3 framework — re-check 1-2 calendar weeks from this
-      // tick at W195+ if still no upstream movement). State stays
-      // "tracked-upstream". Empirical evidence: no upstream-level CI
-      // ratchet possible without Linux CI Perf=null fix, no fix possible
-      // without upstream movement; Windows wrapper measurement remains
-      // canonical Perf measurement per W162 SW1 acceptance. See
-      // memory/wave188_lighthouse_upstream_check.md for full snapshot.
-      //
-      // W191 SW1 — monitoring tick at W191 open (2026-05-28). `gh issue view
-      // 17021 --repo GoogleChrome/lighthouse` re-verified: state OPEN, 0
-      // comments, 0 maintainer responses, 0 labels, 0 reactions, 0 assignees,
-      // updatedAt = createdAt (no edits) since 2026-05-18 filing (10 calendar
-      // days elapsed). Per W188 SW5 calibration the W189-W193 window currently
-      // active (W189 + W190 closed 2026-05-26 + W191 opens 2026-05-28 — all
-      // 3 fall inside window). Push next monitoring window to W195-W199
-      // (sliding 1-week cadence preserved per W170 SW3 framework — re-check
-      // 1-2 calendar weeks from this tick at W199+ if still no upstream
-      // movement). State stays "tracked-upstream" — **6th separately-fired
-      // tick (W163 + W170 + W179 + W180 + W188 + W191); 8 monitoring-state-
-      // preservations counting W189 + W190 inherited from W188 SW5 by-design
-      // without separate tick** (polish-v1 framing correction post «безупречно?»
-      // probe — SW1 narrative initially claimed "7th consecutive tick" which
-      // matched neither honest count). Empirical evidence unchanged: no
-      // upstream-level CI ratchet possible without Linux CI Perf=null fix;
-      // Windows wrapper measurement remains canonical Perf measurement per
-      // W162 SW1 acceptance. See memory/wave191_lighthouse_upstream_check.md
-      // for full snapshot (also corrected post-polish-v1).
-      //
-      // W192 SW1 — monitoring tick at W192 open (2026-05-28, same calendar
-      // day as W191 close per session continuity). `gh issue view 17021
-      // --repo GoogleChrome/lighthouse` re-verified: state OPEN, 0 comments,
-      // 0 maintainer responses, 0 labels, 0 reactions, 0 assignees, updatedAt
-      // = createdAt (no edits) since 2026-05-18 filing (10 calendar days
-      // elapsed — IDENTICAL to W191 SW1 snapshot, no inter-wave movement).
-      // Per W191 SW1 calibration the W195-W199 window currently next-active.
-      // Push next monitoring window to **W196-W200** (sliding 1-week cadence
-      // preserved per W170 SW3 framework — re-check 1-2 calendar weeks from
-      // this tick at W200+ if still no upstream movement). State stays
-      // "tracked-upstream" — **7th separately-fired tick (W163 + W170 + W179
-      // + W180 + W188 + W191 + W192); 9 monitoring-state-preservations
-      // counting W189 + W190 inherited from W188 SW5 by-design without
-      // separate tick** (extends W191 SW1 polish-v1 honest count framing).
-      // Empirical evidence unchanged: no upstream-level CI ratchet possible
-      // without Linux CI Perf=null fix; Windows wrapper measurement remains
-      // canonical Perf measurement per W162 SW1 acceptance. See
-      // memory/wave192_lighthouse_upstream_check.md for full snapshot.
+      // On Windows, use `lhci:windows` for local measurement: it writes reports
+      // before Chrome's temporary-profile cleanup can fail. Record the platform
+      // and run configuration with performance evidence.
       chromeFlags:
         "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --headless=new",
       throttlingMethod: "devtools",
@@ -408,11 +273,8 @@ async function createConfig() {
               ],
               "cumulative-layout-shift": [
                 "error",
-                // W160 SW2 — ratcheted error@0.10 → error@0.05 after 3-session
-                // × 3-run CI Linux methodology measured worst cross-session
-                // median 0.044 (on /map; 8 of 9 URLs measure CLS ≤ 0.001).
-                // Variance ~0.000 across sessions; 0.05 ceiling has 12% margin
-                // (0.006 buffer). Tightens WCAG-Good ceiling by 50%.
+                // Keep the accepted CLS ceiling at 0.05; do not relax it based
+                // on historical per-run measurements.
                 { maxNumericValue: 0.05, aggregationMethod: "median" },
               ],
             },

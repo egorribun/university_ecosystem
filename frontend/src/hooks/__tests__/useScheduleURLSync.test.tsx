@@ -112,6 +112,40 @@ describe("useScheduleURLSync", () => {
     expect(mockSetParam).toHaveBeenCalledWith("w", 3)
   })
 
+  it("lets a simultaneous URL and store change follow the URL", () => {
+    let currentWeekOffset = 1
+
+    vi.mocked(useURLState).mockReturnValue({
+      params: { w: "1" },
+      setParam: mockSetParam,
+      setParams: vi.fn(),
+    })
+
+    vi.mocked(useScheduleUIStore).mockImplementation((selector) =>
+      selector({
+        weekOffset: currentWeekOffset,
+        setWeekOffset: mockSetWeekOffset,
+      } as never)
+    )
+
+    const { rerender } = renderHook(() => useScheduleURLSync())
+    expect(mockSetParam).not.toHaveBeenCalled()
+
+    currentWeekOffset = 4
+    vi.mocked(useURLState).mockReturnValue({
+      params: { w: "2" },
+      setParam: mockSetParam,
+      setParams: vi.fn(),
+    })
+
+    act(() => {
+      rerender()
+    })
+
+    expect(mockSetWeekOffset).toHaveBeenCalledWith(2)
+    expect(mockSetParam).not.toHaveBeenCalled()
+  })
+
   it("removes 'w' param when weekOffset resets to 0 after mount", () => {
     let currentWeekOffset = 1
 
@@ -141,5 +175,30 @@ describe("useScheduleURLSync", () => {
     })
 
     expect(mockSetParam).toHaveBeenCalledWith("w", "")
+  })
+
+  it("resets the store when a malformed URL week arrives after mount", () => {
+    let currentWeekOffset = 1
+    vi.mocked(useURLState).mockReturnValue({
+      params: { w: "1" },
+      setParam: mockSetParam,
+      setParams: vi.fn(),
+    })
+    vi.mocked(useScheduleUIStore).mockImplementation((selector) =>
+      selector({ weekOffset: currentWeekOffset, setWeekOffset: mockSetWeekOffset } as never)
+    )
+
+    const { rerender } = renderHook(() => useScheduleURLSync())
+    expect(mockSetWeekOffset).not.toHaveBeenCalled()
+
+    currentWeekOffset = 1
+    vi.mocked(useURLState).mockReturnValue({
+      params: { w: "not-a-number" },
+      setParam: mockSetParam,
+      setParams: vi.fn(),
+    })
+    act(() => rerender())
+
+    expect(mockSetWeekOffset).toHaveBeenCalledWith(0)
   })
 })

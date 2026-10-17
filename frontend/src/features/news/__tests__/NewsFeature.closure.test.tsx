@@ -15,6 +15,7 @@ const { state, mockResetEtagCache } = vi.hoisted(() => ({
       current: {
         news: [] as NewsItem[],
         isLoading: false,
+        isError: false,
         isFetching: false,
         isFetchingNextPage: false,
         hasNextPage: true,
@@ -101,6 +102,7 @@ vi.mock("@/features/news/components/NewsHeader", () => ({
 vi.mock("@/features/news/components/NewsList", () => ({
   NewsList: (props: {
     newsList: Array<{ id: string; title: string }>
+    isError?: boolean
     hasNextPage: boolean
     fetchNextPage: () => void
     refreshNews: () => void
@@ -109,6 +111,7 @@ vi.mock("@/features/news/components/NewsList", () => ({
     <div
       data-testid="news-list"
       data-count={String(props.newsList.length)}
+      data-error={String(Boolean(props.isError))}
       data-next={String(props.hasNextPage)}
     >
       {props.newsList.map((item) => (
@@ -180,6 +183,7 @@ describe("NewsFeature closure", () => {
     state.query.current = {
       news: NEWS,
       isLoading: false,
+      isError: false,
       isFetching: false,
       isFetchingNextPage: false,
       hasNextPage: true,
@@ -223,6 +227,14 @@ describe("NewsFeature closure", () => {
     expect(screen.getByTestId("news-shortcuts")).toBeInTheDocument()
   })
 
+  it("forwards query failure state to the news list", () => {
+    state.query.current = { ...state.query.current, isError: true }
+
+    renderFeature()
+
+    expect(screen.getByTestId("news-list")).toHaveAttribute("data-error", "true")
+  })
+
   it("applies saved/popular filters, translated search fields, and offline state", () => {
     state.auth.current = { user: null }
     state.online.current = false
@@ -240,6 +252,43 @@ describe("NewsFeature closure", () => {
     expect(state.query.current.fetchNextPage).not.toHaveBeenCalled()
     expect(screen.getByText("Campus update")).toBeInTheDocument()
     expect(screen.queryByText("Lecture schedule")).not.toBeInTheDocument()
+  })
+
+  it("filters a mixed-keyword science article consistently across localized responses", () => {
+    const russianTitle = "ГУУ вошёл в топ-20 лучших университетов страны"
+    const englishTitle = "GUU ranks among the country's top 20 universities"
+    const russianContent =
+      "Научных публикаций стало больше; гранты и стипендии поддерживают исследования."
+    const englishContent = "Research publications helped raise the result."
+    const article: NewsItem = {
+      ...NEWS[0]!,
+      id: "bilingual-science",
+      title: russianTitle,
+      content: russianContent,
+      title_en: englishTitle,
+      content_en: englishContent,
+    }
+
+    state.debounced.current = ""
+    state.url.current = { params: { q: "", cat: "science", sort: "newest" } }
+
+    for (const localized of [
+      { language: "ru", title: russianTitle, content: russianContent },
+      { language: "en", title: englishTitle, content: englishContent },
+    ]) {
+      state.language.current = localized.language
+      state.query.current = {
+        ...state.query.current,
+        news: [{ ...article, title: localized.title, content: localized.content }],
+      }
+      const view = renderFeature()
+
+      expect(screen.getByTestId("news-list")).toHaveAttribute("data-count", "1")
+      expect(screen.getByText(localized.title)).toBeInTheDocument()
+      view.unmount()
+    }
+
+    expect(state.query.current.fetchNextPage).toHaveBeenCalled()
   })
 
   it("filters by an inferred non-saved category", () => {

@@ -3,7 +3,6 @@
 import asyncio
 import builtins
 import importlib
-from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,37 +11,8 @@ import pytest
 from fastapi import FastAPI
 from starlette.responses import Response
 
-from app.core.event_registry import reconstruct_event, register_event
-from app.core.events import DomainEvent
 from app.core.middleware.response_hardening import http_response_hardening
 from tests.conftest import call_injected
-
-
-@register_event
-@dataclass
-class _ClosureRegisteredEvent(DomainEvent):
-    value: str = "default"
-
-
-def test_event_registry_reconstructs_payload_without_unknown_keys():
-    event = reconstruct_event(
-        "_ClosureRegisteredEvent",
-        {"value": "valid"},
-    )
-
-    assert isinstance(event, _ClosureRegisteredEvent)
-    assert event.value == "valid"
-
-
-def test_event_registry_falls_back_to_domain_event_registry():
-    event = reconstruct_event(
-        "user.created",
-        {"user_id": None, "email": "fallback@example.com", "ignored": True},
-    )
-
-    assert event.__class__.__name__ == "UserCreated"
-    assert event.email == "fallback@example.com"
-    assert not hasattr(event, "ignored")
 
 
 def test_reset_mfa_audit_without_extra_payload():
@@ -107,7 +77,7 @@ async def test_reset_mfa_changed_without_notification():
     assert result_user is user
     assert result_stats is stats
     publish_revocations.assert_awaited_once_with(pending)
-    assert events == ["commit", "publish"]
+    assert events == ["publish", "commit"]
     audit_cli.assert_called_once()
 
 
@@ -317,25 +287,6 @@ async def test_graphql_context_ignores_bearer_with_empty_payload():
         validate.assert_not_called()
 
 
-def test_minio_client_double_checked_lock_returns_racing_instance(monkeypatch):
-    import app.services.minio_storage as minio_module
-
-    sentinel = object()
-
-    class RacingLock:
-        def __enter__(self):
-            minio_module._minio_client = sentinel  # type: ignore[assignment]
-            return self
-
-        def __exit__(self, *_args):
-            return False
-
-    monkeypatch.setattr(minio_module, "_minio_client", None)
-    monkeypatch.setattr(minio_module, "_minio_client_lock", RacingLock())
-
-    assert minio_module.get_minio_client() is sentinel
-
-
 def test_push_topics_resolves_settings_when_allowed_topics_omitted(monkeypatch):
     from app.services import push_topics as topics
 
@@ -387,31 +338,6 @@ def test_push_topics_treats_unloaded_preferences_as_unavailable(monkeypatch):
         "news",
         allowed_topics=["news"],
     )
-
-
-@pytest.mark.asyncio
-async def test_paginate_cursor_skips_filter_when_cursor_decodes_empty():
-    from app.utils.pagination import CursorParams, paginate_cursor
-
-    session = AsyncMock()
-    stmt = MagicMock()
-    stmt.order_by.return_value = stmt
-    stmt.limit.return_value = stmt
-    cursor_column = MagicMock()
-    cursor_column.desc.return_value = cursor_column
-    cursor_column.key = "id"
-    scalars = MagicMock()
-    scalars.all.return_value = []
-    session.scalars.return_value = scalars
-
-    await paginate_cursor(
-        session,
-        stmt,
-        cursor_column,
-        CursorParams(cursor="not-a-valid-cursor", limit=10),
-    )
-
-    stmt.where.assert_not_called()
 
 
 @pytest.fixture

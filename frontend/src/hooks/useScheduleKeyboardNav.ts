@@ -9,8 +9,8 @@ interface UseScheduleKeyboardNavOptions {
   todayColIdx: number
   /** Callback when a cell is selected */
   onSelect?: (row: number, col: number) => void
-  /** Callback to open lesson details */
-  onOpen?: () => void
+  /** Callback to open the lesson at the active grid position */
+  onOpen?: (row: number, col: number) => void
   /** Callback to edit lesson */
   onEdit?: () => void
   /** Callback to delete lesson */
@@ -93,10 +93,16 @@ export function useScheduleKeyboardNav({
           e.preventDefault()
           moveTo(pos.row - 1, pos.col)
           break
-        case "Enter":
+        case "Enter": {
+          // Native controls own Enter activation, including events from their children.
+          if (target instanceof Element && target.closest("button, a[href]")) return
           e.preventDefault()
-          onOpen?.()
+          const row = Math.max(0, Math.min(pos.row, rowCount - 1))
+          const col = Math.max(0, Math.min(pos.col, colCount - 1))
+          if (row !== pos.row || col !== pos.col) moveTo(row, col)
+          onOpen?.(row, col)
           break
+        }
         case "e":
         case "E":
           if (!e.ctrlKey && !e.metaKey) {

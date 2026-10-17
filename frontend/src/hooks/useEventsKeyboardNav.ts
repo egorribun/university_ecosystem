@@ -35,10 +35,14 @@ export function useEventsKeyboardNav(items: EventItem[]) {
 
     function handleKeyDown(e: KeyboardEvent) {
       // Skip if focused in input, textarea, dialog, or contenteditable
-      const tag = (e.target as HTMLElement).tagName
+      const target = e.target as HTMLElement
+      const tag = target.tagName
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return
-      if ((e.target as HTMLElement).closest("[role='dialog']")) return
-      if ((e.target as HTMLElement).isContentEditable) return
+      if (target.closest("[role='dialog']")) return
+      if (target.isContentEditable) return
+      if (e.key === "Enter" && target.closest("button, a, [role='button'], [role='link']")) {
+        return
+      }
 
       switch (e.key) {
         case "j":

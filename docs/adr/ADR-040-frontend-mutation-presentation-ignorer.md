@@ -70,10 +70,25 @@ The policy is fail-closed at every evidence stage:
   and excluded from the viable denominator; at least one killed mutant is
   still required.
 
+TypeScript compile failures are accounted for separately from presentation
+ignores. A `CompileError` is non-viable only when the serialized Stryker report
+matches the canonical TypeScript checker configuration and the inventory is
+bound to the declared, locked, installed checker and TypeScript toolchain. The
+producer records the checker package version and lock integrity, the TypeScript
+alias package and lock version, and the actual compiler runtime version. The
+inventory requires a non-empty Stryker status reason but does not infer
+compile failure from a diagnostic-code pattern. This keeps the classification
+tied to Stryker's checker result and verifiable toolchain provenance rather
+than a hand-maintained mutation exclusion. The checker runs with
+`prioritizePerformanceOverAccuracy: false` and
+`experimentalNativePreview: false`; the first avoids opting into the less
+accurate performance mode and the second keeps the native TypeScript preview
+out of the release decision.
+
 ## Consequences
 
 - "100% viable" now means: every mutant that is not a governed presentation
-  leaf or an explained compile error is killed.
+  leaf or a provenance-bound TypeScript compile error is killed.
 - A styling decision (active tab, reduced motion, error state) still needs a
   killing test, because its condition is mutated.
 - Class maps that are neither passed to a class helper nor bound to a

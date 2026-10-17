@@ -136,3 +136,86 @@ async def test_list_news_preserves_valid_epoch_uuid_cursor():
         datetime(1970, 1, 1, tzinfo=UTC),
         cursor_id,
     )
+
+
+@pytest.mark.asyncio
+async def test_register_uploaded_image_rejects_noncanonical_url_before_transaction():
+    from app.services.news_service import NewsImageOwnershipError
+
+    service, repo = _service()
+    with (
+        patch(
+            "app.services.news_service.canonical_news_image_key",
+            return_value=None,
+        ),
+        pytest.raises(NewsImageOwnershipError, match="news_image_not_owned"),
+    ):
+        await service.register_uploaded_image(
+            "/static/news_images/shared.png", owner_user_id=uuid4()
+        )
+
+    service.uow.__aenter__.assert_not_awaited()
+    service.uow.commit.assert_not_awaited()
+    repo.register_news_media_asset.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("owner_user_id", "canonical_key"),
+    [
+        (None, "news_images/news_0123456789abcdef0123456789abcdef.jpg"),
+        (uuid4(), None),
+    ],
+)
+async def test_create_news_rejects_unowned_image_before_opening_uow(
+    owner_user_id, canonical_key
+):
+    from app.schemas import schemas
+    from app.services.news_service import NewsImageOwnershipError
+
+    service, repo = _service()
+    image_url = "/static/news_images/news_0123456789abcdef0123456789abcdef.jpg"
+    with (
+        patch(
+            "app.services.news_service.canonical_news_image_key",
+            return_value=canonical_key,
+        ),
+        pytest.raises(NewsImageOwnershipError, match="news_image_not_owned"),
+    ):
+        await service.create_news(
+            schemas.NewsCreate(
+                title="Unowned image", content="Body", image_url=image_url
+            ),
+            owner_user_id=owner_user_id,
+        )
+
+    service.uow.__aenter__.assert_not_awaited()
+    service.uow.commit.assert_not_awaited()
+    repo.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_news_clears_existing_image_without_uploader_claim():
+    from app.schemas import schemas
+
+    service, repo = _service()
+    news_id = uuid4()
+    existing_news = MagicMock()
+    existing_news.image_url = "/static/news_images/legacy-banner.png"
+    updated_news = MagicMock()
+    updated_news.image_url = None
+    repo.get_orm_for_update.return_value = existing_news
+    repo.replace_news_media_asset.return_value = True
+    repo.update.return_value = updated_news
+
+    result = await service.update_news(
+        news_id, schemas.NewsUpdate(image_url=None), owner_user_id=None
+    )
+
+    assert result is updated_news
+    assert result.image_url is None
+    repo.replace_news_media_asset.assert_awaited_once_with(
+        None, owner_user_id=None, news_id=news_id
+    )
+    repo.update.assert_awaited_once_with(news_id, {"image_url": None})
+    service.uow.commit.assert_awaited_once()

@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useParams, useNavigate } from "@tanstack/react-router"
+import { useParams, useNavigate, useRouter } from "@tanstack/react-router"
 import { Info as InfoIcon, ArrowLeft as ArrowBackIcon } from "lucide-react"
 import "@/styles/tokens/events.css"
 import { useAuth } from "@/contexts/AuthContext"
@@ -41,6 +41,7 @@ import { EventsBackdrop } from "@/components/events/EventsBackdrop"
 export default function EventDetail() {
   const { id } = useParams({ strict: false }) as { id: string }
   const navigate = useNavigate()
+  const router = useRouter()
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
@@ -119,11 +120,7 @@ export default function EventDetail() {
 
   /* ── Actions ── */
   const handleBack = () => {
-    const canGoBack =
-      window.history?.state &&
-      typeof window.history.state.idx === "number" &&
-      window.history.state.idx > 0
-    if (canGoBack) window.history.back()
+    if (router.history.canGoBack()) router.history.back()
     else navigate({ to: "/events" })
   }
 

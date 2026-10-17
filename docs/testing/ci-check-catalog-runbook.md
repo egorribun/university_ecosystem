@@ -19,22 +19,38 @@ workflow/job inventories, changed trigger guards or job `needs` dependencies,
 missing timeouts, invalid paths, absent runbook/retry/artifact metadata, and
 unsupported required-event claims.
 
-The `stryker-shards` job enables a bounded progress observer only for a fresh
-shard attempt. Its separate `frontend-mutation-progress-*` artifact contains
-validated source/tested SHA and run/shard identities, the last observed stage
-and counters, and an explicit outcome. It is informational (`releaseEligible:
-false`); CPU/RSS remain null because they are not measured. A retry-cache hit
-or preflight-only validation has no diagnostic by design. A best-effort upload
-selects exactly one owner-published `diagnostic.json` from a fresh runner-temp
-directory outside the checkout, only after confirmed process quiescence.
-Sibling, stale, pre-existing, and potentially still-mutable files are never
-selected. Missing diagnostics never turn a failed shard green or become
-quality evidence. The existing progress monitor still validates malformed
-observations and terminal output; only the new durable publication/upload is
-advisory. Canonical mutation reports, `SHARD_EVIDENCE.json`, the 100% gate,
-process owner, and wall deadline remain unchanged. A quiet snapshot alone
-does not diagnose a stall; resource-aware inactivity policy is outside this
-rollout.
+## Mutation evidence is nightly/manual, not a release gate
+
+ADR-047 Q1 moved full mutmut and Stryker execution out of pull-request and
+main-push CI. `ci.yml` still validates the quality policy and mutation registry,
+but it does not run mutation shards or publish a
+`frontend-mutation-progress-*` artifact. Full backend and frontend mutation
+evidence is produced by `nightly-full-gate.yml` and
+`manual-mutation-evidence.yml`. Their canonical reports and shard evidence
+belong to those non-blocking evidence lanes; the 100% full-run assertion is not
+a required release check. A retry-cache hit or preflight-only validation is
+not a fresh shard run.
+
+## MIG-PASS-01 CI image preflight
+
+The existing required `DB Migration Gate (Postgres)` context also verifies the
+password preflight after its migration round-trip. CI builds `backend.Dockerfile`
+from the checked-out source, records Docker's full image config SHA-256 ID, and
+runs `python -m app.cli migrate-passwords assert-none` inside that image by ID.
+The job uses only its pinned, disposable PostgreSQL service. That service uses
+passwordless trust authentication inside the isolated CI runner; the helper
+refuses a non-local endpoint, a password-bearing URL, or a database other than
+the disposable migration database. It creates a dedicated non-superuser,
+`NOBYPASSRLS` reader with `SELECT` on `users`, checks the clean result, inserts a
+random synthetic active row with a non-verifiable bcrypt prefix sentinel and
+requires the expected nonzero result, verifies the row is unchanged, removes it,
+then requires a clean result again. The sentinel is only used to exercise the
+CLI's prefix predicate and is never passed to authentication code.
+
+This catalog entry proves the CI image and CLI wiring plus fail-closed behavior
+against disposable PostgreSQL. It does not use protected credentials or a
+deployed database and therefore does not satisfy the separate secret-backed
+deployment evidence still required by MIG-PASS-01.
 
 ## Metadata contract
 
@@ -98,6 +114,53 @@ retain the first run's logs and SARIF.  Do not add an automatic retry until a
 captured stdout/stderr classifier, bounded attempts, first-attempt artifacts,
 and focused positive/negative tests prove transient-only behavior.
 
+### Cache trust boundary
+
+Treat cache entries as an optimization, never as source or quality evidence.
+Untrusted pull-request jobs must not create executable or generated-state cache
+entries that a privileged release job can restore.  A release cache needs its
+own trusted producer/scope and keys bound to the source lockfiles, runner OS,
+and relevant toolchain; any cache hit must still be validated by the normal
+build and release checks.
+
+The current YAML configures some of this boundary: `ci.yml` labels its
+pre-commit cache prefixes CI-only and states they must not be consumed by
+privileged `workflow_dispatch`/`workflow_run` jobs; the canonical image builder
+is main-only and `reusable-build-and-sign.yml` uses a per-image BuildKit cache
+scope.  PR frontend npm caches use `frontend/package-lock.json`, while the
+release tool's npm cache uses the repository-root `package-lock.json`.
+`test_precommit_cache_cannot_cross_into_privileged_workflows` protects the two
+pre-commit namespaces, and `test_reusable_node_cache_never_restores_stale_node_modules`
+checks that the reusable npm cache contains only lock-bound package downloads.
+This is not a complete cache-trust certification: no focused contract proves
+that every privileged consumer and cache backend cannot restore PR-writable
+state.  Keep that proof as an O3 acceptance item; different lockfile paths or
+cache names alone do not establish the trust boundary.
+
+### Fail-closed aggregation and upload errors
+
+A CI timing aggregate or release certificate must bind its required evidence
+to one intended repository, workflow, run ID, and source SHA, with an explicit
+attempt policy.  Missing identity, an unapproved attempt mix, source mismatch,
+duplicate logical results, or missing required evidence must make the aggregate
+unavailable or failed; they must never be silently combined into a green
+result.  If a workflow deliberately reuses earlier-attempt artifacts after a
+failed-job rerun, its selector policy and each producer-attempt identity must
+be explicit, and the aggregate must prove that the selected cohort is complete
+and compatible.  Strict timing analysis must reject jobs from mixed attempts.
+
+An artifact upload HTTP 403 is a transport/access failure.  It does not mean
+that a mutant was killed or that a certificate was produced: tests may have run,
+but the required evidence is absent.  Required upload failure must therefore
+block the evidence aggregate/certificate. The critical-path analyzer rejects
+mixed attempts in diagnostic input. The `ci.yml` health-report step invokes it
+only with `--diagnostic-lower-bound`; strict DAG analysis needs separately
+supplied attempt-bound DAG and provenance inputs and is not release evidence.
+Mutation shard aggregation lives in the nightly/manual workflows, not in
+`ci.yml`. No focused contract test currently demonstrates that an upload HTTP
+403 cannot produce a killed-mutation certificate. Keep that end-to-end
+guarantee unclaimed unless an integrated path and negative test are added.
+
 ### Provider checks and expanded contexts
 
 `external_checks` records provider-managed required contexts that do not map
@@ -111,8 +174,10 @@ required so ownership is never inferred from a stale check run.
 matrix jobs.  Each expansion binds an existing caller workflow/job to an
 existing reusable workflow/job set (or a matrix strategy) and declares the
 finite, exact context names.  These entries supplement, but never replace, the
-complete 56-workflow/185-source-job inventory.  A context must not be duplicated
-between source jobs, provider checks, or expansions.
+complete source workflow/job inventory in `quality/ci-check-catalog.json`.
+A context must not be duplicated between source jobs, provider checks, or
+expansions. Use the validation command above to compare the catalog with the
+current workflow files.
 
 ### Refresh live ruleset evidence
 
@@ -177,33 +242,46 @@ actually captured.
 The report is intentionally diagnostic-only: it observes the completed run
 through the GitHub Jobs API and therefore is a lower bound, not proof of the
 dependency DAG, archive bytes, or release provenance.  Strict timing evidence
-still requires the detached same-run DAG/artifact-selector workflow described
-in the continuation plan.  A missing or malformed report fails the existing
-finalizer after the authoritative result table has been evaluated, preserving
-the required fail-closed behavior without adding a fan-out job.
+must come from a trusted same-run workflow that obtains the DAG sidecar through
+the server-issued artifact selector, binds its repository/workflow/run/attempt/
+source identity to trusted workflow context, downloads and verifies the archive
+bytes against the selected digest, then passes both the DAG and detached
+provenance record to strict analysis.  The selector's REST metadata checks and
+digest format do not themselves verify downloaded bytes.  The analyzer must
+reject a missing or malformed DAG, identity mismatch, incomplete job timing,
+foreign/future artifact, or mixed run attempts; a diagnostic lower-bound report
+cannot substitute for that strict evidence.
 
-### Mutmut Helm dependency reuse
+The analyzer and selector libraries have focused identity, digest, DAG, and
+mixed-attempt rejection tests.  The current `ci-success` path still publishes
+the Jobs-API lower bound, and no repository workflow invokes strict analysis
+end-to-end or verifies the selected archive bytes before analysis.  Strict
+reports are therefore not release evidence today.  A missing or malformed
+health report fails the existing finalizer after the authoritative result
+table has been evaluated, preserving the required fail-closed behavior without
+adding a fan-out job.
 
-The primary `ci.yml` mutmut producer resolves the locked Redis and NATS Helm
-archives once.  It publishes those regular files in the same-run,
-provenance-bound generation and final-universe artifacts; the stats, planner,
-and execution consumers select and validate the artifact before running
-`helm_dependency_build.py --skip-refresh`.  The helper still checks that both
-archives exist and are non-empty, while the artifact manifest checks their
-SHA-256 inventory and source/run identity.  A missing, symlinked, or modified
-archive must fail closed.  The producer remains the only step allowed to
-perform the narrow transport retry against the registry.
+### Full-backend mutation Helm dependency reuse
 
-The scheduled `nightly-full-gate.yml` applies the same boundary to its eight
-stats legs and 128 execution legs: `nightly-helm-dependencies` resolves the
-archives once, publishes an attempt-scoped artifact, and each consumer selects
-the server-issued same-run artifact ID before validating and restoring the
-archives. Consumers then use `--skip-refresh`; a current-or-earlier selector
-keeps failed-job retries safe without permitting a future attempt or a foreign
-commit/workflow artifact.
-The restore helper also rejects destination traversal and symlinked or
-junction-backed destination components before copying into a consumer
-checkout.
+After ADR-047 Q1, PR/main CI no longer runs full mutmut. The nightly
+`nightly-full-gate.yml` and manually dispatched `manual-mutation-evidence.yml`
+full-backend callers both use `reusable-helm-dependencies.yml` to resolve the
+locked Redis and NATS Helm archives once. The producer publishes regular files
+in a source-, run-, and attempt-bound artifact and returns its exact name to
+the reusable mutation workflow. Consumers select and validate that artifact
+before running `helm_dependency_build.py --skip-refresh`. The helper checks
+that both archives exist and are non-empty; the artifact manifest checks their
+SHA-256 inventory and source/run identity. A missing, symlinked, or modified
+archive must fail closed. The producer is the only step allowed to perform the
+narrow transport retry against the registry.
+
+The nightly caller uses this boundary for its backend stats and execution
+shards; the manual full-backend caller uses the same producer/consumer path.
+Each consumer validates the server-issued artifact identity before restoring
+the archives, and the nightly retry selector does not accept a future attempt
+or foreign commit/workflow artifact. The restore helper also rejects
+destination traversal and symlinked or junction-backed destination components
+before copying into a consumer checkout.
 
 ## Updating safely
 

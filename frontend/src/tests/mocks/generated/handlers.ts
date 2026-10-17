@@ -8,6 +8,14 @@
 import { HttpResponse, http } from "msw";
 import { faker } from "@faker-js/faker";
 
+function respondWithGeneratedStatus(body, init) {
+  if (init.status === 204 || init.status === 205 || init.status === 304) {
+    return new HttpResponse(null, init);
+  }
+
+  return HttpResponse.json(body, init);
+}
+
 faker.seed(1);
 
 const baseURL = "";
@@ -57,7 +65,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(`${baseURL}/api/v1/auth/mfa/email/enable`, async ({ request }) => {
@@ -87,7 +95,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/auth/mfa/email/resend`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -120,7 +128,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/auth/mfa/totp/confirm`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -153,7 +161,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/auth/mfa/totp/start`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -186,7 +194,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(
     `${baseURL}/api/v1/notifications/admin/dead-letter/purge`,
@@ -218,7 +226,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(
@@ -251,7 +259,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(`${baseURL}/api/v1/users/me/email/confirm`, async ({ request }) => {
@@ -284,7 +292,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/auth/mfa/email`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -311,7 +319,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/users/me/avatar`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -337,7 +345,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/users/me/cover`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -363,7 +371,39 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
+  }),
+  http.get(`${baseURL}/api/v1/admin/audit/time-travel`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getGetTimeTravelStateApiV1AdminAuditTimeTravelGet200Response(),
+        { status: 200 },
+      ],
+      [
+        await getGetTimeTravelStateApiV1AdminAuditTimeTravelGet422Response(),
+        { status: 422 },
+      ],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[
+        next(`get /api/v1/admin/audit/time-travel`) % resultArray.length
+      ];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/auth/mfa/totp`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -390,7 +430,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(
     `${baseURL}/api/v1/auth/session/signing-key`,
@@ -421,7 +461,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.get(`${baseURL}/api/v1/events/search/semantic`, async ({ request }) => {
@@ -454,7 +494,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/news/search/semantic`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -486,7 +526,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(
     `${baseURL}/api/v1/notifications/admin/dead-letter`,
@@ -517,7 +557,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.get(`${baseURL}/api/v1/users/audit/export`, async ({ request }) => {
@@ -548,7 +588,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.patch(`${baseURL}/api/v1/push/subscribe/topics`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -580,7 +620,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/auth/login/json`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -605,7 +645,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(
     `${baseURL}/api/v1/auth/mfa/recovery-codes`,
@@ -636,7 +676,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(`${baseURL}/api/v1/auth/mfa/step-up`, async ({ request }) => {
@@ -664,7 +704,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/auth/mfa/verify`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -695,7 +735,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(
     `${baseURL}/api/v1/auth/sessions/revoke-others`,
@@ -729,7 +769,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(
@@ -764,7 +804,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(`${baseURL}/api/v1/push/admin/releases`, async ({ request }) => {
@@ -797,7 +837,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/users/me/avatar`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -827,7 +867,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/users/me/cover`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -851,7 +891,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/users/me/delete`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -881,7 +921,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/users/me/email`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -905,7 +945,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/users/me/export`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -931,7 +971,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/users/me/password`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -961,7 +1001,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/events/attendance`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -993,7 +1033,57 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
+  }),
+  http.get(`${baseURL}/api/v1/admin/audit`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [await getListAuditLogsApiV1AdminAuditGet200Response(), { status: 200 }],
+      [await getListAuditLogsApiV1AdminAuditGet422Response(), { status: 422 }],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`get /api/v1/admin/audit`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return respondWithGeneratedStatus(responseJson, init);
+  }),
+  http.get(`${baseURL}/api/v1/admin/feature-flags`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getListFeatureFlagsApiV1AdminFeatureFlagsGet200Response(),
+        { status: 200 },
+      ],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`get /api/v1/admin/feature-flags`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/auth/csrf-cookie`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1020,7 +1110,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/auth/sessions`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1044,7 +1134,33 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
+  }),
+  http.get(`${baseURL}/api/v1/campus/config`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getGetCampusConfigApiV1CampusConfigGet200Response(),
+        { status: 200 },
+      ],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`get /api/v1/campus/config`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/events/my`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1068,7 +1184,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/push/topics`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1091,7 +1207,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/push/vapid-public-key`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1119,7 +1235,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/schedule/ics`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1146,7 +1262,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/spotify/auth-url`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1172,7 +1288,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/spotify/callback`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1204,7 +1320,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/spotify/now-playing`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1230,7 +1346,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/spotify/playlists`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1256,7 +1372,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/stats/attendance`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1286,7 +1402,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/stats/grades`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1310,7 +1426,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/stats/participation`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1340,7 +1456,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/stats/summary`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1364,7 +1480,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/users/me`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1387,7 +1503,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/auth/login`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1412,7 +1528,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/auth/logout`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1436,7 +1552,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/auth/register`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1461,7 +1577,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/chats/groups`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1485,7 +1601,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/cwv/envelope`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1515,7 +1631,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/cwv/observations`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1545,7 +1661,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/events/attendance`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1569,7 +1685,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/events/upload_image`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1601,7 +1717,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/news/upload_image`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1631,7 +1747,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(
     `${baseURL}/api/v1/notifications/check-schedule`,
@@ -1665,7 +1781,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(`${baseURL}/api/v1/notifications/read-all`, async ({ request }) => {
@@ -1694,7 +1810,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/password/forgot`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1724,7 +1840,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/password/reset`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1754,7 +1870,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/push/broadcast`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1778,7 +1894,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/push/subscribe`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1802,7 +1918,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/push/test`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1826,7 +1942,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/push/unsubscribe`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1856,7 +1972,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/spotify/disconnect`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1882,7 +1998,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/stories/upload_cover`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1914,7 +2030,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.put(`${baseURL}/api/v1/users/me`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1938,7 +2054,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/notifications`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1964,7 +2080,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/admin/audit/time-travel`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -1994,7 +2110,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/chats`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2018,7 +2134,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/events`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2042,7 +2158,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/groups`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2065,7 +2181,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/news`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2089,7 +2205,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/notifications`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2119,7 +2235,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/search`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2143,7 +2259,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/stories`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2167,7 +2283,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/users`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2191,7 +2307,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/chats`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2215,7 +2331,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/csp-report`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2239,7 +2355,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/events`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2263,7 +2379,31 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
+  }),
+  http.post(`${baseURL}/api/v1/grades`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [await getAssignGradeApiV1GradesPost201Response(), { status: 201 }],
+      [await getAssignGradeApiV1GradesPost422Response(), { status: 422 }],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`post /api/v1/grades`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/news`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2287,7 +2427,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/schedule`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2311,7 +2451,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/stories`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2335,7 +2475,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/users`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2359,7 +2499,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/admin/audit`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2383,7 +2523,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/admin/feature-flags`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2409,7 +2549,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/health/live`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2432,7 +2572,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/health/ready`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2455,7 +2595,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/ws/ticket`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2478,7 +2618,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/healthz`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2501,7 +2641,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/ready`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2523,7 +2663,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2545,7 +2685,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(
     `${baseURL}/api/v1/auth/mfa/totp/pending/:enrollmentId`,
@@ -2581,7 +2721,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.delete(
@@ -2621,7 +2761,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.get(
@@ -2656,7 +2796,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.put(
@@ -2691,7 +2831,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.delete(
@@ -2729,7 +2869,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.delete(`${baseURL}/api/v1/events/file/:fileId`, async ({ request }) => {
@@ -2762,7 +2902,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(
     `${baseURL}/api/v1/news/comments/:commentId`,
@@ -2799,7 +2939,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.get(`${baseURL}/api/v1/chats/:chatId/messages`, async ({ request }) => {
@@ -2832,7 +2972,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/events/:eventId/files`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2864,7 +3004,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/news/:id/interactions`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -2896,7 +3036,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.patch(
     `${baseURL}/api/v1/news/comments/:commentId`,
@@ -2930,7 +3070,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.patch(
@@ -2965,7 +3105,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(`${baseURL}/api/v1/chats/:chatId/clear`, async ({ request }) => {
@@ -2998,7 +3138,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/chats/:chatId/messages`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3030,7 +3170,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(
     `${baseURL}/api/v1/chats/:chatId/participants`,
@@ -3064,7 +3204,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(`${baseURL}/api/v1/chats/:chatId/read`, async ({ request }) => {
@@ -3089,7 +3229,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/chats/:chatId/typing`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3121,7 +3261,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(
     `${baseURL}/api/v1/chats/:destChatId/forward`,
@@ -3155,7 +3295,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(
@@ -3190,7 +3330,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(`${baseURL}/api/v1/news/:id/comment`, async ({ request }) => {
@@ -3221,7 +3361,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.post(`${baseURL}/api/v1/news/:id/like`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3245,7 +3385,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/chats/:chatId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3269,7 +3409,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/events/:eventId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3299,7 +3439,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/news/:id`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3323,7 +3463,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(
     `${baseURL}/api/v1/notifications/:notifId`,
@@ -3360,7 +3500,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.delete(`${baseURL}/api/v1/schedule/:id`, async ({ request }) => {
@@ -3391,7 +3531,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/stories/:storyId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3421,7 +3561,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(`${baseURL}/api/v1/users/:userId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3451,7 +3591,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/chats/:chatId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3475,7 +3615,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/events/:eventId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3499,7 +3639,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/img/:path`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3523,7 +3663,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/news/:id`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3547,7 +3687,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.get(`${baseURL}/api/v1/schedule/:id`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3571,7 +3711,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.patch(`${baseURL}/api/v1/chats/:chatId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3595,7 +3735,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.patch(`${baseURL}/api/v1/events/:eventId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3625,7 +3765,37 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
+  }),
+  http.patch(`${baseURL}/api/v1/grades/:gradeId`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("patch")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getModifyGradeApiV1GradesGradeIdPatch200Response(),
+        { status: 200 },
+      ],
+      [
+        await getModifyGradeApiV1GradesGradeIdPatch422Response(),
+        { status: 422 },
+      ],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`patch /api/v1/grades/:gradeId`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.patch(`${baseURL}/api/v1/news/:id`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3649,7 +3819,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.patch(`${baseURL}/api/v1/schedule/:id`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3679,7 +3849,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.patch(`${baseURL}/api/v1/stories/:storyId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3709,7 +3879,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.patch(`${baseURL}/api/v1/users/:userId`, async ({ request }) => {
     const shouldEchoRequestBody = false;
@@ -3739,7 +3909,7 @@ export const handlers = [
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
         : body;
-    return HttpResponse.json(responseJson, init);
+    return respondWithGeneratedStatus(responseJson, init);
   }),
   http.delete(
     `${baseURL}/api/v1/chats/:chatId/messages/:messageId/reactions`,
@@ -3777,7 +3947,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.get(
@@ -3813,7 +3983,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.post(
@@ -3849,7 +4019,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.delete(
@@ -3888,7 +4058,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.delete(
@@ -3927,7 +4097,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.get(
@@ -3963,7 +4133,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.get(
@@ -3999,7 +4169,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
   http.patch(
@@ -4035,7 +4205,7 @@ export const handlers = [
         requestJson && body && typeof body === "object" && !Array.isArray(body)
           ? { ...body, ...requestJson }
           : body;
-      return HttpResponse.json(responseJson, init);
+      return respondWithGeneratedStatus(responseJson, init);
     },
   ),
 ];
@@ -4056,6 +4226,16 @@ export function getListAuditLogsAdminAuditGet200Response() {
         action: faker.lorem.words(),
         actor_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
         actor_user_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+        authenticated_fields: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => faker.lorem.words());
+        })(),
         context: faker.helpers.arrayElement([{}, null]),
         created_at: faker.date.anytime().toISOString(),
         id: faker.string.uuid(),
@@ -4063,11 +4243,28 @@ export function getListAuditLogsAdminAuditGet200Response() {
         is_valid: faker.datatype.boolean(),
         resource_id: faker.helpers.arrayElement([faker.lorem.words(), null]),
         resource_type: faker.lorem.words(),
+        signature_scheme: faker.helpers.arrayElement([
+          "canonical_v2",
+          "legacy_json_array_v1",
+          "legacy_pipe_v1",
+          "invalid",
+          "unsigned",
+        ]),
         subject_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
         subject_user_id: faker.helpers.arrayElement([
           faker.string.uuid(),
           null,
         ]),
+        unauthenticated_fields: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => faker.lorem.words());
+        })(),
         user_agent: faker.helpers.arrayElement([faker.lorem.words(), null]),
       }));
     })(),
@@ -4177,6 +4374,166 @@ export function getListFeatureFlagsAdminFeatureFlagsGet200Response() {
   })();
 }
 
+export function getListAuditLogsApiV1AdminAuditGet200Response() {
+  return {
+    items: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        action: faker.lorem.words(),
+        actor_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        actor_user_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+        authenticated_fields: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => faker.lorem.words());
+        })(),
+        context: faker.helpers.arrayElement([{}, null]),
+        created_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        ip_address: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        is_valid: faker.datatype.boolean(),
+        resource_id: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        resource_type: faker.lorem.words(),
+        signature_scheme: faker.helpers.arrayElement([
+          "canonical_v2",
+          "legacy_json_array_v1",
+          "legacy_pipe_v1",
+          "invalid",
+          "unsigned",
+        ]),
+        subject_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        subject_user_id: faker.helpers.arrayElement([
+          faker.string.uuid(),
+          null,
+        ]),
+        unauthenticated_fields: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => faker.lorem.words());
+        })(),
+        user_agent: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      }));
+    })(),
+    total: faker.number.int(),
+  };
+}
+
+export function getListAuditLogsApiV1AdminAuditGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getGetTimeTravelStateApiV1AdminAuditTimeTravelGet200Response() {
+  return {
+    aggregate_id: faker.string.uuid(),
+    aggregate_type: faker.lorem.words(),
+    chain_integrity_valid: faker.datatype.boolean(),
+    events_replayed: faker.number.int(),
+    state_at_timestamp: faker.helpers.arrayElement([{}, null]),
+    tampered_event_id: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    target_timestamp: faker.date.anytime().toISOString(),
+    version_at_timestamp: faker.helpers.arrayElement([
+      faker.number.int(),
+      null,
+    ]),
+  };
+}
+
+export function getGetTimeTravelStateApiV1AdminAuditTimeTravelGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getListFeatureFlagsApiV1AdminFeatureFlagsGet200Response() {
+  return (() => {
+    const arrayMin = 1;
+    const arrayMax = MAX_ARRAY_LENGTH;
+    const safeMin = Math.min(arrayMin, arrayMax);
+    return [
+      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+    ].map((_) => ({
+      config_path: faker.lorem.words(),
+      default: faker.datatype.boolean(),
+      description: faker.lorem.words(),
+      enabled: faker.datatype.boolean(),
+      evaluation_reason: faker.lorem.words(),
+      management: faker.lorem.words(),
+      name: faker.person.fullName(),
+      provider: faker.lorem.words(),
+    }));
+  })();
+}
+
 export function getGetCsrfCookieApiV1AuthCsrfCookieGet200Response() {
   return [...new Array(5).keys()]
     .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
@@ -4227,18 +4584,30 @@ export function getLoginApiV1AuthLoginPost200Response() {
         ]),
         education_path: faker.helpers.arrayElement([
           {
-            course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            course: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 64 } }),
+              null,
+            ]),
             education_level: faker.helpers.arrayElement([
-              faker.lorem.words(),
+              faker.string.alpha({ length: { min: 0, max: 128 } }),
               null,
             ]),
-            institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            institute: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 512 } }),
+              null,
+            ]),
+            program: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 512 } }),
+              null,
+            ]),
             record_book_number: faker.helpers.arrayElement([
-              faker.lorem.words(),
+              faker.string.alpha({ length: { min: 0, max: 64 } }),
               null,
             ]),
-            track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            track: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 256 } }),
+              null,
+            ]),
           },
           null,
         ]),
@@ -4288,7 +4657,10 @@ export function getLoginApiV1AuthLoginPost200Response() {
               new Date().toISOString().substring(11, 16),
               null,
             ]),
-            timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            timezone: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 64 } }),
+              null,
+            ]),
           },
           null,
         ]),
@@ -4298,15 +4670,30 @@ export function getLoginApiV1AuthLoginPost200Response() {
         ]),
         profile_detail: faker.helpers.arrayElement([
           {
-            about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            achievements: faker.helpers.arrayElement([
-              faker.lorem.words(),
+            about: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 4096 } }),
               null,
             ]),
-            department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            achievements: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 2048 } }),
+              null,
+            ]),
+            department: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 256 } }),
+              null,
+            ]),
+            position: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 256 } }),
+              null,
+            ]),
+            status: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 256 } }),
+              null,
+            ]),
+            telegram: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 128 } }),
+              null,
+            ]),
           },
           null,
         ]),
@@ -4480,18 +4867,30 @@ export function getLoginJsonApiV1AuthLoginJsonPost200Response() {
         ]),
         education_path: faker.helpers.arrayElement([
           {
-            course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            course: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 64 } }),
+              null,
+            ]),
             education_level: faker.helpers.arrayElement([
-              faker.lorem.words(),
+              faker.string.alpha({ length: { min: 0, max: 128 } }),
               null,
             ]),
-            institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            institute: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 512 } }),
+              null,
+            ]),
+            program: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 512 } }),
+              null,
+            ]),
             record_book_number: faker.helpers.arrayElement([
-              faker.lorem.words(),
+              faker.string.alpha({ length: { min: 0, max: 64 } }),
               null,
             ]),
-            track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            track: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 256 } }),
+              null,
+            ]),
           },
           null,
         ]),
@@ -4541,7 +4940,10 @@ export function getLoginJsonApiV1AuthLoginJsonPost200Response() {
               new Date().toISOString().substring(11, 16),
               null,
             ]),
-            timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            timezone: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 64 } }),
+              null,
+            ]),
           },
           null,
         ]),
@@ -4551,15 +4953,30 @@ export function getLoginJsonApiV1AuthLoginJsonPost200Response() {
         ]),
         profile_detail: faker.helpers.arrayElement([
           {
-            about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            achievements: faker.helpers.arrayElement([
-              faker.lorem.words(),
+            about: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 4096 } }),
               null,
             ]),
-            department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            achievements: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 2048 } }),
+              null,
+            ]),
+            department: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 256 } }),
+              null,
+            ]),
+            position: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 256 } }),
+              null,
+            ]),
+            status: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 256 } }),
+              null,
+            ]),
+            telegram: faker.helpers.arrayElement([
+              faker.string.alpha({ length: { min: 0, max: 128 } }),
+              null,
+            ]),
           },
           null,
         ]),
@@ -5088,18 +5505,30 @@ export function getVerifyMfaChallengeApiV1AuthMfaVerifyPost200Response() {
       education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
       education_path: faker.helpers.arrayElement([
         {
-          course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          course: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 64 } }),
+            null,
+          ]),
           education_level: faker.helpers.arrayElement([
-            faker.lorem.words(),
+            faker.string.alpha({ length: { min: 0, max: 128 } }),
             null,
           ]),
-          institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          institute: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 512 } }),
+            null,
+          ]),
+          program: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 512 } }),
+            null,
+          ]),
           record_book_number: faker.helpers.arrayElement([
-            faker.lorem.words(),
+            faker.string.alpha({ length: { min: 0, max: 64 } }),
             null,
           ]),
-          track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          track: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 256 } }),
+            null,
+          ]),
         },
         null,
       ]),
@@ -5146,7 +5575,10 @@ export function getVerifyMfaChallengeApiV1AuthMfaVerifyPost200Response() {
             new Date().toISOString().substring(11, 16),
             null,
           ]),
-          timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          timezone: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 64 } }),
+            null,
+          ]),
         },
         null,
       ]),
@@ -5156,12 +5588,30 @@ export function getVerifyMfaChallengeApiV1AuthMfaVerifyPost200Response() {
       ]),
       profile_detail: faker.helpers.arrayElement([
         {
-          about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          about: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 4096 } }),
+            null,
+          ]),
+          achievements: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 2048 } }),
+            null,
+          ]),
+          department: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 256 } }),
+            null,
+          ]),
+          position: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 256 } }),
+            null,
+          ]),
+          status: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 256 } }),
+            null,
+          ]),
+          telegram: faker.helpers.arrayElement([
+            faker.string.alpha({ length: { min: 0, max: 128 } }),
+            null,
+          ]),
         },
         null,
       ]),
@@ -5472,6 +5922,12 @@ export function getRevokeSessionApiV1AuthSessionsSessionIdDelete422Response() {
         type: faker.lorem.words(),
       }));
     })(),
+  };
+}
+
+export function getGetCampusConfigApiV1CampusConfigGet200Response() {
+  return {
+    campus_timezone: faker.lorem.words(),
   };
 }
 
@@ -8087,6 +8543,102 @@ export function getUploadEventFileApiV1EventsEventIdUploadFilePost422Response() 
   };
 }
 
+export function getAssignGradeApiV1GradesPost201Response() {
+  return {
+    assessment_type: faker.lorem.words(),
+    assigned_by: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    id: faker.string.uuid(),
+    score: faker.number.int(),
+    student_id: faker.string.uuid(),
+    subject: faker.lorem.words(),
+  };
+}
+
+export function getAssignGradeApiV1GradesPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getModifyGradeApiV1GradesGradeIdPatch200Response() {
+  return {
+    assessment_type: faker.lorem.words(),
+    assigned_by: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    id: faker.string.uuid(),
+    score: faker.number.int(),
+    student_id: faker.string.uuid(),
+    subject: faker.lorem.words(),
+  };
+}
+
+export function getModifyGradeApiV1GradesGradeIdPatch422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
 export function getGetGroupsApiV1GroupsGet200Response() {
   return (() => {
     const arrayMin = 1;
@@ -10434,21 +10986,30 @@ export function getGetUsersApiV1UsersGet200Response() {
           ]),
           education_path: faker.helpers.arrayElement([
             {
-              course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              course: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 64 } }),
+                null,
+              ]),
               education_level: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 128 } }),
                 null,
               ]),
               institute: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 512 } }),
                 null,
               ]),
-              program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              program: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 512 } }),
+                null,
+              ]),
               record_book_number: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 64 } }),
                 null,
               ]),
-              track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              track: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 256 } }),
+                null,
+              ]),
             },
             null,
           ]),
@@ -10464,18 +11025,30 @@ export function getGetUsersApiV1UsersGet200Response() {
           ]),
           profile_detail: faker.helpers.arrayElement([
             {
-              about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              about: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 4096 } }),
+                null,
+              ]),
               achievements: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 2048 } }),
                 null,
               ]),
               department: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 256 } }),
                 null,
               ]),
-              position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              position: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 256 } }),
+                null,
+              ]),
+              status: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 256 } }),
+                null,
+              ]),
+              telegram: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 128 } }),
+                null,
+              ]),
             },
             null,
           ]),
@@ -10525,21 +11098,30 @@ export function getGetUsersApiV1UsersGet200Response() {
           ]),
           education_path: faker.helpers.arrayElement([
             {
-              course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              course: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 64 } }),
+                null,
+              ]),
               education_level: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 128 } }),
                 null,
               ]),
               institute: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 512 } }),
                 null,
               ]),
-              program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              program: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 512 } }),
+                null,
+              ]),
               record_book_number: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 64 } }),
                 null,
               ]),
-              track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              track: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 256 } }),
+                null,
+              ]),
             },
             null,
           ]),
@@ -10589,7 +11171,10 @@ export function getGetUsersApiV1UsersGet200Response() {
                 new Date().toISOString().substring(11, 16),
                 null,
               ]),
-              timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              timezone: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 64 } }),
+                null,
+              ]),
             },
             null,
           ]),
@@ -10599,18 +11184,30 @@ export function getGetUsersApiV1UsersGet200Response() {
           ]),
           profile_detail: faker.helpers.arrayElement([
             {
-              about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              about: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 4096 } }),
+                null,
+              ]),
               achievements: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 2048 } }),
                 null,
               ]),
               department: faker.helpers.arrayElement([
-                faker.lorem.words(),
+                faker.string.alpha({ length: { min: 0, max: 256 } }),
                 null,
               ]),
-              position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              position: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 256 } }),
+                null,
+              ]),
+              status: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 256 } }),
+                null,
+              ]),
+              telegram: faker.helpers.arrayElement([
+                faker.string.alpha({ length: { min: 0, max: 128 } }),
+                null,
+              ]),
             },
             null,
           ]),
@@ -10737,18 +11334,30 @@ export function getCreateUserApiV1UsersPost200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -10795,19 +11404,40 @@ export function getCreateUserApiV1UsersPost200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -10960,18 +11590,30 @@ export function getMeApiV1UsersMeGet200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11018,19 +11660,40 @@ export function getMeApiV1UsersMeGet200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11113,18 +11776,30 @@ export function getUpdateMeApiV1UsersMePut200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11171,19 +11846,40 @@ export function getUpdateMeApiV1UsersMePut200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11299,18 +11995,30 @@ export function getDeleteAvatarApiV1UsersMeAvatarDelete200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11357,19 +12065,40 @@ export function getDeleteAvatarApiV1UsersMeAvatarDelete200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11452,18 +12181,30 @@ export function getUploadAvatarApiV1UsersMeAvatarPost200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11510,19 +12251,40 @@ export function getUploadAvatarApiV1UsersMeAvatarPost200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11638,18 +12400,30 @@ export function getDeleteCoverApiV1UsersMeCoverDelete200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11696,19 +12470,40 @@ export function getDeleteCoverApiV1UsersMeCoverDelete200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11791,18 +12586,30 @@ export function getUploadCoverApiV1UsersMeCoverPost200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -11849,19 +12656,40 @@ export function getUploadCoverApiV1UsersMeCoverPost200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -12017,18 +12845,30 @@ export function getChangeEmailApiV1UsersMeEmailPost200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -12075,19 +12915,40 @@ export function getChangeEmailApiV1UsersMeEmailPost200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -12203,18 +13064,30 @@ export function getVerifyEmailChangeApiV1UsersMeEmailConfirmPost200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -12261,19 +13134,40 @@ export function getVerifyEmailChangeApiV1UsersMeEmailConfirmPost200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -12505,18 +13399,30 @@ export function getUpdateUserAdminApiV1UsersUserIdPatch200Response() {
     education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
     education_path: faker.helpers.arrayElement([
       {
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        course: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
         education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
           null,
         ]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        institute: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
+        program: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 512 } }),
+          null,
+        ]),
         record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
           null,
         ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        track: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
       },
       null,
     ]),
@@ -12563,19 +13469,40 @@ export function getUpdateUserAdminApiV1UsersUserIdPatch200Response() {
           new Date().toISOString().substring(11, 16),
           null,
         ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 64 } }),
+          null,
+        ]),
       },
       null,
     ]),
     profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
     profile_detail: faker.helpers.arrayElement([
       {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 4096 } }),
+          null,
+        ]),
+        achievements: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 2048 } }),
+          null,
+        ]),
+        department: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        position: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        status: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 256 } }),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([
+          faker.string.alpha({ length: { min: 0, max: 128 } }),
+          null,
+        ]),
       },
       null,
     ]),

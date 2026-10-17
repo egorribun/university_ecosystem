@@ -1,0 +1,480 @@
+{
+  "total_count": 4,
+  "jobs": [
+    {
+      "id": 111447697162,
+      "run_id": 37184644787,
+      "run_attempt": 2,
+      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-04T13:35:38Z",
+      "started_at": "2026-10-04T07:08:07Z",
+      "completed_at": "2026-10-04T07:09:21Z",
+      "name": "Contract Tests",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-04T07:08:07Z",
+          "completed_at": "2026-10-04T07:08:08Z"
+        },
+        {
+          "name": "Checkout",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-04T07:08:08Z",
+          "completed_at": "2026-10-04T07:08:11Z"
+        },
+        {
+          "name": "Set up Python",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-04T07:08:11Z",
+          "completed_at": "2026-10-04T07:08:11Z"
+        },
+        {
+          "name": "Install uv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-04T07:08:11Z",
+          "completed_at": "2026-10-04T07:08:16Z"
+        },
+        {
+          "name": "Install dependencies",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-04T07:08:16Z",
+          "completed_at": "2026-10-04T07:08:32Z"
+        },
+        {
+          "name": "Run contract tests (consumer-side)",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-04T07:08:32Z",
+          "completed_at": "2026-10-04T07:09:19Z"
+        },
+        {
+          "name": "Post Install uv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-04T07:09:19Z",
+          "completed_at": "2026-10-04T07:09:19Z"
+        },
+        {
+          "name": "Post Set up Python",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-04T07:09:19Z",
+          "completed_at": "2026-10-04T07:09:19Z"
+        },
+        {
+          "name": "Post Checkout",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-10-04T07:09:19Z",
+          "completed_at": "2026-10-04T07:09:19Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-10-04T07:09:19Z",
+          "completed_at": "2026-10-04T07:09:19Z"
+        }
+      ],
+      "runner_id": 1000261179
+    },
+    {
+      "id": 111447697537,
+      "run_id": 37184644787,
+      "run_attempt": 2,
+      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "status": "completed",
+      "conclusion": "skipped",
+      "created_at": "2026-10-04T13:35:39Z",
+      "started_at": "2026-10-04T13:35:39Z",
+      "completed_at": "2026-10-04T07:03:29Z",
+      "name": "WebSocket 10k Scenario Validation (advisory)",
+      "steps": [],
+      "runner_id": null
+    },
+    {
+      "id": 111447705003,
+      "run_id": 37184644787,
+      "run_attempt": 2,
+      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "status": "completed",
+      "conclusion": "failure",
+      "created_at": "2026-10-04T13:35:41Z",
+      "started_at": "2026-10-04T08:20:49Z",
+      "completed_at": "2026-10-04T08:34:16Z",
+      "name": "Incremental Mutation Tests (mutmut) / execution group 2",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-04T08:20:50Z",
+          "completed_at": "2026-10-04T08:20:51Z"
+        },
+        {
+          "name": "Record mutmut job deadline",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-04T08:20:51Z",
+          "completed_at": "2026-10-04T08:20:51Z"
+        },
+        {
+          "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-04T08:20:51Z",
+          "completed_at": "2026-10-04T08:20:59Z"
+        },
+        {
+          "name": "Set up Python for artifact provenance selection",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-04T08:20:59Z",
+          "completed_at": "2026-10-04T08:20:59Z"
+        },
+        {
+          "name": "Detect changed Python source",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-04T08:20:59Z",
+          "completed_at": "2026-10-04T08:21:00Z"
+        },
+        {
+          "name": "Select immutable same-run mutmut universe candidate",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-04T08:21:00Z",
+          "completed_at": "2026-10-04T08:21:00Z"
+        },
+        {
+          "name": "Download selected same-run mutmut universe candidate",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-04T08:21:00Z",
+          "completed_at": "2026-10-04T08:21:02Z"
+        },
+        {
+          "name": "Verify selected mutmut universe payload",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-04T08:21:02Z",
+          "completed_at": "2026-10-04T08:21:02Z"
+        },
+        {
+          "name": "Select retry-safe central mutmut universe",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-04T08:21:02Z",
+          "completed_at": "2026-10-04T08:21:05Z"
+        },
+        {
+          "name": "Validate selected mutmut execution matrix entry",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-04T08:21:05Z",
+          "completed_at": "2026-10-04T08:21:05Z"
+        },
+        {
+          "name": "Set up Python",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-04T08:21:05Z",
+          "completed_at": "2026-10-04T08:21:05Z"
+        },
+        {
+          "name": "Install uv",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-10-04T08:21:05Z",
+          "completed_at": "2026-10-04T08:21:08Z"
+        },
+        {
+          "name": "Install dependencies",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-10-04T08:21:08Z",
+          "completed_at": "2026-10-04T08:21:24Z"
+        },
+        {
+          "name": "Set up Helm",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-10-04T08:21:24Z",
+          "completed_at": "2026-10-04T08:21:25Z"
+        },
+        {
+          "name": "Resolve Helm chart dependencies",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-10-04T08:21:25Z",
+          "completed_at": "2026-10-04T08:21:26Z"
+        },
+        {
+          "name": "Run incremental mutmut (blocking, stats-derived budget)",
+          "status": "completed",
+          "conclusion": "failure",
+          "number": 16,
+          "started_at": "2026-10-04T08:21:26Z",
+          "completed_at": "2026-10-04T08:34:13Z"
+        },
+        {
+          "name": "Validate incremental mutation evidence artifact",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17,
+          "started_at": "2026-10-04T08:34:13Z",
+          "completed_at": "2026-10-04T08:34:13Z"
+        },
+        {
+          "name": "Upload incremental mutation evidence",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-10-04T08:34:13Z",
+          "completed_at": "2026-10-04T08:34:14Z"
+        },
+        {
+          "name": "Post Install uv",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 33,
+          "started_at": "2026-10-04T08:34:14Z",
+          "completed_at": "2026-10-04T08:34:14Z"
+        },
+        {
+          "name": "Post Set up Python",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 34,
+          "started_at": "2026-10-04T08:34:14Z",
+          "completed_at": "2026-10-04T08:34:14Z"
+        },
+        {
+          "name": "Post Set up Python for artifact provenance selection",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 35,
+          "started_at": "2026-10-04T08:34:14Z",
+          "completed_at": "2026-10-04T08:34:14Z"
+        },
+        {
+          "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 36,
+          "started_at": "2026-10-04T08:34:14Z",
+          "completed_at": "2026-10-04T08:34:15Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 37,
+          "started_at": "2026-10-04T08:34:15Z",
+          "completed_at": "2026-10-04T08:34:15Z"
+        }
+      ],
+      "runner_id": 1000261342
+    },
+    {
+      "id": 111467937995,
+      "run_id": 37184644787,
+      "run_attempt": 2,
+      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "status": "completed",
+      "conclusion": "failure",
+      "created_at": "2026-10-04T15:27:14Z",
+      "started_at": "2026-10-04T15:27:17Z",
+      "completed_at": "2026-10-04T15:28:17Z",
+      "name": "Frontend Mutation Evidence (100%)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-04T15:27:18Z",
+          "completed_at": "2026-10-04T15:27:20Z"
+        },
+        {
+          "name": "Select immutable same-run Stryker preflight candidate",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-04T15:27:20Z",
+          "completed_at": "2026-10-04T15:27:21Z"
+        },
+        {
+          "name": "Download selected Stryker preflight candidate",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-04T15:27:21Z",
+          "completed_at": "2026-10-04T15:27:23Z"
+        },
+        {
+          "name": "Download all same-run Stryker shard candidates",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-04T15:27:23Z",
+          "completed_at": "2026-10-04T15:27:25Z"
+        },
+        {
+          "name": "Checkout",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-04T15:27:25Z",
+          "completed_at": "2026-10-04T15:27:28Z"
+        },
+        {
+          "name": "Set up Python for artifact provenance selection",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-04T15:27:28Z",
+          "completed_at": "2026-10-04T15:27:28Z"
+        },
+        {
+          "name": "Setup Node.js",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-04T15:27:28Z",
+          "completed_at": "2026-10-04T15:27:38Z"
+        },
+        {
+          "name": "Materialize selected Stryker preflight without credentials",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-04T15:27:38Z",
+          "completed_at": "2026-10-04T15:27:38Z"
+        },
+        {
+          "name": "Verify selected Stryker preflight payload",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-04T15:27:38Z",
+          "completed_at": "2026-10-04T15:27:38Z"
+        },
+        {
+          "name": "Materialize same-run Stryker shards without credentials",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-04T15:27:38Z",
+          "completed_at": "2026-10-04T15:27:39Z"
+        },
+        {
+          "name": "Require same-run Stryker shard candidates",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-04T15:27:39Z",
+          "completed_at": "2026-10-04T15:27:39Z"
+        },
+        {
+          "name": "Install frontend dependencies",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-10-04T15:27:39Z",
+          "completed_at": "2026-10-04T15:28:03Z"
+        },
+        {
+          "name": "Aggregate and verify fresh frontend mutation evidence",
+          "status": "completed",
+          "conclusion": "failure",
+          "number": 13,
+          "started_at": "2026-10-04T15:28:03Z",
+          "completed_at": "2026-10-04T15:28:14Z"
+        },
+        {
+          "name": "Upload verified historical Stryker cost model",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 14,
+          "started_at": "2026-10-04T15:28:14Z",
+          "completed_at": "2026-10-04T15:28:14Z"
+        },
+        {
+          "name": "Upload validated frontend mutation evidence",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15,
+          "started_at": "2026-10-04T15:28:14Z",
+          "completed_at": "2026-10-04T15:28:14Z"
+        },
+        {
+          "name": "Post Setup Node.js",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 28,
+          "started_at": "2026-10-04T15:28:14Z",
+          "completed_at": "2026-10-04T15:28:14Z"
+        },
+        {
+          "name": "Post Set up Python for artifact provenance selection",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 29,
+          "started_at": "2026-10-04T15:28:14Z",
+          "completed_at": "2026-10-04T15:28:14Z"
+        },
+        {
+          "name": "Post Checkout",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 30,
+          "started_at": "2026-10-04T15:28:14Z",
+          "completed_at": "2026-10-04T15:28:14Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 31,
+          "started_at": "2026-10-04T15:28:14Z",
+          "completed_at": "2026-10-04T15:28:14Z"
+        }
+      ],
+      "runner_id": 1000261562
+    }
+  ]
+}

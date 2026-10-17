@@ -66,6 +66,22 @@ def _mfa_rate_limit_error(exc: RateLimitExceeded, *, detail: str) -> HTTPExcepti
     )
 
 
+def _login_auth_error_for_request_locale(
+    exc: HTTPException, request: Request
+) -> HTTPException | None:
+    message_key = {
+        status.HTTP_401_UNAUTHORIZED: "errors.auth.credentials_invalid",
+        status.HTTP_423_LOCKED: "errors.auth.account_locked",
+    }.get(exc.status_code)
+    if message_key is None:
+        return None
+    return HTTPException(
+        status_code=exc.status_code,
+        detail=translate(message_key, locale=resolve_locale(request=request)),
+        headers=exc.headers,
+    )
+
+
 async def _load_optional_active_session(
     request: Request, db: AsyncDatabaseSession
 ) -> Any:
@@ -85,7 +101,9 @@ async def _load_optional_active_session(
     "/login",
     response_model=TokenWithProfile | PendingMfaResponse,
     response_model_exclude_none=True,
-    dependencies=[Depends(sensitive_route_limit())],
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_auth_login))
+    ],
 )
 @inject
 async def login(
@@ -106,6 +124,16 @@ async def login(
             bg_tasks=bg_tasks,
             trust_device=trust_device,
         )
+    except MfaOtpRejected as exc:
+        await db.rollback()
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            translate(
+                "errors.auth.credentials_invalid",
+                locale=resolve_locale(request=request),
+            ),
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
     except RateLimitExceeded as exc:
         await db.rollback()
         raise _mfa_rate_limit_error(exc, detail="MFA request rejected") from exc
@@ -114,6 +142,11 @@ async def login(
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, "MFA service unavailable"
         ) from exc
+    except HTTPException as exc:
+        request_locale_error = _login_auth_error_for_request_locale(exc, request)
+        if request_locale_error is None:
+            raise
+        raise request_locale_error from exc
     if isinstance(result, PendingMfaResponse):
         await db.commit()
     return result
@@ -123,7 +156,9 @@ async def login(
     "/login/json",
     response_model=TokenWithProfile | PendingMfaResponse,
     response_model_exclude_none=True,
-    dependencies=[Depends(sensitive_route_limit())],
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_auth_login))
+    ],
 )
 @inject
 async def login_json(
@@ -143,6 +178,16 @@ async def login_json(
             bg_tasks=bg_tasks,
             trust_device=payload.trust_device,
         )
+    except MfaOtpRejected as exc:
+        await db.rollback()
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            translate(
+                "errors.auth.credentials_invalid",
+                locale=resolve_locale(request=request),
+            ),
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
     except RateLimitExceeded as exc:
         await db.rollback()
         raise _mfa_rate_limit_error(exc, detail="MFA request rejected") from exc
@@ -151,6 +196,11 @@ async def login_json(
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, "MFA service unavailable"
         ) from exc
+    except HTTPException as exc:
+        request_locale_error = _login_auth_error_for_request_locale(exc, request)
+        if request_locale_error is None:
+            raise
+        raise request_locale_error from exc
     if isinstance(result, PendingMfaResponse):
         await db.commit()
     return result
@@ -194,7 +244,10 @@ async def verify_mfa_challenge(
     elif payload.method != constants.MFA_METHOD_EMAIL_OTP:
         # Invalid method
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid MFA method"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=translate(
+                "errors.mfa.invalid_method", locale=resolve_locale(request=request)
+            ),
         )
 
     try:
@@ -301,21 +354,41 @@ async def verify_mfa_challenge(
             path="/",
         )
 
-    if challenge.flow in {
-        "step_up",
-        "email_verification",
-        "email_mfa_enablement",
-    }:
+    if challenge.flow in {"email_verification", "step_up", "email_mfa_enablement"}:
+        # Each authenticated-session flow fails closed at the same boundary.
         if active_session is None:
             await db.rollback()
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "MFA verification failed")
+        if challenge.flow == "email_verification":
+            # Mailbox ownership is not an enrolled authentication factor. Preserve
+            # the existing MFA freshness and never mint a login session.
+            result = await login_service.build_session_response(
+                user=user, session=active_session
+            )
+            await db.commit()
+            return result
+
+        pending_revocations = []
+        if challenge.flow == "email_mfa_enablement":
+            pending_revocations = await mfa.revoke_sibling_sessions_for_factor_change(
+                db,
+                user_id=user.id,
+                current_session_id=active_session.id,
+            )
         result = await login_service.complete_step_up(
             user=user,
             session=active_session,
             request=request,
             method=payload.method,
         )
-        await db.commit()
+        try:
+            await mfa.publish_mfa_session_revocations(pending_revocations)
+            await db.commit()
+        except (
+            Exception
+        ):  # RZ-22-01-JUSTIFIED: rollback security mutation then re-raise
+            await db.rollback()
+            raise
         await login_service.publish_completed_step_up(
             user=user,
             session=active_session,

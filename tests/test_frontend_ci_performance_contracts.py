@@ -204,7 +204,7 @@ def test_frontend_suite_is_not_serialized_behind_pre_commit() -> None:
     assert frontend["permissions"] == {"contents": "read", "actions": "read"}
     assert frontend["with"] == {
         "node-version": "24",
-        "run-lighthouse": True,
+        "run-lighthouse": False,
         "wasm-artifact-id": "${{ needs.e2e-wasm-build.outputs.artifact_id }}",
         "wasm-artifact-name": "${{ needs.e2e-wasm-build.outputs.artifact_name }}",
         "wasm-artifact-digest": "${{ needs.e2e-wasm-build.outputs.artifact_digest }}",
@@ -271,7 +271,7 @@ def test_frontend_wasm_is_built_once_and_reused_by_all_consumers() -> None:
     wasm_opt = _step(producer, "Install pinned wasm-opt")
     assert "binaryen-$binaryen_version-x86_64-linux.tar.gz" in wasm_opt["run"]
     assert (
-        "3dc677006555b355ea2da5e82602065a161d5e83eaefd3f759afa00b96e83212"  # pragma: allowlist secret -- public Binaryen release checksum
+        "2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489"
         in wasm_opt["run"]
     )
     assert "GITHUB_PATH" in wasm_opt["run"]
@@ -421,10 +421,10 @@ def test_frontend_wasm_build_pins_the_artifact_toolchain() -> None:
     setup = _step(producer, "Setup Rust toolchain")
 
     assert setup["uses"] == (
-        "dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de"
+        "dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067"
     )
     assert setup["with"] == {
-        "toolchain": "1.97.1",
+        "toolchain": "1.99.0",
         "targets": "wasm32-unknown-unknown",
     }
     build_run = _step(producer, "Build immutable WASM modules")["run"]
@@ -436,7 +436,7 @@ def test_frontend_wasm_build_uses_pinned_binaryen_before_system_wasm_opt() -> No
     producer = workflow["jobs"]["wasm-build"]  # type: ignore[index]
     install = _step(producer, "Install pinned wasm-opt")
     run = install["run"]
-    assert "version_117" in run
+    assert "version_133" in run
     assert "sha256sum --check --strict" in run
     assert "GITHUB_PATH" in run
 

@@ -118,4 +118,20 @@ describe("useActivityData defensive derivation branches", () => {
     expect(result.current.participation).toBeNull()
     expect(result.current.heatmapData.size).toBe(0)
   })
+
+  it("treats omitted optional participation totals as empty activity", () => {
+    mocks.query.mockReturnValue({
+      data: { participation: { events: 0, recent: [] } },
+      isFetching: false,
+      isSuccess: true,
+    })
+    const { result } = renderHook(() => useActivityData())
+    expect(result.current.participation).toMatchObject({
+      events: 0,
+      hours: undefined,
+      groups: undefined,
+    })
+    expect(result.current.hasAnyData).toBe(false)
+    expect(result.current.isPartial).toBe(true)
+  })
 })

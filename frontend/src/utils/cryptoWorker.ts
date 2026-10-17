@@ -5,10 +5,13 @@
  * Offloads all heavy cryptographic operations to a separate thread.
  */
 
+import cryptoWorkerUrl from "../workers/crypto.worker.ts?worker&url"
+import { createTrustedScriptURL } from "./trustedTypes"
+
 // Worker instance
 const worker =
   typeof Worker !== "undefined"
-    ? new Worker(new URL("../workers/crypto.worker.ts", import.meta.url), {
+    ? new Worker(createTrustedScriptURL(cryptoWorkerUrl) as unknown as string, {
         type: "module",
       })
     : ({

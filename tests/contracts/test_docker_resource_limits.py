@@ -5,14 +5,20 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-import yaml
+from tests.test_aud191_production_compose_env_contract import _ComposeLoader
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def _compose(name: str) -> dict:
-    source = (ROOT / name).read_text(encoding="utf-8")
-    return yaml.safe_load(source.replace("!override", ""))
+    # Strip only Compose's existing !override marker, then preserve !reset as a
+    # typed value with the narrowly scoped loader used by the Compose contracts.
+    source = (ROOT / name).read_text(encoding="utf-8").replace("!override", "")
+    loader = _ComposeLoader(source)
+    try:
+        return loader.get_single_data()
+    finally:
+        loader.dispose()
 
 
 def _limits(compose_name: str, service_name: str) -> dict:

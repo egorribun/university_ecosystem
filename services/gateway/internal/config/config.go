@@ -32,6 +32,9 @@ type Config struct {
 	Port       string
 	BackendURL string
 	RedisURL   string
+	// TrustedProxies lists the exact proxy IPs or CIDRs allowed to supply
+	// forwarded client-address headers. Empty disables forwarded-header trust.
+	TrustedProxies []string
 	// RevocationRedisURL is the canonical cross-service session-revocation
 	// store. It is deliberately separate from RedisURL, which owns rate-limit
 	// state and may use another logical database.
@@ -97,17 +100,41 @@ type Config struct {
 // Load loads the configuration from environment variables
 // It ensures critical secrets are present, enforcing a "Fail Secure" policy.
 func Load() (*Config, error) {
-	cfg := loadFromEnvironment()
+	cfg, err := loadFromEnvironmentChecked()
+	if err != nil {
+		return nil, err
+	}
 	if err := validateConfig(cfg); err != nil {
 		return nil, err
 	}
 	return cfg, nil
 }
 
-func loadFromEnvironment() *Config {
+func loadFromEnvironmentChecked() (*Config, error) {
 	revocationRedisURL := "redis://redis:6379/0"
-	if value, explicitlySet := os.LookupEnv("REVOCATION_REDIS_URL"); explicitlySet {
+	if value, explicitlySet, err := readSecretEnv("REVOCATION_REDIS_URL"); err != nil {
+		return nil, err
+	} else if explicitlySet {
 		revocationRedisURL = strings.TrimSpace(value)
+	}
+	jwtSecret, _, err := readSecretEnv("JWT_SECRET")
+	if err != nil {
+		return nil, err
+	}
+	redisURL, redisURLSet, err := readSecretEnv("REDIS_URL")
+	if err != nil {
+		return nil, err
+	}
+	if !redisURLSet || redisURL == "" {
+		redisURL = "redis://redis:6379/3"
+	}
+	internalHMACSecret, _, err := readSecretEnv("INTERNAL_HMAC_SECRET")
+	if err != nil {
+		return nil, err
+	}
+	fileProcessingSecret, _, err := readSecretEnv("FILE_PROCESSING_CAPABILITY_SECRET")
+	if err != nil {
+		return nil, err
 	}
 	jwtAudience := "university-ecosystem-api"
 	if value, explicitlySet := os.LookupEnv("JWT_AUDIENCE"); explicitlySet {
@@ -116,9 +143,10 @@ func loadFromEnvironment() *Config {
 	return &Config{
 		Port:               getEnv("GATEWAY_PORT", "8080"),
 		BackendURL:         getEnv("BACKEND_URL", "http://backend:8000"),
-		RedisURL:           getEnv("REDIS_URL", "redis://redis:6379/3"),
+		RedisURL:           redisURL,
+		TrustedProxies:     getEnvSlice("GATEWAY_TRUSTED_PROXIES", nil),
 		RevocationRedisURL: revocationRedisURL,
-		JWTSecret:          os.Getenv("JWT_SECRET"), // No default — fail secure
+		JWTSecret:          jwtSecret, // No default — fail secure
 		JWTAudience:        jwtAudience,
 		JWKSPublicKeyPEM:   os.Getenv("JWKS_PUBLIC_KEY_PEM"), // Optional RS256 public key
 		FileProcessorAddr:  getEnv("FILE_PROCESSOR_ADDR", "file-processor:50051"),
@@ -138,8 +166,8 @@ func loadFromEnvironment() *Config {
 		GRPCServerName:        os.Getenv("GRPC_SERVER_NAME"),
 		GRPCClientIdentityURI: os.Getenv("GRPC_CLIENT_IDENTITY_URI"),
 		// RZ-14-05: optional in dev, required in production.
-		InternalHMACSecret:             os.Getenv("INTERNAL_HMAC_SECRET"),
-		FileProcessingCapabilitySecret: os.Getenv("FILE_PROCESSING_CAPABILITY_SECRET"),
+		InternalHMACSecret:             internalHMACSecret,
+		FileProcessingCapabilitySecret: fileProcessingSecret,
 		// MOD-W17-03: JWKS hot-reload. Set JWKS_ENDPOINT to enable.
 		JWKSEndpoint:        os.Getenv("JWKS_ENDPOINT"),
 		JWKSRefreshInterval: getEnvInt("JWKS_REFRESH_INTERVAL", 300),
@@ -158,19 +186,12 @@ func loadFromEnvironment() *Config {
 		TLSCertFile:            os.Getenv("TLS_CERT_FILE"),
 		TLSKeyFile:             os.Getenv("TLS_KEY_FILE"),
 		WsHubURL:               getEnv("WSHUB_URL", "http://ws-hub:8081"),
-	}
+	}, nil
 }
 
 func validateConfig(cfg *Config) error {
-	if cfg.JWTSecret == "" {
-		// CRITICAL: Fail to start if no secret is provided.
-		return fmt.Errorf("JWT_SECRET environment variable is not set")
-	}
-	if cfg.RevocationRedisURL == "" {
-		return fmt.Errorf("REVOCATION_REDIS_URL environment variable must not be blank")
-	}
-	if cfg.JWTAudience == "" {
-		return fmt.Errorf("JWT_AUDIENCE environment variable must not be blank")
+	if err := validateRequestSettings(cfg); err != nil {
+		return err
 	}
 
 	environment := strings.ToLower(strings.TrimSpace(cfg.Environment))
@@ -200,6 +221,26 @@ func validateConfig(cfg *Config) error {
 		cfg.JWKSRefreshInterval = 300
 	}
 
+	return nil
+}
+
+func validateRequestSettings(cfg *Config) error {
+	if cfg.JWTSecret == "" {
+		// CRITICAL: Fail to start if no secret is provided.
+		return fmt.Errorf("JWT_SECRET environment variable is not set")
+	}
+	if cfg.RevocationRedisURL == "" {
+		return fmt.Errorf("REVOCATION_REDIS_URL environment variable must not be blank")
+	}
+	if cfg.JWTAudience == "" {
+		return fmt.Errorf("JWT_AUDIENCE environment variable must not be blank")
+	}
+	if cfg.RateLimitRPS <= 0 {
+		return fmt.Errorf("RATE_LIMIT_RPS must be greater than zero")
+	}
+	if cfg.RateLimitBurst <= 0 {
+		return fmt.Errorf("RATE_LIMIT_BURST must be greater than zero")
+	}
 	return nil
 }
 

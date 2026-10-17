@@ -1,7 +1,8 @@
-import { ReactNode } from "react"
+import { useSyncExternalStore, type ReactNode } from "react"
 import { m, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { WifiOff } from "lucide-react"
+import { APP_HYDRATED_EVENT } from "@/app/hydration"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { cn } from "@/utils/cn"
 import { fadeVariants } from "@/utils/animations"
@@ -11,7 +12,23 @@ type LayoutProps = {
   className?: string
 }
 
+const subscribeToAppHydration = (onStoreChange: () => void) => {
+  if (typeof window === "undefined") return () => undefined
+
+  window.addEventListener(APP_HYDRATED_EVENT, onStoreChange)
+  return () => window.removeEventListener(APP_HYDRATED_EVENT, onStoreChange)
+}
+
+const getAppHydrationSnapshot = () =>
+  typeof window !== "undefined" && window.__APP_HYDRATED === true
+const getServerAppHydrationSnapshot = () => false
+
 const Layout = ({ children, className }: LayoutProps) => {
+  const appHydrated = useSyncExternalStore(
+    subscribeToAppHydration,
+    getAppHydrationSnapshot,
+    getServerAppHydrationSnapshot
+  )
   const isOnline = useOnlineStatus()
   const { t } = useTranslation("system")
   const isLhci = import.meta.env.VITE_LHCI === "true"
@@ -28,10 +45,9 @@ const Layout = ({ children, className }: LayoutProps) => {
     <m.div
       data-scroll-root
       tabIndex={-1}
-      // Lighthouse renders the SSR response before effects run.  Starting the
-      // audit-only shell hidden would make a correct server render paint as a
-      // blank page and inflate LCP; production retains the composed entrance.
-      initial={isLhci ? false : "hidden"}
+      // The server and hydration snapshots stay visible for the first document.
+      // Later client route mounts retain the composed entrance animation.
+      initial={isLhci || !appHydrated ? false : "hidden"}
       animate="visible"
       exit="exit"
       variants={fadeVariants}

@@ -94,11 +94,11 @@ async def _reset_user_mfa(
                     type="security",
                     user_ids=[user.id],
                 )
+            await mfa.publish_mfa_session_revocations(stats.session_revocations)
             await session.commit()
         except Exception:  # RZ-22-01-JUSTIFIED: transaction-boundary rollback
             await session.rollback()
             raise
-        await mfa.publish_mfa_session_revocations(stats.session_revocations)
         reason = "admin_reset" if stats.changed else "admin_reset_noop"
         _audit_cli(
             "users.mfa.reset",

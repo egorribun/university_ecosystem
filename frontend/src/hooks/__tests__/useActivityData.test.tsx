@@ -82,7 +82,59 @@ describe("useActivityData", () => {
       grades: true,
       participation: true,
     })
+    expect(result.current.hasAnyData).toBe(true)
     expect(result.current.isPartial).toBe(false)
+  })
+
+  it("treats successful zero-valued summaries as an empty activity state", () => {
+    vi.mocked(useActivitySummaryQuery).mockReturnValue({
+      data: {
+        attendance: {
+          percent: 0,
+          present: 0,
+          total: 0,
+          trend: 0,
+          period_key: "90d",
+          recent: [],
+        },
+        grades: { average: 0, scale: "5", trend: 0, recent: [] },
+        participation: { events: 0, hours: 0, groups: 0, trend: 0, recent: [] },
+      },
+      isFetching: false,
+      isSuccess: true,
+    } as unknown as ReturnType<typeof useActivitySummaryQuery>)
+
+    const { result } = renderHook(() => useActivityData())
+
+    expect(result.current.availability).toEqual({
+      attendance: true,
+      grades: true,
+      participation: true,
+    })
+    expect(result.current.hasAnyData).toBe(false)
+    expect(result.current.isPartial).toBe(false)
+  })
+
+  it("does not mistake an unavailable empty feed for a complete empty state", () => {
+    vi.mocked(useActivitySummaryQuery).mockReturnValue({
+      data: {
+        attendance: null,
+        grades: { average: 0, scale: "5", trend: 0, recent: [] },
+        participation: { events: 0, hours: 0, groups: 0, trend: 0, recent: [] },
+      },
+      isFetching: false,
+      isSuccess: true,
+    } as unknown as ReturnType<typeof useActivitySummaryQuery>)
+
+    const { result } = renderHook(() => useActivityData())
+
+    expect(result.current.availability).toEqual({
+      attendance: false,
+      grades: true,
+      participation: true,
+    })
+    expect(result.current.hasAnyData).toBe(false)
+    expect(result.current.isPartial).toBe(true)
   })
 
   it("derives chart data correctly", () => {

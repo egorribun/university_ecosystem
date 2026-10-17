@@ -1,3 +1,5 @@
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { UserState } from "@/types/Auth"
 /**
  * Focused API/query contracts used by mutation testing.
  *
@@ -6,7 +8,7 @@
  * cancellation after an AbortSignal flips, and endpoint-context preservation.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { renderHook, waitFor } from "@testing-library/react"
+import { cleanup, renderHook, waitFor } from "@testing-library/react"
 import type { PropsWithChildren } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -111,6 +113,7 @@ const runActivity = (client: QueryClient) => {
 }
 
 beforeEach(() => {
+  useAuthStore.setState({ user: { id: "feed-test-user" } as UserState, loading: false })
   vi.clearAllMocks()
   vi.unstubAllGlobals()
   mocks.storePendingMutation.mockResolvedValue(undefined)
@@ -118,6 +121,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  cleanup()
+  useAuthStore.setState({ user: null, loading: true })
   vi.unstubAllGlobals()
   window.localStorage.clear()
 })
@@ -175,7 +180,7 @@ describe("events query defensive contracts", () => {
     ).toBeNull()
   })
 
-  it("returns an empty page for a 304 cache object with no pages array", async () => {
+  it("rejects a 304 when its cached page collection is malformed", async () => {
     const client = makeClient()
     const filters = { language: "ru", is_active: true as const }
     // Keep the observer's own infinite-data shape valid, while making only
@@ -192,15 +197,9 @@ describe("events query defensive contracts", () => {
       wrapper: wrapperFor(client),
     })
     await waitFor(() => expect(mocks.allEvents).toHaveBeenCalledOnce())
-    await waitFor(() => expect(result.current.isFetching).toBe(false))
-    expect(result.current.pagination).toEqual({
-      items: [],
-      total: 0,
-      limit: 12,
-      cursor: null,
-      next_cursor: null,
-      has_more: false,
-    })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.error?.message).toBe("304 response has no cached events page")
+    expect(result.current.pagination).toBeNull()
   })
 
   it("treats an undefined last page as terminal in the hook's callback", () => {
@@ -226,18 +225,22 @@ describe("events query defensive contracts", () => {
   })
 
   it("rejects status 199 in the my-events validateStatus contract", async () => {
-    mocks.myEvents.mockResolvedValue({ status: 200, data: [] })
+    mocks.myEvents.mockResolvedValueOnce({ status: 200, data: [makeEvent("my-event")] })
     const client = makeClient()
     const { result } = renderHook(() => useMyEventsQuery({ language: "ru", userId: "u-1" }), {
       wrapper: wrapperFor(client),
     })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    const config = mocks.myEvents.mock.calls[0]?.[0] as {
+    expect(result.current.data).toEqual([makeEvent("my-event")])
+    expect(mocks.myEvents).toHaveBeenCalledOnce()
+    const config = mocks.myEvents.mock.calls.at(-1)?.[0] as {
       validateStatus: (status: number) => boolean
     }
     expect(config.validateStatus(199)).toBe(false)
     expect(config.validateStatus(200)).toBe(true)
-    expect(config.validateStatus(399)).toBe(true)
+    expect(config.validateStatus(299)).toBe(true)
+    expect(config.validateStatus(300)).toBe(false)
+    expect(config.validateStatus(304)).toBe(true)
     expect(config.validateStatus(400)).toBe(false)
   })
 
@@ -261,8 +264,14 @@ describe("events query defensive contracts", () => {
   it("recomputes the events placeholder when the language changes", () => {
     const first = [makeEvent("ru-event")]
     const second = [makeEvent("en-event")]
-    window.localStorage.setItem("events:list:ru:active", JSON.stringify(first))
-    window.localStorage.setItem("events:list:en:active", JSON.stringify(second))
+    window.localStorage.setItem(
+      "events:list:account:feed-test-user:ru:active",
+      JSON.stringify(first)
+    )
+    window.localStorage.setItem(
+      "events:list:account:feed-test-user:en:active",
+      JSON.stringify(second)
+    )
     const client = makeClient()
     const { result, rerender } = renderHook(
       ({ language }: { language: string }) =>

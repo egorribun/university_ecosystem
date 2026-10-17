@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,6 +18,7 @@ import (
 // TestSetupJWKS_Scenarios covers empty, re-registration (cancelling old context), and invalid URL scenarios.
 func TestSetupJWKS_Scenarios(t *testing.T) {
 	h := setupTestHub()
+	t.Cleanup(h.Stop)
 	ctx := context.Background()
 
 	t.Run("empty URL returns nil", func(t *testing.T) {
@@ -42,10 +42,9 @@ func TestSetupJWKS_Scenarios(t *testing.T) {
 	})
 
 	t.Run("register invalid URL", func(t *testing.T) {
-		// Registering malformed URL with lesstreat-go/jwx/v2 jwk.Cache.Register does not fail,
-		// but the subsequent background Refresh fails (logging a warning).
+		// v3 validates the trusted JWKS URL at registration and rejects malformed input.
 		err := h.SetupJWKS(ctx, "::invalid-url-scheme::")
-		assert.NoError(t, err)
+		assert.Error(t, err)
 	})
 }
 
@@ -57,7 +56,7 @@ func TestTryForceRefreshJWKS_CooldownAndRace(t *testing.T) {
 	previous := _lastJWKSForceRefreshUnix.Load()
 	t.Cleanup(func() { _lastJWKSForceRefreshUnix.Store(previous) })
 
-	h.jwksCache = jwk.NewCache(ctx)
+	newTestJWKSCache(t, h, ctx, "http://127.0.0.1:1/invalid")
 	h.jwksURL = "http://127.0.0.1:1/invalid"
 
 	t.Run("rate-limited cooldown path", func(t *testing.T) {
@@ -92,7 +91,7 @@ func TestSubscribeToNATS_KeysRotated(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	h.jwksCache = jwk.NewCache(ctx)
+	newTestJWKSCache(t, h, ctx, "http://127.0.0.1:1/invalid")
 	h.jwksURL = "http://127.0.0.1:1/invalid"
 
 	assert.NotPanics(t, func() {

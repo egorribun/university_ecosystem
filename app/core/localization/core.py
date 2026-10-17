@@ -74,7 +74,7 @@ def _locale_from_accept_language(header_value: Any) -> str | None:
         if params:
             for param in params.split(";"):
                 param = param.strip()
-                if param.startswith("q="):
+                if param[:2].lower() == "q=":
                     try:
                         quality = float(param[2:])
                     except ValueError:

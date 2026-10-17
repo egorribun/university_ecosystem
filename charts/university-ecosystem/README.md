@@ -24,15 +24,37 @@ Security policies apply. Before rendering or installing the application:
 5. Replace the required ingress hosts, verify DNS, and wait for the referenced
    TLS certificate to become Ready.
 
-The dependency trust boundary is deliberately narrow: Redis must render as
-`docker.io/bitnami/redis`, its metrics sidecar as
-`docker.io/bitnami/redis-exporter`, and NATS as `docker.io/bitnami/nats`.
-Staging and production require immutable digests, `imagePullPolicy: Always`,
-and `global.security.allowInsecureImages=false`; registry mirrors and repository
-substitution fail rendering. Digest and repository pinning establish the
-currently implemented artifact identity boundary. Independent signature and
-attestation verification must not be claimed until reviewed signer roots and
-attestation policies are configured.
+The backend receives `APP_BASE_URL`, `FRONTEND_ORIGIN` and `FRONTEND_ORIGINS`
+from the first ingress host (`https://<ingress.hosts[0].host>`), so emailed
+password-reset and email-change links and the API CORS allow-list point at the
+public frontend. `backend.config.frontendOrigin` may override the derived value
+in development; staging and production fail rendering unless it is empty or
+equal to the ingress origin.
+
+The dependency trust boundary is deliberately narrow: the cache-compatible
+Redis image must render as `docker.io/redis:7.4.11-alpine`, its metrics sidecar as
+`docker.io/oliver006/redis_exporter`, and NATS as `docker.io/nats`. The cache is
+packaged by the first-party `redis` wrapper chart at version `0.1.0`, which retains
+the established Redis Service and PVC identities. NATS uses the NATS-maintained
+chart at version `2.15.0`. Staging and production require immutable digests,
+`imagePullPolicy: Always`, and `global.security.allowInsecureImages=false`; registry
+mirrors and repository substitution fail rendering. Digest and repository
+pinning establish the currently implemented artifact identity boundary.
+Independent signature and attestation verification must not be claimed until
+reviewed signer roots and attestation policies are configured.
+
+For any release that adopts the cache Redis UID change, run Redis, exporter, and init
+containers as UID `10001` with GID `1001` and pod `fsGroup: 1001`, while preserving the
+existing Redis claim name, `/data` mount, Service identities, and retention policy. The
+exporter password-file init must reuse the exact resolved backend image and write the
+exporter JSON password file to a memory-backed volume mounted read-only; it uses the
+existing `redis-credentials/redis-password` Secret, adds no Secret key or ExternalSecret
+contract, and leaves existing Redis probes unchanged. Before rollout against retained
+data, require a protected PVC backup with demonstrated restore, RDB/AOF read-write and
+restart checks through `1001:1001 -> 10001:1001 -> 1001:1001`, and a representative
+cluster check that the target StorageClass/CSI driver honors `fsGroup`. A
+Docker/POSIX-volume test does not prove live-PVC or CSI compatibility and must not be
+reported as such.
 
 When backups are enabled, `backup.postgresImage` and
 `backup.s3ClientImage` must also use `repository@sha256:<digest>` and are
@@ -57,6 +79,67 @@ Production must set it to `ClusterIssuer`, producing only
 `cert-manager.io/cluster-issuer`. Do not inject either annotation through the
 free-form ingress annotation map.
 
+## Envoy Gateway API preview (fail-closed)
+
+`gatewayApi.enabled` defaults to `false`. Setting it to `true` currently makes
+Helm rendering fail with an explicit parity diagnostic; the ordinary Ingress
+path remains the only deployable chart path. A self-attested values flag was
+removed because it could not prove that the necessary Envoy policies or their
+runtime dependencies existed.
+
+The unresolved Ingress contract is concrete: `50m` request bodies, `50`
+requests/second with a `5x` per-client burst, and `20` concurrent connections
+per client. Envoy Gateway `v1.9.2` does not provide a drop-in policy combination
+for those semantics:
+
+- The chart renders local `BackendTrafficPolicy` entries with
+  `sourceCIDR.type: Distinct` for IPv4 and IPv6, but Envoy Gateway v1.9.2 does
+  not support distinct matching for local rate limits. Do not treat these
+  entries as a per-client limit: local counters are per proxy and per route.
+  `RateLimitValue` exposes requests and a time unit but no burst field, so this
+  policy does not implement the ingress-wide 50/250 contract. A global
+  source-CIDR limit needs separately configured Envoy rate-limit service
+  infrastructure and a datastore.
+- `gatewayApi.clientIPDetection` deliberately defaults to an empty map. Before
+  enabling this preview, the operator must select `directSourceIP` for a
+  source-preserving L4 path, or `xForwardedFor` with the real trusted-hop count
+  or trusted proxy CIDRs. The chart does not guess the external load-balancer
+  chain, and it rejects activation without exactly one source mode.
+- The chart passes `gateway.config.rateLimitRps` (default `100`) and
+  `gateway.config.rateLimitBurst` (default `200`) to the Go Gateway. These
+  application limits do not establish the ingress-wide 50/250 per-client
+  contract: the edge and Go Gateway have separate counters, and forwarded
+  client identity depends on the explicitly configured trusted-proxy chain.
+- `ClientTrafficPolicy.connection.connectionLimit` limits a Gateway or listener
+  per Envoy proxy, not each client. Setting it to 20 would cap the whole listener
+  and conflict with the 1,000-connection WebSocket acceptance target.
+- Envoy Gateway `v1.9.2` supports `BackendTrafficPolicy.requestBuffer` targeted
+  at an `HTTPRoute`, and rejects a request above its configured limit with 413.
+  The dormant chart template isolates `/api/v1` on its own route and attaches
+  the fixed `50Mi` limit there, preserving the Go Gateway as the HTTP/auth and
+  gRPC-dispatch owner. `/ws`, `/webtransport`, and `/.well-known`
+  remain outside that body-buffer policy. The filter fully buffers each request
+  before forwarding it; the externally managed Envoy data plane has no accepted
+  concurrent-buffer memory budget, and this route does not prove the existing
+  ingress-wide 50 MiB cap on every other path. The backend ASGI middleware's
+  50 MiB cap does not replace an edge limit.
+
+The chart therefore still blocks full Gateway API rendering. In addition to the
+body-limit scope and data-plane memory budget above, it needs a non-spoofable
+per-client rate and burst policy and a safe per-client connection policy, each
+covered by rendered contracts. No manual override exists. Route values continue
+to assign API/auth traffic to the Go Gateway, public JWKS to the backend,
+`/ws/ticket` to the Go Gateway, and `/ws/chat` to ws-hub. The backend GraphQL
+HTTP route is excluded from the MVP; the file-processor GraphQL runtime is a
+separate service and is unchanged.
+
+This review uses the pinned [Envoy Gateway v1.9 request-buffering](https://gateway.envoyproxy.io/v1.9/tasks/traffic/request-buffering/),
+[local-rate-limit](https://gateway.envoyproxy.io/v1.9/tasks/traffic/local-rate-limit/),
+[global-rate-limit](https://gateway.envoyproxy.io/v1.9/tasks/traffic/global-rate-limit/),
+[connection-limit](https://gateway.envoyproxy.io/v1.9/tasks/traffic/connection-limit/),
+[ClientTrafficPolicy API](https://gateway.envoyproxy.io/v1.9/api/extension_types/),
+and [v1.9.2 release notes](https://gateway.envoyproxy.io/news/releases/notes/v1.9.2/).
+
 CWV release metadata is configured only through the typed top-level `cwv`
 tree. Its release SHA and frontend digest must exactly match the immutable
 release inputs; `backend.env.CWV_*` overrides are not part of the deployment
@@ -79,6 +162,21 @@ contract.
 `university-connections` must contain `database-url`, `redis-backend-url`,
 `redis-gateway-url`, `redis-revocation-url`, `nats-url`, and
 `nats-auth-token`. `redis-credentials` must contain `redis-password`.
+
+The backend, outbox worker, migration Job, gateway, ws-hub, and file-processor
+consume their existing Kubernetes Secret values through projected files. Each
+workload projects only the exact keys it consumes under
+`/run/secrets/<secret-name>/<key>`; the volume mount is read-only and its file
+mode is `0440`. The workload's `*_FILE` settings point to these paths. The
+backend's `JWT_PRIVATE_KEY_PATH` points to its private-key file under the same
+mount. A configured file that is missing or invalid causes startup to fail; the service
+does not fall back to a plain environment value. Existing plain environment
+settings remain supported by Compose. Processes load file values at startup, so
+secret rotation uses the deployment workflow's controlled restart and rollout.
+
+When the KEDA PostgreSQL scaler is enabled, its `TriggerAuthentication` reads
+the key configured by `connections.kedaPostgresqlURLKey` from
+`connections.existingSecret` with the scaler parameter `connection`.
 
 The backend upload path is explicitly S3-compatible in staging and production:
 `backend.config.storageBackend` must be `s3` or `minio`, the bucket must be
@@ -103,7 +201,7 @@ the audience from `gateway.config.jwtAudience` and the canonical issuer from
 issuer, audience, algorithm, or required security claims. Keep the issuer
 stable for an environment (the release script derives it from the HTTPS API
 host) and treat it as non-secret configuration. Revoked token JTIs and
-capability replay nonces use the dedicated persistent revocation Redis/Valkey
+capability replay nonces use the dedicated persistent revocation Redis
 store, not the evictable application cache.
 
 In development, the gateway's `JWKS_ENDPOINT` uses the in-cluster backend HTTP
@@ -121,11 +219,17 @@ last-known-good key set when a refresh fails. `FP_JWKS_REFRESH_INTERVAL` is in
 seconds (default `300`, maximum `86400`), and `FP_JWT_ACTIVE_KID` names the
 static PEM fallback during startup (default `primary`).
 
-`university-nats-config` must contain `nats-server.conf`. That externally
-managed configuration is the canonical NATS authentication contract: it must
-use the same token stored as `nats-auth-token`, enable JetStream, set
-`store_dir: /data/jetstream`, and define the intended cluster routes. The chart
-uses an existing Secret so the token never enters Helm release state.
+`university-nats-config` must contain `nats-server.conf`. The NATS container
+loads that Secret file with `--config /etc/nats-auth/nats-server.conf`.
+The chart-generated ConfigMap is not the runtime configuration. This externally
+managed file is the canonical NATS authentication contract: it must use the same token
+stored as `nats-auth-token`, enable JetStream, set
+`store_dir: /data/jetstream`, and define the intended cluster routes. The official
+NATS chart mounts the existing `data` claim at `/data`; values therefore set
+`config.jetstream.fileStore.dir: /data` and merge
+`config.jetstream.merge.store_dir: /data/jetstream`. This keeps the
+JetStream files at their existing path on the retained PVC. The chart uses an
+existing Secret so the token never enters Helm release state.
 
 The internal gateway-to-file-processor gRPC boundary uses conventional mTLS.
 `university-internal-grpc-gateway-client`,
@@ -148,14 +252,18 @@ file-processor before retiring the old CA. Never set `InsecureSkipVerify` or
 `-tls-no-verify`.
 
 Render `deploymentContract.enabled=true` separately to obtain the machine-
-readable Secret names and required key sets. Keep it false in the installed
-release.
+readable Secret names and required key sets; deployment validation checks that
+contract against the existing Secrets. Keep it false in the installed release.
 
 ## Safe render and release sequence
 
-Start from a clean, verified exact-SHA checkout and a database snapshot. Build
-dependencies from `Chart.lock`, then supply the required values from an
-ephemeral values file or CI environment; do not put secrets on the command line.
+Start from a clean, verified exact-SHA checkout and a database snapshot. The
+chart requires `global.environment` (`development`, `staging`, or `production`)
+and deliberately has no default; set it explicitly in every values file or
+render command. Static contract renders should name `development`; release
+values must name their actual environment. Build dependencies from `Chart.lock`,
+then supply the remaining required values from an ephemeral values file or CI
+environment; do not put secrets on the command line.
 
 ```powershell
 helm dependency build charts/university-ecosystem
@@ -180,7 +288,7 @@ helm upgrade --install university charts/university-ecosystem `
   --namespace university-ecosystem `
   --values charts/university-ecosystem/values-staging.yaml `
   --values .staging-resolved-nonsecret-values.yaml `
-  --atomic --wait --timeout 20m --history-max 10
+  --rollback-on-failure --wait=legacy --wait-for-jobs --timeout 15m --history-max 10
 ```
 
 Gate the rollout on migration success, Deployments and StatefulSets becoming
@@ -192,7 +300,7 @@ upgrade. If migrations remain backward compatible, roll back with:
 
 ```powershell
 helm rollback university <revision> --namespace university-ecosystem `
-  --wait --timeout 20m
+  --wait=legacy --timeout 15m
 ```
 
 Helm rollback cannot undo a database migration. For an incompatible schema,

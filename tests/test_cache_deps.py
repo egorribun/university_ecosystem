@@ -1,11 +1,9 @@
-import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.deps.cache import (
-    CacheEntry,
     MemoryCache,
     NullCache,
     RedisCache,
@@ -13,29 +11,9 @@ from app.deps.cache import (
     cached,
     etag_matches,
     format_etag,
-    get_cache_key_version,
-    set_cache_key_version,
-    stale_while_revalidate,
-    versioned_key,
 )
 
-
 # 1. CacheEntry Tests
-def test_cache_entry_should_refresh_probabilistic():
-    now = time.time()
-    # Expired entry
-    entry = CacheEntry(
-        etag="123", payload="data", stored_at=now - 100, ttl_seconds=60.0
-    )
-    assert entry.should_refresh_probabilistic() is True
-
-    # Fresh entry, beta=0 (no probabilistic refresh)
-    entry = CacheEntry(etag="123", payload="data", stored_at=now - 30, ttl_seconds=60.0)
-    assert entry.should_refresh_probabilistic(beta=0.0) is False
-
-    # Negative TTL
-    entry = CacheEntry(etag="123", payload="data", stored_at=now, ttl_seconds=-1.0)
-    assert entry.should_refresh_probabilistic() is False
 
 
 # 2. NullCache Tests
@@ -159,38 +137,11 @@ async def test_cached_decorator():
         mock_cache.get.assert_called_once()
         mock_cache.set.assert_called_once()
 
-
-@pytest.mark.asyncio
-async def test_swr_decorator():
-    mock_cache = MagicMock(spec=MemoryCache)
-    mock_cache.enabled = True
-
-    # Mock stale entry
-    entry = CacheEntry(
-        etag="e", payload="stale", stored_at=time.time() - 100, ttl_seconds=200.0
-    )
-    mock_cache.get = AsyncMock(return_value=entry)
-    mock_cache.set = AsyncMock()
-
-    with patch("app.deps.cache.get_cache", return_value=mock_cache):
-
-        @stale_while_revalidate(ttl=60, stale_ttl=120)
-        async def my_func():
-            return "fresh"
-
-        res = await my_func()
-        assert res == "stale"
-        # Since it's stale, a background task should be created to refresh
-        await asyncio.sleep(0.1)
         # Note: We can't easily assert the background task results
         # without more complex mocks, but the flow is covered.
 
 
 # 7. Utilities
-def test_key_versioning():
-    set_cache_key_version(2)
-    assert get_cache_key_version() == 2
-    assert versioned_key("mykey") == "v2:mykey"
 
 
 def test_etag_matching():

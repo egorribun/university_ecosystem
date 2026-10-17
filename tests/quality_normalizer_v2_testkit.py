@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from pathlib import Path
 
 
@@ -189,3 +190,24 @@ TOOL_VERSION_ARGUMENTS = (
     "--tool-version",
     "cargo-llvm-cov=0.9.1",
 )
+
+
+def make_all_strict_synthetic_contract(
+    contract: dict[str, object],
+) -> dict[str, object]:
+    """Copy a production contract without its repository-bound migration waiver."""
+    synthetic = deepcopy(contract)
+    tier0 = synthetic.get("tier0")
+    if isinstance(tier0, dict):
+        tier0.pop("legacy_migration_baselines", None)
+    return synthetic
+
+
+def write_all_strict_synthetic_contract(source: Path, target: Path) -> None:
+    """Write an isolated-repository contract with only strict coverage policy."""
+    contract = json.loads(source.read_text(encoding="utf-8"))
+    if not isinstance(contract, dict):
+        raise ValueError("synthetic quality contract must be a JSON object")
+    synthetic = make_all_strict_synthetic_contract(contract)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(synthetic), encoding="utf-8")

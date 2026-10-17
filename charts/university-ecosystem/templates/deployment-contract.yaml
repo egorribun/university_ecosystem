@@ -33,8 +33,8 @@
   {{- end -}}
 {{- end -}}
 {{- if .Values.nats.enabled -}}
-  {{- $natsRegistry := default .Values.nats.image.registry .Values.global.imageRegistry -}}
-  {{- $_ := set $dependencyImages "nats" (printf "%s/%s@%s" $natsRegistry .Values.nats.image.repository .Values.nats.image.digest) -}}
+  {{- $natsRegistry := default .Values.nats.container.image.registry .Values.global.imageRegistry -}}
+  {{- $_ := set $dependencyImages "nats" (printf "%s/%s@%s" $natsRegistry .Values.nats.container.image.repository .Values.nats.container.image.digest) -}}
 {{- end -}}
 {{- $dependencyChartVersions := dict -}}
 {{- if .Values.redis.enabled -}}

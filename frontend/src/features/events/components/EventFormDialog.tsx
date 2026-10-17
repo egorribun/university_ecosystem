@@ -21,16 +21,20 @@ export const EventFormDialog = ({ open, onClose, onSuccess, language }: EventFor
       onClose={onClose}
       onCreated={async (draft) => {
         const telemetryContext = captureActiveTelemetryContext()
-        // The createEvent call is handled by the parent EventsFeature
-        // For now, delegate directly to the legacy dialog's onCreated
-        // which will be unified in a later wave
-        const { createEvent } = await import("@/api/events")
         try {
+          const { createEvent } = await import("@/api/events")
           await telemetryContext.run(() => createEvent(draft))
-          onClose()
-          telemetryContext.run(onSuccess)
         } catch (err) {
           logError("[EventFormDialog] createEvent failed:", err)
+          throw err
+        }
+
+        try {
+          await telemetryContext.run(onSuccess)
+        } catch (err) {
+          // The create already committed. Refresh failures must not keep the
+          // form open as though the create request itself had failed.
+          logError("[EventFormDialog] refresh after create failed:", err)
         }
       }}
       language={language}

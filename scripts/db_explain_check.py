@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import hashlib
 import logging
+import math
 import os
 import re
 import sys
@@ -22,7 +23,7 @@ _EXPLAINABLE_STATEMENT_RE = re.compile(
 
 
 def normalize_explainable_query(query: str) -> str:
-    """Return one bounded SQL statement suitable for EXPLAIN ANALYZE.
+    """Return one bounded SQL statement suitable for planner-only EXPLAIN.
 
     Query logs are diagnostic input, not a trusted SQL channel. DDL, empty
     statements, NUL bytes, and stacked statements are rejected before the
@@ -121,10 +122,71 @@ def find_sequential_scans(
     return sequential_scans
 
 
+def _usable_plan_node(plan_node: object) -> bool:
+    """Return whether a PostgreSQL plan node has the fields the gate consumes."""
+    if not isinstance(plan_node, dict):
+        return False
+
+    node_type = plan_node.get("Node Type")
+    if (
+        not isinstance(node_type, str)
+        or not node_type
+        or node_type != node_type.strip()
+    ):
+        return False
+
+    total_cost = plan_node.get("Total Cost")
+    if isinstance(total_cost, bool) or not isinstance(total_cost, (int, float)):
+        return False
+    try:
+        if not math.isfinite(total_cost) or total_cost < 0:
+            return False
+    except OverflowError:
+        return False
+
+    if node_type == "Seq Scan":
+        relation_name = plan_node.get("Relation Name")
+        if (
+            not isinstance(relation_name, str)
+            or not relation_name
+            or relation_name != relation_name.strip()
+        ):
+            return False
+
+    if "Plans" not in plan_node:
+        return True
+    children = plan_node["Plans"]
+    return isinstance(children, list) and all(
+        _usable_plan_node(child) for child in children
+    )
+
+
+def _extract_usable_explain_plan(plan_json: object) -> dict[str, Any] | None:
+    """Accept the single JSON EXPLAIN document only when its plan is usable."""
+    if isinstance(plan_json, list):
+        if len(plan_json) != 1:
+            return None
+        document = plan_json[0]
+    else:
+        document = plan_json
+
+    if not isinstance(document, dict):
+        return None
+    plan = document.get("Plan")
+    if not _usable_plan_node(plan):
+        return None
+    return plan
+
+
 async def run_explain_analysis(
-    engine, queries: list[str], target_tables: list[str], max_cost_limit: float
+    engine,
+    queries: list[str],
+    target_tables: list[str],
+    max_cost_limit: float,
+    *,
+    fail_on_analysis_error: bool = False,
 ) -> tuple[bool, int]:
-    """Execute EXPLAIN (ANALYZE, BUFFERS) for each query and validate performance rules."""
+    """Plan logged statements and optionally fail when analysis is incomplete."""
     has_violations = False
     checked_count = 0
 
@@ -163,6 +225,8 @@ async def run_explain_analysis(
         logger.warning(
             f"Could not calibrate table statistics: {error}. Continuing with default statistics."
         )
+        if fail_on_analysis_error:
+            has_violations = True
 
     for raw_query in queries:
         try:
@@ -195,31 +259,40 @@ async def run_explain_analysis(
         logger.info("Analyzing query %s", query_id)
 
         try:
-            # Wrap in a transaction that is rolled back to prevent modifications
+            # Scope planner settings and timeout to this query analysis.
             async with engine.connect() as conn:
                 async with conn.begin() as transaction:
                     # Enforce index usage by disabling sequential scans in this session
                     await conn.execute(text("SET LOCAL enable_seqscan = off"))
-                    # Run EXPLAIN with ANALYZE and BUFFERS
-                    explain_sql = (
-                        f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {clean_query}"
-                    )
+                    # Query logs omit bind values; planner-only EXPLAIN keeps
+                    # synthetic placeholders from executing DML or DML CTEs.
+                    explain_sql = f"EXPLAIN (FORMAT JSON) {clean_query}"
                     # Add timeout to explain query to prevent hangs
                     await conn.execute(text("SET statement_timeout = '15s'"))
                     result = await conn.exec_driver_sql(explain_sql)
                     plan_json_str = result.scalar()
                     await transaction.rollback()
 
-            if not plan_json_str:
-                logger.warning("No plan returned for query %s", query_id)
-                continue
+            if fail_on_analysis_error:
+                root_plan = _extract_usable_explain_plan(plan_json_str)
+                if root_plan is None:
+                    logger.warning("No usable plan returned for query %s", query_id)
+                    has_violations = True
+                    continue
+                total_cost = root_plan["Total Cost"]
+            else:
+                if not plan_json_str:
+                    logger.warning("No plan returned for query %s", query_id)
+                    continue
 
-            # Parse plan structure
-            plan_data = (
-                plan_json_str[0] if isinstance(plan_json_str, list) else plan_json_str
-            )
-            root_plan = plan_data.get("Plan", {})
-            total_cost = root_plan.get("Total Cost", 0.0)
+                # Preserve the legacy optional-mode parsing behavior.
+                plan_data = (
+                    plan_json_str[0]
+                    if isinstance(plan_json_str, list)
+                    else plan_json_str
+                )
+                root_plan = plan_data.get("Plan", {})
+                total_cost = root_plan.get("Total Cost", 0.0)
 
             # Check for Seq Scans
             seq_scans = find_sequential_scans(root_plan, target_tables)
@@ -250,8 +323,8 @@ async def run_explain_analysis(
             logger.warning(
                 "Could not execute EXPLAIN for query %s: %s", query_id, error
             )
-            # If a query is invalid/broken or fails EXPLAIN, we treat it as a warning but don't fail the gate
-            # unless it's a critical syntax error in schema.
+            if fail_on_analysis_error:
+                has_violations = True
 
     return has_violations, checked_count
 
@@ -280,6 +353,11 @@ async def main():
 
     db_url = os.getenv("DATABASE_URL")
     if not db_url:
+        if args.fail_on_seq_scan:
+            logger.error(
+                "DATABASE_URL not set. DB Performance Gate cannot verify query plans."
+            )
+            sys.exit(1)
         logger.warning("DATABASE_URL not set. Skipping real DB checks.")
         sys.exit(0)
 
@@ -289,22 +367,42 @@ async def main():
 
     queries = extract_queries_from_logs(log_dir_path)
     if not queries:
-        logger.warning(f"No queries found in log directory: {log_dir_path}")
+        if args.fail_on_seq_scan:
+            logger.error(
+                "No queries found in log directory: %s. "
+                "DB Performance Gate cannot verify query plans.",
+                log_dir_path,
+            )
+            exit_code = 1
+        else:
+            logger.warning(f"No queries found in log directory: {log_dir_path}")
+            exit_code = 0
         await engine.dispose()
-        sys.exit(0)
+        sys.exit(exit_code)
 
     logger.info(f"Loaded {len(queries)} unique queries to analyze.")
 
     has_violations, checked_count = await run_explain_analysis(
-        engine, queries, target_tables, args.max_cost
+        engine,
+        queries,
+        target_tables,
+        args.max_cost,
+        fail_on_analysis_error=args.fail_on_seq_scan,
     )
 
     await engine.dispose()
 
-    if has_violations and args.fail_on_seq_scan:
-        logger.critical(
-            f"DB Performance Gate FAILED: Found violations in {checked_count} checked queries."
-        )
+    if args.fail_on_seq_scan and (has_violations or checked_count == 0):
+        if checked_count == 0:
+            logger.critical(
+                "DB Performance Gate FAILED: No eligible target queries were checked."
+            )
+        else:
+            logger.critical(
+                "DB Performance Gate FAILED: Violation or analysis failure "
+                "in %s checked queries.",
+                checked_count,
+            )
         sys.exit(1)
 
     logger.info(f"DB Performance Gate PASSED. Checked {checked_count} queries.")

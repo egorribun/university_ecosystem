@@ -26,11 +26,8 @@ if TYPE_CHECKING:
 
     from app.schemas.dtos import UserAuthDTO, UserDTO
 
-from redis.exceptions import RedisError
-
 from app.core.logging import get_logger
 
-logger = get_logger(__name__)
 audit_logger = get_logger("app.users.audit")
 
 
@@ -62,7 +59,7 @@ class MfaResetStats:
 
 @dataclass(frozen=True, slots=True)
 class MfaSessionRevocation:
-    """Redis revocation to publish only after the DB transaction commits."""
+    """Redis revocation required before the security transaction commits."""
 
     jti: str
     expires_at: datetime
@@ -116,22 +113,21 @@ async def revoke_sibling_sessions_for_factor_change(
 async def publish_mfa_session_revocations(
     pending: list[MfaSessionRevocation],
 ) -> None:
-    """Publish Redis tombstones after the authoritative DB commit succeeds."""
+    """Write durable tombstones before committing a security-boundary mutation.
+
+    Failures propagate.  A later database rollback may conservatively sign out
+    siblings, but must never delete a tombstone and resurrect a credential.
+    Use the mandatory revocation service even when session caching is disabled.
+    """
     if not pending:
         return
-    from app.auth.redis_session import get_session_backend
+    from app.services.auth.redis_session import RedisSessionService
 
-    try:
-        backend = await get_session_backend()
-        for revocation in pending:
-            await backend.revoke_session(
-                revocation.jti,
-                expires_at=revocation.expires_at,
-            )
-    except (RuntimeError, RedisError, OSError):
-        logger.exception(
-            "Failed to publish MFA factor-change session revocations; "
-            "database revocation remains authoritative"
+    backend = RedisSessionService()
+    for revocation in pending:
+        await backend.revoke_session(
+            revocation.jti,
+            expires_at=revocation.expires_at,
         )
 
 

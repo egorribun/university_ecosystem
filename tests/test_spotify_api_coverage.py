@@ -51,10 +51,10 @@ def mock_request():
 
 
 @pytest.mark.asyncio
-async def test_auth_url(mock_user):
+async def test_auth_url(mock_user, mock_request):
     with patch("app.api.spotify._mint_state_token") as mock_create_token:
         mock_create_token.return_value = "state_token"
-        response = await spotify_auth_url(user=mock_user)
+        response = await spotify_auth_url(request=mock_request, user=mock_user)
         assert "url" in response
         assert "state=state_token" in response["url"]
 
@@ -90,12 +90,10 @@ async def test_spotify_callback_success(mock_db, mock_request, mock_user, monkey
 
 async def _run_spotify_callback_success(mock_db, mock_request, mock_user):
     with (
-        patch("app.api.spotify.jwt.decode") as mock_decode,
+        patch("app.api.spotify._consume_oauth_state", new_callable=AsyncMock),
         patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post,
         patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
     ):
-        fixed_uuid = str(uuid.uuid4())
-        mock_decode.return_value = {"sub": fixed_uuid}
         mock_db.get.return_value = mock_user
 
         mock_post.return_value = Response(
@@ -115,6 +113,7 @@ async def _run_spotify_callback_success(mock_db, mock_request, mock_user):
         response = await call_injected(
             spotify_callback,
             mock_request,
+            user=mock_user,
             code="code",
             state="state",
             provides={"AsyncDatabaseSession": mock_db},

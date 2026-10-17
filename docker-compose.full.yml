@@ -131,7 +131,7 @@ services:
   # OpenFeature evaluation service. The source file is shared with the K8s
   # kustomization so local Docker and production evaluate identical flags.
   flagd:
-    image: ghcr.io/open-feature/flagd:v0.16.1@sha256:9525b3c2916183810f93f0a72774c1dfad48d1ae22852c753719c46db80af5e7
+    image: ghcr.io/open-feature/flagd:v0.17.0@sha256:c9f21380dfe51d3ad662a116bc350c7692dead7a8d1e640aa0f6b40cd3d966df
     labels:
       com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     command:
@@ -164,7 +164,7 @@ services:
   # flagd is distroless and intentionally contains no shell or HTTP client.
   # Probe its official readiness endpoint from the same network namespace.
   flagd-healthprobe:
-    image: curlimages/curl:8.21.0@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13
+    image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
     labels:
       com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     network_mode: "service:flagd"
@@ -402,7 +402,7 @@ services:
     # TD-W10-07: Pinned to a specific minor version to prevent surprise upgrades.
     # Major version (pg17) floats within the same PostgreSQL release; to pin to a
     # patch update check https://hub.docker.com/r/pgvector/pgvector/tags
-    image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+    image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
     command: ["postgres", "-c", "max_connections=500", "-c", "track_commit_timestamp=on"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -437,7 +437,7 @@ services:
   # Unlike unconditional CREATE DATABASE calls, this keeps normal restarts free
   # of duplicate-database errors and also repairs pre-existing data volumes.
   postgres-databases-init:
-    image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+    image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
     environment:
       PGHOST: postgres
       PGPORT: "5432"
@@ -463,6 +463,9 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+      # pgvector declares this image VOLUME even though this one-shot client
+      # only runs psql. Keep the implicit mount disposable and Compose-owned.
+      - /var/lib/postgresql/data
     # Replace the base stack's one-item sequence instead of appending the
     # same option during an overlay merge (Compose rejects duplicate entries).
     security_opt: !override
@@ -478,7 +481,7 @@ services:
     # Switched from Redis 7.4 to Valkey 8 (Linux Foundation fork) — Redis 8.x
     # changed license to RSALv2/SSPL. Production compose already uses Valkey.
     # Python `redis` client is fully compatible (same RESP protocol).
-    image: valkey/valkey:8.1-alpine@sha256:a038175878d66b9d274fbf8be73c0305e93798b83917647f167e18cef3c71eec
+    image: valkey/valkey:9.1.2-alpine@sha256:48332870af354a799964c0012ae1194a0bf2bf894eb508f945810596dc2d8d11
     command:
       - "valkey-server"
       - "--save"
@@ -512,7 +515,7 @@ services:
   # Durable, non-evicting security state. Keeping revoked:jti tombstones out
   # of the volatile cache prevents token resurrection during memory pressure.
   revocation-redis:
-    image: valkey/valkey:8.1-alpine@sha256:a038175878d66b9d274fbf8be73c0305e93798b83917647f167e18cef3c71eec
+    image: valkey/valkey:9.1.2-alpine@sha256:48332870af354a799964c0012ae1194a0bf2bf894eb508f945810596dc2d8d11
     # The image entrypoint otherwise starts as root and calls setpriv. With all
     # capabilities dropped that UID transition is denied before Valkey starts.
     user: "999:1000"
@@ -556,7 +559,7 @@ services:
     restart: unless-stopped
 
   redis-exporter:
-    image: oliver006/redis_exporter:v1.88.0@sha256:2c8c55c63ce4d915389f03d337b8acef56aaaca9fab8728291287e612d4d6398
+    image: oliver006/redis_exporter:v1.93.0@sha256:6ca518a72f30f7f576ef92963de1b91d3c3f5fd3aeac949f878bfda183587820
     environment:
       REDIS_ADDR: redis://redis:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}
@@ -587,7 +590,7 @@ services:
   # and stays untouched on disk. start-docker.ps1 refuses a first start next to
   # an unmigrated legacy volume; see docs/runbooks/s3-seaweedfs-cutover.md.
   minio:
-    image: ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+    image: ghcr.io/chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
     # `mini` runs master, volume, filer and S3 in one process and creates
     # S3_BUCKET on first start. There is no console and no host port.
     command: ["mini", "-dir=/data", "-s3.port=9000"]
@@ -622,7 +625,7 @@ services:
   minio-init:
     # SeaweedFS creates the bucket itself; keep the dependency name and only
     # wait until its S3 API answers, so dependants start on ready storage.
-    image: ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+    image: ghcr.io/chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
     entrypoint: [ "/bin/sh", "-ec" ]
     command: [ "wget -qO- http://minio:9000/status >/dev/null" ]
     depends_on:
@@ -631,6 +634,9 @@ services:
     networks:
       - internal
     read_only: true
+    # The readiness-only SeaweedFS client does not store service data.
+    tmpfs:
+      - /data
     cap_drop:
       - ALL
     # Replace the base stack's one-item sequence instead of appending the
@@ -673,18 +679,72 @@ services:
     restart: on-failure
 
   nats:
-    image: nats:2.12.6-alpine@sha256:1cfc36e2e5e638243d8c722f72c954cd0ec4b15ee82fadbc718ce12e2b3c1652
+    image: nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4
     labels:
       com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     # TD-09 (audit 2026-03-06): credentials via config file, not CLI args.
-    # --user/--pass appear in `docker ps` output and /proc/<pid>/cmdline.
-    # envsubst renders the template at startup; generated file lives in /tmp (not persisted).
+    # Render credentials as escaped NATS string literals; never place their values in process arguments.
+    # The generated config is private to the container and is not persisted.
     entrypoint:
       - "sh"
       - "-c"
       - |
-        sed "s/\$$NATS_USER/$NATS_USER/g; s/\$$NATS_PASSWORD/$NATS_PASSWORD/g" /etc/nats/nats.conf.template > /tmp/nats.conf
-        exec nats-server --config /tmp/nats.conf
+        set -eu
+        umask 077
+        LC_ALL=C awk '
+        function quote_nats(value, quoted, i, character) {
+          quoted = "\""
+          for (i = 1; i <= length(value); i++) {
+            character = substr(value, i, 1)
+            if (character == "\\") quoted = quoted "\\\\"
+            else if (character == "\"") quoted = quoted "\\\""
+            else if (character == "\n") quoted = quoted "\\n"
+            else if (character == "\r") quoted = quoted "\\r"
+            else if (character == "\t") quoted = quoted "\\t"
+            else if (character in control_hex) quoted = quoted "\\x" control_hex[character]
+            else quoted = quoted character
+          }
+          return quoted "\""
+        }
+        function render_line(value, user, password, output, user_marker, password_marker) {
+          user_marker = "@NATS_USER@"
+          password_marker = "@NATS_PASSWORD@"
+          output = ""
+          while (length(value) > 0) {
+            if (substr(value, 1, length(user_marker)) == user_marker) {
+              output = output user
+              value = substr(value, length(user_marker) + 1)
+              user_marker_count++
+            } else if (substr(value, 1, length(password_marker)) == password_marker) {
+              output = output password
+              value = substr(value, length(password_marker) + 1)
+              password_marker_count++
+            } else {
+              output = output substr(value, 1, 1)
+              value = substr(value, 2)
+            }
+          }
+          return output
+        }
+        BEGIN {
+          for (code = 1; code < 32; code++) {
+            if (code != 9 && code != 10 && code != 13) {
+              control_hex[sprintf("%c", code)] = sprintf("%02X", code)
+            }
+          }
+          control_hex[sprintf("%c", 127)] = "7F"
+          user = quote_nats(ENVIRON["NATS_USER"])
+          password = quote_nats(ENVIRON["NATS_PASSWORD"])
+        }
+        {
+          print render_line($$0, user, password)
+        }
+        END {
+          if (user_marker_count != 1 || password_marker_count != 1) {
+            exit 1
+          }
+        }' /etc/nats/nats.conf.template > /tmp/nats.conf
+        exec /usr/local/bin/nats-server --config /tmp/nats.conf
     environment:
       - NATS_USER=${NATS_USER:?NATS_USER is required - set in .env file}
       - NATS_PASSWORD=${NATS_PASSWORD:?NATS_PASSWORD is required - set in .env file}
@@ -717,6 +777,9 @@ services:
       - "127.0.0.1:8080:8080"
     environment:
       GATEWAY_PORT: "8080"
+      # Comma-delimited exact proxy IPs/CIDRs. Empty fails closed and uses the
+      # immediate peer; never set this to a broad RFC1918 or cluster range.
+      GATEWAY_TRUSTED_PROXIES: "${GATEWAY_TRUSTED_PROXIES:-}"
       BACKEND_URL: http://backend:8000
       REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/3"
       REVOCATION_REDIS_URL: "redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
@@ -802,6 +865,8 @@ services:
       # `http://localhost:3000` (Vite dev) + `http://localhost:5173` (Vite
       # preview default) for parity with non-Docker dev workflows.
       ALLOWED_ORIGINS: "http://localhost,http://localhost:8081,http://localhost:3000,http://localhost:5173"
+      # Trust only operator-supplied proxy peers; the default remains loopback-only.
+      TRUSTED_PROXIES: "${WS_HUB_TRUSTED_PROXIES:-127.0.0.1,::1}"
       # MOD-01 (audit 2026-03-15 Wave 7): Standard OTel env vars — SDK reads
       # these automatically so no hardcoded endpoint in telemetry.go code.
       # OTEL_EXPORTER_OTLP_INSECURE=true is correct for local dev (tempo has
@@ -980,7 +1045,7 @@ services:
     restart: unless-stopped
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.12@sha256:6711d4eff91dce95b900eb3c771c5298672ba00f6d20cab79551c4acc133f629
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.23@sha256:4d0724bb8d78d7a2330693623e26ca4d621079d062ecc8a30b3e1fc180ec14c1
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=true
@@ -1005,7 +1070,7 @@ services:
     restart: unless-stopped
 
   spicedb-migrate:
-    image: authzed/spicedb:v1.51.0@sha256:f2e6e77f89f8a0c087d9fd26b9ecd443ea601aa5422c92912f7ca95c412eb929
+    image: authzed/spicedb:v1.56.2@sha256:aa96009a0477f8a759149823407d47ad16d1a74390bae3102b3b0b7143502764
     command:
       - datastore
       - migrate
@@ -1042,7 +1107,7 @@ services:
     # P1-06 (audit 2026-03-06): Fixed hardcoded "dev-key" + memory datastore.
     # memory datastore → ACLs lost on restart; "dev-key" → brute-forceable.
     # Now uses env var (invisible to `docker ps`) and PostgreSQL for persistence.
-    image: authzed/spicedb:v1.51.0@sha256:f2e6e77f89f8a0c087d9fd26b9ecd443ea601aa5422c92912f7ca95c412eb929
+    image: authzed/spicedb:v1.56.2@sha256:aa96009a0477f8a759149823407d47ad16d1a74390bae3102b3b0b7143502764
     command: >-
       serve
       --datastore-engine postgres
@@ -1099,7 +1164,7 @@ services:
   # `depends_on: temporal-admin-tools: service_completed_successfully` waits
   # for clean exit before starting.
   temporal-admin-tools:
-    image: temporalio/admin-tools:1.30.2@sha256:024c6473df113e4b220b3caf6056d30964582ffcae6f6e46a1074aa6c67968d3
+    image: temporalio/admin-tools:1.30.7@sha256:bbdf5fe91b288c17442efbbfb42daa3668d09cfa8ebeb078d6fd475a97f66b81
     environment:
       SQL_PLUGIN: postgres12
       SQL_HOST: postgres
@@ -1175,7 +1240,7 @@ services:
   #   - file-processor Go credentials chain (W141 SW5; config.go +
   #     main.go connectTemporal)
   temporal:
-    image: temporalio/server:1.30.2@sha256:d5334ee3ddce1617efbe280a10afc85916cf8d81798415c98988dbda2b46773e
+    image: temporalio/server:1.30.7@sha256:dc8dc6fffa29de3bad7f5c39cb406db3104053fbb0c2494e7c76016211bc99b0
     labels:
       com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     ports:
@@ -1251,7 +1316,7 @@ services:
   # `restart: "no"` — one-shot. Once namespace exists, exit 0.
   # `--retention 1` — 1-day workflow history retention (dev-sized).
   temporal-namespace-init:
-    image: temporalio/admin-tools:1.30.2@sha256:024c6473df113e4b220b3caf6056d30964582ffcae6f6e46a1074aa6c67968d3
+    image: temporalio/admin-tools:1.30.7@sha256:bbdf5fe91b288c17442efbbfb42daa3668d09cfa8ebeb078d6fd475a97f66b81
     environment:
       # W144 SW2 NEW (z) #20: `TEMPORAL_CLI_ADDRESS` is the v1 CLI env name;
       # the v2 `temporal` CLI uses `TEMPORAL_ADDRESS` (no _CLI infix). Set
@@ -1306,7 +1371,7 @@ services:
           memory: 128M
 
   imgproxy:
-    image: darthsim/imgproxy:v3.28.0@sha256:afa85d78fc28c1b37ca965f022a9e55100f17dcac9edefbe684ca5af9df3a1e1
+    image: darthsim/imgproxy:v4.0.17@sha256:db0b4b9cd690c8b3590203dea300fb759a18c4ec2af7b37424f0bdef23ce317d
     ports:
       - "127.0.0.1:8082:8080"
     environment:
@@ -1317,6 +1382,9 @@ services:
       IMGPROXY_ALLOWED_SOURCES: "http://backend:8000/static/"
       # SECURITY: NEVER enable in production — leaks internal paths and stacktraces
       IMGPROXY_DEVELOPMENT_ERRORS_MODE: "false"
+      # Preserve v3.28 conditional-header defaults; v4 enables them by default.
+      IMGPROXY_USE_ETAG: "false"
+      IMGPROXY_USE_LAST_MODIFIED: "false"
     networks:
       - internal
       - public
@@ -1337,7 +1405,7 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:12.3.6@sha256:ee4573c0ff6b558d1690c2f453b440183df32392d9619e6216c504795e4458e8
+    image: grafana/grafana:13.2.3@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572
     labels:
       com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     ports:
@@ -1388,7 +1456,7 @@ services:
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:v3.10.0@sha256:4a61322ac1103a0e3aea2a61ef1718422a48fa046441f299d71e660a3bc71ae9
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
     labels:
       com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     entrypoint: ["/bin/sh", "-ec"]
@@ -1438,7 +1506,7 @@ services:
     restart: unless-stopped
 
   tempo:
-    image: grafana/tempo:2.10.3@sha256:cac9de2ac9f6da8efca5b64b690a7cb8c786a0c49cac7b4517dd1b0089a6c703
+    image: grafana/tempo:3.1.0@sha256:3076b8dcdfb32fd6bc5ccef85e7b7313e6199b9cb84366257fc17ecb696db5fd
     labels:
       com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     command: ["-config.file=/etc/tempo/tempo.yaml"]
@@ -1467,7 +1535,7 @@ services:
   # small. Sidecar keeps running via `sleep infinity` so its healthcheck
   # has a stable container to attach to.
   tempo-healthprobe:
-    image: curlimages/curl:8.10.1@sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b
+    image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
     network_mode: "service:tempo"
     depends_on:
       - tempo
@@ -1486,7 +1554,7 @@ services:
     restart: unless-stopped
 
   loki:
-    image: grafana/loki:3.7.1@sha256:73e905b51a7f917f7a1075e4be68759df30226e03dcb3cd2213b989cc0dc8eb4
+    image: grafana/loki:3.7.8@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
     labels:
       com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     command: ["-config.file=/etc/loki/loki.yaml"]
@@ -1506,7 +1574,7 @@ services:
     restart: unless-stopped
 
   loki-healthprobe:
-    image: curlimages/curl:8.10.1@sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b
+    image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
     network_mode: "service:loki"
     depends_on:
       - loki
@@ -1525,7 +1593,7 @@ services:
     restart: unless-stopped
 
   alloy:
-    image: grafana/alloy:v1.18.0@sha256:491b0578c04983fd54fe99b587b6fab4404dc46d0dc16677bd6b00cc1140b308
+    image: grafana/alloy:v1.20.1@sha256:2aa2099af76c0098d4af7a4d6e48f86cb66dc1a000222ad927a1c67c6542d13f
     labels:
       com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     command:
@@ -1566,11 +1634,14 @@ services:
     restart: unless-stopped
 
   pyroscope:
-    image: grafana/pyroscope:1.19.1@sha256:d5d38187f7593fdf5643ba29e67099206e8d4dee6207f78d028ea3fe621cc04d
+    image: grafana/pyroscope:2.3.1@sha256:86a9ee7448487409ead8ada78789de7b78b739711b92b5d7224a1a54abf3eeb2
+    command: ["-architecture.storage=v1", "-write-path=ingester", "-pyroscopedb.data-path=/data"]
     ports:
       - "127.0.0.1:4040:4040"
     volumes:
       - pyroscope-data:/data
+      - pyroscope-compactor-data:/data-compactor
+      - pyroscope-metastore-data:/data-metastore
     deploy:
       resources:
         limits:
@@ -1629,6 +1700,8 @@ volumes:
   loki-data:
   alloy-data:
   pyroscope-data:
+  pyroscope-compactor-data:
+  pyroscope-metastore-data:
   grafana-data:
   prometheus-data:
   revocation-redis-data:

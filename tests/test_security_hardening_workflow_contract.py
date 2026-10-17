@@ -11,6 +11,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 CI = WORKFLOWS / "ci.yml"
+PRE_COMMIT_CONFIG = ROOT / ".pre-commit-config.yaml"
 SECURITY_AUDIT = WORKFLOWS / "reusable-security-audit.yml"
 STANDALONE_SECURITY_WORKFLOWS = {
     "checkov.yml": "checkov",
@@ -24,15 +25,20 @@ DETECT_SECRETS_SCAN_EXCLUSION = (
     r"^(?:\.secrets\.baseline|frontend/WASM_SOURCE_PROVENANCE\.json)$"
 )
 
-ACTIONLINT_SHA256 = "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"  # pragma: allowlist secret -- release checksum
-HADOLINT_SHA256 = "56de6d5e5ec427e17b74fa48d51271c7fc0d61244bf5c90e828aab8362d55010"  # pragma: allowlist secret -- release checksum
-SHELLCHECK_SHA256 = "6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87"  # pragma: allowlist secret -- release checksum
+ACTIONLINT_SOURCE_SHA = (
+    "5dc52e8daa4ef51bfd76a648128474bd41d65df0"  #  -- immutable upstream source revision
+)
+ACTIONLINT_ARCHIVE_SHA256 = "908edaee62f6afa5c53b4773c91333043e17f4a1f315f8f5e311a63de0c122ba"  #  -- source archive checksum
+HADOLINT_SHA256 = "c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507"
+SHELLCHECK_SHA256 = "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198"
 CARGO_BINSTALL_SCRIPT_COMMIT = "5aafaaca52423a22d83a812fa3ca77492e2895db"  # pragma: allowlist secret -- immutable installer commit
 CARGO_BINSTALL_SCRIPT_SHA256 = "d3a93702160e0ec03e2a4e996855db1f01adee801fb84a43add24e0877ef8eae"  # pragma: allowlist secret -- release checksum
-SLSA_VERIFIER_SHA256 = "499befb675efcca9001afe6e5156891b91e71f9c07ab120a8943979f85cc82e6"  # pragma: allowlist secret -- release checksum
-KUBECONFORM_SHA256 = "95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73"  # pragma: allowlist secret -- release checksum
-K6_SHA256 = "c7f03434854f837b6790ee81572e4b0f955241974c79a43cbb9f8d0fef069589"  # pragma: allowlist secret -- release checksum
-TRIVY_SHA256 = "2edd39da482bb4e9831962487b68f68e3928ec3137794757f54d00383d79547b"  # pragma: allowlist secret -- release checksum
+SLSA_VERIFIER_SHA256 = (
+    "946dbec729094195e88ef78e1734324a27869f03e2c6bd2f61cbc06bd5350339"
+)
+KUBECONFORM_SHA256 = "9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883"
+K6_SHA256 = "39c3117b6af817592dcd0ce4242105c0a7af10948c2a425306f0be8f7a8a8ab1"
+TRIVY_SHA256 = "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f"
 CRD_CATALOG_COMMIT = "866b2653a5334db9aed20ad74701e20fd464471b"  # pragma: allowlist secret -- immutable schema revision
 
 
@@ -47,22 +53,59 @@ def _step(job: dict[str, Any], name: str) -> dict[str, Any]:
 
 
 def test_ci_scanner_bootstraps_are_version_pinned_and_checksum_verified() -> None:
-    """Every downloaded scanner is verified before it can execute."""
+    """Scanner builds and downloaded artifacts are pinned before execution."""
 
     jobs = _workflow(CI)["jobs"]
 
     actionlint_run = _step(jobs["actionlint"], "Install and Run actionlint")["run"]
+    pre_commit = yaml.safe_load(PRE_COMMIT_CONFIG.read_text(encoding="utf-8"))
+    actionlint_repo = next(
+        repo
+        for repo in pre_commit["repos"]
+        if repo.get("repo") == "https://github.com/rhysd/actionlint"
+    )
+    assert actionlint_repo["rev"] == ACTIONLINT_SOURCE_SHA
+
+    checkout = jobs["actionlint"]["steps"][0]
+    assert checkout["with"]["persist-credentials"] is False
+    go_setup = _step(jobs["actionlint"], "Set up Go for source-pinned actionlint")
+    assert go_setup["uses"] == (
+        "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e"
+    )
+    assert go_setup["with"]["go-version"] == "1.26.9"
+    assert go_setup["with"]["cache"] is False
+
+    assert f'actionlint_source_sha="{ACTIONLINT_SOURCE_SHA}"' in actionlint_run
+    assert f'actionlint_archive_sha256="{ACTIONLINT_ARCHIVE_SHA256}"' in actionlint_run
     assert "raw.githubusercontent.com" not in actionlint_run
     assert "bash <(" not in actionlint_run
-    assert 'actionlint_version="1.7.12"' in actionlint_run
-    assert ACTIONLINT_SHA256 in actionlint_run
+    assert (
+        "https://api.github.com/repos/rhysd/actionlint/tarball/${actionlint_source_sha}"
+        in actionlint_run
+    )
     assert "sha256sum --check --strict" in actionlint_run
+    assert "tar --extract --gzip" in actionlint_run
+    assert 'test "$(go env GOVERSION)" = "go1.26.9"' in actionlint_run
+    assert "go build -buildvcs=false -trimpath" in actionlint_run
+    assert (
+        "-X github.com/rhysd/actionlint.version=${actionlint_source_sha}"
+        in actionlint_run
+    )
+    assert 'grep -Fqx "$actionlint_source_sha"' in actionlint_run
+    assert '"$RUNNER_TEMP/actionlint" -color -shellcheck ""' in actionlint_run
+    source_checkout = actionlint_run.index('cd "$actionlint_source_dir"')
+    source_build = actionlint_run.index("go build -buildvcs=false -trimpath")
+    repo_checkout = actionlint_run.index('cd "$GITHUB_WORKSPACE"')
+    workflow_lint = actionlint_run.index(
+        '"$RUNNER_TEMP/actionlint" -color -shellcheck ""'
+    )
+    assert source_checkout < source_build < repo_checkout < workflow_lint
     assert "curl --fail" in actionlint_run
     assert "--proto '=https'" in actionlint_run
     assert "--tlsv1.2" in actionlint_run
 
     hadolint_run = _step(jobs["dockerfile-lint"], "Run Hadolint")["run"]
-    assert 'hadolint_version="2.12.0"' in hadolint_run
+    assert 'hadolint_version="2.15.1"' in hadolint_run
     assert HADOLINT_SHA256 in hadolint_run
     assert "sha256sum --check --strict" in hadolint_run
     assert "curl --fail" in hadolint_run
@@ -77,12 +120,12 @@ def test_ci_scanner_bootstraps_are_version_pinned_and_checksum_verified() -> Non
     shellcheck_install = _step(jobs["shellcheck"], "Install shellcheck")["run"]
     assert "wget -qO-" not in shellcheck_install
     assert "| tar" not in shellcheck_install
-    assert 'shellcheck_version="0.10.0"' in shellcheck_install
+    assert 'shellcheck_version="0.11.0"' in shellcheck_install
     assert SHELLCHECK_SHA256 in shellcheck_install
     assert "sha256sum --check --strict" in shellcheck_install
     assert "curl --fail" in shellcheck_install
     shellcheck_run = _step(jobs["shellcheck"], "Run ShellCheck")["run"]
-    assert "shellcheck-v0.10.0/shellcheck" in shellcheck_run
+    assert "shellcheck-v0.11.0/shellcheck" in shellcheck_run
 
 
 def test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_locked() -> (
@@ -113,7 +156,7 @@ def test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_lock
         "PyYAML==6.0.3": "c458b6d084f9b935061bc36216e8a69a7e293a2f1e68bf956dcd9e6cbcd143f5",  # pragma: allowlist secret -- wheel checksum
         "requests==2.34.2": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",  # pragma: allowlist secret -- wheel checksum
         "certifi==2026.7.22": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775",  # pragma: allowlist secret -- wheel checksum
-        "charset-normalizer==3.5.1": "00668ebb0609751758682eb0b5857e7c35b9f00e84dfdef062e103244ec94d45",  # pragma: allowlist secret -- wheel checksum
+        "charset-normalizer==3.5.2": "34276fd796040bf0993ab33a369aa572e6979c7aab225a88893667ad8eac8f7a",
         "idna==3.20": "a7db850025b95ded1eae8a46181a1a6c56c92c96f0e2b005d9ff8dc0210cab44",  # pragma: allowlist secret -- wheel checksum
         "urllib3==2.8.0": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",  # pragma: allowlist secret -- wheel checksum
     }
@@ -172,7 +215,6 @@ def test_every_security_scanner_waits_for_the_shared_policy_integrity_gate() -> 
         "govulncheck",
         "sbom",
         "detect-secrets-baseline",
-        "semgrep",
     )
     for consumer in consumers:
         needs = jobs[consumer].get("needs", [])
@@ -261,19 +303,25 @@ def test_standalone_security_scanners_verify_trusted_base_before_consuming_polic
         assert 'BASE_REPOSITORY" != "$GITHUB_REPOSITORY"' in run
         assert 'PR_AUTHOR" != "egorribun"' in run
 
-        scanner_index = next(
-            index
-            for index, step in enumerate(steps)
-            if step.get("name", "").startswith(
-                (
-                    "Run Checkov",
-                    "Initialize CodeQL",
-                    "Dependency Review",
-                    "Run Gitleaks",
-                    "Run zizmor",
+        if workflow_name == "checkov.yml":
+            scanner_index = next(
+                index
+                for index, step in enumerate(steps)
+                if step.get("id") == "checkov_all"
+            )
+        else:
+            scanner_index = next(
+                index
+                for index, step in enumerate(steps)
+                if step.get("name", "").startswith(
+                    (
+                        "Initialize CodeQL",
+                        "Dependency Review",
+                        "Run Gitleaks",
+                        "Run zizmor",
+                    )
                 )
             )
-        )
         assert verify_index < scanner_index, workflow_name
 
 
@@ -284,7 +332,7 @@ def test_security_audit_trivy_bootstrap_is_immutable_and_checksum_verified() -> 
     install = _step(job, "Install checksum-pinned Trivy")
     assert install["name"] == "Install checksum-pinned Trivy"
     assert install["env"] == {
-        "TRIVY_VERSION": "0.73.0",
+        "TRIVY_VERSION": "0.75.0",
         "TRIVY_ARCHIVE_SHA256": TRIVY_SHA256,
     }
 
@@ -345,7 +393,7 @@ def test_ci_provenance_and_kubernetes_tooling_are_immutable_and_verified() -> No
 
     jobs = _workflow(CI)["jobs"]
     provenance = _step(jobs["provenance-check"], "Install slsa-verifier")["run"]
-    assert 'slsa_verifier_version="2.7.0"' in provenance
+    assert 'slsa_verifier_version="2.7.1"' in provenance
     assert SLSA_VERIFIER_SHA256 in provenance
     assert "curl --fail" in provenance
     assert "--proto '=https'" in provenance
@@ -355,7 +403,7 @@ def test_ci_provenance_and_kubernetes_tooling_are_immutable_and_verified() -> No
 
     k8s = jobs["helm-validate"]
     kubeconform = _step(k8s, "Install kubeconform")["run"]
-    assert 'kubeconform_version="0.6.7"' in kubeconform
+    assert 'kubeconform_version="0.8.0"' in kubeconform
     assert KUBECONFORM_SHA256 in kubeconform
     assert "curl --fail" in kubeconform
     assert "--proto '=https'" in kubeconform
@@ -373,7 +421,7 @@ def test_ci_provenance_and_kubernetes_tooling_are_immutable_and_verified() -> No
 
     stress = jobs["ws-stress-test"]
     k6 = _step(stress, "Install k6")["run"]
-    assert 'k6_version="0.54.0"' in k6
+    assert 'k6_version="2.3.0"' in k6
     assert K6_SHA256 in k6
     assert "curl --fail" in k6
     assert "--proto '=https'" in k6
@@ -384,24 +432,29 @@ def test_ci_provenance_and_kubernetes_tooling_are_immutable_and_verified() -> No
 
 
 def test_detect_secrets_verification_is_finding_level_and_base_bound() -> None:
-    """PR checks compare against an immutable target-branch baseline."""
+    """PRs bind findings to immutable source and policy inputs."""
 
     job = _workflow(SECURITY_AUDIT)["jobs"]["detect-secrets-baseline"]
-    fetch = _step(job, "Fetch trusted base baseline (pull requests)")
-    assert fetch["if"] == "${{ github.event_name == 'pull_request' }}"
-    assert fetch["env"] == {"BASE_SHA": "${{ github.event.pull_request.base.sha }}"}
+    fetch = _step(job, "Fetch immutable trusted source base")
+    assert fetch["env"] == {
+        "EVENT_NAME": "${{ github.event_name }}",
+        "PR_BASE_SHA": "${{ github.event.pull_request.base.sha }}",
+        "PUSH_BEFORE_SHA": "${{ github.event.before }}",
+    }
     fetch_run = fetch["run"]
-    assert "^[0-9a-f]{40}$" in fetch_run
-    assert 'git fetch --no-tags --depth=1 origin "$BASE_SHA"' in fetch_run
-    assert 'git show "$BASE_SHA:.secrets.baseline"' in fetch_run
+    assert 'pull_request) SOURCE_BASE_SHA="$PR_BASE_SHA" ;;' in fetch_run
+    assert 'push) SOURCE_BASE_SHA="$PUSH_BEFORE_SHA" ;;' in fetch_run
+    assert 'git fetch --no-tags --depth=1 origin "$SOURCE_BASE_SHA"' in fetch_run
+    assert 'git cat-file -e "${SOURCE_BASE_SHA}^{commit}"' in fetch_run
+    assert 'git show "$SOURCE_BASE_SHA:.secrets.baseline"' in fetch_run
     assert '"$RUNNER_TEMP/trusted-base-baseline.json"' in fetch_run
 
     scan = _step(job, "Scan repo (no baseline)")["run"]
-    assert "--exclude-files" in scan
     assert f"--exclude-files '{DETECT_SECRETS_SCAN_EXCLUSION}'" in scan
     exclusion = re.compile(DETECT_SECRETS_SCAN_EXCLUSION)
     assert exclusion.fullmatch(".secrets.baseline")
     assert exclusion.fullmatch("frontend/WASM_SOURCE_PROVENANCE.json")
+    assert not exclusion.fullmatch("quality/security-false-positive-dispositions.json")
     assert not exclusion.search("frontend/WASM_SOURCE_PROVENANCE.json.bak")
     assert not exclusion.search("frontend/WASM_INVENTORY.json")
     assert not exclusion.search("frontend/src/generated.json")
@@ -409,31 +462,28 @@ def test_detect_secrets_verification_is_finding_level_and_base_bound() -> None:
     verify = _step(job, "Verify baseline has not regressed")
     assert verify["env"] == {
         "EVENT_NAME": "${{ github.event_name }}",
+        "HEAD_SHA": "${{ github.sha }}",
+        "PR_AUTHOR": "${{ github.event.pull_request.user.login }}",
         "TRUSTED_BASELINE_PATH": "${{ runner.temp }}/trusted-base-baseline.json",
     }
     verify_run = verify["run"]
     assert '--trusted-base-baseline "$TRUSTED_BASELINE_PATH"' in verify_run
+    assert '--trusted-base-source-sha "$SOURCE_BASE_SHA"' in verify_run
+    assert '--trusted-disposition-source-sha "$HEAD_SHA"' in verify_run
+    assert (
+        'if [[ "$EVENT_NAME" == "pull_request" && "$PR_AUTHOR" == "egorribun" ]]'
+        in verify_run
+    )
+    assert (
+        'git diff --quiet "$SOURCE_BASE_SHA" -- '
+        "quality/security-false-positive-dispositions.json"
+    ) in verify_run
+    assert "--owner-authored-disposition-update" in verify_run
     assert "current_scan.json" in verify_run
 
-    scan = _step(job, "Scan repo (no baseline)")["run"]
-    assert (
-        f"detect-secrets scan --exclude-files '{DETECT_SECRETS_SCAN_EXCLUSION}'" in scan
-    )
 
+def test_semgrep_is_not_a_blocking_security_audit_job() -> None:
+    """The required audit graph does not duplicate the pinned pre-commit hook."""
 
-def test_semgrep_ce_scan_always_covers_the_suppression_ledger() -> None:
-    """The CE fallback must scan all sources on every event.
-
-    A diff-aware baseline can hide an unchanged in-source suppression. The
-    blocking validator intentionally requires every reviewed ledger entry to
-    be observed, so the unauthenticated CE path must use a complete scan.
-    """
-
-    job = _workflow(SECURITY_AUDIT)["jobs"]["semgrep"]
-    run = _step(job, "Run Semgrep SAST")["run"]
-    full_scan = (
-        "semgrep scan --config auto \\\n"
-        "    --error --sarif --sarif-output=semgrep.sarif"
-    )
-    assert full_scan in run
-    assert "--baseline-commit" not in run
+    jobs = _workflow(SECURITY_AUDIT)["jobs"]
+    assert "semgrep" not in jobs

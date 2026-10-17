@@ -22,10 +22,11 @@ spec:
     {{- if .Values.keda.outboxWorker.postgresql.enabled }}
     - type: postgresql
       metadata:
-        connectionFromEnv: KEDA_POSTGRESQL_CONNECTION
         query: "SELECT COUNT(*) FROM stored_events WHERE processed_at IS NULL"
         targetQueryValue: {{ .Values.keda.outboxWorker.postgresql.targetQueryValue | quote }}
         activationTargetQueryValue: {{ .Values.keda.outboxWorker.postgresql.activationTargetQueryValue | quote }}
+      authenticationRef:
+        name: {{ include "university-ecosystem.fullname" . }}-trigger-auth-postgresql
     {{- end }}
     {{- if and .Values.hibernation.enabled .Values.hibernation.workloads.outboxWorker.enabled }}
     - type: cron

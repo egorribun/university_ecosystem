@@ -243,6 +243,7 @@ async def test_upload_news_image(async_client: AsyncClient):
     from unittest.mock import patch
 
     from app.api.deps import get_current_user
+    from app.services.news_service import NewsService
 
     mock_user = MagicMock(spec=models.User)
     mock_user.id = 1
@@ -250,15 +251,23 @@ async def test_upload_news_image(async_client: AsyncClient):
 
     app.dependency_overrides[get_current_user] = lambda: mock_user
 
-    with patch("app.api.news.save_upload", new_callable=AsyncMock) as mock_save:
-        mock_save.return_value = "http://cdn.example.com/image.jpg"
+    with (
+        patch("app.api.news.save_upload", new_callable=AsyncMock) as mock_save,
+        patch.object(
+            NewsService, "register_uploaded_image", new_callable=AsyncMock
+        ) as register,
+    ):
+        mock_save.return_value = (
+            "/static/news_images/news_0123456789abcdef0123456789abcdef.jpg"
+        )
 
         files = {"file": ("test.jpg", b"image data", "image/jpeg")}
         resp = await async_client.post("/news/upload_image", files=files)
 
         assert resp.status_code == 200
-        assert resp.json()["url"] == "http://cdn.example.com/image.jpg"
+        assert resp.json()["url"] == mock_save.return_value
         mock_save.assert_awaited()
+        register.assert_awaited_once()
 
     # Test non-admin
     mock_user.role = "user"

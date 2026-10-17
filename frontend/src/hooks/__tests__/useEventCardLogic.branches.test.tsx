@@ -1,6 +1,21 @@
 import { renderHook, act, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
+
+vi.mock("@/utils/eventDateTime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/utils/eventDateTime")>()
+  return {
+    ...actual,
+    resolveCampusEventDateRange: vi.fn(actual.resolveCampusEventDateRange),
+  }
+})
+
+import * as eventDateTime from "@/utils/eventDateTime"
 import { useEventCardLogic } from "../useEventCardLogic"
+
+const { language } = vi.hoisted(() => ({ language: { current: "ru" } }))
+const { campusTimezone } = vi.hoisted(() => ({
+  campusTimezone: { current: "America/New_York" as string | null },
+}))
 
 // Mock dependencies (mirrors the existing useEventCardLogic.test.tsx scaffold).
 vi.mock("@/contexts/AuthContext", () => ({
@@ -13,7 +28,17 @@ vi.mock("@tanstack/react-router", () => ({
 }))
 
 vi.mock("react-i18next", () => ({
-  useTranslation: vi.fn(() => ({ t: (s: string) => s })),
+  useTranslation: vi.fn(() => ({
+    t: (s: string) => s,
+    i18n: {
+      get language() {
+        return language.current
+      },
+    },
+  })),
+}))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => campusTimezone.current,
 }))
 
 vi.mock("@/components/ui/Spotlight", () => ({
@@ -54,6 +79,8 @@ describe("useEventCardLogic (branches)", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    language.current = "ru"
+    campusTimezone.current = "America/New_York"
     createObjectURL = vi.fn(() => "blob:preview-url")
     revokeObjectURL = vi.fn()
     ;(globalThis.URL as any).createObjectURL = createObjectURL
@@ -216,6 +243,90 @@ describe("useEventCardLogic (branches)", () => {
     )
     expect(onChange).toHaveBeenCalled()
     await waitFor(() => expect(result.current.snackbar).toBe("events:card.messages.saveSuccess"))
+  })
+
+  it("serializes changed campus wall values into UTC before patching", async () => {
+    const { result } = renderHook(() => useEventCardLogic(eventProps))
+    act(() => {
+      result.current.setEditData({
+        ...result.current.editData,
+        starts_at: "2026-12-02T10:00",
+        ends_at: "2026-12-02T11:00",
+      })
+    })
+
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+
+    expect(mockPatch).toHaveBeenCalledWith(
+      "/events/event-1",
+      expect.objectContaining({
+        starts_at: "2026-12-02T15:00:00.000Z",
+        ends_at: "2026-12-02T16:00:00.000Z",
+      })
+    )
+  })
+
+  it("does not upload or patch a card edit with a nonexistent campus wall time", async () => {
+    const props = {
+      ...eventProps,
+      starts_at: "2026-03-08T07:00:00.000Z",
+      ends_at: "2026-03-08T08:00:00.000Z",
+    }
+    const { result } = renderHook(() => useEventCardLogic(props))
+    act(() => {
+      result.current.setNewImage(new File(["img"], "new.png", { type: "image/png" }))
+      result.current.setEditData({
+        ...result.current.editData,
+        starts_at: "2026-03-08T02:30",
+        ends_at: "2026-03-08T04:00",
+      })
+    })
+
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+
+    expect(mockPost).not.toHaveBeenCalled()
+    expect(mockPatch).not.toHaveBeenCalled()
+    expect(result.current.loading).toBe(false)
+    expect(result.current.snackbar).toBe("events:form.errors.nonexistentCampusTime")
+  })
+
+  it("handleEdit: English card saves translated fields without overwriting Russian source fields", async () => {
+    language.current = "en"
+    const { result } = renderHook(() =>
+      useEventCardLogic({
+        ...eventProps,
+        title: "Localized English display",
+        title_en: "Stored English title",
+        description: "Localized English description",
+        description_en: "Stored English description",
+        event_type: "English display type",
+        event_type_en: "Stored English type",
+        location: "English display location",
+        location_en: "Stored English location",
+      })
+    )
+
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+
+    const payload = mockPatch.mock.calls.at(-1)?.[1] as Record<string, unknown>
+    expect(payload).toMatchObject({
+      title_en: "Stored English title",
+      description_en: "Stored English description",
+      event_type_en: "Stored English type",
+      location_en: "Stored English location",
+    })
+    expect(payload).not.toHaveProperty("title")
+    expect(payload).not.toHaveProperty("description")
+    expect(payload).not.toHaveProperty("event_type")
+    expect(payload).not.toHaveProperty("location")
+    expect(payload).toHaveProperty("starts_at")
+    expect(payload).toHaveProperty("ends_at")
   })
 
   it("handleEdit: api failure → saveFailure snackbar + loading reset (145-149)", async () => {
@@ -404,5 +515,59 @@ describe("useEventCardLogic (branches)", () => {
       result.current.onCardClick({ target: plainTarget } as unknown as React.MouseEvent)
     })
     expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it("rejects nullable date drafts with a start-field message", async () => {
+    const { result } = renderHook(() => useEventCardLogic(eventProps))
+    act(() => {
+      result.current.setEditData({
+        ...result.current.editData,
+        starts_at: null,
+        ends_at: null,
+      })
+    })
+
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+
+    expect(mockPatch).not.toHaveBeenCalled()
+    expect(result.current.snackbar).toBe("events:form.errors.startRequired")
+  })
+
+  it("reports a missing end date when the start value remains valid", async () => {
+    const { result } = renderHook(() => useEventCardLogic(eventProps))
+    act(() => {
+      result.current.setEditData({
+        ...result.current.editData,
+        starts_at: "2026-12-01T10:00",
+        ends_at: null,
+      })
+    })
+
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+
+    expect(mockPatch).not.toHaveBeenCalled()
+    expect(result.current.snackbar).toBe("events:form.errors.endRequired")
+  })
+
+  it("fails closed with a generic message if date resolution returns no field error", async () => {
+    const { result } = renderHook(() => useEventCardLogic(eventProps))
+    vi.mocked(eventDateTime.resolveCampusEventDateRange).mockReturnValueOnce({
+      startsAt: null,
+      endsAt: null,
+      startError: null,
+      endError: null,
+      valid: false,
+    })
+
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+
+    expect(mockPatch).not.toHaveBeenCalled()
+    expect(result.current.snackbar).toBe("events:form.errors.invalidDateTime")
   })
 })

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
     delete: vi.fn(),
   },
   fetchCurrentUser: vi.fn(),
+  cancelQueries: vi.fn(),
   fetchQuery: vi.fn(),
   setUser: vi.fn(),
   useAuth: vi.fn(),
@@ -20,7 +21,10 @@ vi.mock("@/hooks/auth/useProfileSync", () => ({
   fetchCurrentUser: mocks.fetchCurrentUser,
 }))
 vi.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({ fetchQuery: mocks.fetchQuery }),
+  useQueryClient: () => ({
+    cancelQueries: mocks.cancelQueries,
+    fetchQuery: mocks.fetchQuery,
+  }),
 }))
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: mocks.t }),
@@ -51,6 +55,7 @@ const oversizedImage = () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.cancelQueries.mockResolvedValue(undefined)
   mocks.useAuth.mockReturnValue({ user, setUser: mocks.setUser })
   mocks.fetchQuery.mockImplementation(
     async (options: { queryFn: (context: { signal: AbortSignal }) => Promise<unknown> }) => {
@@ -228,7 +233,83 @@ describe.each([
     expect(result.current.busy).toBe(false)
   })
 
+  it("matches the shared image API formats and five MiB limit", async () => {
+    const setSnackbar = vi.fn()
+    const { result } = renderHook(() => useUpload(setSnackbar))
+
+    for (const mimeType of ["image/png", "image/jpeg", "image/webp"]) {
+      const file = new File(["image"], `photo.${mimeType.split("/")[1]}`, { type: mimeType })
+      if (mimeType === "image/png") {
+        Object.defineProperty(file, "size", { configurable: true, value: 5 * 1024 * 1024 })
+      }
+      await act(async () => {
+        await result.current.upload(file)
+      })
+    }
+
+    expect(mocks.api.post).toHaveBeenCalledTimes(3)
+    mocks.api.post.mockClear()
+
+    for (const mimeType of ["image/gif", "image/avif"]) {
+      await act(async () => {
+        await result.current.upload(
+          new File(["image"], `photo.${mimeType.split("/")[1]}`, { type: mimeType })
+        )
+      })
+    }
+
+    const oversized = imageFile("large.png")
+    Object.defineProperty(oversized, "size", {
+      configurable: true,
+      value: 5 * 1024 * 1024 + 1,
+    })
+    await act(async () => {
+      await result.current.upload(oversized)
+    })
+
+    expect(mocks.api.post).not.toHaveBeenCalled()
+    expect(setSnackbar).toHaveBeenLastCalledWith({
+      text: "settings:media.validation.fileTooLarge",
+      severity: "error",
+    })
+  })
+
   if (kind === "avatar") {
+    it("clears the rejected preview and restores the persisted avatar", async () => {
+      const setSnackbar = vi.fn()
+      let rejectUpload: ((reason?: unknown) => void) | undefined
+      mocks.api.post.mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectUpload = reject
+          })
+      )
+      const { result } = renderHook(() => useUpload(setSnackbar))
+      const persistedSrc = "avatarSrc" in result.current ? result.current.avatarSrc : ""
+
+      let uploadPromise: Promise<void> | undefined
+      act(() => {
+        uploadPromise = result.current.upload(imageFile())
+      })
+      expect(result.current.avatarSrc).toBe("blob:local-preview")
+
+      await act(async () => {
+        rejectUpload?.(new Error("synthetic upload failure"))
+        await uploadPromise
+      })
+
+      expect(result.current.avatarSrc).toBe(persistedSrc)
+      expect(URL.revokeObjectURL).toHaveBeenCalledOnce()
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:local-preview")
+      expect(mocks.fetchQuery).not.toHaveBeenCalled()
+      expect(mocks.setUser).not.toHaveBeenCalled()
+      expect(setSnackbar).toHaveBeenLastCalledWith({
+        text: "settings:media.avatar.uploadFailed",
+        severity: "error",
+      })
+      expect(result.current.busy).toBe(false)
+    })
+
     it("falls back to the default avatar when the image reports an error", () => {
       const { result } = renderHook(() => useUpload(vi.fn()))
       const image = document.createElement("img")

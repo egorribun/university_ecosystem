@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
-import type { StoryItem } from "@/types/Story"
+import type { DashboardStory } from "@/hooks/useDashboardStories"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { StoryList } from "./StoryList"
 import { StoryViewer } from "./StoryViewer"
@@ -8,10 +8,10 @@ import { StoryViewer } from "./StoryViewer"
 const STORY_AUTO_ADVANCE_MS = 6500
 
 type DashboardStoriesProps = {
-  stories: StoryItem[]
+  stories: DashboardStory[]
   loading?: boolean
   onPrefetch?: () => void
-  onStoryOpen?: (story: StoryItem) => void
+  onStoryOpen?: (story: DashboardStory) => void
   maxVisibleStories?: number
 }
 
@@ -144,7 +144,7 @@ export default function DashboardStories({
   }, [openIndex, closeViewer, goNext, goPrev])
 
   const openStory = useCallback(
-    (story: StoryItem, index: number) => {
+    (story: DashboardStory, index: number) => {
       autoStartRef.current = performance.now()
       setOpenIndex(index)
       onStoryOpen?.(story)

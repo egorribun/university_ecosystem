@@ -24,7 +24,7 @@ interface EventsHeaderProps {
   sortMode: EventSortMode
   onSortChange: (s: EventSortMode) => void
   tab: EventTabKey
-  onTabChange: (t: string) => void
+  onTabChange: (t: EventTabKey) => void
   dateRange: EventDateRange
   onDateRangeChange: (v: EventDateRange) => void
   locationFilter: string

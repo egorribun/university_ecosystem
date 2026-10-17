@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { ComponentProps, ReactNode } from "react"
 
 const { language } = vi.hoisted(() => ({ language: { current: "en" } }))
+const { campusTimezone } = vi.hoisted(() => ({
+  campusTimezone: { current: "America/New_York" as string | null },
+}))
 const { useTranslationMock, translationMock } = vi.hoisted(() => {
   const translationMock = vi.fn((key: string) => key)
   return {
@@ -21,6 +24,9 @@ const { useTranslationMock, translationMock } = vi.hoisted(() => {
 
 vi.mock("react-i18next", () => ({
   useTranslation: useTranslationMock,
+}))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => campusTimezone.current,
 }))
 
 vi.mock("@/components/ui/Dialog", () => {
@@ -94,6 +100,7 @@ const createProps = (overrides: Partial<ComponentProps<typeof EventEditDialog>> 
 describe("EventEditDialog", () => {
   beforeEach(() => {
     language.current = "en"
+    campusTimezone.current = "America/New_York"
     vi.clearAllMocks()
   })
 
@@ -271,7 +278,7 @@ describe("EventEditDialog", () => {
     expect(props.setNewImage).not.toHaveBeenCalled()
   })
 
-  it("normalizes ISO datetimes to datetime-local precision", async () => {
+  it("displays ISO instants at minute precision in the configured campus timezone", async () => {
     render(
       <EventEditDialog
         {...createProps({
@@ -285,8 +292,8 @@ describe("EventEditDialog", () => {
     )
 
     screen.getByRole("dialog")
-    expect(screen.getByLabelText("events:form.start")).toHaveValue("2026-06-15T14:00")
-    expect(screen.getByLabelText("events:form.end")).toHaveValue("2026-06-15T16:00")
+    expect(screen.getByLabelText("events:form.start")).toHaveValue("2026-06-15T10:00")
+    expect(screen.getByLabelText("events:form.end")).toHaveValue("2026-06-15T12:00")
   })
 
   it("returns a stable empty value for missing datetime inputs", () => {

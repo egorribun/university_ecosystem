@@ -13,6 +13,7 @@ type UserDouble = {
 const mocks = vi.hoisted(() => ({
   pathname: "/",
   viewport: "phone" as "phone" | "tablet" | "desktop",
+  widthPx: null as number | null,
   reducedMotion: false,
   user: null as UserDouble | null,
   navigate: vi.fn(),
@@ -49,9 +50,14 @@ vi.mock("@/hooks/useMediaQuery", () => ({
   default: (query: string) => {
     mocks.mediaQueries.push(query)
     if (query.includes("prefers-reduced-motion")) return mocks.reducedMotion
+    if (mocks.widthPx !== null) {
+      if (query.includes("min-width: 1024px")) return mocks.widthPx >= 1024 && mocks.widthPx < 1350
+      if (query.includes("max-width: 1024px")) return mocks.widthPx <= 1024
+      return false
+    }
     if (query.includes("min-width")) return mocks.viewport === "tablet"
-    if (query.includes("768") || query.includes("767")) return mocks.viewport === "phone"
-    return mocks.viewport !== "desktop"
+    if (query.includes("1024px")) return mocks.viewport === "phone"
+    return false
   },
 }))
 vi.mock("@/hooks/useFocusTrap", () => ({
@@ -83,6 +89,7 @@ describe("useNavbarLogic", () => {
   beforeEach(() => {
     mocks.pathname = "/"
     mocks.viewport = "phone"
+    mocks.widthPx = null
     mocks.reducedMotion = false
     mocks.user = null
     mocks.navigate.mockReset()
@@ -167,9 +174,28 @@ describe("useNavbarLogic", () => {
 
     await waitFor(() =>
       expect(mocks.mediaQueries).toContain(
-        "(min-width: 768px) and (max-width: calc(1350px - 0.02px))"
+        "(min-width: 1024px) and (max-width: calc(1350px - 0.02px))"
       )
     )
+  })
+
+  it("uses the drawer through 1024px and tablet overflow only above it", async () => {
+    const { result, rerender } = renderHook(() => useNavbarLogic())
+    const cases = [
+      [768, "phone"],
+      [1024, "phone"],
+      [1025, "tablet"],
+      [1349, "tablet"],
+      [1350, "desktop"],
+    ] as const
+
+    for (const [widthPx, viewport] of cases) {
+      mocks.widthPx = widthPx
+      rerender()
+      await waitFor(() => expect(result.current.viewport).toBe(viewport))
+    }
+
+    expect(mocks.mediaQueries).toContain("(max-width: 1024px)")
   })
 
   it("recognizes dashboard descendants and exact non-dashboard routes", async () => {

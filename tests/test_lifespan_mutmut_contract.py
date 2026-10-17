@@ -38,11 +38,11 @@ async def test_periodic_scheduler_loop_runs_a_cleanup_cycle() -> None:
         patch("app.tasks.cleanups.cleanup_password_reset_tokens_task", cleanup),
         patch("app.tasks.cleanups.cleanup_email_change_tokens_task", cleanup),
         patch("app.tasks.cleanups.cleanup_mfa_challenges_task", cleanup),
+        patch("app.tasks.cleanups.refresh_business_gauges_task", cleanup),
         patch("app.tasks.cleanups.cleanup_sessions_task", cleanup),
         patch("app.tasks.cleanups.cleanup_notifications_task", cleanup),
         patch("app.tasks.cleanups.cleanup_dead_letter_jobs_task", cleanup),
         patch("app.tasks.cleanups.cleanup_privacy_artifacts_task", cleanup),
-        patch("app.tasks.cleanups.manage_partitions_task", cleanup),
     ):
         await _periodic_scheduler_loop()
 

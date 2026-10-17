@@ -15,6 +15,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -22,6 +23,9 @@ from pathlib import Path
 MAX_ATTEMPTS = 3
 DEFAULT_TIMEOUT_SECONDS = 120
 DEFAULT_BACKOFF_SECONDS = 15
+NATS_REPOSITORY_NAME = "nats"
+NATS_REPOSITORY_URL = "https://nats-io.github.io/k8s/helm/charts/"
+HELM_HOME_VARIABLES = ("HELM_CONFIG_HOME", "HELM_CACHE_HOME", "HELM_DATA_HOME")
 
 # Helm's registry client reports these conditions with several subtly
 # different messages.  Keep this allowlist deliberately narrow: a generic
@@ -63,7 +67,9 @@ def _positive_seconds(value: str, *, field: str, allow_zero: bool = False) -> in
     return parsed
 
 
-def _run_helm(command: Sequence[str], *, timeout_seconds: int) -> tuple[int, str]:
+def _run_helm(
+    command: Sequence[str], *, timeout_seconds: int, env: dict[str, str]
+) -> tuple[int, str]:
     """Run Helm and return its exit status plus combined output."""
 
     try:
@@ -73,6 +79,7 @@ def _run_helm(command: Sequence[str], *, timeout_seconds: int) -> tuple[int, str
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
+            env=env,
         )
     except subprocess.TimeoutExpired as error:
         stdout = error.stdout or ""
@@ -123,6 +130,34 @@ def _missing_required(chart: Path, required: Sequence[str]) -> tuple[str, ...]:
     return tuple(missing)
 
 
+def _isolated_helm_environment(root: Path) -> dict[str, str]:
+    """Give this build an empty, temporary Helm configuration and cache."""
+
+    environment = os.environ.copy()
+    for variable in HELM_HOME_VARIABLES:
+        directory = root / variable.lower()
+        directory.mkdir(parents=True, exist_ok=True)
+        environment[variable] = str(directory)
+    return environment
+
+
+def _needs_official_nats_repository(chart: Path) -> bool:
+    """Recognize only the reviewed official NATS repository URL."""
+
+    for metadata_name in ("Chart.yaml", "Chart.lock"):
+        metadata_path = chart / metadata_name
+        if not metadata_path.is_file():
+            continue
+        try:
+            if NATS_REPOSITORY_URL in metadata_path.read_text(encoding="utf-8"):
+                return True
+        except (OSError, UnicodeError) as error:
+            raise ValueError(
+                f"unable to inspect Helm dependency metadata: {metadata_name}"
+            ) from error
+    return False
+
+
 def run(
     chart: Path,
     *,
@@ -140,6 +175,7 @@ def run(
         return 2
     try:
         validated_required = _validate_required_names(required)
+        needs_nats_repository = _needs_official_nats_repository(chart)
     except ValueError as error:
         print(f"::error::{error}", file=sys.stderr)
         return 2
@@ -147,49 +183,77 @@ def run(
         print("::error::Helm timeout/backoff values are invalid", file=sys.stderr)
         return 2
 
-    command = [helm_bin, "dependency", "build"]
+    build_command = [helm_bin, "dependency", "build"]
     if skip_refresh:
-        command.append("--skip-refresh")
-    command.append(str(chart))
+        build_command.append("--skip-refresh")
+    build_command.append(str(chart))
+    commands: list[tuple[str, list[str]]] = []
+    if needs_nats_repository:
+        commands.append(
+            (
+                "official NATS repository registration",
+                [
+                    helm_bin,
+                    "repo",
+                    "add",
+                    NATS_REPOSITORY_NAME,
+                    NATS_REPOSITORY_URL,
+                    "--force-update",
+                ],
+            )
+        )
+    commands.append(("dependency build", build_command))
     first_failure: str | None = None
     last_status = 1
 
-    for attempt in range(1, MAX_ATTEMPTS + 1):
-        status, output = _run_helm(command, timeout_seconds=timeout_seconds)
-        last_status = status if status > 0 else 1
-        print(f"--- Helm dependency build attempt {attempt}/{MAX_ATTEMPTS} ---")
-        if output:
-            print(output, end="" if output.endswith("\n") else "\n")
-        if status == 0:
-            missing = _missing_required(chart, validated_required)
-            if missing:
+    with tempfile.TemporaryDirectory(prefix="ue-helm-dependencies-") as temporary_root:
+        environment = _isolated_helm_environment(Path(temporary_root))
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            output_parts: list[str] = []
+            status = 0
+            for label, helm_command in commands:
+                status, step_output = _run_helm(
+                    helm_command, timeout_seconds=timeout_seconds, env=environment
+                )
+                if step_output:
+                    output_parts.append(f"--- {label} ---\n{step_output}")
+                if status != 0:
+                    break
+            output = "".join(output_parts)
+            last_status = status if status > 0 else 1
+            print(f"--- Helm dependency build attempt {attempt}/{MAX_ATTEMPTS} ---")
+            if output:
+                print(output, end="" if output.endswith("\n") else "\n")
+            if status == 0:
+                missing = _missing_required(chart, validated_required)
+                if missing:
+                    print(
+                        "::error::Helm succeeded but required dependency archives are missing: "
+                        + ", ".join(missing),
+                        file=sys.stderr,
+                    )
+                    return 1
+                print(f"Helm dependencies ready on attempt {attempt}.")
+                return 0
+
+            if first_failure is None:
+                first_failure = output
+            if not is_transient_failure(output):
                 print(
-                    "::error::Helm succeeded but required dependency archives are missing: "
-                    + ", ".join(missing),
+                    "::error::Helm dependency build failed with a non-transient error; "
+                    "retry suppressed.",
                     file=sys.stderr,
                 )
-                return 1
-            print(f"Helm dependencies ready on attempt {attempt}.")
-            return 0
-
-        if first_failure is None:
-            first_failure = output
-        if not is_transient_failure(output):
+                return last_status
+            if attempt == MAX_ATTEMPTS:
+                break
+            delay = backoff_seconds * attempt
             print(
-                "::error::Helm dependency build failed with a non-transient error; "
-                "retry suppressed.",
+                f"::warning::Transient Helm failure on attempt {attempt}; "
+                f"retrying after {delay}s.",
                 file=sys.stderr,
             )
-            return last_status
-        if attempt == MAX_ATTEMPTS:
-            break
-        delay = backoff_seconds * attempt
-        print(
-            f"::warning::Transient Helm failure on attempt {attempt}; "
-            f"retrying after {delay}s.",
-            file=sys.stderr,
-        )
-        sleep_fn(delay)
+            sleep_fn(delay)
 
     print(
         "::error::Helm dependency build failed after three transient attempts. "

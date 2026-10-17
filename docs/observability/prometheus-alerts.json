@@ -48,7 +48,7 @@
           "labels": {"severity": "warning"},
           "annotations": {
             "summary": "Spike in CSP violation reports",
-            "description": "CSP reports exceeded 20 per minute over 5 minutes"
+            "description": "More than 20 accepted CSP reports per second averaged over 5 minutes for 5 minutes."
           }
         }
       ]

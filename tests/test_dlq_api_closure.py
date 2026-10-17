@@ -16,7 +16,10 @@ async def test_trigger_dlq_replay_rejects_unknown_target():
             request=dlq.DLQReplayRequest(target="unknown"),
             locale="en",
             _=MagicMock(),
-            provides={"AsyncDatabaseSession": AsyncMock()},
+            provides={
+                "AsyncDatabaseSession": AsyncMock(),
+                "NatsTaskBroker": MagicMock(),
+            },
         )
 
     assert exc_info.value.status_code == 400
@@ -33,7 +36,7 @@ async def test_trigger_dlq_replay_can_run_in_memory_target_only():
             request=dlq.DLQReplayRequest(target="in_memory", batch_size=4, force=True),
             locale="en",
             _=MagicMock(),
-            provides={"AsyncDatabaseSession": db},
+            provides={"AsyncDatabaseSession": db, "NatsTaskBroker": MagicMock()},
         )
 
     assert response.success is False
@@ -59,7 +62,7 @@ async def test_trigger_dlq_replay_can_run_database_target_only():
             request=dlq.DLQReplayRequest(target="db", batch_size=5),
             locale="en",
             _=MagicMock(),
-            provides={"AsyncDatabaseSession": db},
+            provides={"AsyncDatabaseSession": db, "NatsTaskBroker": MagicMock()},
         )
 
     assert response.success is True
@@ -80,7 +83,7 @@ async def test_retry_dlq_job_rejects_missing_job():
             job_id=42,
             locale="en",
             _=MagicMock(),
-            provides={"AsyncDatabaseSession": db},
+            provides={"AsyncDatabaseSession": db, "NatsTaskBroker": MagicMock()},
         )
 
     assert exc_info.value.status_code == 404

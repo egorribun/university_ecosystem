@@ -1,24 +1,24 @@
 {
   "schema_version": 1,
   "expected": {
-    "computed_columns": [
-      "events.search_vector"
-    ],
+    "computed_columns": ["events.search_vector"],
     "effective_counts": {
-      "both": 94,
+      "both": 81,
       "python_only": 40,
       "server_only": 0
     },
-    "effective_default_count": 134,
-    "migration_head": "202609250001",
+    "effective_default_count": 121,
+    "migration_head": "202610120002",
     "source_counts": {
-      "both": 94,
-      "python_only": 14,
+      "both": 81,
+      "python_only": 17,
       "server_only": 0
     },
     "source_default_none_columns": [
       "chats.created_by",
+      "chats.demo_seed_key",
       "chats.name",
+      "groups.demo_seed_key",
       "messages.deleted_at",
       "messages.edited_at",
       "messages.forwarded_from_chat_id",
@@ -26,10 +26,11 @@
       "messages.forwarded_from_name",
       "messages.read_at",
       "messages.reply_to_message_id",
-      "schedule.lesson_type"
+      "schedule.lesson_type",
+      "users.demo_seed_key"
     ],
-    "source_mapped_column_count": 108,
-    "table_count": 45
+    "source_mapped_column_count": 98,
+    "table_count": 44
   },
   "exceptions": [
     {
@@ -183,6 +184,12 @@
       "reason": "UUIDv7 is supplied by UUID7PrimaryKeyMixin; a database fallback could violate the time-ordered identifier contract."
     },
     {
+      "column": "news_media_assets.id",
+      "kind": "inherited_uuid7_primary_key",
+      "owner": "backend-platform",
+      "reason": "UUIDv7 is supplied by UUID7PrimaryKeyMixin; a database fallback could violate the time-ordered identifier contract."
+    },
+    {
       "column": "notification_deliveries.id",
       "kind": "inherited_uuid7_primary_key",
       "owner": "backend-platform",
@@ -262,12 +269,6 @@
     },
     {
       "column": "users.id",
-      "kind": "inherited_uuid7_primary_key",
-      "owner": "backend-platform",
-      "reason": "UUIDv7 is supplied by UUID7PrimaryKeyMixin; a database fallback could violate the time-ordered identifier contract."
-    },
-    {
-      "column": "vector_chunks.id",
       "kind": "inherited_uuid7_primary_key",
       "owner": "backend-platform",
       "reason": "UUIDv7 is supplied by UUID7PrimaryKeyMixin; a database fallback could violate the time-ordered identifier contract."

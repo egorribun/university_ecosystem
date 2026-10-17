@@ -112,7 +112,7 @@ export function Avatar({
 }
 
 export function Skeleton({
-  variant = "rectangular",
+  variant,
   width,
   height,
   className = "",

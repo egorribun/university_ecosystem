@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useSyncExternalStore } from "react"
+import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { OfflineIndicator } from "@/components/feedback/OfflineIndicator"
 import { ensurePushMessageBridge } from "@/push/pushMessageBus"
 
@@ -9,13 +9,17 @@ import { ensurePushMessageBridge } from "@/push/pushMessageBus"
 // primary route to settle, while still making the conveniences available
 // quickly for a normal user. An explicit interaction promotes them sooner.
 export const DEFERRED_OVERLAY_DELAY_MS = 4_000
+export const DEFERRED_GLOBAL_OVERLAYS_READY_EVENT = "ue:deferred-global-overlays-ready" as const
 export const DEFERRED_INTERACTION_EVENTS = [
   "pointerdown",
   "keydown",
   "touchstart",
   "focusin",
 ] as const
-export const DEFERRED_INTERACTION_OPTIONS = { once: true, passive: true } as const
+export const DEFERRED_INTERACTION_OPTIONS = {
+  once: true,
+  passive: true,
+} as const
 
 export function createMountedCommit(isMounted: () => boolean, commit: () => void) {
   return () => {
@@ -146,6 +150,18 @@ export function createDeferredOverlayStore(): DeferredOverlayStore {
   }
 }
 
+function DeferredOverlayReadinessSignal() {
+  const didSignal = useRef(false)
+
+  useEffect(() => {
+    if (didSignal.current) return
+    didSignal.current = true
+    window.dispatchEvent(new Event(DEFERRED_GLOBAL_OVERLAYS_READY_EVENT))
+  }, [])
+
+  return null
+}
+
 /**
  * Mount optional global overlays in the first task after the initial React
  * commit. Rendering `null` on the server and on the first client render keeps
@@ -173,6 +189,7 @@ export function DeferredGlobalOverlays() {
           <SearchDialog />
           <LivePushToasts />
           <InstallPrompt />
+          <DeferredOverlayReadinessSignal />
         </Suspense>
       ) : null}
     </>

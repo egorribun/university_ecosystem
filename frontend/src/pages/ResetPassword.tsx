@@ -1,6 +1,14 @@
-import { useState, useEffect, type FormEvent } from "react"
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useSyncExternalStore,
+  useEffectEvent,
+  type FormEvent,
+} from "react"
 import api from "@/api/client"
-import { useLocation, useParams, Link } from "@tanstack/react-router"
+import { useLocation, useNavigate, useRouter, Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { m, AnimatePresence } from "framer-motion"
 import "@/styles/tokens/auth.css"
@@ -21,6 +29,11 @@ import { ProgressBar } from "@/components/ui/ProgressBar"
 import { AuthBackdrop } from "@/components/auth/AuthBackdrop"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { newPasswordSchema, type NewPasswordValues } from "@/features/auth/schemas"
+import {
+  bindLegacyResetTokenTarget,
+  clearLegacyResetTokenForMigration,
+  type CapturedLegacyResetToken,
+} from "@/features/auth/legacyResetTokenState"
 import { analyzePasswordStrength } from "@/utils/passwordStrength"
 import {
   captureActiveTelemetryContext,
@@ -28,7 +41,114 @@ import {
 } from "@/utils/telemetryContext"
 
 const RESET_URL = "/password/reset"
+const MISSING_RESET_TOKEN_ERROR = "missing-token-source"
+const UNAVAILABLE_RESET_TOKEN_ERROR = "unavailable-at-submit"
 const STRENGTH_VALUES = [10, 30, 55, 75, 100]
+const LEGACY_RESET_TOKEN_TTL_MS = 45 * 60 * 1000
+const MAX_LEGACY_RESET_TOKEN_ENTRIES = 64
+const MAX_TIMER_DELAY_MS = 2_147_483_647
+
+type LegacyResetTokenEntry = { token: string; expiresAt: number }
+type PendingLegacyMigration = {
+  sourceKey: string
+  sourceIndex: number | null
+  targetPath: string
+  targetKey?: string
+}
+type LegacyMigrationOwner = {
+  targetObserved: boolean
+  unsubscribeHistory: (() => void) | null
+}
+
+const legacyResetTokens = new Map<string, LegacyResetTokenEntry>()
+const legacyResetTokenSubscribers = new Set<() => void>()
+let legacyResetPruneTimer: number | null = null
+let nextLegacyMigrationId = 0
+
+function subscribeLegacyResetTokens(subscriber: () => void) {
+  legacyResetTokenSubscribers.add(subscriber)
+  return () => {
+    legacyResetTokenSubscribers.delete(subscriber)
+  }
+}
+
+function notifyLegacyResetTokenSubscribers() {
+  for (const subscriber of legacyResetTokenSubscribers) subscriber()
+}
+
+function getEmptyLegacyResetTokenSnapshot() {
+  return null
+}
+
+function getHistoryEntryKey(state: { key?: unknown; __TSR_key?: unknown }) {
+  if (typeof state.__TSR_key === "string" && state.__TSR_key) return state.__TSR_key
+  return typeof state.key === "string" && state.key ? state.key : ""
+}
+
+function getHistoryEntryIndex(state: { __TSR_index?: unknown }) {
+  return typeof state.__TSR_index === "number" ? state.__TSR_index : null
+}
+
+function pruneLegacyResetTokens(now = Date.now()) {
+  let changed = false
+  for (const [key, entry] of legacyResetTokens) {
+    if (entry.expiresAt <= now) {
+      legacyResetTokens.delete(key)
+      changed = true
+    }
+  }
+  while (legacyResetTokens.size > MAX_LEGACY_RESET_TOKEN_ENTRIES) {
+    const oldestKey = legacyResetTokens.keys().next().value!
+    legacyResetTokens.delete(oldestKey)
+    changed = true
+  }
+  return changed
+}
+
+function scheduleLegacyResetTokenPruning() {
+  if (legacyResetPruneTimer !== null) {
+    window.clearTimeout(legacyResetPruneTimer)
+    legacyResetPruneTimer = null
+  }
+  const nextExpiry = Array.from(legacyResetTokens.values()).reduce(
+    (soonest, entry) => Math.min(soonest, entry.expiresAt),
+    Number.POSITIVE_INFINITY
+  )
+  if (!Number.isFinite(nextExpiry)) return
+  const delay = Math.max(0, Math.min(nextExpiry - Date.now(), MAX_TIMER_DELAY_MS))
+  legacyResetPruneTimer = window.setTimeout(() => {
+    legacyResetPruneTimer = null
+    if (pruneLegacyResetTokens()) notifyLegacyResetTokenSubscribers()
+    scheduleLegacyResetTokenPruning()
+  }, delay)
+}
+
+function rememberLegacyResetToken(key: string, token: string, expiresAt: number) {
+  const now = Date.now()
+  pruneLegacyResetTokens(now)
+  legacyResetTokens.delete(key)
+  legacyResetTokens.set(key, { token, expiresAt })
+  pruneLegacyResetTokens(now)
+  notifyLegacyResetTokenSubscribers()
+  scheduleLegacyResetTokenPruning()
+}
+
+function forgetLegacyResetToken(key: string) {
+  if (typeof window !== "undefined" && key && legacyResetTokens.delete(key)) {
+    notifyLegacyResetTokenSubscribers()
+    scheduleLegacyResetTokenPruning()
+  }
+}
+
+function tokenFromHash(hash: string) {
+  return new URLSearchParams(hash).get("token") ?? ""
+}
+
+function hashWithoutToken(hash: string) {
+  const parameters = new URLSearchParams(hash)
+  parameters.delete("token")
+  return parameters.toString()
+}
 
 async function sha1Hex(str: string) {
   const buf = new TextEncoder().encode(str)
@@ -60,13 +180,277 @@ export default function ResetPassword() {
   // Wave 186 SW3 — useReducedMotion via project's useMediaQuery (jsdom-safe
   // per W184 SW6). Drops AuthBackdrop blur on mobile/reduced-motion.
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
-  // The token route is a child of this page's route, so read params loosely.
-  const routeParameters = useParams({ strict: false })
-  const { search: searchParameters } = useLocation()
-  const token =
-    (routeParameters as { token?: string }).token ||
-    (searchParameters as { token?: string }).token ||
-    ""
+  const navigate = useNavigate()
+  const router = useRouter()
+  const { pathname, search: searchParameters, state: locationState, hash } = useLocation()
+  const [, pathParams, matchedRoute] = router.getMatchedRoutes(pathname)
+  const routeToken =
+    matchedRoute?.fullPath === "/reset-password/$token" && !pathParams["**"] ? pathParams.token : ""
+  const queryToken = (searchParameters as { token?: string }).token || ""
+  const routeStateToken =
+    (locationState as { resetPasswordToken?: string }).resetPasswordToken || ""
+  const fragmentToken = tokenFromHash(hash)
+  const historyEntryKey = getHistoryEntryKey(locationState)
+  const historyEntryIndex = getHistoryEntryIndex(locationState)
+  const migrationMarker =
+    (locationState as { __resetPasswordMigration?: string }).__resetPasswordMigration || ""
+  const [capturedLegacyToken, setCapturedLegacyToken] = useState<CapturedLegacyResetToken | null>(
+    null
+  )
+  const pendingLegacyMigrationRef = useRef<PendingLegacyMigration | null>(null)
+  const legacyMigrationOwnerRef = useRef<LegacyMigrationOwner | null>(null)
+  const componentMountedRef = useRef(false)
+  const stopLegacyMigration = useCallback((owner: LegacyMigrationOwner) => {
+    const unsubscribe = owner.unsubscribeHistory
+    owner.unsubscribeHistory = null
+    unsubscribe?.()
+  }, [])
+  const invalidateLegacyMigration = useCallback(
+    (owner: LegacyMigrationOwner) => {
+      stopLegacyMigration(owner)
+      if (legacyMigrationOwnerRef.current === owner) {
+        legacyMigrationOwnerRef.current = null
+        pendingLegacyMigrationRef.current = null
+      }
+    },
+    [stopLegacyMigration]
+  )
+
+  useEffect(() => {
+    componentMountedRef.current = true
+    return () => {
+      componentMountedRef.current = false
+      const owner = legacyMigrationOwnerRef.current
+      if (!owner) return
+      // StrictMode replays passive effects synchronously. Defer invalidation one
+      // microtask so a replayed mount can retain the still-owned migration.
+      queueMicrotask(() => {
+        if (!componentMountedRef.current) invalidateLegacyMigration(owner)
+      })
+    }
+  }, [invalidateLegacyMigration])
+  const getCachedLegacyResetTokenSnapshot = useCallback(
+    () => (historyEntryKey ? (legacyResetTokens.get(historyEntryKey) ?? null) : null),
+    [historyEntryKey]
+  )
+  const cachedLegacyResetToken = useSyncExternalStore(
+    subscribeLegacyResetTokens,
+    getCachedLegacyResetTokenSnapshot,
+    getEmptyLegacyResetTokenSnapshot
+  )
+  const getCapturedLegacyTokenValue = (now?: number) => {
+    if (!capturedLegacyToken || (now !== undefined && capturedLegacyToken.expiresAt <= now)) {
+      return ""
+    }
+    if (capturedLegacyToken.key === historyEntryKey) return capturedLegacyToken.token
+    if (
+      capturedLegacyToken.migrating &&
+      capturedLegacyToken.targetKey === historyEntryKey &&
+      migrationMarker === capturedLegacyToken.migrationId &&
+      capturedLegacyToken.sourceIndex !== null &&
+      capturedLegacyToken.sourceIndex === historyEntryIndex &&
+      capturedLegacyToken.targetPath === pathname &&
+      !queryToken &&
+      !routeStateToken
+    ) {
+      return capturedLegacyToken.token
+    }
+    return ""
+  }
+  const resolveCurrentResetToken = (now?: number) => {
+    if (fragmentToken) return fragmentToken
+
+    const legacySourceToken = routeToken || queryToken || routeStateToken
+    if (legacySourceToken) {
+      const captured = capturedLegacyToken
+      if (!captured || captured.token !== legacySourceToken) return ""
+      return getCapturedLegacyTokenValue(now)
+    }
+
+    const capturedToken = getCapturedLegacyTokenValue(now)
+    if (capturedToken) return capturedToken
+    if (!cachedLegacyResetToken || (now !== undefined && cachedLegacyResetToken.expiresAt <= now)) {
+      return ""
+    }
+    return cachedLegacyResetToken.token
+  }
+  const token = resolveCurrentResetToken()
+
+  // Legacy tokens stay in memory only and expire from component state and the
+  // bounded history-entry cache 45 minutes after first capture.
+  useEffect(() => {
+    if (!capturedLegacyToken) return
+    const expire = () =>
+      setCapturedLegacyToken((current) =>
+        clearLegacyResetTokenForMigration(current, capturedLegacyToken.migrationId)
+      )
+    const remaining = capturedLegacyToken.expiresAt - Date.now()
+    if (remaining <= 0) {
+      expire()
+      return
+    }
+    const timeout = window.setTimeout(expire, remaining)
+    return () => window.clearTimeout(timeout)
+  }, [capturedLegacyToken])
+
+  // Replace legacy bearer URLs with a clean entry. Completion can retain a token
+  // only for the exact REPLACE history key observed for this migration.
+  useEffect(() => {
+    const legacyToken = routeToken || queryToken || routeStateToken
+    if (!legacyToken || !historyEntryKey) {
+      const currentOwner = legacyMigrationOwnerRef.current
+      if (currentOwner && !currentOwner.targetObserved) {
+        invalidateLegacyMigration(currentOwner)
+      }
+      return
+    }
+    if (pendingLegacyMigrationRef.current?.sourceKey === historyEntryKey) return
+    if (legacyMigrationOwnerRef.current) {
+      invalidateLegacyMigration(legacyMigrationOwnerRef.current)
+    }
+
+    const migrationId = `reset-migration-${++nextLegacyMigrationId}`
+    const expiresAt = Date.now() + LEGACY_RESET_TOKEN_TTL_MS
+    const targetPath = routeToken ? "/reset-password" : pathname
+    const pending: PendingLegacyMigration = {
+      sourceKey: historyEntryKey,
+      sourceIndex: historyEntryIndex,
+      targetPath,
+    }
+    pendingLegacyMigrationRef.current = pending
+    const owner: LegacyMigrationOwner = {
+      targetObserved: false,
+      unsubscribeHistory: null,
+    }
+    legacyMigrationOwnerRef.current = owner
+    const ownsMigration = () =>
+      componentMountedRef.current && legacyMigrationOwnerRef.current === owner
+    if (!fragmentToken) {
+      setCapturedLegacyToken({
+        key: historyEntryKey,
+        token: legacyToken,
+        expiresAt,
+        migrating: true,
+        migrationId,
+        sourceKey: historyEntryKey,
+        sourceIndex: historyEntryIndex,
+        targetPath,
+      })
+    }
+
+    owner.unsubscribeHistory = router.history.subscribe(({ action, location }) => {
+      if (!ownsMigration()) return
+      if (action.type !== "REPLACE" || location.pathname !== targetPath) return
+      const state = location.state as { __resetPasswordMigration?: string }
+      if (state.__resetPasswordMigration !== migrationId) return
+      if (historyEntryIndex !== null && location.state.__TSR_index !== historyEntryIndex) return
+      if (new URLSearchParams(location.search).has("token")) return
+      const targetKey = getHistoryEntryKey(location.state)
+      if (!targetKey) return
+      const current = pendingLegacyMigrationRef.current!
+      owner.targetObserved = true
+      current.targetKey = targetKey
+      setCapturedLegacyToken((previous) =>
+        bindLegacyResetTokenTarget(previous, migrationId, targetKey)
+      )
+    })
+
+    void navigate({
+      to: routeToken ? "/reset-password" : ".",
+      search: (previous: Record<string, unknown>) => {
+        const next = { ...previous }
+        delete next.token
+        return next
+      },
+      hash,
+      state: (previous) => {
+        const next = { ...previous } as Record<string, unknown>
+        delete next.resetPasswordToken
+        next.__resetPasswordMigration = migrationId
+        return next
+      },
+      replace: true,
+      viewTransition: false,
+    })
+      .then(() => {
+        stopLegacyMigration(owner)
+        if (!ownsMigration()) return
+        const currentPending = pendingLegacyMigrationRef.current!
+        const destination = router.state.location
+        const destinationKey = getHistoryEntryKey(destination.state)
+        const destinationState = destination.state as {
+          __resetPasswordMigration?: string
+          resetPasswordToken?: string
+        }
+        const destinationSearch = destination.search as { token?: string }
+        const isExactDestination =
+          !!currentPending.targetKey &&
+          destinationKey === currentPending.targetKey &&
+          getHistoryEntryKey(router.history.location.state) === currentPending.targetKey &&
+          destinationState.__resetPasswordMigration === migrationId &&
+          destination.pathname === targetPath &&
+          !destinationSearch.token &&
+          !destinationState.resetPasswordToken &&
+          (historyEntryIndex === null ||
+            router.history.location.state.__TSR_index === historyEntryIndex)
+
+        if (!fragmentToken && isExactDestination && expiresAt > Date.now()) {
+          rememberLegacyResetToken(destinationKey, legacyToken, expiresAt)
+          forgetLegacyResetToken(historyEntryKey)
+          setCapturedLegacyToken({
+            key: destinationKey,
+            token: legacyToken,
+            expiresAt,
+            migrating: false,
+            migrationId,
+            sourceKey: historyEntryKey,
+            sourceIndex: historyEntryIndex,
+            targetPath,
+          })
+        } else {
+          setCapturedLegacyToken((current) =>
+            clearLegacyResetTokenForMigration(current, migrationId)
+          )
+        }
+        pendingLegacyMigrationRef.current = null
+        legacyMigrationOwnerRef.current = null
+      })
+      .catch(() => {
+        stopLegacyMigration(owner)
+        if (!ownsMigration()) return
+        // A router promise can reject after committing its REPLACE. Keep the
+        // source-bound capture and migration identity only until their original
+        // deadline; submit-time resolution separately gates raw legacy fields.
+        legacyMigrationOwnerRef.current = null
+      })
+
+    return () => {
+      if (owner.targetObserved) {
+        stopLegacyMigration(owner)
+        return
+      }
+      // An in-flight navigation must not outlive a real unmount. The mount
+      // cleanup handles invalidation; this deferred check also survives StrictMode
+      // effect replay without cancelling the replayed owner.
+      queueMicrotask(() => {
+        if (!componentMountedRef.current) invalidateLegacyMigration(owner)
+      })
+    }
+  }, [
+    fragmentToken,
+    hash,
+    historyEntryIndex,
+    historyEntryKey,
+    invalidateLegacyMigration,
+    migrationMarker,
+    navigate,
+    pathname,
+    queryToken,
+    routeStateToken,
+    routeToken,
+    router,
+    stopLegacyMigration,
+  ])
 
   const [capsPass, setCapsPass] = useState(false)
   const [capsConfirm, setCapsConfirm] = useState(false)
@@ -76,12 +460,17 @@ export default function ResetPassword() {
   const [feedback, setFeedback] = useState<string>("")
   const [pwned, setPwned] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [tokenSourceReady, setTokenSourceReady] = useState(false)
+  const focusSuccessHeading = useCallback((heading: HTMLHeadingElement | null) => {
+    heading?.focus()
+  }, [])
 
   const {
     register,
     handleSubmit,
     watch,
     setError,
+    clearErrors,
     formState: { errors, isSubmitting },
   } = useForm<NewPasswordValues>({
     resolver: valibotResolver(newPasswordSchema),
@@ -144,18 +533,45 @@ export default function ResetPassword() {
   }, [password, passwordStrengthLanguage])
 
   const onSubmit = async (data: NewPasswordValues, telemetryContext: CapturedTelemetryContext) => {
-    if (!token) {
-      setError("root", { message: t("auth:reset.invalidLink") })
+    const submittedToken = resolveCurrentResetToken(Date.now())
+    if (!submittedToken) {
+      setError("root", {
+        type: token ? UNAVAILABLE_RESET_TOKEN_ERROR : MISSING_RESET_TOKEN_ERROR,
+        message: t("auth:reset.invalidLink"),
+      })
       return
     }
 
     try {
-      await telemetryContext.run(() => api.post(RESET_URL, { token, password: data.password }))
+      await telemetryContext.run(() =>
+        api.post(RESET_URL, { token: submittedToken, password: data.password })
+      )
       setIsSuccess(true)
+      forgetLegacyResetToken(historyEntryKey)
+      setCapturedLegacyToken(null)
+      if (fragmentToken || routeToken || queryToken || routeStateToken) {
+        void navigate({
+          to: routeToken ? "/reset-password" : ".",
+          search: (previous: Record<string, unknown>) => {
+            const next = { ...previous }
+            delete next.token
+            return next
+          },
+          hash: hashWithoutToken(hash),
+          state: (previous) => {
+            const next = { ...previous } as Record<string, unknown>
+            delete next.resetPasswordToken
+            delete next.__resetPasswordMigration
+            return next
+          },
+          replace: true,
+          viewTransition: false,
+        })
+      }
     } catch (error: unknown) {
       const detail = (error as { response?: { data?: { detail?: string } } } | null | undefined)
         ?.response?.data?.detail
-      setError("root", { message: detail || t("auth:reset.errorGeneric") })
+      setError("root", { type: "server", message: detail || t("auth:reset.errorGeneric") })
     }
   }
 
@@ -164,12 +580,34 @@ export default function ResetPassword() {
     return handleSubmit((data) => onSubmit(data, telemetryContext))(event)
   }
 
-  // Initial token check
+  // Resolve browser-only fragment tokens after hydration before showing an
+  // invalid-link error, keeping the server and first client render identical.
   useEffect(() => {
-    if (!token) {
-      setError("root", { message: t("auth:reset.invalidLink") })
+    setTokenSourceReady(true)
+  }, [])
+
+  const reportMissingResetTokenError = useEffectEvent(() => {
+    if (!tokenSourceReady || token || isSuccess) return
+    if (!errors.root || errors.root.type === MISSING_RESET_TOKEN_ERROR) {
+      setError("root", {
+        type: MISSING_RESET_TOKEN_ERROR,
+        message: t("auth:reset.invalidLink"),
+      })
     }
-  }, [token, setError, t])
+  })
+
+  useEffect(() => {
+    reportMissingResetTokenError()
+  }, [isSuccess, t, token, tokenSourceReady])
+
+  const clearMissingResetTokenErrorOnTokenChange = useEffectEvent(() => {
+    if (!tokenSourceReady || isSuccess || !token) return
+    if (errors.root?.type === MISSING_RESET_TOKEN_ERROR) clearErrors("root")
+  })
+
+  useEffect(() => {
+    clearMissingResetTokenErrorOnTokenChange()
+  }, [isSuccess, token, tokenSourceReady])
 
   return (
     <div className="auth-theme min-h-screen bg-page text-text-primary flex items-center justify-center p-(--fluid-px) relative overflow-hidden">
@@ -199,7 +637,11 @@ export default function ResetPassword() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <h2 className="text-2xl font-black tracking-tight text-text-primary">
+                    <h2
+                      ref={focusSuccessHeading}
+                      tabIndex={-1}
+                      className="text-2xl font-black tracking-tight text-text-primary"
+                    >
                       {t("auth:reset.successTitle")}
                     </h2>
                     <p className="text-sm text-text-secondary font-medium leading-relaxed">
@@ -234,7 +676,12 @@ export default function ResetPassword() {
                     </p>
                   </div>
 
-                  <form onSubmit={handleTelemetrySubmit} autoComplete="on" className="space-y-6">
+                  <form
+                    method="post"
+                    onSubmit={handleTelemetrySubmit}
+                    autoComplete="on"
+                    className="space-y-6"
+                  >
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <TextField

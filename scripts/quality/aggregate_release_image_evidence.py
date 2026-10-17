@@ -21,7 +21,7 @@ _WORKFLOW_PATH = ".github/workflows/build-release-images.yml"
 _SOURCE_REF = "refs/heads/main"
 _EVENT = "workflow_dispatch"
 _VERIFICATION = {
-    "trivy_version": "0.73.0",
+    "trivy_version": "0.75.0",
     "sbom_format": "cyclonedx-json",
     "signature": "cosign-keyless",
     "attestation": "github-build-provenance",
@@ -381,8 +381,8 @@ def aggregate_image_evidence(
         "certification": certification_metadata,
         "frontend_build_contract": {
             "VITE_APP_RELEASE": expected_sha,
-            "VITE_ENABLE_WEB_VITALS": "true",
-            "VITE_CWV_TRUSTED_RUM": "true",
+            "VITE_ENABLE_WEB_VITALS": "false",
+            "VITE_CWV_TRUSTED_RUM": "false",
             "VITE_WEB_VITALS_ENDPOINT": "/api/v1/cwv",
         },
         "images": sorted(images, key=lambda item: item["image_name"]),

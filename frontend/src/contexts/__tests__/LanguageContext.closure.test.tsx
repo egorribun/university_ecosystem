@@ -53,6 +53,27 @@ describe("LanguageContext browser branches", () => {
     expect(document.cookie).toContain("ue:language=ru")
   })
 
+  it("keeps the selected-language marker and document locale synchronized across switches", async () => {
+    window.__UE_SELECTED_LANG__ = "ru"
+    const { result } = renderHook(() => useLanguage(), { wrapper })
+    await waitFor(() => {
+      expect(window.__UE_SELECTED_LANG__).toBe("ru")
+      expect(document.documentElement).toHaveAttribute("lang", "ru")
+    })
+
+    act(() => result.current.setLanguage("en"))
+    await waitFor(() => {
+      expect(window.__UE_SELECTED_LANG__).toBe("en")
+      expect(document.documentElement).toHaveAttribute("lang", "en")
+    })
+
+    act(() => result.current.setLanguage("ru"))
+    await waitFor(() => {
+      expect(window.__UE_SELECTED_LANG__).toBe("ru")
+      expect(document.documentElement).toHaveAttribute("lang", "ru")
+    })
+  })
+
   it("keeps DOM synchronization safe when document.body is unavailable", () => {
     const { result } = renderHook(() => useLanguage(), { wrapper })
     const bodyDescriptor = Object.getOwnPropertyDescriptor(document, "body")

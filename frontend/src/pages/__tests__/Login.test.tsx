@@ -243,31 +243,50 @@ describe("Login page", () => {
     expect(screen.queryByText("Welcome!")).not.toBeInTheDocument()
   })
 
-  it("returns server errors to the user", async () => {
-    server.use(
-      http.post("*/auth/login", () =>
-        HttpResponse.json({ detail: tAuth("login.error") }, { status: 401 })
+  it.each([
+    ["en", "Could not validate credentials", "Incorrect email or password"],
+    ["ru", "Не удалось подтвердить учётные данные", "Неверный email или пароль"],
+  ])(
+    "shows the UI's generic %s rejection for the backend's localized 401",
+    async (language, backendDetail, expectedFeedback) => {
+      // These API details come from errors.auth.credentials_invalid in the
+      // backend dictionary; they deliberately differ from the UI's copy.
+      localStorage.setItem("ue:language", language)
+      await i18n.changeLanguage(language)
+      server.use(
+        http.post("*/auth/login", () =>
+          HttpResponse.json({ detail: backendDetail }, { status: 401 })
+        )
       )
-    )
 
-    const user = userEvent.setup()
-    await renderLogin()
+      const user = userEvent.setup()
+      await renderLogin()
+      expect(document.documentElement).toHaveAttribute("lang", language)
 
-    const emailInput = screen.getByLabelText(matchText(tAuth("fields.email")), {
-      selector: 'input[type="email"]',
-    })
+      const emailInput = screen.getByLabelText(matchText(tAuth("fields.email")), {
+        selector: 'input[type="email"]',
+      })
+      const identity = "user@example.com"
+      const wrongPassword = crypto.randomUUID()
 
-    await user.type(emailInput, "user@example.com")
-    await user.type(
-      screen.getByLabelText(matchText(tAuth("fields.password")), {
-        selector: 'input[type="password"]',
-      }),
-      "secret123"
-    )
-    await user.click(screen.getByRole("button", { name: tAuth("actions.signIn") }))
+      await user.type(emailInput, identity)
+      await user.type(
+        screen.getByLabelText(matchText(tAuth("fields.password")), {
+          selector: 'input[type="password"]',
+        }),
+        wrongPassword
+      )
+      await user.click(screen.getByRole("button", { name: tAuth("actions.signIn") }))
 
-    expect(await screen.findByText(tAuth("login.error"))).toBeInTheDocument()
-  })
+      const feedback = await screen.findByRole("alert")
+      expect(feedback.textContent).toBe(expectedFeedback)
+      expect(feedback.textContent?.includes(identity)).toBe(false)
+      expect(feedback.textContent?.includes(wrongPassword)).toBe(false)
+      expect(useAuthStore.getState().user).toBeNull()
+      expect(emailInput).toBeVisible()
+      expect(screen.queryByText("Welcome!")).not.toBeInTheDocument()
+    }
+  )
 
   it("shows lockout messaging with retry information", async () => {
     server.use(

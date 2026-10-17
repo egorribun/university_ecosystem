@@ -64,4 +64,4 @@ jobs:
             echo "::error::Cargo Deny matrix result was '${{ needs.cargo-deny-crates.result }}'; refusing aggregate success."
             exit 1
           fi
-          echo "All four Rust crate dependency scans passed."
+          echo "All three Rust crate dependency scans passed."

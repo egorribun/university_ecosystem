@@ -1,5 +1,7 @@
 import asyncio
 import io
+import secrets
+import unicodedata
 import uuid
 from datetime import UTC, datetime
 
@@ -7,6 +9,7 @@ import pytest
 from fastapi import UploadFile
 from httpx import AsyncClient
 from PIL import Image
+from pydantic import ValidationError
 from sqlalchemy import select
 from starlette.datastructures import Headers
 
@@ -14,9 +17,9 @@ import app.models as models
 from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.repositories.user_repository import UserRepository
+from app.schemas.users import UserProfileUpdate
 from app.services.audit_service import AuditService
 from app.services.user_service import UserService
-from app.utils.files import delete_static_file
 
 
 def _make_png_bytes(color: tuple[int, int, int] = (255, 0, 0)) -> bytes:
@@ -36,6 +39,22 @@ async def _login(
     assert response.status_code == 200
     token = response.cookies.get("access_token_v2")
     return {"Authorization": f"Bearer {token}", "X-Query-Budget": "15"}
+
+
+def _make_media_uow(db_session, user, *, commit_side_effect):
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_uow = AsyncMock()
+    mock_uow.users = AsyncMock()
+    mock_uow.users.db = db_session
+    mock_uow.users.add = MagicMock()
+    mock_uow.users.get_orm_for_update_with_relations = AsyncMock(return_value=user)
+    mock_uow.users._to_dto = MagicMock(return_value=user)
+    mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
+    mock_uow.__aexit__ = AsyncMock(return_value=None)
+    mock_uow.commit = AsyncMock(side_effect=commit_side_effect)
+    mock_uow.rollback = AsyncMock(side_effect=db_session.rollback)
+    return mock_uow
 
 
 @pytest.mark.asyncio
@@ -238,15 +257,206 @@ async def test_update_profile_timezone_invalid(async_client, user_factory):
 
 
 @pytest.mark.asyncio
+async def test_self_profile_responses_include_nested_profile_detail(
+    async_client, user_factory, db_session
+):
+    password = f"Profile{secrets.token_hex(12)}Aa1!"
+    hashed = await get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+    user_id = user.id
+    user_role = user.role.value
+    headers = await _login(async_client, user.email, password)
+
+    update_response = await async_client.put(
+        "/users/me",
+        json={
+            "full_name": "Profile Detail User",
+            "profile_detail": {
+                "about": "Synthetic profile bio",
+                "department": "Synthetic department",
+            },
+            "education_path": {
+                "institute": "Synthetic institute",
+                "course": "Synthetic course",
+            },
+        },
+        headers=headers,
+    )
+
+    assert update_response.status_code == 200
+    update_body = update_response.json()
+    assert update_body["about"] == "Synthetic profile bio"
+    assert update_body["profile_detail"]["about"] == "Synthetic profile bio"
+    assert update_body["profile_detail"]["department"] == "Synthetic department"
+    assert update_body["education_path"]["institute"] == "Synthetic institute"
+    assert update_body["education_path"]["course"] == "Synthetic course"
+
+    read_response = await async_client.get("/users/me", headers=headers)
+
+    assert read_response.status_code == 200
+    read_body = read_response.json()
+    assert read_body["about"] == "Synthetic profile bio"
+    assert read_body["profile_detail"]["about"] == "Synthetic profile bio"
+    assert read_body["profile_detail"]["department"] == "Synthetic department"
+    assert read_body["education_path"]["institute"] == "Synthetic institute"
+    assert read_body["education_path"]["course"] == "Synthetic course"
+
+    partial_response = await async_client.put(
+        "/users/me",
+        json={
+            "about": "Flat profile bio",
+            "profile_detail": {"department": None},
+            "education_path": {"course": "Updated course"},
+        },
+        headers=headers,
+    )
+
+    assert partial_response.status_code == 200
+    partial_body = partial_response.json()
+    assert partial_body["about"] == "Flat profile bio"
+    assert partial_body["profile_detail"]["about"] == "Flat profile bio"
+    assert partial_body["profile_detail"]["department"] is None
+    assert partial_body["education_path"]["institute"] == "Synthetic institute"
+    assert partial_body["education_path"]["course"] == "Updated course"
+
+    db_session.expire_all()
+    partially_stored_profile = await db_session.scalar(
+        select(models.UserProfile).where(models.UserProfile.user_id == user_id)
+    )
+    assert partially_stored_profile is not None
+    assert partially_stored_profile.about == "Flat profile bio"
+    assert partially_stored_profile.department is None
+    partially_stored_education = await db_session.scalar(
+        select(models.EducationPath).where(models.EducationPath.user_id == user_id)
+    )
+    assert partially_stored_education is not None
+    assert partially_stored_education.institute == "Synthetic institute"
+    assert partially_stored_education.course == "Updated course"
+
+    null_response = await async_client.put(
+        "/users/me",
+        json={"profile_detail": None, "education_path": None},
+        headers=headers,
+    )
+
+    assert null_response.status_code == 200
+    null_body = null_response.json()
+    assert null_body["about"] == "Flat profile bio"
+    assert null_body["profile_detail"]["about"] == "Flat profile bio"
+    assert null_body["education_path"] is None
+
+    null_read_response = await async_client.get("/users/me", headers=headers)
+    assert null_read_response.status_code == 200
+    null_read_body = null_read_response.json()
+    assert null_read_body["about"] == "Flat profile bio"
+    assert null_read_body["profile_detail"]["about"] == "Flat profile bio"
+    assert null_read_body["education_path"] is None
+
+    role_response = await async_client.put(
+        "/users/me", json={"role": "admin"}, headers=headers
+    )
+    assert role_response.status_code == 422
+    role_read_response = await async_client.get("/users/me", headers=headers)
+    assert role_read_response.status_code == 200
+    assert role_read_response.json()["role"] == user_role
+
+    db_session.expire_all()
+    stored_profile = await db_session.scalar(
+        select(models.UserProfile).where(models.UserProfile.user_id == user_id)
+    )
+    assert stored_profile is not None
+    assert stored_profile.about == "Flat profile bio"
+    assert stored_profile.department is None
+    stored_education = await db_session.scalar(
+        select(models.EducationPath).where(models.EducationPath.user_id == user_id)
+    )
+    assert stored_education is None
+
+
+@pytest.mark.asyncio
+async def test_profile_about_accepts_database_limit_for_flat_and_nested_updates(
+    async_client, user_factory, db_session
+):
+    password = f"Profile{secrets.token_hex(12)}Aa1!"
+    hashed = await get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+    user_id = user.id
+    headers = await _login(async_client, user.email, password)
+
+    flat_about = "f" * 4096
+    flat_response = await async_client.put(
+        "/users/me", json={"about": flat_about}, headers=headers
+    )
+
+    assert flat_response.status_code == 200
+    assert flat_response.json()["about"] == flat_about
+
+    nested_about = "n" * 4096
+    nested_response = await async_client.put(
+        "/users/me",
+        json={"profile_detail": {"about": nested_about}},
+        headers=headers,
+    )
+
+    assert nested_response.status_code == 200
+    nested_body = nested_response.json()
+    assert nested_body["about"] == nested_about
+    assert nested_body["profile_detail"]["about"] == nested_about
+
+    db_session.expire_all()
+    stored_profile = await db_session.scalar(
+        select(models.UserProfile).where(models.UserProfile.user_id == user_id)
+    )
+    assert stored_profile is not None
+    assert stored_profile.about == nested_about
+
+
+@pytest.mark.asyncio
+async def test_profile_about_over_database_limit_is_rejected_without_persisting(
+    async_client, user_factory
+):
+    password = f"Profile{secrets.token_hex(12)}Aa1!"
+    hashed = await get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+    headers = await _login(async_client, user.email, password)
+
+    before_response = await async_client.get("/users/me", headers=headers)
+    assert before_response.status_code == 200
+    before_body = before_response.json()
+
+    flat_response = await async_client.put(
+        "/users/me",
+        json={"about": "x" * 4097},
+        headers=headers,
+    )
+
+    assert flat_response.status_code == 422
+    nested_response = await async_client.put(
+        "/users/me",
+        json={"profile_detail": {"about": "x" * 4097}},
+        headers=headers,
+    )
+
+    assert nested_response.status_code == 422
+    after_response = await async_client.get("/users/me", headers=headers)
+    assert after_response.status_code == 200
+    after_body = after_response.json()
+    assert after_body["about"] == before_body["about"]
+    assert after_body["profile_detail"] == before_body["profile_detail"]
+
+
+@pytest.mark.asyncio
 async def test_delete_avatar_removes_file(async_client, user_factory, db_session):
     password = "DeleteAvatar123!"
     hashed = await get_password_hash(password)
-    avatar_rel = f"avatars/test-avatar-{uuid.uuid4().hex}.png"
+    owner_id = uuid.uuid4()
+    avatar_rel = f"avatars/user_{owner_id}_avatar_{uuid.uuid4().hex}.png"
     avatar_path = settings.static_dir_path / avatar_rel
     avatar_path.parent.mkdir(parents=True, exist_ok=True)
     avatar_path.write_bytes(b"avatar")
 
     user = await user_factory(
+        id=owner_id,
         hashed_password=hashed,
         is_active=True,
         avatar_url=f"/static/{avatar_rel}",
@@ -265,6 +475,36 @@ async def test_delete_avatar_removes_file(async_client, user_factory, db_session
     db_session.expire_all()
     user = await UserRepository(db_session).get(user_id)
     assert user.profile.avatar_url is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("media_kind", "directory"), [("avatar", "avatars"), ("cover", "covers")]
+)
+async def test_delete_profile_media_preserves_foreign_owner_file(
+    tmp_path, monkeypatch, async_client, user_factory, media_kind, directory
+):
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+    owner_id = uuid.uuid4()
+    foreign_id = uuid.uuid4()
+    relative_path = f"{directory}/user_{foreign_id}_{media_kind}_{uuid.uuid4().hex}.png"
+    file_path = tmp_path / relative_path
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_bytes(b"foreign profile media")
+    field_name = f"{media_kind}_url"
+    user = await user_factory(
+        id=owner_id,
+        hashed_password=await get_password_hash("DeleteForeignMedia123!"),
+        is_active=True,
+        **{field_name: f"/static/{relative_path}"},
+    )
+    headers = await _login(async_client, user.email, "DeleteForeignMedia123!")
+
+    response = await async_client.delete(f"/users/me/{media_kind}", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()[field_name] is None
+    assert file_path.read_bytes() == b"foreign profile media"
 
 
 @pytest.mark.asyncio
@@ -304,10 +544,15 @@ async def test_delete_avatar_ignores_invalid_path(
 
 
 @pytest.mark.asyncio
-async def test_upload_avatar_cleans_up_on_commit_failure(
+async def test_upload_avatar_retains_old_file_on_commit_failure(
     tmp_path, monkeypatch, db_session, user_factory
 ):
-    user = await user_factory(is_active=True)
+    owner_id = uuid.uuid4()
+    old_url = f"/static/avatars/user_{owner_id}_avatar_{uuid.uuid4().hex}.png"
+    old_path = tmp_path / "avatars" / old_url.rsplit("/", maxsplit=1)[1]
+    old_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.write_bytes(b"old avatar")
+    user = await user_factory(id=owner_id, is_active=True, avatar_url=old_url)
 
     payload = _make_png_bytes()
     upload = UploadFile(
@@ -318,12 +563,16 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
 
     monkeypatch.setattr(settings, "static_dir", str(tmp_path))
 
-    delete_calls: list[str] = []
-    original_delete = delete_static_file
+    from app.services.user import media_service
 
-    async def tracking_delete(url: str) -> None:
-        delete_calls.append(url)
-        await original_delete(url)
+    delete_calls: list[tuple[str, uuid.UUID, str]] = []
+    original_delete = media_service.delete_static_file
+
+    async def tracking_delete(
+        url: str, *, owner_id: uuid.UUID, media_kind: str
+    ) -> None:
+        delete_calls.append((url, owner_id, media_kind))
+        await original_delete(url, owner_id=owner_id, media_kind=media_kind)
 
     monkeypatch.setattr(
         "app.services.user.media_service.delete_static_file", tracking_delete
@@ -331,12 +580,8 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
 
     from unittest.mock import AsyncMock, MagicMock
 
-    mock_uow = AsyncMock()
-    mock_uow.users = AsyncMock()
-    mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
-    mock_uow.__aexit__ = AsyncMock(return_value=None)
-    mock_uow.commit = AsyncMock(side_effect=RuntimeError("commit failed"))
-    mock_uow.rollback = AsyncMock()
+    commit_error = RuntimeError("commit failed")
+    mock_uow = _make_media_uow(db_session, user, commit_side_effect=commit_error)
 
     service = UserService(mock_uow, AuditService(), AsyncMock())
     service.repo.add = MagicMock()
@@ -345,20 +590,28 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
     service.repo._get_orm.return_value = user
     service.repo._to_dto.return_value = user
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError) as raised:
         await service.upload_avatar(user, upload)
 
+    assert raised.value is commit_error
     avatar_dir = tmp_path / "avatars"
     assert delete_calls, "delete_static_file should be invoked"
-    if avatar_dir.exists():
-        assert not any(avatar_dir.iterdir())
+    assert all(call[1:] == (owner_id, "avatar") for call in delete_calls)
+    assert all(call[0] != old_url for call in delete_calls)
+    assert old_path.exists()
+    assert len(list(avatar_dir.iterdir())) == 1
 
 
 @pytest.mark.asyncio
-async def test_upload_cover_cleans_up_on_commit_failure(
+async def test_upload_cover_retains_old_file_on_commit_failure(
     tmp_path, monkeypatch, db_session, user_factory
 ):
-    user = await user_factory(is_active=True)
+    owner_id = uuid.uuid4()
+    old_url = f"/static/covers/user_{owner_id}_cover_{uuid.uuid4().hex}.png"
+    old_path = tmp_path / "covers" / old_url.rsplit("/", maxsplit=1)[1]
+    old_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.write_bytes(b"old cover")
+    user = await user_factory(id=owner_id, is_active=True, cover_url=old_url)
 
     payload = _make_png_bytes(color=(0, 255, 0))
     upload = UploadFile(
@@ -369,12 +622,16 @@ async def test_upload_cover_cleans_up_on_commit_failure(
 
     monkeypatch.setattr(settings, "static_dir", str(tmp_path))
 
-    delete_calls: list[str] = []
-    original_delete = delete_static_file
+    from app.services.user import media_service
 
-    async def tracking_delete(url: str) -> None:
-        delete_calls.append(url)
-        await original_delete(url)
+    delete_calls: list[tuple[str, uuid.UUID, str]] = []
+    original_delete = media_service.delete_static_file
+
+    async def tracking_delete(
+        url: str, *, owner_id: uuid.UUID, media_kind: str
+    ) -> None:
+        delete_calls.append((url, owner_id, media_kind))
+        await original_delete(url, owner_id=owner_id, media_kind=media_kind)
 
     monkeypatch.setattr(
         "app.services.user.media_service.delete_static_file", tracking_delete
@@ -382,12 +639,8 @@ async def test_upload_cover_cleans_up_on_commit_failure(
 
     from unittest.mock import AsyncMock, MagicMock
 
-    mock_uow = AsyncMock()
-    mock_uow.users = AsyncMock()
-    mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
-    mock_uow.__aexit__ = AsyncMock(return_value=None)
-    mock_uow.commit = AsyncMock(side_effect=RuntimeError("commit failed"))
-    mock_uow.rollback = AsyncMock()
+    commit_error = RuntimeError("commit failed")
+    mock_uow = _make_media_uow(db_session, user, commit_side_effect=commit_error)
 
     service = UserService(mock_uow, AuditService(), AsyncMock())
     service.repo.add = MagicMock()
@@ -396,25 +649,270 @@ async def test_upload_cover_cleans_up_on_commit_failure(
     service.repo._get_orm.return_value = user
     service.repo._to_dto.return_value = user
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError) as raised:
         await service.upload_cover(user, upload)
 
+    assert raised.value is commit_error
     cover_dir = tmp_path / "covers"
     assert delete_calls, "delete_static_file should be invoked"
-    if cover_dir.exists():
-        assert not any(cover_dir.iterdir())
+    assert all(call[1:] == (owner_id, "cover") for call in delete_calls)
+    assert all(call[0] != old_url for call in delete_calls)
+    assert old_path.exists()
+    assert len(list(cover_dir.iterdir())) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("media_kind", ["avatar", "cover"])
+async def test_delete_profile_media_retains_file_on_commit_failure(
+    tmp_path, monkeypatch, db_session, user_factory, media_kind
+):
+    from unittest.mock import AsyncMock
+
+    owner_id = uuid.uuid4()
+    old_url = (
+        f"/static/{media_kind}/user_{owner_id}_{media_kind}_{uuid.uuid4().hex}.png"
+    )
+    old_path = tmp_path / media_kind / old_url.rsplit("/", maxsplit=1)[1]
+    old_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.write_bytes(b"old profile media")
+    profile_media = {f"{media_kind}_url": old_url}
+    user = await user_factory(id=owner_id, is_active=True, **profile_media)
+
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+    from app.services.user import media_service
+
+    delete_calls: list[str] = []
+    original_delete = media_service.delete_static_file
+
+    async def tracking_delete(
+        url: str, *, owner_id: uuid.UUID, media_kind: str
+    ) -> None:
+        delete_calls.append(url)
+        await original_delete(url, owner_id=owner_id, media_kind=media_kind)
+
+    monkeypatch.setattr(media_service, "delete_static_file", tracking_delete)
+    commit_error = RuntimeError("commit failed")
+    mock_uow = _make_media_uow(db_session, user, commit_side_effect=commit_error)
+    service = UserService(mock_uow, AuditService(), AsyncMock())
+
+    with pytest.raises(RuntimeError) as raised:
+        await getattr(service, f"delete_{media_kind}")(user)
+
+    assert raised.value is commit_error
+    assert old_path.exists()
+    assert delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_upload_avatar_retains_new_file_after_ambiguous_commit(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    from unittest.mock import AsyncMock
+
+    user = await user_factory(is_active=True)
+    owner_id = user.id
+    payload = _make_png_bytes()
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(payload),
+        headers=Headers({"content-type": "image/png"}),
+    )
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+
+    from app.services.user import media_service
+
+    delete_calls: list[str] = []
+    original_delete = media_service.delete_static_file
+
+    async def tracking_delete(
+        url: str, *, owner_id: uuid.UUID, media_kind: str
+    ) -> None:
+        delete_calls.append(url)
+        await original_delete(url, owner_id=owner_id, media_kind=media_kind)
+
+    monkeypatch.setattr(media_service, "delete_static_file", tracking_delete)
+    commit_error = RuntimeError("commit acknowledgement lost")
+
+    async def commit_then_lose_acknowledgement() -> None:
+        await db_session.commit()
+        raise commit_error
+
+    mock_uow = _make_media_uow(
+        db_session, user, commit_side_effect=commit_then_lose_acknowledgement
+    )
+    service = UserService(mock_uow, AuditService(), AsyncMock())
+
+    with pytest.raises(RuntimeError) as raised:
+        await service.upload_avatar(user, upload)
+
+    assert raised.value is commit_error
+    profile = await db_session.get(models.UserProfile, owner_id)
+    assert profile is not None and profile.avatar_url
+    uploaded_path = tmp_path / profile.avatar_url.removeprefix("/static/")
+    assert uploaded_path.exists()
+    assert delete_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_stage", ["rollback", "file_cleanup"])
+async def test_upload_avatar_preserves_commit_error_when_cleanup_fails(
+    tmp_path, monkeypatch, db_session, user_factory, failure_stage
+):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    user = await user_factory(is_active=True)
+    payload = _make_png_bytes()
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(payload),
+        headers=Headers({"content-type": "image/png"}),
+    )
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+
+    from app.services.user import media_service
+
+    delete_calls: list[str] = []
+    original_delete = media_service.delete_static_file
+    cleanup_error = RuntimeError("cleanup failed")
+
+    async def tracking_delete(
+        url: str, *, owner_id: uuid.UUID, media_kind: str
+    ) -> None:
+        delete_calls.append(url)
+        if failure_stage == "file_cleanup":
+            raise cleanup_error
+        await original_delete(url, owner_id=owner_id, media_kind=media_kind)
+
+    monkeypatch.setattr(media_service, "delete_static_file", tracking_delete)
+    commit_error = RuntimeError("commit failed")
+    mock_uow = _make_media_uow(db_session, user, commit_side_effect=commit_error)
+    if failure_stage == "rollback":
+        mock_uow.rollback = AsyncMock(side_effect=RuntimeError("rollback failed"))
+    else:
+
+        async def no_profile_reference(_statement):
+            return SimpleNamespace(scalar_one_or_none=lambda: None)
+
+        mock_uow.users.db = SimpleNamespace(execute=no_profile_reference)
+    service = UserService(mock_uow, AuditService(), AsyncMock())
+
+    with pytest.raises(RuntimeError) as raised:
+        await service.upload_avatar(user, upload)
+
+    assert raised.value is commit_error
+    avatar_files = list((tmp_path / "avatars").iterdir())
+    assert len(avatar_files) == 1
+    assert avatar_files[0].exists()
+    assert bool(delete_calls) is (failure_stage == "file_cleanup")
+
+
+@pytest.mark.asyncio
+async def test_shared_cover_reference_prevents_avatar_cleanup(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    owner_id = uuid.uuid4()
+    old_url = f"/static/avatars/user_{owner_id}_avatar_{uuid.uuid4().hex}.png"
+    old_path = tmp_path / "avatars" / old_url.rsplit("/", maxsplit=1)[1]
+    old_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.write_bytes(b"shared avatar")
+    owner = await user_factory(id=owner_id, is_active=True, avatar_url=old_url)
+    other_user = await user_factory(is_active=True, cover_url=old_url)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+
+    from unittest.mock import AsyncMock
+
+    from app.repositories.unit_of_work import uow_from_session
+    from app.services.user import media_service
+    from app.services.user.media_service import UserMediaService
+
+    new_url = f"/static/avatars/user_{owner_id}_avatar_{uuid.uuid4().hex}.png"
+    monkeypatch.setattr(media_service, "save_upload", AsyncMock(return_value=new_url))
+    service = UserMediaService(uow_from_session(db_session))
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(_make_png_bytes()),
+        headers=Headers({"content-type": "image/png"}),
+    )
+
+    await service.upload_avatar(owner, upload)
+
+    other_profile = await db_session.get(models.UserProfile, other_user.id)
+    assert other_profile is not None and other_profile.cover_url == old_url
+    assert old_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_avatar_cleanup_retains_file_when_primary_reference_check_fails(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    from unittest.mock import AsyncMock
+
+    from sqlalchemy.exc import SQLAlchemyError
+
+    owner_id = uuid.uuid4()
+    old_url = f"/static/avatars/user_{owner_id}_avatar_{uuid.uuid4().hex}.png"
+    old_path = tmp_path / "avatars" / old_url.rsplit("/", maxsplit=1)[1]
+    old_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.write_bytes(b"avatar retained on unknown ownership")
+    user = await user_factory(id=owner_id, is_active=True, avatar_url=old_url)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+
+    from app.services.user import media_service
+
+    delete_calls: list[str] = []
+    original_delete = media_service.delete_static_file
+
+    async def tracking_delete(
+        url: str, *, owner_id: uuid.UUID, media_kind: str
+    ) -> None:
+        delete_calls.append(url)
+        await original_delete(url, owner_id=owner_id, media_kind=media_kind)
+
+    monkeypatch.setattr(media_service, "delete_static_file", tracking_delete)
+    new_url = f"/static/avatars/user_{owner_id}_avatar_{uuid.uuid4().hex}.png"
+    monkeypatch.setattr(media_service, "save_upload", AsyncMock(return_value=new_url))
+
+    class FailingPrimarySession:
+        calls = 0
+
+        async def execute(self, _statement):
+            self.calls += 1
+            raise SQLAlchemyError("synthetic primary lookup failure")
+
+    primary = FailingPrimarySession()
+    mock_uow = _make_media_uow(db_session, user, commit_side_effect=db_session.commit)
+    mock_uow.users.db = primary
+    service = UserService(mock_uow, AuditService(), AsyncMock())
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(_make_png_bytes()),
+        headers=Headers({"content-type": "image/png"}),
+    )
+
+    await service.upload_avatar(user, upload)
+
+    assert primary.calls == 1
+    db_session.expire_all()
+    profile = await db_session.get(models.UserProfile, owner_id)
+    assert profile is not None
+    assert profile.avatar_url == new_url
+    assert old_path.exists()
+    assert delete_calls == []
 
 
 @pytest.mark.asyncio
 async def test_delete_cover_removes_file(async_client, user_factory, db_session):
     password = "DeleteCover123!"
     hashed = await get_password_hash(password)
-    cover_rel = f"covers/test-cover-{uuid.uuid4().hex}.png"
+    owner_id = uuid.uuid4()
+    cover_rel = f"covers/user_{owner_id}_cover_{uuid.uuid4().hex}.png"
     cover_path = settings.static_dir_path / cover_rel
     cover_path.parent.mkdir(parents=True, exist_ok=True)
     cover_path.write_bytes(b"cover")
 
     user = await user_factory(
+        id=owner_id,
         hashed_password=hashed,
         is_active=True,
         cover_url=f"/static/{cover_rel}",
@@ -501,3 +999,331 @@ async def test_forgot_password_sends_email_via_thread(
     await asyncio.wait_for(event.wait(), timeout=1)
     assert captured["to_email"] == user.email
     assert "reset-password" in captured["link"]
+
+
+_PROFILE_AND_EDUCATION_COLUMN_LIMITS = (
+    (("full_name",), 256),
+    (("about",), 4096),
+    (("telegram",), 128),
+    (("status",), 256),
+    (("achievements",), 2048),
+    (("department",), 256),
+    (("position",), 256),
+    (("profile_detail", "about"), 4096),
+    (("profile_detail", "telegram"), 128),
+    (("profile_detail", "status"), 256),
+    (("profile_detail", "achievements"), 2048),
+    (("profile_detail", "department"), 256),
+    (("profile_detail", "position"), 256),
+    (("institute",), 512),
+    (("course",), 64),
+    (("education_level",), 128),
+    (("track",), 256),
+    (("program",), 512),
+    (("record_book_number",), 64),
+    (("education_path", "institute"), 512),
+    (("education_path", "course"), 64),
+    (("education_path", "education_level"), 128),
+    (("education_path", "track"), 256),
+    (("education_path", "program"), 512),
+    (("education_path", "record_book_number"), 64),
+)
+
+
+def _profile_update_body(path: tuple[str, ...], value: str) -> dict[str, object]:
+    if len(path) == 1:
+        return {path[0]: value}
+    parent, child = path
+    return {parent: {child: value}}
+
+
+@pytest.mark.parametrize(("path", "limit"), _PROFILE_AND_EDUCATION_COLUMN_LIMITS)
+def test_profile_update_schema_accepts_database_string_limits(
+    path: tuple[str, ...], limit: int
+) -> None:
+    body = _profile_update_body(path, "x" * limit)
+    parsed = UserProfileUpdate.model_validate(body)
+
+    assert parsed.model_dump(exclude_unset=True) == body
+
+
+@pytest.mark.parametrize(("path", "limit"), _PROFILE_AND_EDUCATION_COLUMN_LIMITS)
+def test_profile_update_schema_rejects_database_string_overflow(
+    path: tuple[str, ...], limit: int
+) -> None:
+    body = _profile_update_body(path, "x" * (limit + 1))
+
+    with pytest.raises(ValidationError) as error:
+        UserProfileUpdate.model_validate(body)
+
+    assert path in {tuple(item["loc"]) for item in error.value.errors()}
+
+
+@pytest.mark.parametrize(
+    ("body", "path"),
+    [
+        ({"timezone": "x" * 65}, ("timezone",)),
+        ({"preferences": {"timezone": "x" * 65}}, ("preferences", "timezone")),
+    ],
+)
+def test_timezone_update_rejects_values_over_its_database_column_limit(
+    body: dict[str, object], path: tuple[str, ...]
+) -> None:
+    assert (
+        UserProfileUpdate(timezone="America/Argentina/ComodRivadavia").timezone
+        == "America/Argentina/ComodRivadavia"
+    )
+
+    with pytest.raises(ValidationError) as error:
+        UserProfileUpdate.model_validate(body)
+
+    assert any(
+        tuple(item["loc"]) == path and item["type"] == "string_too_long"
+        for item in error.value.errors()
+    )
+
+
+@pytest.mark.asyncio
+async def test_profile_and_education_column_limits_persist_at_flat_and_nested_paths(
+    async_client, user_factory, db_session
+):
+    password = f"Profile{secrets.token_hex(12)}Aa1!"
+    hashed = await get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+    user_id = user.id
+    headers = await _login(async_client, user.email, password)
+
+    flat_profile = {
+        "full_name": "n" * 256,
+        "telegram": "t" * 128,
+        "status": "s" * 256,
+        "achievements": "a" * 2048,
+        "department": "d" * 256,
+        "position": "p" * 256,
+    }
+    flat_education = {
+        "institute": "i" * 512,
+        "course": "c" * 64,
+        "education_level": "l" * 128,
+        "track": "t" * 256,
+        "program": "p" * 512,
+        "record_book_number": "r" * 64,
+    }
+    flat_response = await async_client.put(
+        "/users/me",
+        json={**flat_profile, **flat_education, "timezone": "UTC"},
+        headers=headers,
+    )
+    assert flat_response.status_code == 200
+    assert flat_response.json()["full_name"] == flat_profile["full_name"]
+
+    nested_profile = {
+        key: value for key, value in flat_profile.items() if key != "full_name"
+    }
+    nested_education = {
+        "institute": "I" * 512,
+        "course": "C" * 64,
+        "education_level": "L" * 128,
+        "track": "T" * 256,
+        "program": "P" * 512,
+        "record_book_number": "R" * 64,
+    }
+    nested_response = await async_client.put(
+        "/users/me",
+        json={
+            "profile_detail": nested_profile,
+            "education_path": nested_education,
+            "preferences": {"timezone": "UTC"},
+        },
+        headers=headers,
+    )
+    assert nested_response.status_code == 200
+    nested_body = nested_response.json()
+    for field, value in nested_profile.items():
+        assert nested_body["profile_detail"][field] == value
+    assert nested_body["education_path"] == nested_education
+
+    db_session.expire_all()
+    stored_profile = await db_session.scalar(
+        select(models.UserProfile).where(models.UserProfile.user_id == user_id)
+    )
+    stored_education = await db_session.scalar(
+        select(models.EducationPath).where(models.EducationPath.user_id == user_id)
+    )
+    assert stored_profile is not None
+    assert stored_profile.full_name == flat_profile["full_name"]
+    for field, value in nested_profile.items():
+        assert getattr(stored_profile, field) == value
+    assert stored_education is not None
+    for field, value in nested_education.items():
+        assert getattr(stored_education, field) == value
+
+
+@pytest.mark.asyncio
+async def test_profile_column_overflow_returns_422_without_changing_profile(
+    async_client, user_factory
+):
+    password = f"Profile{secrets.token_hex(12)}Aa1!"
+    hashed = await get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+    headers = await _login(async_client, user.email, password)
+    before_response = await async_client.get("/users/me", headers=headers)
+    assert before_response.status_code == 200
+    before_body = before_response.json()
+
+    overflow_body = {
+        "full_name": "n" * 257,
+        "telegram": "t" * 129,
+        "profile_detail": {"department": "d" * 257},
+        "institute": "i" * 513,
+        "education_path": {"program": "p" * 513},
+    }
+    response = await async_client.put("/users/me", json=overflow_body, headers=headers)
+
+    assert response.status_code == 422
+    error_locations = {tuple(error["loc"]) for error in response.json()["detail"]}
+    assert {
+        ("body", "full_name"),
+        ("body", "telegram"),
+        ("body", "profile_detail", "department"),
+        ("body", "institute"),
+        ("body", "education_path", "program"),
+    } <= error_locations
+
+    after_response = await async_client.get("/users/me", headers=headers)
+    assert after_response.status_code == 200
+    assert after_response.json() == before_body
+
+
+@pytest.mark.asyncio
+async def test_full_name_column_limit_counts_unicode_codepoints_without_normalizing(
+    async_client, user_factory, db_session
+):
+    password = f"Profile{secrets.token_hex(12)}Aa1!"
+    hashed = await get_password_hash(password)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+    user_id = user.id
+    headers = await _login(async_client, user.email, password)
+
+    astral_name = "🙂" * 256
+    assert len(astral_name) == 256
+    astral_response = await async_client.put(
+        "/users/me", json={"full_name": astral_name}, headers=headers
+    )
+    assert astral_response.status_code == 200
+    assert astral_response.json()["full_name"] == astral_name
+
+    decomposed_name = "e\u0301" * 128
+    assert len(decomposed_name) == 256
+    assert unicodedata.normalize("NFC", decomposed_name) != decomposed_name
+    decomposed_response = await async_client.put(
+        "/users/me", json={"full_name": decomposed_name}, headers=headers
+    )
+    assert decomposed_response.status_code == 200
+    assert decomposed_response.json()["full_name"] == decomposed_name
+
+    overflow_response = await async_client.put(
+        "/users/me",
+        json={"full_name": decomposed_name + "x"},
+        headers=headers,
+    )
+    assert overflow_response.status_code == 422
+    unchanged_response = await async_client.get("/users/me", headers=headers)
+    assert unchanged_response.status_code == 200
+    assert unchanged_response.json()["full_name"] == decomposed_name
+
+    db_session.expire_all()
+    stored_profile = await db_session.scalar(
+        select(models.UserProfile).where(models.UserProfile.user_id == user_id)
+    )
+    assert stored_profile is not None
+    assert stored_profile.full_name == decomposed_name
+
+
+@pytest.mark.asyncio
+async def test_upload_avatar_preserves_commit_error_when_uow_exit_fails(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    from unittest.mock import AsyncMock
+
+    owner_id = uuid.uuid4()
+    old_url = f"/static/avatars/user_{owner_id}_avatar_{uuid.uuid4().hex}.png"
+    old_path = tmp_path / "avatars" / old_url.rsplit("/", maxsplit=1)[1]
+    old_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.write_bytes(b"old avatar")
+    user = await user_factory(id=owner_id, is_active=True, avatar_url=old_url)
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(_make_png_bytes()),
+        headers=Headers({"content-type": "image/png"}),
+    )
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+
+    commit_error = RuntimeError("commit failed")
+    exit_error = RuntimeError("unit of work exit failed")
+    mock_uow = _make_media_uow(db_session, user, commit_side_effect=commit_error)
+    mock_uow.__aexit__.side_effect = exit_error
+    service = UserService(mock_uow, AuditService(), AsyncMock())
+
+    with pytest.raises(RuntimeError) as raised:
+        await service.upload_avatar(user, upload)
+
+    assert raised.value is commit_error
+    mock_uow.rollback.assert_awaited_once()
+    mock_uow.__aexit__.assert_awaited_once()
+    assert old_path.exists()
+    avatar_files = list((tmp_path / "avatars").iterdir())
+    assert avatar_files == [old_path]
+    profile = await db_session.get(models.UserProfile, owner_id)
+    assert profile is not None
+    await db_session.refresh(profile)
+    assert profile.avatar_url == old_url
+
+
+@pytest.mark.asyncio
+async def test_upload_avatar_keeps_durable_new_url_when_old_file_delete_raises_oserror(
+    tmp_path, monkeypatch, db_session, user_factory
+):
+    from unittest.mock import AsyncMock
+
+    owner_id = uuid.uuid4()
+    old_url = f"/static/avatars/user_{owner_id}_avatar_{uuid.uuid4().hex}.png"
+    old_path = tmp_path / "avatars" / old_url.rsplit("/", maxsplit=1)[1]
+    old_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.write_bytes(b"old avatar")
+    user = await user_factory(id=owner_id, is_active=True, avatar_url=old_url)
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(_make_png_bytes(color=(0, 0, 255))),
+        headers=Headers({"content-type": "image/png"}),
+    )
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+
+    from app.services.user import media_service
+
+    original_delete = media_service.delete_static_file
+    delete_calls: list[str] = []
+
+    async def fail_old_file_delete(
+        url: str, *, owner_id: uuid.UUID, media_kind: str
+    ) -> None:
+        delete_calls.append(url)
+        if url == old_url:
+            raise OSError("storage temporarily unavailable")
+        await original_delete(url, owner_id=owner_id, media_kind=media_kind)
+
+    monkeypatch.setattr(media_service, "delete_static_file", fail_old_file_delete)
+    mock_uow = _make_media_uow(db_session, user, commit_side_effect=db_session.commit)
+    service = UserService(mock_uow, AuditService(), AsyncMock())
+
+    result = await service.upload_avatar(user, upload)
+
+    profile = await db_session.get(models.UserProfile, owner_id)
+    assert profile is not None
+    await db_session.refresh(profile)
+    assert profile.avatar_url and profile.avatar_url != old_url
+    assert result.profile.avatar_url == profile.avatar_url
+    new_path = tmp_path / profile.avatar_url.removeprefix("/static/")
+    assert new_path.exists()
+    assert old_path.exists()
+    assert delete_calls == [old_url]

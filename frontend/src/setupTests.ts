@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import "@testing-library/jest-dom/vitest"
+import * as jestDomMatchers from "@testing-library/jest-dom/matchers"
+import type { TestingLibraryMatchers } from "@testing-library/jest-dom/matchers"
 import "fake-indexeddb/auto"
 import { TextEncoder, TextDecoder } from "node:util"
 import { webcrypto } from "node:crypto"
@@ -21,14 +22,18 @@ import { validateRequestBody, validateResponseBody } from "./tests/contractValid
 import { installStrictConsole, resetStrictConsoleDiagnostics } from "./tests/strictConsole"
 
 declare module "vitest" {
-  export interface Assertion {
-    toBeAccessible(): Promise<void>
+  export interface Assertion<
+    R extends void | Promise<void> = void,
+    T = unknown,
+  > extends TestingLibraryMatchers<T, R> {
+    toBeAccessible(this: Assertion<R, T>): Promise<void>
   }
-  export interface AsymmetricMatchersContaining {
+  export interface AsymmetricMatchersContaining extends TestingLibraryMatchers<unknown, unknown> {
     toBeAccessible(): Promise<void>
   }
 }
 
+expect.extend(jestDomMatchers)
 expect.extend(toHaveNoViolations)
 
 configure({ asyncUtilTimeout: 15000 })
@@ -45,20 +50,19 @@ if (!globalThis.TextEncoder) (globalThis as any).TextEncoder = TextEncoder
 if (!globalThis.TextDecoder) (globalThis as any).TextDecoder = TextDecoder as any
 if (!globalThis.crypto) (globalThis as any).crypto = webcrypto
 if (typeof globalThis.URL !== "undefined") {
-  if (typeof globalThis.URL.createObjectURL !== "function") {
-    Object.defineProperty(globalThis.URL, "createObjectURL", {
-      value: vi.fn(() => "blob:mock-url"),
-      writable: true,
-      configurable: true,
-    })
-  }
-  if (typeof globalThis.URL.revokeObjectURL !== "function") {
-    Object.defineProperty(globalThis.URL, "revokeObjectURL", {
-      value: vi.fn(() => undefined),
-      writable: true,
-      configurable: true,
-    })
-  }
+  // Vitest's built-in URL implementation expects Node Blob internals, while
+  // upload tests create jsdom File instances. Keep blob URL previews
+  // deterministic in tests; individual tests may still spy on these methods.
+  Object.defineProperty(globalThis.URL, "createObjectURL", {
+    value: vi.fn(() => "blob:mock-url"),
+    writable: true,
+    configurable: true,
+  })
+  Object.defineProperty(globalThis.URL, "revokeObjectURL", {
+    value: vi.fn(() => undefined),
+    writable: true,
+    configurable: true,
+  })
 }
 if (!("dispatchEvent" in globalThis)) {
   Object.defineProperty(globalThis, "dispatchEvent", {
@@ -87,7 +91,7 @@ beforeAll(async () => {
     // `@vitest-environment node` directive, where `document` is undefined).
     document.documentElement.lang = "en"
   }
-  server.listen({ onUnhandledRequest: "warn" })
+  server.listen({ onUnhandledFrame: "warn" })
 
   // ── Contract validation hook (Phase 3 QA) ─────────────────────────────────
   // Validates every MSW-mocked request + response pair against openapi.json.
@@ -191,6 +195,9 @@ afterEach(async () => {
   etagCache.clear()
   responseCache.clear()
   await i18n.changeLanguage("en")
+  if (typeof window !== "undefined") {
+    Reflect.deleteProperty(window, "__UE_SELECTED_LANG__")
+  }
   if (typeof document !== "undefined") {
     document.documentElement.lang = "en"
   }

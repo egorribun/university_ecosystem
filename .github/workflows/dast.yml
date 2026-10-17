@@ -77,7 +77,7 @@ jobs:
       - name: Set up Nuclei
         uses: projectdiscovery/nuclei-action@cc153d0541e1adf8a42bbe31c0a4fb2376147538 # v3.1.1
         with:
-          version: v3.3.9
+          version: v3.11.1
           # The custom step below validates TARGET_URL before any scan runs.
           install-only: true
 
@@ -121,7 +121,7 @@ jobs:
           category: nuclei-dast
 
       - name: Upload raw JSON findings
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: nuclei-results-${{ github.run_id }}

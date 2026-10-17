@@ -145,6 +145,7 @@ async def test_email_mfa_handler_outbox_smtp_retry_and_resend(
     completed = object()
     login_service = SimpleNamespace(
         get_email_otp_service=lambda: service,
+        build_session_response=AsyncMock(return_value=completed),
         complete_step_up=AsyncMock(return_value=completed),
         publish_completed_step_up=AsyncMock(),
     )

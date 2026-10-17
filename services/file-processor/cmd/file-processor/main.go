@@ -610,11 +610,12 @@ func handleFileProcessDelivery(ctx context.Context, msg processDeliveryMessage, 
 		}
 		capabilityClaims = claims
 		capabilityVerified = true
-		// Verify the bearer proof at the NATS boundary but never persist it in
-		// Temporal history. The workflow only needs the already-validated job
-		// fields; retaining the short-lived secret would widen its exposure.
-		job.Capability = ""
 	}
+	// Capability is transport-only metadata. Verify the original proof first
+	// when verification is configured, then always strip the field before any
+	// Temporal call so optional development-mode verification cannot persist an
+	// untrusted bearer value in workflow history.
+	job.Capability = ""
 	if c == nil {
 		logger.ErrorContext(ctx, "Failed to execute workflow from NATS",
 			"reason", "temporal_client_unavailable", "consumer", fileProcessConsumer)
@@ -1245,12 +1246,6 @@ func checkJWTAlgHeader(tokenStr string, rsaPub *rsa.PublicKey, log *slog.Logger,
 	return true
 }
 
-func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, next http.Handler) http.Handler {
-	return httpJWTMiddlewareWithOptions(secret, rsaPub, log, jwtAuthOptions{
-		RequireRS256: rsaPub != nil,
-	}, next)
-}
-
 func httpJWTMiddlewareWithOptions(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, options jwtAuthOptions, next http.Handler) http.Handler {
 	if log == nil {
 		log = slog.Default()
@@ -1305,12 +1300,6 @@ func httpJWTMiddlewareWithOptions(secret string, rsaPub *rsa.PublicKey, log *slo
 		r = r.WithContext(ctx)
 
 		next.ServeHTTP(w, r)
-	})
-}
-
-func authFunc(secret string, rsaPub *rsa.PublicKey, logger *slog.Logger) auth.AuthFunc {
-	return authFuncWithOptions(secret, rsaPub, logger, jwtAuthOptions{
-		RequireRS256: rsaPub != nil,
 	})
 }
 

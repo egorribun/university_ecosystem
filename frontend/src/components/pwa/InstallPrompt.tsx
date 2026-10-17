@@ -101,7 +101,7 @@ export default function InstallPrompt() {
   const userId = user?.id
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [installVisible, setInstallVisible] = useState(false)
-  const [pushVisible, setPushVisible] = useState(false)
+  const [pushVisibleForUserId, setPushVisibleForUserId] = useState<string | null>(null)
   const [installing, setInstalling] = useState(false)
   const [updateToastOpen, setUpdateToastOpen] = useState(false)
   const [feedback, setFeedback] = useState<NotificationToast | null>(null)
@@ -177,13 +177,13 @@ export default function InstallPrompt() {
   }, [isEligible])
 
   useEffect(() => {
+    setPushVisibleForUserId((owner) => (owner === String(userId) ? owner : null))
     if (!userId) {
-      setPushVisible(false)
       return
     }
     const queued = consumePendingPushEducation(String(userId))
     if (!pushSupported || notificationPermission !== "default") {
-      setPushVisible(false)
+      setPushVisibleForUserId(null)
       return
     }
 
@@ -197,7 +197,7 @@ export default function InstallPrompt() {
         readInstallPromptDismissedAt(pushDismissKey(userId)) + DISMISS_TTL
       )
       if (isInstallPromptSuppressed(now, suppressUntil)) return
-      setPushVisible(true)
+      setPushVisibleForUserId(String(userId))
     }
 
     const onEducationRequest = () => {
@@ -249,7 +249,7 @@ export default function InstallPrompt() {
     // Its callback retains that authenticated render's user ID.
     pushSuppressUntilRef.current = { userId: String(userId), until: Date.now() + DISMISS_TTL }
     rememberDismiss(pushDismissKey(String(userId)))
-    setPushVisible(false)
+    setPushVisibleForUserId(null)
   }, [userId])
 
   const handleFeedbackClose = useCallback(() => {
@@ -279,7 +279,7 @@ export default function InstallPrompt() {
   // still renders so LCP candidate is preserved (Wave 117 polish lesson:
   // removing the WHOLE prompt regressed LCP +1800 ms).
   const showPushPanel =
-    pushVisible &&
+    pushVisibleForUserId === String(userId) &&
     Boolean(userId) &&
     pushSupported &&
     notificationPermission === "default" &&

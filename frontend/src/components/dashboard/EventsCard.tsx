@@ -12,11 +12,13 @@ import { Skeleton } from "@/components/ui/Skeleton"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { cn } from "@/utils/cn"
 import { useDashboardEvents, prefetchDashboardEvents } from "@/hooks/useDashboardEvents"
+import type { DashboardEvent } from "@/hooks/useDashboardEvents"
 import { prefetchEventsListQuery, EVENTS_PAGE_SIZE } from "@/api/hooks/events"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useQueryClient } from "@tanstack/react-query"
-import type { Event } from "@/types/Event"
-import { formatDate, toDate } from "@/utils/date"
+import { toDate } from "@/utils/date"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
+import { formatCampusDate, getCampusDateKey, shiftCampusDateKey } from "@/utils/campusTimezone"
 import { DateBullet } from "./DateBullet"
 
 interface EventsCardProps {
@@ -24,6 +26,7 @@ interface EventsCardProps {
   style?: CSSProperties
   "data-fade"?: string
   "data-pop"?: string
+  queryResult?: ReturnType<typeof useDashboardEvents>
 }
 
 export function prepareOnKey(event: { key: string }, callback: () => void) {
@@ -32,27 +35,45 @@ export function prepareOnKey(event: { key: string }, callback: () => void) {
   }
 }
 
-export const EventsCard = memo(function EventsCard({
+type EventsCardPresentationProps = Omit<EventsCardProps, "queryResult"> & {
+  queryResult: ReturnType<typeof useDashboardEvents>
+}
+
+function EventsCardWithQuery(props: Omit<EventsCardProps, "queryResult">) {
+  const queryResult = useDashboardEvents()
+  return <EventsCardContent {...props} queryResult={queryResult} />
+}
+
+export const EventsCard = memo(function EventsCard(props: EventsCardProps) {
+  const { queryResult, ...presentationProps } = props
+  if (queryResult) {
+    return <EventsCardContent {...presentationProps} queryResult={queryResult} />
+  }
+  return <EventsCardWithQuery {...presentationProps} />
+})
+
+const EventsCardContent = memo(function EventsCardContent({
   className,
   style,
+  queryResult: dashboardEventsQuery,
   ...props
-}: EventsCardProps) {
+}: EventsCardPresentationProps) {
   const { t } = useTranslation(["dashboard", "common"])
   const navigate = useNavigate()
   const { language } = useLanguage()
   const queryClient = useQueryClient()
+  const timeZone = useCampusTimezone()
   // Wave 189 SW3 — migrated from framer-motion's `useReducedMotion()` (jsdom-
   // incompat per W184 SW6 Gotcha) to project's `useMediaQuery` DEFAULT export.
   // Behaviour preserved: hook returns boolean (was `boolean | null`).
   const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
   const [eventsScope, setEventsScope] = useState<"today" | "week">("today")
 
-  const dashboardEventsQuery = useDashboardEvents()
-  const events: Event[] = useMemo(
+  const events: DashboardEvent[] = useMemo(
     () => dashboardEventsQuery.data ?? [],
     [dashboardEventsQuery.data]
   )
-  const loadingEvents = dashboardEventsQuery.isLoading && events.length === 0
+  const loadingEvents = dashboardEventsQuery.isPending && events.length === 0
 
   const prefetchEventsList = () => {
     void prefetchDashboardEvents(queryClient)
@@ -64,33 +85,33 @@ export const EventsCard = memo(function EventsCard({
   }
 
   const todayEvents = useMemo(() => {
-    const from = new Date()
-    from.setHours(0, 0, 0, 0)
-    const to = new Date()
-    to.setHours(23, 59, 59, 999)
+    const today = getCampusDateKey(new Date(), timeZone)
+    if (!today) return []
 
     return events
       .filter((e) => e.starts_at)
       .map((e) => ({ ...e, d: toDate(e.starts_at!) }))
-      .filter((e) => !isNaN(e.d.getTime()) && e.d >= from && e.d <= to)
+      .filter((e) => !isNaN(e.d.getTime()) && getCampusDateKey(e.d, timeZone) === today)
       .sort((a, b) => a.d.getTime() - b.d.getTime())
       .slice(0, 6)
-  }, [events])
+  }, [events, timeZone])
 
   const weekEvents = useMemo(() => {
-    const from = new Date()
-    from.setHours(0, 0, 0, 0)
-    const to = new Date()
-    to.setDate(to.getDate() + 7)
-    to.setHours(23, 59, 59, 999)
+    const today = getCampusDateKey(new Date(), timeZone)
+    if (!today) return []
+    const end = shiftCampusDateKey(today, 8)
 
     return events
       .filter((e) => e.starts_at)
       .map((e) => ({ ...e, d: toDate(e.starts_at!) }))
-      .filter((e) => !isNaN(e.d.getTime()) && e.d >= from && e.d <= to)
+      .filter((e) => {
+        if (isNaN(e.d.getTime())) return false
+        const eventDay = getCampusDateKey(e.d, timeZone)
+        return eventDay !== null && eventDay >= today && eventDay < end
+      })
       .sort((a, b) => a.d.getTime() - b.d.getTime())
       .slice(0, 6)
-  }, [events])
+  }, [events, timeZone])
 
   const scopedEvents = eventsScope === "today" ? todayEvents : weekEvents
 
@@ -217,13 +238,18 @@ export const EventsCard = memo(function EventsCard({
                           {e.title}
                         </span>
                         <span className="flex flex-wrap items-center gap-2">
-                          {!isNaN(e.d.getTime()) && (
+                          {!isNaN(e.d.getTime()) && timeZone && (
                             <span className="font-mono text-sm font-medium text-brand">
-                              {formatDate(e.d, {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                                hour12: false,
-                              })}
+                              {formatCampusDate(
+                                e.d,
+                                {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  hour12: false,
+                                },
+                                language === "ru" ? "ru-RU" : "en-US",
+                                timeZone
+                              )}
                             </span>
                           )}
                           {!!e.location && (

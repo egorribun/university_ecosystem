@@ -5,7 +5,7 @@ from __future__ import annotations
 import builtins
 import runpy
 import sys
-from datetime import date, datetime, time, timedelta
+from datetime import timedelta
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -23,21 +23,6 @@ def test_orjson_compatibility_fallback_is_usable() -> None:
     assert compat.OPT_UTC_Z == 0
     assert compat.loads(compat.dumps({"value": 1})) == {"value": 1}
     assert compat.JSONDecodeError is not None
-
-
-@pytest.mark.asyncio
-async def test_cache_entry_random_zero_and_memory_empty_invalidation() -> None:
-    from app.deps.cache import CacheEntry, MemoryCache
-
-    entry = CacheEntry(etag="e", payload={}, stored_at=0.0, ttl_seconds=10.0)
-    with (
-        patch("app.deps.cache.time_module.time", return_value=1.0),
-        patch("random.random", return_value=0.0),
-    ):
-        assert entry.should_refresh_probabilistic(beta=1.0) is True
-
-    cache = MemoryCache()
-    await cache.invalidate()
 
 
 @pytest.mark.asyncio
@@ -343,39 +328,6 @@ async def test_cached_decorator_skips_self_in_bound_method_key() -> None:
     cache.set.assert_awaited_once_with("bound:4", 4, ttl=None)
 
 
-@pytest.mark.asyncio
-async def test_stale_while_revalidate_returns_stale_when_already_locked() -> None:
-    from app.deps.cache import CacheEntry, stale_while_revalidate
-
-    cache = AsyncMock()
-    cache.enabled = True
-    cache.get.return_value = CacheEntry(
-        etag="stale", payload={"value": 1}, stored_at=0.0, ttl_seconds=1.0
-    )
-    fake_task = MagicMock()
-
-    def create_task_without_running(coro):
-        coro.close()
-        return fake_task
-
-    @stale_while_revalidate(prefix="closure", ttl=1, stale_ttl=10)
-    async def load() -> dict[str, int]:
-        return {"value": 2}
-
-    with (
-        patch("app.deps.cache.get_cache", return_value=cache),
-        patch(
-            "app.deps.cache.asyncio.create_task",
-            side_effect=create_task_without_running,
-        ),
-    ):
-        first = await load()
-        second = await load()
-    assert first == {"value": 1}
-    assert second == {"value": 1}
-    fake_task.add_done_callback.assert_called_once()
-
-
 def test_create_cache_backend_nats_and_get_cache_inner_double_check() -> None:
     from app.deps import cache as cache_module
     from app.deps.cache import NatsKVCache
@@ -432,12 +384,3 @@ def test_etag_matches_ignores_empty_header_parts() -> None:
     from app.deps.cache import etag_matches
 
     assert etag_matches("abc", " , ") is False
-
-
-def test_cache_json_default_supports_temporal_values() -> None:
-    from app.deps.cache import _json_default
-
-    assert _json_default(datetime(2024, 1, 2, 3, 4)) == "2024-01-02T03:04:00"
-    assert _json_default(date(2024, 1, 2)) == "2024-01-02"
-    assert _json_default(time(3, 4)) == "03:04:00"
-    assert _json_default(object())

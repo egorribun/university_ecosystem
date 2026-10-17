@@ -55,6 +55,48 @@ phases. No blanket rewrite or guessed SQL expression is permitted. Every
 phase starts with a PostgreSQL catalog preflight and ends with upgrade,
 downgrade, ORM and direct-write evidence.
 
+## MVP Release Rollback Boundary (Owner Decision, 2026-10-12)
+
+For MVP release databases, Alembic downgrades must not cross the irreversible
+boundary at revisions 202608250001 and 202608250002. Both revisions declare
+an irreversible downgrade and raise before changing schema.
+
+The current migration graph also contains irreversible revision 202610120001.
+Its parent, 202610010001, retains the unused tables and their data on both upgrade
+and downgrade. The existing migration_downgrade_policy.py planner selects
+202610120001 as the safe target. The CI migration gate downgrades only to that
+computed target, verifies that crossing to its parent fails with the declared
+reason, and then upgrades to head. The original owner decision does not make
+this later data-loss barrier reversible.
+
+If recovery requires a schema below this boundary, restore a consistent
+backup/restore set rather than invoking older Alembic downgrade functions.
+This is the required recovery path across the irreversible boundary; release
+acceptance still requires a verified, paired database and S3 restore. The
+decision is recorded in the 2026-10
+audit's owner decision table; AUD-324 is intentionally not repaired for MVP:
+the 202607280001 downgrade's drops of populated grades and vector_chunks are
+on an unsupported historical path. This disposition does not claim that every
+older downgrade is data-preserving, nor does it make a database that is still
+at 202607280001 safe to downgrade.
+
+The AUD-230 PostgreSQL regression may exercise 202607280001 to 202607240001
+on an isolated database created before the boundary, solely to check
+compatibility with the parent-owned tenant schema. It is not evidence for
+production rollback support and does not certify retention of grades or
+vector_chunks. Any change to the supported rollback range requires a new
+owner decision and corresponding backup/restore and PostgreSQL evidence.
+
+References: [owner decision and AUD-324](../audits/AUDIT-2026-10.md),
+[MVP master plan](../superpowers/plans/MVP_MASTER_PLAN.md),
+[202608250001](../../alembic/versions/202608250001_expand_email_otp_mfa.py),
+[202608250002](../../alembic/versions/202608250002_contract_retire_webauthn.py),
+[202610010001](../../alembic/versions/202610010001_drop_unused_user_stats_and_vector_chunks.py),
+[202610120001](../../alembic/versions/202610120001_dnd_wall_clock_time.py),
+[downgrade policy](../../scripts/quality/migration_downgrade_policy.py),
+[CI migration gate](../../.github/workflows/ci.yml),
+[PostgreSQL round-trip test](../../tests/integration/test_migration_roundtrip.py).
+
 ## Migration Policy
 
 1. **Inventory first.** Compare SQLAlchemy metadata with `pg_get_expr` /
@@ -292,6 +334,25 @@ coverage exclusion.
 - Fresh current-SHA coverage, mutation, schema-drift and security evidence is
   required before a phase is accepted.
 
+## Deployed-Catalog Preflight Command
+
+Run the read-only preflight against the target PostgreSQL database before and
+after each DDL phase. Set `DATABASE_URL` through the approved secret
+environment, then run:
+
+```powershell
+uv run --locked python scripts/be02_catalog_preflight.py --phase 1
+uv run --locked python scripts/be02_catalog_preflight.py --phase 3
+uv run --locked python scripts/be02_catalog_preflight.py --phase 4
+```
+
+Phase two emits no DDL and is not a selectable preflight phase. Phase four is
+the default for compatibility with existing invocations. The command runs in
+a read-only transaction and reports each target as `pending`, `converged`, or
+`blocked`; it does not apply migrations, acquire table locks, or accept the
+database URL as a command-line argument. A deployed-catalog result remains
+required evidence and cannot be replaced by an offline catalog fixture.
+
 ## Consequences
 
 ### Positive
@@ -311,6 +372,17 @@ coverage exclusion.
   collected, so local SQLite tests cannot certify completion alone.
 - JSON, partition and composite-key fields require additional design review.
 
+## Later change
+
+Revision `202610010001` retires the unused `user_stats` and `vector_chunks`
+runtime models while retaining their physical schemas and data during online
+upgrade and downgrade. The inventory in `quality/model-default-policy.json`
+therefore no longer contains them. Their historical scalar defaults, columns,
+constraints and indexes remain explicitly owned by migration-only metadata in
+`app/core/db/retained_table_metadata.py` and are still checked by Alembic autogenerate.
+Physical removal needs a separate reviewed maintenance plan; it is not part of
+this online revision.
+
 ## Related Decisions
 
 - [ADR-003: Background Jobs](ADR-003-background-jobs.md)
@@ -325,5 +397,4 @@ coverage exclusion.
 - [`quality/model-default-policy.json`](../../quality/model-default-policy.json)
 - [`scripts/quality/audit_model_defaults.py`](../../scripts/quality/audit_model_defaults.py)
 - [`tests/test_model_default_policy.py`](../../tests/test_model_default_policy.py)
-- `docs/audits/AUDIT_PLATFORM_FULL.md`, Finding BE-02 (user-owned audit
-  artifact; remains untracked and is not a release certificate)
+- [BE-02 in the findings ledger](../audits/INDEX.md#findings-ledger) (historical classification; not release evidence).

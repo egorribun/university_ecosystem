@@ -18,7 +18,6 @@ async def test_update_story_translates_missing_record_to_http_error():
     service.update_story = AsyncMock(side_effect=ValueError("missing"))
 
     with (
-        patch.object(stories, "require_admin"),
         patch.object(stories, "resolve_locale", return_value="en"),
     ):
         with pytest.raises(HTTPException) as exc_info:
@@ -39,7 +38,6 @@ async def test_delete_story_translates_false_result_to_http_error():
     service.delete_story = AsyncMock(return_value=False)
 
     with (
-        patch.object(stories, "require_admin"),
         patch.object(stories, "resolve_locale", return_value="en"),
     ):
         with pytest.raises(HTTPException) as exc_info:
@@ -58,7 +56,6 @@ async def test_upload_story_cover_scans_and_saves_file():
     upload = SimpleNamespace(size=123, filename="cover.png")
 
     with (
-        patch.object(stories, "require_admin"),
         patch.object(stories, "resolve_locale", return_value="en"),
         patch.object(stories, "scan_for_malware", new=AsyncMock()) as scan,
         patch.object(

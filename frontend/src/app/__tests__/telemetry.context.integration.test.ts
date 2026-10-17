@@ -1,6 +1,6 @@
 import { PerformanceObserver as NodePerformanceObserver } from "node:perf_hooks"
 import { context, SpanKind, trace } from "@opentelemetry/api"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { captureActiveTelemetryContext } from "@/utils/telemetryContext"
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -12,7 +12,11 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 }
 
 describe("explicit browser telemetry context propagation", () => {
+  afterEach(() => vi.unstubAllEnvs())
+
   it("links fetch spans to concurrent interaction parents after await without context bleed", async () => {
+    // The in-memory assertions must work even when the host samples no traces.
+    vi.stubEnv("OTEL_TRACES_SAMPLER", "always_off")
     const originalPerformanceObserver = Object.getOwnPropertyDescriptor(
       globalThis,
       "PerformanceObserver"
@@ -35,6 +39,7 @@ describe("explicit browser telemetry context propagation", () => {
     trace.disable()
     const exporter = new traceBase.InMemorySpanExporter()
     const provider = new traceWeb.WebTracerProvider({
+      sampler: new traceBase.AlwaysOnSampler(),
       spanProcessors: [new traceBase.SimpleSpanProcessor(exporter)],
     })
     const contextManager = new traceWeb.StackContextManager().enable()

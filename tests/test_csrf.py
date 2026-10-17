@@ -28,7 +28,7 @@ from unittest.mock import MagicMock
 
 import httpx
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from app.core.csrf import (
     _ANON_NONCE_COOKIE_NAME,
@@ -651,3 +651,147 @@ async def test_csrf_with_authenticated_session() -> None:
         assert cookie is not None
         resp2 = await client.post("/mut", headers={CSRF_HEADER_NAME: cookie})
         assert resp2.status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    (
+        "cookie_max_age",
+        "cookie_secure",
+        "cookie_samesite",
+        "base_url",
+        "expected_max_age",
+    ),
+    [
+        pytest.param(
+            None, True, "strict", "https://testserver", 86400, id="constructor-default"
+        ),
+        pytest.param(
+            3600,
+            True,
+            "strict",
+            "https://testserver",
+            3600,
+            id="configured-access-token-lifetime",
+        ),
+        pytest.param(
+            73,
+            False,
+            "lax",
+            "http://testserver",
+            73,
+            id="nondefault-lifetime-and-cookie-policy",
+        ),
+    ],
+)
+async def test_csrf_rotation_renews_anonymous_nonce_lifetime(
+    cookie_max_age: int | None,
+    cookie_secure: bool,
+    cookie_samesite: str,
+    base_url: str,
+    expected_max_age: int,
+) -> None:
+    """A rotated CSRF token keeps its anonymous HMAC binding cookie aligned."""
+
+    app = _make_app()
+
+    @app.post("/rotate")
+    async def _rotate(request: Request) -> dict[str, str]:
+        signal_csrf_rotation(request)
+        return {"ok": "yes"}
+
+    middleware_options: dict[str, Any] = {
+        "csrf_hmac_secret": "x" * 32,
+        "cookie_secure": cookie_secure,
+        "cookie_samesite": cookie_samesite,
+    }
+    if cookie_max_age is not None:
+        middleware_options["cookie_max_age"] = cookie_max_age
+    app.add_middleware(CSRFMiddleware, **middleware_options)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url=base_url) as client:
+        initial = await client.get("/safe")
+        assert initial.status_code == 200
+        original_nonce = client.cookies.get(_ANON_NONCE_COOKIE_NAME)
+        original_token = client.cookies.get(CSRF_COOKIE_NAME)
+        assert original_nonce is not None
+        assert _ANON_NONCE_RE.fullmatch(original_nonce)
+        assert original_token is not None
+
+        rotated = await client.post(
+            "/rotate", headers={CSRF_HEADER_NAME: original_token}
+        )
+        assert rotated.status_code == 200
+        rotated_token = client.cookies.get(CSRF_COOKIE_NAME)
+        assert rotated_token is not None
+        assert rotated_token != original_token
+        assert client.cookies.get(_ANON_NONCE_COOKIE_NAME) == original_nonce
+
+        set_cookie_headers = rotated.headers.get_list("set-cookie")
+
+        def cookie_header(name: str) -> str:
+            matches = [
+                header
+                for header in set_cookie_headers
+                if header.partition("=")[0].lower() == name.lower()
+            ]
+            assert len(matches) == 1, (name, set_cookie_headers)
+            return matches[0]
+
+        def attributes(header: str) -> dict[str, str | None]:
+            parsed: dict[str, str | None] = {}
+            for item in header.split(";")[1:]:
+                key, separator, value = item.strip().partition("=")
+                parsed[key.lower()] = value if separator else None
+            return parsed
+
+        csrf_header = cookie_header(CSRF_COOKIE_NAME)
+        nonce_header = cookie_header(_ANON_NONCE_COOKIE_NAME)
+        nonce_set_value = nonce_header.partition(";")[0].split("=", 1)[1]
+        assert nonce_set_value == original_nonce
+
+        csrf_attributes = attributes(csrf_header)
+        nonce_attributes = attributes(nonce_header)
+        for cookie_attributes in (csrf_attributes, nonce_attributes):
+            assert cookie_attributes.get("path") == "/"
+            assert cookie_attributes.get("max-age") == str(expected_max_age)
+            assert cookie_attributes.get("samesite", "").lower() == cookie_samesite
+            assert ("secure" in cookie_attributes) is cookie_secure
+            assert "domain" not in cookie_attributes
+        assert "httponly" not in csrf_attributes
+        assert "httponly" in nonce_attributes
+
+        next_action = await client.post(
+            "/mut", headers={CSRF_HEADER_NAME: rotated_token}
+        )
+        assert next_action.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_csrf_unrotated_valid_request_does_not_reissue_cookies() -> None:
+    """A valid unrotated mutation keeps both cookies without extra Set-Cookie."""
+    app = _make_app()
+    app.add_middleware(
+        CSRFMiddleware,
+        csrf_hmac_secret="x" * 32,
+        cookie_secure=False,
+        cookie_samesite="lax",
+        cookie_max_age=420,
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        initial = await client.get("/safe")
+        nonce_before = client.cookies.get(_ANON_NONCE_COOKIE_NAME)
+        token_before = client.cookies.get(CSRF_COOKIE_NAME)
+        assert initial.status_code == 200
+        assert nonce_before is not None
+        assert token_before is not None
+
+        response = await client.post("/mut", headers={CSRF_HEADER_NAME: token_before})
+        assert response.status_code == 200
+        assert response.headers.get_list("set-cookie") == []
+        assert client.cookies.get(_ANON_NONCE_COOKIE_NAME) == nonce_before
+        assert client.cookies.get(CSRF_COOKIE_NAME) == token_before

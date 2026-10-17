@@ -6,7 +6,9 @@ and logs them for security monitoring.
 
 from __future__ import annotations
 
+import re
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 from fastapi import APIRouter, Request, Response, status
 from fastapi.params import Depends
@@ -28,6 +30,67 @@ def _truncate(value: Any, limit: int = MAX_LOG_VALUE_LENGTH) -> str | None:
     if value is None:
         return None
     return str(value)[:limit]
+
+
+_INVALID_PERCENT_ESCAPE = re.compile(r"%(?![0-9a-fA-F]{2})")
+
+
+def _redact_reset_password_path(path: str) -> str:
+    if _INVALID_PERCENT_ESCAPE.search(path):
+        raise ValueError("malformed path escape")
+    decoded = unquote(path, errors="strict").replace("\\", "/")
+    segments = [segment for segment in decoded.split("/") if segment]
+    reset_index = next(
+        (
+            index
+            for index, segment in enumerate(segments)
+            if segment.casefold() == "reset-password"
+        ),
+        None,
+    )
+    if reset_index is None:
+        return path
+    prefix = segments[: reset_index + 1]
+    if reset_index + 1 < len(segments):
+        prefix.append("[REDACTED]")
+    return "/" + "/".join(prefix)
+
+
+def _sanitize_uri_for_log(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return "[REDACTED]"
+
+    candidate = value.strip()
+    if candidate in {"inline", "eval", "wasm-eval"}:
+        return candidate
+    if candidate.lower().startswith("data:"):
+        return "data:"
+
+    try:
+        parsed = urlsplit(candidate)
+        scheme = parsed.scheme.lower()
+        hostname = parsed.hostname
+        port = parsed.port
+        safe_path = _redact_reset_password_path(parsed.path or "/")
+    except (UnicodeError, ValueError):
+        return "[REDACTED]"
+
+    if scheme not in {"http", "https"} or not parsed.netloc or not hostname:
+        return "[REDACTED]"
+    if any(character.isspace() for character in hostname):
+        return "[REDACTED]"
+
+    host = (
+        f"[{hostname}]"
+        if ":" in hostname and not hostname.startswith("[")
+        else hostname
+    )
+    origin = f"{scheme}://{host}"
+    if port is not None:
+        origin += f":{port}"
+    return _truncate(f"{origin}{safe_path}")
 
 
 async def _read_body_with_limit(request: Request, limit: int) -> bytes | None:
@@ -97,11 +160,11 @@ async def receive_csp_report(request: Request) -> Response:
             "CSP violation detected",
             extra={
                 "event": "csp_violation",
-                "document_uri": _truncate(csp_report.get("document-uri")),
+                "document_uri": _sanitize_uri_for_log(csp_report.get("document-uri")),
                 "violated_directive": _truncate(csp_report.get("violated-directive")),
                 "effective_directive": _truncate(csp_report.get("effective-directive")),
-                "blocked_uri": _truncate(csp_report.get("blocked-uri")),
-                "source_file": _truncate(csp_report.get("source-file")),
+                "blocked_uri": _sanitize_uri_for_log(csp_report.get("blocked-uri")),
+                "source_file": _sanitize_uri_for_log(csp_report.get("source-file")),
                 "line_number": csp_report.get("line-number"),
                 "column_number": csp_report.get("column-number"),
                 "status_code": csp_report.get("status-code"),

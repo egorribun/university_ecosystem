@@ -92,15 +92,16 @@ func newRevocationTestClient(h *Hub, id, userID, jti, transport string, frames .
 	ctx, cancel := context.WithCancel(context.Background())
 	session := &revocationTestSession{frames: frames, transportID: transport}
 	return &Client{
-		ID:         id,
-		UserID:     userID,
-		SessionJTI: jti,
-		Conn:       session,
-		Rooms:      make(map[string]bool),
-		Send:       make(chan []byte, 4),
-		Hub:        h,
-		ctx:        ctx,
-		cancel:     cancel,
+		ID:               id,
+		UserID:           userID,
+		SessionJTI:       jti,
+		SessionExpiresAt: time.Unix(9999999999, 0),
+		Conn:             session,
+		Rooms:            make(map[string]bool),
+		Send:             make(chan []byte, 4),
+		Hub:              h,
+		ctx:              ctx,
+		cancel:           cancel,
 	}, session
 }
 
@@ -117,7 +118,7 @@ func TestDisconnectSessionTargetsOnlyMatchingJTIAcrossTransports(t *testing.T) {
 	h.Clients[other.ID] = other
 	h.mu.Unlock()
 
-	h.DisconnectSession(targetJTI, websocket.ClosePolicyViolation, "Session revoked")
+	h.disconnectSessionContext(context.Background(), targetJTI, websocket.ClosePolicyViolation, "Session revoked")
 
 	require.Eventually(t, targetSession.wasClosed, time.Second, 10*time.Millisecond)
 	assert.Error(t, target.ctx.Err())
@@ -230,12 +231,12 @@ func TestCloseTransportWithControlFrameSerializesErrorsAndPhysicalClose(t *testi
 func TestDisconnectSessionRejectsEmptyMissingAndLoggerlessTargets(t *testing.T) {
 	assert.NotPanics(t, func() {
 		var h *Hub
-		h.DisconnectSession(uuid.NewString(), websocket.ClosePolicyViolation, "Session revoked")
+		h.disconnectSessionContext(context.Background(), uuid.NewString(), websocket.ClosePolicyViolation, "Session revoked")
 	})
 
 	h := setupTestHub()
-	h.DisconnectSession("", websocket.ClosePolicyViolation, "Session revoked")
-	h.DisconnectSession(uuid.NewString(), websocket.ClosePolicyViolation, "Session revoked")
+	h.disconnectSessionContext(context.Background(), "", websocket.ClosePolicyViolation, "Session revoked")
+	h.disconnectSessionContext(context.Background(), uuid.NewString(), websocket.ClosePolicyViolation, "Session revoked")
 
 	loggerless := &Hub{
 		Clients:    make(map[string]*Client),
@@ -247,7 +248,7 @@ func TestDisconnectSessionRejectsEmptyMissingAndLoggerlessTargets(t *testing.T) 
 	client, session := newRevocationTestClient(loggerless, "loggerless", "user-1", jti, "websocket")
 	loggerless.Clients[client.ID] = client
 	assert.NotPanics(t, func() {
-		loggerless.DisconnectSession(jti, websocket.ClosePolicyViolation, "Session revoked")
+		loggerless.disconnectSessionContext(context.Background(), jti, websocket.ClosePolicyViolation, "Session revoked")
 	})
 	assert.True(t, session.wasClosed())
 }
@@ -710,7 +711,7 @@ func TestConcurrentRevocationAndActionSerializeTransportClose(t *testing.T) {
 	<-checkStarted
 	revocationDone := make(chan struct{})
 	go func() {
-		h.DisconnectSession(jti, websocket.ClosePolicyViolation, "Session revoked")
+		h.disconnectSessionContext(context.Background(), jti, websocket.ClosePolicyViolation, "Session revoked")
 		close(revocationDone)
 	}()
 	close(allowCheck)

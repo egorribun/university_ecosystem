@@ -219,3 +219,55 @@ describe("useSwipeGesture — empty touches list", () => {
     expect(result.current.isDragging).toBe(true)
   })
 })
+
+describe("useSwipeGesture — returning to the starting point", () => {
+  it.each([
+    { direction: "right" as const, startX: 100, beyondThresholdX: 200 },
+    { direction: "left" as const, startX: 200, beyondThresholdX: 100 },
+  ])(
+    "cancels a $direction close swipe that returns to its origin",
+    ({ direction, startX, beyondThresholdX }) => {
+      const onSwipeClose = vi.fn()
+      const { result } = renderHook(() =>
+        useSwipeGesture({ direction, threshold: 80, onSwipeClose, enabled: true })
+      )
+
+      act(() => result.current.handlers.onTouchStart(touch(startX)))
+      act(() => result.current.handlers.onTouchMove(touch(beyondThresholdX)))
+      expect(Math.abs(result.current.dragOffset)).toBeGreaterThan(80)
+
+      act(() => result.current.handlers.onTouchMove(touch(startX)))
+      expect(result.current.dragOffset).toBe(0)
+      act(() => result.current.handlers.onTouchEnd())
+
+      expect(onSwipeClose).not.toHaveBeenCalled()
+      expect(result.current.isDragging).toBe(false)
+    }
+  )
+})
+
+describe("useSwipeGesture — cancellation when disabled", () => {
+  it("clears an active drag when disabled before touchend and stays clear on reopen", () => {
+    const onSwipeClose = vi.fn()
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) =>
+        useSwipeGesture({ direction: "right", threshold: 80, onSwipeClose, enabled }),
+      { initialProps: { enabled: true } }
+    )
+
+    act(() => result.current.handlers.onTouchStart(touch(0)))
+    act(() => result.current.handlers.onTouchMove(touch(120)))
+    expect(result.current.dragOffset).toBe(120)
+    expect(result.current.isDragging).toBe(true)
+
+    // Closing the drawer can disable the hook without delivering touchend.
+    rerender({ enabled: false })
+    expect(result.current.dragOffset).toBe(0)
+    expect(result.current.isDragging).toBe(false)
+
+    rerender({ enabled: true })
+    expect(result.current.dragOffset).toBe(0)
+    expect(result.current.isDragging).toBe(false)
+    expect(onSwipeClose).not.toHaveBeenCalled()
+  })
+})

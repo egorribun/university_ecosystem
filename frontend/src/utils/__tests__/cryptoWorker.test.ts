@@ -8,8 +8,11 @@ const mockWorker = {
   onerror: null as any,
 }
 
+const mockWorkerConstructor = vi.fn()
+
 class MockWorker {
-  constructor() {
+  constructor(scriptURL: string | URL, options?: WorkerOptions) {
+    mockWorkerConstructor(scriptURL, options)
     return mockWorker
   }
 }
@@ -33,6 +36,66 @@ describe("cryptoWorker wrapper", () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it("passes the emitted worker asset through the app Trusted Types policy", async () => {
+    const win = window as unknown as {
+      trustedTypes?: unknown
+      __ttAppPolicy?: unknown
+    }
+    const originalFactory = win.trustedTypes
+    const originalAppPolicy = win.__ttAppPolicy
+    const trustedScriptURL = Object.freeze({ kind: "trusted-script-url" })
+    const validatedURLs: string[] = []
+    const factory = {
+      createPolicy: vi.fn(
+        (
+          _name: string,
+          rules: {
+            createScriptURL: (value: string) => string
+            createHTML: (value: string) => string
+          }
+        ) => ({
+          createScriptURL: vi.fn((value: string) => {
+            validatedURLs.push(rules.createScriptURL(value))
+            return trustedScriptURL
+          }),
+          createHTML: rules.createHTML,
+        })
+      ),
+    }
+
+    win.trustedTypes = factory
+    delete win.__ttAppPolicy
+    vi.resetModules()
+    mockWorkerConstructor.mockClear()
+
+    try {
+      await import("../cryptoWorker")
+
+      expect(factory.createPolicy).toHaveBeenCalledTimes(1)
+      expect(factory.createPolicy).toHaveBeenCalledWith(
+        "app",
+        expect.objectContaining({ createScriptURL: expect.any(Function) })
+      )
+      expect(validatedURLs).toHaveLength(1)
+      const [validatedURL] = validatedURLs
+      if (!validatedURL) throw new Error("The worker asset URL was not validated")
+      const workerAsset = new URL(validatedURL)
+      expect(workerAsset.origin).toBe(window.location.origin)
+      const workerFileName = workerAsset.pathname.split("/").at(-1) ?? ""
+      expect(
+        workerFileName === "crypto.worker.ts" ||
+          (workerFileName.startsWith("crypto.worker-") && workerFileName.endsWith(".js"))
+      ).toBe(true)
+      expect(mockWorkerConstructor).toHaveBeenCalledTimes(1)
+      expect(mockWorkerConstructor).toHaveBeenCalledWith(trustedScriptURL, { type: "module" })
+    } finally {
+      if (originalFactory === undefined) delete win.trustedTypes
+      else win.trustedTypes = originalFactory
+      if (originalAppPolicy === undefined) delete win.__ttAppPolicy
+      else win.__ttAppPolicy = originalAppPolicy
+    }
   })
 
   it("handles successful pbkdf2 derivation", async () => {
@@ -320,8 +383,9 @@ describe("cryptoWorker wrapper lifecycle", () => {
 
     expect(constructed).toHaveLength(1)
     const [url, options] = constructed[0]!
-    expect(url).toBeInstanceOf(URL)
-    expect((url as URL).pathname).toMatch(/\/workers\/crypto\.worker\.ts$/)
+    expect(new URL(String(url), window.location.href).pathname).toMatch(
+      /\/workers\/crypto\.worker\.ts$/
+    )
     expect(options).toStrictEqual({ type: "module" })
   })
 

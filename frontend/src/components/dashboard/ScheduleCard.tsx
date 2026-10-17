@@ -111,10 +111,10 @@ export const ScheduleCard = memo(function ScheduleCard({
   const loadingSched = shouldLoadSchedule
     ? dashboardScheduleQuery.isLoading && schedule.length === 0
     : false
+  const scheduleQueryFailed = shouldLoadSchedule && dashboardScheduleQuery.isError
 
-  // CQ-72-02: removed useMemo — nowParity() is microsecond-cheap (Date + arithmetic),
-  // and empty deps [] made it stale in long-lived tabs (wouldn't update after midnight)
-  const parity = nowParity()
+  // Keep parity on the same local clock snapshot as the schedule day and time.
+  const parity = nowParity(time)
   const todayIndex = time.getDay()
 
   // These arrays are tiny and are intentionally read on every render.  Keeping
@@ -274,9 +274,17 @@ export const ScheduleCard = memo(function ScheduleCard({
           </div>
         )}
 
-        {!loadingSched && todayLessons.length === 0 && (
-          <p className="text-sm text-(--text-secondary)">{t("dashboard:noClasses")}</p>
+        {scheduleQueryFailed && (
+          <p role="alert" className="text-sm text-(--error-text)">
+            {t("common:statuses.error")}
+          </p>
         )}
+
+        {!loadingSched &&
+          todayLessons.length === 0 &&
+          (!scheduleQueryFailed || dashboardScheduleQuery.data !== undefined) && (
+            <p className="text-sm text-(--text-secondary)">{t("dashboard:noClasses")}</p>
+          )}
 
         {/* Wave 49: always list view on dashboard — timeline removed (too cramped for card width) */}
         {shouldRenderLessonList(loadingSched, todayLessons.length) ? (

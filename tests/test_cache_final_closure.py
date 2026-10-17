@@ -7,7 +7,7 @@ import pytest
 
 from app.core.cache import LRUCache, MultiLayerCache
 from app.core.cache_versioning import CacheVersionManager
-from app.deps.cache import RedisCache
+from app.deps.cache import MemoryCache, RedisCache
 
 
 def test_lru_cache_expires_entries_evicts_oldest_and_reports_empty_rate():
@@ -62,9 +62,14 @@ async def test_cache_version_manager_handles_disabled_fallback_and_empty_value()
     await manager.increment(disabled)
     await manager.reset(disabled)
 
-    non_redis = MagicMock()
-    non_redis.enabled = True
-    assert await manager.get_version(non_redis) == "0"
+    non_redis = MemoryCache()
+    cold_version = await manager.get_version(non_redis)
+    assert cold_version != await manager.get_version(non_redis)
+    assert await non_redis.get(manager.generation_key) is None
+    await manager.increment(non_redis)
+    shared_version = await manager.get_version(non_redis)
+    assert shared_version != cold_version
+    assert shared_version == await manager.get_version(non_redis)
 
     redis_cache = MagicMock(spec=RedisCache)
     redis_cache.enabled = True

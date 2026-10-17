@@ -1,11 +1,17 @@
-"""Regression coverage for fail-closed Alembic revision metadata parsing."""
+"""Regression coverage for Alembic revision metadata and SQL contracts."""
 
+import io
 import os
+import runpy
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from sqlalchemy.dialects import postgresql
 
 from scripts.quality.read_alembic_revision import (
     RevisionMetadataError,
@@ -127,3 +133,99 @@ def test_alembic_history_does_not_require_runtime_secrets() -> None:
 
     assert result.returncode == 0, result.stderr
     assert "202503150001" in result.stdout
+
+
+_AUD180_MIGRATION = (
+    Path(__file__).resolve().parents[1]
+    / "alembic"
+    / "versions"
+    / "202610120002_add_news_media_asset_ownership.py"
+)
+
+
+def _load_aud180_migration() -> dict[str, Any]:
+    return runpy.run_path(str(_AUD180_MIGRATION))
+
+
+def test_aud180_squawk_capture_emits_the_shared_ddl_in_a_transaction() -> None:
+    migration = _load_aud180_migration()
+    output = io.StringIO()
+    migration_context = MigrationContext.configure(
+        dialect=postgresql.dialect(),
+        opts={
+            "as_sql": True,
+            "output_buffer": output,
+            "transactional_ddl": True,
+        },
+    )
+
+    with Operations.context(migration_context) as operations:
+        with migration_context.begin_transaction():
+            migration["_emit_news_media_asset_ddl"](operations)
+
+    statements = [
+        " ".join(statement.split())
+        for statement in output.getvalue().split(";")
+        if statement.strip()
+    ]
+    assert statements[:3] == [
+        "BEGIN",
+        "SET LOCAL lock_timeout = '10s'",
+        "SET LOCAL statement_timeout = '60s'",
+    ]
+    assert len(statements) == 6
+    table_ddl = statements[3]
+    prefix = "CREATE TABLE news_media_assets ("
+    assert table_ddl.startswith(prefix)
+    table_parts = [
+        part.strip()
+        for part in table_ddl.removeprefix(prefix).removesuffix(")").split(", ")
+    ]
+    assert len(table_parts) == 10
+    expected_parts = {
+        "id UUID NOT NULL",
+        "storage_url VARCHAR(2048) NOT NULL",
+        "owner_user_id UUID",
+        "news_id UUID",
+        "created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL",
+        "PRIMARY KEY (id)",
+        "CONSTRAINT uq_news_media_asset_storage_url UNIQUE (storage_url)",
+        "CONSTRAINT uq_news_media_asset_news_id UNIQUE (news_id)",
+    }
+    assert expected_parts.issubset(table_parts)
+    foreign_keys = {
+        part.removeprefix("FOREIGN KEY(").removeprefix("FOREIGN KEY (")
+        for part in table_parts
+        if part.startswith("FOREIGN KEY")
+    }
+    assert foreign_keys == {
+        "owner_user_id) REFERENCES users (id) ON DELETE SET NULL",
+        "news_id) REFERENCES news (id) ON DELETE SET NULL",
+    }
+    assert statements[4] == (
+        "CREATE INDEX ix_news_media_assets_owner_user_id "
+        "ON news_media_assets (owner_user_id)"
+    )
+    assert statements[5] == "COMMIT"
+
+
+def test_aud180_upgrade_still_rejects_offline_execution() -> None:
+    migration = _load_aud180_migration()
+    migration_context = MigrationContext.configure(
+        dialect=postgresql.dialect(),
+        opts={"as_sql": True, "output_buffer": io.StringIO()},
+    )
+
+    with Operations.context(migration_context):
+        with pytest.raises(RuntimeError, match="requires online PostgreSQL"):
+            migration["upgrade"]()
+
+
+def test_aud180_squawk_workflow_uses_capture_only_for_its_revision() -> None:
+    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    assert 'if [ "$revision" = "202610120002" ]; then' in workflow
+    assert "migration._emit_news_media_asset_ddl(operations)" in workflow
+    assert "with migration_context.begin_transaction():" in workflow
+    assert 'uv run alembic upgrade "$down_revision:$revision" --sql' in workflow
+    assert 'squawk "${squawk_args[@]}"' in workflow

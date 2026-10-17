@@ -2,7 +2,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import event
+from sqlalchemy import event, select
 from sqlalchemy.exc import IntegrityError
 
 import app.models as models
@@ -10,6 +10,7 @@ from app.auth.security import get_password_hash
 from app.core.localization import translate
 from app.repositories.unit_of_work import uow_from_session
 from app.schemas import schemas
+from app.services import attendance_tokens
 from app.services.event_service import EventService
 from app.services.vector_service import VectorService
 
@@ -273,8 +274,11 @@ async def test_get_all_events_cursor_skips_total_on_followup_pages(
     )
 
 
+@pytest.mark.parametrize(
+    "advance_window", [False, True], ids=["same-window", "next-window"]
+)
 async def test_event_detail_returns_qr_code_after_registration(
-    async_client, db_session, user_factory
+    async_client, db_session, user_factory, monkeypatch, advance_window
 ):
     password = "QrCodePass123!"
     student = await user_factory(
@@ -296,6 +300,13 @@ async def test_event_detail_returns_qr_code_after_registration(
 
     headers = await _login(async_client, student.email, password)
 
+    monkeypatch.setattr(attendance_tokens.settings, "attendance_token_ttl_seconds", 300)
+    ttl = attendance_tokens.settings.attendance_token_ttl_seconds
+    current_seconds = int(now.timestamp())
+    token_now = datetime.fromtimestamp(
+        current_seconds - current_seconds % ttl + ttl - 1, UTC
+    )
+    monkeypatch.setattr(attendance_tokens, "_now", lambda: token_now)
     attend_response = await async_client.post(
         "/events/attendance", headers=headers, json={"event_id": str(event.id)}
     )
@@ -303,7 +314,37 @@ async def test_event_detail_returns_qr_code_after_registration(
     qr_token = attend_response.json()["qr_token"]
     assert qr_token
 
+    if advance_window:
+        token_now += timedelta(seconds=1)
     detail_response = await async_client.get(f"/events/{event.id}", headers=headers)
     assert detail_response.status_code == 200
     payload = detail_response.json()
-    assert payload["my_qr_token"] == qr_token
+    detail_token = payload["my_qr_token"]
+    if advance_window:
+        assert detail_token != qr_token
+    else:
+        assert detail_token == qr_token
+    attendance = await db_session.scalar(
+        select(models.EventAttendance).where(
+            models.EventAttendance.event_id == event.id,
+            models.EventAttendance.user_id == student.id,
+        )
+    )
+    assert attendance is not None
+    original_payload = attendance_tokens.verify_token(
+        qr_token, attendance, now=token_now
+    )
+    refreshed_payload = attendance_tokens.verify_token(
+        detail_token, attendance, now=token_now
+    )
+    for verified in (original_payload, refreshed_payload):
+        assert verified.event_id == event.id
+        assert verified.user_id == student.id
+        assert verified.expires_at - verified.issued_at == ttl
+    assert refreshed_payload.secret == original_payload.secret
+    expected_shift = ttl if advance_window else 0
+    assert refreshed_payload.issued_at - original_payload.issued_at == expected_shift
+    assert refreshed_payload.expires_at - original_payload.expires_at == expected_shift
+    grace_end = datetime.fromtimestamp(original_payload.expires_at + ttl, UTC)
+    with pytest.raises(attendance_tokens.AttendanceTokenExpired):
+        attendance_tokens.verify_token(qr_token, attendance, now=grace_end)

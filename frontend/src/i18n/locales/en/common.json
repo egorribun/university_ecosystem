@@ -53,9 +53,17 @@
       "low": "Low relevance"
     }
   },
+  "dialogs": {
+    "unsavedChanges": {
+      "title": "Discard your changes?",
+      "description": "You have unsaved changes. Do you want to discard them?"
+    }
+  },
   "buttons": {
     "save": "Save",
     "cancel": "Cancel",
+    "keepEditing": "Keep editing",
+    "discardChanges": "Discard changes",
     "confirm": "Confirm",
     "clear": "Clear",
     "delete": "Delete",
@@ -76,6 +84,7 @@
   },
   "statuses": {
     "loading": "Loading…",
+    "saving": "Saving…",
     "uploading": "Uploading…",
     "publishing": "Publishing…",
     "error": "Something went wrong",

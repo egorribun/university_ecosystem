@@ -44,17 +44,15 @@ else:
     Pact = pact_lib.Pact
     match = pact_lib.match
 
-PACT_DIR = Path(__file__).parent / "pacts"
 CONSUMER_NAME = "ws-hub"
 PROVIDER_NAME = "university-backend"
 
 
 @pytest.fixture(scope="module")
-def pact() -> Pact:
-    PACT_DIR.mkdir(parents=True, exist_ok=True)
+def pact(pact_output_dir: Path) -> Pact:
     p = Pact(CONSUMER_NAME, PROVIDER_NAME)
     yield p.with_specification("V4")
-    p.write_file(PACT_DIR, overwrite=True)
+    p.write_file(pact_output_dir, overwrite=False)
 
 
 # ---------------------------------------------------------------------------

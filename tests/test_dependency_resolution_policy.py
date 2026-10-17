@@ -31,7 +31,7 @@ REQUIRED_AUDIT_FIELDS = (
     "normal test/vulnerability-gate evidence",
 )
 RENOVATE_PRE_COMMIT_HOOK = """  - repo: https://github.com/renovatebot/pre-commit-hooks
-    rev: 43.268.4 # ece9d8611e4e7da8cbcf7ea28039ec7928316032
+    rev: 44.142.1 # 79024b1a7a706341245d73344bf413ee29bf5013
     hooks:
       - id: renovate-config-validator
         args: [--strict]
@@ -92,12 +92,9 @@ def test_dependency_resolution_policy_enforces_cooldown_and_security_visibility(
     assert isinstance(tool, dict)
     uv = tool["uv"]
     assert isinstance(uv, dict)
+    assert uv.get("required-version") == "==0.12.23"
     assert uv.get("exclude-newer") == "7 days"
-    assert uv.get("exclude-newer-package") == {
-        "cryptography": "2026-08-01T00:00:00Z",
-        "h2": "2026-08-04T00:00:00Z",
-        "mcp": "2026-08-04T00:00:00Z",
-    }
+    assert uv.get("exclude-newer-package", {}) == {}
 
     renovate = _read_renovate()
     assert renovate["osvVulnerabilityAlerts"] is True
@@ -161,8 +158,22 @@ def test_precommit_mypy_installs_the_declared_psycopg_driver() -> None:
 
 
 def test_renovate_validator_contract_is_pinned_and_blocking() -> None:
-    pre_commit_config = _read_text(".pre-commit-config.yaml")
-    assert RENOVATE_PRE_COMMIT_HOOK in pre_commit_config
+    pre_commit_text = _read_text(".pre-commit-config.yaml")
+    assert RENOVATE_PRE_COMMIT_HOOK in pre_commit_text
+    pre_commit_config = yaml.safe_load(pre_commit_text)
+    renovate_repo = next(
+        repo
+        for repo in pre_commit_config["repos"]
+        if repo["repo"] == "https://github.com/renovatebot/pre-commit-hooks"
+    )
+    assert renovate_repo["rev"] == "44.142.1"
+    renovate_hook = next(
+        hook
+        for hook in renovate_repo["hooks"]
+        if hook["id"] == "renovate-config-validator"
+    )
+    assert renovate_hook["args"] == ["--strict"]
+    assert renovate_hook["pass_filenames"] is False
 
     makefile = _read_text("Makefile")
     assert (
@@ -171,19 +182,65 @@ def test_renovate_validator_contract_is_pinned_and_blocking() -> None:
     )
 
     workflow_renovate = _read_text(".github/workflows/renovate-config-validation.yml")
-    expected_validator_step = (
-        "      - name: Run strict Renovate validator\n"
-        "        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1\n"
-        "        with:\n"
-        "          extra_args: renovate-config-validator --all-files\n"
+    parsed_workflow = yaml.safe_load(workflow_renovate)
+    validator_job = parsed_workflow["jobs"]["renovate-validation"]
+    workflow_steps = validator_job["steps"]
+    validator_step = next(
+        step
+        for step in workflow_steps
+        if step.get("name") == "Run strict Renovate validator"
     )
-    validator_step = _workflow_named_step(
-        workflow_renovate, "Run strict Renovate validator"
-    )
-    assert expected_validator_step in validator_step
-    assert "continue-on-error" not in validator_step
+    assert validator_step["run"].splitlines() == [
+        "set -euo pipefail",
+        "pre-commit run renovate-config-validator --all-files --show-diff-on-failure",
+    ]
+    assert "uses" not in validator_step
+    assert "pre-commit/action" not in workflow_renovate
+    assert "continue-on-error" not in validator_job
 
-    # Verify triggers, permissions, and SHA-pinned checkout/setup actions
+    action_refs = [
+        step["uses"]
+        for step in workflow_steps
+        if isinstance(step, dict) and "uses" in step
+    ]
+    assert action_refs
+    assert all(
+        re.fullmatch(r"[^@\s]+@[0-9a-f]{40}", action_ref) for action_ref in action_refs
+    )
+
+    cache_step = next(
+        step
+        for step in workflow_steps
+        if step.get("name") == "Restore fast pre-commit environments"
+    )
+    assert (
+        cache_step["uses"] == "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9"
+    )
+    assert cache_step["with"]["path"] == "~/.cache/pre-commit"
+    assert (
+        cache_step["with"]["key"]
+        == "pre-commit-fast-v2-${{ runner.os }}-${{ env.pythonLocation }}-${{ hashFiles('.pre-commit-config.yaml', 'uv.lock') }}"
+    )
+
+    install_step = next(
+        step
+        for step in workflow_steps
+        if step.get("name") == "Install hash-verified pre-commit runner"
+    )
+    install_run = install_step["run"]
+    assert "uv export --frozen" in install_run
+    assert "--only-group ci-precommit-runner" in install_run
+    assert "--require-hashes" in install_run
+    assert "--only-binary=:all:" in install_run
+    assert 'test "$(pre-commit --version)" = "pre-commit 4.6.2"' in install_run
+
+    lock_check = next(
+        step
+        for step in workflow_steps
+        if step.get("name") == "Verify uv.lock is up to date"
+    )
+    assert lock_check["run"] == "uv lock --check"
+
     assert "permissions:\n  contents: read" in workflow_renovate
     assert "on:\n  push:\n    branches: [main]\n  pull_request:" in workflow_renovate
     assert (
@@ -199,7 +256,6 @@ def test_renovate_validator_contract_is_pinned_and_blocking() -> None:
     assert "Validate Renovate configuration (strict)" not in workflow_ci
 
     ci_success = workflow_ci.partition("  ci-success:\n")[2]
-    assert "      - pre-commit-check" in ci_success
     assert "${{ needs.pre-commit-check.result }}" in ci_success
 
 
@@ -208,6 +264,7 @@ def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:
     assert isinstance(lock_options, dict)
     assert "exclude-newer" in lock_options
     assert lock_options["exclude-newer-span"] == "P7D"
+    assert "exclude-newer-package" not in lock_options
 
     runbook = _read_text("docs/DEPENDENCY_COOLDOWN_EMERGENCY.md")
     assert TARGETED_EMERGENCY_COMMAND in runbook
@@ -258,3 +315,22 @@ def test_dependency_upper_bound_policy_is_recorded_in_adr_index() -> None:
     index = index_path.read_text(encoding="utf-8")
     assert "ADR-035" in index
     assert "Python Dependency Compatibility Policy" in index
+
+
+def test_sqlalchemy_20_uses_inline_typing_without_removed_mypy_plugin() -> None:
+    pyproject = _read_toml("pyproject.toml")
+    dependencies = pyproject["project"]["dependencies"]
+    assert isinstance(dependencies, list)
+    sqlalchemy = next(
+        Requirement(value)
+        for value in dependencies
+        if isinstance(value, str) and Requirement(value).name == "sqlalchemy"
+    )
+    assert sqlalchemy.specifier.contains("2.0.54")
+    assert not sqlalchemy.specifier.contains("2.1.0")
+
+    mypy = pyproject["tool"]["mypy"]
+    assert isinstance(mypy, dict)
+    plugins = mypy["plugins"]
+    assert isinstance(plugins, list)
+    assert "sqlalchemy.ext.mypy.plugin" not in plugins

@@ -184,7 +184,7 @@ and command as the `minio` service in `docker-compose.full.yml`:
 ```pwsh
 $target = "${project}_seaweedfs_data"
 docker volume create $target
-$seaweed = "ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882"
+$seaweed = "ghcr.io/chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d"
 docker run -d --name s3-target --network s3-migration --network-alias seaweedfs-target `
   -e AWS_ACCESS_KEY_ID=$env:MINIO_ROOT_USER -e AWS_SECRET_ACCESS_KEY=$env:MINIO_ROOT_PASSWORD `
   -e S3_BUCKET=uploads -v "${target}:/data" `

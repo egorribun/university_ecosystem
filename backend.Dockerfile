@@ -1,18 +1,18 @@
-# syntax=docker/dockerfile:1.12
+# syntax=docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
 # Rust toolchain stage — provides a known-good Cargo/rustc for maturin builds.
 # Rust 1.85 is the first stable release supporting edition 2024 and Cargo.lock v4.
-FROM rust:1.94.1-slim-bookworm@sha256:5ae2d2ef9875c9c2407bf9b5678e6375304f7ecf8ea46b23e403a5690ec357ec AS rust-toolchain
+FROM rust:1.99.0-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa AS rust-toolchain
 
 # Stage 1: Builder
 # MOD-21-08 (Wave 21): Updated to Python 3.14 for free-threading support,
 # deferred annotation evaluation (PEP 649), and improved error messages.
-FROM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 AS builder
+FROM python:3.14.8-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83 AS builder
 
 # Pin uv to the same exact version enforced by pyproject.toml. The digest is
-# the linux/amd64 manifest for uv 0.11.28, the platform used by CI and release
+# the linux/amd64 manifest for uv 0.12.23, the platform used by CI and release
 # image builds.
-COPY --from=ghcr.io/astral-sh/uv:0.11.28@sha256:5c3ab83183a73c5d319a77009eb425b60d5bb937f339fb7876788ebf567baf48 /uv /uv/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.12.23@sha256:61d393e44e249f2e4b526b6c7ddcecce245946826e608e11c93ad4f5bba55b21 /uv /uv/bin/uv
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -62,7 +62,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     done
 
 # Stage 2: Runtime
-FROM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 AS runtime
+FROM python:3.14.8-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83 AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -86,8 +86,15 @@ RUN --mount=type=cache,id=apt-lists-runtime,target=/var/lib/apt/lists \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /home/app --shell /usr/sbin/nologin --create-home app
 
+# Runtime keeps the locked application venv; remove the base image's global pip
+# and the bundled ensurepip wheel that contains the same vulnerable vendored code.
+RUN python -c "import pathlib, sys; p=pathlib.Path(sys.prefix)/'lib'/f'python{sys.version_info.major}.{sys.version_info.minor}'/'ensurepip'; assert sys.version_info[:2] == (3, 14); assert sys.prefix == '/usr/local'; assert p == pathlib.Path('/usr/local/lib/python3.14/ensurepip'); assert p.is_dir() and not p.is_symlink()" \
+    && python -m pip uninstall --yes pip \
+    && rm -rf /usr/local/lib/python3.14/ensurepip \
+    && python -c "import importlib.util, pathlib, sys; p=pathlib.Path(sys.prefix)/'lib'/f'python{sys.version_info.major}.{sys.version_info.minor}'/'ensurepip'; assert sys.version_info[:2] == (3, 14); assert sys.prefix == '/usr/local'; assert not p.exists(); assert importlib.util.find_spec('pip') is None; assert importlib.util.find_spec('ensurepip') is None"
 # Copy virtual environment from builder
 COPY --from=builder --chown=app:app /opt/venv /opt/venv
+RUN /opt/venv/bin/python -c "import fastapi, sqlalchemy, urllib3; assert urllib3.__version__ == '2.8.0'"
 
 # Copy application source
 COPY --chown=app:app app ./app
@@ -97,7 +104,7 @@ COPY --chown=app:app alembic.ini ./alembic.ini
 # Ensure cache directory exists with correct permissions
 RUN mkdir -p /app/cache && chown -R app:app /app/cache
 
-USER app
+USER 10001:10001
 
 EXPOSE 8000
 
@@ -106,13 +113,15 @@ EXPOSE 8000
 # `/health/ready` checks database connectivity and honors graceful shutdown;
 # the more expensive `/healthz` endpoint is reserved for diagnostics.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4)"
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4)"]
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
 # TD-007 (audit 2026-03-19): Use gunicorn as process manager with uvicorn workers
 # Workers = 2 × CPU + 1 (using 2 workers for baseline memory limits).
 # --graceful-timeout 30: matches terminationGracePeriodSeconds in K8s
+# Access logging is intentionally disabled: UvicornWorker writes the full ASGI
+# request target, including its query string, through uvicorn.access.
 CMD ["gunicorn", "app.main:app", \
     "--worker-class", "uvicorn.workers.UvicornWorker", \
     "--workers", "2", \
@@ -120,5 +129,4 @@ CMD ["gunicorn", "app.main:app", \
     "--graceful-timeout", "30", \
     "--timeout", "60", \
     "--keep-alive", "5", \
-    "--access-logfile", "-", \
     "--error-logfile", "-"]

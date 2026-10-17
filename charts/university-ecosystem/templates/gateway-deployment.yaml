@@ -2,6 +2,15 @@
 {{- if or (eq .Values.global.environment "staging") (eq .Values.global.environment "production") -}}
 {{- $jwksEndpoint = printf "%s/.well-known/jwks.json" (trimSuffix "/" (required "global.jwtIssuer must be set" .Values.global.jwtIssuer)) -}}
 {{- end -}}
+{{- $applicationSecretName := include "university-ecosystem.applicationSecretName" . -}}
+{{- $connectionsSecretName := required "connections.existingSecret must be set" .Values.connections.existingSecret -}}
+{{- $gatewaySecrets := list
+  (dict "id" "application" "secretName" $applicationSecretName "keys" (list "jwt-secret" "internal-hmac-secret"))
+  (dict "id" "connections" "secretName" $connectionsSecretName "keys" (list
+    (required "connections.redisGatewayURLKey must be set" .Values.connections.redisGatewayURLKey)
+    (required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey)
+  ))
+-}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -68,27 +77,26 @@ spec:
           env:
             - name: GATEWAY_PORT
               value: "8080"
-            - name: JWT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
-                  key: jwt-secret
+            - name: RATE_LIMIT_RPS
+              value: {{ .Values.gateway.config.rateLimitRps | quote }}
+            - name: RATE_LIMIT_BURST
+              value: {{ .Values.gateway.config.rateLimitBurst | quote }}
+            - name: ALLOWED_ORIGINS
+              value: {{ include "university-ecosystem.frontendOrigin" . | quote }}
+            - name: GATEWAY_TRUSTED_PROXIES
+              value: {{ join "," .Values.gateway.config.trustedProxies | quote }}
+            - name: JWT_SECRET_FILE
+              value: {{ printf "/run/secrets/%s/jwt-secret" $applicationSecretName | quote }}
             - name: JWT_AUDIENCE
               value: {{ required "gateway.config.jwtAudience must be set" .Values.gateway.config.jwtAudience | quote }}
             - name: BACKEND_URL
               value: "http://{{ include "university-ecosystem.fullname" . }}-backend:8000"
             - name: FILE_PROCESSOR_ADDR
               value: "{{ include "university-ecosystem.fullname" . }}-file-processor:50051"
-            - name: REDIS_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
-                  key: {{ required "connections.redisGatewayURLKey must be set" .Values.connections.redisGatewayURLKey | quote }}
-            - name: REVOCATION_REDIS_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
-                  key: {{ required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey | quote }}
+            - name: REDIS_URL_FILE
+              value: {{ printf "/run/secrets/%s/%s" $connectionsSecretName (required "connections.redisGatewayURLKey must be set" .Values.connections.redisGatewayURLKey) | quote }}
+            - name: REVOCATION_REDIS_URL_FILE
+              value: {{ printf "/run/secrets/%s/%s" $connectionsSecretName (required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey) | quote }}
             - name: VITE_ENVIRONMENT
               value: {{ .Values.global.environment | quote }}
             - name: GRPC_USE_TLS
@@ -113,16 +121,10 @@ spec:
               value: {{ $jwksEndpoint | quote }}
             - name: JWKS_REFRESH_INTERVAL
               value: "60"
-            - name: INTERNAL_HMAC_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
-                  key: internal-hmac-secret
-            - name: FILE_PROCESSING_CAPABILITY_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
-                  key: internal-hmac-secret
+            - name: INTERNAL_HMAC_SECRET_FILE
+              value: {{ printf "/run/secrets/%s/internal-hmac-secret" $applicationSecretName | quote }}
+            - name: FILE_PROCESSING_CAPABILITY_SECRET_FILE
+              value: {{ printf "/run/secrets/%s/internal-hmac-secret" $applicationSecretName | quote }}
             # PERF-03 (RZ-W13): OTel sampling — 10% in production.
             - name: OTEL_TRACES_SAMPLER
               value: {{ .Values.otel.sampler | quote }}
@@ -153,14 +155,16 @@ spec:
             failureThreshold: 3
           resources:
             {{- toYaml .Values.gateway.resources | nindent 12 }}
-          {{- if .Values.internalGrpcMTLS.enabled }}
           volumeMounts:
+            {{- include "university-ecosystem.secretVolumeMounts" (dict "secrets" $gatewaySecrets) | nindent 12 }}
+            {{- if .Values.internalGrpcMTLS.enabled }}
             - name: internal-grpc-mtls
               mountPath: /run/secrets/internal-grpc-mtls
               readOnly: true
           {{- end }}
-      {{- if .Values.internalGrpcMTLS.enabled }}
       volumes:
+        {{- include "university-ecosystem.secretVolumes" (dict "secrets" $gatewaySecrets) | nindent 8 }}
+        {{- if .Values.internalGrpcMTLS.enabled }}
         - name: internal-grpc-mtls
           secret:
             secretName: {{ required "internalGrpcMTLS.gatewayClient.existingSecret must be set" .Values.internalGrpcMTLS.gatewayClient.existingSecret | quote }}

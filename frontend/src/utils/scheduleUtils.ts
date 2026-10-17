@@ -27,5 +27,6 @@ export const isoWeekNumber = (date: Date): number => {
   return Math.floor((thursday.getTime() - yearStart) / DAY_MS / 7) + 1
 }
 
-/** Week parity shared with the backend schedule filters (odd ISO week = "odd"). */
-export const nowParity = () => (isoWeekNumber(new Date()) % 2 === 0 ? "even" : "odd")
+/** Week parity shared with backend schedule filters; defaults to the current local time. */
+export const nowParity = (date: Date = new Date()) =>
+  isoWeekNumber(date) % 2 === 0 ? "even" : "odd"

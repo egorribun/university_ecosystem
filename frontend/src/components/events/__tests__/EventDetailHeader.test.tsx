@@ -6,14 +6,21 @@ vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
 
-const { useTranslationMock, translationMock } = vi.hoisted(() => {
+const { useTranslationMock, translationMock, language } = vi.hoisted(() => {
   const translationMock = vi.fn((key: string) => key)
+  const language = { current: "en" }
   return {
     useTranslationMock: vi.fn(() => ({
       t: translationMock,
-      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+      i18n: {
+        get language() {
+          return language.current
+        },
+        changeLanguage: () => Promise.resolve(),
+      },
     })),
     translationMock,
+    language,
   }
 })
 
@@ -27,6 +34,9 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("@/utils/date", () => ({
   formatDate: formatDateMock,
+}))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => "Europe/Istanbul",
 }))
 
 import { EventDetailHeader } from "@/components/events/EventDetailHeader"
@@ -75,7 +85,9 @@ describe("EventDetailHeader", () => {
         hour: "2-digit",
         minute: "2-digit",
         hour12: false,
-      })
+        timeZone: "Europe/Istanbul",
+      }),
+      "en-US"
     )
     expect(screen.getByRole("button", { name: "events:detail.actions.share" })).toHaveAttribute(
       "aria-label",
@@ -227,5 +239,28 @@ describe("EventDetailHeader", () => {
     render(<EventDetailHeader {...baseProps} />)
 
     expect(document.querySelector('[aria-live="polite"]')).toHaveTextContent("")
+  })
+
+  it("formats event dates with the Russian locale when selected", () => {
+    const previousLanguage = language.current
+    language.current = "ru"
+    formatDateMock.mockClear()
+    try {
+      render(<EventDetailHeader {...baseProps} />)
+      expect(formatDateMock).toHaveBeenNthCalledWith(
+        1,
+        baseProps.startsAt,
+        expect.any(Object),
+        "ru-RU"
+      )
+      expect(formatDateMock).toHaveBeenNthCalledWith(
+        2,
+        baseProps.endsAt,
+        expect.any(Object),
+        "ru-RU"
+      )
+    } finally {
+      language.current = previousLanguage
+    }
   })
 })

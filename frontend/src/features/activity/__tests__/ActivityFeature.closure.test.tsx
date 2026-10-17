@@ -248,6 +248,20 @@ describe("ActivityFeature closure", () => {
     expect(activityData.refetch).toHaveBeenCalledOnce()
   })
 
+  it("does not label an empty partial response as complete or hide its available sections", () => {
+    activityData.hasAnyData = false
+    activityData.attendance = null as never
+    activityData.availability = { attendance: false, grades: true, participation: true }
+    activityData.isPartial = true
+    render(<ActivityFeature />)
+
+    expect(screen.getByRole("status")).toHaveTextContent("activity:partial.title")
+    expect(screen.queryByText("activity:empty.title")).not.toBeInTheDocument()
+    expect(screen.getAllByTestId("activity-unavailable-card")).toHaveLength(1)
+    expect(screen.getByTestId("grades-card")).toBeInTheDocument()
+    expect(screen.getByTestId("participation-card")).toBeInTheDocument()
+  })
+
   it("renders skeleton cards and every unavailable participation/chart branch", () => {
     activityData.hasInitiallyLoaded = false
     const { rerender } = render(<ActivityFeature />)

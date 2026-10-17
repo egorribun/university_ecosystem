@@ -77,7 +77,11 @@ func run() error {
 	// third-party diagnostics on the same PII/credential-safe boundary.
 	slog.SetDefault(logger)
 
-	cfg := config.LoadConfig()
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		logger.ErrorContext(context.Background(), "Failed to load configuration", "err", err)
+		return err
+	}
 	if cfg.InternalSecret == "" {
 		logger.ErrorContext(context.Background(), "WS_HUB_INTERNAL_SECRET is not set — generate with: openssl rand -hex 32")
 		return errors.New("WS_HUB_INTERNAL_SECRET is not set")
@@ -343,14 +347,6 @@ func initRevocationRedis(ctx context.Context, cfg *config.Config, logger *slog.L
 	}
 	logger.InfoContext(ctx, "Revocation Redis connected", "url", options.Addr)
 	return client, nil
-}
-
-func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client, spiffeClients ...*spiffe.Client) (*hub.Hub, error) {
-	// Compatibility helper used by isolated tests. Production startup calls
-	// setupHubWithRevocation with the separate durable security Redis obtained
-	// by initRevocationRedis; an L2/cache Redis must never be treated as that
-	// revocation authority.
-	return setupHubWithRevocation(ctx, cfg, logger, nc, rdb, nil, spiffeClients...)
 }
 
 func setupHubWithRevocation(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb, revocationRDB *redis.Client, spiffeClients ...*spiffe.Client) (*hub.Hub, error) {

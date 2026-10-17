@@ -67,7 +67,7 @@ jobs:
 
       - name: Generate SBOM — Python workspace
         # anchore/sbom-action — Renovate will update digest
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           path: .
           format: spdx-json
@@ -81,7 +81,7 @@ jobs:
           sbom-path: sbom-python.spdx.json
 
       - name: Upload Python SBOM artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom-python
           path: sbom-python.spdx.json
@@ -106,14 +106,14 @@ jobs:
           # 1.26.4 can resolve to a runner image that still carries vulnerable
           # standard-library symbols; govulncheck must analyze the same fixed
           # toolchain used by the build jobs.
-          go-version: "1.26.6"
+          go-version: "1.26.9"
           cache: true
 
       - name: Install osv-scanner
-        # Pin to a specific version; Renovate (Cargo/Go group) will update.
-        # @v1.9.2 is content-addressed by the Go module sum DB (equivalent to commit pinning).  # nosec
+        # Renovate's custom workflow manager updates this exact GitHub release pin.
+        # @v2.6.0 is content-addressed by the Go module sum DB (equivalent to commit pinning).
         run: |
-          go install github.com/google/osv-scanner/cmd/osv-scanner@v1.9.2
+          go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0
 
       - name: Scan Go modules for vulnerabilities + generate SBOM
         id: osv_scan
@@ -122,7 +122,7 @@ jobs:
           set +e
           # osv-scanner checks go.sum files against the OSV vulnerability database.
           # --recursive discovers all go.mod files under services/.
-          osv-scanner scan --recursive --format sarif \
+          osv-scanner scan source --recursive --format sarif \
             --output go-vuln.sarif \
             ./services/
           scanner_status=$?
@@ -137,7 +137,7 @@ jobs:
           category: osv-go
 
       - name: Upload Go SARIF artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: sbom-go-sarif
@@ -243,7 +243,7 @@ jobs:
           exit "$audit_failed"
 
       - name: Upload Rust audit artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: sbom-rust-audit
@@ -266,7 +266,7 @@ jobs:
   #     are never silently ignored by this workflow.
   vuln-gate:
     # Keep the externally visible main-CI check context stable for run history.
-    name: Vulnerability gate (CRITICAL/HIGH)
+    name: Vulnerability gate (CRITICAL/HIGH, main)
     if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     # Cold runs compile cargo-audit and execute three ecosystems sequentially.
@@ -312,13 +312,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.9"
           cache: true
 
       - name: Install govulncheck
         # Pinned official Go vulnerability analyzer; the module sum DB verifies
         # the downloaded source before installation.  # nosec
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 
       - name: Go — govulncheck reachable vulnerability gate
         # Source analysis blocks every vulnerability reachable from authored
@@ -428,11 +428,11 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.9"
           cache: true
 
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 
       - name: Go — govulncheck reachable vulnerability gate
         run: |

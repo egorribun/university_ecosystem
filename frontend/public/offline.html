@@ -113,15 +113,18 @@
           Карта кампуса обновится автоматически после восстановления подключения.
         </li>
       </ul>
-      <button type="button" onclick="window.location.reload()" data-i18n="offline.retry">
+      <button type="button" data-action="reload" data-i18n="offline.retry">
         Повторить попытку
       </button>
       <small data-i18n="offline.footer"
         >Проверьте подключение или попробуйте открыть приложение позднее.</small
       >
     </main>
-    <script>
+    <script nonce="__CSP_NONCE__">
       ;(function () {
+        document.querySelector('[data-action="reload"]')?.addEventListener("click", () => {
+          window.location.reload()
+        })
         import("./static-shell-i18n.js")
           .then(({ applyDocumentLanguage, applyOfflineTranslations, getPreferredLanguage }) => {
             const language = getPreferredLanguage(window)

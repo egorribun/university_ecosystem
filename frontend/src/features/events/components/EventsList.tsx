@@ -14,6 +14,7 @@ import { cn } from "@/utils/cn"
 interface EventsListProps {
   eventsList: Event[]
   isInitialLoading: boolean
+  queryError?: boolean
   isFetching: boolean
   isFetchingNextPage: boolean
   hasNextPage: boolean
@@ -34,6 +35,7 @@ const NEXT_PAGE_SKELETON_COUNT = 3
 export const EventsList = ({
   eventsList,
   isInitialLoading,
+  queryError = false,
   isFetching,
   isFetchingNextPage,
   hasNextPage,
@@ -49,7 +51,11 @@ export const EventsList = ({
 }: EventsListProps) => {
   const { t } = useTranslation(["events", "common"])
   const showEmptyState =
-    !isInitialLoading && !isFetchingNextPage && !hasNextPage && eventsList.length === 0
+    !isInitialLoading &&
+    !isFetchingNextPage &&
+    !hasNextPage &&
+    eventsList.length === 0 &&
+    (!queryError || !isOnline)
 
   /* ── Infinite scroll sentinel ── */
   const sentinelRef = useRef<HTMLDivElement>(null)
@@ -101,6 +107,18 @@ export const EventsList = ({
               <EventCardSkeleton />
             </div>
           ))}
+        </div>
+      )}
+
+      {queryError && !isInitialLoading && isOnline && (
+        <div
+          role="alert"
+          className="my-6 flex flex-wrap items-center justify-center gap-3 rounded-xl border border-(--error-text)/(--opacity-medium) bg-(--error-text)/(--opacity-subtle) p-4 text-sm text-(--error-text)"
+        >
+          <span>{t("common:statuses.error")}</span>
+          <Button variant="outline" size="sm" onClick={handleRetry}>
+            {t("common:statuses.tryAgain")}
+          </Button>
         </div>
       )}
 

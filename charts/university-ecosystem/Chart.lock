@@ -1,9 +1,9 @@
 dependencies:
 - name: redis
-  repository: oci://registry-1.docker.io/bitnamicharts
-  version: 20.13.4
+  repository: file://../redis-compat
+  version: 0.1.0
 - name: nats
-  repository: oci://registry-1.docker.io/bitnamicharts
-  version: 8.5.4
-digest: sha256:49642d10cb1a3513a1801ba28525d7ad9e746dc41a9dcc68b771026f2ca73265
-generated: "2026-08-28T23:20:07.9121111+03:00"
+  repository: https://nats-io.github.io/k8s/helm/charts/
+  version: 2.15.0
+digest: sha256:2b4b2ee7f10bc31a81bb4aa46e5ca2c98d90935beb53cd53d7b247e78f1d0fa7
+generated: "2026-10-14T18:20:19.3162159+03:00"

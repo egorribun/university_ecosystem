@@ -1,0 +1,110 @@
+schema: full-backend-reusable-baseline-v3
+source_commit: cd8daacbf9aa40a7da7398750bcf0d95571edf38 # current committed source for refreshed workflow fingerprints
+source_files:
+  nightly: dfdf66bbb99e0f48b9e58e64da7674ae13b9a82a64524b46d73bf7351ea30666 # raw workflow bytes at source_commit
+  manual: 63a8c260372e99e4fb674d4f502610066fccc96bb4a04ea0913c2af04d3bb834 # raw workflow bytes at source_commit
+  reusable_full_backend_mutation: dda3b12833f6f0a1e2cd9766c8e04f56bb6cc7a04f4192af56c2c8732b65d053 # raw workflow bytes at source_commit
+nightly_trigger_sha256: fdc20c3df799579edad1d3c520a3678d50fbc3359d50c2bffe8a2db8f4708a19 # parsed workflow trigger map excluding workflow_dispatch
+manual_trigger_sha256: 4d6782fb2ff21d58c80606ed26167383f075b97d0783a61489fb7e90e5b5b125 # parsed workflow trigger map
+nightly_preserved_jobs:
+  frontend-mutation-preflight: cc74c0acd6095d3b9d67a758cf7afb6b23399387aa40e78676906cc6cf81d41f #  -- public Git or workflow content digest
+  frontend-mutation-shards: ab77e2e414d8f30d7bc9bc075fc1dfa2ba65dd54f7f86d64c5d341272ad4e8c7 #  -- public Git or workflow content digest
+  frontend-mutation-tests-full: dbbc0f884603b7b6bd72b5b854af99665b7d1b7013ba0234cdf8c1f2e9f0d753 #  -- public Git or workflow content digest
+  frontend-mutation-roundtrip: 72a88343f496d911abd3275072298a2cdbda565404406d46e39fdb0756fd4028 #  -- public Git or workflow content digest
+  backend-full: d209f3a544cafc57f417b265008216f87f3477af9c35269dd98773bb9ae5a673 #  -- public Git or workflow content digest
+  backend-integration: f85f81fe703fb7fbb7a2601d97fe361a1694c6840be49b494c5f599ae5c1b1c1 #  -- public Git or workflow content digest
+  go-integration: 0ae30c84e67c76d2eb9242696dae04c50054299e07e8d9a7568e0f6d59c75928 #  -- public Git or workflow content digest
+  container-integration-cells: 9203ff22fe6ac0eeb659051bec38dc7c5534c58a60e0123139af85b15ca90685 #  -- public Git or workflow content digest
+  e2e-wasm-build: 28d00aa9d36f6c5ab67eccdb33138df4fc57c71d67c4ecdc92444d0425ca5695 #  -- public Git or workflow content digest
+  browser-matrix: 129aa036114a7b88b36d013c8f2b94926eed5b25904f2cb5fffc79d557b6dc0a #  -- public Git or workflow content digest
+  load-and-chaos: 112d78abb16018feb303cce1a4c55c6afa80514ffb1f68ce926a9367a533f078 #  -- public Git or workflow content digest
+  kyverno-test: 909ede74caa9ea4cba3d77033cc74be333e298b7e542fdf534ff12e30d272c52 #  -- public Git or workflow content digest
+  miri: 68dbeb525c2af2866800a2c771019a52fe459dd82e9314c0d9f723a6434ae237 #  -- public Git or workflow content digest
+manual_preserved_jobs:
+  manual-mutation-stats: b3acf20e8f44d77330d6149be4ab29de7095cbaa82e53f49fa4361402d2fe1d1 # retained legacy fixture datum; not source-bound or digest-asserted
+  manual-mutation-tests: fdd0185555f42d5741d7fae954d057660513d84a7f5d5cca41a082e117be26ff # retained legacy fixture datum; not source-bound or digest-asserted
+  manual-frontend-mutation-preflight: c79296e76d1d9f4bfd780e5cf547859bdda031d3f9a51a36c78959a24c09ce1d # normalized job after removing the asserted typecheck-only delta
+  manual-frontend-mutation-shards: d1fe071aae326f7658f34dae2e42995b7452c80ead09420e249ccd925c663368 #  -- public Git or workflow content digest
+  manual-frontend-mutation-aggregate: 772f7d7ab85fcda78e69a3274a72943e083f83986890c3979fa3c0404df84b79 #  -- public Git or workflow content digest
+  manual-frontend-mutation-roundtrip: 73fa3fcaee79730b2b24d70b381998b45d66ff4708035825da63b7549c6cbbc7 #  -- public Git or workflow content digest
+full_mutation_steps:
+  mutation-tests-full-generation-base:
+    excluded_boundary_steps: []
+    step_names:
+      - Checkout
+      - Create retry-scoped mutmut generation envelope
+      - Generate reusable mutmut source and metadata
+      - Upload full mutmut generation base
+    sha256: 871d12aab28f4e9835aedc85fbd65651829a4245f53dbc559b3590105936300f #  -- public Git or workflow content digest
+    timeout_minutes: 45
+    strategy_sha256: 74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b #  -- public Git or workflow content digest
+  mutation-tests-full-stats:
+    excluded_boundary_steps:
+      - Download nightly Helm dependency artifact
+      - Download same-run Helm dependency artifact
+      - Restore verified Helm dependency archives
+      - Select same-run Helm dependency artifact
+    step_names:
+      - Checkout
+      - Collect full mutmut stats shard
+      - Install dependencies
+      - Install uv
+      - Resolve Helm chart dependencies
+      - Set up Helm
+      - Set up Python
+      - Upload full mutmut stats shard
+    sha256: 7c46a66539d421f73fa074da7a3ab97a6c1b514798ac99396999bdc714be66be #  -- public Git or workflow content digest
+    timeout_minutes: 45
+    strategy_sha256: 792273e039d644e447e19694f0f2479cad3dd4bb4e40358b1cc5e06e669abfac #  -- public Git or workflow content digest
+  mutation-tests-full-plan:
+    excluded_boundary_steps:
+      - Download full mutmut stats shards
+      - Require all full mutmut stats shards
+    step_names:
+      - Checkout
+      - Install dependencies
+      - Install uv
+      - Merge full mutmut stats shards
+      - Plan and budget every exact full mutation shard
+      - Reduce full mutmut mapping to observed kill probes
+      - Set up Python
+      - Upload preflighted full mutation plan
+    sha256: fbd082430b18efc2b4903702b8f29cdbe2f1ee8625ced0ae03e5619afc4fd113 #  -- public Git or workflow content digest
+    timeout_minutes: 60
+    strategy_sha256: 74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b #  -- public Git or workflow content digest
+  mutation-tests-full:
+    excluded_boundary_steps:
+      - Download nightly Helm dependency artifact
+      - Download same-run Helm dependency artifact
+      - Restore verified Helm dependency archives
+      - Select same-run Helm dependency artifact
+    step_names:
+      - Checkout
+      - Download preflighted full mutation plan
+      - Install dependencies
+      - Install uv
+      - Plan and run exact full mutation shard
+      - Record mutmut job deadline
+      - Resolve Helm chart dependencies
+      - Set up Helm
+      - Set up Python
+      - Upload full mutation shard evidence
+      - Validate completed full mutation shard statistics
+      - Validate full mutation shard evidence artifact
+    sha256: 7b89d99949f9d35700d598fe9f7cae1dc6f71d617f97afea2d6539364f0996cc #  -- public Git or workflow content digest
+    timeout_minutes: 360
+    strategy_sha256: 1715b0ab10712671f463161124569990fcad562da8ff7e896afd07f5152777fa #  -- public Git or workflow content digest
+  mutation-tests-full-aggregate:
+    excluded_boundary_steps:
+      - Require all full mutmut execution shards
+    step_names:
+      - Checkout
+      - Download full mutation shard evidence
+      - Install dependencies
+      - Install uv
+      - Merge and gate full mutation evidence
+      - Set up Python
+      - Upload aggregate mutation evidence
+    sha256: a06f9119d8ba229e15f3aa150ef4df5b51338d23e5cea5c3ce6d65167cf928e9 #  -- public Git or workflow content digest
+    timeout_minutes: 30
+    strategy_sha256: 74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b #  -- public Git or workflow content digest

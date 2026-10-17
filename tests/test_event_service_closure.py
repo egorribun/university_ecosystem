@@ -53,7 +53,33 @@ def event_service_closure():
     uow.__aexit__ = AsyncMock(return_value=False)
     uow.commit = AsyncMock()
     uow.rollback = AsyncMock()
+    repo.count_search_events.return_value = 0
     return EventService(uow, AsyncMock()), uow, repo
+
+
+@pytest.mark.asyncio
+async def test_create_event_forwards_locale_to_repository(event_service_closure):
+    service, uow, repo = event_service_closure
+    now = datetime.now(UTC)
+    data = schemas.EventCreate(
+        title="Localized event",
+        description="Description",
+        location="Room",
+        event_type="meeting",
+        starts_at=now,
+        ends_at=now + timedelta(hours=1),
+    )
+    user_id = uuid4()
+    record = _event()
+    repo.create.return_value = record
+
+    result = await service.create_event(data, user_id, locale="en")
+
+    assert result is record
+    expected = data.model_dump()
+    expected["created_by"] = user_id
+    repo.create.assert_awaited_once_with(expected, locale="en")
+    uow.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -99,6 +125,7 @@ async def test_get_events_cursor_page_builds_next_cursor_without_total(
     assert result.total is None
     assert result.has_more is True
     assert result.next_cursor is not None
+    repo.count_search_events.assert_not_awaited()
     repo.count_upcoming.assert_not_awaited()
     repo.count.assert_not_awaited()
 
@@ -107,12 +134,20 @@ async def test_get_events_cursor_page_builds_next_cursor_without_total(
 async def test_get_events_non_active_first_page_uses_total_count(event_service_closure):
     service, _, repo = event_service_closure
     repo.search_events.return_value = []
-    repo.count.return_value = 4
+    repo.count_search_events.return_value = 4
 
     result = await service.get_events(is_active=False, locale="en")
 
     assert result.total == 4
-    repo.count.assert_awaited_once_with()
+    repo.count_search_events.assert_awaited_once()
+    kwargs = repo.count_search_events.await_args.kwargs
+    assert kwargs["search_query"] == ""
+    assert kwargs["event_type"] == ""
+    assert kwargs["location"] == ""
+    assert kwargs["is_active"] is False
+    assert kwargs["query_embedding"] is None
+    repo.count_upcoming.assert_not_awaited()
+    repo.count.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -212,3 +247,39 @@ async def test_register_attendance_race_retry_keeps_existing_when_update_returns
     assert result.qr_token == "tok"
     repo.update_attendance.assert_awaited_once()
     uow.rollback.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_delete_event_keeps_committed_deletion_when_image_storage_fails(
+    event_service_closure, caplog
+):
+    service, uow, repo = event_service_closure
+    event = _event(image_url="/static/tmp/event_images/owned.jpg")
+    repo.get.return_value = event
+    repo.get_event_file_urls.return_value = []
+    order: list[str] = []
+
+    async def commit():
+        order.append("commit")
+
+    async def fail_image_delete(_url, *, event_id, db_session):
+        assert db_session is uow.session
+        order.append(f"image:{event_id}")
+        raise OSError("private storage detail")
+
+    uow.commit.side_effect = commit
+
+    with (
+        patch("app.services.search_indexer.remove_document", new=AsyncMock()),
+        patch(
+            "app.services.event_service.delete_unreferenced_owned_event_image",
+            side_effect=fail_image_delete,
+        ),
+    ):
+        deleted = await service.delete_event(event.id)
+
+    assert deleted is True
+    assert order == ["commit", f"image:{event.id}"]
+    repo.delete.assert_awaited_once_with(event.id)
+    assert "Failed to safely clean event image" in caplog.text
+    assert "private storage detail" not in caplog.text

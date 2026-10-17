@@ -123,7 +123,13 @@ class ContentSecurityPolicy:
             policy = f"default-src 'self'; {policy}"
 
         # 5. Report URI
-        if self.report_uri.strip():
+        # A custom policy's report-uri is already effective; do not append a second one.
+        has_report_uri = any(
+            directive.strip().split(maxsplit=1)[0].casefold() == "report-uri"
+            for directive in policy.split(";")
+            if directive.strip()
+        )
+        if self.report_uri.strip() and not has_report_uri:
             policy = f"{policy}; report-uri {self.report_uri.strip()}"
 
         return policy

@@ -28,6 +28,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from botocore.exceptions import ClientError
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.api.ws.serializers import serialize_message
 from app.models import Notification
@@ -733,84 +734,102 @@ def test_serialize_message_read_at_none_when_unread() -> None:
 # ── 5. handle_message_sent fetches the sender explicitly (Wave 205) ───────────
 
 
+def _configure_message_handler_membership(db: MagicMock, member_id: uuid.UUID) -> None:
+    async def execute(statement: object, *_args: object, **_kwargs: object):
+        if "chat_participants" in str(statement):
+            return SimpleNamespace(scalar_one_or_none=lambda: member_id)
+        return SimpleNamespace()
+
+    db.execute = AsyncMock(side_effect=execute)
+    db.get_bind = MagicMock(
+        return_value=SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    )
+
+
 @pytest.mark.asyncio
-async def test_handle_message_sent_fetches_sender_by_id_not_noload_relationship() -> (
-    None
-):
-    """Wave 205 regression: the outbox handler must load the sender via
-    db.get(User, sender_id), NOT pass message.sender (which is lazy="noload"
-    -> None after db.get(Message)). Passing message.sender crashed on sender.id
-    the first time this handler ran end-to-end — dormant for waves because the
-    outbox produced ZERO events until the SW-A capture-on-commit fix.
-    """
+async def test_handle_message_sent_refreshes_preloaded_sender_profile(
+    db_session, user_factory
+) -> None:
+    """The outbox sender may already be in the identity map with noload profile."""
     import app.services.event_handlers as eh
     from app import models as app_models
     from app.core.events import MessageSent
 
-    message_id = uuid.uuid4()
-    chat_id = uuid.uuid4()
-    sender_id = uuid.uuid4()
-
-    # db.get(Message) returns a message whose .sender is None (noload).
-    message = SimpleNamespace(
-        id=message_id,
-        chat_id=chat_id,
-        sender_id=sender_id,
-        sender=None,
-        content="hi",
-        reply_to_message_id=None,  # Wave 207 — handle_message_sent reads this attr
+    sender = await user_factory(full_name="Alice Sender")
+    recipient = await user_factory(full_name="Bob Recipient")
+    chat = app_models.Chat(
+        chat_type="group",
+        name="Regression group",
+        participants=[sender, recipient],
     )
-    fetched_sender = SimpleNamespace(id=sender_id, profile=None)
+    db_session.add(chat)
+    await db_session.flush()
 
-    async def fake_get(model: object, _ident: object) -> object | None:
-        if model is app_models.Message:
-            return message
-        if model is app_models.User:
-            return fetched_sender
-        return None
+    message = app_models.Message(
+        chat_id=chat.id,
+        sender_id=sender.id,
+        content="A group reply",
+    )
+    db_session.add(message)
+    await db_session.commit()
 
-    db = MagicMock()
-    db.get = AsyncMock(side_effect=fake_get)
-    db.commit = AsyncMock()
+    message_id = message.id
+    chat_id = chat.id
+    sender_id = sender.id
+    db_session.expunge_all()
+
+    # This is the path that exposes the identity-map pitfall: Chat.participants
+    # loads the User row, but User.profile remains lazy="noload" (None).
+    loaded_chat = await db_session.get(
+        app_models.Chat,
+        chat_id,
+        options=[selectinload(app_models.Chat.participants)],
+    )
+    assert loaded_chat is not None
+    preloaded_sender = next(
+        participant
+        for participant in loaded_chat.participants
+        if participant.id == sender_id
+    )
+    assert preloaded_sender.profile is None
 
     session_cm = MagicMock()
-    session_cm.__aenter__ = AsyncMock(return_value=db)
+    session_cm.__aenter__ = AsyncMock(return_value=db_session)
     session_cm.__aexit__ = AsyncMock(return_value=False)
-
-    repo = MagicMock()
-    # Wave 210 G3 — the handler now reads chat.chat_type/name (a ChatDTO) to
-    # thread the group identity into notify_new_message; the stand-in must carry
-    # them or attribute access AttributeErrors.
-    repo.get_by_id = AsyncMock(
-        return_value=SimpleNamespace(
-            participants=[fetched_sender], chat_type="dm", name=None
-        )
+    event = MessageSent(
+        message_id=message_id,
+        chat_id=chat_id,
+        sender_id=sender_id,
     )
-
-    service = MagicMock()
-    service.notify_new_message = AsyncMock()
-
-    event = MessageSent(message_id=message_id, chat_id=chat_id, sender_id=sender_id)
 
     with (
         patch("app.services.event_handlers.async_session", return_value=session_cm),
-        patch("app.repositories.chat_repository.ChatRepository", return_value=repo),
         patch(
-            "app.services.chat.notification_service.ChatNotificationService",
-            return_value=service,
+            "app.services.chat.notification_service.build_presence_map",
+            new=AsyncMock(return_value={}),
         ),
+        patch(
+            "app.services.chat.notification_service.serialize_message",
+            return_value={},
+        ),
+        patch(
+            "app.services.chat.notification_service.ws_manager.broadcast_to_chat",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.services.chat.notification_service.create_notifications_for_users",
+            new=AsyncMock(),
+        ) as create,
     ):
         await eh.handle_message_sent(event)
 
-    service.notify_new_message.assert_awaited_once()
-    kwargs = service.notify_new_message.await_args.kwargs
-    # The fetched User — never the noload None relationship.
-    assert kwargs["sender"] is fetched_sender
-    assert kwargs["sender"] is not None
-    assert kwargs["message"] is message
-    # Wave 210 G3 — a DM chat threads chat_type="dm" + chat_name=None.
-    assert kwargs["chat_type"] == "dm"
-    assert kwargs["chat_name"] is None
+    create.assert_awaited_once()
+    assert create.await_args.kwargs["title"] == "Regression group"
+    assert create.await_args.kwargs["body"] == "Alice Sender: A group reply"
+    assert preloaded_sender.profile is not None
+    assert create.await_args.kwargs["body"].startswith(
+        f"{preloaded_sender.profile.full_name}: "
+    )
 
 
 # ── 6. Reply-notification SUPERSEDE (Wave 208) ───────────────────────────────
@@ -995,7 +1014,9 @@ async def test_handle_message_sent_loads_replied_for_reply() -> None:
     fetched_sender = SimpleNamespace(id=sender_id, profile=None)
     replied_dto = SimpleNamespace(id=reply_target_id, sender_id=quoted_sender_id)
 
-    async def fake_get(model: object, _ident: object) -> object | None:
+    async def fake_get(
+        model: object, _ident: object, **_kwargs: object
+    ) -> object | None:
         if model is app_models.Message:
             return message
         if model is app_models.User:
@@ -1004,6 +1025,7 @@ async def test_handle_message_sent_loads_replied_for_reply() -> None:
 
     db = MagicMock()
     db.get = AsyncMock(side_effect=fake_get)
+    _configure_message_handler_membership(db, sender_id)
     db.commit = AsyncMock()
 
     session_cm = MagicMock()
@@ -1039,7 +1061,9 @@ async def test_handle_message_sent_loads_replied_for_reply() -> None:
         await eh.handle_message_sent(event)
 
     # The handler resolved the replied-to message and passed it through.
-    repo.get_message_by_id.assert_awaited_once_with(reply_target_id)
+    repo.get_message_by_id.assert_awaited_once_with(
+        reply_target_id, user_id=sender_id, chat_id=chat_id
+    )
     service.notify_new_message.assert_awaited_once()
     assert service.notify_new_message.await_args.kwargs["replied"] is replied_dto
 
@@ -1172,7 +1196,9 @@ async def test_handle_message_sent_threads_group_identity() -> None:
     )
     fetched_sender = SimpleNamespace(id=sender_id, profile=None)
 
-    async def fake_get(model: object, _ident: object) -> object | None:
+    async def fake_get(
+        model: object, _ident: object, **_kwargs: object
+    ) -> object | None:
         if model is app_models.Message:
             return message
         if model is app_models.User:
@@ -1181,6 +1207,7 @@ async def test_handle_message_sent_threads_group_identity() -> None:
 
     db = MagicMock()
     db.get = AsyncMock(side_effect=fake_get)
+    _configure_message_handler_membership(db, sender_id)
     db.commit = AsyncMock()
 
     session_cm = MagicMock()

@@ -119,6 +119,7 @@ export function SearchDialog() {
     ...(data?.results.news ?? []),
     ...(data?.results.events ?? []),
   ].sort((a, b) => b.score - a.score)
+  const showResults = query.length >= 2 && debouncedQuery.length >= 2
 
   const handleSelect = useCallback(
     (result: SearchResult) => {
@@ -131,6 +132,7 @@ export function SearchDialog() {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
+      if (!showResults) return
       if (e.key === "ArrowDown") {
         e.preventDefault()
         setActiveIndex((prev) => Math.min(prev + 1, allResults.length - 1))
@@ -142,7 +144,7 @@ export function SearchDialog() {
         handleSelect(allResults[activeIndex])
       }
     },
-    [activeIndex, allResults, handleSelect]
+    [activeIndex, allResults, handleSelect, showResults]
   )
 
   // Scroll active item into view
@@ -155,7 +157,6 @@ export function SearchDialog() {
 
   const recentSearches = getRecentSearches()
   const showRecent = !query && recentSearches.length > 0
-  const showResults = debouncedQuery.length >= 2
   const TypeIcon = { news: FileText, events: Calendar } as const
 
   if (!open) return null
@@ -200,7 +201,10 @@ export function SearchDialog() {
             {query && (
               <button
                 type="button"
-                onClick={() => setQuery("")}
+                onClick={() => {
+                  setQuery("")
+                  setActiveIndex(-1)
+                }}
                 className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-md hover:bg-(--bg-surface-hover) transition-colors"
                 aria-label={t("common:search.clear")}
               >

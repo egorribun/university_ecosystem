@@ -1,3 +1,4 @@
+import { createElement, type ElementType } from "react"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
@@ -13,14 +14,35 @@ vi.mock("react-i18next", () => ({
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
+
+const buttonBoundary = vi.hoisted(() => ({ disabledSaveOnClick: null as unknown }))
+vi.mock("@/components/ui/Button", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/ui/Button")>()
+  return {
+    ...actual,
+    Button: (props: ButtonProps<ElementType>) => {
+      if (
+        props.children === "common:buttons.save" &&
+        props.disabled &&
+        typeof props.onClick === "function"
+      ) {
+        buttonBoundary.disabledSaveOnClick = props.onClick
+      }
+      return createElement(actual.Button, props)
+    },
+  }
+})
 // Module-mock @/api/news directly so updateNews / uploadNewsImage never reach MSW.
+const fetchNewsItem = vi.fn()
 const updateNews = vi.fn((..._a: unknown[]) => Promise.resolve({ data: { id: "news-1" } }))
 const uploadNewsImage = vi.fn((..._a: unknown[]) => Promise.resolve("https://cdn/uploaded.png"))
 vi.mock("@/api/news", () => ({
+  fetchNewsItem: (...a: unknown[]) => fetchNewsItem(...a),
   updateNews: (...a: unknown[]) => updateNews(...a),
   uploadNewsImage: (...a: unknown[]) => uploadNewsImage(...a),
 }))
 
+import type { ButtonProps } from "@/components/ui/Button"
 import { NewsDetailEditDialog } from "@/components/news/NewsDetailEditDialog"
 
 const initialData = {
@@ -59,6 +81,8 @@ function getFileInput(): HTMLInputElement {
 }
 
 beforeEach(() => {
+  fetchNewsItem.mockReset()
+  buttonBoundary.disabledSaveOnClick = null
   // jsdom doesn't implement object URLs — stub them so handleImageChange / resetPreview work.
   globalThis.URL.createObjectURL = vi.fn(() => "blob:mock-preview")
   globalThis.URL.revokeObjectURL = vi.fn()
@@ -69,6 +93,105 @@ afterEach(() => {
 })
 
 describe("NewsDetailEditDialog branches", () => {
+  it("normalizes optional Russian-source fields before saving the English editor", async () => {
+    fetchNewsItem.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        id: "news-1",
+        title: "Исходный заголовок",
+        content: "Исходный текст",
+        title_en: null,
+        content_en: null,
+        image_url: null,
+      },
+    })
+    const user = userEvent.setup()
+    renderDialog({ ...baseProps, language: "en" })
+
+    await waitFor(() =>
+      expect(fetchNewsItem).toHaveBeenCalledWith(
+        "news-1",
+        expect.objectContaining({ language: "ru", signal: expect.any(AbortSignal) })
+      )
+    )
+    await user.click(await screen.findByRole("button", { name: "common:buttons.save" }))
+
+    await waitFor(() =>
+      expect(updateNews).toHaveBeenCalledWith("news-1", {
+        title: "Исходный заголовок",
+        content: "Исходный текст",
+        title_en: "",
+        content_en: "",
+        image_url: "",
+      })
+    )
+  })
+
+  it("keeps the English editor closed and saving disabled after source fetch rejection", async () => {
+    fetchNewsItem.mockRejectedValueOnce(new Error("source unavailable"))
+    renderDialog({ ...baseProps, language: "en" })
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("common:errors.generic")
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+    expect(updateNews).not.toHaveBeenCalled()
+  })
+
+  it("ignores a source-fetch rejection after switching away from the aborted English request", async () => {
+    let rejectSource!: (reason?: unknown) => void
+    fetchNewsItem.mockReturnValueOnce(
+      new Promise<unknown>((_resolve, reject) => {
+        rejectSource = reject
+      })
+    )
+    const rendered = renderDialog({ ...baseProps, language: "en" })
+
+    await waitFor(() =>
+      expect(fetchNewsItem).toHaveBeenCalledWith(
+        "news-1",
+        expect.objectContaining({ language: "ru", signal: expect.any(AbortSignal) })
+      )
+    )
+    const sourceSignal = fetchNewsItem.mock.calls[0]?.[1]?.signal as AbortSignal
+    expect(sourceSignal).toBeInstanceOf(AbortSignal)
+
+    rendered.rerender(
+      <QueryClientProvider client={rendered.client}>
+        <NewsDetailEditDialog {...baseProps} language="ru" />
+      </QueryClientProvider>
+    )
+
+    expect(sourceSignal.aborted).toBe(true)
+    expect(await screen.findByDisplayValue(initialData.title)).toHaveValue(initialData.title)
+
+    await act(async () => {
+      rejectSource(new Error("late source failure"))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.getByDisplayValue(initialData.title)).toHaveValue(initialData.title)
+  })
+
+  it("keeps the save callback guarded after the English source request fails", async () => {
+    fetchNewsItem.mockRejectedValueOnce(new Error("source unavailable"))
+    renderDialog({ ...baseProps, language: "en" })
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("common:errors.generic")
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+    const saveOnClick = buttonBoundary.disabledSaveOnClick
+    if (typeof saveOnClick !== "function") {
+      throw new Error("disabled Save callback was not captured")
+    }
+
+    await act(async () => {
+      await saveOnClick()
+    })
+
+    expect(uploadNewsImage).not.toHaveBeenCalled()
+    expect(updateNews).not.toHaveBeenCalled()
+  })
+
   it("edits content / title_en / content_en fields (onChange lines 149, 163, 173)", async () => {
     const user = userEvent.setup()
     renderDialog()

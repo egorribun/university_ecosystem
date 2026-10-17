@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/redis/go-redis/v9/maintnotifications"
 )
@@ -21,12 +22,56 @@ const (
 	// already-upgraded socket may dispatch a user action. A timeout rejects the
 	// action rather than allowing a stale session through.
 	sessionActionRevocationTimeout = 250 * time.Millisecond
+	// Successful delivery checks are shared for at most one second per client,
+	// bounding Redis traffic independently of broadcast/replay volume. A missed
+	// notice can therefore leave at most this bounded authorization window.
+	sessionDeliveryRecheckInterval = time.Second
 	// defaultSessionRevocationSubscribeTimeout bounds the phase before a
 	// concrete Pub/Sub object can be retained. Once the object exists, Stop
 	// owns an explicit close function so an unacknowledged Receive cannot
 	// outlive it.
 	defaultSessionRevocationSubscribeTimeout = 5 * time.Second
 )
+
+var errSessionInactive = errors.New("session is inactive")
+
+// authorizeSession requires sessionGate to be held by the caller through the
+// authorized action/write. Inbound actions always refresh; outbound traffic
+// shares only successful, short-lived verdicts. Lookup errors are never cached.
+func (c *Client) authorizeSession(ctx context.Context, now time.Time, allowCached bool) (err error) {
+	c.sessionCheckMu.Lock()
+	// The caller's timestamp may predate contention on sessionCheckMu. Never
+	// authorize against that stale instant; retain only a later supplied clock.
+	if current := time.Now(); current.After(now) {
+		now = current
+	}
+	defer func() {
+		if err != nil {
+			// Invalidate before releasing the shared check lock. A concurrent
+			// pump must not revive authority while Disconnect is still pending.
+			c.sessionRevoked.Store(true)
+			c.sessionCheckedUntil = time.Time{}
+		}
+		c.sessionCheckMu.Unlock()
+	}()
+	if ctx.Err() != nil || c.sessionRevoked.Load() || c.SessionJTI == "" || !now.Before(c.SessionExpiresAt) || c.Hub == nil || c.Hub.sessionRevocationCheck == nil {
+		return errSessionInactive
+	}
+	if allowCached && now.Before(c.sessionCheckedUntil) {
+		return nil
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, sessionActionRevocationTimeout)
+	defer cancel()
+	if err := c.Hub.sessionRevocationCheck(checkCtx, c.SessionJTI); err != nil {
+		return errSessionInactive
+	}
+	if checkCtx.Err() != nil || c.sessionRevoked.Load() || !time.Now().Before(c.SessionExpiresAt) {
+		return errSessionInactive
+	}
+	// Anchor the bound before the lookup, so slow Redis does not extend it.
+	c.sessionCheckedUntil = now.Add(sessionDeliveryRecheckInterval)
+	return nil
+}
 
 var closeSessionRevocationPubSubFunc = func(pubsub *goredis.PubSub) error {
 	return pubsub.Close()
@@ -296,8 +341,11 @@ func (h *Hub) consumeSessionRevocationMessages(ctx context.Context, messages <-c
 		case message, ok := <-messages:
 			if !ok {
 				if h.Logger != nil && ctx.Err() == nil {
-					h.Logger.ErrorContext(ctx, "Session revocation listener stopped; action checks remain fail-closed",
+					h.Logger.ErrorContext(ctx, "Session revocation listener stopped; disconnecting active sessions",
 						"event", "session_revocation_listener_stopped")
+				}
+				if ctx.Err() == nil {
+					h.disconnectSessionsAfterSubscriptionLoss()
 				}
 				return
 			}
@@ -319,4 +367,17 @@ func isValidSessionRevocationJTI(jti string) bool {
 	// the canonical lower-case producer when a session is revoked.
 	parsed, err := uuid.Parse(jti)
 	return err == nil && parsed.String() == jti
+}
+
+// Snapshot under Hub.mu, then release it before taking any client session gate.
+func (h *Hub) disconnectSessionsAfterSubscriptionLoss() {
+	h.mu.RLock()
+	clients := make([]*Client, 0, len(h.Clients))
+	for _, client := range h.Clients {
+		clients = append(clients, client)
+	}
+	h.mu.RUnlock()
+	for _, client := range clients {
+		client.RevokeSession(websocket.ClosePolicyViolation, "Session verification unavailable")
+	}
 }

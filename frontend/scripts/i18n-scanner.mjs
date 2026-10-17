@@ -78,6 +78,15 @@ const DEFAULT_BACKEND_DYNAMIC_REGISTRY = {
     "errors.spotify.rate_limited",
     "errors.push.not_configured",
   ],
+  "exc.message": [
+    "errors.chat.invalid_participants",
+    "errors.users.cannot_delete_self",
+    "errors.users.confirmation_required",
+    "errors.users.invalid_invite",
+    "errors.users.create_failed",
+    "errors.users.invalid_invite_code",
+    "errors.users.invite_code_required",
+  ],
   title_key: [
     "titles.bad_request",
     "titles.unauthorized",

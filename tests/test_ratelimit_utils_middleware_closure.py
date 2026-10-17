@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import ipaddress
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -268,7 +267,7 @@ async def test_middleware_send_wrapper_adds_missing_headers_and_passes_body():
     assert sent[1] == {"type": "http.response.body", "body": b"ok"}
 
 
-def test_middleware_endpoint_limits_and_hashed_identifiers():
+def test_middleware_endpoint_limits_and_ip_identifiers():
     middleware = RateLimitMiddleware(
         AsyncMock(),
         storage_backend="memory",
@@ -279,18 +278,50 @@ def test_middleware_endpoint_limits_and_hashed_identifiers():
     assert middleware._get_limits_for_path("/auth/login") == (2, 30, "/auth")
     assert middleware._get_limits_for_path("/public") == (10, 60, "default")
 
-    token = "secret-token"
-    token_request = Request(
-        _http_scope(headers=[(b"authorization", f"Bearer {token}".encode())])
+    requests = (
+        Request(_http_scope(headers=[(b"authorization", b"Bearer not-a-jwt-one")])),
+        Request(_http_scope(headers=[(b"authorization", b"Bearer not-a-jwt-two")])),
+        Request(
+            _http_scope(headers=[(b"cookie", b"access_token_v2=not-a-jwt-cookie")])
+        ),
+        Request(_http_scope()),
     )
-    token_identifier = middleware._build_identifier(token_request)
-    assert token_identifier == f"token:{hashlib.sha256(token.encode()).hexdigest()}"
-    assert token not in token_identifier
+    assert {middleware._build_identifier(request) for request in requests} == {
+        "ip:127.0.0.1"
+    }
 
-    cookie = "cookie-token"
-    cookie_request = Request(
-        _http_scope(headers=[(b"cookie", f"access_token_v2={cookie}".encode())])
+    other_ip = _http_scope()
+    other_ip["client"] = ("198.51.100.7", 5000)
+    assert middleware._build_identifier(Request(other_ip)) == "ip:198.51.100.7"
+
+
+@pytest.mark.asyncio
+async def test_rotating_unverified_credentials_cannot_bypass_ip_limit():
+    app = AsyncMock()
+    middleware = RateLimitMiddleware(
+        app,
+        storage_backend="memory",
+        limit=1,
+        window_seconds=60,
+        headers_enabled=False,
     )
-    assert middleware._build_identifier(cookie_request) == (
-        f"cookie:{hashlib.sha256(cookie.encode()).hexdigest()}"
+    scopes = (
+        _http_scope(headers=[(b"authorization", b"Bearer not-a-jwt-one")]),
+        _http_scope(headers=[(b"authorization", b"Bearer not-a-jwt-two")]),
+        _http_scope(headers=[(b"cookie", b"access_token_v2=not-a-jwt-cookie")]),
+        _http_scope(),
     )
+    responses: list[list[dict[str, object]]] = []
+    for scope in scopes:
+        messages: list[dict[str, object]] = []
+        await middleware(scope, AsyncMock(), AsyncMock(side_effect=messages.append))
+        responses.append(messages)
+
+    app.assert_awaited_once()
+    assert responses[0] == []
+    assert [messages[0]["status"] for messages in responses[1:]] == [429, 429, 429]
+
+    other_ip = _http_scope()
+    other_ip["client"] = ("198.51.100.7", 5000)
+    await middleware(other_ip, AsyncMock(), AsyncMock())
+    assert app.await_count == 2

@@ -25,6 +25,8 @@ from validate_quality_contract import (
     NORMALIZER_VERSION,
     validate_contract,
     validate_manifest_evidence,
+    validate_metric_at_legacy_baseline,
+    validate_metric_with_exact_missing,
 )
 
 DEFAULT_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -663,19 +665,31 @@ def _canonical_source_identity(component: str, raw_path: str) -> str:
             and not _source_path_is_within_component_root(component, source_parts)
             and not _source_path_is_component_root(component, source_parts)
         ):
-            if source_parts[0].casefold() not in OTHER_ROOTS:
+            aliases: set[tuple[str, ...]] = set()
+            for configured_root in SOURCE_ROOTS[component]:
+                root_parts = tuple(part for part in configured_root.split("/") if part)
+                for stripped_count in range(len(root_parts) + 1):
+                    if (
+                        stripped_count
+                        and source_parts[:stripped_count]
+                        != root_parts[-stripped_count:]
+                    ):
+                        continue
+                    tail = source_parts[stripped_count:]
+                    if not tail:
+                        continue
+                    candidate_parts = (*root_parts, *tail)
+                    candidate = REPOSITORY_ROOT.joinpath(*candidate_parts)
+                    if candidate.is_file() and not _is_link_or_junction(candidate):
+                        aliases.add(candidate_parts)
+            if len(aliases) > 1:
+                raise _InputError(
+                    "Python report path is ambiguous across configured source roots"
+                )
+            if aliases:
+                source_parts = next(iter(aliases))
+            elif source_parts[0].casefold() not in OTHER_ROOTS:
                 source_parts = ("app", *source_parts)
-            else:
-                # Cobertura emitted by coverage.py with ``source = ["app"]``
-                # strips the leading ``app/`` segment.  A module such as
-                # ``app/services/foo.py`` therefore appears as
-                # ``services/foo.py`` and is otherwise indistinguishable from
-                # a repository-root path.  Resolve this ambiguity only when
-                # the corresponding authored module exists below ``app``;
-                # unknown root-level paths remain rejected below.
-                app_alias = REPOSITORY_ROOT.joinpath("app", *source_parts)
-                if app_alias.is_file() and not _is_link_or_junction(app_alias):
-                    source_parts = ("app", *source_parts)
     elif component in GO_COMPONENTS:
         source_parts = _normalize_go_module_source(component, source_parts)
 
@@ -2963,13 +2977,9 @@ def _tracked_source_is_coverable(component: str, relative_path: str) -> bool:
 def _tier0_source_requires_coverage(component: str, relative_path: str) -> bool:
     """Return whether the active coverage toolchain can measure a Tier-0 file.
 
-    The Python CI producer invokes pytest-cov with ``--cov=app``.  Alembic
-    revisions remain part of the canonical Python source roots (so a supplied
-    migration report is still normalized and validated), but they are
-    exercised by the dedicated PostgreSQL migration gate rather than that
-    coverage producer.  Treating their absence from the aggregate as a
-    missing coverage artifact would create a false Tier-0 failure; it would
-    not improve the actual migration safety evidence.
+    Applicability follows the contract's Python coverage scope. The producer
+    combines backend pytest data with the PostgreSQL migration-gate coverage
+    artifact, so all declared Tier-0 revision paths participate in the aggregate.
     """
     normalized = relative_path.replace("\\", "/")
     roots = COVERAGE_SCOPE_ROOTS.get(component, ())
@@ -3518,6 +3528,47 @@ def _missing_metrics() -> dict[str, dict[str, object]]:
     return {metric: _unmeasured_metric("missing") for metric in METRICS}
 
 
+def _legacy_migration_records(
+    contract: dict[str, object],
+) -> dict[str, dict[str, object]]:
+    tier0 = contract.get("tier0")
+    policy = (
+        tier0.get("legacy_migration_baselines") if isinstance(tier0, dict) else None
+    )
+    records = policy.get("files") if isinstance(policy, dict) else None
+    if not isinstance(records, list):
+        return {}
+    return {
+        cast(str, record["path"]): cast(dict[str, object], record)
+        for record in records
+        if isinstance(record, dict) and isinstance(record.get("path"), str)
+    }
+
+
+def _exact_legacy_migration_missing(
+    file_metrics: Mapping[str, dict[str, dict[str, object]]],
+    records: Mapping[str, dict[str, object]],
+    metric_name: str,
+) -> int:
+    missing = 0
+    for path in records:
+        metrics = file_metrics.get(path)
+        metric = metrics.get(metric_name) if metrics is not None else None
+        if metric is None:
+            continue
+        covered = metric.get("covered")
+        total = metric.get("total")
+        if (
+            isinstance(covered, int)
+            and not isinstance(covered, bool)
+            and isinstance(total, int)
+            and not isinstance(total, bool)
+            and total >= covered
+        ):
+            missing += total - covered
+    return missing
+
+
 def _metric_satisfies_floor(
     metric: dict[str, object],
     floor: int,
@@ -3584,6 +3635,7 @@ def _component_entry(
     supplied_count: int,
     required_count: int,
     evidence_errors: list[str],
+    legacy_migration_records: Mapping[str, dict[str, object]] | None = None,
 ) -> tuple[dict[str, object], list[str], dict[str, object] | None]:
     if required_count == 0:
         metrics = {
@@ -3610,20 +3662,36 @@ def _component_entry(
         )
     metrics = reports[0].metrics if reports else _missing_metrics()
     if reports:
-        errors.extend(
-            failure
-            for metric_name in METRICS
+        for metric_name in METRICS:
             if (
-                failure := _metric_failure(
-                    component,
+                component == "python"
+                and metric_name in {"lines", "statements", "branches"}
+                and legacy_migration_records
+            ):
+                expected_missing = _exact_legacy_migration_missing(
+                    reports[0].file_metrics,
+                    legacy_migration_records,
                     metric_name,
-                    metrics[metric_name],
-                    floors[metric_name],
-                    metric_statuses[metric_name],
                 )
+                if expected_missing:
+                    errors.extend(
+                        validate_metric_with_exact_missing(
+                            metrics[metric_name],
+                            expected_missing=expected_missing,
+                            field=f"{component}.{metric_name}",
+                            allowed_statuses=metric_statuses[metric_name],
+                        )
+                    )
+                    continue
+            failure = _metric_failure(
+                component,
+                metric_name,
+                metrics[metric_name],
+                floors[metric_name],
+                metric_statuses[metric_name],
             )
-            is not None
-        )
+            if failure is not None:
+                errors.append(failure)
     errors.sort()
     return (
         {
@@ -3863,7 +3931,9 @@ def _aggregate_tier0(
     floors: dict[str, dict[str, int]],
     metric_statuses: dict[str, dict[str, frozenset[str]]],
     source_inventory: Mapping[str, Collection[str]] | None = None,
+    legacy_migration_records: Mapping[str, dict[str, object]] | None = None,
 ) -> dict[str, object]:
+    legacy_records = legacy_migration_records or {}
     rules, rules_error = _load_tier0_rules()
     file_records: list[tuple[str, str, dict[str, dict[str, object]]]] = []
     for component in COMPONENTS:
@@ -3905,6 +3975,17 @@ def _aggregate_tier0(
             metric = metrics[metric_name]
             status = metric["status"]
             allowed_statuses = metric_statuses[component][metric_name]
+            metric_floor = floors[component][metric_name]
+            if (
+                component == "python"
+                and metric_name == "functions"
+                and path.startswith("alembic/versions/")
+                and path.endswith(".py")
+                and path not in legacy_records
+            ):
+                # New migrations are Tier0 files even though the general
+                # Python function floor permits explicit unsupported reports.
+                metric_floor = 100
             if status not in allowed_statuses:
                 errors.append(
                     f"{path} ({component}).{metric_name} status {status!r} is "
@@ -3913,21 +3994,39 @@ def _aggregate_tier0(
                 continue
             if status in {"native", "derived"}:
                 measured_by_metric[metric_name].append(metric)
-                if not _metric_satisfies_floor(
-                    metric,
-                    100,
-                    allowed_statuses,
-                ):
+                baseline_record = (
+                    legacy_records.get(path) if component == "python" else None
+                )
+                baseline_metrics = (
+                    baseline_record.get("metrics")
+                    if isinstance(baseline_record, dict)
+                    else None
+                )
+                baseline_metric = (
+                    baseline_metrics.get(metric_name)
+                    if isinstance(baseline_metrics, dict)
+                    else None
+                )
+                if isinstance(baseline_metric, dict):
+                    errors.extend(
+                        validate_metric_at_legacy_baseline(
+                            metric,
+                            baseline_metric,
+                            field=f"{path}.{metric_name}",
+                            allowed_statuses=allowed_statuses,
+                        )
+                    )
+                elif not _metric_satisfies_floor(metric, 100, allowed_statuses):
                     errors.append(f"{path} ({component}).{metric_name} is below 100%")
             elif status == "unsupported" and _metric_satisfies_floor(
                 metric,
-                floors[component][metric_name],
+                metric_floor,
                 allowed_statuses,
             ):
                 not_applicable[metric_name] += 1
             elif status == "unsupported":
                 errors.append(
-                    f"{path} ({component}).{metric_name} is unsupported but its floor is 100"
+                    f"{path} ({component}).{metric_name} is unsupported but its floor is {metric_floor}"
                 )
             else:
                 errors.append(
@@ -3960,6 +4059,29 @@ def _aggregate_tier0(
             )
         else:
             aggregate[metric_name] = _measured_metric("native", covered, total)
+        legacy_file_metrics = {
+            path: metrics
+            for (path, component), metrics in deduplicated.items()
+            if component == "python"
+        }
+        expected_missing = _exact_legacy_migration_missing(
+            legacy_file_metrics, legacy_records, metric_name
+        )
+        if expected_missing:
+            errors.extend(
+                validate_metric_with_exact_missing(
+                    aggregate[metric_name],
+                    expected_missing=expected_missing,
+                    field=f"tier0.coverage.{metric_name}",
+                    allowed_statuses=frozenset(
+                        status
+                        for component_statuses in metric_statuses.values()
+                        for status in component_statuses[metric_name]
+                    ),
+                )
+            )
+        elif covered != total:
+            errors.append(f"Tier0 aggregate {metric_name} is below 100%")
 
     files.sort(key=lambda entry: (str(entry["component"]), str(entry["path"])))
     errors = sorted(set(errors))
@@ -4302,11 +4424,9 @@ def _build_manifest(
             continue
         reported_sources = set(component_reports[0].file_metrics)
         # ``source_roots`` defines the canonical identity boundary for report
-        # entries, while ``coverage_scope`` contains only the files the
-        # producer is expected to measure.  Those sets intentionally differ
-        # for Python: Alembic revisions are reportable source identities but
-        # pytest-cov is scoped to ``app``.  Require complete evidence for the
-        # producer scope and reject paths outside the canonical roots.
+        # entries, while ``coverage_scope`` contains the files the producer
+        # must measure. Require complete evidence for that scope and reject
+        # paths outside the canonical roots.
         required_sources = set(invocation.coverage_inventory[component])
         reportable_sources = set(invocation.source_inventory[component])
         inventory_errors = [
@@ -4325,6 +4445,7 @@ def _build_manifest(
     components: dict[str, object] = {}
     missing_reports: list[dict[str, object]] = []
     validation_errors: list[str] = []
+    legacy_migration_records = _legacy_migration_records(invocation.contract)
     for component in COMPONENTS:
         required_count = sum(
             declaration_component == component
@@ -4338,6 +4459,7 @@ def _build_manifest(
             report_input_counts[component],
             required_count,
             evidence_errors_by_component[component],
+            legacy_migration_records,
         )
         components[component] = entry
         validation_errors.extend(errors)
@@ -4380,6 +4502,7 @@ def _build_manifest(
         floors,
         invocation.metric_statuses,
         invocation.coverage_inventory,
+        legacy_migration_records,
     )
     tier0_errors = tier0["errors"]
     if isinstance(tier0_errors, list):

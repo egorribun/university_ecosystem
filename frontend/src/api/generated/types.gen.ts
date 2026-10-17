@@ -179,6 +179,10 @@ export type AuditLogOut = {
    */
   actor_user_id?: string | null
   /**
+   * Authenticated Fields
+   */
+  authenticated_fields: Array<string>
+  /**
    * Context
    */
   context?: {
@@ -209,6 +213,11 @@ export type AuditLogOut = {
    */
   resource_type: string
   /**
+   * Signature Scheme
+   */
+  signature_scheme:
+    "canonical_v2" | "legacy_json_array_v1" | "legacy_pipe_v1" | "invalid" | "unsigned"
+  /**
    * Subject Name
    */
   subject_name?: string | null
@@ -216,6 +225,10 @@ export type AuditLogOut = {
    * Subject User Id
    */
   subject_user_id?: string | null
+  /**
+   * Unauthenticated Fields
+   */
+  unauthenticated_fields: Array<string>
   /**
    * User Agent
    */
@@ -1006,6 +1019,76 @@ export type ForwardMessages = {
 }
 
 /**
+ * GradeCreate
+ */
+export type GradeCreate = {
+  /**
+   * Assessment Type
+   */
+  assessment_type?: string
+  /**
+   * Score
+   */
+  score: number
+  /**
+   * Student Id
+   */
+  student_id: string
+  /**
+   * Subject
+   */
+  subject: string
+}
+
+/**
+ * GradeOut
+ */
+export type GradeOut = {
+  /**
+   * Assessment Type
+   */
+  assessment_type: string
+  /**
+   * Assigned By
+   */
+  assigned_by?: string | null
+  /**
+   * Created At
+   */
+  created_at?: string | null
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Score
+   */
+  score: number
+  /**
+   * Student Id
+   */
+  student_id: string
+  /**
+   * Subject
+   */
+  subject: string
+}
+
+/**
+ * GradeUpdate
+ */
+export type GradeUpdate = {
+  /**
+   * Reason
+   */
+  reason?: string | null
+  /**
+   * Score
+   */
+  score: number
+}
+
+/**
  * GroupChatCreate
  *
  * Wave 209 G1 — create a named group chat.
@@ -1786,6 +1869,18 @@ export type PresenceStatus = {
    * Last Seen At
    */
   last_seen_at?: string | null
+}
+
+/**
+ * PublicCampusConfig
+ *
+ * The intentionally narrow, non-secret public campus configuration.
+ */
+export type PublicCampusConfig = {
+  /**
+   * Campus Timezone
+   */
+  campus_timezone: string
 }
 
 /**
@@ -3404,6 +3499,135 @@ export type ListFeatureFlagsAdminFeatureFlagsGetResponses = {
 export type ListFeatureFlagsAdminFeatureFlagsGetResponse =
   ListFeatureFlagsAdminFeatureFlagsGetResponses[keyof ListFeatureFlagsAdminFeatureFlagsGetResponses]
 
+export type ListAuditLogsApiV1AdminAuditGetData = {
+  body?: never
+  path?: never
+  query?: {
+    /**
+     * Limit
+     */
+    limit?: number
+    /**
+     * Offset
+     */
+    offset?: number
+    /**
+     * Actor Id
+     */
+    actor_id?: string | null
+    /**
+     * Subject Id
+     */
+    subject_id?: string | null
+    /**
+     * Resource Type
+     */
+    resource_type?: string | null
+    /**
+     * Action
+     */
+    action?: string | null
+  }
+  url: "/api/v1/admin/audit"
+}
+
+export type ListAuditLogsApiV1AdminAuditGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ListAuditLogsApiV1AdminAuditGetError =
+  ListAuditLogsApiV1AdminAuditGetErrors[keyof ListAuditLogsApiV1AdminAuditGetErrors]
+
+export type ListAuditLogsApiV1AdminAuditGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: AuditLogListOut
+}
+
+export type ListAuditLogsApiV1AdminAuditGetResponse =
+  ListAuditLogsApiV1AdminAuditGetResponses[keyof ListAuditLogsApiV1AdminAuditGetResponses]
+
+export type GetTimeTravelStateApiV1AdminAuditTimeTravelGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Aggregate Type
+     *
+     * Aggregate type: 'schedule', 'grade', 'user', 'assessment'
+     */
+    aggregate_type: string
+    /**
+     * Aggregate Id
+     *
+     * UUID of the aggregate entity
+     */
+    aggregate_id: string
+    /**
+     * Target Timestamp
+     *
+     * Target timestamp in ISO format
+     */
+    target_timestamp?: string | null
+    /**
+     * Timestamp
+     *
+     * Target timestamp alias
+     */
+    timestamp?: string | null
+    /**
+     * Verify Chain
+     *
+     * Verify HMAC chain integrity up to target timestamp
+     */
+    verify_chain?: boolean
+  }
+  url: "/api/v1/admin/audit/time-travel"
+}
+
+export type GetTimeTravelStateApiV1AdminAuditTimeTravelGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetTimeTravelStateApiV1AdminAuditTimeTravelGetError =
+  GetTimeTravelStateApiV1AdminAuditTimeTravelGetErrors[keyof GetTimeTravelStateApiV1AdminAuditTimeTravelGetErrors]
+
+export type GetTimeTravelStateApiV1AdminAuditTimeTravelGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: TimeTravelResponse
+}
+
+export type GetTimeTravelStateApiV1AdminAuditTimeTravelGetResponse =
+  GetTimeTravelStateApiV1AdminAuditTimeTravelGetResponses[keyof GetTimeTravelStateApiV1AdminAuditTimeTravelGetResponses]
+
+export type ListFeatureFlagsApiV1AdminFeatureFlagsGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/admin/feature-flags"
+}
+
+export type ListFeatureFlagsApiV1AdminFeatureFlagsGetResponses = {
+  /**
+   * Response List Feature Flags Api V1 Admin Feature Flags Get
+   *
+   * Successful Response
+   */
+  200: Array<FeatureFlagOut>
+}
+
+export type ListFeatureFlagsApiV1AdminFeatureFlagsGetResponse =
+  ListFeatureFlagsApiV1AdminFeatureFlagsGetResponses[keyof ListFeatureFlagsApiV1AdminFeatureFlagsGetResponses]
+
 export type GetCsrfCookieApiV1AuthCsrfCookieGetData = {
   body?: never
   path?: never
@@ -4027,6 +4251,23 @@ export type RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses = {
 
 export type RevokeSessionApiV1AuthSessionsSessionIdDeleteResponse =
   RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses[keyof RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses]
+
+export type GetCampusConfigApiV1CampusConfigGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/campus/config"
+}
+
+export type GetCampusConfigApiV1CampusConfigGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: PublicCampusConfig
+}
+
+export type GetCampusConfigApiV1CampusConfigGetResponse =
+  GetCampusConfigApiV1CampusConfigGetResponses[keyof GetCampusConfigApiV1CampusConfigGetResponses]
 
 export type GetChatsApiV1ChatsGetData = {
   body?: never
@@ -5330,6 +5571,65 @@ export type UploadEventFileApiV1EventsEventIdUploadFilePostResponses = {
 
 export type UploadEventFileApiV1EventsEventIdUploadFilePostResponse =
   UploadEventFileApiV1EventsEventIdUploadFilePostResponses[keyof UploadEventFileApiV1EventsEventIdUploadFilePostResponses]
+
+export type AssignGradeApiV1GradesPostData = {
+  body: GradeCreate
+  path?: never
+  query?: never
+  url: "/api/v1/grades"
+}
+
+export type AssignGradeApiV1GradesPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type AssignGradeApiV1GradesPostError =
+  AssignGradeApiV1GradesPostErrors[keyof AssignGradeApiV1GradesPostErrors]
+
+export type AssignGradeApiV1GradesPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: GradeOut
+}
+
+export type AssignGradeApiV1GradesPostResponse =
+  AssignGradeApiV1GradesPostResponses[keyof AssignGradeApiV1GradesPostResponses]
+
+export type ModifyGradeApiV1GradesGradeIdPatchData = {
+  body: GradeUpdate
+  path: {
+    /**
+     * Grade Id
+     */
+    grade_id: string
+  }
+  query?: never
+  url: "/api/v1/grades/{grade_id}"
+}
+
+export type ModifyGradeApiV1GradesGradeIdPatchErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ModifyGradeApiV1GradesGradeIdPatchError =
+  ModifyGradeApiV1GradesGradeIdPatchErrors[keyof ModifyGradeApiV1GradesGradeIdPatchErrors]
+
+export type ModifyGradeApiV1GradesGradeIdPatchResponses = {
+  /**
+   * Successful Response
+   */
+  200: GradeOut
+}
+
+export type ModifyGradeApiV1GradesGradeIdPatchResponse =
+  ModifyGradeApiV1GradesGradeIdPatchResponses[keyof ModifyGradeApiV1GradesGradeIdPatchResponses]
 
 export type GetGroupsApiV1GroupsGetData = {
   body?: never

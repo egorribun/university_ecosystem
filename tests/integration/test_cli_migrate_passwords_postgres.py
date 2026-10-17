@@ -19,7 +19,7 @@ from psycopg import sql
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
-from testcontainers.postgres import PostgresContainer
+from testcontainers.community.postgres import PostgresContainer
 
 from app.cli import migrate_passwords
 from app.core.db.listeners import register_tenant_listeners
@@ -33,7 +33,7 @@ pytestmark = [
     ),
 ]
 
-_IMAGE = "pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f"
+_IMAGE = "pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d"
 _READER = "legacy_preflight_reader"
 _TABLE = "users"
 _USER_IDS = (

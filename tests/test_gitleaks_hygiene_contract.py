@@ -31,6 +31,15 @@ def test_gitleaks_allowlist_contains_only_existing_lockfile_paths() -> None:
     assert "regexes" not in allowlist
 
 
+def test_gitleaks_configuration_extends_default_detection_rules() -> None:
+    """The custom repository config must retain the built-in detector rules."""
+
+    with GITLEAKS_CONFIG_PATH.open("rb") as config_file:
+        config = tomllib.load(config_file)
+
+    assert config.get("extend") == {"useDefault": True}
+
+
 def test_gitleaks_scans_main_pushes_and_pull_requests_without_duplicate_runs() -> None:
     """The protected branch and PR receive one authoritative scan each."""
 
