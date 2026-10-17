@@ -22,7 +22,11 @@ def test_run_check_deadline_when_descendant_inherits_output_pipes(
     descendant_code = (
         "import pathlib, sys, time; "
         "time.sleep(2.5); "  # Bounded: child delay 2.5 s; parent deadline 0.75 s.
-        "pathlib.Path(sys.argv[1]).write_text('finished', encoding='ascii')"
+        # Existence is the completion signal: publish only after the file closes.
+        "marker = pathlib.Path(sys.argv[1]); "
+        "staged = marker.with_suffix('.tmp'); "
+        "staged.write_text('finished', encoding='ascii'); "
+        "staged.replace(marker)"
     )
     parent_code = (
         "import os, subprocess, sys; "
