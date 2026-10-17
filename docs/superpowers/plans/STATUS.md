@@ -6,6 +6,35 @@
 
 После dependency checkpoint C8 выполняется полное закрытие [октябрьского аудита](../../audits/AUDIT-2026-10.md): все 512 AUD IDs, включая 507 исторически открытых находок и наблюдений (18 P1, 122 P2, 234 P3, 133 ниже P3) и пять исторически закрытых. Исторический статус не заменяет verdict для текущего source. Для каждого пункта нужны regression/runtime evidence либо обоснованный disposition; приёмка и выпуск MVP продолжаются после этого приоритета.
 
+### Последний проверенный hosted checkpoint: b05d987
+
+На [b05d987](https://github.com/egorribun/university_ecosystem/commit/b05d9873102aac9c01053e05d5731e7623a02f46)
+[полная matrix 39048495555](https://github.com/egorribun/university_ecosystem/actions/runs/39048495555),
+Coverage & Quality Policy Gate и CI Success — SUCCESS. Сверены все 78
+required context/app pairs: 77 SUCCESS, один отдельно проверенный Checkov
+code-scanning NEUTRAL из-за несовпадения прежней main configuration;
+missing/failures — 0. Checkov Actions и CodeQL прошли.
+
+Подтверждены реальный NATS → PostgreSQL/outbox/ACK и scheduler tick с
+campus timezone/parity без дублирования; интегрированы безопасное
+registration-error logging (AUD-179), отсутствие deny-cache при outage
+(AUD-182) и narrow empty-KV handling (AUD-491). Event-count regression
+закрывает прежние три строки и одну ветку без ослабления coverage policy.
+Ammonia 4.2.4 согласована в основном/fuzz lock graph; WASM реально
+пересобран в GitHub Actions, bytes/source provenance проверены, временный
+recovery workflow удалён. Подробности и ссылки:
+[hosted audit checkpoint](../../audits/AUDIT-2026-10.md#hosted-closure-checkpoint-2026-10-17-b05d987).
+
+Это evidence для b05d987, не автоматический PASS для следующих SHA.
+Sender-profile публикация после отменённой операции ожидает отдельного
+подтверждения; AUD-189 source fix ещё не внедрён. Staging/production не
+развёрнуты, поэтому реальные trusted proxy/CNI/PVC/CSI проверки отложены,
+а не зачтены. Все 512 AUD IDs и MVP/release acceptance ещё не закрыты.
+Baseline319, 261 dispositions, finite131, 78 required contexts и
+blocking CodeQL сохранены.
+
+### Исторические C12/C11 checkpoints (superseded by hosted evidence above)
+
 C12 опубликован 2026-10-17 в ветке `egorribun` коммитом [939e9ba7](https://github.com/egorribun/university_ecosystem/commit/939e9ba7d37eb0606a2ffe7ec43ed90118f690e4), поверх C11 `450a7cfe`, в существующем [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). В коммите 40 изменённых файлов: общий TOTP budget, IP-key middleware, защита reset-token и CSP reports, безопасные display names, operational-secret validation и regression tests. Упоминание 37 незакоммиченных файлов относится к прежнему локальному checkpoint, а не к опубликованному состоянию. Приватные кандидаты, не вошедшие в Git, по-прежнему не считаются интегрированными исправлениями.
 
 Проверка GitHub 2026-10-17 13:53 UTC: [Owned Live Acceptance C12](https://github.com/egorribun/university_ecosystem/actions/runs/39036981759) остановился до Docker: 216/217 Node contract tests PASS, один FAIL в `auth-login-lockout.contract.test.mjs`, требующий прежний cookie-key middleware. C12 намеренно использует client-IP до аутентификации; проверенная user identity остаётся на route-level. Контракт и пояснения live spec согласуются с этим разделением без повышения лимитов, удаления проверок или возврата небезопасного credential-keying. Это исправление требует собственного hosted GREEN; live browser acceptance не выполнена. [CI Matrix C12](https://github.com/egorribun/university_ecosystem/actions/runs/39036981768) на момент сверки ещё выполняется; итоговая coverage/release-приёмка не заявляется.
