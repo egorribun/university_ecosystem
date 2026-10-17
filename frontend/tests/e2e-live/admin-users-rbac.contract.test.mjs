@@ -88,9 +88,24 @@ test("users page and unfiltered user directory retain their existing admin gate"
   assert.match(usersHook, /api\.get<AdminUser\[\]>\("\/users",\s*\{\s*params,\s*signal\s*\}\)/u)
   assert.match(usersRoute, /@users_router\.get\(/u)
   assert.match(usersRoute, /current_user:\s*UserDTO\s*=\s*Depends\(deps\.get_current_user_dto\)/u)
-  assert.match(
-    profileService,
-    /current_user\.role\s*!=\s*"admin"\s*and\s*name_query\s+is\s+None[\s\S]{0,100}raise PermissionDenied\(\)/u
+  assert.match(profileService, /^_MIN_NON_ADMIN_NAME_QUERY_LENGTH\s*=\s*2$/mu)
+  const directorySearch = profileService.match(
+    /async def get_users\([\s\S]*?(?=\n {4}@auditable)/u
+  )?.[0]
+  assert.ok(directorySearch, "the directory search authorization must be present")
+  const nonAdminGuard =
+    /if\s*\(\s*current_user\s+and\s+current_user\.role\s*!=\s*"admin"\s+and\s*\(\s*name_query\s+is\s+None\s+or\s+len\(name_query\)\s*<\s*_MIN_NON_ADMIN_NAME_QUERY_LENGTH\s*\)\s*\)\s*:\s*raise PermissionDenied\(\)/u
+  const actualGuard = directorySearch.match(nonAdminGuard)?.[0]
+  assert.ok(actualGuard, "non-admin empty and short searches must be denied")
+  assert.doesNotMatch(
+    actualGuard.replace(/name_query\s+is\s+None\s+or\s+/u, ""),
+    nonAdminGuard,
+    "the unfiltered non-admin denial must not be removed"
+  )
+  assert.doesNotMatch(
+    actualGuard.replace(/name_query\s+is\s+None\s+or/u, "name_query is None and"),
+    nonAdminGuard,
+    "empty and short queries must each independently trigger denial"
   )
 })
 
