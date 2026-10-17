@@ -608,3 +608,31 @@ async def test_admin_user_list_uses_the_authenticated_subject_for_full_profiles(
     assert len(result) == 1
     assert isinstance(result[0], schemas.UserOut)
     assert result[0].email == listed_user.email
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["full_name", "search"])
+async def test_get_users_route_rejects_one_character_query_with_cursor(field) -> None:
+    from app.core.exceptions.domain import PermissionDenied
+    from app.services.user.profile_service import UserProfileService
+
+    repo = MagicMock()
+    repo.list_users = AsyncMock(return_value=[])
+    service = UserProfileService(MagicMock(users=repo), MagicMock(), AsyncMock())
+    filters = schemas.UserSearchFilter(**{field: " A ", "after_id": uuid4()})
+
+    with pytest.raises(PermissionDenied):
+        await call_injected(
+            api.get_users,
+            checker=_checker(),
+            bg=MagicMock(),
+            request=_request(),
+            filters=filters,
+            current_user=_user(),
+            provides={
+                "UserProfileService": service,
+                "AsyncDatabaseSession": AsyncMock(),
+            },
+        )
+
+    repo.list_users.assert_not_awaited()
