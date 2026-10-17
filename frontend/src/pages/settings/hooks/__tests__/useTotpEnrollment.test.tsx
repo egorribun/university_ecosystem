@@ -180,6 +180,19 @@ describe("useTotpEnrollment — derived state", () => {
 })
 
 describe("useTotpEnrollment — start and confirm", () => {
+  it("cancels queued auto-resume when the hook unmounts", async () => {
+    mocks.user.totp_enrollments = [enrollment({ id: "pending", confirmed_at: null })]
+    const { unmount } = renderTotpHook()
+
+    // Unmount in the same stack, before the queued auto-resume can run.
+    unmount()
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(mocks.startTotpEnrollment).not.toHaveBeenCalled()
+  })
+
   it("starts enrollment with a payload and stores the draft", async () => {
     const { result } = renderTotpHook()
     const payload = { label: "Authenticator", reuse_existing: false }

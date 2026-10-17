@@ -48,9 +48,19 @@ blocking CodeQL сохранены. Merge/deploy не выполнялись.
 guard, chat routing/payload и backend MFA budgets сохранены.
 [Границы и RED evidence](../../audits/AUDIT-2026-10.md#aud-219--aud-206-bounded-automatic-work-and-metrics-2026-10-18).
 
-На момент публикации этого batch собственный hosted GREEN ещё требуется.
-Результат 780ef932 выше не является автоматическим PASS нового source;
-актуальный результат проверяется по exact head в PR #1306 и Actions.
+На `f5346f19` unit shards прошли, включая 21 TOTP test и metric regression,
+но полный source не GREEN: frontend coverage gate обнаружил непроверенный
+возврат отменённого TOTP microtask, а Owned Live повторил flaky login
+с нулём наблюдённых API login requests. Добавлен unmount regression для
+coverage gap; требование 100% сохранено.
+
+Tests-only `d69afbba` отдельно подтвердил enabled SSR credential controls
+и enabled suggestion button во время submitting. Локальный hydration
+guard теперь закрывает все семь controls до готовности handlers;
+POST method, auth/session logic и deadlines сохранены.
+[Readiness evidence и предел причинного вывода](../../audits/AUDIT-2026-10.md#login-form-hydration-readiness-regression-2026-10-18).
+Это не доказанная причина прежнего live flake. Собственный hosted GREEN
+новой ревизии ещё требуется; результат 780ef932 не переносится на неё.
 
 ### Исторические C12/C11 checkpoints (superseded by hosted evidence above)
 

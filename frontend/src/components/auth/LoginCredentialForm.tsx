@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "@tanstack/react-router"
 import { Eye, EyeOff, Sparkles, LogIn } from "lucide-react"
+import { Controller } from "react-hook-form"
 
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
@@ -11,15 +13,15 @@ type LoginCredentialFormProps = {
   form: ReturnType<typeof useLoginForm>
 }
 
-import { Controller } from "react-hook-form"
-
-// ... imports
-
 export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
   // Translation keys are fully qualified (``auth:...``), so the component
   // does not need to pin a default namespace.  This keeps the presentational
   // form usable with lightweight i18n test adapters and SSR fallbacks.
   const { t } = useTranslation()
+  const [hydrated, setHydrated] = useState(false)
+  useEffect(() => {
+    setHydrated(true)
+  }, [])
   const {
     form: {
       register,
@@ -38,6 +40,9 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
     submitError,
     onSubmit,
   } = form
+  // SSR and the first client render stay inert until the form handlers attach.
+  // Gating fields as well as submit prevents input from racing RHF registration.
+  const controlsDisabled = !hydrated || submitting
 
   return (
     <div className="auth-card-matte w-full border border-border-subtle p-6 sm:p-10">
@@ -71,7 +76,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
               handleEmailBlur()
             }}
             autoComplete="username"
-            disabled={submitting}
+            disabled={controlsDisabled}
             inputMode="email"
             required
             error={!!errors.email}
@@ -88,6 +93,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
             <button
               type="button"
               onClick={applySuggestion}
+              disabled={controlsDisabled}
               className="inline-flex items-center gap-2 rounded-full border border-border-focus/(--opacity-strong) px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-brand transition hover:bg-brand-subtle"
             >
               <Sparkles className="h-4 w-4" aria-hidden="true" />
@@ -104,6 +110,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
             <button
               type="button"
               onClick={() => setShowPassword((v) => !v)}
+              disabled={controlsDisabled}
               className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full border border-transparent px-3 py-1 text-xs font-bold uppercase tracking-widest text-brand transition hover:bg-brand/5 focus:outline-none focus:ring-2 focus:ring-brand/20"
               title={
                 t(showPassword ? "auth:actions.hideCredential" : "auth:actions.showPassword") ??
@@ -133,7 +140,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
                 setCaps(event.getModifierState("CapsLock"))
               }
               autoComplete="current-password"
-              disabled={submitting}
+              disabled={controlsDisabled}
               required
               error={!!errors.password}
               aria-describedby={errors.password ? "login-password-error" : undefined}
@@ -170,7 +177,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
                   id="remember-email"
                   checked={!!value}
                   onCheckedChange={onChange}
-                  disabled={submitting}
+                  disabled={controlsDisabled}
                   aria-label={t("auth:actions.rememberEmail")}
                 />
               )}
@@ -191,7 +198,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
                     id="trust-device"
                     checked={!!value}
                     onCheckedChange={onChange}
-                    disabled={submitting}
+                    disabled={controlsDisabled}
                     aria-label={t("auth:actions.trustDevice")}
                     aria-describedby="trust-device-description"
                   />
@@ -215,7 +222,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
             size="lg"
             fullWidth
             loading={submitting}
-            disabled={submitting}
+            disabled={controlsDisabled}
             className="auth-submit text-lg font-extrabold"
             leadingIcon={!submitting ? <LogIn className="h-6 w-6" /> : undefined}
           >

@@ -10,19 +10,16 @@ import type { LoginValues } from "@/features/auth/schemas"
 import { LoginCredentialForm } from "./LoginCredentialForm"
 
 type FormStub = Parameters<typeof LoginCredentialForm>[0]["form"]
+type LinkStubProps = {
+  to: string
+  children: ReactNode
+  className?: string
+}
 
 // Keep the form, native controls, and RHF real; navigation and translated
 // labels are presentation-only dependencies of this hydration regression.
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({
-    to,
-    children,
-    className,
-  }: {
-    to: string
-    children: ReactNode
-    className?: string
-  }) => (
+  Link: ({ to, children, className }: LinkStubProps) => (
     <a href={to} className={className}>
       {children}
     </a>
@@ -57,7 +54,9 @@ function Harness({
     activeEmail: "",
     submitting,
     submitError: undefined,
-    onSubmit: rhf.handleSubmit(onValid),
+    onSubmit: async (event) => {
+      await rhf.handleSubmit(onValid)(event)
+    },
     pendingMfa: null,
     savedEmail: "",
   }
@@ -133,7 +132,7 @@ it("hydrates without recovery and handles the first credential click exactly onc
   await waitFor(() => expect(onValid).toHaveBeenCalledOnce())
   expect(onValid.mock.calls[0]?.[0]).toEqual({
     email: "person@example.test",
-    password: "first-password",
+    password: "first-password", // pragma: allowlist secret (synthetic form-test value)
     rememberEmail: false,
     trustDevice: false,
   })
