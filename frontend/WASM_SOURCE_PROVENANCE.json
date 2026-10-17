@@ -19,12 +19,12 @@
     {
       "path": "wasm-sanitizer/Cargo.lock",
       "size": 30174,
-      "sha256": "13da4120a02dafa9202761e0edf2d0cce4f24a0488ebda58d23bfaab09face5c"
+      "sha256": "b1a96416e1ca2cc18443cc516c565f31592ff286546c6c745f9761a903ba9aa5"
     },
     {
       "path": "wasm-sanitizer/Cargo.toml",
       "size": 522,
-      "sha256": "24c48629c4416ba6065873453874a0f67290653537834a72e9bc17c3af59effb"
+      "sha256": "73db9b6fe055d8662c762d7050e818cbae5e537f916c8ecad34ebaff2c29b57d"
     },
     {
       "path": "wasm-sanitizer/src/lib.rs",
@@ -32,7 +32,7 @@
       "sha256": "91eb2a042d5495b52b6537ee0cad8ef258afe421316f9309f650f0b63d6c4293"
     }
   ],
-  "source_tree_sha256": "d0eaa33e2728a945d373d1e5e74af00bbc0f35ffbcc9106b905f4ce8db25795e",
+  "source_tree_sha256": "9077e6441b1c96bced7468d6155290dae8896a4d69b143fb5fcd77140e6eccc4",
   "packages": {
     "rust-crypto/pkg/package.json": {
       "size": 306,
@@ -63,8 +63,8 @@
       "sha256": "51c27462afd5807aa11124745e71f79edf173d58466bc15f1d673fe0d5d65acd"
     },
     "wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm": {
-      "size": 793959,
-      "sha256": "fd057eef7db34fee5898078b7d04956daa7fa9b91b31c2fc80cde1886506e148"
+      "size": 794042,
+      "sha256": "cab4051fe031b375d5a7154de071bc47eec854123b46acabc06482a1368e8605"
     }
   }
 }
