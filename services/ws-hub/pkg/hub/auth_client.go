@@ -294,17 +294,7 @@ func (c *InternalAPIAuthClient) doRequest(ctx context.Context, userID, roomID st
 	}
 }
 
-// doRequestWithBreaker wraps doRequest with the circuit breaker.
-// Returns false when the circuit is open (fail-closed for auth).
-func (c *InternalAPIAuthClient) doRequestWithBreaker(ctx context.Context, userID, roomID string) bool {
-	allowed, err := c.doRequestWithBreakerResult(ctx, userID, roomID)
-	if err != nil {
-		// RoomAuthClient is bool-only, so backend and breaker failures must deny.
-		return false
-	}
-	return allowed
-}
-
+// doRequestWithBreakerResult distinguishes backend failures from healthy denials.
 func (c *InternalAPIAuthClient) doRequestWithBreakerResult(
 	ctx context.Context,
 	userID, roomID string,
@@ -395,30 +385,27 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 	newCall := new(call)
 	newCall.wg.Add(1)
 	// HIGH-W19: defer wg.Done so waiters are always unblocked even if
-	// doRequestWithBreaker panics; explicit call below is removed
+	// doRequestWithBreakerResult panics; explicit call below is removed
 	defer newCall.wg.Done()
 	c.calls[key] = newCall
 	c.callMu.Unlock()
 
-	// Perform actual request with caller's context, guarded by circuit breaker.
-	allowed := c.doRequestWithBreaker(ctx, userID, roomID)
+	// Backend failures deny this request, but are not cacheable decisions.
+	allowed, authErr := c.doRequestWithBreakerResult(ctx, userID, roomID)
+	if authErr == nil {
+		c.cache.Add(key, cacheEntry{
+			allowed:   allowed,
+			expiresAt: time.Now().Add(authCacheTTL),
+		})
 
-	// Update cache
-	c.cache.Add(key, cacheEntry{
-		allowed: allowed,
-		// WSH-P3-02: use shared authCacheTTL constant (L1 = L2 = 1 min)
-		expiresAt: time.Now().Add(authCacheTTL),
-	})
-
-	// Update Redis L2
-	if c.redis != nil {
-		redisKey := "auth:perms:" + key
-		val := "0"
-		if allowed {
-			val = "1"
+		if c.redis != nil {
+			redisKey := "auth:perms:" + key
+			val := "0"
+			if allowed {
+				val = "1"
+			}
+			c.redis.Set(ctx, redisKey, val, authCacheTTL)
 		}
-		// WSH-P3-02: align L2 TTL with L1 using shared authCacheTTL constant
-		c.redis.Set(ctx, redisKey, val, authCacheTTL)
 	}
 
 	// Resolve in-flight call

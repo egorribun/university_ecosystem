@@ -330,13 +330,11 @@ class UserComplianceService:
                 await self.uow.commit()
             return db_user
         except Exception as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps errors into BusinessRuleViolation (reviewed TD-27-04)
-            # Diamond Standard: Use structured logging with exc_info instead of direct traceback print.
-            # Prevents PII leakage to stdout/stderr and enables log aggregation.
+            # Database exceptions can embed password hashes in SQL parameters.
+            # Keep diagnostics stable without rendering parameters or tracebacks.
             logger.error(
-                "User registration failed: %s",
-                str(exc),
-                exc_info=True,
-                extra={"email": normalized_email},
+                "user_registration_failed",
+                exception_type=type(exc).__name__,
             )
             await self.uow.rollback()
             raise BusinessRuleViolation("errors.users.create_failed") from exc
