@@ -191,8 +191,7 @@ async def test_register_user_failure_log_omits_exception_data(
     synthetic_email = f"registration-{uuid.uuid4().hex}@example.com"
     failure = StatementError(
         "synthetic database failure",
-        "INSERT INTO users (email, hashed_password) "
-        "VALUES (:email, :hashed_password)",
+        "INSERT INTO users (email, hashed_password) VALUES (:email, :hashed_password)",
         {"email": synthetic_email, "hashed_password": synthetic_hash},
         RuntimeError("synthetic database failure"),
     )
