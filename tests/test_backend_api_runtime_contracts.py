@@ -4,7 +4,7 @@ import base64
 import json
 import uuid
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from fastapi import FastAPI, HTTPException, Response
@@ -1379,21 +1379,56 @@ async def test_websocket_chat_malformed_json():
 
 
 @pytest.mark.asyncio
-async def test_notify_new_message():
+async def test_notify_new_message_bounds_metrics_and_preserves_broadcast_ids() -> None:
     from app.models.chat import Message
 
-    message = Message(
-        id=uuid.uuid4(), sender_id=uuid.uuid4(), chat_id=uuid.uuid4(), content="hello"
-    )
+    chat_ids = [uuid.uuid4(), uuid.uuid4()]
+    excluded_user_id = uuid.uuid4()
+    messages = [
+        Message(
+            id=uuid.uuid4(),
+            sender_id=uuid.uuid4(),
+            chat_id=chat_id,
+            content=f"message-{index}",
+        )
+        for index, chat_id in enumerate(chat_ids)
+    ]
 
     with (
         patch("app.api.websocket.build_presence_map", AsyncMock(return_value={})),
-        patch("app.api.websocket.serialize_message", return_value={}),
+        patch(
+            "app.api.websocket.serialize_message",
+            side_effect=lambda message, _presence: {"id": str(message.id)},
+        ),
+        patch("app.api.websocket.metrics.record_chat_message") as record_metric,
         patch("app.api.websocket.manager") as mock_manager,
     ):
         mock_manager.broadcast_to_chat = AsyncMock(return_value=1)
-        res = await websocket_api.notify_new_message(message)
-        assert res == 1
+        results = [
+            await websocket_api.notify_new_message(
+                message, exclude_user_id=excluded_user_id
+            )
+            for message in messages
+        ]
+
+    assert results == [1, 1]
+    record_metric.assert_has_calls([call(channel="chat"), call(channel="chat")])
+    assert record_metric.call_count == 2
+    mock_manager.broadcast_to_chat.assert_has_awaits(
+        [
+            call(
+                message.chat_id,
+                {
+                    "type": "new_message",
+                    "chat_id": message.chat_id,
+                    "message": {"id": str(message.id)},
+                },
+                exclude_user_id=excluded_user_id,
+            )
+            for message in messages
+        ]
+    )
+    assert mock_manager.broadcast_to_chat.await_count == 2
 
 
 # =========================================================================

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, renderHook, waitFor } from "@testing-library/react"
-import type { PropsWithChildren } from "react"
+import { StrictMode, type PropsWithChildren } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { MfaTotpEnrollment, TotpEnrollmentStart } from "@/types/Mfa"
@@ -63,11 +63,32 @@ const enrollment = (overrides: Partial<MfaTotpEnrollment> = {}): MfaTotpEnrollme
   ...overrides,
 })
 
-const draft = (id = "totp-1"): TotpEnrollmentStart => ({
-  enrollment: enrollment({ id }),
+const draft = (id = "totp-1", userId = "user-1"): TotpEnrollmentStart => ({
+  enrollment: enrollment({ id, user_id: userId }),
   secret: "secret", // pragma: allowlist secret
   otpauth_url: "otpauth://totp/test",
 })
+
+type Deferred<T> = {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (reason?: unknown) => void
+}
+
+const deferred = <T,>(): Deferred<T> => {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
+const settleEnrollmentRequests = async (...requests: Deferred<TotpEnrollmentStart>[]) => {
+  requests.forEach((request) => request.resolve(draft("cleanup")))
+  await Promise.allSettled(requests.map((request) => request.promise))
+}
 
 const renderTotpHook = (openStepUpFor = vi.fn()) => {
   const setSnackbar = vi.fn()
@@ -90,6 +111,7 @@ beforeEach(() => {
     mfa_last_verified_at: null,
     totp_enrollments: [],
   }
+  mocks.startTotpEnrollment.mockReset()
   mocks.startTotpEnrollment.mockResolvedValue(draft())
   mocks.confirmTotpEnrollment.mockResolvedValue(undefined)
   mocks.deleteTotpEnrollment.mockResolvedValue({ mfa_default_method: null, mfa_required: false })
@@ -177,6 +199,202 @@ describe("useTotpEnrollment — start and confirm", () => {
       expect(mocks.startTotpEnrollment).toHaveBeenCalledWith({ reuse_existing: true })
     )
     await waitFor(() => expect(result.current.totpDraft).toEqual(draft()))
+  })
+
+  it("does not auto-retry a failed pending enrollment, but allows manual retry", async () => {
+    mocks.user.totp_enrollments = [enrollment({ id: "pending", confirmed_at: null })]
+    const first = deferred<TotpEnrollmentStart>()
+    const manualRetry = deferred<TotpEnrollmentStart>()
+    mocks.startTotpEnrollment
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementation(() => manualRetry.promise)
+    const { result, unmount } = renderTotpHook()
+
+    try {
+      await waitFor(() => expect(mocks.startTotpEnrollment).toHaveBeenCalledTimes(1))
+      await act(async () => {
+        first.reject({ status: 400, message: "Start failed" })
+        await first.promise.catch(() => undefined)
+      })
+
+      // Check before waiting for the error: an automatic retry can clear it.
+      expect(mocks.startTotpEnrollment).toHaveBeenCalledTimes(1)
+      await waitFor(() => expect(result.current.totpError).toBe("Start failed"))
+      expect(result.current.totpBusy).toBe(false)
+
+      await act(async () => {
+        const retry = result.current.handleStartTotp()
+        manualRetry.resolve(draft("pending"))
+        await retry
+      })
+      expect(mocks.startTotpEnrollment).toHaveBeenCalledTimes(2)
+      expect(result.current.totpDraft).toEqual(draft("pending"))
+    } finally {
+      unmount()
+      await settleEnrollmentRequests(first, manualRetry)
+    }
+  })
+
+  it("keeps the auto-resume 428 continuation available without auto-retrying", async () => {
+    mocks.user.totp_enrollments = [enrollment({ id: "pending", confirmed_at: null })]
+    const first = deferred<TotpEnrollmentStart>()
+    const stepUpRetry = deferred<TotpEnrollmentStart>()
+    let continuation: (() => Promise<void>) | undefined
+    const openStepUpFor = vi.fn((action: () => Promise<void>) => {
+      continuation = action
+    })
+    mocks.startTotpEnrollment
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementation(() => stepUpRetry.promise)
+    const { result, unmount } = renderTotpHook(openStepUpFor)
+
+    try {
+      await waitFor(() => expect(mocks.startTotpEnrollment).toHaveBeenCalledTimes(1))
+      await act(async () => {
+        first.reject({ status: 428, message: "step up" })
+        await first.promise.catch(() => undefined)
+      })
+
+      expect(mocks.startTotpEnrollment).toHaveBeenCalledTimes(1)
+      expect(openStepUpFor).toHaveBeenCalledOnce()
+      expect(continuation).toBeDefined()
+
+      await act(async () => {
+        const retry = continuation?.()
+        stepUpRetry.resolve(draft("pending"))
+        await retry
+      })
+      expect(mocks.startTotpEnrollment).toHaveBeenCalledTimes(2)
+      expect(result.current.totpDraft).toEqual(draft("pending"))
+    } finally {
+      unmount()
+      await settleEnrollmentRequests(first, stepUpRetry)
+    }
+  })
+
+  it("does not consume the pending ID while the active-enrollment limit is reached", async () => {
+    const pending = enrollment({ id: "pending", confirmed_at: null })
+    mocks.user = {
+      ...mocks.user,
+      totp_enrollments: [
+        enrollment({ id: "active", confirmed_at: "2026-07-01T01:00:00Z" }),
+        pending,
+      ],
+    }
+    mocks.startTotpEnrollment.mockResolvedValue(draft("pending"))
+    const { result, rerender } = renderTotpHook()
+
+    expect(result.current.totpLimitReached).toBe(true)
+    expect(mocks.startTotpEnrollment).not.toHaveBeenCalled()
+    mocks.user = { ...mocks.user, totp_enrollments: [pending] }
+    rerender()
+
+    await waitFor(() => expect(mocks.startTotpEnrollment).toHaveBeenCalledOnce())
+    await waitFor(() => expect(result.current.totpDraft).toEqual(draft("pending")))
+  })
+
+  it("waits for the current request before resuming a changed pending ID", async () => {
+    mocks.user.totp_enrollments = [enrollment({ id: "pending-1", confirmed_at: null })]
+    const first = deferred<TotpEnrollmentStart>()
+    const next = deferred<TotpEnrollmentStart>()
+    mocks.startTotpEnrollment
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementation(() => next.promise)
+    const { result, rerender, unmount } = renderTotpHook()
+
+    try {
+      await waitFor(() => expect(mocks.startTotpEnrollment).toHaveBeenCalledTimes(1))
+      mocks.user = {
+        ...mocks.user,
+        totp_enrollments: [enrollment({ id: "pending-2", confirmed_at: null })],
+      }
+      rerender()
+      expect(mocks.startTotpEnrollment).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
+        first.reject({ status: 400, message: "Start failed" })
+        await first.promise.catch(() => undefined)
+      })
+      await waitFor(() => expect(mocks.startTotpEnrollment).toHaveBeenCalledTimes(2))
+      expect(mocks.startTotpEnrollment).toHaveBeenLastCalledWith({ reuse_existing: true })
+
+      await act(async () => {
+        next.resolve(draft("pending-2"))
+        await next.promise
+      })
+      await waitFor(() => expect(result.current.totpDraft).toEqual(draft("pending-2")))
+      expect(mocks.startTotpEnrollment).toHaveBeenCalledTimes(2)
+    } finally {
+      unmount()
+      await settleEnrollmentRequests(first, next)
+    }
+  })
+
+  it("auto-resumes a pending enrollment under StrictMode with a usable draft", async () => {
+    mocks.user.totp_enrollments = [enrollment({ id: "pending", confirmed_at: null })]
+    mocks.startTotpEnrollment.mockResolvedValue(draft("pending"))
+    const setSnackbar = vi.fn()
+    const openStepUpFor = vi.fn()
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <StrictMode>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      </StrictMode>
+    )
+    const { result, unmount } = renderHook(
+      () => useTotpEnrollment({ setSnackbar, openStepUpFor }),
+      { wrapper }
+    )
+
+    try {
+      await waitFor(() => expect(result.current.totpDraft).toEqual(draft("pending")))
+      expect(mocks.startTotpEnrollment).toHaveBeenCalled()
+      expect(mocks.startTotpEnrollment.mock.calls.length).toBeLessThanOrEqual(2)
+    } finally {
+      unmount()
+      queryClient.clear()
+    }
+  })
+
+  it("starts the new account's pending enrollment after an account switch", async () => {
+    mocks.user.totp_enrollments = [
+      enrollment({ id: "pending-1", user_id: "user-1", confirmed_at: null }),
+    ]
+    const first = deferred<TotpEnrollmentStart>()
+    const next = deferred<TotpEnrollmentStart>()
+    mocks.startTotpEnrollment
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementation(() => next.promise)
+    const { result, rerender, unmount } = renderTotpHook()
+
+    try {
+      await waitFor(() => expect(mocks.startTotpEnrollment).toHaveBeenCalledTimes(1))
+      mocks.user = {
+        ...mocks.user,
+        id: "user-2",
+        totp_enrollments: [enrollment({ id: "pending-2", user_id: "user-2", confirmed_at: null })],
+      }
+      rerender()
+      await waitFor(() => expect(mocks.startTotpEnrollment).toHaveBeenCalledTimes(2))
+
+      await act(async () => {
+        first.resolve(draft("pending-1"))
+        await first.promise
+      })
+      expect(result.current.totpDraft).toBeNull()
+
+      await act(async () => {
+        next.resolve(draft("pending-2", "user-2"))
+        await next.promise
+      })
+      await waitFor(() => expect(result.current.totpDraft).toEqual(draft("pending-2", "user-2")))
+      expect(mocks.startTotpEnrollment).toHaveBeenCalledTimes(2)
+    } finally {
+      unmount()
+      await settleEnrollmentRequests(first, next)
+    }
   })
 
   it("opens step-up and retries a 428 start failure", async () => {
