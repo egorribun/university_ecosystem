@@ -446,7 +446,9 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
                 models.NewsComment.id,
                 models.NewsComment.content,
                 models.NewsComment.user_id,
-                func.coalesce(models.UserProfile.full_name, models.User.email),
+                func.coalesce(
+                    func.nullif(func.trim(models.UserProfile.full_name), ""), "User"
+                ),
                 models.NewsComment.created_at,
             )
             .join(models.User, models.NewsComment.user_id == models.User.id)

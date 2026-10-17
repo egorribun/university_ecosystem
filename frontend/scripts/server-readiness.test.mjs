@@ -212,6 +212,7 @@ test(
       const origin = `http://127.0.0.1:${port}`
       const warmupResponse = await waitForFixtureServer(child, `${origin}/login`)
       assert.equal(warmupResponse.status, 200)
+      assert.equal(warmupResponse.headers.get("referrer-policy"), "no-referrer")
       await warmupResponse.body?.cancel()
 
       const response = await fetch(`${origin}/__synthetic_ssr_error__`)
@@ -461,7 +462,10 @@ test(
         "  async fetch(request) {",
         '    if (new URL(request.url).pathname === "/login") {',
         '      return new Response("warm", {',
-        '        headers: { "content-type": "text/html; charset=utf-8" },',
+        "        headers: {",
+        '          "content-type": "text/html; charset=utf-8",',
+        '          "content-security-policy": "default-src \'self\'",',
+        "        },",
         "      })",
         "    }",
         '    if (new URL(request.url).pathname === "/api-data") {',
@@ -497,6 +501,9 @@ test(
             WINDIR: process.env.WINDIR ?? "",
             TEMP: process.env.TEMP ?? os.tmpdir(),
             TMP: process.env.TMP ?? os.tmpdir(),
+            VITE_LHCI: "true",
+            LHCI_USE_SSR_PREVIEW: "1",
+            LHCI_SSR_PREVIEW_PORT: String(port),
             HOST: "127.0.0.1",
             PORT: String(port),
           },
@@ -507,13 +514,24 @@ test(
       const origin = `http://127.0.0.1:${port}`
       const warmupResponse = await waitForFixtureServer(child, `${origin}/login`)
       assert.equal(warmupResponse.status, 200)
+      assert.equal(warmupResponse.headers.get("referrer-policy"), "no-referrer")
       await warmupResponse.body?.cancel()
+
+      const ssrHtml = await requestRaw(`${origin}/login`, { "accept-encoding": "gzip" })
+      assert.equal(ssrHtml.status, 200)
+      assert.equal(ssrHtml.headers["content-type"], "text/html; charset=utf-8")
+      assert.equal(ssrHtml.headers["content-encoding"], "gzip")
+      assert.equal(ssrHtml.headers["referrer-policy"], "no-referrer")
+      assert.equal(ssrHtml.headers["cache-control"], "no-store, private, max-age=0")
+      assert.equal(ssrHtml.headers["content-security-policy"], "default-src 'self'")
+      assert.equal(gunzipSync(ssrHtml.body).toString("utf8"), "warm")
 
       const first = await requestRaw(`${origin}/offline.html`, { "accept-encoding": "gzip" })
       const second = await requestRaw(`${origin}/offline.html`, { "accept-encoding": "gzip" })
       assert.equal(first.status, 200)
       assert.equal(first.headers["content-encoding"], "gzip")
       assert.equal(first.headers["cache-control"], "no-store, private, max-age=0")
+      assert.equal(first.headers["referrer-policy"], "no-referrer")
       assert.equal(first.headers.etag, undefined)
       assert.equal(first.headers["last-modified"], undefined)
       assert.equal(first.headers["content-length"], undefined)
@@ -536,6 +554,7 @@ test(
       assert.doesNotMatch(firstHtml, /onclick=/u)
 
       const notFound = await requestRaw(`${origin}/missing-page`, { accept: "text/html" })
+      assert.equal(notFound.headers["referrer-policy"], "no-referrer")
       const notFoundHtml = notFound.body.toString("utf8")
       const notFoundNonce =
         notFound.headers["content-security-policy"].match(/'nonce-([^']+)'/u)?.[1]

@@ -20,7 +20,7 @@ import {
 
 import { reportLiveHttpStatus, reportLiveRateLimitRetry } from "./http-status-diagnostic"
 
-const RESET_LINK = /\/reset-password\?token=([\w.~-]+)/
+const RESET_LINK = /\/reset-password#token=([\w.~-]+)/
 const UNTRUSTED_REDIRECT = "https://redirect-target.invalid/landing"
 const RESET_REPLAY_REQUEST_BUDGET_MS = 20_000
 const RESET_REPLAY_TAIL_BUDGET_MS = 20_000
@@ -62,6 +62,20 @@ const openResetLink = async (page: Page, url: string) => {
   }
 }
 
+const expectResetFragmentAvailableForReload = async (page: Page, token: string) => {
+  await expect
+    .poll(() =>
+      page.evaluate((candidate) => {
+        const current = new URL(window.location.href)
+        return (
+          current.pathname === "/reset-password" &&
+          current.hash === `#token=${encodeURIComponent(candidate)}`
+        )
+      }, token)
+    )
+    .toBe(true)
+}
+
 const expectResetTokenRemovedFromUrl = async (page: Page, token: string) => {
   await expect
     .poll(() =>
@@ -70,6 +84,7 @@ const expectResetTokenRemovedFromUrl = async (page: Page, token: string) => {
         return (
           current.pathname === "/reset-password" &&
           !current.searchParams.has("token") &&
+          !current.hash.includes(candidate) &&
           !window.location.href.includes(candidate)
         )
       }, token)
@@ -165,7 +180,9 @@ test("a student resets with the Mailpit link without retaining tokens or followi
   const resetUrl = new URL(resetMatch[0], page.url())
   resetUrl.searchParams.set("redirect", UNTRUSTED_REDIRECT)
   await openResetLink(page, resetUrl.href)
-  await expectResetTokenRemovedFromUrl(page, token)
+  await expectResetFragmentAvailableForReload(page, token)
+  await page.reload()
+  await expectResetFragmentAvailableForReload(page, token)
   await page.getByLabel("Пароль", { exact: true }).fill(newPassword)
   await page.getByLabel("Повторите пароль", { exact: true }).fill(newPassword)
   await page.getByRole("button", { name: "Сохранить пароль" }).click()

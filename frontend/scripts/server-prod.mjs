@@ -156,6 +156,7 @@ function serveStatic(req, res, urlPath) {
   res.statusCode = 200
   res.setHeader("content-type", contentType)
   if (isHtml) {
+    res.setHeader("referrer-policy", "no-referrer")
     for (const [name, value] of Object.entries(buildNodeCspHeaders(nonce))) {
       res.setHeader(name, value)
     }
@@ -254,6 +255,9 @@ async function pipeWebResponse(webResponse, res, extraHeaders) {
     for (const [name, value] of Object.entries(extraHeaders)) {
       res.appendHeader(name, value)
     }
+  }
+  if ((webResponse.headers.get("content-type") ?? "").toLowerCase().includes("text/html")) {
+    res.setHeader("referrer-policy", "no-referrer")
   }
   if (!webResponse.body) {
     res.end()

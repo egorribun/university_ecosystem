@@ -671,7 +671,7 @@ describe("fetchCurrentUser branches", () => {
     expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
   })
 
-  it("401 — does NOT retry (re-throws so caller can handle unauthorized)", async () => {
+  it("401 — retries once without the cache header and rethrows a failed retry", async () => {
     const envelope = JSON.stringify({ id: testUser.id })
     localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, envelope)
     const axiosErr = { isAxiosError: true, response: { status: 401 } }

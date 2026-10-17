@@ -78,6 +78,46 @@ async def test_get_interactions_with_like_and_comment(
     assert anon.is_liked is False
 
 
+@pytest.mark.parametrize(
+    ("full_name", "profile_missing", "expected_name"),
+    [
+        (None, True, "User"),
+        (None, False, "User"),
+        ("", False, "User"),
+        ("   ", False, "User"),
+        ("Visible Author", False, "Visible Author"),
+    ],
+    ids=(
+        "profile-row-missing",
+        "null-name",
+        "empty-name",
+        "whitespace-name",
+        "named-author",
+    ),
+)
+@pytest.mark.asyncio
+async def test_anonymous_interactions_never_use_email_as_comment_name(
+    news_repo_db, db_session, user_factory, full_name, profile_missing, expected_name
+):
+    user = await user_factory(full_name=full_name)
+    if profile_missing:
+        assert user.profile is not None
+        await db_session.delete(user.profile)
+        await db_session.flush()
+
+    news = await _add_news(db_session, title="Public comment names")
+    await news_repo_db.create_comment(news.id, user.id, "Visible comment")
+
+    # No current_user_id models the public/anonymous interactions request.
+    dto = await news_repo_db.get_interactions(news.id)
+
+    assert dto.comments_count == 1
+    assert len(dto.comments) == 1
+    assert dto.comments[0].user_id == user.id
+    assert dto.comments[0].user_name == expected_name
+    assert user.email not in {comment.user_name for comment in dto.comments}
+
+
 @pytest.mark.asyncio
 async def test_get_interactions_empty_news(news_repo_db, db_session):
     news = await _add_news(db_session, title="Quiet")

@@ -7,6 +7,7 @@ import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, TypeVar, cast
+from urllib.parse import quote
 
 from fastapi import BackgroundTasks, Request
 from pydantic import EmailStr, TypeAdapter
@@ -166,7 +167,7 @@ class AuthService:
                     await self.uow.commit()
 
                 base = settings.app_base_url_clean
-                reset_link = f"{base}/reset-password?token={token}"
+                reset_link = f"{base}/reset-password#token={quote(token, safe='')}"
                 locale = resolve_locale(request=request, user=user)
 
                 # RZ-1 Fix: Offload email fully to background to not block response

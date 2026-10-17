@@ -519,7 +519,8 @@ async def test_reset_link_uses_configured_origin_not_request_host_headers(
     )
     monkeypatch.setattr("app.core.ratelimit.enforce_rate_limit", AsyncMock())
     monkeypatch.setattr("app.core.ratelimit.get_default_strategy", lambda _: object())
-    monkeypatch.setattr(auth_module.secrets, "token_urlsafe", lambda _: "opaque-token")
+    reset_token = f"synthetic-{uuid.uuid4().hex}"
+    monkeypatch.setattr(auth_module.secrets, "token_urlsafe", lambda _: reset_token)
 
     with patch("asyncio.sleep", new=AsyncMock()):
         await service.initiate_password_reset(
@@ -531,4 +532,5 @@ async def test_reset_link_uses_configured_origin_not_request_host_headers(
     assert parsed_link.scheme == "https"
     assert parsed_link.netloc == "portal.example.edu"
     assert parsed_link.path == "/app/reset-password"
-    assert parse_qs(parsed_link.query) == {"token": ["opaque-token"]}
+    assert parsed_link.query == ""
+    assert parse_qs(parsed_link.fragment) == {"token": [reset_token]}

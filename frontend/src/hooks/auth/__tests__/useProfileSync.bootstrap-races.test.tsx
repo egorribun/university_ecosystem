@@ -6,7 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 
 import api from "@/api/client"
 import { createQueryClient } from "@/app/queryClient"
-import { currentUserQueryKey, useProfileSync } from "@/hooks/auth/useProfileSync"
+import { AuthProvider, useAuth } from "@/contexts/AuthContext"
+import {
+  PROFILE_CACHE_SCHEMA_VERSION,
+  PROFILE_CACHE_STORAGE_KEY,
+  currentUserQueryKey,
+  signPayload,
+  useProfileSync,
+  type CacheSignaturePayload,
+} from "@/hooks/auth/useProfileSync"
 import { useSessionCrypto } from "@/hooks/auth/useSessionCrypto"
 import { acceptBrowserSessionGeneration } from "@/stores/sessionEpoch"
 import { useAuthStore } from "@/stores/useAuthStore"
@@ -15,6 +23,9 @@ import { server } from "@/tests/mocks/server"
 import { cryptoWorker } from "@/utils/cryptoWorker"
 
 const olderProfile = { ...testUser, full_name: "Older cached profile" }
+const PROFILE_CACHE_VERSION_KEY = "ecosystem.profile.cache.version"
+const TEST_SESSION_SIGNING_KEY = crypto.randomUUID()
+
 const newerProfile = {
   ...testUser,
   id: "550e8400-e29b-41d4-a716-446655440001",
@@ -267,5 +278,125 @@ describe("profile bootstrap ownership races", () => {
     await waitFor(() => expect(view.result.current.profile.loading).toBe(false))
     expect(view.result.current.crypto.sessionSigningKey).toBe("manual-new-key")
     expect(view.result.current.profile.user).toBeNull()
+  })
+})
+
+const seedCacheEnvelope = async (expiresAt: number): Promise<string> => {
+  const payload: CacheSignaturePayload = {
+    version: PROFILE_CACHE_SCHEMA_VERSION,
+    expiresAt,
+    data: "synthetic-expired-cache-payload",
+  }
+  const signature = await signPayload(payload, TEST_SESSION_SIGNING_KEY)
+  const rawEnvelope = JSON.stringify({ ...payload, signature })
+  localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, rawEnvelope)
+  localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
+  return rawEnvelope
+}
+
+const renderAuthProvider = () => {
+  const queryClient = createQueryClient()
+  const wrapper = ({ children }: PropsWithChildren) => (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>{children}</AuthProvider>
+    </QueryClientProvider>
+  )
+  const view = renderHook(() => useAuth(), { wrapper })
+  let disposal: Promise<void> | undefined
+  const dispose = () => {
+    disposal ??= (async () => {
+      try {
+        view.unmount()
+      } finally {
+        queryClient.clear()
+      }
+    })()
+    return disposal
+  }
+  disposers.push(dispose)
+  onTestFinished(dispose)
+  return view
+}
+
+describe("profile-cache authentication through AuthProvider and MSW", () => {
+  it("keeps auth after an expired signed cache envelope", async () => {
+    const envelope = await seedCacheEnvelope(Date.now() - 1_000)
+    const events: string[] = []
+    const cacheHeaders: Array<string | null> = []
+    server.use(
+      http.get("*/users/me", ({ request }) => {
+        events.push("users/me")
+        cacheHeaders.push(request.headers.get("X-Profile-Cache-Envelope"))
+        return HttpResponse.json(testUser)
+      }),
+      http.get("*/auth/session/signing-key", () => {
+        events.push("signing-key")
+        return HttpResponse.json({ signing_key: TEST_SESSION_SIGNING_KEY })
+      })
+    )
+
+    const view = renderAuthProvider()
+    await waitFor(() => expect(view.result.current.user?.id).toBe(testUser.id))
+
+    expect(view.result.current.isAuth).toBe(true)
+    // A new provider starts without a memory key. The first authoritative
+    // request is made before the session key endpoint can install one.
+    expect(events[0]).toBe("users/me")
+    expect(cacheHeaders[0]).toBe(envelope)
+    expect(events).toContain("signing-key")
+  })
+
+  it("retries a rejected cache header and accepts the authoritative profile", async () => {
+    const malformedEnvelope = "synthetic-malformed-profile-envelope"
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, malformedEnvelope)
+    localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
+    const events: string[] = []
+    const cacheHeaders: Array<string | null> = []
+    server.use(
+      http.get("*/users/me", ({ request }) => {
+        events.push("users/me")
+        const header = request.headers.get("X-Profile-Cache-Envelope")
+        cacheHeaders.push(header)
+        if (header !== null) {
+          return HttpResponse.json({ detail: "invalid cache envelope" }, { status: 400 })
+        }
+        return HttpResponse.json(testUser)
+      }),
+      http.get("*/auth/session/signing-key", () => {
+        events.push("signing-key")
+        return HttpResponse.json({ signing_key: TEST_SESSION_SIGNING_KEY })
+      })
+    )
+
+    const view = renderAuthProvider()
+    await waitFor(() => expect(view.result.current.user?.id).toBe(testUser.id))
+
+    expect(view.result.current.isAuth).toBe(true)
+    expect(cacheHeaders).toEqual([malformedEnvelope, null])
+    expect(events.slice(0, 2)).toEqual(["users/me", "users/me"])
+  })
+
+  it("logs out only when the header-free authoritative retry returns 401", async () => {
+    const malformedEnvelope = "synthetic-malformed-profile-envelope"
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, malformedEnvelope)
+    localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
+    const cacheHeaders: Array<string | null> = []
+    server.use(
+      http.get("*/users/me", ({ request }) => {
+        const header = request.headers.get("X-Profile-Cache-Envelope")
+        cacheHeaders.push(header)
+        if (header !== null) {
+          return HttpResponse.json({ detail: "invalid cache envelope" }, { status: 400 })
+        }
+        return HttpResponse.json({ detail: "unauthorized" }, { status: 401 })
+      })
+    )
+
+    const view = renderAuthProvider()
+    await waitFor(() => expect(cacheHeaders).toEqual([malformedEnvelope, null]))
+    await waitFor(() => expect(view.result.current.loading).toBe(false))
+
+    expect(view.result.current.user).toBeNull()
+    expect(view.result.current.isAuth).toBe(false)
   })
 })

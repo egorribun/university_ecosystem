@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import time
 import uuid
 from typing import TYPE_CHECKING
@@ -201,30 +200,8 @@ class RateLimitMiddleware:
         return self._limit, self._window_seconds, "default"
 
     def _build_identifier(self, request: Request) -> str:
-        """Build a unique identifier for the request.
-        Prioritizes Authorization header, then access_token cookie, then IP.
-        """
-        # RATE-1 (audit 2026-03): Never store the raw JWT as a Redis key.
-        # A 500-char JWT in the keyspace reveals token material to any process
-        # with Redis keyspace-notification access (Pub/Sub, RedisInsight, etc.).
-        # SHA-256 of the token is collision-resistant and exposes nothing.
-        auth = request.headers.get("Authorization")
-        if auth and auth.lower().startswith("bearer "):
-            token = auth[7:].strip()
-            if token:
-                token_digest = hashlib.sha256(token.encode()).hexdigest()
-                return f"token:{token_digest}"
-
-        cookie = request.cookies.get(
-            "access_token_v2"
-        )  # RZ-33-04: match canonical cookie name
-        if cookie:
-            cookie_digest = hashlib.sha256(cookie.encode()).hexdigest()
-            redis_identifier = "cookie:" + cookie_digest
-            return redis_identifier  # nosemgrep: python.flask.security.audit.directly-returned-format-string.directly-returned-format-string
-
-        ip = resolve_client_ip(request)
-        return f"ip:{ip}"
+        """Use client IP because this middleware has not authenticated credentials."""
+        return f"ip:{resolve_client_ip(request)}"
 
     # MED-W19: Paths that are always exempt from rate limiting (health/metrics).
     _HEALTH_PATHS: frozenset[str] = frozenset({"/", "/healthz", "/ready", "/metrics"})

@@ -112,7 +112,7 @@ async def test_health_check_exempted(root_client):
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_per_token():
+async def test_rotating_bearer_shares_ip_budget_with_distinct_ip_control():
     app = FastAPI()
     app.add_middleware(
         RateLimitMiddleware,
@@ -125,23 +125,35 @@ async def test_rate_limit_per_token():
     async def _news():
         return {"data": []}
 
+    endpoint = "/api/v1/news"
+    same_ip_transport = httpx.ASGITransport(app=app, client=("198.51.100.9", 5000))
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        transport=same_ip_transport, base_url="http://testserver"
     ) as client:
-        headers = {"Authorization": "Bearer token-a"}
-        endpoint = "/api/v1/news"
         for _ in range(5):
-            response = await client.get(endpoint, headers=headers)
+            response = await client.get(
+                endpoint, headers={"Authorization": "Bearer token-a"}
+            )
             assert response.status_code == 200
-        blocked = await client.get(endpoint, headers=headers)
-        assert blocked.status_code == 429
 
-        other = await client.get(endpoint, headers={"Authorization": "Bearer token-b"})
-        assert other.status_code == 200
+        rotated = await client.get(
+            endpoint, headers={"Authorization": "Bearer token-b"}
+        )
+        assert rotated.status_code == 429
+
+    other_ip_transport = httpx.ASGITransport(app=app, client=("203.0.113.9", 5000))
+    async with httpx.AsyncClient(
+        transport=other_ip_transport, base_url="http://testserver"
+    ) as other_client:
+        independent = await other_client.get(
+            endpoint, headers={"Authorization": "Bearer token-b"}
+        )
+
+    assert independent.status_code == 200
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_per_cookie():
+async def test_rotating_cookie_shares_ip_budget_with_distinct_ip_control():
     app = FastAPI()
     app.add_middleware(
         RateLimitMiddleware,
@@ -154,23 +166,28 @@ async def test_rate_limit_per_cookie():
     async def _news():
         return {"data": []}
 
+    endpoint = "/api/v1/news"
+    same_ip_transport = httpx.ASGITransport(app=app, client=("198.51.100.9", 5000))
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        transport=same_ip_transport, base_url="http://testserver"
     ) as client:
-        client.cookies.set("access_token_v2", "cookie-token-a", path="/")
-        endpoint = "/api/v1/news"
-
+        client.cookies.set("access_token_v2", "cookie-token-a")
         for _ in range(5):
             response = await client.get(endpoint)
             assert response.status_code == 200
 
-        blocked = await client.get(endpoint)
-        assert blocked.status_code == 429
+        client.cookies.set("access_token_v2", "cookie-token-b")
+        rotated = await client.get(endpoint)
+        assert rotated.status_code == 429
 
-        client.cookies.set("access_token_v2", "cookie-token-b", path="/")
+    other_ip_transport = httpx.ASGITransport(app=app, client=("203.0.113.9", 5000))
+    async with httpx.AsyncClient(
+        transport=other_ip_transport, base_url="http://testserver"
+    ) as other_client:
+        other_client.cookies.set("access_token_v2", "cookie-token-b")
+        independent = await other_client.get(endpoint)
 
-        other = await client.get(endpoint)
-        assert other.status_code == 200
+    assert independent.status_code == 200
 
 
 @pytest.mark.asyncio

@@ -63,6 +63,7 @@ class MfaSettingsMixin:
         "mfa_challenge_ttl_seconds",
         "mfa_challenge_max_attempts",
         "mfa_step_up_ttl_seconds",
+        "mfa_totp_attempt_limit",
     )
     @classmethod
     def _validate_positive_mfa_values(cls, value: int, info: ValidationInfo) -> int:

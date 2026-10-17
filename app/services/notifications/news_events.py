@@ -17,7 +17,7 @@ from app.core.localization import (
     resolve_locale,
     translate,
 )
-from app.models import Notification
+from app.models import Notification, UserProfile
 from app.services.notification_templates import render_notification_template
 from app.services.notifications.core import (
     _ensure_aware,
@@ -404,6 +404,13 @@ async def notify_about_event(
     )
 
 
+def _nonblank_display_name(value: Any) -> str | None:
+    """Return a profile label only when it contains visible text."""
+    if not isinstance(value, str):
+        return None
+    return value if value.strip() else None
+
+
 async def notify_about_comment(
     db: AsyncSession,
     news: News,
@@ -421,9 +428,18 @@ async def notify_about_comment(
         ru=getattr(news, "title", None),
         en=getattr(news, "title_en", None),
     )
-    user_name = getattr(author, "full_name", None) or getattr(
-        author, "username", "User"
-    )
+    author_profile = getattr(author, "profile", None)
+    user_name = _nonblank_display_name(getattr(author_profile, "full_name", None))
+    if user_name is None:
+        user_name = _nonblank_display_name(getattr(author, "full_name", None))
+    if user_name is None:
+        user_name = _nonblank_display_name(getattr(author, "username", None))
+    if user_name is None and author_profile is None:
+        profile_result = await db.execute(
+            select(UserProfile.full_name).where(UserProfile.user_id == author.id)
+        )
+        user_name = _nonblank_display_name(profile_result.scalar_one_or_none())
+    user_name = user_name or "User"
 
     template_payload = {
         "news_title": news_title or getattr(news, "title", None),

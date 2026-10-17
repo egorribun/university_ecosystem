@@ -64,3 +64,91 @@ async def test_nats_container(nats_server):
     nc = await nats.connect(url)
     assert nc.is_connected
     await nc.close()
+
+
+@pytest.fixture(scope="module", autouse=True)
+def unmock_redis():
+    """Restore the real Redis classes for the disposable Redis integration test."""
+    import importlib
+    import sys
+
+    import redis.asyncio
+    import redis.asyncio.client
+
+    patched_client_redis = redis.asyncio.client.Redis
+    patched_asyncio_redis = redis.asyncio.Redis
+    importlib.reload(redis.asyncio.client)
+    real_redis = redis.asyncio.client.Redis
+    redis.asyncio.client.Redis = real_redis
+    redis.asyncio.Redis = real_redis
+
+    base_module = "app.core.ratelimit.strategies.base"
+    if base_module in sys.modules:
+        importlib.reload(sys.modules[base_module])
+
+    yield
+
+    redis.asyncio.client.Redis = patched_client_redis
+    redis.asyncio.Redis = patched_asyncio_redis
+    if base_module in sys.modules:
+        importlib.reload(sys.modules[base_module])
+
+
+@pytest.mark.asyncio
+async def test_totp_budget_concurrent_redis_checks_are_atomic(
+    redis_client, monkeypatch, unmock_redis
+):
+    import asyncio
+    import uuid
+
+    import redis.asyncio
+    from fastapi import HTTPException
+
+    from app.auth.mfa.challenge import _enforce_totp_attempt_budget
+    from app.core.config import settings
+    from app.core.ratelimit.circuit_breaker import get_circuit_breaker
+    from app.core.ratelimit.strategies.base import set_rate_limit_client_factory
+
+    redis_url = f"redis://{redis_client.get_container_host_ip()}:{redis_client.get_exposed_port(6379)}"
+    async_redis = redis.asyncio.Redis.from_url(redis_url)
+    set_rate_limit_client_factory(lambda _url: async_redis)
+    get_circuit_breaker.cache_clear()
+    get_circuit_breaker().reset_for_testing()
+
+    limit = 8
+    window = 60
+    user_id = uuid.uuid4()
+    redis_key = f"rate-limit:mfa:totp-attempts:{user_id}"
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    monkeypatch.setattr(settings, "rate_limit_storage_backend", "redis")
+    monkeypatch.setattr(settings, "rate_limit_storage_uri", redis_url)
+    monkeypatch.setattr(settings, "mfa_totp_attempt_limit", limit)
+    monkeypatch.setattr(settings, "mfa_challenge_ttl_seconds", window)
+
+    try:
+        results = await asyncio.gather(
+            *(_enforce_totp_attempt_budget(user_id=user_id) for _ in range(32)),
+            return_exceptions=True,
+        )
+        allowed = [result for result in results if result is None]
+        denied = [result for result in results if isinstance(result, HTTPException)]
+        unexpected = [
+            result
+            for result in results
+            if result is not None and not isinstance(result, HTTPException)
+        ]
+
+        assert len(allowed) == limit
+        assert len(denied) == 32 - limit
+        assert all(result.status_code == 429 for result in denied)
+        assert not unexpected
+        assert await async_redis.zcard(redis_key) == limit
+        ttl_ms = await async_redis.pttl(redis_key)
+        assert 0 < ttl_ms <= window * 1000
+    finally:
+        try:
+            await async_redis.delete(redis_key)
+        finally:
+            set_rate_limit_client_factory(None)
+            await async_redis.aclose()
+            get_circuit_breaker.cache_clear()

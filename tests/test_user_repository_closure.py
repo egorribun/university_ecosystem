@@ -1,20 +1,27 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from app.models import (
+    ActiveSession,
     DataAccessLog,
     EducationPath,
     InviteCode,
+    Notification,
     User,
     UserPreferences,
     UserProfile,
 )
 from app.models.enums import UserRole
 from app.repositories.user_repository import UserRepository
+
+
+def _repository_test_uuid(value: int) -> uuid.UUID:
+    """Keep UUID hex nonnumeric so SQLite stores it as text."""
+    return uuid.UUID(int=0xA0000 + value)
 
 
 class _Result:
@@ -290,3 +297,111 @@ async def test_create_with_invite_and_sensitive_delete():
         ).get_user_repository(db),
         UserRepository,
     )
+
+
+@pytest.mark.asyncio
+async def test_get_user_sessions_before_dt_boundaries_and_keyset_order(
+    db_session, user_factory
+):
+    owner = await user_factory()
+    other = await user_factory()
+    cutoff = datetime(2026, 10, 17, 12, 0, tzinfo=UTC)
+
+    def session(session_id, created_at, *, user_id=owner.id, revoked_at=None):
+        return ActiveSession(
+            id=_repository_test_uuid(session_id),
+            user_id=user_id,
+            jti=f"repo-session-{session_id}",
+            created_at=created_at,
+            expires_at=cutoff + timedelta(days=1),
+            revoked_at=revoked_at,
+            last_seen_at=created_at,
+            ip_address="127.0.0.1",
+            user_agent="pytest",
+        )
+
+    rows = [
+        session(1, cutoff - timedelta(minutes=2)),
+        session(2, cutoff - timedelta(minutes=1)),
+        session(3, cutoff - timedelta(minutes=1)),
+        session(4, cutoff - timedelta(minutes=1), revoked_at=cutoff),
+        session(10, cutoff),
+        session(20, cutoff),
+        session(30, cutoff),
+        session(40, cutoff + timedelta(minutes=1)),
+        session(50, cutoff - timedelta(minutes=1), user_id=other.id),
+    ]
+    db_session.add_all(rows)
+    await db_session.flush()
+    repo = UserRepository(db_session)
+
+    before_page = await repo.get_user_sessions(owner.id, before_dt=cutoff)
+    assert [row.id for row in before_page] == [
+        _repository_test_uuid(3),
+        _repository_test_uuid(2),
+        _repository_test_uuid(1),
+    ]
+    assert all(
+        row.user_id == owner.id and row.revoked_at is None for row in before_page
+    )
+
+    tied_page = await repo.get_user_sessions(
+        owner.id, before_dt=cutoff, after_id=_repository_test_uuid(20)
+    )
+    assert [row.id for row in tied_page] == [
+        _repository_test_uuid(10),
+        _repository_test_uuid(3),
+        _repository_test_uuid(2),
+        _repository_test_uuid(1),
+    ]
+    assert all(row.user_id == owner.id and row.revoked_at is None for row in tied_page)
+
+
+@pytest.mark.asyncio
+async def test_get_user_notifications_before_dt_boundaries_and_keyset_order(
+    db_session, user_factory
+):
+    owner = await user_factory()
+    other = await user_factory()
+    cutoff = datetime(2026, 10, 17, 12, 0, tzinfo=UTC)
+
+    def notification(notification_id, created_at, *, user_id=owner.id):
+        return Notification(
+            id=_repository_test_uuid(notification_id),
+            user_id=user_id,
+            title=f"Repository notice {notification_id}",
+            created_at=created_at,
+        )
+
+    rows = [
+        notification(101, cutoff - timedelta(minutes=2)),
+        notification(102, cutoff - timedelta(minutes=1)),
+        notification(103, cutoff - timedelta(minutes=1)),
+        notification(110, cutoff),
+        notification(120, cutoff),
+        notification(130, cutoff),
+        notification(140, cutoff + timedelta(minutes=1)),
+        notification(150, cutoff - timedelta(minutes=1), user_id=other.id),
+    ]
+    db_session.add_all(rows)
+    await db_session.flush()
+    repo = UserRepository(db_session)
+
+    before_page = await repo.get_user_notifications(owner.id, before_dt=cutoff)
+    assert [row.id for row in before_page] == [
+        _repository_test_uuid(103),
+        _repository_test_uuid(102),
+        _repository_test_uuid(101),
+    ]
+    assert all(row.user_id == owner.id for row in before_page)
+
+    tied_page = await repo.get_user_notifications(
+        owner.id, before_dt=cutoff, after_id=_repository_test_uuid(120)
+    )
+    assert [row.id for row in tied_page] == [
+        _repository_test_uuid(110),
+        _repository_test_uuid(103),
+        _repository_test_uuid(102),
+        _repository_test_uuid(101),
+    ]
+    assert all(row.user_id == owner.id for row in tied_page)
