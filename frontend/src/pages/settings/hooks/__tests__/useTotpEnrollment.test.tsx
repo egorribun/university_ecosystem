@@ -7,6 +7,7 @@ import type { MfaTotpEnrollment, TotpEnrollmentStart } from "@/types/Mfa"
 import { useTotpEnrollment } from "../useTotpEnrollment"
 
 const mocks = vi.hoisted(() => ({
+  loading: false,
   user: {
     id: "user-1",
     mfa_required: false,
@@ -36,7 +37,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: mocks.user, setUser: mocks.setUser }),
+  useAuth: () => ({ user: mocks.user, setUser: mocks.setUser, loading: mocks.loading }),
 }))
 
 vi.mock("@/hooks/auth/useProfileSync", () => ({
@@ -104,6 +105,7 @@ const renderTotpHook = (openStepUpFor = vi.fn()) => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.loading = false
   mocks.user = {
     id: "user-1",
     mfa_required: false,
@@ -291,6 +293,27 @@ describe("useTotpEnrollment — start and confirm", () => {
 
     await waitFor(() => expect(mocks.startTotpEnrollment).toHaveBeenCalledOnce())
     await waitFor(() => expect(result.current.totpDraft).toEqual(draft("pending")))
+  })
+
+  it("does not consume an automatic attempt before the account is confirmed", async () => {
+    const pending = enrollment({ id: "pending", confirmed_at: null })
+    mocks.loading = true
+    mocks.user.totp_enrollments = [pending]
+    mocks.startTotpEnrollment.mockResolvedValue(draft("pending"))
+    const { result, rerender } = renderTotpHook()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(mocks.startTotpEnrollment).not.toHaveBeenCalled()
+    expect(result.current.totpBusy).toBe(false)
+
+    mocks.loading = false
+    mocks.user = { ...mocks.user, totp_enrollments: [{ ...pending }] }
+    rerender()
+
+    await waitFor(() => expect(result.current.totpDraft).toEqual(draft("pending")))
+    expect(mocks.startTotpEnrollment).toHaveBeenCalledOnce()
   })
 
   it("waits for the current request before resuming a changed pending ID", async () => {

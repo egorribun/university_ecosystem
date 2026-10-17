@@ -1,6 +1,6 @@
 import { useProfileSessionGuard } from "@/hooks/useProfileSessionGuard"
 import { useSessionProfileRefresh } from "./useSessionProfileRefresh"
-import { useState, useCallback, useEffect, useMemo } from "react"
+import { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { extractApiError } from "@/utils/error"
 import { formatDate } from "@/utils/date"
@@ -65,6 +65,10 @@ export function useTotpEnrollment({
   const [totpDraft, setTotpDraft] = useState<TotpEnrollmentStart | null>(null)
   const [totpBusy, setTotpBusy] = useState(false)
   const [totpError, setTotpError] = useState<string | null>(null)
+  const autoResumeAttempt = useRef<{
+    pendingId: string
+    owner: typeof captureOperation
+  } | null>(null)
 
   useEffect(() => {
     setTotpDraft(null)
@@ -175,11 +179,38 @@ export function useTotpEnrollment({
     ]
   )
 
-  // Auto-resume pending enrollment
+  // One automatic attempt per pending enrollment and mounted account.
+  // Manual retries and the step-up continuation still use the handler directly.
   useEffect(() => {
-    if (!pendingTotpEnrollment || totpDraft) return
-    void handleStartTotp({ payload: { reuse_existing: true } })
-  }, [handleStartTotp, pendingTotpEnrollment, totpDraft])
+    if (!pendingTotpEnrollment) {
+      autoResumeAttempt.current = null
+      return
+    }
+    if (totpDraft || totpBusy || totpLimitReached) return
+    const pendingId = pendingTotpEnrollment.id
+    const attempted = autoResumeAttempt.current
+    if (attempted?.owner === captureOperation && attempted.pendingId === pendingId) return
+
+    let cancelled = false
+    // StrictMode cleanup cancels the first setup before it owns a request.
+    queueMicrotask(() => {
+      if (cancelled) return
+      const isCurrent = captureOperation()
+      if (!isCurrent()) return
+      autoResumeAttempt.current = { pendingId, owner: captureOperation }
+      void handleStartTotp({ payload: { reuse_existing: true } })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [
+    captureOperation,
+    handleStartTotp,
+    pendingTotpEnrollment,
+    totpBusy,
+    totpDraft,
+    totpLimitReached,
+  ])
 
   const handleConfirmTotp = useCallback(
     async (code: string) => {
