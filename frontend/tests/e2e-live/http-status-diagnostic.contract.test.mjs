@@ -295,7 +295,10 @@ test("HTTP diagnostic helper has no browser, response, environment, or artifact 
     source,
     /\bimport\b|\brequire\s*\(|process\.(?:env|stderr)|console\.|\b(?:page|browser|context|response|request|URL)\b|\.(?:json|text|screenshot|storageState|attach)\s*\(/u
   )
-  assert.equal((source.match(/process\.stdout\.write\(/gu) ?? []).length, 3)
+  assert.equal((source.match(/process\.stdout\.write\(/gu) ?? []).length, 4)
+  const loginReporter = source.slice(source.indexOf("export function reportLiveLoginFailure("))
+  assert.match(loginReporter, /UE_LIVE_LOGIN_FAILURE_V1/u)
+  assert.equal((loginReporter.match(/process\.stdout\.write\(/gu) ?? []).length, 1)
 })
 
 test("the real Playwright list reporter preserves stdout protocol without browser fixtures", async (t) => {
