@@ -11,18 +11,21 @@ const lockoutSettingsUrl = new URL(
 const liveComposeUrl = new URL("../../../docker-compose.live.yml", import.meta.url)
 const routeLimiterUrl = new URL("../../../app/core/ratelimit/fastapi.py", import.meta.url)
 const middlewareLimiterUrl = new URL("../../../app/core/ratelimit/middleware.py", import.meta.url)
+const limiterUtilsUrl = new URL("../../../app/core/ratelimit/utils.py", import.meta.url)
 
 const requireMatch = (source, pattern, message) => assert.ok(pattern.test(source), message)
 const requireNoMatch = (source, pattern, message) => assert.ok(!pattern.test(source), message)
 
 test("Auth lockout live acceptance isolates a synthetic identity and preserves lockout semantics", async () => {
-  const [spec, settings, liveCompose, routeLimiter, middlewareLimiter] = await Promise.all([
-    readFile(specUrl, "utf8"),
-    readFile(lockoutSettingsUrl, "utf8"),
-    readFile(liveComposeUrl, "utf8"),
-    readFile(routeLimiterUrl, "utf8"),
-    readFile(middlewareLimiterUrl, "utf8"),
-  ])
+  const [spec, settings, liveCompose, routeLimiter, middlewareLimiter, limiterUtils] =
+    await Promise.all([
+      readFile(specUrl, "utf8"),
+      readFile(lockoutSettingsUrl, "utf8"),
+      readFile(liveComposeUrl, "utf8"),
+      readFile(routeLimiterUrl, "utf8"),
+      readFile(middlewareLimiterUrl, "utf8"),
+      readFile(limiterUtilsUrl, "utf8"),
+    ])
 
   requireMatch(
     settings,
@@ -41,9 +44,23 @@ test("Auth lockout live acceptance isolates a synthetic identity and preserves l
     "authenticated route limiting must remain user-scoped"
   )
   requireMatch(
-    middlewareLimiter,
+    limiterUtils,
     /request\.cookies\.get\(\s*"access_token_v2"\s*\)/u,
-    "middleware must retain the authenticated cookie-based limiter key"
+    "verified route limiting must retain session-cookie support"
+  )
+  const middlewareIdentifier = middlewareLimiter.match(
+    /^    def _build_identifier\(self, request: Request\) -> str:\n(?<body>(?: {8}[^\n]*\n|\n)+)/mu
+  )?.groups?.body
+  assert.ok(middlewareIdentifier, "middleware rate-limit identifier implementation missing")
+  requireMatch(
+    middlewareIdentifier,
+    /return f"ip:\{resolve_client_ip\(request\)\}"/u,
+    "pre-authentication middleware must retain the trusted-client IP budget"
+  )
+  requireNoMatch(
+    middlewareIdentifier,
+    /request\.(?:cookies|headers)|extract_user_id_for_ratelimit/u,
+    "unverified credentials must not select a different middleware rate-limit bucket"
   )
 
   requireMatch(

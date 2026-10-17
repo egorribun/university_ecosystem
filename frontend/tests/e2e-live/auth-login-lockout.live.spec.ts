@@ -100,12 +100,14 @@ test("synthetic account reaches account lockout after the configured failed-logi
     const sessionCookies = await page.context().cookies()
     expect(
       sessionCookies.some((cookie) => cookie.name === "access_token_v2"),
-      "the synthetic account's authenticated cookie keeps subsequent login attempts in its own rate-limit bucket"
+      "the synthetic account has a session cookie for verified user-scoped route limiting"
     ).toBe(true)
 
     // The successful login clears the UI failure above. BrowserContext.request
-    // shares this synthetic user's cookie, so these failed attempts use that
-    // user's isolated rate-limit bucket instead of consuming the shared IP key.
+    // shares this synthetic user's cookie for verified user-scoped route limiting.
+    // The pre-authentication middleware still charges the shared client-IP budget;
+    // the live login limit remains 60/minute and these five attempts must reach
+    // the account lockout rather than be masked by an HTTP 429 response.
     const csrfToken = await page.evaluate(() => {
       const cookie = document.cookie
         .split(";")
