@@ -29,7 +29,7 @@ interface NewChatModalProps {
 }
 
 const USERS_PAGE_LIMIT = 10
-const MIN_SEARCH_LENGTH = 1
+const MIN_SEARCH_LENGTH = 2
 // Wave 211 G4 — backend requires ≥3 total participants (creator + members); the
 // creator is auto-included, so the user must select at least 2 others.
 const MIN_GROUP_MEMBERS = 2
@@ -201,7 +201,7 @@ export function NewChatModal({
       )
       return response.data
     },
-    enabled: open && debouncedSearch.length > MIN_SEARCH_LENGTH,
+    enabled: open && Array.from(debouncedSearch.trim()).length >= MIN_SEARCH_LENGTH,
   })
 
   return (
@@ -422,7 +422,7 @@ export function NewChatModal({
                 {!isLoading &&
                   !isError &&
                   users.length === 0 &&
-                  search.length > MIN_SEARCH_LENGTH && (
+                  Array.from(search.trim()).length >= MIN_SEARCH_LENGTH && (
                     <div
                       className="text-center py-12 px-4 space-y-2"
                       role="status"

@@ -111,8 +111,7 @@ class UserProfileService:
             current_user
             and current_user.role != "admin"
             and (
-                name_query is None
-                or len(name_query) < _MIN_NON_ADMIN_NAME_QUERY_LENGTH
+                name_query is None or len(name_query) < _MIN_NON_ADMIN_NAME_QUERY_LENGTH
             )
         ):
             raise PermissionDenied()

@@ -295,9 +295,7 @@ describe("GroupInfoPanel (W211 G4)", () => {
       expect(screen.queryByText("messenger:noUsersFound")).toBeNull()
 
       fireEvent.change(search, { target: { value: "Ni" } })
-      await waitFor(() =>
-        expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&full_name=Ni")
-      )
+      await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&full_name=Ni"))
     }
   )
 
