@@ -29,7 +29,7 @@ defined in [`app/core/versioning.py`](../app/core/versioning.py).
 For AUD-201, the owner approved a narrow restriction in the existing v1 API:
 authenticated non-admin `GET /api/v1/users` requests must use an effective
 name query of at least two Unicode code points after trimming. Existing
-normalization is preserved: nonblank `full_name` takes precedence and legacy
+normalization is preserved: a non-empty `full_name` takes precedence and legacy
 `search` is its fallback. The authorization check runs before repository
 access, including requests with `after_id`.
 
