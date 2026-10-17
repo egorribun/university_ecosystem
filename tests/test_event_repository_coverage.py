@@ -304,3 +304,78 @@ async def test_title_search_keyset_preserves_ties_without_repeating_events(
         )
         == []
     )
+
+
+@pytest.mark.asyncio
+async def test_count_upcoming_uses_utc_cutoff_and_returns_zero_when_empty(
+    db_session, user_factory, monkeypatch
+):
+    import app.repositories.event_repository as event_repository
+
+    user = await user_factory()
+    repo = EventRepository(db_session)
+    frozen_now = datetime.datetime(2026, 10, 17, 12, 0, tzinfo=datetime.UTC)
+
+    class FrozenDateTime(datetime.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return frozen_now.replace(tzinfo=None)
+            return frozen_now.astimezone(tz)
+
+    monkeypatch.setattr(event_repository, "datetime", FrozenDateTime)
+
+    assert await repo.count_upcoming() == 0
+
+    starts_at_values = (
+        frozen_now - datetime.timedelta(hours=1),
+        frozen_now,
+        frozen_now + datetime.timedelta(hours=1),
+    )
+    db_session.add_all(
+        [
+            Event(
+                id=generate_uuid7(),
+                title=f"Upcoming cutoff {index}",
+                starts_at=starts_at,
+                ends_at=starts_at + datetime.timedelta(hours=1),
+                created_by=user.id,
+            )
+            for index, starts_at in enumerate(starts_at_values)
+        ]
+    )
+    await db_session.commit()
+
+    assert await repo.count_upcoming() == 2
+
+
+@pytest.mark.asyncio
+async def test_count_search_events_without_filters_counts_all_rows(
+    db_session, user_factory
+):
+    user = await user_factory()
+    repo = EventRepository(db_session)
+    frozen_now = datetime.datetime(2026, 10, 17, 12, 0, tzinfo=datetime.UTC)
+
+    assert await repo.count_search_events(is_active=None, now=frozen_now) == 0
+
+    starts_at_values = (
+        frozen_now - datetime.timedelta(hours=2),
+        frozen_now + datetime.timedelta(hours=1),
+    )
+    db_session.add_all(
+        [
+            Event(
+                id=generate_uuid7(),
+                title=f"Unfiltered event count {index}",
+                starts_at=starts_at,
+                ends_at=starts_at + datetime.timedelta(hours=1),
+                created_by=user.id,
+                is_active=(index == 1),
+            )
+            for index, starts_at in enumerate(starts_at_values)
+        ]
+    )
+    await db_session.commit()
+
+    assert await repo.count_search_events(is_active=None, now=frozen_now) == 2
