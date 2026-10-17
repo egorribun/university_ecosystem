@@ -428,3 +428,78 @@ test("HTTP diagnostics cannot replace an assertion when stdout writing fails", (
     ""
   )
 })
+
+async function reportLoginInChild(calls) {
+  const helper = await import(helperUrl.href)
+  assert.equal(typeof helper.reportLiveLoginFailure, "function")
+  return reportInChild(
+    `const { reportLiveLoginFailure } = await import(${JSON.stringify(helperUrl.href)});\n${calls}`
+  )
+}
+
+test("login failure diagnostics expose only closed scalar observations", async () => {
+  assert.equal(
+    await reportLoginInChild(`
+      reportLiveLoginFailure("desktop", "submit", "0", "0", null, "login");
+      reportLiveLoginFailure("mobile", "navigation", "1", "1", 200, "other");
+      reportLiveLoginFailure("desktop", "navigation", "many", "many", 599, "unavailable");
+    `),
+    [
+      "UE_LIVE_LOGIN_FAILURE_V1 project=desktop stage=submit requests=0 responses=0 status=none route=login\n",
+      "UE_LIVE_LOGIN_FAILURE_V1 project=mobile stage=navigation requests=1 responses=1 status=200 route=other\n",
+      "UE_LIVE_LOGIN_FAILURE_V1 project=desktop stage=navigation requests=many responses=many status=599 route=unavailable\n",
+    ].join("")
+  )
+})
+
+test("login failure diagnostics reject malformed values without coercing private data", async () => {
+  assert.equal(
+    await reportLoginInChild(`
+      const privateValue = { toString() { throw new Error("private-value") } };
+      const valid = ["desktop", "navigation", "1", "1", 200, "login"];
+      const invalid = [
+        ["Desktop", "desktop\\n", privateValue, null],
+        ["response", "navigation\\r", privateValue, null],
+        [0, "2", "01", "many\\n", privateValue, null],
+        [1, "2", "many\\r", privateValue, null],
+        [99, 600, 200.5, "200", "none", NaN, Infinity, undefined, true, privateValue],
+        ["/login", "https://private.invalid/login?token=x", "login#token=x", privateValue, null],
+      ];
+      for (let index = 0; index < invalid.length; index += 1) {
+        for (const value of invalid[index]) {
+          const args = [...valid];
+          args[index] = value;
+          reportLiveLoginFailure(...args);
+        }
+      }
+    `),
+    ""
+  )
+})
+
+test("login failure diagnostics deduplicate and cap output at sixteen records", async () => {
+  const output = await reportLoginInChild(`
+    for (let status = 100; status < 600; status += 1) {
+      reportLiveLoginFailure("desktop", "navigation", "1", "1", status, "login");
+      reportLiveLoginFailure("desktop", "navigation", "1", "1", status, "login");
+    }
+  `)
+  assert.equal(
+    output,
+    Array.from(
+      { length: 16 },
+      (_, index) =>
+        `UE_LIVE_LOGIN_FAILURE_V1 project=desktop stage=navigation requests=1 responses=1 status=${100 + index} route=login\n`
+    ).join("")
+  )
+})
+
+test("login failure diagnostics cannot replace the original failure if stdout throws", async () => {
+  assert.equal(
+    await reportLoginInChild(`
+      process.stdout.write = () => { throw new Error("closed output"); };
+      reportLiveLoginFailure("desktop", "navigation", "1", "1", 200, "login");
+    `),
+    ""
+  )
+})

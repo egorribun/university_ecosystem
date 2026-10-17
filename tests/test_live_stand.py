@@ -8930,3 +8930,156 @@ def test_live_playwright_suppresses_new_diagnostics_on_success(
         "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
         "live E2E outcome=passed exit_code=0",
     ]
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        "project=desktop stage=submit requests=0 responses=0 status=none route=login",
+        "project=mobile stage=navigation requests=1 responses=1 status=200 route=dashboard",
+        "project=desktop stage=navigation requests=many responses=many status=599 route=other",
+        "project=mobile stage=submit requests=1 responses=0 status=none route=unavailable",
+        "project=desktop stage=navigation requests=1 responses=1 status=100 route=register",
+    ],
+)
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_live_playwright_emits_closed_login_failure_observations(
+    fields: str,
+    newline: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    row = f"UE_LIVE_LOGIN_FAILURE_V1 {fields}{newline}"
+    completed = subprocess.CompletedProcess(
+        [],
+        1,
+        stdout=(row + "private-body https://private.invalid/?token=x\n").encode(),
+        stderr=b"private-stack private-credential\n",
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    with pytest.raises(live_stand.StandError):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        f"live E2E login failure {fields}",
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert printed.err == ""
+    assert completed.stdout == completed.stderr == b""
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        ("project=desktop", "project=private"),
+        ("stage=navigation", "stage=response"),
+        ("requests=1", "requests=2"),
+        ("responses=1", "responses=01"),
+        ("status=200", "status=99"),
+        ("status=200", "status=600"),
+        ("status=200", "status=200.0"),
+        ("status=200", "status=0200"),
+        ("route=login", "route=/login?token=x"),
+        ("route=login", "route=login#private"),
+        ("route=login", "route=login extra=private"),
+        ("\n", ""),
+        ("\n", "\r"),
+        ("\n", "\x1b[31m\n"),
+        ("\n", "\u202e\n"),
+    ],
+)
+def test_live_playwright_discards_malformed_login_failure_rows(
+    replacement: tuple[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    row = (
+        "UE_LIVE_LOGIN_FAILURE_V1 project=desktop stage=navigation "
+        "requests=1 responses=1 status=200 route=login\n"
+    ).replace(*replacement)
+    completed = subprocess.CompletedProcess([], 1, stdout=row.encode(), stderr=b"")
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    with pytest.raises(live_stand.StandError):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "+ " + " ".join(live_stand._live_e2e_command(mode="smoke")),
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert printed.err == ""
+
+
+def test_live_playwright_bounds_and_deduplicates_login_failure_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    fields = [
+        "project=desktop stage=navigation requests=1 responses=1 "
+        f"status={status} route=login"
+        for status in range(100, 120)
+    ]
+    stdout = "".join(f"UE_LIVE_LOGIN_FAILURE_V1 {row}\n" * 2 for row in fields).encode()
+    completed = subprocess.CompletedProcess([], 1, stdout=stdout, stderr=b"")
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    with pytest.raises(live_stand.StandError):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    printed = capsys.readouterr()
+    summaries = [
+        line
+        for line in printed.out.splitlines()
+        if line.startswith("live E2E login failure ")
+    ]
+    assert summaries == [f"live E2E login failure {row}" for row in fields[:16]]
+    assert printed.err == ""
+
+
+@pytest.mark.parametrize("return_code", [0, 1])
+def test_live_playwright_never_accepts_login_failure_rows_from_stderr(
+    return_code: int,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    row = (
+        b"UE_LIVE_LOGIN_FAILURE_V1 project=desktop stage=navigation "
+        b"requests=1 responses=1 status=200 route=login\n"
+    )
+    completed = subprocess.CompletedProcess([], return_code, stdout=b"", stderr=row)
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    expectation = pytest.raises(live_stand.StandError) if return_code else nullcontext()
+    with expectation:
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    printed = capsys.readouterr()
+    assert "live E2E login failure " not in printed.out
+    assert printed.err == ""
+
+
+def test_live_playwright_suppresses_login_failure_rows_after_success(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    row = (
+        b"UE_LIVE_LOGIN_FAILURE_V1 project=desktop stage=navigation "
+        b"requests=1 responses=1 status=200 route=login\n"
+    )
+    completed = subprocess.CompletedProcess([], 0, stdout=row, stderr=b"")
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    printed = capsys.readouterr()
+    assert "live E2E login failure " not in printed.out
+    assert printed.err == ""
