@@ -49,7 +49,7 @@ test("Auth lockout live acceptance isolates a synthetic identity and preserves l
     "verified route limiting must retain session-cookie support"
   )
   const middlewareIdentifier = middlewareLimiter.match(
-    /^    def _build_identifier\(self, request: Request\) -> str:\n(?<body>(?: {8}[^\n]*\n|\n)+)/mu
+    /^ {4}def _build_identifier\(self, request: Request\) -> str:\n(?<body>(?: {8}[^\n]*\n|\n)+)/mu
   )?.groups?.body
   assert.ok(middlewareIdentifier, "middleware rate-limit identifier implementation missing")
   requireMatch(
