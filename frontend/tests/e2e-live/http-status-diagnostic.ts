@@ -235,3 +235,50 @@ export function reportLiveRateLimitRetry(
     // Retry diagnostics must not replace the live result.
   }
 }
+
+export type LiveLoginFailureStage = "submit" | "navigation"
+export type LiveLoginObservationCount = "0" | "1" | "many"
+export type LiveLoginFailureRoute = "login" | "dashboard" | "register" | "other" | "unavailable"
+
+const emittedLoginFailureRecords = new Set<string>()
+const MAX_LOGIN_FAILURE_RECORDS = 16
+
+export function reportLiveLoginFailure(
+  project: string,
+  stage: LiveLoginFailureStage,
+  requests: LiveLoginObservationCount,
+  responses: LiveLoginObservationCount,
+  status: number | null,
+  route: LiveLoginFailureRoute
+): void {
+  if (
+    (project !== "desktop" && project !== "mobile") ||
+    (stage !== "submit" && stage !== "navigation") ||
+    (requests !== "0" && requests !== "1" && requests !== "many") ||
+    (responses !== "0" && responses !== "1" && responses !== "many") ||
+    (status !== null && (!Number.isInteger(status) || status < 100 || status > 599)) ||
+    (route !== "login" &&
+      route !== "dashboard" &&
+      route !== "register" &&
+      route !== "other" &&
+      route !== "unavailable")
+  ) {
+    return
+  }
+
+  const record =
+    `UE_LIVE_LOGIN_FAILURE_V1 project=${project} stage=${stage} ` +
+    `requests=${requests} responses=${responses} status=${status ?? "none"} route=${route}\n`
+  if (
+    emittedLoginFailureRecords.has(record) ||
+    emittedLoginFailureRecords.size >= MAX_LOGIN_FAILURE_RECORDS
+  ) {
+    return
+  }
+  emittedLoginFailureRecords.add(record)
+  try {
+    process.stdout.write(record)
+  } catch {
+    // A closed diagnostic stream must never replace the original login failure.
+  }
+}

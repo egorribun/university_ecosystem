@@ -27,6 +27,10 @@ import {
   parseLiveRateLimitHeader,
   reportLiveHttpStatus,
   reportLiveRateLimitRetry,
+  reportLiveLoginFailure,
+  type LiveLoginFailureRoute,
+  type LiveLoginFailureStage,
+  type LiveLoginObservationCount,
 } from "./http-status-diagnostic"
 
 /**
@@ -170,6 +174,46 @@ function reportOwnedAuthStatus(check: OwnedAuthStatusCheck, status: number): voi
     reportLiveHttpStatus(base.info().project.name, check, status)
   } catch {
     // Diagnostics must never replace the live test result.
+  }
+}
+
+function reportOwnedLoginFailure(
+  page: Page,
+  origin: string,
+  stage: LiveLoginFailureStage,
+  matchingRequests: number,
+  matchingResponses: number,
+  status: number | undefined
+): void {
+  try {
+    let route: LiveLoginFailureRoute = "unavailable"
+    try {
+      const current = new URL(page.url())
+      route =
+        current.origin !== origin
+          ? "other"
+          : current.pathname === "/login"
+            ? "login"
+            : current.pathname === "/dashboard"
+              ? "dashboard"
+              : current.pathname === "/register"
+                ? "register"
+                : "other"
+    } catch {
+      // No URL or exception text is exposed by this diagnostic.
+    }
+    const count = (value: number): LiveLoginObservationCount =>
+      value === 0 ? "0" : value === 1 ? "1" : "many"
+    reportLiveLoginFailure(
+      base.info().project.name,
+      stage,
+      count(matchingRequests),
+      count(matchingResponses),
+      status ?? null,
+      route
+    )
+  } catch {
+    // Preserve the original assertion and the owned-session cleanup path.
   }
 }
 
@@ -730,6 +774,7 @@ export async function loginWith(
     }
   }
 
+  let loginStage: LiveLoginFailureStage = "submit"
   let primaryFailure: unknown
   let hasPrimaryFailure = false
   let captured = false
@@ -744,6 +789,7 @@ export async function loginWith(
     if (!captureSetupFailed) {
       try {
         await submitLogin(page, email, password, cleanupDeadlineAtMs, maximumOperationTimeoutMs)
+        loginStage = "navigation"
         const dashboardExpectation =
           cleanupDeadlineAtMs === undefined
             ? expect
@@ -757,6 +803,14 @@ export async function loginWith(
       } catch (error) {
         primaryFailure = error
         hasPrimaryFailure = true
+        reportOwnedLoginFailure(
+          page,
+          origin,
+          loginStage,
+          matchingRequests,
+          matchingResponses,
+          loginResponseStatus
+        )
       }
     }
   } finally {
