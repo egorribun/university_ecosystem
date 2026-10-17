@@ -301,6 +301,13 @@ func TestHandleWebSocket_E2EUpgradeJoinAndDeliver(t *testing.T) {
 	}()
 	defer func() { cancel(); <-done }()
 
+	// A successful upgrade is not a Run-start barrier: admission fails closed
+	// until the lifecycle context is published under lifecycleMu.
+	require.Eventually(t, func() bool {
+		runCtx := hubLifecycleContext(h)
+		return runCtx != nil && runCtx.Err() == nil
+	}, 2*time.Second, 10*time.Millisecond)
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.HandleWebSocket(w, r, cfg)
 	}))
