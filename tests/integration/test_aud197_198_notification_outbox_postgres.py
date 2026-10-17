@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import os
 import re
 import uuid
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
@@ -32,9 +34,19 @@ from testcontainers.community.postgres import PostgresContainer
 
 import app.core.database as database
 import app.services.event_handlers as event_handlers
+import app.services.notifications.delivery as notifications_delivery
+import app.services.notifications.schedule_reminders as schedule_reminders_module
+import app.workers.notifications as notifications_worker
 import app.workers.outbox as outbox_module
 from alembic import command
-from app.core.events import EventBus, capture_domain_events, register_event_listeners
+from app.core.config import settings
+from app.core.events import (
+    EventBus,
+    NotificationsRequested,
+    capture_domain_events,
+    register_event_listeners,
+)
+from app.models import Group, Schedule
 from app.models.domain_events import StoredEvent
 from app.models.news import News
 from app.models.notifications import Notification
@@ -583,3 +595,102 @@ async def test_notification_transaction_failure_recovers_on_outbox_replay(
         dedupe_key=f"news.created:{news_dto.id}",
         expected_users={author.id, administrator.id},
     )
+
+
+async def test_scheduler_ticks_commit_one_campus_reminder_and_outbox(
+    postgres_app_database, db_session, user_factory, monkeypatch
+):
+    """Two actual scheduler ticks persist one reminder without a caller commit."""
+    _require_postgres()
+    fixed_now = dt.datetime(2026, 1, 4, 23, 55, tzinfo=dt.UTC)
+
+    class _FixedDateTime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    clock = SimpleNamespace(**vars(dt))
+    clock.datetime = _FixedDateTime
+    monkeypatch.setattr(schedule_reminders_module, "dt", clock)
+    monkeypatch.setattr(notifications_delivery, "dt", clock)
+    monkeypatch.setattr(settings, "campus_timezone", "Europe/Istanbul")
+    monkeypatch.setattr(notifications_delivery, "_is_push_configured", lambda: False)
+
+    group = Group(name="Scheduler PostgreSQL reminder")
+    db_session.add(group)
+    await db_session.flush()
+    user = await user_factory(group_id=group.id)
+    user_id = user.id
+    db_session.add_all(
+        [
+            Schedule(
+                group_id=group.id,
+                creator_id=user_id,
+                subject="Matching local Monday",
+                weekday="monday",
+                parity="even",
+                start_time=dt.datetime(1970, 1, 5, 3, 0, tzinfo=dt.UTC),
+                end_time=dt.datetime(1970, 1, 5, 4, 0, tzinfo=dt.UTC),
+            ),
+            Schedule(
+                group_id=group.id,
+                creator_id=user_id,
+                subject="Wrong local parity",
+                weekday="monday",
+                parity="odd",
+                start_time=dt.datetime(1970, 1, 5, 3, 0, tzinfo=dt.UTC),
+                end_time=dt.datetime(1970, 1, 5, 4, 0, tzinfo=dt.UTC),
+            ),
+            Schedule(
+                group_id=group.id,
+                creator_id=user_id,
+                subject="Wrong local weekday",
+                weekday="tuesday",
+                parity="both",
+                start_time=dt.datetime(1970, 1, 6, 3, 0, tzinfo=dt.UTC),
+                end_time=dt.datetime(1970, 1, 6, 4, 0, tzinfo=dt.UTC),
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    scheduler = notifications_worker.NotificationsScheduler(
+        poll_seconds=1,
+        window_minutes=10,
+        max_backoff_seconds=1,
+        metrics=None,
+    )
+    assert await scheduler.run_once() == 1
+    assert await scheduler.run_once() == 0
+
+    # No test-side commit after either tick: the worker owns durability.
+    reader_factory = async_sessionmaker(postgres_app_database, expire_on_commit=False)
+    async with reader_factory() as reader:
+        notifications = list(
+            (
+                await reader.scalars(
+                    select(Notification).where(
+                        Notification.user_id == user_id,
+                        Notification.type == "schedule.reminder",
+                        Notification.url == "/schedule",
+                    )
+                )
+            ).all()
+        )
+        outbox_events = list(
+            (
+                await reader.scalars(
+                    select(StoredEvent).where(
+                        StoredEvent.event_type == NotificationsRequested.EVENT_TYPE,
+                        StoredEvent.aggregate_type == "NotificationBatch",
+                    )
+                )
+            ).all()
+        )
+
+    assert len(notifications) == 1
+    assert "05.01 · 03:00" in notifications[0].body
+    assert len(outbox_events) == 1
+    assert outbox_events[0].payload["notification_ids"] == [str(notifications[0].id)]

@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from nats.js.errors import NoKeysError
 
 from app.deps.cache import NatsKVCache
 
@@ -90,3 +91,59 @@ async def test_create_cache_backend_nats():
         assert isinstance(backend, NatsKVCache)
         assert backend._bucket_name == "ue_cache"
         assert backend._default_ttl == 300
+
+
+@pytest.mark.asyncio
+async def test_nats_kv_cache_invalidate_empty_bucket_pattern():
+    kv = AsyncMock()
+    kv.keys.side_effect = NoKeysError()
+    cache = NatsKVCache(bucket="test_bucket", default_ttl=60)
+    cache._kv = kv
+
+    await cache.invalidate("user:*")
+
+    kv.keys.assert_awaited_once_with()
+    kv.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_nats_kv_cache_invalidate_continues_after_empty_pattern():
+    kv = AsyncMock()
+    kv.keys.side_effect = [NoKeysError(), ["user:1", "other:2"]]
+    cache = NatsKVCache(bucket="test_bucket", default_ttl=60)
+    cache._kv = kv
+
+    await cache.invalidate("missing:*", "exact-key", "user:*")
+
+    assert kv.keys.await_count == 2
+    assert [call.args[0] for call in kv.delete.await_args_list] == [
+        "exact-key",
+        "user:1",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_nats_kv_cache_invalidate_preserves_unexpected_listing_errors():
+    kv = AsyncMock()
+    kv.keys.side_effect = RuntimeError("key listing failed")
+    cache = NatsKVCache(bucket="test_bucket", default_ttl=60)
+    cache._kv = kv
+
+    with pytest.raises(RuntimeError, match="key listing failed"):
+        await cache.invalidate("user:*")
+
+    kv.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_nats_kv_cache_invalidate_only_handles_empty_listing_errors():
+    kv = AsyncMock()
+    kv.keys.return_value = ["user:1"]
+    kv.delete.side_effect = NoKeysError()
+    cache = NatsKVCache(bucket="test_bucket", default_ttl=60)
+    cache._kv = kv
+
+    with pytest.raises(NoKeysError):
+        await cache.invalidate("user:*")
+
+    kv.delete.assert_awaited_once_with("user:1")
