@@ -1511,6 +1511,31 @@
             }
           }
         },
+        "httpsEgress": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["privateCIDRs", "exceptIPv4CIDRs", "exceptIPv6CIDRs"],
+          "properties": {
+            "privateCIDRs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "exceptIPv4CIDRs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "exceptIPv6CIDRs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
         "ingressController": {
           "type": "object",
           "additionalProperties": false,

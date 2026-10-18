@@ -507,6 +507,20 @@ networkPolicy:
   # issuer. Populate with owner-verified endpoint CIDRs; there is no open default.
   gatewayJWKS:
     egressCIDRs: []
+  # TCP 443 egress for backup, backend, file-processor and outbox-worker. Public
+  # destinations stay reachable; cluster, private and link-local ranges are
+  # excepted. Owner-verified private HTTPS endpoints go in privateCIDRs.
+  httpsEgress:
+    privateCIDRs: []
+    exceptIPv4CIDRs:
+      - 10.0.0.0/8
+      - 100.64.0.0/10
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+      - 169.254.0.0/16
+    exceptIPv6CIDRs:
+      - fc00::/7
+      - fe80::/10
   ingressController:
     # Namespace where the ingress controller pods live.
     namespaceSelector:

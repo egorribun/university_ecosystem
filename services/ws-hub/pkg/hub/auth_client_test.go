@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -167,6 +168,32 @@ func TestInternalAPIAuthClient_CanJoinRoom(t *testing.T) {
 		assert.False(t, client.CanJoinRoom(context.Background(), userID, roomID))
 		assert.Equal(t, lastCallCount, callCount, "should not hit server when breaker is open")
 	})
+}
+
+// AUD-182: a backend or breaker failure denies the request but is not a cacheable
+// decision, so the next call must reach a recovered backend instead of a stale denial.
+func TestInternalAPIAuthClient_CanJoinRoom_DoesNotCacheBackendFailures(t *testing.T) {
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+	roomID := "660e8400-e29b-41d4-a716-446655441111"
+
+	var status atomic.Int32
+	status.Store(http.StatusInternalServerError)
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(int(status.Load()))
+	}))
+	defer server.Close()
+
+	client := NewInternalAPIAuthClientWithToken(server.URL, "", nil)
+
+	assert.False(t, client.CanJoinRoom(context.Background(), userID, roomID))
+	_, cached := client.cache.Get(userID + ":" + roomID)
+	assert.False(t, cached, "a backend failure must not populate the L1 cache")
+
+	status.Store(http.StatusOK)
+	assert.True(t, client.CanJoinRoom(context.Background(), userID, roomID))
+	assert.Equal(t, int32(2), calls.Load(), "each call must reach the backend")
 }
 
 func TestInternalAPIAuthClient_Invalidate_RejectsInvalidIDs(t *testing.T) {

@@ -153,6 +153,18 @@ def test_policy_integrity_protects_workflows_and_scanner_adapters() -> None:
         "frontend/package-lock.json",
         "uv.lock",
         "native/rust_ext/deny.toml",
+        # AUD-187: inputs that required gates execute or read from the PR must be
+        # owner-reviewed against the immutable base like the other verifiers.
+        ".secrets.baseline",
+        ".agents/hooks/*",
+        ".github/scripts/deploy-helm.sh",
+        ".github/scripts/deploy-revocation-store.sh",
+        ".github/scripts/validate_mfa_smoke_path.py",
+        ".github/scripts/verify_mfa_key_rotation.py",
+        "frontend/scripts/admin-visual-smoke.mjs",
+        "frontend/scripts/authenticated-visual-audit.mjs",
+        "frontend/scripts/build-orchestrated.mjs",
+        "frontend/scripts/run-lhci.mjs",
     ):
         assert protected_path in protected_case
     assert "app/main.py" not in protected_case

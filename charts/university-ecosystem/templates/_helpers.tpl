@@ -374,3 +374,39 @@ Selector labels
 app.kubernetes.io/name: {{ include "university-ecosystem.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+
+{{/*
+AUD-189: TCP 443 egress for backup, backend, file-processor and outbox-worker.
+Public destinations are reachable; cluster, private and link-local ranges are
+excepted, including cloud metadata. Owner-verified private HTTPS endpoints are
+added explicitly through networkPolicy.httpsEgress.privateCIDRs.
+*/}}
+{{- define "university-ecosystem.httpsEgressRules" -}}
+- to:
+    - ipBlock:
+        cidr: "0.0.0.0/0"
+        except:
+{{- range .Values.networkPolicy.httpsEgress.exceptIPv4CIDRs }}
+          - {{ . | quote }}
+{{- end }}
+    - ipBlock:
+        cidr: "::/0"
+        except:
+{{- range .Values.networkPolicy.httpsEgress.exceptIPv6CIDRs }}
+          - {{ . | quote }}
+{{- end }}
+  ports:
+    - protocol: TCP
+      port: 443
+{{- range $cidr := .Values.networkPolicy.httpsEgress.privateCIDRs }}
+{{- if regexMatch "/0$" (toString $cidr) }}
+{{- fail (printf "networkPolicy.httpsEgress.privateCIDRs entry %q must not be a /0 range" $cidr) }}
+{{- end }}
+- to:
+    - ipBlock:
+        cidr: {{ $cidr | quote }}
+  ports:
+    - protocol: TCP
+      port: 443
+{{- end }}
+{{- end -}}

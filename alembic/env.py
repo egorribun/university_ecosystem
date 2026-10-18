@@ -19,6 +19,7 @@ from app.core.db.schema_drift import (
     filter_check_backed_nullable_diffs,
 )
 from app.core.config import Settings
+from app.core.config.base import _DEVELOPMENT_ENVIRONMENTS
 import app.models as models
 from app.core.db.retained_table_metadata import build_migration_metadata
 
@@ -144,6 +145,15 @@ def get_url() -> str:
     raise RuntimeError("Database URL is not configured for Alembic")
 
 
+def _development_fallback_skip_allowed() -> bool:
+    """Allow a skip only for the documented local SQLite default in development."""
+    environment_name = (os.getenv("ENVIRONMENT") or "").strip().lower()
+    return (
+        "database_url" in _settings.development_fallback_fields
+        and environment_name in _DEVELOPMENT_ENVIRONMENTS
+    )
+
+
 def run_migrations_offline() -> None:
     url: str = get_url()
     context.configure(
@@ -193,13 +203,23 @@ def run_migrations_online() -> None:
     # RZ-W18-06 (audit 2026-03-23 Wave 18): emit a proper Python warning instead
     # of a bare print(). Previously the silent skip was easily missed in logs,
     # leading developers to unknowingly accumulate schema drift.
+    # AUD-168 (audit 2026-10): only the documented local SQLite default may skip,
+    # and only in a development environment. Every other development fallback
+    # fails closed, because exit 0 without migrating looks like a successful deploy.
     if _settings.has_development_fallbacks:
+        if not _development_fallback_skip_allowed():
+            fallback_fields = ", ".join(_settings.development_fallback_fields)
+            raise RuntimeError(
+                "Refusing to skip Alembic migrations: development fallbacks are "
+                f"active for {fallback_fields}. Set DATABASE_URL and every "
+                "required secret explicitly."
+            )
         import warnings
 
         warnings.warn(
             "Skipping Alembic migrations: has_development_fallbacks is True. "
             "Schema drift may cause runtime errors. "
-            "Set DATABASE_URL explicitly to run migrations.",
+            "Set DATABASE_URL and SECRET_KEY explicitly to run migrations.",
             stacklevel=2,
         )
         return

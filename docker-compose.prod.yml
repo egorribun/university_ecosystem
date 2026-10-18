@@ -22,6 +22,11 @@ secrets:
     external: true
   nats_auth_token:
     external: true
+  # AUD-191: both Redis URLs embed the Redis password, so they are mounted as files.
+  cache_redis_url:
+    external: true
+  revocation_redis_url:
+    external: true
   postgres_password:
     file: ${POSTGRES_PASSWORD_SOURCE_FILE:?Set POSTGRES_PASSWORD_SOURCE_FILE for production}
 
@@ -38,11 +43,17 @@ services:
       - secret_key
       - database_url
       - nats_auth_token
+      - cache_redis_url
+      - revocation_redis_url
     environment:
       DATABASE_URL: !reset null
       SECRET_KEY: !reset null
       NATS_AUTH_TOKEN: !reset null
       SPICEDB_INSECURE: !reset null
+      CACHE_REDIS_URL: !reset null
+      REVOCATION_REDIS_URL: !reset null
+      CACHE_REDIS_URL_FILE: /run/secrets/cache_redis_url
+      REVOCATION_REDIS_URL_FILE: /run/secrets/revocation_redis_url
       SECRET_KEY_FILE: /run/secrets/secret_key
       DATABASE_URL_FILE: /run/secrets/database_url
       NATS_AUTH_TOKEN_FILE: /run/secrets/nats_auth_token

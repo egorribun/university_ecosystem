@@ -178,12 +178,18 @@ jobs:
           OTEL_SDK_DISABLED: "true"
         run: uv run pytest -x -q --tb=short tests/
 
+      - name: Generate migration secret key
+        # AUD-168: migrations refuse to run on development fallbacks, so this
+        # ephemeral PostgreSQL job supplies its own per-run signing key.
+        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
       - name: Verify migrations can downgrade
         # RZ-W8-07: Use PostgreSQL (not SQLite) — pgvector, JSONB, partial indexes
         # and FOR UPDATE locking don't exist in SQLite; a passing SQLite migration
         # can silently fail in production.
         env:
           DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test_deploy  # pragma: allowlist secret
+          ENVIRONMENT: testing
         run: |
           uv run alembic upgrade head
           uv run alembic downgrade -1
@@ -1868,10 +1874,16 @@ jobs:
         run: |
           uv sync --frozen
 
+      - name: Generate migration secret key
+        # AUD-168: migrations refuse to run on development fallbacks, so this
+        # ephemeral PostgreSQL job supplies its own per-run signing key.
+        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
       - name: Test database rollback
         # RZ-W8-07: Use PostgreSQL for rollback test — same dialect as production.
         env:
           DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test_rollback  # pragma: allowlist secret
+          ENVIRONMENT: testing
         run: |
           echo "Testing migration rollback capability..."
           uv run alembic upgrade head

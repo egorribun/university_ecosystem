@@ -329,9 +329,7 @@ spec:
       ports:
         - protocol: TCP
           port: 9000
-    - ports:
-        - protocol: TCP
-          port: 443
+    {{- include "university-ecosystem.httpsEgressRules" . | nindent 4 }}
     - to:
         - namespaceSelector:
             matchLabels:
@@ -554,9 +552,7 @@ spec:
         - protocol: TCP
           port: 4317
     # External HTTPS: HIBP, Spotify OAuth, S3 object storage.
-    - ports:
-        - protocol: TCP
-          port: 443
+    {{- include "university-ecosystem.httpsEgressRules" . | nindent 4 }}
     # DNS.
     - to:
         - namespaceSelector:
@@ -659,9 +655,7 @@ spec:
       ports:
         - protocol: TCP
           port: 4317
-    - ports:
-        - protocol: TCP
-          port: 443
+    {{- include "university-ecosystem.httpsEgressRules" . | nindent 4 }}
     - to:
         - namespaceSelector:
             matchLabels:
@@ -809,9 +803,7 @@ spec:
       ports:
         - protocol: TCP
           port: 4317
-    - ports:
-        - protocol: TCP
-          port: 443
+    {{- include "university-ecosystem.httpsEgressRules" . | nindent 4 }}
     - to:
         - namespaceSelector:
             matchLabels:

@@ -101,6 +101,9 @@ _PRODUCTION_FILE_SECRETS = {
         "DATABASE_URL": "/run/secrets/database_url",
         "SECRET_KEY": "/run/secrets/secret_key",
         "NATS_AUTH_TOKEN": "/run/secrets/nats_auth_token",
+        # AUD-191: both URLs embed the Redis password and are allowlisted for *_FILE.
+        "CACHE_REDIS_URL": "/run/secrets/cache_redis_url",
+        "REVOCATION_REDIS_URL": "/run/secrets/revocation_redis_url",
     },
     "notifications-worker": {
         "DATABASE_URL": "/run/secrets/database_url",

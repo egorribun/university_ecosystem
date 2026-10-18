@@ -164,6 +164,14 @@ jobs:
               native/rust_ext/deny.toml|\
               quality/*|security/*|frontend/scripts/lhci-route-policy.mjs|\
               frontend/scripts/lhci-route-policy-config.cjs|\
+              frontend/scripts/admin-visual-smoke.mjs|\
+              frontend/scripts/authenticated-visual-audit.mjs|\
+              frontend/scripts/build-orchestrated.mjs|\
+              frontend/scripts/run-lhci.mjs|\
+              .secrets.baseline|.agents/hooks/*|\
+              .github/scripts/deploy-helm.sh|.github/scripts/deploy-revocation-store.sh|\
+              .github/scripts/validate_mfa_smoke_path.py|\
+              .github/scripts/verify_mfa_key_rotation.py|\
               scripts/osv_batch_audit.py|scripts/check_dependency_audit_report.py|\
               scripts/audit_dependencies.py|scripts/ci/helm_dependency_build.py|\
               scripts/quality/filter_checkov_sarif.py|\

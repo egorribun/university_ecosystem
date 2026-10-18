@@ -70,12 +70,47 @@ def substitute_placeholders(query: str) -> str:
         flags=re.IGNORECASE,
     )
 
-    # Replace standard placeholders with NULL
-    query = re.sub(r"\$\d+", "NULL", query)
+    # Named and anonymous placeholders become NULL. Postgres $n placeholders stay
+    # bound and are planned generically: a NULL literal folds `col = NULL` into a
+    # constant-false filter, so the gate could not see the scan it must catch (AUD-461).
     query = re.sub(r"(?<!:):\w+", "NULL", query)
     query = query.replace("?", "NULL")
 
     return query
+
+
+def _plan_statement_name(query: str) -> str:
+    return "db_perf_gate_" + hashlib.sha256(query.encode()).hexdigest()[:12]
+
+
+async def explain_plan(conn: Any, query: str) -> object:
+    """Plan one statement without executing it and return the JSON plan.
+
+    Binding NULL to a $n placeholder folds the filter into a constant that is
+    never true, so the scan the gate must see disappears (AUD-461).
+    EXPLAIN (GENERIC_PLAN) does not avoid that on bound parameters, so $n
+    statements are prepared and planned under force_generic_plan instead.
+    """
+    parameter_count = max(
+        (int(number) for number in re.findall(r"\$(\d+)", query)), default=0
+    )
+    if parameter_count == 0:
+        result = await conn.exec_driver_sql(f"EXPLAIN (FORMAT JSON) {query}")
+        return result.scalar()
+
+    # SET LOCAL is transactional. PREPARE is not, so the statement is removed by
+    # name after a successful EXPLAIN; DEALLOCATE ALL would also drop asyncpg's
+    # cached statements on the pooled session.
+    statement_name = _plan_statement_name(query)
+    await conn.execute(text("SET LOCAL plan_cache_mode = force_generic_plan"))
+    await conn.exec_driver_sql(f"PREPARE {statement_name} AS {query}")
+    arguments = ", ".join("NULL" for _ in range(parameter_count))
+    result = await conn.exec_driver_sql(
+        f"EXPLAIN (FORMAT JSON) EXECUTE {statement_name}({arguments})"
+    )
+    plan = result.scalar()
+    await conn.exec_driver_sql(f"DEALLOCATE {statement_name}")
+    return plan
 
 
 def extract_queries_from_logs(log_directory: Path) -> list[str]:
@@ -266,11 +301,9 @@ async def run_explain_analysis(
                     await conn.execute(text("SET LOCAL enable_seqscan = off"))
                     # Query logs omit bind values; planner-only EXPLAIN keeps
                     # synthetic placeholders from executing DML or DML CTEs.
-                    explain_sql = f"EXPLAIN (FORMAT JSON) {clean_query}"
                     # Add timeout to explain query to prevent hangs
                     await conn.execute(text("SET statement_timeout = '15s'"))
-                    result = await conn.exec_driver_sql(explain_sql)
-                    plan_json_str = result.scalar()
+                    plan_json_str = await explain_plan(conn, clean_query)
                     await transaction.rollback()
 
             if fail_on_analysis_error:
@@ -404,6 +437,15 @@ async def main():
                 checked_count,
             )
         sys.exit(1)
+
+    # AUD-225: optional (non-gating) mode may log violations, but it must not
+    # claim a pass after them.
+    if has_violations:
+        logger.warning(
+            "DB Performance Gate reported violations in optional mode; "
+            "pass --fail-on-seq-scan to enforce them."
+        )
+        return
 
     logger.info(f"DB Performance Gate PASSED. Checked {checked_count} queries.")
 

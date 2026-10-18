@@ -962,7 +962,6 @@ jobs:
         env:
           SECRET_KEY: ${{ env.SECRET_KEY }}
           ENVIRONMENT: testing
-          DATABASE_URL: "postgresql+asyncpg://postgres:postgres@localhost:5432/university_db"
         run: |
           set -euo pipefail
           echo "Linting changed Alembic migrations for ZDD safety..."
@@ -973,65 +972,25 @@ jobs:
             echo "No changed migrations; baseline migrations are covered by the immutable history gate."
             exit 0
           fi
+          # AUD-208: lint the DDL each changed revision executes against a live
+          # PostgreSQL scratch database. Offline --sql has no inspector, so drop
+          # guards render nothing; index, foreign-key and timeout rules stay enabled.
+          sql_dir="$(mktemp -d)"
+          squawk_args=(
+            --exclude prefer-robust-stmts --exclude prefer-text-field
+            --exclude prefer-bigint-over-int --exclude prefer-identity
+            --exclude prefer-timestamp-tz --exclude disallowed-unique-constraint
+            --exclude require-enum-value-ordering
+          )
           while IFS= read -r migration; do
             [ -z "$migration" ] && continue
             read -r revision down_revision < <(
               uv run python scripts/quality/read_alembic_revision.py "$migration"
             )
             echo "Checking $migration ($down_revision -> $revision)"
-            squawk_args=(
-              --exclude prefer-robust-stmts --exclude prefer-text-field
-              --exclude require-timeout-settings --exclude prefer-bigint-over-int
-              --exclude prefer-identity --exclude prefer-timestamp-tz
-              --exclude require-concurrent-index-creation --exclude constraint-missing-not-valid
-              --exclude require-concurrent-index-deletion
-              --exclude adding-foreign-key-constraint --exclude disallowed-unique-constraint
-              --exclude require-enum-value-ordering
-            )
-            if [ "$revision" = "202610120002" ]; then
-              uv run python - "$migration" <<'PY' | squawk "${squawk_args[@]}"
-          import importlib.util
-          import io
-          import sys
-          from pathlib import Path
-
-          from alembic.migration import MigrationContext
-          from alembic.operations import Operations
-          from sqlalchemy.dialects import postgresql
-
-          migration_path = Path(sys.argv[1])
-          spec = importlib.util.spec_from_file_location(
-              "aud180_squawk_revision", migration_path
-          )
-          if spec is None or spec.loader is None:
-              raise RuntimeError(
-                  "Unable to load the AUD-180 migration for Squawk"
-              )
-          migration = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(migration)
-          if migration.revision != "202610120002":
-              raise RuntimeError(
-                  "Unexpected migration revision for AUD-180 Squawk rendering"
-              )
-
-          output = io.StringIO()
-          migration_context = MigrationContext.configure(
-              dialect=postgresql.dialect(),
-              opts={
-                  "as_sql": True,
-                  "output_buffer": output,
-                  "transactional_ddl": True,
-              },
-          )
-          with Operations.context(migration_context) as operations:
-              with migration_context.begin_transaction():
-                  migration._emit_news_media_asset_ddl(operations)
-          sys.stdout.write(output.getvalue())
-          PY
-            else
-              uv run alembic upgrade "$down_revision:$revision" --sql \
-                | squawk "${squawk_args[@]}"
-            fi
+            sql_file="$sql_dir/$revision.sql"
+            uv run python -m scripts.quality.render_live_alembic_sql "$migration" "$sql_file"
+            squawk "${squawk_args[@]}" "$sql_file"
           done <<< "$changed_files"
 
       - name: Wait for PostgreSQL

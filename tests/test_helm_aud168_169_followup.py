@@ -262,7 +262,9 @@ def test_file_processor_revocation_egress_is_release_scoped(
         ((revocation_selector,), (), (("TCP", 6379),)),
         ((backend_selector,), (), (("TCP", 8000),)),
         (((("app.kubernetes.io/name", "otel-collector"),),), (), (("TCP", 4317),)),
-        ((), (), (("TCP", 443),)),
+        # AUD-189: TCP 443 reaches public destinations only (cluster, private and
+        # link-local ranges are excepted), not any address.
+        ((), ("0.0.0.0/0", "::/0"), (("TCP", 443),)),
         (((("k8s-app", "kube-dns"),),), (), (("TCP", 53), ("UDP", 53))),
     }
 

@@ -1112,6 +1112,31 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Pub
 
 func denyGraphQLIntrospection(context.Context) bool { return false }
 
+// grpcStopTimeout bounds how long shutdown waits for in-flight gRPC calls.
+// Health.Watch streams stay open until their client disconnects, so an
+// unbounded GracefulStop can block the process indefinitely (AUD-095).
+const grpcStopTimeout = 10 * time.Second
+
+// stopGRPCServer drains gRPC calls gracefully for at most timeout, then forces
+// the remaining streams closed with Stop so shutdown always completes.
+func stopGRPCServer(grpcSrv *grpc.Server, timeout time.Duration, logger *slog.Logger) {
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		grpcSrv.GracefulStop()
+	}()
+
+	select {
+	case <-drained:
+		return
+	case <-time.After(timeout):
+	}
+
+	logger.Warn("gRPC graceful stop timed out; forcing stop", "timeout", timeout)
+	grpcSrv.Stop()
+	<-drained
+}
+
 func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Server, cfg *config.Config, logger *slog.Logger) error {
 	lc := net.ListenConfig{}
 	lis, err := lc.Listen(ctx, "tcp", ":"+cfg.GRPCPort)
@@ -1152,7 +1177,7 @@ func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Serv
 
 	logger.InfoContext(ctx, "Shutting down servers...")
 
-	grpcSrv.GracefulStop()
+	stopGRPCServer(grpcSrv, grpcStopTimeout, logger)
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second) // RZ-33-21: parent ctx is already cancelled
 	defer cancel()

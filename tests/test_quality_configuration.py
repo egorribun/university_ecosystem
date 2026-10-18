@@ -930,3 +930,15 @@ def test_coverage_commands_and_sonar_paths_match_quality_contract() -> None:
     vitest_packages = package["devDependencies"]
     vitest_specs = {vitest_packages[name] for name in ("vitest", "@vitest/coverage-v8")}
     assert len(vitest_specs) == 1
+
+
+def test_plain_trivyignore_carries_no_unowned_cve_suppressions() -> None:
+    """AUD-464: CVE suppressions need an owner and expiry in .trivyignore.yaml."""
+
+    cve_entries = [
+        line.strip()
+        for line in _read_text(".trivyignore").splitlines()
+        if line.strip().startswith("CVE-")
+    ]
+
+    assert cve_entries == []
