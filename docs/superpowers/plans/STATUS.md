@@ -14,9 +14,11 @@
 
 Из 23 workflows успешны 20, два штатно пропущены, Checkov failed. Все 78 required context/app pairs присутствуют: 76 SUCCESS, две Checkov пары FAIL. Полного GREEN нет; последняя полностью успешная CI-точка — d355.
 
-После отдельного разрешения владельца artifact 12149119624 проверен по размеру/SHA-256 и прочитан в памяти без клонирования/исполнения repository code. Единственная unsuppressed ошибка: CKV_GHA_7, `.github/workflows/live-acceptance.yml:15`, непустой `workflow_dispatch.inputs.frozen_rc_sha`. Старые Helm parser/schema warnings не объясняют failure, поскольку присутствовали и на успешном efd. Замена ручного параметра на проверяемый tracked RC SHA предложена владельцу, ответ пока ожидается; suppression и обход не добавляются. Main/bootstrap и pre-merge full-smoke порядок остаются отдельным ограничением, main/merge/deploy не выполняются.
+После отдельного разрешения владельца artifact 12149119624 проверен по размеру/SHA-256 и прочитан в памяти без клонирования/исполнения repository code. Единственная unsuppressed ошибка: CKV_GHA_7, `.github/workflows/live-acceptance.yml:15`, непустой `workflow_dispatch.inputs.frozen_rc_sha`. Старые Helm parser/schema warnings не объясняют failure, поскольку присутствовали и на успешном efd. Владелец одобрил замену ручного параметра на проверяемый tracked RC SHA; tests-first реализация ещё не опубликована. Suppression и обход не добавляются. Main/bootstrap и pre-merge full-smoke порядок остаются отдельным ограничением, main/merge/deploy не выполняются.
 
 Для отдельно разрешённого обновления mimetype добавлен временный gateway-only checksum probe в существующий Go test job. Он работает в изолированном hosted temp module/cache с официальным proxy/sumdb, выводит только проверенные public checksum metadata и не меняет module graph. Версия ещё 1.4.15; после получения canonical sums probe удаляется при отдельном update, которому нужен собственный полный CI. Общий cooldown не меняется.
+
+На c960 probe не выполнился из-за SC1007 в pre-commit; 45ab исправил пустые shell assignments без ослабления проверки. На 45ab официальный download/validation напечатал canonical checksum metadata, но EXIT cleanup не смог удалить read-only Go module cache, поэтому весь шаг failed и gateway tests не выполнялись. Следующая коррекция использует bounded go clean -modcache только для собственного временного cache, затем удаляет свой temp directory, сохраняя исходный failure status. Успех cleanup и нового source ещё должны подтвердиться в hosted CI.
 
 ## Проверенные Matrix исправления после hosted RED
 

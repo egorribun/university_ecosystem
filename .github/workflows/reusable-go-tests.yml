@@ -75,7 +75,21 @@ jobs:
         run: |
           set -euo pipefail
           probe_dir="$(mktemp -d "$RUNNER_TEMP/mimetype-checksums.XXXXXX")"
-          trap 'rm -rf -- "$probe_dir"' EXIT
+          cleanup_probe() {
+            probe_status=$?
+            if ! GOMODCACHE="$probe_dir/mod-cache" GOWORK=off GOENV=off \
+              GOTOOLCHAIN=local GOFLAGS='' timeout 30s go clean -modcache; then
+              probe_status=1
+            fi
+            if ! rm -rf -- "$probe_dir"; then
+              probe_status=1
+            fi
+            if [[ -e "$probe_dir" ]]; then
+              probe_status=1
+            fi
+            exit "$probe_status"
+          }
+          trap cleanup_probe EXIT
           cd "$probe_dir"
           printf 'module checksum.probe\n\ngo 1.26.4\n' > go.mod
           export GOWORK=off GOENV=off GOTOOLCHAIN=local GOFLAGS=''
