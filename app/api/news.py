@@ -82,8 +82,7 @@ async def _get_news_list_version(cache: Any | None = None) -> str:
 
 
 async def _increment_news_list_version(cache: Any | None = None) -> None:
-    if cache is not None:
-        await news_cache_version.increment(cache)
+    await news_cache_version.increment(cache)
 
 
 def _news_item_cache_key(id: uuid.UUID | int, locale: str) -> str:
@@ -107,7 +106,7 @@ async def create_news(
         record = await service.create_news(data, locale=locale, owner_user_id=user.id)
     except NewsImageOwnershipError:
         raise_forbidden(locale)
-    await _increment_news_list_version(getattr(request.app.state, "cache", None))
+    await _increment_news_list_version()
     serialized = service.serialize_news(record, locale)
     return serialized
 
@@ -263,7 +262,7 @@ async def update_news(
     except ValueError:
         raise_not_found("news", locale)
 
-    await _increment_news_list_version(getattr(request.app.state, "cache", None))
+    await _increment_news_list_version()
     cache = get_cache()
     if cache.enabled:
         await cache.invalidate(_news_item_cache_key(id, locale))
@@ -289,7 +288,7 @@ async def delete_news(
     if not deleted:
         raise_not_found("news", locale)
 
-    await _increment_news_list_version(getattr(request.app.state, "cache", None))
+    await _increment_news_list_version()
     cache = get_cache()
     if cache.enabled:
         await cache.invalidate(_news_item_cache_key(id, locale))

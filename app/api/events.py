@@ -116,9 +116,8 @@ async def _get_events_list_version(cache: Any) -> str:
     return await events_cache_version.get_version(cache)
 
 
-async def _increment_events_list_version(cache: Any | None) -> None:
-    if cache is not None:
-        await events_cache_version.increment(cache)
+async def _increment_events_list_version(cache: Any | None = None) -> None:
+    await events_cache_version.increment(cache)
 
 
 # Removed obsolete cache key extraction and serialization helpers (now in deps/etag.py)
@@ -154,11 +153,9 @@ async def create_event(
         raise_http_error(
             status.HTTP_400_BAD_REQUEST, "errors.events.creation_failed", locale
         )
-    # ``request`` is a required FastAPI parameter and, since the route moved to
-    # Dishka, also the carrier of the container -- it is never absent.  Whether
-    # a cache exists is the real condition, and _increment_events_list_version
-    # owns it.
-    await _increment_events_list_version(getattr(request.app.state, "cache", None))
+    # Invalidate the canonical cache used by cached_endpoint, not app-state
+    # aliases. The version manager handles disabled caches and shared L2.
+    await _increment_events_list_version()
     return events.serialize_event(record, locale)
 
 
@@ -605,7 +602,7 @@ async def update_event(
     )
     participant_count = participant_count_res.scalar() or 0
 
-    await _increment_events_list_version(getattr(request.app.state, "cache", None))
+    await _increment_events_list_version()
     return events.serialize_event(
         event_dto,
         locale,
@@ -642,7 +639,7 @@ async def delete_event(
         raise_forbidden(locale)
 
     await events.delete_event(event_id)
-    await _increment_events_list_version(getattr(request.app.state, "cache", None))
+    await _increment_events_list_version()
     return {"ok": True}
 
 
