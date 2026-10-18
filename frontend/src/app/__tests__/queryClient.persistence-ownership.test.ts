@@ -10,6 +10,7 @@ import {
 import { useAuthStore } from "@/stores/useAuthStore"
 import { ENCRYPTED_CACHE_PLACEHOLDER_USER_ID, SSR_STUB_USER_ID } from "@/stores/authIdentity"
 import { testUser } from "@/tests/mocks/handlers"
+import type { UserState } from "@/types/Auth"
 
 // Keep real IndexedDB transactions and structured cloning. Only the delivery of
 // an operation's result is held, so account transitions can occur while the
@@ -880,7 +881,7 @@ describe("asynchronous persistence ownership", () => {
 })
 
 describe("request-hydrated cache during auth bootstrap", () => {
-  it.each([SSR_STUB_USER_ID, ENCRYPTED_CACHE_PLACEHOLDER_USER_ID])(
+  it.each([SSR_STUB_USER_ID, ENCRYPTED_CACHE_PLACEHOLDER_USER_ID, -1])(
     "preserves the current unresolved %s snapshot until sign-out is confirmed",
     (placeholder) => {
       useAuthStore.setState({ user: null, loading: true })
@@ -888,7 +889,10 @@ describe("request-hydrated cache during auth bootstrap", () => {
       const key = ["dashboard", "events"] as const
       active.setQueryData(key, ["request-scoped event"])
       try {
-        publishAccount(placeholder)
+        useAuthStore.setState({
+          user: { ...testUser, id: placeholder } as unknown as UserState,
+          loading: false,
+        })
         expect(active.getQueryData(key)).toEqual(["request-scoped event"])
 
         publishAccount(null)
@@ -952,6 +956,27 @@ describe("request-hydrated cache during auth bootstrap", () => {
     active.setQueryData(key, ["unconfirmed request event"])
     try {
       publishAccount(null)
+      expect(active.getQueryData(key)).toBeUndefined()
+    } finally {
+      active.clear()
+    }
+  })
+
+  it("retires a malformed bootstrap identity without coercing its id", () => {
+    useAuthStore.setState({ user: null, loading: true })
+    publishAccount(SSR_STUB_USER_ID)
+    const active = createQueryClient()
+    const key = ["dashboard", "events"] as const
+    active.setQueryData(key, ["request-scoped event"])
+    const coerce = vi.fn(() => {
+      throw new Error("Malformed identity must not be coerced")
+    })
+    try {
+      useAuthStore.setState({
+        user: { ...testUser, id: { toString: coerce } } as unknown as UserState,
+        loading: false,
+      })
+      expect(coerce).not.toHaveBeenCalled()
       expect(active.getQueryData(key)).toBeUndefined()
     } finally {
       active.clear()

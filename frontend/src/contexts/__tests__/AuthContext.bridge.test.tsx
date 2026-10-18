@@ -1040,7 +1040,8 @@ describe("Wave 134 SW1 — useProfileSync bridge", () => {
       const browserRouter = getRouter()
       const browserClient = browserRouter.options.context.queryClient
       clients.push(browserClient)
-      browserRouter.options.hydrate?.(transferred)
+      expect(transferred.mutations).toEqual([])
+      browserRouter.options.hydrate?.({ ...transferred, mutations: [] })
       expect(browserClient.getQueryData(dashboardEventsQueryKey)).toEqual(events)
       expect(browserClient.getQueryData(dashboardStoriesQueryKey)).toEqual(stories)
 
@@ -1101,5 +1102,4 @@ describe("Wave 134 SW1 — useProfileSync bridge", () => {
       }
     }
   })
-
 })

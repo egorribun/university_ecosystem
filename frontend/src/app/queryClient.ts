@@ -6,9 +6,16 @@ import {
   captureSessionEpoch,
   invalidateSessionEpoch,
   getBrowserSessionGeneration,
+  isCurrentBrowserSession,
 } from "@/stores/sessionEpoch"
 import { useAuthStore } from "@/stores/useAuthStore"
-import { getConfirmedUserId, waitForConfirmedUserId } from "@/stores/authIdentity"
+import {
+  ENCRYPTED_CACHE_PLACEHOLDER_USER_ID,
+  SSR_STUB_USER_ID,
+  getConfirmedUserId,
+  waitForConfirmedUserId,
+} from "@/stores/authIdentity"
+import type { UserState } from "@/types/Auth"
 
 const DEFAULT_STALE_MS = 5 * 60_000 // 5 minutes - standard freshness
 const DEFAULT_CACHE_MS = 30 * 60_000 // 30 minutes - persistent window
@@ -206,14 +213,25 @@ export function setQueryCacheIdentity(owner: string | null, beforeNotify?: () =>
   return updateQueryCacheIdentity(owner, beforeNotify, false)
 }
 
+const isBootstrapUser = (user: UserState): boolean => {
+  const id: unknown = user?.id
+  return id === SSR_STUB_USER_ID || id === ENCRYPTED_CACHE_PLACEHOLDER_USER_ID || id === -1
+}
+
 useAuthStore.subscribe((state, previousState) => {
   // A refresh may mark an already-confirmed account loading temporarily.
   if (state.loading && state.user?.id === cacheIdentity) return
   const owner = getConfirmedUserId(state)
-  // SSR can hydrate a request-scoped personalized cache while browser auth is
-  // unresolved. Retire it once bootstrap settles without a confirmed owner,
-  // even when the cache's initial identity was already null.
-  const settledWithoutOwner = previousState.loading && !state.loading && owner === null
+  // A role-only SSR hint or encrypted-cache placeholder is not a settled
+  // signed-out result. Preserve its request snapshot only in the current
+  // browser generation; owner changes still retire prior-account data below.
+  const currentBootstrap = isBootstrapUser(state.user) && isCurrentBrowserSession()
+  const previousBootstrap = isBootstrapUser(previousState.user)
+  const settledWithoutOwner =
+    !state.loading &&
+    owner === null &&
+    !currentBootstrap &&
+    (previousState.loading || previousBootstrap)
   updateQueryCacheIdentity(owner, undefined, settledWithoutOwner)
 })
 

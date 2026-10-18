@@ -13,6 +13,7 @@ import sqlalchemy as sa
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
+from cryptography.fernet import Fernet
 from testcontainers.community.postgres import PostgresContainer
 
 from alembic import command
@@ -261,6 +262,13 @@ def _write_rendered_secret_files(
             contents = "redis://cache-fixture.invalid:6379/0"
         elif variable == "REVOCATION_REDIS_URL_FILE":
             contents = "redis://revocation-fixture.invalid:6379/0"
+        elif variable == "MFA_TOTP_ENCRYPTION_KEYS_FILE":
+            active_key_id = environment["MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID"]
+            encryption_key = Fernet.generate_key().decode("ascii")
+            contents = f"{active_key_id}:{encryption_key}"
+            secret_values.append(encryption_key)
+        elif variable == "SPOTIFY_TOKEN_SECRET_FILE":
+            contents = Fernet.generate_key().decode("ascii")
         else:
             # Generated only for this isolated settings/migration process.
             contents = uuid4().hex + uuid4().hex

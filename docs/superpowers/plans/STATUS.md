@@ -10,6 +10,16 @@
 
 ## Текущая партия и CI
 
+Проверка продолжения от 2026-10-18: [fab766dc](https://github.com/egorribun/university_ecosystem/commit/fab766dc9647fc0023379a84040a18a85b7887a8) завершил все 23 workflows: 19 SUCCESS, два штатных SKIPPED, два FAILURE (Matrix и Owned Live). Прежние 30 unit failures устранены. Python shards: 5654 / 3425 / 3868 / 3391 PASS; в shard 2 отдельно выявлен один случайный password-fixture failure. Все frontend unit shards и aggregate, OpenAPI, inventory, lint, security/types, Checkov и CodeQL прошли. Coverage aggregate был SKIPPED, поэтому полной quality-приёмки нет.
+
+[Tests-first 1d16995](https://github.com/egorribun/university_ecosystem/commit/1d16995b0bd1cb290af15880fd578485aeef7391) подтвердил runtime RED: четыре active-cache assertions и SSR/AuthProvider bridge теряют или удерживают cache в неправильных переходах. Новый subscriber из 8d810371 принимал SSR placeholder с loading=false за завершённый bootstrap без владельца. Исправление сохраняет только текущий unresolved placeholder; смена владельца, подтверждённый sign-out, malformed identity и stale browser generation обязаны очищать cache. Anonymous-read mode не меняется. Типизация empty mutation tuple и форматирование нового bridge test исправляются отдельно, без ослабления production types.
+
+На том же tests-first SHA оба PostgreSQL orphan-chat сценария (clear_history/delete_chat) прошли с настоящей ограниченной NOLOGIN/NOBYPASSRLS ролью, проверкой row_security_active и visibility 0/1. Следующий integration blocker обнаружен позже: rendered migration fixture генерировал обычную строку вместо TOTP key-id:Fernet-key. Коррекция использует независимые runtime-generated Fernet keys для TOTP и Spotify и сохраняет file-backed secrets, active ID из Helm render и redaction. Реальная deployment DB role пока не проверена: bootstrap/superuser connection нельзя считать доказательством RLS.
+
+Owned Live на fab766dc: 14 PASS, три FAILURE, два SKIPPED, один FLAKY; safe diagnostics показали React 418 на dashboard после denied-admin navigation. Связь с cache-retirement defect ещё не доказана. Следующий исправленный source требует собственного полного CI и live прогона; нет merge/deploy, нового exception или заявления о закрытии всех 512 findings.
+
+## Проверенная база первой коррекции
+
 Проверенная база текущей коррекции — [a71b9c90](https://github.com/egorribun/university_ecosystem/commit/a71b9c902b64e4016bf67d009e5a299d07098ab0). Это уже опубликованный source: auth/configuration/logout, chat, event/vector и health-probe изменения нельзя считать приватными кандидатами. Последний commit затрагивает 108 файлов; его краткий заголовок не отражает полный scope.
 
 Все 23 workflow runs этой базы terminal: 17 SUCCESS, два штатных SKIPPED, четыре FAILURE:
