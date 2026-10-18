@@ -180,6 +180,9 @@ async def test_message_page_forwards_cursor_and_preserves_public_forward_fields(
     repository.get_messages = AsyncMock(
         return_value=([latest, earlier], True, "next-page")
     )
+    repository.get_message_sender_profiles = AsyncMock(
+        return_value={owner.id: ("Owner", "/static/owner.png")}
+    )
     service = ChatQueryService(AsyncMock(), repository)
     with patch(
         "app.services.chat.query_service.build_presence_map",
@@ -194,7 +197,12 @@ async def test_message_page_forwards_cursor_and_preserves_public_forward_fields(
     message = result.items[1]
     assert message.forwarded_from_name == "Original sender"
     assert message.read_at == message.edited_at == _NOW
-    assert message.sender is None
+    assert message.sender is not None
+    assert message.sender.model_dump() == {
+        "id": owner.id,
+        "full_name": "Owner",
+        "avatar_url": "/static/owner.png",
+    }
     assert message.reply_to.id == earlier.id
     assert message.reactions[0].model_dump() == {
         "emoji": "👍",

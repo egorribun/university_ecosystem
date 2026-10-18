@@ -14,6 +14,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    op.execute("SET LOCAL lock_timeout = '10s'")
+    op.execute("SET LOCAL statement_timeout = '60s'")
+
     # PostgreSQL unique constraints permit many NULL values, so ordinary rows
     # remain outside the demo-seed identity namespace.
     #
@@ -27,15 +30,34 @@ def upgrade() -> None:
         "users",
         sa.Column("demo_seed_key", sa.String(length=96), nullable=True),
     )
-    op.create_unique_constraint("uq_users_demo_seed_key", "users", ["demo_seed_key"])
+    op.execute(
+        sa.text(
+            "-- UNIQUE cannot be added NOT VALID in PostgreSQL; existing rows stay "
+            "unmarked and this timeout-bounded revision validates atomically.\n"
+            "-- squawk-ignore constraint-missing-not-valid\n"
+            "ALTER TABLE users ADD CONSTRAINT uq_users_demo_seed_key "
+            "UNIQUE (demo_seed_key)"
+        )
+    )
     op.add_column(
         "chats",
         sa.Column("demo_seed_key", sa.String(length=96), nullable=True),
     )
-    op.create_unique_constraint("uq_chats_demo_seed_key", "chats", ["demo_seed_key"])
+    op.execute(
+        sa.text(
+            "-- UNIQUE cannot be added NOT VALID in PostgreSQL; existing rows stay "
+            "unmarked and this timeout-bounded revision validates atomically.\n"
+            "-- squawk-ignore constraint-missing-not-valid\n"
+            "ALTER TABLE chats ADD CONSTRAINT uq_chats_demo_seed_key "
+            "UNIQUE (demo_seed_key)"
+        )
+    )
 
 
 def downgrade() -> None:
+    op.execute("SET LOCAL lock_timeout = '10s'")
+    op.execute("SET LOCAL statement_timeout = '60s'")
+
     # Drop only the private marker schema. Chat/message/user rows remain intact.
     # If code is upgraded again, the demo seeder fails closed on the reserved
     # peer identities and any matching/partial chat membership rather than

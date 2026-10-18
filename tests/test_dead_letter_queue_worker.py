@@ -63,15 +63,57 @@ def make_dlq(session: AsyncMock | None = None) -> DeadLetterQueue:
 
 
 @pytest.mark.asyncio
-async def test_add_failed_job_returns_none_on_duplicate():
+@pytest.mark.parametrize("status", [JobStatus.PENDING.value, JobStatus.RETRYING.value])
+async def test_add_failed_job_returns_none_on_active_duplicate(status: str):
     session = AsyncMock()
     existing_result = MagicMock()
-    existing_result.scalar_one_or_none.return_value = MagicMock()  # duplicate exists
+    duplicate = MagicMock(status=status)
+    existing_result.scalar_one_or_none.return_value = duplicate
     session.execute.return_value = existing_result
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.rollback = AsyncMock()
 
     dlq = make_dlq(session)
     result = await dlq.add_failed_job("MyJob", {"k": "v"}, "error!")
+
     assert result is None
+    session.execute.assert_awaited_once()
+    session.add.assert_not_called()
+    session.flush.assert_not_awaited()
+    session.commit.assert_not_awaited()
+    session.rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [JobStatus.COMPLETED.value, JobStatus.FAILED.value])
+async def test_add_failed_job_reopens_terminal_duplicate(status: str):
+    session = AsyncMock()
+    existing_result = MagicMock()
+    previous_job = MagicMock(
+        status=status,
+        retry_count=3,
+        max_retries=3,
+    )
+    existing_result.scalar_one_or_none.return_value = previous_job
+    session.execute.return_value = existing_result
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+
+    result = await make_dlq(session).add_failed_job(
+        "MyJob", {"k": "v"}, "new error", max_retries=5
+    )
+
+    assert result is previous_job
+    assert previous_job.status == JobStatus.PENDING.value
+    assert previous_job.retry_count == 0
+    assert previous_job.max_retries == 5
+    assert previous_job.payload == '{"k": "v"}'
+    assert previous_job.error_message == "new error"
+    assert previous_job.next_retry_at is not None
+    session.add.assert_not_called()
+    session.flush.assert_awaited_once()
 
 
 @pytest.mark.asyncio

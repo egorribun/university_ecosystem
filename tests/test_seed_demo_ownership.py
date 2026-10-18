@@ -595,13 +595,11 @@ def test_seed_key_migration_is_additive_nullable_unique_and_reversible_by_metada
     operations: list[tuple[object, ...]] = []
 
     class FakeOperations:
+        def execute(self, statement: object) -> None:
+            operations.append(("execute", str(statement)))
+
         def add_column(self, table_name: str, column: object) -> None:
             operations.append(("add_column", table_name, column))
-
-        def create_unique_constraint(
-            self, name: str, table_name: str, columns: list[str]
-        ) -> None:
-            operations.append(("create_unique_constraint", name, table_name, columns))
 
         def drop_constraint(self, name: str, table_name: str, type_: str) -> None:
             operations.append(("drop_constraint", name, table_name, type_))
@@ -613,37 +611,49 @@ def test_seed_key_migration_is_additive_nullable_unique_and_reversible_by_metada
 
     migration.upgrade()
 
-    add_user_column = operations[0]
+    timeout_operations = [
+        ("execute", "SET LOCAL lock_timeout = '10s'"),
+        ("execute", "SET LOCAL statement_timeout = '60s'"),
+    ]
+    assert operations[:2] == timeout_operations
+    upgrade_ddl = operations[2:]
+
+    add_user_column = upgrade_ddl[0]
     assert add_user_column[0:2] == ("add_column", "users")
     user_column = add_user_column[2]
     assert user_column.name == "demo_seed_key"
     assert isinstance(user_column.type, String)
     assert user_column.type.length == 96
     assert user_column.nullable is True
-    assert operations[1] == (
-        "create_unique_constraint",
-        "uq_users_demo_seed_key",
-        "users",
-        ["demo_seed_key"],
+    assert upgrade_ddl[1] == (
+        "execute",
+        "-- UNIQUE cannot be added NOT VALID in PostgreSQL; existing rows stay "
+        "unmarked and this timeout-bounded revision validates atomically.\n"
+        "-- squawk-ignore constraint-missing-not-valid\n"
+        "ALTER TABLE users ADD CONSTRAINT uq_users_demo_seed_key "
+        "UNIQUE (demo_seed_key)",
     )
-    add_chat_column = operations[2]
+    add_chat_column = upgrade_ddl[2]
     assert add_chat_column[0:2] == ("add_column", "chats")
     chat_column = add_chat_column[2]
     assert chat_column.name == "demo_seed_key"
     assert isinstance(chat_column.type, String)
     assert chat_column.type.length == 96
     assert chat_column.nullable is True
-    assert operations[3] == (
-        "create_unique_constraint",
-        "uq_chats_demo_seed_key",
-        "chats",
-        ["demo_seed_key"],
+    assert upgrade_ddl[3] == (
+        "execute",
+        "-- UNIQUE cannot be added NOT VALID in PostgreSQL; existing rows stay "
+        "unmarked and this timeout-bounded revision validates atomically.\n"
+        "-- squawk-ignore constraint-missing-not-valid\n"
+        "ALTER TABLE chats ADD CONSTRAINT uq_chats_demo_seed_key "
+        "UNIQUE (demo_seed_key)",
     )
 
     operations.clear()
     migration.downgrade()
 
     assert operations == [
+        *timeout_operations,
         ("drop_constraint", "uq_chats_demo_seed_key", "chats", "unique"),
         ("drop_column", "chats", "demo_seed_key"),
         ("drop_constraint", "uq_users_demo_seed_key", "users", "unique"),
@@ -661,13 +671,11 @@ def test_group_seed_key_migration_is_additive_and_does_not_adopt_existing_groups
     operations: list[tuple[object, ...]] = []
 
     class FakeOperations:
+        def execute(self, statement: object) -> None:
+            operations.append(("execute", str(statement)))
+
         def add_column(self, table_name: str, column: object) -> None:
             operations.append(("add_column", table_name, column))
-
-        def create_unique_constraint(
-            self, name: str, table_name: str, columns: list[str]
-        ) -> None:
-            operations.append(("create_unique_constraint", name, table_name, columns))
 
         def drop_constraint(self, name: str, table_name: str, type_: str) -> None:
             operations.append(("drop_constraint", name, table_name, type_))
@@ -679,25 +687,33 @@ def test_group_seed_key_migration_is_additive_and_does_not_adopt_existing_groups
 
     migration.upgrade()
 
-    assert len(operations) == 2
-    add_column = operations[0]
+    timeout_operations = [
+        ("execute", "SET LOCAL lock_timeout = '10s'"),
+        ("execute", "SET LOCAL statement_timeout = '60s'"),
+    ]
+    assert operations[:2] == timeout_operations
+    assert len(operations) == 4
+    add_column = operations[2]
     assert add_column[:2] == ("add_column", "groups")
     column = add_column[2]
     assert column.name == "demo_seed_key"
     assert isinstance(column.type, String)
     assert column.type.length == 96
     assert column.nullable is True
-    assert operations[1] == (
-        "create_unique_constraint",
-        "uq_groups_demo_seed_key",
-        "groups",
-        ["demo_seed_key"],
+    assert operations[3] == (
+        "execute",
+        "-- UNIQUE cannot be added NOT VALID in PostgreSQL; existing rows stay "
+        "unmarked and this timeout-bounded revision validates atomically.\n"
+        "-- squawk-ignore constraint-missing-not-valid\n"
+        "ALTER TABLE groups ADD CONSTRAINT uq_groups_demo_seed_key "
+        "UNIQUE (demo_seed_key)",
     )
 
     operations.clear()
     migration.downgrade()
 
     assert operations == [
+        *timeout_operations,
         ("drop_constraint", "uq_groups_demo_seed_key", "groups", "unique"),
         ("drop_column", "groups", "demo_seed_key"),
     ]

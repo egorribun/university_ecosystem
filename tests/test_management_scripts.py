@@ -370,44 +370,38 @@ def test_stories_cleanup_main() -> None:
 @pytest.mark.asyncio
 async def test_run_weekly_cleanup(mock_db_session) -> None:
     mock_engine = MagicMock()
-    mock_conn = MagicMock()
-    mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
-    mock_conn.__aexit__ = AsyncMock()
-    mock_engine.connect.return_value = mock_conn
+    mock_engine.connect.side_effect = AssertionError(
+        "weekly cleanup must not open an engine connection for REINDEX"
+    )
 
     with (
         patch(
             "app.management.weekly_cleanup.async_session", return_value=mock_db_session
         ),
-        patch("app.management.weekly_cleanup.engine", mock_engine),
-        patch("app.management.weekly_cleanup.settings") as mock_settings,
+        patch("app.management.weekly_cleanup.engine", mock_engine, create=True),
     ):
-        mock_settings.database_url = (
-            "postgresql://user:pass@localhost/mydb"  # pragma: allowlist secret
-        )
-
+        execution_sql: list[str] = []
         orphaned_calls = 0
         stale_calls = 0
 
         async def mock_execute(stmt):
             nonlocal orphaned_calls, stale_calls
-            stmt_str = str(stmt)
-            if "NOT" in stmt_str or "user_id" in stmt_str:
-                orphaned_calls += 1
-                mock_res = MagicMock()
-                if orphaned_calls == 1:
-                    mock_res.scalars.return_value.fetchmany.return_value = [1]
-                else:
-                    mock_res.scalars.return_value.fetchmany.return_value = []
-                return mock_res
-            else:
+            statement_sql = str(stmt).lower()
+            execution_sql.append(statement_sql)
+            mock_res = MagicMock()
+            mock_res.scalars.return_value.fetchmany.return_value = []
+
+            if "last_seen_at" in statement_sql:
                 stale_calls += 1
-                mock_res = MagicMock()
                 if stale_calls == 1:
                     mock_res.scalars.return_value.fetchmany.return_value = [2]
-                else:
-                    mock_res.scalars.return_value.fetchmany.return_value = []
-                return mock_res
+            elif "user_id not in" in statement_sql:
+                orphaned_calls += 1
+                if orphaned_calls == 1:
+                    mock_res.scalars.return_value.fetchmany.return_value = [1]
+            else:
+                pytest.fail(f"unexpected weekly cleanup statement: {statement_sql}")
+            return mock_res
 
         mock_db_session.execute = AsyncMock(side_effect=mock_execute)
 
@@ -416,7 +410,16 @@ async def test_run_weekly_cleanup(mock_db_session) -> None:
         assert stats["subscriptions_orphaned"] == 1
         assert stats["subscriptions_stale"] == 1
 
-        mock_conn.execution_options.assert_called_once()
+        assert len(execution_sql) == 4
+        assert all(
+            sql.startswith("delete from push_subscriptions") for sql in execution_sql
+        )
+        assert all("reindex" not in sql for sql in execution_sql)
+        assert all("user_id not in" in sql for sql in execution_sql[:2])
+        assert all("last_seen_at" in sql for sql in execution_sql[2:])
+        mock_db_session.commit.assert_awaited()
+        assert mock_db_session.commit.await_count == 2
+        mock_engine.connect.assert_not_called()
 
 
 def test_weekly_cleanup_main() -> None:

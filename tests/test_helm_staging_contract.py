@@ -102,18 +102,20 @@ def _render_staging(
     *extra: str,
     release_name: str = "staging-contract",
     gateway_jwks_cidr: str | None = "192.0.2.0/24",
+    chart_path: Path = CHART,
+    values_path: Path = STAGING_VALUES,
 ) -> list[dict[str, Any]]:
     result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
         [
             _helm(),
             "template",
             release_name,
-            str(CHART),
+            str(chart_path),
             "--dependency-update=false",
             "--namespace",
             "university-ecosystem",
             "--values",
-            str(STAGING_VALUES),
+            str(values_path),
             *_resolved_staging_args(gateway_jwks_cidr),
             *extra,
         ],

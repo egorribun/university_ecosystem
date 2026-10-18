@@ -165,7 +165,14 @@ async def test_chat_list_resolves_uuid_last_message_without_coercion(
     assert _utc(message.deleted_at) == (_NOW if deleted else None)
     assert message.forwarded_from_name == "Original sender"
     assert message.sender is not None
-    assert (message.sender.id, message.sender.email) == (peer.id, peer.email)
+    assert (message.sender.id, message.sender.full_name, message.sender.avatar_url) == (
+        peer.id,
+        None,
+        None,
+    )
+    public_sender = message.model_dump()["sender"]
+    assert set(public_sender) == {"id", "full_name", "avatar_url"}
+    assert "email" not in public_sender
     assert message.reactions == []
     assert message.reply_to is None
     public = message.model_dump()
@@ -188,3 +195,148 @@ def test_explicit_participant_avatar_roundtrips():
         id=uuid.uuid4(), email="member@example.com", avatar_url="/static/avatar.png"
     )
     assert ChatParticipantDTO.model_validate(participant.model_dump()) == participant
+
+
+@pytest.mark.asyncio
+async def test_message_history_projects_page_senders_in_one_public_profile_query(
+    db_session, user_factory, assert_max_queries
+):
+    owner = await user_factory(full_name="Owner")
+    peer = await user_factory(full_name="Peer", avatar_url="/static/peer.png")
+    inactive_without_profile = await user_factory(
+        full_name="Former profile",
+        avatar_url="/static/former.png",
+        is_active=False,
+    )
+    outside_page = await user_factory(
+        full_name="Outside page", avatar_url="/static/outside.png"
+    )
+    await db_session.execute(
+        delete(UserProfile).where(UserProfile.user_id == inactive_without_profile.id)
+    )
+    chat = Chat(
+        chat_type="group",
+        name="Project team",
+        created_by=owner.id,
+        participants=[owner, peer, inactive_without_profile, outside_page],
+        created_at=_NOW,
+        updated_at=_NOW,
+    )
+    db_session.add(chat)
+    await db_session.flush()
+    latest = Message(
+        chat_id=chat.id,
+        sender_id=peer.id,
+        content="Latest",
+        created_at=_NOW,
+    )
+    tombstone = Message(
+        chat_id=chat.id,
+        sender_id=inactive_without_profile.id,
+        content="",
+        deleted_at=_NOW - timedelta(minutes=1),
+        created_at=_NOW - timedelta(minutes=1),
+    )
+    repeated_sender = Message(
+        chat_id=chat.id,
+        sender_id=peer.id,
+        content="Same sender",
+        created_at=_NOW - timedelta(minutes=2),
+    )
+    outside_limit = Message(
+        chat_id=chat.id,
+        sender_id=outside_page.id,
+        content="Outside page",
+        created_at=_NOW - timedelta(minutes=3),
+    )
+    db_session.add_all([latest, tombstone, repeated_sender, outside_limit])
+    await db_session.commit()
+    chat_id = chat.id
+    expected_ids = {latest.id, tombstone.id, repeated_sender.id}
+    db_session.expunge_all()
+    repository = ChatRepository(db_session)
+    service = ChatQueryService(db_session, repository)
+
+    with (
+        patch(
+            "app.services.chat.query_service.build_presence_map",
+            new=AsyncMock(return_value={}),
+        ),
+        patch.object(
+            repository,
+            "get_message_sender_profiles",
+            wraps=repository.get_message_sender_profiles,
+        ) as sender_profile_lookup,
+    ):
+        async with assert_max_queries(20) as statements:
+            response = await service.get_messages(chat_id, owner, None, 3, "en")
+
+    messages_by_id = {message.id: message for message in response.items}
+    assert set(messages_by_id) == expected_ids
+    assert response.has_more is True
+    latest_sender = messages_by_id[latest.id].sender
+    assert latest_sender is not None
+    assert latest_sender.model_dump() == {
+        "id": peer.id,
+        "full_name": "Peer",
+        "avatar_url": "/static/peer.png",
+    }
+    missing_profile = messages_by_id[tombstone.id]
+    assert missing_profile.content == ""
+    assert _utc(missing_profile.deleted_at) == _NOW - timedelta(minutes=1)
+    assert missing_profile.sender is not None
+    assert missing_profile.sender.model_dump() == {
+        "id": inactive_without_profile.id,
+        "full_name": None,
+        "avatar_url": None,
+    }
+    for message in response.items:
+        assert message.sender is not None
+        assert set(message.model_dump()["sender"]) == {
+            "id",
+            "full_name",
+            "avatar_url",
+        }
+
+    sender_profile_queries = [
+        statement.lower()
+        for statement in statements
+        if "user_profiles" in statement.lower()
+    ]
+    assert len(sender_profile_queries) == 1
+    sender_profile_lookup.assert_awaited_once()
+    requested_sender_ids = sender_profile_lookup.await_args.args[0]
+    assert len(requested_sender_ids) == 2
+    assert set(requested_sender_ids) == {peer.id, inactive_without_profile.id}
+    assert outside_page.id not in requested_sender_ids
+    profile_query = sender_profile_queries[0]
+    assert "user_profiles.user_id" in profile_query
+    assert "user_profiles.full_name" in profile_query
+    assert "user_profiles.avatar_url" in profile_query
+    assert "user_profiles.cover_url" not in profile_query
+    assert "email" not in profile_query
+    assert "hashed_password" not in profile_query
+    assert " in " in profile_query
+
+    # get_by_id() may load chat participants through the chat_participants join,
+    # but the message page must not issue the direct User selectinload that would
+    # hydrate private sender columns such as email and password hashes.
+    normalized_statements = [
+        " ".join(statement.lower().replace('"', "").split()) for statement in statements
+    ]
+    sender_user_queries = [
+        statement
+        for statement in normalized_statements
+        if "from users where users.id in" in statement
+    ]
+    assert sender_user_queries == []
+
+
+@pytest.mark.asyncio
+async def test_message_sender_profiles_empty_batch_skips_database() -> None:
+    database = AsyncMock()
+    repository = ChatRepository(database)
+
+    assert await repository.get_message_sender_profiles([]) == {}
+
+    database.execute.assert_not_awaited()

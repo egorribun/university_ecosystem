@@ -620,6 +620,7 @@ export type {
   MeApiV1UsersMeGetResponse,
   MeApiV1UsersMeGetResponses,
   MessageResponse,
+  MessageSenderInfo,
   MessagesListOut,
   MfaFactorStatusOut,
   MfaMethodChallengeOut,

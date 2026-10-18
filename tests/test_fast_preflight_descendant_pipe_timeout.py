@@ -19,25 +19,41 @@ def test_run_check_deadline_when_descendant_inherits_output_pipes(
     """A short-lived descendant cannot extend the check past its hard deadline."""
 
     marker = tmp_path / "descendant-finished.txt"
-    descendant_code = (
-        "import pathlib, sys, time; "
-        "time.sleep(2.5); "  # Bounded: child delay 2.5 s; parent deadline 0.75 s.
-        # Existence is the completion signal: publish only after the file closes.
-        "marker = pathlib.Path(sys.argv[1]); "
-        "staged = marker.with_suffix('.tmp'); "
-        "staged.write_text('finished', encoding='ascii'); "
-        "staged.replace(marker)"
-    )
+    release = tmp_path / "release-descendant.txt"
+    descendant_code = """
+import pathlib
+import sys
+import time
+
+marker = pathlib.Path(sys.argv[1])
+release = pathlib.Path(sys.argv[2])
+print('descendant ready', flush=True)
+deadline = time.monotonic() + 10.0
+while not release.exists() and time.monotonic() < deadline:
+    time.sleep(0.01)  # Bounded by 10 s child deadline.
+if release.exists():
+    staged = marker.with_suffix('.tmp')
+    staged.write_text('finished', encoding='ascii')
+    staged.replace(marker)
+"""
     parent_code = (
         "import os, subprocess, sys; "
-        "print('parent stdout', flush=True); "
-        "print('parent stderr', file=sys.stderr, flush=True); "
         "child_options = {'start_new_session': True} if os.name != 'nt' else {}; "
-        "subprocess.Popen([sys.executable, '-c', sys.argv[1], sys.argv[2]], **child_options)"
+        "subprocess.Popen([sys.executable, '-c', sys.argv[1], sys.argv[2], "
+        "sys.argv[3]], **child_options); "
+        "print('parent stdout', flush=True); "
+        "print('parent stderr', file=sys.stderr, flush=True)"
     )
     check = fast_preflight.CheckSpec(
         "descendant-held-pipes",
-        (sys.executable, "-c", parent_code, descendant_code, str(marker)),
+        (
+            sys.executable,
+            "-c",
+            parent_code,
+            descendant_code,
+            str(marker),
+            str(release),
+        ),
     )
 
     result = fast_preflight.run_check(
@@ -47,16 +63,19 @@ def test_run_check_deadline_when_descendant_inherits_output_pipes(
         include_output=True,
     )
 
-    assert result.status == "timed_out"
-    assert result.exit_code is None
-    assert "parent stdout" in result.stdout
-    assert "parent stderr" in result.stderr
-    assert result.duration_seconds < 1.75
-    assert not marker.exists()
-
-    deadline = time.monotonic() + 4.0
-    while not marker.exists() and time.monotonic() < deadline:
-        time.sleep(0.01)  # 10 ms poll cadence; the loop is bounded by its 4 s deadline.
+    try:
+        assert result.status == "timed_out"
+        assert result.exit_code is None
+        assert "descendant ready" in result.stdout
+        assert "parent stdout" in result.stdout
+        assert "parent stderr" in result.stderr
+        assert result.duration_seconds < 1.75
+        assert not marker.exists()
+    finally:
+        release.write_text("continue", encoding="ascii")
+        deadline = time.monotonic() + 4.0
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)  # Bounded completion wait for the released child.
     assert marker.exists()
     assert marker.read_text(encoding="ascii") == "finished"
 

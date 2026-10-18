@@ -2116,7 +2116,7 @@
           "sender": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ChatParticipant"
+                "$ref": "#/components/schemas/MessageSenderInfo"
               },
               {
                 "type": "null"
@@ -2141,6 +2141,41 @@
         },
         "required": ["content", "id", "chat_id", "sender_id", "created_at", "read_status"],
         "title": "MessageResponse",
+        "type": "object"
+      },
+      "MessageSenderInfo": {
+        "description": "Public display fields for a sender embedded in a message response.\n\nLegacy message producers may pass a full participant or internal DTO. Ignore\nthose extra fields here so email and account state never enter message output.",
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": ["id"],
+        "title": "MessageSenderInfo",
         "type": "object"
       },
       "MessagesListOut": {

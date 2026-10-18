@@ -80,6 +80,7 @@ async def test_message_history_hides_attachments_for_tombstones() -> None:
     repo.get_messages = AsyncMock(
         return_value=([_tombstone(chat_id, user_id)], False, None)
     )
+    repo.get_message_sender_profiles = AsyncMock(return_value={})
     service = ChatQueryService(AsyncMock(), repo)
 
     with patch(

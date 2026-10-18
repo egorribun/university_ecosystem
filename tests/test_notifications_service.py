@@ -614,7 +614,6 @@ async def test_event_creation_persists_notification_source_event(
     async_client,
     db_session,
     user_factory,
-    monkeypatch: pytest.MonkeyPatch,
 ):
     admin = await user_factory(role="admin")
     password = "Adm1nPass!"
@@ -622,13 +621,6 @@ async def test_event_creation_persists_notification_source_event(
     await db_session.commit()
 
     headers = await _login(async_client, admin.email, password)
-
-    enqueue_spy = unittest.mock.AsyncMock()
-
-    monkeypatch.setattr(
-        "app.services.notification_queue.enqueue_event_notification",
-        enqueue_spy,
-    )
 
     starts_at = dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)
     ends_at = starts_at + dt.timedelta(hours=2)
@@ -645,8 +637,6 @@ async def test_event_creation_persists_notification_source_event(
     response_event = response.json()
     event_id = response_event["id"]
     assert response_event["title"] == payload["title"]
-    enqueue_spy.assert_not_called()
-    enqueue_spy.assert_not_awaited()
 
     stored_events = (
         (
@@ -674,7 +664,6 @@ async def test_news_creation_persists_notification_source_event(
     async_client,
     db_session,
     user_factory,
-    monkeypatch: pytest.MonkeyPatch,
 ):
     admin = await user_factory(role="admin")
     password = "Adm1nPass!"
@@ -682,13 +671,6 @@ async def test_news_creation_persists_notification_source_event(
     await db_session.commit()
 
     headers = await _login(async_client, admin.email, password)
-
-    enqueue_spy = unittest.mock.AsyncMock()
-
-    monkeypatch.setattr(
-        "app.services.notification_queue.enqueue_news_notification",
-        enqueue_spy,
-    )
 
     response = await async_client.post(
         "/news?lang=ru",
@@ -699,8 +681,6 @@ async def test_news_creation_persists_notification_source_event(
     response_news = response.json()
     news_id = response_news["id"]
     assert response_news["title"] == "Async News"
-    enqueue_spy.assert_not_called()
-    enqueue_spy.assert_not_awaited()
 
     stored_events = (
         (

@@ -364,6 +364,33 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             names[user_id] = full_name
         return names
 
+    async def get_message_sender_profiles(
+        self, user_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, tuple[str | None, str | None]]:
+        """Batch-load only public sender display fields for a message page.
+
+        Callers supply the unique sender IDs from an already authorized, paginated
+        message result. Selecting profile columns directly avoids hydrating email,
+        account state, or other private user/profile fields, and keeps this to one
+        query regardless of the number of distinct senders.
+        """
+        sender_ids = list(dict.fromkeys(user_ids))
+        if not sender_ids:
+            return {}
+
+        stmt = select(
+            UserProfile.user_id,
+            UserProfile.full_name,
+            UserProfile.avatar_url,
+        ).where(UserProfile.user_id.in_(sender_ids))
+        result = await self.db.execute(stmt)
+        profiles: dict[uuid.UUID, tuple[str | None, str | None]] = {
+            sender_id: (None, None) for sender_id in sender_ids
+        }
+        for sender_id, full_name, avatar_url in result.all():
+            profiles[sender_id] = (full_name, avatar_url)
+        return profiles
+
     async def find_existing_dm(
         self, user1_id: uuid.UUID, user2_id: uuid.UUID
     ) -> ChatDTO | None:
@@ -561,7 +588,6 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             select(Message)
             .where(Message.chat_id == chat_id)
             .options(
-                selectinload(Message.sender),
                 selectinload(Message.attachments),
                 # Wave 206 — one extra SELECT … WHERE message_id IN (…) per page;
                 # the query service aggregates these into ReactionAggregate.

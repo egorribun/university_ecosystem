@@ -6,6 +6,7 @@ import os
 import runpy
 import sys
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -30,6 +31,187 @@ _LIVE_DATABASE = bool(os.getenv("RUN_INTEGRATION_TESTS"))
 _UNREACHABLE_DATABASE_URL = (
     "postgresql+asyncpg://migration-gate@127.0.0.1:9/unreachable"
 )
+
+
+def test_ddl_recorder_preserves_leading_directives_and_lock_copy_order() -> None:
+    recorder = renderer._DdlRecorder()
+    recorder.active = True
+    rename = (
+        "-- The source heap remains locked while the replacement takes its name.\n"
+        "-- squawk-ignore renaming-table\n"
+        "ALTER TABLE public.events RENAME TO events_prepart_old"
+    )
+
+    recorder(
+        None,
+        None,
+        "LOCK TABLE public.events IN ACCESS EXCLUSIVE MODE",
+        None,
+        None,
+        False,
+    )
+    recorder(None, None, rename, None, None, False)
+    recorder(
+        None,
+        None,
+        "INSERT INTO public.events SELECT * FROM public.events_prepart_old",
+        None,
+        None,
+        False,
+    )
+
+    assert recorder.statements == [
+        "LOCK TABLE public.events IN ACCESS EXCLUSIVE MODE",
+        rename,
+        "INSERT INTO public.events SELECT * FROM public.events_prepart_old",
+    ]
+
+
+def test_ddl_recorder_keeps_parameterized_dml_as_a_non_ddl_comment() -> None:
+    recorder = renderer._DdlRecorder()
+    recorder.active = True
+    statement = "DELETE FROM public.events_default WHERE occurred_at >= %(start)s"
+    context = SimpleNamespace(compiled=SimpleNamespace(binds={"start": object()}))
+
+    recorder(None, None, statement, {"start": "secret-value"}, context, False)
+
+    assert len(recorder.statements) == 1
+    assert "non-DDL observation only" in recorder.statements[0]
+    assert (
+        "-- DELETE FROM public.events_default WHERE occurred_at >= %(start)s"
+        in (recorder.statements[0])
+    )
+    assert "secret-value" not in recorder.statements[0]
+
+
+def test_ddl_recorder_does_not_duplicate_transaction_events_as_cursor_sql() -> None:
+    recorder = renderer._DdlRecorder()
+    recorder.active = True
+
+    recorder._on_begin(None)
+    recorder(None, None, "BEGIN", None, None, False)
+
+    assert recorder.statements == [
+        "-- observed SQLAlchemy begin event; transaction-event representation, "
+        "not cursor text\nBEGIN"
+    ]
+
+
+class _FakeAdminConnection:
+    def __init__(self, statements: list[str]) -> None:
+        self.statements = statements
+
+    def __enter__(self) -> _FakeAdminConnection:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def exec_driver_sql(self, statement: str) -> None:
+        self.statements.append(statement)
+
+
+class _FakeAdminEngine:
+    def __init__(self) -> None:
+        self.statements: list[str] = []
+        self.disposed = False
+
+    def connect(self) -> _FakeAdminConnection:
+        return _FakeAdminConnection(self.statements)
+
+    def dispose(self) -> None:
+        self.disposed = True
+
+
+def _patch_renderer_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_upgrade: Callable[[object, str], None],
+) -> tuple[_FakeAdminEngine, list[renderer._DdlRecorder]]:
+    admin = _FakeAdminEngine()
+    recorders: list[renderer._DdlRecorder] = []
+    recorder_type = renderer._DdlRecorder
+
+    def new_recorder() -> renderer._DdlRecorder:
+        recorder = recorder_type()
+        recorders.append(recorder)
+        return recorder
+
+    monkeypatch.setattr(renderer, "_connect_admin", lambda _url: admin)
+    monkeypatch.setattr(
+        renderer,
+        "read_revision_metadata",
+        lambda _migration: ("target", "parent"),
+    )
+    monkeypatch.setattr(renderer, "_alembic_config", lambda: object())
+    monkeypatch.setattr(renderer, "_DdlRecorder", new_recorder)
+    monkeypatch.setattr(renderer.command, "upgrade", fake_upgrade)
+    return admin, recorders
+
+
+def _assert_recorder_listeners_removed(recorder: renderer._DdlRecorder) -> None:
+    for event_name, listener in recorder.event_listeners():
+        assert not renderer.event.contains(renderer.Engine, event_name, listener)
+
+
+def test_live_renderer_records_transaction_events_and_removes_listeners_on_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = "postgresql+psycopg://renderer@localhost/university"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+
+    def fake_upgrade(_config: object, destination: str) -> None:
+        if destination == "parent":
+            return
+        engine = sa.create_engine("sqlite://")
+        try:
+            with engine.begin() as connection:
+                connection.exec_driver_sql("CREATE TABLE rendered (id INTEGER)")
+        finally:
+            engine.dispose()
+
+    admin, recorders = _patch_renderer_runtime(monkeypatch, fake_upgrade)
+
+    sql = renderer.render_revision_sql(Path("target.py"), database_url)
+
+    assert sql.count("BEGIN;") == 1
+    assert sql.count("COMMIT;") == 1
+    assert "CREATE TABLE rendered (id INTEGER);" in sql
+    assert admin.disposed
+    assert admin.statements[0].startswith('CREATE DATABASE "alembic_squawk_')
+    assert admin.statements[1].startswith('DROP DATABASE IF EXISTS "alembic_squawk_')
+    assert os.environ["DATABASE_URL"] == database_url
+    _assert_recorder_listeners_removed(recorders[0])
+
+
+def test_live_renderer_records_rollback_and_removes_listeners_on_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = "postgresql+psycopg://renderer@localhost/university"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+
+    def fake_upgrade(_config: object, destination: str) -> None:
+        if destination == "parent":
+            return
+        engine = sa.create_engine("sqlite://")
+        try:
+            with engine.begin() as connection:
+                connection.exec_driver_sql("CREATE TABLE rendered (id INTEGER)")
+                raise RuntimeError("simulated migration failure")
+        finally:
+            engine.dispose()
+
+    admin, recorders = _patch_renderer_runtime(monkeypatch, fake_upgrade)
+
+    with pytest.raises(RuntimeError, match="simulated migration failure"):
+        renderer.render_revision_sql(Path("target.py"), database_url)
+
+    statements = recorders[0].statements
+    assert sum(statement.endswith("\nBEGIN") for statement in statements) == 1
+    assert sum(statement.endswith("\nROLLBACK") for statement in statements) == 1
+    assert not any(statement.endswith("\nCOMMIT") for statement in statements)
+    assert admin.disposed
+    assert os.environ["DATABASE_URL"] == database_url
+    _assert_recorder_listeners_removed(recorders[0])
 
 
 def test_main_requires_a_migration_and_an_output_path(
@@ -90,7 +272,14 @@ def test_live_render_captures_the_aud180_ddl_with_its_timeouts(
 ) -> None:
     sql = renderer.render_revision_sql(_AUD180_MIGRATION, os.environ["DATABASE_URL"])
 
-    assert sql.startswith("SET LOCAL lock_timeout = '10s';\n")
+    assert sql.startswith(
+        "-- observed SQLAlchemy begin event; transaction-event representation, "
+        "not cursor text\nBEGIN;\n"
+    )
+    lock_timeout_position = sql.index("SET LOCAL lock_timeout = '10s'")
+    statement_timeout_position = sql.index("SET LOCAL statement_timeout = '60s'")
+    first_ddl_position = sql.index("CREATE TABLE news_media_assets (")
+    assert lock_timeout_position < statement_timeout_position < first_ddl_position
     assert "CREATE TABLE news_media_assets (" in sql
     assert (
         "CREATE INDEX ix_news_media_assets_owner_user_id "

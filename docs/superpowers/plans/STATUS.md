@@ -1,154 +1,47 @@
 # Статус выпуска MVP v1.0.0
 
-Обновлено: 2026-10-18 (Europe/Istanbul). Действующий порядок — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+Обновлено: 2026-10-18 (Europe/Istanbul). Порядок — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
 ## Текущий приоритет
 
-После dependency checkpoint C8 выполняется полное закрытие [октябрьского аудита](../../audits/AUDIT-2026-10.md): все 512 AUD IDs, включая 507 исторически открытых находок и наблюдений (18 P1, 122 P2, 234 P3, 133 ниже P3) и пять исторически закрытых. Исторический статус не заменяет verdict для текущего source. Для каждого пункта нужны regression/runtime evidence либо обоснованный disposition; приёмка и выпуск MVP продолжаются после этого приоритета.
+Полное закрытие [октябрьского аудита](../../audits/AUDIT-2026-10.md): все 512 AUD IDs, включая 507 исторически открытых пунктов и пять исторически закрытых. Для каждого нужны проверенное исправление и regression/runtime evidence либо обоснованный disposition. Исторический статус и наличие commit не заменяют приёмку текущего source. Общий процент закрытия пока не установлен. Приёмка MVP продолжается после этого приоритета.
 
-### Зафиксированный hosted checkpoint: 780ef932
+Один checkout, ветка `egorribun`, существующий [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git и принимает работу максимум трёх GPT-6 Luna Max агентов с непересекающимися файлами. Merge/deploy и обходы проверок не выполнялись.
 
-На [780ef932](https://github.com/egorribun/university_ecosystem/commit/780ef9323cd032c3a44e3cb386d8d5955f1754f5)
-все 23 workflow runs terminal: 21 SUCCESS, два штатных SKIPPED, failures 0.
-[Matrix 39069496976](https://github.com/egorribun/university_ecosystem/actions/runs/39069496976),
-Coverage & Quality Policy Gate и CI Success — SUCCESS.
-Все 78 required context/app pairs найдены: 77 SUCCESS и Checkov
-code-scanning NEUTRAL из-за отсутствующей main configuration сравнения.
-NEUTRAL не доказывает отсутствие alerts; отдельные Checkov Actions и
-CodeQL прошли. Owned live Core acceptance прошёл: 221 contracts,
-18 browser tests / 2 штатных skips, cleanup и metadata receipt успешны.
+## Текущая партия и CI
 
-AUD-201 backend guard и messenger UI проверены на этом source:
-неадминистратор ищет минимум по двум Unicode code points после trim,
-admin/internal и существующий выбор query aliases сохранены.
-Это узкий согласованный v1 security-fix, не полная защита от scraping.
-Прежний [b05d987 checkpoint](../../audits/AUDIT-2026-10.md#hosted-closure-checkpoint-2026-10-17-b05d987)
-сохраняет source-bound evidence NATS/scheduler, AUD-179/182/491,
-event-count coverage и реальной пересборки WASM с ammonia 4.2.4.
+Входная ревизия партии — [0ca7778b](https://github.com/egorribun/university_ecosystem/commit/0ca7778b5b9fb5593e7b04ee154e4737db338ab9). Последние audit-коммиты `a91259f0`, `f7994339`, `0ca7778b` затрагивают 46 уникальных AUD IDs; часть дополняет прежние исправления. Это инвентаризация изменений, а не число окончательно закрытых находок.
 
-На предыдущем source был flaky первый login в password-reset live-сценарии.
-На 780ef932 сбой не повторился; причина не объявлена исправленной.
-Сохранена проверенная закрытая диагностика без raw URL или секретов.
-[Подробности текущего checkpoint](../../audits/AUDIT-2026-10.md#hosted-closure-checkpoint-2026-10-18-780ef932).
+[Matrix 39090418920](https://github.com/egorribun/university_ecosystem/actions/runs/39090418920) завершился FAILURE: инвентаризация тестов, Alembic и четыре Python-шарда. Frontend unit/build/lint и отдельные Go/security jobs прошли; они не заменяют aggregate coverage/quality acceptance.
 
-Это evidence только для 780ef932, не автоматический PASS следующего SHA.
-AUD-195 sender-profile после отменённой операции ожидает отдельного
-подтверждения; AUD-189 source fix ещё не внедрён. Staging/production не
-развёрнуты, реальные trusted proxy/CNI/PVC/CSI проверки отложены.
-Все 512 AUD IDs, MVP/visual acceptance и release ещё не закрыты.
-Baseline319, 261 dispositions, finite131, 78 required contexts и
-blocking CodeQL сохранены. Merge/deploy не выполнялись.
+Текущая корректирующая партия:
 
-### Текущий source batch: AUD-219 / AUD-206
+- AUD-195: публичные поля авторов сообщений читаются одним batch query; email/account state исключены из sender DTO и прямой загрузки автора. OpenAPI и generated frontend-клиент согласованы.
+- AUD-208: live Alembic capture сохраняет transaction events, LOCK, копирование данных и комментарии конкретных DDL. Четыре уже затронутые PR миграции получили ограниченные таймауты; добавлены проверки атомарного отката.
+- Устаревшие cleanup, Outbox и DLQ tests согласованы с опубликованной логикой. Descendant-pipe regression использует bounded handshake вместо гонки фиксированных пауз.
+- CSS/Helm tests явно выражают реальные source dependencies; существующий валидатор инвентаризации и его правила сохраняются.
 
-На tests-only `78f421c7` получены два ожидаемых frontend RED для
-автоповтора TOTP и один backend RED для UUID-valued metric label.
-Исправления ограничивают автоматическую попытку текущим pending/account
-и фиксируют metric channel как `chat`; ручной повтор, step-up, session
-guard, chat routing/payload и backend MFA budgets сохранены.
-[Границы и RED evidence](../../audits/AUDIT-2026-10.md#aud-219--aud-206-bounded-automatic-work-and-metrics-2026-10-18).
+Локально: PostgreSQL 62/62 и все девять live SQL/Squawk проверок PASS; чат 457/457; Helm/inventory 396/396; Linux descendant-pipe 20/20; DLQ 16/16; contrast 2/2. Outbox/metadata cohort: 68 PASS, шесть PostgreSQL-only cases отдельно прошли в live cohort. Harness 28/28, Ruff, TypeScript, strict mypy и 430 Markdown links PASS. Полный secret scan: 519 findings / 0 unmatched, baseline319. Новая опубликованная ревизия требует полного hosted coverage/quality evidence. [Подробности партии](../../audits/AUDIT-2026-10.md#audit-follow-up-and-ci-reconciliation-2026-10-18).
 
-На `f5346f19` unit shards прошли, включая 21 TOTP test и metric regression,
-но полный source не GREEN: frontend coverage gate обнаружил непроверенный
-возврат отменённого TOTP microtask, а Owned Live повторил flaky login
-с нулём наблюдённых API login requests. Добавлен unmount regression для
-coverage gap; требование 100% сохранено.
+Следующая параллельная партия: изоляция Compose-сетей (AUD-192), ограничение Docker API для Alloy (AUD-193), маршрутизация персональных уведомлений ws-hub (AUD-476). Приватные кандидаты до интеграции и проверок не считаются исправлениями. AUD-189 уже имеет source fix HTTPS egress; реальная CNI-проверка остаётся открытой.
 
-Tests-only `d69afbba` отдельно подтвердил enabled SSR credential controls
-и enabled suggestion button во время submitting. Локальный hydration
-guard теперь закрывает все семь controls до готовности handlers;
-POST method, auth/session logic и deadlines сохранены.
-[Readiness evidence и предел причинного вывода](../../audits/AUDIT-2026-10.md#login-form-hydration-readiness-regression-2026-10-18).
-Это не доказанная причина прежнего live flake. Собственный hosted GREEN
-новой ревизии ещё требуется; результат 780ef932 не переносится на неё.
+## Последняя полностью принятая контрольная точка
 
-### Исторические C12/C11 checkpoints (superseded by hosted evidence above)
+На [780ef932](https://github.com/egorribun/university_ecosystem/commit/780ef9323cd032c3a44e3cb386d8d5955f1754f5) все 23 workflow runs terminal: 21 SUCCESS, два штатных SKIPPED, failures 0. [Matrix 39069496976](https://github.com/egorribun/university_ecosystem/actions/runs/39069496976), Coverage & Quality Policy Gate и CI Success прошли. Все 78 required context/app pairs найдены: 77 SUCCESS и отдельно проверенный Checkov code-scanning NEUTRAL из-за отсутствующей main configuration сравнения. NEUTRAL не означает отсутствие alerts; отдельные Checkov Actions и CodeQL прошли.
 
-C12 опубликован 2026-10-17 в ветке `egorribun` коммитом [939e9ba7](https://github.com/egorribun/university_ecosystem/commit/939e9ba7d37eb0606a2ffe7ec43ed90118f690e4), поверх C11 `450a7cfe`, в существующем [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). В коммите 40 изменённых файлов: общий TOTP budget, IP-key middleware, защита reset-token и CSP reports, безопасные display names, operational-secret validation и regression tests. Упоминание 37 незакоммиченных файлов относится к прежнему локальному checkpoint, а не к опубликованному состоянию. Приватные кандидаты, не вошедшие в Git, по-прежнему не считаются интегрированными исправлениями.
+Owned live Core acceptance: 221 contracts, 18 browser tests, два штатных skips и успешный cleanup. Это evidence только для 780ef932; последующие audit-коммиты требуют своих проверок. [Историческая контрольная точка](../../audits/AUDIT-2026-10.md#hosted-closure-checkpoint-2026-10-18-780ef932).
 
-Проверка GitHub 2026-10-17 13:53 UTC: [Owned Live Acceptance C12](https://github.com/egorribun/university_ecosystem/actions/runs/39036981759) остановился до Docker: 216/217 Node contract tests PASS, один FAIL в `auth-login-lockout.contract.test.mjs`, требующий прежний cookie-key middleware. C12 намеренно использует client-IP до аутентификации; проверенная user identity остаётся на route-level. Контракт и пояснения live spec согласуются с этим разделением без повышения лимитов, удаления проверок или возврата небезопасного credential-keying. Это исправление требует собственного hosted GREEN; live browser acceptance не выполнена. [CI Matrix C12](https://github.com/egorribun/university_ecosystem/actions/runs/39036981768) на момент сверки ещё выполняется; итоговая coverage/release-приёмка не заявляется.
+Причина прежнего flaky первого login не объявлена установленной. Исправленный SSR hydration readiness defect имеет отдельное доказательство; новая live приёмка ещё требуется.
 
-Историческая локальная валидация C12 до публикации: положительная валидация `mfa_totp_attempt_limit` внедрена и проверена; frontend 211/211 PASS, TypeScript и ESLint PASS. Контроли подтверждают сохранение серверной ошибки, запрет POST просроченного токена и точный токен в POST после 65 завершённых миграций. Повторная проверка: ResetPassword.tsx и legacyResetTokenState.ts — 100% statements/branches/functions/lines (88 тестов); 13 изменённых backend-модулей — 148 PASS, включая 4 integration-теста на testcontainers PostgreSQL/Redis/NATS; frontend 7 файлов / 210 тестов, Node 19/19, tsc, ESLint, Prettier, Ruff, strict mypy (347) и harness 28/28 PASS. Эти source-bound результаты не заменяют проверки нового опубликованного SHA.
+## Зависимости, политика и ресурсы
 
-C11 опубликован в существующем PR1306 на `450a7cfe050edbd58f45be52b9fec8dad567fa65` обычными commit/push с hooks. Hosted CI завершён: 75 SUCCESS, один отдельно проверенный Checkov NEUTRAL и два FAILURE из 78 required contexts. CodeQL — SUCCESS, новых alerts в изменённом коде нет. Checkov workflow и четыре анализа успешны; NEUTRAL сообщает о недостающей конфигурации в `main`, а не о находках. Aggregate PR differential coverage не покрывает две строки `app/repositories/user_repository.py:304,391` из 3 356 изменённых строк; `CI Success` зависит от этого gate. В C12 добавлены тесты реальных запросов: 35/35 PASS, обе строки покрыты, branches этого файла — 100%. Это выборочная диагностика с сохранённым общим denominator и порогом, а не прохождение hosted gate. Пороги и required contexts сохранены; приёмка C11 не заявляется.
+- Dependency checkpoint C8 (`5611eb00`) принят; последующие изменения проверяются на собственных SHA. Шесть compatibility holds и открытый SeaweedFS advisory сохранены в [dependency supplement](../../audits/AUDIT-2026-10.md#dependency-closure-supplement-2026-10-15). Удалённые `dependency-updates-2026-10`, `merge-exceptions.md` и `NEXT_SESSION_PROMPT.md` не восстанавливаются.
+- Сохраняются baseline319, ровно 261 owner-approved exact disposition, 78 required contexts, blocking CodeQL и обычные hooks. Новые identities остаются блокирующими. Finite131 касается только неизменённых migration blobs из base `ac74e915` до 2026-11-13; остальные Tier 0 и затронутые миграции требуют 100%.
+- Один тяжёлый локальный прогон одновременно. Admission RAM ≤75% / free ≥8 GiB; stop RAM ≥85% / free <4 GiB. Разрешение Linux screenshots: ≤80% / ≥6 GiB, cap 1 GiB / 2 CPU; Lighthouse: 75% / 8 GiB, cap 2 GiB / 2 CPU.
+- Одноразовые PostgreSQL/Linux контейнеры партии удалены по точным ownership metadata. Успешный PostgreSQL guard подтвердил неизменность source, отсутствие оставшихся owned процессов и минимум 19,58 GiB свободной RAM. Global prune и удаление чужих процессов, volumes, env, Git history или private rescue bundle не применяются.
 
-Опубликованный C11 содержит исправления CSRF cookie rotation, недоверенных avatar/cover при регистрации, очистки профильных ссылок, удаления общих event images, восстановления NATS, query-error/empty состояний карты и stories, отмены swipe при отключении и безопасной обработки quota в Dashboard. Формы событий и новостей сохраняют пользовательский ввод при ошибках, проверяют текущие права и подтверждают потерю несохранённых изменений. Это кандидаты по AUD-001/165/180/202/203/205/052/057/058/079/233/234/235; окончательные закрытия требуют принятого evidence.
+## После аудита
 
-Локальный affected backend C11: 878 PASS в 61 модуле, один штатный PostgreSQL-only skip. Все десять изменённых production-файлов имеют 100% statements/lines/branches; Ruff check/format — 31 файл, strict mypy — 347 файлов без ошибок. Общий denominator `app` + `alembic/versions` и его порог сохранены: это выборочная диагностика, а не global backend coverage acceptance. Реальный установленный nats-py проверен через контролируемый transport; live broker acceptance не заявляется. Ожидание lock и инициализация используют общий deadline 5 секунд, очистка — отдельные 2 секунды. Media cleanup учитывает текущие ссылки и выполняется после commit; линейная согласованность с конкурентной записью ссылки и гарантированное физическое удаление не доказаны.
+Закрыть quality/live gates, пройти два полных запуска 59 specs с paired DB/S3 persistence/restore между ними, затем risk/a11y, 36 Linux captures News/Events/Schedule и решение владельца, serial LHCI 7×3, frozen-RC full smoke, final security review, ordinary merge/main checks, шесть GHCR images и релиз. Единственный утверждённый визуальный пакет — Home12 на `ddbbc84d`.
 
-Полный frontend-прогон C11: 9 117 PASS в 752 файлах, весь authored-source denominator — 100% statements/branches/functions/lines; native TypeScript, полный ESLint с нулём предупреждений и форматирование PASS. После него до публикации изменены только два locale JSON: добавлен отсутствующий `common:statuses.saving` для RU/EN; 67 затронутых dialog/i18n тестов, scanner и форматирование PASS. Production TS source этого прогона сохранён в C11. Новые изменения C12 требуют собственных проверок.
-
-Production build и bundle budgets C11 PASS; неизменённые WASM-пакеты прошли integrity/source-provenance validation. Repository harness — 28/28, CI catalog — 59 workflows / 183 jobs, ссылки в 430 Markdown-файлах без ошибок. Финальный source secret scan C11: 4 434 files / 501 findings / 0 unmatched. Baseline содержит 319 identities, approved dispositions — 261; новых исключений или изменений границ политики нет. Завершённые guards не оставили recorded owned processes.
-
-Опубликованная партия C12: общий TOTP budget, глобальный IP rate limit, безопасные имена комментариев/уведомлений и проверка operational placeholders. Их дефекты воспроизведены до исправления; отдельный focused GREEN — 83/83, TOTP API — 2/2. Реальный pinned Redis подтвердил атомарный account budget: 32 concurrent attempts, 8 разрешены и 24 получили 429; owned container и anonymous volume отсутствуют после очистки. Affected backend в 108 модулях: 1 625 PASS / один штатный PostgreSQL-only skip; дополнительные 12 модулей — 168/168 PASS. Source-bound сведение coverage подтвердило отсутствие line/branch gaps в 18 production-файлах, исходники которых после этих прогонов не менялись. Дополнительный config/MFA cohort после валидации положительного лимита — 139/139 PASS; `mfa_settings.py` имеет 100% line/statement/branch coverage. Ruff check/format — 22 изменённых Python-файла, strict mypy — 347 файлов PASS. Общий denominator и порог сохранены; это не global coverage acceptance. Нулевой и отрицательный `mfa_totp_attempt_limit` теперь отклоняются; authentic RED и GREEN сохранены.
-
-Для reset-token privacy authentic RED получен на backend/Caddy, Node и React. Backend/Node/Caddy-часть: 37/37 pytest и strict mypy по 347 файлам PASS; Node HTTP — 19/19 с `no-referrer` на фактическом gzip SSR-ответе. Pinned Caddy 2.11.7: две canonical-конфигурации, validate и 120 HTTP-проверок PASS; все 118 ответов, дошедших до handlers, содержат `no-referrer`. Два malformed-path 400 возникают раньше handlers. Проверены encoded paths/query keys, duplicate/malformed query, access/error redaction и сохранение nonsensitive URI. Owned container/network cleanup PASS; отдельная подсеть проверена на отсутствие IPAM overlap. В React устранены overflow pruning timer, цикл legacy-path REPLACE и ложный invalid-link при stale nested params. Исторический focused React/auth v7 до последующих правок кеша и ошибок формы: 189/189 PASS, native TypeScript и affected ESLint PASS. Обе регрессии смены токена — обычного и с кодированными slash/percent — сначала воспроизвели отправку прежнего значения. Исправление использует штатный matcher TanStack для текущего pathname вместо независимого params store; недостижимый stale-param guard удалён. В новом SSR/cache/history коде остаются coverage gaps; итоговой frontend/coverage приёмки нет. Отрицательные pending/committed-unmount сценарии проверены также против исходника C11 и воспроизводят отсутствие invalid-link, контроль StrictMode проходит. Финальные security/hooks/hosted gates C12 ещё требуются.
-
-Приватные кандидаты по публичным chat sender DTO, формам расписания, KEDA, Helm, Spectral и NATS KV ожидают root-интеграции и проверок. AUD-005/174/166/458 уже имеют соответствующие исправления и regression tests; повторные правки не создаются. AUD-008 имеет исправленный resolver повторений; отдельный timezone/scheduler/commit regression подготовлен, доставка ещё не проверена. Для AUD-173 причинная связь «expiry cache вызывает logout» не подтверждена source-сверкой; 120 auth-тестов, включая cold-bootstrap AuthProvider/MSW, PASS. Это не browser-cookie/reload acceptance. AUD-169 имеет согласованные selectors egress/ingress; live CNI reachability не доказана. AUD-164/167 требуют фактических trusted proxy peers и forwarding chain; CIDR угадывать нельзя. Продуктовая, визуальная и release-приёмка ещё не завершены.
-
-## Исторические локальные проверки зависимостей
-
-- Release-age cutoff 2026-10-07T12:16:13Z and version-selection/maturity freeze 2026-10-14T12:16:13Z remain unchanged; validation receipts keep their own dates. [Summary and holds](../../audits/AUDIT-2026-10.md#dependency-closure-supplement-2026-10-15).
-- npm union: 1,833 exact identities, 0 gaps / 0 findings; Python OSV: 228/228, 0; pip-audit: 224 installed distributions, 0; Rust OSV: 208/208, 0.
-- Historical contract checkpoint: 2,341 PASS / one POSIX-only skip on its prior source; the earlier strict mypy result (347 files / 0 issues) is historical. The focused validation recorded for the local C3 source at this checkpoint reported 616 passes, one expected Windows skip for the POSIX-only FIFO case, and 22 subtests passed. Ruff check/format, current strict mypy (347 files / 0 issues), custom AST checks, the repo-only harness (28/28), the CI catalog (59 workflows / 183 jobs), inventory/model-default, and orphan-pattern checks passed. The backend `*_FILE`/Settings initialization/projected-file loading POSIX probe rejected eight invalid-file cases with sanitized errors, including FIFO and a regular-file-to-FIFO race; all nine Hadolint 2.15.1 checks passed. GolangCI-Lint 2.14.0 on Go 1.26.9 passed for all three services; hosted checks remain required.
-- Earlier reviewed frontend source: 741 files / 8,965 PASS; production build, bundle, Storybook, and SSR health/login/missing-route 200/200/404 PASS. Current local C3 full-build receipt identifier is `af196ac2` (full provenance remains in the exact private root receipt); its UID/GID 10001:10001 SSR run returned HTTP 200 for health, SSR, JS, and CSS. Broader browser acceptance remains in the paused MVP plan.
-- Earlier local chart v3 semantic checks were recorded for Redis 7.4.11 and NATS 2.15.0; rollout still requires a configured ExternalSecret and `store_dir`. Local C3 Checkov profiles covered 81 resources and 1,035 passed checks (844 + 96 + 95), with 0 failed, 0 skipped, and 0 parse errors. They used actual C2 OCI digests only; this is not C3 rebuilt-image provenance or hosted CI evidence. A disposable NATS 2.15.0 fresh-volume UID migration across 1001→10001→1001 passed publish/restart/rollback checks and removed all temporary resources; this does not establish live PVC/CSI behavior.
-- Earlier Goldmark 1.8.6 remediation: affected Linux Go 1.26.9 race checks PASS, coverage 100%, lint 0; source-bound Goldmark/JWKS rechecks PASS; govulncheck reachable/imported findings 0. The full Go Linux race run on the local C3 source at this recorded checkpoint at 2026-10-15 21:19 UTC passed with 0 uncovered blocks (gateway 852, ws-hub 1,905, file-processor 1,164); current GolangCI-Lint 2.14.0 on Go 1.26.9 passed for all three services. GO-2026-5932 remains module-only with fixed version N/A; openpgp is not imported or called.
-- Historical C1-source raw scan: 4,384 files / 465 findings, 0 unmatched against the then-exact 225-record overlay; this remains historical. The earlier C3-source scan covered 4,408 files / 483 findings and had 18 unmatched against the prior 225 scope. On 2026-10-16 the owner approved those 18 identities, extending the approved scope to 243 while preserving the prior 225. The 4,408-file / 483-finding / 0-unmatched result was collected before removal of 21 inline detect-secrets pragma comments and is superseded as current-source evidence. The post-removal unfiltered scan covered 4,408 files / 490 findings, with 7 unmatched against the then-current 243-record overlay. On 2026-10-16 the owner separately approved exactly those seven identities, extending owner-approved scope to 250 while preserving all prior 243. A root-controlled private conditional 250-overlay scan reported 0 unmatched (4,408 / 490); canonical policy support is now integrated in source. Its canonical policy tests passed 250 tests in 36.16 seconds and Ruff check/format passed before this documentation update; the post-documentation final-source scan and hosted checks remain required for each published source. Three Go projected-Secret symlink test fixtures now fail rather than `Skipf` when fixture setup fails. The `.secrets.baseline` remains byte-identical at 319 identities; 78 required contexts, blocking CodeQL, and hooks remain unchanged. At that historical checkpoint, the full MVP/platform audit remained paused; release readiness was not declared.
-  On 2026-10-16 the owner approved exactly two additional exact-match identities in the
-  existing external_kubernetes_secret_reference category: Secret Keyword public
-  Kubernetes object references at security/trivy-university-values.yaml and
-  tests/test_mfa_helm_contract.py. The exact path/type/finding-digest tuples are
-  recorded in quality/security-false-positive-dispositions.json; raw digests are
-  omitted. Each has reviewed_on 2026-10-16 and expires_on 2027-01-10. The prior 250
-  records remain unchanged, bringing the owner-approved scope to 252. The owner later approved exactly nine additional identities in the existing `source_contract_identifier` category, bringing scope to 261; see the [nine-identity audit update](../../audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16). The policy records
-  do not establish passing tests, final-source validation, or hosted checks; see [the
-  audit
-  update](../../audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16).
-- Direct RustSec: seven lock graphs PASS, 0 advisories, exit 0; database HEAD unchanged. Backend build/OCI, Trivy 0.75.0, and runtime evidence for [source commit ba59279c](https://github.com/egorribun/university_ecosystem/commit/ba59279c) remain bound to that source; later Dockerfile changes need current-source image evidence. The local Redis AOF/RDB UID proof does not replace live PVC/CSI or protected backup/restore checks. SeaweedFS 4.48 / GHSA-99q7-x53r-6j4g remains OPEN; six compatibility holds and only the Ammonia 4.2.3 / Rclone 1.75.2 exceptions remain. At that historical checkpoint, the full MVP/platform audit remained paused; release readiness was not declared. Local source-bound evidence is limited to the receipts recorded here; [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306) determines the current published SHA and hosted-check authority. Hosted and final-source gates remain required.
-
-## Источник и hosted CI
-
-- Принят dependency checkpoint C8: source `5611eb00`, tree `50118a0d`, проверенный PR merge preview `85844cc8` с тем же tree и родителями `ac74e915`/C8. [CI 38880075531](https://github.com/egorribun/university_ecosystem/actions/runs/38880075531), Coverage & Quality Policy Gate и CI Success завершились SUCCESS. Все 78 required contexts созданы: 77 SUCCESS и один отдельно проверенный [Checkov code-scanning NEUTRAL](https://github.com/egorribun/university_ecosystem/runs/116907406606); pending, missing и failures — 0. Сам Actions job Checkov прошёл; NEUTRAL относится к невозможности сравнить прежнюю main SARIF configuration с PR configuration.
-- Root сверил raw artifacts и provenance C8: frontend 9 013 тестов, 569 policy sources в JSON/LCOV и 100% всех четырёх метрик; Linux Go 1.26.9 race/lint/integration прошли, uncovered blocks — 0. Quality manifest valid: 203 Tier 0 файла, finite131 неизменён, девять изменённых миграций и все 283 применимые метрики вне finite131 — 100%. Пять unsupported counters явно сохранены как unsupported. Checkov Helm: 1 035 PASS / 81 resources / 0 failed или skipped. Trivy: 30 targets, 12 LOW / 18 MEDIUM / 0 HIGH или CRITICAL; 19 full-framework Checkov warnings остаются видимыми.
-- Финальная проверка C8: tracked scan 4 415 files / 501 findings / 0 unmatched, 261 exact dispositions и byte-identical baseline319; обычные commit/push hooks прошли. Удалённые dependency-updates folder, merge-exceptions file/reference и NEXT_SESSION_PROMPT отсутствуют. Шесть compatibility holds и открытый SeaweedFS advisory сохранены в [dependency supplement](../../audits/AUDIT-2026-10.md#dependency-closure-supplement-2026-10-15). Этот checkpoint не заменяет будущие проверки нового audit source, live PVC/CSI, backup/restore или приёмку MVP.
-- Local source-bound receipts do not establish the current published SHA or hosted result; Git and [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306) determine that state. Hosted and final-source checks remain release prerequisites.
-- Dependency follow-up on `d1580b2e`: Trivy passed in [matrix run 38848992718](https://github.com/egorribun/university_ecosystem/actions/runs/38848992718); separate [Checkov](https://github.com/egorribun/university_ecosystem/actions/runs/38848992703) and [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/38848992666) runs also passed on that source. The matrix run failed coverage normalization; its final Tier 0 validator did not run. The local follow-up passed 9,012 frontend tests across 742 files, with all 569 policy sources present in both JSON and LCOV and exactly 100% statements, branches, functions, and lines. Linux Go 1.26.9 race tests and GolangCI-Lint 2.14.0 passed for all three services, with no uncovered blocks, including the portable Secret openers. Final-source validation, ordinary hooks, and fresh hosted checks are still required for publication; at that historical source checkpoint, broader MVP and audit work remained paused.
-
-### HISTORICAL retained MVP checkpoint (not current dependency CI)
-
-- HISTORICAL: source сохранённой контрольной точки — 99f8ddbe, tree 3bce78ea; это не текущая dependency-source identity.
-- HISTORICAL hosted run [38548905717](https://github.com/egorribun/university_ecosystem/actions/runs/38548905717) завершился FAIL. Все четыре backend unit shards, backend aggregate, integration shard 0, migrations, frontend shards/full unit suite, lint/build, WASM и CodeQL прошли. Integration shards 1–3 пропущены конфигурацией matrix.
-- HISTORICAL merge preview 8de6200e имеет тот же tree и родителей ac74e915 и 99f8ddbe. Coverage artifact связан с этим run/preview. Frontend global coverage: lines 99.939%, statements 99.856%, functions 99.936%, branches 99.562% при требовании 100%; не покрыты 11 lines, 29 statements, 3 functions и 64 branch arms в 18 файлах. Coverage normalization и CI Success — FAIL; следующий quality/Tier 0 validator пропущен, его PASS нет.
-- HISTORICAL backend shard span — 37:48 при max-parallel=2, самый длинный shard — 19:27. Это не critical path всего workflow; цель 15 минут не достигнута.
-- Сохраняются 78 required contexts, blocking CodeQL и Semgrep в pre-commit. Результаты этого historical source не переносятся на следующий SHA.
-
-## HISTORICAL retained MVP checkpoint: подробности
-
-- Обычные hooks и tracked-secrets scan прошли перед commit/push `99f8ddbe`. Clock adapter исправляет перевод Playwright deadline между процессами; MFA challenge сохраняет канонический Retry-After. Локально: 1678 parser tests, 217 live contracts, 22 session-cleanup tests; после regex narrowing — ещё 21 helper contract и полный TypeScript. Backend: 249 выбранных тестов PASS, изменённый MFA challenge — 100% statements/lines/branches.
-- Свежий Core `run-d8b50263-c6e9-494d-a55f-e653e657f235` собран и поднят на `99f8ddbe`. Native CSP/Worker — 20 PASS; Enter — 1 native POST, query/canary в URL — 0, cleanup PASS. Это не доказывает отсутствие ошибок на authenticated Map/Schedule.
-- Focused8: 28 PASS / 6 FAIL / 6 утверждённых skips. Это диагностика, а не приёмка. Три Map failures и desktop Schedule дают одинаковый EvalError: emitted `vendor-rxdb-CfXP_ufI.js:28:26053` соответствует Ajv `new Function` при RxDB validation в общем `useScheduleData`. CSP и validation не ослаблены.
-- News: desktop RU/360 heading оказался выше viewport при scrollY=189; mobile прошёл все 10 language/width tuples. Источник вертикального смещения пока не установлен.
-- Mobile MFA: финальный enabled-login вернул 429, Retry-After не принят строгим диапазоном 1–60. Совместные desktop/mobile flows запрашивают шесть кодов при общем IP-лимите 5/600 s; это ведущая гипотеза, но фактический header class и bucket ещё не подтверждены. Лимиты, deadline/reserve и assertions сохранены.
-- Native mouse click дал 0 POST и TimeoutError: до клика hit target — active boot loader, после failed click — submit control при active state. CSS failsafe может оставить state active после снятия pointer interception. Причина полного тайм-аута не доказана; Enter security proof не заменяет mouse UX acceptance.
-- RxDB/Z-Schema candidate сохранён приватно как непроверенный WIP: `rxdb-zschema-csp-private-v1-20261014`. Он не применён, не прошёл RED/GREEN, schema parity, build или browser acceptance. Native click classifier V3.1 сохранён отдельно; News staged diagnostic остаётся предложением.
-
-## Сохранность и ресурсы
-
-- Core остановлен штатным owner-checked `stop`: все 23 container IDs и 6 volumes сохранены, работающих контейнеров этого Core — 0. Core C1, C21, 532 и failed Core 81, их state/backups и volumes сохранены.
-- Для устранения исчерпания Docker subnet pool удалены только 23 проверенных остановленных контейнера и 3 сети устаревшего source `7167b218`. Все его 6 volumes и state bytes, остальные container/network IDs и все volume identities сохранены. Global prune не применялся.
-- Последний записанный ресурсный checkpoint: три точно идентифицированных старых процесса этой работы завершены по PID/birth/command hash (superseded validation shell/child и зацикленная одноразовая проверка пути); runtime guards завершились без оставшихся recorded owned processes.
-- Действуют 261 owner-approved exact secret disposition: прежние 252 сохранены без
-  изменений плюс ровно 9 Secret Keyword function-binding/restoration identities в
-  existing `source_contract_identifier` category across gateway, file-processor, and
-  ws-hub Go configuration packages; approved on 2026-10-16 and expiring 2027-01-10.
-  Exact path/type/finding-digest tuples are in the policy JSON; raw digests are omitted. See the [audit update](../../audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).
-  Baseline — 319 identities, 78 required contexts, blocking CodeQL и hooks не менялись.
-  Current-source validation and hosted checks remain required. Finite131 unchanged:
-  только неизменённые migration blobs из base `ac74e915` до 2026-11-13; touched/new/
-  unmatched migrations и весь прочий Tier 0 сохраняют 100%. Новых migration exceptions нет.
-- Admission RAM ≤75% / free ≥8 GiB, stop ≥85% / free <4 GiB. Linux screenshots: утверждённое ограниченное исключение ≤80% / ≥6 GiB, cap 1 GiB / 2 CPU; Lighthouse — 75% / 8 GiB, cap 2 GiB / 2 CPU. Чужие процессы, env, volumes, Git history и private rescue bundle сохраняются.
-
-## Приёмка MVP после аудита
-
-Закрыть текущие quality/live gates, пройти два полных запуска 59 specs с paired DB/S3 persistence/restore между ними, затем risk/a11y, 36 Linux captures News/Events/Schedule и решение владельца, serial LHCI 7×3, frozen-RC full smoke, final security/audit review, ordinary merge/main checks, шесть GHCR images и релиз. Единственный утверждённый визуальный пакет — Home12 на `ddbbc84d`; новой визуальной приёмки не было.
+Staging/production не развёрнуты; фактические trusted proxy/CNI/PVC/CSI проверки и соответствующие operational решения остаются открытыми.

@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.schemas.chat import PresenceStatus
+from app.schemas.chat import ChatParticipant, MessageResponse, PresenceStatus
 from app.services.chat.query_service import ChatQueryService
 
 # ---------------------------------------------------------------------------
@@ -330,6 +330,9 @@ class TestGetMessages:
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=chat)
         repo.get_messages = AsyncMock(return_value=([msg], False, None))
+        repo.get_message_sender_profiles = AsyncMock(
+            return_value={user.id: ("Test author", "/static/test-author.png")}
+        )
 
         session = AsyncMock()
         svc = ChatQueryService(session, repo)
@@ -344,6 +347,13 @@ class TestGetMessages:
         assert len(result.items) == 1
         assert result.has_more is False
         repo.get_messages.assert_awaited_once_with(chat.id, None, 20, user_id=user.id)
+        repo.get_message_sender_profiles.assert_awaited_once_with([user.id])
+        assert result.items[0].sender is not None
+        assert result.items[0].sender.model_dump() == {
+            "id": user.id,
+            "full_name": "Test author",
+            "avatar_url": "/static/test-author.png",
+        }
 
     @pytest.mark.asyncio
     async def test_empty_messages(self):
@@ -353,6 +363,7 @@ class TestGetMessages:
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=chat)
         repo.get_messages = AsyncMock(return_value=([], False, None))
+        repo.get_message_sender_profiles = AsyncMock(return_value={})
 
         session = AsyncMock()
         svc = ChatQueryService(session, repo)
@@ -365,6 +376,7 @@ class TestGetMessages:
             result = await svc.get_messages(chat.id, user, None, 20, "en")
 
         assert result.items == []
+        repo.get_message_sender_profiles.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_not_participant(self):
@@ -374,11 +386,15 @@ class TestGetMessages:
 
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=chat)
+        repo.get_messages = AsyncMock(return_value=([], False, None))
+        repo.get_message_sender_profiles = AsyncMock(return_value={})
 
         svc = ChatQueryService(AsyncMock(), repo)
 
         with pytest.raises(Exception):  # noqa: B017
             await svc.get_messages(chat.id, user, None, 20, "en")
+        repo.get_messages.assert_not_awaited()
+        repo.get_message_sender_profiles.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_chat_not_found(self):
@@ -400,6 +416,7 @@ class TestGetMessages:
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=chat)
         repo.get_messages = AsyncMock(return_value=(msgs, True, "cursor-abc"))
+        repo.get_message_sender_profiles = AsyncMock(return_value={})
 
         session = AsyncMock()
         svc = ChatQueryService(session, repo)
@@ -431,6 +448,7 @@ class TestGetMessages:
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=chat)
         repo.get_messages = AsyncMock(return_value=([msg], False, None))
+        repo.get_message_sender_profiles = AsyncMock(return_value={})
 
         svc = ChatQueryService(AsyncMock(), repo)
         with patch(
@@ -441,3 +459,80 @@ class TestGetMessages:
             result = await svc.get_messages(chat.id, user, None, 20, "en")
 
         assert result.items[0].read_at == read_at
+
+    @pytest.mark.asyncio
+    async def test_sender_profiles_are_batched_for_unique_page_senders(self):
+        user = _mock_user()
+        first_sender = _mock_user()
+        second_sender = _mock_user()
+        chat = _mock_chat(user.id, first_sender.id, second_sender.id)
+        messages = [
+            _mock_message(chat.id, first_sender.id),
+            _mock_message(chat.id, second_sender.id),
+            _mock_message(chat.id, first_sender.id),
+        ]
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=chat)
+        repo.get_messages = AsyncMock(return_value=(messages, False, None))
+        repo.get_message_sender_profiles = AsyncMock(
+            return_value={
+                first_sender.id: ("First sender", "/first.png"),
+                second_sender.id: (None, None),
+            }
+        )
+        svc = ChatQueryService(AsyncMock(), repo)
+
+        with patch(
+            "app.services.chat.query_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={},
+        ):
+            result = await svc.get_messages(chat.id, user, None, 3, "en")
+
+        repo.get_message_sender_profiles.assert_awaited_once()
+        requested_ids = repo.get_message_sender_profiles.await_args.args[0]
+        assert len(requested_ids) == 2
+        assert set(requested_ids) == {first_sender.id, second_sender.id}
+        senders = [item.sender for item in result.items]
+        assert all(sender is not None for sender in senders)
+        assert [sender.full_name for sender in senders if sender is not None] == [
+            "First sender",
+            None,
+            "First sender",
+        ]
+
+
+def test_message_sender_output_filters_legacy_producer_fields():
+    sender_id = uuid.uuid4()
+    sender_values = {
+        "id": sender_id,
+        "email": "private@example.com",
+        "full_name": "Public Name",
+        "avatar_url": "/static/public.png",
+        "is_active": False,
+    }
+    now = datetime.now(UTC)
+
+    for sender in (
+        sender_values,
+        ChatParticipant(**sender_values),
+    ):
+        response = MessageResponse(
+            id=uuid.uuid4(),
+            chat_id=uuid.uuid4(),
+            sender_id=sender_id,
+            content="Message",
+            created_at=now,
+            read_status=False,
+            sender=sender,
+        )
+
+        assert response.sender is not None
+        public_sender = response.model_dump()["sender"]
+        assert public_sender == {
+            "id": sender_id,
+            "full_name": "Public Name",
+            "avatar_url": "/static/public.png",
+        }
+        assert "email" not in public_sender
+        assert "is_active" not in public_sender

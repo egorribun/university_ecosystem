@@ -1211,12 +1211,35 @@ export type MessageResponse = {
    */
   read_status: boolean
   reply_to?: ReplyPreview | null
-  sender?: ChatParticipant | null
+  sender?: MessageSenderInfo | null
   /**
    * Sender Id
    */
   sender_id: string
   sender_presence?: PresenceStatus | null
+}
+
+/**
+ * MessageSenderInfo
+ *
+ * Public display fields for a sender embedded in a message response.
+ *
+ * Legacy message producers may pass a full participant or internal DTO. Ignore
+ * those extra fields here so email and account state never enter message output.
+ */
+export type MessageSenderInfo = {
+  /**
+   * Avatar Url
+   */
+  avatar_url?: string | null
+  /**
+   * Full Name
+   */
+  full_name?: string | null
+  /**
+   * Id
+   */
+  id: string
 }
 
 /**

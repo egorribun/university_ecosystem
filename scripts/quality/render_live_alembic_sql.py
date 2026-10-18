@@ -18,6 +18,7 @@ import re
 import sys
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 import sqlalchemy as sa
@@ -32,9 +33,25 @@ from scripts.quality.read_alembic_revision import (
 )
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_DDL_STATEMENT = re.compile(
-    r"^\s*(?:CREATE|ALTER|DROP|COMMENT|GRANT|REVOKE|TRUNCATE|RENAME|SET)\b",
+_SQL_OPERATION = re.compile(
+    r"^(CREATE|ALTER|DROP|COMMENT|GRANT|REVOKE|TRUNCATE|RENAME|SET|LOCK|"
+    r"INSERT|UPDATE|DELETE|MERGE)\b",
     re.IGNORECASE,
+)
+_DDL_OPERATIONS = {
+    "CREATE",
+    "ALTER",
+    "DROP",
+    "COMMENT",
+    "GRANT",
+    "REVOKE",
+    "TRUNCATE",
+    "RENAME",
+    "SET",
+}
+_PARAMETERIZED_DML_NOTE = (
+    "-- observed parameterized DML template; non-DDL observation only, "
+    "Squawk does not analyze DML; bound values are intentionally omitted"
 )
 _ADMIN_CONNECT_ATTEMPTS = 30
 
@@ -44,11 +61,58 @@ class LiveRenderError(RuntimeError):
 
 
 class _DdlRecorder:
-    """Collects the DDL that executes while the recorder is active."""
+    """Collect lintable DDL and safety context from the active migration."""
 
     def __init__(self) -> None:
         self.active = False
         self.statements: list[str] = []
+
+    @staticmethod
+    def _first_operation(statement: str) -> str | None:
+        """Return the first SQL verb after leading line or block comments."""
+        remaining = statement
+        while True:
+            remaining = remaining.lstrip()
+            if remaining.startswith("--"):
+                newline = remaining.find("\n")
+                if newline < 0:
+                    return None
+                remaining = remaining[newline + 1 :]
+                continue
+            if remaining.startswith("/*"):
+                comment_end = remaining.find("*/", 2)
+                if comment_end < 0:
+                    return None
+                remaining = remaining[comment_end + 2 :]
+                continue
+            match = _SQL_OPERATION.match(remaining)
+            return match.group(1).upper() if match else None
+
+    def _record_transaction_event(self, name: str, sql: str) -> None:
+        if self.active:
+            self.statements.append(
+                "-- observed SQLAlchemy "
+                f"{name} event; transaction-event representation, not cursor text\n"
+                f"{sql}"
+            )
+
+    def _on_begin(self, _connection: object) -> None:
+        self._record_transaction_event("begin", "BEGIN")
+
+    def _on_commit(self, _connection: object) -> None:
+        self._record_transaction_event("commit", "COMMIT")
+
+    def _on_rollback(self, _connection: object) -> None:
+        self._record_transaction_event("rollback", "ROLLBACK")
+
+    def event_listeners(self) -> tuple[tuple[str, Callable[..., object]], ...]:
+        """Return stable listener pairs for registration and cleanup."""
+        return (
+            ("before_cursor_execute", self),
+            ("begin", self._on_begin),
+            ("commit", self._on_commit),
+            ("rollback", self._on_rollback),
+        )
 
     def __call__(
         self,
@@ -59,8 +123,35 @@ class _DdlRecorder:
         context: object,
         executemany: bool,
     ) -> None:
-        if self.active and _DDL_STATEMENT.match(statement):
+        if not self.active:
+            return
+
+        operation = self._first_operation(statement)
+        if operation is None:
+            return
+
+        if operation in _DDL_OPERATIONS or operation == "LOCK":
             self.statements.append(statement.strip())
+            return
+
+        if operation not in {"INSERT", "UPDATE", "DELETE", "MERGE"}:
+            return
+
+        compiled = getattr(context, "compiled", None)
+        compiled_binds = getattr(compiled, "binds", {})
+        has_bound_parameters = bool(compiled_binds) or bool(parameters) or executemany
+        if not has_bound_parameters:
+            # The heap-to-partitioned copy is a parameter-free INSERT. Keep it
+            # executable in the lint stream so its actual order remains visible.
+            self.statements.append(statement.strip())
+            return
+
+        statement_lines = statement.strip().splitlines()
+        self.statements.append(
+            _PARAMETERIZED_DML_NOTE
+            + "\n"
+            + "\n".join(f"-- {line}" for line in statement_lines)
+        )
 
 
 def _admin_engine(database_url: str) -> sa.Engine:
@@ -104,6 +195,7 @@ def render_revision_sql(migration: Path, database_url: str) -> str:
     scratch = f"alembic_squawk_{uuid.uuid4().hex[:16]}"
     previous_url = os.environ.get("DATABASE_URL")
     recorder = _DdlRecorder()
+    registered_listeners: list[tuple[str, Callable[..., object]]] = []
     try:
         with admin.connect() as connection:
             connection.exec_driver_sql(f'CREATE DATABASE "{scratch}"')
@@ -112,24 +204,35 @@ def render_revision_sql(migration: Path, database_url: str) -> str:
             .set(database=scratch)
             .render_as_string(hide_password=False)
         )
-        event.listen(Engine, "before_cursor_execute", recorder)
+        for event_name, listener in recorder.event_listeners():
+            event.listen(Engine, event_name, listener)
+            registered_listeners.append((event_name, listener))
         config = _alembic_config()
         if down_revision != "base":
             command.upgrade(config, down_revision)
         recorder.active = True
-        command.upgrade(config, revision)
-        recorder.active = False
+        try:
+            command.upgrade(config, revision)
+        finally:
+            # Keep the recorder active during Alembic's rollback on failure.
+            recorder.active = False
     finally:
-        event.remove(Engine, "before_cursor_execute", recorder)
-        if previous_url is None:
-            os.environ.pop("DATABASE_URL", None)
-        else:
-            os.environ["DATABASE_URL"] = previous_url
-        with admin.connect() as connection:
-            connection.exec_driver_sql(
-                f'DROP DATABASE IF EXISTS "{scratch}" WITH (FORCE)'
-            )
-        admin.dispose()
+        recorder.active = False
+        try:
+            for event_name, listener in reversed(registered_listeners):
+                event.remove(Engine, event_name, listener)
+        finally:
+            if previous_url is None:
+                os.environ.pop("DATABASE_URL", None)
+            else:
+                os.environ["DATABASE_URL"] = previous_url
+            try:
+                with admin.connect() as connection:
+                    connection.exec_driver_sql(
+                        f'DROP DATABASE IF EXISTS "{scratch}" WITH (FORCE)'
+                    )
+            finally:
+                admin.dispose()
     return "".join(f"{statement};\n" for statement in recorder.statements)
 
 

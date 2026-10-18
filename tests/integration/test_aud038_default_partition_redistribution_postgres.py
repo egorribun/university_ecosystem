@@ -14,6 +14,7 @@ import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from psycopg import sql
 from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError
 from testcontainers.community.postgres import PostgresContainer
@@ -882,6 +883,75 @@ def test_heap_conversion_refuses_stale_staging_relation_without_changes(
             == 1
         )
         assert _owned_foreign_key_identity(connection, dependent, fk_name) == fk_before
+
+
+def test_heap_conversion_rolls_back_when_untracked_view_blocks_staging_drop(
+    postgres_engine: sa.Engine,
+) -> None:
+    migration = _load_migration()
+    table = f"aud038_heap_view_dependency_{uuid4().hex[:8]}"
+    view = f"{table}_view"
+    staging = f"{table}_prepart_old"
+
+    try:
+        with postgres_engine.begin() as connection:
+            connection.execute(
+                sa.text(
+                    f"CREATE TABLE public.{table} ("
+                    "id bigint PRIMARY KEY, occurred_at timestamptz NOT NULL, "
+                    "marker text NOT NULL)"
+                )
+            )
+            connection.exec_driver_sql(
+                sql.SQL(
+                    "INSERT INTO {} (id, occurred_at, marker) VALUES "
+                    "(%s, %s, %s), (%s, %s, %s)"
+                )
+                .format(sql.Identifier("public", table))
+                .as_string(connection.connection.driver_connection),
+                (
+                    1,
+                    "2026-10-12T00:00:00Z",
+                    "first",
+                    2,
+                    "2026-10-13T00:00:00Z",
+                    "second",
+                ),
+            )
+            # The migration snapshots inbound foreign keys, not view dependencies.
+            # PostgreSQL RESTRICT must therefore abort the swap at DROP TABLE.
+            connection.exec_driver_sql(
+                sql.SQL("CREATE VIEW {} AS SELECT id, occurred_at, marker FROM {}")
+                .format(
+                    sql.Identifier("public", view),
+                    sql.Identifier("public", table),
+                )
+                .as_string(connection.connection.driver_connection)
+            )
+
+        with postgres_engine.connect() as connection:
+            catalog_before = _parent_catalog_identity(connection, table)
+            parent_rows_before = _rows_for_relation(connection, table)
+            view_rows_before = _rows_for_relation(connection, view)
+
+        with pytest.raises(sa.exc.DBAPIError) as error:
+            with postgres_engine.begin() as connection:
+                migration._convert_to_partitioned(connection, table, "occurred_at")
+
+        assert "depend" in str(error.value).lower()
+        assert view in str(error.value).lower()
+
+        with postgres_engine.connect() as connection:
+            assert _parent_catalog_identity(connection, table) == catalog_before
+            assert _rows_for_relation(connection, table) == parent_rows_before
+            assert _rows_for_relation(connection, view) == view_rows_before
+            assert migration._get_relkind(connection, table) == "r"
+            assert migration._get_relkind(connection, staging) is None
+    finally:
+        with postgres_engine.begin() as connection:
+            connection.execute(sa.text(f"DROP VIEW IF EXISTS public.{view}"))
+            connection.execute(sa.text(f"DROP TABLE IF EXISTS public.{staging}"))
+            connection.execute(sa.text(f"DROP TABLE IF EXISTS public.{table}"))
 
 
 def test_heap_conversion_rebinds_supported_composite_inbound_foreign_key(

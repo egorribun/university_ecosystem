@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 import { describe, expect, it } from "vitest"
 
 /**
@@ -6,9 +7,8 @@ import { describe, expect, it } from "vitest"
  * (4.5:1) on every colour stop of its gradient. Values are read from the real
  * token files so a palette or gradient change cannot silently regress it.
  */
-const read = (relativePath: string) => readFileSync(new URL(relativePath, import.meta.url), "utf8")
-const primitives = read("../../../styles/tokens/primitives.css")
-const messenger = read("../../../styles/tokens/messenger.css")
+const primitives = readFileSync(resolve(process.cwd(), "src/styles/tokens/primitives.css"), "utf8")
+const messenger = readFileSync(resolve(process.cwd(), "src/styles/tokens/messenger.css"), "utf8")
 
 const toLinear = (channel: number) => {
   const value = channel / 255

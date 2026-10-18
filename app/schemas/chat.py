@@ -21,6 +21,20 @@ class ChatParticipant(SecureBaseModel):
     is_active: bool
 
 
+class MessageSenderInfo(SecureBaseModel):
+    """Public display fields for a sender embedded in a message response.
+
+    Legacy message producers may pass a full participant or internal DTO. Ignore
+    those extra fields here so email and account state never enter message output.
+    """
+
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    id: UUID
+    full_name: str | None = None
+    avatar_url: str | None = None
+
+
 class PresenceStatus(SecureBaseModel):
     """Represents a participant's presence state."""
 
@@ -136,7 +150,7 @@ class MessageResponse(MessageBase):
     read_at: datetime | None = None  # Wave 203 SW3 — read-receipt timestamp
     edited_at: datetime | None = None  # Wave 205 SW4 — edit timestamp
     deleted_at: datetime | None = None  # Wave 205 SW4 — soft-delete tombstone
-    sender: ChatParticipant | None = None
+    sender: MessageSenderInfo | None = None
     sender_presence: PresenceStatus | None = None
     attachments: list[AttachmentResponse] = Field(
         default_factory=list, json_schema_extra={"default": []}

@@ -24,6 +24,7 @@ if TYPE_CHECKING:
         ChatResponse,
         ChatsListOut,
         MessageResponse,
+        MessageSenderInfo,
         MessagesListOut,
     )
     from app.schemas.dtos.chat import MessageDTO, MessageReactionDTO
@@ -36,6 +37,7 @@ from app.schemas.chat import (
     ChatResponse,
     ChatsListOut,
     MessageResponse,
+    MessageSenderInfo,
     MessagesListOut,
     PresenceStatus,
     ReactionAggregate,
@@ -289,6 +291,13 @@ class ChatQueryService:
             _without_deleted_attachments(message) for message in reversed(messages)
         ]
 
+        sender_ids = list(dict.fromkeys(message.sender_id for message in messages))
+        sender_profiles = (
+            await self.repository.get_message_sender_profiles(sender_ids)
+            if sender_ids
+            else {}
+        )
+
         presence_map = await build_presence_map(
             {msg.sender_id for msg in messages}, db=self.session
         )
@@ -305,13 +314,11 @@ class ChatQueryService:
                 edited_at=msg.edited_at,  # Wave 205 SW4 — W203 SW8 gotcha
                 deleted_at=msg.deleted_at,  # Wave 205 SW4 — W203 SW8 gotcha
                 forwarded_from_name=msg.forwarded_from_name,  # Wave 211 — W203 SW8
-                # LOW-W19: sender is intentionally omitted here.  The message
-                # list query uses a lightweight projection that does not eagerly
-                # load the full sender relationship in order to avoid N+1 queries.
-                # Caller receives sender_id and can resolve the profile separately
-                # if needed.  If full sender data is required, add a joined-load
-                # to ChatRepository.get_messages() and remove this comment.
-                sender=None,
+                sender=MessageSenderInfo(
+                    id=msg.sender_id,
+                    full_name=sender_profiles.get(msg.sender_id, (None, None))[0],
+                    avatar_url=sender_profiles.get(msg.sender_id, (None, None))[1],
+                ),
                 attachments=cast("list[AttachmentResponse]", msg.attachments),
                 sender_presence=presence_map.get(msg.sender_id),
                 # Wave 206 — aggregate the selectinload'd reaction rows; reacted_by_me

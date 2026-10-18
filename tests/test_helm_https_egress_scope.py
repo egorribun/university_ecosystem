@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from tests.test_helm_staging_contract import _render_staging
+
+ROOT = Path(__file__).resolve().parents[1]
+CHART = ROOT / "charts" / "university-ecosystem"
+STAGING_VALUES = CHART / "values-staging.yaml"
 
 HTTPS_EGRESS_POLICIES = (
     "-backup-policy",
@@ -29,6 +34,8 @@ def _render_https_egress(*extra: str) -> list[dict[str, Any]]:
         "--set-string",
         "backup.minioEndpoint=https://minio.staging.internal:443",
         *extra,
+        chart_path=CHART,
+        values_path=STAGING_VALUES,
     )
 
 

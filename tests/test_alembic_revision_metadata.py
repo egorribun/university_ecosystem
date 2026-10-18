@@ -8,6 +8,7 @@ import secrets
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -282,10 +283,109 @@ _AUD180_MIGRATION = (
     / "versions"
     / "202610120002_add_news_media_asset_ownership.py"
 )
+_PARTITION_MIGRATION = (
+    Path(__file__).resolve().parents[1]
+    / "alembic"
+    / "versions"
+    / "202607020001_create_range_partitions.py"
+)
+_SCHEMA_DRIFT_MIGRATION = (
+    Path(__file__).resolve().parents[1]
+    / "alembic"
+    / "versions"
+    / "202607280001_reconcile_schema_drift.py"
+)
 
 
 def _load_aud180_migration() -> dict[str, Any]:
     return runpy.run_path(str(_AUD180_MIGRATION))
+
+
+def test_partition_migration_sets_timeouts_before_catalog_inspection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration = runpy.run_path(str(_PARTITION_MIGRATION))
+
+    class EmptyCatalogConnection:
+        dialect = SimpleNamespace(name="postgresql")
+
+        def __init__(self) -> None:
+            self.statements: list[str] = []
+
+        def execute(self, statement: Any, _parameters: Any = None) -> Any:
+            self.statements.append(str(statement))
+            return SimpleNamespace(fetchone=lambda: None)
+
+    connection = EmptyCatalogConnection()
+    monkeypatch.setattr(migration["op"], "get_bind", lambda: connection)
+
+    migration["upgrade"]()
+
+    assert connection.statements[:2] == [
+        "SET LOCAL lock_timeout = '10s'",
+        "SET LOCAL statement_timeout = '60s'",
+    ]
+    assert connection.statements[2].lstrip().startswith("SELECT c.relkind")
+
+
+def test_schema_drift_migration_sets_timeouts_before_catalog_inspection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration = runpy.run_path(str(_SCHEMA_DRIFT_MIGRATION))
+    statements: list[str] = []
+    observed_bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+
+    inspected: list[object] = []
+
+    def inspect_after_timeouts(bind: object) -> SimpleNamespace:
+        assert statements[:2] == [
+            "SET LOCAL lock_timeout = '10s'",
+            "SET LOCAL statement_timeout = '60s'",
+        ]
+        inspected.append(bind)
+        return SimpleNamespace(
+            get_table_names=lambda: ["tenants", "vector_chunks", "grades"]
+        )
+
+    monkeypatch.setattr(migration["op"], "get_bind", lambda: observed_bind)
+    monkeypatch.setattr(
+        migration["op"], "execute", lambda statement: statements.append(str(statement))
+    )
+    monkeypatch.setattr(migration["sa"], "inspect", inspect_after_timeouts)
+
+    migration["upgrade"]()
+
+    assert inspected == [observed_bind]
+    assert statements[:2] == [
+        "SET LOCAL lock_timeout = '10s'",
+        "SET LOCAL statement_timeout = '60s'",
+    ]
+    assert statements[2:] == [
+        "ALTER TABLE tenants DROP CONSTRAINT IF EXISTS tenants_slug_key CASCADE",
+        "ALTER TABLE tenants DROP CONSTRAINT IF EXISTS tenants_domain_key CASCADE",
+    ]
+
+
+def test_schema_drift_migration_sets_timeouts_before_downgrade_drops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration = runpy.run_path(str(_SCHEMA_DRIFT_MIGRATION))
+    statements: list[str] = []
+
+    monkeypatch.setattr(
+        migration["op"], "execute", lambda statement: statements.append(str(statement))
+    )
+
+    migration["downgrade"]()
+
+    assert statements[:2] == [
+        "SET LOCAL lock_timeout = '10s'",
+        "SET LOCAL statement_timeout = '60s'",
+    ]
+    assert statements[2:] == [
+        "DROP TABLE IF EXISTS grades CASCADE",
+        "DROP TABLE IF EXISTS vector_chunks CASCADE",
+    ]
 
 
 def test_aud180_squawk_capture_emits_the_shared_ddl_in_a_transaction() -> None:

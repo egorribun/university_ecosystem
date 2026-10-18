@@ -20,6 +20,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    op.execute("SET LOCAL lock_timeout = '10s'")
+    op.execute("SET LOCAL statement_timeout = '60s'")
+
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     tables = inspector.get_table_names()
@@ -153,6 +156,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute("SET LOCAL lock_timeout = '10s'")
+    op.execute("SET LOCAL statement_timeout = '60s'")
     op.execute("DROP TABLE IF EXISTS grades CASCADE")
     op.execute("DROP TABLE IF EXISTS vector_chunks CASCADE")
     # The tenants table belongs to parent revision 202607230001.

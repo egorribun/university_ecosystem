@@ -231,7 +231,13 @@ def _convert_to_partitioned(conn, table_name: str, partition_key: str) -> None:
 
     _drop_incoming_foreign_keys(conn, incoming_foreign_keys)
     conn.execute(
-        sa.text(f"ALTER TABLE {parent_relation} RENAME TO {preparer.quote(old_name)}")
+        sa.text(
+            "-- The original heap stays ACCESS EXCLUSIVE locked while its name is "
+            "moved aside so the populated partitioned replacement can take the "
+            "public name in this same transaction.\n"
+            "-- squawk-ignore renaming-table\n"
+            f"ALTER TABLE {parent_relation} RENAME TO {preparer.quote(old_name)}"
+        )
     )
     conn.execute(
         sa.text(
@@ -255,7 +261,15 @@ def _convert_to_partitioned(conn, table_name: str, partition_key: str) -> None:
         sa.text(f"INSERT INTO {parent_relation} SELECT * FROM {qualified_old}")  # noqa: S608 -- identifiers are quoted by the dialect preparer
     )
     # RESTRICT is intentional: untracked dependencies must abort and roll back.
-    conn.execute(sa.text(f"DROP TABLE {qualified_old}"))
+    conn.execute(
+        sa.text(
+            "-- The replacement has received the heap rows; keep default RESTRICT "
+            "so any dependency not represented by the captured FK set aborts and "
+            "rolls back the rename, copy, and FK changes.\n"
+            "-- squawk-ignore ban-drop-table\n"
+            f"DROP TABLE {qualified_old}"
+        )
+    )
 
     if incoming_foreign_keys:
         primary_key_name = preparer.quote(f"{table_name}_pkey")
@@ -477,6 +491,11 @@ def upgrade() -> None:
     if conn.dialect.name != "postgresql":
         # SQLite and other dialects have no RANGE partitioning support.
         return
+
+    # Keep catalog inspection, ACCESS EXCLUSIVE locks, and DDL within the
+    # transaction-local migration budgets used by the other schema revisions.
+    conn.execute(sa.text("SET LOCAL lock_timeout = '10s'"))
+    conn.execute(sa.text("SET LOCAL statement_timeout = '60s'"))
 
     anchor = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 

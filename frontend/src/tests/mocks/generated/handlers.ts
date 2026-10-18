@@ -6028,13 +6028,11 @@ export function getGetChatsApiV1ChatsGet200Response() {
                   faker.lorem.words(),
                   null,
                 ]),
-                email: faker.internet.email(),
                 full_name: faker.helpers.arrayElement([
                   faker.lorem.words(),
                   null,
                 ]),
                 id: faker.string.uuid(),
-                is_active: faker.datatype.boolean(),
               },
               null,
             ]),
@@ -6220,10 +6218,8 @@ export function getCreateChatApiV1ChatsPost200Response() {
         sender: faker.helpers.arrayElement([
           {
             avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            email: faker.internet.email(),
             full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
             id: faker.string.uuid(),
-            is_active: faker.datatype.boolean(),
           },
           null,
         ]),
@@ -6402,10 +6398,8 @@ export function getCreateGroupApiV1ChatsGroupsPost200Response() {
         sender: faker.helpers.arrayElement([
           {
             avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            email: faker.internet.email(),
             full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
             id: faker.string.uuid(),
-            is_active: faker.datatype.boolean(),
           },
           null,
         ]),
@@ -6626,10 +6620,8 @@ export function getGetChatApiV1ChatsChatIdGet200Response() {
         sender: faker.helpers.arrayElement([
           {
             avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            email: faker.internet.email(),
             full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
             id: faker.string.uuid(),
-            is_active: faker.datatype.boolean(),
           },
           null,
         ]),
@@ -6928,10 +6920,8 @@ export function getGetMessagesApiV1ChatsChatIdMessagesGet200Response() {
         sender: faker.helpers.arrayElement([
           {
             avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            email: faker.internet.email(),
             full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
             id: faker.string.uuid(),
-            is_active: faker.datatype.boolean(),
           },
           null,
         ]),
@@ -7055,10 +7045,8 @@ export function getSendMessageApiV1ChatsChatIdMessagesPost200Response() {
     sender: faker.helpers.arrayElement([
       {
         avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        email: faker.internet.email(),
         full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
         id: faker.string.uuid(),
-        is_active: faker.datatype.boolean(),
       },
       null,
     ]),
@@ -7549,10 +7537,8 @@ export function getForwardMessagesApiV1ChatsDestChatIdForwardPost200Response() {
       sender: faker.helpers.arrayElement([
         {
           avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          email: faker.internet.email(),
           full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
           id: faker.string.uuid(),
-          is_active: faker.datatype.boolean(),
         },
         null,
       ]),
