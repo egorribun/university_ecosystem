@@ -102,7 +102,11 @@ async def test_event_cache_version_helpers() -> None:
         "app.core.cache_versioning.CacheVersionManager.increment", AsyncMock()
     ) as increment:
         await api._increment_events_list_version(None)
-        increment.assert_not_awaited()
+        increment.assert_awaited_once_with(None)
+        increment.reset_mock()
+        await api._increment_events_list_version()
+        increment.assert_awaited_once_with(None)
+        increment.reset_mock()
         await api._increment_events_list_version(cache)
         increment.assert_awaited_once_with(cache)
 
@@ -129,10 +133,9 @@ async def test_create_event_success_and_role_guard() -> None:
         )
     assert result == {"id": str(record.id)}
     service.create_event.assert_awaited_once_with(data, user_id=user.id, locale="en")
-    bump.assert_awaited_once()
+    bump.assert_awaited_once_with()
 
-    # An app that carries no cache still creates the event; the version bump is
-    # simply a no-op.  This is the branch ``if request:`` used to stand in for.
+    # Missing application state must not suppress canonical cache invalidation.
     cacheless = SimpleNamespace(
         method="GET", headers={}, app=SimpleNamespace(state=SimpleNamespace())
     )
@@ -151,10 +154,7 @@ async def test_create_event_success_and_role_guard() -> None:
         )
     assert result == {"id": str(record.id)}
     assert service.create_event.await_args.kwargs["locale"] == "en"
-    cacheless_bump.assert_awaited_once_with(None)
-
-    # ...and the helper itself is the no-op in that case.
-    await api._increment_events_list_version(None)
+    cacheless_bump.assert_awaited_once_with()
 
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
@@ -570,7 +570,7 @@ async def test_update_event_success_permissions_and_errors() -> None:
             provides={"AsyncDatabaseSession": db, "EventService": service},
         )
     assert result == {"id": str(event_id)}
-    bump.assert_awaited_once()
+    bump.assert_awaited_once_with()
     delete_owned.assert_not_awaited()
     delete_generic.assert_not_awaited()
 
@@ -654,7 +654,7 @@ async def test_delete_and_get_event_paths() -> None:
             checker=checker,
             provides={"EventService": service},
         ) == {"ok": True}
-    bump.assert_awaited_once()
+    bump.assert_awaited_once_with()
 
     checker.check_permission = AsyncMock(return_value=False)
     with patch.object(api, "resolve_locale", return_value="en"):

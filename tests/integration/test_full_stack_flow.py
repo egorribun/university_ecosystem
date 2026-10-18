@@ -18,10 +18,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.auth.security import get_password_hash
-from app.models import User
+from app.models import Event, News, User
 
 pytestmark = pytest.mark.integration
 
@@ -43,6 +44,36 @@ skip_without_db = pytest.mark.skipif(
 def _unique_email(prefix: str = "w25") -> str:
     """Return a collision-free email address for this test run."""
     return f"{prefix}+{uuid.uuid4().hex[:8]}@university.edu"
+
+
+async def _admin_auth_headers(
+    async_client: AsyncClient,
+    user_factory: Callable[..., Awaitable[User]],
+    prefix: str,
+) -> dict[str, str]:
+    email = _unique_email(prefix)
+    password = secrets.token_urlsafe(24) + "Aa1!"
+    # Privileged public registration requires an invitation. Provision only
+    # this test's account directly, then exercise the real login/session path.
+    await user_factory(
+        email=email,
+        role="admin",
+        hashed_password=await get_password_hash(password),
+        is_active=True,
+    )
+    login = await async_client.post(
+        "/auth/login",
+        data={"username": email, "password": password},
+    )
+    assert login.status_code == 200
+
+    token = (
+        login.json().get("access_token")
+        or login.json().get("token")
+        or login.cookies.get("access_token_v2")
+    )
+    assert token
+    return {"Authorization": f"Bearer {token}", "X-Query-Budget": "15"}
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +140,7 @@ async def test_user_registration_and_login_flow(
 @skip_without_db
 async def test_events_crud_flow(
     async_client: AsyncClient,
+    db_session: AsyncSession,
     user_factory: Callable[..., Awaitable[User]],
 ) -> None:
     """Exercise authenticated event CRUD against PostgreSQL.
@@ -117,29 +149,9 @@ async def test_events_crud_flow(
     authentication, service, and database path, not live SpiceDB acceptance.
     Authentication or CRUD failures must fail rather than silently skip.
     """
-    email = _unique_email("events_crud")
-    password = secrets.token_urlsafe(24) + "Aa1!"
-    # Privileged public registration requires an invitation. Provision only
-    # this test's account directly, then exercise the real login/session path.
-    await user_factory(
-        email=email,
-        role="admin",
-        hashed_password=await get_password_hash(password),
-        is_active=True,
-    )
-    login = await async_client.post(
-        "/auth/login",
-        data={"username": email, "password": password},
-    )
-    assert login.status_code == 200
-
-    token = (
-        login.json().get("access_token")
-        or login.json().get("token")
-        or login.cookies.get("access_token_v2")
-    )
-    assert token
-    auth_header = {"Authorization": f"Bearer {token}", "X-Query-Budget": "15"}
+    auth_header = await _admin_auth_headers(async_client, user_factory, "events_crud")
+    assert db_session.bind is not None
+    sessions = async_sessionmaker(db_session.bind, expire_on_commit=False)
 
     now = datetime.now(UTC)
     create_response = await async_client.post(
@@ -172,6 +184,12 @@ async def test_events_crud_flow(
     assert update_response.status_code == 200
     assert update_response.json()["title"] == updated_title
 
+    async with sessions() as reader:
+        persisted_title = await reader.scalar(
+            select(Event.title).where(Event.id == uuid.UUID(event_id))
+        )
+        assert persisted_title == updated_title
+
     updated_response = await async_client.get(
         f"/events/{event_id}",
         headers=auth_header,
@@ -186,11 +204,82 @@ async def test_events_crud_flow(
     assert delete_response.status_code == 200
     assert delete_response.json() == {"ok": True}
 
+    async with sessions() as reader:
+        assert await reader.get(Event, uuid.UUID(event_id)) is None
+
     deleted_response = await async_client.get(
         f"/events/{event_id}",
         headers=auth_header,
     )
     assert deleted_response.status_code == 404
+
+
+@skip_without_db
+async def test_news_crud_invalidates_cached_lists_and_details(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    user_factory: Callable[..., Awaitable[User]],
+) -> None:
+    """Commit news writes and invalidate the same cached collection/detail reads."""
+    auth_header = await _admin_auth_headers(async_client, user_factory, "news_crud")
+    assert db_session.bind is not None
+    sessions = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    title = f"Audit cache {uuid.uuid4().hex}"
+
+    before_create = await async_client.get("/news", headers=auth_header)
+    assert before_create.status_code == 200
+    assert before_create.json()["items"] == []
+
+    created = await async_client.post(
+        "/news",
+        json={"title": title, "content": "Owned cache invalidation regression"},
+        headers=auth_header,
+    )
+    assert created.status_code == 200
+    news_id = created.json()["id"]
+
+    after_create = await async_client.get("/news", headers=auth_header)
+    assert after_create.status_code == 200
+    assert [item["id"] for item in after_create.json()["items"]] == [news_id]
+
+    detail = await async_client.get(f"/news/{news_id}", headers=auth_header)
+    assert detail.status_code == 200
+    assert detail.json()["title"] == title
+
+    updated_title = f"{title} Updated"
+    updated = await async_client.patch(
+        f"/news/{news_id}",
+        json={"title": updated_title},
+        headers=auth_header,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["title"] == updated_title
+    async with sessions() as reader:
+        persisted_title = await reader.scalar(
+            select(News.title).where(News.id == uuid.UUID(news_id))
+        )
+        assert persisted_title == updated_title
+
+    after_update = await async_client.get("/news", headers=auth_header)
+    assert after_update.status_code == 200
+    assert [(item["id"], item["title"]) for item in after_update.json()["items"]] == [
+        (news_id, updated_title)
+    ]
+    updated_detail = await async_client.get(f"/news/{news_id}", headers=auth_header)
+    assert updated_detail.status_code == 200
+    assert updated_detail.json()["title"] == updated_title
+
+    deleted = await async_client.delete(f"/news/{news_id}", headers=auth_header)
+    assert deleted.status_code == 200
+    assert deleted.json() == {"ok": True}
+    async with sessions() as reader:
+        assert await reader.get(News, uuid.UUID(news_id)) is None
+
+    after_delete = await async_client.get("/news", headers=auth_header)
+    assert after_delete.status_code == 200
+    assert after_delete.json()["items"] == []
+    deleted_detail = await async_client.get(f"/news/{news_id}", headers=auth_header)
+    assert deleted_detail.status_code == 404
 
 
 @skip_without_db

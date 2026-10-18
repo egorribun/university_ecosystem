@@ -61,12 +61,17 @@ async def test_cache_helpers_normalize_fallbacks_and_increment() -> None:
     assert news_api._normalized_cache_locale(None) == news_api.DEFAULT_LOCALE
     assert news_api._normalized_cache_locale("xx") == news_api.DEFAULT_LOCALE
 
-    await news_api._increment_news_list_version(None)
     cache = object()
     manager = MagicMock()
     manager.increment = AsyncMock()
     manager.get_version = AsyncMock(return_value="v2")
     with patch.object(news_api, "news_cache_version", manager):
+        await news_api._increment_news_list_version(None)
+        manager.increment.assert_awaited_once_with(None)
+        manager.increment.reset_mock()
+        await news_api._increment_news_list_version()
+        manager.increment.assert_awaited_once_with(None)
+        manager.increment.reset_mock()
         await news_api._increment_news_list_version(cache)
         assert await news_api._get_news_list_version(cache) == "v2"
     manager.increment.assert_awaited_once_with(cache)
@@ -97,7 +102,7 @@ async def test_create_news_requires_admin_and_serializes_record() -> None:
         data, locale="en", owner_user_id=uuid.UUID(int=1)
     )
     service.serialize_news.assert_called_once_with(record, "en")
-    increment.assert_awaited_once_with(request.app.state.cache)
+    increment.assert_awaited_once_with()
 
     with patch.object(news_api, "_increment_news_list_version", new_callable=AsyncMock):
         result = await call_injected(

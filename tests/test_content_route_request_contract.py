@@ -1,4 +1,4 @@
-"""Required HTTP requests and optional application caches are distinct contracts."""
+"""Required HTTP requests and canonical cache invalidation are distinct contracts."""
 
 from __future__ import annotations
 
@@ -7,14 +7,14 @@ import inspect
 import uuid
 from types import SimpleNamespace
 from typing import get_type_hints
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI, Request
 
 from app.api import events, news
-from app.core.cache_versioning import CacheVersionManager
-from app.deps.cache import NullCache
+from app.deps import cache as cache_module
+from app.deps.cache import MemoryCache, NullCache
 from app.models.enums import UserRole
 from app.schemas import schemas
 from tests.conftest import call_injected
@@ -50,17 +50,17 @@ def test_mutations_treat_the_container_bearing_request_as_required(handler) -> N
     ]
     assert not request_guards, (
         "Request is required by FastAPI and carries the Dishka container; "
-        "only the cache may be absent"
+        "the cache must be resolved through its canonical provider"
     )
 
 
 @pytest.mark.parametrize("handler", _HANDLERS, ids=lambda handler: handler.__name__)
 @pytest.mark.parametrize("cache_state", ["present", "none", "missing"])
-async def test_mutations_keep_localization_and_optional_cache_contract(
-    handler, cache_state: str
+async def test_mutations_keep_localization_and_canonical_cache_contract(
+    handler, cache_state: str, monkeypatch
 ) -> None:
     app = FastAPI()
-    cache = object()
+    cache = MemoryCache()
     if cache_state != "missing":
         app.state.cache = cache if cache_state == "present" else None
     request = Request(
@@ -114,18 +114,19 @@ async def test_mutations_keep_localization_and_optional_cache_contract(
             service.get_event_by_id = AsyncMock(return_value=record)
             service.delete_event = AsyncMock()
 
-    # Keep the real route, locale resolver, and optional-cache helper. Only the
-    # external version write and secondary item cache are isolated.
-    with (
-        patch.object(CacheVersionManager, "increment", new_callable=AsyncMock) as bump,
-        patch.object(module, "get_cache", return_value=NullCache()),
-    ):
-        result = await call_injected(handler, **kwargs)
+    # The real route and manager must invalidate the cache used by GETs,
+    # never a different backend left on the application state.
+    manager = news.news_cache_version if module is news else events.events_cache_version
+    shared_cache = MemoryCache()
+    monkeypatch.setattr(cache_module, "_cache_backend", shared_cache)
+    await shared_cache.set(manager.generation_key, "before-write", ttl=0)
+    await cache.set(manager.generation_key, "unrelated-app-state", ttl=0)
+    assert await manager.get_version() == "before-write"
 
-    if cache_state == "present":
-        bump.assert_awaited_once_with(cache)
-    else:
-        bump.assert_not_awaited()
+    result = await call_injected(handler, **kwargs)
+
+    assert await manager.get_version() != "before-write"
+    assert await manager.get_version(cache) == "unrelated-app-state"
     if handler in (news.delete_news, events.delete_event):
         assert result == {"ok": True}
         getattr(service, handler.__name__).assert_awaited_once_with(record.id)
@@ -154,3 +155,45 @@ async def test_mutations_keep_localization_and_optional_cache_contract(
             permission="edit" if handler is events.update_event else "delete",
             user_id=str(user.id),
         )
+
+
+@pytest.mark.parametrize("module", [events, news], ids=["events", "news"])
+@pytest.mark.parametrize("explicit_none", [True, False])
+async def test_content_cache_helpers_advance_canonical_generation(
+    module, explicit_none: bool, monkeypatch
+) -> None:
+    manager = news.news_cache_version if module is news else events.events_cache_version
+    helper = (
+        news._increment_news_list_version
+        if module is news
+        else events._increment_events_list_version
+    )
+    cache = MemoryCache()
+    monkeypatch.setattr(cache_module, "_cache_backend", cache)
+    await cache.set(manager.generation_key, "before-write", ttl=0)
+    assert await manager.get_version() == "before-write"
+
+    if explicit_none:
+        await helper(None)
+    else:
+        await helper()
+
+    assert await manager.get_version() != "before-write"
+
+
+@pytest.mark.parametrize("module", [events, news], ids=["events", "news"])
+async def test_content_cache_helpers_respect_disabled_global_cache(
+    module, monkeypatch
+) -> None:
+    manager = news.news_cache_version if module is news else events.events_cache_version
+    helper = (
+        news._increment_news_list_version
+        if module is news
+        else events._increment_events_list_version
+    )
+    monkeypatch.setattr(cache_module, "_cache_backend", NullCache())
+
+    await helper(None)
+    await helper()
+
+    assert await manager.get_version() == "0"

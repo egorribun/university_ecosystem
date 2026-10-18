@@ -6800,8 +6800,8 @@ def _live_playwright_counts(output: str) -> dict[str, int]:
 
 _PlaywrightSkipIdentity = tuple[str, str, int]
 _PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES: tuple[_PlaywrightSkipIdentity, ...] = (
-    ("desktop", "tests/e2e-live/auth-roles.live.spec.ts", 37),
-    ("mobile", "tests/e2e-live/auth-roles.live.spec.ts", 37),
+    ("desktop", "tests/e2e-live/auth-roles.live.spec.ts", 144),
+    ("mobile", "tests/e2e-live/auth-roles.live.spec.ts", 144),
     ("mobile", "tests/e2e-live/navbar-layout-stability.live.spec.ts", 174),
     ("mobile", "tests/e2e-live/schedule-grid-keyboard.live.spec.ts", 5),
     ("mobile", "tests/e2e-live/schedule-200-equivalent-reflow.live.spec.ts", 5),
