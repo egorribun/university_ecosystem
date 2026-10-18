@@ -212,6 +212,9 @@ describe("useEventCardLogic (branches)", () => {
     })
 
     expect(mockPost).toHaveBeenCalledWith("/events/upload_image", expect.any(FormData))
+    const uploadBody = mockPost.mock.calls[0]?.[1] as FormData
+    expect(uploadBody.get("file")).toBe(file)
+    expect(uploadBody.get("event_id")).toBe(eventProps.id)
     expect(mockPatch).toHaveBeenCalledWith(
       "/events/event-1",
       expect.objectContaining({ image_url: "uploaded.png" })

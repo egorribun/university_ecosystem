@@ -345,7 +345,61 @@ async def test_notify_new_message_broadcasts_via_ws_excluding_sender() -> None:
     assert payload["type"] == "new_message"
     assert payload["chat_id"] == str(chat_id)
     # Sender is excluded from the WS broadcast.
-    assert call_args.kwargs["exclude_user_id"] == sender.id
+    assert call_args.kwargs == {
+        "exclude_user_id": sender.id,
+        "propagate_nats_failure": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_strict_message_broadcast_failure_prevents_notification_writes() -> None:
+    sender = _user(uuid.uuid4(), full_name="Alice")
+    other = _user(uuid.uuid4())
+    message = _msg(chat_id=uuid.uuid4(), sender_id=sender.id, content="hi")
+    session = _notification_session()
+    session.commit = AsyncMock()
+    service = ChatNotificationService(session)
+    frame = {"id": str(message.id), "content": "hi"}
+
+    with (
+        patch(
+            "app.services.chat.notification_service.build_presence_map",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.services.chat.notification_service.serialize_message",
+            return_value=frame,
+        ),
+        patch(
+            "app.services.chat.notification_service.ws_manager.broadcast_to_chat",
+            new=AsyncMock(side_effect=ConnectionError("broker unavailable")),
+        ) as broadcast,
+        patch(
+            "app.services.chat.notification_service.create_notifications_for_users",
+            new=AsyncMock(),
+        ) as create_notifications,
+    ):
+        with pytest.raises(ConnectionError, match="broker unavailable"):
+            await service.notify_new_message(
+                message,
+                [sender, other],
+                sender,
+                propagate_nats_failure=True,
+            )
+
+    broadcast.assert_awaited_once_with(
+        message.chat_id,
+        {
+            "type": "new_message",
+            "chat_id": str(message.chat_id),
+            "message": frame,
+        },
+        exclude_user_id=sender.id,
+        propagate_nats_failure=True,
+    )
+    create_notifications.assert_not_awaited()
+    session.execute.assert_not_awaited()
+    session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

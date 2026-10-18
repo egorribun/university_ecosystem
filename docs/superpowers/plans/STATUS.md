@@ -8,25 +8,30 @@
 
 Работа только через GitHub plugin, ветка `egorribun`, существующий [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git и принимает работу максимум трёх GPT-6 Luna Max агентов с непересекающимися файлами. Merge/deploy и обходы проверок не выполнялись.
 
-## Текущая партия и CI
+## Текущая партия: tests-first контракты
 
-На [d5ef191](https://github.com/egorribun/university_ecosystem/commit/d5ef1918d83f3f69787ff257ef14a6d98d8a8368) все функциональные lanes прошли. Python: 16370 PASS / 174 SKIP по четырём shards (5381/3763/3812/3414 PASS). Frontend: 9289 PASS в 770 файлах, ещё 22 production client-contract tests, static/build/aggregate успешны. PostgreSQL: 178 PASS / 9 SKIP, включая cache CRUD с независимыми readers, comment durability, real JetStream, scheduler/outbox и migration scenarios. Migration gate и rollback integrity успешны.
+База — полностью прошедший CI [d35510a](https://github.com/egorribun/university_ecosystem/commit/d35510a1a6ace7bba113d0d2e0f1eebaebb8aac8). Эта партия меняет только tests и документацию; production-код пока остаётся прежним. Полной приёмки нового source ещё нет: сначала нужно получить настоящий hosted RED, затем внести минимальные исправления и выполнить собственный полный GREEN.
 
-Предыдущие 24 непокрытые изменённые строки закрыты: [diff-cover](https://github.com/egorribun/university_ecosystem/actions/runs/39148882069/job/117747814212) прошёл с 4458 строками, нулём missing и 100% покрытия. Затем тот же job остановился на нормализации полного branch coverage: «python.branches misses must equal the current legacy-migration residual (1870, got 1872)». Допустимый остаток вычисляется из текущих отчётов ровно 131 разрешённой legacy migration; это не произвольный фиксированный порог. Причина двух дополнительных branch misses установлена по всем четырём shard tables и source: false arcs 235→237 и 326→329 в EventRepository недостижимы, потому что builder всегда добавляет обязательный manual-visibility predicate. Коррекция удаляет только два лишних if, оставляя WHERE безусловным; real-DB regression расширен на upcoming/archive/unfiltered режимы. Новому source нужен отдельный полный hosted прогон, без расширения исключения или снижения требований. Последующие manifest/policy validators не считаются выполненными.
+Проверяемые дефекты:
+- Durable message-sent handler не включает строгую передачу ошибки NATS. Service/broadcaster assertions и real worker → EventBus → handler → service → broadcaster test требуют retryable event без notification writes/handler commit. Последний тест использует doubles для sessions/rows/repository/transport и доказывает in-memory переход, не PostgreSQL persistence или настоящий outage.
+- Два редактора существующих событий не передают обязательный event ID при загрузке картинки. Tests закрепляют helper argument и FormData field, не ослабляя backend ownership.
+- Workflow отменяет running owned live run при новом commit. Static contract требует literal cancel-in-progress=false в прежней concurrency group. Он сам не доказывает cleanup и не защищает от manual cancellation/runner failure.
 
-Все 23 workflows terminal: 20 SUCCESS, два штатных SKIPPED, один Matrix FAILURE. В Matrix failures только Coverage & Quality Policy Gate и его зависимый CI Success. Полный paginated набор из 136 check runs сопоставлен с 78 required context/app pairs: 75 SUCCESS, два FAILURE, один Checkov NEUTRAL. CodeQL: пять успешных языковых анализов и no-new-alerts в изменённом коде, annotations 0. Checkov NEUTRAL означает отсутствие main comparison configuration, а не отсутствие alerts.
+Дополнительно events CRUD теперь прогревает collection cache до create и проверяет свежий список после create/update/delete. Это усиление HTTP/cache regression с PostgreSQL и существующими external-service doubles, без нового production behavior.
 
-Tests-only партия добавила 25 guard/CLI cases и не меняла production-код. Ruff-форматирование двух argv calls исправлено по точному hosted diff. Полной quality-приёмки d5ef191 пока нет; последняя полностью принятая точка по-прежнему cd08c35c.
+[Согласованный NATS-only proof](../specs/2026-10-18-owned-nats-outbox-acceptance.md) ещё не реализован и не запущен. Его owner-bound preflight, конечные deadlines, восстановление NATS, точный outbox и broker-storage oracle остаются обязательными. Создание события с картинкой требует отдельного owner-bound lifecycle с сохранением AUD-180/AUD-233; этот batch исправляет только контракты existing-event editors. Merge/deploy и NATS outage не выполнялись.
 
-Следующая функциональная партия подготовлена и статически проверена, но не опубликована: tests-first контракты строгой передачи NATS failures из durable message-sent, event ID в двух существующих image editors и запрет автоматической отмены active owned live runs новым commit. Отдельно подготовлены прямые event collection warm/mutate/fresh GET assertions. Create-with-image требует безопасного owner-bound lifecycle с сохранением AUD-180/AUD-233. NATS outage, merge и deploy не выполнялись.
+## Последняя полностью прошедшая CI-точка
 
-[Первичная itemized evidence-сверка](../../audits/AUDIT-2026-10.md#itemized-evidence-accounting-baseline-2026-10-18) остаётся ограниченным проходом, не процентом закрытия 512 IDs. Отдельный 63-ID INDEX ledger имеет другой namespace. Наличие source и успешных функциональных cohorts не заменяет финальную quality-приёмку.
+[d35510a](https://github.com/egorribun/university_ecosystem/commit/d35510a1a6ace7bba113d0d2e0f1eebaebb8aac8), [Matrix 39153043118](https://github.com/egorribun/university_ecosystem/actions/runs/39153043118): все 23 workflows terminal (21 SUCCESS, два штатных SKIPPED), все 86 Matrix jobs terminal, failures 0. Полный paginated набор 136 check runs сопоставлен с 78 required context/app pairs: 77 SUCCESS, один NEUTRAL, ни одного failed/missing.
 
-## Чистота owned CI-стендов
+Python: 16372 PASS / 174 SKIP; PostgreSQL integration: 178 PASS / 9 SKIP и cleanup; frontend shards/static/build/contracts успешны. [Quality gate](https://github.com/egorribun/university_ecosystem/actions/runs/39153043118/job/117760994188): diff-cover 4458 строк / 0 missing / 100%, нормализация и validator успешны; quality-evidence artifact 12147286669, checksum проверен. Два недостижимых event-filter branches удалены без удаления visibility predicate, изменения порогов или исключений.
 
-Текущий [d5ef191 live run](https://github.com/egorribun/university_ecosystem/actions/runs/39148882046) подтвердил 231 contract, 20 browser PASS, два штатных SKIP, успешную остановку контейнеров и metadata-only receipt. Synthetic merge tree совпадает с branch tree. Python suite прошёл; quality acceptance блокируется отдельной нормализацией branch coverage.
+[Owned Live](https://github.com/egorribun/university_ecosystem/actions/runs/39153043004): 231 source contracts, 20 browser PASS, два штатных SKIP, успешная остановка контейнеров и metadata-only receipt (artifact 12146580632). Synthetic merge tree совпадает с branch tree. У старого отменённого [8d4f69c run](https://github.com/egorribun/university_ecosystem/actions/runs/39148403404) cleanup остаётся непроверенным; последующие успешные runs не устраняют эту неопределённость задним числом.
 
-У прежнего отменённого [8d4f69c run](https://github.com/egorribun/university_ecosystem/actions/runs/39148403404) cleanup не подтверждён: run/job terminal CANCELLED, stale metadata stop step и отсутствующий receipt не доказывают ни продолжающуюся очистку, ни утечку ресурсов. Следующий contract защищает running live run от автоматической отмены новым commit; manual cancellation и runner failure остаются отдельными рисками.
+CodeQL: пять успешных языковых анализов и успешный aggregate с no-new-alerts в изменённом коде. Warning о >300 файлах привёл к пропуску diff-informed stage; обычные database/query/SARIF stages выполнены. Не заявляется отсутствие всех tool warnings. Checkov code-scanning NEUTRAL: configuration присутствует на main, но не найдена в PR comparison; это не отсутствие alerts. Отдельный Checkov IaC workflow успешен.
+
+Это source-bound CI checkpoint, не закрытие всего аудита, не подтверждение production deployment и не разрешение release. Новая dependency-находка ниже остаётся открытой.
 
 ## Историческая последовательность коррекций
 
@@ -39,15 +44,11 @@ Tests-only партия добавила 25 guard/CLI cases и не меняла
 
 Прежние локальные 490 Python / 433 frontend результаты и отдельные PostgreSQL/Linux проверки остаются историческими evidence, а не результатами нынешней cloud-only работы. Старое сообщение о 12 pending identities не устанавливает текущий blocker. Неповторение React 418 в последующих live runs не доказывает причину прежнего login flake. Frozen-RC full smoke и полная приёмка 59 specs остаются отдельными требованиями.
 
-## Последняя полностью принятая контрольная точка
-
-На [cd08c35c](https://github.com/egorribun/university_ecosystem/commit/cd08c35c8c0d144ff3c317aa3f16350a86e2a46c) все 23 workflows terminal: 21 SUCCESS, два штатных SKIPPED, failures 0. [Matrix 39081296285](https://github.com/egorribun/university_ecosystem/actions/runs/39081296285), Coverage & Quality Policy Gate и CI Success прошли. Все 78 required context/app pairs найдены: 77 SUCCESS и отдельно проверенный Checkov code-scanning NEUTRAL из-за отсутствующей main configuration сравнения. NEUTRAL не означает отсутствие alerts.
-
-[Owned live Core](https://github.com/egorribun/university_ecosystem/actions/runs/39081296370): 221 contracts, 18 browser tests, два штатных skips и успешный cleanup. Hydration regression: два tests; TOTP cohort: 22 tests со 100% измеренных метрик. Эти результаты относятся только к cd08c35c, не к последующим audit commits.
-
-Причина прежнего flaky первого login не объявлена установленной. SSR hydration readiness defect имеет отдельное доказательство, не тождественное доказательству причины flake.
+Исторический [cd08c35c checkpoint](https://github.com/egorribun/university_ecosystem/commit/cd08c35c8c0d144ff3c317aa3f16350a86e2a46c) также прошёл все применимые CI gates; его отдельные hydration/TOTP cohorts и старые live counts остаются evidence только того SHA. Он больше не является последней CI-точкой. Причина прежнего login flake не объявлена установленной.
 
 ## Зависимости, политика и ресурсы
+
+- Новый follow-up: gateway косвенно использует mimetype 1.4.15, отозванную upstream из-за quadratic CDF processing (GHSA-jjmc-jx7j-hp68). Прямого request path к CDF detection не найдено; наличие зависимости не доказывает exploitability. Кандидат 1.4.16 опубликован 2026-10-17 и набирает семь дней maturity 2026-10-24 10:15:44 UTC. Точечное owner exception запрошено, но не получено; версия и go.sum не меняются до разрешения либо maturity. Нужны canonical hosted checksums и отдельный полный CI, без угадывания hashes. Остальной аудит продолжается независимо.
 
 - Dependency checkpoint C8 (`5611eb00`) принят; последующие изменения проверяются на собственных SHA. Шесть compatibility holds и открытый SeaweedFS advisory сохранены в [dependency supplement](../../audits/AUDIT-2026-10.md#dependency-closure-supplement-2026-10-15). Удалённые `dependency-updates-2026-10`, `merge-exceptions.md` и `NEXT_SESSION_PROMPT.md` не восстанавливаются.
 - Сохраняются baseline319, 78 required contexts, blocking CodeQL и обычные hooks. В опубликованном a71b9c90 policy содержит 263 записи; прежнее число 261 устарело. Эта коррекция не добавляет dispositions и не подтверждает отсутствующее в текущей проверке отдельное owner approval для двух новых записей. Новые unmatched identities остаются блокирующими. Finite131 касается только неизменённых migration blobs из base `ac74e915` до 2026-11-13; остальные Tier 0 и затронутые миграции требуют 100%.

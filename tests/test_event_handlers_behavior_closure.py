@@ -338,6 +338,7 @@ async def test_message_handler_successfully_notifies_with_reply(monkeypatch):
         replied=reply,
         chat_type="group",
         chat_name="Study",
+        propagate_nats_failure=True,
     )
     db.commit.assert_awaited_once()
 
@@ -953,3 +954,127 @@ async def test_comment_notification_skips_deleted_comment_before_loading_sources
     db.get.assert_awaited_once_with(event_handlers.models.NewsComment, comment_id)
     notify.assert_not_awaited()
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_message_sent_nats_failure_keeps_outbox_row_retryable(monkeypatch):
+    """Exercise the real dispatch chain with doubled sessions and broker I/O."""
+    from app import models as app_models
+    from app.api.ws.connection_manager import manager as ws_manager
+    from app.core.events import EventBus
+    from app.core.nats_broker import broker
+    from app.models.domain_events import StoredEvent
+    from app.workers import outbox as outbox_module
+
+    message_id, chat_id, sender_id = uuid4(), uuid4(), uuid4()
+    sender = SimpleNamespace(id=sender_id, profile=SimpleNamespace(full_name="Alice"))
+    recipient = SimpleNamespace(id=uuid4(), profile=None)
+    message = SimpleNamespace(
+        id=message_id,
+        chat_id=chat_id,
+        sender_id=sender_id,
+        sender=None,
+        content="hello",
+        reply_to_message_id=None,
+    )
+    chat = SimpleNamespace(
+        participants=[sender, recipient], chat_type="dm", name=None
+    )
+    handler_db = AsyncMock()
+    handler_db.get_bind = MagicMock(
+        return_value=SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    )
+
+    async def execute(statement, *_args, **_kwargs):
+        if "chat_participants" in str(statement):
+            return SimpleNamespace(scalar_one_or_none=lambda: sender_id)
+        return SimpleNamespace(all=lambda: [])
+
+    async def get(model, *_args, **_kwargs):
+        if model is app_models.Message:
+            return message
+        if model is app_models.User:
+            return sender
+        return None
+
+    handler_db.execute = AsyncMock(side_effect=execute)
+    handler_db.get = AsyncMock(side_effect=get)
+    handler_db.commit = AsyncMock()
+    monkeypatch.setattr(
+        event_handlers, "async_session", lambda: _session(handler_db)
+    )
+    repo = MagicMock()
+    repo.get_by_id = AsyncMock(return_value=chat)
+
+    stored_event = StoredEvent(
+        id=uuid4(),
+        event_type=MessageSent.EVENT_TYPE,
+        aggregate_type="Message",
+        aggregate_id=str(message_id),
+        aggregate_id_uuid=message_id,
+        payload={
+            "message_id": str(message_id),
+            "chat_id": str(chat_id),
+            "sender_id": str(sender_id),
+        },
+        metadata_={},
+        error_count=0,
+        processed_at=None,
+    )
+    selection = MagicMock()
+    selection.scalars.return_value.all.return_value = [stored_event]
+    pending = MagicMock()
+    pending.scalar_one.return_value = 1
+    outbox_db = AsyncMock()
+    outbox_db.execute = AsyncMock(side_effect=[selection, pending])
+    outbox_db.commit = AsyncMock()
+    outbox_db.add = MagicMock()
+    monkeypatch.setattr(
+        outbox_module, "async_session", lambda: _session(outbox_db)
+    )
+
+    bus = EventBus()
+    monkeypatch.setattr(event_handlers, "event_bus", bus)
+    monkeypatch.setattr(outbox_module, "event_bus", bus)
+    event_handlers.configure_event_handlers()
+    monkeypatch.setattr(
+        ws_manager, "_get_chat_participants_cached", AsyncMock(return_value=[])
+    )
+
+    async def publish_core(_subject, _payload, *, strict=False):
+        if strict:
+            raise ConnectionError("NATS unavailable")
+
+    broker_publish = AsyncMock(side_effect=publish_core)
+    monkeypatch.setattr(broker, "publish_core", broker_publish)
+
+    with (
+        patch(
+            "app.repositories.chat_repository.ChatRepository", return_value=repo
+        ),
+        patch(
+            "app.services.chat.notification_service.build_presence_map",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.services.chat.notification_service.serialize_message",
+            return_value={},
+        ),
+        patch(
+            "app.services.chat.notification_service.create_notifications_for_users",
+            new=AsyncMock(),
+        ) as create,
+    ):
+        processed = await outbox_module.OutboxWorker(max_retries=3).process_batch()
+
+    assert processed == 1
+    assert stored_event.error_count == 1
+    assert stored_event.processed_at is None
+    assert stored_event.last_error is not None
+    assert "Durable event handler failed" in stored_event.last_error
+    outbox_db.add.assert_not_called()
+    outbox_db.commit.assert_awaited_once()
+    create.assert_not_awaited()
+    handler_db.commit.assert_not_awaited()
+    broker_publish.assert_awaited_once()
+    assert broker_publish.await_args.kwargs["strict"] is True

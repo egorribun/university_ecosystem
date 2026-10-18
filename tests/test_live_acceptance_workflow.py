@@ -42,10 +42,9 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
         concurrency["group"]
         == "live-acceptance-${{ github.event.pull_request.number || github.ref }}"
     )
-    assert (
-        concurrency["cancel-in-progress"]
-        == "${{ github.event_name == 'pull_request' }}"
-    ), "only a superseded PR smoke may cancel an in-flight acceptance"
+    assert concurrency["cancel-in-progress"] is False, (
+        "superseding commits must not automatically cancel active owned runs"
+    )
     job = workflow["jobs"]["live-acceptance"]
     assert (
         job["if"]

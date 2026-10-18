@@ -358,7 +358,7 @@ describe("EventDetailEditDialog", () => {
     expect(screen.getByAltText("events:alt.preview")).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
-    await waitFor(() => expect(mocks.uploadEventImage).toHaveBeenCalledWith(file))
+    await waitFor(() => expect(mocks.uploadEventImage).toHaveBeenCalledWith(file, "evt-1"))
     expect(mocks.patch).toHaveBeenCalledWith(
       "/events/evt-1",
       expect.objectContaining({ image_url: "https://cdn.example/new.png" })

@@ -153,6 +153,10 @@ async def test_events_crud_flow(
     assert db_session.bind is not None
     sessions = async_sessionmaker(db_session.bind, expire_on_commit=False)
 
+    before_create = await async_client.get("/events", headers=auth_header)
+    assert before_create.status_code == 200
+    assert before_create.json()["items"] == []
+
     now = datetime.now(UTC)
     create_response = await async_client.post(
         "/events",
@@ -167,6 +171,10 @@ async def test_events_crud_flow(
     assert create_response.status_code == 200
     event_id = create_response.json()["id"]
     assert event_id
+
+    after_create = await async_client.get("/events", headers=auth_header)
+    assert after_create.status_code == 200
+    assert [item["id"] for item in after_create.json()["items"]] == [event_id]
 
     get_response = await async_client.get(
         f"/events/{event_id}",
@@ -197,6 +205,12 @@ async def test_events_crud_flow(
     assert updated_response.status_code == 200
     assert updated_response.json()["title"] == updated_title
 
+    after_update = await async_client.get("/events", headers=auth_header)
+    assert after_update.status_code == 200
+    assert [(item["id"], item["title"]) for item in after_update.json()["items"]] == [
+        (event_id, updated_title)
+    ]
+
     delete_response = await async_client.delete(
         f"/events/{event_id}",
         headers=auth_header,
@@ -212,6 +226,10 @@ async def test_events_crud_flow(
         headers=auth_header,
     )
     assert deleted_response.status_code == 404
+
+    after_delete = await async_client.get("/events", headers=auth_header)
+    assert after_delete.status_code == 200
+    assert after_delete.json()["items"] == []
 
 
 @skip_without_db
