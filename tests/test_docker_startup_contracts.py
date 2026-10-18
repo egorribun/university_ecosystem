@@ -792,7 +792,6 @@ def test_start_script_waits_for_the_full_stack_without_auto_removing_containers(
     for name, endpoint in {
         "grafana": ("GRAFANA", 3000, "/api/health"),
         "prometheus": ("PROMETHEUS", 9090, "/-/healthy"),
-        "frontend": ("FRONTEND", 8081, "/login"),
         "site": ("CADDY_HTTP", 80, "/login"),
     }.items():
         live_name, default_port, path = endpoint
@@ -804,9 +803,24 @@ def test_start_script_waits_for_the_full_stack_without_auto_removing_containers(
             f'-DefaultPort {default_port} -Path "{path}")'
         ) in entry.group(1), name
 
-    assert "timeout = 20" in re.search(
-        r"frontend\s+= @\{([^\n]+)", services_block
-    ).group(1)
+    frontend_entry = re.search(r"frontend\s+= @\{([^\n]+)", services_block)
+    assert frontend_entry is not None
+    assert 'type = "docker"' in frontend_entry.group(1)
+    assert 'service = "frontend"' in frontend_entry.group(1)
+    assert "requireHealth = $true" in frontend_entry.group(1)
+    site_entry = re.search(r"site\s+= @\{([^\n]+)", services_block)
+    assert site_entry is not None
+    assert 'type = "http"' in site_entry.group(1)
+    assert 'service = "caddy"' in site_entry.group(1)
+    assert '-Path "/login"' in site_entry.group(1)
+    assert "timeout = 20" in site_entry.group(1)
+    assert "$services[$name].requireHealth" in script
+    for compose_name in ("docker-compose.yml", "docker-compose.full.yml"):
+        frontend = _compose(compose_name)["services"]["frontend"]
+        assert frontend["healthcheck"]["test"] == [
+            "CMD-SHELL",
+            "wget -qO- http://127.0.0.1:3000/healthz >/dev/null || exit 1",
+        ]
     assert "-FullReadiness $fullReadiness" in selection_block
     assert "-Core:$Core" in selection_block
     assert "foreach ($name in $services.Keys)" in script[selection_end:]
@@ -828,7 +842,7 @@ def test_launcher_resolves_readiness_and_prometheus_ports_from_live_map() -> Non
     assert 'return "http://localhost:$($port)$Path"' in script
     assert "Get-LocalServiceUrl -Name PROMETHEUS -DefaultPort 9090" in script
     assert "Get-LocalServiceUrl -Name GATEWAY -DefaultPort 8080" in script
-    assert "Get-LocalServiceUrl -Name FRONTEND -DefaultPort 8081" in script
+    assert "Get-LocalServiceUrl -Name FRONTEND" not in script
     assert "Get-LocalServiceUrl -Name WS_HUB -DefaultPort 8083" in script
     assert "Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80" in script
     core_readiness = _powershell_function(
@@ -840,7 +854,16 @@ def test_launcher_resolves_readiness_and_prometheus_ports_from_live_map() -> Non
         'Get-LocalServiceUrl -Name MAILPIT -DefaultPort 8025 -Path "/api/v1/info"'
         in core_readiness
     )
-    assert "http://localhost:8081/login" not in script
+    core_frontend = re.search(r"frontend\s+= @\{([^\n]+)", core_readiness)
+    assert core_frontend is not None
+    assert 'type = "docker"' in core_frontend.group(1)
+    assert "requireHealth = $true" in core_frontend.group(1)
+    core_site = re.search(r"site\s+= @\{([^\n]+)", core_readiness)
+    assert core_site is not None
+    assert 'service = "caddy"' in core_site.group(1)
+    assert '-Path "/login"' in core_site.group(1)
+    assert "timeout = 20" in core_site.group(1)
+    assert "Get-LocalServiceUrl -Name FRONTEND" not in script
 
 
 def test_launcher_exposes_an_explicit_bounded_core_mode() -> None:
@@ -974,8 +997,8 @@ def test_core_mode_is_documented_for_local_resource_constrained_runs() -> None:
         assert "file-processor" in document.lower()
 
 
-def test_published_ports_have_a_non_internal_network() -> None:
-    """Docker cannot publish host ports from an internal-only bridge network."""
+def test_published_ports_allow_only_the_isolated_frontend_on_internal_net() -> None:
+    """Keep frontend network isolation and its loopback-only port declaration."""
     for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
         compose = _compose(relative_path)
         networks = compose["networks"]
@@ -984,6 +1007,16 @@ def test_published_ports_have_a_non_internal_network() -> None:
             if not service.get("ports"):
                 continue
             service_networks = service.get("networks", [])
+            if service_name == "frontend":
+                # The SSR frontend stays on the internal network. This asserts
+                # Compose configuration only; it does not test host reachability.
+                assert service_networks == ["frontend_net"]
+                assert (networks.get("frontend_net") or {}).get("internal") is True
+                assert all(
+                    isinstance(port, str) and port.startswith("127.0.0.1:")
+                    for port in service["ports"]
+                ), (relative_path, service_name)
+                continue
             assert any(
                 not (networks.get(network_name) or {}).get("internal", False)
                 for network_name in service_networks
@@ -1309,7 +1342,36 @@ def test_sandbox_runner_uses_a_worktree_scoped_compose_project() -> None:
 
 def test_smoke_script_is_printable_in_the_windows_launcher_console() -> None:
     """The supported PowerShell flow may inherit the default CP1251 code page."""
-    _read("scripts/smoke_test.py").encode("cp1251")
+    smoke_script = _read("scripts/smoke_test.py")
+    smoke_script.encode("cp1251")
+    assert (
+        'frontend_url = os.environ.get("FRONTEND_URL", "http://localhost/login")'
+        in smoke_script
+    )
+
+
+def test_local_frontend_documentation_uses_caddy_as_supported_entry() -> None:
+    for relative_path in (
+        "README.md",
+        "README.ru.md",
+        "docs/DEPLOY.md",
+        "docs/DEPLOY.en.md",
+    ):
+        document = _read(relative_path)
+        assert "localhost:8081" not in document
+        assert "127.0.0.1:8081" not in document
+        assert "Caddy" in document
+
+    assert "Digital Hub (Caddy edge, including Frontend SSR)" in _read("README.md")
+    assert "Единый цифровой хаб (Caddy edge, включая Frontend SSR)" in _read(
+        "README.ru.md"
+    )
+    assert "supported host entry" in _read("docs/DEPLOY.en.md")
+    assert "поддерживаемая точка входа с хоста" in _read("docs/DEPLOY.md")
+
+    for relative_path in ("docs/DEPLOY.md", "docs/DEPLOY.en.md"):
+        document = _read(relative_path)
+        assert "docker compose up -d frontend caddy" in document
 
 
 def test_production_temporal_entrypoint_never_enables_no_auth() -> None:
@@ -1861,6 +1923,7 @@ def _assert_secret_file_values(
 BACKEND_CONNECTION_SECRET_KEYS = {
     "database-url",
     "redis-backend-url",
+    "rate-limit-storage-uri",
     "redis-revocation-url",
     "nats-url",
     "nats-auth-token",
@@ -1877,6 +1940,7 @@ BACKEND_APPLICATION_SECRET_KEYS = {
     "audit-log-secret",
     "token-hmac-secret",
     "idempotency-hmac-secret",
+    "mfa-totp-encryption-keys",
     "mfa-email-otp-hmac-keys",
     "mfa-email-otp-active-hmac-key-id",
     "mfa-email-delivery-keks",
@@ -1899,6 +1963,7 @@ MIGRATION_APPLICATION_SECRET_KEYS = {
     "spicedb-preshared-key",
     "spotify-token-secret",
     "token-hmac-secret",
+    "mfa-totp-encryption-keys",
 }
 OUTBOX_CONNECTION_SECRET_KEYS = {
     "database-url",
@@ -2040,17 +2105,21 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "backend.config.tokenHMACSecret=ci-placeholder",
         "--set",
         "backend.config.idempotencyHMACSecret=ci-placeholder",
-        "--set",
+        "--set-string",
+        "backend.config.mfaTotpEncryptionKeys=test-key:ci-placeholder",
+        "--set-string",
+        "backend.config.mfaTotpActiveEncryptionKeyId=test-key",
+        "--set-string",
         "backend.config.mfaEmailOtpHMACKeys=test-key:ci-placeholder",
-        "--set",
+        "--set-string",
         "backend.config.mfaEmailOtpActiveHMACKeyId=test-key",
-        "--set",
+        "--set-string",
         "backend.config.mfaEmailDeliveryKEKs=test-key:ci-placeholder",
-        "--set",
+        "--set-string",
         "backend.config.mfaEmailDeliveryActiveKEKId=test-key",
-        "--set",
+        "--set-string",
         "backend.config.mfaTrustedDeviceHMACKeys=test-key:ci-placeholder",
-        "--set",
+        "--set-string",
         "backend.config.mfaTrustedDeviceActiveHMACKeyId=test-key",
         "--set",
         "fileProcessor.config.rsaPublicKeyPEM=ci-placeholder",
@@ -2142,10 +2211,12 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
             "INTERNAL_HMAC_SECRET": "internal-hmac-secret",
             "SPICEDB_PRESHARED_KEY": "spicedb-preshared-key",
             "SPOTIFY_TOKEN_SECRET": "spotify-token-secret",
+            "MFA_TOTP_ENCRYPTION_KEYS": "mfa-totp-encryption-keys",
             "TOKEN_HMAC_SECRET": "token-hmac-secret",
             "WS_HUB_INTERNAL_SECRET": "ws-hub-internal-secret",
         },
     )
+    assert migration_env["MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID"]["value"] == "test-key"
     _assert_readonly_secret_mounts(
         migration_spec,
         migration_container,
@@ -2186,6 +2257,7 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         {
             "DATABASE_URL": "database-url",
             "CACHE_REDIS_URL": "redis-backend-url",
+            "RATE_LIMIT_STORAGE_URI": "rate-limit-storage-uri",
             "REVOCATION_REDIS_URL": "redis-revocation-url",
             "NATS_URL": "nats-url",
             "NATS_AUTH_TOKEN": "nats-auth-token",
@@ -2199,6 +2271,7 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         BACKEND_CONNECTION_SECRET_KEYS,
         BACKEND_APPLICATION_SECRET_KEYS,
     )
+    assert backend_env["RATE_LIMIT_STORAGE_BACKEND"]["value"] == "redis"
     assert backend_env["ENVIRONMENT"]["value"] == "development"
     _assert_secret_file_values(
         backend_env, application_secret, {"SECRET_KEY": "jwt-secret"}
@@ -2221,6 +2294,7 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
             "AUDIT_LOG_SECRET": "audit-log-secret",
             "TOKEN_HMAC_SECRET": "token-hmac-secret",
             "IDEMPOTENCY_HMAC_SECRET": "idempotency-hmac-secret",
+            "MFA_TOTP_ENCRYPTION_KEYS": "mfa-totp-encryption-keys",
             "MFA_EMAIL_OTP_HMAC_KEYS": "mfa-email-otp-hmac-keys",
             "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID": "mfa-email-otp-active-hmac-key-id",
             "MFA_EMAIL_DELIVERY_KEKS": "mfa-email-delivery-keks",
@@ -2229,6 +2303,7 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
             "MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID": "mfa-trusted-device-active-hmac-key-id",
         },
     )
+    assert backend_env["MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID"]["value"] == "test-key"
     assert backend_env["MINIO_SECURE"]["value"] == "false"
     assert backend_env["ELASTICSEARCH_URL"]["value"] == ""
     backend_volumes = backend["spec"]["template"]["spec"]["volumes"]
@@ -2595,6 +2670,8 @@ def _production_render_command(helm: str) -> list[str]:
         "--values",
         str(ROOT / "charts" / "university-ecosystem" / "values-staging.yaml"),
         *_resolved_staging_args(),
+        "--set-string",
+        "backend.config.mfaTotpActiveEncryptionKeyId=totp-active-contract",
         "--set-string",
         "global.environment=production",
         "--set-string",

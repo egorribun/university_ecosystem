@@ -41,6 +41,45 @@ def _root_compose_files() -> list[Path]:
     return [path for path in files if path.name != "docker-compose.override.yml"]
 
 
+_PRODUCTION_SECRET_SOURCE_VARIABLES = (
+    "SECRET_KEY_SOURCE_FILE",
+    "DATABASE_URL_SOURCE_FILE",
+    "NATS_AUTH_TOKEN_SOURCE_FILE",
+    "CACHE_REDIS_URL_SOURCE_FILE",
+    "REVOCATION_REDIS_URL_SOURCE_FILE",
+    "POSTGRES_PASSWORD_SOURCE_FILE",
+    "MFA_TOTP_ENCRYPTION_KEYS_SOURCE_FILE",
+    "VAPID_PRIVATE_KEY_SOURCE_FILE",
+    "SPOTIFY_CLIENT_SECRET_SOURCE_FILE",
+    "SPOTIFY_OAUTH_STATE_SECRET_SOURCE_FILE",
+    "SPOTIFY_TOKEN_SECRET_SOURCE_FILE",
+    "AUDIT_LOG_SECRET_SOURCE_FILE",
+    "ELASTICSEARCH_PASSWORD_SOURCE_FILE",
+    "INTERNAL_AUTH_TOKEN_SOURCE_FILE",
+    "INTERNAL_HMAC_SECRET_SOURCE_FILE",
+    "RATE_LIMIT_STORAGE_URI_SOURCE_FILE",
+    "SPICEDB_PRESHARED_KEY_SOURCE_FILE",
+    "TOKEN_HMAC_SECRET_SOURCE_FILE",
+    "WS_HUB_INTERNAL_SECRET_SOURCE_FILE",
+)
+
+
+def _production_secret_source_overrides(tmp_path: Path) -> dict[str, str]:
+    """Use synthetic files when rendering the explicitly enabled prod profile."""
+    source_dir = tmp_path / "synthetic-prod-secret-sources"
+    source_dir.mkdir(exist_ok=True)
+    overrides: dict[str, str] = {}
+    for index, variable in enumerate(_PRODUCTION_SECRET_SOURCE_VARIABLES):
+        source = source_dir / f"source-{index}.txt"
+        source.write_text("synthetic compose contract fixture\n", encoding="utf-8")
+        overrides[variable] = str(source)
+    overrides["MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID"] = "synthetic-active-key-id"
+    overrides["ELASTICSEARCH_URL"] = "https://search.synthetic.invalid:9243"
+    overrides["SPICEDB_ENDPOINT"] = "grpcs://spicedb.synthetic.invalid:443"
+    overrides["EVENT_FILE_SCANNER_HOST"] = "clamd.synthetic.invalid"
+    return overrides
+
+
 def test_no_root_compose_file_references_a_minio_image() -> None:
     offenders = []
     for path in _root_compose_files():
@@ -181,13 +220,15 @@ def _docker_compose() -> str:
     return docker
 
 
-def _rendered(
+def _compose_config_result(
     tmp_path: Path,
     project: str | None,
     *files: str,
     profiles: tuple[str, ...] = (),
-) -> dict[str, Any]:
-    """Render the real model with placeholder secrets in an isolated copy."""
+    environment_overrides: dict[str, str] | None = None,
+    unset_environment: tuple[str, ...] = (),
+) -> subprocess.CompletedProcess[str]:
+    """Render Compose in an isolated copy and return its unmodified result."""
 
     docker = _docker_compose()
     for path in _root_compose_files():
@@ -214,6 +255,9 @@ def _rendered(
     )
     for index, name in enumerate(live_port_names):
         env[name] = str(24000 + index)
+    env.update(environment_overrides or {})
+    for name in unset_environment:
+        env.pop(name, None)
     command = [docker, "compose"]
     if project is not None:
         command += ["-p", project]
@@ -221,13 +265,32 @@ def _rendered(
         command += ["--profile", profile]
     for name in files:
         command += ["-f", name]
-    result = subprocess.run(  # noqa: S603 - fixed local CLI and repository files
+    return subprocess.run(  # noqa: S603 - fixed local CLI and repository files
         [*command, "config", "--format", "json"],
         cwd=tmp_path,
         env=env,
         capture_output=True,
         text=True,
         check=False,
+    )
+
+
+def _rendered(
+    tmp_path: Path,
+    project: str | None,
+    *files: str,
+    profiles: tuple[str, ...] = (),
+    environment_overrides: dict[str, str] | None = None,
+    unset_environment: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """Render the real model with placeholder secrets in an isolated copy."""
+    result = _compose_config_result(
+        tmp_path,
+        project,
+        *files,
+        profiles=profiles,
+        environment_overrides=environment_overrides,
+        unset_environment=unset_environment,
     )
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)

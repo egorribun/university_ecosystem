@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef } from "react"
-import { captureSessionEpoch, rotateBrowserSession } from "@/stores/sessionEpoch"
+import {
+  captureSessionEpoch,
+  getBrowserSessionGeneration,
+  getSessionEpoch,
+  hasFailedBrowserSessionRotation,
+  hasStaleBrowserSessionBinding,
+  rotateBrowserSession,
+} from "@/stores/sessionEpoch"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
 import type { TFunction } from "i18next"
@@ -16,6 +23,7 @@ import {
   type SubmitMfaChallengePayload,
   type UserState,
   type SetUserArg,
+  type LogoutOptions,
   ChallengeLockedError,
 } from "@/types/Auth"
 import { fetchCurrentUser } from "./useProfileSync"
@@ -26,7 +34,8 @@ import {
   setPushConsent,
   syncPushForConfirmedIdentity,
 } from "@/push/subscribe"
-import { logWarning, logError } from "@/app/logger"
+import { logWarning } from "@/app/logger"
+import { clearLogoutNotice, markLogoutUnconfirmed } from "@/stores/logoutNoticeStore"
 import { incrementSessionEpoch } from "@/api/interceptors/etagCache"
 
 /**
@@ -194,6 +203,7 @@ export const useAuthApi = (
           // Any HMAC computations that started under the previous session see the epoch
           // change and discard their results, preventing cross-session data leakage.
           incrementSessionEpoch()
+          clearLogoutNotice()
           setUser(data.user)
           updatePendingMfa(null)
           if (data.user.spotify_connected) {
@@ -234,28 +244,56 @@ export const useAuthApi = (
     ]
   )
 
-  const logout = useCallback(async () => {
-    rotateBrowserSession()
-    const ownsSession = captureSessionEpoch()
-    try {
-      if (user) {
-        // Keep the browser subscription so it can be recovered on the next
-        // login, but detach it from this account on the server while the
-        // session is still valid. A failed unbind must not block logout.
-        if (hasPushConsent()) {
-          setPushConsent(false)
+  const logout = useCallback(
+    async ({ serverRevocationConfirmed = false }: LogoutOptions = {}) => {
+      // A failed generation write leaves an otherwise-current session unbound.
+      // Retain logout ownership only if the known pre-rotation generation remains
+      // unchanged in the same epoch and no stale cross-tab binding was observed.
+      const generationBeforeRotation = getBrowserSessionGeneration()
+      rotateBrowserSession()
+      const rotationEpoch = getSessionEpoch()
+      const currentSession = captureSessionEpoch()
+      const ownsSession = () =>
+        currentSession() ||
+        (generationBeforeRotation !== null &&
+          getSessionEpoch() === rotationEpoch &&
+          hasFailedBrowserSessionRotation() &&
+          !hasStaleBrowserSessionBinding() &&
+          getBrowserSessionGeneration() === generationBeforeRotation)
+      try {
+        if (user) {
+          // Keep the browser subscription so it can be recovered on the next
+          // login, but detach it from this account on the server while the
+          // session is still valid. A failed unbind must not block logout.
+          if (hasPushConsent()) {
+            setPushConsent(false)
+          }
+          await releasePushServerBinding().catch(() => {
+            logWarning("Failed to release push binding on logout")
+          })
+          // Do not send an old account's request with a successor's cookies.
+          if (!ownsSession()) return
+          await api.post("/auth/logout")
+          if (ownsSession()) clearLogoutNotice()
+        } else if (serverRevocationConfirmed && ownsSession()) {
+          clearLogoutNotice()
         }
-        await releasePushServerBinding().catch((error: unknown) => {
-          logWarning("Failed to release push binding on logout", error)
-        })
-        await api.post("/auth/logout")
+      } catch {
+        if (ownsSession()) {
+          if (serverRevocationConfirmed) {
+            clearLogoutNotice()
+            logWarning("Logout request failed after the current session was revoked")
+          } else {
+            markLogoutUnconfirmed()
+            logWarning("Server logout could not be confirmed; local cleanup will continue")
+          }
+        }
+      } finally {
+        if (mounted.current && ownsSession()) handleUnauthorized()
       }
-    } catch (error) {
-      logError("Logout failed", { error })
-    } finally {
-      if (mounted.current && ownsSession()) handleUnauthorized()
-    }
-  }, [handleUnauthorized, user])
+    },
+    [handleUnauthorized, user]
+  )
 
   const submitMfaChallenge = useCallback(
     async ({ method = "totp", code, challengeToken }: SubmitMfaChallengePayload) => {
@@ -290,6 +328,7 @@ export const useAuthApi = (
           if (!authenticatedStepUp) {
             updateSessionSigningKey(extractSigningKey(data))
             incrementSessionEpoch() // RED-02 Wave 11: epoch bump after MFA login
+            clearLogoutNotice()
           }
           setUser(data.user)
           updatePendingMfa(null)
@@ -372,6 +411,7 @@ export const useAuthApi = (
       const profile = (await fetchCurrentUser()) as User
       if (!ownsSession()) return
       accepted = true
+      clearLogoutNotice()
       setUser(profile)
       syncPushAfterAuthentication(profile.id)
     } catch (error) {

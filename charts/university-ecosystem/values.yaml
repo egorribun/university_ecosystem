@@ -18,6 +18,8 @@ global:
 #   database-url: postgresql+asyncpg://...
 #   redis-backend-url: redis://:PASSWORD@<release>-redis-master:6379/0
 #   redis-gateway-url: redis://:PASSWORD@<release>-redis-master:6379/3
+#   rate-limit-storage-uri: redis://:PASSWORD@<release>-redis-master:6379/1
+#     Dedicated connection identity/ACL for Python rate-limit state; provision externally.
 #   redis-revocation-url: redis://:PASSWORD@<release>-revocation-redis-master:6379/0
 #   nats-url: nats://<release>-nats:4222
 #   nats-auth-token: independent NATS authentication token
@@ -28,6 +30,9 @@ connections:
   databaseURLKey: "database-url"
   redisBackendURLKey: "redis-backend-url"
   redisGatewayURLKey: "redis-gateway-url"
+  # Python rate-limit state uses a distinct Secret key and Redis DB/ACL.
+  # The chart consumes this external connection; it does not provision Redis ACLs.
+  rateLimitStorageURIKey: "rate-limit-storage-uri"
   # Session revocation is security state and must use the separately bootstrapped
   # durable, non-evicting revocation-store release. It is intentionally not an
   # application-chart dependency: migrations are Helm pre-hooks and must only
@@ -48,13 +53,15 @@ connections:
 # audit-log-secret, token-hmac-secret, idempotency-hmac-secret, all keys configured under
 # applicationSecrets.keys, minio-access-key, minio-secret-key, temporal-api-key.
 # An ExternalSecret may own this Secret; keep its refreshInterval at 1m so both
-# backend and outbox-worker receive overlapping key rings during rotation.
+# backend and migration Job receive their respective TOTP settings. The
+# non-auth workers stay keyless for TOTP.
 applicationSecrets:
   existingSecret: ""
   # Parameterized key names allow an existing Secret/ExternalSecret target to
   # follow the operator's naming convention without copying secret material
   # into Helm values or Helm release state.
   keys:
+    mfaTotpEncryptionKeys: "mfa-totp-encryption-keys"
     mfaEmailOtpHMACKeys: "mfa-email-otp-hmac-keys"
     mfaEmailOtpActiveHMACKeyId: "mfa-email-otp-active-hmac-key-id"
     mfaEmailDeliveryKEKs: "mfa-email-delivery-keks"
@@ -184,8 +191,11 @@ backend:
     tokenHMACSecret: ""
     idempotencyHMACSecret: ""
     # Development-only key-ring material used when existingSecret is empty.
-    # Format: "key-id:base64url-key[,previous-id:base64url-key]". Never set
-    # these values in staging/production; use applicationSecrets.existingSecret.
+    # Format: "key-id:Fernet-key[,previous-id:Fernet-key]". The active key
+    # must be independent from Spotify; retain legacy entries only for decrypt.
+    # Never set key material in staging/production values; use the Secret store.
+    mfaTotpEncryptionKeys: ""
+    mfaTotpActiveEncryptionKeyId: ""
     mfaEmailOtpHMACKeys: ""
     mfaEmailOtpActiveHMACKeyId: ""
     mfaEmailDeliveryKEKs: ""

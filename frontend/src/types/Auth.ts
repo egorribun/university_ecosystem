@@ -5,6 +5,10 @@ import type { Dispatch, SetStateAction } from "react"
 export type UserState = User | null
 export type SetUserArg = SetStateAction<UserState>
 
+export type LogoutOptions = {
+  serverRevocationConfirmed?: boolean
+}
+
 export type PendingMfaState = PendingMfaResponse & { reason: "login" | "step-up" }
 
 export type SubmitMfaChallengePayload = {
@@ -16,7 +20,7 @@ export type SubmitMfaChallengePayload = {
 export type AuthContextType = {
   isAuth: boolean
   login: (email: string, password: string, trustDevice?: boolean) => Promise<PendingMfaState | null>
-  logout: () => Promise<void>
+  logout: (options?: LogoutOptions) => Promise<void>
   user: UserState
   loading: boolean
   authOperation: boolean

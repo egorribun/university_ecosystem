@@ -26,8 +26,13 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - To limit requests, configure the backend with `RATE_LIMIT_STORAGE_BACKEND` and `RATE_LIMIT_STORAGE_URI`. The `redis` backend and a URI supplied from a protected store through environment variables enable shared storage for middleware and sensitive endpoints; keep credentials out of URLs and shell history. Use `memory` or `memory://` for a simple single-process mode without external Redis.
 - Session revocation must use one shared, dedicated store across services: the backend, gateway, and ws-hub use only `REVOCATION_REDIS_URL`. The supported Compose and Helm topology provisions a separate Redis/Valkey process with AOF, persistent storage, and `maxmemory-policy noeviction`; neither the cache (`CACHE_REDIS_URL`) nor the rate-limit Redis (`REDIS_URL`, DB 3) is authoritative security state. Reusing a cache/rate-limit process is unsupported because evicting `revoked:jti:*` could make a revoked JWT valid again.
 - Control the object-storage health probe with `HEALTH_STORAGE_PROBE_ENABLED` (run a write/delete check when set to `true`) and `HEALTH_STORAGE_PROBE_MIN_INTERVAL_SECONDS` (cache probe results between intervals). When disabled, the probe uses cheap bucket/list calls when available, which is friendlier to external providers.
-- Docker Compose has a production override (`docker-compose.prod.yml`) that marks secrets as mandatory. Create the Compose secrets `secret_key`, `database_url`, and `nats_auth_token`, and provide the PostgreSQL password file through `POSTGRES_PASSWORD_SOURCE_FILE`. The `database_url` secret must point to `postgresql+asyncpg://...@pgbouncer:5432/university`. Then run `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d` with `FRONTEND_ORIGIN` and `FRONTEND_ORIGINS` set explicitly; the Go overlay is required because Caddy routes API and WebSocket traffic through gateway/ws-hub.
-- The Helm chart reads connections from the pre-created `university-connections` Secret (all required keys are documented in `charts/university-ecosystem/values.yaml`). In production, set `applicationSecrets.existingSecret`; it must contain the listed JWT/RSA keys, independent HMAC/integration secrets, S3 credentials (the `minio-access-key`/`minio-secret-key` keys), and Temporal API key. Production rendering rejects plaintext S3, Temporal, gRPC, and OTLP so unsafe configuration never reaches the cluster or Helm release state.
+- Docker Compose has a production override (`docker-compose.prod.yml`) that marks secrets as mandatory:
+  - Create the Compose secrets `secret_key`, `database_url`, `nats_auth_token`, and `mfa_totp_encryption_keys`.
+  - Provide their source paths through `SECRET_KEY_SOURCE_FILE`, `DATABASE_URL_SOURCE_FILE`, `NATS_AUTH_TOKEN_SOURCE_FILE`, `CACHE_REDIS_URL_SOURCE_FILE`, `REVOCATION_REDIS_URL_SOURCE_FILE`, and `MFA_TOTP_ENCRYPTION_KEYS_SOURCE_FILE`.
+  - Set the non-secret `MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` directly. The TOTP ring and active ID are delivered to backend and migrations; non-auth workers stay keyless.
+  - Provide the PostgreSQL password file through `POSTGRES_PASSWORD_SOURCE_FILE`. The `database_url` secret must point to `postgresql+asyncpg://...@pgbouncer:5432/university`.
+  - Then run `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d` with `FRONTEND_ORIGIN` and `FRONTEND_ORIGINS` set explicitly; the Go overlay is required because Caddy routes API and WebSocket traffic through gateway/ws-hub.
+- The Helm chart reads connections from the pre-created `university-connections` Secret (all required keys are documented in `charts/university-ecosystem/values.yaml`). The TOTP ring is an application Secret key used by backend and migration; its active key ID is a direct non-secret chart value. The two non-auth workers receive neither TOTP setting. In production, set `applicationSecrets.existingSecret`; it must contain the listed JWT/RSA keys, independent HMAC/integration secrets, S3 credentials (the `minio-access-key`/`minio-secret-key` keys), and Temporal API key. Production rendering rejects plaintext S3, Temporal, gRPC, and OTLP so unsafe configuration never reaches the cluster or Helm release state.
 
 In Kubernetes, the chart delivers Secret values to the backend, outbox worker,
 migration Job, gateway, ws-hub, and file-processor as projected files. Each
@@ -128,6 +133,7 @@ Use this rotation order:
 Do not add a synthetic Pod checksum annotation. ExternalSecret content is not
 available to Helm; Ready/refreshTime plus Secret `resourceVersion` are the
 reconciliation proof, and an explicit rollout applies the new values.
+
 - Healthchecks stay inside the containers (`127.0.0.1`), and the only `extra_hosts` entry is `host.docker.internal`; remove it for production clusters that do not need host access.
 - Prometheus metrics are disabled by default in `docker-compose.yml`. To expose them, set `ENABLE_METRICS_ENDPOINT=true` **and** configure durable values for `METRICS_BASIC_AUTH_USERNAME` and `METRICS_BASIC_AUTH_PASSWORD` (Compose no longer injects placeholders). The backend now fails startup — or returns `503` at runtime — when metrics are enabled without credentials unless the allowlist is strictly loopback-only (`127.0.0.1`, `::1`, `localhost`).
 - To attach the `Cross-Origin-Resource-Policy` header, set `ENABLE_CORP=true`. Customize the value via `CORP_VALUE` (defaults to `same-site`; `same-origin` and `cross-origin` are also accepted).
@@ -234,6 +240,62 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
   npm run test:e2e -- offline.spec.ts
   ```
 
+### TOTP enrollment encryption key migration
+
+Staging and production require `MFA_TOTP_ENCRYPTION_KEYS` in the application
+Secret for the API and migration Job. Set the non-secret
+`MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` directly in the deployment environment; it is
+not a file-backed secret. The explicit `outbox-worker` and
+`notifications-worker` roles remain keyless for TOTP, and any TOTP crypto call
+there fails closed. The active key
+must be independent of `SPOTIFY_TOKEN_SECRET`; non-active ring entries exist only
+to decrypt legacy enrollments. If existing TOTP rows were encrypted with the
+Spotify key, keep that same key material under a non-active TOTP key ID while
+publishing a newly generated active TOTP key. Never copy key material into a
+command, shell history, log, or documentation.
+
+Before any scan or rotation, drain every API/backend instance running
+pre-isolation code that can still write TOTP ciphertext with a Spotify key or
+`SECRET_KEY` fallback. Proceed only when the active enrollment writers are the
+isolated release, which always encrypts new TOTP enrollments with the active
+TOTP key. Keep this writer set and code version stable from the initial scan
+through every rotation batch, the final no-legacy full-table dry run, and legacy
+ring retirement. Do not roll back, scale an older ReplicaSet, or introduce a
+mixed writer release during this window. If the writer set changes, retain the
+legacy key and restart the verification sequence after restoring the stable
+isolated writer set.
+
+With the new ring provisioned and the isolated writer set stable, first run the
+read-only bounded scan:
+
+```bash
+python scripts/rotate_totp_encryption_keys.py --batch-size 100
+```
+
+Review its counts, then explicitly rotate rows in bounded transactions:
+
+```bash
+python scripts/rotate_totp_encryption_keys.py --apply --batch-size 100
+```
+
+The script locks selected rows on PostgreSQL and uses an exact-row
+compare-and-swap update. An unreadable ciphertext or changed row aborts its
+current batch. Earlier committed batches remain safe to rerun because rotation
+is idempotent.
+
+After a successful apply, keep the legacy entry in the normal decrypt ring while
+staging a verification ring without it. Run the read-only scan against the same
+database and with the same active TOTP key. Confirm the command succeeds,
+`scanned` matches the complete enrollment count, and `would_rotate=0`; any
+decryption failure or changed count blocks retirement. Only then remove the
+legacy material from the TOTP ring used by every API and migration process. The
+Spotify key remains in its separate Spotify configuration for Spotify ciphertext.
+
+Production key provisioning, a full-table dry run and apply, post-rotation
+validation, and legacy-key retirement are operator actions and remain pending;
+the source change does not claim that existing production data has been rotated.
+
+
 ### Spotify tokens
 
 - The backend encrypts Spotify access/refresh tokens with Fernet. Before enabling the integration, set `SPOTIFY_TOKEN_SECRET` — a base64 string generated by `Fernet.generate_key()`.
@@ -322,12 +384,12 @@ PY
 - `frontend.Dockerfile` uses separate stages for Rust/WASM compilation, build/runtime dependency installation, and the TanStack Start SSR build. The final image is based on digest-pinned `node:24-alpine`, runs as the unprivileged `node` user, and contains only production dependencies, WASM packages, `dist/`, and the SSR launcher.
 - `VITE_BACKEND_ORIGIN` remains the frontend build-time fallback. Node SSR first reads the runtime `BACKEND_ORIGIN`, so one immutable image works with different Compose/Helm service names; the chart and Compose already provide the internal backend address. Browser API requests stay same-origin and flow through the gateway.
 - Static files and SSR are served by `frontend/scripts/server-prod.mjs`: hashed files in `assets/` receive `Cache-Control: public, max-age=31536000, immutable`, while HTML receives `no-cache`/`no-store`.
-- The container listens on port `3000`; Compose publishes the frontend directly on `127.0.0.1:8081`, the gateway on `127.0.0.1:8080`, and Caddy on ports `80`/`443`. The fast readiness/liveness endpoint is `/healthz`.
+- The container listens on port `3000` on the internal `frontend_net`; Caddy on ports `80`/`443` is the supported host entry and proxies requests to `frontend:3000`. Docker health checks `/healthz` inside the container, while `start-docker.ps1` separately verifies the rendered `/login` route through Caddy.
 
 ```bash
 # example local build
 docker compose build frontend
-docker compose up frontend
+docker compose up -d frontend caddy
 ```
 
 ## Edge reverse proxy

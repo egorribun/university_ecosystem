@@ -1,7 +1,7 @@
 """Failure-path tests for app/services/chat/command_service.py.
 
-AsyncMock repo + fake-UoW harness (mirrors tests/test_chat_command_service.py
-style) targeting the previously-uncovered error branches:
+AsyncMock repository fixtures plus real borrowed-UoW failure tests targeting
+previously-uncovered error branches:
 
 - send_message idempotency cache hit with a corrupt / legacy entry
   (occupied slots fail closed rather than duplicating a message);
@@ -18,8 +18,8 @@ style) targeting the previously-uncovered error branches:
             MessageResponse);
 - L968      rename_chat whitespace-only name re-validation;
 - L984      clear_history non-participant + non-admin forbidden;
-- L1021-1023  clear_history commit-failure rollback + re-raise;
-- L1093-1095  delete_chat commit-failure rollback + re-raise.
+- clear_history commit failure remains visible when real-UOW rollback also fails;
+- delete_chat commit failure remains visible when real-UOW rollback also fails.
 """
 
 from __future__ import annotations
@@ -955,30 +955,42 @@ async def test_clear_history_non_participant_non_admin_forbidden():
 
 
 # ---------------------------------------------------------------------------
-# clear_history — commit failure rolls back + re-raises (L1021-1023)
+# clear_history — real UOW preserves the commit error if rollback also fails
 # ---------------------------------------------------------------------------
 
 
 async def test_clear_history_commit_failure_rolls_back():
     admin = _mock_user(role="admin")
     chat = _mock_chat(admin.id)
-    chat.messages = [MagicMock(id=uuid.uuid4())]
-    uow = _mock_uow()
+    message = MagicMock()
+    message.id = uuid.uuid4()
+    message.attachments = []
+    session = AsyncMock(spec=AsyncSession)
+    uow = uow_from_session(session)
+    uow.chats = MagicMock()
     uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.get_orm_for_update = AsyncMock(return_value=object())
+    uow.chats.lock_participant_ids_for_maintenance = AsyncMock(return_value=[admin.id])
+    uow.chats.get_messages = AsyncMock(return_value=([message], False, None))
     uow.chats.delete_messages = AsyncMock()
     uow.chats.update_timestamp_by_id = AsyncMock()
     uow.chats.add = MagicMock()
-    uow.commit = AsyncMock(side_effect=RuntimeError("commit failed"))
+    commit_error = ConnectionError("commit acknowledgement lost")
+    session.commit.side_effect = commit_error
+    session.rollback.side_effect = OSError("rollback connection lost")
 
     svc = ChatMaintenanceService(uow, _mock_attachment_service())
 
-    with pytest.raises(RuntimeError, match="commit failed"):
+    with pytest.raises(ConnectionError, match="commit acknowledgement lost") as error:
         await svc.clear_history(chat.id, admin, "en")
-    uow.rollback.assert_awaited_once()
+
+    assert error.value is commit_error
+    session.commit.assert_awaited_once()
+    session.rollback.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
-# delete_chat — commit failure rolls back + re-raises (L1093-1095)
+# delete_chat — real UOW preserves the commit error if rollback also fails
 # ---------------------------------------------------------------------------
 
 
@@ -986,16 +998,31 @@ async def test_delete_chat_commit_failure_rolls_back():
     admin = _mock_user(role="admin")
     other = _mock_user()
     chat = _mock_chat(admin.id, other.id)
-    uow = _mock_uow()
+    message = MagicMock()
+    message.id = uuid.uuid4()
+    message.attachments = []
+    session = AsyncMock(spec=AsyncSession)
+    uow = uow_from_session(session)
+    uow.chats = MagicMock()
     uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.get_orm_for_update = AsyncMock(return_value=object())
+    uow.chats.lock_participant_ids_for_maintenance = AsyncMock(
+        return_value=[admin.id, other.id]
+    )
+    uow.chats.get_messages = AsyncMock(return_value=([message], False, None))
     uow.chats.delete_chat = AsyncMock()
     uow.chats.add = MagicMock()
-    uow.commit = AsyncMock(side_effect=RuntimeError("commit failed"))
+    commit_error = ConnectionError("commit acknowledgement lost")
+    session.commit.side_effect = commit_error
+    session.rollback.side_effect = OSError("rollback connection lost")
 
     svc = ChatMaintenanceService(uow, _mock_attachment_service())
 
-    with pytest.raises(RuntimeError, match="commit failed"):
+    with pytest.raises(ConnectionError, match="commit acknowledgement lost") as error:
         await svc.delete_chat(chat.id, admin, "en")
-    uow.rollback.assert_awaited_once()
+
+    assert error.value is commit_error
+    session.commit.assert_awaited_once()
+    session.rollback.assert_awaited_once()
     # ChatDeleted StoredEvents were staged for both participants before failure.
     assert uow.chats.add.call_count == 2

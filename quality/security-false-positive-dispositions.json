@@ -7327,6 +7327,74 @@
       "reviewed_on": "2026-10-16",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "app/data/emoji/generate.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          66,
+          134,
+          131,
+          52,
+          175,
+          154,
+          40,
+          146,
+          158,
+          56,
+          178,
+          82,
+          111,
+          243,
+          48,
+          214,
+          199,
+          238,
+          242,
+          28
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Unicode emoji-test.txt integrity pin (SOURCE_SHA256) for https://www.unicode.org/Public/18.0.0/emoji/emoji-test.txt; exact source reference app/data/emoji/generate.py:9. Public digest, not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-18",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "app/schemas/chat.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          53,
+          255,
+          215,
+          183,
+          212,
+          89,
+          129,
+          34,
+          126,
+          147,
+          254,
+          132,
+          3,
+          81,
+          30,
+          135,
+          138,
+          24,
+          22,
+          137
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public data integrity pin (_REACTION_EMOJI_DATA_SHA256) for app/data/emoji/emoji_18_0_qualified_sequences.txt; exact source reference app/schemas/chat.py:21, enforced at app/schemas/chat.py:28. Public digest, not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-18",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

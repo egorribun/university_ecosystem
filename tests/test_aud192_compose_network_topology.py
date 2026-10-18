@@ -7,7 +7,10 @@ from typing import Any
 
 import pytest
 
-from tests.test_s3_cutover_compose_contract import _rendered
+from tests.test_s3_cutover_compose_contract import (
+    _production_secret_source_overrides,
+    _rendered,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_COMPOSE = ROOT / "docker-compose.yml"
@@ -87,11 +90,17 @@ def test_default_and_layered_stacks_isolate_frontend_and_keep_local_access(
     storage_host_ports: dict[str, str],
 ) -> None:
     """Render real Compose merges without starting services."""
+    environment_overrides = (
+        _production_secret_source_overrides(tmp_path)
+        if "docker-compose.prod.yml" in files
+        else None
+    )
     model: dict[str, Any] = _rendered(
         tmp_path,
         "aud192-network-review",
         *files,
         profiles=("prod",) if "docker-compose.prod.yml" in files else (),
+        environment_overrides=environment_overrides,
     )
     services = model["services"]
     networks = model["networks"]

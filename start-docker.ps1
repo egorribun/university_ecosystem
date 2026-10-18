@@ -2895,7 +2895,7 @@ function Get-LiveAcceptanceCoreReadinessInventory {
         site = @{ type = "http"; service = "caddy"; url = (Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/login"); timeout = 20; ready = $false }
         flagd = @{ type = "docker"; service = "flagd"; ready = $false }
         flagdHealth = @{ type = "docker"; service = "flagd-healthprobe"; ready = $false }
-        frontend = @{ type = "http"; service = "frontend"; url = (Get-LocalServiceUrl -Name FRONTEND -DefaultPort 8081 -Path "/login"); timeout = 20; ready = $false }
+        frontend = @{ type = "docker"; service = "frontend"; requireHealth = $true; ready = $false }
         gateway = @{ type = "http"; service = "gateway"; url = (Get-LocalServiceUrl -Name GATEWAY -DefaultPort 8080 -Path "/health"); ready = $false }
         imgproxy = @{ type = "docker"; service = "imgproxy"; ready = $false }
         mailpit = @{ type = "http"; service = "mailpit"; url = (Get-LocalServiceUrl -Name MAILPIT -DefaultPort 8025 -Path "/api/v1/info"); ready = $false }
@@ -3103,10 +3103,9 @@ $fullReadiness = [ordered]@{
     grafana       = @{ type = "http"; service = "grafana"; url = (Get-LocalServiceUrl -Name GRAFANA -DefaultPort 3000 -Path "/api/health"); ready = $false }
     notifications = @{ type = "docker"; service = "notifications-worker"; ready = $false }
     prometheus    = @{ type = "http"; service = "prometheus"; url = (Get-LocalServiceUrl -Name PROMETHEUS -DefaultPort 9090 -Path "/-/healthy"); ready = $false }
-    # Probe a rendered route, not only the lightweight process health endpoint.
-    # The first SSR render after an image update can take several seconds while
-    # Node warms module caches, so give it a bounded one-time warmup window.
-    frontend      = @{ type = "http"; service = "frontend"; url = (Get-LocalServiceUrl -Name FRONTEND -DefaultPort 8081 -Path "/login"); timeout = 20; ready = $false }
+    # Docker health verifies the frontend through its local /healthz endpoint.
+    # The site check verifies rendered /login through the Caddy host entry.
+    frontend      = @{ type = "docker"; service = "frontend"; requireHealth = $true; ready = $false }
     imgproxy      = @{ type = "docker"; service = "imgproxy"; ready = $false }
     nats          = @{ type = "docker"; service = "nats"; ready = $false }
     outbox        = @{ type = "docker"; service = "outbox-worker"; ready = $false }
@@ -3164,7 +3163,12 @@ do {
                 foreach ($row in $rows) {
                     $health = [string]$row.Health
                     $state = [string]$row.State
-                    if ($health -cne "healthy" -and
+                    if ($services[$name].ContainsKey("requireHealth") -and
+                        $services[$name].requireHealth) {
+                        if ($health -cne "healthy") {
+                            $allContainersReady = $false
+                        }
+                    } elseif ($health -cne "healthy" -and
                         -not ([string]::IsNullOrEmpty($health) -and $state -ceq "running")) {
                         $allContainersReady = $false
                     }
@@ -3238,7 +3242,6 @@ if ($script:LiveAcceptanceCore) {
 Write-Host ""
 if ($script:LiveAcceptanceCore) {
     $siteUrl = Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/"
-    $frontendUrl = Get-LocalServiceUrl -Name FRONTEND -DefaultPort 8081 -Path ""
     $gatewayUrl = Get-LocalServiceUrl -Name GATEWAY -DefaultPort 8080 -Path ""
     $backendUrl = Get-LocalServiceUrl -Name BACKEND -DefaultPort 8000 -Path ""
     $backendDocsUrl = Get-LocalServiceUrl -Name BACKEND -DefaultPort 8000 -Path "/docs"
@@ -3246,7 +3249,6 @@ if ($script:LiveAcceptanceCore) {
     $mailpitUrl = Get-LocalServiceUrl -Name MAILPIT -DefaultPort 8025 -Path ""
     Write-Host "  >> Site (use this):  $siteUrl" -ForegroundColor Green
     Write-Host "  Live acceptance Core exposes only its signed app and Mailpit ports:" -ForegroundColor DarkGray
-    Write-Host "  Frontend (Node SSR):  $frontendUrl  (no /api proxy - use $siteUrl)" -ForegroundColor DarkYellow
     Write-Host "  Gateway API:          $gatewayUrl" -ForegroundColor DarkYellow
     Write-Host "  Backend API:          $backendUrl  (127.0.0.1 only)" -ForegroundColor DarkYellow
     Write-Host "  API Docs:             $backendDocsUrl" -ForegroundColor DarkYellow
@@ -3254,7 +3256,6 @@ if ($script:LiveAcceptanceCore) {
     Write-Host "  Mailpit:              $mailpitUrl" -ForegroundColor DarkYellow
 } else {
     $siteUrl = Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/"
-    $frontendUrl = Get-LocalServiceUrl -Name FRONTEND -DefaultPort 8081 -Path ""
     $gatewayUrl = Get-LocalServiceUrl -Name GATEWAY -DefaultPort 8080 -Path ""
     $backendUrl = Get-LocalServiceUrl -Name BACKEND -DefaultPort 8000 -Path ""
     $backendDocsUrl = Get-LocalServiceUrl -Name BACKEND -DefaultPort 8000 -Path "/docs"
@@ -3268,7 +3269,6 @@ if ($script:LiveAcceptanceCore) {
     Write-Host "     /ws/* -> ws-hub:8081, /sw.js -> frontend:3000, default -> frontend:3000." -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "  Direct service ports (admin/debug only - browser API calls won't work)" -ForegroundColor Gray
-    Write-Host "  Frontend (Node SSR):  $frontendUrl  (no /api proxy - use $siteUrl)" -ForegroundColor DarkYellow
     Write-Host "  Gateway API:          $gatewayUrl" -ForegroundColor DarkYellow
     Write-Host "  Backend API:          $backendUrl  (127.0.0.1 only)" -ForegroundColor DarkYellow
     Write-Host "  API Docs:             $backendDocsUrl" -ForegroundColor DarkYellow

@@ -16,7 +16,8 @@ OS env overrides ``.env`` in pydantic-settings, so default-branch tests run unde
 DEV environment (production guards bypassed). Production-branch tests use the
 ``prod_env`` fixture which sets ``ENVIRONMENT=production`` PLUS neutralizes the
 unrelated prod-only validators (``AUDIT_LOG_SECRET`` / ``SECRET_KEY`` /
-``INTERNAL_HMAC_SECRET`` / ``ALGORITHM``) so ONLY the validator under test can raise.
+``INTERNAL_HMAC_SECRET`` / ``ALGORITHM``) and installs an independent generated
+TOTP key ring so ONLY the validator under test can raise.
 
 ``SecuritySettings`` inherits ``BaseAppSettings`` directly (NOT ``AppGeneralSettings``),
 so it has NO ``environment`` / ``is_development`` field. The CSP/CORS mixins key off
@@ -35,6 +36,7 @@ from ``SecuritySettings``):
 from __future__ import annotations
 
 import pytest
+from cryptography.fernet import Fernet
 from pydantic import ValidationError
 
 from app.core.config.security import (
@@ -65,6 +67,10 @@ def prod_env(monkeypatch):
     )  # pragma: allowlist secret
     monkeypatch.setenv("ALGORITHM", "RS256")
     monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", "")
+    monkeypatch.delenv("MFA_TOTP_ENCRYPTION_KEYS_FILE", raising=False)
+    totp_key = Fernet.generate_key().decode("ascii")
+    monkeypatch.setenv("MFA_TOTP_ENCRYPTION_KEYS", f"test-key:{totp_key}")
+    monkeypatch.setenv("MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID", "test-key")
     return monkeypatch
 
 

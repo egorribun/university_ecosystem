@@ -159,13 +159,16 @@ _FILE_SECRET_FIELDS: frozenset[str] = frozenset(
         "mfa_email_otp_hmac_keys",
         "mfa_trusted_device_active_hmac_key_id",
         "mfa_trusted_device_hmac_keys",
+        "mfa_totp_encryption_keys",
         "nats_auth_token",
         "nats_url",
+        "rate_limit_storage_uri",
         "revocation_redis_url",
         "secret_key",
         "smtp_password",
         "spicedb_preshared_key",
         "spotify_client_secret",
+        "spotify_oauth_state_secret",
         "spotify_token_secret",
         "storage_s3_access_key_id",
         "storage_s3_secret_access_key",
@@ -197,6 +200,16 @@ _FILE_SECRET_FIELDS_WITH_NATIVE_LOADERS: frozenset[str] = frozenset(
 
 _MAX_SECRET_FILE_SIZE_BYTES = 1 << 20
 _SECRET_FILE_READ_CHUNK_BYTES = 64 * 1024
+
+# These integration secrets are optional; an explicit empty source file disables
+# the integration. Spotify's token-encryption secret is intentionally absent.
+_OPTIONAL_EMPTY_SECRET_FILE_ENV_VARS: frozenset[str] = frozenset(
+    {
+        "SPOTIFY_CLIENT_SECRET_FILE",
+        "SPOTIFY_OAUTH_STATE_SECRET_FILE",
+        "VAPID_PRIVATE_KEY_FILE",
+    }
+)
 
 
 class _SecretFileValidationError(ValueError):
@@ -335,8 +348,11 @@ def _load_file_secret(env_file_var: str, value: str | None) -> str | None:
         Stripped file contents when configured, otherwise *value* unchanged.
 
     A configured path is an explicit operator choice. Blank, unreadable, invalid
-    UTF-8, and empty files therefore fail closed instead of falling back to a
-    default or a plain environment value.
+    UTF-8, and empty files fail closed instead of falling back to a default or a
+    plain environment value. Only VAPID_PRIVATE_KEY_FILE,
+    SPOTIFY_CLIENT_SECRET_FILE, and SPOTIFY_OAUTH_STATE_SECRET_FILE accept an
+    empty regular file as an explicit disabled-integration input. The Spotify
+    token-encryption key remains mandatory in production.
     """
     file_path = os.environ.get(env_file_var)
     if file_path is None:
@@ -400,6 +416,8 @@ def _load_file_secret(env_file_var: str, value: str | None) -> str | None:
             f"configured secret file for {env_file_var} must contain valid UTF-8"
         ) from None
     if not secret:
+        if env_file_var in _OPTIONAL_EMPTY_SECRET_FILE_ENV_VARS:
+            return ""
         raise ValueError(f"configured secret file for {env_file_var} must not be empty")
     return secret
 

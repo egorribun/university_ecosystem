@@ -1,0 +1,210 @@
+"""Helm contracts for the backend's dedicated Redis rate-limit store."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+from typing import Any
+
+import pytest
+
+from tests.test_helm_staging_contract import (
+    CHART,
+    STAGING_VALUES,
+    _helm,
+    _render_staging,
+    _resolved_staging_args,
+)
+from tests.test_mfa_helm_contract import MFA_EXTERNAL_APPLICATION_SECRET, _render
+
+
+def _render_development(*extra: str) -> list[dict[str, Any]]:
+    return _render(
+        "--set",
+        f"applicationSecrets.existingSecret={MFA_EXTERNAL_APPLICATION_SECRET}",
+        *extra,
+    )
+
+
+def _backend(resources: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+    deployment = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "Deployment"
+        and resource.get("metadata", {})
+        .get("labels", {})
+        .get("app.kubernetes.io/component")
+        == "backend"
+    )
+    pod_spec = deployment["spec"]["template"]["spec"]
+    container = pod_spec["containers"][0]
+    env = [item["name"] for item in container["env"]]
+    assert len(env) == len(set(env)), "backend env contains duplicate names"
+    return pod_spec, container
+
+
+def test_backend_uses_dedicated_rate_limit_connection_secret_file() -> None:
+    key_name = "python-rate-limit-uri"
+    resources = _render_staging(
+        "--set",
+        "deploymentContract.enabled=true",
+        "--set-string",
+        f"connections.rateLimitStorageURIKey={key_name}",
+        release_name="rate-limit-contract",
+    )
+
+    pod_spec, container = _backend(resources)
+    env = {item["name"]: item for item in container["env"]}
+    assert env["RATE_LIMIT_STORAGE_BACKEND"]["value"] == "redis"
+    assert env["RATE_LIMIT_STORAGE_URI_FILE"]["value"] == (
+        f"/run/secrets/university-connections/{key_name}"
+    )
+    assert "RATE_LIMIT_STORAGE_URI" not in env
+
+    connection_volume = next(
+        volume
+        for volume in pod_spec["volumes"]
+        if volume.get("secret", {}).get("secretName") == "university-connections"
+    )
+    projected_keys = {
+        item["key"] for item in connection_volume["secret"].get("items", [])
+    }
+    assert key_name in projected_keys
+
+    contract = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "ConfigMap"
+        and resource.get("metadata", {})
+        .get("labels", {})
+        .get("app.kubernetes.io/component")
+        == "deployment-contract"
+    )
+    connection_keys = json.loads(contract["data"]["connection-secret-keys.json"])
+    assert key_name in connection_keys
+    assert "redis-gateway-url" in connection_keys
+    assert key_name != "redis-gateway-url"
+
+
+def test_development_env_cannot_override_rate_limit_store_contract() -> None:
+    resources = _render_development(
+        "--set-string",
+        "backend.env.RATE_LIMIT_STORAGE_BACKEND=memory",
+        "--set-string",
+        "backend.env.RATE_LIMIT_STORAGE_URI=memory://override",
+        "--set-string",
+        "backend.env.RATE_LIMIT_STORAGE_URI_FILE=/run/secrets/untrusted-rate-limit-uri",
+    )
+
+    _, container = _backend(resources)
+    env = {item["name"]: item for item in container["env"]}
+    assert env["RATE_LIMIT_STORAGE_BACKEND"]["value"] == "redis"
+    assert env["RATE_LIMIT_STORAGE_URI_FILE"]["value"] == (
+        "/run/secrets/university-connections/rate-limit-storage-uri"
+    )
+    assert "RATE_LIMIT_STORAGE_URI" not in env
+
+
+@pytest.mark.parametrize(
+    ("override_name", "override_value"),
+    [
+        ("rate_limit_storage_backend", "memory"),
+        ("rAtE_LiMiT_sToRaGe_BaCkEnD", "memory"),
+        ("rate_limit_storage_uri", "memory://override"),
+        ("rAtE_LiMiT_sToRaGe_uRi", "memory://override"),
+        ("rate_limit_storage_uri_file", "/run/secrets/untrusted-rate-limit-uri"),
+        ("rAtE_LiMiT_sToRaGe_uRi_fIlE", "/run/secrets/untrusted-rate-limit-uri"),
+    ],
+)
+def test_rate_limit_env_case_variants_are_dropped_but_other_env_is_kept(
+    override_name: str, override_value: str
+) -> None:
+    resources = _render_development(
+        "--set-string",
+        f"backend.env.{override_name}={override_value}",
+        "--set-string",
+        "backend.env.ENVIRONMENT=production",
+        "--set-string",
+        "backend.env.CUSTOM_FEATURE_FLAG=retained",
+    )
+
+    _, container = _backend(resources)
+    env = {item["name"]: item for item in container["env"]}
+
+    assert override_name not in env
+    assert env["RATE_LIMIT_STORAGE_BACKEND"]["value"] == "redis"
+    assert env["RATE_LIMIT_STORAGE_URI_FILE"]["value"] == (
+        "/run/secrets/university-connections/rate-limit-storage-uri"
+    )
+    assert "RATE_LIMIT_STORAGE_URI" not in env
+    assert env["ENVIRONMENT"]["value"] == "development"
+    assert env["CUSTOM_FEATURE_FLAG"]["value"] == "retained"
+
+
+@pytest.mark.parametrize(
+    "existing_key",
+    [
+        "database-url",
+        "redis-backend-url",
+        "redis-gateway-url",
+        "redis-revocation-url",
+        "nats-url",
+        "nats-auth-token",
+        "keda-postgresql-url",
+        "backup-database-url",
+    ],
+)
+def test_rate_limit_connection_key_cannot_reuse_existing_connection_secret_key(
+    existing_key: str,
+) -> None:
+    result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
+        [
+            _helm(),
+            "template",
+            "rate-limit-key-collision-contract",
+            str(CHART),
+            "--dependency-update=false",
+            "--namespace",
+            "university-ecosystem",
+            "--values",
+            str(STAGING_VALUES),
+            *_resolved_staging_args(),
+            "--set-string",
+            f"connections.rateLimitStorageURIKey={existing_key}",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert result.returncode != 0
+    assert "connections.rateLimitStorageURIKey must use a dedicated" in result.stderr
+
+
+def test_rate_limit_connection_key_must_be_nonempty() -> None:
+    result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
+        [
+            _helm(),
+            "template",
+            "rate-limit-empty-key-contract",
+            str(CHART),
+            "--dependency-update=false",
+            "--namespace",
+            "university-ecosystem",
+            "--values",
+            str(STAGING_VALUES),
+            *_resolved_staging_args(),
+            "--set-string",
+            "connections.rateLimitStorageURIKey=",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    # The values schema rejects the empty key before any template runs, and
+    # Helm reports schema violations by JSON pointer path.
+    assert result.returncode != 0
+    assert "/connections/rateLimitStorageURIKey" in result.stderr

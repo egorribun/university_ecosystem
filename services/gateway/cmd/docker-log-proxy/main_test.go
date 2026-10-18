@@ -91,6 +91,10 @@ func TestAllowedContainerListForwardsOnlyItsValidatedPathAndQuery(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	if response == nil {
+		t.Fatal("HTTP GET returned a nil response")
+		return
+	}
 	body, readErr := io.ReadAll(response.Body)
 	_ = response.Body.Close()
 	if readErr != nil || response.StatusCode != http.StatusOK || string(body) != "[]" {
@@ -189,6 +193,10 @@ func TestStreamingIsUnmodifiedAndCancellationPropagates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if response == nil {
+		t.Fatal("HTTP request returned a nil response")
+		return
+	}
 	if response.Header.Get("Content-Type") != "application/vnd.docker.raw-stream" {
 		t.Fatalf("stream content type = %q", response.Header.Get("Content-Type"))
 	}
@@ -224,6 +232,10 @@ func TestStreamingTrailersAreDiscardedAfterEOF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if directResponse == nil {
+		t.Fatal("direct HTTP GET returned a nil response")
+		return
+	}
 	if _, err := io.Copy(io.Discard, directResponse.Body); err != nil {
 		t.Fatal(err)
 	}
@@ -248,6 +260,10 @@ func TestStreamingTrailersAreDiscardedAfterEOF(t *testing.T) {
 	response, err := http.Get(proxy.URL + path)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if response == nil {
+		t.Fatal("proxied HTTP GET returned a nil response")
+		return
 	}
 	body, readErr := io.ReadAll(response.Body)
 	_ = response.Body.Close()
@@ -320,6 +336,10 @@ func TestMetadataDeadlineAndResponseLimit(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if response == nil {
+			t.Fatal("deadline HTTP GET returned a nil response")
+			return
+		}
 		_ = response.Body.Close()
 		if response.StatusCode != http.StatusBadGateway {
 			t.Fatalf("deadline response = %d", response.StatusCode)
@@ -334,6 +354,10 @@ func TestMetadataDeadlineAndResponseLimit(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if response == nil {
+			t.Fatal("metadata HTTP GET returned a nil response")
+			return
+		}
 		_ = response.Body.Close()
 		if response.StatusCode != http.StatusBadGateway {
 			t.Fatalf("oversized response = %d", response.StatusCode)
@@ -343,7 +367,14 @@ func TestMetadataDeadlineAndResponseLimit(t *testing.T) {
 
 func TestResponseHeadersErrorsAndInvalidPayloads(t *testing.T) {
 	t.Parallel()
-	cookieHeader := (&http.Cookie{Name: "synthetic", Value: t.Name(), Path: "/", HttpOnly: true}).String()
+	cookieHeader := (&http.Cookie{
+		Name:     "synthetic",
+		Value:    t.Name(),
+		Path:     "/",
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	}).String()
 	upstreamHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Api-Version", "1.50")
 		w.Header().Set("Set-Cookie", cookieHeader)
@@ -368,6 +399,10 @@ func TestResponseHeadersErrorsAndInvalidPayloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if response == nil {
+		t.Fatal("ping HTTP GET returned a nil response")
+		return
+	}
 	if response.Header.Get("Api-Version") != "1.50" || len(response.Header.Values("Set-Cookie")) != 0 || response.Header.Get("X-Internal-Path") != "" {
 		t.Fatalf("ping headers = %#v", response.Header)
 	}
@@ -375,6 +410,10 @@ func TestResponseHeadersErrorsAndInvalidPayloads(t *testing.T) {
 	response, err = http.Get(server.URL + "/v1.50/networks")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if response == nil {
+		t.Fatal("network HTTP GET returned a nil response")
+		return
 	}
 	body, readErr := io.ReadAll(response.Body)
 	_ = response.Body.Close()
@@ -384,6 +423,10 @@ func TestResponseHeadersErrorsAndInvalidPayloads(t *testing.T) {
 	response, err = http.Get(server.URL + "/version")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if response == nil {
+		t.Fatal("version HTTP GET returned a nil response")
+		return
 	}
 	_ = response.Body.Close()
 	if response.StatusCode != http.StatusBadGateway {
@@ -491,6 +534,33 @@ func TestMainHealthcheckExitContract(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "health check failed") {
 		t.Fatalf("failed healthcheck was not logged: %q", output.String())
+	}
+}
+
+func TestCheckHealthEndpointRejectsResponseWithoutBody(t *testing.T) {
+	var response *http.Response
+	client := &http.Client{
+		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+			response = &http.Response{
+				StatusCode: http.StatusTemporaryRedirect,
+				Header:     http.Header{"Location": []string{"/healthz"}},
+				Body:       io.NopCloser(strings.NewReader("")),
+				Request:    request,
+			}
+			return response, nil
+		}),
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			if response == nil {
+				return errors.New("redirect response unavailable")
+			}
+			response.Body = nil
+			return http.ErrUseLastResponse
+		},
+	}
+
+	err := checkHealthEndpoint(client, "http://docker-engine/redirect")
+	if err == nil || err.Error() != "docker log proxy health response unavailable" {
+		t.Fatalf("missing response body error = %v", err)
 	}
 }
 
@@ -651,7 +721,11 @@ func TestServeClosesListenerWhenGracefulShutdownTimesOut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	if response == nil {
+		t.Fatal("shutdown HTTP GET returned a nil response")
+		return
+	}
+	defer func() { _ = response.Body.Close() }()
 	select {
 	case <-started:
 	case <-time.After(time.Second):

@@ -10,7 +10,7 @@ import { useSessionManagement } from "../useSessionManagement"
 
 const mocks = vi.hoisted(() => ({
   user: { id: "user-1" },
-  logout: vi.fn(async () => undefined),
+  logout: vi.fn(async (_options?: { serverRevocationConfirmed?: boolean }) => undefined),
   fetchSessions: vi.fn(async () => [] as ActiveSession[]),
   deleteSession: vi.fn(),
   postRevokeAll: vi.fn(),
@@ -183,13 +183,19 @@ describe("useSessionManagement — single-session revoke", () => {
 
   it("logs out when revoking the current session", async () => {
     mocks.deleteSession.mockResolvedValue({ data: baseSession({ is_current: true }) })
-    const { result } = renderSessionHook()
+    const { result, setSnackbar } = renderSessionHook()
 
     await act(async () => {
       await result.current.handleRevokeSession("current")
     })
 
-    expect(mocks.logout).toHaveBeenCalledOnce()
+    expect(setSnackbar).toHaveBeenCalledWith({
+      text: "settings:sessions.snackbar.revoked",
+      severity: "success",
+    })
+    expect(mocks.logout).toHaveBeenCalledWith({ serverRevocationConfirmed: true })
+    expect(mocks.updateSessionInCache).not.toHaveBeenCalled()
+    expect(mocks.invalidateSessions).not.toHaveBeenCalled()
   })
 
   it("opens step-up and retries a session revoke", async () => {
@@ -340,27 +346,40 @@ describe("useSessionManagement — revoke all and formatting", () => {
   })
 })
 
-it("does not log account B out after account A's pending revoke invalidation completes", async () => {
-  let resolveInvalidation!: () => void
-  const pending = new Promise<void>((resolve) => {
-    resolveInvalidation = resolve
+it("does not log account B out when account A's pending current-session DELETE completes", async () => {
+  let resolveDelete!: (value: unknown) => void
+  let deleteSettled = false
+  const pendingDelete = new Promise((resolve) => {
+    resolveDelete = (value) => {
+      deleteSettled = true
+      resolve(value)
+    }
   })
-  mocks.deleteSession.mockResolvedValue({ data: baseSession({ is_current: true }) })
-  mocks.invalidateSessions.mockReturnValueOnce(pending)
-  const { result, rerender } = renderSessionHook()
-  let operation!: Promise<void>
-  act(() => {
-    operation = result.current.handleRevokeSession("session-1")
-  })
-  await waitFor(() => expect(mocks.invalidateSessions).toHaveBeenCalled())
-  rotateBrowserSession()
-  mocks.user = { id: "user-2" }
-  rerender()
-  await act(async () => {
-    resolveInvalidation()
-    await operation
-  })
-  expect(mocks.logout).not.toHaveBeenCalled()
+  mocks.deleteSession.mockReturnValueOnce(pendingDelete)
+  const { result, rerender, unmount } = renderSessionHook()
+  let operation: Promise<void> | undefined
+
+  try {
+    act(() => {
+      operation = result.current.handleRevokeSession("session-1")
+    })
+    await waitFor(() => expect(mocks.deleteSession).toHaveBeenCalledOnce())
+    rotateBrowserSession()
+    mocks.user = { id: "user-2" }
+    rerender()
+    await act(async () => {
+      resolveDelete({ data: baseSession({ is_current: true }) })
+      await operation
+    })
+
+    expect(mocks.logout).not.toHaveBeenCalled()
+    expect(mocks.updateSessionInCache).not.toHaveBeenCalled()
+    expect(mocks.invalidateSessions).not.toHaveBeenCalled()
+  } finally {
+    if (!deleteSettled) resolveDelete({ data: baseSession() })
+    if (operation) await act(async () => operation?.catch(() => undefined))
+    unmount()
+  }
 })
 
 it.each(["single", "all"] as const)(
@@ -390,34 +409,49 @@ it.each([
 ] as const)("ignores an obsolete %s revocation %s", async (kind, outcome) => {
   let resolve!: (value: unknown) => void
   let reject!: (reason: unknown) => void
+  let requestSettled = false
   const pending = new Promise((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise
-    reject = rejectPromise
+    resolve = (value) => {
+      requestSettled = true
+      resolvePromise(value)
+    }
+    reject = (reason) => {
+      requestSettled = true
+      rejectPromise(reason)
+    }
   })
   const request = kind === "single" ? mocks.deleteSession : mocks.postRevokeAll
   request.mockReturnValueOnce(pending)
-  const { result, rerender, setSnackbar } = renderSessionHook()
-  let operation!: Promise<void>
-  act(() => {
-    operation =
-      kind === "single"
-        ? result.current.handleRevokeSession("session-1")
-        : result.current.handleRevokeAllSessions()
-  })
-  await waitFor(() => expect(request).toHaveBeenCalledOnce())
-  rotateBrowserSession()
-  mocks.user = { id: "user-2" }
-  rerender()
-  await act(async () => {
-    if (outcome === "success")
+  const { result, rerender, setSnackbar, unmount } = renderSessionHook()
+  let operation: Promise<void> | undefined
+
+  try {
+    act(() => {
+      operation =
+        kind === "single"
+          ? result.current.handleRevokeSession("session-1")
+          : result.current.handleRevokeAllSessions()
+    })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    rotateBrowserSession()
+    mocks.user = { id: "user-2" }
+    rerender()
+    await act(async () => {
+      if (outcome === "success")
+        resolve({ data: kind === "single" ? baseSession({ is_current: true }) : { revoked: 2 } })
+      else reject(new Error("Account A failed"))
+      await operation
+    })
+    expect(mocks.updateSessionInCache).not.toHaveBeenCalled()
+    expect(mocks.invalidateSessions).not.toHaveBeenCalled()
+    expect(mocks.logout).not.toHaveBeenCalled()
+    expect(setSnackbar).not.toHaveBeenCalled()
+  } finally {
+    if (!requestSettled)
       resolve({ data: kind === "single" ? baseSession({ is_current: true }) : { revoked: 2 } })
-    else reject(new Error("Account A failed"))
-    await operation
-  })
-  expect(mocks.updateSessionInCache).not.toHaveBeenCalled()
-  expect(mocks.invalidateSessions).not.toHaveBeenCalled()
-  expect(mocks.logout).not.toHaveBeenCalled()
-  expect(setSnackbar).not.toHaveBeenCalled()
+    if (operation) await act(async () => operation?.catch(() => undefined))
+    unmount()
+  }
 })
 
 it.each(["single", "all"] as const)(
@@ -443,26 +477,36 @@ it.each(["single", "all"] as const)(
 
 it("suppresses revoke-all completion after account change during invalidation", async () => {
   let resolve!: () => void
-  mocks.invalidateSessions.mockReturnValueOnce(
-    new Promise<void>((done) => {
-      resolve = done
-    })
-  )
+  let invalidationSettled = false
+  const pendingInvalidation = new Promise<void>((done) => {
+    resolve = () => {
+      invalidationSettled = true
+      done()
+    }
+  })
+  mocks.invalidateSessions.mockReturnValueOnce(pendingInvalidation)
   mocks.postRevokeAll.mockResolvedValueOnce({ data: { revoked: 2 } })
-  const { result, rerender, setSnackbar } = renderSessionHook()
-  let operation!: Promise<void>
-  act(() => {
-    operation = result.current.handleRevokeAllSessions()
-  })
-  await waitFor(() => expect(mocks.invalidateSessions).toHaveBeenCalledOnce())
-  rotateBrowserSession()
-  mocks.user = { id: "user-2" }
-  rerender()
-  await act(async () => {
-    resolve()
-    await operation
-  })
-  expect(setSnackbar).not.toHaveBeenCalled()
+  const { result, rerender, setSnackbar, unmount } = renderSessionHook()
+  let operation: Promise<void> | undefined
+
+  try {
+    act(() => {
+      operation = result.current.handleRevokeAllSessions()
+    })
+    await waitFor(() => expect(mocks.invalidateSessions).toHaveBeenCalledOnce())
+    rotateBrowserSession()
+    mocks.user = { id: "user-2" }
+    rerender()
+    await act(async () => {
+      resolve()
+      await operation
+    })
+    expect(setSnackbar).not.toHaveBeenCalled()
+  } finally {
+    if (!invalidationSettled) resolve()
+    if (operation) await act(async () => operation?.catch(() => undefined))
+    unmount()
+  }
 })
 
 it.each(["single", "all"] as const)(

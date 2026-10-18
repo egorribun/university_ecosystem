@@ -69,9 +69,11 @@ async def test_event_repository_attendance(db_session, user_factory):
     )
 
     # 4. List user attended events
-    events = await repo.list_user_attended_events(user.id)
+    events = await repo.list_user_attended_events(user.id, limit=2, locale="en")
     assert len(events) == 1
-    assert events[0].id == event.id
+    assert events[0][0].id == event.id
+    assert events[0][1].user_id == user.id
+    assert events[0][2] == 1
 
     # 5. Delete attendance
     deleted = await repo.delete_attendance(event.id, user.id)

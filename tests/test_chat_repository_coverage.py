@@ -433,6 +433,16 @@ async def test_remove_reaction_deletes_then_noop(db_session, user_factory):
 
 
 @pytest.mark.asyncio
+async def test_remove_preseeded_legacy_non_emoji_reaction(db_session, user_factory):
+    repo, chat, user, _other = await _make_dm(db_session, user_factory)
+    message = await _add_message(repo, chat.id, user.id)
+    await _seed_reaction(db_session, message.id, user.id, "legacy")
+
+    assert await repo.remove_reaction(message.id, user.id, "legacy") == 1
+    assert await repo.remove_reaction(message.id, user.id, "legacy") == 0
+
+
+@pytest.mark.asyncio
 async def test_get_reactors_returns_users_oldest_first(db_session, user_factory):
     repo, chat, u1, u2 = await _make_dm(db_session, user_factory)
     msg = await _add_message(repo, chat.id, u1.id)

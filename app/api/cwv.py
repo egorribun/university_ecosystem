@@ -37,6 +37,10 @@ from app.services.cwv import (
 
 router = APIRouter(prefix="/cwv", tags=["field-performance"])
 
+# Keep request-time retention work bounded. The daily cleanup task handles any
+# remaining expired rows outside the ingestion request's critical path.
+_CWV_INGEST_RETENTION_BATCH_SIZE = 500
+
 
 def _binding() -> CwvRumBinding:
     return CwvRumBinding(
@@ -154,12 +158,14 @@ async def ingest_cwv_observation(
     stored["sampling_bucket"] = trusted.observed_at.replace(
         minute=0, second=0, microsecond=0
     )
-    await db.execute(
-        delete(CwvObservation).where(
-            CwvObservation.created_at
-            < datetime.now(UTC) - timedelta(days=settings.cwv_retention_days)
-        )
+    retention_cutoff = datetime.now(UTC) - timedelta(days=settings.cwv_retention_days)
+    expired_ids = (
+        select(CwvObservation.id)
+        .where(CwvObservation.created_at < retention_cutoff)
+        .order_by(CwvObservation.created_at, CwvObservation.id)
+        .limit(_CWV_INGEST_RETENTION_BATCH_SIZE)
     )
+    await db.execute(delete(CwvObservation).where(CwvObservation.id.in_(expired_ids)))
     db.add(CwvObservation(**stored))
     try:
         await db.commit()

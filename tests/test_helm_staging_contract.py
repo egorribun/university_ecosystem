@@ -17,6 +17,7 @@ CHART = ROOT / "charts" / "university-ecosystem"
 STAGING_VALUES = CHART / "values-staging.yaml"
 REVOCATION_STORE_CHART = ROOT / "charts" / "revocation-store"
 REVOCATION_STORE_VALUES = REVOCATION_STORE_CHART / "values-staging.yaml"
+MFA_TOTP_ACTIVE_KEY_ID = "totp-active-staging-contract"
 
 
 def _values(path: Path) -> dict[str, Any]:
@@ -59,6 +60,7 @@ def _resolved_staging_args(gateway_jwks_cidr: str | None = "192.0.2.0/24") -> li
         "backend.config.elasticsearchURL": "https://elasticsearch.staging.internal",
         "backend.config.flagdHost": "flagd.staging.internal",
         "backend.config.storageS3EndpointURL": ("https://minio.staging.internal:443"),
+        "backend.config.mfaTotpActiveEncryptionKeyId": MFA_TOTP_ACTIVE_KEY_ID,
         "gateway.config.otelEndpoint": "otel-collector.staging.internal:4317",
         "fileProcessor.config.minioEndpoint": "minio.staging.internal:443",
         "fileProcessor.config.temporalHost": "temporal.staging.internal:7233",
@@ -952,6 +954,8 @@ def test_values_schema_rejects_unknown_staging_sensitive_keys(
 
 
 def test_canonical_staging_values_reject_unresolved_required_markers() -> None:
+    # The MFA active key ID is checked before the marker scan; supply it so the
+    # render reaches the unresolved-marker rejection this test asserts.
     result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
         [
             _helm(),
@@ -961,6 +965,8 @@ def test_canonical_staging_values_reject_unresolved_required_markers() -> None:
             "--dependency-update=false",
             "--values",
             str(STAGING_VALUES),
+            "--set",
+            f"backend.config.mfaTotpActiveEncryptionKeyId={MFA_TOTP_ACTIVE_KEY_ID}",
         ],
         check=False,
         capture_output=True,

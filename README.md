@@ -223,8 +223,7 @@ for every runtime and Prometheus target:
 ```
 
 ### 🌐 Access Points
-- **Digital Hub (Caddy edge)**: [http://localhost](http://localhost)
-- **Frontend SSR debug port**: [http://localhost:8081](http://localhost:8081)
+- **Digital Hub (Caddy edge, including Frontend SSR)**: [http://localhost](http://localhost)
 - **Core API documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
 - **Go Gateway Entry**: [http://localhost:8080](http://localhost:8080)
 - **Real-Time Signal**: `ws://localhost:8083/ws`

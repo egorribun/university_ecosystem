@@ -61,6 +61,8 @@ corresponding plaintext variable.
 |----------|-------------|---------|
 | `MFA_ENABLED` | Enable MFA | `false` |
 | `MFA_TOTP_ISSUER` | TOTP app name | `University Ecosystem` |
+| `MFA_TOTP_ENCRYPTION_KEYS` | Comma-separated `kid:Fernet-key` ring for TOTP enrollment ciphertext; non-active entries are legacy decrypt keys | Empty in development; required for API and migrations in staging/production |
+| `MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` | Non-secret key ID used to encrypt new TOTP enrollments | Empty in development; required for API and migrations in staging/production |
 | `MFA_CHALLENGE_TTL_SECONDS` | Challenge validity | `600` (the local `.env.example` explicitly overrides this to `300`) |
 | `MFA_CHALLENGE_MAX_ATTEMPTS` | Max attempts | `5` |
 | `MFA_STEP_UP_TTL_SECONDS` | Step-up authentication validity | `300` |
@@ -185,6 +187,17 @@ corresponding plaintext variable.
 > **Tip**: `_FILE` loading is implemented only for `DATABASE_URL`, `SECRET_KEY`,
 > `INTERNAL_HMAC_SECRET`, `TOKEN_HMAC_SECRET`, `NATS_AUTH_TOKEN`, `SMTP_PASSWORD`,
 > `VAPID_PRIVATE_KEY`, `SPOTIFY_CLIENT_SECRET`, `SPICEDB_PRESHARED_KEY`,
-> `ELASTICSEARCH_PASSWORD`, and `WS_HUB_INTERNAL_SECRET`. For these settings, the
-> file value takes precedence over plaintext. Other settings do not automatically
-> accept a `_FILE` suffix.
+> `ELASTICSEARCH_PASSWORD`, `WS_HUB_INTERNAL_SECRET`, and
+> `MFA_TOTP_ENCRYPTION_KEYS`. For these settings, the file value takes precedence
+> over plaintext. `MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` is a non-secret key name
+> supplied directly through the environment and does not support `_FILE`. Other
+> settings do not automatically accept a `_FILE` suffix.
+
+The active TOTP key must be independent of every configured Spotify key and of
+Spotify's `SECRET_KEY`-derived fallback. During migration, a non-active TOTP ring
+entry may retain the previous Spotify key so existing enrollment ciphertext
+remains readable. New writes always use the active TOTP key. Local development
+with an empty ring derives a domain-separated key from `SECRET_KEY`; this fallback
+is rejected outside development/testing. The explicit non-auth `outbox-worker` and
+`notifications-worker` roles may start without the ring; TOTP crypto calls in those
+roles fail closed.

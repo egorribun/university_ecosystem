@@ -6,10 +6,20 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import and_, delete, func, or_, select, type_coerce, update
+from sqlalchemy import (
+    and_,
+    delete,
+    func,
+    literal,
+    not_,
+    or_,
+    select,
+    type_coerce,
+    update,
+)
 from sqlalchemy.orm import aliased, selectinload
 from sqlalchemy.orm.attributes import flag_dirty
 
@@ -31,6 +41,17 @@ if TYPE_CHECKING:
 
 class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, Any]]):
     """Repository for Event model operations."""
+
+    _MAX_USER_ATTENDED_EVENTS_QUERY_LIMIT = 101
+
+    _EVENT_CATEGORY_PATTERNS: ClassVar[dict[str, str]] = {
+        "lecture": r"лекци|lecture|занят|class|lesson",
+        "seminar": r"семинар|seminar|коллоквиум|colloquium|круглый.?стол|round.?table",
+        "conference": r"конференц|conference|форум|forum|саммит|summit|симпозиум|symposium",
+        "workshop": r"мастер.?класс|workshop|тренинг|training|воркшоп|практикум|practicum",
+        "social": r"встреча|meetup|вечер|party|концерт|concert|фестиваль|festival|выставка|exhibition|праздник|celebration",
+        "sport": r"спорт|sport|футбол|football|баскетбол|basketball|турнир|tournament|соревнован|competition|забег|race",
+    }
 
     def __init__(self, db: AsyncDatabaseSession):
         super().__init__(db)
@@ -434,18 +455,125 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         return EventAttendanceDTO.model_validate(obj) if obj else None
 
     async def list_user_attended_events(
-        self, user_id: uuid.UUID | int | str
-    ) -> list[Event]:
-        """List all events a user has registered for."""
+        self,
+        user_id: uuid.UUID | int | str,
+        *,
+        limit: int,
+        locale: str,
+        category: str | None = None,
+        starts_at_from: datetime | None = None,
+        starts_at_before: datetime | None = None,
+        upcoming_after: datetime | None = None,
+        sort: str = "newest",
+        cursor_key: tuple[datetime | int, uuid.UUID] | None = None,
+        include_participant_count: bool = True,
+    ) -> list[tuple[Event, models.EventAttendance, int]]:
+        """Fetch one bounded page after applying owner and display filters.
+
+        The owner attendance predicate and all user-visible predicates run in
+        SQL before LIMIT. The unique ``(user_id, event_id)`` constraint keeps
+        the join one-row-per-event, and no attendance/files collection is
+        eagerly loaded. Popularity uses the same correlated count strategy as
+        ``search_events`` so the page order does not aggregate the whole table.
+        """
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or not 1 <= limit <= self._MAX_USER_ATTENDED_EVENTS_QUERY_LIMIT
+        ):
+            raise ValueError("My-events query limit must be between 1 and 101")
         user_id = self._cast_id(user_id)
-        stmt = (
-            select(Event)
-            .join(models.EventAttendance)
-            .where(models.EventAttendance.user_id == user_id)
-            .options(selectinload(Event.files), selectinload(Event.attendance))
+        if sort not in {"newest", "popular", "upcoming"}:
+            raise ValueError("Unsupported event sort")
+        if category is not None and category not in {
+            *self._EVENT_CATEGORY_PATTERNS,
+            "other",
+        }:
+            raise ValueError("Unsupported event category")
+
+        localized_type = (
+            func.coalesce(func.nullif(Event.event_type, ""), Event.event_type_en)
+            if locale == "ru"
+            else func.coalesce(func.nullif(Event.event_type_en, ""), Event.event_type)
         )
+        participant_count = (
+            select(func.count())
+            .select_from(models.EventAttendance)
+            .where(models.EventAttendance.event_id == Event.id)
+            .correlate(Event)
+            .scalar_subquery()
+            if include_participant_count
+            else literal(0)
+        )
+        stmt = (
+            select(
+                Event,
+                models.EventAttendance,
+                participant_count.label("participant_count"),
+            )
+            .join(
+                models.EventAttendance,
+                models.EventAttendance.event_id == Event.id,
+            )
+            .where(models.EventAttendance.user_id == user_id)
+        )
+        if category is not None:
+            ordered_patterns = list(self._EVENT_CATEGORY_PATTERNS.items())
+            matches = [
+                localized_type.regexp_match(pattern, flags="i")
+                for _, pattern in ordered_patterns
+            ]
+            if category == "other":
+                stmt = stmt.where(or_(localized_type.is_(None), not_(or_(*matches))))
+            else:
+                selected_index = next(
+                    index
+                    for index, (category_id, _) in enumerate(ordered_patterns)
+                    if category_id == category
+                )
+                stmt = stmt.where(matches[selected_index])
+                if selected_index > 0:
+                    stmt = stmt.where(not_(or_(*matches[:selected_index])))
+        if starts_at_from is not None:
+            stmt = stmt.where(Event.starts_at >= starts_at_from)
+        if starts_at_before is not None:
+            stmt = stmt.where(Event.starts_at < starts_at_before)
+        if upcoming_after is not None:
+            stmt = stmt.where(Event.starts_at > upcoming_after)
+
+        if cursor_key is not None:
+            cursor_value, cursor_event_id = cursor_key
+            if sort in {"newest", "upcoming"}:
+                if not isinstance(cursor_value, datetime):
+                    raise ValueError("Invalid date-ordered cursor key")
+                stmt = stmt.where(
+                    or_(
+                        Event.starts_at > cursor_value,
+                        and_(
+                            Event.starts_at == cursor_value, Event.id > cursor_event_id
+                        ),
+                    )
+                )
+            else:
+                if isinstance(cursor_value, bool) or not isinstance(cursor_value, int):
+                    raise ValueError("Invalid popular cursor key")
+                stmt = stmt.where(
+                    or_(
+                        participant_count < cursor_value,
+                        and_(
+                            participant_count == cursor_value,
+                            Event.id < cursor_event_id,
+                        ),
+                    )
+                )
+
+        if sort in {"newest", "upcoming"}:
+            stmt = stmt.order_by(Event.starts_at.asc(), Event.id.asc())
+        else:
+            stmt = stmt.order_by(participant_count.desc(), Event.id.desc())
+        stmt = stmt.limit(limit)
         result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+        return [(row[0], row[1], int(row[2] or 0)) for row in result.all()]
 
     async def get_event_file_urls(self, event_id: uuid.UUID | int | str) -> list[str]:
         """Get all file URLs associated with an event."""

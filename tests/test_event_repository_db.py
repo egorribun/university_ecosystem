@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -79,8 +80,15 @@ async def test_attendance_lifecycle(event_repo_db, db_session, user_factory):
     got = await event_repo_db.get_attendance(event.id, user.id)
     assert got is not None
 
-    attended = await event_repo_db.list_user_attended_events(user.id)
-    assert any(e.id == event.id for e in attended)
+    attended = await event_repo_db.list_user_attended_events(
+        user.id,
+        limit=2,
+        locale="en",
+    )
+    assert any(
+        row.id == event.id and attendance.user_id == user.id and count == 1
+        for row, attendance, count in attended
+    )
 
     deleted = await event_repo_db.delete_attendance(event.id, user.id)
     assert deleted is True
@@ -185,3 +193,14 @@ async def test_manually_hidden_event_is_excluded_from_listing_and_total(
     listed = await event_repo_db.search_events(is_active=True)
     assert [row.event.id for row in listed] == [visible.id]
     assert await event_repo_db.count_search_events(is_active=True) == 1
+
+
+@pytest.mark.parametrize("limit", [True, 0, 102, "100"])
+@pytest.mark.asyncio
+async def test_user_attended_event_query_rejects_unbounded_limits(
+    event_repo_db, limit: Any
+) -> None:
+    with pytest.raises(ValueError, match="between 1 and 101"):
+        await event_repo_db.list_user_attended_events(
+            uuid.uuid4(), limit=limit, locale="en"
+        )

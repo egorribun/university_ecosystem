@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from collections import UserDict
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -11,6 +12,7 @@ from uuid import UUID, uuid4
 
 import jwt
 import pytest
+from cryptography.fernet import Fernet
 from fastapi import HTTPException
 from pydantic import SecretStr
 from sqlalchemy.exc import IntegrityError
@@ -587,6 +589,8 @@ async def test_cwv_export_maps_oidc_verification_errors(
 
 
 def _settings_values() -> dict[str, object]:
+    spotify_key = Fernet.generate_key().decode("ascii")
+    totp_key = Fernet.generate_key().decode("ascii")
     return {
         "_allow_missing": True,
         "environment": "staging",
@@ -594,6 +598,14 @@ def _settings_values() -> dict[str, object]:
         "database_url": "sqlite+aiosqlite:///:memory:",
         "algorithm": "RS256",
         "revocation_redis_url": "redis://revocation.internal:6380/0",
+        # Keep unrelated production guards valid so these cases reach the CWV
+        # validation paths under test. All credentials are ephemeral test keys.
+        "elasticsearch_password": secrets.token_urlsafe(32),
+        "spicedb_preshared_key": secrets.token_urlsafe(32),
+        "ws_hub_internal_secret": secrets.token_urlsafe(32),
+        "spotify_token_secret": spotify_key,
+        "mfa_totp_encryption_keys": f"cwv-test:{totp_key}",
+        "mfa_totp_active_encryption_key_id": "cwv-test",
         # Keep the independent audit-signing guard valid so each case below
         # reaches the CWV validator it is intended to exercise.
         # Deterministic low-entropy fixture; production validators still check

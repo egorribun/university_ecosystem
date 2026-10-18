@@ -41,6 +41,21 @@ _RANKED_MSG_CTE_NAME = "ranked_msg"  # pragma: no mutate
 # Reserved cursor timestamp representing the NULLS LAST chat-list tail.
 _CHAT_NULL_LAST_MESSAGE_CURSOR = datetime.min.replace(tzinfo=UTC)
 
+
+def _decode_uuid_keyset_cursor(
+    cursor: str | None,
+) -> tuple[datetime, uuid.UUID] | None:
+    """Decode a (timestamp, primary key) cursor; a malformed key counts as absent."""
+    cursor_info = decode_datetime_cursor(cursor)
+    if cursor_info is None:
+        return None
+    cursor_dt, cursor_id = cursor_info
+    try:
+        return cursor_dt, uuid.UUID(cursor_id)
+    except ValueError:
+        return None
+
+
 # P-02 (audit 2026-03-08): Module-level tracer for chat repository spans.
 # SQLAlchemyInstrumentor (observability.py) already adds DB-level spans;
 # these add semantic context (chat_id, user_id) for easier trace filtering.
@@ -117,21 +132,40 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         )
         return self._to_dto(row) if row else None
 
+    async def lock_participant_ids_for_maintenance(
+        self, chat_id: uuid.UUID
+    ) -> list[uuid.UUID]:
+        """Snapshot and lock current membership after the caller locks the Chat.
+
+        The Chat→membership lock order blocks concurrent adds at the Chat FK and
+        concurrent removals at the association row, keeping the maintenance RLS
+        identity and ChatDeleted recipients valid until the transaction commits.
+        """
+        result = await self.db.execute(
+            select(chat_participants.c.user_id)
+            .where(chat_participants.c.chat_id == chat_id)
+            .order_by(chat_participants.c.user_id)
+            .with_for_update()
+        )
+        return list(result.scalars().all())
+
     async def get_chats_for_user(
         self, user_id: uuid.UUID, cursor: str | None, limit: int
     ) -> tuple[list[tuple[ChatDTO, int, uuid.UUID | None]], bool, str | None]:
         """
         Fetch chats for a user with pagination and metadata.
 
-        TD-NEW-03 (audit 2026-03): Replaced 3 correlated scalar subqueries with
-        2 CTEs that each scan the ``message`` table once. The old pattern was
-        O(N×3) per request (a separate index scan per Chat per subquery);
-        the CTE approach is O(1) scans regardless of result-set size.
+        Message statistics and latest-message selection are computed after the
+        message inputs are joined to this user's chat membership set. This keeps
+        unrelated chats out of those aggregate/window inputs without prescribing
+        a physical scan strategy to the database planner.
 
         CTE layout:
-        - msg_stats: unread count + MAX(created_at) per chat_id in one pass.
-        - ranked_msg + last_msg: ROW_NUMBER to get the latest message ID per chat.
-        Both are LEFT-JOINed so chats with no messages still appear.
+        - user_chat_ids: the chat IDs this user may list.
+        - msg_stats: DM unread count + MAX(created_at) per visible chat.
+        - ranked_msg + last_msg: latest message ID per visible chat.
+        - group_unread: per-user unread count for visible group chats.
+        Message-derived results are LEFT-JOINed so empty chats still appear.
         """
         await self._set_message_rls_user(user_id)
         with _tracer.start_as_current_span(
@@ -146,7 +180,13 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         cursor: str | None,
         limit: int,
     ) -> tuple[list[tuple[ChatDTO, int, uuid.UUID | None]], bool, str | None]:
-        # CTE-1: aggregate message stats per chat in a single table scan.
+        user_chat_ids_cte = (
+            select(chat_participants.c.chat_id.label("chat_id"))
+            .where(chat_participants.c.user_id == user_id)
+            .cte("user_chat_ids")
+        )
+
+        # CTE-1: aggregate message stats only for chats in the membership set.
         msg_stats_cte = (
             select(
                 Message.chat_id.label("chat_id"),
@@ -159,6 +199,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
                 func.max(Message.created_at).label("last_message_at"),
             )
             .select_from(Message)
+            .join(user_chat_ids_cte, user_chat_ids_cte.c.chat_id == Message.chat_id)
             .group_by(Message.chat_id)
             .cte("msg_stats")
         )
@@ -166,7 +207,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         # CTE-2: latest message ID per chat via a portable window function.
         # PostgreSQL's DISTINCT ON silently degrades on SQLite and is becoming a
         # SQLAlchemy compile error for non-PostgreSQL dialects. ROW_NUMBER keeps
-        # the same one-scan shape on both production PostgreSQL and test SQLite.
+        # this projection portable across production PostgreSQL and test SQLite.
         # The ID tie-break remains deterministic for equal timestamps.
         ranked_msg_cte = (
             select(
@@ -180,6 +221,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
                 .label("message_rank"),
             )
             .select_from(Message)
+            .join(user_chat_ids_cte, user_chat_ids_cte.c.chat_id == Message.chat_id)
             .cte(_RANKED_MSG_CTE_NAME)
         )
         last_msg_cte = (
@@ -196,16 +238,17 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         # user has no read receipt yet OR the message post-dates their
         # high-water-mark (ChatReadReceipt.last_read_at). DM unread stays in
         # msg_stats_cte (Message.read_status) — Option A, byte-identical DM path.
-        # The inner join to Chat (chat_type='group') scans only group messages, so
-        # DM rows never reach this CTE. msg_stats_cte is deliberately NOT filtered
-        # to DMs: its last_message_at column still orders ALL chats (groups
-        # included) below — only the *count* is branched, never the ordering.
+        # Membership IDs scope its message input, and the Chat join further
+        # restricts it to groups. msg_stats_cte covers both DM and group chats so
+        # last_message_at still orders every visible chat; only the unread count
+        # is branched, never the ordering.
         group_unread_cte = (
             select(
                 Message.chat_id.label("chat_id"),
                 func.count().label("group_unread_count"),
             )
             .select_from(Message)
+            .join(user_chat_ids_cte, user_chat_ids_cte.c.chat_id == Message.chat_id)
             .join(
                 Chat,
                 and_(Chat.id == Message.chat_id, Chat.chat_type == "group"),
@@ -252,7 +295,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             .options(selectinload(Chat.participants))
         )
 
-        cursor_info = decode_datetime_cursor(cursor)
+        cursor_info = _decode_uuid_keyset_cursor(cursor)
         if cursor_info:
             cursor_dt, cursor_id = cursor_info
             last_message_at = msg_stats_cte.c.last_message_at
@@ -573,6 +616,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         limit: int,
         *,
         user_id: uuid.UUID | None = None,
+        for_update: bool = False,
     ) -> tuple[list[MessageDTO], bool, str | None]:
         """
         Fetch messages for a specific chat with pagination.
@@ -599,7 +643,13 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             )
         )
 
-        cursor_info = decode_datetime_cursor(cursor)
+        if for_update:
+            # Maintenance locks each bounded page before its separate attachment
+            # select. An Attachment FK insert then cannot commit after the page was
+            # enumerated and be removed by the final cascade without an outbox URL.
+            query = query.with_for_update(of=Message)
+
+        cursor_info = _decode_uuid_keyset_cursor(cursor)
         if cursor_info:
             cursor_dt, cursor_id = cursor_info
             query = query.where(

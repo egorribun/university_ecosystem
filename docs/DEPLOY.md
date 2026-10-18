@@ -24,8 +24,13 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Backend и фронтенд должны работать по HTTPS, иначе браузер заблокирует загрузку `/static` и `/storage`.
 - Для лимитирования запросов настройте backend с помощью `RATE_LIMIT_STORAGE_BACKEND` и `RATE_LIMIT_STORAGE_URI`. Значение `redis` и URI, полученный из защищённого хранилища через переменные окружения, включает общий сторедж для middleware и чувствительных эндпоинтов; не помещайте учётные данные в URL или историю shell. Установите `memory` или `memory://` для простого однопроцессного режима без внешнего Redis.
 - Хранилище отзыва сессий обязано быть единым и выделенным для всех сервисов: backend, gateway и ws-hub используют только `REVOCATION_REDIS_URL`. В штатных Compose/Helm-конфигурациях это отдельный Redis/Valkey с AOF, персистентным томом и `maxmemory-policy noeviction`; кэш (`CACHE_REDIS_URL`) и rate-limit Redis (`REDIS_URL`, DB 3) не являются источниками security-state. Совместное использование cache/rate-limit процесса запрещено: вытеснение `revoked:jti:*` может повторно сделать отозванный JWT действительным.
-- Для продакшена есть override (`docker-compose.prod.yml`) с обязательными секретами. <!-- pragma: allowlist secret --> Создайте Compose-секреты `secret_key`, `database_url` и `nats_auth_token`, а путь к файлу пароля PostgreSQL передайте через `POSTGRES_PASSWORD_SOURCE_FILE`. Значение `database_url` должно указывать на `postgresql+asyncpg://...@pgbouncer:5432/university`. Затем запускайте `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d`, явно задав `FRONTEND_ORIGIN` и `FRONTEND_ORIGINS`; Go overlay обязателен, потому что Caddy направляет API и WebSocket-трафик через gateway/ws-hub.
-- Helm chart читает подключения из заранее созданного Secret `university-connections` (полный список ключей приведён в `charts/university-ecosystem/values.yaml`). <!-- pragma: allowlist secret --> В production обязательно задайте `applicationSecrets.existingSecret`; этот Secret должен содержать JWT/RSA-ключи, отдельные HMAC/интеграционные секреты, S3 credentials (ключи `minio-access-key`/`minio-secret-key`) и Temporal API key, перечисленные там же. Production-render отклоняет plaintext S3, Temporal, gRPC и OTLP. Так секреты не попадают в Helm release state, а небезопасная конфигурация не доходит до кластера.
+- Для продакшена есть override (`docker-compose.prod.yml`) с обязательными секретами:
+  - Создайте Compose-секреты `secret_key`, `database_url`, `nats_auth_token` и `mfa_totp_encryption_keys`.
+  - Пути к файлам передайте через `SECRET_KEY_SOURCE_FILE`, `DATABASE_URL_SOURCE_FILE`, `NATS_AUTH_TOKEN_SOURCE_FILE`, `CACHE_REDIS_URL_SOURCE_FILE`, `REVOCATION_REDIS_URL_SOURCE_FILE` и `MFA_TOTP_ENCRYPTION_KEYS_SOURCE_FILE`.
+  - Несекретный `MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` задайте напрямую. Кольцо TOTP и ID получает backend и миграция; не-auth workers остаются без них.
+  - Путь к файлу пароля PostgreSQL передайте через `POSTGRES_PASSWORD_SOURCE_FILE`. Значение `database_url` должно указывать на `postgresql+asyncpg://...@pgbouncer:5432/university`.
+  - Затем запускайте `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d`, явно задав `FRONTEND_ORIGIN` и `FRONTEND_ORIGINS`; Go overlay обязателен, потому что Caddy направляет API и WebSocket-трафик через gateway/ws-hub.
+- Helm chart читает подключения из заранее созданного Secret `university-connections` (полный список ключей приведён в `charts/university-ecosystem/values.yaml`). Кольцо TOTP — ключ application Secret для backend и migration Job. Активный key ID является прямым несекретным значением chart. Оба не-auth worker не получают эти настройки. В production обязательно задайте `applicationSecrets.existingSecret`. Этот Secret должен содержать JWT/RSA-ключи, отдельные HMAC/интеграционные секреты, S3 credentials (ключи `minio-access-key`/`minio-secret-key`) и Temporal API key, перечисленные там же. Production-render отклоняет plaintext S3, Temporal, gRPC и OTLP. Так секреты не попадают в Helm release state, а небезопасная конфигурация не доходит до кластера.
 
 В Kubernetes chart передаёт значения Secret backend, outbox worker, migration Job,
 gateway, ws-hub и file-processor как projected files. Каждый workload получает
@@ -128,6 +133,7 @@ Workflow проверяет эти права до мутаций и прину�
 Не используйте фиктивную checksum-аннотацию Pod: ExternalSecret не раскрывает
 секретное содержимое Helm, поэтому источником истины служат Ready/refreshTime и
 `resourceVersion`, а применение новых значений обеспечивается явным rollout.
+
 - Healthcheck-и остаются внутри контейнеров (`127.0.0.1`), а единственная запись `extra_hosts` — `host.docker.internal`; удалите её в продакшене, если доступ к хосту не нужен.
 - Prometheus-метрики выключены по умолчанию в `docker-compose.yml`. Чтобы их включить, установите `ENABLE_METRICS_ENDPOINT=true` **и** задайте собственные, стойкие значения `METRICS_BASIC_AUTH_USERNAME` и `METRICS_BASIC_AUTH_PASSWORD` (docker-compose больше не подставляет плейсхолдеры). Backend теперь падает на старте — или возвращает `503` во время запроса — если метрики включены без учётных данных, за исключением случаев, когда allowlist ограничен петлевыми адресами (`127.0.0.1`, `::1`, `localhost`).
 - Для включения заголовка `Cross-Origin-Resource-Policy` установите `ENABLE_CORP=true`. Значение задаётся через `CORP_VALUE` (по умолчанию `same-site`; также поддерживаются `same-origin` и `cross-origin`).
@@ -235,6 +241,65 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
   npm run test:e2e -- offline.spec.ts
   ```
 
+### Ротация ключа шифрования TOTP-enrollment
+
+В staging и production application Secret должен содержать
+`MFA_TOTP_ENCRYPTION_KEYS` для API и migration Job. Несекретный
+`MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` задаётся напрямую в окружении deployment и не
+передаётся через файл Secret. Явные роли `outbox-worker` и
+`notifications-worker` остаются без TOTP-ключей; вызов TOTP crypto в них
+завершается fail-closed. Активный ключ
+обязан отличаться от `SPOTIFY_TOKEN_SECRET`; неактивные записи кольца нужны
+только для расшифровки старых enrollment. Если существующие строки TOTP были
+зашифрованы ключом Spotify, временно сохраните тот же материал под неактивным
+TOTP key ID и опубликуйте новый независимый активный ключ. Не вставляйте ключи
+в команды, shell history, логи или документацию.
+
+До любого сканирования или ротации остановите все экземпляры backend API со
+старым кодом, который ещё может записывать TOTP ciphertext ключом Spotify или
+fallback от `SECRET_KEY`. Продолжайте только когда все активные процессы,
+записывающие enrollment, используют изолированный релиз, который всегда
+шифрует новые enrollment активным TOTP-ключом. Сохраняйте этот состав
+процессов и версию кода неизменными с первого сканирования до всех партий
+ротации, финального полного dry run без legacy-ключа и его удаления из кольца.
+Не делайте откат, не масштабируйте старый ReplicaSet и не запускайте смешанный
+релиз в это время. Если состав процессов изменился, оставьте legacy-ключ и
+повторите последовательность проверок после восстановления стабильного
+изолированного состава.
+
+После публикации нового кольца и стабилизации изолированного состава сначала
+выполните ограниченное чтение без записи:
+
+```bash
+python scripts/rotate_totp_encryption_keys.py --batch-size 100
+```
+
+Проверьте только сводные счётчики, затем явно запустите ротацию небольшими
+транзакциями:
+
+```bash
+python scripts/rotate_totp_encryption_keys.py --apply --batch-size 100
+```
+
+В PostgreSQL скрипт блокирует выбранные строки и обновляет их через точное
+сравнение ID и старого ciphertext. Нерасшифровываемая строка или изменившаяся
+строка отменяет текущую партию. Ранее подтверждённые партии можно безопасно
+обработать повторно: ротация идемпотентна.
+
+После успешного применения оставьте legacy-запись в обычном кольце расшифровки,
+пока готовите проверочное кольцо без неё. Запустите read-only сканирование на той же БД с тем же активным TOTP-ключом.
+Убедитесь, что команда завершилась успешно, `scanned` соответствует полному
+числу enrollment, а `would_rotate=0`; любая ошибка расшифровки или изменение
+числа строк блокирует удаление ключа. Только после этого удалите legacy-материал
+из TOTP-кольца всех API и процессов миграции. Ключ Spotify остаётся в отдельной
+конфигурации Spotify.
+
+Provisioning production-ключей, dry run и применение на полной таблице,
+постротационная проверка и удаление legacy-ключа требуют действий оператора и
+пока остаются незавершёнными. Изменение исходного кода не означает, что данные
+production уже были перешифрованы.
+
+
 ### Spotify токены
 
 - Backend шифрует Spotify access/refresh токены с помощью Fernet. Перед включением интеграции задайте `SPOTIFY_TOKEN_SECRET` — это base64-строка из `Fernet.generate_key()`.
@@ -323,12 +388,12 @@ PY
 - `frontend.Dockerfile` использует отдельные stages для сборки Rust/WASM, установки build/runtime-зависимостей и TanStack Start SSR. Финальный образ основан на закреплённом по digest `node:24-alpine`, запускается непривилегированным пользователем `node` и содержит только production-зависимости, WASM-пакеты, `dist/` и SSR launcher.
 - `VITE_BACKEND_ORIGIN` остаётся build-time fallback для фронтенда. Node SSR сначала читает runtime-переменную `BACKEND_ORIGIN`, поэтому один immutable image можно безопасно использовать с разными Compose/Helm service names; chart и Compose уже задают внутренний адрес backend. Браузерные API-запросы остаются same-origin и идут через gateway.
 - Статику и SSR отдаёт `frontend/scripts/server-prod.mjs`: хешированные файлы в `assets/` получают `Cache-Control: public, max-age=31536000, immutable`, HTML — `no-cache`/`no-store`.
-- Контейнер слушает порт `3000`; Compose публикует frontend напрямую на `127.0.0.1:8081`, gateway — на `127.0.0.1:8080`, а Caddy — на портах `80`/`443`. Быстрая readiness/liveness-проверка доступна на `/healthz`.
+- Контейнер слушает порт `3000` во внутренней сети `frontend_net`; поддерживаемая точка входа с хоста — Caddy на портах `80`/`443`, который проксирует запросы на `frontend:3000`. Docker healthcheck проверяет `/healthz` внутри контейнера, а `start-docker.ps1` отдельно проверяет отрисованный `/login` через Caddy.
 
 ```bash
 # пример локальной сборки
 docker compose build frontend
-docker compose up frontend
+docker compose up -d frontend caddy
 ```
 
 ## Edge reverse proxy

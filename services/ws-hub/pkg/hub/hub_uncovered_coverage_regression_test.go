@@ -44,7 +44,12 @@ func TestHub_RecordingNotificationSpanReportsRecipientCount(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() { require.NoError(t, provider.Shutdown(ctx)) })
 
-	_, span := provider.Tracer("hub-test").Start(ctx, "notification")
+	tracer := provider.Tracer("hub-test")
+	if tracer == nil {
+		t.Fatal("tracer provider returned a nil tracer")
+		return
+	}
+	_, span := tracer.Start(ctx, "notification")
 	recipients := h.collectRecipients(&Message{Type: "notification", To: "target-user"}, span)
 	require.Len(t, recipients, 2)
 	gotClients := make([]*Client, 0, len(recipients))

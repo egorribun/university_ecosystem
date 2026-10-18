@@ -31,7 +31,7 @@ def run_smoke_test():
     gateway_url = os.environ.get("GATEWAY_URL", "http://localhost:8080/health")
     ws_hub_url = os.environ.get("WS_HUB_URL", "http://localhost:8083/health")
     backend_url = os.environ.get("BACKEND_URL", "http://localhost:8000/healthz")
-    frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:8081/")
+    frontend_url = os.environ.get("FRONTEND_URL", "http://localhost/login")
 
     results = [
         check_health(gateway_url, "Gateway"),

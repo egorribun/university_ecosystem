@@ -16,8 +16,10 @@ ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "charts" / "university-ecosystem"
 MFA_HELM_RELEASE_NAME = "mfa-contract"
 MFA_EXTERNAL_APPLICATION_SECRET = "eso-application-secret"
+MFA_TOTP_ACTIVE_KEY_ID = "totp-active-contract"
 
 MFA_SECRET_KEYS = {
+    "MFA_TOTP_ENCRYPTION_KEYS": "totp-ring-custom",
     "MFA_EMAIL_OTP_HMAC_KEYS": "otp-ring-custom",
     "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID": "otp-active-custom",
     "MFA_EMAIL_DELIVERY_KEKS": "delivery-ring-custom",
@@ -27,6 +29,7 @@ MFA_SECRET_KEYS = {
 }
 
 MFA_VALUE_KEYS = {
+    "MFA_TOTP_ENCRYPTION_KEYS": "mfaTotpEncryptionKeys",
     "MFA_EMAIL_OTP_HMAC_KEYS": "mfaEmailOtpHMACKeys",
     "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID": "mfaEmailOtpActiveHMACKeyId",
     "MFA_EMAIL_DELIVERY_KEKS": "mfaEmailDeliveryKEKs",
@@ -185,10 +188,12 @@ def _assert_file_secret_environment(
     assert not any("secretKeyRef" in item.get("valueFrom", {}) for item in env_items)
 
 
-def test_external_application_secret_maps_all_mfa_keys_to_both_workloads() -> None:
+def test_external_application_secret_maps_mfa_keys_to_authorized_workloads() -> None:
     overrides = [
         "--set",
         f"applicationSecrets.existingSecret={MFA_EXTERNAL_APPLICATION_SECRET}",
+        "--set-string",
+        f"backend.config.mfaTotpActiveEncryptionKeyId={MFA_TOTP_ACTIVE_KEY_ID}",
         "--set-string",
         "backend.env.MFA_EMAIL_OTP_HMAC_KEYS=inline-bypass",
         "--set-string",
@@ -236,6 +241,10 @@ def test_external_application_secret_maps_all_mfa_keys_to_both_workloads() -> No
         )
         assert "valueFrom" not in backend_env[file_variable]
         assert variable not in backend_env
+    assert backend_env["MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID"]["value"] == (
+        MFA_TOTP_ACTIVE_KEY_ID
+    )
+    assert "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID_FILE" not in backend_env
 
     connection_secret = "university-connections"
     assert _secret_volume_names(backend_spec) == {
@@ -293,12 +302,72 @@ def test_external_application_secret_maps_all_mfa_keys_to_both_workloads() -> No
         secret_name=connection_secret,
     )
 
+    migration = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "Job"
+        and resource["metadata"]["name"].endswith("-migrate")
+    )
+    migration_spec = migration["spec"]["template"]["spec"]
+    migration_container = migration_spec["containers"][0]
+    migration_env = {item["name"]: item for item in migration_container["env"]}
+    assert migration_env["APP_PROCESS_ROLE"]["value"] == "api"
+    assert migration_env["MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID"]["value"] == (
+        MFA_TOTP_ACTIVE_KEY_ID
+    )
+    assert migration_env["MFA_TOTP_ENCRYPTION_KEYS_FILE"]["value"] == (
+        f"/run/secrets/{MFA_EXTERNAL_APPLICATION_SECRET}/"
+        f"{MFA_SECRET_KEYS['MFA_TOTP_ENCRYPTION_KEYS']}"
+    )
+    migration_application_items = _projected_secret_items(
+        migration_spec,
+        migration_container,
+        volume_name="secret-application",
+        secret_name=MFA_EXTERNAL_APPLICATION_SECRET,
+    )
+    assert MFA_SECRET_KEYS["MFA_TOTP_ENCRYPTION_KEYS"] in migration_application_items
+
+
+def test_outbox_worker_rejects_totp_env_injection_from_values() -> None:
+    overrides = [
+        "--set",
+        f"applicationSecrets.existingSecret={MFA_EXTERNAL_APPLICATION_SECRET}",
+        "--set-string",
+        f"backend.config.mfaTotpActiveEncryptionKeyId={MFA_TOTP_ACTIVE_KEY_ID}",
+    ]
+    for variable, value_key in MFA_VALUE_KEYS.items():
+        overrides.extend(
+            (
+                "--set-string",
+                f"applicationSecrets.keys.{value_key}={MFA_SECRET_KEYS[variable]}",
+            )
+        )
+    for variable in (
+        "MFA_TOTP_ENCRYPTION_KEYS",
+        "MFA_TOTP_ENCRYPTION_KEYS_FILE",
+        "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID",
+        "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID_FILE",
+    ):
+        overrides.extend(("--set-string", f"outboxWorker.env.{variable}=injected"))
+
+    resources = _render(*overrides)
+    worker_env = _deployment_env(resources, "outbox-worker")
+
+    assert {
+        "MFA_TOTP_ENCRYPTION_KEYS",
+        "MFA_TOTP_ENCRYPTION_KEYS_FILE",
+        "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID",
+        "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID_FILE",
+    }.isdisjoint(worker_env)
+
 
 def test_mfa_values_schema_requires_valid_parameterized_secret_key_names() -> None:
     schema = json.loads((CHART / "values.schema.json").read_text(encoding="utf-8"))
     key_schema = schema["properties"]["applicationSecrets"]["properties"]["keys"]
 
     assert set(MFA_VALUE_KEYS.values()) <= set(key_schema["required"])
+    assert "mfaTotpActiveEncryptionKeyId" not in key_schema["required"]
+    assert "mfaTotpActiveEncryptionKeyId" not in key_schema["properties"]
     for value_key in MFA_VALUE_KEYS.values():
         assert key_schema["properties"][value_key]["minLength"] == 1
         assert key_schema["properties"][value_key]["maxLength"] == 253
@@ -367,6 +436,8 @@ def test_render_rejects_non_canonical_environment_names(environment: str) -> Non
             "--set",
             "applicationSecrets.existingSecret=eso-application-secret",
             "--set-string",
+            f"backend.config.mfaTotpActiveEncryptionKeyId={MFA_TOTP_ACTIVE_KEY_ID}",
+            "--set-string",
             f"global.environment={environment}",
         ],
         check=False,
@@ -381,8 +452,12 @@ def test_render_rejects_non_canonical_environment_names(environment: str) -> Non
 
 
 @pytest.mark.parametrize("environment", ["staging", "production"])
+@pytest.mark.parametrize(
+    "config_field",
+    ["mfaEmailOtpHMACKeys", "mfaTotpEncryptionKeys"],
+)
 def test_non_development_render_rejects_inline_mfa_key_material(
-    environment: str,
+    environment: str, config_field: str
 ) -> None:
     issuer_kind = "Issuer" if environment == "staging" else "ClusterIssuer"
     result = subprocess.run(  # noqa: S603 - fixed Helm contract command
@@ -399,7 +474,7 @@ def test_non_development_render_rejects_inline_mfa_key_material(
             "--set",
             "gateway.config.grpcUseTLS=true",
             "--set-string",
-            "backend.config.mfaEmailOtpHMACKeys=active:inline-material",
+            f"backend.config.{config_field}=active:inline-material",
         ],
         check=False,
         capture_output=True,
@@ -415,6 +490,8 @@ def test_secret_preflight_contract_matches_rendered_workload_references() -> Non
     overrides = [
         "--set",
         "applicationSecrets.existingSecret=eso-application-secret",
+        "--set-string",
+        f"backend.config.mfaTotpActiveEncryptionKeyId={MFA_TOTP_ACTIVE_KEY_ID}",
         "--set",
         "deploymentContract.enabled=true",
         "--set",
@@ -440,6 +517,7 @@ def test_secret_preflight_contract_matches_rendered_workload_references() -> Non
     mfa_key_contract = json.loads(contract["data"]["mfa-key-contract.json"])
     assert FIXED_APPLICATION_SECRET_KEYS <= application_keys
     assert set(MFA_SECRET_KEYS.values()) <= application_keys
+    assert "totp-active-custom" not in application_keys
     assert mfa_key_contract == {
         "otp": {
             "ring": MFA_SECRET_KEYS["MFA_EMAIL_OTP_HMAC_KEYS"],
@@ -452,6 +530,10 @@ def test_secret_preflight_contract_matches_rendered_workload_references() -> Non
         "trusted": {
             "ring": MFA_SECRET_KEYS["MFA_TRUSTED_DEVICE_HMAC_KEYS"],
             "active": MFA_SECRET_KEYS["MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID"],
+        },
+        "totp": {
+            "ring": MFA_SECRET_KEYS["MFA_TOTP_ENCRYPTION_KEYS"],
+            "active": MFA_TOTP_ACTIVE_KEY_ID,
         },
     }
 
@@ -467,6 +549,7 @@ def test_secret_preflight_contract_matches_rendered_workload_references() -> Non
         "backend": {
             connections["databaseURLKey"],
             connections["redisBackendURLKey"],
+            connections["rateLimitStorageURIKey"],
             connections["redisRevocationURLKey"],
             connections["natsURLKey"],
             connections["natsAuthTokenKey"],
@@ -482,6 +565,11 @@ def test_secret_preflight_contract_matches_rendered_workload_references() -> Non
     connection_secret = contract["data"]["connection-secret-name"]
     for component, expected_application_keys in workload_contracts.items():
         pod_spec, container = _deployment_pod_and_container(resources, component)
+        if component == "outbox-worker":
+            assert not any(
+                item["name"].startswith("RATE_LIMIT_STORAGE_")
+                for item in container["env"]
+            )
         assert _secret_volume_names(pod_spec) == {
             "secret-application",
             "secret-connections",
@@ -598,6 +686,9 @@ def test_deploy_renderer_executes_canonical_staging_without_required_markers(
         (CHART / "values-staging.yaml").read_text(encoding="utf-8")
     )
     assert isinstance(staging_values, dict)
+    staging_values["backend"]["config"]["mfaTotpActiveEncryptionKeyId"] = (
+        MFA_TOTP_ACTIVE_KEY_ID
+    )
     network_policy = staging_values.setdefault("networkPolicy", {})
     assert isinstance(network_policy, dict)
     gateway_jwks = network_policy.setdefault("gatewayJWKS", {})

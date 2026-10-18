@@ -283,40 +283,20 @@ def test_utils_files_mime_detector_attribute_error(
 
 
 # ---------------------------------------------------------------------------
-# app/utils/images.py  line 30  — ImportError fallback for PIL.Image.Resampling
+# app/utils/images.py — legacy LANCZOS fallback when Resampling is absent
 # ---------------------------------------------------------------------------
 
 
-def test_utils_images_resampling_import_error_fallback(
+def test_utils_images_resampling_legacy_constant_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When PIL.Image.Resampling is unavailable, the module uses the int fallback."""
-    import builtins
-    import importlib
+    """Use Pillow's legacy LANCZOS constant when the enum is unavailable."""
+    from app.utils import images
 
-    module_name = "app.utils.images"
-    original_module = sys.modules.pop(module_name, None)
-    real_import = builtins.__import__
+    legacy_filter = images.Image.LANCZOS
+    monkeypatch.setattr(images.Image, "Resampling", None)
 
-    def fail_resampling_import(
-        name: str,
-        globals: dict[str, object] | None = None,
-        locals: dict[str, object] | None = None,
-        fromlist: tuple[str, ...] = (),
-        level: int = 0,
-    ):
-        if name == "PIL.Image" and "Resampling" in fromlist:
-            raise ImportError("simulated legacy Pillow without Resampling")
-        return real_import(name, globals, locals, fromlist, level)
-
-    monkeypatch.setattr(builtins, "__import__", fail_resampling_import)
-    try:
-        mod = importlib.import_module(module_name)
-        assert mod.Resampling is int
-    finally:
-        sys.modules.pop(module_name, None)
-        if original_module is not None:
-            sys.modules[module_name] = original_module
+    assert images._resolve_resample_filter() is legacy_filter
 
 
 # ---------------------------------------------------------------------------

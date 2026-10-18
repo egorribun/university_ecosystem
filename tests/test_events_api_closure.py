@@ -10,6 +10,7 @@ from fastapi import HTTPException, Response
 
 from app.api import events as api
 from app.schemas import schemas
+from app.services.event_service import InvalidMyEventsCursor
 from app.services.vector_service import (
     SEMANTIC_SEARCH_UNAVAILABLE_DETAIL,
     SemanticSearchUnavailableError,
@@ -199,18 +200,60 @@ async def test_all_events_and_my_events_call_services() -> None:
         cursor="cursor",
     )
 
-    service.get_my_events = AsyncMock(return_value=["mine"])
+    cursor = "opaque-cursor"
+    page = schemas.PaginatedEvents(
+        items=[], limit=7, cursor=cursor, next_cursor=None, has_more=False
+    )
+    service.get_my_events_page = AsyncMock(return_value=page)
     with patch.object(api, "resolve_locale", return_value="ru"):
         result = await call_injected(
-            api.my_events.__wrapped__,
+            api.my_events_page.__wrapped__,
             request=_request(),
             response=Response(),
             user=user,
+            limit=7,
+            cursor=cursor,
+            category="lecture",
+            date_range=None,
+            date_anchor=None,
+            sort="newest",
+            upcoming_after=None,
             if_none_match=None,
             provides={"EventService": service},
         )
-    assert result == ["mine"]
-    service.get_my_events.assert_awaited_once_with(user_id=user.id, locale="ru")
+    assert result == page
+    service.get_my_events_page.assert_awaited_once_with(
+        user_id=user.id,
+        locale="ru",
+        limit=7,
+        cursor=cursor,
+        category="lecture",
+        date_range=None,
+        date_anchor=None,
+        sort="newest",
+        upcoming_after=None,
+    )
+
+    service.get_my_events_page.reset_mock()
+    service.get_my_events_page.side_effect = InvalidMyEventsCursor("invalid")
+    with pytest.raises(HTTPException) as exc_info:
+        await call_injected(
+            api.my_events_page.__wrapped__,
+            request=_request(),
+            response=Response(),
+            user=user,
+            limit=7,
+            cursor="not-a-valid-event-cursor",
+            category=None,
+            date_range=None,
+            date_anchor=None,
+            sort="newest",
+            upcoming_after=None,
+            if_none_match=None,
+            provides={"EventService": service},
+        )
+    assert exc_info.value.status_code == 422
+    service.get_my_events_page.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -985,3 +1028,27 @@ async def test_create_event_rejects_image_before_the_event_exists() -> None:
             )
     assert exc.value.status_code == 400
     service.create_event.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_legacy_my_events_route_keeps_array_contract() -> None:
+    user = _user()
+    service = MagicMock()
+    service.get_my_events = AsyncMock(return_value=[])
+
+    with patch.object(api, "resolve_locale", return_value="ru"):
+        result = await call_injected(
+            api.my_events.__wrapped__,
+            request=_request(),
+            response=Response(),
+            user=user,
+            if_none_match=None,
+            provides={"EventService": service},
+        )
+
+    assert result == []
+    service.get_my_events.assert_awaited_once_with(user_id=user.id, locale="ru")
+
+    routes = {route.path: route for route in api.router.routes}
+    assert routes["/events/my"].response_model == list[schemas.EventOut]
+    assert routes["/events/my/page"].response_model is schemas.PaginatedEvents

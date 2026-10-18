@@ -16,6 +16,7 @@
   "spicedb-preshared-key"
   "spotify-token-secret"
   "token-hmac-secret"
+  (required "applicationSecrets.keys.mfaTotpEncryptionKeys must be set" .Values.applicationSecrets.keys.mfaTotpEncryptionKeys)
 -}}
 apiVersion: batch/v1
 kind: Job
@@ -80,6 +81,8 @@ spec:
               value: "true"
             - name: ENVIRONMENT
               value: {{ .Values.global.environment | quote }}
+            - name: MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID
+              value: {{ .Values.backend.config.mfaTotpActiveEncryptionKeyId | quote }}
             - name: EVENT_FILE_SCANNER_ENABLED
               value: {{ .Values.backend.config.eventFileScannerEnabled | quote }}
             - name: MINIO_SECURE
@@ -98,6 +101,8 @@ spec:
             {{- end }}
             - name: NATS_AUTH_TOKEN_FILE
               value: {{ printf "/run/secrets/%s/%s" $connectionSecret (required "connections.natsAuthTokenKey must be set" .Values.connections.natsAuthTokenKey) | quote }}
+            - name: MFA_TOTP_ENCRYPTION_KEYS_FILE
+              value: {{ printf "/run/secrets/%s/%s" $applicationSecret (required "applicationSecrets.keys.mfaTotpEncryptionKeys must be set" .Values.applicationSecrets.keys.mfaTotpEncryptionKeys) | quote }}
             - name: AUTO_CREATE_SCHEMA
               value: "false"
           securityContext:

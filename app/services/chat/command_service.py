@@ -20,6 +20,8 @@ from typing import (  # TD-23-04 (audit 2026-03-25 Wave 23)
 )
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from fastapi import UploadFile
 
     from app.models import User
@@ -30,7 +32,7 @@ if TYPE_CHECKING:
         ChatMaintenanceResult,
         MessageResponse,
     )
-    from app.schemas.dtos.chat import AttachmentDTO
+    from app.schemas.dtos.chat import AttachmentDTO, MessageDTO
 
     from .notification_service import ChatNotificationService
 
@@ -761,6 +763,68 @@ class ChatMaintenanceService:
         self.repository = uow.chats
         self.attachment_service = attachment_service
 
+    _MESSAGE_PAGE_SIZE = 512
+    _ATTACHMENT_EVENT_URL_BATCH_SIZE = 128
+
+    async def _message_pages(
+        self, chat_id: uuid.UUID, user_id: uuid.UUID
+    ) -> AsyncIterator[list[MessageDTO]]:
+        """Yield bounded, locked message pages using their self-contained cursor.
+
+        The cursor embeds the final message's timestamp and ID, so deleting that
+        page does not invalidate the next keyset query. Message rows are locked
+        before their attachments are loaded to serialize FK inserts with cleanup.
+        """
+        cursor: str | None = None
+        while True:
+            messages, has_more, next_cursor = await self.repository.get_messages(
+                chat_id,
+                cursor,
+                self._MESSAGE_PAGE_SIZE,
+                user_id=user_id,
+                for_update=True,
+            )
+            if not messages:
+                if has_more:
+                    raise RuntimeError("chat maintenance page returned no cursor rows")
+                return
+
+            yield messages
+            if not has_more:
+                return
+            if next_cursor is None:
+                raise RuntimeError("chat maintenance page omitted its next cursor")
+            cursor = next_cursor
+
+    def _stage_attachment_cleanup_events(
+        self, chat_id: uuid.UUID, urls: list[str]
+    ) -> None:
+        if not urls:
+            return
+
+        from app.core.events import AttachmentCleanupRequested as _ACR
+        from app.models.domain_events import StoredEvent as _StoredEvent
+
+        for start in range(0, len(urls), self._ATTACHMENT_EVENT_URL_BATCH_SIZE):
+            url_batch = urls[start : start + self._ATTACHMENT_EVENT_URL_BATCH_SIZE]
+            self.repository.add(
+                _StoredEvent(
+                    event_type=_ACR.EVENT_TYPE,
+                    aggregate_type="Chat",
+                    aggregate_id=str(chat_id),
+                    payload={"chat_id": str(chat_id), "attachment_urls": url_batch},
+                )
+            )
+
+    @staticmethod
+    def _page_attachment_urls(messages: list[MessageDTO]) -> list[str]:
+        return [
+            attachment.url
+            for message in messages
+            for attachment in message.attachments
+            if attachment.url
+        ]
+
     async def mark_read(self, chat_id: uuid.UUID, user: User, locale: str) -> None:
         """Mark all messages in a chat as read by the user."""
         chat = await self.repository.get_by_id(chat_id)
@@ -1165,57 +1229,56 @@ class ChatMaintenanceService:
         if user.role != UserRole.ADMIN:
             raise_forbidden(locale, "errors.chat.history_clear_forbidden_non_admin")
 
-        rls_user_id = (
-            user.id
-            if user.id in participant_ids
-            else (chat.participants[0].id if chat.participants else None)
-        )
-        if rls_user_id is None:
-            raise_forbidden(locale, "errors.chat.not_participant")
-        chat = await self.repository.get_by_id(
-            chat_id, load_messages=True, user_id=rls_user_id
-        )
-        ensure_exists(chat, "chat", locale)
-        assert chat is not None  # noqa: S101
-
-        attachment_urls = await self.attachment_service.collect_urls(chat)
-        message_count = len(chat.messages)
-        attachment_count = len(attachment_urls)
-
         try:
-            await self.repository.delete_messages(
-                [m.id for m in chat.messages], chat_id=chat_id, user_id=rls_user_id
+            locked_chat = await self.repository.get_orm_for_update(chat_id)
+            ensure_exists(locked_chat, "chat", locale)
+            assert locked_chat is not None  # noqa: S101
+
+            locked_participant_ids = (
+                await self.repository.lock_participant_ids_for_maintenance(chat_id)
             )
+            if not locked_participant_ids:
+                raise_forbidden(locale, "errors.chat.not_participant")
+            locked_participant_set = set(locked_participant_ids)
+            # Only administrators reach this branch. Select a current participant
+            # solely as the transaction-local RLS identity after membership locks.
+            rls_user_id = (
+                user.id
+                if user.id in locked_participant_set
+                else locked_participant_ids[0]
+            )
+
+            message_count = 0
+            attachment_count = 0
+            async for messages in self._message_pages(chat_id, rls_user_id):
+                attachment_urls = self._page_attachment_urls(messages)
+                attachment_count += len(attachment_urls)
+                message_count += await self.repository.delete_messages(
+                    [message.id for message in messages],
+                    chat_id=chat_id,
+                    user_id=rls_user_id,
+                )
+                self._stage_attachment_cleanup_events(chat_id, attachment_urls)
+                # Flush each bounded page to keep pending ORM state bounded while
+                # retaining one transaction for deletes and durable cleanup events.
+                await self.uow.flush()
+
             await self.repository.update_timestamp_by_id(chat_id, datetime.now(UTC))
 
-            # PERF-W10-05: Durable cleanup via Outbox — StoredEvent is written in
-            # the SAME transaction as message deletes.  OutboxWorker retries on
-            # failure, preventing permanent file leaks if the process crashes
-            # between the commit and the S3/static delete call.
-            if attachment_urls:
-                from app.core.events import AttachmentCleanupRequested as _ACR
-                from app.models.domain_events import StoredEvent as _StoredEvent
-
-                self.repository.add(
-                    _StoredEvent(
-                        event_type=_ACR.EVENT_TYPE,
-                        aggregate_type="Chat",
-                        aggregate_id=str(chat_id),
-                        payload={
-                            "chat_id": str(chat_id),
-                            "attachment_urls": attachment_urls,
-                        },
-                    )
-                )
-
-            async with self.uow:
-                await self.uow.commit()
-        except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — rollback then re-raise (reviewed TD-27-04)
-            await self.uow.rollback()
+            # Commit directly; the injected UOW borrows the request session and
+            # this handler owns rollback for failures and cancellation.
+            await self.uow.commit()
+        except BaseException:  # RZ-22-01-JUSTIFIED: rollback cleanup before re-raise
+            # A rollback error must not replace the original operation failure.
+            # Leave a new CancelledError uncaught so cancellation still propagates.
+            try:
+                await self.uow.rollback()
+            except Exception:  # RZ-22-01-JUSTIFIED: cleanup preserves original failure
+                logger.warning("chat_clear_history_rollback_failed")
             raise
 
         return ChatMaintenanceResult(
-            chat_id=chat.id,
+            chat_id=chat_id,
             status="cleared",
             deleted_messages=message_count,
             deleted_attachments=attachment_count,
@@ -1238,33 +1301,25 @@ class ChatMaintenanceService:
         if user.role != UserRole.ADMIN:
             raise_forbidden(locale, "errors.chat.deletion_forbidden_non_admin")
 
-        rls_user_id = (
-            user.id
-            if user.id in participant_ids
-            else (chat.participants[0].id if chat.participants else None)
-        )
-        if rls_user_id is None:
-            raise_forbidden(locale, "errors.chat.not_participant")
-        chat = await self.repository.get_by_id(
-            chat_id, load_messages=True, user_id=rls_user_id
-        )
-        ensure_exists(chat, "chat", locale)
-        assert chat is not None  # noqa: S101
-
-        attachment_urls = await self.attachment_service.collect_urls(chat)
-        message_count = len(chat.messages)
-        attachment_count = len(attachment_urls)
-
-        p_ids = [p.id for p in chat.participants]
-
         try:
+            locked_chat = await self.repository.get_orm_for_update(chat_id)
+            ensure_exists(locked_chat, "chat", locale)
+            assert locked_chat is not None  # noqa: S101
+
+            p_ids = await self.repository.lock_participant_ids_for_maintenance(chat_id)
+            if not p_ids:
+                raise_forbidden(locale, "errors.chat.not_participant")
+            p_id_set = set(p_ids)
+            # Only administrators reach this branch. Select a current participant
+            # solely as the transaction-local RLS identity after membership locks.
+            rls_user_id = user.id if user.id in p_id_set else p_ids[0]
+
             # RED-04 (audit 2026-03-14): Record ChatDeleted outbox events BEFORE
             # the DELETE commits so ws-hub cache invalidation is durable.
             # StoredEvent rows land in the SAME transaction as the chat deletion —
             # either both succeed or neither does.  OutboxWorker delivers them with
             # at-least-once semantics, closing the 60s BOLA window that existed
             # when invalidation was a best-effort post-commit network call.
-            from app.core.events import AttachmentCleanupRequested as _ACR
             from app.core.events import ChatDeleted as ChatDeletedEvent
             from app.models.domain_events import StoredEvent as _StoredEvent
 
@@ -1278,25 +1333,26 @@ class ChatMaintenanceService:
                     )
                 )
 
-            # PERF-W10-05: Durable file cleanup alongside ChatDeleted in ONE tx.
-            if attachment_urls:
-                self.repository.add(
-                    _StoredEvent(
-                        event_type=_ACR.EVENT_TYPE,
-                        aggregate_type="Chat",
-                        aggregate_id=str(chat_id),
-                        payload={
-                            "chat_id": str(chat_id),
-                            "attachment_urls": attachment_urls,
-                        },
-                    )
-                )
+            message_count = 0
+            attachment_count = 0
+            async for messages in self._message_pages(chat_id, rls_user_id):
+                attachment_urls = self._page_attachment_urls(messages)
+                message_count += len(messages)
+                attachment_count += len(attachment_urls)
+                self._stage_attachment_cleanup_events(chat_id, attachment_urls)
+                await self.uow.flush()
 
             await self.repository.delete_chat(chat_id)
-            async with self.uow:
-                await self.uow.commit()
-        except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — rollback then re-raise (reviewed TD-27-04)
-            await self.uow.rollback()
+            # Commit directly; the injected UOW borrows the request session and
+            # this handler owns rollback for failures and cancellation.
+            await self.uow.commit()
+        except BaseException:  # RZ-22-01-JUSTIFIED: rollback cleanup before re-raise
+            # A rollback error must not replace the original operation failure.
+            # Leave a new CancelledError uncaught so cancellation still propagates.
+            try:
+                await self.uow.rollback()
+            except Exception:  # RZ-22-01-JUSTIFIED: cleanup preserves original failure
+                logger.warning("chat_delete_rollback_failed")
             raise
 
         # LOW-W19: cache invalidation moved to after commit so that a failure

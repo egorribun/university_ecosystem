@@ -50,7 +50,7 @@
   {{- end -}}
   {{- fail "gatewayApi.enabled is blocked: the retained ingress contract of 50 requests/second with 5x per-client burst is not preserved by the local sourceCIDR Distinct rule rendered here. Envoy Gateway v1.9.2 keeps local counters per Envoy proxy and per route and RateLimitValue has no burst field, so the partial 50 requests/second per-IP limit does not preserve the burst across proxy/route boundaries. A global source-CIDR limit requires separately configured Envoy rate-limit service and datastore. The retained 20 concurrent connections per client contract cannot be represented by ClientTrafficPolicy.connection.connectionLimit, which is per Gateway/listener and proxy; setting it to 20 would cap the whole listener and conflict with WebSocket capacity. requestBuffer is attached only to the isolated /api/v1 HTTPRoute, fully buffers each request, can increase Envoy memory use, and is incompatible with streaming/WebSocket; the chart has no accepted concurrent-buffer memory budget and does not prove the ingress-wide 50 MiB limit on other paths." -}}
 {{- end -}}
-{{- $mfaSecretKeys := list .Values.applicationSecrets.keys.mfaEmailOtpHMACKeys .Values.applicationSecrets.keys.mfaEmailOtpActiveHMACKeyId .Values.applicationSecrets.keys.mfaEmailDeliveryKEKs .Values.applicationSecrets.keys.mfaEmailDeliveryActiveKEKId .Values.applicationSecrets.keys.mfaTrustedDeviceHMACKeys .Values.applicationSecrets.keys.mfaTrustedDeviceActiveHMACKeyId -}}
+{{- $mfaSecretKeys := list .Values.applicationSecrets.keys.mfaTotpEncryptionKeys .Values.applicationSecrets.keys.mfaEmailOtpHMACKeys .Values.applicationSecrets.keys.mfaEmailOtpActiveHMACKeyId .Values.applicationSecrets.keys.mfaEmailDeliveryKEKs .Values.applicationSecrets.keys.mfaEmailDeliveryActiveKEKId .Values.applicationSecrets.keys.mfaTrustedDeviceHMACKeys .Values.applicationSecrets.keys.mfaTrustedDeviceActiveHMACKeyId -}}
 {{- if not .Values.applicationSecrets.keys.cwvManualTesterUserIds -}}
   {{- fail "applicationSecrets.keys.cwvManualTesterUserIds must be set" -}}
 {{- end -}}
@@ -64,7 +64,7 @@
   {{- end -}}
 {{- end -}}
 {{- if .Values.applicationSecrets.existingSecret -}}
-  {{- if or .Values.backend.config.mfaEmailOtpHMACKeys .Values.backend.config.mfaEmailOtpActiveHMACKeyId .Values.backend.config.mfaEmailDeliveryKEKs .Values.backend.config.mfaEmailDeliveryActiveKEKId .Values.backend.config.mfaTrustedDeviceHMACKeys .Values.backend.config.mfaTrustedDeviceActiveHMACKeyId -}}
+  {{- if or .Values.backend.config.mfaTotpEncryptionKeys .Values.backend.config.mfaEmailOtpHMACKeys .Values.backend.config.mfaEmailOtpActiveHMACKeyId .Values.backend.config.mfaEmailDeliveryKEKs .Values.backend.config.mfaEmailDeliveryActiveKEKId .Values.backend.config.mfaTrustedDeviceHMACKeys .Values.backend.config.mfaTrustedDeviceActiveHMACKeyId -}}
     {{- fail "MFA key material must not be stored in Helm values when applicationSecrets.existingSecret is configured; inline secret material must not be stored in Helm values" -}}
   {{- end -}}
   {{- if or .Values.gateway.config.jwtSecret .Values.backend.config.jwtPrivateKeyPEM .Values.backend.config.internalHMACSecret .Values.backend.config.wsHubInternalSecret .Values.backend.config.csrfHMACSecret .Values.backend.config.spotifyTokenSecret .Values.backend.config.elasticsearchPassword .Values.backend.config.spicedbPresharedKey .Values.backend.config.auditLogSecret .Values.backend.config.tokenHMACSecret .Values.backend.config.idempotencyHMACSecret .Values.fileProcessor.config.rsaPublicKeyPEM .Values.fileProcessor.config.minioAccessKey .Values.fileProcessor.config.minioSecretKey .Values.fileProcessor.config.temporalAPIKey -}}
@@ -98,6 +98,9 @@
   {{- fail "Redis secret material must not be stored in Helm values when redis.auth.existingSecret is configured" -}}
 {{- end -}}
 {{- if or (eq $environment "production") (eq $environment "staging") -}}
+  {{- if not .Values.backend.config.mfaTotpActiveEncryptionKeyId -}}
+    {{- fail "backend.config.mfaTotpActiveEncryptionKeyId must be set in staging/production" -}}
+  {{- end -}}
   {{- if or (gt (len .Values.backend.env) 0) (gt (len .Values.outboxWorker.env) 0) -}}
     {{- fail "backend.env and outboxWorker.env must be empty in staging/production; use explicit chart configuration or Secret references so inline values do not enter Helm release state" -}}
   {{- end -}}

@@ -607,7 +607,7 @@ describe("personalized list cache isolation", () => {
     }, createWrapper())
     await waitFor(() => expect(result.current.feed.news).toEqual([newsItem(true)]))
 
-    await withExpectedConsole("error", "Logout failed", async () => {
+    await withExpectedConsole("warn", "Server logout could not be confirmed", async () => {
       await act(async () => result.current.auth.logout())
     })
 

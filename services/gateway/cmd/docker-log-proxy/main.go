@@ -104,6 +104,9 @@ func checkHealthEndpoint(client *http.Client, target string) error {
 	if err != nil {
 		return fmt.Errorf("docker log proxy health request failed: %w", err)
 	}
+	if response == nil || response.Body == nil {
+		return errors.New("docker log proxy health response unavailable")
+	}
 	closeErr := response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		statusErr := fmt.Errorf("docker log proxy health endpoint returned %s", response.Status)

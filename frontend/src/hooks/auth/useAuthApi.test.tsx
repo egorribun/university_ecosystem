@@ -12,9 +12,11 @@ import {
   acceptBrowserSessionGeneration,
   captureSessionEpoch,
   invalidateSessionEpoch,
+  rotateBrowserSession,
 } from "@/stores/sessionEpoch"
 import { API_UNAUTHORIZED_EVENT } from "@/api/client"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
+import { useLogoutNoticeStore } from "@/stores/logoutNoticeStore"
 
 // ---------------------------------------------------------------------------
 // Module mocks. The api layer is fully mocked — never hits MSW (a contract
@@ -190,6 +192,7 @@ beforeEach(() => {
   mocks.hasPushConsent.mockReturnValue(false)
   mocks.syncPushForConfirmedIdentity.mockResolvedValue(null)
   mocks.releasePushServerBinding.mockResolvedValue(undefined)
+  useLogoutNoticeStore.setState({ notice: null })
 })
 
 afterEach(() => {
@@ -280,6 +283,7 @@ describe("login", () => {
   })
 
   it("on success sets user, bumps epoch, clears MFA + fires spotify event (lines 161-184)", async () => {
+    useLogoutNoticeStore.setState({ notice: "server-unconfirmed" })
     const w = makeWires()
     const dispatch = vi.spyOn(window, "dispatchEvent")
     mocks.apiPost.mockResolvedValue({
@@ -295,6 +299,7 @@ describe("login", () => {
     expect(w.updateSessionSigningKey).toHaveBeenCalledWith("sk-1")
     expect(mocks.incrementSessionEpoch).toHaveBeenCalled()
     expect(w.setUser).toHaveBeenCalledWith(expect.objectContaining({ id: "u-1" }))
+    expect(useLogoutNoticeStore.getState().notice).toBeNull()
     expect(w.updatePendingMfa).toHaveBeenCalledWith(null)
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: SPOTIFY_REAUTH_EVENT }))
     dispatch.mockRestore()
@@ -470,6 +475,7 @@ describe("login", () => {
   })
 
   it("re-throws non-423 errors unchanged (line 198)", async () => {
+    useLogoutNoticeStore.setState({ notice: "server-unconfirmed" })
     const w = makeWires()
     const boom = new Error("network down")
     mocks.apiPost.mockRejectedValue(boom)
@@ -479,6 +485,7 @@ describe("login", () => {
         await result.current.login("a@b.dev", "pw")
       })
     ).rejects.toThrow("network down")
+    expect(useLogoutNoticeStore.getState().notice).toBe("server-unconfirmed")
   })
 })
 
@@ -630,6 +637,17 @@ describe("login → prefetchDashboardData branches", () => {
 // ---------------------------------------------------------------------------
 
 describe("logout", () => {
+  const generationStorageKey = "ecosystem.session.generation.v1"
+  const seedCurrentGeneration = (nonce: string) => {
+    localStorage.setItem(generationStorageKey, JSON.stringify({ nonce, hash: `profile-${nonce}` }))
+    acceptBrowserSessionGeneration()
+  }
+  const restoreGeneration = (previous: string | null) => {
+    if (previous === null) localStorage.removeItem(generationStorageKey)
+    else localStorage.setItem(generationStorageKey, previous)
+    acceptBrowserSessionGeneration()
+  }
+
   it("posts /auth/logout + clears consent when user present (lines 216-223)", async () => {
     const w = makeWires({ user: fullUser() })
     mocks.hasPushConsent.mockReturnValue(true)
@@ -674,10 +692,7 @@ describe("logout", () => {
       await result.current.logout()
     })
 
-    expect(mocks.logWarning).toHaveBeenCalledWith(
-      "Failed to release push binding on logout",
-      failure
-    )
+    expect(mocks.logWarning).toHaveBeenCalledWith("Failed to release push binding on logout")
     expect(mocks.apiPost).toHaveBeenCalledWith("/auth/logout")
     expect(mocks.logError).not.toHaveBeenCalled()
     expect(w.handleUnauthorized).toHaveBeenCalledOnce()
@@ -685,26 +700,280 @@ describe("logout", () => {
 
   it("skips the logout POST when there is no user, still unauthorizes (line 216 false branch)", async () => {
     const w = makeWires({ user: null })
+    useLogoutNoticeStore.setState({ notice: "server-unconfirmed" })
     const { result } = renderApi(w)
     await act(async () => {
       await result.current.logout()
     })
     expect(mocks.apiPost).not.toHaveBeenCalled()
     expect(mocks.releasePushServerBinding).not.toHaveBeenCalled()
+    // A local no-op has no server proof and must not claim that logout was confirmed.
+    expect(useLogoutNoticeStore.getState().notice).toBe("server-unconfirmed")
     expect(w.handleUnauthorized).toHaveBeenCalled()
   })
 
-  it("logs logout POST failure context and still unauthorizes", async () => {
+  it("continues confirmed current-session cleanup when generation persistence fails", async () => {
+    const previousGeneration = localStorage.getItem(generationStorageKey)
+    seedCurrentGeneration("current-generation")
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem").mockImplementationOnce(() => {
+      throw new DOMException("blocked", "SecurityError")
+    })
     const w = makeWires({ user: fullUser() })
-    const failure = new Error("logout transport failure")
-    mocks.apiPost.mockRejectedValue(failure)
+    useLogoutNoticeStore.setState({ notice: "server-unconfirmed" })
+    mocks.apiPost.mockRejectedValueOnce(new Error("follow-up logout failed after DELETE"))
+    const { result } = renderApi(w)
+
+    try {
+      await act(async () => {
+        await result.current.logout({ serverRevocationConfirmed: true })
+      })
+
+      expect(mocks.apiPost).toHaveBeenCalledWith("/auth/logout")
+      expect(localStorage.getItem(generationStorageKey)).toContain("current-generation")
+      expect(useLogoutNoticeStore.getState().notice).toBeNull()
+      expect(w.handleUnauthorized).toHaveBeenCalledOnce()
+      expect(mocks.logWarning).toHaveBeenCalledWith(
+        "Logout request failed after the current session was revoked"
+      )
+    } finally {
+      storageWrite.mockRestore()
+      restoreGeneration(previousGeneration)
+    }
+  })
+
+  it("does not post after failed rotation yields to a successor generation", async () => {
+    let resolveRelease!: () => void
+    let releaseSettled = false
+    const releasePending = new Promise<void>((resolve) => {
+      resolveRelease = () => {
+        releaseSettled = true
+        resolve()
+      }
+    })
+    mocks.releasePushServerBinding.mockReturnValueOnce(releasePending)
+    const previousGeneration = localStorage.getItem(generationStorageKey)
+    seedCurrentGeneration("account-a-generation")
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem").mockImplementationOnce(() => {
+      throw new DOMException("blocked", "SecurityError")
+    })
+    const w = makeWires({ user: fullUser({ id: "account-a" }) })
+    const { result, rerender } = renderApi(w)
+    let pending: Promise<void> | undefined
+
+    try {
+      act(() => {
+        pending = result.current.logout()
+      })
+      await waitFor(() => expect(mocks.releasePushServerBinding).toHaveBeenCalledOnce())
+
+      // Model a successor tab replacing the shared origin generation while A waits.
+      localStorage.setItem(
+        generationStorageKey,
+        JSON.stringify({ nonce: "account-b-generation", hash: "account-b-profile" })
+      )
+      w.user = fullUser({ id: "account-b" })
+      rerender()
+      await act(async () => {
+        resolveRelease()
+        await pending
+      })
+
+      expect(mocks.apiPost).not.toHaveBeenCalled()
+      expect(w.handleUnauthorized).not.toHaveBeenCalled()
+    } finally {
+      storageWrite.mockRestore()
+      if (!releaseSettled) resolveRelease()
+      if (pending) await act(async () => pending?.catch(() => undefined))
+      restoreGeneration(previousGeneration)
+    }
+  })
+
+  it("does not use failed-rotation fallback for a stale pre-binding", async () => {
+    const previousGeneration = localStorage.getItem(generationStorageKey)
+    seedCurrentGeneration("account-a-generation")
+    // The active tab has already moved to B, but A has not accepted that generation.
+    localStorage.setItem(
+      generationStorageKey,
+      JSON.stringify({ nonce: "account-b-generation", hash: "account-b-profile" })
+    )
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem").mockImplementationOnce(() => {
+      throw new DOMException("blocked", "SecurityError")
+    })
+    const w = makeWires({ user: fullUser({ id: "account-a" }) })
+    const { result } = renderApi(w)
+
+    try {
+      await act(async () => {
+        await result.current.logout()
+      })
+
+      expect(mocks.apiPost).not.toHaveBeenCalled()
+      expect(w.handleUnauthorized).not.toHaveBeenCalled()
+    } finally {
+      storageWrite.mockRestore()
+      restoreGeneration(previousGeneration)
+    }
+  })
+
+  it("does not post an old-account logout after push release yields to a successor", async () => {
+    let resolveRelease!: () => void
+    let releaseSettled = false
+    const releasePending = new Promise<void>((resolve) => {
+      resolveRelease = () => {
+        releaseSettled = true
+        resolve()
+      }
+    })
+    mocks.releasePushServerBinding.mockReturnValueOnce(releasePending)
+    useLogoutNoticeStore.setState({ notice: "server-unconfirmed" })
+    const w = makeWires({ user: fullUser({ id: "account-a" }) })
+    const { result, rerender } = renderApi(w)
+    let pending: Promise<void> | undefined
+
+    try {
+      act(() => {
+        pending = result.current.logout()
+      })
+      await waitFor(() => expect(mocks.releasePushServerBinding).toHaveBeenCalledOnce())
+      rotateBrowserSession()
+      w.user = fullUser({ id: "account-b" })
+      rerender()
+      await act(async () => {
+        resolveRelease()
+        await pending
+      })
+
+      expect(mocks.apiPost).not.toHaveBeenCalled()
+      expect(useLogoutNoticeStore.getState().notice).toBe("server-unconfirmed")
+      expect(w.handleUnauthorized).not.toHaveBeenCalled()
+    } finally {
+      if (!releaseSettled) resolveRelease()
+      if (pending) await act(async () => pending?.catch(() => undefined))
+    }
+  })
+
+  it("clears the notice when current-session revocation is confirmed after user state clears", async () => {
+    const w = makeWires({ user: null })
+    useLogoutNoticeStore.setState({ notice: "server-unconfirmed" })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.logout({ serverRevocationConfirmed: true })
+    })
+
+    expect(mocks.apiPost).not.toHaveBeenCalled()
+    expect(mocks.releasePushServerBinding).not.toHaveBeenCalled()
+    expect(useLogoutNoticeStore.getState().notice).toBeNull()
+    expect(w.handleUnauthorized).toHaveBeenCalledOnce()
+  })
+
+  it("keeps B's logout uncertainty when A's delayed successful logout arrives", async () => {
+    let resolveAccountA!: (value: { status: number; data: object }) => void
+    let accountASettled = false
+    const accountAResponse = new Promise<{ status: number; data: object }>((resolve) => {
+      resolveAccountA = (value) => {
+        accountASettled = true
+        resolve(value)
+      }
+    })
+    mocks.apiPost
+      .mockImplementationOnce(() => accountAResponse)
+      .mockRejectedValueOnce(new Error("account B logout unavailable"))
+    const w = makeWires({ user: fullUser({ id: "account-a" }) })
+    const { result, rerender } = renderApi(w)
+    let pendingAccountA: Promise<void> | undefined
+
+    try {
+      act(() => {
+        pendingAccountA = result.current.logout()
+      })
+      await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledTimes(1))
+
+      rotateBrowserSession()
+      w.user = fullUser({ id: "account-b" })
+      rerender()
+      await act(async () => {
+        await result.current.logout()
+      })
+      expect(mocks.apiPost).toHaveBeenCalledTimes(2)
+      expect(useLogoutNoticeStore.getState().notice).toBe("server-unconfirmed")
+      expect(w.handleUnauthorized).toHaveBeenCalledOnce()
+
+      await act(async () => {
+        resolveAccountA({ status: 200, data: {} })
+        await pendingAccountA
+      })
+
+      expect(useLogoutNoticeStore.getState().notice).toBe("server-unconfirmed")
+      expect(w.handleUnauthorized).toHaveBeenCalledOnce()
+      expect(mocks.logWarning).toHaveBeenCalledExactlyOnceWith(
+        "Server logout could not be confirmed; local cleanup will continue"
+      )
+    } finally {
+      if (!accountASettled) resolveAccountA({ status: 200, data: {} })
+      if (pendingAccountA) await act(async () => pendingAccountA?.catch(() => undefined))
+    }
+  })
+
+  it("keeps a fixed in-memory notice when server logout cannot be confirmed", async () => {
+    const w = makeWires({ user: fullUser() })
+    mocks.apiPost.mockRejectedValue(new Error("sensitive transport detail"))
     const { result } = renderApi(w)
     await act(async () => {
       await result.current.logout()
     })
-    expect(mocks.logError).toHaveBeenCalledOnce()
-    expect(mocks.logError).toHaveBeenCalledWith("Logout failed", { error: failure })
+    expect(useLogoutNoticeStore.getState().notice).toBe("server-unconfirmed")
+    expect(mocks.logWarning).toHaveBeenCalledWith(
+      "Server logout could not be confirmed; local cleanup will continue"
+    )
+    expect(JSON.stringify(mocks.logWarning.mock.calls)).not.toContain("sensitive transport detail")
+    expect(mocks.logError).not.toHaveBeenCalled()
     expect(w.handleUnauthorized).toHaveBeenCalledOnce()
+  })
+
+  it("does not show uncertainty after a current-session revoke was confirmed", async () => {
+    const w = makeWires({ user: fullUser() })
+    useLogoutNoticeStore.setState({ notice: "server-unconfirmed" })
+    mocks.apiPost.mockRejectedValue(new Error("follow-up logout failed"))
+    const { result } = renderApi(w)
+    await act(async () => {
+      await result.current.logout({ serverRevocationConfirmed: true })
+    })
+    expect(useLogoutNoticeStore.getState().notice).toBeNull()
+    expect(mocks.logWarning).toHaveBeenCalledWith(
+      "Logout request failed after the current session was revoked"
+    )
+    expect(mocks.logError).not.toHaveBeenCalled()
+    expect(w.handleUnauthorized).toHaveBeenCalledOnce()
+  })
+
+  it("ignores a delayed logout failure after a successor account is confirmed", async () => {
+    let rejectLogout!: (reason: Error) => void
+    mocks.apiPost.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectLogout = reject
+        })
+    )
+    const w = makeWires({ user: fullUser({ id: "account-a" }) })
+    const { result, rerender } = renderApi(w)
+    let pending!: Promise<void>
+    act(() => {
+      pending = result.current.logout()
+    })
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/auth/logout"))
+
+    rotateBrowserSession()
+    w.user = fullUser({ id: "account-b" })
+    rerender()
+    await act(async () => {
+      rejectLogout(new Error("account A response detail"))
+      await pending
+    })
+
+    expect(useLogoutNoticeStore.getState().notice).toBeNull()
+    expect(w.handleUnauthorized).not.toHaveBeenCalled()
+    expect(JSON.stringify(mocks.logWarning.mock.calls)).not.toContain("account A response detail")
   })
 
   it("uses the latest signed-in profile when logout follows an auth-state rerender", async () => {
@@ -775,6 +1044,7 @@ describe("submitMfaChallenge", () => {
   })
 
   it("verifies a totp challenge and signs the session in (lines 243-279)", async () => {
+    useLogoutNoticeStore.setState({ notice: "server-unconfirmed" })
     const w = makeWires({ updateSessionSigningKey: vi.fn(() => invalidateSessionEpoch()) })
     mocks.apiPost.mockResolvedValue({
       status: 200,
@@ -804,6 +1074,7 @@ describe("submitMfaChallenge", () => {
     expect(w.setAuthOperation).toHaveBeenNthCalledWith(2, false)
     expect(mocks.incrementSessionEpoch).toHaveBeenCalled()
     expect(w.setUser).toHaveBeenCalled()
+    expect(useLogoutNoticeStore.getState().notice).toBeNull()
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: SPOTIFY_REAUTH_EVENT }))
     dispatch.mockRestore()
 

@@ -1,10 +1,12 @@
 import { useEffect, useRef } from "react"
+import { useTranslation } from "react-i18next"
 import { useNavigate, useRouterState } from "@tanstack/react-router"
 import "@/styles/tokens/auth.css"
 import { LoginCredentialForm } from "@/components/auth/LoginCredentialForm"
 import { MfaChallengeView } from "@/components/auth/MfaChallengeView"
 import { useLoginForm, useMfaFlow } from "@/hooks/auth/useLoginFlow"
 import { useAuthStore } from "@/stores/useAuthStore"
+import { useLogoutNoticeStore } from "@/stores/logoutNoticeStore"
 import { resolveRedirectPath } from "@/utils/redirect"
 
 const Login = () => {
@@ -32,16 +34,20 @@ const Login = () => {
   // test environments (jsdom + memory history) the effect can re-fire on
   // the still-mounted instance — ref makes both paths deterministic.
   const user = useAuthStore((s) => s.user)
+  const logoutNotice = useLogoutNoticeStore((s) => s.notice)
+  const clearLogoutNotice = useLogoutNoticeStore((s) => s.clear)
+  const { t } = useTranslation("auth")
   const navigate = useNavigate()
   const search = useRouterState({ select: (s) => s.location.search })
   const redirectedRef = useRef(false)
   useEffect(() => {
+    if (user) clearLogoutNotice()
     if (user && !redirectedRef.current) {
       redirectedRef.current = true
       const target = resolveRedirectPath((search as { redirect?: unknown } | null)?.redirect)
       navigate({ to: target, replace: true })
     }
-  }, [user, navigate, search])
+  }, [clearLogoutNotice, user, navigate, search])
 
   // MFA challenge screen — shown when backend requires second factor
   if (mfa.loginChallenge) {
@@ -51,6 +57,14 @@ const Login = () => {
   return (
     <div className="auth-theme min-h-screen bg-page text-text-primary">
       <main className="auth-shell auth-shell--login" aria-labelledby="login-heading">
+        {logoutNotice === "server-unconfirmed" && !user ? (
+          <p
+            className="mb-4 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm"
+            role="alert"
+          >
+            {t("login.logoutUnconfirmed")}
+          </p>
+        ) : null}
         <LoginCredentialForm form={form} />
       </main>
     </div>

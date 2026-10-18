@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from types import SimpleNamespace
 
 import pytest
@@ -223,6 +224,25 @@ def test_notification_secret_file_validators_and_cached_keys(
     settings = _settings(vapid_public_key="public", vapid_private_key="private")
     assert settings.VAPID_PUBLIC_KEY == "public"
     assert settings.VAPID_PRIVATE_KEY == "vapid-from-file"
+
+
+def test_empty_vapid_private_key_file_keeps_push_delivery_disabled(
+    tmp_path, monkeypatch
+) -> None:
+    empty_file = tmp_path / "vapid-disabled"
+    empty_file.write_bytes(b"")
+    monkeypatch.setenv("VAPID_PRIVATE_KEY_FILE", str(empty_file))
+
+    configured = _settings(
+        vapid_public_key="synthetic-public-key",
+        vapid_private_key=secrets.token_urlsafe(32),
+    )
+    assert configured.VAPID_PRIVATE_KEY == ""
+
+    from app.services.notifications import delivery
+
+    monkeypatch.setattr(delivery, "settings", configured)
+    assert delivery._is_push_configured() is False
 
 
 def test_notification_retention_batch_size_validator() -> None:

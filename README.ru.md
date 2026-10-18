@@ -221,8 +221,7 @@ Copy-Item .env.example .env
 ```
 
 ### 🌐 Точки доступа
-- **Единый цифровой хаб (Caddy edge)**: [http://localhost](http://localhost)
-- **Frontend SSR debug port**: [http://localhost:8081](http://localhost:8081)
+- **Единый цифровой хаб (Caddy edge, включая Frontend SSR)**: [http://localhost](http://localhost)
 - **Документация API**: [http://localhost:8000/docs](http://localhost:8000/docs)
 - **Вход Go Gateway**: [http://localhost:8080](http://localhost:8080)
 - **Real-Time сигнал**: `ws://localhost:8083/ws`

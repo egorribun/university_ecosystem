@@ -2,7 +2,7 @@
 
 ## Current contract
 
-The FastAPI application publishes semantic API version `1.0.0`. Its REST
+The FastAPI application publishes semantic API version `1.1.0`. This API contract version is separate from the MVP release version `1.0.0`. Its REST
 surface is mounted under `/api/v1`; health, WebSocket, and well-known
 discovery endpoints intentionally use infrastructure-specific root paths. The
 backend GraphQL endpoint is excluded from the MVP and is not a FastAPI route;
@@ -45,6 +45,19 @@ queries and repeated cursor pages can still retrieve matching public
 profiles. Broader directory scoping or dedicated anti-abuse limits require
 a separate policy decision.
 
+## Additive My-events paging (API 1.1.0)
+
+GET /api/v1/events/my/page adds cursor-based paging with server-side filters.
+The existing GET /api/v1/events/my remains an array response for v1
+compatibility. Both routes use the approved stable starts_at ascending, id
+ascending order; the previous My-events array had no defined SQL order. The new
+page route uses a distinct cache-key prefix while both routes retain
+event-cache-version invalidation and authenticated private caching.
+
+The legacy array endpoint now reads registrations with bounded keyset database
+batches, but it still serializes and caches the complete array. Its response and
+cache payload therefore remain O(N) in the number of registrations; this is an
+open follow-up rather than a claim that all My-events resource use is bounded.
 ## Enforcement
 
 The canonical OpenAPI snapshot is

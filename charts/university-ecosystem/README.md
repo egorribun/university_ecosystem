@@ -160,8 +160,19 @@ contract.
   `temporal-api-key`.
 
 `university-connections` must contain `database-url`, `redis-backend-url`,
-`redis-gateway-url`, `redis-revocation-url`, `nats-url`, and
+`redis-gateway-url`, `rate-limit-storage-uri`, `redis-revocation-url`, `nats-url`, and
 `nats-auth-token`. `redis-credentials` must contain `redis-password`.
+
+The backend rate limiter is explicitly configured to use Redis through the
+`rate-limit-storage-uri` key (or the key selected by
+`connections.rateLimitStorageURIKey`). Provision this as a dedicated rate-limit
+connection for logical database 1 with the Redis ACL/credential policy required
+by the application. Do not point it at the DB 0 backend-cache or DB 3 gateway
+connection key. The chart only projects this externally managed URI; it does
+not create Redis users, ACLs, databases, or the Secret. If the Redis service
+cannot provide an appropriate dedicated identity/keyspace, provision a separate
+Redis endpoint and put its URL in this key. Missing Secret keys fail closed at
+Pod startup.
 
 The backend, outbox worker, migration Job, gateway, ws-hub, and file-processor
 consume their existing Kubernetes Secret values through projected files. Each

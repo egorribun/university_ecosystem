@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -13,12 +14,21 @@ class _SuccessfulCache:
 
     def __init__(self) -> None:
         self._last_key: str | None = None
+        self._last_payload = None
 
     async def set(self, key: str, payload, ttl=None):
         self._last_key = key
+        self._last_payload = payload
+
+    async def get(self, key: str):
+        if key != self._last_key:
+            return None
+        return SimpleNamespace(payload=self._last_payload)
 
     async def invalidate(self, key: str) -> None:
         assert key == self._last_key
+        self._last_key = None
+        self._last_payload = None
 
 
 class _FailingCache:
@@ -380,10 +390,21 @@ async def test_healthcheck_cache_invalidate_failure(async_client, monkeypatch):
     class _InvalidateFailingCache:
         enabled = True
 
+        def __init__(self) -> None:
+            self._last_key: str | None = None
+            self._last_payload = None
+
         async def set(self, key, payload, ttl=None):
-            return None  # set succeeds
+            self._last_key = key
+            self._last_payload = payload
+
+        async def get(self, key):
+            if key != self._last_key:
+                return None
+            return SimpleNamespace(payload=self._last_payload)
 
         async def invalidate(self, key):
+            assert key == self._last_key
             raise RuntimeError("invalidate failed")  # finally-block error path
 
     monkeypatch.setattr(health, "get_cache", lambda: _InvalidateFailingCache())

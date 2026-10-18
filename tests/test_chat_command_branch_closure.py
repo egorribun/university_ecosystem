@@ -127,6 +127,9 @@ async def test_non_admin_maintenance_denies_before_loading_messages(operation: s
     chat.messages = [MagicMock(id=uuid.uuid4())]
     uow = _uow()
     uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.get_orm_for_update = AsyncMock()
+    uow.chats.lock_participant_ids_for_maintenance = AsyncMock()
+    uow.chats.get_messages = AsyncMock()
     service = ChatMaintenanceService(uow, MagicMock())
 
     with pytest.raises(HTTPException) as denied:
@@ -134,6 +137,9 @@ async def test_non_admin_maintenance_denies_before_loading_messages(operation: s
 
     assert denied.value.status_code == 403
     uow.chats.get_by_id.assert_awaited_once_with(chat.id)
+    uow.chats.get_orm_for_update.assert_not_awaited()
+    uow.chats.lock_participant_ids_for_maintenance.assert_not_awaited()
+    uow.chats.get_messages.assert_not_awaited()
 
 
 async def test_admin_maintenance_uses_participant_identity_only_after_authorization():
@@ -141,31 +147,35 @@ async def test_admin_maintenance_uses_participant_identity_only_after_authorizat
     admin.role = command_service.UserRole.ADMIN
     participant = _user()
     summary = _group_chat(participant.id)
-    loaded = _group_chat(participant.id)
-    loaded.id = summary.id
-    loaded.messages = [MagicMock(id=uuid.uuid4())]
+    page = [SimpleNamespace(id=uuid.uuid4(), attachments=[])]
     uow = _uow()
-    uow.chats.get_by_id = AsyncMock(side_effect=[summary, loaded])
+    uow.chats.get_by_id = AsyncMock(return_value=summary)
+    uow.chats.get_orm_for_update = AsyncMock(return_value=object())
+    uow.chats.lock_participant_ids_for_maintenance = AsyncMock(
+        return_value=[participant.id]
+    )
+    uow.chats.get_messages = AsyncMock(return_value=(page, False, None))
     uow.chats.delete_messages = AsyncMock()
     uow.chats.update_timestamp_by_id = AsyncMock()
     uow.chats.add = MagicMock()
-    attachment_service = MagicMock()
-    attachment_service.collect_urls = AsyncMock(return_value=[])
+    uow.flush = AsyncMock()
 
-    await ChatMaintenanceService(uow, attachment_service).clear_history(
+    await ChatMaintenanceService(uow, MagicMock()).clear_history(
         summary.id, admin, "en"
     )
 
-    assert [entry.args for entry in uow.chats.get_by_id.await_args_list] == [
-        (summary.id,),
-        (summary.id,),
-    ]
-    assert uow.chats.get_by_id.await_args_list[1].kwargs == {
-        "load_messages": True,
-        "user_id": participant.id,
-    }
+    uow.chats.get_by_id.assert_awaited_once_with(summary.id)
+    uow.chats.get_orm_for_update.assert_awaited_once_with(summary.id)
+    uow.chats.lock_participant_ids_for_maintenance.assert_awaited_once_with(summary.id)
+    uow.chats.get_messages.assert_awaited_once_with(
+        summary.id,
+        None,
+        ChatMaintenanceService._MESSAGE_PAGE_SIZE,
+        user_id=participant.id,
+        for_update=True,
+    )
     uow.chats.delete_messages.assert_awaited_once_with(
-        [loaded.messages[0].id], chat_id=summary.id, user_id=participant.id
+        [page[0].id], chat_id=summary.id, user_id=participant.id
     )
 
 
@@ -183,8 +193,10 @@ async def test_admin_maintenance_fails_closed_for_chat_without_rls_identity(
     uow.chats.get_by_id = AsyncMock(return_value=orphaned_chat)
     uow.chats.delete_messages = AsyncMock()
     uow.chats.delete_chat = AsyncMock()
+    uow.chats.get_orm_for_update = AsyncMock(return_value=object())
+    uow.chats.lock_participant_ids_for_maintenance = AsyncMock(return_value=[])
+    uow.chats.get_messages = AsyncMock()
     attachment_service = MagicMock()
-    attachment_service.collect_urls = AsyncMock(return_value=[])
 
     service = ChatMaintenanceService(uow, attachment_service)
     with pytest.raises(HTTPException) as denied:
@@ -192,7 +204,11 @@ async def test_admin_maintenance_fails_closed_for_chat_without_rls_identity(
 
     assert denied.value.status_code == 403
     uow.chats.get_by_id.assert_awaited_once_with(orphaned_chat.id)
-    attachment_service.collect_urls.assert_not_awaited()
+    uow.chats.get_orm_for_update.assert_awaited_once_with(orphaned_chat.id)
+    uow.chats.lock_participant_ids_for_maintenance.assert_awaited_once_with(
+        orphaned_chat.id
+    )
+    uow.chats.get_messages.assert_not_awaited()
     uow.chats.delete_messages.assert_not_awaited()
     uow.chats.delete_chat.assert_not_awaited()
     uow.commit.assert_not_awaited()

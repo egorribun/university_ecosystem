@@ -243,10 +243,17 @@ async def test_attendance_mutations_refresh_cached_membership_and_etags(
     db_session.add(row)
     await db_session.commit()
     headers = await _login(async_client, user.email, password)
-    paths = ["/events", f"/events/{row.id}", "/events/my"]
+    paths = [
+        "/events",
+        f"/events/{row.id}",
+        "/events/my",
+        "/events/my/page?limit=1",
+    ]
     initial = [await async_client.get(path, headers=headers) for path in paths]
     assert all(response.status_code == 200 for response in initial)
     assert all(response.headers.get("etag") for response in initial)
+    assert initial[2].json() == []
+    assert initial[3].json()["items"] == []
     response = await async_client.post(
         "/events/attendance", headers=headers, json={"event_id": str(row.id)}
     )
@@ -262,6 +269,8 @@ async def test_attendance_mutations_refresh_cached_membership_and_etags(
     assert registered[1].json()["is_registered"] is True
     assert registered[1].json()["participant_count"] == 1
     assert registered[2].json()[0]["id"] == str(row.id)
+    assert registered[2].json()[0]["is_registered"] is True
+    assert registered[3].json()["items"][0]["id"] == str(row.id)
     response = await async_client.request(
         "DELETE", "/events/attendance", headers=headers, json={"event_id": str(row.id)}
     )
@@ -276,6 +285,7 @@ async def test_attendance_mutations_refresh_cached_membership_and_etags(
     assert unregistered[0].json()["items"][0]["is_registered"] is False
     assert unregistered[1].json()["participant_count"] == 0
     assert unregistered[2].json() == []
+    assert unregistered[3].json()["items"] == []
 
 
 @pytest.mark.asyncio

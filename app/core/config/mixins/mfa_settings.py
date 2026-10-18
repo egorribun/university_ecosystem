@@ -2,9 +2,61 @@
 
 from __future__ import annotations
 
-from pydantic import ValidationInfo, field_validator
+import base64
+import binascii
+import hashlib
+import os
+import re
 
-from app.core.config.base import _validate_non_empty, _validate_positive_int
+from cryptography.fernet import Fernet
+from pydantic import Field, ValidationInfo, field_validator, model_validator
+
+from app.core.config.app_gen import REVOCATION_REDIS_DISABLED_PROCESS_ROLES
+from app.core.config.base import (
+    _DEVELOPMENT_ENVIRONMENTS,
+    _validate_non_empty,
+    _validate_positive_int,
+)
+
+_TOTP_KEY_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
+
+def _decode_totp_fernet_key(value: str) -> bytes:
+    """Validate a Fernet representation and return its decoded 32-byte key."""
+    try:
+        encoded = value.encode("ascii")
+        key_material = base64.urlsafe_b64decode(encoded)
+        Fernet(encoded)
+    except (UnicodeEncodeError, ValueError, binascii.Error):
+        raise ValueError(
+            "MFA_TOTP_ENCRYPTION_KEYS entries must contain valid Fernet keys"
+        ) from None
+    return key_material
+
+
+def _parse_totp_encryption_keyring(value: str) -> dict[str, str]:
+    """Validate the explicit key-id/Fernet-key ring without logging key data."""
+    keys: dict[str, str] = {}
+    key_materials: set[bytes] = set()
+    for entry in value.split(","):
+        key_id, separator, key = entry.strip().partition(":")
+        if (
+            not separator
+            or _TOTP_KEY_ID_PATTERN.fullmatch(key_id) is None
+            or not key
+            or key.strip() != key
+            or key_id in keys
+        ):
+            raise ValueError(
+                "MFA_TOTP_ENCRYPTION_KEYS entries must use unique "
+                "key-id:Fernet-key pairs"
+            )
+        key_material = _decode_totp_fernet_key(key)
+        if key_material in key_materials:
+            raise ValueError("MFA_TOTP_ENCRYPTION_KEYS must contain unique keys")
+        key_materials.add(key_material)
+        keys[key_id] = key
+    return keys
 
 
 class MfaSettingsMixin:
@@ -16,6 +68,10 @@ class MfaSettingsMixin:
     mfa_enabled: bool = False
     mfa_default_method: str | None = None
     mfa_totp_issuer: str = "University Ecosystem"
+    # Dedicated TOTP Fernet key ring. Non-active entries are read-only legacy
+    # keys so operators can retire them after rotating stored enrollment rows.
+    mfa_totp_encryption_keys: str = Field(default="", repr=False)
+    mfa_totp_active_encryption_key_id: str = ""
     mfa_totp_initial_skew_windows: int = 1
     mfa_challenge_ttl_seconds: int = 600
     mfa_challenge_max_attempts: int = 5
@@ -54,6 +110,81 @@ class MfaSettingsMixin:
     #   - MUST be paired with compensating control: daily batch HIBP re-check
     #     of all passwords changed during fail-open windows.
     password_hibp_fail_open: bool = False
+
+    @field_validator("mfa_totp_encryption_keys")
+    @classmethod
+    def _validate_mfa_totp_encryption_keys(cls, value: str) -> str:
+        normalized = value.strip()
+        if normalized:
+            _parse_totp_encryption_keyring(normalized)
+        return normalized
+
+    @field_validator("mfa_totp_active_encryption_key_id")
+    @classmethod
+    def _validate_mfa_totp_active_encryption_key_id(cls, value: str) -> str:
+        normalized = value.strip()
+        if normalized and _TOTP_KEY_ID_PATTERN.fullmatch(normalized) is None:
+            raise ValueError(
+                "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID must be a valid key identifier"
+            )
+        return normalized
+
+    @model_validator(mode="after")
+    def _validate_mfa_totp_encryption_configuration(self) -> MfaSettingsMixin:
+        environment = str(
+            getattr(self, "environment", None)
+            or os.environ.get("ENVIRONMENT", "development")
+            or "development"
+        ).lower()
+        ring = self.mfa_totp_encryption_keys
+        active_id = self.mfa_totp_active_encryption_key_id
+        if not ring:
+            if active_id:
+                raise ValueError(
+                    "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID requires "
+                    "MFA_TOTP_ENCRYPTION_KEYS"
+                )
+            process_role = str(getattr(self, "app_process_role", "api") or "api")
+            if (
+                environment not in _DEVELOPMENT_ENVIRONMENTS
+                and process_role not in REVOCATION_REDIS_DISABLED_PROCESS_ROLES
+            ):
+                raise ValueError(
+                    "MFA_TOTP_ENCRYPTION_KEYS and "
+                    "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID are required for "
+                    "authentication-capable processes outside development"
+                )
+            return self
+
+        keys = _parse_totp_encryption_keyring(ring)
+        if not active_id or active_id not in keys:
+            raise ValueError(
+                "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID must identify a configured "
+                "MFA_TOTP_ENCRYPTION_KEYS entry"
+            )
+        spotify_keys = {
+            key.strip()
+            for key in str(getattr(self, "spotify_token_secret", "") or "").split(",")
+            if key.strip()
+        }
+        # The historical fallback remains an encryption key even when an
+        # explicit Spotify key ring is configured, so keep it in the separation
+        # check for every TOTP active key.
+        secret_key = str(getattr(self, "secret_key", "") or "").strip()
+        if secret_key:
+            spotify_keys.add(
+                base64.urlsafe_b64encode(
+                    hashlib.sha256(secret_key.encode("utf-8")).digest()
+                ).decode("ascii")
+            )
+        spotify_key_materials = {_decode_totp_fernet_key(key) for key in spotify_keys}
+        active_key_material = _decode_totp_fernet_key(keys[active_id])
+        if active_key_material in spotify_key_materials:
+            raise ValueError(
+                "The active MFA_TOTP encryption key must be independent of "
+                "SPOTIFY_TOKEN_SECRET"
+            )
+        return self
 
     @field_validator("mfa_totp_issuer")
     @classmethod

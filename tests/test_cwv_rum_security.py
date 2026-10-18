@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import secrets
 from datetime import UTC, datetime, timedelta, tzinfo
 from types import SimpleNamespace
 from typing import ClassVar
@@ -10,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 
 import jwt
 import pytest
+from cryptography.fernet import Fernet
 from sqlalchemy import UniqueConstraint
 
 import app.services.cwv as cwv_module
@@ -55,6 +57,19 @@ OIDC_TEST_TOKEN = (
     "eyJleHAiOjE4OTM0NTYwMDAsImlhdCI6MTg5MzQ1NTcwMCwic3ViIjoidGVzdCJ9."
     "c2lnbmF0dXJl"
 )
+
+
+def _valid_staging_environment_settings() -> dict[str, object]:
+    spotify_key = Fernet.generate_key().decode("ascii")
+    totp_key = Fernet.generate_key().decode("ascii")
+    return {
+        "elasticsearch_password": secrets.token_urlsafe(32),
+        "spicedb_preshared_key": secrets.token_urlsafe(32),
+        "ws_hub_internal_secret": secrets.token_urlsafe(32),
+        "spotify_token_secret": spotify_key,
+        "mfa_totp_encryption_keys": f"cwv-security-test:{totp_key}",
+        "mfa_totp_active_encryption_key_id": "cwv-security-test",
+    }
 
 
 def _binding(**overrides: object) -> CwvRumBinding:
@@ -736,6 +751,7 @@ async def test_cwv_retention_keeps_rows_exactly_at_the_cutoff() -> None:
 
 def test_staging_settings_redact_secret_and_reject_partial_oidc_policy() -> None:
     values = {
+        **_valid_staging_environment_settings(),
         "_allow_missing": True,
         "environment": "staging",
         "event_file_scanner_enabled": True,
@@ -773,6 +789,7 @@ def test_staging_settings_redact_secret_and_reject_partial_oidc_policy() -> None
 
 def test_staging_settings_reject_invalid_ttl_origin_and_tester_cohort() -> None:
     base = {
+        **_valid_staging_environment_settings(),
         "_allow_missing": True,
         "environment": "staging",
         "event_file_scanner_enabled": True,

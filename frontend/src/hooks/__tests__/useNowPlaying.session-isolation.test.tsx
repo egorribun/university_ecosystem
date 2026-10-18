@@ -283,7 +283,7 @@ describe("now-playing account isolation", () => {
       return { auth, playing: useNowPlaying(true) }
     }, createWrapper())
     await waitFor(() => expect(result.current.playing.data).toEqual(track("a")))
-    await withExpectedConsole("error", "Logout failed", async () => {
+    await withExpectedConsole("warn", "Server logout could not be confirmed", async () => {
       await act(async () => result.current.auth.logout())
     })
     expect(result.current.playing.data).toBeNull()

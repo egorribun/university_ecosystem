@@ -326,7 +326,7 @@ describe("useProfileSync focused mutation survivor contracts", () => {
         ["profile_cache.cleared", { reason: "parse_error" }],
       ])
       expect(view.result.current.user).toBeNull()
-      expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
+      expect(queryClient.getQueryData(currentUserQueryKey)).toBeUndefined()
     } finally {
       await act(async () => {
         view.unmount()

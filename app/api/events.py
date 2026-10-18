@@ -1,6 +1,6 @@
 import uuid
-from datetime import UTC, datetime
-from typing import Annotated, Any
+from datetime import UTC, date, datetime
+from typing import Annotated, Any, Literal
 
 from dishka import FromComponent
 from dishka.integrations.fastapi import FromDishka, inject
@@ -50,7 +50,11 @@ from app.services.content_media import (
     delete_unreferenced_owned_event_image,
     event_image_owned_by,
 )
-from app.services.event_service import EventService
+from app.services.event_service import (
+    EventService,
+    InvalidMyEventsCursor,
+    InvalidMyEventsQuery,
+)
 from app.services.file_scanner import scan_for_malware
 from app.services.private_attachments import (
     _path_segments,
@@ -276,6 +280,63 @@ async def unregister_event(
     return await events.unregister_attendance(data, user_id=user.id)
 
 
+@router.get("/my/page", response_model=schemas.PaginatedEvents)
+@cached_endpoint(
+    version_resolver=events_cache_version,
+    cache_prefix="ue:events:my:page",
+    cache_control=_EVENTS_CACHE_CONTROL,
+)
+@inject
+async def my_events_page(
+    request: Request,
+    response: Response,
+    events: Annotated[EventService, FromComponent(READ_COMPONENT)],
+    user: models.User = Depends(get_current_user_from_dishka),
+    limit: int = Query(20, ge=1, le=100, alias="limit"),
+    cursor: str | None = Query(None, min_length=1, max_length=1024, alias="cursor"),
+    category: Literal[
+        "lecture", "seminar", "conference", "workshop", "social", "sport", "other"
+    ]
+    | None = Query(None),
+    date_range: Literal["today", "week", "month"] | None = Query(None),
+    date_anchor: date | None = Query(None),
+    sort: Literal["newest", "popular", "upcoming"] = Query("newest"),
+    upcoming_after: datetime | None = Query(None),
+    if_none_match: str | None = Header(default=None),
+) -> schemas.PaginatedEvents | Response | Any:
+    locale = resolve_locale(request=request, user=user)
+    if (date_range is None) != (date_anchor is None):
+        raise HTTPException(
+            status_code=422, detail="date_range requires a campus-local date_anchor"
+        )
+    if sort == "upcoming":
+        if upcoming_after is None or upcoming_after.tzinfo is None:
+            raise HTTPException(
+                status_code=422, detail="upcoming sort requires an aware upcoming_after"
+            )
+    elif upcoming_after is not None:
+        raise HTTPException(
+            status_code=422, detail="upcoming_after only applies to upcoming sort"
+        )
+    try:
+        payload = await events.get_my_events_page(
+            user_id=user.id,
+            locale=locale,
+            limit=limit,
+            cursor=cursor,
+            category=category,
+            date_range=date_range,
+            date_anchor=date_anchor,
+            sort=sort,
+            upcoming_after=upcoming_after,
+        )
+    except InvalidMyEventsQuery as exc:
+        raise HTTPException(status_code=422, detail="Invalid My-events query") from exc
+    except InvalidMyEventsCursor as exc:
+        raise HTTPException(status_code=422, detail="Invalid cursor") from exc
+    return payload
+
+
 @router.get("/my", response_model=list[schemas.EventOut])
 @cached_endpoint(
     version_resolver=events_cache_version,
@@ -291,8 +352,7 @@ async def my_events(
     if_none_match: str | None = Header(default=None),
 ) -> list[schemas.EventOut] | Response | Any:
     locale = resolve_locale(request=request, user=user)
-    payload = await events.get_my_events(user_id=user.id, locale=locale)
-    return payload
+    return await events.get_my_events(user_id=user.id, locale=locale)
 
 
 @router.post(

@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from cryptography.fernet import Fernet
 from pydantic import ValidationError
 
 from app.core.config import Settings
@@ -31,15 +32,19 @@ def _testing_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "DATABASE_URL",
         "SECRET_KEY",
         "CACHE_REDIS_URL",
+        "RATE_LIMIT_STORAGE_URI",
         "REVOCATION_REDIS_URL",
         "AUDIT_LOG_SECRET",
         "CSRF_HMAC_SECRET",
         "IDEMPOTENCY_HMAC_SECRET",
         "INTERNAL_AUTH_TOKEN",
+        "SPOTIFY_OAUTH_STATE_SECRET",
         "SPOTIFY_TOKEN_SECRET",
         "STORAGE_S3_ACCESS_KEY_ID",
         "STORAGE_S3_SECRET_ACCESS_KEY",
         "CWV_RUM_SIGNING_SECRET",
+        "MFA_TOTP_ENCRYPTION_KEYS",
+        "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID",
         "MFA_EMAIL_OTP_HMAC_KEYS",
         "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID",
         "MFA_EMAIL_DELIVERY_KEKS",
@@ -52,15 +57,19 @@ def _testing_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "DATABASE_URL_FILE",
         "SECRET_KEY_FILE",
         "CACHE_REDIS_URL_FILE",
+        "RATE_LIMIT_STORAGE_URI_FILE",
         "REVOCATION_REDIS_URL_FILE",
         "AUDIT_LOG_SECRET_FILE",
         "CSRF_HMAC_SECRET_FILE",
         "IDEMPOTENCY_HMAC_SECRET_FILE",
         "INTERNAL_AUTH_TOKEN_FILE",
+        "SPOTIFY_OAUTH_STATE_SECRET_FILE",
         "SPOTIFY_TOKEN_SECRET_FILE",
         "STORAGE_S3_ACCESS_KEY_ID_FILE",
         "STORAGE_S3_SECRET_ACCESS_KEY_FILE",
         "CWV_RUM_SIGNING_SECRET_FILE",
+        "MFA_TOTP_ENCRYPTION_KEYS_FILE",
+        "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID_FILE",
         "MFA_EMAIL_OTP_HMAC_KEYS_FILE",
         "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID_FILE",
         "MFA_EMAIL_DELIVERY_KEKS_FILE",
@@ -85,8 +94,10 @@ def test_full_settings_boot_from_required_file_only_and_preserve_mfa_strings(
     monkeypatch.setenv("SECRET_KEY_FILE", str(secret_key_file))
 
     cache_url = "redis://cache.invalid:6379/0"
+    rate_limit_uri = "redis://rate-limit.invalid:6379/1"
     revocation_url = "redis://revocation.invalid:6379/0"
     cache_file = _write_secret(tmp_path, "cache-url", cache_url)
+    rate_limit_file = _write_secret(tmp_path, "rate-limit-uri", rate_limit_uri)
     revocation_file = _write_secret(tmp_path, "revocation-url", revocation_url)
     audit_secret = secrets.token_urlsafe(32)
     audit_file = _write_secret(tmp_path, "audit-secret", audit_secret)
@@ -98,7 +109,7 @@ def test_full_settings_boot_from_required_file_only_and_preserve_mfa_strings(
     idempotency_file = _write_secret(tmp_path, "idempotency-secret", idempotency_secret)
     internal_token = secrets.token_urlsafe(32)
     internal_token_file = _write_secret(tmp_path, "internal-token", internal_token)
-    spotify_secret = secrets.token_urlsafe(32)
+    spotify_secret = Fernet.generate_key().decode("ascii")
     spotify_file = _write_secret(tmp_path, "spotify-secret", spotify_secret)
     s3_access = secrets.token_urlsafe(24)
     s3_access_file = _write_secret(tmp_path, "s3-access", s3_access)
@@ -106,6 +117,7 @@ def test_full_settings_boot_from_required_file_only_and_preserve_mfa_strings(
     s3_secret_file = _write_secret(tmp_path, "s3-secret", s3_secret)
     for name, file_path in (
         ("CACHE_REDIS_URL_FILE", cache_file),
+        ("RATE_LIMIT_STORAGE_URI_FILE", rate_limit_file),
         ("REVOCATION_REDIS_URL_FILE", revocation_file),
         ("AUDIT_LOG_SECRET_FILE", audit_file),
         ("CWV_RUM_SIGNING_SECRET_FILE", cwv_file),
@@ -120,12 +132,20 @@ def test_full_settings_boot_from_required_file_only_and_preserve_mfa_strings(
 
     encoded_key = base64.urlsafe_b64encode(bytes(range(32))).decode("ascii").rstrip("=")
     key_ring = f"primary:{encoded_key}"
+    totp_fernet_key = Fernet.generate_key().decode("ascii")
+    totp_keyring = f"primary:{totp_fernet_key}"
+    totp_ring_file = _write_secret(tmp_path, "totp-encryption-keys", totp_keyring)
+    totp_active_file = _write_secret(tmp_path, "totp-active-key-id", "not-primary")
+    monkeypatch.setenv("MFA_TOTP_ENCRYPTION_KEYS_FILE", str(totp_ring_file))
+    monkeypatch.setenv("MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID_FILE", str(totp_active_file))
+    monkeypatch.setenv("MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID", "primary")
+
     ring_fields = (
         ("MFA_EMAIL_OTP_HMAC_KEYS", "mfa-email-otp-keys"),
         ("MFA_EMAIL_DELIVERY_KEKS", "mfa-email-delivery-keks"),
         ("MFA_TRUSTED_DEVICE_HMAC_KEYS", "mfa-trusted-device-keys"),
     )
-    mfa_files: set[str] = set()
+    mfa_files: set[str] = {str(totp_ring_file)}
     for env_name, filename in ring_fields:
         ring_file = _write_secret(tmp_path, filename, key_ring)
         monkeypatch.setenv(f"{env_name}_FILE", str(ring_file))
@@ -139,20 +159,25 @@ def test_full_settings_boot_from_required_file_only_and_preserve_mfa_strings(
         monkeypatch.setenv(f"{env_name}_FILE", str(active_file))
         mfa_files.add(str(active_file))
 
-    tracked_files = {
-        str(database_file),
-        str(secret_key_file),
-        str(cache_file),
-        str(revocation_file),
-        str(audit_file),
-        str(cwv_file),
-        str(csrf_file),
-        str(idempotency_file),
-        str(internal_token_file),
-        str(spotify_file),
-        str(s3_access_file),
-        str(s3_secret_file),
-    } | mfa_files
+    tracked_files = (
+        {
+            str(database_file),
+            str(secret_key_file),
+            str(cache_file),
+            str(rate_limit_file),
+            str(revocation_file),
+            str(audit_file),
+            str(cwv_file),
+            str(csrf_file),
+            str(idempotency_file),
+            str(internal_token_file),
+            str(spotify_file),
+            str(s3_access_file),
+            str(s3_secret_file),
+        }
+        | mfa_files
+        | {str(totp_active_file)}
+    )
     read_counts: dict[str, int] = {}
     original_open = os.open
 
@@ -167,10 +192,16 @@ def test_full_settings_boot_from_required_file_only_and_preserve_mfa_strings(
     monkeypatch.setattr(os, "open", count_secret_opens)
     settings = Settings()
 
-    assert read_counts == {file_path: 1 for file_path in tracked_files}
+    assert read_counts == {
+        file_path: 1
+        for file_path in tracked_files
+        if file_path != str(totp_active_file)
+    }
+    assert read_counts.get(str(totp_active_file), 0) == 0
     assert settings.database_url == database_url
     assert settings.secret_key == secret_key
     assert settings.cache_redis_url == cache_url
+    assert settings.rate_limit_storage_uri == rate_limit_uri
     assert settings.revocation_redis_url == revocation_url
     assert settings.audit_log_secret == audit_secret
     assert settings.cwv_rum_signing_secret.get_secret_value() == cwv_secret
@@ -180,6 +211,8 @@ def test_full_settings_boot_from_required_file_only_and_preserve_mfa_strings(
     assert settings.spotify_token_secret == spotify_secret
     assert settings.storage_s3_access_key_id == s3_access
     assert settings.storage_s3_secret_access_key == s3_secret
+    assert settings.mfa_totp_encryption_keys == totp_keyring
+    assert settings.mfa_totp_active_encryption_key_id == "primary"
     assert settings.mfa_email_otp_hmac_keys == key_ring
     assert settings.mfa_email_delivery_keks == key_ring
     assert settings.mfa_trusted_device_hmac_keys == key_ring
@@ -189,10 +222,12 @@ def test_full_settings_boot_from_required_file_only_and_preserve_mfa_strings(
     assert settings.has_development_fallbacks is False
     assert "DATABASE_URL" not in os.environ
     assert "SECRET_KEY" not in os.environ
+    assert "RATE_LIMIT_STORAGE_URI" not in os.environ
     loaded_values = (
         database_url,
         secret_key,
         cache_url,
+        rate_limit_uri,
         revocation_url,
         audit_secret,
         cwv_secret,
@@ -203,6 +238,7 @@ def test_full_settings_boot_from_required_file_only_and_preserve_mfa_strings(
         s3_access,
         s3_secret,
         key_ring,
+        totp_keyring,
     )
     if any(
         value in os.environ.values() or value in caplog.text for value in loaded_values
@@ -320,6 +356,100 @@ def test_configured_file_inputs_fail_closed_without_disclosing_content(
         _load_file_secret(env_name, "fallback-value")
     assert "fallback-value" not in str(captured.value)
     assert "invalid-utf8" not in str(captured.value)
+
+
+@pytest.mark.parametrize(
+    ("env_name", "loader_name"),
+    [
+        ("VAPID_PRIVATE_KEY_FILE", "vapid"),
+        ("SPOTIFY_CLIENT_SECRET_FILE", "spotify"),
+        ("SPOTIFY_OAUTH_STATE_SECRET_FILE", "spotify-state"),
+    ],
+)
+def test_optional_integration_file_secret_accepts_explicit_empty_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    env_name: str,
+    loader_name: str,
+) -> None:
+    empty_file = tmp_path / f"{loader_name}-disabled-secret"
+    empty_file.write_bytes(b"  \n\t")
+    monkeypatch.setenv(env_name, str(empty_file))
+
+    if loader_name == "vapid":
+        from app.core.config.notifications import NotificationSettings
+
+        loaded = NotificationSettings._load_vapid_key("fallback-must-not-win")
+    elif loader_name == "spotify":
+        from app.core.config.integrations import IntegrationSettings
+
+        loaded = IntegrationSettings._load_spotify_secret("fallback-must-not-win")
+    else:
+        from app.core.config.integrations import IntegrationSettings
+
+        monkeypatch.setenv("ENVIRONMENT", "testing")
+        configured = IntegrationSettings(
+            _env_file=None,
+            elasticsearch_password=secrets.token_urlsafe(32),
+            spicedb_preshared_key="synthetic-spicedb-key",
+            ws_hub_internal_secret=secrets.token_urlsafe(32),
+        )
+        loaded = configured.spotify_oauth_state_secret
+
+    assert loaded == ""
+
+
+def test_production_spotify_credentials_must_be_configured_together(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config.integrations import IntegrationSettings
+
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    with pytest.raises(
+        ValidationError, match="SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET"
+    ):
+        IntegrationSettings(
+            _env_file=None,
+            elasticsearch_password=secrets.token_urlsafe(32),
+            spicedb_preshared_key="synthetic-spicedb-key",
+            spotify_client_id="synthetic-spotify-client",
+            spotify_client_secret="",
+            spotify_oauth_state_secret=secrets.token_urlsafe(32),
+            ws_hub_internal_secret=secrets.token_urlsafe(32),
+        )
+
+
+def test_production_spotify_enabled_with_empty_state_file_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config.integrations import IntegrationSettings
+
+    empty_state_file = tmp_path / "spotify-state-disabled"
+    empty_state_file.write_bytes(b"\n")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("SPOTIFY_OAUTH_STATE_SECRET_FILE", str(empty_state_file))
+
+    with pytest.raises(ValidationError, match="SPOTIFY_OAUTH_STATE_SECRET must be set"):
+        IntegrationSettings(
+            _env_file=None,
+            elasticsearch_password=secrets.token_urlsafe(32),
+            spicedb_preshared_key="synthetic-spicedb-key",
+            ws_hub_internal_secret=secrets.token_urlsafe(32),
+            spotify_client_id="synthetic-spotify-client",
+            spotify_client_secret=secrets.token_urlsafe(32),
+            spotify_oauth_state_secret=secrets.token_urlsafe(32),
+        )
+
+
+def test_spotify_token_secret_file_cannot_use_an_empty_optional_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    empty_file = tmp_path / "empty-spotify-token-secret"
+    empty_file.write_bytes(b"  \n\t")
+    monkeypatch.setenv("SPOTIFY_TOKEN_SECRET_FILE", str(empty_file))
+
+    with pytest.raises(ValueError, match="SPOTIFY_TOKEN_SECRET_FILE must not be empty"):
+        _load_file_secret("SPOTIFY_TOKEN_SECRET_FILE", "fallback-must-not-win")
 
 
 def test_unconfigured_file_returns_plain_value(monkeypatch: pytest.MonkeyPatch) -> None:

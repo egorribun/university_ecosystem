@@ -5,9 +5,18 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from cryptography.fernet import Fernet
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = PROJECT_ROOT
+
+
+def _set_synthetic_totp_keyring(monkeypatch):
+    """Provide a fresh independent key ring for production Settings fixtures."""
+    monkeypatch.delenv("MFA_TOTP_ENCRYPTION_KEYS_FILE", raising=False)
+    totp_key = Fernet.generate_key().decode("ascii")
+    monkeypatch.setenv("MFA_TOTP_ENCRYPTION_KEYS", f"test-key:{totp_key}")
+    monkeypatch.setenv("MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID", "test-key")
 
 
 def _reload_all_config():
@@ -238,7 +247,7 @@ def test_auto_create_schema_default_false_in_production(monkeypatch, tmp_path):
     monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "dummy_token_for_test")
     monkeypatch.setenv("AUDIT_LOG_SECRET", "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6")
     monkeypatch.setenv("NATS_AUTH_TOKEN", "dummy_nats_token")
-    monkeypatch.setenv("SPOTIFY_TOKEN_SECRET", "dummy_spotify_secret")
+    monkeypatch.setenv("SPOTIFY_TOKEN_SECRET", Fernet.generate_key().decode("ascii"))
     monkeypatch.setenv("ELASTICSEARCH_PASSWORD", "dummy_elastic_pass")
     monkeypatch.setenv("SPICEDB_PRESHARED_KEY", "prod-preshared-key-for-test")
     monkeypatch.setenv(
@@ -249,6 +258,7 @@ def test_auto_create_schema_default_false_in_production(monkeypatch, tmp_path):
         "TOKEN_HMAC_SECRET", "token-hmac-core-random-material-0123456789"
     )  # pragma: allowlist secret
     monkeypatch.setenv("WS_HUB_INTERNAL_SECRET", "dummy_ws_hub_secret_for_test")
+    _set_synthetic_totp_keyring(monkeypatch)
     monkeypatch.delenv("AUTO_CREATE_SCHEMA", raising=False)
 
     with _temporary_env_file(None):
@@ -277,7 +287,7 @@ def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, tmp_pa
     monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "dummy_token_for_test")
     monkeypatch.setenv("AUDIT_LOG_SECRET", "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6")
     monkeypatch.setenv("NATS_AUTH_TOKEN", "dummy_nats_token")
-    monkeypatch.setenv("SPOTIFY_TOKEN_SECRET", "dummy_spotify_secret")
+    monkeypatch.setenv("SPOTIFY_TOKEN_SECRET", Fernet.generate_key().decode("ascii"))
     monkeypatch.setenv("ELASTICSEARCH_PASSWORD", "dummy_elastic_pass")
     monkeypatch.setenv("SPICEDB_PRESHARED_KEY", "prod-preshared-key-for-test")
     monkeypatch.setenv(
@@ -288,6 +298,7 @@ def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, tmp_pa
         "TOKEN_HMAC_SECRET", "token-hmac-core-random-material-0123456789"
     )  # pragma: allowlist secret
     monkeypatch.setenv("WS_HUB_INTERNAL_SECRET", "dummy_ws_hub_secret_for_test")
+    _set_synthetic_totp_keyring(monkeypatch)
     monkeypatch.setenv("AUTO_CREATE_SCHEMA", "true")
 
     with _temporary_env_file(None):

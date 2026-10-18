@@ -128,7 +128,14 @@ describe("AuthProvider caching", () => {
       if (transition === "failed logout") {
         vi.mocked(api.post).mockRejectedValueOnce(new Error("network unavailable"))
         vi.spyOn(logger, "logError").mockImplementation(() => undefined)
+        const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
         await act(() => result.current.logout())
+        // Logout cleanup separately records its profile-cache clear. This is not
+        // a malformed fixture; keep the complete list exact so extra warnings fail.
+        expect(warningSpy.mock.calls).toEqual([
+          ["Server logout could not be confirmed; local cleanup will continue"],
+          ["profile_cache.cleared", { reason: "parse_error" }],
+        ])
       } else {
         vi.mocked(api.get).mockRejectedValueOnce({ isAxiosError: true, response: { status: 401 } })
         await act(() => result.current.refresh())
@@ -257,7 +264,7 @@ describe("AuthProvider caching", () => {
         timeout: 10000,
       }
     )
-    expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
+    expect(queryClient.getQueryData(currentUserQueryKey)).toBeUndefined()
 
     queryClient.clear()
   })

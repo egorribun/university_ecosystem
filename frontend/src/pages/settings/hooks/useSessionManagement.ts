@@ -134,17 +134,18 @@ export function useSessionManagement({
         if (!isCurrent()) return
         setSnackbar({ text: t("settings:sessions.snackbar.revoked"), severity: "success" })
 
+        if (result?.is_current) {
+          // The DELETE already committed the current session revocation.
+          // Local logout must not present a follow-up POST failure as uncertain.
+          await logout({ serverRevocationConfirmed: true })
+          return
+        }
         // Wave 135 SW1 — factory-routed cache mutation. The previous
         // inline setQueryData + invalidateQueries pattern is now in
         // updateSessionInCache + invalidateSessions at api/hooks/sessions.ts
         // (closes W134 §Honesty #5).
         updateSessionInCache(queryClient, userId, result)
         await invalidateSessions(queryClient, userId)
-        if (!isCurrent()) return
-
-        if (result?.is_current) {
-          await logout()
-        }
       } catch (error) {
         if (!isCurrent()) return
         if (!options?.skipStepUp && isStepUpError(error) && openStepUpFor) {
