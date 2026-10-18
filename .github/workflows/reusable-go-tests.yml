@@ -66,63 +66,6 @@ jobs:
             gen/go/go.sum
             go.sum
 
-      # Temporary public checksum evidence for the owner-approved mimetype update.
-      # Remove this probe in the dependency-update commit.
-      - name: Verify mimetype candidate checksums without changing the module graph
-        if: ${{ inputs.service-directory == 'services/gateway' }}
-        timeout-minutes: 5
-        shell: bash
-        run: |
-          set -euo pipefail
-          probe_dir="$(mktemp -d "$RUNNER_TEMP/mimetype-checksums.XXXXXX")"
-          cleanup_probe() {
-            probe_status=$?
-            if ! GOMODCACHE="$probe_dir/mod-cache" GOWORK=off GOENV=off \
-              GOTOOLCHAIN=local GOFLAGS='' timeout 30s go clean -modcache; then
-              probe_status=1
-            fi
-            if ! rm -rf -- "$probe_dir"; then
-              probe_status=1
-            fi
-            if [[ -e "$probe_dir" ]]; then
-              probe_status=1
-            fi
-            exit "$probe_status"
-          }
-          trap cleanup_probe EXIT
-          cd "$probe_dir"
-          printf 'module checksum.probe\n\ngo 1.26.4\n' > go.mod
-          export GOWORK=off GOENV=off GOTOOLCHAIN=local GOFLAGS=''
-          export GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org
-          export GOPRIVATE='' GONOSUMDB='' GONOPROXY='' GOINSECURE=''
-          export GOPATH="$probe_dir/gopath" GOMODCACHE="$probe_dir/mod-cache"
-          export GOCACHE="$probe_dir/build-cache"
-          timeout 120s go mod download -json \
-            github.com/gabriel-vasile/mimetype@v1.4.16 > module.json
-          python3 - <<'PY'
-          import json
-          import re
-
-          with open("module.json", encoding="utf-8") as source:
-              result = json.load(source)
-          if (
-              result.get("Path") != "github.com/gabriel-vasile/mimetype"
-              or result.get("Version") != "v1.4.16"
-              or result.get("Error")
-          ):
-              raise SystemExit("candidate module identity or download is invalid")
-          for field in ("Sum", "GoModSum"):
-              if re.fullmatch(r"h1:[A-Za-z0-9+/]{43}=", result.get(field, "")) is None:
-                  raise SystemExit("candidate checksum is missing or invalid")
-          print(json.dumps(
-              {field: result[field] for field in ("Path", "Version", "Sum", "GoModSum")},
-              sort_keys=True,
-          ))
-          PY
-          git -C "$GITHUB_WORKSPACE" diff --exit-code -- \
-            go.mod go.sum go.work go.work.sum \
-            services/gateway/go.mod services/gateway/go.sum
-
       - name: Install dependencies
         env:
           SERVICE_DIRECTORY: ${{ inputs.service-directory }}
@@ -130,6 +73,15 @@ jobs:
           cd "$SERVICE_DIRECTORY"
           python3 "$GITHUB_WORKSPACE/scripts/ci/go_mod_download.py" \
             --working-directory "$PWD"
+
+      - name: Verify the gateway module graph is unchanged after download
+        if: ${{ inputs.service-directory == 'services/gateway' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C "$GITHUB_WORKSPACE" diff --exit-code -- \
+            go.mod go.sum go.work go.work.sum \
+            services/gateway/go.mod services/gateway/go.sum
 
       - name: Clean Go coverage outputs
         shell: bash
