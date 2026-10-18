@@ -416,7 +416,8 @@ async def test_anonymous_my_events_request_never_queries_event_rows(
 async def test_my_events_rejects_invalid_filter_combinations(
     async_client: Any, user_factory: Any
 ) -> None:
-    password = secrets.token_urlsafe(24)
+    # URL-safe randomness alone does not guarantee every required character class.
+    password = f"{secrets.token_urlsafe(24)}Aa1!"
     password_hash = await get_password_hash(password)
     owner = await user_factory(hashed_password=password_hash, is_active=True)
     headers = await _login(async_client, owner.email, password)
@@ -440,7 +441,8 @@ async def test_my_events_rejects_invalid_filter_combinations(
 async def test_my_events_etag_matches_the_exact_cursor_page(
     async_client: Any, db_session: AsyncSession, user_factory: Any
 ) -> None:
-    password = secrets.token_urlsafe(24)
+    # URL-safe randomness alone does not guarantee every required character class.
+    password = f"{secrets.token_urlsafe(24)}Aa1!"
     password_hash = await get_password_hash(password)
     owner = await user_factory(hashed_password=password_hash, is_active=True)
     starts_at = datetime(2026, 10, 20, 12, tzinfo=UTC)

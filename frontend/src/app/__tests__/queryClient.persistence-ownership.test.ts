@@ -8,6 +8,7 @@ import {
   rotateBrowserSession,
 } from "@/stores/sessionEpoch"
 import { useAuthStore } from "@/stores/useAuthStore"
+import { ENCRYPTED_CACHE_PLACEHOLDER_USER_ID, SSR_STUB_USER_ID } from "@/stores/authIdentity"
 import { testUser } from "@/tests/mocks/handlers"
 
 // Keep real IndexedDB transactions and structured cloning. Only the delivery of
@@ -876,4 +877,84 @@ describe("asynchronous persistence ownership", () => {
       expect(await keys()).toEqual([accountKey(owner)])
     }
   )
+})
+
+describe("request-hydrated cache during auth bootstrap", () => {
+  it.each([SSR_STUB_USER_ID, ENCRYPTED_CACHE_PLACEHOLDER_USER_ID])(
+    "preserves the current unresolved %s snapshot until sign-out is confirmed",
+    (placeholder) => {
+      useAuthStore.setState({ user: null, loading: true })
+      const active = createQueryClient()
+      const key = ["dashboard", "events"] as const
+      active.setQueryData(key, ["request-scoped event"])
+      try {
+        publishAccount(placeholder)
+        expect(active.getQueryData(key)).toEqual(["request-scoped event"])
+
+        publishAccount(null)
+        expect(active.getQueryData(key)).toBeUndefined()
+      } finally {
+        active.clear()
+      }
+    }
+  )
+
+  it("retires a previous account when a bootstrap placeholder replaces it", () => {
+    publishAccount("A")
+    const active = createQueryClient()
+    const key = ["dashboard", "events"] as const
+    active.setQueryData(key, ["private account A event"])
+    try {
+      publishAccount(SSR_STUB_USER_ID)
+      expect(active.getQueryData(key)).toBeUndefined()
+    } finally {
+      active.clear()
+    }
+  })
+
+  it("retires the unresolved cache when bootstrap returns a malformed identity", () => {
+    useAuthStore.setState({ user: null, loading: true })
+    publishAccount(SSR_STUB_USER_ID)
+    const active = createQueryClient()
+    const key = ["dashboard", "events"] as const
+    active.setQueryData(key, ["request-scoped event"])
+    try {
+      publishAccount("")
+      expect(active.getQueryData(key)).toBeUndefined()
+    } finally {
+      active.clear()
+    }
+  })
+
+  it("does not preserve a bootstrap cache after the browser generation changes", () => {
+    useAuthStore.setState({ user: null, loading: true })
+    publishAccount(SSR_STUB_USER_ID)
+    const active = createQueryClient()
+    const key = ["dashboard", "events"] as const
+    active.setQueryData(key, ["retired request event"])
+    try {
+      localStorage.setItem(
+        sessionKey,
+        JSON.stringify({ nonce: "successor-generation", hash: null })
+      )
+      publishAccount(SSR_STUB_USER_ID)
+      expect(active.getQueryData(key)).toBeUndefined()
+    } finally {
+      active.clear()
+      acceptBrowserSessionGeneration()
+    }
+  })
+
+  it("retires request data when an initially empty bootstrap settles signed out", () => {
+    useAuthStore.setState({ user: null, loading: true })
+    const active = createQueryClient()
+    const key = ["dashboard", "events"] as const
+    active.setQueryData(key, ["unconfirmed request event"])
+    try {
+      publishAccount(null)
+      expect(active.getQueryData(key)).toBeUndefined()
+    } finally {
+      active.clear()
+    }
+  })
 })

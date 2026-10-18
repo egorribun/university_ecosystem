@@ -1,6 +1,11 @@
 import { useEffect, type MutableRefObject, type PropsWithChildren } from "react"
 import { act, cleanup, render, renderHook, waitFor } from "@testing-library/react"
-import { QueryClientProvider, useQuery, type QueryClient } from "@tanstack/react-query"
+import {
+  QueryClientProvider,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query"
 import { HttpResponse, http } from "msw"
 import { hydrateRoot, type Root } from "react-dom/client"
 import { renderToString } from "react-dom/server"
@@ -18,6 +23,15 @@ import { testUser } from "@/tests/mocks/handlers"
 import { server } from "@/tests/mocks/server"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { acceptBrowserSessionGeneration } from "@/stores/sessionEpoch"
+import { SSR_STUB_USER_ID } from "@/stores/authIdentity"
+import {
+  createDashboardEventsQueryOptions,
+  dashboardEventsQueryKey,
+} from "@/hooks/useDashboardEvents"
+import {
+  createDashboardStoriesQueryOptions,
+  dashboardStoriesQueryKey,
+} from "@/hooks/useDashboardStories"
 import {
   PROFILE_CACHE_SCHEMA_VERSION,
   PROFILE_CACHE_STORAGE_KEY,
@@ -919,4 +933,173 @@ describe("Wave 134 SW1 — useProfileSync bridge", () => {
       container.remove()
     }
   })
+
+  it("keeps router-dehydrated dashboard rows through the SSR-stub auth bootstrap", async () => {
+    const initialSsr = import.meta.env.SSR
+    const browserProfile = { ...testUser, id: "hydrated-browser-owner" }
+    const profileResponse = deferred<{ data: typeof browserProfile }>()
+    const signingKey = crypto.randomUUID()
+    let profileRequestStarted = false
+    let profileResolved = false
+    const observedAuth: Array<{ id: string | null; loading: boolean }> = []
+    const hydrationErrors: unknown[] = []
+    let root: Root | undefined
+    let stopObserving: (() => void) | undefined
+    let container: HTMLDivElement | undefined
+
+    const getSpy = vi.spyOn(api, "get").mockImplementation((url) => {
+      if (url === "/users/me") {
+        profileRequestStarted = true
+        return profileResponse.promise as any
+      }
+      if (url === "/auth/session/signing-key") {
+        return Promise.resolve({ data: { signing_key: signingKey } } as any)
+      }
+      throw new Error(`Unexpected url: ${url}`)
+    })
+    const events = {
+      items: [
+        { id: "ssr-event-id", title: "SSR dashboard event", starts_at: "2026-10-18T10:00:00Z" },
+      ],
+    }
+    const stories = [
+      {
+        id: "ssr-story-id",
+        created_at: "2026-10-18T10:00:00Z",
+        expires_at: "2026-10-25T10:00:00Z",
+        is_active: true,
+        published_at: "2026-10-18T10:00:00Z",
+        short_text: "Synthetic SSR story",
+        title: "SSR dashboard story",
+        cover_url: null,
+        cover_url_optimized: null,
+        cta_url: null,
+      },
+    ]
+    function DashboardCacheProbe() {
+      const client = useQueryClient()
+      const eventQuery = useQuery({
+        ...createDashboardEventsQueryOptions(client),
+        enabled: false,
+      })
+      const storyQuery = useQuery({
+        ...createDashboardStoriesQueryOptions(client),
+        enabled: false,
+      })
+      return (
+        <main>
+          <ul data-testid="dashboard-events">
+            {eventQuery.data?.map((event) => (
+              <li key={event.id}>{event.title}</li>
+            ))}
+          </ul>
+          <ul data-testid="dashboard-stories">
+            {storyQuery.data?.map((story) => (
+              <li key={story.id}>{story.title}</li>
+            ))}
+          </ul>
+        </main>
+      )
+    }
+    const tree = (client: QueryClient) => (
+      <QueryClientProvider client={client}>
+        <AuthProvider>
+          <DashboardCacheProbe />
+        </AuthProvider>
+      </QueryClientProvider>
+    )
+
+    try {
+      vi.stubEnv("SSR", true)
+      const requestAuth: RouterContext["auth"] = {
+        isAuth: true,
+        user: { role: "student" },
+        loading: false,
+      }
+      globalThis.__ssrAuthGetter__ = () => requestAuth
+      const serverRouter = getRouter()
+      const serverClient = serverRouter.options.context.queryClient
+      clients.push(serverClient)
+      serverClient.setQueryData(dashboardEventsQueryKey, events)
+      serverClient.setQueryData(dashboardStoriesQueryKey, stories)
+      const serverMarkup = renderToString(tree(serverClient))
+      expect(serverMarkup).toContain("SSR dashboard event")
+      expect(serverMarkup).toContain("SSR dashboard story")
+
+      const transferred = await serverRouter.options.dehydrate?.()
+      if (!transferred) throw new Error("Expected dashboard dehydration state")
+      expect(transferred.queries.map((query) => query.queryKey)).toEqual([
+        dashboardEventsQueryKey,
+        dashboardStoriesQueryKey,
+      ])
+
+      vi.stubEnv("SSR", false)
+      globalThis.__ssrAuthGetter__ = undefined
+      setQueryCacheIdentity(null)
+      acceptBrowserSessionGeneration()
+      const browserRouter = getRouter()
+      const browserClient = browserRouter.options.context.queryClient
+      clients.push(browserClient)
+      browserRouter.options.hydrate?.(transferred)
+      expect(browserClient.getQueryData(dashboardEventsQueryKey)).toEqual(events)
+      expect(browserClient.getQueryData(dashboardStoriesQueryKey)).toEqual(stories)
+
+      container = document.createElement("div")
+      container.id = "root"
+      container.setAttribute("data-ssr-auth", "authenticated:student")
+      container.innerHTML = serverMarkup
+      document.body.appendChild(container)
+      expect(useAuthStore.getState().loading).toBe(true)
+      stopObserving = useAuthStore.subscribe((state) => {
+        observedAuth.push({ id: state.user?.id ?? null, loading: state.loading })
+      })
+
+      await act(async () => {
+        root = hydrateRoot(container!, tree(browserClient), {
+          onRecoverableError: (error) => hydrationErrors.push(error),
+        })
+      })
+      await waitFor(() => {
+        expect(observedAuth).toContainEqual({ id: SSR_STUB_USER_ID, loading: false })
+      })
+      // The authoritative request stays pending throughout this snapshot.
+      expect(profileResolved).toBe(false)
+      expect(browserClient.getQueryData(dashboardEventsQueryKey)).toEqual(events)
+      expect(browserClient.getQueryData(dashboardStoriesQueryKey)).toEqual(stories)
+      expect(container.querySelector('[data-testid="dashboard-events"]')?.textContent).toContain(
+        "SSR dashboard event"
+      )
+      expect(container.querySelector('[data-testid="dashboard-stories"]')?.textContent).toContain(
+        "SSR dashboard story"
+      )
+      expect(hydrationErrors).toEqual([])
+
+      await waitFor(() => expect(profileRequestStarted).toBe(true))
+      await act(async () => {
+        profileResolved = true
+        profileResponse.resolve({ data: browserProfile })
+        await profileResponse.promise
+      })
+      await waitFor(() => {
+        expect(useAuthStore.getState().user?.id).toBe(browserProfile.id)
+        expect(getQueryCacheIdentity()).toBe(browserProfile.id)
+      })
+      expect(getSpy.mock.calls.filter(([url]) => url === "/users/me")).toHaveLength(1)
+      expect(hydrationErrors).toEqual([])
+    } finally {
+      stopObserving?.()
+      try {
+        await act(async () => {
+          profileResolved = true
+          profileResponse.resolve({ data: browserProfile })
+          await profileResponse.promise
+          root?.unmount()
+        })
+      } finally {
+        container?.remove()
+        vi.stubEnv("SSR", initialSsr)
+      }
+    }
+  })
+
 })

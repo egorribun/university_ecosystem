@@ -46,6 +46,43 @@ def _require_postgres() -> None:
         pytest.fail("AUD-258 lock and page semantics require PostgreSQL")
 
 
+async def _assert_message_count_as_restricted_role(
+    db_session: AsyncSession,
+    *,
+    chat_id: uuid.UUID,
+    user_id: uuid.UUID,
+    expected_count: int,
+) -> None:
+    # Each caller commits its fixture changes first. Keep the role and grants
+    # transactional so rollback removes them even when an assertion fails.
+    assert not db_session.in_transaction()
+    role_name = f"aud258_rls_{uuid.uuid4().hex}"
+    try:
+        # The quoted identifier contains only a fixed prefix and generated hex.
+        await db_session.execute(
+            text(f'CREATE ROLE "{role_name}" NOLOGIN NOSUPERUSER NOBYPASSRLS')
+        )
+        await db_session.execute(text(f'GRANT USAGE ON SCHEMA public TO "{role_name}"'))
+        await db_session.execute(
+            text(
+                "GRANT SELECT ON TABLE public.messages, public.chat_participants "
+                f'TO "{role_name}"'
+            )
+        )
+        await db_session.execute(text(f'SET LOCAL ROLE "{role_name}"'))
+        await ChatRepository(db_session).set_message_rls_user(user_id)
+        rls_active = await db_session.scalar(
+            text("SELECT row_security_active('public.messages')")
+        )
+        assert rls_active is True
+        visible_message_count = await db_session.scalar(
+            select(func.count()).select_from(Message).where(Message.chat_id == chat_id)
+        )
+        assert visible_message_count == expected_count
+    finally:
+        await db_session.rollback()
+
+
 async def _seed_chat(
     db_session: AsyncSession,
     users: list[User],
@@ -567,12 +604,12 @@ async def test_empty_participant_chat_fails_closed_without_cascading_blobs(
 
     # The policy correctly hides old messages from a former member. Maintenance
     # must therefore refuse an orphaned chat instead of treating it as empty.
-    await ChatRepository(db_session).set_message_rls_user(former_participant_id)
-    invisible_message_count = await db_session.scalar(
-        select(func.count()).select_from(Message).where(Message.chat_id == chat_id)
+    await _assert_message_count_as_restricted_role(
+        db_session,
+        chat_id=chat_id,
+        user_id=former_participant_id,
+        expected_count=0,
     )
-    assert invisible_message_count == 0
-    await db_session.rollback()
     # Rollback expires the actor too; load its columns before synchronous checks.
     await db_session.refresh(admin)
 
@@ -610,12 +647,11 @@ async def test_empty_participant_chat_fails_closed_without_cascading_blobs(
         {"chat_id": chat_id, "user_id": former_participant_id},
     )
     await db_session.commit()
-    await ChatRepository(db_session).set_message_rls_user(former_participant_id)
-    assert (
-        await db_session.scalar(
-            select(func.count()).select_from(Message).where(Message.chat_id == chat_id)
-        )
-        == 1
+    await _assert_message_count_as_restricted_role(
+        db_session,
+        chat_id=chat_id,
+        user_id=former_participant_id,
+        expected_count=1,
     )
     assert (
         await db_session.scalar(
