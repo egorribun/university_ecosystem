@@ -306,6 +306,8 @@ describe("useProfileSync focused mutation survivor contracts", () => {
       localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
       const removeItem = vi.spyOn(Storage.prototype, "removeItem")
       const warning = vi.spyOn(logger, "logWarning")
+      const privateQueryKey = ["events", "retired-bootstrap"] as const
+      queryClient.setQueryData(privateQueryKey, ["retired request event"])
 
       await withExpectedConsole("warn", "profile_cache.cleared", async () => {
         await act(async () => {
@@ -326,7 +328,9 @@ describe("useProfileSync focused mutation survivor contracts", () => {
         ["profile_cache.cleared", { reason: "parse_error" }],
       ])
       expect(view.result.current.user).toBeNull()
-      expect(queryClient.getQueryData(currentUserQueryKey)).toBeUndefined()
+      expect(queryClient.getQueryData(privateQueryKey)).toBeUndefined()
+      // The committed unauthorized transition publishes null, not private data.
+      expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
     } finally {
       await act(async () => {
         view.unmount()

@@ -202,7 +202,7 @@ test("real wrong-password acceptance checks localized generic feedback without e
 
 test("expired-profile live reload probes a signed miss without exposing cache data", async () => {
   const spec = await readFile(specUrl, "utf8")
-  const title = "student remains authenticated after reload with an expired signed profile envelope"
+  const title = "reload retains the session after a signed profile envelope expires"
   const titleIndex = spec.indexOf(title)
   const start = spec.lastIndexOf("test(", titleIndex)
   const end = spec.indexOf('test.describe("localized rejected-login acceptance"', titleIndex)
@@ -210,6 +210,7 @@ test("expired-profile live reload probes a signed miss without exposing cache da
   const section = spec.slice(start, end)
 
   assert.doesNotMatch(section, /test\.skip\(/u)
+  assert.equal([...section.matchAll(/cache: "no-store"/gu)].length, 2)
   assert.match(
     section,
     /page\.clock\.setFixedTime\(new Date\(envelopeIssuedAtMs\)\)[\s\S]*?await loginAs\(page, "student"\)/u

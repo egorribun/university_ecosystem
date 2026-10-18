@@ -215,6 +215,10 @@ describe("AuthProvider caching", () => {
 
     // Wait for the initial 401 and stabilization
     await waitFor(() => expect(result.current.loading).toBe(false))
+    // The completed 401 commits an explicit signed-out snapshot. Rejecting
+    // untrusted storage must preserve that marker, never publish its profile.
+    await waitFor(() => expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull())
+    expect(result.current.user).toBeNull()
 
     // 1. Setup a valid cache entry (manually simulate re-entry or valid state)
     // TD-14-07: email and role are no longer cached (PII). Use only allowed fields.
@@ -264,7 +268,7 @@ describe("AuthProvider caching", () => {
         timeout: 10000,
       }
     )
-    expect(queryClient.getQueryData(currentUserQueryKey)).toBeUndefined()
+    expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
 
     queryClient.clear()
   })

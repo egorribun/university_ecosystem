@@ -30,113 +30,112 @@ for (const role of ROLE_NAMES) {
   })
 }
 
-test(
-  "student remains authenticated after reload with an expired signed profile envelope",
-  async ({ page }) => {
-    const realNowMs = Date.now()
-    const envelopeIssuedAtMs = realNowMs - 10 * 60_000
+test("reload retains the session after a signed profile envelope expires", async ({ page }) => {
+  const realNowMs = Date.now()
+  const envelopeIssuedAtMs = realNowMs - 10 * 60_000
 
-    const matchesSeededStudentIdentity = async () =>
-      page.evaluate(async (expectedEmail) => {
-        const response = await window.fetch("/api/v1/users/me", {
-          credentials: "same-origin",
-        })
-        if (!response.ok) return false
-        const profile = (await response.json()) as { email?: unknown }
-        return profile.email === expectedEmail
-      }, ROLES.student.email)
+  const matchesSeededStudentIdentity = async () =>
+    page.evaluate(async (expectedEmail) => {
+      const response = await window.fetch("/api/v1/users/me", {
+        credentials: "same-origin",
+        cache: "no-store",
+      })
+      if (!response.ok) return false
+      const profile = (await response.json()) as { email?: unknown }
+      return profile.email === expectedEmail
+    }, ROLES.student.email)
 
-    try {
-      await page.clock.setFixedTime(new Date(envelopeIssuedAtMs))
-      await loginAs(page, "student")
-      await expect(page).toHaveURL(/\/dashboard$/)
-      await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
+  try {
+    await page.clock.setFixedTime(new Date(envelopeIssuedAtMs))
+    await loginAs(page, "student")
+    await expect(page).toHaveURL(/\/dashboard$/)
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
 
-      await expect
-        .poll(
-          () =>
-            page.evaluate((actualNowMs) => {
-              const raw = window.localStorage.getItem("ecosystem.profile.cache.v8")
-              if (!raw) return false
-              try {
-                const envelope = JSON.parse(raw) as Record<string, unknown>
-                return (
-                  envelope.version === 8 &&
-                  typeof envelope.expiresAt === "number" &&
-                  envelope.expiresAt < actualNowMs &&
-                  typeof envelope.signature === "string" &&
-                  envelope.signature.length > 0
-                )
-              } catch {
-                return false
-              }
-            }, realNowMs),
-          { message: "app did not persist a signed expired v8 envelope", timeout: 15_000 }
-        )
-        .toBe(true)
+    await expect
+      .poll(
+        () =>
+          page.evaluate((actualNowMs) => {
+            const raw = window.localStorage.getItem("ecosystem.profile.cache.v8")
+            if (!raw) return false
+            try {
+              const envelope = JSON.parse(raw) as Record<string, unknown>
+              return (
+                envelope.version === 8 &&
+                typeof envelope.expiresAt === "number" &&
+                envelope.expiresAt < actualNowMs &&
+                typeof envelope.signature === "string" &&
+                envelope.signature.length > 0
+              )
+            } catch {
+              return false
+            }
+          }, realNowMs),
+        { message: "app did not persist a signed expired v8 envelope", timeout: 15_000 }
+      )
+      .toBe(true)
 
-      const identityBeforeReload = await matchesSeededStudentIdentity()
-      expect(identityBeforeReload).toBe(true)
+    const identityBeforeReload = await matchesSeededStudentIdentity()
+    expect(identityBeforeReload).toBe(true)
 
-      const probe = await page.evaluate(async (actualNowMs) => {
-        const raw = window.localStorage.getItem("ecosystem.profile.cache.v8")
-        if (!raw) return { expiredSignedEnvelope: false, status: 0 }
+    const probe = await page.evaluate(async (actualNowMs) => {
+      const raw = window.localStorage.getItem("ecosystem.profile.cache.v8")
+      if (!raw) return { expiredSignedEnvelope: false, status: 0 }
 
-        const envelope = JSON.parse(raw) as Record<string, unknown>
-        const expiredSignedEnvelope =
-          envelope.version === 8 &&
-          typeof envelope.expiresAt === "number" &&
-          envelope.expiresAt < actualNowMs &&
-          typeof envelope.signature === "string" &&
-          envelope.signature.length > 0
-        if (!expiredSignedEnvelope) return { expiredSignedEnvelope: false, status: 0 }
+      const envelope = JSON.parse(raw) as Record<string, unknown>
+      const expiredSignedEnvelope =
+        envelope.version === 8 &&
+        typeof envelope.expiresAt === "number" &&
+        envelope.expiresAt < actualNowMs &&
+        typeof envelope.signature === "string" &&
+        envelope.signature.length > 0
+      if (!expiredSignedEnvelope) return { expiredSignedEnvelope: false, status: 0 }
 
-        const response = await window.fetch("/api/v1/users/me", {
-          credentials: "same-origin",
-          headers: { "X-Profile-Cache-Envelope": raw },
-        })
-        return { expiredSignedEnvelope, status: response.status }
-      }, realNowMs)
-      expect(probe.expiredSignedEnvelope).toBe(true)
-      expect(probe.status, "backend accepts the expired signed envelope as a cache miss").toBe(200)
+      const response = await window.fetch("/api/v1/users/me", {
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "X-Profile-Cache-Envelope": raw },
+      })
+      return { expiredSignedEnvelope, status: response.status }
+    }, realNowMs)
+    expect(probe.expiredSignedEnvelope).toBe(true)
+    expect(probe.status, "backend accepts the expired signed envelope as a cache miss").toBe(200)
 
+    await page.clock.setFixedTime(new Date(Date.now()))
+    await page.reload()
+    await expect(page).toHaveURL(/\/dashboard$/)
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
+
+    const identityAfterReload = await matchesSeededStudentIdentity()
+    expect(identityAfterReload).toBe(identityBeforeReload)
+
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const raw = window.localStorage.getItem("ecosystem.profile.cache.v8")
+            if (!raw) return false
+            try {
+              const envelope = JSON.parse(raw) as Record<string, unknown>
+              return (
+                envelope.version === 8 &&
+                typeof envelope.expiresAt === "number" &&
+                envelope.expiresAt > Date.now() &&
+                typeof envelope.signature === "string" &&
+                envelope.signature.length > 0
+              )
+            } catch {
+              return false
+            }
+          }),
+        { message: "reload did not persist a fresh signed v8 envelope", timeout: 15_000 }
+      )
+      .toBe(true)
+  } finally {
+    if (!page.isClosed()) {
       await page.clock.setFixedTime(new Date(Date.now()))
-      await page.reload()
-      await expect(page).toHaveURL(/\/dashboard$/)
-      await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
-
-      const identityAfterReload = await matchesSeededStudentIdentity()
-      expect(identityAfterReload).toBe(identityBeforeReload)
-
-      await expect
-        .poll(
-          () =>
-            page.evaluate(() => {
-              const raw = window.localStorage.getItem("ecosystem.profile.cache.v8")
-              if (!raw) return false
-              try {
-                const envelope = JSON.parse(raw) as Record<string, unknown>
-                return (
-                  envelope.version === 8 &&
-                  typeof envelope.expiresAt === "number" &&
-                  envelope.expiresAt > Date.now() &&
-                  typeof envelope.signature === "string" &&
-                  envelope.signature.length > 0
-                )
-              } catch {
-                return false
-              }
-            }),
-          { message: "reload did not persist a fresh signed v8 envelope", timeout: 15_000 }
-        )
-        .toBe(true)
-    } finally {
-      if (!page.isClosed()) {
-        await page.clock.setFixedTime(new Date(Date.now()))
-      }
     }
   }
-)
+})
 
 test.describe("localized rejected-login acceptance", () => {
   test.describe.configure({ retries: 0 })

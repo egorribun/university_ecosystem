@@ -192,6 +192,7 @@ async def test_events_crud_flow(
     )
     assert deleted_response.status_code == 404
 
+
 @skip_without_db
 async def test_health_endpoint_reflects_db_connectivity(
     async_client: AsyncClient,
