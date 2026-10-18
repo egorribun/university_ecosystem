@@ -4,10 +4,10 @@ import base64
 import json
 import secrets
 import uuid
-from datetime import UTC, date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta, timezone, tzinfo
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -23,6 +23,8 @@ from app.repositories.event_repository import EventRepository
 from app.services.event_service import (
     EventService,
     InvalidMyEventsCursor,
+    InvalidMyEventsQuery,
+    _decode_my_events_cursor,
     _my_events_cursor_binding,
 )
 from app.services.vector_service import VectorService
@@ -642,3 +644,187 @@ async def test_my_events_cursor_timestamp_overflow_is_invalid_cursor() -> None:
         )
 
     repository.list_user_attended_events.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cursor", ["", "A" * 1025], ids=["empty", "over-limit"])
+async def test_my_events_rejects_cursor_length_before_repository_access(
+    cursor: str,
+) -> None:
+    service, repository = _empty_my_events_service()
+
+    with pytest.raises(InvalidMyEventsCursor, match="Invalid My-events cursor"):
+        await service.get_my_events_page(
+            uuid.uuid4(), locale="en", limit=1, cursor=cursor
+        )
+
+    repository.list_user_attended_events.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "non-mapping-key",
+        "missing-key-field",
+        "extra-key-field",
+        "noncanonical-uuid",
+        "non-string-date",
+        "naive-date",
+    ],
+)
+async def test_my_events_rejects_invalid_cursor_keys_before_repository_access(
+    mutation: str,
+) -> None:
+    user_id = uuid.uuid4()
+    timestamp = datetime(2026, 10, 18, 12, tzinfo=UTC)
+    cursor = _my_events_cursor(
+        user_id=user_id, sort="newest", version=1, value=timestamp.isoformat()
+    )
+    payload = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
+    assert _decode_my_events_cursor(
+        cursor, sort="newest", binding=payload["filter"]
+    ) == (timestamp, uuid.UUID(int=501))
+
+    if mutation == "non-mapping-key":
+        payload["key"] = []
+    elif mutation == "missing-key-field":
+        del payload["key"]["id"]
+    elif mutation == "extra-key-field":
+        payload["key"]["unexpected"] = True
+    elif mutation == "noncanonical-uuid":
+        payload["key"]["id"] = str(uuid.UUID(int=0xABCDEF)).upper()
+    elif mutation == "non-string-date":
+        payload["key"]["value"] = 1
+    else:
+        payload["key"]["value"] = timestamp.replace(tzinfo=None).isoformat()
+
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    )
+    invalid_cursor = encoded.decode().rstrip("=")
+    service, repository = _empty_my_events_service()
+
+    with pytest.raises(InvalidMyEventsCursor, match="Invalid My-events cursor"):
+        await service.get_my_events_page(
+            user_id, locale="en", limit=1, cursor=invalid_cursor
+        )
+
+    repository.list_user_attended_events.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("date_range", "date_anchor", "message"),
+    [
+        (None, date(2026, 10, 18), "A date anchor requires a date range"),
+        ("today", None, "A date range requires its campus-local anchor date"),
+        ("year", date(2026, 10, 18), "Unsupported date range"),
+    ],
+)
+async def test_my_events_service_rejects_invalid_date_window_combinations(
+    date_range: str | None,
+    date_anchor: date | None,
+    message: str,
+) -> None:
+    service, repository = _empty_my_events_service()
+
+    with pytest.raises(ValueError, match=message):
+        await service.get_my_events_page(
+            uuid.uuid4(),
+            locale="en",
+            date_range=date_range,
+            date_anchor=date_anchor,
+        )
+
+    repository.list_user_attended_events.assert_not_awaited()
+
+
+class _OffsetlessTimezone(tzinfo):
+    def utcoffset(self, dt: datetime | None) -> timedelta | None:
+        return None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("sort", "cutoff", "error_type", "message"),
+    [
+        ("unsupported", None, ValueError, "Unsupported event sort"),
+        (
+            "upcoming",
+            datetime(2026, 10, 18, 12),
+            InvalidMyEventsQuery,
+            "upcoming_after must be timezone-aware",
+        ),
+        (
+            "upcoming",
+            datetime(2026, 10, 18, 12, tzinfo=_OffsetlessTimezone()),
+            InvalidMyEventsQuery,
+            "upcoming_after is outside supported bounds",
+        ),
+        ("upcoming", None, ValueError, "upcoming sort requires a time cutoff"),
+        (
+            "newest",
+            datetime(2026, 10, 18, 12, tzinfo=UTC),
+            ValueError,
+            "upcoming_after only applies to upcoming sort",
+        ),
+    ],
+)
+async def test_my_events_service_rejects_invalid_sort_cutoff_combinations(
+    sort: str,
+    cutoff: datetime | None,
+    error_type: type[ValueError],
+    message: str,
+) -> None:
+    service, repository = _empty_my_events_service()
+
+    with pytest.raises(error_type, match=message):
+        await service.get_my_events_page(
+            uuid.uuid4(), locale="en", sort=sort, upcoming_after=cutoff
+        )
+
+    repository.list_user_attended_events.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("options", "message"),
+    [
+        ({"sort": "unsupported"}, "Unsupported event sort"),
+        ({"category": "unsupported"}, "Unsupported event category"),
+        (
+            {"sort": "newest", "cursor_key": (1, uuid.UUID(int=501))},
+            "Invalid date-ordered cursor key",
+        ),
+        (
+            {
+                "sort": "upcoming",
+                "upcoming_after": datetime(2026, 10, 18, 12, tzinfo=UTC),
+                "cursor_key": (1, uuid.UUID(int=501)),
+            },
+            "Invalid date-ordered cursor key",
+        ),
+        (
+            {"sort": "popular", "cursor_key": (True, uuid.UUID(int=501))},
+            "Invalid popular cursor key",
+        ),
+        (
+            {"sort": "popular", "cursor_key": ("1", uuid.UUID(int=501))},
+            "Invalid popular cursor key",
+        ),
+    ],
+)
+async def test_my_events_repository_rejects_invalid_inputs_without_querying(
+    options: dict[str, Any], message: str
+) -> None:
+    session = MagicMock()
+    session.execute = AsyncMock()
+    repository = EventRepository(session)
+
+    with pytest.raises(ValueError, match=message):
+        await repository.list_user_attended_events(
+            uuid.uuid4(), limit=2, locale="en", **options
+        )
+
+    session.execute.assert_not_awaited()

@@ -179,6 +179,43 @@ async def test_admin_maintenance_uses_participant_identity_only_after_authorizat
     )
 
 
+async def test_admin_maintenance_rolls_back_when_page_claims_more_without_rows():
+    admin = _user()
+    admin.role = command_service.UserRole.ADMIN
+    participant = _user()
+    summary = _group_chat(participant.id)
+    uow = _uow()
+    uow.rollback = AsyncMock()
+    uow.chats.get_by_id = AsyncMock(return_value=summary)
+    uow.chats.get_orm_for_update = AsyncMock(return_value=object())
+    uow.chats.lock_participant_ids_for_maintenance = AsyncMock(
+        return_value=[participant.id]
+    )
+    uow.chats.get_messages = AsyncMock(return_value=([], True, "next-page"))
+    uow.chats.delete_messages = AsyncMock()
+    uow.chats.update_timestamp_by_id = AsyncMock()
+    uow.chats.add = MagicMock()
+    uow.flush = AsyncMock()
+
+    service = ChatMaintenanceService(uow, MagicMock())
+    with pytest.raises(RuntimeError, match="no cursor rows"):
+        await service.clear_history(summary.id, admin, "en")
+
+    uow.chats.get_messages.assert_awaited_once_with(
+        summary.id,
+        None,
+        ChatMaintenanceService._MESSAGE_PAGE_SIZE,
+        user_id=participant.id,
+        for_update=True,
+    )
+    uow.rollback.assert_awaited_once()
+    uow.chats.delete_messages.assert_not_awaited()
+    uow.chats.add.assert_not_called()
+    uow.chats.update_timestamp_by_id.assert_not_awaited()
+    uow.flush.assert_not_awaited()
+    uow.commit.assert_not_awaited()
+
+
 @pytest.mark.parametrize("operation", ["clear_history", "delete_chat"])
 async def test_admin_maintenance_fails_closed_for_chat_without_rls_identity(
     operation: str,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import runpy
+import sys
 import uuid
 from hashlib import sha256
 from pathlib import Path
@@ -103,6 +105,43 @@ def test_unicode_generator_checks_source_digest_and_writes_deterministic_rows(
     with pytest.raises(ValueError, match="checksum mismatch"):
         emoji_generator.generate_file(source_path, output_path)
     assert output_path.read_bytes() == b"1F44D\n2764 FE0F\n"
+
+
+def test_unicode_generator_main_writes_deterministic_rows_without_changing_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = (
+        b"# Version: 18.0\n"
+        b"1F44D; fully-qualified # thumbs up\n"
+        b"2764 FE0F; fully-qualified # heart\n"
+    )
+    source_path = tmp_path / "emoji-test.txt"
+    output_path = tmp_path / "generated" / "qualified-sequences.txt"
+    source_path.write_bytes(fixture)
+    monkeypatch.setattr(emoji_generator, "SOURCE_SHA256", sha256(fixture).hexdigest())
+    monkeypatch.setattr(sys, "argv", ["generate.py", str(source_path), str(output_path)])
+
+    emoji_generator.main()
+
+    assert output_path.read_bytes() == b"1F44D\n2764 FE0F\n"
+    assert source_path.read_bytes() == fixture
+
+
+def test_unicode_generator_entrypoint_keeps_pinned_digest_fail_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = b"# Version: 18.0\n1F44D; fully-qualified # thumbs up\n"
+    source_path = tmp_path / "emoji-test.txt"
+    output_path = tmp_path / "generated" / "qualified-sequences.txt"
+    source_path.write_bytes(fixture)
+    monkeypatch.setattr(sys, "argv", ["generate.py", str(source_path), str(output_path)])
+
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        runpy.run_path(str(Path(emoji_generator.__file__)), run_name="__main__")
+
+    assert source_path.read_bytes() == fixture
+    assert not output_path.exists()
+    assert not output_path.parent.exists()
 
 
 def test_bundled_reaction_data_fails_closed_on_digest_drift(
