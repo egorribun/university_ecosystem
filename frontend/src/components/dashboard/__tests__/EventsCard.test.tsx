@@ -12,13 +12,22 @@ const {
   mockUseMediaQuery,
   mockUseTranslation,
   reducedMotion,
+  campusZone,
 } = vi.hoisted(() => ({
+  campusZone: { current: undefined as string | null | undefined },
   eventsState: {
     current: {
       data: [] as unknown[] | undefined,
       isPending: false,
       isLoading: false,
       isFetching: false,
+      isError: false,
+    } as {
+      data: unknown[] | undefined
+      isPending: boolean
+      isLoading: boolean
+      isFetching: boolean
+      isError?: boolean
     },
   },
   mockNavigate: vi.fn(),
@@ -86,7 +95,10 @@ vi.mock("@/contexts/LanguageContext", () => ({
   useLanguage: () => ({ language: "en", setLanguage: vi.fn() }),
 }))
 vi.mock("@/contexts/CampusTimezoneContext", () => ({
-  useCampusTimezone: () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+  useCampusTimezone: () =>
+    campusZone.current === undefined
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+      : campusZone.current,
 }))
 vi.mock("@/hooks/useDashboardEvents", () => ({
   useDashboardEvents: () => eventsState.current,
@@ -139,6 +151,7 @@ describe("EventsCard", () => {
     mockUseMediaQuery.mockImplementation(() => reducedMotion.value)
     mockUseTranslation.mockClear()
     reducedMotion.value = true
+    campusZone.current = undefined
   })
 
   it("does not mount perpetual decorative animations", () => {
@@ -190,6 +203,39 @@ describe("EventsCard", () => {
     renderCard()
     expect(screen.getByText("dashboard:events.empty")).toBeInTheDocument()
     expect(screen.queryByRole("list")).not.toBeInTheDocument()
+  })
+
+  it("announces a failed events fetch instead of the empty state", () => {
+    eventsState.current = {
+      data: undefined,
+      isPending: false,
+      isLoading: false,
+      isFetching: false,
+      isError: true,
+    }
+    renderCard()
+    expect(screen.getByRole("alert")).toHaveTextContent("common:statuses.error")
+    expect(screen.queryByText("dashboard:events.empty")).not.toBeInTheDocument()
+  })
+
+  it("shows no events until the campus timezone is known", () => {
+    campusZone.current = null
+    renderCard()
+    expect(screen.getByText("dashboard:events.empty")).toBeInTheDocument()
+    expect(screen.queryByRole("list")).not.toBeInTheDocument()
+  })
+
+  it("keeps the empty state when the events fetch succeeds with no matches", () => {
+    eventsState.current = {
+      data: [],
+      isPending: false,
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+    }
+    renderCard()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.getByText("dashboard:events.empty")).toBeInTheDocument()
   })
 
   it("renders the supplied query result independently of the dashboard hook", async () => {

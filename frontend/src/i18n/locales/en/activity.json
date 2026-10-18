@@ -101,6 +101,8 @@
   "heatmap": {
     "title": "Activity Calendar",
     "cellLabel": "{{date}}: {{count}} activities",
+    "unknownCellLabel": "{{date}}: no data",
+    "unknownValue": "No data",
     "legendLess": "Less",
     "legendMore": "More",
     "legendLevel": "Activity level {{level}}"

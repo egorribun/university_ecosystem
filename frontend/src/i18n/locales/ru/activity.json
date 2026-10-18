@@ -101,6 +101,8 @@
   "heatmap": {
     "title": "Календарь активности",
     "cellLabel": "{{date}}: {{count}} активностей",
+    "unknownCellLabel": "{{date}}: нет данных",
+    "unknownValue": "Нет данных",
     "legendLess": "Меньше",
     "legendMore": "Больше",
     "legendLevel": "Уровень активности {{level}}"

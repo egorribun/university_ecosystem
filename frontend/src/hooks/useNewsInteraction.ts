@@ -1,17 +1,27 @@
 import { useCallback } from "react"
 import api from "@/api/client"
 import { isAxiosError } from "axios"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query"
 import { useAuth } from "@/contexts/AuthContext"
 import { logWarning } from "@/app/logger"
+import {
+  NOTIFICATION_INTERACTIONS_DB_NAME,
+  NOTIFICATION_INTERACTIONS_DB_VERSION,
+} from "@/constants/notificationInteractionsDb"
 
 const NEWS_INTERACTION_STORE = "pending-news-interactions"
 const NEWS_INTERACTION_SYNC_TAG = "news-interaction:sync"
-const CLICK_DB_NAME = "notification-interactions"
-const CLICK_DB_VERSION = 3
 
 // Temporary comments have no server ID until the interactions query reconciles.
 export const OPTIMISTIC_COMMENT_ID_PREFIX = "optimistic-"
+
+/** Comments per /interactions request. The backend pages comments by offset, oldest first. */
+export const NEWS_COMMENTS_PAGE_SIZE = 20
 
 export type NewsComment = {
   id: string
@@ -28,19 +38,68 @@ export type NewsInteractions = {
   comments_count?: number
 }
 
+type NewsInteractionSummary = Pick<NewsInteractions, "likes_count" | "is_liked" | "comments_count">
+type InteractionPages = InfiniteData<NewsInteractions, number>
+
+// Each page repeats the summary; only the comments differ between pages.
+function flattenInteractions(data: InteractionPages): NewsInteractions {
+  const first = data.pages[0]
+  return {
+    likes_count: first?.likes_count ?? 0,
+    is_liked: first?.is_liked ?? false,
+    comments: data.pages.flatMap((page) => page.comments),
+    comments_count: first?.comments_count,
+  }
+}
+
+function nextCommentsOffset(lastPage: NewsInteractions, allPages: NewsInteractions[]) {
+  const loaded = allPages.reduce((total, page) => total + page.comments.length, 0)
+  const total = lastPage.comments_count ?? loaded
+  return lastPage.comments.length > 0 && loaded < total ? loaded : undefined
+}
+
+function mapPages(
+  data: InteractionPages,
+  update: (page: NewsInteractions, isLastPage: boolean) => NewsInteractions
+): InteractionPages {
+  return {
+    ...data,
+    pages: data.pages.map((page, index) => update(page, index === data.pages.length - 1)),
+  }
+}
+
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(CLICK_DB_NAME, CLICK_DB_VERSION)
+    const request = indexedDB.open(
+      NOTIFICATION_INTERACTIONS_DB_NAME,
+      NOTIFICATION_INTERACTIONS_DB_VERSION
+    )
     request.onupgradeneeded = () => {
+      // Mirror the service worker's schema (src/sw/offline.ts). If the page creates
+      // this version first, the worker never upgrades it, so every store it reads
+      // must exist here too.
       const db = request.result
       if (!db.objectStoreNames.contains("pending-navigations")) {
         db.createObjectStore("pending-navigations", { keyPath: "id", autoIncrement: true })
       }
       if (!db.objectStoreNames.contains("pending-reports")) {
-        db.createObjectStore("pending-reports", { keyPath: "id", autoIncrement: true })
+        db.createObjectStore("pending-reports", { keyPath: "id", autoIncrement: true }).createIndex(
+          "dedupeKey",
+          "dedupeKey",
+          { unique: false }
+        )
       }
       if (!db.objectStoreNames.contains(NEWS_INTERACTION_STORE)) {
         db.createObjectStore(NEWS_INTERACTION_STORE, { keyPath: "id", autoIncrement: true })
+      }
+      if (!db.objectStoreNames.contains("pending-mutations")) {
+        const mutations = db.createObjectStore("pending-mutations", {
+          keyPath: "id",
+          autoIncrement: true,
+        })
+        mutations.createIndex("mutationId", "mutationId", { unique: true })
+        mutations.createIndex("category", "category", { unique: false })
+        mutations.createIndex("dedupeKey", "dedupeKey", { unique: false })
       }
     }
     request.onsuccess = () => resolve(request.result)
@@ -108,30 +167,57 @@ async function handleMutationError(
 }
 
 interface NewsInteractionOptions {
-  initialData?: Partial<NewsInteractions>
+  /**
+   * Summary already known from the news payload. It is shown at once, but it
+   * never counts as a loaded comment list: the comments are always requested.
+   */
+  initialData?: Partial<NewsInteractionSummary>
+  /** `false` keeps the summary only (feed cards show counts and never open comments). */
+  loadComments?: boolean
 }
 
 export function useNewsInteraction(newsId: string, options: NewsInteractionOptions = {}) {
   const queryClient = useQueryClient()
   const { user } = useAuth()
   const queryKey = ["news", newsId, "interactions"]
+  const seed = options.initialData
 
-  const { data: interactions, isLoading } = useQuery<NewsInteractions>({
+  const interactionsQuery = useInfiniteQuery({
     queryKey,
-    queryFn: async () => {
-      const res = await api.get<NewsInteractions>(`/news/${newsId}/interactions`)
+    queryFn: async ({ pageParam }) => {
+      const res = await api.get<NewsInteractions>(`/news/${newsId}/interactions`, {
+        params: { limit: NEWS_COMMENTS_PAGE_SIZE, offset: pageParam },
+      })
       return res.data
     },
+    initialPageParam: 0,
+    getNextPageParam: nextCommentsOffset,
+    select: flattenInteractions,
+    enabled: options.loadComments ?? true,
     staleTime: 30_000, // 30s cache — optimistic updates handle local state immediately
-    initialData: options.initialData
+    // The seed is stale on purpose: a detail page mounted after a feed card must
+    // still fetch the comments, which the summary does not contain.
+    initialData: seed
       ? {
-          likes_count: options.initialData.likes_count ?? 0,
-          is_liked: options.initialData.is_liked ?? false,
-          comments: options.initialData.comments ?? [],
-          comments_count: options.initialData.comments_count ?? 0,
+          pages: [
+            {
+              likes_count: seed.likes_count ?? 0,
+              is_liked: seed.is_liked ?? false,
+              comments: [],
+              comments_count: seed.comments_count ?? 0,
+            },
+          ],
+          pageParams: [0],
         }
       : undefined,
+    initialDataUpdatedAt: 0,
   })
+  const interactions = interactionsQuery.data
+  const isLoading = interactionsQuery.isLoading
+  const fetchNextPage = interactionsQuery.fetchNextPage
+  const loadMoreComments = useCallback(() => {
+    void fetchNextPage()
+  }, [fetchNextPage])
 
   const likeMutation = useMutation({
     mutationFn: async () => {
@@ -143,13 +229,16 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
     },
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey })
-      const previous = queryClient.getQueryData<NewsInteractions>(queryKey)
+      const previous = queryClient.getQueryData<InteractionPages>(queryKey)
       if (previous) {
-        queryClient.setQueryData<NewsInteractions>(queryKey, {
-          ...previous,
-          is_liked: !previous.is_liked,
-          likes_count: previous.is_liked ? previous.likes_count - 1 : previous.likes_count + 1,
-        })
+        queryClient.setQueryData<InteractionPages>(
+          queryKey,
+          mapPages(previous, (page) => ({
+            ...page,
+            is_liked: !page.is_liked,
+            likes_count: page.is_liked ? page.likes_count - 1 : page.likes_count + 1,
+          }))
+        )
       }
       return { previous }
     },
@@ -174,7 +263,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
     },
     onMutate: async (content) => {
       await queryClient.cancelQueries({ queryKey })
-      const previous = queryClient.getQueryData<NewsInteractions>(queryKey)
+      const previous = queryClient.getQueryData<InteractionPages>(queryKey)
       if (previous) {
         // Optimistic comment
         const optimisticComment: NewsComment = {
@@ -184,11 +273,15 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
           user_name: user?.full_name ?? "You",
           created_at: new Date().toISOString(),
         }
-        queryClient.setQueryData<NewsInteractions>(queryKey, {
-          ...previous,
-          comments: [...previous.comments, optimisticComment],
-          comments_count: (previous.comments_count ?? previous.comments.length) + 1,
-        })
+        const loaded = flattenInteractions(previous).comments.length
+        queryClient.setQueryData<InteractionPages>(
+          queryKey,
+          mapPages(previous, (page, isLastPage) => ({
+            ...page,
+            comments: isLastPage ? [...page.comments, optimisticComment] : page.comments,
+            comments_count: (page.comments_count ?? loaded) + 1,
+          }))
+        )
       }
       return { previous }
     },
@@ -218,12 +311,15 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
     },
     onMutate: async ({ commentId, content }) => {
       await queryClient.cancelQueries({ queryKey })
-      const previous = queryClient.getQueryData<NewsInteractions>(queryKey)
+      const previous = queryClient.getQueryData<InteractionPages>(queryKey)
       if (previous) {
-        queryClient.setQueryData<NewsInteractions>(queryKey, {
-          ...previous,
-          comments: previous.comments.map((c) => (c.id === commentId ? { ...c, content } : c)),
-        })
+        queryClient.setQueryData<InteractionPages>(
+          queryKey,
+          mapPages(previous, (page) => ({
+            ...page,
+            comments: page.comments.map((c) => (c.id === commentId ? { ...c, content } : c)),
+          }))
+        )
       }
       return { previous }
     },
@@ -247,13 +343,17 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
     },
     onMutate: async (commentId) => {
       await queryClient.cancelQueries({ queryKey })
-      const previous = queryClient.getQueryData<NewsInteractions>(queryKey)
+      const previous = queryClient.getQueryData<InteractionPages>(queryKey)
       if (previous) {
-        queryClient.setQueryData<NewsInteractions>(queryKey, {
-          ...previous,
-          comments: previous.comments.filter((c) => c.id !== commentId),
-          comments_count: (previous.comments_count ?? previous.comments.length) - 1,
-        })
+        const loaded = flattenInteractions(previous).comments.length
+        queryClient.setQueryData<InteractionPages>(
+          queryKey,
+          mapPages(previous, (page) => ({
+            ...page,
+            comments: page.comments.filter((c) => c.id !== commentId),
+            comments_count: (page.comments_count ?? loaded) - 1,
+          }))
+        )
       }
       return { previous }
     },
@@ -275,6 +375,9 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
   return {
     interactions,
     isLoading,
+    hasMoreComments: interactionsQuery.hasNextPage,
+    isLoadingMoreComments: interactionsQuery.isFetchingNextPage,
+    loadMoreComments,
     toggleLike: useCallback(() => likeMutate(), [likeMutate]),
     addComment: useCallback((content: string) => commentMutateAsync(content), [commentMutateAsync]),
     updateComment: useCallback(

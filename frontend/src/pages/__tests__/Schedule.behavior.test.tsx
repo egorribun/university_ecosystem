@@ -56,7 +56,7 @@ const {
       currentLesson: null as any,
       nextLesson: null as any,
       nowTick: new Date("2024-03-25T08:00:00.000Z"),
-      lessonDays: ["Monday"],
+      lessonDaysForMonth: (month: Date) => new Set<number>(month.getMonth() === 8 ? [7] : [1]),
       lessonTypeLabels: new Map([["lecture", "Lecture"]]),
       todayLessons: [],
       currentProgress: 0,
@@ -254,7 +254,25 @@ vi.mock("@/components/schedule/ScheduleShortcutsOverlay", () => ({
 }))
 
 vi.mock("@/components/schedule/ScheduleMiniCalendar", () => ({
-  ScheduleMiniCalendar: () => <aside data-testid="mini-calendar" />,
+  ScheduleMiniCalendar: ({
+    lessonDays,
+    month,
+    onMonthChange,
+  }: {
+    lessonDays: Set<number>
+    month?: Date
+    onMonthChange?: (next: Date) => void
+  }) => (
+    <aside
+      data-testid="mini-calendar"
+      data-days={[...lessonDays].join(",")}
+      data-month={month?.getMonth()}
+    >
+      <button type="button" onClick={() => onMonthChange?.(new Date(2026, 8, 1))}>
+        show-september
+      </button>
+    </aside>
+  ),
 }))
 
 vi.mock("@/components/schedule/ScheduleSettingsPanel", () => ({
@@ -365,6 +383,14 @@ describe("Schedule page behavior", () => {
 
   afterEach(() => {
     cleanup()
+  })
+
+  it("moves the mini-calendar lesson dots with the month the calendar shows", async () => {
+    await renderSchedule()
+    fireEvent.click(screen.getByRole("button", { name: "show-september" }))
+
+    expect(screen.getByTestId("mini-calendar")).toHaveAttribute("data-month", "8")
+    expect(screen.getByTestId("mini-calendar")).toHaveAttribute("data-days", "7")
   })
 
   it("renders desktop controls and toggles settings and shortcuts", async () => {

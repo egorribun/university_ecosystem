@@ -571,3 +571,12 @@ describe("useEventCardLogic (branches)", () => {
     expect(result.current.snackbar).toBe("events:form.errors.invalidDateTime")
   })
 })
+
+describe("useEventCardLogic registration seed", () => {
+  it("seeds an unregistered state when the API sends a null registration flag", () => {
+    const { result } = renderHook(() =>
+      useEventCardLogic({ id: "event-null", is_registered: null })
+    )
+    expect(result.current.registration.isRegistered).toBe(false)
+  })
+})

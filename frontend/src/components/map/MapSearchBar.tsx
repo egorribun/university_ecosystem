@@ -197,6 +197,14 @@ export function MapSearchBar({
     [onSelectBuilding, onSelectRoom]
   )
 
+  // The list renders buildings first, then rooms. activeIdx indexes that rendered
+  // order, so keyboard selection must read the same ordering as the highlight.
+  const { buildingResults, roomResults, options } = useMemo(() => {
+    const buildings = results.filter((r) => r.type === "building")
+    const rooms = results.filter((r) => r.type === "room")
+    return { buildingResults: buildings, roomResults: rooms, options: [...buildings, ...rooms] }
+  }, [results])
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
       if (!isOpen || results.length === 0) return
@@ -215,9 +223,9 @@ export function MapSearchBar({
           // Slicing at the active index yields either exactly one valid result
           // or an empty iterable. It keeps Enter a total operation even when
           // focus/async updates leave no active option.
-          const selectedIndex = activeIdx ?? results.length
-          for (const result of results.slice(selectedIndex, selectedIndex + 1)) {
-            handleSelect(result)
+          const selectedIndex = activeIdx ?? options.length
+          for (const option of options.slice(selectedIndex, selectedIndex + 1)) {
+            handleSelect(option)
           }
           break
         }
@@ -228,16 +236,12 @@ export function MapSearchBar({
           break
       }
     },
-    [isOpen, results, activeIdx, handleSelect]
+    [isOpen, results, options, activeIdx, handleSelect]
   )
 
   // useImperativeHandle runs after the input is committed, so the local DOM
   // ref is populated even though it is nullable during render.
   useImperativeHandle(searchInputRef, () => inputRef.current!)
-
-  // Group results
-  const buildingResults = results.filter((r) => r.type === "building")
-  const roomResults = results.filter((r) => r.type === "room")
 
   return (
     <div className="relative">

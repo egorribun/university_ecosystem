@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, act } from "@testing-library/react"
+import { render, screen, fireEvent, act, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 /**
@@ -152,6 +152,85 @@ describe("MessageInput", () => {
       fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false })
 
       expect(onSend).toHaveBeenCalledWith("Hello", [])
+    })
+
+    it("keeps the draft when the send reports failure and clears it once the send succeeds", async () => {
+      const onSend = vi.fn<(text: string, files: File[]) => Promise<boolean>>()
+      onSend.mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+      render(<MessageInput onSend={onSend} />)
+      const textarea = screen.getByRole("textbox", { name: "messenger:typeMessage" })
+      fireEvent.change(textarea, { target: { value: "Keep me" } })
+
+      fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false })
+      await waitFor(() => expect(onSend).toHaveBeenCalledOnce())
+      await act(async () => {})
+      expect(textarea).toHaveValue("Keep me")
+
+      fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false })
+      await waitFor(() => expect(textarea).toHaveValue(""))
+    })
+
+    it("keeps text typed while the send is still pending", async () => {
+      let finishSend: (sent: boolean) => void = () => undefined
+      const onSend = vi.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            finishSend = resolve
+          })
+      )
+      render(<MessageInput onSend={onSend} />)
+      const textarea = screen.getByRole("textbox", { name: "messenger:typeMessage" })
+      fireEvent.change(textarea, { target: { value: "first" } })
+      fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false })
+      fireEvent.change(textarea, { target: { value: "first and a second thought" } })
+
+      await act(async () => {
+        finishSend(true)
+      })
+
+      expect(textarea).toHaveValue("first and a second thought")
+    })
+
+    it("keeps the draft when the send rejects", async () => {
+      const onSend = vi.fn<(text: string, files: File[]) => Promise<boolean>>()
+      onSend.mockRejectedValueOnce(new Error("offline"))
+      render(<MessageInput onSend={onSend} />)
+      const textarea = screen.getByRole("textbox", { name: "messenger:typeMessage" })
+      fireEvent.change(textarea, { target: { value: "Still here" } })
+
+      fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false })
+      await waitFor(() => expect(onSend).toHaveBeenCalledOnce())
+      await act(async () => {})
+
+      expect(textarea).toHaveValue("Still here")
+    })
+
+    it("does not dispatch a second send while the first one is still in flight", async () => {
+      const onSend = vi.fn<(text: string, files: File[]) => Promise<boolean>>(
+        () => new Promise<boolean>(() => {})
+      )
+      render(<MessageInput onSend={onSend} />)
+      const textarea = screen.getByRole("textbox", { name: "messenger:typeMessage" })
+      fireEvent.change(textarea, { target: { value: "Once" } })
+
+      fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false })
+      fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false })
+
+      expect(onSend).toHaveBeenCalledOnce()
+    })
+
+    it("does not send the draft when Enter only commits an IME composition", () => {
+      const onSend = vi.fn()
+      render(<MessageInput onSend={onSend} />)
+      const textarea = screen.getByRole("textbox", { name: "messenger:typeMessage" })
+      const composedDraft = "Привет"
+      fireEvent.change(textarea, { target: { value: composedDraft } })
+
+      fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false, isComposing: true })
+      fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false, keyCode: 229 })
+
+      expect(onSend).not.toHaveBeenCalled()
+      expect(textarea).toHaveValue(composedDraft)
     })
 
     it("consumes plain Enter instead of inserting a newline, but not Shift+Enter", () => {

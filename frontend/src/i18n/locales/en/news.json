@@ -23,7 +23,8 @@
     "zoomImage": "View full image",
     "editComment": "Edit",
     "deleteComment": "Delete",
-    "postComment": "Submit"
+    "postComment": "Submit",
+    "loadMoreComments": "Load more comments"
   },
   "quickView": {
     "readMore": "Read full article"

@@ -27,6 +27,12 @@ export function resolveShareUrl(url?: string): string {
   return window.location.href
 }
 
+/** Absolute link for a site-relative path; undefined when no browser origin exists (SSR). */
+export function resolveSiteShareUrl(path: string): string | undefined {
+  if (typeof window === "undefined") return undefined
+  return new URL(path, window.location.origin).href
+}
+
 export function useShare({ title, url, onNotify, translations = {} }: ShareOptions) {
   const [sharing, setSharing] = useState(false)
   const [shareDialogOpen, setShareDialogOpen] = useState(false)

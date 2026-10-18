@@ -705,7 +705,7 @@ describe("useMessengerController", () => {
       })
       await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
 
-      act(() => result.current.handleSendMessage("deferred", []))
+      act(() => void result.current.handleSendMessage("deferred", []))
       mocks.paramsRef.current = { chatId: "chat-2" }
       rerender()
       await waitFor(() => expect(result.current.selectedChatId).toBe("chat-2"))
@@ -751,7 +751,7 @@ describe("useMessengerController", () => {
       const { result } = renderHook(() => useMessengerController(), { wrapper })
       await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
 
-      act(() => result.current.handleSendMessage("hello", []))
+      act(() => void result.current.handleSendMessage("hello", []))
 
       expect(
         consoleError.mock.calls.some((call) =>

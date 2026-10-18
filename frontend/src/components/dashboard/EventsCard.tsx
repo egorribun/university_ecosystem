@@ -74,6 +74,8 @@ const EventsCardContent = memo(function EventsCardContent({
     [dashboardEventsQuery.data]
   )
   const loadingEvents = dashboardEventsQuery.isPending && events.length === 0
+  // A failed fetch must not read as "no events today" (same contract as ScheduleCard).
+  const eventsQueryFailed = dashboardEventsQuery.isError
 
   const prefetchEventsList = () => {
     void prefetchDashboardEvents(queryClient)
@@ -193,7 +195,13 @@ const EventsCardContent = memo(function EventsCardContent({
           </div>
         )}
 
-        {!loadingEvents && scopedEvents.length === 0 && (
+        {eventsQueryFailed && (
+          <p role="alert" className="text-sm text-(--error-text)">
+            {t("common:statuses.error")}
+          </p>
+        )}
+
+        {!loadingEvents && !eventsQueryFailed && scopedEvents.length === 0 && (
           <p className="text-sm text-(--text-secondary)">{t("dashboard:events.empty")}</p>
         )}
 

@@ -20,6 +20,7 @@ import { breakpoints } from "@/theme/tokens"
 import type { EventDateRange, EventSortMode, EventTabKey } from "./types"
 import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import { getCampusDateKey, getCampusDateRangeKeys } from "@/utils/campusTimezone"
+import { useMinuteClock } from "@/hooks/useMinuteClock"
 
 export const EventsFeature = () => {
   const { user } = useAuth()
@@ -134,6 +135,8 @@ export const EventsFeature = () => {
   const isFetching = tab === "my" ? myEventsFetching : listIsFetching
 
   /* ── Client-side filter + sort ── */
+  // Date range and "upcoming" depend on the current time; the minute tick keeps them current.
+  const clock = useMinuteClock()
   const filteredEvents = useMemo(() => {
     let list = rawEvents
 
@@ -145,7 +148,7 @@ export const EventsFeature = () => {
     }
 
     // Date range filter (client-side)
-    const bounds = getCampusDateRangeKeys(dateRange, new Date(), campusTimezone)
+    const bounds = getCampusDateRangeKeys(dateRange, new Date(clock), campusTimezone)
     const isSupportedDateRange =
       dateRange === "today" || dateRange === "week" || dateRange === "month"
     if (isSupportedDateRange && !bounds) {
@@ -163,14 +166,13 @@ export const EventsFeature = () => {
     if (sortMode === "popular") {
       list = [...list].sort((a, b) => (b.participant_count ?? 0) - (a.participant_count ?? 0))
     } else if (sortMode === "upcoming") {
-      const now = Date.now()
       list = [...list]
-        .filter((e) => e.starts_at && new Date(e.starts_at).getTime() > now)
+        .filter((e) => e.starts_at && new Date(e.starts_at).getTime() > clock)
         .sort((a, b) => new Date(a.starts_at!).getTime() - new Date(b.starts_at!).getTime())
     }
 
     return list
-  }, [rawEvents, activeCategory, dateRange, sortMode, campusTimezone])
+  }, [rawEvents, activeCategory, dateRange, sortMode, campusTimezone, clock])
 
   const requiresCompleteDataset =
     tab !== "my" && (activeCategory !== "all" || Boolean(dateRange) || sortMode !== "newest")

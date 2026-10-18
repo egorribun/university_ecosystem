@@ -20,17 +20,28 @@
  * `serviceWorker`/`SyncManager`), so the IDB queue write succeeds silently.
  */
 import { act, renderHook, waitFor } from "@testing-library/react"
-import { QueryClient, QueryClientProvider, notifyManager } from "@tanstack/react-query"
+import {
+  QueryClient,
+  QueryClientProvider,
+  notifyManager,
+  type InfiniteData,
+} from "@tanstack/react-query"
 import { IDBFactory } from "fake-indexeddb"
 import { http, HttpResponse } from "msw"
 import { createElement, type PropsWithChildren } from "react"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { server } from "@/tests/mocks/server"
+import { NOTIFICATION_INTERACTIONS_DB_VERSION } from "@/constants/notificationInteractionsDb"
 import { withExpectedConsole } from "@/tests/strictConsole"
 import type { User } from "@/types/User"
 import api from "@/api/client"
-import { useNewsInteraction, type NewsComment, type NewsInteractions } from "../useNewsInteraction"
+import {
+  NEWS_COMMENTS_PAGE_SIZE,
+  useNewsInteraction,
+  type NewsComment,
+  type NewsInteractions,
+} from "../useNewsInteraction"
 
 const authMock = vi.hoisted(() => ({ user: null as User | null }))
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: authMock.user }) }))
@@ -38,7 +49,7 @@ vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: authMock.user
 const NEWS_ID = "news-1"
 const STORE = "pending-news-interactions"
 const DB_NAME = "notification-interactions"
-const DB_VERSION = 3
+const DB_VERSION = NOTIFICATION_INTERACTIONS_DB_VERSION
 
 const baseInteractions: NewsInteractions = {
   likes_count: 3,
@@ -58,6 +69,18 @@ function makeWrapper() {
 
 function setOnline(value: boolean) {
   Object.defineProperty(navigator, "onLine", { configurable: true, value })
+}
+
+/** The cache stores paged data; flatten it the way the hook's select does. */
+function cachedInteractions(qc: QueryClient): NewsInteractions | undefined {
+  const data = qc.getQueryData<InfiniteData<NewsInteractions, number>>([
+    "news",
+    NEWS_ID,
+    "interactions",
+  ])
+  const first = data?.pages[0]
+  if (!data || !first) return undefined
+  return { ...first, comments: data.pages.flatMap((page) => page.comments) }
 }
 
 function deferred<T>() {
@@ -215,6 +238,38 @@ function setupServer(opts: {
 
 type QueueEntry = { url: string; payload: unknown; method: string; timestamp: number }
 
+/** Creates the stores exactly as the service worker's upgrade does (src/sw/offline.ts). */
+function createWorkerStores(db: IDBDatabase) {
+  db.createObjectStore("pending-navigations", { keyPath: "id", autoIncrement: true })
+  db.createObjectStore("pending-reports", { keyPath: "id", autoIncrement: true }).createIndex(
+    "dedupeKey",
+    "dedupeKey",
+    { unique: false }
+  )
+  db.createObjectStore(STORE, { keyPath: "id", autoIncrement: true })
+  const mutations = db.createObjectStore("pending-mutations", {
+    keyPath: "id",
+    autoIncrement: true,
+  })
+  mutations.createIndex("mutationId", "mutationId", { unique: true })
+  mutations.createIndex("category", "category", { unique: false })
+  mutations.createIndex("dedupeKey", "dedupeKey", { unique: false })
+}
+
+function openDatabaseAt(version: number, onUpgrade?: (db: IDBDatabase) => void) {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, version)
+    req.onupgradeneeded = () => onUpgrade?.(req.result)
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
+
+/** Opens the database at the service worker's version, as the worker does on its first run. */
+function openServiceWorkerSchema(): Promise<IDBDatabase> {
+  return openDatabaseAt(DB_VERSION, createWorkerStores)
+}
+
 function readQueue(): Promise<QueueEntry[]> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION)
@@ -292,8 +347,8 @@ describe("useNewsInteraction — query", () => {
     expect(result.current.interactions).toEqual(baseInteractions)
   })
 
-  it("initialData seeds immediately (all defaulting branches)", () => {
-    const { wrapper } = makeWrapper()
+  it("initialData seeds immediately (all defaulting branches)", async () => {
+    const { qc, wrapper } = makeWrapper()
     setupServer({ initial: baseInteractions })
     const { result } = renderHook(
       () => useNewsInteraction(NEWS_ID, { initialData: { likes_count: 9, is_liked: true } }),
@@ -303,10 +358,183 @@ describe("useNewsInteraction — query", () => {
     expect(result.current.interactions?.is_liked).toBe(true)
     expect(result.current.interactions?.comments).toEqual([])
     expect(result.current.interactions?.comments_count).toBe(0)
+    // The seeded summary is stale, so the comment request runs; let it settle.
+    await waitFor(() => expect(qc.isFetching()).toBe(0))
   })
 
-  it("defaults omitted like fields in partial initialData", () => {
+  it("fetches the comment list on mount even when the summary was seeded", async () => {
     const { wrapper } = makeWrapper()
+    const comment: NewsComment = {
+      id: "c-server-1",
+      content: "Loaded from the server",
+      user_id: "user-2",
+      user_name: "Ann",
+      created_at: "2026-06-13T00:00:00Z",
+    }
+    setupServer({ initial: { ...baseInteractions, comments: [comment], comments_count: 1 } })
+
+    const { result } = renderHook(
+      () => useNewsInteraction(NEWS_ID, { initialData: { likes_count: 3, comments_count: 1 } }),
+      { wrapper }
+    )
+
+    await waitFor(() => expect(result.current.interactions?.comments).toEqual([comment]))
+  })
+
+  it("keeps a summary-only entry without requesting the comment list", async () => {
+    const { wrapper } = makeWrapper()
+    let commentRequests = 0
+    server.use(
+      http.get("*/news/:newsId/interactions", () => {
+        commentRequests += 1
+        return HttpResponse.json(baseInteractions)
+      })
+    )
+
+    const { result } = renderHook(
+      () =>
+        useNewsInteraction(NEWS_ID, {
+          initialData: { likes_count: 9, is_liked: true, comments_count: 2 },
+          loadComments: false,
+        }),
+      { wrapper }
+    )
+
+    expect(result.current.interactions).toMatchObject({
+      likes_count: 9,
+      is_liked: true,
+      comments_count: 2,
+    })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(commentRequests).toBe(0)
+  })
+
+  it("loads comments page by page with offset and stops after the last page", async () => {
+    const { wrapper } = makeWrapper()
+    const total = NEWS_COMMENTS_PAGE_SIZE + 3
+    const comments: NewsComment[] = Array.from({ length: total }, (_, index) => ({
+      id: `c-${index}`,
+      content: `Comment ${index}`,
+      user_id: "user-2",
+      user_name: "Ann",
+      created_at: `2026-06-13T00:00:${String(index).padStart(2, "0")}Z`,
+    }))
+    const requested: string[] = []
+    server.use(
+      http.get("*/news/:newsId/interactions", ({ request }) => {
+        const params = new URL(request.url).searchParams
+        const limit = Number(params.get("limit"))
+        const offset = Number(params.get("offset"))
+        requested.push(`${limit}:${offset}`)
+        return HttpResponse.json({
+          likes_count: 0,
+          is_liked: false,
+          comments: comments.slice(offset, offset + limit),
+          comments_count: total,
+        })
+      })
+    )
+
+    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+
+    await waitFor(() =>
+      expect(result.current.interactions?.comments).toHaveLength(NEWS_COMMENTS_PAGE_SIZE)
+    )
+    expect(result.current.hasMoreComments).toBe(true)
+
+    await act(async () => {
+      result.current.loadMoreComments()
+    })
+    await waitFor(() => expect(result.current.interactions?.comments).toEqual(comments))
+    expect(result.current.hasMoreComments).toBe(false)
+    expect(requested).toEqual([
+      `${NEWS_COMMENTS_PAGE_SIZE}:0`,
+      `${NEWS_COMMENTS_PAGE_SIZE}:${NEWS_COMMENTS_PAGE_SIZE}`,
+    ])
+  })
+
+  it("appends a new comment to the last loaded page after later pages load", async () => {
+    const { wrapper } = makeWrapper()
+    const comments: NewsComment[] = Array.from({ length: NEWS_COMMENTS_PAGE_SIZE + 1 }, (_, i) => ({
+      id: `c-${i}`,
+      content: `Comment ${i}`,
+      user_id: "user-2",
+      user_name: "Ann",
+      created_at: `2026-06-13T00:00:${String(i).padStart(2, "0")}Z`,
+    }))
+    server.use(
+      http.get("*/news/:newsId/interactions", ({ request }) => {
+        const params = new URL(request.url).searchParams
+        const limit = Number(params.get("limit"))
+        const offset = Number(params.get("offset"))
+        return HttpResponse.json({
+          likes_count: 0,
+          is_liked: false,
+          comments: comments.slice(offset, offset + limit),
+          comments_count: comments.length,
+        })
+      }),
+      http.post("*/news/:newsId/comment", async ({ request }) => {
+        const body = (await request.json()) as { content: string }
+        const created: NewsComment = {
+          id: "c-created",
+          content: body.content,
+          user_id: "u-1",
+          user_name: "Test User",
+          created_at: "2026-06-13T01:00:00Z",
+        }
+        comments.push(created)
+        return HttpResponse.json(created)
+      })
+    )
+
+    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+    await waitFor(() =>
+      expect(result.current.interactions?.comments).toHaveLength(NEWS_COMMENTS_PAGE_SIZE)
+    )
+    await act(async () => {
+      result.current.loadMoreComments()
+    })
+    await waitFor(() =>
+      expect(result.current.interactions?.comments).toHaveLength(NEWS_COMMENTS_PAGE_SIZE + 1)
+    )
+
+    await act(async () => {
+      await result.current.addComment("Newest")
+    })
+    await waitFor(() =>
+      expect(result.current.interactions?.comments.at(-1)?.content).toBe("Newest")
+    )
+    expect(result.current.interactions?.comments).toHaveLength(NEWS_COMMENTS_PAGE_SIZE + 2)
+    expect(result.current.hasMoreComments).toBe(false)
+  })
+
+  it("reads a cache without pages as an empty summary", async () => {
+    const { qc, wrapper } = makeWrapper()
+    const { result } = renderHook(() => useNewsInteraction(NEWS_ID, { loadComments: false }), {
+      wrapper,
+    })
+
+    act(() => {
+      qc.setQueryData<InfiniteData<NewsInteractions, number>>(["news", NEWS_ID, "interactions"], {
+        pages: [],
+        pageParams: [],
+      })
+    })
+
+    await waitFor(() =>
+      expect(result.current.interactions).toEqual({
+        likes_count: 0,
+        is_liked: false,
+        comments: [],
+      })
+    )
+  })
+
+  it("defaults omitted like fields in partial initialData", async () => {
+    const { qc, wrapper } = makeWrapper()
     setupServer({ initial: baseInteractions })
     const { result } = renderHook(() => useNewsInteraction(NEWS_ID, { initialData: {} }), {
       wrapper,
@@ -318,6 +546,7 @@ describe("useNewsInteraction — query", () => {
       comments: [],
       comments_count: 0,
     })
+    await waitFor(() => expect(qc.isFetching()).toBe(0))
   })
 })
 
@@ -444,7 +673,7 @@ describe("useNewsInteraction — toggleLike", () => {
       await waitFor(() => expect(result.current.isLiking).toBe(false))
 
       expect(await readQueue()).toEqual([])
-      expect(qc.getQueryData(["news", NEWS_ID, "interactions"])).toEqual(baseInteractions)
+      expect(cachedInteractions(qc)).toEqual(baseInteractions)
     } finally {
       postSpy.mockRestore()
     }
@@ -467,7 +696,7 @@ describe("useNewsInteraction — toggleLike", () => {
     expect(q[0]!.method).toBe("POST")
     expect(q[0]!.payload).toEqual({})
     // offline refetch also errors → optimistic flip is NOT reverted
-    const d = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
+    const d = cachedInteractions(qc)
     expect(d?.is_liked).toBe(true)
   })
 
@@ -483,6 +712,83 @@ describe("useNewsInteraction — toggleLike", () => {
 
     await waitFor(() => expect(result.current.isLiking).toBe(false))
     expect(await readQueue()).toHaveLength(1)
+  })
+
+  it("queues offline interactions in a database the service worker already upgraded", async () => {
+    const workerDatabase = await openServiceWorkerSchema()
+    workerDatabase.close()
+    const { wrapper } = makeWrapper()
+    setupServer({ initial: baseInteractions, like: "offline" })
+    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    setOnline(false)
+
+    act(() => result.current.toggleLike())
+
+    await waitFor(() => expect(result.current.isLiking).toBe(false))
+    expect(await readQueue()).toHaveLength(1)
+  })
+
+  it("upgrades a version-3 database without recreating the worker's mutation store", async () => {
+    const legacy = await openDatabaseAt(3, createWorkerStores)
+    await new Promise<void>((resolve, reject) => {
+      const tx = legacy.transaction("pending-mutations", "readwrite")
+      tx.objectStore("pending-mutations").add({
+        mutationId: "m-kept",
+        url: "/api/v1/news/news-1/like",
+        method: "POST",
+        payload: {},
+        timestamp: 1,
+        idempotencyKey: "key-kept",
+        retryCount: 0,
+      })
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    legacy.close()
+
+    const { wrapper } = makeWrapper()
+    setupServer({ initial: baseInteractions, like: "offline" })
+    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    setOnline(false)
+    act(() => result.current.toggleLike())
+    await waitFor(() => expect(result.current.isLiking).toBe(false))
+
+    const db = await openDatabaseAt(DB_VERSION)
+    try {
+      const keptMutations = await new Promise<unknown[]>((resolve, reject) => {
+        const req = db.transaction("pending-mutations").objectStore("pending-mutations").getAll()
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
+      })
+      expect(keptMutations).toHaveLength(1)
+    } finally {
+      db.close()
+    }
+  })
+
+  it("creates the service worker's stores when the page creates the database first", async () => {
+    const { wrapper } = makeWrapper()
+    setupServer({ initial: baseInteractions, like: "offline" })
+    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    setOnline(false)
+    act(() => result.current.toggleLike())
+    await waitFor(() => expect(result.current.isLiking).toBe(false))
+
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION)
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    try {
+      expect(db.objectStoreNames.contains("pending-mutations")).toBe(true)
+      const reports = db.transaction("pending-reports").objectStore("pending-reports")
+      expect(reports.indexNames.contains("dedupeKey")).toBe(true)
+    } finally {
+      db.close()
+    }
   })
 
   it("registers background sync when the service-worker sync APIs exist", async () => {
@@ -849,7 +1155,7 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     await waitFor(() => expect(result.current.interactions?.comments.length).toBe(1))
     act(() => result.current.updateComment("c1", "edited"))
     await waitFor(() => {
-      const d = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
+      const d = cachedInteractions(qc)
       expect(d?.comments.find((c) => c.id === "c1")?.content).toBe("edited")
     })
   })
@@ -861,7 +1167,7 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     await waitFor(() => expect(result.current.interactions?.comments.length).toBe(2))
     act(() => result.current.updateComment("c1", "edited"))
     await waitFor(() => {
-      const data = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
+      const data = cachedInteractions(qc)
       expect(data?.comments.find((comment) => comment.id === "c2")?.content).toBe("b")
     })
   })
@@ -874,7 +1180,7 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     act(() => result.current.updateComment("c1", "x"))
     await waitFor(() => expect(result.current.isUpdatingComment).toBe(false))
     await waitFor(() => {
-      const d = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
+      const d = cachedInteractions(qc)
       expect(d?.comments.find((c) => c.id === "c1")?.content).toBe("orig")
     })
   })
@@ -900,7 +1206,7 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     await waitFor(() => expect(result.current.interactions?.comments.length).toBe(2))
     act(() => result.current.deleteComment("c1"))
     await waitFor(() => {
-      const d = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
+      const d = cachedInteractions(qc)
       expect(d?.comments.length).toBe(1)
       expect(d?.comments_count).toBe(1)
     })
@@ -913,7 +1219,7 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     await waitFor(() => expect(result.current.interactions?.comments.length).toBe(2))
     act(() => result.current.deleteComment("c1"))
     await waitFor(() => {
-      const data = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
+      const data = cachedInteractions(qc)
       expect(data?.comments_count).toBe(1)
     })
   })
@@ -926,7 +1232,7 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     act(() => result.current.deleteComment("c1"))
     await waitFor(() => expect(result.current.isDeletingComment).toBe(false))
     await waitFor(() => {
-      const d = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
+      const d = cachedInteractions(qc)
       expect(d?.comments.length).toBe(2)
     })
   })

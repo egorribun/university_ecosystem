@@ -484,6 +484,29 @@ describe("EventsFeature — sort modes", () => {
     expect(screen.getByTestId("list-order")).toHaveTextContent("sooner,later")
   })
 
+  it("drops an event from the upcoming sort once its start time passes", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-08-09T12:00:00.000Z"))
+    search.params = { sort: "upcoming" }
+    listQuery.events = [
+      evt({ id: "soon", starts_at: "2026-08-09T12:01:00.000Z" }),
+      evt({ id: "later", starts_at: "2026-08-10T12:00:00.000Z" }),
+    ]
+    try {
+      render(<EventsFeature />)
+      expect(screen.getByTestId("list-order").textContent).toBe("soon,later")
+
+      act(() => {
+        vi.advanceTimersByTime(2 * 60_000)
+      })
+
+      expect(screen.getByTestId("list-count").textContent).toBe("1")
+      expect(screen.getByTestId("list-order").textContent).toBe("later")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("handles missing participant_count in popular sort (?? 0 fallback)", () => {
     search.params = { sort: "popular" }
     listQuery.events = [evt({ id: "a", participant_count: undefined }), evt({ id: "b" })]

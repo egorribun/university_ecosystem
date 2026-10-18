@@ -280,7 +280,7 @@ describe("Dashboard events during persisted-query hydration", () => {
     }
   })
 
-  it("renders the ordinary empty state after an events request settles with an error", async () => {
+  it("shows an error alert, not the empty state, after an events request fails", async () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } },
     })
@@ -304,7 +304,8 @@ describe("Dashboard events during persisted-query hydration", () => {
         })
       })
       expect(state.apiGet).toHaveBeenCalledOnce()
-      expect(container.textContent).toContain("dashboard:events.empty")
+      expect(container.querySelector('[role="alert"]')?.textContent).toBe("common:statuses.error")
+      expect(container.textContent).not.toContain("dashboard:events.empty")
       expect(container.querySelector('[role="presentation"]')).toBeNull()
     } finally {
       await act(async () => root.unmount())
@@ -367,8 +368,11 @@ describe("Dashboard events during persisted-query hydration", () => {
         eventsBusy: "false",
         eventsSkeleton: false,
         eventsCard: true,
-        eventsEmpty: true,
+        eventsEmpty: false,
       })
+      expect(container.querySelector('.vt-dash-events [role="alert"]')?.textContent).toBe(
+        "common:statuses.error"
+      )
 
       const requestCountAtSettle = state.apiGet.mock.calls.length
       await act(async () => {

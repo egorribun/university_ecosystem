@@ -83,7 +83,7 @@ interface ChatAreaProps {
   setSearchQuery: Dispatch<SetStateAction<string>>
   showChatMenu: boolean
   setShowChatMenu: Dispatch<SetStateAction<boolean>>
-  handleSendMessage: (text: string, files: File[]) => void
+  handleSendMessage: (text: string, files: File[]) => void | Promise<boolean>
   handleViewProfile: () => void
   handleClearChat: () => void
   handleDeleteChat: () => void

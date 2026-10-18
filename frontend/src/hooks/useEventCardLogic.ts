@@ -11,6 +11,7 @@ import type { Event, EventEditDraft } from "@/types/Event"
 import { captureActiveTelemetryContext } from "@/utils/telemetryContext"
 import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import { eventDateErrorTranslationKey, resolveCampusEventDateRange } from "@/utils/eventDateTime"
+import { useMinuteClock } from "@/hooks/useMinuteClock"
 
 // dayjs extensions removed
 
@@ -64,20 +65,45 @@ export function useEventCardLogic({
   const [cardImageReady, setCardImageReady] = useState(() => !image_url)
 
   // -- Edit Form State --
-  const [editData, setEditData] = useState<EventEditDraft>({
-    title: title || "",
-    title_en: title_en || "",
-    description: description || "",
-    description_en: description_en || "",
-    event_type: event_type || "",
-    event_type_en: event_type_en || "",
-    location: location || "",
-    location_en: location_en || "",
-    starts_at: starts_at || "",
-    ends_at: ends_at || "",
-    speaker: speaker || "",
-    image_url: image_url || "",
-  })
+  // The draft stays null until the user edits it, so the form always reflects the
+  // card's current props. Opening the dialog clears it (see setEditOpenFresh).
+  const [editDraft, setEditDraft] = useState<EventEditDraft | null>(null)
+  const propsDraft = useMemo<EventEditDraft>(
+    () => ({
+      title: title || "",
+      title_en: title_en || "",
+      description: description || "",
+      description_en: description_en || "",
+      event_type: event_type || "",
+      event_type_en: event_type_en || "",
+      location: location || "",
+      location_en: location_en || "",
+      starts_at: starts_at || "",
+      ends_at: ends_at || "",
+      speaker: speaker || "",
+      image_url: image_url || "",
+    }),
+    [
+      title,
+      title_en,
+      description,
+      description_en,
+      event_type,
+      event_type_en,
+      location,
+      location_en,
+      starts_at,
+      ends_at,
+      speaker,
+      image_url,
+    ]
+  )
+  const editData = editDraft ?? propsDraft
+  const setEditData = useCallback((next: EventEditDraft) => setEditDraft(next), [])
+  const setEditOpenFresh = useCallback((open: boolean) => {
+    if (open) setEditDraft(null)
+    setEditOpen(open)
+  }, [])
 
   const menuId = useMemo(() => `event-card-menu-${id}`, [id])
 
@@ -92,8 +118,11 @@ export function useEventCardLogic({
   })
 
   // -- Computed Properties --
+  // Live/soon/ended depend on the current time, so the memos re-run on a minute tick.
+  const clock = useMinuteClock()
+
   const timeStatus = useMemo(() => {
-    const now = new Date()
+    const now = new Date(clock)
     const start = parseDate(starts_at)
     const end = parseDate(ends_at)
 
@@ -104,12 +133,12 @@ export function useEventCardLogic({
       return { status: "soon" as const, timeText: formatRelativeTime(start, "en-US") }
     }
     return { status: "none" as const }
-  }, [starts_at, ends_at])
+  }, [starts_at, ends_at, clock])
 
   const eventEnded = useMemo(() => {
     const end = parseDate(ends_at)
-    return !isNaN(end.getTime()) && end < new Date()
-  }, [ends_at])
+    return !isNaN(end.getTime()) && end < new Date(clock)
+  }, [ends_at, clock])
 
   const cardImageUrl = useMemo(() => previewUrl || image_url || undefined, [image_url, previewUrl])
 
@@ -225,7 +254,7 @@ export function useEventCardLogic({
     menuAnchor,
     setMenuAnchor,
     editOpen,
-    setEditOpen,
+    setEditOpen: setEditOpenFresh,
     confirmDeleteOpen,
     setConfirmDeleteOpen,
     editData,

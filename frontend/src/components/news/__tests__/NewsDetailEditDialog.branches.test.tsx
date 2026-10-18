@@ -127,6 +127,50 @@ describe("NewsDetailEditDialog branches", () => {
     )
   })
 
+  it("saves the Russian source, not the English display values, from the English editor", async () => {
+    // Under language=en the API returns localized display values in the base fields.
+    fetchNewsItem.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        id: "news-1",
+        title: "Исходный заголовок",
+        content: "Исходный текст",
+        title_en: "English title",
+        content_en: "English content",
+        image_url: null,
+      },
+    })
+    const user = userEvent.setup()
+    renderDialog({
+      ...baseProps,
+      language: "en",
+      initialData: {
+        title: "Launching the new campus ecosystem",
+        content: "A unified platform for schedule, news, events, and messenger.",
+        title_en: "Launching the new campus ecosystem",
+        content_en: "A unified platform for schedule, news, events, and messenger.",
+        image_url: "",
+      },
+    })
+
+    await user.click(await screen.findByRole("button", { name: "common:buttons.save" }))
+
+    await waitFor(() =>
+      expect(updateNews).toHaveBeenCalledWith(
+        "news-1",
+        expect.objectContaining({
+          title: "Исходный заголовок",
+          content: "Исходный текст",
+          title_en: "English title",
+          content_en: "English content",
+        })
+      )
+    )
+    expect(updateNews.mock.calls.at(-1)?.[1]).not.toMatchObject({
+      title: "Launching the new campus ecosystem",
+    })
+  })
+
   it("keeps the English editor closed and saving disabled after source fetch rejection", async () => {
     fetchNewsItem.mockRejectedValueOnce(new Error("source unavailable"))
     renderDialog({ ...baseProps, language: "en" })

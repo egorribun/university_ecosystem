@@ -100,12 +100,14 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     if (!isAdmin && editSession) setEditSession(null)
   }, [editSession, isAdmin])
 
+  // Feed cards show counts only; the comment list is requested on the detail page.
   const { interactions, toggleLike } = useNewsInteraction(id, {
     initialData: {
       likes_count: initialLikes,
       comments_count: initialComments,
       is_liked: initialIsLiked,
     },
+    loadComments: false,
   })
   const likesCount = interactions?.likes_count ?? initialLikes
   const isLiked = interactions?.is_liked ?? initialIsLiked

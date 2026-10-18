@@ -55,6 +55,7 @@ export function ActivityFeature() {
     attendanceTrendData,
     gradesBySubject,
     heatmapData,
+    heatmapCoveredFrom,
   } = useActivityData()
 
   const comparative = useActivityComparative(attendance, grades, participation)
@@ -314,6 +315,7 @@ export function ActivityFeature() {
                 data={heatmapData}
                 period={period}
                 ariaLabel={t("activity:a11y.heatmapCalendar")}
+                coveredFrom={heatmapCoveredFrom}
               />
             </section>
           </FadeSection>

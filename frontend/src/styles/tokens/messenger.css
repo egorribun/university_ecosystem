@@ -91,10 +91,11 @@
     );
 
     /* ── Sent bubble (own messages) ───────────────── */
+    /* Deep stops so white text clears WCAG AA (4.5:1) across the whole bubble. */
     --messenger-bubble-sent-bg: linear-gradient(
       135deg,
-      var(--color-violet-500) 0%,
-      var(--color-violet-400) 100%
+      var(--color-violet-600) 0%,
+      var(--color-purple-600) 100%
     );
     --messenger-bubble-sent-shadow:
       0 1px 2px color-mix(in srgb, var(--color-violet-500) 25%, transparent),
@@ -396,6 +397,9 @@
 .messenger-bubble-sent {
   background: var(--messenger-bubble-sent-bg);
   box-shadow: var(--messenger-bubble-sent-shadow);
+  /* Text on the violet bubble is white in both themes: the page-level token turns
+     dark in dark mode, which would fail contrast on these stops. */
+  --text-inverse: var(--color-white);
 }
 
 .messenger-bubble-received {

@@ -523,6 +523,34 @@ async def test_news_interactions_success() -> None:
     )
 
 
+async def test_news_interactions_forwards_later_comment_pages() -> None:
+    """A later comment page must reach the service with its offset (AUD-030)."""
+    handler = inspect.unwrap(news_api.get_news_interact)
+    service = AsyncMock()
+    service.get_news_item.return_value = _news_record()
+    service.get_interactions.return_value = {
+        "likes_count": 0,
+        "is_liked": False,
+        "comments": [],
+        "comments_count": 45,
+    }
+
+    result = await call_injected(
+        handler,
+        id=NEWS_ID,
+        request=_request(),
+        limit=20,
+        offset=40,
+        user=None,
+        provides={"NewsService": service},
+    )
+
+    assert result.comments_count == 45
+    service.get_interactions.assert_awaited_once_with(
+        NEWS_ID, None, limit=20, offset=40
+    )
+
+
 async def test_update_comment_success_and_error_paths() -> None:
     handler = inspect.unwrap(news_api.update_comment)
     service = AsyncMock()

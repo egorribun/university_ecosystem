@@ -200,6 +200,34 @@ describe("useNotifications — list query", () => {
   })
 })
 
+describe("useNotifications — loaded pages survive a refetch", () => {
+  it("keeps later pages after a mutation refetches the list", async () => {
+    vi.mocked(fetchNotificationsList).mockImplementation((params) =>
+      params?.cursor === "c1"
+        ? Promise.resolve(listResult([entry("3")], { has_more: false }))
+        : Promise.resolve(
+            listResult([entry("1"), entry("2")], { has_more: true, next_cursor: "c1" })
+          )
+    )
+    const { qc, result } = setup()
+    await waitFor(() => expect(result.current.data).toHaveLength(2))
+    await act(async () => {
+      await result.current.fetchMore("c1")
+    })
+    await waitFor(() => expect(result.current.data.map((i) => i.id)).toEqual(["1", "2", "3"]))
+
+    act(() => result.current.markRead("1"))
+
+    // The refetch replays every loaded page, so the second page is requested again.
+    await waitFor(() =>
+      expect(vi.mocked(fetchNotificationsList).mock.calls.length).toBeGreaterThanOrEqual(4)
+    )
+    await waitFor(() => expect(qc.isFetching()).toBe(0))
+    expect(result.current.data.map((i) => i.id)).toEqual(["1", "2", "3"])
+    expect(result.current.hasMore).toBe(false)
+  })
+})
+
 describe("useNotifications — mutations invalidate the list", () => {
   it("markRead calls the API with the id and refetches the list", async () => {
     vi.mocked(fetchNotificationsList).mockResolvedValue(listResult([entry("1")]))
@@ -258,14 +286,10 @@ describe("useNotifications — fetchMore", () => {
     expect(fetchNotificationsList).toHaveBeenLastCalledWith({ cursor: "c1" })
   })
 
-  it("stores the page as-is when the cache is empty (no prior list)", async () => {
-    // Initial list rejects → cache holds no data; the fetchMore merge takes the
-    // `!current` early-return branch and stores the page verbatim.
-    vi.mocked(fetchNotificationsList).mockImplementation((params) =>
-      params?.cursor === "seed"
-        ? Promise.resolve(listResult([entry("9"), entry("10")]))
-        : Promise.reject(new Error("no initial list"))
-    )
+  it("does not load a later page while the first page is missing", async () => {
+    // Initial list rejects, so there is no cursor to continue from: a later page
+    // must not be requested with the stale cursor.
+    vi.mocked(fetchNotificationsList).mockRejectedValue(new Error("no initial list"))
     const { result } = setup()
     await waitFor(() => expect(result.current.isError).toBe(true))
 
@@ -273,7 +297,41 @@ describe("useNotifications — fetchMore", () => {
       await result.current.fetchMore("seed")
     })
 
-    await waitFor(() => expect(result.current.data.map((i) => i.id)).toEqual(["9", "10"]))
+    expect(fetchNotificationsList).not.toHaveBeenCalledWith({ cursor: "seed" })
+    expect(result.current.data).toEqual([])
+  })
+
+  it("reads a cache without pages as an empty, settled list", async () => {
+    const { qc, result } = setup()
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    vi.mocked(fetchNotificationsList).mockClear()
+
+    act(() => {
+      qc.setQueryData(["notifications", "list"], { pages: [], pageParams: [] })
+    })
+
+    await waitFor(() => expect(result.current.hasMore).toBe(false))
+    expect(result.current.data).toEqual([])
+    expect(result.current.unreadCount).toBe(0)
+    expect(result.current.nextCursor).toBeNull()
+  })
+
+  it("reports a failed later-page request and keeps the loaded items", async () => {
+    vi.mocked(fetchNotificationsList).mockImplementation((params) =>
+      params?.cursor === "c1"
+        ? Promise.reject(new Error("page failed"))
+        : Promise.resolve(listResult([entry("1")], { has_more: true, next_cursor: "c1" }))
+    )
+    const { result } = setup()
+    await waitFor(() => expect(result.current.data).toHaveLength(1))
+
+    await act(async () => {
+      await result.current.fetchMore("c1")
+    })
+
+    await waitFor(() => expect(result.current.isFetchMoreError).toBe(true))
+    expect(result.current.fetchMoreError).toEqual(new Error("page failed"))
+    expect(result.current.data.map((i) => i.id)).toEqual(["1"])
   })
 
   it("is a no-op when called without a cursor", async () => {

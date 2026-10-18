@@ -504,6 +504,98 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     expect(result.current.todayLessons.map((lesson) => lesson.id)).toEqual(["earlier", "later"])
   })
 
+  it("starts on the parity of the current ISO week, not always the odd week", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    // 2026-08-19 is a Wednesday in ISO week 34, an even week.
+    vi.setSystemTime(new Date("2026-08-19T12:00:00.000Z"))
+
+    const groups: ScheduleGroup[] = [{ id: "group-even", name: "Even Group" }]
+    const lessons: Lesson[] = [
+      {
+        id: "odd-only",
+        group_id: "group-even",
+        weekday: "wednesday",
+        start_time: "09:00",
+        end_time: "10:00",
+        subject: "Odd week",
+        teacher: "Teacher",
+        room: "1",
+        lesson_type: "lecture",
+        parity: "odd",
+      },
+      {
+        id: "even-only",
+        group_id: "group-even",
+        weekday: "wednesday",
+        start_time: "11:00",
+        end_time: "12:00",
+        subject: "Even week",
+        teacher: "Teacher",
+        room: "2",
+        lesson_type: "lecture",
+        parity: "even",
+      },
+    ]
+    const client = newClient()
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
+    client.setQueryData(pageScheduleQueryOptions("group-even").queryKey, lessons)
+    useAuthMock.mockReturnValue({
+      user: { id: "u-even", role: "student", group_id: "group-even" },
+    } as never)
+
+    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.selectedGroup).toBe("group-even"))
+    expect(result.current.currentParity).toBe("even")
+    expect(result.current.todayLessons.map((lesson) => lesson.id)).toEqual(["even-only"])
+  })
+
+  it("lists lesson days for the month the mini-calendar shows, not only today", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-08-15T12:00:00.000Z"))
+
+    const groups: ScheduleGroup[] = [{ id: "group-cal", name: "Calendar Group" }]
+    const lessons: Lesson[] = [
+      {
+        id: "monday",
+        group_id: "group-cal",
+        weekday: "monday",
+        start_time: "09:00",
+        end_time: "10:00",
+        subject: "Weekly",
+        teacher: "Teacher",
+        room: "1",
+        lesson_type: "lecture",
+        parity: "both",
+      },
+      {
+        id: "unknown-weekday",
+        group_id: "group-cal",
+        weekday: "not-a-weekday",
+        start_time: "09:00",
+        end_time: "10:00",
+        subject: "Ignored",
+        teacher: "Teacher",
+        room: "2",
+        lesson_type: "lecture",
+        parity: "both",
+      },
+    ]
+    const client = newClient()
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
+    client.setQueryData(pageScheduleQueryOptions("group-cal").queryKey, lessons)
+    useAuthMock.mockReturnValue({
+      user: { id: "u-cal", role: "student", group_id: "group-cal" },
+    } as never)
+
+    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.selectedGroup).toBe("group-cal"))
+    // September 2026: the Mondays are the 7th, 14th, 21st and 28th.
+    const september = [...result.current.lessonDaysForMonth(new Date(2026, 8, 1))]
+    expect(september.sort((a, b) => a - b)).toEqual([7, 14, 21, 28])
+  })
+
   it("normalizes nullish persistence fields without throwing", async () => {
     const groups: ScheduleGroup[] = [{ id: "group-nullish", name: "Nullish Group" }]
     const lessons = [

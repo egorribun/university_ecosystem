@@ -39,6 +39,21 @@ import {
  * The translation/parsing layer (toNumber, parseAttendanceRecent, etc.)
  * stays here as `useMemo` derivations — they're UI concerns, not fetch concerns.
  */
+/** Items per section the backend returns in `recent` (mirrors analytics_service `_RECENT_LIMIT`). */
+const HEATMAP_SECTION_LIMIT = 5
+
+/** Oldest day a capped section fully covers, or null when the section is complete. */
+const sectionCoverage = (items: readonly { date: string }[] | undefined): string | null => {
+  if (!items || items.length < HEATMAP_SECTION_LIMIT) return null
+  return items
+    .map((item) => item.date.slice(0, 10))
+    .reduce((oldest, day) => (day < oldest ? day : oldest))
+}
+
+/** Maximum grade of a scale: 100-point, GPA (4.0) or the five-point default. */
+const gradeScaleMax = (scale: GradeStats["scale"]) =>
+  scale === "100" ? 100 : scale === "gpa" ? 4 : 5
+
 export default function useActivityData() {
   const { t } = useTranslation(["activity", "common"])
   const { language } = useLanguage()
@@ -193,10 +208,12 @@ export default function useActivityData() {
 
   const gradesBySubject = useMemo(() => {
     const recent = grades?.recent
-    if (!recent?.length) return []
+    if (!grades || !recent?.length) return []
+    // One grade scale per sample (AUDIT-2026-10 §5): items without their own max use its maximum.
+    const scaleMax = gradeScaleMax(grades.scale)
     const bySubject = new Map<string, { sum: number; count: number; max: number }>()
     for (const item of recent) {
-      const prev = bySubject.get(item.course) ?? { sum: 0, count: 0, max: item.max ?? 5 }
+      const prev = bySubject.get(item.course) ?? { sum: 0, count: 0, max: item.max ?? scaleMax }
       bySubject.set(item.course, {
         sum: prev.sum + item.score,
         count: prev.count + 1,
@@ -208,7 +225,7 @@ export default function useActivityData() {
       value: sum / count,
       max,
     }))
-  }, [grades?.recent])
+  }, [grades])
 
   // Heatmap data — merge all recent arrays into date→count map
   const heatmapData = useMemo(() => {
@@ -221,6 +238,17 @@ export default function useActivityData() {
     for (const item of grades?.recent ?? []) inc(item.date)
     for (const item of participation?.recent ?? []) inc(item.date)
     return map
+  }, [attendance?.recent, grades?.recent, participation?.recent])
+
+  // A section that reached the backend cap is complete only from its oldest item on;
+  // the heatmap must show earlier days as unknown rather than as zero activity.
+  const heatmapCoveredFrom = useMemo(() => {
+    const coverage = [attendance?.recent, grades?.recent, participation?.recent]
+      .map(sectionCoverage)
+      .filter((day): day is string => day !== null)
+    return coverage.length > 0
+      ? coverage.reduce((latest, day) => (day > latest ? day : latest))
+      : null
   }, [attendance?.recent, grades?.recent, participation?.recent])
 
   return {
@@ -245,5 +273,6 @@ export default function useActivityData() {
     attendanceTrendData,
     gradesBySubject,
     heatmapData,
+    heatmapCoveredFrom,
   }
 }

@@ -98,6 +98,7 @@ const { scheduleDataMock } = vi.hoisted(() => {
     todayIdx: 0,
     hasToday: false,
     nowTick: new Date(),
+    lessonDaysForMonth: () => new Set<number>(),
     todayLessons: [],
     currentLesson: null,
     nextLesson: null,

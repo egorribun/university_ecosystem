@@ -167,6 +167,19 @@ describe("EventEditDialog", () => {
     expect(props.onClose).toHaveBeenCalledTimes(2)
   })
 
+  it("writes an English edit only to the _en field, leaving the Russian source title as it was", () => {
+    const props = createProps()
+    render(<EventEditDialog {...props} />)
+
+    fireEvent.change(screen.getByLabelText("events:form.title_en"), {
+      target: { value: "Renamed in English" },
+    })
+
+    expect(props.setDraft).toHaveBeenLastCalledWith(
+      expect.objectContaining({ title_en: "Renamed in English", title: draft.title })
+    )
+  })
+
   it("uses Russian fields, updates localized values, and ignores an empty file selection", async () => {
     language.current = "ru"
     const props = createProps({ previewUrl: "blob:preview" })

@@ -895,8 +895,8 @@ export const useMessengerController = () => {
     return () => sendLeave(selectedChatId)
   }, [selectedChatId, isConnected, sendJoin, sendLeave])
 
-  const handleSendMessage = (text: string, files: File[]) => {
-    if (!selectedChatId) return
+  const handleSendMessage = (text: string, files: File[]): Promise<boolean> => {
+    if (!selectedChatId) return Promise.resolve(false)
 
     const tempId = crypto.randomUUID()
     const now = new Date()
@@ -941,26 +941,31 @@ export const useMessengerController = () => {
       }),
     }
 
-    startTransition(async () => {
-      addOptimisticMessage(optimisticMsg)
-      try {
-        await sendMessageMutation.mutateAsync({
-          chatId: selectedChatId,
-          content: text,
-          files,
-          replyToMessageId: replyingTo?.id,
-          idempotencyKey: tempId,
-          optimisticBlobUrls,
-        })
-      } catch {
-        // React Query's onError owns cleanup. Consuming the rejection keeps the
-        // transition action from surfacing an already-handled send failure.
-        return
-      }
+    const delivered = new Promise<boolean>((resolve) => {
+      startTransition(async () => {
+        addOptimisticMessage(optimisticMsg)
+        try {
+          await sendMessageMutation.mutateAsync({
+            chatId: selectedChatId,
+            content: text,
+            files,
+            replyToMessageId: replyingTo?.id,
+            idempotencyKey: tempId,
+            optimisticBlobUrls,
+          })
+          resolve(true)
+        } catch {
+          // React Query's onError owns cleanup. Consuming the rejection keeps the
+          // transition action from surfacing an already-handled send failure; the
+          // false outcome tells the composer to keep its draft.
+          resolve(false)
+        }
+      })
     })
     // Wave 207 — clear the reply context once the send is dispatched (the chip
     // disappears; the optimistic bubble already carries its own replyTo copy).
     setReplyingTo(null)
+    return delivered
   }
 
   // Wave 207 — start replying to a message. Resolves from transformedMessages

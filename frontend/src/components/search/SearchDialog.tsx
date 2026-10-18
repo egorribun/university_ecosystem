@@ -22,6 +22,7 @@ import { useQuery } from "@tanstack/react-query"
 import api from "@/api/client"
 import { cn } from "@/utils/cn"
 import { useDebounced } from "@/hooks/useDebounced"
+import useFocusTrap from "@/hooks/useFocusTrap"
 
 interface SearchResult {
   id: string
@@ -70,6 +71,8 @@ export function SearchDialog() {
   const [activeIndex, setActiveIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
+  // Keeps Tab inside the modal while it is open and returns focus to the opener on close.
+  const dialogRef = useFocusTrap<HTMLDivElement>({ active: open, returnFocus: true })
   const isMac = useMemo(
     () => typeof navigator !== "undefined" && /Mac/i.test(navigator.platform),
     []
@@ -172,6 +175,7 @@ export function SearchDialog() {
         role="presentation"
       >
         <m.div
+          ref={dialogRef}
           initial={{ opacity: 0, scale: 0.95, y: -20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: -20 }}

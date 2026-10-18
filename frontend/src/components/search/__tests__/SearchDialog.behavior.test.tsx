@@ -213,12 +213,23 @@ describe("SearchDialog user behavior", () => {
     expect(press(input, "ArrowUp").defaultPrevented).toBe(true)
     expect(press(input, "Enter").defaultPrevented).toBe(false)
     press(input, "ArrowDown")
-    expect(press(input, "Tab").defaultPrevented).toBe(false)
+    expect(press(input, "Tab").defaultPrevented).toBe(true)
     expect(screen.getByRole("dialog")).toBeInTheDocument()
     expect(router.state.location.pathname).toBe("/")
     expect(press(input, "Enter").defaultPrevented).toBe(true)
     await waitFor(() => expect(router.state.location.pathname).toBe("/events/202"))
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("keeps Tab focus inside the open dialog instead of leaving it for the page", async () => {
+    await renderSearch()
+    const input = await showResults()
+
+    const tab = press(input, "Tab")
+    expect(tab.defaultPrevented).toBe(true)
+    expect(screen.getByRole("dialog")).toContainElement(document.activeElement as HTMLElement)
+    fireEvent.keyDown(input, { key: "Tab", shiftKey: true })
+    expect(screen.getByRole("dialog")).toContainElement(document.activeElement as HTMLElement)
   })
 
   it("clears the active result after closing and reopening a cached search", async () => {

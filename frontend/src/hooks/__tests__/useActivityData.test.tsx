@@ -153,6 +153,91 @@ describe("useActivityData", () => {
     expect(result.current.gradesBySubject[0]!.value).toBe(4.5) // (5+4)/2
   })
 
+  it("treats days older than a capped activity section as unknown, not zero", () => {
+    const capped = Array.from({ length: 5 }, (_, index) => ({
+      date: `2026-04-${String(20 - index).padStart(2, "0")}T10:00:00Z`,
+      status: "present",
+    }))
+    vi.mocked(useActivitySummaryQuery).mockReturnValue({
+      data: { ...mockData, attendance: { ...mockData.attendance, recent: capped } },
+      isFetching: false,
+      isSuccess: true,
+    } as unknown as ReturnType<typeof useActivitySummaryQuery>)
+
+    const { result } = renderHook(() => useActivityData())
+
+    // The capped section is complete only from its oldest item (2026-04-16) onward.
+    expect(result.current.heatmapCoveredFrom).toBe("2026-04-16")
+  })
+
+  it("keeps the latest coverage boundary across several capped sections", () => {
+    const dayAt = (day: number) => `2026-04-${String(day).padStart(2, "0")}T10:00:00Z`
+    // Newest-first, as the backend returns the recent items.
+    const newestFirst = (newest: number) => Array.from({ length: 5 }, (_, index) => newest - index)
+    // Oldest-first, so the oldest item is not always the last one.
+    const oldestFirst = (oldest: number) => Array.from({ length: 5 }, (_, index) => oldest + index)
+    vi.mocked(useActivitySummaryQuery).mockReturnValue({
+      data: {
+        ...mockData,
+        attendance: {
+          ...mockData.attendance,
+          recent: newestFirst(22).map((day) => ({ date: dayAt(day), status: "present" })),
+        },
+        grades: {
+          ...mockData.grades,
+          recent: oldestFirst(16).map((day) => ({ date: dayAt(day), course: "Math", score: 5 })),
+        },
+        participation: {
+          ...mockData.participation,
+          recent: newestFirst(24).map((day) => ({
+            date: dayAt(day),
+            title: "Workshop",
+            role: "participant",
+          })),
+        },
+      },
+      isFetching: false,
+      isSuccess: true,
+    } as unknown as ReturnType<typeof useActivitySummaryQuery>)
+
+    const { result } = renderHook(() => useActivityData())
+
+    // Section boundaries: 2026-04-18, 2026-04-16 and 2026-04-20; the latest one wins.
+    expect(result.current.heatmapCoveredFrom).toBe("2026-04-20")
+  })
+
+  it("reports no coverage boundary while every section is complete", () => {
+    const { result } = renderHook(() => useActivityData())
+
+    expect(result.current.heatmapCoveredFrom).toBeNull()
+  })
+
+  it.each([
+    { scale: "100", max: 100 },
+    { scale: "gpa", max: 4 },
+  ] as const)(
+    "bounds subject grades by the sample's $scale scale when items carry no max",
+    ({ scale, max }) => {
+      vi.mocked(useActivitySummaryQuery).mockReturnValue({
+        data: {
+          ...mockData,
+          grades: {
+            average: 87,
+            scale,
+            trend: 0,
+            recent: [{ date: "2026-04-20T10:00:00Z", course: "Math", score: 87, max: null }],
+          },
+        },
+        isFetching: false,
+        isSuccess: true,
+      } as unknown as ReturnType<typeof useActivitySummaryQuery>)
+
+      const { result } = renderHook(() => useActivityData())
+
+      expect(result.current.gradesBySubject).toEqual([{ label: "Math", value: 87, max }])
+    }
+  )
+
   it("handles loading state correctly", () => {
     vi.mocked(useActivitySummaryQuery).mockReturnValue({
       data: undefined,

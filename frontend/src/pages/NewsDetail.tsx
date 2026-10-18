@@ -12,7 +12,7 @@ import {
   Snackbar,
 } from "@/components/settings"
 import { useNewsInteraction } from "@/hooks/useNewsInteraction"
-import { useShare } from "@/hooks/useShare"
+import { resolveSiteShareUrl, useShare } from "@/hooks/useShare"
 import { toDate, getMoscowDate } from "@/utils/date"
 import { localizeField } from "@/utils/localize"
 import { deleteNews, type NewsItem } from "@/api/news"
@@ -97,6 +97,10 @@ export default function NewsDetail() {
     enabled: !!id,
   })
 
+  // useShare memoises the link by url; without a per-article url it keeps the
+  // first article's location after navigation.
+  const articleUrl = useMemo(() => resolveSiteShareUrl(`/news/${encodeURIComponent(id)}`), [id])
+
   const {
     sharing,
     shareDialogOpen,
@@ -108,6 +112,7 @@ export default function NewsDetail() {
     handleCopyLink,
   } = useShare({
     title: query.data?.title || "",
+    url: articleUrl,
     onNotify: (msg) => setSnackbar(msg),
     translations: {
       shareSuccess: t("news:notifications.shareSuccess"),
@@ -120,16 +125,25 @@ export default function NewsDetail() {
     },
   })
 
-  const { interactions, toggleLike, addComment, isCommenting, updateComment, deleteComment } =
-    useNewsInteraction(id, {
-      initialData: query.data
-        ? {
-            likes_count: query.data.likes_count,
-            comments_count: query.data.comments_count,
-            is_liked: query.data.is_liked,
-          }
-        : undefined,
-    })
+  const {
+    interactions,
+    toggleLike,
+    addComment,
+    isCommenting,
+    updateComment,
+    deleteComment,
+    hasMoreComments,
+    isLoadingMoreComments,
+    loadMoreComments,
+  } = useNewsInteraction(id, {
+    initialData: query.data
+      ? {
+          likes_count: query.data.likes_count,
+          comments_count: query.data.comments_count,
+          is_liked: query.data.is_liked,
+        }
+      : undefined,
+  })
   const isLiked = interactions?.is_liked ?? false
   const likesCount = interactions?.likes_count ?? 0
   const comments = interactions?.comments ?? []
@@ -325,6 +339,19 @@ export default function NewsDetail() {
               t={t}
               getMoscowDate={getMoscowDate}
             />
+
+            {hasMoreComments && (
+              <div className="flex justify-center">
+                <Button
+                  variant="glass"
+                  onClick={loadMoreComments}
+                  disabled={isLoadingMoreComments}
+                  aria-busy={isLoadingMoreComments}
+                >
+                  {t("news:actions.loadMoreComments")}
+                </Button>
+              </div>
+            )}
 
             {relatedArticles.length > 0 && <RelatedNews items={relatedArticles} />}
 

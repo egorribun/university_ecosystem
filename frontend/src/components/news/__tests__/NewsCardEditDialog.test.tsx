@@ -98,7 +98,7 @@ describe("NewsCardEditDialog", () => {
     expect(screen.queryByRole("img")).not.toBeInTheDocument()
   })
 
-  it("normalizes empty optional translations and supports an omitted success callback", async () => {
+  it("sends cleared English translations as null so the server clears them", async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
     render(
@@ -116,12 +116,31 @@ describe("NewsCardEditDialog", () => {
       expect(apiMocks.patch).toHaveBeenCalledWith("/news/news-1", {
         title: initialData.title,
         content: initialData.content,
-        title_en: undefined,
-        content_en: undefined,
+        title_en: null,
+        content_en: null,
         image_url: "",
       })
     })
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it("keeps a filled English translation in the save payload", async () => {
+    const user = userEvent.setup()
+    render(
+      <NewsCardEditDialog
+        {...baseProps}
+        initialData={{ ...initialData, title_en: "English title", content_en: "English body" }}
+      />
+    )
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+
+    await waitFor(() => {
+      expect(apiMocks.patch).toHaveBeenCalledWith(
+        "/news/news-1",
+        expect.objectContaining({ title_en: "English title", content_en: "English body" })
+      )
+    })
   })
 
   it("closes a clean edit directly without opening discard confirmation", async () => {

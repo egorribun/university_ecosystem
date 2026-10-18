@@ -732,7 +732,10 @@ describe("NewsCard — derived state follows props", () => {
 
     expect(mocks.interactionArgs.at(-1)).toEqual([
       "news-1",
-      { initialData: { likes_count: 4, comments_count: 2, is_liked: false } },
+      {
+        initialData: { likes_count: 4, comments_count: 2, is_liked: false },
+        loadComments: false,
+      },
     ])
   })
 

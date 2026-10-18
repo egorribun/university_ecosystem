@@ -15,7 +15,9 @@ import { cn } from "@/utils/cn"
 import SmartImage from "@/components/media/SmartImage"
 
 interface MessageInputProps {
-  onSend: (text: string, files: File[]) => void
+  // A returned promise settles with the send outcome: false keeps the draft and
+  // attachments for a retry. Synchronous senders keep the draft cleared at once.
+  onSend: (text: string, files: File[]) => void | Promise<boolean>
   // Wave 207 — reply/quote compose chip. When set, a "Replying to {name}" chip
   // + snippet + cancel-X renders above the input row. senderName + isMe resolve
   // the author label ("You" vs name); onCancelReply clears the reply context.
@@ -100,6 +102,8 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
   const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([])
   const [svgRejected, setSvgRejected] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // True while an async send is pending, so a repeated Enter cannot send the same draft twice.
+  const sendInFlightRef = useRef(false)
 
   // Wave 183 SW7 — mirror selectedFiles into a ref so the unmount cleanup
   // can revoke outstanding Blob URLs without relying on the setState
@@ -133,24 +137,46 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
   const notifyTyping = onTyping ?? NOOP_TYPING_HANDLER
 
   const handleSend = () => {
-    if (text.trim() || selectedFiles.length > 0) {
-      onSend(
-        text,
-        selectedFiles.map((entry) => entry.file)
-      )
-      // Wave 183 SW7 — revoke Blob URLs when files are handed off to send.
-      // useMessengerController creates its own optimistic-message URLs at
-      // mutation time; the preview URLs here are no longer needed once the
-      // files leave MessageInput's scope.
-      selectedFiles.forEach((entry) => URL.revokeObjectURL(entry.previewUrl))
-      setText("")
-      setSelectedFiles([])
+    if (!(text.trim() || selectedFiles.length > 0) || sendInFlightRef.current) return
+
+    const sentText = text
+    const sentFiles = selectedFiles
+    // Clear only what is still the sent draft: the user may keep typing while a send is pending.
+    const clearDraft = () => {
+      // Wave 183 SW7 — revoke Blob URLs once the files are delivered; the
+      // controller owns its own optimistic-message URLs.
+      sentFiles.forEach((entry) => URL.revokeObjectURL(entry.previewUrl))
+      setText((current) => (current === sentText ? "" : current))
+      setSelectedFiles((current) => current.filter((entry) => !sentFiles.includes(entry)))
       setShowAttachMenu(false)
     }
+
+    const outcome = onSend(
+      sentText,
+      sentFiles.map((entry) => entry.file)
+    )
+    if (outcome instanceof Promise) {
+      sendInFlightRef.current = true
+      void outcome
+        .then((sent) => {
+          if (sent !== false) clearDraft()
+        })
+        // A rejected send keeps the draft for a retry, like a refused one.
+        .catch(() => undefined)
+        .finally(() => {
+          sendInFlightRef.current = false
+        })
+      return
+    }
+    clearDraft()
   }
 
   const handleKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Enter" && !event.shiftKey) {
+      // Enter also commits an IME composition (isComposing / keyCode 229); that
+      // keystroke must not send the unfinished text.
+      const isComposing = event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229
+      if (isComposing) return
       event.preventDefault()
       handleSend()
     }

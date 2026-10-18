@@ -3,9 +3,10 @@ declare const self: ServiceWorkerGlobalScope
 
 import { openDB, type IDBPDatabase } from "idb"
 import { log, warn } from "./logger"
-
-const CLICK_DB_NAME = "notification-interactions"
-const DB_VERSION = 4
+import {
+  NOTIFICATION_INTERACTIONS_DB_NAME as CLICK_DB_NAME,
+  NOTIFICATION_INTERACTIONS_DB_VERSION as DB_VERSION,
+} from "../constants/notificationInteractionsDb"
 
 export const STORES = {
   NAVIGATION: "pending-navigations",

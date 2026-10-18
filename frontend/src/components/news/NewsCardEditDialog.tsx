@@ -173,11 +173,13 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
         }
       }
 
+      // Cleared translations must be sent as explicit null: the backend uses
+      // exclude_unset, so an omitted key would keep the stored English text.
       const payload = {
         title: data.title,
         content: data.content,
-        title_en: data.title_en || undefined,
-        content_en: data.content_en || undefined,
+        title_en: data.title_en || null,
+        content_en: data.content_en || null,
         image_url: imgUrl,
       }
 

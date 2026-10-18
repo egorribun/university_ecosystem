@@ -16,6 +16,7 @@ import {
   getTimeStr,
 } from "@/components/schedule/scheduleUtils"
 import { detectConflicts } from "@/utils/scheduleConflicts"
+import { nowParity } from "@/utils/scheduleUtils"
 import { getDatabaseLazily, type ScheduleDoc } from "@/db/lazy"
 import { useScheduleConfig } from "./useScheduleConfig"
 import { useScheduleTime } from "./useScheduleTime"
@@ -24,7 +25,8 @@ export function useScheduleData() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
-  const [currentParity, setCurrentParity] = useState<"odd" | "even">("odd")
+  // The schedule shows the current ISO week's lessons until the user switches parity.
+  const [currentParity, setCurrentParity] = useState<"odd" | "even">(() => nowParity())
 
   // ── Config (i18n weekdays + lesson types) ──────────
   const config = useScheduleConfig()
@@ -127,28 +129,31 @@ export function useScheduleData() {
   const conflictedIds = useMemo(() => detectConflicts(filteredSchedule), [filteredSchedule])
 
   // ── Lesson days for MiniCalendar ───────────────────
-  // PERF-70-07: use year/month primitives — only recalculates on month change, not every 30s tick
-  const calYear = time.nowTick.getFullYear()
-  const calMonth = time.nowTick.getMonth()
-  const lessonDays = useMemo(() => {
-    const days = new Set<number>()
-    const firstDay = new Date(calYear, calMonth, 1).getDay()
-    const weekdayToOffset = new Map<string, number>()
-    for (let i = 0; i < weekdayBackend.length; i++) {
-      weekdayToOffset.set(weekdayBackend[i]!, i)
-    }
-    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
-    for (const lesson of filteredSchedule) {
-      const offset = weekdayToOffset.get(lesson.weekday)
-      if (offset === undefined) continue
-      const jsDay = (offset + 1) % 7
-      const firstOccurrence = 1 + ((jsDay - firstDay + 7) % 7)
-      for (let d = firstOccurrence; d <= daysInMonth; d += 7) {
-        days.add(d)
+  // The mini-calendar can show any month, so the caller passes the month it displays.
+  const lessonDaysForMonth = useCallback(
+    (month: Date) => {
+      const year = month.getFullYear()
+      const monthIdx = month.getMonth()
+      const days = new Set<number>()
+      const firstDay = new Date(year, monthIdx, 1).getDay()
+      const weekdayToOffset = new Map<string, number>()
+      for (let i = 0; i < weekdayBackend.length; i++) {
+        weekdayToOffset.set(weekdayBackend[i]!, i)
       }
-    }
-    return days
-  }, [filteredSchedule, weekdayBackend, calYear, calMonth])
+      const daysInMonth = new Date(year, monthIdx + 1, 0).getDate()
+      for (const lesson of filteredSchedule) {
+        const offset = weekdayToOffset.get(lesson.weekday)
+        if (offset === undefined) continue
+        const jsDay = (offset + 1) % 7
+        const firstOccurrence = 1 + ((jsDay - firstDay + 7) % 7)
+        for (let d = firstOccurrence; d <= daysInMonth; d += 7) {
+          days.add(d)
+        }
+      }
+      return days
+    },
+    [filteredSchedule, weekdayBackend]
+  )
 
   // ── Optimistic updates ─────────────────────────────
   const applyScheduleUpdate = useCallback(
@@ -204,7 +209,7 @@ export function useScheduleData() {
     currentLesson: time.currentLesson,
     nextLesson: time.nextLesson,
     conflictedIds,
-    lessonDays,
+    lessonDaysForMonth,
     timeLeftText: time.timeLeftText,
     timeLeftShort: time.timeLeftShort,
     currentProgress: time.currentProgress,

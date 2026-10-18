@@ -25,11 +25,15 @@ const mocks = vi.hoisted(() => ({
   toggleLike: vi.fn(),
   toggleBookmark: vi.fn(),
   interactions: {} as Record<string, unknown> | undefined,
+  hasMoreComments: false,
+  loadMoreComments: vi.fn(),
   setNewsHeroId: vi.fn(),
   articleNavigation: {} as Record<string, unknown>,
   swipe: {} as Record<string, unknown>,
   share: {} as Record<string, unknown>,
   shareNotify: (_message: string): void => undefined,
+  shareUrl: undefined as string | undefined,
+  routeId: "news-1",
   relatedArticles: [] as unknown[],
   relatedCategory: "general",
   language: "en",
@@ -38,7 +42,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mocks.navigate,
-  useParams: () => ({ id: "news-1" }),
+  useParams: () => ({ id: mocks.routeId }),
 }))
 
 vi.mock("@tanstack/react-query", () => ({
@@ -77,12 +81,17 @@ vi.mock("@/hooks/useNewsInteraction", () => ({
     isCommenting: false,
     updateComment: vi.fn(),
     deleteComment: vi.fn(),
+    hasMoreComments: mocks.hasMoreComments,
+    isLoadingMoreComments: false,
+    loadMoreComments: mocks.loadMoreComments,
   }),
 }))
 
-vi.mock("@/hooks/useShare", () => ({
-  useShare: (options: { onNotify: (message: string) => void }) => {
+vi.mock("@/hooks/useShare", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useShare")>()),
+  useShare: (options: { onNotify: (message: string) => void; url?: string }) => {
     mocks.shareNotify = options.onNotify
+    mocks.shareUrl = options.url
     return mocks.share
   },
 }))
@@ -509,6 +518,37 @@ describe("NewsDetail", () => {
       expect(mocks.navigate).toHaveBeenCalledWith({ to: "/news" })
     })
     historyLength.mockRestore()
+  })
+
+  it("offers a load-more control for comments only while later comment pages remain", () => {
+    mocks.hasMoreComments = true
+    try {
+      const { rerender } = render(<NewsDetail />)
+      fireEvent.click(screen.getByRole("button", { name: "news:actions.loadMoreComments" }))
+      expect(mocks.loadMoreComments).toHaveBeenCalledOnce()
+
+      mocks.hasMoreComments = false
+      rerender(<NewsDetail />)
+      expect(
+        screen.queryByRole("button", { name: "news:actions.loadMoreComments" })
+      ).not.toBeInTheDocument()
+    } finally {
+      mocks.hasMoreComments = false
+      mocks.loadMoreComments.mockReset()
+    }
+  })
+
+  it("shares the URL of the article on screen after navigating to another article", () => {
+    const { rerender } = render(<NewsDetail />)
+    expect(mocks.shareUrl).toBe(`${window.location.origin}/news/news-1`)
+
+    mocks.routeId = "news-2"
+    try {
+      rerender(<NewsDetail />)
+    } finally {
+      mocks.routeId = "news-1"
+    }
+    expect(mocks.shareUrl).toBe(`${window.location.origin}/news/news-2`)
   })
 
   it("renders share options and invokes copy/link-close actions", async () => {

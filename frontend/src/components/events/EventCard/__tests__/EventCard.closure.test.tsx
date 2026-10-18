@@ -173,6 +173,9 @@ describe("EventCard logic wrapper closure paths", () => {
     ["starts_at", { starts_at: "2026-06-16T14:00:00Z" }],
     ["ends_at", { ends_at: "2026-06-16T17:00:00Z" }],
     ["is_registered", { is_registered: true }],
+    ["speaker", { speaker: "Dr. Turing" }],
+    ["event_type", { event_type: "seminar" }],
+    ["event_type_en", { event_type_en: "seminar" }],
   ] as const)("rerenders when the compared %s field changes", async (_field, change) => {
     const logic = makeLogic()
     useEventCardLogicMock.mockReturnValue(logic)

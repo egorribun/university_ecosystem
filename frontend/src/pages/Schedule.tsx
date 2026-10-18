@@ -67,10 +67,17 @@ function ScheduleContent() {
     currentLesson,
     nextLesson,
     nowTick,
-    lessonDays,
+    lessonDaysForMonth,
     lessonTypeLabels,
     todayLessons,
   } = scheduleData
+
+  // The mini-calendar navigates months on its own; its lesson dots follow the month it shows.
+  const [miniCalendarMonth, setMiniCalendarMonth] = useState(() => new Date())
+  const miniCalendarLessonDays = useMemo(
+    () => lessonDaysForMonth(miniCalendarMonth),
+    [lessonDaysForMonth, miniCalendarMonth]
+  )
 
   /* ── Day complete flag for confetti (FIX-68-23) ── */
   const todayComplete = hasToday && !currentLesson && !nextLesson && todayLessons.length > 0
@@ -329,7 +336,9 @@ function ScheduleContent() {
               <FadeSection delay="var(--motion-duration-slow)">
                 <ScheduleMiniCalendar
                   className="sticky top-20"
-                  lessonDays={lessonDays}
+                  lessonDays={miniCalendarLessonDays}
+                  month={miniCalendarMonth}
+                  onMonthChange={setMiniCalendarMonth}
                   isLoading={isLoading}
                 />
               </FadeSection>
