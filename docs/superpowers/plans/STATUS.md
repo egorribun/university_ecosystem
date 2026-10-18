@@ -10,6 +10,8 @@
 
 ## Текущая партия и CI
 
+На tests-only [8d4f69c](https://github.com/egorribun/university_ecosystem/commit/8d4f69c75d8bcf04bd32a8101f490a217fc06616) pre-commit потребовал только переноса двух длинных argv calls в emoji CLI tests. Коррекция воспроизводит точный hosted Ruff diff; assertions и production-код не меняются. Backend jobs этой попытки были заблокированы pre-commit, поэтому новые tests ещё не объявлены прошедшими.
+
 На [7444e5c](https://github.com/egorribun/university_ecosystem/commit/7444e5c298ae769abe0b75a25248f2fd71ad1686) исправление canonical cache прошло функциональную проверку: все четыре Python unit shards — 16345 PASS / 174 SKIP, frontend unit/static/build lanes успешны. [PostgreSQL job](https://github.com/egorribun/university_ecosystem/actions/runs/39144085003/job/117724880327) — 178 PASS / 9 SKIP: events/news CRUD с независимыми DB readers, оба comment durability cases, scheduler tick/outbox, настоящий JetStream и migration tests прошли. Дополнительный unit skip новой news CRUD связан только с SQLite; в PostgreSQL этот тест выполнен успешно.
 
 [Owned Live Core](https://github.com/egorribun/university_ecosystem/actions/runs/39144084927): 231 contract, 20 browser PASS, два штатных SKIP, cleanup и metadata-only receipt успешны. Synthetic merge tree совпадает с branch tree. Обе pre-commit проверки и остальные применимые security/test workflows прошли.

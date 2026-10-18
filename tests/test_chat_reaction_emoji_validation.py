@@ -119,7 +119,9 @@ def test_unicode_generator_main_writes_deterministic_rows_without_changing_sourc
     output_path = tmp_path / "generated" / "qualified-sequences.txt"
     source_path.write_bytes(fixture)
     monkeypatch.setattr(emoji_generator, "SOURCE_SHA256", sha256(fixture).hexdigest())
-    monkeypatch.setattr(sys, "argv", ["generate.py", str(source_path), str(output_path)])
+    monkeypatch.setattr(
+        sys, "argv", ["generate.py", str(source_path), str(output_path)]
+    )
 
     emoji_generator.main()
 
@@ -134,7 +136,9 @@ def test_unicode_generator_entrypoint_keeps_pinned_digest_fail_closed(
     source_path = tmp_path / "emoji-test.txt"
     output_path = tmp_path / "generated" / "qualified-sequences.txt"
     source_path.write_bytes(fixture)
-    monkeypatch.setattr(sys, "argv", ["generate.py", str(source_path), str(output_path)])
+    monkeypatch.setattr(
+        sys, "argv", ["generate.py", str(source_path), str(output_path)]
+    )
 
     with pytest.raises(ValueError, match="checksum mismatch"):
         runpy.run_path(str(Path(emoji_generator.__file__)), run_name="__main__")
