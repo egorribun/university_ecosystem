@@ -232,8 +232,8 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
             now=current_time,
         )
         stmt = select(func.count(Event.id))
-        if conditions:
-            stmt = stmt.where(and_(*conditions))
+        # The shared builder always includes the manual-visibility predicate.
+        stmt = stmt.where(and_(*conditions))
         result = await self.db.execute(stmt)
         return int(result.scalar_one() or 0)
 
@@ -323,8 +323,8 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
             .options(selectinload(Event.files))
         )
 
-        if conditions:
-            stmt = stmt.where(and_(*conditions))
+        # The shared builder always includes the manual-visibility predicate.
+        stmt = stmt.where(and_(*conditions))
 
         if rank_expr is not None:
             stmt = stmt.add_columns(rank_expr)
