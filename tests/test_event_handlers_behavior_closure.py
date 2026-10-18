@@ -977,9 +977,7 @@ async def test_message_sent_nats_failure_keeps_outbox_row_retryable(monkeypatch)
         content="hello",
         reply_to_message_id=None,
     )
-    chat = SimpleNamespace(
-        participants=[sender, recipient], chat_type="dm", name=None
-    )
+    chat = SimpleNamespace(participants=[sender, recipient], chat_type="dm", name=None)
     handler_db = AsyncMock()
     handler_db.get_bind = MagicMock(
         return_value=SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
@@ -1000,9 +998,7 @@ async def test_message_sent_nats_failure_keeps_outbox_row_retryable(monkeypatch)
     handler_db.execute = AsyncMock(side_effect=execute)
     handler_db.get = AsyncMock(side_effect=get)
     handler_db.commit = AsyncMock()
-    monkeypatch.setattr(
-        event_handlers, "async_session", lambda: _session(handler_db)
-    )
+    monkeypatch.setattr(event_handlers, "async_session", lambda: _session(handler_db))
     repo = MagicMock()
     repo.get_by_id = AsyncMock(return_value=chat)
 
@@ -1029,9 +1025,7 @@ async def test_message_sent_nats_failure_keeps_outbox_row_retryable(monkeypatch)
     outbox_db.execute = AsyncMock(side_effect=[selection, pending])
     outbox_db.commit = AsyncMock()
     outbox_db.add = MagicMock()
-    monkeypatch.setattr(
-        outbox_module, "async_session", lambda: _session(outbox_db)
-    )
+    monkeypatch.setattr(outbox_module, "async_session", lambda: _session(outbox_db))
 
     bus = EventBus()
     monkeypatch.setattr(event_handlers, "event_bus", bus)
@@ -1049,9 +1043,7 @@ async def test_message_sent_nats_failure_keeps_outbox_row_retryable(monkeypatch)
     monkeypatch.setattr(broker, "publish_core", broker_publish)
 
     with (
-        patch(
-            "app.repositories.chat_repository.ChatRepository", return_value=repo
-        ),
+        patch("app.repositories.chat_repository.ChatRepository", return_value=repo),
         patch(
             "app.services.chat.notification_service.build_presence_map",
             new=AsyncMock(return_value={}),
