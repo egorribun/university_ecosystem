@@ -1,6 +1,6 @@
 # Статус выпуска MVP v1.0.0
 
-Обновлено: 2026-10-18 (Europe/Istanbul). Порядок — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+Обновлено: 2026-10-19 (Europe/Istanbul). Порядок — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
 ## Текущий приоритет
 
@@ -8,7 +8,17 @@
 
 Работа только через GitHub plugin, ветка `egorribun`, существующий [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git и принимает работу максимум трёх GPT-6 Luna Max агентов с непересекающимися файлами. Merge/deploy и обходы проверок не выполнялись.
 
-## Текущая партия: минимальные исправления после hosted RED
+## Текущий блокер и подготовка dependency update
+
+[22b4559](https://github.com/egorribun/university_ecosystem/commit/22b45597ead105c5f703c4eedce12bebf0e0ca7f) завершил Matrix успешно: 16374 Python PASS / 174 SKIP, 178 PostgreSQL PASS / 9 SKIP, 9289 frontend PASS / 770 файлов, diff-cover 4458 строк / 0 missing / 100%, valid quality contract и checksum. Owned Live: 20 browser PASS / 2 штатных SKIP, успешный stop и receipt. Это проверка указанного source, не закрытие всего аудита.
+
+Из 23 workflows успешны 20, два штатно пропущены, Checkov failed. Все 78 required context/app pairs присутствуют: 76 SUCCESS, две Checkov пары FAIL. Полного GREEN нет; последняя полностью успешная CI-точка — d355.
+
+После отдельного разрешения владельца artifact 12149119624 проверен по размеру/SHA-256 и прочитан в памяти без клонирования/исполнения repository code. Единственная unsuppressed ошибка: CKV_GHA_7, `.github/workflows/live-acceptance.yml:15`, непустой `workflow_dispatch.inputs.frozen_rc_sha`. Старые Helm parser/schema warnings не объясняют failure, поскольку присутствовали и на успешном efd. Замена ручного параметра на проверяемый tracked RC SHA предложена владельцу, ответ пока ожидается; suppression и обход не добавляются. Main/bootstrap и pre-merge full-smoke порядок остаются отдельным ограничением, main/merge/deploy не выполняются.
+
+Для отдельно разрешённого обновления mimetype добавлен временный gateway-only checksum probe в существующий Go test job. Он работает в изолированном hosted temp module/cache с официальным proxy/sumdb, выводит только проверенные public checksum metadata и не меняет module graph. Версия ещё 1.4.15; после получения canonical sums probe удаляется при отдельном update, которому нужен собственный полный CI. Общий cooldown не меняется.
+
+## Проверенные Matrix исправления после hosted RED
 
 База — tests-first [efd5483](https://github.com/egorribun/university_ecosystem/commit/efd5483c97810fff477aaf54201f710799f7b02e). Ruff correction прошла оба pre-commit gates; production-код до этой партии не менялся. На efd реально подтверждены четыре backend message contracts ([shard 0](https://github.com/egorribun/university_ecosystem/actions/runs/39158872405/job/117768386874): 4 FAIL / 5379 PASS / 49 SKIP), два frontend image-ID contracts и отдельный workflow concurrency contract ([shard 3](https://github.com/egorribun/university_ecosystem/actions/runs/39158872405/job/117773682192): 1 FAIL / 3413 PASS / 32 SKIP). Это конкретные ожидаемые RED, не formatting/fixture failures.
 
@@ -22,7 +32,7 @@ Retry остаётся bounded существующим лимитом (по у�
 
 На efd PostgreSQL integration прошла 178 PASS / 9 SKIP, включая усиленный events CRUD с прогретым collection cache и свежими списками после create/update/delete, а также news cache regression. Это реальный PostgreSQL, но cache/auth boundaries используют прежние doubles. Owned Live прошёл 231 source contract, 20 browser PASS / 2 штатных SKIP; stop и receipt upload успешны (artifact 12148403227). Actual NATS outage не выполнялся.
 
-Новые исправления ещё требуют собственного полного GREEN; успешный efd live/PG не переносится на новый source автоматически. [Согласованный NATS-only proof](../specs/2026-10-18-owned-nats-outbox-acceptance.md) остаётся следующим отдельным implementation/runtime этапом. Создание события с картинкой требует отдельного owner-bound lifecycle с сохранением AUD-180/AUD-233; эта партия исправляет только existing-event editors. Merge/deploy не выполнялись.
+На 22b эти исправления прошли собственный Matrix/PG/frontend/live/quality, но full GREEN блокируется указанным выше Checkov finding. Старый efd не используется вместо этой проверки. [Согласованный NATS-only proof](../specs/2026-10-18-owned-nats-outbox-acceptance.md) остаётся следующим отдельным implementation/runtime этапом. Создание события с картинкой требует отдельного owner-bound lifecycle с сохранением AUD-180/AUD-233; эта партия исправляет только existing-event editors. Merge/deploy не выполнялись.
 
 ## Последняя полностью прошедшая CI-точка
 
@@ -51,7 +61,7 @@ CodeQL: пять успешных языковых анализов и успе�
 
 ## Зависимости, политика и ресурсы
 
-- Новый follow-up: gateway косвенно использует mimetype 1.4.15, отозванную upstream из-за quadratic CDF processing (GHSA-jjmc-jx7j-hp68). Прямого request path к CDF detection не найдено; наличие зависимости не доказывает exploitability. Кандидат 1.4.16 опубликован 2026-10-17 и набирает семь дней maturity 2026-10-24 10:15:44 UTC. Точечное owner exception запрошено, но не получено; версия и go.sum не меняются до разрешения либо maturity. Нужны canonical hosted checksums и отдельный полный CI, без угадывания hashes. Остальной аудит продолжается независимо.
+- Новый follow-up: gateway косвенно использует mimetype 1.4.15, отозванную upstream из-за quadratic CDF processing (GHSA-jjmc-jx7j-hp68). Прямого request path к CDF detection не найдено; наличие зависимости не доказывает exploitability. Кандидат 1.4.16 опубликован 2026-10-17 и набирает семь дней maturity 2026-10-24 10:15:44 UTC. После уточнения 2026-10-19 Europe/Istanbul владелец подтвердил исключение только для 1.4.15 → 1.4.16 с отдельным полным CI. Общий семидневный cooldown сохраняется. Версия и go.sum пока не менялись: сначала нужны canonical hosted checksums, без угадывания hashes. Остальной аудит продолжается независимо.
 
 - Dependency checkpoint C8 (`5611eb00`) принят; последующие изменения проверяются на собственных SHA. Шесть compatibility holds и открытый SeaweedFS advisory сохранены в [dependency supplement](../../audits/AUDIT-2026-10.md#dependency-closure-supplement-2026-10-15). Удалённые `dependency-updates-2026-10`, `merge-exceptions.md` и `NEXT_SESSION_PROMPT.md` не восстанавливаются.
 - Сохраняются baseline319, 78 required contexts, blocking CodeQL и обычные hooks. В опубликованном a71b9c90 policy содержит 263 записи; прежнее число 261 устарело. Эта коррекция не добавляет dispositions и не подтверждает отсутствующее в текущей проверке отдельное owner approval для двух новых записей. Новые unmatched identities остаются блокирующими. Finite131 касается только неизменённых migration blobs из base `ac74e915` до 2026-11-13; остальные Tier 0 и затронутые миграции требуют 100%.
