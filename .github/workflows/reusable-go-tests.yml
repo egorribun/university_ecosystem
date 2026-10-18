@@ -78,9 +78,9 @@ jobs:
           trap 'rm -rf -- "$probe_dir"' EXIT
           cd "$probe_dir"
           printf 'module checksum.probe\n\ngo 1.26.4\n' > go.mod
-          export GOWORK=off GOENV=off GOTOOLCHAIN=local GOFLAGS=
+          export GOWORK=off GOENV=off GOTOOLCHAIN=local GOFLAGS=''
           export GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org
-          export GOPRIVATE= GONOSUMDB= GONOPROXY= GOINSECURE=
+          export GOPRIVATE='' GONOSUMDB='' GONOPROXY='' GOINSECURE=''
           export GOPATH="$probe_dir/gopath" GOMODCACHE="$probe_dir/mod-cache"
           export GOCACHE="$probe_dir/build-cache"
           timeout 120s go mod download -json \
