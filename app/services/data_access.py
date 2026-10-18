@@ -26,6 +26,14 @@ def _normalize_time(value: datetime | None) -> datetime | None:
     return value.astimezone(UTC)
 
 
+def _audit_client_ip(request: Request) -> str:
+    """Audit client address, resolved through the trusted-proxy config."""
+    # Local import keeps this audit module independent of the rate-limit package.
+    from app.core.ratelimit.utils import resolve_client_ip
+
+    return resolve_client_ip(request) if request.client else "unknown"
+
+
 async def log_data_access(
     db: AsyncDatabaseSession,
     *,
@@ -49,7 +57,7 @@ async def log_data_access(
         resource_id=resource_id,
         action=action,
         context=context or {},
-        ip_address=request.client.host if request.client else "unknown",  # MED-W19
+        ip_address=_audit_client_ip(request),  # MED-W19
         user_agent=request.headers.get("user-agent"),
         created_at=created_at,
     )
@@ -72,7 +80,7 @@ async def batch_log_data_access(
     from app.services.audit_service import get_secure_audit_service
 
     log_entries = []
-    ip_address = request.client.host if request.client else "unknown"  # MED-W19
+    ip_address = _audit_client_ip(request)  # MED-W19
     user_agent = request.headers.get("user-agent")
 
     for entry in entries:

@@ -174,3 +174,21 @@ class TestCorsSettingsClosure:
         settings = SecuritySettings(internal_auth_token="configured-token")
 
         assert settings.internal_auth_token == "configured-token"
+
+    def test_trusted_proxies_rejects_malformed_entries(self, monkeypatch):
+        """AUD-164: a malformed proxy entry fails startup instead of trusting less."""
+        from pydantic import ValidationError
+
+        monkeypatch.setenv("TRUSTED_PROXIES", "10.0.0.0/33")
+        with pytest.raises(ValidationError):
+            SecuritySettings()
+
+        monkeypatch.setenv("TRUSTED_PROXIES", "gateway.internal")
+        with pytest.raises(ValidationError):
+            SecuritySettings()
+
+        monkeypatch.setenv("TRUSTED_PROXIES", "10.0.0.0/8, 192.0.2.10")
+        assert SecuritySettings().trusted_proxies_list == [
+            "10.0.0.0/8",
+            "192.0.2.10",
+        ]

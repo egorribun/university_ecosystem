@@ -59,6 +59,11 @@ def _owned_event_image_backend(
     return owned_storage[0] if owned_storage is not None else None
 
 
+def event_image_owned_by(file_url: str, event_id: uuid.UUID | int) -> bool:
+    """Return True only for a canonical image key generated for this event."""
+    return _owned_event_image_storage(file_url, event_id) is not None
+
+
 def _event_image_storage_key(
     backend: StaticFSStorage | S3Storage, file_url: str
 ) -> str | None:

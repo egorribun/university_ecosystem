@@ -11,7 +11,6 @@ from sqlalchemy import select
 
 from app.core.nats_broker import NatsTaskBroker, _NatsTaskPayload, broker
 from app.models import Event, News, NewsComment, Notification, User
-from app.services import notification_queue
 from app.services.notifications import delivery as notification_delivery
 from app.tasks import notifications as notification_tasks
 
@@ -171,7 +170,7 @@ async def test_event_notification_round_trip_persists_in_database(
     )
     monkeypatch.setattr(notification_delivery, "_is_push_configured", lambda: False)
 
-    await notification_queue.enqueue_event_notification(event.id, locale="en")
+    await notification_tasks.enqueue_event_notification_task.kick(event.id, locale="en")
 
     published_subject, published_body = jetstream.publish.await_args.args[:2]
     payload = _NatsTaskPayload.model_validate(json.loads(published_body))

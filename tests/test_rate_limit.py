@@ -283,20 +283,15 @@ async def test_sensitive_login_rate_limit(
 
     monkeypatch.setattr("app.tasks.email.send_lockout_alert.kick", AsyncMock())
 
-    # Send 4 failed attempts — the default threshold is 5:30.
-    # On the 5th attempt, the login service registers it (now 5 total),
-    # triggers the lockout (triggered=True), and returns 423 Locked.
-    for _ in range(4):
+    # Lockout is raised above the attempts sent here, so only the login limiter
+    # (5/minute, captured at import) can answer the sixth request (AUD-229).
+    monkeypatch.setattr(settings, "auth_lockout_thresholds", "20:30")
+    for _ in range(5):
         response = await async_client.post("/auth/login", data=data, headers=headers)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    # The 5th attempt triggers lockout (or rate limit) — both 429 and 423 are valid
     blocked = await async_client.post("/auth/login", data=data, headers=headers)
-    # Accept both rate limit (429) and account lockout (423) as valid blocking responses
-    assert blocked.status_code in (
-        status.HTTP_429_TOO_MANY_REQUESTS,
-        status.HTTP_423_LOCKED,
-    )
+    assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
 
 
 @pytest.mark.asyncio
@@ -1245,3 +1240,35 @@ def test_extract_user_id_for_ratelimit_none_sub():
     with _mock_security_module(lambda token: {"sub": None}):
         result = extract_user_id_for_ratelimit(request)
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_sensitive_login_lockout_alone_answers_423_within_limiter_budget(
+    async_client, user_factory, db_session, monkeypatch
+):
+    """AUD-229 negative control: with the default lockout, the fifth failure is 423."""
+    import uuid
+    from unittest.mock import AsyncMock
+
+    typed_value = "ValidPass123!"
+    user = await user_factory(
+        email=f"login-lockout-{uuid.uuid4().hex[:8]}@example.com",
+        hashed_password=await get_password_hash(typed_value),
+    )
+    wrong_value = "wrong-attempt-value"
+    data = {"username": user.email, "password": wrong_value}
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
+    ratelimit_module.clear_memory_state()
+    ratelimit_module.clear_delay_memory()
+    monkeypatch.setattr(
+        "app.services.audit_service.AuditService.log", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr("app.tasks.email.send_lockout_alert.kick", AsyncMock())
+
+    for _ in range(4):
+        response = await async_client.post("/auth/login", data=data, headers=headers)
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    blocked = await async_client.post("/auth/login", data=data, headers=headers)
+    assert blocked.status_code == status.HTTP_423_LOCKED

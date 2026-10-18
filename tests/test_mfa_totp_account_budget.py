@@ -289,3 +289,69 @@ async def test_purge_expired_challenges_uses_current_time_when_omitted(
     remaining_ids = set((await db_session.scalars(select(MfaChallenge.id))).all())
     assert purged == 1
     assert remaining_ids == {active.id}
+
+
+@pytest.mark.asyncio
+async def test_totp_budget_hourly_cap_stops_guessing_across_refilled_windows(
+    monkeypatch,
+):
+    """AUD-176: a short window that refills each cycle must not allow endless guessing."""
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    from app.auth.mfa.challenge import _enforce_totp_attempt_budget
+    from app.core.ratelimit.strategies import memory as memory_strategy
+
+    monkeypatch.setattr(settings, "mfa_totp_attempt_limit", 2)
+    monkeypatch.setattr(settings, "mfa_challenge_ttl_seconds", 600)
+    monkeypatch.setattr(settings, "mfa_totp_attempt_hourly_limit", 5, raising=False)
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    monkeypatch.setattr(settings, "rate_limit_storage_backend", "memory")
+
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(
+        memory_strategy, "time", SimpleNamespace(time=lambda: clock["now"])
+    )
+    user_id = uuid4()
+
+    # Three short windows: two attempts, then 601 seconds later two more, then one.
+    await _enforce_totp_attempt_budget(user_id=user_id)
+    await _enforce_totp_attempt_budget(user_id=user_id)
+    clock["now"] = 1601.0
+    await _enforce_totp_attempt_budget(user_id=user_id)
+    await _enforce_totp_attempt_budget(user_id=user_id)
+    clock["now"] = 2202.0
+    await _enforce_totp_attempt_budget(user_id=user_id)
+
+    # The sixth attempt fits the short window but exhausts the hourly cap.
+    with pytest.raises(HTTPException) as blocked:
+        await _enforce_totp_attempt_budget(user_id=user_id)
+    assert blocked.value.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert int(blocked.value.headers["Retry-After"]) > 600
+
+    # Once the oldest hourly entry leaves the window, attempts resume.
+    clock["now"] = 4601.0
+    await _enforce_totp_attempt_budget(user_id=user_id)
+
+
+@pytest.mark.asyncio
+async def test_totp_hourly_budget_zero_leaves_only_the_short_window(monkeypatch):
+    """AUD-176 neighbour: a zero hourly limit disables only the hourly cap."""
+    from fastapi import HTTPException
+
+    from app.auth.mfa.challenge import _enforce_totp_attempt_budget
+
+    monkeypatch.setattr(settings, "mfa_totp_attempt_limit", 2)
+    monkeypatch.setattr(settings, "mfa_challenge_ttl_seconds", 600)
+    monkeypatch.setattr(settings, "mfa_totp_attempt_hourly_limit", 0)
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    monkeypatch.setattr(settings, "rate_limit_storage_backend", "memory")
+    user_id = uuid4()
+
+    await _enforce_totp_attempt_budget(user_id=user_id)
+    await _enforce_totp_attempt_budget(user_id=user_id)
+    with pytest.raises(HTTPException) as blocked:
+        await _enforce_totp_attempt_budget(user_id=user_id)
+    assert blocked.value.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert int(blocked.value.headers["Retry-After"]) <= 600

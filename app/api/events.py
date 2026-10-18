@@ -46,7 +46,10 @@ from app.deps.cache import etag_matches, format_etag, get_cache
 from app.repositories.event_repository import EventRepository
 from app.schemas import schemas
 from app.schemas.dtos import EventFileDTO
-from app.services.content_media import delete_unreferenced_owned_event_image
+from app.services.content_media import (
+    delete_unreferenced_owned_event_image,
+    event_image_owned_by,
+)
 from app.services.event_service import EventService
 from app.services.file_scanner import scan_for_malware
 from app.services.private_attachments import (
@@ -133,6 +136,11 @@ async def create_event(
 ) -> schemas.EventOut:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
+    if data.image_url:
+        # Images attach after creation, through the upload bound to the event id.
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST, "errors.events.image_not_owned", locale
+        )
     try:
         record = await events.create_event(data, user_id=user.id, locale=locale)
     except ValueError as exc:
@@ -499,6 +507,14 @@ async def update_event(
     ):
         raise_forbidden(locale)
 
+    if (
+        data.image_url
+        and data.image_url != q.image_url
+        and not event_image_owned_by(data.image_url, event_id)
+    ):
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST, "errors.events.image_not_owned", locale
+        )
     old_image_url = q.image_url
     if isinstance(event_id, int):
         raise_http_error(

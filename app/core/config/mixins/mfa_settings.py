@@ -21,6 +21,7 @@ class MfaSettingsMixin:
     mfa_challenge_max_attempts: int = 5
     mfa_step_up_ttl_seconds: int = 300
     mfa_totp_attempt_limit: int = 5
+    mfa_totp_attempt_hourly_limit: int = 15
     mfa_email_otp_ttl_seconds: int = 600
     mfa_email_otp_resend_cooldown_seconds: int = 60
     mfa_email_otp_hmac_keys: str = ""

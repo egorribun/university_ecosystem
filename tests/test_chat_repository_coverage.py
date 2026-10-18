@@ -755,3 +755,14 @@ async def test_delete_chat_commits_attachment_cleanup_for_persisted_attachments(
         assert await reader.get(Message, message_id) is None
     assert result.deleted_messages == 1
     assert result.deleted_attachments == 1
+
+
+@pytest.mark.asyncio
+async def test_find_existing_dm_ignores_two_member_group(db_session, user_factory):
+    """AUD-049: a two-member group is not the direct message for its pair."""
+    creator = await user_factory()
+    member = await user_factory()
+    repo = ChatRepository(db_session)
+    await repo.create_group(creator, "study pair", [member])
+
+    assert await repo.find_existing_dm(creator.id, member.id) is None

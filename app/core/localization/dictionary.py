@@ -559,6 +559,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Файл не найден",
         "en": "File not found",
     },
+    "errors.events.image_not_owned": {
+        "ru": "Изображение нельзя прикрепить к этому событию",
+        "en": "This image cannot be attached to this event",
+    },
     "errors.news.not_found": {
         "ru": "Новость не найдена",
         "en": "News item not found",

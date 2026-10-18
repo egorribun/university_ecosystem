@@ -381,3 +381,23 @@ class TestGlobalDetector:
         detector1 = get_suspicious_activity_detector()
         detector2 = get_suspicious_activity_detector()
         assert detector1 is detector2
+
+
+def test_get_client_ip_resolves_forwarded_client_only_through_trusted_proxy(
+    monkeypatch,
+):
+    """AUD-164: session fingerprints use the central resolver, not the raw peer."""
+    from starlette.datastructures import Headers
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "trusted_proxies_list", ["10.0.0.0/8"])
+    request = MagicMock()
+    request.client.host = "10.0.0.5"
+    request.headers = Headers({"X-Forwarded-For": "203.0.113.8"})
+
+    assert _get_client_ip(request) == "203.0.113.8"
+
+    # Without a configured proxy the forwarded header stays untrusted.
+    monkeypatch.setattr(settings, "trusted_proxies_list", [])
+    assert _get_client_ip(request) == "10.0.0.5"

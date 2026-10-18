@@ -4,6 +4,8 @@ import asyncio
 import fnmatch
 import hashlib
 import inspect
+import re
+import string
 import threading
 import time as time_module
 from dataclasses import dataclass
@@ -495,6 +497,41 @@ class RedisClusterCache(BaseCache):
         return ttl if ttl > 0 else 0
 
 
+# NATS KV keys must match ``^[-/_=.a-zA-Z0-9]+$``; cache keys such as
+# ``v1:chat:<id>`` do not. Every other byte is escaped as ``=XX`` (lowercase
+# hex), which keeps the mapping reversible, so glob invalidation can decode
+# listed keys back to their cache names before matching.
+_KV_SAFE_CHARS = frozenset(string.ascii_letters + string.digits + "-_/.")
+_KV_ESCAPED_RE = re.compile(r"^(?:[-_/.a-zA-Z0-9]|=[0-9a-f]{2})*$")
+
+
+def _encode_kv_key(key: str) -> str:
+    return "".join(
+        char
+        if char in _KV_SAFE_CHARS
+        else "".join(f"={byte:02x}" for byte in char.encode())
+        for char in key
+    )
+
+
+def _decode_kv_key(stored: str) -> str:
+    if not _KV_ESCAPED_RE.fullmatch(stored):
+        return stored  # raw name, not one of our encodings
+    raw = bytearray()
+    index = 0
+    while index < len(stored):
+        if stored[index] == "=":
+            raw.append(int(stored[index + 1 : index + 3], 16))
+            index += 3
+        else:
+            raw.append(ord(stored[index]))
+            index += 1
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return stored  # escapes that are not UTF-8: keep the raw name
+
+
 class NatsKVCache(BaseCache):
     """NATS Key-Value store cache backend."""
 
@@ -525,7 +562,7 @@ class NatsKVCache(BaseCache):
     async def get(self, key: str) -> CacheEntry | None:
         try:
             kv = await self._get_kv()
-            entry = await kv.get(key)
+            entry = await kv.get(_encode_kv_key(key))
             if entry is None:
                 return None
             parsed = orjson.loads(entry.value)
@@ -556,7 +593,7 @@ class NatsKVCache(BaseCache):
         )
         try:
             kv = await self._get_kv()
-            await kv.put(key, envelope)
+            await kv.put(_encode_kv_key(key), envelope)
         except (
             OSError,
             ConnectionError,
@@ -584,10 +621,10 @@ class NatsKVCache(BaseCache):
                         # An empty listing has no matches; process later keys too.
                         continue
                     for k in keys_to_del:
-                        if fnmatch.fnmatch(k, key):
+                        if fnmatch.fnmatch(_decode_kv_key(k), key):
                             await kv.delete(k)
                 else:
-                    await kv.delete(key)
+                    await kv.delete(_encode_kv_key(key))
         except (
             OSError,
             ConnectionError,

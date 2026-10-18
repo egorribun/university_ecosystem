@@ -16,7 +16,6 @@ from app.core.events import NotificationsRequested
 from app.core.nats_broker import NatsTaskBroker, broker
 from app.models import Event, Notification
 from app.models.domain_events import StoredEvent
-from app.services import notification_queue
 from app.services.notifications import delivery as notification_delivery
 from app.tasks.notifications import enqueue_event_notification_task
 
@@ -251,7 +250,7 @@ async def test_real_jetstream_task_dispatch_persists_uuid_notification(
         before = await js.stream_info("TASK_QUEUE")
         assert before.state.messages == 0
 
-        await notification_queue.enqueue_event_notification(event_id, locale="en")
+        await enqueue_event_notification_task.kick(event_id, locale="en")
 
         after = await js.stream_info("TASK_QUEUE")
         published_seq = after.state.last_seq

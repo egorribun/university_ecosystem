@@ -709,7 +709,8 @@ async def test_update_event_replaces_image_removes_old_file(
 
     monkeypatch.setattr(settings, "static_dir", str(tmp_path))
 
-    payload = schemas.EventUpdate(image_url="/static/event_images/new.png")
+    new_url = f"/static/tmp/event_images/event_{event.id}_{'b' * 32}.png"
+    payload = schemas.EventUpdate(image_url=new_url)
     result = await call_injected(
         events.update_event,
         event.id,
@@ -720,7 +721,7 @@ async def test_update_event_replaces_image_removes_old_file(
         provides={"AsyncDatabaseSession": db_session, "EventService": event_service},
     )
 
-    assert result.image_url == "/static/event_images/new.png"
+    assert result.image_url == new_url
     assert not old_path.exists()
 
 
@@ -760,24 +761,17 @@ async def test_event_image_cleanup_preserves_another_authors_shared_reference(
     await db_session.commit()
     monkeypatch.setattr(settings, "static_dir", str(tmp_path))
 
-    # EventUpdate currently permits another author's owner-shaped URL. This
-    # creates the shared DB reference through the real API/service path.
-    accepted = await call_injected(
-        events.update_event,
-        referencing_event.id,
-        schemas.EventUpdate(image_url=reference_url),
-        request=None,
-        user=other_author,
-        checker=mock_checker,
-        provides={"AsyncDatabaseSession": db_session, "EventService": event_service},
-    )
-    assert accepted.image_url == reference_url
+    # The API refuses another author's owner-shaped URL (AUD-180). Legacy rows
+    # can still hold one, so the shared reference is written to the database.
+    referencing_event.image_url = reference_url
+    await db_session.commit()
 
+    replacement_url = f"/static/tmp/event_images/event_{owner_event.id}_{'e' * 32}.png"
     if owner_action == "update":
         result = await call_injected(
             events.update_event,
             owner_event.id,
-            schemas.EventUpdate(image_url="/static/event_images/replacement.png"),
+            schemas.EventUpdate(image_url=replacement_url),
             request=None,
             user=image_owner,
             checker=mock_checker,
@@ -786,7 +780,7 @@ async def test_event_image_cleanup_preserves_another_authors_shared_reference(
                 "EventService": event_service,
             },
         )
-        assert result.image_url == "/static/event_images/replacement.png"
+        assert result.image_url == replacement_url
     else:
         from app.services import search_indexer
 
@@ -818,6 +812,7 @@ async def test_event_image_cleanup_retains_file_when_reference_query_fails(
     image_path.parent.mkdir(parents=True, exist_ok=True)
     image_path.write_bytes(b"retained while reference state is unavailable")
     image_url = f"/static/tmp/event_images/{filename}"
+    replacement_url = f"/static/tmp/event_images/event_{event.id}_{'f' * 32}.png"
     event.image_url = image_url
     await db_session.commit()
     monkeypatch.setattr(settings, "static_dir", str(tmp_path))
@@ -841,7 +836,7 @@ async def test_event_image_cleanup_retains_file_when_reference_query_fails(
             result = await call_injected(
                 events.update_event,
                 event.id,
-                schemas.EventUpdate(image_url="/static/event_images/replacement.png"),
+                schemas.EventUpdate(image_url=replacement_url),
                 request=None,
                 user=admin,
                 checker=mock_checker,
@@ -850,7 +845,7 @@ async def test_event_image_cleanup_retains_file_when_reference_query_fails(
                     "EventService": event_service,
                 },
             )
-            assert result.image_url == "/static/event_images/replacement.png"
+            assert result.image_url == replacement_url
         else:
             from app.services import search_indexer
 

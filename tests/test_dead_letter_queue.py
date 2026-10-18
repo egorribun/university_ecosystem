@@ -112,6 +112,7 @@ async def test_add_failed_job_success(dlq, mock_session):
 async def test_add_failed_job_duplicate(dlq, mock_session):
     """Test duplicate job is skipped."""
     existing_job = MagicMock()
+    existing_job.status = JobStatus.PENDING.value
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = existing_job
     mock_session.execute.return_value = mock_result
@@ -199,3 +200,32 @@ async def test_cleanup_completed_jobs(dlq, mock_session):
     assert deleted == 10
     mock_session.flush.assert_called_once()
     mock_session.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "terminal_status", [JobStatus.COMPLETED.value, JobStatus.FAILED.value]
+)
+async def test_add_failed_job_reopens_finished_row_for_new_failure(
+    dlq, mock_session, terminal_status
+):
+    """AUD-040: a new failure of an already finished job is recorded, not dropped."""
+    earlier = MagicMock()
+    earlier.status = terminal_status
+    earlier.retry_count = 3
+    earlier.error_message = "earlier run"
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = earlier
+    mock_session.execute.return_value = mock_result
+
+    result = await dlq.add_failed_job(
+        job_type="email",
+        payload={"to": "user@example.com"},
+        error_message="Connection failed",
+    )
+
+    assert result is earlier
+    assert earlier.status == JobStatus.PENDING.value
+    assert earlier.retry_count == 0
+    assert earlier.error_message == "Connection failed"
+    mock_session.add.assert_not_called()

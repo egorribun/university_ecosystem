@@ -879,3 +879,109 @@ async def test_semantic_search_etag_is_locale_specific_and_reuses_same_locale() 
     assert repeated_en_result.headers["ETag"] == en_response.headers["ETag"]
     assert repeated_en_result.headers["Content-Language"] == "en"
     assert "Accept-Language" in repeated_en_result.headers["Vary"]
+
+
+@pytest.mark.asyncio
+async def test_update_event_rejects_image_not_uploaded_for_this_event() -> None:
+    """AUD-180: an event may attach only an image uploaded for that event."""
+    event_id = uuid.uuid4()
+    user = _user(role="teacher")
+    existing = _event()
+    existing.id = event_id
+    existing.image_url = None
+    updated = _event()
+    updated.id = event_id
+    checker = MagicMock()
+    checker.check_permission = AsyncMock(return_value=True)
+    service = MagicMock()
+    service.update_event = AsyncMock(return_value=updated)
+    db = AsyncMock()
+    db.get.return_value = existing
+    db.execute.side_effect = [_result(rows=[]), _result(scalar=0)]
+    with (
+        patch.object(api, "resolve_locale", return_value="en"),
+        patch.object(api, "_increment_events_list_version", AsyncMock()),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await call_injected(
+                api.update_event,
+                event_id=event_id,
+                data=schemas.EventUpdate(image_url="/static/news_images/shared.png"),
+                request=_request(),
+                user=user,
+                checker=checker,
+                provides={"AsyncDatabaseSession": db, "EventService": service},
+            )
+    assert exc.value.status_code == 400
+    service.update_event.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_event_accepts_image_uploaded_for_this_event(
+    tmp_path, monkeypatch
+) -> None:
+    """AUD-180 neighbour: the event-bound upload key is still accepted."""
+    from app.services import content_media
+    from app.services.storage import StaticFSStorage
+
+    event_id = uuid.uuid4()
+    filename = f"event_{event_id}_{'c' * 32}.webp"
+    monkeypatch.setattr(
+        content_media,
+        "_get_storage_backend",
+        lambda: StaticFSStorage(tmp_path, base_url="/static"),
+    )
+    user = _user(role="teacher")
+    existing = _event()
+    existing.id = event_id
+    existing.image_url = None
+    updated = _event()
+    updated.id = event_id
+    updated.image_url = f"/static/tmp/event_images/{filename}"
+    checker = MagicMock()
+    checker.check_permission = AsyncMock(return_value=True)
+    service = MagicMock()
+    service.update_event = AsyncMock(return_value=updated)
+    service.serialize_event.return_value = {"id": str(event_id)}
+    db = AsyncMock()
+    db.get.return_value = existing
+    db.execute.side_effect = [_result(rows=[]), _result(scalar=0)]
+    with (
+        patch.object(api, "resolve_locale", return_value="en"),
+        patch.object(api, "_increment_events_list_version", AsyncMock()),
+    ):
+        await call_injected(
+            api.update_event,
+            event_id=event_id,
+            data=schemas.EventUpdate(image_url=f"/static/tmp/event_images/{filename}"),
+            request=_request(),
+            user=user,
+            checker=checker,
+            provides={"AsyncDatabaseSession": db, "EventService": service},
+        )
+    service.update_event.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_event_rejects_image_before_the_event_exists() -> None:
+    """AUD-180: images attach after creation, through the upload bound to the event."""
+    user = _user(role="teacher")
+    data = _event_create().model_copy(
+        update={"image_url": "/static/news_images/shared.png"}
+    )
+    service = MagicMock()
+    service.create_event = AsyncMock()
+    with (
+        patch.object(api, "resolve_locale", return_value="en"),
+        patch.object(api, "_increment_events_list_version", AsyncMock()),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await call_injected(
+                api.create_event,
+                data=data,
+                request=_request(),
+                user=user,
+                provides={"EventService": service},
+            )
+    assert exc.value.status_code == 400
+    service.create_event.assert_not_awaited()

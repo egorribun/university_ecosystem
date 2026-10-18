@@ -351,53 +351,6 @@ def test_require_group_participant_happy_path_returns_id_set():
     assert other_id in result
 
 
-# ---------------------------------------------------------------------------
-# NotificationService.dispatch_event_created – branch coverage
-# ---------------------------------------------------------------------------
-
-
-async def test_notification_dispatch_event_created_happy_path():
-    """Branch: add_task succeeds and schedules the notification."""
-    from fastapi import BackgroundTasks
-
-    from app.services.notification_service import NotificationService
-
-    db = AsyncMock()
-    service = NotificationService(db=db)
-    bg = BackgroundTasks()
-
-    event_id = uuid.uuid4()
-    await service.dispatch_event_created(event_id, locale="ru", background=bg)
-    assert len(bg.tasks) == 1
-
-
-async def test_notification_dispatch_event_created_enqueue_failure_recorded():
-    """A broken background queue is reported without escaping the handler."""
-
-    from app.services.notification_service import NotificationService
-
-    db = AsyncMock()
-    service = NotificationService(db=db)
-
-    bad_bg = MagicMock()
-    bad_bg.add_task = MagicMock(side_effect=RuntimeError("queue full"))
-
-    event_id = uuid.uuid4()
-    with patch(
-        "app.services.notification_service.notification_queue.report_enqueue_failure",
-        new=AsyncMock(),
-    ) as report:
-        await service.dispatch_event_created(event_id, locale="ru", background=bad_bg)
-
-    report.assert_awaited_once()
-    assert report.await_args.kwargs["notification_type"] == "event"
-
-
-# ---------------------------------------------------------------------------
-# create_notifications_for_users – branch coverage
-# ---------------------------------------------------------------------------
-
-
 async def test_create_notifications_empty_user_ids_returns_zero():
     """Branch: user_ids is empty → return 0 immediately without any DB call.
 

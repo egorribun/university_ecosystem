@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.core.config import settings as app_settings
 from app.management import weekly_cleanup
 
 
@@ -58,71 +59,7 @@ async def test_subscription_cleanup_commits_each_stale_batch_and_logs_total():
 
 
 @pytest.mark.asyncio
-async def test_reindex_skips_missing_database_name():
-    with (
-        patch.object(
-            weekly_cleanup.settings, "database_url", "postgresql://user@localhost/"
-        ),
-        patch.object(weekly_cleanup.logger, "warning") as warning,
-    ):
-        await weekly_cleanup._reindex_database()
-
-    warning.assert_called_once_with("Skipping database reindex: database name is empty")
-
-
-@pytest.mark.asyncio
-async def test_reindex_skips_unsafe_database_identifier():
-    with (
-        patch.object(
-            weekly_cleanup.settings,
-            "database_url",
-            "postgresql://user@localhost/bad-name",
-        ),
-        patch.object(weekly_cleanup.logger, "error") as error,
-    ):
-        await weekly_cleanup._reindex_database()
-
-    error.assert_called_once()
-    assert "failed identifier validation" in error.call_args.args[0]
-
-
-@pytest.mark.asyncio
-async def test_reindex_quotes_valid_database_identifier_and_executes_autocommit():
-    connection = MagicMock()
-    connection.dialect.identifier_preparer.quote.return_value = '"university_db"'
-    connection.execution_options = AsyncMock(return_value=connection)
-    connection.exec_driver_sql = AsyncMock()
-    engine_context = MagicMock()
-    engine_context.__aenter__ = AsyncMock(return_value=connection)
-    engine_context.__aexit__ = AsyncMock(return_value=False)
-    engine_stub = MagicMock()
-    engine_stub.connect.return_value = engine_context
-
-    with (
-        patch.object(
-            weekly_cleanup.settings,
-            "database_url",
-            "postgresql://user@localhost/university_db",
-        ),
-        patch.object(weekly_cleanup, "engine", engine_stub),
-        patch.object(weekly_cleanup.logger, "info") as info,
-    ):
-        await weekly_cleanup._reindex_database()
-
-    connection.dialect.identifier_preparer.quote.assert_called_once_with(
-        "university_db"
-    )
-    connection.execution_options.assert_awaited_once_with(isolation_level="AUTOCOMMIT")
-    connection.exec_driver_sql.assert_awaited_once_with(
-        'REINDEX DATABASE "university_db"'
-    )
-    info.assert_called_once_with(
-        "weekly_cleanup.reindex_completed", extra={"database": "university_db"}
-    )
-
-
-@pytest.mark.asyncio
-async def test_run_weekly_cleanup_aggregates_deletions_and_reindexes():
+async def test_run_weekly_cleanup_aggregates_subscription_deletions():
     session_context = MagicMock()
     session_context.__aenter__ = AsyncMock(return_value=MagicMock())
     session_context.__aexit__ = AsyncMock(return_value=False)
@@ -139,17 +76,56 @@ async def test_run_weekly_cleanup_aggregates_deletions_and_reindexes():
             "_delete_stale_subscriptions",
             new=AsyncMock(return_value=6),
         ) as stale,
-        patch.object(weekly_cleanup, "_reindex_database", new=AsyncMock()) as reindex,
         patch.object(weekly_cleanup.logger, "info") as info,
     ):
         stats = await weekly_cleanup.run_weekly_cleanup()
 
     orphaned.assert_awaited_once_with(session_context.__aenter__.return_value)
     stale.assert_awaited_once_with(session_context.__aenter__.return_value)
-    reindex.assert_awaited_once_with()
     assert stats == {
         "subscriptions_removed": 10,
         "subscriptions_orphaned": 4,
         "subscriptions_stale": 6,
     }
     info.assert_called_once_with("weekly_cleanup.completed", extra=stats)
+
+
+@pytest.mark.asyncio
+async def test_run_weekly_cleanup_never_reindexes_the_whole_database():
+    """AUD-207: the weekly job must not take database-wide exclusive locks."""
+    connection = MagicMock()
+    connection.dialect.identifier_preparer.quote.return_value = '"university_db"'
+    connection.execution_options = AsyncMock(return_value=connection)
+    connection.exec_driver_sql = AsyncMock()
+    engine_context = MagicMock()
+    engine_context.__aenter__ = AsyncMock(return_value=connection)
+    engine_context.__aexit__ = AsyncMock(return_value=False)
+    engine_stub = MagicMock()
+    engine_stub.connect.return_value = engine_context
+    session_context = MagicMock()
+    session_context.__aenter__ = AsyncMock(return_value=MagicMock())
+    session_context.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch.object(
+            app_settings,
+            "database_url",
+            "postgresql://user@localhost/university_db",
+        ),
+        patch("app.core.database.engine", engine_stub),
+        patch.object(weekly_cleanup, "async_session", return_value=session_context),
+        patch.object(
+            weekly_cleanup,
+            "_delete_orphaned_subscriptions",
+            new=AsyncMock(return_value=0),
+        ),
+        patch.object(
+            weekly_cleanup,
+            "_delete_stale_subscriptions",
+            new=AsyncMock(return_value=0),
+        ),
+    ):
+        await weekly_cleanup.run_weekly_cleanup()
+
+    engine_stub.connect.assert_not_called()
+    connection.exec_driver_sql.assert_not_awaited()

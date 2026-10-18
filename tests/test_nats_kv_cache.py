@@ -1,7 +1,9 @@
+import re
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nats.js.errors import NoKeysError
+from nats.js.errors import InvalidKeyError, NoKeysError
 
 from app.deps.cache import NatsKVCache
 
@@ -147,3 +149,85 @@ async def test_nats_kv_cache_invalidate_only_handles_empty_listing_errors():
         await cache.invalidate("user:*")
 
     kv.delete.assert_awaited_once_with("user:1")
+
+
+class _GrammarCheckedKV:
+    """In-memory KV that enforces the NATS key grammar the way the real client does."""
+
+    _VALID_KEY = re.compile(r"^[-/_=\.a-zA-Z0-9]+$")
+
+    def __init__(self) -> None:
+        self.store: dict[str, bytes] = {}
+
+    def _check(self, key: str) -> None:
+        if not self._VALID_KEY.match(key):
+            raise InvalidKeyError(key)
+
+    async def put(self, key: str, value: bytes) -> None:
+        self._check(key)
+        self.store[key] = value
+
+    async def get(self, key: str) -> SimpleNamespace | None:
+        self._check(key)
+        if key not in self.store:
+            return None
+        return SimpleNamespace(value=self.store[key])
+
+    async def delete(self, key: str) -> None:
+        self._check(key)
+        self.store.pop(key, None)
+
+    async def keys(self) -> list[str]:
+        if not self.store:
+            raise NoKeysError()
+        return list(self.store)
+
+
+@pytest.mark.asyncio
+async def test_nats_kv_cache_round_trips_colon_keys_and_glob_invalidation():
+    """AUD-094: colon-separated cache keys are valid NATS KV keys, and glob
+    invalidation still removes the matching entries."""
+    kv = _GrammarCheckedKV()
+    cache = NatsKVCache(bucket="cache", default_ttl=60)
+
+    with patch.object(cache, "_get_kv", AsyncMock(return_value=kv)):
+        await cache.set("v1:chat:1:participants", {"n": 1})
+        await cache.set("v1:chat:2:participants", {"n": 2})
+        await cache.set("v1:news:1", {"n": 3})
+
+        chat = await cache.get("v1:chat:1:participants")
+        assert chat is not None
+        assert chat.payload == {"n": 1}
+
+        await cache.invalidate("v1:chat:*")
+
+        assert await cache.get("v1:chat:1:participants") is None
+        assert await cache.get("v1:chat:2:participants") is None
+        news = await cache.get("v1:news:1")
+        assert news is not None
+        assert news.payload == {"n": 3}
+
+
+@pytest.mark.parametrize(
+    ("key", "encoded"),
+    [
+        ("test_key", "test_key"),
+        ("user:1", "user=3a1"),
+        ("a=b", "a=3db"),
+        ("café", "caf=c3=a9"),
+    ],
+)
+def test_nats_kv_key_encoding_is_valid_and_reversible(key, encoded):
+    from app.deps.cache import _decode_kv_key, _encode_kv_key
+
+    assert _encode_kv_key(key) == encoded
+    assert _decode_kv_key(encoded) == key
+    assert _decode_kv_key(_encode_kv_key(key)) == key
+    # Stored keys written as raw legacy names still decode to themselves.
+    assert _decode_kv_key("user:1") == "user:1"
+
+
+def test_nats_kv_key_decoding_keeps_non_utf8_escapes_raw():
+    from app.deps.cache import _decode_kv_key
+
+    assert _decode_kv_key("=ff") == "=ff"

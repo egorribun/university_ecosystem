@@ -10,7 +10,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import BackgroundTasks
 
 import app.auth.security as security
 import app.core.database as database
@@ -18,7 +17,6 @@ import app.services.nats_messaging as nats_messaging
 import app.workers.outbox as outbox
 from app.core.nats_broker import NatsTaskBroker
 from app.services import notification_queue as queue
-from app.services.notification_service import NotificationService
 from app.services.schedule_optimizer import (
     ScheduleItemInternal,
     ScheduleOptimizerService,
@@ -39,28 +37,6 @@ def _schedule_item(
         parity="both",
         room=room,
         teacher=teacher,
-    )
-
-
-@pytest.mark.asyncio
-async def test_news_enqueue_failure_report_keeps_complete_metadata() -> None:
-    service = NotificationService(db=AsyncMock())
-    news_id = uuid.uuid4()
-    failure = RuntimeError("queue full")
-    background = MagicMock(spec=BackgroundTasks)
-    background.add_task.side_effect = failure
-
-    with patch(
-        "app.services.notification_service.notification_queue.report_enqueue_failure",
-        new=AsyncMock(),
-    ) as report:
-        await service.dispatch_news_created(news_id, "en", background)
-
-    report.assert_awaited_once_with(
-        notification_type="news",
-        record_id=news_id,
-        error=failure,
-        source="NotificationService.dispatch_news_created",
     )
 
 

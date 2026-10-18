@@ -175,11 +175,15 @@ class AuditService:
         }
 
         if request:
+            from app.core.ratelimit.utils import resolve_client_ip
+
             # RZ-05: Use getattr guard — request.client can be None on unix socket
             # transports or certain ASGI test clients (AttributeError at runtime).
             _client = getattr(request, "client", None)
             payload["ip"] = (
-                _client.host if _client and hasattr(_client, "host") else None
+                resolve_client_ip(request)
+                if _client and hasattr(_client, "host")
+                else None
             )
             payload["path"] = request.url.path
             payload["method"] = request.method

@@ -375,6 +375,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             select(Chat)
             .where(Chat.id.in_(select(cp.c.chat_id).where(cp.c.user_id == user1_id)))
             .where(Chat.id.in_(select(cp.c.chat_id).where(cp.c.user_id == user2_id)))
+            .where(Chat.chat_type == "dm")
             .where(
                 select(func.count())
                 .where(cp.c.chat_id == Chat.id)

@@ -1,8 +1,10 @@
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
+import elastic_transport
 import pytest
 from dishka import Provider, Scope, make_async_container, provide
+from elasticsearch import ApiError
 from httpx import AsyncClient
 
 import app.models as models
@@ -310,6 +312,55 @@ async def test_unified_search_non_string_fallback(
         data = resp.json()
         assert data["results"]["news"][0]["summary"] == ""
 
+    finally:
+        if hasattr(app.state, "dishka_container"):
+            await app.state.dishka_container.close()
+        app.state.dishka_container = original_container
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "sdk_error",
+    [
+        pytest.param(
+            elastic_transport.ConnectionError("elastic unreachable"),
+            id="transport-connection",
+        ),
+        pytest.param(
+            elastic_transport.ConnectionTimeout("elastic slow"),
+            id="transport-timeout",
+        ),
+        pytest.param(
+            ApiError("index unavailable", MagicMock(), {}),
+            id="api-error",
+        ),
+    ],
+)
+async def test_unified_search_sdk_failures_fall_back_to_empty_results(
+    async_client: AsyncClient, mock_user, mock_search_service, sdk_error
+):
+    """AUD-118: Elasticsearch SDK errors are not builtin ConnectionError subclasses."""
+    mock_search_service.search.side_effect = sdk_error
+
+    app.dependency_overrides[get_current_user_from_dishka] = lambda: mock_user
+
+    class TestProvider(Provider):
+        @provide(scope=Scope.APP)
+        def search_svc(self) -> SearchService:
+            return mock_search_service
+
+    original_container = getattr(app.state, "dishka_container", None)
+    app.state.dishka_container = make_async_container(TestProvider())
+
+    try:
+        resp = await async_client.get(
+            "/search",
+            params={"q": "error", "type": "all"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["results"]["news"] == []
+        assert data["results"]["events"] == []
     finally:
         if hasattr(app.state, "dishka_container"):
             await app.state.dishka_container.close()

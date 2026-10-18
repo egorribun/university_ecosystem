@@ -325,3 +325,50 @@ async def test_rotating_unverified_credentials_cannot_bypass_ip_limit():
     other_ip["client"] = ("198.51.100.7", 5000)
     await middleware(other_ip, AsyncMock(), AsyncMock())
     assert app.await_count == 2
+
+
+def test_resolve_client_ip_reads_rfc7239_node_ports_behind_trusted_gateway(
+    monkeypatch,
+):
+    """AUD-164: gateways emit `ip:port` and `[ipv6]:port` node values.
+
+    Dropping those hops made every client behind the gateway share the
+    gateway's own rate-limit bucket.
+    """
+    monkeypatch.setattr(settings, "trusted_proxies_list", ["127.0.0.0/8"])
+
+    with_port = _proxy_request("127.0.0.1", {"X-Forwarded-For": "203.0.113.9:4711"})
+    assert resolve_client_ip(with_port) == "203.0.113.9"
+
+    trusted_hop_with_port = _proxy_request(
+        "127.0.0.1", {"X-Forwarded-For": "203.0.113.9:4711, 127.0.0.2:80"}
+    )
+    assert resolve_client_ip(trusted_hop_with_port) == "203.0.113.9"
+
+    forwarded_v4 = _proxy_request(
+        "127.0.0.1", {"Forwarded": "for=192.0.2.43:47011;proto=https"}
+    )
+    assert resolve_client_ip(forwarded_v4) == "192.0.2.43"
+
+    forwarded_v6 = _proxy_request(
+        "127.0.0.1", {"Forwarded": 'for="[2001:db8::7]:4711";proto=https'}
+    )
+    assert resolve_client_ip(forwarded_v6) == "2001:db8::7"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("203.0.113.9", "203.0.113.9"),
+        ("203.0.113.9:4711", "203.0.113.9"),
+        ('"[2001:db8::7]:4711"', "2001:db8::7"),
+        ("[2001:db8::7]", "2001:db8::7"),
+        ("2001:db8::7", "2001:db8::7"),
+        ("unknown", "unknown"),
+        ("", ""),
+    ],
+)
+def test_forwarded_node_host_strips_quotes_brackets_and_ports(raw, expected):
+    from app.core.ratelimit.utils import _forwarded_node_host
+
+    assert _forwarded_node_host(raw) == expected

@@ -77,12 +77,19 @@ class IssuedChallenge:
         return self.challenge.payload
 
 
+_TOTP_HOURLY_WINDOW_SECONDS = 3600
+
+
 async def _enforce_totp_attempt_budget(
     *,
     user_id: UUID,
     locale: str | None = None,
 ) -> None:
-    """Charge one account-scoped TOTP verification slot in the current window."""
+    """Charge one account-scoped TOTP verification slot in each budget window.
+
+    The short window bounds bursts. Alone it refills every cycle, so an hourly
+    window also caps sustained guessing (AUD-176).
+    """
     limit = max(0, settings.mfa_totp_attempt_limit)
     window = max(0, settings.mfa_challenge_ttl_seconds)
     if limit == 0 or window == 0:
@@ -90,22 +97,33 @@ async def _enforce_totp_attempt_budget(
 
     # Challenge issuance does not charge this verification budget. Successful
     # and failed checks consume slots, restored only by sliding-window expiry.
-    key = f"mfa:totp-attempts:{user_id}"
-    try:
-        await enforce_rate_limit(
-            identifier=key,
-            limit=limit,
-            window_seconds=window,
-            strategy=get_default_strategy("mfa"),
-        )
-    except RateLimitExceeded as exc:
-        retry_after = max(0, int(exc.info.retry_after))
-        raise_http_error(
-            status.HTTP_429_TOO_MANY_REQUESTS,
-            "errors.rate_limit.generic",
-            locale or "en",
-            headers={"Retry-After": str(retry_after)},
-        )
+    hourly_limit = max(0, settings.mfa_totp_attempt_hourly_limit)
+    budgets = (
+        (f"mfa:totp-attempts:{user_id}", limit, window),
+        (
+            f"mfa:totp-attempts-hourly:{user_id}",
+            hourly_limit,
+            _TOTP_HOURLY_WINDOW_SECONDS,
+        ),
+    )
+    for key, budget_limit, budget_window in budgets:
+        if budget_limit == 0:
+            continue
+        try:
+            await enforce_rate_limit(
+                identifier=key,
+                limit=budget_limit,
+                window_seconds=budget_window,
+                strategy=get_default_strategy("mfa"),
+            )
+        except RateLimitExceeded as exc:
+            retry_after = max(0, int(exc.info.retry_after))
+            raise_http_error(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "errors.rate_limit.generic",
+                locale or "en",
+                headers={"Retry-After": str(retry_after)},
+            )
 
 
 async def _enforce_challenge_rate_limit(

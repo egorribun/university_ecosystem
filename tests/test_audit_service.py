@@ -983,3 +983,31 @@ async def test_verify_chain_integrity_rejects_chain_row_with_removed_markers(
     assert is_valid is False
     assert failed_id == str(event.id)
     assert "sequence" in (error or "").lower()
+
+
+@patch("app.services.audit_service.get_request_id")
+def test_audit_service_log_records_forwarded_client_behind_trusted_gateway(
+    mock_get_request_id, monkeypatch
+):
+    """AUD-164: security audit events record the client, not the gateway peer."""
+    from starlette.datastructures import Headers
+
+    from app.core.config import settings
+
+    mock_get_request_id.return_value = "req-789"
+    monkeypatch.setattr(settings, "trusted_proxies_list", ["10.0.0.0/8"])
+    mock_request = MagicMock()
+    mock_request.client.host = "10.0.0.5"
+    mock_request.headers = Headers({"X-Forwarded-For": "203.0.113.8"})
+    mock_request.url.path = "/api/v1/auth/login"
+    mock_request.method = "POST"
+
+    svc = AuditService()
+    with patch.object(svc, "_select_logger") as mock_select:
+        mock_logger = MagicMock()
+        mock_select.return_value = mock_logger
+
+        svc.log(SecurityEvent.AUTH_LOGIN_SUCCESS, mock_request, user_id=1)
+
+    extra = mock_logger.log.call_args[1]["extra"]
+    assert extra["ip"] == "203.0.113.8"

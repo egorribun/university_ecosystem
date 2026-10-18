@@ -350,7 +350,7 @@ async def test_count_upcoming_uses_utc_cutoff_and_returns_zero_when_empty(
 
 
 @pytest.mark.asyncio
-async def test_count_search_events_without_filters_counts_all_rows(
+async def test_count_search_events_without_filters_counts_visible_rows(
     db_session, user_factory
 ):
     user = await user_factory()
@@ -378,4 +378,5 @@ async def test_count_search_events_without_filters_counts_all_rows(
     )
     await db_session.commit()
 
-    assert await repo.count_search_events(is_active=None, now=frozen_now) == 2
+    # Event.is_active is the manual-hide flag (AUD-016): the hidden row is not counted.
+    assert await repo.count_search_events(is_active=None, now=frozen_now) == 1

@@ -444,8 +444,8 @@ class TestTokenBucketRateLimiting:
             assert key == "gql:token_bucket:ip:203.0.113.45"
 
     @pytest.mark.asyncio
-    async def test_anonymous_user_x_forwarded_for_bucket_key_format(self) -> None:
-        """Anonymous user extracts first IP from X-Forwarded-For header if client host unavailable."""
+    async def test_anonymous_user_without_peer_ignores_x_forwarded_for(self) -> None:
+        """AUD-164: without a peer address the forwarded header is not trusted."""
         ext = QueryCostExtension()
         ext.execution_context = MagicMock()
         ext.execution_context.pre_execution_errors = None
@@ -467,7 +467,7 @@ class TestTokenBucketRateLimiting:
                 mock_consume.call_args.kwargs.get("key")
                 or mock_consume.call_args.args[0]
             )
-            assert key == "gql:token_bucket:ip:198.51.100.12"
+            assert key == "gql:token_bucket:ip:127.0.0.1"
 
     @pytest.mark.asyncio
     async def test_anonymous_user_default_ip_fallback(self) -> None:
@@ -490,6 +490,39 @@ class TestTokenBucketRateLimiting:
                 or mock_consume.call_args.args[0]
             )
             assert key == "gql:token_bucket:ip:127.0.0.1"
+
+    @pytest.mark.asyncio
+    async def test_anonymous_bucket_uses_resolved_client_behind_trusted_gateway(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AUD-164: behind a trusted gateway the bucket keys on the forwarded client."""
+        from starlette.datastructures import Headers
+
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "trusted_proxies_list", ["10.0.0.0/8"])
+        ext = QueryCostExtension()
+        ext.execution_context = MagicMock()
+        ext.execution_context.pre_execution_errors = None
+        ext.execution_context.graphql_document = parse("{ news { id } }")
+        ext.execution_context.context = MagicMock()
+        ext.execution_context.context.current_user = None
+
+        mock_request = MagicMock()
+        mock_request.client.host = "10.0.0.5"
+        mock_request.headers = Headers({"X-Forwarded-For": "203.0.113.77"})
+        ext.execution_context.context.request = mock_request
+
+        mock_consume = AsyncMock(return_value=(True, 990))
+        with patch.object(ext_module, "_consume_token_bucket", mock_consume):
+            async for _ in ext.on_validate():
+                pass
+
+            key = (
+                mock_consume.call_args.kwargs.get("key")
+                or mock_consume.call_args.args[0]
+            )
+            assert key == "gql:token_bucket:ip:203.0.113.77"
 
     @pytest.mark.asyncio
     async def test_redis_lua_script_atomic_deduction(self) -> None:

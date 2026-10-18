@@ -7,9 +7,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.localization import (
     SUPPORTED_LOCALES,
     localized_text,
@@ -253,7 +255,7 @@ async def notify_about_event(
         summary = _plain_text(summary_source, limit=220)
         url = f"/events/{event.id}" if getattr(event, "id", None) else "/events"
         start_dt = _ensure_aware(getattr(event, "starts_at", None))
-        start_local = start_dt.astimezone()
+        start_local = start_dt.astimezone(ZoneInfo(settings.campus_timezone))
         template_payload = {
             "title": localized_title_value,
             "summary": summary,

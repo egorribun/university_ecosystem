@@ -176,3 +176,50 @@ async def test_integrity_failure_logs_fingerprint_without_raw_endpoint_or_keys(
     assert endpoint not in str(exc.value.detail)
     assert database.rollback.await_count == 3
     database.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_push_subscribe_ip_limit_keys_on_trusted_gateway_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AUD-164: the per-IP push limit must not collapse onto the gateway peer."""
+    from starlette.datastructures import Headers
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "trusted_proxies_list", ["10.0.0.0/8"])
+    caller_id = uuid.uuid4()
+    request = MagicMock()
+    request.client.host = "10.0.0.5"
+    request.headers = Headers({"X-Forwarded-For": "203.0.113.8"})
+    payload = PushSubscriptionIn(
+        endpoint="https://push.example.test/endpoint-secret-marker",
+        keys={"p256dh": "synthetic-p256dh", "auth": "synthetic-auth"},
+    )
+    identifiers: list[str] = []
+
+    async def charge_caller(**kwargs: object) -> None:
+        identifiers.append(str(kwargs["identifier"]))
+
+    async def fail_dns(_candidate: str) -> None:
+        raise ValueError("DNS resolution failed: synthetic resolver outage")
+
+    monkeypatch.setattr(notifications, "resolve_locale", lambda **_kwargs: "en")
+    monkeypatch.setattr(notifications, "get_default_strategy", lambda name: name)
+    monkeypatch.setattr(notifications, "enforce_rate_limit", charge_caller)
+    monkeypatch.setattr(notifications, "_validate_public_endpoint_dns", fail_dns)
+    monkeypatch.setattr(
+        notifications, "settings", SimpleNamespace(is_development=False)
+    )
+
+    with pytest.raises(HTTPException):
+        await call_injected(
+            notifications.subscribe,
+            payload=payload,
+            request=request,
+            user=SimpleNamespace(id=caller_id),
+            provides={"AsyncDatabaseSession": AsyncMock()},
+        )
+
+    assert "ip:203.0.113.8" in identifiers
+    assert "ip:10.0.0.5" not in identifiers

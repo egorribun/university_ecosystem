@@ -795,3 +795,32 @@ async def test_csrf_unrotated_valid_request_does_not_reissue_cookies() -> None:
         assert response.headers.get_list("set-cookie") == []
         assert client.cookies.get(_ANON_NONCE_COOKIE_NAME) == nonce_before
         assert client.cookies.get(CSRF_COOKIE_NAME) == token_before
+
+
+@pytest.mark.asyncio
+async def test_first_visit_anonymous_nonce_lives_as_long_as_csrf_cookie() -> None:
+    """AUD-001: the anonymous nonce must not expire before the CSRF cookie it binds.
+
+    A one-hour nonce left a day-long CSRF cookie unbound after an hour, so the
+    next unrotated mutation failed the HMAC check with 403.
+    """
+    app = _wrap(_make_app())
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        response = await client.get("/safe")
+
+    def max_age(name: str) -> str:
+        header = next(
+            h
+            for h in response.headers.get_list("set-cookie")
+            if h.partition("=")[0].lower() == name.lower()
+        )
+        attributes = {
+            item.strip().partition("=")[0].lower(): item.strip().partition("=")[2]
+            for item in header.split(";")[1:]
+        }
+        return attributes["max-age"]
+
+    assert max_age(_ANON_NONCE_COOKIE_NAME) == max_age(CSRF_COOKIE_NAME)

@@ -366,3 +366,33 @@ async def test_export_access_logs_stream_applies_all_filters(db_session, user_fa
         )
     ]
     assert "".join(chunks).startswith("created_at,actor_user_id")
+
+
+@pytest.mark.asyncio
+async def test_log_data_access_records_forwarded_client_behind_trusted_gateway(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AUD-164: audit rows record the client, not the gateway peer."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "trusted_proxies_list", ["10.0.0.0/8"])
+    db = MagicMock()
+    db.commit = AsyncMock()
+    gateway_request = SimpleNamespace(
+        client=SimpleNamespace(host="10.0.0.5"),
+        headers={"X-Forwarded-For": "203.0.113.8", "user-agent": "pytest-agent"},
+    )
+    with patch("app.services.audit_service.get_secure_audit_service") as get_service:
+        service = get_service.return_value
+        service.create_log = AsyncMock(return_value=MagicMock())
+        await log_data_access(
+            db,
+            actor_user_id=None,
+            subject_user_id=None,
+            resource_type="system",
+            action="read",
+            request=gateway_request,
+            commit=False,
+        )
+
+    assert service.create_log.call_args.kwargs["ip_address"] == "203.0.113.8"

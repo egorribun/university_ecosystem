@@ -85,7 +85,6 @@ _ANON_NONCE_HEX_LEN = 32  # secrets.token_hex(16) → 32 lowercase hex chars
 _ANON_NONCE_RE = re.compile(
     r"^[0-9a-f]{32}$"
 )  # RZ-28-02: compiled regex for uniform-time validation
-_ANON_NONCE_MAX_AGE = 3600  # 1 hour — matches typical pre-login session lifetime
 # State key to carry a newly-generated nonce from _extract_session_id to
 # send_with_csrf_cookie so the cookie can be set in the same response.
 _NEW_ANON_NONCE_STATE_KEY = "_csrf_new_anon_nonce"
@@ -415,11 +414,7 @@ class CSRFMiddleware:
                                 b"set-cookie",
                                 self._build_anon_nonce_cookie(
                                     new_anon_nonce,
-                                    max_age=(
-                                        self._cookie_max_age
-                                        if should_rotate
-                                        else _ANON_NONCE_MAX_AGE
-                                    ),
+                                    max_age=self._cookie_max_age,
                                 ),
                             )
                         )
@@ -456,9 +451,7 @@ class CSRFMiddleware:
         # in JavaScript to forward it as the X-CSRF-Token request header.
         return "; ".join(parts).encode("latin-1")
 
-    def _build_anon_nonce_cookie(
-        self, nonce: str, *, max_age: int = _ANON_NONCE_MAX_AGE
-    ) -> bytes:
+    def _build_anon_nonce_cookie(self, nonce: str, *, max_age: int) -> bytes:
         """Build a raw ``Set-Cookie`` header value for the anonymous session nonce.
 
         RZ-W9-04: Unlike the CSRF token, the nonce cookie IS HttpOnly — the

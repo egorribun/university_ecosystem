@@ -28,6 +28,7 @@ from app.core.ratelimit import (
     RateLimitInfo,
     enforce_rate_limit,
     get_default_strategy,
+    resolve_client_ip,
 )
 from app.core.ssrf import validate_public_https_url
 from app.models import PushSubscription, User, UserPushTopic
@@ -246,7 +247,7 @@ async def subscribe(
     user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> PushSubscriptionOut:
     locale = resolve_locale(request=request, user=user)
-    client_host = request.client.host if request.client else None
+    client_host = resolve_client_ip(request) if request.client else None
     try:
         await enforce_rate_limit(
             identifier=f"user:{user.id}",
@@ -496,7 +497,7 @@ async def unsubscribe(
             },
         )
 
-    client_host = request.client.host if request.client else None
+    client_host = resolve_client_ip(request) if request.client else None
     try:
         await enforce_rate_limit(
             identifier=f"user:{user.id}",
@@ -584,7 +585,7 @@ async def send_test(
             detail=translate("errors.push.not_configured", locale=locale),
         )
 
-    client_host = request.client.host if request and request.client else None
+    client_host = resolve_client_ip(request) if request and request.client else None
     try:
         await enforce_rate_limit(
             identifier=f"user:{user.id}",

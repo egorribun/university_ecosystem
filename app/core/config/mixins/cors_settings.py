@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 from functools import cached_property
 from typing import Any
 from urllib.parse import urlparse
@@ -184,6 +185,18 @@ class CorsSettingsMixin:
         headers[self.request_id_header] = None
         headers[self.trace_header] = None
         return [key for key in headers if key]
+
+    @field_validator("trusted_proxies")
+    @classmethod
+    def _validate_trusted_proxies(cls, value: str | list[str]) -> str | list[str]:
+        # Fail startup on a malformed entry: a silently dropped CIDR leaves its
+        # clients on the proxy's own rate-limit bucket with no operator signal.
+        for proxy in _coerce_str_list(value):
+            try:
+                ipaddress.ip_network(proxy, strict=False)
+            except ValueError as err:
+                raise ValueError(f"invalid trusted proxy entry: {proxy!r}") from err
+        return value
 
     @cached_property
     def trusted_proxies_list(self) -> list[str]:

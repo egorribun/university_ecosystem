@@ -9,6 +9,7 @@ from typing import Any
 
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
+from elasticsearch import ApiError, TransportError
 from fastapi import APIRouter, Depends
 from fastapi import Query as QueryParam
 
@@ -17,6 +18,10 @@ from app.core.logging import get_logger
 from app.services.search import SearchService
 
 logger = get_logger(__name__)
+
+# Elasticsearch SDK failures (TransportError, ApiError) do not subclass the builtins,
+# so the search fallback names them explicitly.
+_SEARCH_UNAVAILABLE = (OSError, ConnectionError, TimeoutError, TransportError, ApiError)
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -71,7 +76,7 @@ async def unified_search(
                     highlight=True,
                 )
                 results["news"] = _format_hits(raw, "news")
-            except (OSError, ConnectionError):
+            except _SEARCH_UNAVAILABLE:
                 results["news"] = []
 
         elif search_type == "events":
@@ -84,7 +89,7 @@ async def unified_search(
                     highlight=True,
                 )
                 results["events"] = _format_hits(raw, "events")
-            except (OSError, ConnectionError):
+            except _SEARCH_UNAVAILABLE:
                 results["events"] = []
 
     return {"query": q, "results": results}

@@ -67,11 +67,19 @@ class DeadLetterQueue:
         """
         job_hash = compute_job_hash(job_type, payload)
 
-        # Check for duplicate
-        existing = await self.session.execute(
-            select(DeadLetterJob).where(DeadLetterJob.job_hash == job_hash)
-        )
-        if existing.scalar_one_or_none():
+        # Calculate next retry time with exponential backoff
+        next_retry = datetime.now(UTC) + timedelta(seconds=self.BASE_BACKOFF_SECONDS)
+
+        # Duplicate check: skip only while a retry for this payload is queued.
+        existing = (
+            await self.session.execute(
+                select(DeadLetterJob).where(DeadLetterJob.job_hash == job_hash)
+            )
+        ).scalar_one_or_none()
+        if existing is not None and existing.status in (
+            JobStatus.PENDING.value,
+            JobStatus.RETRYING.value,
+        ):
             logger.debug(
                 "Duplicate job detected, skipping: type=%s, hash=%s",
                 job_type,
@@ -79,19 +87,26 @@ class DeadLetterQueue:
             )
             return None
 
-        # Calculate next retry time with exponential backoff
-        next_retry = datetime.now(UTC) + timedelta(seconds=self.BASE_BACKOFF_SECONDS)
-
-        job = DeadLetterJob(
-            job_type=job_type,
-            job_hash=job_hash,
-            payload=json.dumps(payload),
-            error_message=error_message,
-            max_retries=max_retries,
-            next_retry_at=next_retry,
-        )
-
-        self.session.add(job)
+        if existing is not None:
+            # job_hash is unique, so a finished row (completed or exhausted)
+            # describes an earlier run; a new failure reopens it instead.
+            job = existing
+            job.status = JobStatus.PENDING.value
+            job.retry_count = 0
+            job.max_retries = max_retries
+            job.payload = json.dumps(payload)
+            job.error_message = error_message
+            job.next_retry_at = next_retry
+        else:
+            job = DeadLetterJob(
+                job_type=job_type,
+                job_hash=job_hash,
+                payload=json.dumps(payload),
+                error_message=error_message,
+                max_retries=max_retries,
+                next_retry_at=next_retry,
+            )
+            self.session.add(job)
         # TD-012 (audit 2026-03-04): commit removed — callers own the Unit of Work
         # boundary. Committing inside repository methods prevents batching multiple
         # operations atomically and violates the UoW pattern.

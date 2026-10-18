@@ -169,3 +169,19 @@ async def test_search_events_filter_branches(event_repo_db, db_session, user_fac
         cursor=(datetime.now(UTC) - timedelta(hours=1), uuid.uuid4())
     )
     assert isinstance(cursored, list)
+
+
+@pytest.mark.asyncio
+async def test_manually_hidden_event_is_excluded_from_listing_and_total(
+    event_repo_db, db_session, user_factory
+):
+    """AUD-016: is_active is the manual hide flag; hidden events are neither listed nor counted."""
+    user = await user_factory()
+    visible = await _add_event(db_session, user.id, title="Visible")
+    hidden = await _add_event(db_session, user.id, title="Hidden")
+    hidden.is_active = False
+    await db_session.flush()
+
+    listed = await event_repo_db.search_events(is_active=True)
+    assert [row.event.id for row in listed] == [visible.id]
+    assert await event_repo_db.count_search_events(is_active=True) == 1

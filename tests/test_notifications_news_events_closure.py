@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -204,3 +204,34 @@ async def test_unnotified_user_ids_skips_dedupe_when_no_work_is_needed() -> None
 
     lock.assert_not_awaited()
     db.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_event_notification_times_use_campus_timezone(monkeypatch) -> None:
+    """AUD-199: event notifications show start times in the campus zone, not the host's."""
+    from app.core.config import settings as app_settings
+
+    # +14:00 is unlikely to match the host zone, so a host-local conversion fails.
+    monkeypatch.setattr(app_settings, "campus_timezone", "Pacific/Kiritimati")
+    event = _event(starts_at=datetime(2026, 10, 18, 12, 0, tzinfo=UTC))
+    render = MagicMock(return_value=None)
+    with (
+        patch.object(news_events, "normalize_locale", return_value="en"),
+        patch.object(news_events, "render_notification_template", render),
+        patch.object(
+            news_events, "_fetch_active_user_ids", AsyncMock(return_value=[uuid4()])
+        ),
+        patch.object(
+            news_events,
+            "_unnotified_user_ids",
+            AsyncMock(side_effect=lambda _db, _key, candidate_ids: candidate_ids),
+        ),
+        patch.object(
+            news_events, "create_notifications_for_users", AsyncMock(return_value=1)
+        ),
+    ):
+        await news_events.notify_about_event(AsyncMock(), event, locale="en")
+
+    template_payload = render.call_args.args[1]
+    assert template_payload["date"] == "19.10"
+    assert template_payload["time"] == "02:00"

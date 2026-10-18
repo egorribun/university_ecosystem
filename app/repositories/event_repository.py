@@ -179,6 +179,10 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
                 )
             )
 
+        # Event.is_active is the manual-hide flag: hidden events are excluded from
+        # listings and totals alike. The is_active argument only selects upcoming
+        # (True) or archived, i.e. already ended (False), events.
+        conditions.append(Event.is_active.is_(True))
         if is_active is True:
             conditions.append(Event.ends_at >= now)
         elif is_active is False:
