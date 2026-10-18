@@ -6,6 +6,7 @@ import { isOpenNow } from "@/utils/buildingHours"
 import { getPrimaryIcon } from "@/utils/buildingCategoryIcons"
 import { getRoomStatus } from "@/utils/roomStatus"
 import { useAppShell } from "@/contexts/AppShellContext"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import useFocusTrap from "@/hooks/useFocusTrap"
 
 interface TodayLesson {
@@ -146,6 +147,7 @@ export function MapSidebar({
 }: MapSidebarProps) {
   const { t } = useTranslation("map")
   const { setOverlayState } = useAppShell()
+  const campusTimeZone = useCampusTimezone()
   const isOpen = !!building
   const sidebarTitleId = useId()
   const sidebarDescriptionId = useId()
@@ -321,7 +323,8 @@ export function MapSidebar({
     if (!floor || !building) return null
     return floor.rooms.map((room) => {
       const isActive = selectedRoom === room.id
-      const status = todayLessons ? getRoomStatus(room.id, todayLessons) : null
+      const status =
+        todayLessons && campusTimeZone ? getRoomStatus(room.id, todayLessons, campusTimeZone) : null
       return (
         <button
           key={room.id}
@@ -361,7 +364,7 @@ export function MapSidebar({
         </button>
       )
     })
-  }, [floor, building, selectedRoom, todayLessons, t, onRoomClick])
+  }, [floor, building, selectedRoom, todayLessons, campusTimeZone, t, onRoomClick])
 
   if (!isOpen) return null
 

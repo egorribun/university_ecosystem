@@ -1,5 +1,5 @@
 import * as v from "valibot"
-import "@/api/client"
+import { fetchAnonymousNewsDetail } from "@/api/client"
 
 import {
   createNewsApiV1NewsPost,
@@ -86,6 +86,15 @@ export const fetchNewsItem = async (
     applyParsedData(response, newsItemSchema, "GET /api/v1/news/{id}")
   }
   return response
+}
+
+export const fetchAnonymousNewsItem = async (
+  id: string,
+  { language, signal }: { language: string; signal?: AbortSignal }
+): Promise<NewsItem> => {
+  const response = await fetchAnonymousNewsDetail({ id, language, signal })
+  if (!response.ok) throw new Error(`News request failed with status ${response.status}`)
+  return ensureValidResponse(newsItemSchema, await response.json(), "GET /api/v1/news/{id}")
 }
 
 export const createNews = async (payload: CreateNewsPayload) => {

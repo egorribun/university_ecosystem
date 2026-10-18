@@ -7,8 +7,14 @@
  */
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { pageScheduleQueryOptions, scheduleGroupsQueryOptions } from "@/api/hooks/schedule"
+import { useTranslation } from "react-i18next"
+import {
+  anonymousScheduleQueryKey,
+  pageScheduleQueryOptions,
+  scheduleGroupsQueryOptions,
+} from "@/api/hooks/schedule"
 import { useAuth } from "@/contexts/AuthContext"
+import { useAnonymousReadMode } from "@/api/hooks/news"
 import {
   type Lesson,
   scheduleQueryKey,
@@ -23,6 +29,8 @@ import { useScheduleTime } from "./useScheduleTime"
 
 export function useScheduleData() {
   const { user } = useAuth()
+  const { anonymous } = useAnonymousReadMode()
+  const { i18n: translation } = useTranslation()
   const queryClient = useQueryClient()
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   // The schedule shows the current ISO week's lessons until the user switches parity.
@@ -36,14 +44,21 @@ export function useScheduleData() {
   // Wave 130 SW1 — factory shared with the /schedule SSR loader
   // (frontend/src/api/hooks/schedule.ts). queryKey shape preserved
   // so cache entries hydrate cleanly across SSR → client.
-  const groupsQuery = useQuery(scheduleGroupsQueryOptions())
+  const groupsQuery = useQuery(scheduleGroupsQueryOptions(anonymous, translation.language))
   const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data])
 
   // ── TanStack Query: Schedule ───────────────────────
   const activeGroupId = selectedGroup
-  const scheduleKey = activeGroupId != null ? scheduleQueryKey(activeGroupId) : null
+  const scheduleKey =
+    activeGroupId == null
+      ? null
+      : anonymous
+        ? anonymousScheduleQueryKey(activeGroupId)
+        : scheduleQueryKey(activeGroupId)
 
-  const scheduleQuery = useQuery(pageScheduleQueryOptions(activeGroupId))
+  const scheduleQuery = useQuery(
+    pageScheduleQueryOptions(activeGroupId, anonymous, translation.language)
+  )
 
   const groupScheduleRaw = useMemo(() => scheduleQuery.data ?? [], [scheduleQuery.data])
   const groupSchedule = useMemo(
@@ -53,7 +68,7 @@ export function useScheduleData() {
 
   // ── Persist Schedule to RxDB for Offline Access ─────
   useEffect(() => {
-    if (activeGroupId && groupScheduleRaw.length > 0) {
+    if (!anonymous && activeGroupId && groupScheduleRaw.length > 0) {
       getDatabaseLazily()
         .then((db) => {
           const docs: ScheduleDoc[] = groupScheduleRaw.map((lesson: Record<string, unknown>) => ({
@@ -85,7 +100,7 @@ export function useScheduleData() {
         })
         .catch(() => {})
     }
-  }, [activeGroupId, groupScheduleRaw])
+  }, [activeGroupId, anonymous, groupScheduleRaw])
 
   // ── Auto-select group based on user role ───────────
   useEffect(() => {

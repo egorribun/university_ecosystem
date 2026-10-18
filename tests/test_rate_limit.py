@@ -1272,3 +1272,82 @@ async def test_sensitive_login_lockout_alone_answers_423_within_limiter_budget(
 
     blocked = await async_client.post("/auth/login", data=data, headers=headers)
     assert blocked.status_code == status.HTTP_423_LOCKED
+
+
+@pytest.mark.asyncio
+async def test_cancelled_rate_limit_probe_releases_half_open_admission(monkeypatch):
+    import asyncio
+
+    from app.core.ratelimit import logic as rate_limit_logic
+    from app.core.ratelimit.circuit_breaker import (
+        CircuitState,
+        RedisCircuitBreaker,
+    )
+
+    breaker = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    breaker.record_failure()
+    breaker._last_failure_time = -1_000_000.0
+    assert breaker.state is CircuitState.HALF_OPEN
+
+    entered = asyncio.Event()
+
+    class BlockingStrategy:
+        async def check(self, key, limit, window_seconds):
+            entered.set()
+            await asyncio.Event().wait()
+
+    monkeypatch.setattr(rate_limit_logic, "get_circuit_breaker", lambda: breaker)
+    monkeypatch.setattr(
+        rate_limit_logic, "_get_redis_strategy", lambda _redis_url: BlockingStrategy()
+    )
+
+    request = asyncio.create_task(
+        rate_limit_logic.check_rate_limit(
+            identifier="cancelled-probe",
+            limit=10,
+            window_seconds=60,
+            redis_url="redis://test",
+        )
+    )
+    await asyncio.wait_for(entered.wait(), timeout=2)
+    request.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await request
+
+    assert breaker.state is CircuitState.OPEN
+    assert breaker.allow_request() is False
+
+
+@pytest.mark.asyncio
+async def test_unexpected_rate_limit_probe_error_releases_half_open_admission(
+    monkeypatch,
+):
+    from app.core.ratelimit import logic as rate_limit_logic
+    from app.core.ratelimit.circuit_breaker import CircuitState, RedisCircuitBreaker
+    from app.core.ratelimit.exceptions import RateLimitStorageUnavailable
+
+    monkeypatch.setattr(rate_limit_logic.settings, "rate_limit_enabled", True)
+    breaker = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    breaker.record_failure()
+    breaker._last_failure_time = -1_000_000.0
+    assert breaker.state is CircuitState.HALF_OPEN
+
+    class FailingStrategy:
+        async def check(self, key, limit, window_seconds):
+            raise RateLimitStorageUnavailable("storage unavailable")
+
+    monkeypatch.setattr(rate_limit_logic, "get_circuit_breaker", lambda: breaker)
+    monkeypatch.setattr(
+        rate_limit_logic, "_get_redis_strategy", lambda _redis_url: FailingStrategy()
+    )
+
+    with pytest.raises(RateLimitStorageUnavailable, match="storage unavailable"):
+        await rate_limit_logic.check_rate_limit(
+            identifier="unexpected-probe-error",
+            limit=10,
+            window_seconds=60,
+            redis_url="redis://test",
+        )
+
+    assert breaker.state is CircuitState.OPEN

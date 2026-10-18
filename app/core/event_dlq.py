@@ -222,8 +222,10 @@ class DeadLetterQueue:
                     circuit_paused = False
 
                     for failed in batch:
-                        if self._circuit_breaker and not force:
-                            if not self._circuit_breaker.allow_request():
+                        admission = None
+                        if self._circuit_breaker:
+                            admission = self._circuit_breaker.admit_request(force=force)
+                            if not admission.allowed and not force:
                                 circuit_paused = True
                                 break
 
@@ -233,7 +235,7 @@ class DeadLetterQueue:
                             batch_success += 1
                             self._total_replayed_success += 1
                             if self._circuit_breaker:
-                                self._circuit_breaker.record_success()
+                                self._circuit_breaker.record_success(admission)
                         except Exception as exc:  # RZ-22-01-JUSTIFIED: Replay handler error must be captured for exponential backoff update
                             batch_failed += 1
                             self._total_replayed_failed += 1
@@ -254,10 +256,13 @@ class DeadLetterQueue:
                                 )
 
                             if self._circuit_breaker:
-                                self._circuit_breaker.record_failure()
+                                self._circuit_breaker.record_failure(admission)
 
                             if backoff > 0:
                                 await asyncio.sleep(backoff)
+                        finally:
+                            if self._circuit_breaker and admission is not None:
+                                self._circuit_breaker.abandon_request(admission)
 
                         if rate_limit_delay > 0:
                             await asyncio.sleep(rate_limit_delay)

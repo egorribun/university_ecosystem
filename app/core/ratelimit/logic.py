@@ -83,17 +83,21 @@ async def check_rate_limit(
         cb = get_circuit_breaker()
         strategy = _get_redis_strategy(redis_url)
 
-        if cb.allow_request():
+        admission = cb.admit_request()
+        if admission.allowed:
             try:
                 result = await strategy.check(key, limit, window_seconds)
-                cb.record_success()
-                return result
             except (RedisError, OSError) as exc:
-                cb.record_failure()
+                cb.record_failure(admission)
                 _log.warning(
                     "rate_limit_storage_unavailable_fallback",
                     extra={"identifier": identifier, "error": str(exc)},
                 )
+            else:
+                cb.record_success(admission)
+                return result
+            finally:
+                cb.abandon_request(admission)
         else:
             _log.debug(
                 "rate_limit_circuit_open_fallback",
@@ -132,26 +136,31 @@ async def enforce_rate_limit(
 
     cb = get_circuit_breaker()
 
-    if cb.allow_request():
+    admission = cb.admit_request()
+    if admission.allowed:
         try:
-            info = await strategy.check(
-                key=identifier,
-                limit=limit,
-                window_seconds=window_seconds,
-            )
-            cb.record_success()
-        except (RedisError, OSError) as exc:
-            cb.record_failure()
-            _log.warning(
-                "rate_limit_storage_unavailable_fallback",
-                extra={"identifier": identifier, "error": str(exc)},
-            )
-            # PERF-30-01: Circuit breaker recorded failure — use 50% fallback.
-            fallback_limit = max(limit // 2, 1)
-            fallback_strategy = MemorySlidingWindowStrategy("fallback")
-            info = await fallback_strategy.check(
-                key=identifier, limit=fallback_limit, window_seconds=window_seconds
-            )
+            try:
+                info = await strategy.check(
+                    key=identifier,
+                    limit=limit,
+                    window_seconds=window_seconds,
+                )
+            except (RedisError, OSError) as exc:
+                cb.record_failure(admission)
+                _log.warning(
+                    "rate_limit_storage_unavailable_fallback",
+                    extra={"identifier": identifier, "error": str(exc)},
+                )
+                # PERF-30-01: Circuit breaker recorded failure — use 50% fallback.
+                fallback_limit = max(limit // 2, 1)
+                fallback_strategy = MemorySlidingWindowStrategy("fallback")
+                info = await fallback_strategy.check(
+                    key=identifier, limit=fallback_limit, window_seconds=window_seconds
+                )
+            else:
+                cb.record_success(admission)
+        finally:
+            cb.abandon_request(admission)
     else:
         # PERF-30-01: Circuit open — skip Redis entirely, use fallback.
         fallback_limit = max(limit // 2, 1)

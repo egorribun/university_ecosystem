@@ -1,5 +1,5 @@
 import { useCallback } from "react"
-import api from "@/api/client"
+import api, { fetchAnonymousNewsInteractions } from "@/api/client"
 import { isAxiosError } from "axios"
 import {
   useInfiniteQuery,
@@ -8,6 +8,8 @@ import {
   type InfiniteData,
 } from "@tanstack/react-query"
 import { useAuth } from "@/contexts/AuthContext"
+import i18n from "@/i18n/config"
+import { useAnonymousReadMode } from "@/api/hooks/news"
 import { logWarning } from "@/app/logger"
 import {
   NOTIFICATION_INTERACTIONS_DB_NAME,
@@ -174,19 +176,40 @@ interface NewsInteractionOptions {
   initialData?: Partial<NewsInteractionSummary>
   /** `false` keeps the summary only (feed cards show counts and never open comments). */
   loadComments?: boolean
+  /** Reuse the detail page's mode so its summary seed stays in the same cache partition. */
+  anonymousRead?: boolean
+  language?: string
 }
 
 export function useNewsInteraction(newsId: string, options: NewsInteractionOptions = {}) {
   const queryClient = useQueryClient()
   const { user } = useAuth()
-  const queryKey = ["news", newsId, "interactions"]
+  const { anonymous: inferredAnonymous } = useAnonymousReadMode()
+  const anonymous = options.anonymousRead ?? inferredAnonymous
+  const queryKey = anonymous
+    ? (["news", newsId, "anonymous-interactions"] as const)
+    : (["news", newsId, "interactions"] as const)
   const seed = options.initialData
 
   const interactionsQuery = useInfiniteQuery({
     queryKey,
-    queryFn: async ({ pageParam }) => {
+    queryFn: async ({ pageParam, signal }) => {
+      if (anonymous) {
+        const response = await fetchAnonymousNewsInteractions({
+          id: newsId,
+          language: options.language ?? i18n.language,
+          limit: NEWS_COMMENTS_PAGE_SIZE,
+          offset: pageParam,
+          signal,
+        })
+        if (!response.ok) {
+          throw new Error(`News interactions request failed with status ${response.status}`)
+        }
+        return (await response.json()) as NewsInteractions
+      }
       const res = await api.get<NewsInteractions>(`/news/${newsId}/interactions`, {
         params: { limit: NEWS_COMMENTS_PAGE_SIZE, offset: pageParam },
+        signal,
       })
       return res.data
     },
@@ -202,7 +225,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
           pages: [
             {
               likes_count: seed.likes_count ?? 0,
-              is_liked: seed.is_liked ?? false,
+              is_liked: anonymous ? false : (seed.is_liked ?? false),
               comments: [],
               comments_count: seed.comments_count ?? 0,
             },
@@ -211,6 +234,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
         }
       : undefined,
     initialDataUpdatedAt: 0,
+    meta: anonymous ? { persist: false } : undefined,
   })
   const interactions = interactionsQuery.data
   const isLoading = interactionsQuery.isLoading

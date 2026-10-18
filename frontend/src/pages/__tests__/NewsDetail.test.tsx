@@ -71,6 +71,7 @@ vi.mock("@/api/news", () => ({
 
 vi.mock("@/api/hooks/news", () => ({
   newsDetailQueryOptions: vi.fn(() => ({ queryKey: ["news", "news-1"] })),
+  useAnonymousReadMode: () => ({ owner: "news-detail-test-user", anonymous: false }),
 }))
 
 vi.mock("@/hooks/useNewsInteraction", () => ({

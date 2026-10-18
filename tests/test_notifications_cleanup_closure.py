@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 from app.services.notifications.cleanup import cleanup_stale_notifications
 
@@ -56,11 +57,13 @@ async def test_cleanup_stale_notifications_deletes_delivery_and_notification_bat
 ):
     db = AsyncMock()
     delivery_ids = MagicMock()
-    delivery_ids.all.return_value = [11]
+    delivery_id = uuid4()
+    delivery_ids.all.return_value = [delivery_id]
     no_delivery_ids = MagicMock()
     no_delivery_ids.all.return_value = []
     notification_ids = MagicMock()
-    notification_ids.all.return_value = [22]
+    notification_id = uuid4()
+    notification_ids.all.return_value = [notification_id]
     no_notification_ids = MagicMock()
     no_notification_ids.all.return_value = []
     db.scalars = AsyncMock(
@@ -84,6 +87,11 @@ async def test_cleanup_stale_notifications_deletes_delivery_and_notification_bat
 
     assert result == (3, 2)
     assert db.execute.await_count == 2
+    delivery_delete, notification_delete = (
+        call.args[0] for call in db.execute.await_args_list
+    )
+    assert [delivery_id] in delivery_delete.compile().params.values()
+    assert [notification_id] in notification_delete.compile().params.values()
     assert db.commit.await_count == 4
 
 

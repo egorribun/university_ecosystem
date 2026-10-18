@@ -25,6 +25,7 @@ services:
     networks:
       - service_net
       - public
+      - frontend_net
     depends_on:
       backend:
         condition: service_healthy
@@ -128,6 +129,7 @@ services:
       - event_net
       - internal
       - public
+      - frontend_net
     healthcheck:
       # NOTE: curl is not installed in the image (security — fewer CVE-prone binaries).
       # Use Python stdlib urllib instead (same as backend.Dockerfile HEALTHCHECK).
@@ -170,7 +172,7 @@ services:
     ports:
       - "127.0.0.1:8081:3000"
     networks:
-      - public
+      - frontend_net
     depends_on:
       backend:
         condition: service_healthy
@@ -339,7 +341,7 @@ services:
       retries: 5
     networks:
       - db_net
-      - public
+      - published_ports
     deploy:
       resources:
         limits:
@@ -432,7 +434,7 @@ services:
       retries: 5
     networks:
       - cache_net
-      - public
+      - published_ports
     deploy:
       resources:
         limits:
@@ -664,8 +666,7 @@ services:
     networks:
       - db_net
       - service_net
-      # Docker suppresses host port publication on internal-only networks.
-      - public
+      - published_ports
     healthcheck:
       # W144 SW2 NEW (z) #19: temporalio/server:1.30.2 ships only `temporal-server`
       # (no `temporal` CLI / grpc_health_probe), and the gRPC port is bound to the
@@ -755,7 +756,7 @@ services:
         condition: service_healthy
     networks:
       - service_net
-      - public
+      - published_ports
     deploy:
       resources:
         limits:
@@ -881,7 +882,7 @@ services:
     networks:
       - db_net
       - service_net
-      - public
+      - published_ports
     depends_on:
       postgres:
         condition: service_healthy
@@ -966,6 +967,11 @@ services:
 
 networks:
   public:
+  # Host-published admin and infrastructure ports stay reachable from the
+  # Docker host without placing their services on the frontend-facing network.
+  published_ports:
+  frontend_net:
+    internal: true
   service_net:
     internal: true
   db_net:

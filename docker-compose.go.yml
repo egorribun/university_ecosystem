@@ -46,6 +46,7 @@ services:
       - public
       - internal
       - revocation_net
+      - cache_net
     deploy:
       resources:
         limits:
@@ -88,6 +89,7 @@ services:
       - internal
       - public
       - revocation_net
+      - cache_net
     deploy:
       resources:
         limits:

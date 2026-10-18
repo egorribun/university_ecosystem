@@ -37,14 +37,19 @@ import {
   type UseInfiniteQueryOptions,
   type UseInfiniteQueryResult,
 } from "@tanstack/react-query"
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useSyncExternalStore } from "react"
 
 import { newsListApiV1NewsGet } from "@/api/generated/sdk.gen"
-import { fetchNewsItem, type NewsItem } from "@/api/news"
+import { fetchAnonymousNewsPage } from "@/api/client"
+import { fetchAnonymousNewsItem, fetchNewsItem, type NewsItem } from "@/api/news"
 import type { PaginatedResponse } from "@/types/Pagination"
 import { StorageItem } from "@/utils/storage"
 import { getConfirmedUserId } from "@/stores/authIdentity"
-import { captureSessionEpoch, getSessionEpoch } from "@/stores/sessionEpoch"
+import {
+  captureSessionEpoch,
+  getSessionEpoch,
+  hasStaleBrowserSessionBinding,
+} from "@/stores/sessionEpoch"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { pickPrivateListControls, type PrivateListControls } from "./privateListControls"
 
@@ -82,9 +87,10 @@ const normalizeNewsListFilters = (filters: NewsListFilters): NormalizedNewsListF
   }
 }
 
-type NewsListQueryKeyTuple = readonly ["news", "list", NormalizedNewsListFilters]
+type AuthenticatedNewsListQueryKey = readonly ["news", "list", NormalizedNewsListFilters]
+type AnonymousNewsListQueryKey = readonly ["news", "anonymous-list", NormalizedNewsListFilters]
 
-export type NewsListQueryKey = NewsListQueryKeyTuple
+export type NewsListQueryKey = AuthenticatedNewsListQueryKey | AnonymousNewsListQueryKey
 
 const createNewsListEtagKey = (filters: NormalizedNewsListFilters) => {
   return ["news", "list", filters.language, filters.limit].join(":")
@@ -104,7 +110,13 @@ const createNewsListEtagKey = (filters: NormalizedNewsListFilters) => {
  */
 export const newsListQueryKey = (filters: NewsListFilters) => {
   const normalized = normalizeNewsListFilters(filters)
-  return ["news", "list", normalized] as NewsListQueryKey
+  return ["news", "list", normalized] as AuthenticatedNewsListQueryKey
+}
+
+/** A separate cache identity for public responses fetched without credentials. */
+export const anonymousNewsListQueryKey = (filters: NewsListFilters) => {
+  const normalized = normalizeNewsListFilters(filters)
+  return ["news", "anonymous-list", normalized] as AnonymousNewsListQueryKey
 }
 
 const ensurePaginatedResponse = (
@@ -211,9 +223,30 @@ const createNewsListQueryFn =
     queryClient: QueryClient,
     normalized: NormalizedNewsListFilters,
     queryKey: NewsListQueryKey,
-    owner: string | null
+    owner: string | null,
+    anonymous = false
   ) =>
   async ({ pageParam, signal }: { pageParam?: string | null; signal?: AbortSignal }) => {
+    if (anonymous) {
+      // Anonymous reads cover both an unconfirmed account and a stale session
+      // generation observed from another tab. The transport omits cookies and
+      // avoids Axios even if a successor account cookie exists.
+      if (owner !== null && !hasStaleBrowserSessionBinding()) {
+        throw new DOMException("Session changed", "AbortError")
+      }
+      const response = await fetchAnonymousNewsPage({
+        language: normalized.language,
+        limit: normalized.limit,
+        cursor: pageParam,
+        signal,
+      })
+      if (!response.ok) throw new Error(`News request failed with status ${response.status}`)
+      return ensurePaginatedResponse(
+        (await response.json()) as PaginatedResponse<NewsItem>,
+        normalized.limit
+      )
+    }
+
     const currentEpoch = captureSessionEpoch()
     const ownsSession = () =>
       typeof window === "undefined" ||
@@ -306,22 +339,67 @@ export type UseNewsListQueryResult = UseInfiniteQueryResult<
  * // …
  * await queryClient.invalidateQueries({ queryKey })
  */
+const SESSION_GENERATION_STORAGE_KEY = "ecosystem.session.generation.v1"
+
+const subscribeToSessionGeneration = (onChange: () => void) => {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === null || event.key === SESSION_GENERATION_STORAGE_KEY) onChange()
+  }
+  window.addEventListener("storage", onStorage)
+  return () => window.removeEventListener("storage", onStorage)
+}
+
+const getStaleSessionSnapshot = () =>
+  typeof window !== "undefined" && hasStaleBrowserSessionBinding()
+
+/** Re-render on cross-tab generation changes, then read the shared fence live. */
+const useStaleBrowserSessionBinding = (): boolean =>
+  useSyncExternalStore(subscribeToSessionGeneration, getStaleSessionSnapshot, () => false)
+
+const subscribeToClientHydration = () => () => undefined
+const getClientHydrationSnapshot = () => typeof window !== "undefined"
+const getServerHydrationSnapshot = () => false
+
+/** Hold the server snapshot for the hydration render, then use the live browser state. */
+const useClientHydrated = (): boolean =>
+  useSyncExternalStore(
+    subscribeToClientHydration,
+    getClientHydrationSnapshot,
+    getServerHydrationSnapshot
+  )
+
+/** Resolve public-read mode after auth settles or a stale session is observed. */
+export const useAnonymousReadMode = () => {
+  const owner = useAuthStore(getConfirmedUserId)
+  const loading = useAuthStore((state) => state.loading)
+  const staleSessionBinding = useStaleBrowserSessionBinding()
+  const clientHydrated = useClientHydrated()
+  return {
+    owner,
+    // During the first client hydration, keep the request-scoped SSR cache
+    // identity. An unresolved auth bootstrap cannot make a credentialed read;
+    // it switches to the credentialless public path only after settling.
+    // A rotated browser session is different: hide old data immediately.
+    anonymous: clientHydrated && (staleSessionBinding || (!loading && owner === null)),
+  }
+}
+
 export const useNewsListQuery = (
   filters: NewsListFilters,
   options?: UseNewsListQueryOptions
 ): UseNewsListQueryResult => {
   const queryClient = useQueryClient()
   const normalized = normalizeNewsListFilters(filters)
-  const owner = useAuthStore(getConfirmedUserId)
+  const { owner, anonymous } = useAnonymousReadMode()
   const epoch = getSessionEpoch()
   const isCurrentSession = useMemo(() => captureSessionEpoch(epoch), [epoch])
-  const queryKey = newsListQueryKey(filters)
+  const queryKey = anonymous ? anonymousNewsListQueryKey(filters) : newsListQueryKey(filters)
   const { enabled = true, ...rest } = pickPrivateListControls(options)
 
   // The query closure is cheap and must follow the normalized filter object on
   // every render. Keeping it direct also avoids a stale placeholder/query
   // contract when a caller changes locale or page size in place.
-  const queryFn = createNewsListQueryFn(queryClient, normalized, queryKey, owner)
+  const queryFn = createNewsListQueryFn(queryClient, normalized, queryKey, owner, anonymous)
 
   // Read once per locale/page-size pair. SSR can hydrate an already-created
   // query with an empty/error result, in which case TanStack Query does not
@@ -329,10 +407,10 @@ export const useNewsListQuery = (
   // as the final offline fallback.
   const persistedPage = useMemo(
     () =>
-      isCurrentSession()
+      !anonymous && isCurrentSession()
         ? readPersistedNewsPage(normalized.language, normalized.limit, owner)
         : null,
-    [normalized.language, normalized.limit, owner, isCurrentSession]
+    [anonymous, normalized.language, normalized.limit, owner, isCurrentSession]
   )
 
   // Read from localStorage as fallback for offline mode
@@ -353,25 +431,26 @@ export const useNewsListQuery = (
     staleTime: 30_000,
     ...rest,
     queryKey,
-    enabled: (typeof window === "undefined" || owner !== null) && enabled,
+    enabled: (anonymous || typeof window === "undefined" || owner !== null) && enabled,
     initialPageParam: null as string | null,
     getNextPageParam: getNewsNextPageParam,
     queryFn,
     placeholderData,
+    meta: anonymous ? { ...rest.meta, persist: false } : rest.meta,
     // A tab can observe a changed origin-wide session before the auth broadcast
     // arrives. Do not expose its previously warm list through this observer.
     select: (data) => {
-      if (!isCurrentSession()) return { pages: [], pageParams: [] }
+      if (!anonymous && !isCurrentSession()) return { pages: [], pageParams: [] }
       return data
     },
   })
 
   const news = useMemo(() => {
-    if (!isCurrentSession()) return []
+    if (!anonymous && !isCurrentSession()) return []
     const liveNews = mergeNewsPages(query.data?.pages)
     if (liveNews.length > 0 || !query.isError) return liveNews
     return persistedPage?.items ?? []
-  }, [persistedPage, query.data, query.isError, isCurrentSession])
+  }, [anonymous, persistedPage, query.data, query.isError, isCurrentSession])
   let pagination: PaginatedResponse<NewsItem> | null = null
   const queryData = query.data
   if (queryData) {
@@ -380,6 +459,7 @@ export const useNewsListQuery = (
 
   useEffect(() => {
     if (
+      anonymous ||
       !query.isSuccess ||
       query.isPlaceholderData ||
       !owner ||
@@ -390,7 +470,15 @@ export const useNewsListQuery = (
     new StorageItem<NewsItem[]>(
       `news:list:account:${encodeURIComponent(owner)}:${normalized.language}`
     ).set(news)
-  }, [news, normalized.language, query.isPlaceholderData, query.isSuccess, owner, isCurrentSession])
+  }, [
+    anonymous,
+    news,
+    normalized.language,
+    query.isPlaceholderData,
+    query.isSuccess,
+    owner,
+    isCurrentSession,
+  ])
 
   return {
     ...query,
@@ -458,9 +546,16 @@ const fetchNewsDetail = async (id: string, signal?: AbortSignal): Promise<NewsIt
   return response.data
 }
 
-export const newsDetailQueryOptions = (id: string, language: string) => ({
-  queryKey: ["news", id, language] as const,
-  queryFn: ({ signal }: { signal?: AbortSignal }) => fetchNewsDetail(id, signal),
+const fetchAnonymousNewsDetail = (id: string, language: string, signal?: AbortSignal) =>
+  fetchAnonymousNewsItem(id, { language, signal })
+
+export const newsDetailQueryOptions = (id: string, language: string, anonymous = false) => ({
+  queryKey: anonymous
+    ? (["news", "anonymous-detail", id, language] as const)
+    : (["news", id, language] as const),
+  queryFn: ({ signal }: { signal?: AbortSignal }) =>
+    anonymous ? fetchAnonymousNewsDetail(id, language, signal) : fetchNewsDetail(id, signal),
   staleTime: 60_000,
   retry: 1,
+  meta: anonymous ? { persist: false } : undefined,
 })

@@ -1,4 +1,5 @@
 import asyncio
+import io
 import threading
 from dataclasses import dataclass
 from typing import Any
@@ -42,8 +43,10 @@ class GeolocationService:
                 # Load fully asynchronously into memory using aiofiles
                 async with aiofiles.open(self.db_path, "rb") as f:
                     buffer = await f.read()
-                # Initialize MaxMind DB from memory buffer
-                self.reader = maxminddb.Reader(buffer, mode=maxminddb.MODE_MEMORY)
+                # MODE_FD accepts file-like buffers; MODE_MEMORY expects a path.
+                self.reader = maxminddb.Reader(
+                    io.BytesIO(buffer), mode=maxminddb.MODE_FD
+                )
             except (
                 FileNotFoundError,
                 OSError,

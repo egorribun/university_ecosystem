@@ -1,6 +1,6 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-import maxminddb
 import pytest
 
 from app.services.geolocation import (
@@ -21,26 +21,19 @@ async def test_geolocation_service_init_no_path():
 
 @pytest.mark.anyio
 async def test_geolocation_service_init_success():
-    service = GeolocationService(db_path="/mock/path.mmdb")
-    mock_file = AsyncMock()
-    mock_file.read.return_value = b"geoip-database-bytes"
+    fixture_path = (
+        Path(__file__).parent / "fixtures" / "geoip" / "MaxMind-DB-test-ipv4-24.mmdb"
+    )
+    service = GeolocationService(db_path=str(fixture_path))
 
-    mock_reader = MagicMock()
+    await service.initialize()
 
-    # Mock open and maxminddb Reader
-    with patch("aiofiles.open") as mock_open:
-        mock_open.return_value.__aenter__.return_value = mock_file
-        with patch("maxminddb.Reader") as mock_mm_reader:
-            mock_mm_reader.return_value = mock_reader
-
-            await service.initialize()
-
-            mock_open.assert_called_once_with("/mock/path.mmdb", "rb")
-            mock_mm_reader.assert_called_once_with(
-                b"geoip-database-bytes", mode=maxminddb.MODE_MEMORY
-            )
-            assert service.reader is mock_reader
-            assert service._initialized is True
+    assert service._initialized is True
+    assert service.reader is not None
+    try:
+        assert service.reader.get("1.1.1.1") == {"ip": "1.1.1.1"}
+    finally:
+        service.close()
 
 
 @pytest.mark.anyio

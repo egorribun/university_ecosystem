@@ -10,20 +10,31 @@
 
 ## Текущая партия и CI
 
-Входная ревизия партии — [0ca7778b](https://github.com/egorribun/university_ecosystem/commit/0ca7778b5b9fb5593e7b04ee154e4737db338ab9). Последние audit-коммиты `a91259f0`, `f7994339`, `0ca7778b` затрагивают 46 уникальных AUD IDs; часть дополняет прежние исправления. Это инвентаризация изменений, а не число окончательно закрытых находок.
+Входная опубликованная ревизия этой партии — [741ef18c](https://github.com/egorribun/university_ecosystem/commit/741ef18c23f8192dee7fda430029684797a5e8cc); при её подготовке локальный HEAD и PR совпадали. Предыдущие партии `a91259f0`, `f7994339`, `0ca7778b` затрагивают 46 уникальных AUD IDs; часть дополняет прежние исправления. Это инвентаризация изменений, а не число окончательно закрытых находок.
 
-[Matrix 39090418920](https://github.com/egorribun/university_ecosystem/actions/runs/39090418920) завершился FAILURE: инвентаризация тестов, Alembic и четыре Python-шарда. Frontend unit/build/lint и отдельные Go/security jobs прошли; они не заменяют aggregate coverage/quality acceptance.
+[Matrix 39094120111](https://github.com/egorribun/university_ecosystem/actions/runs/39094120111) завершился FAILURE: устаревшие OpenAPI и SQL expectations в Contract Tests, DB Migration Gate и Python shard 3. Все шесть ошибок shard 3 относятся к тем же трём test/snapshot-файлам; корректировки локально проверены. Остальные Python shards, frontend unit/build/lint и отдельные security workflows прошли. [Owned live Core](https://github.com/egorribun/university_ecosystem/actions/runs/39094120049/job/117576855100) также SUCCESS: 18 browser tests, два штатных skips. Это не заменяет aggregate coverage/quality acceptance.
 
-Текущая корректирующая партия:
+Текущая партия с локальной приёмкой перед публикацией:
 
-- AUD-195: публичные поля авторов сообщений читаются одним batch query; email/account state исключены из sender DTO и прямой загрузки автора. OpenAPI и generated frontend-клиент согласованы.
-- AUD-208: live Alembic capture сохраняет transaction events, LOCK, копирование данных и комментарии конкретных DDL. Четыре уже затронутые PR миграции получили ограниченные таймауты; добавлены проверки атомарного отката.
-- Устаревшие cleanup, Outbox и DLQ tests согласованы с опубликованной логикой. Descendant-pipe regression использует bounded handshake вместо гонки фиксированных пауз.
-- CSS/Helm tests явно выражают реальные source dependencies; существующий валидатор инвентаризации и его правила сохраняются.
+- AUD-056/074/078: campus timezone для статуса аудитории, сохранение текущей пары при печати, корректная обработка последующего обновления Service Worker.
+- AUD-192/193/476: изоляция Compose-сетей, ограниченный Docker API proxy для Alloy, доставка персональных ws-hub уведомлений только адресату.
+- AUD-237/239: запрет подтверждения отозванного TOTP enrollment и обхода лимита фактора; освобождение half-open circuit-breaker admission при отмене/ошибке без разрешения чужой probe.
+- AUD-236: публичные reads после выхода работают через отдельный анонимный transport; SSR hydration и смена пользователя не переносят персональные данные между сессиями.
+- AUD-240/468: удаление приватных метаданных изображений с сохранением кадров и timing анимации; загрузка GeoIP reader из уже прочитанного буфера через поддерживаемый API.
+- AUD-242/469: атомарная привязка Spotify tokens/profile с rollback при конфликте аккаунтов; продолжение partition scheduler после восстанавливаемой ошибки с сохранением configured interval и cancellation.
+- OpenAPI snapshot и SQL expectations согласованы с опубликованными sender DTO и migration timeouts. Правила inventory и проверки качества сохраняются.
 
-Локально: PostgreSQL 62/62 и все девять live SQL/Squawk проверок PASS; чат 457/457; Helm/inventory 396/396; Linux descendant-pipe 20/20; DLQ 16/16; contrast 2/2. Outbox/metadata cohort: 68 PASS, шесть PostgreSQL-only cases отдельно прошли в live cohort. Harness 28/28, Ruff, TypeScript, strict mypy и 430 Markdown links PASS. Полный secret scan: 519 findings / 0 unmatched, baseline319. Новая опубликованная ревизия требует полного hosted coverage/quality evidence. [Подробности партии](../../audits/AUDIT-2026-10.md#audit-follow-up-and-ci-reconciliation-2026-10-18).
+Локально: circuit-breaker/DLQ cohort 270 PASS и 100% line/branch четырёх production-файлов; PostgreSQL TOTP 346 PASS и 100% line/branch `totp.py`, итоговая проверка четырёх новых cases также PASS. Frontend 89 PASS, затронутые MapSidebar/roomStatus — 100% применимых метрик, TypeScript/ESLint PASS. Gateway proxy и полный ws-hub прошли Linux race tests со 100% statements и canonical golangci без замечаний. Compose 34/34, inventory и harness 28/28 PASS. Реальный nonroot proxy image собран; pinned Alloy получил разрешённый marker, исключил negative control, 14 опасных/неподдерживаемых API-запросов отклонены. [Подробности партии](../../audits/AUDIT-2026-10.md#audit-network-auth-and-notification-follow-up-2026-10-18).
 
-Следующая параллельная партия: изоляция Compose-сетей (AUD-192), ограничение Docker API для Alloy (AUD-193), маршрутизация персональных уведомлений ws-hub (AUD-476). Приватные кандидаты до интеграции и проверок не считаются исправлениями. AUD-189 уже имеет source fix HTTPS egress; реальная CNI-проверка остаётся открытой.
+AUD-240: 244 tests PASS, все три production-модуля — 100% line/branch, Ruff и strict mypy PASS. AUD-468: 35 tests PASS, `geolocation.py` — 100% line/branch, Ruff и strict mypy PASS; reader проверен на реальной лицензированной MMDB fixture.
+
+AUD-242: два regression tests воспроизвели исходный IntegrityError до исправления; после него полный Spotify cohort — 69 PASS и 100% line/branch `spotify.py`. AUD-469: 22 PASS и 100% line/branch `partition_manager.py`. Ruff и strict mypy обеих частей прошли.
+
+Полный финальный secret scan партии: 4 897 файлов / 519 findings / 0 unmatched. Фиксированная password-hash заглушка Spotify заменена генерируемым синтетическим значением; повторные 69 tests, Ruff и mypy PASS. Прежний proposal на три дополнительные proxy identities больше не требуется и не применялся; политика остаётся на 261 записи. Повторные Linux race tests proxy — 100% statements, golangci — 0 замечаний. Обычные hooks и hosted gates нового SHA ещё обязательны.
+
+AUD-236: итоговый cohort — 574 PASS в 51 файле; все девять выбранных production-модулей имеют 100% line, statement, branch и function coverage. TypeScript/ESLint PASS. Проверены в том числе смена поколения сессии во время чтения локального кэша, поздний ответ прежнего пользователя и повторный вызов сохранённого anonymous query после подтверждения новой сессии. Защитные проверки и thresholds сохранены. Guard подтвердил стабильность source и отсутствие оставшихся owned процессов.
+
+Приватно готовятся следующие auth/configuration, chat, event/vector и audit-response исправления; они не считаются интегрированными или закрытыми находками. AUD-189 уже имеет source fix HTTPS egress; реальная CNI-проверка остаётся открытой.
 
 ## Последняя полностью принятая контрольная точка
 
@@ -38,7 +49,7 @@ Owned live Core acceptance: 221 contracts, 18 browser tests, два штатны
 - Dependency checkpoint C8 (`5611eb00`) принят; последующие изменения проверяются на собственных SHA. Шесть compatibility holds и открытый SeaweedFS advisory сохранены в [dependency supplement](../../audits/AUDIT-2026-10.md#dependency-closure-supplement-2026-10-15). Удалённые `dependency-updates-2026-10`, `merge-exceptions.md` и `NEXT_SESSION_PROMPT.md` не восстанавливаются.
 - Сохраняются baseline319, ровно 261 owner-approved exact disposition, 78 required contexts, blocking CodeQL и обычные hooks. Новые identities остаются блокирующими. Finite131 касается только неизменённых migration blobs из base `ac74e915` до 2026-11-13; остальные Tier 0 и затронутые миграции требуют 100%.
 - Один тяжёлый локальный прогон одновременно. Admission RAM ≤75% / free ≥8 GiB; stop RAM ≥85% / free <4 GiB. Разрешение Linux screenshots: ≤80% / ≥6 GiB, cap 1 GiB / 2 CPU; Lighthouse: 75% / 8 GiB, cap 2 GiB / 2 CPU.
-- Одноразовые PostgreSQL/Linux контейнеры партии удалены по точным ownership metadata. Успешный PostgreSQL guard подтвердил неизменность source, отсутствие оставшихся owned процессов и минимум 19,58 GiB свободной RAM. Global prune и удаление чужих процессов, volumes, env, Git history или private rescue bundle не применяются.
+- Одноразовые PostgreSQL/Linux/Alloy контейнеры, сети и proxy image удалены по точным ownership metadata. Успешный Alloy guard подтвердил неизменность source, отсутствие оставшихся owned процессов и минимум 14,85 GiB свободной RAM; BuildKit и его state volume также удалены. Два принадлежащих задаче Go cache volumes временно сохранены для следующих проверок. Global prune и удаление чужих ресурсов, env, Git history или private rescue bundle не применяются.
 
 ## После аудита
 

@@ -20,6 +20,9 @@ vi.mock("react-i18next", () => ({ useTranslation: mockUseTranslation }))
 vi.mock("@/contexts/AppShellContext", () => ({
   useAppShell: () => ({ setOverlayState: state.setOverlayState }),
 }))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => "Europe/Istanbul",
+}))
 vi.mock("@/hooks/useFocusTrap", () => ({ default: state.useFocusTrap }))
 vi.mock("@/utils/buildingHours", () => ({ isOpenNow: () => state.open }))
 vi.mock("@/utils/roomStatus", () => ({

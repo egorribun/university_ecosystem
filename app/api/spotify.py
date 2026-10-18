@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -12,6 +13,8 @@ from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from redis.exceptions import RedisError
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import get_current_user_from_dishka
 from app.api.validation import (
@@ -218,6 +221,8 @@ async def _save_tokens(
     refresh: str | None,
     scope: str | None,
     expires_in: int | str | None,
+    *,
+    commit: bool = True,
 ) -> None:
     if not user.spotify:
         user.spotify = SpotifyIntegration(user_id=user.id)
@@ -230,7 +235,8 @@ async def _save_tokens(
     user.spotify.token_expires_at = _now_utc() + timedelta(seconds=seconds - 10)
     user.spotify.scope = scope or ""
     user.spotify.is_connected = True
-    await db.commit()
+    if commit:
+        await db.commit()
     # The session factory keeps ``expire_on_commit=False`` and all values above
     # are already assigned to the managed ORM instance. A full User refresh
     # here re-loads the auth relationship graph on every token refresh and can
@@ -385,6 +391,7 @@ async def spotify_callback(
     user: User = Depends(get_current_user_from_dishka),
 ) -> RedirectResponse:
     locale = resolve_locale(request=request, user=user)
+    callback_user_id = user.id
     await _consume_oauth_state(state, request=request, user=user, locale=locale)
     try:
         async with _spotify_circuit_breaker:
@@ -415,21 +422,55 @@ async def spotify_callback(
         data.get("refresh_token"),
         data.get("scope"),
         int(data.get("expires_in", 3600)),
+        commit=False,
     )
+    me: httpx.Response | None = None
+    spotify_user_id: str | None = None
+    display_name: str | None = None
     try:
-        async with _spotify_circuit_breaker:
-            # TD-W16-07: Reuse module-level HTTP/2 client.
-            me = await _spotify_http_client.get(
-                "https://api.spotify.com/v1/me",
-                headers={"Authorization": f"Bearer {user.spotify.access_token}"},
-            )
-    except CircuitBreakerOpenError:
-        me = None
-    if me is not None and me.status_code == 200:
-        info = me.json()
-        user.spotify.spotify_user_id = info.get("id") or None
-        user.spotify.display_name = info.get("display_name") or None
+        try:
+            async with _spotify_circuit_breaker:
+                # TD-W16-07: Reuse module-level HTTP/2 client.
+                me = await _spotify_http_client.get(
+                    "https://api.spotify.com/v1/me",
+                    headers={"Authorization": f"Bearer {user.spotify.access_token}"},
+                )
+        except CircuitBreakerOpenError:
+            me = None
+        if me is not None and me.status_code == 200:
+            info = me.json()
+            spotify_user_id = info.get("id") or None
+            display_name = info.get("display_name") or None
+    except asyncio.CancelledError:
+        # Tokens were committed before this optional profile lookup in the
+        # previous callback flow; retain that behavior while propagating cancel.
         await db.commit()
+        raise
+    except Exception:  # RZ-22-01-JUSTIFIED: preserve tokens, then re-raise.
+        await db.commit()
+        raise
+
+    if me is not None and me.status_code == 200:
+        user.spotify.spotify_user_id = spotify_user_id
+        user.spotify.display_name = display_name
+    try:
+        # Commit the exchange token and Spotify identity as one unit. The
+        # unique spotify_user_id constraint is the final authority under races.
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        if spotify_user_id:
+            owner_user_id = await db.scalar(
+                select(SpotifyIntegration.user_id).where(
+                    SpotifyIntegration.spotify_user_id == spotify_user_id
+                )
+            )
+            if owner_user_id is not None and owner_user_id != callback_user_id:
+                frontend_base = settings.frontend_origin.rstrip("/")
+                target = f"{frontend_base}/profile?spotify=error"
+                return RedirectResponse(target, status_code=302)
+        raise
+
     # Redirect to the frontend, not the backend
     frontend_base = settings.frontend_origin.rstrip("/")
     target = f"{frontend_base}/profile?spotify=connected"

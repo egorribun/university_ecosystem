@@ -50,7 +50,6 @@ export async function registerServiceWorker(path = "/sw.js") {
     dispatchServiceWorkerBootstrap("unsupported")
     return null
   }
-  const hadController = Boolean(navigator.serviceWorker.controller)
 
   try {
     const scriptUrl = createTrustedScriptURL(path)
@@ -118,13 +117,16 @@ export async function registerServiceWorker(path = "/sw.js") {
     // reloading here can discard a form the user started while precaching ran.
     // Reload only when an existing controller is replaced by an update.
     let reloaded = false
-    let hasObservedController = hadController
+    // Compare worker identity: the first-claim event can still be queued after
+    // `ready` resolves, even though its controller is already assigned here.
+    let observedController = navigator.serviceWorker.controller
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (reloaded) return
-      if (!hasObservedController) {
-        hasObservedController = true
-        return
-      }
+      const currentController = navigator.serviceWorker.controller
+      if (currentController === observedController) return
+      const previousController = observedController
+      observedController = currentController
+      if (!previousController || !currentController) return
       reloaded = true
       window.location.reload()
     })

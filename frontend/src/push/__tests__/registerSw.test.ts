@@ -216,6 +216,7 @@ describe("registerServiceWorker", () => {
 
     // Verify controllerchange listener reloads window
     expect(swListeners["controllerchange"]).toBeDefined()
+    mockServiceWorkerContainer.controller = { postMessage: vi.fn() }
     swListeners["controllerchange"]()
     expect(window.location.reload).toHaveBeenCalledTimes(1)
     swListeners["controllerchange"]()
@@ -357,6 +358,7 @@ describe("registerServiceWorker", () => {
     window.name = "__mock_api_initialized__"
     await registerServiceWorker()
 
+    mockServiceWorkerContainer.controller = { postMessage: vi.fn() }
     swListeners["controllerchange"]()
     expect(window.location.reload).toHaveBeenCalledTimes(1)
   })
@@ -389,6 +391,87 @@ describe("registerServiceWorker", () => {
     mockServiceWorkerContainer.controller = { postMessage: vi.fn() } as unknown as ServiceWorker
     swListeners["controllerchange"]()
 
+    expect(window.location.reload).toHaveBeenCalledOnce()
+  })
+
+  it("reloads after an update when the first claim event was missed while waiting for ready", async () => {
+    let resolveReady!: (registration: any) => void
+    const ready = new Promise<any>((resolve) => {
+      resolveReady = resolve
+    })
+    const mockRegistration: any = {
+      active: { postMessage: vi.fn() },
+      ready,
+    }
+    let controller: ServiceWorker | null = null
+    const mockServiceWorkerContainer = new EventTarget() as EventTarget & {
+      controller: ServiceWorker | null
+      ready: Promise<any>
+      register: ReturnType<typeof vi.fn>
+    }
+    Object.defineProperty(mockServiceWorkerContainer, "controller", {
+      get: () => controller,
+    })
+    mockServiceWorkerContainer.ready = ready
+    mockServiceWorkerContainer.register = vi.fn().mockResolvedValue(mockRegistration)
+    vi.stubGlobal("navigator", {
+      serviceWorker: mockServiceWorkerContainer,
+      onLine: true,
+    })
+
+    const registrationPromise = registerServiceWorker()
+    controller = { postMessage: vi.fn() } as unknown as ServiceWorker
+    // The first-claim event fires before registration reaches `ready`, so this
+    // native EventTarget correctly has no listener to receive it.
+    mockServiceWorkerContainer.dispatchEvent(new Event("controllerchange"))
+    expect(window.location.reload).not.toHaveBeenCalled()
+
+    resolveReady(mockRegistration)
+    await registrationPromise
+
+    controller = { postMessage: vi.fn() } as unknown as ServiceWorker
+    mockServiceWorkerContainer.dispatchEvent(new Event("controllerchange"))
+
+    expect(window.location.reload).toHaveBeenCalledOnce()
+  })
+
+  it("ignores a queued initial claim delivered after the listener is attached", async () => {
+    let resolveReady!: (registration: any) => void
+    const ready = new Promise<any>((resolve) => {
+      resolveReady = resolve
+    })
+    const mockRegistration: any = {
+      active: { postMessage: vi.fn() },
+      ready,
+    }
+    let controller: ServiceWorker | null = null
+    const mockServiceWorkerContainer = new EventTarget() as EventTarget & {
+      controller: ServiceWorker | null
+      ready: Promise<any>
+      register: ReturnType<typeof vi.fn>
+    }
+    Object.defineProperty(mockServiceWorkerContainer, "controller", {
+      get: () => controller,
+    })
+    mockServiceWorkerContainer.ready = ready
+    mockServiceWorkerContainer.register = vi.fn().mockResolvedValue(mockRegistration)
+    vi.stubGlobal("navigator", {
+      serviceWorker: mockServiceWorkerContainer,
+      onLine: true,
+    })
+
+    const registrationPromise = registerServiceWorker()
+    controller = { postMessage: vi.fn() } as unknown as ServiceWorker
+    resolveReady(mockRegistration)
+    await registrationPromise
+
+    // The initial controller is already assigned when the listener is added;
+    // delivering its still-queued event must not look like an update.
+    mockServiceWorkerContainer.dispatchEvent(new Event("controllerchange"))
+    expect(window.location.reload).not.toHaveBeenCalled()
+
+    controller = { postMessage: vi.fn() } as unknown as ServiceWorker
+    mockServiceWorkerContainer.dispatchEvent(new Event("controllerchange"))
     expect(window.location.reload).toHaveBeenCalledOnce()
   })
 

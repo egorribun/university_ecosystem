@@ -16,7 +16,7 @@ import { resolveSiteShareUrl, useShare } from "@/hooks/useShare"
 import { toDate, getMoscowDate } from "@/utils/date"
 import { localizeField } from "@/utils/localize"
 import { deleteNews, type NewsItem } from "@/api/news"
-import { newsDetailQueryOptions } from "@/api/hooks/news"
+import { newsDetailQueryOptions, useAnonymousReadMode } from "@/api/hooks/news"
 import { SEO } from "@/components/ui/SEO"
 import { Button } from "@/components/ui/Button"
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
@@ -51,6 +51,7 @@ export default function NewsDetail() {
   const { id = "" } = useParams({ strict: false })
   const navigate = useNavigate()
   const { user } = useAuth()
+  const { anonymous } = useAnonymousReadMode()
   const { t } = useTranslation(["news", "common"])
   const { language } = useLanguage()
   const queryClient = useQueryClient()
@@ -93,7 +94,7 @@ export default function NewsDetail() {
   // SSR loader at `/news/$id` and this client component pull from the same
   // queryKey identity (per-request QueryClient via SsrRoot W128 SW3).
   const query = useQuery<NewsItem, Error>({
-    ...newsDetailQueryOptions(id, language),
+    ...newsDetailQueryOptions(id, language, anonymous),
     enabled: !!id,
   })
 
@@ -136,6 +137,8 @@ export default function NewsDetail() {
     isLoadingMoreComments,
     loadMoreComments,
   } = useNewsInteraction(id, {
+    anonymousRead: anonymous,
+    language,
     initialData: query.data
       ? {
           likes_count: query.data.likes_count,

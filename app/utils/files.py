@@ -130,6 +130,8 @@ def _detect_image_mime(data: bytes) -> str | None:
         return "image/png"
     if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "image/webp"
+    if len(data) >= 6 and data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
     # Basic SVG detection
     if data.lstrip().startswith(b"<svg") or b"<svg" in data[:1024].lower():
         return "image/svg+xml"
@@ -404,6 +406,7 @@ async def save_attachment(
     allowed_extensions: set[str] | None = None,
     max_size_bytes: int | None = None,
     return_meta: bool = False,
+    sanitize_image_metadata: bool = False,
 ) -> str | dict[str, object]:
     declared_raw = (upload.content_type or "").strip()
     declared_type = _normalize_mime_type(declared_raw)
@@ -541,6 +544,33 @@ async def save_attachment(
             metadata={**metadata, "signature": signature},
         ),
     )
+    if sanitize_image_metadata and detected_type.startswith("image/"):
+        from app.utils.images import ImagePixelLimitError, strip_image_metadata
+
+        try:
+            data = await asyncio.to_thread(
+                strip_image_metadata,
+                data,
+                content_type=detected_type,
+                max_pixels=int(settings.image_max_pixels),
+            )
+        except ImagePixelLimitError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=translate("errors.files.too_large", locale=locale),
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail=translate("errors.files.unsupported_type", locale=locale),
+            ) from exc
+
+        if len(data) > limit:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=translate("errors.files.too_large", locale=locale),
+            )
+
     sanitized_subdir = subdir.strip("/ ")
     backend = _get_storage_backend()
     await _prepare_local_storage(backend, sanitized_subdir)

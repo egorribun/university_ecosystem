@@ -181,7 +181,12 @@ def _docker_compose() -> str:
     return docker
 
 
-def _rendered(tmp_path: Path, project: str | None, *files: str) -> dict[str, Any]:
+def _rendered(
+    tmp_path: Path,
+    project: str | None,
+    *files: str,
+    profiles: tuple[str, ...] = (),
+) -> dict[str, Any]:
     """Render the real model with placeholder secrets in an isolated copy."""
 
     docker = _docker_compose()
@@ -212,6 +217,8 @@ def _rendered(tmp_path: Path, project: str | None, *files: str) -> dict[str, Any
     command = [docker, "compose"]
     if project is not None:
         command += ["-p", project]
+    for profile in profiles:
+        command += ["--profile", profile]
     for name in files:
         command += ["-f", name]
     result = subprocess.run(  # noqa: S603 - fixed local CLI and repository files

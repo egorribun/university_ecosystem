@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
@@ -53,7 +53,7 @@ async def test_circuit_breaker_denial_halts_replay_without_refetching() -> None:
     queue.mark_job_retrying = AsyncMock()
     circuit_breaker = MagicMock()
     circuit_breaker.state.name = "CLOSED"
-    circuit_breaker.allow_request.return_value = False
+    circuit_breaker.admit_request.return_value = SimpleNamespace(allowed=False)
 
     assert await queue.auto_replay_jobs(
         handler=AsyncMock(),
@@ -106,7 +106,8 @@ async def test_replay_records_circuit_success_and_permanent_failure() -> None:
     )
     circuit_breaker = MagicMock()
     circuit_breaker.state.name = "CLOSED"
-    circuit_breaker.allow_request.return_value = True
+    admissions = [SimpleNamespace(allowed=True), SimpleNamespace(allowed=True)]
+    circuit_breaker.admit_request.side_effect = admissions
 
     async def handler(job_type: str, payload: dict[str, object]) -> None:
         if payload["record_id"] == 42 and job_type == "sync_record":
@@ -122,8 +123,12 @@ async def test_replay_records_circuit_success_and_permanent_failure() -> None:
     assert (success, failed) == (1, 1)
     assert permanent.status == JobStatus.FAILED.value
     assert permanent.next_retry_at is None
-    circuit_breaker.record_success.assert_called_once_with()
-    circuit_breaker.record_failure.assert_called_once_with()
+    circuit_breaker.record_success.assert_called_once_with(admissions[0])
+    circuit_breaker.record_failure.assert_called_once_with(admissions[1])
+    assert circuit_breaker.abandon_request.call_args_list == [
+        call(admissions[0]),
+        call(admissions[1]),
+    ]
 
 
 @pytest.mark.asyncio

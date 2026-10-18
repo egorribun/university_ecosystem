@@ -171,18 +171,22 @@ def test_range_migration_skips_unexpected_upgrade_relations_and_heap_downgrade(
     migration.op = operations
 
     monkeypatch.setattr(migration, "_get_relkind", lambda _conn, _name: None)
+    timeout_statements = [
+        "SET LOCAL lock_timeout = '10s'",
+        "SET LOCAL statement_timeout = '60s'",
+    ]
     migration.upgrade()
-    assert bind.statements == []
+    assert bind.statements == timeout_statements
     assert operations.writes == []
 
     monkeypatch.setattr(migration, "_get_relkind", lambda _conn, _name: "v")
     migration.upgrade()
-    assert bind.statements == []
+    assert bind.statements == timeout_statements * 2
     assert operations.writes == []
 
     monkeypatch.setattr(migration, "_get_relkind", lambda _conn, _name: "r")
     migration.downgrade()
-    assert bind.statements == []
+    assert bind.statements == timeout_statements * 2
     assert operations.writes == []
 
 
@@ -457,8 +461,11 @@ def test_range_upgrade_aborts_when_inbound_fk_snapshot_changes_after_lock(
 
     assert locked == [[_fk_row()]]
     assert dropped == []
-    assert len(bind.statements) == 1
-    assert bind.statements[0].startswith("LOCK TABLE ")
+    assert bind.statements == [
+        "SET LOCAL lock_timeout = '10s'",
+        "SET LOCAL statement_timeout = '60s'",
+        'LOCK TABLE "public"."notifications" IN ACCESS EXCLUSIVE MODE',
+    ]
 
 
 @pytest.mark.parametrize(

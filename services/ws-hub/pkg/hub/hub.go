@@ -1089,6 +1089,8 @@ func (h *Hub) collectRecipients(msg *Message, span trace.Span) []recipient {
 	defer h.mu.RUnlock()
 
 	switch {
+	case msg.Type == "notification":
+		return h.collectNotificationRecipientsLocked(msg, span)
 	case msg.Room != "":
 		clients, ok := h.Rooms[msg.Room]
 		if !ok {
@@ -1125,6 +1127,25 @@ func (h *Hub) collectRecipients(msg *Message, span trace.Span) []recipient {
 		}
 		return recipients
 	}
+}
+
+// collectNotificationRecipientsLocked requires Hub.mu to be held for reading.
+func (h *Hub) collectNotificationRecipientsLocked(msg *Message, span trace.Span) []recipient {
+	// Notifications target authenticated users, not connection IDs. Never let a
+	// missing target fall through to the generic all-client broadcast.
+	if msg.To == "" || msg.Room != "" {
+		return nil
+	}
+	recipients := make([]recipient, 0)
+	for _, client := range h.Clients {
+		if client != nil && client.UserID == msg.To {
+			recipients = append(recipients, recipient{client: client})
+		}
+	}
+	if span != nil && span.IsRecording() {
+		span.SetAttributes(attribute.Int("recipient.count", len(recipients)))
+	}
+	return recipients
 }
 
 func (h *Hub) isOversized(bctx context.Context, msg *Message, data []byte, span trace.Span) bool {
@@ -1499,6 +1520,14 @@ func (h *Hub) enqueueChatDelivery(
 	}
 }
 
+func notificationUserIDFromSubject(subject string) (string, bool) {
+	userID, ok := strings.CutPrefix(subject, "notifications.")
+	if !ok || userID == "" || strings.ContainsAny(userID, ".*> \t\r\n") {
+		return "", false
+	}
+	return userID, true
+}
+
 func (h *Hub) handleNotifications(appCtx context.Context) nats.MsgHandler {
 	const natsCallbackTimeout = 30 * time.Second
 	return func(msg *nats.Msg) {
@@ -1539,16 +1568,12 @@ func (h *Hub) handleNotifications(appCtx context.Context) nats.MsgHandler {
 			}
 		}
 
-		var wsMsg Message
-		if err := hubJSONUnmarshalFunc(msg.Data, &wsMsg); err != nil {
-			h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS notification dropped",
-				"subject", msg.Subject, "size", len(msg.Data), "err", err)
-			safeAck(msg)
+		wsMsg, valid := h.decodeNotification(msgCtx, msg)
+		if !valid {
 			return
 		}
-		wsMsg.Type = "notification"
 		select {
-		case h.Broadcast <- &wsMsg:
+		case h.Broadcast <- wsMsg:
 			if msgID != "" && h.dedupCache != nil {
 				h.dedupCache.Add(msgID, time.Now())
 			}
@@ -1560,6 +1585,25 @@ func (h *Hub) handleNotifications(appCtx context.Context) nats.MsgHandler {
 			safeNakWithDelay(msg, 5*time.Second)
 		}
 	}
+}
+
+func (h *Hub) decodeNotification(msgCtx context.Context, msg *nats.Msg) (*Message, bool) {
+	var wsMsg Message
+	if err := hubJSONUnmarshalFunc(msg.Data, &wsMsg); err != nil {
+		h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS notification dropped",
+			"subject", msg.Subject, "size", len(msg.Data), "err", err)
+		safeAck(msg)
+		return nil, false
+	}
+	subjectUserID, validSubject := notificationUserIDFromSubject(msg.Subject)
+	if !validSubject || wsMsg.To == "" || wsMsg.To != subjectUserID || wsMsg.Room != "" {
+		h.Logger.WarnContext(msgCtx, "ws-hub: NATS notification destination rejected",
+			"subject", msg.Subject, "has_to", wsMsg.To != "", "has_room", wsMsg.Room != "")
+		safeAck(msg)
+		return nil, false
+	}
+	wsMsg.Type = "notification"
+	return &wsMsg, true
 }
 
 type cacheInvalidationPayload struct {

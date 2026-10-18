@@ -98,6 +98,7 @@ services:
       - internal
       - public
       - revocation_net
+      - frontend_net
     # Wave 140 SW3-fix: override Dockerfile HEALTHCHECK (which uses /healthz Full
     # Check requiring ES/SpiceDB/Tempo all reachable) with /health/ready (Lean
     # readiness probe: just DB connectivity + not shutting down). Two reasons:
@@ -270,7 +271,7 @@ services:
     ports:
       - "127.0.0.1:8081:3000"
     networks:
-      - public
+      - frontend_net
     depends_on:
       backend:
         condition: service_healthy
@@ -425,7 +426,7 @@ services:
       retries: 5
     networks:
       - internal
-      - public
+      - published_ports
     deploy:
       resources:
         limits:
@@ -1255,7 +1256,7 @@ services:
       # through here as the entrypoint's required inputs.
       POSTGRES_USER: "${POSTGRES_USER:-postgres}"
       POSTGRES_PWD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}"
-      # The server spans public + internal networks. A hostname lookup returns
+      # The server spans published_ports + internal networks. A hostname lookup returns
       # only one of those addresses, so binding gRPC to it strands clients on
       # the other network. Membership still advertises one concrete address.
       BIND_ON_IP: "0.0.0.0"
@@ -1281,7 +1282,7 @@ services:
       - internal
       # Required for the loopback-only 7233/7243 host publications. Docker
       # intentionally suppresses published ports on internal-only networks.
-      - public
+      - published_ports
     healthcheck:
       # W144 SW2 NEW (z) #19: `temporalio/server:1.30.2` image ships only
       # `temporal-server` binary (no `temporal` CLI, no `grpc_health_probe`),
@@ -1592,6 +1593,40 @@ services:
           memory: 32M
     restart: unless-stopped
 
+  # The adapter is the sole Docker API client; `:ro` on the socket does not restrict API methods.
+  docker-log-proxy:
+    build:
+      context: .
+      dockerfile: infrastructure/observability/alloy/Dockerfile.docker-log-proxy
+    labels:
+      com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    expose:
+      - "2375"
+    # Run nonroot and join only the Docker socket group. Set DOCKER_SOCKET_GID
+    # to the numeric GID from stat(/var/run/docker.sock); the default 0 covers
+    # a root:root socket. Rootless and userns-remapped sockets are unsupported.
+    # The socket bind remains read-only; do not grant Linux capabilities.
+    user: "65532:65532"
+    group_add:
+      - "${DOCKER_SOCKET_GID:-0}"
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 64M
+    networks:
+      - alloy_docker_api
+    restart: unless-stopped
+
   alloy:
     image: grafana/alloy:v1.20.1@sha256:2aa2099af76c0098d4af7a4d6e48f86cb66dc1a000222ad927a1c67c6542d13f
     labels:
@@ -1604,7 +1639,6 @@ services:
       - /etc/alloy/config.alloy
     volumes:
       - ./infrastructure/observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - alloy-data:/var/lib/alloy/data
     ports:
       - "127.0.0.1:12345:12345"
@@ -1628,7 +1662,10 @@ services:
     networks:
       - internal
       - public
+      - alloy_docker_api
     depends_on:
+      docker-log-proxy:
+        condition: service_started
       loki-healthprobe:
         condition: service_healthy
     restart: unless-stopped
@@ -1676,6 +1713,7 @@ services:
         condition: service_healthy
     networks:
       - public
+      - frontend_net
     deploy:
       resources:
         limits:
@@ -1685,7 +1723,12 @@ services:
 
 networks:
   public:
+  published_ports:
   internal:
+    internal: true
+  frontend_net:
+    internal: true
+  alloy_docker_api:
     internal: true
   revocation_net:
     internal: true

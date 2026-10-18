@@ -202,6 +202,8 @@ def test_upgrade_skips_all_existing_tables_without_recreating_tenant_state(
     assert operations.created_tables == []
     assert operations.created_indexes == []
     assert operations.executed == [
+        "SET LOCAL lock_timeout = '10s'",
+        "SET LOCAL statement_timeout = '60s'",
         "ALTER TABLE tenants DROP CONSTRAINT IF EXISTS tenants_slug_key CASCADE",
         "ALTER TABLE tenants DROP CONSTRAINT IF EXISTS tenants_domain_key CASCADE",
     ]
@@ -217,6 +219,8 @@ def test_historical_downgrade_drops_only_revision_owned_tables(
     migration.downgrade()
 
     assert operations.executed == [
+        "SET LOCAL lock_timeout = '10s'",
+        "SET LOCAL statement_timeout = '60s'",
         "DROP TABLE IF EXISTS grades CASCADE",
         "DROP TABLE IF EXISTS vector_chunks CASCADE",
     ]

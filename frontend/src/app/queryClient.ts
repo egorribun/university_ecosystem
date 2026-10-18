@@ -171,13 +171,7 @@ export const getQueryCacheIdentity = (): string | null => cacheIdentity
 /** Whether the current query cache has been committed for this auth owner. */
 export const isQueryCacheIdentity = (owner: string | null): boolean => cacheIdentity === owner
 
-/** Publish the identity before rendering a new profile or clearing its caches. */
-export function setQueryCacheIdentity(owner: string | null, beforeNotify?: () => void): boolean {
-  if (owner === cacheIdentity) {
-    beforeNotify?.()
-    return false
-  }
-  cacheIdentity = owner
+const retireBrowserQueryState = () => {
   cacheEpoch += 1
   invalidateSessionEpoch()
   // PersistQueryClientProvider hydrates after awaiting restoreClient. Invalidate
@@ -189,15 +183,38 @@ export function setQueryCacheIdentity(owner: string | null, beforeNotify?: () =>
     if (client) client.clear()
     else browserClients.delete(reference)
   }
+}
+
+const updateQueryCacheIdentity = (
+  owner: string | null,
+  beforeNotify: (() => void) | undefined,
+  retireUnchangedIdentity: boolean
+): boolean => {
+  if (owner === cacheIdentity && !retireUnchangedIdentity) {
+    beforeNotify?.()
+    return false
+  }
+  cacheIdentity = owner
+  retireBrowserQueryState()
   beforeNotify?.()
   for (const listener of cacheIdentityListeners) listener()
   return true
 }
 
-useAuthStore.subscribe((state) => {
+/** Publish the identity before rendering a new profile or clearing its caches. */
+export function setQueryCacheIdentity(owner: string | null, beforeNotify?: () => void): boolean {
+  return updateQueryCacheIdentity(owner, beforeNotify, false)
+}
+
+useAuthStore.subscribe((state, previousState) => {
   // A refresh may mark an already-confirmed account loading temporarily.
   if (state.loading && state.user?.id === cacheIdentity) return
-  setQueryCacheIdentity(getConfirmedUserId(state))
+  const owner = getConfirmedUserId(state)
+  // SSR can hydrate a request-scoped personalized cache while browser auth is
+  // unresolved. Retire it once bootstrap settles without a confirmed owner,
+  // even when the cache's initial identity was already null.
+  const settledWithoutOwner = previousState.loading && !state.loading && owner === null
+  updateQueryCacheIdentity(owner, undefined, settledWithoutOwner)
 })
 
 const scopedKey = (owner: string) => `reactQuery:v2:${encodeURIComponent(owner)}`

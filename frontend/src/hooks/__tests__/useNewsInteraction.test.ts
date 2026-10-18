@@ -19,7 +19,7 @@
  * Offline = `navigator.onLine = false`; the SW-sync block is skipped (jsdom has no
  * `serviceWorker`/`SyncManager`), so the IDB queue write succeeds silently.
  */
-import { act, renderHook, waitFor } from "@testing-library/react"
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import {
   QueryClient,
   QueryClientProvider,
@@ -35,6 +35,8 @@ import { server } from "@/tests/mocks/server"
 import { NOTIFICATION_INTERACTIONS_DB_VERSION } from "@/constants/notificationInteractionsDb"
 import { withExpectedConsole } from "@/tests/strictConsole"
 import type { User } from "@/types/User"
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { UserState } from "@/types/Auth"
 import api from "@/api/client"
 import {
   NEWS_COMMENTS_PAGE_SIZE,
@@ -46,10 +48,16 @@ import {
 const authMock = vi.hoisted(() => ({ user: null as User | null }))
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: authMock.user }) }))
 
-const NEWS_ID = "news-1"
+const NEWS_ID = "00000000-0000-0000-0000-000000000001"
+const SIGNED_IN_USER_ID = "11111111-1111-4111-8111-111111111111"
+const EXISTING_COMMENT_AUTHOR_ID = "22222222-2222-4222-8222-222222222222"
+const PUBLIC_COMMENT_AUTHOR_ID = "33333333-3333-4333-8333-333333333333"
 const STORE = "pending-news-interactions"
 const DB_NAME = "notification-interactions"
 const DB_VERSION = NOTIFICATION_INTERACTIONS_DB_VERSION
+
+const commentFixtureId = (sequence: number) =>
+  `00000000-0000-4000-8000-${sequence.toString(16).padStart(12, "0")}`
 
 const baseInteractions: NewsInteractions = {
   likes_count: 3,
@@ -69,6 +77,11 @@ function makeWrapper() {
 
 function setOnline(value: boolean) {
   Object.defineProperty(navigator, "onLine", { configurable: true, value })
+}
+
+function setAuthFixture(user: User | null, loading = false) {
+  authMock.user = user
+  useAuthStore.setState({ user: user as UserState | null, loading })
 }
 
 /** The cache stores paged data; flatten it the way the hook's select does. */
@@ -172,6 +185,9 @@ function setupServer(opts: {
     http.get("*/news/:newsId/interactions", () =>
       navigator.onLine ? HttpResponse.json(state) : HttpResponse.error()
     ),
+    http.get("*/api/v1/news/:newsId/interactions", () =>
+      navigator.onLine ? HttpResponse.json(state) : HttpResponse.error()
+    ),
   ]
 
   if (opts.like) {
@@ -193,9 +209,9 @@ function setupServer(opts: {
         if (e) return e
         const body = (await request.json()) as { content: string }
         const created: NewsComment = {
-          id: `c-srv-${state.comments.length}`,
+          id: commentFixtureId(1000 + state.comments.length),
           content: body.content,
-          user_id: authMock.user?.id ?? "",
+          user_id: authMock.user?.id ?? PUBLIC_COMMENT_AUTHOR_ID,
           user_name: authMock.user?.full_name ?? "You",
           created_at: "2026-06-13T00:00:00Z",
         }
@@ -330,12 +346,13 @@ beforeEach(() => {
   // atomically and prevents a later deleteDatabase/open pair from blocking.
   globalThis.indexedDB = new IDBFactory() as unknown as typeof globalThis.indexedDB
   setOnline(true)
-  authMock.user = { id: "u-1", full_name: "Test User" } as User
+  setAuthFixture({ id: SIGNED_IN_USER_ID, full_name: "Test User" } as User)
 })
 
 afterEach(() => {
   setOnline(true)
-  authMock.user = null
+  cleanup()
+  setAuthFixture(null, true)
 })
 
 describe("useNewsInteraction — query", () => {
@@ -365,9 +382,9 @@ describe("useNewsInteraction — query", () => {
   it("fetches the comment list on mount even when the summary was seeded", async () => {
     const { wrapper } = makeWrapper()
     const comment: NewsComment = {
-      id: "c-server-1",
+      id: commentFixtureId(1),
       content: "Loaded from the server",
-      user_id: "user-2",
+      user_id: EXISTING_COMMENT_AUTHOR_ID,
       user_name: "Ann",
       created_at: "2026-06-13T00:00:00Z",
     }
@@ -415,9 +432,9 @@ describe("useNewsInteraction — query", () => {
     const { wrapper } = makeWrapper()
     const total = NEWS_COMMENTS_PAGE_SIZE + 3
     const comments: NewsComment[] = Array.from({ length: total }, (_, index) => ({
-      id: `c-${index}`,
+      id: commentFixtureId(index),
       content: `Comment ${index}`,
-      user_id: "user-2",
+      user_id: EXISTING_COMMENT_AUTHOR_ID,
       user_name: "Ann",
       created_at: `2026-06-13T00:00:${String(index).padStart(2, "0")}Z`,
     }))
@@ -458,9 +475,9 @@ describe("useNewsInteraction — query", () => {
   it("appends a new comment to the last loaded page after later pages load", async () => {
     const { wrapper } = makeWrapper()
     const comments: NewsComment[] = Array.from({ length: NEWS_COMMENTS_PAGE_SIZE + 1 }, (_, i) => ({
-      id: `c-${i}`,
+      id: commentFixtureId(i),
       content: `Comment ${i}`,
-      user_id: "user-2",
+      user_id: EXISTING_COMMENT_AUTHOR_ID,
       user_name: "Ann",
       created_at: `2026-06-13T00:00:${String(i).padStart(2, "0")}Z`,
     }))
@@ -479,9 +496,9 @@ describe("useNewsInteraction — query", () => {
       http.post("*/news/:newsId/comment", async ({ request }) => {
         const body = (await request.json()) as { content: string }
         const created: NewsComment = {
-          id: "c-created",
+          id: commentFixtureId(100),
           content: body.content,
-          user_id: "u-1",
+          user_id: SIGNED_IN_USER_ID,
           user_name: "Test User",
           created_at: "2026-06-13T01:00:00Z",
         }
@@ -881,9 +898,9 @@ describe("useNewsInteraction — addComment", () => {
     is_liked: false,
     comments: [
       {
-        id: "c0",
+        id: commentFixtureId(0),
         content: "old",
-        user_id: "u0",
+        user_id: EXISTING_COMMENT_AUTHOR_ID,
         user_name: "X",
         created_at: "2026-01-01T00:00:00Z",
       },
@@ -897,15 +914,15 @@ describe("useNewsInteraction — addComment", () => {
     { name: "anonymous author", hasUser: false, count: 1, nextCount: 2 },
     { name: "omitted server count", hasUser: true, count: undefined, nextCount: 2 },
   ])("shows a pending comment with $name", async ({ hasUser, count, nextCount }) => {
-    if (!hasUser) authMock.user = null
+    if (!hasUser) setAuthFixture(null)
     const initial = withComment({ comments_count: count })
     const { mutation, refetch, request } = holdInteractionResponses("comment", initial)
     const { qc, wrapper } = makeWrapper()
     const { result, unmount } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
     const confirmed: NewsComment = {
-      id: "server-comment-42",
+      id: commentFixtureId(42),
       content: "hello",
-      user_id: hasUser ? "u-1" : "",
+      user_id: hasUser ? SIGNED_IN_USER_ID : PUBLIC_COMMENT_AUTHOR_ID,
       user_name: hasUser ? "Test User" : "You",
       created_at: "2026-06-13T00:00:00Z",
     }
@@ -929,9 +946,9 @@ describe("useNewsInteraction — addComment", () => {
       expect(result.current.interactions?.comments[0]).toEqual(initial.comments[0])
       expect(pending).toMatchObject({
         content: "hello",
-        user_id: confirmed.user_id,
         user_name: confirmed.user_name,
       })
+      expect(pending.user_id).toBe(hasUser ? SIGNED_IN_USER_ID : "")
       expect(pending.id).not.toBe("")
       expect(pending.id).not.toBe(initial.comments[0]!.id)
       expect(Date.parse(pending.created_at)).toBeGreaterThanOrEqual(startedAt)
@@ -1053,9 +1070,9 @@ describe("useNewsInteraction — addComment", () => {
     const queryGate = deferred<void>()
     const state = { ...baseInteractions }
     const saved: NewsComment = {
-      id: "server-comment-before-load",
+      id: commentFixtureId(43),
       content: "before load",
-      user_id: "u-1",
+      user_id: SIGNED_IN_USER_ID,
       user_name: "Test User",
       created_at: "2026-06-13T00:00:00Z",
     }
@@ -1128,9 +1145,9 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     is_liked: false,
     comments: [
       {
-        id: "c1",
+        id: commentFixtureId(1),
         content: "orig",
-        user_id: "u0",
+        user_id: EXISTING_COMMENT_AUTHOR_ID,
         user_name: "X",
         created_at: "2026-01-01T00:00:00Z",
       },
@@ -1142,8 +1159,20 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     likes_count: 0,
     is_liked: false,
     comments: [
-      { id: "c1", content: "a", user_id: "u", user_name: "X", created_at: "z" },
-      { id: "c2", content: "b", user_id: "u", user_name: "X", created_at: "z" },
+      {
+        id: commentFixtureId(1),
+        content: "a",
+        user_id: EXISTING_COMMENT_AUTHOR_ID,
+        user_name: "X",
+        created_at: "2026-01-01T00:00:00Z",
+      },
+      {
+        id: commentFixtureId(2),
+        content: "b",
+        user_id: EXISTING_COMMENT_AUTHOR_ID,
+        user_name: "X",
+        created_at: "2026-01-01T00:00:00Z",
+      },
     ],
     comments_count: 2,
   })
@@ -1153,10 +1182,10 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     setupServer({ initial: oneComment(), patch: "ok" })
     const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
     await waitFor(() => expect(result.current.interactions?.comments.length).toBe(1))
-    act(() => result.current.updateComment("c1", "edited"))
+    act(() => result.current.updateComment(commentFixtureId(1), "edited"))
     await waitFor(() => {
       const d = cachedInteractions(qc)
-      expect(d?.comments.find((c) => c.id === "c1")?.content).toBe("edited")
+      expect(d?.comments.find((c) => c.id === commentFixtureId(1))?.content).toBe("edited")
     })
   })
 
@@ -1165,10 +1194,12 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     setupServer({ initial: twoComments(), patch: "ok" })
     const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
     await waitFor(() => expect(result.current.interactions?.comments.length).toBe(2))
-    act(() => result.current.updateComment("c1", "edited"))
+    act(() => result.current.updateComment(commentFixtureId(1), "edited"))
     await waitFor(() => {
       const data = cachedInteractions(qc)
-      expect(data?.comments.find((comment) => comment.id === "c2")?.content).toBe("b")
+      expect(data?.comments.find((comment) => comment.id === commentFixtureId(2))?.content).toBe(
+        "b"
+      )
     })
   })
 
@@ -1177,11 +1208,11 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     setupServer({ initial: oneComment(), patch: "500" })
     const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
     await waitFor(() => expect(result.current.interactions?.comments.length).toBe(1))
-    act(() => result.current.updateComment("c1", "x"))
+    act(() => result.current.updateComment(commentFixtureId(1), "x"))
     await waitFor(() => expect(result.current.isUpdatingComment).toBe(false))
     await waitFor(() => {
       const d = cachedInteractions(qc)
-      expect(d?.comments.find((c) => c.id === "c1")?.content).toBe("orig")
+      expect(d?.comments.find((c) => c.id === commentFixtureId(1))?.content).toBe("orig")
     })
   })
 
@@ -1191,10 +1222,10 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
     await waitFor(() => expect(result.current.interactions?.comments.length).toBe(1))
     setOnline(false)
-    act(() => result.current.updateComment("c1", "x"))
+    act(() => result.current.updateComment(commentFixtureId(1), "x"))
     await waitFor(() => expect(result.current.isUpdatingComment).toBe(false))
     const q = await readQueue()
-    expect(q[0]!.url).toBe("/api/v1/news/comments/c1")
+    expect(q[0]!.url).toBe("/api/v1/news/comments/" + commentFixtureId(1))
     expect(q[0]!.method).toBe("PATCH")
     expect(q[0]!.payload).toEqual({ content: "x" })
   })
@@ -1204,7 +1235,7 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     setupServer({ initial: twoComments(), del: "ok" })
     const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
     await waitFor(() => expect(result.current.interactions?.comments.length).toBe(2))
-    act(() => result.current.deleteComment("c1"))
+    act(() => result.current.deleteComment(commentFixtureId(1)))
     await waitFor(() => {
       const d = cachedInteractions(qc)
       expect(d?.comments.length).toBe(1)
@@ -1217,7 +1248,7 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     setupServer({ initial: { ...twoComments(), comments_count: undefined }, del: "ok" })
     const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
     await waitFor(() => expect(result.current.interactions?.comments.length).toBe(2))
-    act(() => result.current.deleteComment("c1"))
+    act(() => result.current.deleteComment(commentFixtureId(1)))
     await waitFor(() => {
       const data = cachedInteractions(qc)
       expect(data?.comments_count).toBe(1)
@@ -1229,7 +1260,7 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     setupServer({ initial: twoComments(), del: "500" })
     const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
     await waitFor(() => expect(result.current.interactions?.comments.length).toBe(2))
-    act(() => result.current.deleteComment("c1"))
+    act(() => result.current.deleteComment(commentFixtureId(1)))
     await waitFor(() => expect(result.current.isDeletingComment).toBe(false))
     await waitFor(() => {
       const d = cachedInteractions(qc)
@@ -1243,7 +1274,15 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
       initial: {
         likes_count: 0,
         is_liked: false,
-        comments: [{ id: "c2", content: "b", user_id: "u", user_name: "X", created_at: "z" }],
+        comments: [
+          {
+            id: commentFixtureId(2),
+            content: "b",
+            user_id: EXISTING_COMMENT_AUTHOR_ID,
+            user_name: "X",
+            created_at: "2026-01-01T00:00:00Z",
+          },
+        ],
         comments_count: 1,
       },
       del: "offline",
@@ -1251,10 +1290,10 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
     await waitFor(() => expect(result.current.interactions?.comments.length).toBe(1))
     setOnline(false)
-    act(() => result.current.deleteComment("c2"))
+    act(() => result.current.deleteComment(commentFixtureId(2)))
     await waitFor(() => expect(result.current.isDeletingComment).toBe(false))
     const q = await readQueue()
-    expect(q[0]!.url).toBe("/api/v1/news/comments/c2")
+    expect(q[0]!.url).toBe("/api/v1/news/comments/" + commentFixtureId(2))
     expect(q[0]!.method).toBe("DELETE")
     expect(q[0]!.payload).toEqual({})
   })

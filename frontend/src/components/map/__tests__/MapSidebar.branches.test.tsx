@@ -17,6 +17,9 @@ const hooks = vi.hoisted(() => ({
 vi.mock("@/contexts/AppShellContext", () => ({
   useAppShell: () => ({ setOverlayState: hooks.setOverlayState }),
 }))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => "Europe/Istanbul",
+}))
 
 vi.mock("@/utils/buildingHours", () => ({
   isOpenNow: () => hooks.open,
@@ -229,6 +232,16 @@ describe("MapSidebar branches", () => {
     render(<MapSidebar {...baseProps} selectedFloor={2} />)
     expect(screen.getByRole("radio", { name: "1" })).toHaveAttribute("aria-checked", "false")
     expect(screen.getByRole("radio", { name: "2" })).toHaveAttribute("aria-checked", "true")
+  })
+
+  it("reports the chosen floor when a floor radio is clicked", () => {
+    const onFloorChange = vi.fn()
+    render(<MapSidebar {...baseProps} onFloorChange={onFloorChange} />)
+
+    fireEvent.click(screen.getByRole("radio", { name: "2" }))
+
+    expect(onFloorChange).toHaveBeenCalledOnce()
+    expect(onFloorChange).toHaveBeenCalledWith(2)
   })
 
   it("does not render a floor selector for a single-floor building", () => {

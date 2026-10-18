@@ -1,8 +1,8 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider, notifyManager } from "@tanstack/react-query"
 import { http, HttpResponse } from "msw"
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { NewsComments } from "@/components/news/NewsComments"
 import {
@@ -12,6 +12,8 @@ import {
 } from "@/hooks/useNewsInteraction"
 import { server } from "@/tests/mocks/server"
 import type { User } from "@/types/User"
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { UserState } from "@/types/Auth"
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
@@ -46,6 +48,7 @@ const INITIAL: NewsInteractions = {
   comments: [PERSISTED],
   comments_count: 1,
 }
+const AUTH_USER = { id: "019961d3-bb00-7000-8000-000000000010", full_name: "Comment Author" }
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -60,6 +63,15 @@ beforeAll(() => {
 })
 afterAll(() => {
   notifyManager.setNotifyFunction((callback) => callback())
+})
+
+beforeEach(() => {
+  useAuthStore.setState({ user: AUTH_USER as UserState, loading: false })
+})
+
+afterEach(() => {
+  cleanup()
+  useAuthStore.setState({ user: null, loading: true })
 })
 
 function renderComments(role: User["role"] = "student") {

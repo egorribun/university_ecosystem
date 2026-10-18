@@ -1,12 +1,14 @@
 import { dehydrate, hydrate, keepPreviousData, QueryClientProvider } from "@tanstack/react-query"
-import { act, cleanup, render, renderHook, waitFor } from "@testing-library/react"
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import { useLayoutEffect, type PropsWithChildren } from "react"
 import { renderToString } from "react-dom/server"
+import { hydrateRoot } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { NewsItem } from "@/api/news"
 import type { Event } from "@/types/Event"
 import type { UserState } from "@/types/Auth"
+import { ENCRYPTED_CACHE_PLACEHOLDER_USER_ID, SSR_STUB_USER_ID } from "@/stores/authIdentity"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { createQueryClient } from "@/app/queryClient"
 import { acceptBrowserSessionGeneration, invalidateSessionEpoch } from "@/stores/sessionEpoch"
@@ -32,7 +34,12 @@ vi.mock("@/push/subscribe", () => ({
   syncPushForConfirmedIdentity: vi.fn(),
 }))
 
-import { newsListQueryKey, prefetchNewsListQuery, useNewsListQuery } from "../news"
+import {
+  anonymousNewsListQueryKey,
+  newsListQueryKey,
+  prefetchNewsListQuery,
+  useNewsListQuery,
+} from "../news"
 import {
   eventsListQueryKey,
   prefetchEventsListQuery,
@@ -47,6 +54,15 @@ const setIdentity = (id: string | null, loading = false) => {
 }
 const newsItem = (is_liked: boolean): NewsItem =>
   ({ id: "article", title: "Article", is_liked }) as NewsItem
+const eventItem = (id: string): Event => ({
+  id,
+  created_at: "2026-01-01T00:00:00Z",
+  created_by: "test-user",
+  ends_at: "2026-01-01T10:00:00Z",
+  is_active: true,
+  starts_at: "2026-01-01T09:00:00Z",
+  title: id,
+})
 const page = <T,>(items: T[]) => ({
   status: 200,
   data: { items, total: items.length, limit: 12, cursor: null, next_cursor: null, has_more: false },
@@ -479,8 +495,20 @@ describe("personalized list cache isolation", () => {
     expect(result.current.events).toEqual(second)
   })
 
-  it("rejects imperative refetch and prefetch without a confirmed identity", async () => {
-    setIdentity(null)
+  it("keeps unconfirmed refetches credentialless and excludes account snapshots", async () => {
+    setIdentity(null, true)
+    const privateSnapshot = [newsItem(true)]
+    window.localStorage.setItem("news:list:account:account-a:en", JSON.stringify(privateSnapshot))
+    window.localStorage.setItem("news:list:en", JSON.stringify(privateSnapshot))
+    const publicNews = newsItem(false)
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(page([publicNews]).data), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+    )
     const { client, wrapper } = createWrapper()
     const { result } = renderHook(
       () => ({
@@ -489,6 +517,13 @@ describe("personalized list cache isolation", () => {
       }),
       { wrapper }
     )
+    expect(result.current.news.news).toEqual([])
+    expect(result.current.events.events).toEqual([])
+    expect(requests.news).not.toHaveBeenCalled()
+    expect(requests.events).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+    await act(async () => setIdentity(null, false))
+    expect(result.current.news.news).not.toEqual(privateSnapshot)
     await act(async () => {
       await Promise.all([
         result.current.news.refetch(),
@@ -497,10 +532,43 @@ describe("personalized list cache isolation", () => {
         prefetchEventsListQuery(client, { language: "en" }),
       ])
     })
+    await waitFor(() => expect(result.current.news.news).toEqual([publicNews]))
+
     expect(requests.news).not.toHaveBeenCalled()
     expect(requests.events).not.toHaveBeenCalled()
-    expect(result.current.news.news).toEqual([])
     expect(result.current.events.events).toEqual([])
+    expect(result.current.news.queryKey).toEqual(anonymousNewsListQueryKey({ language: "en" }))
+    expect(client.getQueryData(newsListQueryKey({ language: "en" }))).toBeUndefined()
+    const anonymousCache = client.getQueryData(anonymousNewsListQueryKey({ language: "en" }))
+    expect(anonymousCache).toBeDefined()
+    expect(
+      client.getQueryCache().find({ queryKey: anonymousNewsListQueryKey({ language: "en" }) })?.meta
+        ?.persist
+    ).toBe(false)
+    expect(window.localStorage.getItem("news:list:account:account-a:en")).toBe(
+      JSON.stringify(privateSnapshot)
+    )
+    expect(window.localStorage.getItem("news:list:en")).toBe(JSON.stringify(privateSnapshot))
+
+    const publicCalls = fetchMock.mock.calls.filter(([input]) => {
+      const url = input instanceof URL ? input : new URL(String(input), window.location.origin)
+      return url.pathname === "/api/v1/news"
+    })
+    expect(publicCalls.length).toBeGreaterThan(0)
+    for (const [input, init] of publicCalls) {
+      const url = input instanceof URL ? input : new URL(String(input), window.location.origin)
+      expect(url.pathname).toBe("/api/v1/news")
+      expect(init).toMatchObject({
+        method: "GET",
+        mode: "same-origin",
+        credentials: "omit",
+        cache: "no-store",
+      })
+    }
+    await act(async () => setIdentity(null, false))
+    expect(client.getQueryData(anonymousNewsListQueryKey({ language: "en" }))).toEqual(
+      anonymousCache
+    )
   })
 
   it("switches the event offline reader to the confirmed account's namespace", () => {
@@ -552,14 +620,59 @@ describe("personalized list cache isolation", () => {
     expect(result.current.feed.news).toEqual([])
   })
 
-  it("hydrates same-request SSR lists without mismatch and clears them on account confirmation", async () => {
-    setIdentity(null)
+  it.each([
+    ["null", null],
+    ["SSR stub", SSR_STUB_USER_ID],
+    ["encrypted-cache placeholder", ENCRYPTED_CACHE_PLACEHOLDER_USER_ID],
+  ] as const)(
+    "retires request-scoped personalized queries after %s auth settles without an owner",
+    (_identityKind, unresolvedId) => {
+      setIdentity(unresolvedId, true)
+      const { client } = createWrapper()
+      const privateNews = {
+        pages: [page([newsItem(true)]).data],
+        pageParams: [null],
+      }
+      const privateEvents = {
+        pages: [page([eventItem("private-event")]).data],
+        pageParams: [null],
+      }
+      client.setQueryData(newsListQueryKey({ language: "en" }), privateNews)
+      client.setQueryData(eventsListQueryKey({ language: "en" }), privateEvents)
+      expect(client.getQueryData(newsListQueryKey({ language: "en" }))).toEqual(privateNews)
+      expect(client.getQueryData(eventsListQueryKey({ language: "en" }))).toEqual(privateEvents)
+
+      act(() => setIdentity(null, false))
+
+      expect(client.getQueryData(newsListQueryKey({ language: "en" }))).toBeUndefined()
+      expect(client.getQueryData(eventsListQueryKey({ language: "en" }))).toBeUndefined()
+
+      const anonymousNews = {
+        pages: [page([newsItem(false)]).data],
+        pageParams: [null],
+      }
+      client.setQueryData(anonymousNewsListQueryKey({ language: "en" }), anonymousNews)
+      act(() => setIdentity(null, false))
+      expect(client.getQueryData(anonymousNewsListQueryKey({ language: "en" }))).toEqual(
+        anonymousNews
+      )
+    }
+  )
+
+  it("holds SSR cache through unresolved auth hydration, then clears it when account B is confirmed", async () => {
+    setIdentity(null, true)
     requests.news.mockResolvedValueOnce(page([newsItem(true)]))
-    requests.events.mockResolvedValueOnce(page([{ id: "server-event" }]))
+    requests.events.mockResolvedValueOnce(page([eventItem("server-event")]))
+    const serverSnapshot = [newsItem(true)]
+    window.localStorage.setItem("news:list:account:account-a:en", JSON.stringify(serverSnapshot))
+    window.localStorage.setItem("news:list:en", JSON.stringify(serverSnapshot))
+    const renderedStates: string[] = []
     const Probe = () => {
       const news = useNewsListQuery({ language: "en" })
       const events = useEventsListQuery({ language: "en" })
-      return <span>{`${news.news[0]?.is_liked}:${events.events[0]?.id}`}</span>
+      const state = String(news.news[0]?.is_liked) + ":" + (events.events[0]?.id ?? "empty")
+      renderedStates.push(news.queryKey[1] + ":" + state)
+      return <span>{state}</span>
     }
     vi.stubGlobal("window", undefined)
     let serverHtml: string
@@ -580,18 +693,60 @@ describe("personalized list cache isolation", () => {
       vi.unstubAllGlobals()
     }
     expect(serverHtml).toContain("true:server-event")
-    const { client, wrapper } = createWrapper()
+    const { client } = createWrapper()
     hydrate(client, snapshot)
     const container = document.createElement("div")
     document.body.appendChild(container)
     container.innerHTML = serverHtml
-    render(<Probe />, { container, hydrate: true, wrapper })
-    expect(container.textContent).toBe("true:server-event")
-    expect(window.localStorage.getItem("news:list:en")).toBeNull()
+    renderedStates.length = 0
+    const recoverableErrors: unknown[] = []
+    const publicItem = newsItem(false)
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(page([publicItem]).data), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+    )
+    const rootElement = (
+      <QueryClientProvider client={client}>
+        <Probe />
+      </QueryClientProvider>
+    )
+    const root = hydrateRoot(container, rootElement, {
+      onRecoverableError: (error) => recoverableErrors.push(error),
+    })
+    try {
+      await act(async () => undefined)
+      expect(recoverableErrors).toEqual([])
+      expect(renderedStates[0]).toBe("list:true:server-event")
+      expect(container.textContent).toBe("true:server-event")
+      expect(requests.news).toHaveBeenCalledTimes(1)
+      expect(requests.events).toHaveBeenCalledTimes(1)
+      expect(fetchMock).not.toHaveBeenCalled()
 
-    requests.news.mockResolvedValueOnce(page([newsItem(false)]))
-    requests.events.mockResolvedValueOnce(page([{ id: "confirmed-event" }]))
-    act(() => setIdentity("account-b"))
-    await waitFor(() => expect(container.textContent).toBe("false:confirmed-event"))
+      const confirmedNews = deferred<ReturnType<typeof page<NewsItem>>>()
+      const confirmedEvents = deferred<ReturnType<typeof page<Event>>>()
+      requests.news.mockReturnValueOnce(confirmedNews.promise)
+      requests.events.mockReturnValueOnce(confirmedEvents.promise)
+      await act(async () => setIdentity("account-b"))
+      expect(requests.news).toHaveBeenCalledTimes(2)
+      expect(requests.events).toHaveBeenCalledTimes(2)
+      expect(client.getQueryData(newsListQueryKey({ language: "en" }))).toBeUndefined()
+      expect(client.getQueryData(eventsListQueryKey({ language: "en" }))).toBeUndefined()
+      expect(container.textContent).not.toBe("true:server-event")
+      expect(window.localStorage.getItem("news:list:account:account-a:en")).toBe(
+        JSON.stringify(serverSnapshot)
+      )
+      expect(window.localStorage.getItem("news:list:en")).toBe(JSON.stringify(serverSnapshot))
+      await act(async () => {
+        confirmedNews.resolve(page([newsItem(false)]))
+        confirmedEvents.resolve(page([eventItem("confirmed-event")]))
+      })
+      await waitFor(() => expect(container.textContent).toBe("false:confirmed-event"))
+    } finally {
+      await act(async () => root.unmount())
+    }
   })
 })

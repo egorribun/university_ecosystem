@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { act, renderHook, waitFor } from "@testing-library/react"
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
@@ -7,6 +7,8 @@ import { useScheduleData } from "../useScheduleData"
 import { scheduleGroupsQueryOptions, pageScheduleQueryOptions } from "@/api/hooks/schedule"
 import { currentUserQueryOptions } from "@/api/hooks/users"
 import type { ScheduleGroup, Lesson } from "@/components/schedule/scheduleUtils"
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { UserState } from "@/types/Auth"
 
 /**
  * Wave 130 polish — closes §Honesty probe #4 (vitest count delta from
@@ -46,6 +48,11 @@ const apiGetMock = vi.mocked(api.get)
 const useAuthMock = vi.mocked(useAuth)
 const getDatabaseMock = vi.mocked(getDatabaseLazily)
 
+function setAuthFixture(user: UserState | null) {
+  useAuthMock.mockReturnValue({ user } as never)
+  useAuthStore.setState({ user, loading: false })
+}
+
 function newClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
@@ -65,6 +72,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     apiGetMock.mockReset()
     useAuthMock.mockReset()
     getDatabaseMock.mockReset()
+    setAuthFixture({ id: "schedule-cache-test-user" } as UserState)
     getDatabaseMock.mockResolvedValue({
       schedule: { bulkUpsert: vi.fn().mockResolvedValue(undefined) },
     } as never)
@@ -72,6 +80,8 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    cleanup()
+    useAuthStore.setState({ user: null, loading: true })
   })
 
   it("reads SSR-prefetched groups cache without re-fetching network", async () => {
@@ -86,9 +96,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     const opts = scheduleGroupsQueryOptions()
     client.setQueryData(opts.queryKey, groups)
 
-    useAuthMock.mockReturnValue({
-      user: { id: "u1", role: "admin", group_id: null },
-    } as never)
+    setAuthFixture({ id: "u1", role: "admin", group_id: null } as UserState)
 
     const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
 
@@ -108,9 +116,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     const client = newClient()
     client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
 
-    useAuthMock.mockReturnValue({
-      user: { id: "u1", role: "student", group_id: "group-2" },
-    } as never)
+    setAuthFixture({ id: "u1", role: "student", group_id: "group-2" } as UserState)
 
     // Mock /schedule/{groupId} response — auto-select effect should fire it
     // once group_id is resolved on next tick.
@@ -136,9 +142,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     const client = newClient()
     client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
 
-    useAuthMock.mockReturnValue({
-      user: { id: "u1", role: "student", group_id: "group-MISSING" },
-    } as never)
+    setAuthFixture({ id: "u1", role: "student", group_id: "group-MISSING" } as UserState)
 
     apiGetMock.mockResolvedValueOnce({ data: [], status: 200 })
 
@@ -153,9 +157,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
   it("does not select a group while the available group list is empty", async () => {
     const client = newClient()
     client.setQueryData(scheduleGroupsQueryOptions().queryKey, [])
-    useAuthMock.mockReturnValue({
-      user: { id: "u-empty", role: "admin", group_id: null },
-    } as never)
+    setAuthFixture({ id: "u-empty", role: "admin", group_id: null } as UserState)
 
     const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
 
@@ -213,9 +215,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     client.setQueryData(pageScheduleQueryOptions("group-A").queryKey, lessons)
 
     // useAuth mirrors what AuthProvider would surface from /users/me on hydration.
-    useAuthMock.mockReturnValue({
-      user: { id: "u1", role: "student", group_id: "group-A" },
-    } as never)
+    setAuthFixture({ id: "u1", role: "student", group_id: "group-A" } as UserState)
 
     const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
 
@@ -281,9 +281,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
 
     const bulkUpsert = vi.fn().mockResolvedValue(undefined)
     getDatabaseMock.mockResolvedValue({ schedule: { bulkUpsert } } as never)
-    useAuthMock.mockReturnValue({
-      user: { id: "u-object", role: "student", group_id: "group-object" },
-    } as never)
+    setAuthFixture({ id: "u-object", role: "student", group_id: "group-object" } as UserState)
 
     const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
 
@@ -359,9 +357,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     const client = newClient()
     client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
     client.setQueryData(pageScheduleQueryOptions("group-defensive").queryKey, lessons)
-    useAuthMock.mockReturnValue({
-      user: { id: "u-defensive", role: "student", group_id: "group-defensive" },
-    } as never)
+    setAuthFixture({ id: "u-defensive", role: "student", group_id: "group-defensive" } as UserState)
 
     const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
 
@@ -385,7 +381,8 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     ])
 
     const noGroupClient = newClient()
-    useAuthMock.mockReturnValue({ user: null } as never)
+    act(() => setAuthFixture(null))
+    noGroupClient.setQueryData(scheduleGroupsQueryOptions(true).queryKey, [])
     const noGroup = renderHook(() => useScheduleData(), { wrapper: wrapper(noGroupClient) })
     expect(() => {
       noGroup.result.current.applyScheduleUpdate((previous) => previous)
@@ -418,9 +415,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     client.setQueryData(pageScheduleQueryOptions("group-falsy").queryKey, lessons)
     const bulkUpsert = vi.fn().mockResolvedValue(undefined)
     getDatabaseMock.mockResolvedValue({ schedule: { bulkUpsert } } as never)
-    useAuthMock.mockReturnValue({
-      user: { id: "u-falsy", role: "student", group_id: "group-falsy" },
-    } as never)
+    setAuthFixture({ id: "u-falsy", role: "student", group_id: "group-falsy" } as UserState)
 
     const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
 
@@ -493,9 +488,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     const client = newClient()
     client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
     client.setQueryData(pageScheduleQueryOptions("group-today").queryKey, lessons)
-    useAuthMock.mockReturnValue({
-      user: { id: "u-today", role: "student", group_id: "group-today" },
-    } as never)
+    setAuthFixture({ id: "u-today", role: "student", group_id: "group-today" } as UserState)
 
     const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
 
@@ -539,9 +532,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     const client = newClient()
     client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
     client.setQueryData(pageScheduleQueryOptions("group-even").queryKey, lessons)
-    useAuthMock.mockReturnValue({
-      user: { id: "u-even", role: "student", group_id: "group-even" },
-    } as never)
+    setAuthFixture({ id: "u-even", role: "student", group_id: "group-even" } as UserState)
 
     const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
 
@@ -584,9 +575,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     const client = newClient()
     client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
     client.setQueryData(pageScheduleQueryOptions("group-cal").queryKey, lessons)
-    useAuthMock.mockReturnValue({
-      user: { id: "u-cal", role: "student", group_id: "group-cal" },
-    } as never)
+    setAuthFixture({ id: "u-cal", role: "student", group_id: "group-cal" } as UserState)
 
     const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
 
@@ -618,9 +607,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     client.setQueryData(pageScheduleQueryOptions("group-nullish").queryKey, lessons)
     const bulkUpsert = vi.fn().mockResolvedValue(undefined)
     getDatabaseMock.mockResolvedValue({ schedule: { bulkUpsert } } as never)
-    useAuthMock.mockReturnValue({
-      user: { id: "u-nullish", role: "student", group_id: "group-nullish" },
-    } as never)
+    setAuthFixture({ id: "u-nullish", role: "student", group_id: "group-nullish" } as UserState)
 
     const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
 
@@ -660,9 +647,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
       lesson_type: "lecture",
     } as Lesson
     const groups: ScheduleGroup[] = [{ id: "group-failure", name: "Failure Group" }]
-    useAuthMock.mockReturnValue({
-      user: { id: "u-failure", role: "student", group_id: "group-failure" },
-    } as never)
+    setAuthFixture({ id: "u-failure", role: "student", group_id: "group-failure" } as UserState)
 
     const firstClient = newClient()
     firstClient.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)

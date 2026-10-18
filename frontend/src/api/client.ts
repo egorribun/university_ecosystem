@@ -280,6 +280,167 @@ export const ensureCsrfCookie = (): Promise<void> => {
 }
 
 /**
+ * Fetch the public news list without ambient browser credentials.
+ *
+ * This deliberately uses native fetch rather than the shared Axios client:
+ * the Axios instance includes cookies and carries auth-bound preflight state.
+ * Keep the route fixed and same-origin so this escape hatch cannot become a
+ * generic credentialless transport for personalized endpoints.
+ */
+export const fetchAnonymousNewsPage = ({
+  language,
+  limit,
+  cursor,
+  signal,
+}: {
+  language: string
+  limit: number
+  cursor?: string | null
+  signal?: AbortSignal
+}): Promise<Response> => {
+  if (typeof window === "undefined") {
+    return Promise.reject(new Error("Anonymous news requests require a browser origin"))
+  }
+
+  const url = new URL("/api/v1/news", window.location.origin)
+  url.searchParams.set("limit", String(limit))
+  if (cursor != null) url.searchParams.set("cursor", cursor)
+
+  return fetch(url, {
+    method: "GET",
+    mode: "same-origin",
+    credentials: "omit",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Accept-Language": language,
+    },
+    signal,
+  })
+}
+
+const ANONYMOUS_RESOURCE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu
+
+const anonymousApiUrl = (path: string): URL => {
+  if (typeof window === "undefined") {
+    throw new Error("Anonymous API requests require a browser origin")
+  }
+  return new URL(path, window.location.origin)
+}
+
+const fetchAnonymousGet = (url: URL, language: string, signal?: AbortSignal) =>
+  fetch(url, {
+    method: "GET",
+    mode: "same-origin",
+    credentials: "omit",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Accept-Language": language,
+    },
+    signal,
+  })
+
+/** Fetch one public article without cookies or account-bound Axios state. */
+export const fetchAnonymousNewsDetail = ({
+  id,
+  language,
+  signal,
+}: {
+  id: string
+  language: string
+  signal?: AbortSignal
+}): Promise<Response> => {
+  if (!ANONYMOUS_RESOURCE_ID.test(id)) {
+    return Promise.reject(new Error("Anonymous news detail requires a UUID"))
+  }
+  const path = `/api/v1/news/${encodeURIComponent(id)}`
+  let url: URL
+  try {
+    url = anonymousApiUrl(path)
+  } catch (error) {
+    return Promise.reject(error)
+  }
+  return fetchAnonymousGet(url, language, signal)
+}
+
+/** Fetch public article interactions while preserving the comment-page contract. */
+export const fetchAnonymousNewsInteractions = ({
+  id,
+  language,
+  limit,
+  offset,
+  signal,
+}: {
+  id: string
+  language: string
+  limit: number
+  offset: number
+  signal?: AbortSignal
+}): Promise<Response> => {
+  if (!ANONYMOUS_RESOURCE_ID.test(id)) {
+    return Promise.reject(new Error("Anonymous news interactions require a UUID"))
+  }
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    return Promise.reject(new Error("Anonymous news interaction limit is invalid"))
+  }
+  if (!Number.isSafeInteger(offset) || offset < 0) {
+    return Promise.reject(new Error("Anonymous news interaction offset is invalid"))
+  }
+  const path = `/api/v1/news/${encodeURIComponent(id)}/interactions`
+  let url: URL
+  try {
+    url = anonymousApiUrl(path)
+  } catch (error) {
+    return Promise.reject(error)
+  }
+  url.searchParams.set("limit", String(limit))
+  url.searchParams.set("offset", String(offset))
+  return fetchAnonymousGet(url, language, signal)
+}
+
+/** Fetch the public schedule for one validated group UUID without cookies. */
+export const fetchAnonymousGroupSchedule = ({
+  groupId,
+  language,
+  signal,
+}: {
+  groupId: string
+  language: string
+  signal?: AbortSignal
+}): Promise<Response> => {
+  if (!ANONYMOUS_RESOURCE_ID.test(groupId)) {
+    return Promise.reject(new Error("Anonymous schedule requests require a group UUID"))
+  }
+  const path = `/api/v1/schedule/${encodeURIComponent(groupId)}`
+  let url: URL
+  try {
+    url = anonymousApiUrl(path)
+  } catch (error) {
+    return Promise.reject(error)
+  }
+  return fetchAnonymousGet(url, language, signal)
+}
+
+/** Fetch the public schedule-group directory without cookies or Axios state. */
+export const fetchAnonymousScheduleGroups = ({
+  language,
+  signal,
+}: {
+  language: string
+  signal?: AbortSignal
+}): Promise<Response> => {
+  const path = "/api/v1/groups"
+  let url: URL
+  try {
+    url = anonymousApiUrl(path)
+  } catch (error) {
+    return Promise.reject(error)
+  }
+  return fetchAnonymousGet(url, language, signal)
+}
+
+/**
  * Split a request URL into its origin and path. Only an absolute URL parses
  * without a base; relative SDK paths (and a missing URL) throw and are kept
  * unchanged with an empty origin.

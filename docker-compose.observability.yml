@@ -97,6 +97,40 @@ services:
 
   # Grafana Alloy - supported Docker log collector for Loki. Promtail reached
   # end-of-life on 2026-03-02 and receives no further fixes.
+  # The adapter is the sole Docker API client; `:ro` on the socket does not restrict API methods.
+  docker-log-proxy:
+    build:
+      context: .
+      dockerfile: infrastructure/observability/alloy/Dockerfile.docker-log-proxy
+    labels:
+      com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    expose:
+      - "2375"
+    # Run nonroot and join only the Docker socket group. Set DOCKER_SOCKET_GID
+    # to the numeric GID from stat(/var/run/docker.sock); the default 0 covers
+    # a root:root socket. Rootless and userns-remapped sockets are unsupported.
+    # The socket bind remains read-only; do not grant Linux capabilities.
+    user: "65532:65532"
+    group_add:
+      - "${DOCKER_SOCKET_GID:-0}"
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 64M
+    networks:
+      - alloy_docker_api
+    restart: unless-stopped
+
   alloy:
     image: grafana/alloy:v1.20.1@sha256:2aa2099af76c0098d4af7a4d6e48f86cb66dc1a000222ad927a1c67c6542d13f
     command:
@@ -107,7 +141,6 @@ services:
       - /etc/alloy/config.alloy
     volumes:
       - ./infrastructure/observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - alloy-data:/var/lib/alloy/data
     ports:
       - "127.0.0.1:12345:12345"
@@ -131,7 +164,10 @@ services:
     networks:
       - internal
       - public
+      - alloy_docker_api
     depends_on:
+      docker-log-proxy:
+        condition: service_started
       loki-healthprobe:
         condition: service_healthy
     restart: unless-stopped
@@ -274,3 +310,7 @@ volumes:
   grafana-data:
   prometheus-data:
   alloy-data:
+
+networks:
+  alloy_docker_api:
+    internal: true
