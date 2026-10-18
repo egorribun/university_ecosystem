@@ -69,7 +69,7 @@ def test_assert_semver_invalid() -> None:
 def test_api_version_constants() -> None:
     from app.core.versioning import API_V1_PREFIX, API_VERSION
 
-    assert API_VERSION == "1.0.0"
+    assert API_VERSION == "1.1.0"
     assert API_V1_PREFIX == "/api/v1"
 
 

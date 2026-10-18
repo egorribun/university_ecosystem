@@ -17,7 +17,6 @@ from app.repositories.chat_repository import ChatRepository
 from app.repositories.event_repository import EventRepository
 from app.services.event_service import EventService
 from app.services.notifications.cleanup import cleanup_stale_notifications
-from app.utils.pagination import decode_datetime_cursor
 
 
 @pytest.mark.asyncio
@@ -159,7 +158,6 @@ async def test_notification_retention_binds_uuid_ids_and_preserves_unread(
 async def test_chat_list_cursor_uses_the_same_ordering_key_as_the_page(
     db_session: AsyncSession,
     user_factory,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     owner = await user_factory()
     first_peer = await user_factory()
@@ -194,21 +192,6 @@ async def test_chat_list_cursor_uses_the_same_ordering_key_as_the_page(
     await repository.rename_chat(second_chat.id, "Renamed project pair")
     await db_session.commit()
 
-    # The production PostgreSQL UUID binder accepts the decoder's string ID;
-    # SQLite's UUID binder does not. Keep the real cursor timestamp and predicate,
-    # adapting only that dialect-specific scalar to UUID for this DB fixture.
-    def decode_sqlite_cursor(cursor: str | None):
-        decoded = decode_datetime_cursor(cursor)
-        if decoded is None:
-            return None
-        timestamp, raw_id = decoded
-        return timestamp, UUID(raw_id)
-
-    monkeypatch.setattr(
-        "app.repositories.chat_repository.decode_datetime_cursor",
-        decode_sqlite_cursor,
-    )
-
     first_page, has_more, cursor = await repository.get_chats_for_user(
         owner.id, None, 1
     )
@@ -224,7 +207,6 @@ async def test_chat_list_cursor_uses_the_same_ordering_key_as_the_page(
 async def test_chat_and_message_pages_follow_complete_ordering_keys(
     db_session: AsyncSession,
     user_factory,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     owner = await user_factory()
     peers = [await user_factory() for _ in range(5)]
@@ -272,18 +254,6 @@ async def test_chat_and_message_pages_follow_complete_ordering_keys(
         ]
     )
     await db_session.flush()
-
-    def decode_sqlite_cursor(cursor: str | None):
-        decoded = decode_datetime_cursor(cursor)
-        if decoded is None:
-            return None
-        timestamp, raw_id = decoded
-        return timestamp, UUID(raw_id)
-
-    monkeypatch.setattr(
-        "app.repositories.chat_repository.decode_datetime_cursor",
-        decode_sqlite_cursor,
-    )
 
     null_tail_ids = sorted([chats[3].id, chats[4].id], reverse=True)
     expected_chat_ids = [

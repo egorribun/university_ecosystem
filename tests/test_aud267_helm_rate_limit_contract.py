@@ -4,18 +4,21 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from tests.test_helm_staging_contract import (
-    CHART,
-    STAGING_VALUES,
     _helm,
     _render_staging,
     _resolved_staging_args,
 )
 from tests.test_mfa_helm_contract import MFA_EXTERNAL_APPLICATION_SECRET, _render
+
+ROOT = Path(__file__).resolve().parents[1]
+CHART = ROOT / "charts" / "university-ecosystem"
+STAGING_VALUES = CHART / "values-staging.yaml"
 
 
 def _render_development(*extra: str) -> list[dict[str, Any]]:

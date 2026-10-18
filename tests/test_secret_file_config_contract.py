@@ -404,6 +404,8 @@ def test_production_spotify_credentials_must_be_configured_together(
 ) -> None:
     from app.core.config.integrations import IntegrationSettings
 
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     monkeypatch.setenv("ENVIRONMENT", "production")
     with pytest.raises(
         ValidationError, match="SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET"
@@ -426,6 +428,8 @@ def test_production_spotify_enabled_with_empty_state_file_fails_closed(
 
     empty_state_file = tmp_path / "spotify-state-disabled"
     empty_state_file.write_bytes(b"\n")
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("SPOTIFY_OAUTH_STATE_SECRET_FILE", str(empty_state_file))
 

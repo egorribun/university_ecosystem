@@ -751,6 +751,17 @@
         "app.api.deps.auth.get_current_user_from_dishka"
       ],
       "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.events:my_events_page:GET:/my/page",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
         "FromDishka[VectorService]",
         "inject"
       ],
@@ -1804,7 +1815,7 @@
   ],
   "schema_version": 1,
   "summary": {
-    "canonical_dishka": 140,
+    "canonical_dishka": 141,
     "public_no_db": 12,
     "worker_internal": 3
   }

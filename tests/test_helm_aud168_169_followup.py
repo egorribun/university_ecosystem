@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from tests.test_helm_staging_contract import (
+    MFA_TOTP_ACTIVE_KEY_ID,
     _render_staging,
     _values,
 )
@@ -125,12 +126,18 @@ def test_migration_settings_use_release_environment_and_required_secrets(
         == values["backend"]["config"]["elasticsearchURL"]
     )
 
+    assert (
+        environment["MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID"]["value"]
+        == MFA_TOTP_ACTIVE_KEY_ID
+    )
+
     application_key_references = (
         ("SECRET_KEY", "jwt-secret"),
         ("AUDIT_LOG_SECRET", "audit-log-secret"),
         ("ELASTICSEARCH_PASSWORD", "elasticsearch-password"),
         ("INTERNAL_AUTH_TOKEN", "ws-hub-internal-secret"),
         ("INTERNAL_HMAC_SECRET", "internal-hmac-secret"),
+        ("MFA_TOTP_ENCRYPTION_KEYS", "mfa-totp-encryption-keys"),
         ("SPICEDB_PRESHARED_KEY", "spicedb-preshared-key"),
         ("SPOTIFY_TOKEN_SECRET", "spotify-token-secret"),
         ("TOKEN_HMAC_SECRET", "token-hmac-secret"),

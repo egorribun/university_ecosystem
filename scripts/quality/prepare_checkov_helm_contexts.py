@@ -74,6 +74,7 @@ STAGING_OVERRIDES: dict[str, Any] = {
     "outboxWorker.image.digest": "",
     "backend.config.elasticsearchURL": "https://elasticsearch.staging.internal",
     "backend.config.flagdHost": "flagd.staging.internal",
+    "backend.config.mfaTotpActiveEncryptionKeyId": "totp-active-staging-contract",
     "backend.config.storageS3EndpointURL": "https://minio.staging.internal:443",
     "gateway.config.otelEndpoint": "otel-collector.staging.internal:4317",
     "fileProcessor.config.minioEndpoint": "minio.staging.internal:443",

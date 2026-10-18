@@ -1,6 +1,6 @@
 import { create } from "zustand"
 
-export type LogoutNotice = "server-unconfirmed"
+type LogoutNotice = "server-unconfirmed"
 
 type LogoutNoticeState = {
   notice: LogoutNotice | null

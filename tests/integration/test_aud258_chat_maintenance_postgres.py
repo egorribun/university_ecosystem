@@ -43,7 +43,7 @@ pytestmark = [
 
 def _require_postgres() -> None:
     if database.engine.dialect.name != "postgresql":
-        pytest.skip("AUD-258 lock and page semantics require PostgreSQL")
+        pytest.fail("AUD-258 lock and page semantics require PostgreSQL")
 
 
 async def _seed_chat(
@@ -543,6 +543,9 @@ async def test_empty_participant_chat_fails_closed_without_cascading_blobs(
         message_count=1,
         attachment_count=1,
     )
+    # Keep identifiers independent of deliberate ORM expiration and rollback.
+    chat_id = chat.id
+    former_participant_id = former_participant.id
     storage = StaticFSStorage(tmp_path, base_url="https://objects.example.test")
     attachment_url = await storage.save_file(
         f"chat/{uuid.uuid4().hex}/orphan.txt", b"orphan blob"
@@ -557,37 +560,39 @@ async def test_empty_participant_chat_fails_closed_without_cascading_blobs(
             "DELETE FROM chat_participants "
             "WHERE chat_id = :chat_id AND user_id = :user_id"
         ),
-        {"chat_id": chat.id, "user_id": former_participant.id},
+        {"chat_id": chat_id, "user_id": former_participant_id},
     )
     await db_session.commit()
     db_session.expire_all()
 
     # The policy correctly hides old messages from a former member. Maintenance
     # must therefore refuse an orphaned chat instead of treating it as empty.
-    await ChatRepository(db_session).set_message_rls_user(former_participant.id)
+    await ChatRepository(db_session).set_message_rls_user(former_participant_id)
     invisible_message_count = await db_session.scalar(
-        select(func.count()).select_from(Message).where(Message.chat_id == chat.id)
+        select(func.count()).select_from(Message).where(Message.chat_id == chat_id)
     )
     assert invisible_message_count == 0
     await db_session.rollback()
+    # Rollback expires the actor too; load its columns before synchronous checks.
+    await db_session.refresh(admin)
 
     service = ChatMaintenanceService(
         uow_from_session(db_session), ChatAttachmentService()
     )
     with pytest.raises(HTTPException) as denied:
-        await getattr(service, operation)(chat.id, admin, "en")
+        await getattr(service, operation)(chat_id, admin, "en")
     assert denied.value.status_code == 403
     assert await storage.exists(attachment_url)
     assert (
         await db_session.scalar(
-            select(func.count()).select_from(Chat).where(Chat.id == chat.id)
+            select(func.count()).select_from(Chat).where(Chat.id == chat_id)
         )
         == 1
     )
     assert not (
         await db_session.scalars(
             select(StoredEvent).where(
-                StoredEvent.aggregate_id == str(chat.id),
+                StoredEvent.aggregate_id == str(chat_id),
                 StoredEvent.event_type.in_(
                     [AttachmentCleanupRequested.EVENT_TYPE, ChatDeleted.EVENT_TYPE]
                 ),
@@ -602,13 +607,13 @@ async def test_empty_participant_chat_fails_closed_without_cascading_blobs(
             "INSERT INTO chat_participants (chat_id, user_id) "
             "VALUES (:chat_id, :user_id)"
         ),
-        {"chat_id": chat.id, "user_id": former_participant.id},
+        {"chat_id": chat_id, "user_id": former_participant_id},
     )
     await db_session.commit()
-    await ChatRepository(db_session).set_message_rls_user(former_participant.id)
+    await ChatRepository(db_session).set_message_rls_user(former_participant_id)
     assert (
         await db_session.scalar(
-            select(func.count()).select_from(Message).where(Message.chat_id == chat.id)
+            select(func.count()).select_from(Message).where(Message.chat_id == chat_id)
         )
         == 1
     )

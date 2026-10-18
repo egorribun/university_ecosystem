@@ -148,7 +148,7 @@ async def test_get_chats_for_user_covers_cursor_pagination_and_empty_result() ->
 
     db.execute.return_value = _result(rows=[])
     with patch.object(
-        chat_module, "decode_datetime_cursor", return_value=(NOW, CHAT_ID)
+        chat_module, "decode_datetime_cursor", return_value=(NOW, str(CHAT_ID))
     ):
         items, has_more, next_cursor = await repo.get_chats_for_user(
             USER_ID, "cursor", 10
@@ -370,7 +370,7 @@ async def test_get_messages_covers_rls_cursor_and_next_cursor() -> None:
     with (
         patch.object(chat_module, "MessageDTO", _FakeMessageDTO),
         patch.object(
-            chat_module, "decode_datetime_cursor", return_value=(NOW, CHAT_ID)
+            chat_module, "decode_datetime_cursor", return_value=(NOW, str(CHAT_ID))
         ),
         patch.object(
             chat_module, "encode_datetime_cursor", return_value="cursor-next"

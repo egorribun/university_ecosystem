@@ -5311,6 +5311,69 @@ export type MyEventsApiV1EventsMyGetResponses = {
 export type MyEventsApiV1EventsMyGetResponse =
   MyEventsApiV1EventsMyGetResponses[keyof MyEventsApiV1EventsMyGetResponses]
 
+export type MyEventsPageApiV1EventsMyPageGetData = {
+  body?: never
+  headers?: {
+    /**
+     * If-None-Match
+     */
+    "if-none-match"?: string | null
+  }
+  path?: never
+  query?: {
+    /**
+     * Limit
+     */
+    limit?: number
+    /**
+     * Cursor
+     */
+    cursor?: string | null
+    /**
+     * Category
+     */
+    category?:
+      "lecture" | "seminar" | "conference" | "workshop" | "social" | "sport" | "other" | null
+    /**
+     * Date Range
+     */
+    date_range?: "today" | "week" | "month" | null
+    /**
+     * Date Anchor
+     */
+    date_anchor?: string | null
+    /**
+     * Sort
+     */
+    sort?: "newest" | "popular" | "upcoming"
+    /**
+     * Upcoming After
+     */
+    upcoming_after?: string | null
+  }
+  url: "/api/v1/events/my/page"
+}
+
+export type MyEventsPageApiV1EventsMyPageGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type MyEventsPageApiV1EventsMyPageGetError =
+  MyEventsPageApiV1EventsMyPageGetErrors[keyof MyEventsPageApiV1EventsMyPageGetErrors]
+
+export type MyEventsPageApiV1EventsMyPageGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: PaginatedEvents
+}
+
+export type MyEventsPageApiV1EventsMyPageGetResponse =
+  MyEventsPageApiV1EventsMyPageGetResponses[keyof MyEventsPageApiV1EventsMyPageGetResponses]
+
 export type SemanticSearchApiV1EventsSearchSemanticGetData = {
   body?: never
   headers?: {

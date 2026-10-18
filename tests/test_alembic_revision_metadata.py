@@ -15,6 +15,7 @@ import pytest
 import yaml
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from cryptography.fernet import Fernet
 from sqlalchemy.dialects import postgresql
 
 from scripts.quality.read_alembic_revision import (
@@ -173,7 +174,6 @@ def _staging_environment_without_secret_key() -> dict[str, str]:
             "INTERNAL_HMAC_SECRET",
             "NATS_AUTH_TOKEN",
             "SPICEDB_PRESHARED_KEY",
-            "SPOTIFY_TOKEN_SECRET",
             "TOKEN_HMAC_SECRET",
             "WS_HUB_INTERNAL_SECRET",
         )
@@ -188,6 +188,9 @@ def _staging_environment_without_secret_key() -> dict[str, str]:
         ELASTICSEARCH_URL="https://elasticsearch.staging.internal",
         EVENT_FILE_SCANNER_ENABLED="true",
         MINIO_SECURE="true",
+        MFA_TOTP_ENCRYPTION_KEYS=f"test-key:{Fernet.generate_key().decode('ascii')}",
+        MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID="test-key",
+        SPOTIFY_TOKEN_SECRET=Fernet.generate_key().decode("ascii"),
         REVOCATION_REDIS_ACCESS_ENABLED="true",
         REVOCATION_REDIS_URL="redis://revocation.staging.internal:6379/0",
     )

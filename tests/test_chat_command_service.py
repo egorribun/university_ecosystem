@@ -31,6 +31,7 @@ def _mock_uow():
     uow.session = AsyncMock()
     uow.commit = AsyncMock()
     uow.rollback = AsyncMock()
+    uow.flush = AsyncMock()
     # context manager support
     uow.__aenter__ = AsyncMock(return_value=uow)
     uow.__aexit__ = AsyncMock(return_value=False)
@@ -90,6 +91,14 @@ def _mock_chat(
         participants.append(p)
     chat.participants = participants
     return chat
+
+
+def _mock_maintenance_repository(uow, chat) -> None:
+    uow.chats.get_orm_for_update = AsyncMock(return_value=object())
+    uow.chats.lock_participant_ids_for_maintenance = AsyncMock(
+        return_value=[participant.id for participant in chat.participants]
+    )
+    uow.chats.get_messages = AsyncMock(return_value=(list(chat.messages), False, None))
 
 
 # ---------------------------------------------------------------------------
@@ -546,10 +555,18 @@ class TestClearHistory:
         uow = _mock_uow()
         admin = _mock_user(role="admin")
         chat = _mock_chat(admin.id)
-        chat.messages = [MagicMock(id=uuid.uuid4()), MagicMock(id=uuid.uuid4())]
+        chat.messages = [
+            MagicMock(id=uuid.uuid4(), attachments=[]),
+            MagicMock(id=uuid.uuid4(), attachments=[]),
+        ]
 
         uow.chats.get_by_id = AsyncMock(return_value=chat)
-        uow.chats.delete_messages = AsyncMock()
+        _mock_maintenance_repository(uow, chat)
+        uow.chats.delete_messages = AsyncMock(side_effect=[1, 1])
+        uow.chats.get_messages.side_effect = [
+            ([chat.messages[0]], True, "cursor-page-2"),
+            ([chat.messages[1]], False, None),
+        ]
         uow.chats.update_timestamp_by_id = AsyncMock()
         uow.chats.add = MagicMock()
 
@@ -561,7 +578,20 @@ class TestClearHistory:
 
         assert result.status == "cleared"
         assert result.deleted_messages == 2
-        uow.commit.assert_called_once()
+        uow.chats.get_orm_for_update.assert_awaited_once_with(chat.id)
+        uow.chats.lock_participant_ids_for_maintenance.assert_awaited_once_with(chat.id)
+        assert uow.chats.get_messages.await_args_list == [
+            call(chat.id, None, 512, user_id=admin.id, for_update=True),
+            call(chat.id, "cursor-page-2", 512, user_id=admin.id, for_update=True),
+        ]
+        assert uow.chats.delete_messages.await_args_list == [
+            call([chat.messages[0].id], chat_id=chat.id, user_id=admin.id),
+            call([chat.messages[1].id], chat_id=chat.id, user_id=admin.id),
+        ]
+        assert uow.flush.await_count == 2
+        uow.chats.add.assert_not_called()
+        uow.commit.assert_awaited_once()
+        uow.rollback.assert_not_awaited()
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -576,7 +606,9 @@ class TestClearHistory:
         uow = _mock_uow()
         admin = _mock_user(role="admin")
         chat = _mock_chat(admin.id)
-        uow.chats.get_by_id = AsyncMock(side_effect=[chat, None])
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        _mock_maintenance_repository(uow, chat)
+        uow.chats.get_orm_for_update.return_value = None
         uow.chats.delete_messages = AsyncMock()
         attachment_svc = _mock_attachment_service()
         service = ChatMaintenanceService(uow, attachment_svc)
@@ -586,13 +618,12 @@ class TestClearHistory:
 
         assert raised.value.status_code == 404
         assert raised.value.detail == expected_detail
-        assert uow.chats.get_by_id.await_count == 2
-        uow.chats.get_by_id.assert_has_awaits(
-            [
-                call(chat.id),
-                call(chat.id, load_messages=True, user_id=admin.id),
-            ]
-        )
+        uow.chats.get_by_id.assert_awaited_once_with(chat.id)
+        uow.chats.get_orm_for_update.assert_awaited_once_with(chat.id)
+        uow.chats.lock_participant_ids_for_maintenance.assert_not_awaited()
+        uow.chats.get_messages.assert_not_awaited()
+        uow.flush.assert_not_awaited()
+        uow.rollback.assert_awaited_once()
         uow.chats.delete_messages.assert_not_awaited()
         uow.commit.assert_not_awaited()
         attachment_svc.collect_urls.assert_not_awaited()
@@ -613,6 +644,7 @@ class TestClearHistory:
         chat = _mock_chat(admin.id)
         chat.participants = []
         uow.chats.get_by_id = AsyncMock(return_value=chat)
+        _mock_maintenance_repository(uow, chat)
         uow.chats.delete_messages = AsyncMock()
         uow.chats.update_timestamp_by_id = AsyncMock()
         uow.chats.add = MagicMock()
@@ -630,6 +662,11 @@ class TestClearHistory:
         uow.chats.update_timestamp_by_id.assert_not_awaited()
         uow.chats.add.assert_not_called()
         attachment_svc.collect_urls.assert_not_awaited()
+        uow.chats.get_orm_for_update.assert_awaited_once_with(chat.id)
+        uow.chats.lock_participant_ids_for_maintenance.assert_awaited_once_with(chat.id)
+        uow.chats.get_messages.assert_not_awaited()
+        uow.flush.assert_not_awaited()
+        uow.rollback.assert_awaited_once()
         uow.commit.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -638,28 +675,31 @@ class TestClearHistory:
         first_participant = _mock_user()
         admin = _mock_user(role="admin")
         chat = _mock_chat(first_participant.id, admin.id)
-        message = MagicMock(id=uuid.uuid4())
+        message = MagicMock(id=uuid.uuid4(), attachments=[])
         chat.messages = [message]
         uow.chats.get_by_id = AsyncMock(return_value=chat)
-        uow.chats.delete_messages = AsyncMock()
+        _mock_maintenance_repository(uow, chat)
+        uow.chats.delete_messages = AsyncMock(return_value=1)
         uow.chats.update_timestamp_by_id = AsyncMock()
 
         service = ChatMaintenanceService(uow, _mock_attachment_service())
         result = await service.clear_history(chat.id, admin, "en")
 
         assert result.status == "cleared"
-        assert uow.chats.get_by_id.await_count == 2
-        uow.chats.get_by_id.assert_has_awaits(
-            [
-                call(chat.id),
-                call(chat.id, load_messages=True, user_id=admin.id),
-            ]
+        assert result.deleted_messages == 1
+        uow.chats.get_by_id.assert_awaited_once_with(chat.id)
+        uow.chats.get_orm_for_update.assert_awaited_once_with(chat.id)
+        uow.chats.lock_participant_ids_for_maintenance.assert_awaited_once_with(chat.id)
+        uow.chats.get_messages.assert_awaited_once_with(
+            chat.id, None, 512, user_id=admin.id, for_update=True
         )
         uow.chats.delete_messages.assert_awaited_once_with(
             [message.id], chat_id=chat.id, user_id=admin.id
         )
         uow.chats.update_timestamp_by_id.assert_awaited_once()
+        uow.flush.assert_awaited_once()
         uow.commit.assert_awaited_once()
+        uow.rollback.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_non_admin_forbidden(self):
@@ -678,22 +718,38 @@ class TestClearHistory:
         uow = _mock_uow()
         admin = _mock_user(role="admin")
         chat = _mock_chat(admin.id)
-        chat.messages = [MagicMock(id=uuid.uuid4())]
+        attachment_url = "https://s3.example.com/file1.pdf"
+        chat.messages = [
+            MagicMock(id=uuid.uuid4(), attachments=[MagicMock(url=attachment_url)])
+        ]
 
         uow.chats.get_by_id = AsyncMock(return_value=chat)
-        uow.chats.delete_messages = AsyncMock()
+        _mock_maintenance_repository(uow, chat)
+        uow.chats.delete_messages = AsyncMock(return_value=1)
         uow.chats.update_timestamp_by_id = AsyncMock()
         uow.chats.add = MagicMock()
 
         attachment_svc = _mock_attachment_service()
-        attachment_svc.collect_urls.return_value = ["https://s3.example.com/file1.pdf"]
 
         svc = ChatMaintenanceService(uow, attachment_svc)
         result = await svc.clear_history(chat.id, admin, "en")
 
         assert result.deleted_attachments == 1
         # StoredEvent should be added for attachment cleanup
-        uow.chats.add.assert_called()
+        uow.chats.get_orm_for_update.assert_awaited_once_with(chat.id)
+        uow.chats.lock_participant_ids_for_maintenance.assert_awaited_once_with(chat.id)
+        uow.chats.get_messages.assert_awaited_once_with(
+            chat.id, None, 512, user_id=admin.id, for_update=True
+        )
+        assert result.deleted_messages == 1
+        uow.flush.assert_awaited_once()
+        uow.chats.add.assert_called_once()
+        assert uow.chats.add.call_args.args[0].payload == {
+            "chat_id": str(chat.id),
+            "attachment_urls": [attachment_url],
+        }
+        uow.commit.assert_awaited_once()
+        uow.rollback.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -711,6 +767,7 @@ class TestDeleteChat:
         chat.messages = []
 
         uow.chats.get_by_id = AsyncMock(return_value=chat)
+        _mock_maintenance_repository(uow, chat)
         uow.chats.delete_chat = AsyncMock()
         uow.chats.add = MagicMock()
 
@@ -736,8 +793,23 @@ class TestDeleteChat:
             result = await svc.delete_chat(chat.id, admin, "en")
 
         assert result.status == "deleted"
-        uow.chats.delete_chat.assert_called_once_with(chat.id)
-        uow.commit.assert_called_once()
+        uow.chats.get_orm_for_update.assert_awaited_once_with(chat.id)
+        uow.chats.lock_participant_ids_for_maintenance.assert_awaited_once_with(chat.id)
+        uow.chats.get_messages.assert_awaited_once_with(
+            chat.id, None, 512, user_id=admin.id, for_update=True
+        )
+        assert result.deleted_messages == 0
+        uow.chats.delete_chat.assert_awaited_once_with(chat.id)
+        uow.flush.assert_not_awaited()
+        events = [item.args[0] for item in uow.chats.add.call_args_list]
+        assert len(events) == 2
+        assert {event.payload["participant_id"] for event in events} == {
+            str(admin.id),
+            str(other.id),
+        }
+        assert all(event.payload["chat_id"] == str(chat.id) for event in events)
+        uow.commit.assert_awaited_once()
+        uow.rollback.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_non_admin_forbidden(self):
@@ -756,17 +828,17 @@ class TestDeleteChat:
         uow = _mock_uow()
         admin = _mock_user(role="admin")
         chat = _mock_chat(admin.id)
-        chat.messages = [MagicMock(id=uuid.uuid4())]
+        urls = ["https://s3.example.com/a.pdf", "https://s3.example.com/b.png"]
+        chat.messages = [
+            MagicMock(id=uuid.uuid4(), attachments=[MagicMock(url=url) for url in urls])
+        ]
 
         uow.chats.get_by_id = AsyncMock(return_value=chat)
+        _mock_maintenance_repository(uow, chat)
         uow.chats.delete_chat = AsyncMock()
         uow.chats.add = MagicMock()
 
         attachment_svc = _mock_attachment_service()
-        attachment_svc.collect_urls.return_value = [
-            "https://s3.example.com/a.pdf",
-            "https://s3.example.com/b.png",
-        ]
 
         svc = ChatMaintenanceService(uow, attachment_svc)
 
@@ -788,7 +860,23 @@ class TestDeleteChat:
 
         assert result.deleted_attachments == 2
         # Both ChatDeleted + AttachmentCleanupRequested StoredEvents
-        assert uow.chats.add.call_count >= 2
+        uow.chats.get_orm_for_update.assert_awaited_once_with(chat.id)
+        uow.chats.lock_participant_ids_for_maintenance.assert_awaited_once_with(chat.id)
+        uow.chats.get_messages.assert_awaited_once_with(
+            chat.id, None, 512, user_id=admin.id, for_update=True
+        )
+        assert result.deleted_messages == 1
+        uow.chats.delete_chat.assert_awaited_once_with(chat.id)
+        uow.flush.assert_awaited_once()
+        events = [item.args[0] for item in uow.chats.add.call_args_list]
+        assert len(events) == 2
+        cleanup_events = [
+            event for event in events if "attachment_urls" in event.payload
+        ]
+        assert len(cleanup_events) == 1
+        assert cleanup_events[0].payload["attachment_urls"] == urls
+        uow.commit.assert_awaited_once()
+        uow.rollback.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_delete_chat_not_found(self):
@@ -817,6 +905,7 @@ class TestDeleteChat:
         chat = _mock_chat(admin.id)
         chat.participants = []
         uow.chats.get_by_id = AsyncMock(return_value=chat)
+        _mock_maintenance_repository(uow, chat)
 
         svc = ChatMaintenanceService(uow, _mock_attachment_service())
 
@@ -828,6 +917,11 @@ class TestDeleteChat:
         uow.chats.delete_chat.assert_not_called()
         uow.chats.add.assert_not_called()
         svc.attachment_service.collect_urls.assert_not_awaited()
+        uow.chats.get_orm_for_update.assert_awaited_once_with(chat.id)
+        uow.chats.lock_participant_ids_for_maintenance.assert_awaited_once_with(chat.id)
+        uow.chats.get_messages.assert_not_awaited()
+        uow.flush.assert_not_awaited()
+        uow.rollback.assert_awaited_once()
         uow.commit.assert_not_awaited()
         if exc_info.value.detail == "errors.chat.not_participant":
             raise AssertionError("raw_forbidden_key_not_translated")

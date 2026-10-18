@@ -282,6 +282,9 @@ import type {
   MyEventsApiV1EventsMyGetData,
   MyEventsApiV1EventsMyGetErrors,
   MyEventsApiV1EventsMyGetResponses,
+  MyEventsPageApiV1EventsMyPageGetData,
+  MyEventsPageApiV1EventsMyPageGetErrors,
+  MyEventsPageApiV1EventsMyPageGetResponses,
   NewsListApiV1NewsGetData,
   NewsListApiV1NewsGetErrors,
   NewsListApiV1NewsGetResponses,
@@ -1514,9 +1517,11 @@ export const getReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGet = <
 /**
  * Add Reaction
  *
- * Add an emoji reaction to a message (idempotent, any participant).
+ * Add one qualified Unicode 18.0 emoji reaction for a participant.
  *
- * W174 auto-cookie covers POST CSRF.
+ * W174 auto-cookie covers POST CSRF. The exact sequence set includes fully- and
+ * minimally-qualified forms; removal and reactor lookup retain legacy values so
+ * old rows accepted before validation remain inspectable and removable.
  */
 export const addReactionApiV1ChatsChatIdMessagesMessageIdReactionsPost = <
   ThrowOnError extends boolean = false,
@@ -1896,6 +1901,29 @@ export const myEventsApiV1EventsMyGet = <ThrowOnError extends boolean = false>(
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
     url: "/api/v1/events/my",
+    ...options,
+  })
+
+/**
+ * My Events Page
+ *
+ * My Events Page
+ */
+export const myEventsPageApiV1EventsMyPageGet = <ThrowOnError extends boolean = false>(
+  options?: Options<MyEventsPageApiV1EventsMyPageGetData, ThrowOnError>
+): RequestResult<
+  MyEventsPageApiV1EventsMyPageGetResponses,
+  MyEventsPageApiV1EventsMyPageGetErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    MyEventsPageApiV1EventsMyPageGetResponses,
+    MyEventsPageApiV1EventsMyPageGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/events/my/page",
     ...options,
   })
 

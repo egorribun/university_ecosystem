@@ -10,13 +10,40 @@ function requireNoMatch(source, pattern, message) {
   assert.equal(pattern.test(source), false, message)
 }
 
-test("private attachment route checks membership before storage access", async () => {
+async function readPrivateAttachmentRoute() {
   const source = await readFile(new URL("../../app/api/chat.py", import.meta.url), "utf8")
   const routeStart = source.indexOf("async def download_chat_attachment(")
   assert.notEqual(routeStart, -1, "chat attachment download route must exist")
   const routeEnd = source.indexOf("\n\n@router.", routeStart)
   assert.notEqual(routeEnd, -1, "chat attachment route must end before the next route")
-  const route = source.slice(routeStart, routeEnd)
+  return source.slice(routeStart, routeEnd)
+}
+
+function assertBoundedStorageRead(route) {
+  assert.equal(
+    (route.match(/\.read_file\(/gu) ?? []).length,
+    1,
+    "the route must have exactly one storage read, covered by the size and URL guards"
+  )
+  requireMatch(
+    route,
+    /if max_size_bytes <= 0 or attachment\.size < 0 or attachment\.size > max_size_bytes:\s*raise_not_found[\s\S]*?\.read_file\(\s*storage_url,\s*max_bytes=attachment\.size\s*\)/u,
+    "storage reads must be bounded by the authorized attachment size"
+  )
+  requireMatch(
+    route,
+    /parsed_storage_url = urlsplit\(attachment\.url\)\s*storage_url = urlunsplit\(parsed_storage_url\._replace\(query="", fragment=""\)\)\s*data = await _get_storage_backend\(\)\.read_file\(\s*storage_url,\s*max_bytes=attachment\.size\s*\)/u,
+    "storage reads must normalize query and fragment without changing the authorized resource"
+  )
+  requireMatch(
+    route,
+    /if len\(data\) != attachment\.size:\s*raise_not_found/u,
+    "the downloaded body must match its authorized metadata size"
+  )
+}
+
+test("private attachment route checks membership before storage access", async () => {
+  const route = await readPrivateAttachmentRoute()
 
   const membershipCheck = route.indexOf("membership.scalar_one_or_none()")
   const attachmentLookup = route.indexOf("select(Attachment)")
@@ -31,17 +58,36 @@ test("private attachment route checks membership before storage access", async (
     /if membership\.scalar_one_or_none\(\) is None:[\s\S]*?raise_forbidden/u,
     "the route must deny users with no current chat membership"
   )
-  requireMatch(
-    route,
-    /if max_size_bytes <= 0 or attachment\.size < 0 or attachment\.size > max_size_bytes:[\s\S]*?\.read_file\(\s*attachment\.url,\s*max_bytes=attachment\.size\s*\)/u,
-    "storage reads must be bounded by the authorized attachment size"
-  )
-  requireMatch(
-    route,
-    /if len\(data\) != attachment\.size/u,
-    "the downloaded body must match its authorized metadata size"
-  )
+  assertBoundedStorageRead(route)
 })
+
+for (const [label, before, after] of [
+  [
+    "single guarded storage read",
+    "max_size_bytes = int(settings.chat_attachment_max_size_bytes)",
+    "await _get_storage_backend().read_file(attachment.url)\n    max_size_bytes = int(settings.chat_attachment_max_size_bytes)",
+  ],
+  ["zero configured limit", "max_size_bytes <= 0", "max_size_bytes < 0"],
+  ["negative metadata size", "attachment.size < 0", "False"],
+  ["oversized metadata", "attachment.size > max_size_bytes", "False"],
+  ["read byte limit", "max_bytes=attachment.size", "max_bytes=None"],
+  [
+    "normalized read URL",
+    "storage_url, max_bytes=attachment.size",
+    "attachment.url, max_bytes=attachment.size",
+  ],
+  ["query removal", 'query=""', "query=parsed_storage_url.query"],
+  ["fragment removal", 'fragment=""', "fragment=parsed_storage_url.fragment"],
+  ["body length check", "if len(data) != attachment.size:", "if len(data) == attachment.size:"],
+]) {
+  test("private attachment contract rejects missing " + label, async () => {
+    const route = await readPrivateAttachmentRoute()
+    assert.ok(route.includes(before), "the mutation must target the current route")
+    assert.throws(() => assertBoundedStorageRead(route.replace(before, after)), {
+      name: "AssertionError",
+    })
+  })
+}
 
 test("live attachment isolation scenario uses real member and outsider requests with owned cleanup", async () => {
   const spec = await readFile(

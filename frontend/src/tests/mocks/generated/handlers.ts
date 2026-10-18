@@ -464,6 +464,30 @@ export const handlers = [
       return respondWithGeneratedStatus(responseJson, init);
     },
   ),
+  http.get(`${baseURL}/api/v1/events/my/page`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [await getMyEventsPageApiV1EventsMyPageGet200Response(), { status: 200 }],
+      [await getMyEventsPageApiV1EventsMyPageGet422Response(), { status: 422 }],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`get /api/v1/events/my/page`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return respondWithGeneratedStatus(responseJson, init);
+  }),
   http.get(`${baseURL}/api/v1/events/search/semantic`, async ({ request }) => {
     const shouldEchoRequestBody = false;
     let requestJson = null;
@@ -8033,6 +8057,108 @@ export function getMyEventsApiV1EventsMyGet200Response() {
 }
 
 export function getMyEventsApiV1EventsMyGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getMyEventsPageApiV1EventsMyPageGet200Response() {
+  return {
+    cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    has_more: faker.datatype.boolean(),
+    items: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        created_at: faker.date.anytime().toISOString(),
+        created_by: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        description: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        description_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        ends_at: faker.date.anytime().toISOString(),
+        event_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        event_type_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        files: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => ({
+            created_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+            description: faker.helpers.arrayElement([
+              faker.lorem.words(),
+              null,
+            ]),
+            event_id: faker.string.uuid(),
+            file_url: faker.internet.url(),
+            id: faker.string.uuid(),
+          }));
+        })(),
+        id: faker.string.uuid(),
+        image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        image_url_optimized: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        is_active: faker.datatype.boolean(),
+        is_registered: faker.helpers.arrayElement([
+          faker.datatype.boolean(),
+          null,
+        ]),
+        location: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        location_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        my_qr_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        participant_count: faker.number.int(),
+        speaker: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        starts_at: faker.date.anytime().toISOString(),
+        title: faker.lorem.words(),
+        title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      }));
+    })(),
+    limit: faker.number.int(),
+    next_cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    total: faker.helpers.arrayElement([faker.number.int(), null]),
+  };
+}
+
+export function getMyEventsPageApiV1EventsMyPageGet422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;

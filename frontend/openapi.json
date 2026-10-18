@@ -6420,7 +6420,7 @@
     },
     "description": "REST API for university life management platform - schedules, news, events, notifications, and more.",
     "title": "University Ecosystem API",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -8682,7 +8682,7 @@
         "tags": ["chats"]
       },
       "post": {
-        "description": "Add an emoji reaction to a message (idempotent, any participant).\n\nW174 auto-cookie covers POST CSRF.",
+        "description": "Add one qualified Unicode 18.0 emoji reaction for a participant.\n\nW174 auto-cookie covers POST CSRF. The exact sequence set includes fully- and\nminimally-qualified forms; removal and reactor lookup retain legacy values so\nold rows accepted before validation remain inspectable and removable.",
         "operationId": "add_reaction_api_v1_chats__chat_id__messages__message_id__reactions_post",
         "parameters": [
           {
@@ -9512,6 +9512,176 @@
           }
         ],
         "summary": "My Events",
+        "tags": ["events"]
+      }
+    },
+    "/api/v1/events/my/page": {
+      "get": {
+        "description": "My Events Page",
+        "operationId": "my_events_page_api_v1_events_my_page_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 1024,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "lecture",
+                    "seminar",
+                    "conference",
+                    "workshop",
+                    "social",
+                    "sport",
+                    "other"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_range",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": ["today", "week", "month"],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date Range"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_anchor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date Anchor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "newest",
+              "enum": ["newest", "popular", "upcoming"],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "upcoming_after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Upcoming After"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedEvents"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "My Events Page",
         "tags": ["events"]
       }
     },
