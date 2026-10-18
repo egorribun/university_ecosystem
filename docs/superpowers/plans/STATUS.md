@@ -8,22 +8,21 @@
 
 Работа только через GitHub plugin, ветка `egorribun`, существующий [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git и принимает работу максимум трёх GPT-6 Luna Max агентов с непересекающимися файлами. Merge/deploy и обходы проверок не выполнялись.
 
-## Текущая партия: tests-first контракты
+## Текущая партия: минимальные исправления после hosted RED
 
-На [4f03911](https://github.com/egorribun/university_ecosystem/commit/4f03911ca5ec53cefff0bd83f428c288f473e470) fast pre-commit остановил backend до выполнения тестов: Ruff свернул четыре коротких выражения в новом message-outbox regression. Исправление воспроизводит точный hosted diff; blob test-файла совпадает с выводом formatter. Assertions, fixture behavior, production-код и workflow не меняются. Это formatting blocker, не подтверждённый backend RED; backend regressions ещё должны реально выполниться.
+База — tests-first [efd5483](https://github.com/egorribun/university_ecosystem/commit/efd5483c97810fff477aaf54201f710799f7b02e). Ruff correction прошла оба pre-commit gates; production-код до этой партии не менялся. На efd реально подтверждены четыре backend message contracts ([shard 0](https://github.com/egorribun/university_ecosystem/actions/runs/39158872405/job/117768386874): 4 FAIL / 5379 PASS / 49 SKIP), два frontend image-ID contracts и отдельный workflow concurrency contract ([shard 3](https://github.com/egorribun/university_ecosystem/actions/runs/39158872405/job/117773682192): 1 FAIL / 3413 PASS / 32 SKIP). Это конкретные ожидаемые RED, не formatting/fixture failures.
 
-На том же SHA подтверждены два ожидаемых frontend RED: `EventDetailEditDialog` не передал `evt-1` вторым аргументом upload helper ([shard 1](https://github.com/egorribun/university_ecosystem/actions/runs/39157404280/job/117764402190)), а `useEventCardLogic` оставил `event_id` в FormData равным null вместо `event-1` ([shard 3](https://github.com/egorribun/university_ecosystem/actions/runs/39157404280/job/117764402222)). Все четыре frontend shards завершились: 9287 PASS / 2 FAIL, 770 файлов. Это два конкретных contract failures, не сбой backend и не завершённая приёмка партии.
+Минимальные исправления:
+- ChatNotificationService получает keyword-only propagate_nats_failure=False и передаёт его существующему broadcaster; durable MessageSent handler включает True. Ошибка NATS выходит до notification writes и handler commit. Unit worker → EventBus → handler → service → broadcaster regression требует сохранения retryable outbox event, но использует doubles для DB/transport и не заменяет настоящий outage.
+- Два редактора существующих событий передают точный ID в upload helper/FormData, сохраняя backend edit authorization.
+- Owned Live оставляет прежнюю concurrency group, но не отменяет active run при новом commit. Это позволяет обычному запуску закончить cleanup; не защищает от manual cancellation, timeout или runner failure.
+- Комментарии NATS согласованы с существующим CHAT_EVENTS: core publish не ждёт PubAck и сам не подтверждает persistence или browser delivery.
 
-База — полностью прошедший CI [d35510a](https://github.com/egorribun/university_ecosystem/commit/d35510a1a6ace7bba113d0d2e0f1eebaebb8aac8). Эта партия меняет только tests и документацию; production-код пока остаётся прежним. Полной приёмки нового source ещё нет: сначала нужно получить настоящий hosted RED, затем внести минимальные исправления и выполнить собственный полный GREEN.
+Retry остаётся bounded существующим лимитом (по умолчанию пять попыток, затем DLQ), не retry-until-success. In-process websocket fan-out происходит до NATS publish и может повториться при retry; exactly-once не заявляется.
 
-Проверяемые дефекты:
-- Durable message-sent handler не включает строгую передачу ошибки NATS. Service/broadcaster assertions и real worker → EventBus → handler → service → broadcaster test требуют retryable event без notification writes/handler commit. Последний тест использует doubles для sessions/rows/repository/transport и доказывает in-memory переход, не PostgreSQL persistence или настоящий outage.
-- Два редактора существующих событий не передают обязательный event ID при загрузке картинки. Tests закрепляют helper argument и FormData field, не ослабляя backend ownership.
-- Workflow отменяет running owned live run при новом commit. Static contract требует literal cancel-in-progress=false в прежней concurrency group. Он сам не доказывает cleanup и не защищает от manual cancellation/runner failure.
+На efd PostgreSQL integration прошла 178 PASS / 9 SKIP, включая усиленный events CRUD с прогретым collection cache и свежими списками после create/update/delete, а также news cache regression. Это реальный PostgreSQL, но cache/auth boundaries используют прежние doubles. Owned Live прошёл 231 source contract, 20 browser PASS / 2 штатных SKIP; stop и receipt upload успешны (artifact 12148403227). Actual NATS outage не выполнялся.
 
-Дополнительно events CRUD теперь прогревает collection cache до create и проверяет свежий список после create/update/delete. Это усиление HTTP/cache regression с PostgreSQL и существующими external-service doubles, без нового production behavior.
-
-[Согласованный NATS-only proof](../specs/2026-10-18-owned-nats-outbox-acceptance.md) ещё не реализован и не запущен. Его owner-bound preflight, конечные deadlines, восстановление NATS, точный outbox и broker-storage oracle остаются обязательными. Создание события с картинкой требует отдельного owner-bound lifecycle с сохранением AUD-180/AUD-233; этот batch исправляет только контракты existing-event editors. Merge/deploy и NATS outage не выполнялись.
+Новые исправления ещё требуют собственного полного GREEN; успешный efd live/PG не переносится на новый source автоматически. [Согласованный NATS-only proof](../specs/2026-10-18-owned-nats-outbox-acceptance.md) остаётся следующим отдельным implementation/runtime этапом. Создание события с картинкой требует отдельного owner-bound lifecycle с сохранением AUD-180/AUD-233; эта партия исправляет только existing-event editors. Merge/deploy не выполнялись.
 
 ## Последняя полностью прошедшая CI-точка
 

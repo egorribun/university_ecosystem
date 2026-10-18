@@ -97,7 +97,7 @@ export function EventDetailEditDialog({
       let imageUrl = draft.image_url
       if (newImage) {
         setImageLoading(true)
-        imageUrl = await uploadEventImage(newImage)
+        imageUrl = await uploadEventImage(newImage, event.id)
         setImageLoading(false)
       }
 

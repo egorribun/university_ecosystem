@@ -22,7 +22,8 @@ permissions:
 
 concurrency:
   group: live-acceptance-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # Let an active owned run finish its cleanup before a newer run starts.
+  cancel-in-progress: false
 
 jobs:
   live-acceptance:

@@ -66,8 +66,13 @@ class ChatNotificationService:
         replied: Any = None,
         chat_type: str = "dm",
         chat_name: str | None = None,
+        *,
+        propagate_nats_failure: bool = False,
     ) -> None:
         """Notify participants about a new message.
+
+        Durable outbox callers propagate NATS failures before notification writes.
+        Other callers retain best-effort broadcasting by default.
 
         Wave 207 — ``replied`` is the replied-to message (a MessageDTO, loaded by
         handle_message_sent) or None; it is passed to serialize_message so the
@@ -102,6 +107,7 @@ class ChatNotificationService:
                 "message": serialize_message(message, presence, replied=replied),
             },
             exclude_user_id=sender.id,
+            propagate_nats_failure=propagate_nats_failure,
         )
 
         # Push Notification

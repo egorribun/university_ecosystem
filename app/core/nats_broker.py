@@ -373,7 +373,7 @@ class NatsTaskBroker:
         *,
         strict: bool = False,
     ) -> None:
-        """Publish an ephemeral event via CORE NATS (fire-and-forget, no stream).
+        """Publish via CORE NATS without waiting for a JetStream PubAck.
 
         W204 SW1: mirrors in-process ``ws_manager`` chat broadcasts onto the
         ws-hub ``chat.*`` core subscription (``services/ws-hub`` hub.go:375) so
@@ -381,11 +381,11 @@ class NatsTaskBroker:
         the in-process FastAPI WebSocket, so the in-process fan-out never reaches
         it (the messenger has been refetch/self-heal only).
 
-        Unlike :meth:`publish` (JetStream, durable), this uses the raw core
-        connection because ``chat.*`` has NO JetStream stream (only
-        ``TASK_QUEUE`` + ``FILES_PROCESS``) — a JetStream publish there would
-        error on the missing PubAck.  Ephemeral live frames need no persistence:
-        a dropped frame self-heals via the next refetch.
+        Unlike :meth:`publish`, this uses the raw core connection and does not
+        wait for a JetStream PubAck. The configured ``CHAT_EVENTS`` stream
+        captures ``chat.*``, but returning from this method does not confirm
+        stream persistence or delivery to a subscriber or browser. Refetch
+        remains the recovery path for a missed live frame.
 
         Serialises with orjson (native ``uuid.UUID`` + ``datetime`` support)
         because the ``new_message`` frame nests ``serialize_message`` output
@@ -393,7 +393,7 @@ class NatsTaskBroker:
         ``json.dumps`` would raise ``TypeError``.  ``default=str`` mirrors the
         existing orjson callsite at logging.py:222.
 
-        Best-effort by default: never raises on infra failure so the caller's
+        Best-effort by default: handled transport failures leave the caller's
         in-process delivery + refetch fallback stay intact. Outbox-backed
         callers may opt into ``strict`` so a transient publish failure returns
         to the outbox worker and can be retried.

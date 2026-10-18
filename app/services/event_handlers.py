@@ -425,6 +425,7 @@ async def handle_message_sent(event: MessageSent) -> None:
             replied=replied,
             chat_type=chat.chat_type,
             chat_name=chat.name,
+            propagate_nats_failure=True,
         )
         # Handle transaction for delivery.py updates
         await db.commit()

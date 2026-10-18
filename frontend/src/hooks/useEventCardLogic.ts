@@ -176,6 +176,7 @@ export function useEventCardLogic({
         setImageLoading(true)
         const data = new FormData()
         data.append("file", image)
+        data.append("event_id", id)
         const uploadRes = await telemetryContext.run(() =>
           api.post<{ url: string }>(`/events/upload_image`, data)
         )

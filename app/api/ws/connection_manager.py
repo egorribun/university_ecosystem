@@ -375,13 +375,13 @@ class ConnectionManager:
         # only. ws-hub unmarshals + re-fans the `{type, room, payload}` envelope
         # to room members (join-gated via /api/internal/chat/check-participant).
         #
-        # Additive + best-effort (W126 SW3 pattern): the in-process delivery
-        # above is untouched; a NATS failure self-heals via the next refetch.
+        # Best-effort by default: local sends above remain independent.
+        # Durable outbox callers opt into propagating NATS failures for retry.
         # No per-recipient exclusion here (ws-hub fans to ALL room members,
         # it can't honour exclude_user_id) — the frontend self-echo guard
-        # (W204 SW4) drops the sender's own echo. publish_core is core NATS
-        # (chat.* has no JetStream stream) + orjson (the new_message frame
-        # carries raw uuid.UUID values).
+        # (W204 SW4) drops the sender's own echo. publish_core uses core NATS
+        # without a PubAck; CHAT_EVENTS captures chat.* but this call does not
+        # confirm persistence or recipient delivery. orjson supports UUIDs.
         try:
             from app.core.nats_broker import (  # lazy — avoid import cycle (ws_hub_client.py:52 pattern)
                 broker,
@@ -397,8 +397,8 @@ class ConnectionManager:
                 strict=propagate_nats_failure,
             )
         except (ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
-            # RZ-20-04: narrowed — NATS infra/connect errors. Never breaks the
-            # in-process return below; the browser self-heals via refetch.
+            # RZ-20-04: narrowed NATS infra/connect errors. Best-effort callers
+            # retain the local result; durable callers propagate for retry.
             logger.debug(
                 "ws-hub mirror publish failed (self-heal via refetch): chat=%s err=%s",
                 chat_id,
