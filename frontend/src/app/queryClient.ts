@@ -232,7 +232,24 @@ useAuthStore.subscribe((state, previousState) => {
     owner === null &&
     !currentBootstrap &&
     (previousState.loading || previousBootstrap)
-  updateQueryCacheIdentity(owner, undefined, settledWithoutOwner)
+  // The profile commit may already have published an explicit signed-out
+  // marker before its passive store bridge runs. Retire all private state, but
+  // preserve that null marker only on clients which already committed it.
+  const signedOutClients: QueryClient[] = []
+  const profileKey = ["users", "me"] as const
+  if (settledWithoutOwner && state.user === null) {
+    for (const reference of browserClients) {
+      const client = reference.deref()
+      if (client?.getQueryData(profileKey) === null) signedOutClients.push(client)
+    }
+  }
+  const publishSignedOutSnapshots =
+    signedOutClients.length > 0
+      ? () => {
+          for (const client of signedOutClients) client.setQueryData(profileKey, null)
+        }
+      : undefined
+  updateQueryCacheIdentity(owner, publishSignedOutSnapshots, settledWithoutOwner)
 })
 
 const scopedKey = (owner: string) => `reactQuery:v2:${encodeURIComponent(owner)}`

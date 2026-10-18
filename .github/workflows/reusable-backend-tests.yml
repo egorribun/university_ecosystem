@@ -563,6 +563,8 @@ jobs:
                     "tests/test_events_localization.py",
                     "tests/test_migrations_runtime.py",
                     "tests/test_query_plans.py",
+                    "tests/test_news_repository_db.py::test_comment_service_commits_create_and_edit_across_sessions",
+                    "tests/test_news_repository_db.py::test_comment_delete_commits_across_sessions_and_preserves_creation_outbox",
                     "-v",
                     "--tb=short",
                     "-x"

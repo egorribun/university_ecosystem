@@ -3,8 +3,9 @@
 The existing ``test_news_repository_coverage.py`` exercises the list/search/cache
 paths against a mocked session. This file complements it with the
 comment-CRUD + ``get_interactions`` methods, which are clearer to assert against
-the real SQLite ``db_session`` (the ``comments_stmt`` join + coalesce shaping is
-fiddly to mock). ``news`` / ``news_comments`` / ``news_likes`` are auto-created
+the owned ``db_session`` (the ``comments_stmt`` join + coalesce shaping is
+fiddly to mock). The unit lane uses SQLite; the PostgreSQL integration lane also
+selects both cross-session comment durability tests. ``news`` / ``news_comments`` / ``news_likes`` are auto-created
 via create_all. Real users come from ``user_factory``.
 """
 

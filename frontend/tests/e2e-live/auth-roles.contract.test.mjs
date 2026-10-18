@@ -199,3 +199,47 @@ test("real wrong-password acceptance checks localized generic feedback without e
   assert.match(rejectedLoginSection, /expect\(me\.status\(\)\)\.toBe\(401\)/u)
   assert.doesNotMatch(spec, /page\.route\(|routeWebSocket|useMockApi|\.fulfill\(/u)
 })
+
+test("expired-profile live reload probes a signed miss without exposing cache data", async () => {
+  const spec = await readFile(specUrl, "utf8")
+  const title = "student remains authenticated after reload with an expired signed profile envelope"
+  const titleIndex = spec.indexOf(title)
+  const start = spec.lastIndexOf("test(", titleIndex)
+  const end = spec.indexOf('test.describe("localized rejected-login acceptance"', titleIndex)
+  assert.ok(titleIndex >= 0 && start >= 0 && end > titleIndex)
+  const section = spec.slice(start, end)
+
+  assert.doesNotMatch(section, /test\.skip\(/u)
+  assert.match(
+    section,
+    /page\.clock\.setFixedTime\(new Date\(envelopeIssuedAtMs\)\)[\s\S]*?await loginAs\(page, "student"\)/u
+  )
+  assert.match(
+    section,
+    /expect\s*\.poll\([\s\S]*?page\.evaluate\(\(actualNowMs\) => \{[\s\S]*?envelope\.version === 8[\s\S]*?envelope\.expiresAt < actualNowMs[\s\S]*?envelope\.signature\.length > 0[\s\S]*?\}, realNowMs\)[\s\S]*?\.toBe\(true\)/u
+  )
+
+  const probeStart = section.indexOf("const probe = await page.evaluate")
+  const probeEnd = section.indexOf("expect(probe.expiredSignedEnvelope)", probeStart)
+  assert.ok(probeStart >= 0 && probeEnd > probeStart)
+  const probe = section.slice(probeStart, probeEnd)
+  assert.match(probe, /X-Profile-Cache-Envelope": raw/u)
+  assert.match(probe, /return \{ expiredSignedEnvelope, status: response\.status \}/u)
+  assert.doesNotMatch(probe, /catch/u)
+  assert.doesNotMatch(section, /page\.request\.|return\s+raw\b|console\.|process\.(?:stdout|stderr)/u)
+  assert.match(section, /expect\(probe\.status[\s\S]*?\.toBe\(200\)/u)
+  assert.match(section, /return profile\.email === expectedEmail/u)
+  assert.match(
+    section,
+    /identityAfterReload\)\.toBe\(identityBeforeReload\)[\s\S]*?envelope\.expiresAt > Date\.now\(\)/u
+  )
+  assert.match(
+    section,
+    /await page\.clock\.setFixedTime\(new Date\(Date\.now\(\)\)\)[\s\S]*?await page\.reload\(\)/u
+  )
+  assert.match(
+    section,
+    /finally \{\s*if \(!page\.isClosed\(\)\) \{\s*await page\.clock\.setFixedTime\(new Date\(Date\.now\(\)\)\)\s*\}\s*\}/u
+  )
+  assert.doesNotMatch(section, /page\.route\(|routeWebSocket|useMockApi|\.fulfill\(/u)
+})

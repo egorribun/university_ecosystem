@@ -903,6 +903,86 @@ describe("request-hydrated cache during auth bootstrap", () => {
     }
   )
 
+  it("preserves only committed null markers while retiring a settled bootstrap", () => {
+    useAuthStore.setState({ user: null, loading: true })
+    publishAccount(ENCRYPTED_CACHE_PLACEHOLDER_USER_ID)
+    const marker = createQueryClient()
+    const absent = createQueryClient()
+    const stale = createQueryClient()
+    const placeholder = createQueryClient()
+    const clients = [marker, absent, stale, placeholder]
+    const profileKey = ["users", "me"] as const
+    const privateKey = ["dashboard", "events"] as const
+    marker.setQueryData(profileKey, null)
+    stale.setQueryData(profileKey, { ...testUser, id: "retired-owner" })
+    placeholder.setQueryData(profileKey, { ...testUser, id: SSR_STUB_USER_ID })
+    for (const client of clients) {
+      client.setQueryData(privateKey, ["private event"])
+      client.getMutationCache().build(client, { mutationKey: ["private", "write"] })
+    }
+    const ownsPreviousEpoch = captureSessionEpoch()
+
+    try {
+      publishAccount(null)
+      expect(marker.getQueryData(profileKey)).toBeNull()
+      expect(marker.getQueryCache().getAll()).toHaveLength(1)
+      for (const client of [absent, stale, placeholder]) {
+        expect(client.getQueryData(profileKey)).toBeUndefined()
+        expect(client.getQueryCache().getAll()).toHaveLength(0)
+      }
+      for (const client of clients) {
+        expect(client.getQueryData(privateKey)).toBeUndefined()
+        expect(client.getMutationCache().getAll()).toHaveLength(0)
+      }
+      expect(ownsPreviousEpoch()).toBe(false)
+    } finally {
+      for (const client of clients) client.clear()
+    }
+  })
+
+  it("prunes dead clients while retiring bootstrap without creating a null marker", () => {
+    useAuthStore.setState({ user: null, loading: true })
+    publishAccount(SSR_STUB_USER_ID)
+    const active = createQueryClient()
+    active.setQueryData(["dashboard", "events"], ["request event"])
+    const deref = vi.fn(() => undefined)
+    vi.stubGlobal(
+      "WeakRef",
+      class {
+        deref = deref
+      }
+    )
+    try {
+      createQueryClient()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+
+    try {
+      publishAccount(null)
+      expect(deref).toHaveBeenCalledTimes(2)
+      expect(active.getQueryCache().getAll()).toHaveLength(0)
+      setQueryCacheIdentity("next-owner")
+      expect(deref).toHaveBeenCalledTimes(2)
+    } finally {
+      active.clear()
+      setQueryCacheIdentity(null)
+    }
+  })
+
+  it("does not republish a null marker when bootstrap returns a malformed identity", () => {
+    useAuthStore.setState({ user: null, loading: true })
+    publishAccount(SSR_STUB_USER_ID)
+    const active = createQueryClient()
+    active.setQueryData(["users", "me"], null)
+    try {
+      publishAccount("")
+      expect(active.getQueryCache().getAll()).toHaveLength(0)
+    } finally {
+      active.clear()
+    }
+  })
+
   it("retires a previous account when a bootstrap placeholder replaces it", () => {
     publishAccount("A")
     const active = createQueryClient()

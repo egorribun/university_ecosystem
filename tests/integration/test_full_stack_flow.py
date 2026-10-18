@@ -11,11 +11,17 @@ DB — to catch integration regressions that mocks cannot surface.
 from __future__ import annotations
 
 import os
+import secrets
 import uuid
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.security import get_password_hash
+from app.models import User
 
 pytestmark = pytest.mark.integration
 
@@ -102,41 +108,38 @@ async def test_user_registration_and_login_flow(
 
 @skip_without_db
 async def test_events_crud_flow(
-    async_client: AsyncClient, db_session: AsyncSession
+    async_client: AsyncClient,
+    user_factory: Callable[..., Awaitable[User]],
 ) -> None:
-    """Create → Read → soft-delete event flow.
+    """Exercise authenticated event CRUD against PostgreSQL.
 
-    Verifies referential integrity and data consistency across the event
-    domain boundary.  Skips gracefully when the events API is not yet
-    wired (e.g. feature-flagged off in CI).
+    The suite supplies external-service doubles; this checks the real HTTP,
+    authentication, service, and database path, not live SpiceDB acceptance.
+    Authentication or CRUD failures must fail rather than silently skip.
     """
-    # We need auth to create events — attempt login with an admin credential
-    # provisioned via the `admin_user` fixture in the parent suite.
-    # Since full-stack tests run without the fixture chain, we try to create
-    # a user first.
     email = _unique_email("events_crud")
-    password = "SecurePass123!"  # pragma: allowlist secret
-
-    await async_client.post(
-        "/auth/register",
-        json={"email": email, "password": password, "role": "admin"},
+    password = secrets.token_urlsafe(24) + "Aa1!"
+    # Privileged public registration requires an invitation. Provision only
+    # this test's account directly, then exercise the real login/session path.
+    await user_factory(
+        email=email,
+        role="admin",
+        hashed_password=await get_password_hash(password),
+        is_active=True,
     )
     login = await async_client.post(
         "/auth/login",
         data={"username": email, "password": password},
     )
-    if login.status_code != 200:
-        pytest.skip(f"Could not authenticate for events CRUD: {login.status_code}")
+    assert login.status_code == 200
 
     token = (
         login.json().get("access_token")
         or login.json().get("token")
         or login.cookies.get("access_token_v2")
     )
-    auth_header = {"Authorization": f"Bearer {token}"}
-
-    # Step 1: create event
-    from datetime import UTC, datetime, timedelta
+    assert token
+    auth_header = {"Authorization": f"Bearer {token}", "X-Query-Budget": "15"}
 
     now = datetime.now(UTC)
     create_response = await async_client.post(
@@ -149,30 +152,45 @@ async def test_events_crud_flow(
         },
         headers=auth_header,
     )
-    if create_response.status_code not in (200, 201):
-        pytest.skip(
-            f"Event creation returned {create_response.status_code} — "
-            f"endpoint may be behind a feature flag"
-        )
+    assert create_response.status_code == 200
+    event_id = create_response.json()["id"]
+    assert event_id
 
-    body = create_response.json()
-    event_id = body.get("id")
-    assert event_id, f"Created event has no 'id' field: {body}"
-
-    # Step 2: read the created event back
     get_response = await async_client.get(
         f"/events/{event_id}",
         headers=auth_header,
     )
-    assert get_response.status_code == 200, (
-        f"Expected 200 reading event {event_id}, "
-        f"got {get_response.status_code}: {get_response.text}"
-    )
-    retrieved = get_response.json()
-    assert retrieved.get("title") == "W25 Integration Test Event", (
-        f"Title mismatch after round-trip: {retrieved}"
-    )
+    assert get_response.status_code == 200
+    assert get_response.json()["title"] == "W25 Integration Test Event"
 
+    updated_title = "W25 Updated Integration Test Event"
+    update_response = await async_client.patch(
+        f"/events/{event_id}",
+        json={"title": updated_title},
+        headers=auth_header,
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["title"] == updated_title
+
+    updated_response = await async_client.get(
+        f"/events/{event_id}",
+        headers=auth_header,
+    )
+    assert updated_response.status_code == 200
+    assert updated_response.json()["title"] == updated_title
+
+    delete_response = await async_client.delete(
+        f"/events/{event_id}",
+        headers=auth_header,
+    )
+    assert delete_response.status_code == 200
+    assert delete_response.json() == {"ok": True}
+
+    deleted_response = await async_client.get(
+        f"/events/{event_id}",
+        headers=auth_header,
+    )
+    assert deleted_response.status_code == 404
 
 @skip_without_db
 async def test_health_endpoint_reflects_db_connectivity(
