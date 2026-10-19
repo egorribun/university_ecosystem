@@ -10,17 +10,15 @@
 
 ## Текущая проверка аудита
 
-Подтверждённая нижняя граница: 57 из 512 исходных AUD IDs. Добавлен AUD-010: знаменатель оценок соответствует единой шкале выборки, с отдельными hook/chart regressions. Это не полный процент закрытия. [Реестр и границы](../../audits/AUDIT-2026-10.md#evidence-checkpoint-57-verified-original-aud-ids).
+Подтверждённая нижняя граница: 58 из 512 исходных AUD IDs. AUD-033 принят после RED/GREEN обоих автоматических retry-путей; отдельный анонимный Retry также прошёл настоящий запрос/query/button regression, но не добавляет ещё один AUD ID. [Реестр и scope](../../audits/AUDIT-2026-10.md#evidence-checkpoint-58-verified-original-aud-ids).
 
-На 6605 автоматический retry после исчерпания попыток и независимый scroll-сценарий прошли свои регрессии. Анонимный Retry воспроизведён корректно после исправления тестового наблюдения fetch init; теперь исправляется invalidation точного текущего queryKey. Frontend: 9359 PASS / 1 FAIL в 775 файлах; typecheck/ESLint/i18n/contracts/knip прошли, форматирование одного нового теста ещё исправляется. AUD-033 пока не засчитывается.
+На 8d5 frontend имеет 9360 PASS / 1 FAIL в 775 файлах; typecheck/ESLint/format/i18n/contracts/knip прошли. Единственный FAIL — новый AUD-013 counterexample, после которого исправляется incomplete boundary day. Два прежних неверных cutoff assertions уточнены; malformed-date поведение сохранено. Собственный GREEN ожидается, AUD-013 не засчитывается.
 
-Private collector: supplemental RED получен, 30 FAIL / 437 PASS в early job 118209999806, включая KeyboardInterrupt. Реализация опубликована только для проверки: cleanup вызывается из nested finally, до распространения прерывания. Новых suppressions/waivers/skips нет. Подтверждение direct-child reaping не означает завершения descendants или remote exec. Adapter, CLI execution и outage остаются выключены.
+Backend/PG проверки на 8d5 не выполнялись из-за static gates. Владелец 18:03 UTC разрешил ровно одно документированное S603-исключение для проверенного внутреннего Popen; общего отключения правила нет. Остальные замечания устранены изменением тестовых fixtures, без baseline/allowlist/disposition изменений. Добавлен 31-й repeated-interruption regression; реализация этого нового сценария остаётся прежней до RED. Live transport/CLI/outage выключены.
 
-AUD-013 сохраняется открытым: recent cap может обрезать сам граничный день; новый counterexample опубликован до изменения production logic. Для AUD-016 добавлены реальные SQLite и PostgreSQL parity assertions, без новых skip markers. AUD-009 получает именованный запуск существующих cache regressions. [План доказательств](2026-10-19-activity-event-proof.md).
+Новые aiohttp advisories блокируют dependency gate для 3.14.3. Подготовлен ограниченный hosted probe для 3.14.4 с обычным семидневным cutoff, без emergency override. Исходный audit failure сохраняется; lock ещё не обновлён. [План](2026-10-19-aiohttp-advisories.md). AUD-009/016 ждут реального backend/PG evidence, не результатов skipped jobs.
 
-Ordinary Live 39295675126: 20 PASS / 2 ожидаемых SKIP, cleanup 17:51:38 UTC и upload 17:51:40 подтверждены; artifact 12207744519. Это не outage и не полный browser acceptance. Последний полностью принятый CI checkpoint остаётся e150; отдельная историческая timing-report anomaly не обходится.
-
-Исходные P1: 14 приняты, 164/167/169/174 остаются отдельными holds. AUD-031 требует persisted translation-clear/reload proof; AUD-053 требует настоящего focus behavior proof. Merge/deploy не выполняются.
+Обычный Live 39298318511 прошёл 20 PASS / 2 SKIP, cleanup 18:12:33 UTC и upload 18:12:35 подтверждены; artifact 12211566103. Последний полностью принятый CI checkpoint остаётся e150. Исходные P1: 14 приняты, 164/167/169/174 остаются holds; AUD-031 и AUD-053 требуют недостающего persistence/focus proof. Merge/deploy не выполняются.
 
 ## Последний принятый CI checkpoint
 

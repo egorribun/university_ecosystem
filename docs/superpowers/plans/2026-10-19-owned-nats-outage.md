@@ -9,7 +9,7 @@
 
 ## Invariants
 
-- GitHub plugin only, branch egorribun, existing PR1306. No main/merge/deployment or security gate/baseline changes.
+- GitHub plugin only, branch egorribun, existing PR1306. No main/merge/deployment or unapproved security-gate changes; baseline identities remain unchanged. The owner's 2026-10-19 18:03 UTC approval covers exactly one documented S603 annotation on the reviewed private collector Popen call, not any broader suppression.
 - Existing signed Core stand, daemon/resource fingerprints and exact container IDs; no new services, credentials, accounts, ports, seed containers or probe endpoints.
 - Existing administrator and exact reserved peer; read the generated admin credential, never create/rotate it. Refuse a pre-existing administrator/peer DM.
 - Normal cookie/CSRF login and multipart send, exactly one write attempt; no retry after ambiguous send.
@@ -115,3 +115,5 @@ Private collector RED observed on dc21: job118198065266 has28 NOT_READY behavior
 Supplemental collector RED on6605: job118209999806 reports30 FAIL /437 PASS in131.24s, including DID NOT RAISE KeyboardInterrupt. Minimal collector now awaits its own hosted verification. It allocates before spawn, uses bounded nonblocking collection and absolute work expiry minus cleanup reserve, and attempts cleanup in nested finally before interruption propagates. No numeric process signaling occurs after its Popen returncode records reaping. Direct-child reaping is the only CONFIRMED claim; inherited/escaped descendants, remote-exec cleanup and every safety oracle remain separate acceptance requirements. Local stat/Popen cannot be preempted by selector deadlines. No new static-rule suppression or runtime adapter enablement is introduced.
 
 Repeated interruption during the cleanup wait remains a separate unproven boundary: the current supplemental case covers interruption during selector work, not a second KeyboardInterrupt during reaping. Add that oracle and preserve bounded cleanup before any transport enablement. The collector's own GREEN is still pending.
+
+8d5 collector GREEN was blocked by S603 and test fixture gates; skipped backend jobs are not execution evidence. One reviewed S603 annotation is now explicitly owner-approved. The finite Timer watchdog and POSIX signal.pause test workload replace synthetic sleep strings without a pragma. The non-credential repr marker retains its literal/assertions under a clearer variable name; no secret baseline entry is added. Test31 now covers a second interruption during cleanup wait, with direct returncode and watchdog rejection oracles. Its implementation remains unchanged until observed RED. No adapter, CLI execution or outage enablement follows from this slice.

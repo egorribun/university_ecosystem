@@ -43,12 +43,18 @@ import {
 /** Items per section the backend returns in `recent` (mirrors analytics_service `_RECENT_LIMIT`). */
 const HEATMAP_SECTION_LIMIT = 5
 
-/** Oldest day a capped section fully covers, or null when the section is complete. */
+/** First complete day after a capped boundary, or null for an uncapped section. */
 const sectionCoverage = (items: readonly { date: string }[] | undefined): string | null => {
   if (!items || items.length < HEATMAP_SECTION_LIMIT) return null
-  return items
+  const oldest = items
     .map((item) => item.date.slice(0, 10))
-    .reduce((oldest, day) => (day < oldest ? day : oldest))
+    .reduce((day, candidate) => (candidate < day ? candidate : day))
+  const boundary = new Date(`${oldest}T00:00:00Z`)
+  // Preserve the existing malformed-date behavior without introducing a render error.
+  if (!Number.isFinite(boundary.getTime())) return oldest
+  if (boundary.toISOString().slice(0, 10) !== oldest) return oldest
+  boundary.setUTCDate(boundary.getUTCDate() + 1)
+  return boundary.toISOString().slice(0, 10)
 }
 
 /** Maximum grade of a scale: 100-point, GPA (4.0) or the five-point default. */
@@ -236,8 +242,8 @@ export default function useActivityData() {
     return map
   }, [attendance?.recent, grades?.recent, participation?.recent])
 
-  // A section that reached the backend cap is complete only from its oldest item on;
-  // the heatmap must show earlier days as unknown rather than as zero activity.
+  // A row cap can truncate the oldest sampled day itself. Only subsequent days
+  // are complete; the boundary day and all earlier days must remain unknown.
   const heatmapCoveredFrom = useMemo(() => {
     const coverage = [attendance?.recent, grades?.recent, participation?.recent]
       .map(sectionCoverage)

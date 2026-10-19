@@ -350,48 +350,11 @@ async def test_get_all_events_search_deterministic_order(db_session, user_factor
     result_items = await e_service.get_events(
         search=shared_phrase, limit=10, is_active=None
     )
-
     assert len(result_items.items) == 3
     ordered_ids = [item.id for item in result_items.items]
     # First 3 events contain "Symposium", unrelated does not
     assert ordered_ids == event_ids[:3]
-
-    from app.repositories.event_repository import EventRepository
-
-    repo = EventRepository(db_session)
-    parity_cases = [
-        ("all-search", shared_phrase, None, None, None, {0, 1, 2}),
-        ("active-search", shared_phrase, None, None, True, {0, 1, 2}),
-        ("archived-search", shared_phrase, None, None, False, set()),
-        ("main-location", shared_phrase, None, "MAIN", None, {0, 1}),
-        ("translated-title", shared_phrase, None, "Satellite", True, {2}),
-        ("excluded-type", shared_phrase, "workshop", None, None, set()),
-        ("combined-no-match", shared_phrase, "workshop", "Main", True, set()),
-        ("missing-search", "unmatchedparitytoken", None, None, None, set()),
-    ]
-    for case, search_query, event_type, location, active, indexes in parity_cases:
-        listed = await repo.search_events(
-            search_query=search_query,
-            event_type=event_type,
-            location=location,
-            is_active=active,
-            query_embedding=None,
-            now=now,
-            limit=len(events_data) + 1,
-        )
-        expected_ids = {event_ids[index] for index in indexes}
-        listed_ids = [row.event.id for row in listed]
-        assert set(listed_ids) == expected_ids, case
-        assert len(listed_ids) == len(expected_ids), case
-        total = await repo.count_search_events(
-            search_query=search_query,
-            event_type=event_type,
-            location=location,
-            is_active=active,
-            query_embedding=None,
-            now=now,
-        )
-        assert total == len(listed_ids) == len(expected_ids), case
+    await _assert_search_count_parity(db_session, now, shared_phrase, event_ids)
 
 
 @pytest.mark.asyncio
@@ -475,3 +438,42 @@ async def test_events_pagination_semantics(async_client, db_session, user_factor
     assert capped.status_code == status.HTTP_200_OK
     # MAX_EVENTS_LIMIT was 100 in crud
     assert capped.json()["limit"] == 100
+
+
+async def _assert_search_count_parity(db_session, now, phrase, event_ids):
+    from app.repositories.event_repository import EventRepository
+
+    repo = EventRepository(db_session)
+    parity_cases = [
+        ("all-search", phrase, None, None, None, {0, 1, 2}),
+        ("active-search", phrase, None, None, True, {0, 1, 2}),
+        ("archived-search", phrase, None, None, False, set()),
+        ("main-location", phrase, None, "MAIN", None, {0, 1}),
+        ("translated-title", phrase, None, "Satellite", True, {2}),
+        ("excluded-type", phrase, "workshop", None, None, set()),
+        ("combined-no-match", phrase, "workshop", "Main", True, set()),
+        ("missing-search", "unmatchedparitytoken", None, None, None, set()),
+    ]
+    for case, search_query, event_type, location, active, indexes in parity_cases:
+        listed = await repo.search_events(
+            search_query=search_query,
+            event_type=event_type,
+            location=location,
+            is_active=active,
+            query_embedding=None,
+            now=now,
+            limit=len(event_ids) + 1,
+        )
+        expected_ids = {event_ids[index] for index in indexes}
+        listed_ids = [row.event.id for row in listed]
+        assert set(listed_ids) == expected_ids, case
+        assert len(listed_ids) == len(expected_ids), case
+        total = await repo.count_search_events(
+            search_query=search_query,
+            event_type=event_type,
+            location=location,
+            is_active=active,
+            query_embedding=None,
+            now=now,
+        )
+        assert total == len(listed_ids) == len(expected_ids), case

@@ -241,7 +241,7 @@ describe("useActivityData", () => {
     }
   )
 
-  it("treats days older than a capped activity section as unknown, not zero", () => {
+  it("treats the capped boundary day and earlier days as unknown, not zero", () => {
     const capped = Array.from({ length: 5 }, (_, index) => ({
       date: `2026-04-${String(20 - index).padStart(2, "0")}T10:00:00Z`,
       status: "present",
@@ -254,8 +254,8 @@ describe("useActivityData", () => {
 
     const { result } = renderHook(() => useActivityData())
 
-    // The capped section is complete only from its oldest item (2026-04-16) onward.
-    expect(result.current.heatmapCoveredFrom).toBe("2026-04-16")
+    // April 16 may be truncated by the row cap; complete coverage starts the next day.
+    expect(result.current.heatmapCoveredFrom).toBe("2026-04-17")
   })
 
   it("keeps the latest coverage boundary across several capped sections", () => {
@@ -290,8 +290,8 @@ describe("useActivityData", () => {
 
     const { result } = renderHook(() => useActivityData())
 
-    // Section boundaries: 2026-04-18, 2026-04-16 and 2026-04-20; the latest one wins.
-    expect(result.current.heatmapCoveredFrom).toBe("2026-04-20")
+    // Incomplete boundary days are April 18, 16 and 20; complete coverage starts April 21.
+    expect(result.current.heatmapCoveredFrom).toBe("2026-04-21")
   })
 
   it("reports no coverage boundary while every section is complete", () => {
@@ -465,4 +465,25 @@ describe("useActivityData", () => {
     expect(result.current.heatmapData.get("2026-04-20")).toBe(10)
     expect(result.current.heatmapCoveredFrom).toBe("2026-04-21")
   })
+
+  it.each(["not-a-date", "2026-04-31"])(
+    "preserves the legacy boundary for malformed capped dates: %s",
+    (date) => {
+      vi.mocked(useActivitySummaryQuery).mockReturnValue({
+        data: {
+          ...mockData,
+          attendance: {
+            ...mockData.attendance,
+            recent: Array.from({ length: 5 }, () => ({ date, status: "present" })),
+          },
+        },
+        isFetching: false,
+        isSuccess: true,
+      } as unknown as ReturnType<typeof useActivitySummaryQuery>)
+
+      const { result } = renderHook(() => useActivityData())
+
+      expect(result.current.heatmapCoveredFrom).toBe(date.slice(0, 10))
+    }
+  )
 })

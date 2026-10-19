@@ -222,7 +222,8 @@ def run_private_process(
     input_view = memoryview(request.stdin)
     result: PrivateProcessResult
     try:
-        child = subprocess.Popen(
+        # Caller-owned argv is trusted internal input, never a public command API.
+        child = subprocess.Popen(  # noqa: S603 -- reviewed internal argv, no shell
             request.argv,
             shell=False,
             cwd=request.cwd,

@@ -104,11 +104,10 @@ def _deadline(seconds=3.0):
 
 def _guarded_source(body):
     return (
-        "import os, threading, time\n"
-        "def _watchdog():\n"
-        "    time.sleep(1.5)\n"
-        "    os._exit(97)\n"
-        "threading.Thread(target=_watchdog, daemon=True).start()\n"
+        "import os, threading\n"
+        "watchdog = threading.Timer(1.5, os._exit, args=(97,))\n"
+        "watchdog.daemon = True\n"
+        "watchdog.start()\n"
         f"{body}\n"
     )
 
@@ -298,24 +297,24 @@ def test_spawn_error_text_is_not_returned_or_logged(
 
 
 def test_private_request_and_result_fields_are_not_in_repr(tmp_path):
-    secret = "PRIVATE-SENTINEL"
+    private_marker = "PRIVATE-SENTINEL"
     request = _request(
         tmp_path,
-        argv=(secret,),
-        cwd=secret,
-        env={secret: secret},
-        stdin=secret.encode(),
+        argv=(private_marker,),
+        cwd=private_marker,
+        env={private_marker: private_marker},
+        stdin=private_marker.encode(),
     )
     result = process.PrivateProcessResult(
         process.ProcessOutcome.EXITED,
         0,
-        secret.encode(),
-        secret.encode(),
+        private_marker.encode(),
+        private_marker.encode(),
         process.LocalCleanup.CONFIRMED,
     )
 
-    assert secret not in repr(request)
-    assert secret not in repr(result)
+    assert private_marker not in repr(request)
+    assert private_marker not in repr(result)
 
 
 def test_collected_output_is_private_not_console_output(
@@ -347,7 +346,7 @@ def test_normal_child_timeout_has_finite_waits_and_bounded_cleanup(
 ):
     deadline = _deadline(0.75)
     owned_children.deadline = deadline
-    request = _request(tmp_path, "time.sleep(10)")
+    request = _request(tmp_path, "import signal; signal.pause()")
     started = time.monotonic()
 
     result = process.run_private_process(request, deadline=deadline)
@@ -380,7 +379,7 @@ def test_keyboard_interrupt_reaps_child_before_propagating(
 ):
     deadline = _deadline()
     owned_children.deadline = deadline
-    request = _request(tmp_path, "time.sleep(10)")
+    request = _request(tmp_path, "import signal; signal.pause()")
     if not process._process_tree_containment_available():
         result = process.run_private_process(request, deadline=deadline)
         _assert_supported_or_fail_closed(result, owned_children)
@@ -404,3 +403,76 @@ def test_keyboard_interrupt_reaps_child_before_propagating(
 
     assert len(owned_children.children) == 1
     assert owned_children.children[0].returncode is not None
+
+
+def test_repeated_keyboard_interrupts_reap_child_before_propagating(
+    monkeypatch, tmp_path, owned_children
+):
+    deadline = _deadline()
+    owned_children.deadline = deadline
+    request = _request(tmp_path, "import signal; signal.pause()")
+    if not process._process_tree_containment_available():
+        result = process.run_private_process(request, deadline=deadline)
+        _assert_supported_or_fail_closed(result, owned_children)
+        return
+
+    selector_interrupts = 0
+    real_selector = selectors.DefaultSelector
+
+    class InterruptingSelector:
+        def __init__(self):
+            self.inner = real_selector()
+
+        def select(self, timeout=None):
+            nonlocal selector_interrupts
+            if selector_interrupts == 0:
+                selector_interrupts += 1
+                raise KeyboardInterrupt
+            return self.inner.select(timeout)
+
+        def __getattr__(self, name):
+            return getattr(self.inner, name)
+
+    monkeypatch.setattr(selectors, "DefaultSelector", InterruptingSelector)
+
+    wait_interrupts = 0
+    captured_popen = subprocess.Popen
+
+    def interrupt_cleanup_wait(*args, **kwargs):
+        captured = captured_popen(*args, **kwargs)
+        raw_child = captured._child
+        real_wait = raw_child.wait
+        in_collector_wait = False
+        captured_wait = captured.wait
+
+        def tracked_wait(*wait_args, **wait_kwargs):
+            nonlocal in_collector_wait
+            in_collector_wait = True
+            try:
+                return captured_wait(*wait_args, **wait_kwargs)
+            finally:
+                in_collector_wait = False
+
+        def interrupt_once(*wait_args, **wait_kwargs):
+            nonlocal wait_interrupts
+            if in_collector_wait and wait_interrupts == 0:
+                wait_interrupts += 1
+                raise KeyboardInterrupt
+            return real_wait(*wait_args, **wait_kwargs)
+
+        monkeypatch.setattr(captured, "wait", tracked_wait)
+        monkeypatch.setattr(raw_child, "wait", interrupt_once)
+        return captured
+
+    monkeypatch.setattr(subprocess, "Popen", interrupt_cleanup_wait)
+
+    with pytest.raises(KeyboardInterrupt):
+        process.run_private_process(request, deadline=deadline)
+
+    assert selector_interrupts == 1
+    assert wait_interrupts == 1
+    assert len(owned_children.children) == 1
+    child = owned_children.children[0]
+    # Inspect only: poll() could itself reap and conceal missing cleanup.
+    assert child.returncode is not None
+    assert child.returncode != 97  # The synthetic watchdog must not do cleanup.
