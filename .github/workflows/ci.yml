@@ -3296,6 +3296,7 @@ jobs:
           python scripts/quality/analyze_ci_critical_path.py \
             --repository "${GITHUB_REPOSITORY}" \
             --run-id "${GITHUB_RUN_ID}" \
+            --run-attempt "${GITHUB_RUN_ATTEMPT}" \
             --concurrency-cap 20 \
             --diagnostic-lower-bound \
             --output artifacts/quality/ci-health-report.json

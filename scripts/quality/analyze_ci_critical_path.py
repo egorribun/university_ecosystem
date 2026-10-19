@@ -5,7 +5,9 @@ The analyzer deliberately treats the GitHub API payload as evidence rather than
 as an instruction.  It never mutates a run, retries a job, or accepts a report
 from another run.  A fixture can be supplied with ``--jobs-json`` for local
 reproducibility; otherwise ``gh api --paginate`` is used to read the jobs for
-the requested run. Exact critical-path analysis requires an attempt-bound DAG
+the requested run. Optional ``--run-attempt`` scopes that request and requires
+all returned jobs, including offline input, to match the requested attempt.
+Exact critical-path analysis requires an attempt-bound DAG
 sidecar supplied with ``--dag-json`` plus a detached provenance record obtained
 from the same-run-artifact selector. API-only timing is available only through
 the explicitly labelled ``--diagnostic-lower-bound`` mode.
@@ -1597,11 +1599,17 @@ def _terminate_fetch_process(process: subprocess.Popen[bytes]) -> None:
         pass
 
 
-def _fetch_jobs(repository: str, run_id: int) -> object:
+def _fetch_jobs(
+    repository: str, run_id: int, *, run_attempt: int | None = None
+) -> object:
     if not REPOSITORY_RE.fullmatch(repository):
         raise AnalysisError("repository must be an owner/name pair")
     _positive_integer(run_id, "run_id")
-    endpoint = f"repos/{repository}/actions/runs/{run_id}/jobs?per_page=100"
+    endpoint = f"repos/{repository}/actions/runs/{run_id}"
+    if run_attempt is not None:
+        _positive_integer(run_attempt, "run_attempt")
+        endpoint += f"/attempts/{run_attempt}"
+    endpoint += "/jobs?per_page=100"
     # ``repository`` is validated by the caller and the endpoint is passed as
     # one argv element, so no shell interpretation is possible.  Pipes are
     # drained incrementally below: redirecting to TemporaryFile and checking
@@ -1738,6 +1746,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository", required=True)
     parser.add_argument("--run-id", type=int, required=True)
+    parser.add_argument(
+        "--run-attempt",
+        type=int,
+        help="scope the jobs request and require every job to match this attempt",
+    )
     parser.add_argument("--concurrency-cap", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
@@ -1765,11 +1778,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not REPOSITORY_RE.fullmatch(args.repository):
             raise AnalysisError("repository must be an owner/name pair")
         _positive_integer(args.run_id, "run_id")
+        if args.run_attempt is not None:
+            _positive_integer(args.run_attempt, "run_attempt")
         _positive_integer(args.concurrency_cap, "concurrency_cap")
         payload = (
             _load_json(args.jobs_json)
             if args.jobs_json
-            else _fetch_jobs(args.repository, args.run_id)
+            else _fetch_jobs(args.repository, args.run_id, run_attempt=args.run_attempt)
         )
         dag = _load_json(args.dag_json) if args.dag_json else None
         trusted_provenance = (
@@ -1777,8 +1792,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.trusted_provenance_json
             else None
         )
+        jobs = parse_jobs(payload)
+        if args.run_attempt is not None:
+            for job in jobs:
+                if job.api_run_attempt != args.run_attempt:
+                    raise AnalysisError(
+                        f"job {job.job_id} run_attempt does not match requested attempt"
+                    )
         report = analyze_jobs(
-            parse_jobs(payload),
+            jobs,
             repository=args.repository,
             run_id=args.run_id,
             concurrency_cap=args.concurrency_cap,
