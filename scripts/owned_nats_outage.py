@@ -7,6 +7,7 @@ inventory validation is not a substitute for those authentication checks.
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -226,7 +227,6 @@ def validate_restored_inventory(
 
 
 class WorkerPolicyVerdict(StrEnum):
-    NOT_READY = "not_ready"
     VALID = "valid"
     INVALID = "invalid"
 
@@ -239,12 +239,25 @@ class WorkerPolicy:
 
 
 def validate_worker_policy(policy: WorkerPolicy) -> WorkerPolicyVerdict:
-    """Unavailable pure seam for effective settings, not a configuration change."""
-    return WorkerPolicyVerdict.NOT_READY
+    """Admit only bounded settings suitable for outage observation."""
+    if not isinstance(policy, WorkerPolicy):
+        return WorkerPolicyVerdict.INVALID
+
+    poll_interval = policy.poll_interval_seconds
+    if (
+        type(poll_interval) not in (int, float)
+        or not 1 <= poll_interval <= 10
+        or not math.isfinite(poll_interval)
+        or type(policy.batch_size) is not int
+        or policy.batch_size < 2
+        or type(policy.max_retries) is not int
+        or policy.max_retries != 5
+    ):
+        return WorkerPolicyVerdict.INVALID
+    return WorkerPolicyVerdict.VALID
 
 
 class OutboxVerdict(StrEnum):
-    NOT_READY = "not_ready"
     INVALID = "invalid"
     WAIT = "wait"
     RETRYABLE = "retryable"
@@ -262,11 +275,34 @@ class StoredEventState:
     dlq_count: int
 
 
+def _valid_exact_stored_event_state(
+    expected_event_id: str, state: StoredEventState | None
+) -> bool:
+    return (
+        _is_canonical_uuid(expected_event_id)
+        and isinstance(state, StoredEventState)
+        and _is_canonical_uuid(state.stored_event_id)
+        and state.stored_event_id == expected_event_id
+        and type(state.processed_at_present) is bool
+        and type(state.error_count) is int
+        and state.error_count >= 0
+        and type(state.dlq_count) is int
+        and state.dlq_count >= 0
+    )
+
+
 def classify_outage_attempt(
     expected_event_id: str, state: StoredEventState | None
 ) -> OutboxVerdict:
-    """Unavailable pure seam; never treats a timestamp alone as retry proof."""
-    return OutboxVerdict.NOT_READY
+    """Classify retry evidence for the exact retained StoredEvent row."""
+    if state is None or not _valid_exact_stored_event_state(expected_event_id, state):
+        return OutboxVerdict.INVALID
+
+    if state.processed_at_present or state.dlq_count > 0 or state.error_count >= 5:
+        return OutboxVerdict.TERMINAL
+    if state.error_count == 0:
+        return OutboxVerdict.WAIT
+    return OutboxVerdict.RETRYABLE
 
 
 def classify_outbox_drain(
@@ -274,5 +310,42 @@ def classify_outbox_drain(
     observed_retry_count: int,
     state: StoredEventState | None,
 ) -> OutboxVerdict:
-    """Unavailable pure seam for the same event after an observed outage retry."""
-    return OutboxVerdict.NOT_READY
+    """Classify completion for the same row without accepting counter reset."""
+    if (
+        state is None
+        or type(observed_retry_count) is not int
+        or not 1 <= observed_retry_count < 5
+        or not _valid_exact_stored_event_state(expected_event_id, state)
+    ):
+        return OutboxVerdict.INVALID
+
+    if state.error_count < observed_retry_count:
+        return OutboxVerdict.INVALID
+    if state.dlq_count > 0 or state.error_count >= 5:
+        return OutboxVerdict.TERMINAL
+    if state.processed_at_present:
+        return OutboxVerdict.DRAINED
+    return OutboxVerdict.WAIT
+
+
+class BrokerVerdict(StrEnum):
+    NOT_READY = "not_ready"
+    VALID = "valid"
+    MISSING = "missing"
+    INVALID = "invalid"
+
+
+def classify_broker_error(status: object, error_code: object) -> BrokerVerdict:
+    """Unavailable pure seam; only the exact missing-message error may be polled."""
+    return BrokerVerdict.NOT_READY
+
+
+def validate_broker_receipt(
+    message: MessageEvidence,
+    *,
+    subject: str,
+    sequence: int,
+    envelope: object,
+) -> BrokerVerdict:
+    """Unavailable pure seam for existing CHAT_EVENTS storage evidence."""
+    return BrokerVerdict.NOT_READY
