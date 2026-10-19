@@ -152,7 +152,7 @@ jobs:
                   uv run --frozen --no-sync coverage run --rcfile="$rcfile" \
                     --data-file="$datafile" --branch --include="$target" \
                     -m pytest tests/test_frozen_rc_manifest.py \
-                    tests/test_live_acceptance_workflow.py tests/test_live_stand.py::test_nats_outage_cli_exposes_owned_state_options tests/test_live_stand.py::test_nats_outage_scaffold_refuses_before_state_side_effects tests/test_owned_nats_outage.py tests/test_owned_nats_correlation.py
+                    tests/test_live_acceptance_workflow.py tests/test_live_stand.py::test_nats_outage_cli_exposes_owned_state_options tests/test_live_stand.py::test_nats_outage_scaffold_refuses_before_state_side_effects tests/test_owned_nats_outage.py tests/test_owned_nats_correlation.py tests/test_owned_nats_restoration.py
                   uv run --frozen --no-sync coverage report --rcfile="$rcfile" \
                     --data-file="$datafile" --include="$target" --fail-under=100
 

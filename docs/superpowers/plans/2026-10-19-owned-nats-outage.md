@@ -81,3 +81,5 @@ Files: .github/workflows/live-acceptance.yml; existing metadata-only Core receip
 Current source evidence:7a7 job118062740060 produced52 inventory assertion failures and one workflow capability failure, with47 passes in25.63s. CLI help/refusal passed. Pure-validator implementation is awaiting its own hosted GREEN; coordinator, transport and runtime enablement remain incomplete.
 
 Inventory scoped GREEN: bcaae3 job118069006472 has52 inventory tests passing; overall early gate1FAIL99PASS26.65s because the live NATS step is still intentionally absent. Next: Message/StoredEvent pure-correlation NOT_READY seam plus33 assertion tests; no implementation or runtime enablement before their observed RED.
+
+Exact correlation RED: ebc9 job118074359416 produced33 correlation assertion failures plus the absent workflow step,99passes in36.30s. Correlation implementation and seven supplemental malformed-input cases now await GREEN. Next NOT_READY seam tests post-restoration evidence invariants using the shared unchanged Core fixture; no actual restoration/coordinator/transport is implemented. Stored event identity always means stored_events.id, not the domain ID in metadata.

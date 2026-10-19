@@ -11,6 +11,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from uuid import UUID
 
 _REQUIRED_HEALTHY = frozenset({"backend", "outbox-worker", "postgres", "minio", "nats"})
 _INITIALIZERS = frozenset(
@@ -95,7 +96,6 @@ def validate_inventory(
 
 
 class CorrelationVerdict(StrEnum):
-    NOT_READY = "not_ready"
     VALID = "valid"
     INVALID_MESSAGE = "invalid_message"
     INVALID_EVENT = "invalid_event"
@@ -118,11 +118,23 @@ class MessageEvidence:
 
 @dataclass(frozen=True)
 class StoredMessageEvent:
+    """event_id is stored_events.id, never the domain ID inside metadata."""
+
     event_id: str
     event_type: str
     aggregate_type: str
     aggregate_id: str
     payload: Mapping[str, object]
+
+
+def _is_canonical_uuid(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        parsed = UUID(value)
+    except ValueError:
+        return False
+    return parsed.int != 0 and str(parsed) == value
 
 
 def validate_message_correlation(
@@ -131,5 +143,62 @@ def validate_message_correlation(
     database_message: MessageEvidence,
     events: tuple[StoredMessageEvent, ...],
 ) -> CorrelationVerdict:
-    """Unavailable pure seam; no message or event is accepted until implemented."""
-    return CorrelationVerdict.NOT_READY
+    """Bind one committed event to the intended send and exact HTTP/DB message."""
+    if (
+        not all(
+            _is_canonical_uuid(value)
+            for value in (
+                http_message.message_id,
+                intent.chat_id,
+                intent.sender_id,
+            )
+        )
+        or not isinstance(intent.content, str)
+        or http_message.chat_id != intent.chat_id
+        or http_message.sender_id != intent.sender_id
+        or http_message.content != intent.content
+        or database_message != http_message
+    ):
+        return CorrelationVerdict.INVALID_MESSAGE
+
+    if len(events) != 1:
+        return CorrelationVerdict.INVALID_EVENT
+    event = events[0]
+    if (
+        not _is_canonical_uuid(event.event_id)
+        or event.event_type != "chat.message_sent"
+        or event.aggregate_type != "Message"
+        or event.aggregate_id != http_message.message_id
+        or not isinstance(event.payload, Mapping)
+    ):
+        return CorrelationVerdict.INVALID_EVENT
+
+    payload = event.payload
+    version = payload.get("_schema_version")
+    if (
+        type(version) is not int
+        or version != 1
+        or payload.get("message_id") != http_message.message_id
+        or payload.get("chat_id") != intent.chat_id
+        or payload.get("sender_id") != intent.sender_id
+        or payload.get("content_preview") != intent.content[:50]
+    ):
+        return CorrelationVerdict.INVALID_EVENT
+    return CorrelationVerdict.VALID
+
+
+class RestorationVerdict(StrEnum):
+    NOT_READY = "not_ready"
+    VALID = "valid"
+    INVALID_SNAPSHOT = "invalid_snapshot"
+    IDENTITY_CHANGED = "identity_changed"
+    RUNTIME_CHANGED = "runtime_changed"
+
+
+def validate_restored_inventory(
+    selected_services: tuple[str, ...],
+    before: tuple[ContainerSnapshot, ...],
+    after: tuple[ContainerSnapshot, ...],
+) -> RestorationVerdict:
+    """Unavailable pure seam; does not restore containers or perform any I/O."""
+    return RestorationVerdict.NOT_READY

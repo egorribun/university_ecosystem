@@ -60,6 +60,8 @@ def test_exact_committed_message_event_matches_request_and_unicode_preview(
     "http_message",
     [
         replace(_fixture()[1], message_id="not-a-uuid"),
+        replace(_fixture()[1], message_id=None),
+        replace(_fixture()[1], message_id="00000000-0000-7000-8000-00000000000A"),
         replace(_fixture()[1], message_id="00000000-0000-0000-0000-000000000000"),
         replace(_fixture()[1], chat_id=OTHER),
         replace(_fixture()[1], sender_id=OTHER),
@@ -201,3 +203,31 @@ def test_mixed_query_rows_are_rejected_instead_of_filtering_to_one_match() -> No
         validate_message_correlation(intent, message, message, (event, unrelated))
         is CorrelationVerdict.INVALID_EVENT
     )
+
+
+@pytest.mark.parametrize("payload", [None, []])
+def test_non_object_event_payload_is_rejected(payload: object) -> None:
+    intent, message, event = _fixture()
+    event = replace(event, payload=payload)
+
+    verdict = validate_message_correlation(intent, message, message, (event,))
+
+    assert verdict is CorrelationVerdict.INVALID_EVENT
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("chat_id", "invalid-chat"), ("sender_id", "invalid-sender"), ("content", None)],
+)
+def test_intent_fields_must_be_valid_even_when_all_evidence_agrees(
+    field: str, value: object
+) -> None:
+    intent, message, event = _fixture()
+    intent = replace(intent, **{field: value})
+    message = replace(message, **{field: value})
+    payload_key = "content_preview" if field == "content" else field
+    event = replace(event, payload={**event.payload, payload_key: value})
+
+    verdict = validate_message_correlation(intent, message, message, (event,))
+
+    assert verdict is CorrelationVerdict.INVALID_MESSAGE
