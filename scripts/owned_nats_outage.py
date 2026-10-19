@@ -8,6 +8,7 @@ inventory validation is not a substitute for those authentication checks.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -91,3 +92,44 @@ def validate_inventory(
             return InventoryVerdict.UNHEALTHY
 
     return InventoryVerdict.VALID
+
+
+class CorrelationVerdict(StrEnum):
+    NOT_READY = "not_ready"
+    VALID = "valid"
+    INVALID_MESSAGE = "invalid_message"
+    INVALID_EVENT = "invalid_event"
+
+
+@dataclass(frozen=True)
+class MessageIntent:
+    chat_id: str
+    sender_id: str
+    content: str
+
+
+@dataclass(frozen=True)
+class MessageEvidence:
+    message_id: str
+    chat_id: str
+    sender_id: str
+    content: str
+
+
+@dataclass(frozen=True)
+class StoredMessageEvent:
+    event_id: str
+    event_type: str
+    aggregate_type: str
+    aggregate_id: str
+    payload: Mapping[str, object]
+
+
+def validate_message_correlation(
+    intent: MessageIntent,
+    http_message: MessageEvidence,
+    database_message: MessageEvidence,
+    events: tuple[StoredMessageEvent, ...],
+) -> CorrelationVerdict:
+    """Unavailable pure seam; no message or event is accepted until implemented."""
+    return CorrelationVerdict.NOT_READY

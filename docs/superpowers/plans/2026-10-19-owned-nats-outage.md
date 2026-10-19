@@ -41,7 +41,7 @@ Files: tests/test_live_stand.py; tests/test_live_acceptance_workflow.py; scripts
 
 Files: scripts/owned_nats_outage.py; tests/test_owned_nats_outage.py.
 
-- [ ] First finish the pure inventory validator RED/GREEN cycle. Admission accepts only the caller's already verified signed selection, not a self-authenticated arbitrary inventory.
+- [x] First finish the pure inventory validator RED/GREEN cycle. Admission accepts only the caller's already verified signed selection, not a self-authenticated arbitrary inventory.
 - [ ] Define immutable actual evidence records and a narrow operation protocol. The adapter must not replace raw evidence with admitted/drained/valid booleans.
 - [ ] Cover valid exact success, bad ownership/inventory/participants, zero/nonzero pending count, empty/duplicate/mismatched event correlation, retry0/1..4/terminal/DLQ/prematureprocessed states, and exact retained event IDs.
 - [ ] Cover failed/partial/timed-out stop, no send afterward, primary budget exhaustion, independent restoration, health failure, owner drift, changed target and every non-target runtime field.
@@ -79,3 +79,5 @@ Files: .github/workflows/live-acceptance.yml; existing metadata-only Core receip
 - Capability help/step tests are not outage behavior; the unavailable scaffold must remain non-operational until later safety gates pass.
 
 Current source evidence:7a7 job118062740060 produced52 inventory assertion failures and one workflow capability failure, with47 passes in25.63s. CLI help/refusal passed. Pure-validator implementation is awaiting its own hosted GREEN; coordinator, transport and runtime enablement remain incomplete.
+
+Inventory scoped GREEN: bcaae3 job118069006472 has52 inventory tests passing; overall early gate1FAIL99PASS26.65s because the live NATS step is still intentionally absent. Next: Message/StoredEvent pure-correlation NOT_READY seam plus33 assertion tests; no implementation or runtime enablement before their observed RED.
