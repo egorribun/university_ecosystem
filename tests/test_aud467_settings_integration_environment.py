@@ -7,12 +7,16 @@ import hashlib
 import os
 import secrets
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from fastapi import FastAPI
 
+import app.core.lifespan as lifecycle
 from app.core.config import Settings
 
 
@@ -478,3 +482,110 @@ def test_composed_non_development_api_rejects_plaintext_anonymous_smtp(
             monkeypatch=monkeypatch,
             tmp_path=tmp_path,
         )
+
+
+@pytest.mark.parametrize("environment", ["production", "staging"])
+def test_shared_settings_can_load_without_starting_api_email_delivery(
+    environment: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    values = _api_smtp_settings_inputs(monkeypatch)
+    values.update(
+        environment=environment,
+        smtp_host="",
+        smtp_port=0,
+        smtp_security="none",
+    )
+
+    configured = Settings(**values)
+
+    assert configured.app_process_role == "api"
+    assert configured.revocation_redis_access_enabled is True
+    assert configured.smtp_host == ""
+    assert configured.smtp_port == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("environment", ["production", "staging"])
+@pytest.mark.parametrize("role", ["api", "outbox-worker", "notifications-worker"])
+@pytest.mark.parametrize(
+    ("smtp_host", "smtp_port", "expected_error"),
+    [("", 587, "SMTP_HOST"), ("relay.aud471.invalid", 0, "SMTP_PORT")],
+)
+async def test_api_lifespan_rejects_missing_smtp_before_resources(
+    environment: str,
+    role: str,
+    smtp_host: str,
+    smtp_port: int,
+    expected_error: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configured = SimpleNamespace(
+        environment=environment,
+        app_process_role=role,
+        smtp_host=smtp_host,
+        smtp_port=smtp_port,
+        smtp_security="starttls",
+        embedded_cdc_outbox_worker_enabled=False,
+    )
+    reset = Mock()
+    startup = AsyncMock(
+        side_effect=AssertionError("API resources reached before SMTP validation")
+    )
+    scheduler_stop = SimpleNamespace(clear=Mock())
+    monkeypatch.setattr(lifecycle, "settings", configured)
+    monkeypatch.setattr(lifecycle, "_SCHEDULER_STOP", scheduler_stop)
+    monkeypatch.setattr(lifecycle, "_reset_closed_dishka_container", reset)
+    monkeypatch.setattr(lifecycle, "_startup_database_and_di", startup)
+
+    with pytest.raises(ValueError, match=expected_error):
+        async with lifecycle.lifespan(FastAPI()):
+            pytest.fail("invalid API email configuration must not serve requests")
+
+    scheduler_stop.clear.assert_not_called()
+    reset.assert_not_called()
+    startup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("environment", "smtp_host", "smtp_port"),
+    [
+        ("production", "relay.aud471.invalid", 587),
+        ("staging", "relay.aud471.invalid", 465),
+        ("development", "", 0),
+        ("testing", "", 0),
+        ("local", "", 0),
+        ("dev", "", 0),
+        ("test", "", 0),
+    ],
+)
+async def test_api_lifespan_allows_configured_relay_and_development_defaults(
+    environment: str,
+    smtp_host: str,
+    smtp_port: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configured = SimpleNamespace(
+        environment=environment,
+        app_process_role="api",
+        smtp_host=smtp_host,
+        smtp_port=smtp_port,
+        smtp_security="starttls" if smtp_host else "none",
+        embedded_cdc_outbox_worker_enabled=False,
+    )
+    app = FastAPI()
+    reset = Mock()
+    startup = AsyncMock(side_effect=RuntimeError("api startup reached"))
+    scheduler_stop = SimpleNamespace(clear=Mock())
+    monkeypatch.setattr(lifecycle, "settings", configured)
+    monkeypatch.setattr(lifecycle, "_SCHEDULER_STOP", scheduler_stop)
+    monkeypatch.setattr(lifecycle, "_reset_closed_dishka_container", reset)
+    monkeypatch.setattr(lifecycle, "_startup_database_and_di", startup)
+
+    with pytest.raises(RuntimeError, match="^api startup reached$"):
+        async with lifecycle.lifespan(app):
+            pytest.fail("startup sentinel must stop before later resources")
+
+    scheduler_stop.clear.assert_called_once_with()
+    reset.assert_called_once_with(app)
+    startup.assert_awaited_once_with(app)

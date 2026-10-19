@@ -753,6 +753,9 @@ async def test_lifespan_context_manager() -> None:
         patch("app.core.lifespan.settings") as mock_settings,
     ):
         mock_settings.environment = "production"
+        mock_settings.smtp_host = "relay.aud471.invalid"
+        mock_settings.smtp_port = 587
+        mock_settings.smtp_security = "starttls"
         # ``settings`` is a MagicMock, so every unset boolean reads
         # truthy. State the outbox choice explicitly (BE-08).
         mock_settings.embedded_outbox_worker_enabled = True
@@ -795,6 +798,9 @@ async def test_lifespan_context_manager() -> None:
         patch("app.core.lifespan._logger") as mock_logger,
     ):
         mock_settings.environment = "production"
+        mock_settings.smtp_host = "relay.aud471.invalid"
+        mock_settings.smtp_port = 587
+        mock_settings.smtp_security = "starttls"
         # ``settings`` is a MagicMock, so every unset boolean reads
         # truthy. State the outbox choice explicitly (BE-08).
         mock_settings.embedded_outbox_worker_enabled = True
@@ -1090,6 +1096,9 @@ async def test_lifespan_edge_cases_coverage() -> None:
         patch("app.core.lifespan._logger") as mock_logger,
     ):
         mock_settings.environment = "production"
+        mock_settings.smtp_host = "relay.aud471.invalid"
+        mock_settings.smtp_port = 587
+        mock_settings.smtp_security = "starttls"
         # ``settings`` is a MagicMock, so every unset boolean reads
         # truthy. State the outbox choice explicitly (BE-08).
         mock_settings.embedded_outbox_worker_enabled = True
@@ -1351,6 +1360,9 @@ async def test_lifespan_warm_cache_production() -> None:
         patch("app.core.lifespan.settings") as mock_settings,
     ):
         mock_settings.environment = "production"
+        mock_settings.smtp_host = "relay.aud471.invalid"
+        mock_settings.smtp_port = 587
+        mock_settings.smtp_security = "starttls"
         # ``settings`` is a MagicMock, so every unset boolean reads
         # truthy. State the outbox choice explicitly (BE-08).
         mock_settings.embedded_outbox_worker_enabled = True
