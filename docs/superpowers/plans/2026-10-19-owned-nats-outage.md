@@ -33,9 +33,9 @@ Files: tests/test_live_stand.py; tests/test_live_acceptance_workflow.py; scripts
 
 - [x] Publish tests for nats-outage help/owned-state flags and exact one bounded/gated workflow step with metadata-only outcome.
 - [x] Observe hosted capability RED: db4 job118049340089,2FAIL45PASS18.01s; exit2vs0 and missingstep0vs1. This is not behavioral outage proof.
-- [ ] Add CLI help and an explicit unavailable result before state-mode configuration or any I/O. The workflow step remains absent.
-- [ ] First add a small pure inventory admission seam returning a closed not_ready verdict without I/O. Its immutable record extends the existing canonical identity digest with restart/exit/OOM fields. No coordinator or transport implementation is hidden in the scaffold.
-- [ ] Add deterministic inventory tests against that real seam: complete unique signed selection, canonical IDs/digests, healthy critical services, valid running services and completed initializers. Verify assertion RED, not missing imports or setup errors. Implement this pure validator only after that RED; add runtime invariance/correlation/deadline coordinator slices incrementally rather than a monolithic runner.
+- [x] Add CLI help and an explicit unavailable result before state-mode configuration or any I/O. The workflow step remains absent.
+- [x] First add a small pure inventory admission seam returning a closed not_ready verdict without I/O. Its immutable record extends the existing canonical identity digest with restart/exit/OOM fields. No coordinator or transport implementation is hidden in the scaffold.
+- [x] Add deterministic inventory tests against that real seam: complete unique signed selection, canonical IDs/digests, healthy critical services, valid running services and completed initializers. Verify assertion RED, not missing imports or setup errors. Implement this pure validator only after that RED; add runtime invariance/correlation/deadline coordinator slices incrementally rather than a monolithic runner.
 
 ## Task 2: Evidence-validating coordinator
 
@@ -77,3 +77,5 @@ Files: .github/workflows/live-acceptance.yml; existing metadata-only Core receip
 - Stop15s explicitly overrides the generic subprocess10s cap while still respecting its phase deadline.
 - Raw probe success is not acceptance: the coordinator validates exact message, event and broker evidence.
 - Capability help/step tests are not outage behavior; the unavailable scaffold must remain non-operational until later safety gates pass.
+
+Current source evidence:7a7 job118062740060 produced52 inventory assertion failures and one workflow capability failure, with47 passes in25.63s. CLI help/refusal passed. Pure-validator implementation is awaiting its own hosted GREEN; coordinator, transport and runtime enablement remain incomplete.
