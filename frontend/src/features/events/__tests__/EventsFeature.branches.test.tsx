@@ -323,6 +323,7 @@ describe("EventsFeature — tab-driven data + loading flags", () => {
         search: "",
         location: "",
         limit: 12,
+        order: "starts_at_desc",
       },
       { enabled: true },
     ])
@@ -460,6 +461,12 @@ describe("EventsFeature — client-side category + date filters", () => {
 })
 
 describe("EventsFeature — sort modes", () => {
+  it("maps the existing newest token to server-side descending start dates", () => {
+    search.params = { sort: "newest" }
+    render(<EventsFeature />)
+    expect(queryCalls.list.at(-1)?.[0]).toMatchObject({ order: "starts_at_desc" })
+  })
+
   it("sorts by participant_count desc when sort='popular' (185-186)", () => {
     search.params = { sort: "popular" }
     listQuery.events = [
@@ -468,6 +475,7 @@ describe("EventsFeature — sort modes", () => {
     ]
     render(<EventsFeature />)
     expect(screen.getByTestId("list-order")).toHaveTextContent("high,low")
+    expect(queryCalls.list.at(-1)?.[0]).not.toHaveProperty("order")
   })
 
   it("filters to future events + sorts ascending when sort='upcoming' (187-192)", () => {
@@ -482,6 +490,7 @@ describe("EventsFeature — sort modes", () => {
     render(<EventsFeature />)
     expect(screen.getByTestId("list-count")).toHaveTextContent("2")
     expect(screen.getByTestId("list-order")).toHaveTextContent("sooner,later")
+    expect(queryCalls.list.at(-1)?.[0]).toMatchObject({ order: "starts_at_asc" })
   })
 
   it("drops an event from the upcoming sort once its start time passes", () => {

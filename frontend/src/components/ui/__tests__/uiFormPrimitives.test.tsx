@@ -338,7 +338,13 @@ describe("RadioGroup", () => {
     )
 
     expect(screen.getByRole("radiogroup", { name: "Delivery method" })).toBeInTheDocument()
-    expect(screen.getByRole("radio").nextElementSibling).toHaveClass("min-h-11", "min-w-11")
+    const radio = screen.getByRole("radio")
+    const hitTarget = radio.parentElement
+    const indicator = radio.nextElementSibling
+    expect(hitTarget).toHaveClass("relative", "inline-flex", "min-h-11", "min-w-11")
+    expect(hitTarget).not.toHaveAttribute("aria-hidden")
+    expect(indicator).toHaveAttribute("aria-hidden", "true")
+    expect(indicator).toHaveClass("h-6", "w-6", "peer-focus-visible:ring-4")
   })
 
   it("marks the selected item and fires onChange(null, value) on click", () => {

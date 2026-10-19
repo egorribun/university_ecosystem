@@ -1,4 +1,4 @@
-"""Pure complete-Core marker boundary for a future bounded NATS transport.
+"""Signed Core metadata boundaries for a future bounded NATS transport.
 
 The parser call performs no filesystem, lock, Docker, HTTP or database work.
 It is not connected to the coordinator or CLI. Importing the existing live_stand
@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import hmac
 import json
+import os
 import re
+import stat
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -19,9 +21,11 @@ from typing import TYPE_CHECKING
 
 from scripts import live_stand
 from scripts.owned_nats_coordinator import OwnerEvidence
+from scripts.owned_nats_outage import Deadline, DeadlineVerdict
 
 if TYPE_CHECKING:
-    from scripts.owned_nats_outage import Deadline
+    from collections.abc import Callable
+    from types import TracebackType
 
 MAX_OWNER_MARKER_BYTES = 65_536
 _V11_OWNER_KEYS = frozenset(
@@ -183,6 +187,124 @@ def parse_signed_owner_v11(
         return not_ready
 
 
+class _ReaderNotReady(Exception):
+    """Private fail-closed control flow; never exposed in a result."""
+
+
+def _reader_deadline_live(deadline: Deadline) -> bool:
+    return deadline.timeout_for(1.0).verdict is DeadlineVerdict.VALID
+
+
+def _reader_call[T](deadline: Deadline, operation: Callable[[], T]) -> T:
+    if not _reader_deadline_live(deadline):
+        raise _ReaderNotReady
+    result = operation()
+    if not _reader_deadline_live(deadline):
+        raise _ReaderNotReady
+    return result
+
+
+def _reader_open(
+    deadline: Deadline,
+    opened_fds: list[int],
+    path: str,
+    flags: int,
+    *,
+    dir_fd: int | None,
+) -> int:
+    if not _reader_deadline_live(deadline):
+        raise _ReaderNotReady
+    fd = os.open(path, flags, dir_fd=dir_fd)
+    # Retain the acquired fd before a post-open expiry can interrupt the walk.
+    opened_fds.append(fd)
+    if not _reader_deadline_live(deadline):
+        raise _ReaderNotReady
+    return fd
+
+
+def _reader_api_supported() -> bool:
+    flags = ("O_NOFOLLOW", "O_DIRECTORY", "O_NONBLOCK", "O_CLOEXEC")
+    if os.name != "posix" or any(
+        type(getattr(os, name, None)) is not int or getattr(os, name) <= 0
+        for name in flags
+    ):
+        return False
+    relative = getattr(os, "supports_dir_fd", set())
+    nofollow = getattr(os, "supports_follow_symlinks", set())
+    return os.open in relative and os.stat in relative and os.stat in nofollow
+
+
+def _reader_metadata(info: os.stat_result) -> tuple[int, ...]:
+    # Reads can change atime without mutating the signed content.
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_nlink,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def _reader_check_directory(
+    deadline: Deadline, name: str, parent_fd: int, child_fd: int
+) -> None:
+    info = _reader_call(deadline, lambda: os.fstat(child_fd))
+    entry = _reader_call(
+        deadline,
+        lambda: os.stat(name, dir_fd=parent_fd, follow_symlinks=False),
+    )
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or not stat.S_ISDIR(entry.st_mode)
+        or (info.st_dev, info.st_ino) != (entry.st_dev, entry.st_ino)
+    ):
+        raise _ReaderNotReady
+
+
+def _reader_leaf_metadata(
+    deadline: Deadline,
+    name: str,
+    parent_fd: int,
+    leaf_fd: int,
+    *,
+    max_size: int,
+    exact_size: int | None = None,
+) -> tuple[int, ...]:
+    info = _reader_call(deadline, lambda: os.fstat(leaf_fd))
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or not 0 <= info.st_size <= max_size
+        or (exact_size is not None and info.st_size != exact_size)
+    ):
+        raise _ReaderNotReady
+    entry = _reader_call(
+        deadline,
+        lambda: os.stat(name, dir_fd=parent_fd, follow_symlinks=False),
+    )
+    snapshot = _reader_metadata(info)
+    if snapshot != _reader_metadata(entry):
+        raise _ReaderNotReady
+    return snapshot
+
+
+def _reader_bytes(fd: int, cap: int, deadline: Deadline) -> bytes:
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        requested = min(8_192, cap + 1 - total)
+        if requested <= 0:
+            raise _ReaderNotReady
+        block = _reader_call(deadline, lambda: os.read(fd, requested))
+        if not block:
+            return b"".join(chunks)
+        total += len(block)
+        if total > cap:
+            raise _ReaderNotReady
+        chunks.append(block)
+
+
 def read_signed_owner_v11_from_state(
     *,
     pinned_repository: str,
@@ -190,11 +312,107 @@ def read_signed_owner_v11_from_state(
     pinned_source_sha: str,
     deadline: Deadline,
 ) -> OwnerParseResult:
-    """Unavailable existing-file reader; no filesystem or admission claim.
+    """Read existing fixed files into signed metadata, never runtime admission.
 
-    Future reads require an initial nofollow component walk from the root,
-    fixed descriptor-relative regular leaves and mandatory descriptor cleanup.
-    Post-read ancestor pathname revalidation and lifecycle locking are separate.
+    Initial traversal is descriptor-relative and nofollow. Leaf checks observe
+    descriptor/name metadata before and after both reads, not an atomic pair
+    snapshot or post-read binding of the full ancestor pathname. No lifecycle
+    lock, key-provenance authentication or current daemon check is performed.
+    Syscalls, including on network/FUSE mounts, cannot be hard-preempted.
     """
-    del pinned_repository, pinned_state_root, pinned_source_sha, deadline
-    return OwnerParseResult(OwnerParseStatus.NOT_READY)
+    not_ready = OwnerParseResult(OwnerParseStatus.NOT_READY)
+    if (
+        type(deadline) is not Deadline
+        or not _reader_api_supported()
+        or not _absolute_pin(pinned_repository)
+        or not _absolute_pin(pinned_state_root)
+        or type(pinned_source_sha) is not str
+        or _SOURCE_SHA_PATTERN.fullmatch(pinned_source_sha) is None
+    ):
+        return not_ready
+    raw_parts = pinned_state_root.split("/")
+    if "\x00" in pinned_state_root or any(part in {".", ".."} for part in raw_parts):
+        return not_ready
+    components = [part for part in raw_parts[1:] if part]
+    if not components:
+        return not_ready
+
+    opened_fds: list[int] = []
+    result = not_ready
+    pending: tuple[BaseException, TracebackType | None] | None = None
+    cleanup_pending: tuple[BaseException, TracebackType | None] | None = None
+    cleanup_failed = False
+    try:
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        parent_fd = _reader_open(
+            deadline, opened_fds, "/", directory_flags, dir_fd=None
+        )
+        for component in [*components, ".secrets"]:
+            child_fd = _reader_open(
+                deadline,
+                opened_fds,
+                component,
+                directory_flags,
+                dir_fd=parent_fd,
+            )
+            _reader_check_directory(deadline, component, parent_fd, child_fd)
+            parent_fd = child_fd
+        leaf_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+        marker_name = live_stand.STAND_FILE.name
+        key_name = "live-stand-owner.key"
+        marker_fd = _reader_open(
+            deadline, opened_fds, marker_name, leaf_flags, dir_fd=parent_fd
+        )
+        marker_before = _reader_leaf_metadata(
+            deadline, marker_name, parent_fd, marker_fd, max_size=MAX_OWNER_MARKER_BYTES
+        )
+        key_fd = _reader_open(
+            deadline, opened_fds, key_name, leaf_flags, dir_fd=parent_fd
+        )
+        key_before = _reader_leaf_metadata(
+            deadline, key_name, parent_fd, key_fd, max_size=32, exact_size=32
+        )
+        marker_bytes = _reader_bytes(marker_fd, MAX_OWNER_MARKER_BYTES, deadline)
+        key_bytes = _reader_bytes(key_fd, 32, deadline)
+        marker_after = _reader_leaf_metadata(
+            deadline, marker_name, parent_fd, marker_fd, max_size=MAX_OWNER_MARKER_BYTES
+        )
+        key_after = _reader_leaf_metadata(
+            deadline, key_name, parent_fd, key_fd, max_size=32, exact_size=32
+        )
+        if marker_before != marker_after or key_before != key_after:
+            raise _ReaderNotReady
+        result = _reader_call(
+            deadline,
+            lambda: parse_signed_owner_v11(
+                marker_bytes,
+                key_bytes,
+                pinned_repository=pinned_repository,
+                pinned_state_root=pinned_state_root,
+                pinned_source_sha=pinned_source_sha,
+            ),
+        )
+    except (_ReaderNotReady, OSError, ValueError):
+        result = not_ready
+    except BaseException as error:
+        pending = (error, error.__traceback__)
+    finally:
+        for fd in reversed(opened_fds):
+            try:
+                os.close(fd)
+            except OSError:
+                # EINTR can leave close outcome ambiguous; never retry the fd.
+                cleanup_failed = True
+            except BaseException as error:
+                if cleanup_pending is None:
+                    cleanup_pending = (error, error.__traceback__)
+
+    if pending is not None:
+        error, traceback = pending
+        raise error.with_traceback(traceback)
+    if cleanup_pending is not None:
+        error, traceback = cleanup_pending
+        raise error.with_traceback(traceback)
+    if cleanup_failed or not _reader_deadline_live(deadline):
+        return not_ready
+    return result

@@ -44,6 +44,7 @@ test("live Playwright fails CI runs that pass only after retrying and disables r
     "../tests/e2e-live/messenger-realtime.live.spec.ts",
     "../tests/e2e-live/password-reset.live.spec.ts",
     "../tests/e2e-live/search-dialog-keyboard.live.spec.ts",
+    "../tests/e2e-live/settings-radio-focus.live.spec.ts",
   ]) {
     const spec = await readFile(new URL(file, import.meta.url), "utf8")
     assert.doesNotMatch(spec, /trace:\s*["'](?:on|retain-on-failure)["']/u)

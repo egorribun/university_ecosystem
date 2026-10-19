@@ -1525,3 +1525,99 @@ describe("useEventNavigation (events.ts:482-525)", () => {
     expect(result.current.nextTitle).toBe("Last title")
   })
 })
+
+
+describe("main events date-order identities", () => {
+  it("keeps ASC and DESC as distinct canonical query identities", () => {
+    const asc = { language: "ru", is_active: true, order: "starts_at_asc" as const }
+    const desc = { language: "ru", is_active: true, order: "starts_at_desc" as const }
+
+    expect(eventsListQueryKey(asc)[2]).toMatchObject({ order: "starts_at_asc" })
+    expect(eventsListQueryKey(desc)[2]).toMatchObject({ order: "starts_at_desc" })
+    expect(eventsListQueryKey(asc)).not.toEqual(eventsListQueryKey(desc))
+  })
+
+  it("sends date order and isolates first-page ETags by order", async () => {
+    allEventsMock.mockResolvedValue(okPage([]))
+    const etagKeys: unknown[] = []
+
+    for (const order of ["starts_at_asc", "starts_at_desc"] as const) {
+      const filters = { language: "ru", is_active: true, order }
+      const queryClient = freshClient()
+      const { result, unmount } = renderHook(() => useEventsListQuery(filters), {
+        wrapper: makeWrapper(queryClient),
+      })
+
+      try {
+        await waitFor(() => expect(result.current.isSuccess).toBe(true))
+        const request = allEventsMock.mock.calls.at(-1)?.[0]
+        expect(request).toMatchObject({ query: { order } })
+        const etagKey =
+          typeof request === "object" && request !== null
+            ? Reflect.get(request, "etagCacheKey")
+            : undefined
+        expect(etagKey).toEqual(expect.any(String))
+        etagKeys.push(etagKey)
+      } finally {
+        unmount()
+        queryClient.clear()
+      }
+    }
+
+    expect(etagKeys[0]).not.toBe(etagKeys[1])
+  })
+
+  it("uses distinct order-specific cached-placeholder keys", () => {
+    const getItem = vi.spyOn(Storage.prototype, "getItem")
+    const prefix = "events:list:account:feed-test-user:ru:active"
+    const observedKey = (order: "starts_at_asc" | "starts_at_desc") => {
+      getItem.mockClear()
+      const filters = { language: "ru", is_active: true, order }
+      const queryClient = freshClient()
+      const { unmount } = renderHook(() => useEventsListQuery(filters, { enabled: false }), {
+        wrapper: makeWrapper(queryClient),
+      })
+      const key = getItem.mock.calls.find(([candidate]) => candidate.startsWith(prefix))?.[0]
+      unmount()
+      queryClient.clear()
+      return key
+    }
+
+    try {
+      const ascKey = observedKey("starts_at_asc")
+      const descKey = observedKey("starts_at_desc")
+      expect(ascKey).toEqual(expect.any(String))
+      expect(descKey).toEqual(expect.any(String))
+      expect(ascKey).toContain("starts_at_asc")
+      expect(descKey).toContain("starts_at_desc")
+      expect(descKey).not.toBe(ascKey)
+    } finally {
+      getItem.mockRestore()
+    }
+  })
+
+  it("does not reuse an orderless legacy placeholder for DESC without fetching", async () => {
+    window.localStorage.setItem(
+      "events:list:account:feed-test-user:ru:active",
+      JSON.stringify([makeEvent("legacy-asc")])
+    )
+    const filters = { language: "ru", is_active: true, order: "starts_at_desc" as const }
+    const queryClient = freshClient()
+    const { result, unmount } = renderHook(() => useEventsListQuery(filters, { enabled: false }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    try {
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(allEventsMock).not.toHaveBeenCalled()
+      expect(result.current.isPlaceholderData).toBe(false)
+      expect(result.current.data).toBeUndefined()
+      expect(result.current.events).toEqual([])
+    } finally {
+      unmount()
+      queryClient.clear()
+    }
+  })
+})

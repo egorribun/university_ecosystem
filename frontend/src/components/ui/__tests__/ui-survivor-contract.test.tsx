@@ -314,11 +314,18 @@ describe("ContentCard and RadioGroup survivor contracts", () => {
     const selected = screen.getByRole("radio", { name: "Selected" })
     const unselected = screen.getByRole("radio", { name: "Unselected" })
     const disabled = screen.getByRole("radio", { name: "Disabled" })
-    const selectedTarget = selected.nextElementSibling as HTMLElement
-    const unselectedTarget = unselected.nextElementSibling as HTMLElement
-    const disabledTarget = disabled.nextElementSibling as HTMLElement
-    const selectedVisual = selectedTarget.firstElementChild as HTMLElement
-    const unselectedVisual = unselectedTarget.firstElementChild as HTMLElement
+    const selectedTarget = selected.parentElement as HTMLElement
+    const unselectedTarget = unselected.parentElement as HTMLElement
+    const disabledTarget = disabled.parentElement as HTMLElement
+    const selectedVisual = selected.nextElementSibling as HTMLElement
+    const unselectedVisual = unselected.nextElementSibling as HTMLElement
+
+    for (const target of [selectedTarget, unselectedTarget, disabledTarget]) {
+      expect(target).toHaveClass("relative", "inline-flex", "min-h-11", "min-w-11")
+      expect(target).not.toHaveAttribute("aria-hidden")
+    }
+    expect(selectedVisual).toHaveAttribute("aria-hidden", "true")
+    expect(unselectedVisual).toHaveAttribute("aria-hidden", "true")
 
     expect(selectedVisual).toHaveClass(
       "flex",
