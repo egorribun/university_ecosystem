@@ -8,17 +8,15 @@
 
 Работа только через GitHub plugin, ветка `egorribun`, существующий [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git и принимает работу максимум трёх GPT-6 Luna Max агентов с непересекающимися файлами. Merge/deploy и обходы проверок не выполнялись.
 
-## Текущая проверка coordinator и сверка аудита
+## Текущая проверка аудита
 
-8481: [backend job118162897442](https://github.com/egorribun/university_ecosystem/actions/runs/39282803244/job/118162897442) дал102 FAIL /335 PASS за107.40s. Все101 coordinator cases наблюдались как NOT_READY assertion RED, плюс ожидаемо отсутствующий workflow step. Checkout e3185a46da7f3d48079b283881605562566bb962 совпадает с tree38f34cbc07a1694be093f0dabcd4c59c41cb444d.
+630: все101 coordinator cases прошли. [Backend job118170208950](https://github.com/egorribun/university_ecosystem/actions/runs/39285009543/job/118170208950):1 FAIL /436 PASS за126.37s; единственный FAIL — намеренно отсутствующий live outage step. Checkout8c3bcd13c59b454ab2ea323a4ca49ac3f856e682 совпадает с treefa6eddd2406cf8beb881b277d791afa5b21662cf. Принят только deterministic coordinator; transport/CLI/outage ещё не включены.
 
-Минимальный evidence coordinator реализован и ожидает собственного hosted GREEN. Stop precheck не разрешает лишний start, возможный partial stop требует восстановления исходного проверенного target, финальная проверка owner/полного inventory выполняется после broker receipt, а cleanup имеет отдельные бюджеты. Live transport, CLI и outage step ещё не включены.
+AUD-022 воспроизведён двумя real-client тестами: [frontend job118171264522](https://github.com/egorribun/university_ecosystem/actions/runs/39285009543/job/118171264522),2 FAIL /2609 PASS. После настоящего контролируемого HTTP500 wrapper разрешал promise без события, а обе реальные формы доходили до закрытия. Исправлен только create-вызов: throwOnError:true. Уточнено существующее exact-call ожидание; новые regression assertions не изменены. Собственный GREEN ещё ожидается.
 
-Нижняя подтверждённая граница теперь52 исходных AUD IDs. Полный перечень и границы доказательств находятся в [аудите](../../audits/AUDIT-2026-10.md#evidence-checkpoint-52-verified-original-aud-ids). Это не общий процент и не новые исправления всех перечисленных пунктов. Исходные P1:14 приняты,164/167/169/174 остаются отдельными holds. AUD-053 не закрывается только по mocked wiring.
+Нижняя подтверждённая граница остаётся52 исходных AUD IDs; AUD-022 не засчитывается до проверки. [Реестр и границы доказательств](../../audits/AUDIT-2026-10.md#evidence-checkpoint-52-verified-original-aud-ids), [план AUD-022](2026-10-19-event-create-http-failure.md). Исходные P1:14 приняты,164/167/169/174 — отдельные holds. AUD-053 требует настоящего focus behavior proof.
 
-AUD-022 остаётся открытым: реальный generated client может вернуть HTTP-ошибку как значение и позволить закрыть форму. Добавлены два tests-first HTTP500 regression cases через настоящий клиент и обе формы; hosted RED ещё ожидается, production frontend пока не изменён. [План исправления](2026-10-19-event-create-http-failure.md).
-
-Полный принятый CI checkpoint остаётся e150. Последующие focused PASS и исходный анализ не являются полной приёмкой или deployment verdict.
+Следующая NATS-задача — tests-first bounded private subprocess collector и затем owner-scoped adapter, без повторного использования старых unbounded lifecycle helpers. Полный принятый CI checkpoint остаётся e150; merge/deploy не выполняются.
 
 ## Последний принятый CI checkpoint
 

@@ -17,8 +17,10 @@ The event wrapper calls the generated create endpoint without throwOnError and r
 ## Execution
 
 - [x] Add two real-boundary regressions without changing production frontend behavior.
-- [ ] Observe assertion RED on hosted CI, not setup/import/contract errors.
-- [ ] Apply the minimal create-only throwOnError correction; preserve upload validation, successful creation and post-create refresh behavior. Do not edit generated code or global client defaults.
-- [ ] Update the existing generated-call expectation to require the corrected create contract without weakening other assertions.
+- [x] Observe assertion RED:630 job118171264522, two intended failures after verified HTTP500 POST/body,2609 other tests pass.
+- [x] Apply the minimal create-only throwOnError correction; preserve upload validation, successful creation and post-create refresh behavior. Do not edit generated code or global client defaults.
+- [x] Update the existing generated-call expectation to require the corrected create contract without weakening other assertions.
 - [ ] Verify both new cases, existing API/dialog cases, lint/typechecks and full applicable CI. Retain any unrelated intentional NATS workflow failure explicitly.
 - [ ] Reconcile AUD-022 only after own-source regression GREEN, with the jsdom/HTTP-mock boundary stated.
+
+The correction is published for its own GREEN verification. The two new real-client tests are unchanged; no global SDK setting or generated file is modified. Until those tests and applicable regressions pass, AUD-022 remains open.

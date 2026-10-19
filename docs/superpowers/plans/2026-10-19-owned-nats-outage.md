@@ -47,7 +47,7 @@ Files: scripts/owned_nats_coordinator.py; tests/test_owned_nats_outage_coordinat
 - [ ] Cover valid exact success, bad ownership/inventory/participants, zero/nonzero pending count, empty/duplicate/mismatched event correlation, retry0/1..4/terminal/DLQ/prematureprocessed states, and exact retained event IDs.
 - [ ] Cover failed/partial/timed-out stop, no send afterward, primary budget exhaustion, independent restoration, health failure, owner drift, changed target and every non-target runtime field.
 - [ ] Cover exact broker envelope/subject/room/type/message/chat matching and missing-message-only polling; reject missing-stream/auth/transport/parse errors.
-- [ ] Implement only after observed behavior RED; run hosted deterministic tests to GREEN. The command and workflow still do not invoke live transport.
+- [x] Implement only after observed behavior RED; all101 deterministic tests are GREEN on630 job118170208950. The command and workflow still do not invoke live transport.
 
 ## Task 3: Bounded owner-scoped transport
 
@@ -105,3 +105,5 @@ Coordinator RED observed on 5c71: job118145641655 reports 94 NOT_READY assertion
 Ruling: final signed-owner and complete-inventory verification belongs after broker receipt under the original primary deadline, not only before drain. Restoration is required only once stop invocation could have side effects; it must still be limited to the verifiable original target under the pinned daemon. This clarifies the accepted safety boundary without adding runtime authority. If wrong, the cost would be unsafe targeting or accepting a drifted stand; the new tests guard both boundaries. No bounded adapter or operational outage is enabled.
 
 Coordinator implementation published only after the supplemental RED above. Review corrections are covered: stop invocation flag follows a valid child deadline; late returned lease remains available to cleanup; full owner/runtime validation runs again after broker receipt under the primary deadline. Independent recovery and close/release budgets remain separate. Hosted GREEN is pending; no transport or operational enablement.
+
+Task2 scoped GREEN:630 job118170208950 has101 coordinator cases PASS,436 total PASS and only the absent workflow step FAIL in126.37s. Exact checkout8c3bcd13c59b454ab2ea323a4ca49ac3f856e682 matches source treefa6eddd2406cf8beb881b277d791afa5b21662cf. Next: a tests-first bounded private subprocess collector, then the owner-scoped adapter. Every nested process/lock/daemon/config operation must respect absolute remaining budgets and output caps; local Docker timeout is not proof of remote cleanup. Legacy unbounded helpers are not reused unchanged.

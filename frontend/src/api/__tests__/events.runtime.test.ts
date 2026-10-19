@@ -29,7 +29,7 @@ describe("event API runtime contract", () => {
     generated.createEvent.mockResolvedValue({ data: created })
 
     await expect(createEvent(payload)).resolves.toEqual(created)
-    expect(generated.createEvent).toHaveBeenCalledWith({ body: payload })
+    expect(generated.createEvent).toHaveBeenCalledWith({ body: payload, throwOnError: true })
   })
 
   it.each([
