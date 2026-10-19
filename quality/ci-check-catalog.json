@@ -4720,7 +4720,7 @@
         },
         {
           "event": "workflow_dispatch",
-          "guard": "{\"inputs\":{\"frozen_rc_sha\":{\"description\":\"Full 40-character commit SHA for the frozen-RC full-stack smoke\",\"required\":true,\"type\":\"string\"}}}"
+          "guard": "any"
         }
       ],
       "jobs": {
@@ -4773,7 +4773,7 @@
           ],
           "artifacts": [
             {
-              "name_pattern": "frozen-rc-live-receipt-${{ inputs.frozen_rc_sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
+              "name_pattern": "frozen-rc-live-receipt-${{ steps.verify-frozen-rc.outputs.checked_out_sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
               "path_pattern": "frozen-rc-live-receipt.json",
               "required": false,
               "provenance": "run_id_attempt"

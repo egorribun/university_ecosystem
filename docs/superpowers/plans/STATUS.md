@@ -8,7 +8,7 @@
 
 Работа только через GitHub plugin, ветка `egorribun`, существующий [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git и принимает работу максимум трёх GPT-6 Luna Max агентов с непересекающимися файлами. Merge/deploy и обходы проверок не выполнялись.
 
-## Текущий блокер и tests-first RC transition
+## Текущий checkpoint и согласование CI metadata
 
 [8fe8db2](https://github.com/egorribun/university_ecosystem/commit/8fe8db25afe7334978b39e170611d3a522722815) завершил собственный [Matrix 39178951305](https://github.com/egorribun/university_ecosystem/actions/runs/39178951305) успешно: 86 jobs, 72 SUCCESS / 14 SKIP, без failures. Python: 16374 PASS / 174 SKIP; PostgreSQL: 178 PASS / 9 SKIP; четыре frontend shards: 9289 PASS / 770 файлов. Дополнительный frontend aggregate job отдельно выполнил 22 теста; это не новое число уникальных тестов.
 
@@ -21,6 +21,10 @@
 Новые тесты требуют strict schema/version/SHA, отклонения duplicate keys, excessive nesting, invalid UTF-8/JSON, null, missing/directory/symlink/nonregular paths и ограничения чтения 4097 байт при лимите 4096. Nonregular-before-open и bounded-read проверяются doubles, не actual FIFO. Workflow tests сохраняют main-only guards, exact checkouts, full mode, cache restrictions, owned cleanup и metadata receipts. Focused coverage использует отдельные temp config/data, не заменяет полный suite и его quality gates.
 
 Начальный manifest остаётся unfrozen (source_sha null). Никакой RC сейчас не выбран. Main/default-branch bootstrap и порядок pre-merge full smoke остаются нерешённым operational ограничением; main/merge/deploy не разрешены. Suppression, baseline, required contexts и dispositions не меняются. Прежние checksum-probe/cleanup и go.work.sum failures сохранены в аудите как история, не как успешные runs.
+
+На [d25d143](https://github.com/egorribun/university_ecosystem/commit/d25d143cab5614347e82fa32c4b0f38c607a31fa) Checkov IaC [39184550386](https://github.com/egorribun/university_ecosystem/actions/runs/39184550386) успешен: прежний CKV_GHA_7 больше не блокирует этот scan. Focused contracts/100% validator coverage step в job 117844955363 также успешен; полный Matrix ещё не принят.
+
+Два текущих metadata failures: CI catalog хранит прежний dispatch guard и artifact pattern; pre-commit переписывает только line_number двух существующих baseline records после вставки focused gate и generated_at. Коррекция синхронизирует два поля каталога и ровно эти metadata baseline. Все 319 records, path/type/digest identities, flags, plugins и filters неизменны; новые исключения или dispositions не добавляются. Hook/validator не ослабляются. Исправленный source требует нового собственного полного CI.
 
 ## Проверенные Matrix исправления после hosted RED
 
@@ -65,7 +69,7 @@ CodeQL: пять успешных языковых анализов и успе�
 
 ## Зависимости, политика и ресурсы
 
-- Новый follow-up: gateway использовал mimetype 1.4.15, отозванную upstream из-за quadratic CDF processing (GHSA-jjmc-jx7j-hp68). Прямого request path к CDF detection не найдено; наличие зависимости не доказывает exploitability. Кандидат 1.4.16 опубликован 2026-10-17 и набирает семь дней maturity 2026-10-24 10:15:44 UTC. После уточнения 2026-10-19 Europe/Istanbul владелец подтвердил исключение только для 1.4.15 → 1.4.16 с отдельным полным CI. Общий семидневный cooldown сохраняется. Canonical checksums подтверждены успешным hosted probe на 490a. Pin и go.sum обновлены на 1.4.16, отдельная коррекция добавила три hosted-generated workspace checksum-строки без изменения других requirements. Собственный Matrix/quality на 8fe8 прошёл; общий GREEN блокируется отдельным CKV_GHA_7. Остальной аудит продолжается независимо.
+- Новый follow-up: gateway использовал mimetype 1.4.15, отозванную upstream из-за quadratic CDF processing (GHSA-jjmc-jx7j-hp68). Прямого request path к CDF detection не найдено; наличие зависимости не доказывает exploitability. Кандидат 1.4.16 опубликован 2026-10-17 и набирает семь дней maturity 2026-10-24 10:15:44 UTC. После уточнения 2026-10-19 Europe/Istanbul владелец подтвердил исключение только для 1.4.15 → 1.4.16 с отдельным полным CI. Общий семидневный cooldown сохраняется. Canonical checksums подтверждены успешным hosted probe на 490a. Pin и go.sum обновлены на 1.4.16, отдельная коррекция добавила три hosted-generated workspace checksum-строки без изменения других requirements. Собственный Matrix/quality на 8fe8 прошёл; на том SHA общий GREEN блокировался CKV_GHA_7. На d25 Checkov уже успешен, текущие metadata failures описаны выше. Остальной аудит продолжается независимо.
 
 - Dependency checkpoint C8 (`5611eb00`) принят; последующие изменения проверяются на собственных SHA. Шесть compatibility holds и открытый SeaweedFS advisory сохранены в [dependency supplement](../../audits/AUDIT-2026-10.md#dependency-closure-supplement-2026-10-15). Удалённые `dependency-updates-2026-10`, `merge-exceptions.md` и `NEXT_SESSION_PROMPT.md` не восстанавливаются.
 - Сохраняются baseline319, 78 required contexts, blocking CodeQL и обычные hooks. В опубликованном a71b9c90 policy содержит 263 записи; прежнее число 261 устарело. Эта коррекция не добавляет dispositions и не подтверждает отсутствующее в текущей проверке отдельное owner approval для двух новых записей. Новые unmatched identities остаются блокирующими. Finite131 касается только неизменённых migration blobs из base `ac74e915` до 2026-11-13; остальные Tier 0 и затронутые миграции требуют 100%.
