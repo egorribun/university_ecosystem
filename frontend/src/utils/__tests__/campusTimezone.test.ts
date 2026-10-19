@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   formatCampusDate,
+  getCampusClockParts,
   getCampusDateKey,
   getCampusDateRangeKeys,
   shiftCampusDateKey,
@@ -53,5 +54,42 @@ describe("campus timezone calendar behavior", () => {
     expect(
       getCampusDateRangeKeys("week", new Date("2026-10-15T12:00:00.000Z"), "Europe/Istanbul")
     ).toEqual(["2026-10-12", "2026-10-19"])
+  })
+})
+
+describe("campus clock parts", () => {
+  const instant = "2026-10-18T21:30:45.000Z"
+
+  it("returns the campus Gregorian date and h23 clock including seconds", () => {
+    expect(getCampusClockParts(instant, "UTC")).toEqual({
+      dateKey: "2026-10-18",
+      weekday: 0,
+      hour: 21,
+      minute: 30,
+      second: 45,
+    })
+    expect(getCampusClockParts(instant, "Europe/Moscow")).toEqual({
+      dateKey: "2026-10-19",
+      weekday: 1,
+      hour: 0,
+      minute: 30,
+      second: 45,
+    })
+  })
+
+  it("preserves quarter-hour timezone offsets", () => {
+    expect(getCampusClockParts(instant, "Asia/Kathmandu")).toEqual({
+      dateKey: "2026-10-19",
+      weekday: 1,
+      hour: 3,
+      minute: 15,
+      second: 45,
+    })
+  })
+
+  it("returns null without a usable timezone or instant", () => {
+    expect(getCampusClockParts(instant, null)).toBeNull()
+    expect(getCampusClockParts("not a date", "Europe/Moscow")).toBeNull()
+    expect(getCampusClockParts(instant, "Invalid/Timezone")).toBeNull()
   })
 })

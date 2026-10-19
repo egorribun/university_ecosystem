@@ -18,6 +18,8 @@ import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import { getTimeStr, getEndTimeStr, parseMinutes } from "./scheduleUtils"
 import type { Lesson } from "./scheduleUtils"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
+import { getCampusClockParts } from "@/utils/campusTimezone"
 
 type ScheduleHeaderProps = Omit<
   Pick<
@@ -90,6 +92,7 @@ export function ScheduleHeader({
   onOpenSettings,
 }: ScheduleHeaderProps) {
   const { t } = useTranslation(["schedule", "common"])
+  const timeZone = useCampusTimezone()
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.desktop})`)
   const activeGroupName = useMemo(
     () => groups.find((g) => g.id === selectedGroup)?.name || "",
@@ -104,7 +107,10 @@ export function ScheduleHeader({
     return parseMinutes(lesson.start_time)
   }, [currentLesson, nextLesson])
 
-  const minutesNow = nowTick.getHours() * 60 + nowTick.getMinutes()
+  const clock = getCampusClockParts(nowTick, timeZone)
+  const minutesNow = clock
+    ? clock.hour * 60 + clock.minute
+    : nowTick.getHours() * 60 + nowTick.getMinutes()
   const showCountdown = useMemo(() => {
     if (nextStartMinutes == null) return false
     const diff = nextStartMinutes - minutesNow

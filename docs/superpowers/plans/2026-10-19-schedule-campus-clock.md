@@ -26,21 +26,25 @@
 - Hidden date rollover must refresh even at the same hour/minute after a full day.
 - Countdown visibility and its actual seconds must use the same zone, including quarter-hour offsets.
 
+## Current evidence
+
+Hosted f4dfcbe Matrix 39190366176 establishes frontend assertion RED (10 failures / 9295 passes) and exact ICS RED (job117862849856: 1 failure / 5584 passes / 33 skips). Owned Live stop/receipt is successful and source-tree bound. Minimal implementation and supplemental helper/lifecycle tests have independent static review; full implemented-source CI is pending. The separate cache-test blank-line formatter defect is corrected without removing RED assertions. No finding is declared closed by static review alone.
+
 ## Task 1: Publish precise failing regressions
 
 **Files:** tests/test_ical.py; frontend/src/hooks/__tests__/useScheduleTime.test.tsx; frontend/src/hooks/__tests__/useScheduleData.cache.test.tsx; frontend/src/components/schedule/__tests__/ScheduleHeader.behavior.test.tsx; frontend/src/components/schedule/__tests__/FlipCountdown.test.tsx; frontend/src/pages/__tests__/Schedule.behavior.test.tsx.
 
-- [ ] Review the six test-only diffs against current source and fixture contracts.
-- [ ] Keep Date/timer/visibility restoration exact; leave real timeouts where asynchronous waitFor is used.
-- [ ] Publish tests with this spec/plan and truthful audit/status evidence, after the previous source reaches its CI checkpoint.
-- [ ] Observe exact hosted assertion failures for escaping, adjacent selection and campus time. Fix any setup/type/format failure before counting RED.
+- [x] Review the six test-only diffs against current source and fixture contracts.
+- [x] Keep Date/timer/visibility restoration exact; leave real timeouts where asynchronous waitFor is used.
+- [x] Publish tests with this spec/plan and truthful audit/status evidence, after the previous source reaches its CI checkpoint.
+- [x] Observe exact hosted assertion failures for escaping, adjacent selection and campus time. Fix any setup/type/format failure before counting RED.
 
 ## Task 2: Correct ICS and adjacent selection
 
 **Files:** app/services/ical.py; frontend/src/hooks/useScheduleTime.ts.
 
-- [ ] Join description fields with real newlines before the existing _escape call; retain the escaping implementation.
-- [ ] Allow a valid next lesson starting at the current lesson's end, retaining half-open current intervals and invalid-bound rejection.
+- [x] Join description fields with real newlines before the existing _escape call; retain the escaping implementation.
+- [x] Allow a valid next lesson starting at the current lesson's end, retaining half-open current intervals and invalid-bound rejection.
 - [ ] Verify the exact new regressions and all existing related tests in hosted CI.
 
 ## Task 3: Share the campus calendar and effective instant
@@ -53,28 +57,28 @@
 - useScheduleTime(todayLessons, hasToday, nowTick?) retains existing two-argument callers and return shape; an external tick disables its internal ticker.
 - Existing nowParity/isoWeekNumber retain their default local semantics and gain an optional campus-zone input.
 
-- [ ] Add pure utility regressions for calendar/ISO boundaries and clock parts before implementing those helpers.
-- [ ] Use Gregorian/latn/h23 Intl parts and UTC calendar arithmetic, never host getters for known campus-zone dates.
-- [ ] Extract the existing ticker with epoch-minute equality; keep exactly one enabled schedule ticker in orchestration and correct cleanup.
-- [ ] Have useScheduleData obtain the shared instant before deriving weekday/parity and pass it to time calculations.
-- [ ] Replace fixed initial parity with derived automatic parity plus nullable manual override. Preserve React Dispatch/SetStateAction, explicit same-value choices and queued updaters.
-- [ ] Keep the returned nowTick as the actual instant and all query/storage behavior unchanged.
+- [x] Add pure utility regressions for calendar/ISO boundaries and clock parts before implementing those helpers.
+- [x] Use Gregorian/latn/h23 Intl parts and UTC calendar arithmetic, never host getters for known campus-zone dates.
+- [x] Extract the existing ticker with epoch-minute equality; keep exactly one enabled schedule ticker in orchestration and correct cleanup.
+- [x] Have useScheduleData obtain the shared instant before deriving weekday/parity and pass it to time calculations.
+- [x] Replace fixed initial parity with derived automatic parity plus nullable manual override. Preserve React Dispatch/SetStateAction, explicit same-value choices and queued updaters.
+- [x] Keep the returned nowTick as the actual instant and all query/storage behavior unchanged.
 - [ ] Verify null resolution, manual choice, current/next selection and midnight/full-day resume contracts.
 
 ## Task 4: Reconcile visible consumers with that clock
 
 **Files:** frontend/src/pages/Schedule.tsx; frontend/src/components/schedule/ScheduleHeader.tsx; frontend/src/components/schedule/FlipCountdown.tsx.
 
-- [ ] Derive past-filter and countdown-window minutes from the same campus utility and supplied actual instant.
-- [ ] Keep getSecondsUntilTarget's existing two-argument fallback; allow its caller to provide the campus zone.
-- [ ] Recompute actual countdown seconds when zone/target changes and on each visible second tick. Keep hidden ticks paused and the existing callback policy.
+- [x] Derive past-filter and countdown-window minutes from the same campus utility and supplied actual instant.
+- [x] Keep getSecondsUntilTarget's existing two-argument fallback; allow its caller to provide the campus zone.
+- [x] Recompute actual countdown seconds when zone/target changes and on each visible second tick. Keep hidden ticks paused and the existing callback policy.
 - [ ] Verify Header with the real countdown, quarter-hour zone changes and first-visible-tick catch-up. Keep page-filter proof explicitly scoped to its mocked hook boundary.
-- [ ] Do not change unrelated calendar month navigation, selected-week behavior or other countdown product semantics.
+- [x] Do not change unrelated calendar month navigation, selected-week behavior or other countdown product semantics.
 
 ## Task 5: Validate and record the corrected source
 
-- [ ] Obtain independent review of the narrow implementation and compatibility paths.
-- [ ] Before publication, reconcile affected source catalogs and baseline line metadata while preserving all identities and gates. The six test-only paths currently have no baseline entries.
+- [x] Obtain independent review of the narrow implementation and compatibility paths.
+- [x] Before publication, reconcile affected source catalogs and baseline line metadata while preserving all identities and gates. The six test-only paths currently have no baseline entries.
 - [ ] Require full backend/frontend/quality/security CI on the implemented SHA; focused results are not a full verdict.
-- [ ] Verify owned-live stop/receipt and exact source-tree provenance before superseding a run.
+- [x] Verify owned-live stop/receipt and exact source-tree provenance before superseding a run.
 - [ ] Update the three AUD IDs with precise proof limits; retain other open findings and the unknown aggregate closure percentage.

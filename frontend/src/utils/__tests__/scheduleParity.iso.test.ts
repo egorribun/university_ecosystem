@@ -38,3 +38,28 @@ describe("ISO week parity", () => {
     expect(nowParity()).toBe(parity)
   })
 })
+
+describe("campus ISO week parity", () => {
+  it("uses the campus date across a UTC/Moscow week boundary", () => {
+    const instant = new Date("2026-10-18T21:30:00.000Z")
+
+    expect(isoWeekNumber(instant, "UTC")).toBe(42)
+    expect(nowParity(instant, "UTC")).toBe("even")
+    expect(isoWeekNumber(instant, "Europe/Moscow")).toBe(43)
+    expect(nowParity(instant, "Europe/Moscow")).toBe("odd")
+  })
+
+  it("recognizes the campus ISO week transition from 53 to 1", () => {
+    const instant = new Date("2021-01-03T21:30:00.000Z")
+
+    expect(isoWeekNumber(instant, "UTC")).toBe(53)
+    expect(isoWeekNumber(instant, "Europe/Moscow")).toBe(1)
+  })
+
+  it("retains local-calendar semantics for an invalid timezone", () => {
+    const localDate = new Date(2026, 9, 19, 12)
+
+    expect(isoWeekNumber(localDate, "Invalid/Timezone")).toBe(isoWeekNumber(localDate))
+    expect(nowParity(localDate, "Invalid/Timezone")).toBe(nowParity(localDate))
+  })
+})

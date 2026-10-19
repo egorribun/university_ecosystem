@@ -2,6 +2,13 @@ import { formatDate, toDate, type DateInput } from "@/utils/date"
 
 type CalendarDateParts = { year: number; month: number; day: number }
 type CampusDateRange = "today" | "week" | "month" | ""
+type CampusClockParts = {
+  dateKey: string
+  weekday: number
+  hour: number
+  minute: number
+  second: number
+}
 
 const datePartFormatter = (timeZone: string) =>
   new Intl.DateTimeFormat("en-CA", {
@@ -19,6 +26,45 @@ const getCalendarParts = (date: Date, timeZone: string): CalendarDateParts => {
     year: Number(parts.find((part) => part.type === "year")!.value),
     month: Number(parts.find((part) => part.type === "month")!.value),
     day: Number(parts.find((part) => part.type === "day")!.value),
+  }
+}
+
+/** Calendar and clock fields of an actual instant, independent of the host timezone. */
+export function getCampusClockParts(
+  input: DateInput,
+  timeZone: string | null
+): CampusClockParts | null {
+  const date = toDate(input)
+  if (!timeZone || Number.isNaN(date.getTime())) return null
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      calendar: "gregory",
+      day: "2-digit",
+      hour: "2-digit",
+      hourCycle: "h23",
+      minute: "2-digit",
+      month: "2-digit",
+      numberingSystem: "latn",
+      second: "2-digit",
+      timeZone,
+      year: "numeric",
+    }).formatToParts(date)
+    const read = (type: string) => Number(parts.find((part) => part.type === type)!.value)
+    const year = read("year")
+    const month = read("month")
+    const day = read("day")
+    const utcDate = new Date(0)
+    utcDate.setUTCFullYear(year, month - 1, day)
+    utcDate.setUTCHours(0, 0, 0, 0)
+    return {
+      dateKey: `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+      weekday: utcDate.getUTCDay(),
+      hour: read("hour"),
+      minute: read("minute"),
+      second: read("second"),
+    }
+  } catch {
+    return null
   }
 }
 

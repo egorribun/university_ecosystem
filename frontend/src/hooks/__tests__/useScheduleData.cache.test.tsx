@@ -869,6 +869,10 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
       result.current.setCurrentParity((previous) => (previous === "even" ? "odd" : "even"))
     })
     expect(result.current.currentParity).toBe("even")
+
+    act(() => result.current.setCurrentParity("odd"))
+    expect(result.current.currentParity).toBe("odd")
+    expect(result.current.schedule.map((lesson) => lesson.id)).toEqual(["odd-early", "odd-late"])
   })
 
   it.each([
@@ -932,5 +936,4 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
       vi.useRealTimers()
     }
   })
-
 })

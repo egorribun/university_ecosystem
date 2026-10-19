@@ -199,7 +199,7 @@ def generate_schedule_ics(
                     else "schedule.ics.description.parity_even"
                 )
                 description_parts.append(translate(parity_key, locale=locale))
-            description = "\\n".join(description_parts) if description_parts else ""
+            description = "\n".join(description_parts) if description_parts else ""
 
             lines.extend(
                 [

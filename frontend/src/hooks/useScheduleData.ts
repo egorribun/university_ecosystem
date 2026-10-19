@@ -5,7 +5,14 @@
  * Public API is UNCHANGED — all consumers still import `useScheduleData`
  * and destructure the same fields.
  */
-import { useState, useEffect, useMemo, useCallback } from "react"
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  type Dispatch,
+  type SetStateAction,
+} from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import {
@@ -15,17 +22,15 @@ import {
 } from "@/api/hooks/schedule"
 import { useAuth } from "@/contexts/AuthContext"
 import { useAnonymousReadMode } from "@/api/hooks/news"
-import {
-  type Lesson,
-  scheduleQueryKey,
-  getTodayIdx,
-  getTimeStr,
-} from "@/components/schedule/scheduleUtils"
+import { type Lesson, scheduleQueryKey, getTimeStr } from "@/components/schedule/scheduleUtils"
 import { detectConflicts } from "@/utils/scheduleConflicts"
 import { nowParity } from "@/utils/scheduleUtils"
 import { getDatabaseLazily, type ScheduleDoc } from "@/db/lazy"
 import { useScheduleConfig } from "./useScheduleConfig"
 import { useScheduleTime } from "./useScheduleTime"
+import { useScheduleClock } from "./useScheduleClock"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
+import { getCampusClockParts } from "@/utils/campusTimezone"
 
 export function useScheduleData() {
   const { user } = useAuth()
@@ -33,8 +38,21 @@ export function useScheduleData() {
   const { i18n: translation } = useTranslation()
   const queryClient = useQueryClient()
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
-  // The schedule shows the current ISO week's lessons until the user switches parity.
-  const [currentParity, setCurrentParity] = useState<"odd" | "even">(() => nowParity())
+  const nowTick = useScheduleClock()
+  const timeZone = useCampusTimezone()
+  const automaticParity = nowParity(nowTick, timeZone)
+  const [parityOverride, setParityOverride] = useState<"odd" | "even" | null>(null)
+  const currentParity = parityOverride ?? automaticParity
+  // Even choosing the current value is an explicit choice, not automatic mode.
+  const setCurrentParity = useCallback<Dispatch<SetStateAction<"odd" | "even">>>(
+    (next) => {
+      setParityOverride((previous) => {
+        const effectivePrevious = previous ?? automaticParity
+        return typeof next === "function" ? next(effectivePrevious) : next
+      })
+    },
+    [automaticParity]
+  )
 
   // ── Config (i18n weekdays + lesson types) ──────────
   const config = useScheduleConfig()
@@ -127,7 +145,8 @@ export function useScheduleData() {
   )
 
   // ── Today + time calculations ──────────────────────
-  const todayIdx = getTodayIdx()
+  const clock = getCampusClockParts(nowTick, timeZone)
+  const todayIdx = (clock?.weekday ?? nowTick.getDay()) - 1
   const hasToday = todayIdx >= 0 && todayIdx < weekdayBackend.length
 
   const todayLessons = useMemo(() => {
@@ -138,7 +157,7 @@ export function useScheduleData() {
       .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
   }, [filteredSchedule, hasToday, todayIdx, weekdayBackend])
 
-  const time = useScheduleTime(todayLessons, hasToday)
+  const time = useScheduleTime(todayLessons, hasToday, nowTick)
 
   // ── Conflict detection ─────────────────────────────
   const conflictedIds = useMemo(() => detectConflicts(filteredSchedule), [filteredSchedule])

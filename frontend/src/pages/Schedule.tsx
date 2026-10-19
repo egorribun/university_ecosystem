@@ -34,10 +34,13 @@ import {
 import { useLessonNotesMap } from "@/hooks/useLessonNotes"
 import api from "@/api/client"
 import { buildTable } from "@/components/schedule/scheduleUtils"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
+import { getCampusClockParts } from "@/utils/campusTimezone"
 
 function ScheduleContent() {
   const { t } = useTranslation(["schedule", "common"])
   const isOnline = useOnlineStatus()
+  const timeZone = useCampusTimezone()
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.desktop})`)
   // Wave 112 SW3b — keep URL `?w=` in sync with Zustand `weekOffset` so
   // refresh/share both preserve the selected week (mirror of Events/News).
@@ -103,7 +106,10 @@ function ScheduleContent() {
 
   /* ── Past lessons filter ──────────────────────────────── */
   // PERF-70-04: use primitive minutesNow instead of Date object to stabilize dependency
-  const minutesNow = nowTick.getHours() * 60 + nowTick.getMinutes()
+  const clock = getCampusClockParts(nowTick, timeZone)
+  const minutesNow = clock
+    ? clock.hour * 60 + clock.minute
+    : nowTick.getHours() * 60 + nowTick.getMinutes()
   const displaySchedule = useMemo(() => {
     if (showPastLessons) {
       return schedule
