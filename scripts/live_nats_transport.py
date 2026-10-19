@@ -296,7 +296,9 @@ def _reader_bytes(fd: int, cap: int, deadline: Deadline) -> bytes:
         requested = min(8_192, cap + 1 - total)
         if requested <= 0:
             raise _ReaderNotReady
-        block = _reader_call(deadline, lambda requested=requested: os.read(fd, requested))
+        block = _reader_call(
+            deadline, lambda requested=requested: os.read(fd, requested)
+        )
         if not block:
             return b"".join(chunks)
         total += len(block)
