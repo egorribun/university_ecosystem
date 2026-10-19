@@ -110,7 +110,16 @@ def _redact_sensitive_query(url: str) -> str:
         else:
             redacted_items.append((key, value))
     sanitized_query = urlencode(redacted_items, doseq=True)
-    sanitized = parts._replace(query=sanitized_query)
+    # Reset links carry credentials in the fragment; preserve harmless anchors.
+    fragment_items = parse_qsl(parts.fragment, keep_blank_values=True)
+    redacted_fragment_items = [
+        (key, "***redacted***" if key.lower() in {"token", "code"} else value)
+        for key, value in fragment_items
+    ]
+    sanitized_fragment = parts.fragment
+    if redacted_fragment_items != fragment_items:
+        sanitized_fragment = urlencode(redacted_fragment_items, doseq=True)
+    sanitized = parts._replace(query=sanitized_query, fragment=sanitized_fragment)
     result = urlunsplit(sanitized)
     return result or "[redacted]"
 

@@ -18,8 +18,12 @@ Remove token/code values from both query and fragment diagnostics. Preserve exis
 
 ## Current status
 
-Tests and workflow extension prepared; application code unchanged. Hosted RED and acceptance are pending. Synthetic credentials are generated in tests; no actual reset URL is used. Existing tests preserve harmless #section1 and must keep passing.
+Hosted RED was observed on e585: eight expected fragment/log assertions failed while all 37 analytics contracts passed. The minimal sanitizer correction is now included; its own GREEN and full acceptance remain pending. Synthetic credentials are generated in tests; no actual reset URL is used. Existing harmless #section1 and query-only behavior remain required.
 
 ## Execution record
 
 - Tests-first c740 published the eight synthetic cases and bounded focused command without application changes. Fast pre-commit job 117926625749 stopped on Ruff joining adjacent f-strings; no backend assertion RED occurred. Apply only the exact hosted formatter output (blob f4e9fc02bd8c050c953821c0b7e8828528eecf2a) and rerun. Preserve all assertions and wait for genuine RED before implementing sanitizer changes.
+
+- E585 job 117936457124 at 07:20:08 UTC: eight expected assertions failed, 37 analytics passed in 12.90 seconds; no setup errors. Full unit shard skipped after early RED; stop containers succeeded. Implementation was written only after inspecting this log. It parses/redacts fragment token/code pairs and preserves the original fragment when no value changes. No SMTP/runtime retry/configuration change is included.
+
+- Independent static review found no code-level blocker. Three supplemental exact-output cases preserve harmless anchors, encoded anchor text and ordinary fragment parameters byte-for-byte. These are compatibility invariants added after the eight-case RED, not three more independently observed failures. The focused file now contains eleven cases.

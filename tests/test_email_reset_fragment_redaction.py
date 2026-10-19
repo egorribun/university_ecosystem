@@ -64,6 +64,15 @@ def test_reset_query_and_repeated_fragment_credentials_are_all_redacted(
     }
 
 
+@pytest.mark.parametrize(
+    "fragment", ["section1", "section%201", "locale=en&tab=security"]
+)
+def test_redaction_preserves_harmless_fragment_verbatim(fragment: str) -> None:
+    link = f"https://example.test/reset-password?locale=ru#{fragment}"
+
+    assert email_utils._redact_sensitive_query(link) == link
+
+
 @pytest.fixture
 def local_smtp_settings(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     configured = SimpleNamespace(
