@@ -29,3 +29,7 @@ Run 39301611872 / job 118229400356 resolved 230 packages with uv 0.12.23 and the
 The full candidate lock SHA-256 is 3d9b8b09bbdcdf10b8af3422d658d4b160b58604ee1c627b4a9241ba35b23e6a. Strict unified-diff reconstruction, an independent full-content digest calculation and a second review agree. The resolver's lock check, whitespace check and non-lock tracked-change guard passed. This proves candidate resolution, not yet a passing frozen-install vulnerability audit.
 
 The temporary probe declared UV_HTTP_RETRIES=2, which the unchanged CI catalog correctly rejected as inconsistent with this job's retry policy. Remove the entire diagnostic step and its temporary step ID with the lock update; do not change retry policy or suppress the catalog check.
+
+## ccc8 dependency gate
+
+Run 39306435037 / job 118245826968 installs aiohttp 3.14.4 from the frozen lock and passes the unchanged pip-audit policy at 19:02:48 UTC. Lock consistency, fast hooks and inventory also pass; the temporary probe is absent and no retry-policy amendment was needed. These dependency checks are GREEN; full CI still has unrelated intentional regression failures, so the final full-CI checkbox remains open.

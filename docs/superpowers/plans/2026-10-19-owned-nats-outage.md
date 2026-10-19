@@ -121,3 +121,7 @@ Repeated interruption during the cleanup wait remains a separate unproven bounda
 ## Repeated cleanup-wait interruption
 
 On source 84bf, job 118230433646 reports 483 PASS / 2 FAIL. The new repeated KeyboardInterrupt assertion fails because the direct child remains unreaped; the other failure is the intentionally absent outage workflow. Original collector cases, including the single-interrupt scenario, pass. The next correction defers only KeyboardInterrupt/SystemExit from the cleanup wait, recomputes the remaining original deadline, and preserves the pending exception identity. Tests retain the original child.returncode assertion and add identity/no-prior-exception controls. Own-source GREEN is required. Interruptions during signaling or selector/stream close, descendants and remote execution are not certified. No live adapter or outage step is enabled.
+
+## ccc8 cleanup-wait GREEN and next stale-read RED
+
+Run 39306435037 / job 118247616361 passes all 33 private collector cases; overall 486 PASS / 1 FAIL in 130.82s, with only the unavailable outage workflow failing. Exact ccc8 source/tree provenance is recorded in the audit checkpoint. A further tests-first case advances a controlled monotonic clock when real stdout readiness is returned, then requires no pipe read after the work deadline. Current production dispatch is unchanged until this assertion is observed RED. Output buffers are structurally bounded by the configured stream caps; no unbounded-memory defect or descendant-cleanup guarantee is invented.

@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
 	"net/url"
 	"os"
 	"strings"
@@ -87,7 +88,7 @@ func TestAllowedContainerListForwardsOnlyItsValidatedPathAndQuery(t *testing.T) 
 	}), time.Second, maxResponseBytes)
 	defer closeProxy()
 
-	response, err := http.Get(server.URL + "/v1.50/containers/json?all=1")
+	response, err := testHTTPClient(server).Get(server.URL + "/v1.50/containers/json?all=1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +190,7 @@ func TestStreamingIsUnmodifiedAndCancellationPropagates(t *testing.T) {
 	defer closeProxy()
 	ctx, cancel := context.WithCancel(context.Background())
 	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/v1.50/containers/"+testContainerID()+"/logs?stdout=1&follow=1&timestamps=1&since=0", nil)
-	response, err := http.DefaultClient.Do(request)
+	response, err := testHTTPClient(server).Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +229,7 @@ func TestStreamingTrailersAreDiscardedAfterEOF(t *testing.T) {
 
 	// Prove the upstream fixture really sends a trailer, so this is a negative
 	// control for the complete ReverseProxy path rather than only map setup.
-	directResponse, err := http.Get(upstream.URL + path)
+	directResponse, err := testHTTPClient(upstream).Get(upstream.URL + path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +258,7 @@ func TestStreamingTrailersAreDiscardedAfterEOF(t *testing.T) {
 		proxy.Close()
 		transport.CloseIdleConnections()
 	}()
-	response, err := http.Get(proxy.URL + path)
+	response, err := testHTTPClient(proxy).Get(proxy.URL + path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +333,7 @@ func TestMetadataDeadlineAndResponseLimit(t *testing.T) {
 	t.Run("deadline", func(t *testing.T) {
 		server, closeProxy := testProxy(t, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { <-r.Context().Done() }), 20*time.Millisecond, maxResponseBytes)
 		defer closeProxy()
-		response, err := http.Get(server.URL + "/v1.50/networks")
+		response, err := testHTTPClient(server).Get(server.URL + "/v1.50/networks")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -350,7 +351,7 @@ func TestMetadataDeadlineAndResponseLimit(t *testing.T) {
 			_, _ = io.WriteString(w, `[{"Id":"`+testContainerID()+`"}]`)
 		}), time.Second, 8)
 		defer closeProxy()
-		response, err := http.Get(server.URL + "/v1.50/containers/json")
+		response, err := testHTTPClient(server).Get(server.URL + "/v1.50/containers/json")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -395,7 +396,7 @@ func TestResponseHeadersErrorsAndInvalidPayloads(t *testing.T) {
 	_ = upstreamResponse.Body.Close()
 	server, closeProxy := testProxy(t, upstreamHandler, time.Second, maxResponseBytes)
 	defer closeProxy()
-	response, err := http.Get(server.URL + "/_ping")
+	response, err := testHTTPClient(server).Get(server.URL + "/_ping")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,7 +408,7 @@ func TestResponseHeadersErrorsAndInvalidPayloads(t *testing.T) {
 		t.Fatalf("ping headers = %#v", response.Header)
 	}
 	_ = response.Body.Close()
-	response, err = http.Get(server.URL + "/v1.50/networks")
+	response, err = testHTTPClient(server).Get(server.URL + "/v1.50/networks")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +421,7 @@ func TestResponseHeadersErrorsAndInvalidPayloads(t *testing.T) {
 	if readErr != nil || response.StatusCode != http.StatusNotFound || strings.Contains(string(body), "private") {
 		t.Fatalf("error response = %d %s, %v", response.StatusCode, body, readErr)
 	}
-	response, err = http.Get(server.URL + "/version")
+	response, err = testHTTPClient(server).Get(server.URL + "/version")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -979,3 +980,52 @@ func (body *trailerAssignedAtEOFBody) Read([]byte) (int, error) {
 }
 
 func (body *trailerAssignedAtEOFBody) Close() error { return nil }
+
+func testHTTPClient(_ *httptest.Server) *http.Client {
+	return http.DefaultClient
+}
+
+func TestProxyClientSurvivesUnrelatedServerCleanup(t *testing.T) {
+	t.Parallel()
+	server, closeProxy := testProxy(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "[]")
+	}), time.Second, maxResponseBytes)
+	defer closeProxy()
+	client := testHTTPClient(server)
+	var reused atomic.Bool
+	requestOnce := func() {
+		t.Helper()
+		trace := &httptrace.ClientTrace{
+			GotConn: func(info httptrace.GotConnInfo) { reused.Store(info.Reused) },
+		}
+		ctx := httptrace.WithClientTrace(context.Background(), trace)
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/v1.50/containers/json", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := client.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if response == nil {
+			t.Fatal("HTTP request returned a nil response")
+			return
+		}
+		body, readErr := io.ReadAll(response.Body)
+		closeErr := response.Body.Close()
+		if readErr != nil || closeErr != nil || response.StatusCode != http.StatusOK || string(body) != "[]" {
+			t.Fatalf("response = %d %q, read=%v close=%v", response.StatusCode, body, readErr, closeErr)
+		}
+	}
+	requestOnce()
+
+	// Closing an unrelated httptest server closes the global default transport.
+	// This fixture's already-idle connection must belong to its own client.
+	unrelated := httptest.NewServer(http.NotFoundHandler())
+	unrelated.Close()
+	reused.Store(false)
+	requestOnce()
+	if !reused.Load() {
+		t.Fatal("unrelated server cleanup discarded this fixture's idle connection")
+	}
+}

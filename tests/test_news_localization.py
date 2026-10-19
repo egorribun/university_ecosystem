@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import app.models as models
 from app.repositories.unit_of_work import uow_from_session
@@ -241,3 +242,37 @@ async def test_partial_news_updates_keep_other_fields(
     for field, original in original_values.items():
         if field not in expected_changes:
             assert getattr(stored, field) == original
+
+
+@pytest.mark.asyncio
+async def test_clearing_existing_english_translations_persists_after_reload(
+    db_session, news_service
+):
+    record = models.News(
+        title="Новость дня",
+        content="Русский текст",
+        title_en="Existing English title",
+        content_en="Existing English body",
+    )
+    db_session.add(record)
+    await db_session.commit()
+    news_id = record.id
+    sessions = async_sessionmaker(db_session.bind, expire_on_commit=False)
+
+    async with sessions() as initial_reader:
+        initial = await initial_reader.get(models.News, news_id)
+        assert initial is not None
+        assert initial.title_en == "Existing English title"
+        assert initial.content_en == "Existing English body"
+
+    await news_service.update_news(
+        news_id, schemas.NewsUpdate(title_en=None, content_en=None)
+    )
+
+    async with sessions() as reader:
+        persisted = await reader.get(models.News, news_id)
+        assert persisted is not None
+        assert persisted.title_en is None
+        assert persisted.content_en is None
+        assert persisted.title == "Новость дня"
+        assert persisted.content == "Русский текст"

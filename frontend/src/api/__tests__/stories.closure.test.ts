@@ -24,7 +24,19 @@ describe("stories API wrappers", () => {
 
     expect(generated.listStoriesApiV1StoriesGet).toHaveBeenCalledWith({
       etagCacheKey: "dashboard:stories",
+      throwOnError: true,
+      validateStatus: expect.any(Function),
     })
+    const options = generated.listStoriesApiV1StoriesGet.mock.calls[0]?.[0] as {
+      validateStatus: (status: number) => boolean
+    }
+    expect(options.validateStatus(199)).toBe(false)
+    expect(options.validateStatus(200)).toBe(true)
+    expect(options.validateStatus(299)).toBe(true)
+    expect(options.validateStatus(304)).toBe(true)
+    expect(options.validateStatus(300)).toBe(false)
+    expect(options.validateStatus(422)).toBe(false)
+    expect(options.validateStatus(500)).toBe(false)
   })
 
   it("passes create and update payloads to the generated client", async () => {
@@ -38,10 +50,12 @@ describe("stories API wrappers", () => {
 
     expect(generated.createStoryApiV1StoriesPost).toHaveBeenCalledWith({
       body: createPayload,
+      throwOnError: true,
     })
     expect(generated.updateStoryApiV1StoriesStoryIdPatch).toHaveBeenCalledWith({
       path: { story_id: "story-1" },
       body: updatePayload,
+      throwOnError: true,
     })
   })
 
@@ -52,6 +66,7 @@ describe("stories API wrappers", () => {
 
     expect(generated.deleteStoryApiV1StoriesStoryIdDelete).toHaveBeenCalledWith({
       path: { story_id: "story-2" },
+      throwOnError: true,
     })
   })
 

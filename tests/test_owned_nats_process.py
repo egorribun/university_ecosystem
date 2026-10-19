@@ -513,3 +513,77 @@ def test_cleanup_wait_interrupt_propagates_after_reaping(
     child = owned_children.children[0]
     assert child.returncode is not None
     assert child.returncode != 97
+
+
+def test_ready_stdout_is_not_read_after_work_deadline(
+    monkeypatch, tmp_path, owned_children
+):
+    class MutableClock:
+        def __init__(self):
+            self.now = time.monotonic()
+
+        def __call__(self):
+            return self.now
+
+    clock = MutableClock()
+    deadline = Deadline.after(3.0, clock=clock)
+    assert deadline.expires_at is not None
+    work_expires_at = deadline.expires_at - process._CLEANUP_RESERVE
+    owned_children.deadline = deadline
+    request = _request(
+        tmp_path,
+        "import os, signal; os.write(1, b'x'); signal.pause()",
+    )
+    if not process._process_tree_containment_available():
+        result = process.run_private_process(request, deadline=deadline)
+        _assert_supported_or_fail_closed(result, owned_children)
+        return
+
+    real_selector = selectors.DefaultSelector
+    stdout_fd = None
+    deadline_crossings = []
+
+    class ExpiringSelector:
+        def __init__(self):
+            nonlocal stdout_fd
+            self.inner = real_selector()
+            stdout_fd = owned_children.children[0].stdout.fileno()
+
+        def select(self, timeout=None):
+            events = self.inner.select(timeout)
+            if any(
+                key.fd == stdout_fd
+                and key.data == "stdout"
+                and mask & selectors.EVENT_READ
+                for key, mask in events
+            ):
+                clock.now = work_expires_at + 0.01
+                deadline_crossings.append(stdout_fd)
+            return events
+
+        def __getattr__(self, name):
+            return getattr(self.inner, name)
+
+    real_read = os.read
+    post_expiry_reads = []
+
+    def guarded_read(fd, size):
+        if fd == stdout_fd and clock.now >= work_expires_at:
+            post_expiry_reads.append(fd)
+        return real_read(fd, size)
+
+    monkeypatch.setattr(selectors, "DefaultSelector", ExpiringSelector)
+    # Ignore Popen's spawn errpipe; observe only the captured stdout descriptor.
+    monkeypatch.setattr(process.os, "read", guarded_read)
+
+    result = process.run_private_process(request, deadline=deadline)
+
+    assert deadline_crossings == [stdout_fd]
+    assert post_expiry_reads == []
+    assert result.outcome is process.ProcessOutcome.TIMED_OUT
+    assert result.stdout == b""
+    assert result.local_cleanup is process.LocalCleanup.CONFIRMED
+    assert len(owned_children.children) == 1
+    child = owned_children.children[0]
+    assert child.returncode is not None
+    assert child.returncode != 97

@@ -116,6 +116,7 @@ describe("simple notification passthroughs", () => {
     await markNotificationRead(UUID)
     expect(gen.markReadSingleApiV1NotificationsNotifIdReadPatch).toHaveBeenCalledWith({
       path: { notif_id: UUID },
+      throwOnError: true,
     })
   })
 
@@ -124,6 +125,12 @@ describe("simple notification passthroughs", () => {
     await clearNotifications()
     expect(gen.markAllReadApiV1NotificationsReadAllPost).toHaveBeenCalledOnce()
     expect(gen.clearNotificationsApiV1NotificationsDelete).toHaveBeenCalledOnce()
+    expect(gen.markAllReadApiV1NotificationsReadAllPost).toHaveBeenCalledWith({
+      throwOnError: true,
+    })
+    expect(gen.clearNotificationsApiV1NotificationsDelete).toHaveBeenCalledWith({
+      throwOnError: true,
+    })
   })
 
   it("checkSchedule forwards the lookahead default + override", async () => {

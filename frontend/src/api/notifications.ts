@@ -111,11 +111,14 @@ export const fetchNotificationsList = async (params?: {
 export const markNotificationRead = (notificationId: string) =>
   markReadSingleApiV1NotificationsNotifIdReadPatch({
     path: { notif_id: notificationId },
+    throwOnError: true,
   })
 
-export const markAllNotificationsRead = () => markAllReadApiV1NotificationsReadAllPost()
+export const markAllNotificationsRead = () =>
+  markAllReadApiV1NotificationsReadAllPost({ throwOnError: true })
 
-export const clearNotifications = () => clearNotificationsApiV1NotificationsDelete()
+export const clearNotifications = () =>
+  clearNotificationsApiV1NotificationsDelete({ throwOnError: true })
 
 export const checkSchedule = async (lookaheadMinutes: number = 15) => {
   const result = await checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost({

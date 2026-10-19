@@ -138,7 +138,7 @@ describe("api/news closure", () => {
     expect(updateNews).toHaveBeenCalledWith(
       expect.objectContaining({ path: { id: news.id }, body: undefined, throwOnError: true })
     )
-    expect(deleteNews).toHaveBeenCalledWith({ path: { id: news.id } })
+    expect(deleteNews).toHaveBeenCalledWith({ path: { id: news.id }, throwOnError: true })
   })
 
   it("keeps endpoint context in invalid mutation response errors", async () => {

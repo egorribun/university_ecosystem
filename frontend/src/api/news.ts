@@ -119,6 +119,7 @@ export const updateNews = async (id: string, payload: UpdateNewsPayload) => {
 export const deleteNews = (id: string) =>
   deleteNewsApiV1NewsIdDelete({
     path: { id },
+    throwOnError: true,
   })
 
 export const uploadNewsImage = async (file: File) => {

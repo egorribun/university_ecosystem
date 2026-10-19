@@ -3785,8 +3785,8 @@ def test_live_playwright_emits_only_validated_failure_locations(
             "https://private.invalid/reset?token=fixture-private-token ─────\n"
             "\n    Error: fixture-private-error\n\n"
             f"        at {frame_sources[1]}:1:17\n"
-            f"        at privateHelper ({frame_sources[2]}:2:17)\n"
-            f"        at {frame_sources[2]}:3:1\n"
+            f"        at privateHelper ({frame_sources[-1]}:2:17)\n"
+            f"        at {frame_sources[-1]}:3:1\n"
             "6 passed\n12 failed\n2 skipped\n1 flaky\n3 interrupted\n4 did not run\n"
         ),
         stderr=(
@@ -4771,6 +4771,7 @@ def test_live_playwright_focused_scope_is_fixed_and_diagnostic_only(
             (
                 "tests/e2e-live/auth-roles.live.spec.ts",
                 "tests/e2e-live/password-reset.live.spec.ts",
+                "tests/e2e-live/search-dialog-keyboard.live.spec.ts",
             ),
         ),
     ],

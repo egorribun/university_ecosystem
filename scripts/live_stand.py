@@ -233,6 +233,7 @@ LIVE_E2E_COMMAND = ("npm", "run", "test:e2e:live")
 LIVE_E2E_SMOKE_FILES = (
     "tests/e2e-live/auth-roles.live.spec.ts",
     "tests/e2e-live/password-reset.live.spec.ts",
+    "tests/e2e-live/search-dialog-keyboard.live.spec.ts",
 )
 LIVE_E2E_WINDOWS_COMMAND = (
     "cmd.exe",
@@ -4794,6 +4795,7 @@ _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES = (
     "tests/e2e-live/schedule-200-equivalent-reflow.live.spec.ts",
     "tests/e2e-live/schedule-grid-keyboard.live.spec.ts",
     "tests/e2e-live/schedule-hydration-i18n.live.spec.ts",
+    "tests/e2e-live/search-dialog-keyboard.live.spec.ts",
     "tests/e2e-live/settings-password-change-rollback.live.spec.ts",
     "tests/e2e-live/settings-tabs-keyboard.live.spec.ts",
     "tests/e2e-live/settings-theme-roundtrip.live.spec.ts",

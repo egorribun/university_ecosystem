@@ -454,4 +454,28 @@ describe("NewsCardEditDialog", () => {
       translationMocks.returnUndefined = false
     }
   })
+
+  it("sends null after clearing populated English translations", async () => {
+    const user = userEvent.setup()
+    render(<NewsCardEditDialog {...baseProps} />)
+    const titleEn = screen.getByLabelText("news:form.title_en")
+    const contentEn = screen.getByLabelText("news:form.content_en")
+    expect(titleEn).toHaveValue(initialData.title_en)
+    expect(contentEn).toHaveValue(initialData.content_en)
+
+    await user.clear(titleEn)
+    await user.clear(contentEn)
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+
+    await waitFor(() => {
+      expect(apiMocks.patch).toHaveBeenCalledWith("/news/news-1", {
+        title: initialData.title,
+        content: initialData.content,
+        title_en: null,
+        content_en: null,
+        image_url: initialData.image_url,
+      })
+    })
+    expect(apiMocks.patch).toHaveBeenCalledOnce()
+  })
 })
