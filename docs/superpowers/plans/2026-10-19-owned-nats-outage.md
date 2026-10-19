@@ -14,7 +14,7 @@
 - Existing administrator and exact reserved peer; read the generated admin credential, never create/rotate it. Refuse a pre-existing administrator/peer DM.
 - Normal cookie/CSRF login and multipart send, exactly one write attempt; no retry after ambiguous send.
 - Exact Message and chat/sender/content identity; exactly one chat.message_sent StoredEvent, aggregate_type Message and schema1, retained event ID for every later query.
-- Existing finite five-attempt outbox policy. Restore on the first retryable observation with error_count1..4; no fixed outage duration or extra wait after that observation.
+- Acceptance requires privately verified effective worker max_retries=5, batch_size>=2, and a finite poll interval greater than0 and at most10seconds. Refuse unsuitable settings; never modify them. The used full/live Compose files do not pin1s/50: code defaults are5s/20/5 and generated worker environment may override them. Restore on the first retryable observation with error_count1..4; no fixed outage duration or extra wait after that observation.
 - Existing identity-only quiesce comparator stays unchanged. New snapshots additionally compare non-NATS runtime, restart count, exit code and OOM state.
 - Closed public stage/outcome labels only; never include raw exceptions, identities, SQL rows, credentials, cookies or message bodies.
 - Broker-storage receipt only, no exactly-once or recipient/browser ACK claim.
@@ -54,6 +54,7 @@ Files: scripts/live_nats_transport.py; scripts/live_stand.py; tests/test_live_na
 
 - [ ] Add actual testable adapter seam and tests before operation implementation. Prove every nested deadline and lock acquisition, including failure paths.
 - [ ] Use owner-pinned read-only PostgreSQL principal verification, fixed SQL stdin, validated UUID parameters and transaction-local deadlines. Never use RLS bypass, SET ROLE or role modification.
+- [ ] Privately verify the effective outbox worker command/settings under the owned full/live Compose model: max_retries=5, batch_size>=2, finite0<poll<=10seconds. Base docker-compose.yml overrides are not evidence for this stand. Refuse an unsupported effective policy without configuration changes.
 - [ ] Verify active administrator/reserved peer and absent pair, use cookie jar and CSRF login, create exact DM once, verify participants, then count-only zero-pending check immediately before stop.
 - [ ] Capture exact container inventory with explicit project/daemon identity; stop/start only the originally verified NATS target. Preserve old lifecycle APIs/defaults for unrelated callers.
 - [ ] Use a static bounded backend Python stdin broker probe with get_last_msg(direct=False); no stream/consumer mutation or production connect helper.

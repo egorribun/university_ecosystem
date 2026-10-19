@@ -55,5 +55,3 @@ def core_container_snapshots() -> tuple[ContainerSnapshot, ...]:
         )
         for index, service in enumerate(CORE_SERVICES, 1)
     )
-
-
