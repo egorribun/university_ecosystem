@@ -22,6 +22,10 @@
 
 Диагностическая история сохранена в аудите: c960 остановился на SC1007; 45ab получил metadata, но failed при удалении read-only module cache. Успешный bounded cleanup на 490a не превращает эти старые failures в успешные runs.
 
+На [4b59153](https://github.com/egorribun/university_ecosystem/commit/4b5915317ef6ad1a67aa497efe3d9af789ff1bda) оба pre-commit gates, gateway lint и gateway integration прошли. Однако [gateway unit job 117824862833](https://github.com/egorribun/university_ecosystem/actions/runs/39177790737/job/117824862833) остановился до unit tests/coverage: обычный dependency download успешно завершился, а новый guard выявил три добавленные checksum-строки в go.work.sum (две для golang_protobuf_extensions 1.0.1, одну для goldmark 1.8.6). Причинная связь этой workspace-неконсистентности с mimetype не установлена.
+
+Текущая коррекция сохраняет ровно эти три hosted-generated записи; результирующий blob совпадает с post-download diff. Никакой дополнительной версии или requirement не меняется, guard остаётся включённым. Нужен новый собственный CI, включая ранее не выполненные gateway unit tests/coverage; старый failed job не считается успешной проверкой.
+
 ## Проверенные Matrix исправления после hosted RED
 
 База — tests-first [efd5483](https://github.com/egorribun/university_ecosystem/commit/efd5483c97810fff477aaf54201f710799f7b02e). Ruff correction прошла оба pre-commit gates; production-код до этой партии не менялся. На efd реально подтверждены четыре backend message contracts ([shard 0](https://github.com/egorribun/university_ecosystem/actions/runs/39158872405/job/117768386874): 4 FAIL / 5379 PASS / 49 SKIP), два frontend image-ID contracts и отдельный workflow concurrency contract ([shard 3](https://github.com/egorribun/university_ecosystem/actions/runs/39158872405/job/117773682192): 1 FAIL / 3413 PASS / 32 SKIP). Это конкретные ожидаемые RED, не formatting/fixture failures.
