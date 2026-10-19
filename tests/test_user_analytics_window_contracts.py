@@ -155,9 +155,7 @@ async def test_attendance_without_registrations_reports_all_zero_counters(
         "period_key": "30d",
         "streak_days": 0,
         "daily": (
-            [{"date": "2026-09-29", "registered": 0, "total": 1}]
-            if have_events
-            else []
+            [{"date": "2026-09-29", "registered": 0, "total": 1}] if have_events else []
         ),
         "recent": [],
     }
