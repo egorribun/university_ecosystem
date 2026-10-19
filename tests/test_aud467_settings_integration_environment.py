@@ -582,7 +582,7 @@ async def test_api_lifespan_allows_configured_relay_and_development_defaults(
     monkeypatch.setattr(lifecycle, "_reset_closed_dishka_container", reset)
     monkeypatch.setattr(lifecycle, "_startup_database_and_di", startup)
 
-    with pytest.raises(RuntimeError, match="^api startup reached$"):
+    with pytest.raises(RuntimeError, match=r"^api startup reached$"):
         async with lifecycle.lifespan(app):
             pytest.fail("startup sentinel must stop before later resources")
 
