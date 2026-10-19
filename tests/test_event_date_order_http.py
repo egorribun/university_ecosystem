@@ -63,6 +63,7 @@ async def test_events_http_date_order_has_stable_raw_pages_and_bound_cursors(
     headers, event_type, ids = await _seed_audit017_http_order_case(
         async_client, db_session, user_factory
     )
+    headers = {**headers, "Accept-Language": "ru"}
     base_params = {"type": event_type, "limit": 2}
 
     asc1 = await async_client.get("/events", params=base_params, headers=headers)
@@ -81,6 +82,30 @@ async def test_events_http_date_order_has_stable_raw_pages_and_bound_cursors(
     assert [uuid.UUID(row["id"]) for row in asc2_data["items"]] == ids[2:]
     assert asc2_data["has_more"] is False
     assert asc2_data["next_cursor"] is None
+
+    explicit_asc1 = await async_client.get(
+        "/events",
+        params={**base_params, "order": "starts_at_asc"},
+        headers=headers,
+    )
+    assert explicit_asc1.status_code == 200
+    explicit_asc1_data = explicit_asc1.json()
+    assert [uuid.UUID(row["id"]) for row in explicit_asc1_data["items"]] == ids[:2]
+    assert explicit_asc1_data["has_more"] is True
+    assert explicit_asc1_data["next_cursor"]
+    explicit_asc2 = await async_client.get(
+        "/events",
+        params={
+            **base_params,
+            "order": "starts_at_asc",
+            "cursor": explicit_asc1_data["next_cursor"],
+        },
+        headers=headers,
+    )
+    assert explicit_asc2.status_code == 200
+    assert [uuid.UUID(row["id"]) for row in explicit_asc2.json()["items"]] == ids[2:]
+    assert explicit_asc2.json()["has_more"] is False
+    assert explicit_asc2.json()["next_cursor"] is None
 
     desc1 = await async_client.get(
         "/events",
@@ -113,6 +138,24 @@ async def test_events_http_date_order_has_stable_raw_pages_and_bound_cursors(
         headers=headers,
     )
     assert wrong_direction.status_code == 400
+
+    for changed_params, changed_headers in (
+        ({"limit": 3}, headers),
+        ({"type": f"{event_type}-different"}, headers),
+        ({"order": "starts_at_asc"}, headers),
+        ({}, {**headers, "Accept-Language": "en"}),
+    ):
+        mismatch = await async_client.get(
+            "/events",
+            params={
+                **base_params,
+                "order": "starts_at_desc",
+                "cursor": desc1_data["next_cursor"],
+                **changed_params,
+            },
+            headers=changed_headers,
+        )
+        assert mismatch.status_code == 400
 
 
 async def test_events_http_legacy_cursor_cannot_be_reinterpreted_as_descending(

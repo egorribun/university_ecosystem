@@ -1566,32 +1566,78 @@ describe("main events date-order identities", () => {
     expect(etagKeys[0]).not.toBe(etagKeys[1])
   })
 
-  it("uses distinct order-specific cached-placeholder keys", () => {
-    const getItem = vi.spyOn(Storage.prototype, "getItem")
-    const prefix = "events:list:account:feed-test-user:ru:active"
-    const observedKey = (order: "starts_at_asc" | "starts_at_desc") => {
-      getItem.mockClear()
+  it.each(["starts_at_asc", "starts_at_desc"] as const)(
+    "does not read an unproven legacy array for %s",
+    (order) => {
+      const legacyKey = "events:list:account:feed-test-user:ru:active"
+      window.localStorage.setItem(legacyKey, JSON.stringify([makeEvent("legacy")]))
+      const getItem = vi.spyOn(Storage.prototype, "getItem")
       const filters = { language: "ru", is_active: true, order }
       const queryClient = freshClient()
-      const { unmount } = renderHook(() => useEventsListQuery(filters, { enabled: false }), {
+      const { result, unmount } = renderHook(() => useEventsListQuery(filters, { enabled: false }), {
         wrapper: makeWrapper(queryClient),
       })
-      const key = getItem.mock.calls.find(([candidate]) => candidate.startsWith(prefix))?.[0]
-      unmount()
-      queryClient.clear()
-      return key
+
+      try {
+        expect(getItem).not.toHaveBeenCalledWith(legacyKey)
+        expect(allEventsMock).not.toHaveBeenCalled()
+        expect(result.current.isPlaceholderData).toBe(false)
+        expect(result.current.data).toBeUndefined()
+        expect(result.current.events).toEqual([])
+      } finally {
+        unmount()
+        queryClient.clear()
+        getItem.mockRestore()
+      }
     }
+  )
+
+  it("does not reuse ASC query pages for a disabled DESC observer", () => {
+    const asc = { language: "ru", is_active: true, order: "starts_at_asc" as const }
+    const desc = { language: "ru", is_active: true, order: "starts_at_desc" as const }
+    const queryClient = freshClient()
+    queryClient.setQueryData(eventsListQueryKey(asc), {
+      pages: [okPage([makeEvent("asc-only")], "asc-next").data],
+      pageParams: [null],
+    })
+    const { result, unmount } = renderHook(() => useEventsListQuery(desc, { enabled: false }), {
+      wrapper: makeWrapper(queryClient),
+    })
 
     try {
-      const ascKey = observedKey("starts_at_asc")
-      const descKey = observedKey("starts_at_desc")
-      expect(ascKey).toEqual(expect.any(String))
-      expect(descKey).toEqual(expect.any(String))
-      expect(ascKey).toContain("starts_at_asc")
-      expect(descKey).toContain("starts_at_desc")
-      expect(descKey).not.toBe(ascKey)
+      expect(allEventsMock).not.toHaveBeenCalled()
+      expect(result.current.data).toBeUndefined()
+      expect(result.current.events).toEqual([])
+      expect(queryClient.getQueryData(eventsListQueryKey(desc))).toBeUndefined()
     } finally {
-      getItem.mockRestore()
+      unmount()
+      queryClient.clear()
+    }
+  })
+
+  it("retains matching DESC page cursors instead of inventing a complete list", () => {
+    const filters = { language: "ru", is_active: true, order: "starts_at_desc" as const }
+    const queryClient = freshClient()
+    const page = okPage([makeEvent("desc-only")], "desc-next").data
+    queryClient.setQueryData(eventsListQueryKey(filters), {
+      pages: [page],
+      pageParams: [null],
+    })
+    const { result, unmount } = renderHook(() => useEventsListQuery(filters, { enabled: false }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    try {
+      expect(allEventsMock).not.toHaveBeenCalled()
+      expect(result.current.events).toEqual(page.items)
+      expect(result.current.pagination).toEqual(page)
+      expect(result.current.pagination?.next_cursor).toBe("desc-next")
+      expect(result.current.pagination?.has_more).toBe(true)
+      expect(result.current.hasNextPage).toBe(true)
+      expect(result.current.isPlaceholderData).toBe(false)
+    } finally {
+      unmount()
+      queryClient.clear()
     }
   })
 

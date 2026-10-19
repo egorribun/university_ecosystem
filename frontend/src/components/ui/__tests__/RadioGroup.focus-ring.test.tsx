@@ -3,8 +3,8 @@ import { render, screen, within } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 import { RadioGroup, RadioGroupItem } from "../RadioGroup"
 
-const focusRingSelector = ".peer-focus-visible\\:ring-4"
-const matchingPeerSelector = ".peer ~ .peer-focus-visible\\:ring-4"
+const focusRingSelector = ".peer-focus-visible\\:shadow-focus"
+const matchingPeerSelector = ".peer ~ .peer-focus-visible\\:shadow-focus"
 
 describe("RadioGroupItem focus indicator structure", () => {
   it("keeps each labeled radio adjacent to only its own compact peer target", () => {

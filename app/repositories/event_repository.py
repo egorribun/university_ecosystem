@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -249,6 +249,7 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         cursor: tuple[datetime, uuid.UUID | int | str]
         | tuple[datetime, str, float | None]
         | None = None,
+        order: Literal["starts_at_asc", "starts_at_desc"] | None = None,
         query_embedding: list[float] | None = None,
         now: datetime | None = None,
     ) -> Sequence[EventSearchResultDTO]:
@@ -266,11 +267,17 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         if cursor:
             last_starts_at, raw_id = cursor[:2]
             last_id = self._cast_id(raw_id)
-            after_time = or_(
-                Event.starts_at > last_starts_at,
-                and_(Event.starts_at == last_starts_at, Event.id > last_id),
-            )
-            if rank_expr is not None:
+            if order == "starts_at_desc":
+                after_time = or_(
+                    Event.starts_at < last_starts_at,
+                    and_(Event.starts_at == last_starts_at, Event.id < last_id),
+                )
+            else:
+                after_time = or_(
+                    Event.starts_at > last_starts_at,
+                    and_(Event.starts_at == last_starts_at, Event.id > last_id),
+                )
+            if rank_expr is not None and order is None:
                 last_rank = (
                     cursor[2]
                     if len(cursor) == 3
@@ -328,6 +335,11 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
 
         if rank_expr is not None:
             stmt = stmt.add_columns(rank_expr)
+        if order == "starts_at_desc":
+            stmt = stmt.order_by(Event.starts_at.desc(), Event.id.desc())
+        elif order == "starts_at_asc":
+            stmt = stmt.order_by(Event.starts_at.asc(), Event.id.asc())
+        elif rank_expr is not None:
             stmt = stmt.order_by(
                 rank_expr.desc(), Event.starts_at.asc(), Event.id.asc()
             )

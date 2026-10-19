@@ -133,7 +133,15 @@ def _snapshot(path):
 
 
 def _observe_reader_call(
-    monkeypatch, files, deadline, *, clock=None, after_read=None, fifo_leaf=None
+    monkeypatch,
+    files,
+    deadline,
+    *,
+    clock=None,
+    after_read=None,
+    fifo_leaf=None,
+    observations=None,
+    event_hook=None,
 ):
     ops = {
         "opens": [],
@@ -149,6 +157,15 @@ def _observe_reader_call(
         "high_level_io": [],
         "stats_after_expiry": [],
     }
+    ops["close_attempts"] = []
+    if observations is not None:
+        observations.update(ops)
+        ops = observations
+
+    def event(stage, name, fd=None):
+        if event_hook is not None:
+            event_hook(stage, name, fd)
+
     real_open, real_close, real_read = os.open, os.close, os.read
     real_fstat, real_stat = os.fstat, os.stat
     write_mask = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND
@@ -183,6 +200,7 @@ def _observe_reader_call(
         if name == fifo_leaf and not flags & getattr(os, "O_NONBLOCK", 0):
             ops["blocking_fifo_attempts"].append(name)
             raise OSError(errno.EPERM, "test prevents blocking FIFO open")
+        event("before_open", name)
         fd = real_open(path, flags, mode, dir_fd=dir_fd)
         record["fd"] = fd
         ops["opened_fds"].append(fd)
@@ -190,13 +208,18 @@ def _observe_reader_call(
         return fd
 
     def close_spy(fd):
+        name = ops["fd_names"].get(fd, "")
+        ops["close_attempts"].append(fd)
+        event("before_close", name, fd)
         real_close(fd)
         ops["closed_fds"].append(fd)
+        event("after_close", name, fd)
 
     def read_spy(fd, size):
         name = ops["fd_names"].get(fd, "")
         if expired():
             ops["reads_after_expiry"].append(name)
+        event("before_read", name, fd)
         data = real_read(fd, size)
         ops["reads"].append((name, size, len(data)))
         if after_read is not None:
@@ -546,3 +569,242 @@ def test_missing_required_open_capability_fails_closed_without_io(
 
     _not_ready(result)
     assert calls == []
+
+
+@requires_posix_reader
+@pytest.mark.parametrize("leaf", ["marker", "key"])
+@pytest.mark.parametrize("mutation", ["replace", "metadata"])
+def test_leaf_change_after_both_reads_prevents_parser_admission(
+    monkeypatch, owner_files, leaf, mutation
+):
+    files = owner_files
+    target = files.marker if leaf == "marker" else files.key_file
+    replacement = files.secrets / "prepared-replacement"
+    replacement.write_bytes(target.read_bytes())
+    before = target.stat()
+    real_replace, real_utime = os.replace, os.utime
+    changed = []
+    parser_calls = []
+
+    def forbidden_parser(*_args, **_kwargs):
+        parser_calls.append(True)
+        raise AssertionError("changed leaf must be rejected before parsing")
+
+    def mutate_after_key_eof(name, data):
+        if name != _KEY_FILE or data or changed:
+            return
+        if mutation == "replace":
+            real_replace(replacement, target)
+        else:
+            real_utime(
+                target,
+                ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000),
+            )
+        changed.append(True)
+
+    monkeypatch.setattr(transport, "parse_signed_owner_v11", forbidden_parser)
+    clock, deadline = _deadline()
+    result, ops = _observe_reader_call(
+        monkeypatch, files, deadline, clock=clock, after_read=mutate_after_key_eof
+    )
+
+    assert changed == [True]
+    _not_ready(result)
+    assert parser_calls == []
+    assert any(name == _MARKER and size == 0 for name, _count, size in ops["reads"])
+    assert any(name == _KEY_FILE and size == 0 for name, _count, size in ops["reads"])
+    assert ops["write_attempts"] == []
+    _assert_fds_closed(ops)
+
+
+@requires_posix_reader
+@pytest.mark.parametrize("interrupt_type", [KeyboardInterrupt, SystemExit])
+@pytest.mark.parametrize("stage", ["before_open", "before_read", "after_close"])
+def test_interrupt_propagates_after_attempting_all_descriptor_cleanup(
+    monkeypatch, owner_files, interrupt_type, stage
+):
+    _clock, deadline = _deadline()
+    observations = {}
+    interruption = interrupt_type("synthetic reader interruption")
+    triggered = []
+
+    def inject(event, name, _fd):
+        if event == stage and name == _KEY_FILE and not triggered:
+            triggered.append(event)
+            raise interruption
+
+    with pytest.raises(interrupt_type) as caught:
+        _observe_reader_call(
+            monkeypatch,
+            owner_files,
+            deadline,
+            observations=observations,
+            event_hook=inject,
+        )
+
+    assert caught.value is interruption
+    assert triggered == [stage]
+    assert observations["opened_fds"]
+    assert observations["close_attempts"] == list(reversed(observations["opened_fds"]))
+    _assert_fds_closed(observations)
+
+
+@requires_posix_reader
+def test_operation_interrupt_is_preserved_over_cleanup_interrupt(
+    monkeypatch, owner_files
+):
+    _clock, deadline = _deadline()
+    observations = {}
+    operation_interrupt = KeyboardInterrupt("synthetic read interruption")
+    cleanup_interrupt = SystemExit("synthetic cleanup interruption")
+    triggered = []
+
+    def inject(event, name, _fd):
+        if name != _KEY_FILE:
+            return
+        if event == "before_read":
+            triggered.append("read")
+            raise operation_interrupt
+        if event == "after_close":
+            triggered.append("close")
+            raise cleanup_interrupt
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _observe_reader_call(
+            monkeypatch,
+            owner_files,
+            deadline,
+            observations=observations,
+            event_hook=inject,
+        )
+
+    assert caught.value is operation_interrupt
+    assert triggered == ["read", "close"]
+    assert observations["close_attempts"] == list(reversed(observations["opened_fds"]))
+    _assert_fds_closed(observations)
+
+
+@requires_posix_reader
+def test_first_cleanup_interrupt_is_preserved_and_later_closes_continue(
+    monkeypatch, owner_files
+):
+    _clock, deadline = _deadline()
+    observations = {}
+    first = KeyboardInterrupt("synthetic first cleanup interruption")
+    second = SystemExit("synthetic later cleanup interruption")
+    triggered = []
+
+    def inject(event, name, _fd):
+        if event != "after_close":
+            return
+        if name == _KEY_FILE:
+            triggered.append(name)
+            raise first
+        if name == _MARKER:
+            triggered.append(name)
+            raise second
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _observe_reader_call(
+            monkeypatch,
+            owner_files,
+            deadline,
+            observations=observations,
+            event_hook=inject,
+        )
+
+    assert caught.value is first
+    assert triggered == [_KEY_FILE, _MARKER]
+    assert observations["close_attempts"] == list(reversed(observations["opened_fds"]))
+    _assert_fds_closed(observations)
+
+
+@requires_posix_reader
+@pytest.mark.parametrize("error_number", [errno.EINTR, errno.EIO])
+@pytest.mark.parametrize("released", [False, True], ids=["unreleased", "released"])
+def test_ambiguous_close_error_is_not_retried_and_fails_closed(
+    monkeypatch, owner_files, error_number, released
+):
+    _clock, deadline = _deadline()
+    observations = {}
+    real_close = os.close
+    stage = "after_close" if released else "before_close"
+    triggered = []
+    cleanup_needed = set()
+
+    def inject(event, name, fd):
+        if event == stage and name == _KEY_FILE and not triggered:
+            triggered.append(fd)
+            if not released:
+                cleanup_needed.add(fd)
+            raise OSError(error_number, "synthetic ambiguous close")
+
+    try:
+        result, ops = _observe_reader_call(
+            monkeypatch,
+            owner_files,
+            deadline,
+            observations=observations,
+            event_hook=inject,
+        )
+
+        _not_ready(result)
+        assert len(triggered) == 1
+        assert ops["close_attempts"] == list(reversed(ops["opened_fds"]))
+        assert Counter(ops["close_attempts"]) == Counter(ops["opened_fds"])
+        if released:
+            _assert_fds_closed(ops)
+        else:
+            assert Counter(ops["closed_fds"]) == (
+                Counter(ops["opened_fds"]) - Counter(triggered)
+            )
+    finally:
+        # Fixture cleanup only: the injected branch never performed real close.
+        for fd in cleanup_needed:
+            if fd not in observations.get("closed_fds", []):
+                real_close(fd)
+
+
+@requires_posix_reader
+@pytest.mark.parametrize("where", ["state-root", "ancestor", "secrets"])
+@pytest.mark.parametrize(
+    "replacement", ["missing", "symlink"], ids=["renamed-away", "symlink-back"]
+)
+def test_post_read_directory_rename_is_rejected_before_parser(
+    monkeypatch, owner_files, where, replacement
+):
+    files = owner_files
+    _clock, deadline = _deadline()
+    if where == "state-root":
+        original = files.state_root
+    elif where == "ancestor":
+        original = files.state_root.parent
+    else:
+        original = files.secrets
+    moved = original.with_name(original.name + "-moved")
+    changed = []
+
+    def forbidden_parser(*_args, **_kwargs):
+        raise AssertionError("changed ancestor must be rejected before parsing")
+
+    def rename_after_both_reads(name, data):
+        if name == _KEY_FILE and data == b"" and not changed:
+            original.rename(moved)
+            if replacement == "symlink":
+                original.symlink_to(moved, target_is_directory=True)
+            changed.append(True)
+
+    monkeypatch.setattr(transport, "parse_signed_owner_v11", forbidden_parser)
+    result, ops = _observe_reader_call(
+        monkeypatch,
+        files,
+        deadline,
+        after_read=rename_after_both_reads,
+    )
+
+    assert changed == [True]
+    _not_ready(result)
+    assert any(name == _MARKER and size == 0 for name, _count, size in ops["reads"])
+    assert any(name == _KEY_FILE and size == 0 for name, _count, size in ops["reads"])
+    assert ops["write_attempts"] == []
+    _assert_fds_closed(ops)

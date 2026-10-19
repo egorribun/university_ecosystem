@@ -4,7 +4,7 @@ import json
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, time, timedelta
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -35,6 +35,113 @@ from app.utils.pagination import (
 logger = get_logger(__name__)
 
 _LEGACY_MY_EVENTS_BATCH_SIZE = 100
+
+
+class InvalidEventsCursor(ValueError):
+    """The main-feed cursor is malformed or belongs to another query."""
+
+
+def _events_cursor_binding(
+    *,
+    user_id: uuid.UUID | None,
+    locale: str | None,
+    limit: int,
+    search: str,
+    event_type: str,
+    location: str,
+    is_active: bool | None,
+    order: Literal["starts_at_asc", "starts_at_desc"],
+) -> str:
+    binding = {
+        "user": str(user_id) if user_id is not None else None,
+        "locale": normalize_locale(locale),
+        "limit": limit,
+        "search": search,
+        "type": event_type,
+        "location": location,
+        "is_active": is_active,
+        "order": order,
+    }
+    raw = json.dumps(binding, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _event_cursor_timestamp(value: datetime) -> str:
+    aware = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    return aware.astimezone(UTC).isoformat()
+
+
+def _encode_events_cursor(
+    *,
+    order: Literal["starts_at_asc", "starts_at_desc"],
+    binding: str,
+    starts_at: datetime,
+    event_id: uuid.UUID,
+) -> str:
+    payload = {
+        "v": 2,
+        "order": order,
+        "filter": binding,
+        "key": {
+            "starts_at": _event_cursor_timestamp(starts_at),
+            "id": str(event_id),
+        },
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    encoded = base64.urlsafe_b64encode(raw).decode().rstrip("=")
+    return f"e2:{encoded}"
+
+
+def _decode_events_cursor(
+    cursor: str | None,
+    *,
+    order: Literal["starts_at_asc", "starts_at_desc"],
+    binding: str,
+) -> tuple[datetime, uuid.UUID] | None:
+    if cursor is None:
+        return None
+    try:
+        if not cursor.startswith("e2:") or len(cursor) > 1024:
+            raise ValueError("Wrong cursor version")
+        encoded = cursor[3:]
+        alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+        if not encoded or any(char not in alphabet for char in encoded):
+            raise ValueError("Invalid base64url cursor")
+        raw = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+        if base64.urlsafe_b64encode(raw).decode().rstrip("=") != encoded:
+            raise ValueError("Noncanonical base64url cursor")
+        payload = json.loads(raw)
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        if raw != canonical:
+            raise ValueError("Noncanonical cursor JSON")
+        if (
+            not isinstance(payload, dict)
+            or set(payload) != {"v", "order", "filter", "key"}
+            or type(payload["v"]) is not int
+            or payload["v"] != 2
+            or payload["order"] != order
+            or payload["filter"] != binding
+        ):
+            raise ValueError("Cursor query binding mismatch")
+        key = payload["key"]
+        if not isinstance(key, dict) or set(key) != {"starts_at", "id"}:
+            raise ValueError("Invalid cursor key")
+        timestamp_text = key["starts_at"]
+        event_id_text = key["id"]
+        if not isinstance(timestamp_text, str) or not isinstance(event_id_text, str):
+            raise ValueError("Invalid cursor key types")
+        timestamp = datetime.fromisoformat(timestamp_text)
+        if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            raise ValueError("Cursor timestamp must be timezone-aware")
+        timestamp = timestamp.astimezone(UTC)
+        if _event_cursor_timestamp(timestamp) != timestamp_text:
+            raise ValueError("Noncanonical cursor timestamp")
+        event_id = uuid.UUID(event_id_text)
+        if str(event_id) != event_id_text:
+            raise ValueError("Noncanonical cursor UUID")
+        return timestamp, event_id
+    except (ValueError, TypeError, OverflowError, RecursionError) as exc:
+        raise InvalidEventsCursor("Invalid events cursor") from exc
 
 
 class InvalidMyEventsCursor(ValueError):
@@ -293,17 +400,41 @@ class EventService:
         limit: int = 20,
         cursor: str | None = None,
         locale: str | None = None,
+        order: Literal["starts_at_asc", "starts_at_desc"] | None = None,
     ) -> schemas.PaginatedEvents:
+        decoded_cursor: (
+            tuple[datetime, uuid.UUID | int | str]
+            | tuple[datetime, str, float | None]
+            | None
+        )
+        cursor_binding = ""
+        if order is None:
+            if cursor is not None and cursor.startswith("e2:"):
+                raise InvalidEventsCursor("Explicit-order cursor requires its order")
+            decoded_cursor = decode_ranked_datetime_cursor(
+                cursor
+            ) or decode_datetime_cursor(cursor)
+        else:
+            cursor_binding = _events_cursor_binding(
+                user_id=user_id,
+                locale=locale,
+                limit=limit,
+                search=search,
+                event_type=type,
+                location=location,
+                is_active=is_active,
+                order=order,
+            )
+            decoded_cursor = _decode_events_cursor(
+                cursor, order=order, binding=cursor_binding
+            )
+
         query_embedding = None
         if search:
             try:
                 query_embedding = await self.vector_service.get_embedding(search)
             except SemanticSearchUnavailableError:
                 query_embedding = None
-
-        decoded_cursor = decode_ranked_datetime_cursor(
-            cursor
-        ) or decode_datetime_cursor(cursor)
 
         # Keep list and total filters on the same time snapshot.
         filter_time = datetime.now(UTC)
@@ -317,6 +448,7 @@ class EventService:
             is_active=is_active,
             limit=limit + 1,
             cursor=decoded_cursor,
+            order=order,
             query_embedding=query_embedding,
             now=filter_time,
         )
@@ -370,7 +502,14 @@ class EventService:
         next_cursor = None
         if has_more and items_to_process:
             last_result = items_to_process[-1]
-            if last_result.rank is not None:
+            if order is not None:
+                next_cursor = _encode_events_cursor(
+                    order=order,
+                    binding=cursor_binding,
+                    starts_at=last_result.event.starts_at,
+                    event_id=last_result.event.id,
+                )
+            elif last_result.rank is not None:
                 next_cursor = encode_ranked_datetime_cursor(
                     last_result.event.starts_at,
                     str(last_result.event.id),

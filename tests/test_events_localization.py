@@ -477,3 +477,84 @@ async def _assert_search_count_parity(db_session, now, phrase, event_ids):
             now=now,
         )
         assert total == len(listed_ids) == len(expected_ids), case
+
+
+@requires_postgresql
+@pytest.mark.asyncio
+async def test_main_feed_explicit_date_order_overrides_search_rank(
+    async_client, db_session, user_factory
+):
+    import secrets
+    import uuid
+
+    from sqlalchemy import text
+
+    password = secrets.token_urlsafe(24) + "!Aa1"
+    admin = await user_factory(role="admin")
+    viewer = await user_factory(
+        role="student",
+        hashed_password=await get_password_hash(password),
+        is_active=True,
+    )
+    headers = await _login(async_client, viewer.email, password)
+    term = f"rankprobe{uuid.uuid4().hex}"
+    now = datetime.now(UTC)
+    early_id, late_id = uuid.uuid4(), uuid.uuid4()
+    early_start = now + timedelta(days=2)
+    late_start = now + timedelta(days=3)
+    insert_sql = text("""
+        INSERT INTO events (
+            id, title, title_en, description, location, event_type,
+            starts_at, ends_at, created_by, is_active
+        ) VALUES (
+            :id, :title, NULL, 'rank/date fixture', 'Main campus', 'conference',
+            :starts_at, :ends_at, :created_by, TRUE
+        )
+    """)
+    for event_id, title, starts_at in (
+        (early_id, f"{term} kickoff", early_start),
+        (late_id, " ".join([term] * 4), late_start),
+    ):
+        await db_session.execute(
+            insert_sql,
+            {
+                "id": event_id,
+                "title": title,
+                "starts_at": starts_at,
+                "ends_at": starts_at + timedelta(hours=1),
+                "created_by": admin.id,
+            },
+        )
+    await db_session.commit()
+
+    rank_result = await db_session.execute(
+        text("""
+            SELECT id,
+                ts_rank(search_vector, plainto_tsquery('simple', :term)) AS score
+            FROM events WHERE id IN (:early_id, :late_id)
+        """),
+        {"term": term, "early_id": early_id, "late_id": late_id},
+    )
+    ranks = rank_result.mappings().all()
+    score_by_id = {row["id"]: row["score"] for row in ranks}
+    assert score_by_id[late_id] > score_by_id[early_id]
+
+    legacy_ranked = await async_client.get(
+        "/events", params={"search": term, "limit": 10}, headers=headers
+    )
+    assert legacy_ranked.status_code == 200
+    assert [row["id"] for row in legacy_ranked.json()["items"]] == [
+        str(late_id),
+        str(early_id),
+    ]
+
+    explicit_ascending = await async_client.get(
+        "/events",
+        params={"search": term, "limit": 10, "order": "starts_at_asc"},
+        headers=headers,
+    )
+    assert explicit_ascending.status_code == 200
+    assert [row["id"] for row in explicit_ascending.json()["items"]] == [
+        str(early_id),
+        str(late_id),
+    ]

@@ -185,6 +185,7 @@ async def test_all_events_and_my_events_call_services() -> None:
             is_active=False,
             limit=7,
             cursor="cursor",
+            order="starts_at_desc",
             if_none_match=None,
             provides={"EventService": service},
         )
@@ -198,6 +199,7 @@ async def test_all_events_and_my_events_call_services() -> None:
         locale="en",
         limit=7,
         cursor="cursor",
+        order="starts_at_desc",
     )
 
     cursor = "opaque-cursor"

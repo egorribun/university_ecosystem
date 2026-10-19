@@ -52,6 +52,7 @@ from app.services.content_media import (
 )
 from app.services.event_service import (
     EventService,
+    InvalidEventsCursor,
     InvalidMyEventsCursor,
     InvalidMyEventsQuery,
 )
@@ -164,6 +165,7 @@ async def create_event(
     response_model=schemas.PaginatedEvents,
     summary="List Events",
     description="Get a paginated list of events.",
+    responses={400: {"description": "Invalid or mismatched events cursor"}},
 )
 @cached_endpoint(
     version_resolver=events_cache_version,
@@ -186,6 +188,7 @@ async def all_events(
         le=100,
         alias="limit",
     ),
+    order: Literal["starts_at_asc", "starts_at_desc"] | None = Query(None),
     cursor: str | None = Query(None, alias="cursor"),
     if_none_match: str | None = Header(default=None),
 ) -> schemas.PaginatedEvents | Response | dict[str, Any]:
@@ -198,21 +201,26 @@ async def all_events(
     - **type**: Filter by event type
     - **location**: Filter by location
     - **is_active**: Filter by active status
+    - **order**: Explicit start-date ASC or DESC, with an ID tie-break.
 
-    Returns events ordered by start date (newest first).
+    Omitting order preserves legacy ASC dates and rank-first search results.
     """
     locale = resolve_locale(request=request, user=user)
 
-    payload = await events.get_events(
-        user_id=user.id,
-        search=search,
-        type=type,
-        location=location,
-        is_active=is_active,
-        locale=locale,
-        limit=limit,
-        cursor=cursor,
-    )
+    try:
+        payload = await events.get_events(
+            user_id=user.id,
+            search=search,
+            type=type,
+            location=location,
+            is_active=is_active,
+            locale=locale,
+            limit=limit,
+            cursor=cursor,
+            order=order,
+        )
+    except InvalidEventsCursor as exc:
+        raise HTTPException(status_code=400, detail="Invalid events cursor") from exc
 
     # TD-01 & PERF-02 (audit 2026-03): Delegated all ETag formatting, 304 Not Modified
     # logic, Redis version checking, and serialization to `deps.etag.cached_endpoint`.

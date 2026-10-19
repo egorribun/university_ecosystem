@@ -461,6 +461,27 @@ describe("EventsFeature — client-side category + date filters", () => {
 })
 
 describe("EventsFeature — sort modes", () => {
+  it("sorts the complete My array by descending dates and IDs without mutating it", () => {
+    search.params = { tab: "my", sort: "newest" }
+    const source = [
+      evt({ id: "00000000-0000-0000-0000-000000000001", starts_at: "2027-01-01T00:00:00Z" }),
+      evt({ id: "00000000-0000-0000-0000-000000000002", starts_at: "2027-01-02T00:00:00Z" }),
+      evt({ id: "00000000-0000-0000-0000-000000000003", starts_at: "2027-01-02T00:00:00Z" }),
+      evt({ id: "00000000-0000-0000-0000-000000000004", starts_at: "2027-01-03T00:00:00Z" }),
+    ]
+    const originalIds = source.map((event) => event.id)
+    myQuery.data = source
+    listQuery.events = []
+
+    render(<EventsFeature />)
+
+    expect(screen.getByTestId("list-order").textContent).toBe([...originalIds].reverse().join(","))
+    expect(source.map((event) => event.id)).toEqual(originalIds)
+    expect(queryCalls.mine.at(-1)?.[1]).toMatchObject({ enabled: true })
+    expect(queryCalls.list.at(-1)?.[1]).toMatchObject({ enabled: false })
+    expect(listQuery.fetchNextPage).not.toHaveBeenCalled()
+  })
+
   it("maps the existing newest token to server-side descending start dates", () => {
     search.params = { sort: "newest" }
     render(<EventsFeature />)

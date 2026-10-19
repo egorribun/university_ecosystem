@@ -31,7 +31,7 @@ test("Settings radio has a visible keyboard focus style", async ({ page }) => {
   await expect(systemRadio).toBeChecked()
   const indicator = systemRadio
     .locator("xpath=ancestor::label")
-    .locator('[class~="peer-focus-visible:ring-4"]')
+    .locator('[class~="peer-focus-visible:shadow-focus"]')
   await expect(indicator).toHaveCount(1)
   await expect(indicator).toBeVisible()
   const boxShadow = () => indicator.evaluate((element) => getComputedStyle(element).boxShadow)

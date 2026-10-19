@@ -344,7 +344,7 @@ describe("RadioGroup", () => {
     expect(hitTarget).toHaveClass("relative", "inline-flex", "min-h-11", "min-w-11")
     expect(hitTarget).not.toHaveAttribute("aria-hidden")
     expect(indicator).toHaveAttribute("aria-hidden", "true")
-    expect(indicator).toHaveClass("h-6", "w-6", "peer-focus-visible:ring-4")
+    expect(indicator).toHaveClass("h-6", "w-6", "peer-focus-visible:shadow-focus")
   })
 
   it("marks the selected item and fires onChange(null, value) on click", () => {

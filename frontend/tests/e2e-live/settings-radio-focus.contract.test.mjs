@@ -22,7 +22,7 @@ test("radio focus acceptance uses native keyboard and actual computed styles", a
   assert.match(spec, /Система\|System/u)
   assert.match(spec, /expect\(accordion\)\.toBeFocused\(\)/u)
   assert.match(spec, /ancestor::label/u)
-  assert.match(spec, /peer-focus-visible:ring-4/u)
+  assert.match(spec, /peer-focus-visible:shadow-focus/u)
   assert.match(spec, /getComputedStyle\(element\)\.boxShadow/u)
   assert.match(
     spec,
@@ -37,7 +37,7 @@ test("radio focus acceptance uses native keyboard and actual computed styles", a
   assert.match(spec, /expect\.poll\(boxShadow\)\.toBe\(unfocusedShadow\)/u)
   assert.match(spec, /expect\(systemRadio\)\.toBeChecked\(\)/u)
   assert.match(radio, /peer sr-only/u)
-  assert.match(radio, /peer-focus-visible:ring-4/u)
+  assert.match(radio, /peer-focus-visible:shadow-focus/u)
   assert.match(spec, /trace:\s*["']off["']/u)
   assert.match(spec, /screenshot:\s*["']off["']/u)
   assert.match(spec, /video:\s*["']off["']/u)
