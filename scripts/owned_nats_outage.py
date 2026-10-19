@@ -390,7 +390,6 @@ def validate_broker_receipt(
 
 
 class DeadlineVerdict(StrEnum):
-    NOT_READY = "not_ready"
     VALID = "valid"
     EXPIRED = "expired"
     INVALID = "invalid"
@@ -402,6 +401,16 @@ class DeadlineBudget:
     seconds: float | None = None
 
 
+def _finite_number(value: object) -> float | None:
+    if type(value) not in (int, float):
+        return None
+    try:
+        number = float(value)
+    except (OverflowError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 @dataclass
 class _DeadlineClockState:
     """Shared sample history for a deadline and its child phases."""
@@ -409,6 +418,24 @@ class _DeadlineClockState:
     reader: object
     last_sample: float | None = None
     invalid: bool = False
+
+    def read(self) -> float | None:
+        if self.invalid or not callable(self.reader):
+            self.invalid = True
+            return None
+        try:
+            value = self.reader()
+        except Exception:
+            self.invalid = True
+            return None
+        sample = _finite_number(value)
+        if sample is None or (
+            self.last_sample is not None and sample < self.last_sample
+        ):
+            self.invalid = True
+            return None
+        self.last_sample = sample
+        return sample
 
 
 @dataclass(frozen=True)
@@ -421,10 +448,42 @@ class Deadline:
 
     @classmethod
     def after(cls, cap_seconds: object, *, clock: object) -> Deadline:
-        return cls(None, DeadlineVerdict.NOT_READY, _DeadlineClockState(clock))
+        state = _DeadlineClockState(clock)
+        cap = _finite_number(cap_seconds)
+        if cap is None or cap <= 0:
+            return cls(None, DeadlineVerdict.INVALID, state)
+        now = state.read()
+        if now is None:
+            return cls(None, DeadlineVerdict.INVALID, state)
+        expires_at = now + cap
+        if not math.isfinite(expires_at) or expires_at <= now:
+            return cls(None, DeadlineVerdict.INVALID, state)
+        return cls(expires_at, DeadlineVerdict.VALID, state)
 
     def child(self, cap_seconds: object) -> Deadline:
-        return Deadline(None, DeadlineVerdict.NOT_READY, self._clock)
+        budget = self.timeout_for(cap_seconds)
+        now = self._clock.last_sample
+        if budget.verdict is not DeadlineVerdict.VALID:
+            return Deadline(None, budget.verdict, self._clock)
+        if now is None or budget.seconds is None or self.expires_at is None:
+            return Deadline(None, DeadlineVerdict.INVALID, self._clock)
+        expires_at = min(self.expires_at, now + budget.seconds)
+        if not math.isfinite(expires_at) or expires_at <= now:
+            return Deadline(None, DeadlineVerdict.INVALID, self._clock)
+        return Deadline(expires_at, DeadlineVerdict.VALID, self._clock)
 
     def timeout_for(self, cap_seconds: object) -> DeadlineBudget:
-        return DeadlineBudget(DeadlineVerdict.NOT_READY)
+        cap = _finite_number(cap_seconds)
+        if cap is None or cap <= 0:
+            return DeadlineBudget(DeadlineVerdict.INVALID)
+        if self.verdict is not DeadlineVerdict.VALID:
+            return DeadlineBudget(self.verdict)
+        if self.expires_at is None or not math.isfinite(self.expires_at):
+            return DeadlineBudget(DeadlineVerdict.INVALID)
+        now = self._clock.read()
+        if now is None:
+            return DeadlineBudget(DeadlineVerdict.INVALID)
+        remaining = self.expires_at - now
+        if remaining <= 0:
+            return DeadlineBudget(DeadlineVerdict.EXPIRED)
+        return DeadlineBudget(DeadlineVerdict.VALID, min(cap, remaining))
