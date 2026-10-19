@@ -840,9 +840,7 @@ def _revalidation_fd_snapshot(fd):
         "expired-after-fstat",
     ),
 )
-def test_retained_lease_revalidation_preserves_cleanup_ownership(
-    lock_case, scenario
-):
+def test_retained_lease_revalidation_preserves_cleanup_ownership(lock_case, scenario):
     base, _fixture_lock, fcntl = lock_case
     ancestor = base / "revalidation-parent"
     ancestor.mkdir()
