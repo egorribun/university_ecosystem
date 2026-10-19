@@ -47,7 +47,6 @@ test("radio focus acceptance uses native keyboard and actual computed styles", a
   )
 })
 
-
 test("semantic tokens use production CSS without changing saved theme", async () => {
   const spec = await readFile(
     new URL("./settings-radio-focus.live.spec.ts", import.meta.url),

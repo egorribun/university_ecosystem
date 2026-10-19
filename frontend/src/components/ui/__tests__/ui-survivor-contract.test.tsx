@@ -130,7 +130,8 @@ describe("Checkbox survivor contract", () => {
       "shadow-glass",
       "hover:border-brand/(--opacity-medium)",
       "hover:bg-glass-tint1",
-      "peer-focus-visible:shadow-focus",
+      "peer-focus-visible:ring-4",
+      "peer-focus-visible:ring-brand/(--opacity-dim)",
       "custom-checkbox"
     )
 

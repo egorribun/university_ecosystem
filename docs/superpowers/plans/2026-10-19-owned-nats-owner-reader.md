@@ -34,3 +34,5 @@ The next 46-case cohort preserves the original 24, adds four post-key-EOF leaf r
 ## Ancestor revalidation after observed RED
 
 On c1a9e0f / job 118334645347, all 40 pre-existing/leaf/fault cases pass and exactly six ancestor cases reach the forbidden parser. The follow-up retains every initially validated parent/name/child descriptor edge and rechecks directory type plus device/inode identity after both leaf checks, before parsing. It uses no new descriptor or deadline. A new expiry-during-revalidation test requires both leaf EOFs, the exact second state-root observation, parser exclusion, no later open/read/stat and full descriptor cleanup. Own-source GREEN is pending. These sequential checks are still not atomic namespace binding, lifecycle locking or authenticated key provenance.
+
+The unchanged six ancestor counterexamples and new expiry oracle pass on 0869fab / job 118341023558: all 47 reader cases, 66 parser cases, 46 event cursor cases and both HTTP cases pass. Early aggregate is 671 PASS / 1 FAIL at 22:30:01 UTC; only the existing disabled-outage workflow hold remains. The next lock slice is independently unavailable/tests-first, not runtime admission.

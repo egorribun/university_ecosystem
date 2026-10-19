@@ -54,7 +54,6 @@ test("Settings radio has a visible keyboard focus style", async ({ page }) => {
   await expect(systemRadio).toBeChecked()
 })
 
-
 async function readSemanticTokens(page: Page, scheme: "light" | "dark") {
   return page.evaluate((colorScheme) => {
     const host = document.createElement("div")

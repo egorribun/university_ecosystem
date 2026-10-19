@@ -423,3 +423,23 @@ def read_signed_owner_v11_from_state(
     if cleanup_failed or not _reader_deadline_live(deadline):
         return not_ready
     return result
+
+
+@dataclass(slots=True, repr=False)
+class LifecycleLockLease:
+    """Opaque future serialization lease, not signed-owner or runtime admission."""
+
+
+def acquire_existing_lifecycle_lock(
+    pinned_state_root: str,
+    *,
+    deadline: Deadline,
+    sleep: Callable[[float], None],
+) -> LifecycleLockLease | None:
+    """Unavailable seam: do not open, create, wait for or mutate any lock."""
+    return None
+
+
+def release_lifecycle_lock(lease: LifecycleLockLease, *, deadline: Deadline) -> bool:
+    """Unavailable seam: no descriptor or lock operation is performed."""
+    return False
