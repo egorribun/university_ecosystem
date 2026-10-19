@@ -53,7 +53,7 @@ export const NewsList = ({
 
   useEffect(() => {
     const sentinel = sentinelRef.current
-    if (!sentinel || !hasNextPage || isFetchingNextPage) return
+    if (!sentinel || !hasNextPage || isFetchingNextPage || isError) return
 
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -66,7 +66,7 @@ export const NewsList = ({
 
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+  }, [hasNextPage, isFetchingNextPage, isError, fetchNextPage])
 
   const handleRetry = useCallback(() => refreshNews(), [refreshNews])
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import os
+import selectors
 import signal
 import subprocess
 import sys
@@ -372,3 +373,34 @@ def test_unsupported_containment_fails_closed_without_spawn(
     assert result.outcome is process.ProcessOutcome.CONTAINMENT_UNAVAILABLE
     assert result.local_cleanup is process.LocalCleanup.NOT_STARTED
     assert owned_children.calls == []
+
+
+def test_keyboard_interrupt_reaps_child_before_propagating(
+    monkeypatch, tmp_path, owned_children
+):
+    deadline = _deadline()
+    owned_children.deadline = deadline
+    request = _request(tmp_path, "time.sleep(10)")
+    if not process._process_tree_containment_available():
+        result = process.run_private_process(request, deadline=deadline)
+        _assert_supported_or_fail_closed(result, owned_children)
+        return
+    real_selector = selectors.DefaultSelector
+
+    class InterruptingSelector:
+        def __init__(self):
+            self.inner = real_selector()
+
+        def select(self, timeout=None):
+            raise KeyboardInterrupt
+
+        def __getattr__(self, name):
+            return getattr(self.inner, name)
+
+    monkeypatch.setattr(selectors, "DefaultSelector", InterruptingSelector)
+
+    with pytest.raises(KeyboardInterrupt):
+        process.run_private_process(request, deadline=deadline)
+
+    assert len(owned_children.children) == 1
+    assert owned_children.children[0].returncode is not None

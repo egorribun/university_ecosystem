@@ -104,6 +104,7 @@ export const NewsFeature = () => {
       requiresCompleteDataset &&
       hasNextPage &&
       !isInitialLoading &&
+      !isNewsQueryError &&
       !isFetchingNextPage &&
       isOnline
     ) {
@@ -114,6 +115,7 @@ export const NewsFeature = () => {
     hasNextPage,
     isFetchingNextPage,
     isInitialLoading,
+    isNewsQueryError,
     isOnline,
     requiresCompleteDataset,
   ])

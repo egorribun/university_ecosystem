@@ -18,7 +18,11 @@
 
 Ordinary Live39287160621:20 PASS /2 ожидаемых SKIP, cleanup16:56:01 UTC, upload16:56:02; artifact12205386033. Предыдущий630 Live упал до browser на HTTP2 download error при Caddy build, cleanup выполнен. Успешный следующий запуск не доказывает устранение сетевой причины или старого login flake.
 
-Следующий tests-first slice: три news-regressions без production correction и private subprocess NOT_READY seam с29 cases. До реализации требуется настоящий hosted assertion RED. Output-cap oracle пока доказывает только размер возвращённых данных; bounded accumulation, descendants/process groups, все read/selector budgets и remote-exec cleanup остаются отдельными обязательными проверками. Никаких новых skips, baselines или waivers.
+На dc21 получен настоящий RED обоих автоматических retry-путей новостей: job118197976374 (1 FAIL /2345 PASS) и job118197977733 (1 FAIL /2169 PASS). Добавлены минимальные error guards; собственный GREEN ожидается. Анонимный Retry пока упал на неверной проверке MSW Request.credentials, не на invalidation: проверка перенесена на настоящий fetch init через call-through spy. Production invalidation не изменена. Форматирование двух новых тестов исправляется без ослабления assertions, hosted проверка ещё требуется.
+
+Private subprocess: job118198065266 дал28 behavioral NOT_READY failures, один repr PASS; общий early результат29 FAIL /437 PASS за129.64s. Независимая проверка unpublished реализации выявила пропуск cleanup при KeyboardInterrupt. Добавлен тридцатый regression case; seam остаётся NOT_READY до supplemental RED и коррекции. Descendant/process-group, retained-memory, read/selector и remote-exec proof ещё не приняты.
+
+Обычный Live dc21 прошёл20 PASS /2 SKIP, cleanup17:31:46 UTC и upload17:31:48 подтверждены; artifact12207770730. Отдельная ошибка timing report старого1d вызвана инверсией API timestamps у skipped job. Strict parser и result gates сохранены; эта диагностическая ошибка не заменяет основной failed/cancelled результат. Полный принятый checkpoint остаётся e150.
 
 Исходные P1:14 приняты,164/167/169/174 остаются отдельными holds. AUD-031 требует persisted translation-clear/reload proof; AUD-053 — настоящего focus behavior proof. Merge/deploy не выполняются.
 
