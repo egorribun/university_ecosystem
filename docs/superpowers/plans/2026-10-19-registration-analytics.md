@@ -58,8 +58,8 @@
 
 - [x] Independent implementation review, including malformed/empty datasets, exact time boundaries, localization and cache paths.
 - [x] Reconcile source metadata without adding scanner exceptions, baselines, skips or lowering thresholds.
-- [ ] Full backend/frontend/quality/security CI on the implementation SHA, exact 78 required context/app pairs, and source-tree-bound owned-live cleanup.
-- [ ] Record precise AUD-011/AUD-012/AUD-014 evidence only after their corresponding hosted proof.
+- [x] Full backend/frontend/quality/security CI on the implementation SHA, exact 78 required context/app pairs, and source-tree-bound owned-live cleanup.
+- [x] Record precise AUD-011/AUD-012/AUD-014 evidence only after their corresponding hosted proof.
 
 No main update, RC selection, merge or deployment. No aggregate closure percentage inferred from these findings.
 
@@ -94,3 +94,5 @@ No main update, RC selection, merge or deployment. No aggregate closure percenta
 - E585 frontend aggregate job 117940614827 now reports all 15341 branch arms hit (zero missing/unlocated/truncated); four shards passed 9355 tests in 772 files. The two supplemental locale cases resolve the identified gap without application changes. Whole-source acceptance still waits for the security regression correction and the new source's full gate; e585's eight expected security failures do not establish a full pass.
 
 - DD17 functional GREEN is verified: focused 48 (37 analytics plus eleven redaction/compatibility), Python 16446/174, frontend 9355/772, PostgreSQL 202/9 including 61-day history, zero uncovered frontend arms. Quality job 117960670190 passed with Python diff-cover 4527/0/100; exact-tree owned-live 20/2 cleanup artifact 12170756608 succeeded. Full acceptance remains open: one unchanged-source build retry passed after RSS failure, but CI Success twice failed its unscoped jobs API call (HTTP 502). The diagnostic request must be attempt-bound with tests first; no threshold relaxation or structural memory-fix claim. Existing browser smoke is not all Activity scenarios or 59 full-smoke specs.
+
+- Accepted on 606d609bfe8fc94f50277501abb671b10792f712: backend 16464/174, frontend 9355/772, PostgreSQL 202/9, focused 167 PASS, quality 117990913623 and CI Success 117991539174 both successful, exact-tree owned-live 20/2 cleanup artifact 12176465676. All 23 workflows terminal (21 success/two skips), exact 78 pairs (77 success/one documented Checkov comparison neutral). This closes Task 5 at source/regression/full-CI scope only; Activity-specific full browser coverage, actual RC and deployment remain separate. Historical RSS instability remains a recorded risk, not a structural fix.

@@ -18,7 +18,7 @@ Remove token/code values from both query and fragment diagnostics. Preserve exis
 
 ## Current status
 
-Hosted RED was observed on e585: eight expected fragment/log assertions failed while all 37 analytics contracts passed. The minimal sanitizer correction is included and its focused GREEN is verified on dd17; full-source acceptance remains pending on the CI report transport failure. Synthetic credentials are generated in tests; no actual reset URL is used. Existing harmless #section1 and query-only behavior remain required.
+Hosted RED was observed on e585: eight expected fragment/log assertions failed while all 37 analytics contracts passed. The minimal sanitizer correction and its original eight-case RED plus three supplemental compatibility cases are accepted at source/regression/full-CI scope on 606d. SMTP configuration, actual deployed delivery and incident claims remain separate. Synthetic credentials are generated in tests; no actual reset URL is used. Existing harmless #section1 and query-only behavior remain required.
 
 ## Execution record
 
@@ -29,3 +29,5 @@ Hosted RED was observed on e585: eight expected fragment/log assertions failed w
 - Independent static review found no code-level blocker. Three supplemental exact-output cases preserve harmless anchors, encoded anchor text and ordinary fragment parameters byte-for-byte. These are compatibility invariants added after the eight-case RED, not three more independently observed failures. The focused file now contains eleven cases.
 
 - DD17 functional GREEN is verified: focused 48 (37 analytics plus eleven redaction/compatibility), Python 16446/174, frontend 9355/772, PostgreSQL 202/9 including 61-day history, zero uncovered frontend arms. Quality job 117960670190 passed with Python diff-cover 4527/0/100; exact-tree owned-live 20/2 cleanup artifact 12170756608 succeeded. Full acceptance remains open: one unchanged-source build retry passed after RSS failure, but CI Success twice failed its unscoped jobs API call (HTTP 502). The diagnostic request must be attempt-bound with tests first; no threshold relaxation or structural memory-fix claim. Existing browser smoke is not all Activity scenarios or 59 full-smoke specs.
+
+- Full-source acceptance completed on 606d609bfe8fc94f50277501abb671b10792f712: focused 167 PASS includes all eleven redaction cases, full backend 16464/174, frontend 9355/772, PostgreSQL 202/9, quality and finalizer successful, exact-tree owned-live cleanup artifact 12176465676. All 78 required context/app pairs reconciled, with the existing Checkov neutral comparison caveat. No SMTP behavior/retry change, actual exposure or deployment is claimed; AUD-471 remains a separate tests-first configuration task.

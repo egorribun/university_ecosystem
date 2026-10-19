@@ -259,6 +259,9 @@ def test_auto_create_schema_default_false_in_production(monkeypatch, tmp_path):
     )  # pragma: allowlist secret
     monkeypatch.setenv("WS_HUB_INTERNAL_SECRET", "dummy_ws_hub_secret_for_test")
     _set_synthetic_totp_keyring(monkeypatch)
+    monkeypatch.setenv("SMTP_HOST", "relay.aud471.invalid")
+    monkeypatch.setenv("SMTP_PORT", "587")
+    monkeypatch.setenv("SMTP_SECURITY", "starttls")
     monkeypatch.delenv("AUTO_CREATE_SCHEMA", raising=False)
 
     with _temporary_env_file(None):
@@ -299,6 +302,9 @@ def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, tmp_pa
     )  # pragma: allowlist secret
     monkeypatch.setenv("WS_HUB_INTERNAL_SECRET", "dummy_ws_hub_secret_for_test")
     _set_synthetic_totp_keyring(monkeypatch)
+    monkeypatch.setenv("SMTP_HOST", "relay.aud471.invalid")
+    monkeypatch.setenv("SMTP_PORT", "587")
+    monkeypatch.setenv("SMTP_SECURITY", "starttls")
     monkeypatch.setenv("AUTO_CREATE_SCHEMA", "true")
 
     with _temporary_env_file(None):

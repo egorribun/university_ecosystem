@@ -1,4 +1,4 @@
-"""AUD-467 regressions for environment-aware integration settings."""
+"""AUD-467/AUD-471 regressions for composed integration and SMTP settings."""
 
 from __future__ import annotations
 
@@ -54,6 +54,11 @@ def _valid_production_settings() -> dict[str, object]:
         "minio_secure": True,
         "elasticsearch_url": "https://search.aud467.invalid",
         "elasticsearch_password": "",
+        "smtp_host": "relay.aud471.invalid",
+        "smtp_port": 587,
+        "smtp_security": "starttls",
+        "smtp_user": "",
+        "smtp_password": "",
     }
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     private_pem = private_key.private_bytes(
@@ -108,6 +113,12 @@ def _clear_secret_file_inputs(monkeypatch: pytest.MonkeyPatch) -> None:
         "REVOCATION_REDIS_URL_FILE",
         "SECRET_KEY_FILE",
         "SMTP_PASSWORD_FILE",
+        "SMTP_HOST",
+        "SMTP_PORT",
+        "SMTP_SECURITY",
+        "SMTP_STARTTLS",
+        "SMTP_USER",
+        "SMTP_PASSWORD",
         "SPICEDB_PRESHARED_KEY_FILE",
         "SPOTIFY_CLIENT_SECRET_FILE",
         "SPOTIFY_OAUTH_STATE_SECRET_FILE",
@@ -151,11 +162,13 @@ def test_full_settings_enforces_production_integration_secrets_from_environment(
         Settings(**settings_inputs)
 
 
-def test_full_settings_accepts_complete_production_configuration(
+@pytest.mark.parametrize("environment", ("production", "staging"))
+def test_full_settings_accepts_complete_non_development_configuration(
+    environment: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """All production settings validate when only the ES password is supplied."""
-    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("ENVIRONMENT", environment)
     monkeypatch.setenv("CI", "false")
     monkeypatch.setenv("GITHUB_ACTIONS", "false")
     monkeypatch.delenv("ELASTICSEARCH_PASSWORD", raising=False)
@@ -167,10 +180,15 @@ def test_full_settings_accepts_complete_production_configuration(
 
     settings = Settings(**settings_inputs)
 
-    assert settings.environment == "production"
+    assert settings.environment == environment
     assert settings.algorithm == "RS256"
     assert settings.database_url.startswith("postgresql+asyncpg://")
     assert settings.elasticsearch_password == settings_inputs["elasticsearch_password"]
+    assert settings.smtp_host == "relay.aud471.invalid"
+    assert settings.smtp_port == 587
+    assert settings.smtp_security == "starttls"
+    assert settings.smtp_user == ""
+    assert settings.smtp_password == ""
 
 
 @pytest.mark.parametrize("environment", ("development", "testing"))
@@ -195,3 +213,268 @@ def test_full_settings_preserves_development_and_test_integration_behavior(
 
     assert settings.environment == environment
     assert settings.integrations.environment == environment
+    assert settings.smtp_host == ""
+    assert settings.smtp_port == 0
+
+    mailpit = Settings(
+        environment=environment,
+        database_url="sqlite+aiosqlite:///./aud467-settings-local.db",
+        secret_key=secrets.token_urlsafe(48),
+        elasticsearch_password="",
+        smtp_host="127.0.0.1",
+        smtp_port=1025,
+        smtp_security="none",
+        _env_file=None,
+    )
+    assert mailpit.smtp_host == "127.0.0.1"
+    assert mailpit.smtp_port == 1025
+    assert mailpit.smtp_security == "none"
+
+
+def _api_smtp_settings_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, object]:
+    _clear_secret_file_inputs(monkeypatch)
+    monkeypatch.setenv("CI", "false")
+    monkeypatch.setenv("GITHUB_ACTIONS", "false")
+    values = _valid_production_settings()
+    values.update(
+        elasticsearch_password=secrets.token_urlsafe(32),
+        app_process_role="api",
+        revocation_redis_access_enabled=True,
+        _env_file=None,
+    )
+    return values
+
+
+def _settings_with_smtp_source(
+    source: str,
+    *,
+    environment: str,
+    smtp_values: dict[str, str | int],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> Settings:
+    values = _api_smtp_settings_inputs(monkeypatch)
+    for field in ("smtp_host", "smtp_port", "smtp_security"):
+        values.pop(field)
+
+    if source == "process":
+        monkeypatch.setenv("ENVIRONMENT", environment)
+        for name, value in smtp_values.items():
+            monkeypatch.setenv(name, str(value))
+    elif source == "constructor":
+        monkeypatch.setenv("ENVIRONMENT", "testing")
+        values["environment"] = environment
+        values.update({name.lower(): value for name, value in smtp_values.items()})
+    elif source == "dotenv":
+        monkeypatch.delenv("ENVIRONMENT", raising=False)
+        env_file = tmp_path / "smtp.env"
+        lines = [f"ENVIRONMENT={environment}"]
+        lines.extend(f"{name}={value}" for name, value in smtp_values.items())
+        env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        values["_env_file"] = env_file
+    else:
+        raise AssertionError(f"unexpected settings source: {source}")
+
+    return Settings(**values)
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_host", "expected_port", "expected_security"),
+    [
+        ("constructor", "constructor.aud471.invalid", 587, "starttls"),
+        ("process", "process.aud471.invalid", 465, "ssl"),
+        ("dotenv", "dotenv.aud471.invalid", 2525, "starttls"),
+    ],
+)
+def test_full_settings_preserves_smtp_settings_source_precedence(
+    source: str,
+    expected_host: str,
+    expected_port: int,
+    expected_security: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    values = _api_smtp_settings_inputs(monkeypatch)
+    monkeypatch.setenv("ENVIRONMENT", "testing")
+    monkeypatch.setenv("SMTP_HOST", "process.aud471.invalid")
+    monkeypatch.setenv("SMTP_PORT", "465")
+    monkeypatch.setenv("SMTP_SECURITY", "ssl")
+    dotenv = tmp_path / "smtp-precedence.env"
+    dotenv.write_text(
+        "SMTP_HOST=dotenv.aud471.invalid\nSMTP_PORT=2525\nSMTP_SECURITY=starttls\n",
+        encoding="utf-8",
+    )
+    values["environment"] = "production"
+    values["_env_file"] = dotenv
+    if source == "constructor":
+        values.update(
+            smtp_host="constructor.aud471.invalid",
+            smtp_port=587,
+            smtp_security="starttls",
+        )
+    else:
+        for field in ("smtp_host", "smtp_port", "smtp_security"):
+            values.pop(field)
+        if source == "dotenv":
+            for name in ("SMTP_HOST", "SMTP_PORT", "SMTP_SECURITY"):
+                monkeypatch.delenv(name, raising=False)
+
+    settings = Settings(**values)
+
+    assert settings.smtp_host == expected_host
+    assert settings.smtp_port == expected_port
+    assert settings.smtp_security == expected_security
+    assert settings.smtp_user == ""
+    assert settings.smtp_password == ""
+
+
+@pytest.mark.parametrize("environment_source", ("process", "constructor", "dotenv"))
+@pytest.mark.parametrize("environment", ("production", "staging"))
+@pytest.mark.parametrize(
+    ("smtp_values", "expected_error"),
+    [
+        pytest.param(
+            {"SMTP_HOST": "", "SMTP_PORT": 587, "SMTP_SECURITY": "starttls"},
+            "SMTP_HOST",
+            id="missing-host",
+        ),
+        pytest.param(
+            {
+                "SMTP_HOST": "relay.aud471.invalid",
+                "SMTP_PORT": 0,
+                "SMTP_SECURITY": "starttls",
+            },
+            "SMTP_PORT",
+            id="missing-port",
+        ),
+    ],
+)
+def test_non_development_api_requires_smtp_from_composed_settings_source(
+    environment_source: str,
+    environment: str,
+    smtp_values: dict[str, str | int],
+    expected_error: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match=expected_error):
+        _settings_with_smtp_source(
+            environment_source,
+            environment=environment,
+            smtp_values=smtp_values,
+            monkeypatch=monkeypatch,
+            tmp_path=tmp_path,
+        )
+
+
+@pytest.mark.parametrize(
+    ("smtp_values", "expected_error"),
+    [
+        pytest.param(
+            {"SMTP_HOST": "   ", "SMTP_PORT": 587, "SMTP_SECURITY": "starttls"},
+            "SMTP_HOST",
+            id="whitespace-host",
+        ),
+        pytest.param(
+            {
+                "SMTP_HOST": "relay.aud471.invalid",
+                "SMTP_PORT": -1,
+                "SMTP_SECURITY": "starttls",
+            },
+            "SMTP_PORT",
+            id="negative-port",
+        ),
+        pytest.param(
+            {
+                "SMTP_HOST": "relay.aud471.invalid",
+                "SMTP_PORT": 65536,
+                "SMTP_SECURITY": "starttls",
+            },
+            "SMTP_PORT",
+            id="port-too-large",
+        ),
+    ],
+)
+def test_non_development_api_rejects_invalid_smtp_host_and_port(
+    smtp_values: dict[str, str | int],
+    expected_error: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match=expected_error):
+        _settings_with_smtp_source(
+            "constructor",
+            environment="production",
+            smtp_values=smtp_values,
+            monkeypatch=monkeypatch,
+            tmp_path=tmp_path,
+        )
+
+
+@pytest.mark.parametrize(
+    ("role", "smtp_host", "smtp_port", "smtp_security"),
+    [
+        ("outbox-worker", "relay.aud471.invalid", 587, "starttls"),
+        ("notifications-worker", "", 0, "none"),
+    ],
+)
+def test_api_reset_smtp_requirement_preserves_worker_role_scope(
+    role: str,
+    smtp_host: str,
+    smtp_port: int,
+    smtp_security: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Outbox MFA is an SMTP consumer and receives a relay, not an exemption
+    # claiming that an unconfigured outbox can successfully deliver MFA email.
+    values = _api_smtp_settings_inputs(monkeypatch)
+    values.update(
+        environment="production",
+        app_process_role=role,
+        revocation_redis_access_enabled=False,
+        smtp_host=smtp_host,
+        smtp_port=smtp_port,
+        smtp_security=smtp_security,
+    )
+    settings = Settings(**values)
+
+    assert settings.app_process_role == role
+    assert settings.smtp_host == smtp_host
+    assert settings.smtp_port == smtp_port
+
+
+@pytest.mark.parametrize("smtp_port", [1, 65535])
+def test_non_development_api_accepts_smtp_port_boundaries(
+    smtp_port: int, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    settings = _settings_with_smtp_source(
+        "constructor",
+        environment="production",
+        smtp_values={
+            "SMTP_HOST": "relay.aud471.invalid",
+            "SMTP_PORT": smtp_port,
+            "SMTP_SECURITY": "starttls",
+        },
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+    )
+    assert settings.smtp_port == smtp_port
+
+
+def test_composed_non_development_api_rejects_plaintext_anonymous_smtp(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    with pytest.raises(ValueError, match="SMTP_SECURITY"):
+        _settings_with_smtp_source(
+            "constructor",
+            environment="production",
+            smtp_values={
+                "SMTP_HOST": "relay.aud471.invalid",
+                "SMTP_PORT": 587,
+                "SMTP_SECURITY": "none",
+            },
+            monkeypatch=monkeypatch,
+            tmp_path=tmp_path,
+        )
