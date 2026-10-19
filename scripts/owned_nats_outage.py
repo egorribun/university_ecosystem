@@ -188,7 +188,6 @@ def validate_message_correlation(
 
 
 class RestorationVerdict(StrEnum):
-    NOT_READY = "not_ready"
     VALID = "valid"
     INVALID_SNAPSHOT = "invalid_snapshot"
     IDENTITY_CHANGED = "identity_changed"
@@ -200,5 +199,80 @@ def validate_restored_inventory(
     before: tuple[ContainerSnapshot, ...],
     after: tuple[ContainerSnapshot, ...],
 ) -> RestorationVerdict:
-    """Unavailable pure seam; does not restore containers or perform any I/O."""
-    return RestorationVerdict.NOT_READY
+    """Validate same-container recovery evidence without operating the stand."""
+    if validate_inventory(selected_services, before) is not InventoryVerdict.VALID:
+        return RestorationVerdict.INVALID_SNAPSHOT
+
+    original = {record.container_id: record for record in before}
+    restored = {record.container_id: record for record in after}
+    original_identity = {
+        container_id: (record.service, record.identity)
+        for container_id, record in original.items()
+    }
+    restored_identity = {
+        container_id: (record.service, record.identity)
+        for container_id, record in restored.items()
+    }
+    if len(restored) != len(after) or restored_identity != original_identity:
+        return RestorationVerdict.IDENTITY_CHANGED
+
+    for container_id, record in restored.items():
+        if record.service != "nats" and record != original[container_id]:
+            return RestorationVerdict.RUNTIME_CHANGED
+
+    if validate_inventory(selected_services, after) is not InventoryVerdict.VALID:
+        return RestorationVerdict.INVALID_SNAPSHOT
+    return RestorationVerdict.VALID
+
+
+class WorkerPolicyVerdict(StrEnum):
+    NOT_READY = "not_ready"
+    VALID = "valid"
+    INVALID = "invalid"
+
+
+@dataclass(frozen=True)
+class WorkerPolicy:
+    poll_interval_seconds: float
+    batch_size: int
+    max_retries: int
+
+
+def validate_worker_policy(policy: WorkerPolicy) -> WorkerPolicyVerdict:
+    """Unavailable pure seam for effective settings, not a configuration change."""
+    return WorkerPolicyVerdict.NOT_READY
+
+
+class OutboxVerdict(StrEnum):
+    NOT_READY = "not_ready"
+    INVALID = "invalid"
+    WAIT = "wait"
+    RETRYABLE = "retryable"
+    DRAINED = "drained"
+    TERMINAL = "terminal"
+
+
+@dataclass(frozen=True)
+class StoredEventState:
+    """The row ID and exact DLQ count both refer to stored_events.id."""
+
+    stored_event_id: str
+    processed_at_present: bool
+    error_count: int
+    dlq_count: int
+
+
+def classify_outage_attempt(
+    expected_event_id: str, state: StoredEventState | None
+) -> OutboxVerdict:
+    """Unavailable pure seam; never treats a timestamp alone as retry proof."""
+    return OutboxVerdict.NOT_READY
+
+
+def classify_outbox_drain(
+    expected_event_id: str,
+    observed_retry_count: int,
+    state: StoredEventState | None,
+) -> OutboxVerdict:
+    """Unavailable pure seam for the same event after an observed outage retry."""
+    return OutboxVerdict.NOT_READY

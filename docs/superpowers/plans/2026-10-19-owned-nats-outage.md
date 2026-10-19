@@ -14,7 +14,7 @@
 - Existing administrator and exact reserved peer; read the generated admin credential, never create/rotate it. Refuse a pre-existing administrator/peer DM.
 - Normal cookie/CSRF login and multipart send, exactly one write attempt; no retry after ambiguous send.
 - Exact Message and chat/sender/content identity; exactly one chat.message_sent StoredEvent, aggregate_type Message and schema1, retained event ID for every later query.
-- Acceptance requires privately verified effective worker max_retries=5, batch_size>=2, and a finite poll interval greater than0 and at most10seconds. Refuse unsuitable settings; never modify them. The used full/live Compose files do not pin1s/50: code defaults are5s/20/5 and generated worker environment may override them. Restore on the first retryable observation with error_count1..4; no fixed outage duration or extra wait after that observation.
+- Acceptance requires privately verified effective worker max_retries=5, batch_size>=2, and a finite poll interval from 1 through 10 seconds. Refuse unsuitable settings; never modify them. The used full/live Compose files do not pin1s/50: code defaults are5s/20/5 and generated worker environment may override them. Restore on the first retryable observation with error_count1..4; no fixed outage duration or extra wait after that observation.
 - Existing identity-only quiesce comparator stays unchanged. New snapshots additionally compare non-NATS runtime, restart count, exit code and OOM state.
 - Closed public stage/outcome labels only; never include raw exceptions, identities, SQL rows, credentials, cookies or message bodies.
 - Broker-storage receipt only, no exactly-once or recipient/browser ACK claim.
@@ -54,7 +54,7 @@ Files: scripts/live_nats_transport.py; scripts/live_stand.py; tests/test_live_na
 
 - [ ] Add actual testable adapter seam and tests before operation implementation. Prove every nested deadline and lock acquisition, including failure paths.
 - [ ] Use owner-pinned read-only PostgreSQL principal verification, fixed SQL stdin, validated UUID parameters and transaction-local deadlines. Never use RLS bypass, SET ROLE or role modification.
-- [ ] Privately verify the effective outbox worker command/settings under the owned full/live Compose model: max_retries=5, batch_size>=2, finite0<poll<=10seconds. Base docker-compose.yml overrides are not evidence for this stand. Refuse an unsupported effective policy without configuration changes.
+- [ ] Privately verify the effective outbox worker command/settings under the owned full/live Compose model: max_retries=5, batch_size>=2, finite 1<=poll<=10 seconds. Base docker-compose.yml overrides are not evidence for this stand. Refuse an unsupported effective policy without configuration changes.
 - [ ] Verify active administrator/reserved peer and absent pair, use cookie jar and CSRF login, create exact DM once, verify participants, then count-only zero-pending check immediately before stop.
 - [ ] Capture exact container inventory with explicit project/daemon identity; stop/start only the originally verified NATS target. Preserve old lifecycle APIs/defaults for unrelated callers.
 - [ ] Use a static bounded backend Python stdin broker probe with get_last_msg(direct=False); no stream/consumer mutation or production connect helper.
@@ -84,3 +84,5 @@ Current source evidence:7a7 job118062740060 produced52 inventory assertion failu
 Inventory scoped GREEN: bcaae3 job118069006472 has52 inventory tests passing; overall early gate1FAIL99PASS26.65s because the live NATS step is still intentionally absent. Next: Message/StoredEvent pure-correlation NOT_READY seam plus33 assertion tests; no implementation or runtime enablement before their observed RED.
 
 Exact correlation RED: ebc9 job118074359416 produced33 correlation assertion failures plus the absent workflow step,99passes in36.30s. Correlation implementation and seven supplemental malformed-input cases now await GREEN. Next NOT_READY seam tests post-restoration evidence invariants using the shared unchanged Core fixture; no actual restoration/coordinator/transport is implemented. Stored event identity always means stored_events.id, not the domain ID in metadata.
+
+Restoration evidence RED: 2a2 job 118084880278 produced 32 invariant failures plus one workflow failure; 139 tests passed in 42.32s, including all 40 correlation and 52 inventory cases. The pure restoration validator is implemented pending GREEN. Next NOT_READY seams and tests cover effective worker policy and exact retry/drain states; no operational restoration, transport or outage is enabled.
