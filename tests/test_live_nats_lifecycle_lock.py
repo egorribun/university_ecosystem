@@ -201,3 +201,224 @@ def test_expired_before_open_performs_no_os_or_flock_calls(lock_case):
         )
     assert result is None
     assert attempted == []
+
+
+@pytest.mark.parametrize("expired", [False, True])
+def test_release_closes_once_even_expired_and_never_touches_reused_fd(
+    lock_case, expired
+):
+    root, lock, fcntl = lock_case
+    now = [0.0]
+    deadline = Deadline.after(1.0, clock=lambda: now[0])
+    real_open, real_close, real_flock = os.open, os.close, fcntl.flock
+    opened, events = [], []
+    repeated = False
+
+    def traced_open(path, flags, mode=0o777, *, dir_fd=None):
+        fd = real_open(path, flags, mode, dir_fd=dir_fd)
+        opened.append(fd)
+        return fd
+
+    def traced_close(fd):
+        assert not repeated, "repeated release must not close any descriptor"
+        events.append(("close", fd))
+        return real_close(fd)
+
+    def traced_flock(fd, operation):
+        assert not repeated, "repeated release must not operate on a reused fd"
+        events.append(("flock", fd, operation))
+        return real_flock(fd, operation)
+
+    with pytest.MonkeyPatch.context() as guard:
+        guard.setattr(os, "open", traced_open)
+        guard.setattr(os, "close", traced_close)
+        guard.setattr(os, "supports_dir_fd", os.supports_dir_fd | {traced_open})
+        guard.setattr(fcntl, "flock", traced_flock)
+        lease = _acquire(root, deadline)
+        assert lease is not None
+        assert opened
+
+        events.clear()
+        if expired:
+            now[0] = 1.0
+        released = transport.release_lifecycle_lock(lease, deadline=deadline)
+        assert released is (not expired)
+        expected = [
+            ("flock", opened[-1], fcntl.LOCK_UN),
+            *(("close", fd) for fd in reversed(opened)),
+        ]
+        assert events == expected
+
+        # Bypass tracing for the independent owner of the recycled descriptor.
+        reused_fd = real_open(lock, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+        try:
+            assert reused_fd in opened, "the oracle must exercise actual fd reuse"
+            real_flock(reused_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            before = os.fstat(reused_fd)
+            repeated = True
+            assert transport.release_lifecycle_lock(lease, deadline=deadline) is False
+            assert events == expected
+            after = os.fstat(reused_fd)
+            assert (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
+        finally:
+            real_close(reused_fd)
+
+    _probe(lock, fcntl, fcntl.LOCK_EX, blocked=False)
+
+
+def _entry_metadata(path):
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return None
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_nlink,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+@pytest.mark.parametrize(
+    "obstacle",
+    ("missing-lock", "symlink-root", "symlink-lock", "fifo-lock"),
+)
+def test_unsafe_lock_paths_refuse_without_mutation(lock_case, obstacle):
+    root, lock, _lock_api = lock_case
+    target = root.with_name("original-entry")
+    if obstacle == "missing-lock":
+        lock.unlink()
+    elif obstacle == "symlink-root":
+        root.rename(target)
+        root.symlink_to(target, target_is_directory=True)
+    elif obstacle == "symlink-lock":
+        lock.rename(target)
+        lock.symlink_to(target)
+    else:
+        lock.unlink()
+        os.mkfifo(lock, mode=0o600)
+
+    paths = (root, lock, target)
+    before = tuple(_entry_metadata(path) for path in paths)
+    regular = target if obstacle == "symlink-lock" else lock
+    content_before = (
+        _snapshot(regular) if obstacle in {"symlink-root", "symlink-lock"} else None
+    )
+    real_open, real_close = os.open, os.close
+    opened, closed, violations = [], [], []
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    leaf_flags = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC
+
+    def guarded_open(path, flags, mode=0o777, *, dir_fd=None):
+        if flags not in {directory_flags, leaf_flags}:
+            violations.append("unsafe open flags")
+            raise AssertionError("unsafe open flags")
+        fd = real_open(path, flags, mode, dir_fd=dir_fd)
+        opened.append(fd)
+        return fd
+
+    def traced_close(fd):
+        closed.append(fd)
+        return real_close(fd)
+
+    def forbidden(*_args, **_kwargs):
+        violations.append("unexpected read or mutation")
+        raise AssertionError("lock refusal must not read or mutate files")
+
+    deadline = Deadline.after(10.0, clock=lambda: 0.0)
+    with pytest.MonkeyPatch.context() as guard:
+        guard.setattr(os, "open", guarded_open)
+        guard.setattr(os, "close", traced_close)
+        guard.setattr(os, "supports_dir_fd", os.supports_dir_fd | {guarded_open})
+        for name in (
+            "read",
+            "write",
+            "mkdir",
+            "makedirs",
+            "unlink",
+            "remove",
+            "rename",
+            "replace",
+            "chmod",
+            "truncate",
+            "ftruncate",
+            "fsync",
+            "fdopen",
+        ):
+            guard.setattr(os, name, forbidden)
+        lease = _acquire(root, deadline)
+        if lease is not None:
+            transport.release_lifecycle_lock(lease, deadline=deadline)
+
+    assert lease is None
+    assert violations == []
+    assert Counter(closed) == Counter(opened)
+    assert tuple(_entry_metadata(path) for path in paths) == before
+    if content_before is not None:
+        assert _snapshot(regular) == content_before
+
+
+@pytest.mark.parametrize(
+    "capability",
+    ("nofollow-flag", "descriptor-relative", "nofollow-stat"),
+)
+def test_unsupported_lock_capability_refuses_before_io(capability):
+    attempted = []
+
+    def forbidden(*_args, **_kwargs):
+        attempted.append(True)
+        raise AssertionError("unsupported acquisition must not perform I/O")
+
+    deadline = Deadline.after(10.0, clock=lambda: 0.0)
+    with pytest.MonkeyPatch.context() as guard:
+        # Keep wrappers advertised as supported except for the capability
+        # deliberately removed by this case.
+        relative = set(getattr(os, "supports_dir_fd", ()))
+        nofollow = set(getattr(os, "supports_follow_symlinks", ()))
+        relative.add(forbidden)
+        nofollow.add(forbidden)
+        guard.setattr(os, "supports_dir_fd", relative, raising=False)
+        guard.setattr(os, "supports_follow_symlinks", nofollow, raising=False)
+        for name in (
+            "open",
+            "stat",
+            "lstat",
+            "fstat",
+            "close",
+            "read",
+            "write",
+            "mkdir",
+            "makedirs",
+            "unlink",
+            "remove",
+            "rename",
+            "replace",
+            "listdir",
+            "scandir",
+            "readlink",
+            "chmod",
+            "truncate",
+            "ftruncate",
+            "fsync",
+            "fdopen",
+        ):
+            guard.setattr(os, name, forbidden)
+        if _fcntl is not None:
+            guard.setattr(_fcntl, "flock", forbidden)
+        if capability == "nofollow-flag":
+            guard.setattr(os, "O_NOFOLLOW", 0, raising=False)
+        elif capability == "descriptor-relative":
+            guard.setattr(os, "supports_dir_fd", set())
+        else:
+            guard.setattr(os, "supports_follow_symlinks", set())
+        result = transport.acquire_existing_lifecycle_lock(
+            "/unsupported-lock-contract",
+            deadline=deadline,
+            sleep=forbidden,
+        )
+
+    assert result is None
+    assert attempted == []

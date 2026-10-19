@@ -9,7 +9,9 @@ it does not establish file provenance or observe the current Docker daemon.
 
 from __future__ import annotations
 
+import errno
 import hmac
+import importlib
 import json
 import os
 import re
@@ -427,7 +429,77 @@ def read_signed_owner_v11_from_state(
 
 @dataclass(slots=True, repr=False)
 class LifecycleLockLease:
-    """Opaque future serialization lease, not signed-owner or runtime admission."""
+    """Opaque serialization lease, not ownership or runtime admission."""
+
+    _opened_fds: list[int] = field(default_factory=list)
+    _unlock: Callable[[], None] | None = None
+    _released: bool = False
+
+
+def _lifecycle_leaf_identity(
+    deadline: Deadline, name: str, parent_fd: int, lock_fd: int
+) -> tuple[int, int]:
+    info = _reader_call(deadline, lambda: os.fstat(lock_fd))
+    entry = _reader_call(
+        deadline,
+        lambda: os.stat(name, dir_fd=parent_fd, follow_symlinks=False),
+    )
+    identity = (info.st_dev, info.st_ino)
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or not stat.S_ISREG(entry.st_mode)
+        or identity != (entry.st_dev, entry.st_ino)
+    ):
+        raise _ReaderNotReady
+    return identity
+
+
+def _lifecycle_cleanup(
+    lease: LifecycleLockLease, deadline: Deadline
+) -> tuple[bool, tuple[BaseException, TracebackType | None] | None]:
+    if lease._released:
+        return False, None
+
+    # Consume cleanup state before invoking clocks, unlock or close callbacks.
+    # An ambiguous close must never be retried against a potentially reused fd.
+    lease._released = True
+    opened_fds, lease._opened_fds = lease._opened_fds, []
+    unlock, lease._unlock = lease._unlock, None
+    clean = bool(opened_fds)
+    pending: tuple[BaseException, TracebackType | None] | None = None
+
+    def observe_deadline() -> None:
+        nonlocal clean, pending
+        try:
+            live = type(deadline) is Deadline and _reader_deadline_live(deadline)
+            clean = clean and live
+        except BaseException as error:
+            clean = False
+            if pending is None:
+                pending = (error, error.__traceback__)
+
+    def attempt(operation: Callable[[], None]) -> None:
+        nonlocal clean, pending
+        observe_deadline()
+        try:
+            operation()
+        except OSError:
+            clean = False
+        except BaseException as error:
+            clean = False
+            if pending is None:
+                pending = (error, error.__traceback__)
+        finally:
+            observe_deadline()
+
+    observe_deadline()
+    if unlock is not None:
+        attempt(unlock)
+    while opened_fds:
+        fd = opened_fds.pop()
+        attempt(lambda fd=fd: os.close(fd))
+    observe_deadline()
+    return clean, pending
 
 
 def acquire_existing_lifecycle_lock(
@@ -436,10 +508,113 @@ def acquire_existing_lifecycle_lock(
     deadline: Deadline,
     sleep: Callable[[float], None],
 ) -> LifecycleLockLease | None:
-    """Unavailable seam: do not open, create, wait for or mutate any lock."""
+    """Acquire the existing sibling lock without creating or modifying files.
+
+    Traversal and revalidation are nofollow, descriptor-relative observations,
+    not an atomic namespace snapshot. Flock serializes cooperating holders; it
+    does not establish ownership. Syscalls and injected sleep cannot be
+    hard-preempted, including on network/FUSE filesystems.
+    """
+    if (
+        type(deadline) is not Deadline
+        or not _reader_deadline_live(deadline)
+        or not _reader_api_supported()
+        or not _absolute_pin(pinned_state_root)
+        or not callable(sleep)
+    ):
+        return None
+    raw_parts = pinned_state_root.split("/")
+    if "\x00" in pinned_state_root or any(part in {".", ".."} for part in raw_parts):
+        return None
+    components = [part for part in raw_parts[1:] if part]
+    if not components:
+        return None
+
+    try:
+        fcntl = importlib.import_module("fcntl")
+    except ImportError:
+        return None
+
+    lease = LifecycleLockLease()
+    traversed_edges: list[tuple[str, int, int]] = []
+    try:
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        parent_fd = _reader_open(
+            deadline, lease._opened_fds, "/", directory_flags, dir_fd=None
+        )
+        for component in components:
+            child_fd = _reader_open(
+                deadline,
+                lease._opened_fds,
+                component,
+                directory_flags,
+                dir_fd=parent_fd,
+            )
+            _reader_check_directory(deadline, component, parent_fd, child_fd)
+            traversed_edges.append((component, parent_fd, child_fd))
+            parent_fd = child_fd
+
+        lock_parent_fd = traversed_edges[-1][1]
+        lock_name = f".{components[-1]}.lifecycle.lock"
+        leaf_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+        lock_fd = _reader_open(
+            deadline,
+            lease._opened_fds,
+            lock_name,
+            leaf_flags,
+            dir_fd=lock_parent_fd,
+        )
+        identity = _lifecycle_leaf_identity(
+            deadline, lock_name, lock_parent_fd, lock_fd
+        )
+
+        def acquire_once() -> bool:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as error:
+                if error.errno in {errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK}:
+                    return False
+                raise
+            # Record success before _reader_call performs its post-call check.
+            lease._unlock = lambda: fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            return True
+
+        while not _reader_call(deadline, acquire_once):
+            budget = deadline.timeout_for(0.05)
+            if budget.verdict is not DeadlineVerdict.VALID or budget.seconds is None:
+                raise _ReaderNotReady
+            # This budget sample is the pre-sleep deadline check.
+            sleep(budget.seconds)
+            if not _reader_deadline_live(deadline):
+                raise _ReaderNotReady
+
+        for component, ancestor_fd, descendant_fd in traversed_edges:
+            _reader_check_directory(deadline, component, ancestor_fd, descendant_fd)
+        if identity != _lifecycle_leaf_identity(
+            deadline, lock_name, lock_parent_fd, lock_fd
+        ):
+            raise _ReaderNotReady
+        return _reader_call(deadline, lambda: lease)
+    except (_ReaderNotReady, OSError, ValueError):
+        pass
+    except BaseException:
+        # Cleanup records its own failures instead of masking this exception.
+        _lifecycle_cleanup(lease, deadline)
+        raise
+
+    _clean, pending = _lifecycle_cleanup(lease, deadline)
+    if pending is not None:
+        error, traceback = pending
+        raise error.with_traceback(traceback)
     return None
 
 
 def release_lifecycle_lock(lease: LifecycleLockLease, *, deadline: Deadline) -> bool:
-    """Unavailable seam: no descriptor or lock operation is performed."""
-    return False
+    """Attempt unlock and reverse-order close once, even after expiry."""
+    if type(lease) is not LifecycleLockLease:
+        return False
+    clean, pending = _lifecycle_cleanup(lease, deadline)
+    if pending is not None:
+        error, traceback = pending
+        raise error.with_traceback(traceback)
+    return clean
