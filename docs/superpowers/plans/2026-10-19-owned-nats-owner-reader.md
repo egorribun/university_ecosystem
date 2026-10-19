@@ -30,3 +30,7 @@ The 24 reader tests and 66 parser cases are unchanged. Initial nofollow componen
 ## Extended tests-first boundary
 
 The next 46-case cohort preserves the original 24, adds four post-key-EOF leaf replacement/metadata checks and twelve interrupt/ordinary-close cases, then six ancestor rename/symlink cases expected to expose the missing post-read chain check. Their execution is pending. Close interrupts cover release-then-interrupt; ordinary OSError covers both released and intentionally unreleased outcomes. Assertions distinguish one cleanup attempt from actual release, and test-only cleanup handles explicitly unreleased fixture descriptors. No atomic namespace snapshot, lock, key provenance or runtime admission is claimed.
+
+## Ancestor revalidation after observed RED
+
+On c1a9e0f / job 118334645347, all 40 pre-existing/leaf/fault cases pass and exactly six ancestor cases reach the forbidden parser. The follow-up retains every initially validated parent/name/child descriptor edge and rechecks directory type plus device/inode identity after both leaf checks, before parsing. It uses no new descriptor or deadline. A new expiry-during-revalidation test requires both leaf EOFs, the exact second state-root observation, parser exclusion, no later open/read/stat and full descriptor cleanup. Own-source GREEN is pending. These sequential checks are still not atomic namespace binding, lifecycle locking or authenticated key provenance.

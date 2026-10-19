@@ -317,9 +317,10 @@ def read_signed_owner_v11_from_state(
     """Read existing fixed files into signed metadata, never runtime admission.
 
     Initial traversal is descriptor-relative and nofollow. Leaf checks observe
-    descriptor/name metadata before and after both reads, not an atomic pair
-    snapshot or post-read binding of the full ancestor pathname. No lifecycle
-    lock, key-provenance authentication or current daemon check is performed.
+    descriptor/name metadata before and after both reads. Each ancestor edge is
+    rechecked after both reads, but these observations are not an atomic file-pair
+    or namespace snapshot. No lifecycle lock, key-provenance authentication or
+    current daemon check is performed.
     Syscalls, including on network/FUSE mounts, cannot be hard-preempted.
     """
     not_ready = OwnerParseResult(OwnerParseStatus.NOT_READY)
@@ -340,6 +341,7 @@ def read_signed_owner_v11_from_state(
         return not_ready
 
     opened_fds: list[int] = []
+    traversed_edges: list[tuple[str, int, int]] = []
     result = not_ready
     pending: tuple[BaseException, TracebackType | None] | None = None
     cleanup_pending: tuple[BaseException, TracebackType | None] | None = None
@@ -358,6 +360,7 @@ def read_signed_owner_v11_from_state(
                 dir_fd=parent_fd,
             )
             _reader_check_directory(deadline, component, parent_fd, child_fd)
+            traversed_edges.append((component, parent_fd, child_fd))
             parent_fd = child_fd
         leaf_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
         marker_name = live_stand.STAND_FILE.name
@@ -384,6 +387,8 @@ def read_signed_owner_v11_from_state(
         )
         if marker_before != marker_after or key_before != key_after:
             raise _ReaderNotReady
+        for component, ancestor_fd, descendant_fd in traversed_edges:
+            _reader_check_directory(deadline, component, ancestor_fd, descendant_fd)
         result = _reader_call(
             deadline,
             lambda: parse_signed_owner_v11(

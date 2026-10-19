@@ -14,6 +14,7 @@ import {
 import { useMemo } from "react"
 
 import { allEventsApiV1EventsGet, myEventsApiV1EventsMyGet } from "@/api/generated/sdk.gen"
+import type { AllEventsApiV1EventsGetData } from "@/api/generated/types.gen"
 import type { Event } from "@/types/Event"
 import type { PaginatedResponse } from "@/types/Pagination"
 import { StorageItem } from "@/utils/storage"
@@ -30,12 +31,16 @@ export const EVENTS_PAGE_SIZE = 12
 
 const getCurrentConfirmedUserId = () => getConfirmedUserId(useAuthStore.getState())
 
+type EventsApiQuery = NonNullable<AllEventsApiV1EventsGetData["query"]>
+export type EventsListOrder = NonNullable<EventsApiQuery["order"]>
+
 export type EventsListFilters = {
   language: string
   is_active?: boolean | null
   search?: string
   location?: string
   limit?: number
+  order?: EventsListOrder
 }
 
 type NormalizedEventsListFilters = {
@@ -44,6 +49,7 @@ type NormalizedEventsListFilters = {
   search: string
   location: string
   limit: number
+  order?: EventsListOrder
 }
 
 const normalizeEventsListFilters = (filters: EventsListFilters): NormalizedEventsListFilters => {
@@ -63,6 +69,7 @@ const normalizeEventsListFilters = (filters: EventsListFilters): NormalizedEvent
     search: filters.search?.trim() ?? "",
     location: filters.location?.trim() ?? "",
     limit: normalizeLimit(filters.limit),
+    ...(filters.order ? { order: filters.order } : {}),
   }
 }
 
@@ -77,6 +84,7 @@ const createEventsListEtagKey = (filters: NormalizedEventsListFilters) => {
     "list",
     filters.language,
     activity,
+    ...(filters.order ? [`order=${filters.order}`] : []),
     filters.search,
     filters.location,
     filters.limit,
@@ -173,10 +181,13 @@ const createEventsListQueryFn =
       (owner !== null && currentEpoch() && getCurrentConfirmedUserId() === owner)
     if (!ownsSession()) throw new DOMException("Session changed", "AbortError")
     const etagKey = pageParam == null ? createEventsListEtagKey(normalized) : undefined
-    const params: Record<string, unknown> = {
+    const params: EventsApiQuery = {
       limit: normalized.limit,
       search: normalized.search,
       location: normalized.location,
+    }
+    if (normalized.order) {
+      params.order = normalized.order
     }
     if (normalized.is_active !== null) {
       params.is_active = normalized.is_active
@@ -257,8 +268,10 @@ export const useEventsListQuery = (
     [queryClient, normalized, queryKey, owner]
   )
 
-  // Read from localStorage as fallback for offline mode
+  // Legacy arrays cannot establish date order or pagination completeness.
+  // Explicit-order feeds use their exact persisted React Query pages instead.
   const placeholderData = useMemo(() => {
+    if (normalized.order !== undefined) return undefined
     if (!owner || !isCurrentSession() || getCurrentConfirmedUserId() !== owner) return undefined
     const activity =
       normalized.is_active === null ? "all" : normalized.is_active ? "active" : "archive"
@@ -285,7 +298,14 @@ export const useEventsListQuery = (
       ],
       pageParams: [null],
     }
-  }, [normalized.language, normalized.is_active, normalized.limit, owner, isCurrentSession])
+  }, [
+    normalized.language,
+    normalized.is_active,
+    normalized.limit,
+    normalized.order,
+    owner,
+    isCurrentSession,
+  ])
 
   const query = useInfiniteQuery<
     PaginatedResponse<Event>,

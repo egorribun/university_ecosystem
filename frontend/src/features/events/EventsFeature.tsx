@@ -6,7 +6,12 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { useDebounced } from "@/hooks/useDebounced"
 import { useStableListHeight } from "@/hooks/ui/useStableListHeight"
 import { useSearch, useNavigate } from "@tanstack/react-router"
-import { EVENTS_PAGE_SIZE, useEventsListQuery, useMyEventsQuery } from "@/api/hooks/events"
+import {
+  EVENTS_PAGE_SIZE,
+  useEventsListQuery,
+  useMyEventsQuery,
+  type EventsListOrder,
+} from "@/api/hooks/events"
 import { resetEtagCache } from "@/api/client"
 import { EventsHeader } from "./components/EventsHeader"
 import { EventsList } from "./components/EventsList"
@@ -90,14 +95,22 @@ export const EventsFeature = () => {
   /* ── Data fetching ── */
   const eventsListFilters = useMemo(() => {
     const isActiveFilter = tab === "active" ? true : tab === "archive" ? false : null
+    const order: EventsListOrder | undefined =
+      sortMode === "newest"
+        ? "starts_at_desc"
+        : sortMode === "upcoming"
+          ? "starts_at_asc"
+          : undefined
+
     return {
       language,
       is_active: isActiveFilter,
       search: debouncedSearch,
       location: debouncedLocation,
       limit: EVENTS_PAGE_SIZE,
+      ...(order ? { order } : {}),
     }
-  }, [tab, language, debouncedSearch, debouncedLocation])
+  }, [tab, language, debouncedSearch, debouncedLocation, sortMode])
 
   const eventsListQuery = useEventsListQuery(eventsListFilters, {
     enabled: tab !== "my",
@@ -163,7 +176,13 @@ export const EventsFeature = () => {
     }
 
     // Sort
-    if (sortMode === "popular") {
+    if (sortMode === "newest" && tab === "my") {
+      // The legacy My endpoint returns its complete array in ASC batch order.
+      // Sort a copy here without changing that API or main-feed pagination.
+      list = [...list].sort(
+        (a, b) => Date.parse(b.starts_at) - Date.parse(a.starts_at) || b.id.localeCompare(a.id)
+      )
+    } else if (sortMode === "popular") {
       list = [...list].sort((a, b) => (b.participant_count ?? 0) - (a.participant_count ?? 0))
     } else if (sortMode === "upcoming") {
       list = [...list]
@@ -172,7 +191,7 @@ export const EventsFeature = () => {
     }
 
     return list
-  }, [rawEvents, activeCategory, dateRange, sortMode, campusTimezone, clock])
+  }, [rawEvents, activeCategory, dateRange, sortMode, tab, campusTimezone, clock])
 
   const requiresCompleteDataset =
     tab !== "my" && (activeCategory !== "all" || Boolean(dateRange) || sortMode !== "newest")

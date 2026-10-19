@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import string
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, time, timedelta
@@ -104,7 +105,7 @@ def _decode_events_cursor(
         if not cursor.startswith("e2:") or len(cursor) > 1024:
             raise ValueError("Wrong cursor version")
         encoded = cursor[3:]
-        alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+        alphabet = string.ascii_letters + string.digits + "-_"
         if not encoded or any(char not in alphabet for char in encoded):
             raise ValueError("Invalid base64url cursor")
         raw = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))

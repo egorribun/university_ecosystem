@@ -1574,9 +1574,12 @@ describe("main events date-order identities", () => {
       const getItem = vi.spyOn(Storage.prototype, "getItem")
       const filters = { language: "ru", is_active: true, order }
       const queryClient = freshClient()
-      const { result, unmount } = renderHook(() => useEventsListQuery(filters, { enabled: false }), {
-        wrapper: makeWrapper(queryClient),
-      })
+      const { result, unmount } = renderHook(
+        () => useEventsListQuery(filters, { enabled: false }),
+        {
+          wrapper: makeWrapper(queryClient),
+        }
+      )
 
       try {
         expect(getItem).not.toHaveBeenCalledWith(legacyKey)

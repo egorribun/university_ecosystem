@@ -5128,6 +5128,10 @@ export type AllEventsApiV1EventsGetData = {
      */
     limit?: number
     /**
+     * Order
+     */
+    order?: "starts_at_asc" | "starts_at_desc" | null
+    /**
      * Cursor
      */
     cursor?: string | null
@@ -5136,6 +5140,10 @@ export type AllEventsApiV1EventsGetData = {
 }
 
 export type AllEventsApiV1EventsGetErrors = {
+  /**
+   * Invalid or mismatched events cursor
+   */
+  400: unknown
   /**
    * Validation Error
    */

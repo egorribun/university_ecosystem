@@ -2173,6 +2173,7 @@ export const handlers = [
 
     const resultArray = [
       [await getAllEventsApiV1EventsGet200Response(), { status: 200 }],
+      [undefined, { status: 400 }],
       [await getAllEventsApiV1EventsGet422Response(), { status: 422 }],
     ] as [any, { status: number }][];
 

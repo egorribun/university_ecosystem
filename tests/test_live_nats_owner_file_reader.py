@@ -238,7 +238,9 @@ def _observe_reader_call(
     def stat_spy(path, *args, **kwargs):
         if expired():
             ops["stats_after_expiry"].append(True)
-        return real_stat(path, *args, **kwargs)
+        info = real_stat(path, *args, **kwargs)
+        event("after_stat", os.path.basename(os.fsdecode(path)))
+        return info
 
     wrappers = (
         (real_open, open_spy),
@@ -807,4 +809,43 @@ def test_post_read_directory_rename_is_rejected_before_parser(
     assert any(name == _MARKER and size == 0 for name, _count, size in ops["reads"])
     assert any(name == _KEY_FILE and size == 0 for name, _count, size in ops["reads"])
     assert ops["write_attempts"] == []
+    _assert_fds_closed(ops)
+
+
+@requires_posix_reader
+def test_expiry_during_ancestor_revalidation_stops_work_and_closes_fds(
+    monkeypatch, owner_files
+):
+    clock, deadline = _deadline()
+    state_checks = []
+    parser_calls = []
+
+    def forbidden_parser(*_args, **_kwargs):
+        parser_calls.append(True)
+        raise AssertionError("expired revalidation must not reach parser")
+
+    monkeypatch.setattr(transport, "parse_signed_owner_v11", forbidden_parser)
+
+    def expire_after_recheck(event, name, _fd):
+        if event == "after_stat" and name == owner_files.state_root.name:
+            state_checks.append(name)
+            if len(state_checks) == 2:
+                clock.now = deadline.expires_at
+
+    result, ops = _observe_reader_call(
+        monkeypatch,
+        owner_files,
+        deadline,
+        clock=clock,
+        event_hook=expire_after_recheck,
+    )
+
+    assert len(state_checks) == 2
+    assert parser_calls == []
+    assert any(name == _MARKER and size == 0 for name, _count, size in ops["reads"])
+    assert any(name == _KEY_FILE and size == 0 for name, _count, size in ops["reads"])
+    _not_ready(result)
+    assert ops["opens_after_expiry"] == []
+    assert ops["reads_after_expiry"] == []
+    assert ops["stats_after_expiry"] == []
     _assert_fds_closed(ops)
