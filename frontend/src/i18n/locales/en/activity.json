@@ -63,7 +63,7 @@
       "status": {
         "present": "registered",
         "late": "late",
-        "not registered": "not registered"
+        "absent": "not registered"
       },
       "dialogTitle": "Event registrations",
       "dialogTotal": "Total: {{present}}/{{total}} {{period}}"

@@ -24,15 +24,29 @@ test("Activity empty-baseline acceptance uses only seeded records and the real r
   assert.doesNotMatch(seed, /(?:EventAttendance|Grade|Notification)\s*\(/u)
   assert.match(analytics, /self\.stats_repo = UserStatsRepository\(db\)/u)
   assert.match(analytics, /self\.stats_repo\.get_attendance_stats_raw\(\s*user_id,/u)
-  assert.match(analytics, /self\.stats_repo\.get_grades\(user_id, window_start, now\)/u)
+  assert.match(analytics, /self\.stats_repo\.get_grades\(\s*user_id, previous_start, now\s*\)/u)
   const attendance = repository.match(
     /^ {4}async def get_attendance_stats_raw\([\s\S]*?(?=^ {4}async def )/mu
   )?.[0]
   const grades = repository.match(/^ {4}async def get_grades\([\s\S]*?(?=^ {4}async def )/mu)?.[0]
   assert.ok(attendance, "attendance queries must live in the statistics repository")
   assert.ok(grades, "grade queries must live in the statistics repository")
-  assert.match(attendance, /attendance_alias\.user_id\s*==\s*user_id/u)
-  assert.match(attendance, /models\.EventAttendance\.user_id\s*==\s*user_id/u)
+  assert.match(attendance, /attendance = models\.EventAttendance/u)
+  const windowPattern = /window_events = \([\s\S]*?(?=\n {8}history_events =)/u
+  const historyPattern = /history_events = \([\s\S]*?(?=\n {8}result =)/u
+  const windowEvents = attendance.match(windowPattern)?.[0]
+  const historyEvents = attendance.match(historyPattern)?.[0]
+  assert.ok(windowEvents, "the comparison population must remain bounded")
+  assert.ok(historyEvents, "older streak history must remain user-scoped")
+  assert.match(windowEvents, /attendance\.user_id\s*==\s*user_id/u)
+  assert.match(windowEvents, /models\.Event\.starts_at\s*>=\s*previous_start/u)
+  assert.match(historyEvents, /attendance\.user_id\s*==\s*user_id/u)
+  assert.match(historyEvents, /models\.Event\.starts_at\s*<\s*previous_start/u)
+  for (const population of [windowEvents, historyEvents]) {
+    assert.match(population, /models\.Event\.is_active\.is_\(True\)/u)
+    assert.match(population, /models\.Event\.starts_at\s*<\s*now/u)
+  }
+  assert.match(attendance, /union_all\(window_events, history_events\)/u)
   assert.match(grades, /select\(models\.Grade\)/u)
   assert.match(grades, /models\.Grade\.student_id\s*==\s*user_id/u)
   assert.match(grades, /models\.Grade\.created_at\s*>=\s*start_date/u)
@@ -60,7 +74,7 @@ test("Activity empty-baseline acceptance uses only seeded records and the real r
     ["analytics charts", "name: /^(?:Аналитика|Analytics)$/u"],
     [
       "attendance trend chart",
-      "name: /^(?:Линейный график тренда посещаемости|Line chart showing attendance percentage over time)$/u",
+      "name: /^(?:Линейный график доли регистраций на мероприятия|Line chart showing event registration percentage over time)$/u",
     ],
     [
       "grades by subject chart",

@@ -24,6 +24,8 @@ const emptySummary = (): ActivitySummaryEnvelope => ({
     total: 0,
     trend: 0,
     period_key: "90d",
+    daily: [],
+    streak_days: 0,
     recent: [],
   },
   grades: { average: 0, scale: "5", trend: 0, recent: [] },
@@ -37,6 +39,11 @@ const populatedSummary = (): ActivitySummaryEnvelope => ({
     total: 3,
     trend: 25,
     period_key: "90d",
+    daily: [
+      { date: "2026-05-01", registered: 2, total: 2 },
+      { date: "2026-05-02", registered: 1, total: 1 },
+    ],
+    streak_days: 0,
     recent: [
       { date: "2026-05-02T10:00:00Z", status: "present", course: "Physics" },
       { date: "2026-05-01T15:00:00Z", status: "present", course: "Math" },
@@ -93,6 +100,32 @@ async function withCachedSummary(
 }
 
 describe("useActivityData cached summary contracts", () => {
+  it("leaves legacy cached aggregates unavailable until the cache receives authoritative data", async () => {
+    const legacy = populatedSummary()
+    if (!legacy.attendance) throw new Error("attendance fixture is required")
+    delete legacy.attendance.daily
+    delete legacy.attendance.streak_days
+
+    await withCachedSummary(legacy, async (result, client) => {
+      expect(result.current.attendanceTrendData).toEqual([])
+      expect(result.current.attendance?.streakDays).toBeUndefined()
+      expect(result.current.attendance?.recent).toHaveLength(3)
+      expect(result.current.hasAnyData).toBe(true)
+
+      act(() => {
+        client.setQueryData<ActivitySummaryEnvelope>(queryKey, populatedSummary())
+      })
+
+      await waitFor(() => {
+        expect(result.current.attendanceTrendData).toEqual([
+          { date: "2026-05-01", value: 100 },
+          { date: "2026-05-02", value: 100 },
+        ])
+        expect(result.current.attendance?.streakDays).toBe(0)
+      })
+    })
+  })
+
   it("refreshes summaries and derived charts when a cached empty summary gains activity", async () => {
     await withCachedSummary(emptySummary(), async (result, client) => {
       expect(result.current).toMatchObject({

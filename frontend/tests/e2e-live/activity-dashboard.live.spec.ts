@@ -57,12 +57,12 @@ test("seeded student sees the supported empty Activity baseline", async ({ page 
   ).toBeVisible()
   await expect(
     page.getByText(
-      /Ваша активность появится здесь по мере посещения занятий и участия в мероприятиях|Your activity will appear here as you attend classes and participate in events/u
+      /Ваша активность появится здесь по мере получения оценок и регистрации на мероприятия|Your activity will appear here as you receive grades and register for events/u
     )
   ).toBeVisible()
 
   const attendanceCard = page.getByRole("group", {
-    name: /Статистика посещаемости|Attendance statistics/u,
+    name: /Статистика регистраций на мероприятия|Event registration statistics/u,
   })
   await expect(attendanceCard.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0")
 
@@ -85,7 +85,7 @@ test("seeded student sees the supported empty Activity baseline", async ({ page 
   const emptyStateArtifacts = [
     page.getByRole("region", { name: /^(?:Аналитика|Analytics)$/u }),
     page.getByRole("img", {
-      name: /^(?:Линейный график тренда посещаемости|Line chart showing attendance percentage over time)$/u,
+      name: /^(?:Линейный график доли регистраций на мероприятия|Line chart showing event registration percentage over time)$/u,
     }),
     page.getByRole("img", {
       name: /^(?:Столбчатая диаграмма оценок по предметам|Bar chart showing grades by subject)$/u,

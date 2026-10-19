@@ -110,7 +110,9 @@ function readActivitySummaryMetrics(payload: unknown): ActivitySummaryMetrics | 
 
 async function readActivityRingLabels(page: Page): Promise<Array<string | null>> {
   const cards = [
-    page.getByRole("group", { name: /Статистика посещаемости|Attendance statistics/u }),
+    page.getByRole("group", {
+      name: /Статистика регистраций на мероприятия|Event registration statistics/u,
+    }),
     page.getByRole("group", { name: /Статистика оценок|Grade statistics/u }),
     page.getByRole("group", { name: /Статистика участия|Participation statistics/u }),
   ]
@@ -126,7 +128,7 @@ function ringLabelsMatchSummary(
   const gradeValue = metrics.gradeAverage.toFixed(1)
   const participationValue = String(metrics.participationEvents)
   const expected = [
-    [`Attendance ring showing ${attendanceValue}%`, `Кольцо посещаемости: ${attendanceValue}%`],
+    [`Registration ring showing ${attendanceValue}%`, `Кольцо регистраций: ${attendanceValue}%`],
     [
       `Grade gauge showing ${gradeValue} out of ${gradeMax}`,
       `Шкала оценок: ${gradeValue} из ${gradeMax}`,
@@ -160,7 +162,9 @@ test("seeded student can view Activity summaries, change the period, and restore
   const periodIndicator = periodSelector.locator(":scope > span[aria-hidden='true']")
 
   await expect(
-    page.getByRole("group", { name: /Статистика посещаемости|Attendance statistics/u })
+    page.getByRole("group", {
+      name: /Статистика регистраций на мероприятия|Event registration statistics/u,
+    })
   ).toBeVisible()
   await expect(
     page.getByRole("group", { name: /Статистика оценок|Grade statistics/u })
