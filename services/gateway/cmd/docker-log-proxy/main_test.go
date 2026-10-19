@@ -981,8 +981,8 @@ func (body *trailerAssignedAtEOFBody) Read([]byte) (int, error) {
 
 func (body *trailerAssignedAtEOFBody) Close() error { return nil }
 
-func testHTTPClient(_ *httptest.Server) *http.Client {
-	return http.DefaultClient
+func testHTTPClient(server *httptest.Server) *http.Client {
+	return server.Client()
 }
 
 func TestProxyClientSurvivesUnrelatedServerCleanup(t *testing.T) {

@@ -10,19 +10,17 @@
 
 ## Текущая проверка аудита
 
-Подтверждённая нижняя граница остаётся 61 из 512 исходных AUD IDs. Общий процент закрытия не установлен. [Реестр и scope](../../audits/AUDIT-2026-10.md#source-ccc8-verification-and-next-boundary-proofs).
+Подтверждённая нижняя граница: 64 из 512 исходных AUD IDs. На ab1b приняты AUD-031 (populated→null UI payload и отдельное fresh-session persistence), AUD-035 (семь real-client mutations и stories query 422/304 после RED), AUD-053 (настоящий SearchDialog Tab/Shift+Tab/Escape на двух Core browser projects). [Точный scope и источники](../../audits/AUDIT-2026-10.md#evidence-checkpoint-64-verified-original-aud-ids). Полный процент сверки всех находок пока не установлен.
 
-На ccc8 aiohttp 3.14.4 установлен из frozen lock и проходит прежний dependency gate. Lock check, fast hooks, inventory, frontend static gates и baseline integrity (319 identities) проходят; исключения и policy не расширялись.
+Frontend unit suite: 9373 PASS в 777 файлах. Typecheck/format/i18n/contracts/knip прошли. Единственный frontend static дефект — три ESLint no-undef для URL в новом Node-контракте; добавляется явный node:url import, без suppression.
 
-Все 33 collector cases прошли, включая repeated-wait interruption и сохранение original exception. Early backend: 486 PASS / 1 FAIL, единственный FAIL — отсутствующий outage step. Новая tests-first проверка stale selector readiness ещё не исправляется до RED. Live adapter/CLI/outage остаются выключены.
+Live 39310016261: 22 PASS / 2 прежних SKIP, cleanup 19:34:58 UTC, receipt upload 19:34:59; artifact 12215379845. Новый SearchDialog case не имеет skip-path, исполняется в desktop и mobile-emulated Chromium. Это не физический мобильный браузер или полный live набор.
 
-Frontend: 9364 PASS / 8 ожидаемых assertion FAIL в 777 файлах. AUD-035 подтвердил семь ложных mutation-success и ошибочный успешный пустой stories query. В следующем source исправляются только эти wrapper paths, с сохранением 304; новые real-client тесты не меняются. Приёмка AUD-035 ждёт GREEN и окончательной сверки остальных callers.
+Early backend: 487 PASS / 2 FAIL. Реальный тест подтвердил чтение ready stdout после истечения work deadline; добавляется проверка перед каждым ready-key I/O. Независимый Go regression подтвердил сброс общего HTTP-пула при cleanup другого сервера; helper переключается на server.Client(). Собственный GREEN обеих правок ожидается. Единственный разрешённый S603 остаётся локальным; baseline 319, dispositions 263 и context/app pairs 78 не меняются.
 
-AUD-031 получает populated→null editor payload и real fresh-session persistence proof. AUD-053 — SearchDialog, а не StoryViewer: добавлен native browser Tab/Shift+Tab/Escape тест в оба существующих Core проекта. Оба AUD ждут фактического исполнения. AUD-017 ожидает ответа владельца о направлении start-date сортировки и названии режима.
+Три runner-контракта расширенного smoke явно включаются в ранний pytest command, сохраняя 631 строку workflow. NATS live adapter/CLI/outage всё ещё выключены; capability failure не обходится. AUD-017 ждёт ответа владельца о направлении start-date сортировки и названии режима.
 
-Go shared-client race не объявлен исправленным по одному зелёному повтору. Добавлен детерминированный тест сохранения соединения после cleanup постороннего httptest server; helper пока сохраняет старый default client до RED.
-
-PostgreSQL на ccc8: 202 PASS / 9 SKIP. Обычный Live 39306434939: 20 PASS / 2 SKIP, cleanup 19:15:02 UTC, upload 19:15:03, artifact 12214498834. Последний полный принятый checkpoint — e150. P1 holds 164/167/169/174 остаются. Merge/deploy не выполняются.
+Последний полный принятый checkpoint — e150. P1 holds 164/167/169/174 остаются. Merge/deploy не выполняются.
 
 ## Последний принятый CI checkpoint
 

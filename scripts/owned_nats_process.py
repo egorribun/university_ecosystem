@@ -273,7 +273,22 @@ def run_private_process(
                     else ProcessOutcome.CLEANUP_UNCERTAIN
                 )
                 break
+            stop_collection = False
             for key, _ in selector.select(budget.seconds):
+                # Readiness can arrive after descheduling exhausted the budget.
+                # Recheck for every ready key, including later keys in a batch.
+                io_budget = work.timeout_for(_POLL_CAP)
+                if (
+                    io_budget.verdict is not DeadlineVerdict.VALID
+                    or io_budget.seconds is None
+                ):
+                    reason = (
+                        ProcessOutcome.TIMED_OUT
+                        if io_budget.verdict is DeadlineVerdict.EXPIRED
+                        else ProcessOutcome.CLEANUP_UNCERTAIN
+                    )
+                    stop_collection = True
+                    break
                 if key.data == "stdin":
                     try:
                         written = os.write(
@@ -309,7 +324,7 @@ def run_private_process(
                 if len(chunk) > remaining:
                     reason = ProcessOutcome.OUTPUT_LIMIT
                     break
-            if reason is ProcessOutcome.OUTPUT_LIMIT:
+            if stop_collection or reason is ProcessOutcome.OUTPUT_LIMIT:
                 break
         else:
             budget = work.timeout_for(_OPERATION_CAP)

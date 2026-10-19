@@ -125,3 +125,7 @@ On source 84bf, job 118230433646 reports 483 PASS / 2 FAIL. The new repeated Key
 ## ccc8 cleanup-wait GREEN and next stale-read RED
 
 Run 39306435037 / job 118247616361 passes all 33 private collector cases; overall 486 PASS / 1 FAIL in 130.82s, with only the unavailable outage workflow failing. Exact ccc8 source/tree provenance is recorded in the audit checkpoint. A further tests-first case advances a controlled monotonic clock when real stdout readiness is returned, then requires no pipe read after the work deadline. Current production dispatch is unchanged until this assertion is observed RED. Output buffers are structurally bounded by the configured stream caps; no unbounded-memory defect or descendant-cleanup guarantee is invented.
+
+## Stale-ready assertion RED and correction
+
+On ab1b, run 39310016686 / job 118258426422 confirms stdout readiness and then records a post-expiry read: [16] instead of [], at 19:26:47 UTC. Overall 487 PASS / 2 FAIL includes the absent outage step. The correction checks the same work deadline at the start of every ready-key dispatch, including later keys in a batch, and breaks the outer loop on expiry/invalidity so the normal wait/EXITED branch cannot run. The existing independent cleanup reserve is unchanged. The regression is retained verbatim; own-source GREEN remains pending. This prevents new dispatch after observed expiry, not hard preemption of a syscall already started. Live transport remains off.

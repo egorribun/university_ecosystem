@@ -12,6 +12,8 @@ AUD-053 concerns SearchDialog, not StoryViewer. Existing source uses the real fo
 - [x] Require Escape to close the dialog and restore the exact original focused navbar element.
 - [x] Select the new spec in Core smoke for both existing desktop and mobile Chromium projects, with no new skip, retry or service.
 - [x] Update exact smoke-list contracts, diagnostic filename allowlist membership and fixture-frame indexing; keep metadata-only redaction and artifact policy unchanged.
-- [ ] Run the source contracts and actual browser case on both projects, and verify owned stand cleanup/receipt provenance before reconciliation.
+- [x] Run the source contracts and actual browser case on both projects, and verify owned stand cleanup/receipt provenance before reconciliation.
 
 This does not add an application search button or change the application's focus implementation. It does not test search-result navigation or a physical mobile keyboard. The live fixture uses a fresh browser context and removes only its own recent-search storage. No new credential, account, backend endpoint or external environment is created. Existing ordinary cleanup remains mandatory; no NATS outage is enabled.
+
+Actual Live run 39310016261 / job 118256863070 selects the new spec and reports 22 PASS / 2 existing SKIP at 19:34:37 UTC, with successful owned cleanup and receipt upload. Exact source/tree and receipt digest are recorded in the 64-ID checkpoint. Node source contracts pass; the separate ESLint gate requires an explicit node:url import, added without weakening the rule. The three existing Python runner-selection/redaction/inventory contracts are also selected early for subsequent-source verification.

@@ -16,7 +16,10 @@ The generated SDK defaults to returning an error result instead of rejecting. Co
 - [x] Add endpoint-local throwOnError:true to the seven demonstrated mutations.
 - [x] Add the same local error policy to fetchStories, explicitly accepting HTTP 304 alongside 2xx; remove its unnecessary double type assertion.
 - [x] Retain the new real-client regression files unchanged. Strengthen older exact-call mocks to require the error flag and validate the accepted status boundary.
-- [ ] Verify all nine new cases and existing consumer/API tests, typecheck, formatting and full frontend CI on the corrected source.
-- [ ] Reconcile AUD-035 only after verified evidence and a final scope review.
+- [x] Verify all nine new cases and existing consumer/API tests, typecheck and formatting on the corrected source.
+- [ ] Verify the unrelated SearchDialog contract's explicit URL import restores the full frontend static gate.
+- [x] Reconcile AUD-035 only after verified evidence and a final scope review.
 
 Do not modify generated code or global SDK defaults. Upload wrappers are not part of these seven false-success mutations: they already validate missing response data and reject. This proves frontend HTTP/query behavior with controlled transport responses, not deployed authentication, CSRF, persistence or every possible SDK endpoint.
+
+On ab1b, mutation job 118258509543 has seven regression PASS; stories job 118258509306 has both 422/304 cases PASS. All frontend units total 9373 PASS. A bounded caller review covers hand-written frontend/src/api plus indexed runtime imports fetched at the pinned commit; it is not a proof for arbitrary indirect imports. Event-detail's unchecked data cast and unused listTotpEnrollments need separate error-contract tests; unused fetchNews exposes a raw error-capable envelope and is not changed without a consumer requirement. The broader news-list 3xx status policy is a separate gap, not folded into this acceptance.
