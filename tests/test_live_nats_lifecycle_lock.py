@@ -810,3 +810,218 @@ def test_contention_and_post_acquisition_races_clean_original_inode(
 
     assert independent_closed == list(reversed(independent))
     assert Counter(closed + independent_closed) == Counter(opened + independent)
+
+
+def _revalidation_lease_snapshot(lease):
+    return (
+        id(lease._opened_fds),
+        tuple(lease._opened_fds),
+        lease._unlock,
+        lease._released,
+    )
+
+
+def _revalidation_fd_snapshot(fd):
+    info = os.fstat(fd)
+    # Ancestor directory timestamps may change due to unrelated runner work.
+    return info.st_dev, info.st_ino, info.st_mode
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    (
+        "unchanged",
+        "released",
+        "wrong-raw-pin",
+        "replace-root",
+        "replace-ancestor",
+        "replace-lock",
+        "expired-before",
+        "expired-after-fstat",
+    ),
+)
+def test_retained_lease_revalidation_preserves_cleanup_ownership(
+    lock_case, scenario
+):
+    base, _fixture_lock, fcntl = lock_case
+    ancestor = base / "revalidation-parent"
+    ancestor.mkdir()
+    root = ancestor / "run-lock"
+    root.mkdir()
+    lock = ancestor / f".{root.name}.lifecycle.lock"
+    lock.touch(mode=0o600)
+    displaced = base / "revalidation-displaced"
+
+    real_open, real_stat, real_fstat = os.open, os.stat, os.fstat
+    real_close, guarded_flock = os.close, fcntl.flock
+    opened, observations, violations = [], [], []
+    now = [0.0]
+    deadline = Deadline.after(1.0, clock=lambda: now[0])
+    cleanup_deadline = Deadline.after(10.0, clock=lambda: 0.0)
+    no_io = scenario in {"released", "wrong-raw-pin", "expired-before"}
+    lease = None
+    witness = None
+    recycled = None
+
+    def traced_open(path, flags, mode=0o777, *, dir_fd=None):
+        fd = real_open(path, flags, mode, dir_fd=dir_fd)
+        opened.append((path, flags, dir_fd, fd))
+        return fd
+
+    def forbidden(*_args, **_kwargs):
+        violations.append("forbidden operation")
+        raise AssertionError("revalidation must not consume or mutate the lease")
+
+    def observed_fstat(fd):
+        observations.append(("fstat", fd))
+        if no_io or now[0] >= 1.0 or fd not in retained_fds:
+            violations.append("unexpected fstat")
+            raise AssertionError("unexpected descriptor observation")
+        info = real_fstat(fd)
+        if scenario == "expired-after-fstat":
+            now[0] = 1.0
+        return info
+
+    def observed_stat(path, *, dir_fd=None, follow_symlinks=True):
+        observations.append(("stat", path, dir_fd))
+        if (
+            no_io
+            or now[0] >= 1.0
+            or (path, dir_fd) not in retained_entries
+            or follow_symlinks is not False
+        ):
+            violations.append("unexpected stat")
+            raise AssertionError("namespace checks must be retained and nofollow")
+        return real_stat(path, dir_fd=dir_fd, follow_symlinks=False)
+
+    try:
+        # This separate open-file description survives every rename below.
+        witness = real_open(lock, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+        original_identity = _revalidation_fd_snapshot(witness)[:2]
+        with pytest.MonkeyPatch.context() as guard:
+            guard.setattr(os, "open", traced_open)
+            guard.setattr(os, "supports_dir_fd", os.supports_dir_fd | {traced_open})
+            lease = _acquire(root, deadline)
+        assert lease is not None
+        assert opened
+        retained_fds = {entry[3] for entry in opened}
+        retained_entries = {(entry[0], entry[2]) for entry in opened[1:]}
+        assert _revalidation_fd_snapshot(opened[-1][3])[:2] == original_identity
+
+        if scenario == "replace-root":
+            root.rename(displaced)
+            root.mkdir()
+            assert root.stat().st_ino != displaced.stat().st_ino
+        elif scenario == "replace-ancestor":
+            ancestor.rename(displaced)
+            ancestor.mkdir()
+            root.mkdir()
+            lock.touch(mode=0o600)
+            assert ancestor.stat().st_ino != displaced.stat().st_ino
+        elif scenario == "replace-lock":
+            lock.rename(displaced)
+            lock.touch(mode=0o600)
+            assert _snapshot(lock)[:2] != original_identity
+        elif scenario == "released":
+            assert transport.release_lifecycle_lock(lease, deadline=deadline) is True
+            recycled = real_open(lock, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+            assert recycled in retained_fds, "exercise actual descriptor reuse"
+            guarded_flock(recycled, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        elif scenario == "expired-before":
+            now[0] = 1.0
+
+        watched_fds = [recycled] if recycled is not None else list(retained_fds)
+        descriptor_before = {fd: _revalidation_fd_snapshot(fd) for fd in watched_fds}
+        lease_before = _revalidation_lease_snapshot(lease)
+        paths = (ancestor, root, lock, displaced)
+        entries_before = tuple(_entry_metadata(path) for path in paths)
+        lock_before = _snapshot(lock)
+        pin = str(root) + "/" if scenario == "wrong-raw-pin" else str(root)
+        results = []
+
+        with pytest.MonkeyPatch.context() as guard:
+            for name in (
+                "open",
+                "close",
+                "read",
+                "write",
+                "mkdir",
+                "makedirs",
+                "unlink",
+                "remove",
+                "rename",
+                "replace",
+                "listdir",
+                "scandir",
+                "readlink",
+                "lstat",
+                "chmod",
+                "truncate",
+                "ftruncate",
+                "fsync",
+                "fdopen",
+            ):
+                guard.setattr(os, name, forbidden)
+            guard.setattr(os, "fstat", observed_fstat)
+            guard.setattr(os, "stat", observed_stat)
+            guard.setattr(
+                os,
+                "supports_dir_fd",
+                os.supports_dir_fd | {forbidden, observed_stat},
+            )
+            guard.setattr(
+                os,
+                "supports_follow_symlinks",
+                os.supports_follow_symlinks | {observed_stat},
+            )
+            guard.setattr(fcntl, "flock", forbidden)
+            guard.setattr("builtins.open", forbidden)
+            guard.setattr("io.open", forbidden)
+            guard.setattr(transport, "read_signed_owner_v11_from_state", forbidden)
+            for _ in range(2 if scenario == "unchanged" else 1):
+                results.append(
+                    transport.revalidate_lifecycle_lock(
+                        lease, pinned_state_root=pin, deadline=deadline
+                    )
+                )
+
+        assert violations == []
+        assert _revalidation_lease_snapshot(lease) == lease_before
+        assert {
+            fd: _revalidation_fd_snapshot(fd) for fd in watched_fds
+        } == descriptor_before
+        assert tuple(_entry_metadata(path) for path in paths) == entries_before
+        assert _snapshot(lock) == lock_before
+        assert _revalidation_fd_snapshot(witness)[:2] == original_identity
+
+        # Both probes target the ORIGINAL inode, not a replacement pathname.
+        for operation in (fcntl.LOCK_SH, fcntl.LOCK_EX):
+            with pytest.raises(BlockingIOError):
+                guarded_flock(witness, operation | fcntl.LOCK_NB)
+        if scenario in {"replace-lock", "replace-ancestor"}:
+            _probe(lock, fcntl, fcntl.LOCK_EX, blocked=False)
+
+        if scenario == "unchanged":
+            assert results == [True, True]
+            expected = []
+            for name, _flags, parent_fd, fd in opened[1:]:
+                expected.extend([("fstat", fd), ("stat", name, parent_fd)])
+            assert observations == expected * 2
+        else:
+            assert results == [False]
+            if no_io:
+                assert observations == []
+            elif scenario == "expired-after-fstat":
+                assert observations == [("fstat", opened[1][3])]
+    finally:
+        # No revalidation instrumentation is active during caller-owned cleanup.
+        try:
+            if lease is not None:
+                transport.release_lifecycle_lock(lease, deadline=cleanup_deadline)
+        finally:
+            try:
+                if recycled is not None:
+                    real_close(recycled)
+            finally:
+                if witness is not None:
+                    real_close(witness)

@@ -315,4 +315,63 @@ describe("EditLessonDialog — branches", () => {
 
     expect(apiMocks.patch).not.toHaveBeenCalled()
   })
+
+  it.each([
+    ["start_time", "bare", SAMPLE],
+    ["end_time", "bare", SAMPLE],
+    ["start_time", "ISO", ISO_SAMPLE],
+    ["end_time", "ISO", ISO_SAMPLE],
+  ] as const)("rejects cleared %s in a %s lesson", (field, _format, lesson) => {
+    const now = new Date("2026-02-03T12:00:00.000Z")
+    const original = { ...lesson }
+    const expectedDate = getLessonDatePart(lesson[field], now)
+    const restoredTime = field === "start_time" ? "08:30" : "11:30"
+    expect(isEditLessonFormValid(lesson)).toBe(true)
+    const cleared = updateLessonTimeField(lesson, field, "", now)
+    expect(isEditLessonFormValid(cleared)).toBe(false)
+    expect(lesson).toEqual(original)
+    const restored = updateLessonTimeField(cleared, field, restoredTime, now)
+    expect(isEditLessonFormValid(restored)).toBe(true)
+    expect(restored[field]).toBe(`${expectedDate}T${restoredTime}:00`)
+  })
+
+  it.each([
+    ["start_time", "bare", SAMPLE],
+    ["end_time", "bare", SAMPLE],
+    ["start_time", "ISO", ISO_SAMPLE],
+    ["end_time", "ISO", ISO_SAMPLE],
+  ] as const)("blocks cleared %s and preserves %s date", async (field, _format, lesson) => {
+    const props = makeBaseProps()
+    renderDialog(props, lesson)
+    const label = field === "start_time" ? "schedule:form.startTime" : "schedule:form.endTime"
+    const input = screen.getByLabelText(label)
+    const save = screen.getByRole("button", { name: "common:buttons.save" })
+    const form = save.closest("form")
+    if (!form) throw new Error("Edit form is missing")
+    const restoredTime = field === "start_time" ? "08:30" : "11:30"
+    expect(save).toBeEnabled()
+
+    fireEvent.change(input, { target: { value: "" } })
+    expect(input).toHaveValue("")
+    expect(save).toBeDisabled()
+    fireEvent.submit(form)
+    expect(apiMocks.patch).not.toHaveBeenCalled()
+    expect(props.applyScheduleUpdate).not.toHaveBeenCalled()
+    expect(props.refresh).not.toHaveBeenCalled()
+    expect(screen.getByText("schedule:dialog.editTitle")).toBeInTheDocument()
+
+    fireEvent.change(input, { target: { value: restoredTime } })
+    expect(input).toHaveValue(restoredTime)
+    expect(save).toBeEnabled()
+    fireEvent.submit(form)
+    await waitFor(() => expect(apiMocks.patch).toHaveBeenCalledTimes(1))
+    expect(apiMocks.patch).toHaveBeenCalledWith(
+      `/schedule/${lesson.id}`,
+      expect.objectContaining({
+        [field]: lesson[field]?.includes("T")
+          ? `2026-01-15T${restoredTime}:00`
+          : expect.stringMatching(new RegExp(`T${restoredTime}:00$`)),
+      })
+    )
+  })
 })

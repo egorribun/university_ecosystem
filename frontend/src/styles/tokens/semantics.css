@@ -75,7 +75,11 @@
     --bg-surface-hover: var(--color-slate-100);
     --bg-surface-active: var(--bg-surface-hover);
     --bg-surface-raised: var(--color-white);
-    --bg-surface-tint: color-mix(in srgb, var(--primary-main) var(--opacity-faint), transparent);
+    --bg-surface-tint: color-mix(
+      in srgb,
+      var(--primary-main) calc(var(--opacity-faint) * 100%),
+      transparent
+    );
     --bg-panel: color-mix(in srgb, white calc(var(--opacity-strong) * 100%), transparent);
 
     /* Text */
@@ -115,7 +119,11 @@
     --success-text: var(--color-green-800);
     --warning-bg: var(--color-amber-100);
     --warning-text: var(--color-amber-700);
-    --error-bg: color-mix(in srgb, var(--error-text) var(--opacity-subtle), transparent);
+    --error-bg: color-mix(
+      in srgb,
+      var(--error-text) calc(var(--opacity-subtle) * 100%),
+      transparent
+    );
     --error-text: var(--color-red-600);
     --error-text-rgb: 153, 27, 27;
 
@@ -125,11 +133,13 @@
     --border-matte: color-mix(in srgb, var(--color-slate-300) 40%, transparent);
     --border-inner-glow: inset 0 1px 0 0 color-mix(in srgb, white 50%, transparent);
     --shadow-matte-card:
-      0 4px 20px color-mix(in srgb, var(--color-slate-400) var(--opacity-subtle), transparent),
-      0 1px 3px color-mix(in srgb, black var(--opacity-faint), transparent);
+      0 4px 20px
+        color-mix(in srgb, var(--color-slate-400) calc(var(--opacity-subtle) * 100%), transparent),
+      0 1px 3px color-mix(in srgb, black calc(var(--opacity-faint) * 100%), transparent);
     --shadow-matte-card-hover:
-      0 8px 30px color-mix(in srgb, var(--color-slate-400) var(--opacity-dim), transparent),
-      0 2px 6px color-mix(in srgb, black var(--opacity-subtle), transparent);
+      0 8px 30px
+        color-mix(in srgb, var(--color-slate-400) calc(var(--opacity-dim) * 100%), transparent),
+      0 2px 6px color-mix(in srgb, black calc(var(--opacity-subtle) * 100%), transparent);
 
     /* Brand Gradients */
     --gradient-brand: linear-gradient(135deg, var(--primary-main), var(--primary-hover));
@@ -137,8 +147,8 @@
     /* Shadows */
     --raw-shadow-xs: 0 1px 2px color-mix(in srgb, black var(--opacity-faint), transparent);
     --raw-shadow-sm:
-      0 1px 3px color-mix(in srgb, black var(--opacity-subtle), transparent),
-      0 1px 2px color-mix(in srgb, black var(--opacity-faint), transparent);
+      0 1px 3px color-mix(in srgb, black calc(var(--opacity-subtle) * 100%), transparent),
+      0 1px 2px color-mix(in srgb, black calc(var(--opacity-faint) * 100%), transparent);
     --raw-shadow-md:
       0 4px 12px color-mix(in srgb, black var(--opacity-subtle), transparent),
       0 2px 4px color-mix(in srgb, black var(--opacity-faint), transparent);
@@ -154,7 +164,7 @@
       color-mix(in srgb, black var(--opacity-medium), transparent);
     --raw-shadow-up: 0 -4px 12px color-mix(in srgb, black var(--opacity-faint), transparent);
     --raw-shadow-inner-premium: inset 0 1px 0
-      color-mix(in srgb, white var(--opacity-subtle), transparent);
+      color-mix(in srgb, white calc(var(--opacity-subtle) * 100%), transparent);
     --raw-shadow-focus: 0 0 0 2px var(--bg-page), 0 0 0 4px var(--primary-main);
     --nav-link-hover-glow: var(--raw-shadow-sm);
 
@@ -177,7 +187,7 @@
     --glass-alpha-med: 0.15;
     --glass-alpha-high: 0.2;
     --glass-blur: 12px;
-    --glass-bg-low: color-mix(in srgb, white var(--glass-alpha-low), transparent);
+    --glass-bg-low: color-mix(in srgb, white calc(var(--glass-alpha-low) * 100%), transparent);
     --glass-bg-high: color-mix(in srgb, white var(--glass-alpha-high), transparent);
     --glass-bg-low-dark: color-mix(in srgb, var(--bg-surface) 60%, transparent);
 
@@ -206,8 +216,8 @@
     --glass-bg-elevated: color-mix(in srgb, var(--bg-surface) 90%, transparent);
     --glass-sheen: linear-gradient(
       135deg,
-      color-mix(in srgb, white var(--opacity-dim), transparent) 0%,
-      color-mix(in srgb, white var(--opacity-faint), transparent) 50%,
+      color-mix(in srgb, white calc(var(--opacity-dim) * 100%), transparent) 0%,
+      color-mix(in srgb, white calc(var(--opacity-faint) * 100%), transparent) 50%,
       transparent 100%
     );
     --text-muted-subtle: color-mix(in srgb, var(--text-secondary) 60%, transparent);
@@ -218,7 +228,7 @@
     --grad-news-hero: linear-gradient(
       180deg,
       transparent 30%,
-      color-mix(in srgb, var(--color-slate-900) var(--opacity-strong), transparent) 95%
+      color-mix(in srgb, var(--color-slate-900) calc(var(--opacity-strong) * 100%), transparent) 95%
     );
 
     /* Morphing Navbar Pill — Wave 51 (Light) */
@@ -329,7 +339,7 @@
     /* Messenger Semantic Colors (Light) */
     --msg-sidebar-bg: var(--color-slate-50);
     --msg-chat-bg: var(--color-white);
-    --msg-header-bg: color-mix(in srgb, white var(--opacity-heavy), transparent);
+    --msg-header-bg: color-mix(in srgb, white calc(var(--opacity-heavy) * 100%), transparent);
     --msg-header-border: var(--color-slate-200);
     --msg-sidebar-hover: var(--color-slate-100);
     --msg-sidebar-active: var(--color-blue-50);
@@ -338,12 +348,12 @@
 
     /* Glass Tints (Default Light) */
     --glass-bg: color-mix(in srgb, white var(--opacity-subtle), transparent);
-    --glass-border: color-mix(in srgb, white var(--opacity-dim), transparent);
+    --glass-border: color-mix(in srgb, white calc(var(--opacity-dim) * 100%), transparent);
     --shadow-glass: 0 8px 32px 0
       color-mix(in srgb, var(--color-slate-900) var(--opacity-subtle), transparent);
     --glass-tint1: color-mix(in srgb, white var(--opacity-subtle), transparent);
     --glass-tint2: color-mix(in srgb, white var(--opacity-faint), transparent);
-    --glass-tint3: color-mix(in srgb, white var(--opacity-faint), transparent);
+    --glass-tint3: color-mix(in srgb, white calc(var(--opacity-faint) * 100%), transparent);
 
     /*
      * Category badge colors — Wave 121 SW4
@@ -432,11 +442,11 @@
     --border-matte: color-mix(in srgb, var(--color-slate-600) 30%, transparent);
     --border-inner-glow: inset 0 1px 0 0 color-mix(in srgb, white 8%, transparent);
     --shadow-matte-card:
-      0 4px 20px color-mix(in srgb, black var(--opacity-dim), transparent),
-      0 1px 3px color-mix(in srgb, black var(--opacity-subtle), transparent);
+      0 4px 20px color-mix(in srgb, black calc(var(--opacity-dim) * 100%), transparent),
+      0 1px 3px color-mix(in srgb, black calc(var(--opacity-subtle) * 100%), transparent);
     --shadow-matte-card-hover:
-      0 8px 30px color-mix(in srgb, black var(--opacity-soft), transparent),
-      0 2px 6px color-mix(in srgb, black var(--opacity-dim), transparent);
+      0 8px 30px color-mix(in srgb, black calc(var(--opacity-soft) * 100%), transparent),
+      0 2px 6px color-mix(in srgb, black calc(var(--opacity-dim) * 100%), transparent);
 
     /* Overlay & Backdrop */
     --overlay-bg: color-mix(in srgb, black var(--opacity-hover), transparent);
@@ -530,7 +540,11 @@
     /* Messenger Semantic Colors (Dark) */
     --msg-sidebar-bg: var(--color-slate-900);
     --msg-chat-bg: var(--color-slate-950);
-    --msg-header-bg: color-mix(in srgb, var(--color-slate-900) var(--opacity-heavy), transparent);
+    --msg-header-bg: color-mix(
+      in srgb,
+      var(--color-slate-900) calc(var(--opacity-heavy) * 100%),
+      transparent
+    );
     --msg-header-border: var(--color-slate-700);
     --msg-sidebar-hover: var(--color-slate-800);
     --msg-sidebar-active: color-mix(
@@ -542,14 +556,22 @@
 
     /* Glass Tints (Dark Mode) */
     --glass-bg: color-mix(in srgb, var(--color-slate-900) var(--opacity-subtle), transparent);
-    --glass-border: color-mix(in srgb, var(--color-white) var(--opacity-subtle), transparent);
+    --glass-border: color-mix(
+      in srgb,
+      var(--color-white) calc(var(--opacity-subtle) * 100%),
+      transparent
+    );
     --shadow-glass: 0 8px 32px 0
       color-mix(in srgb, var(--color-black) var(--opacity-soft), transparent);
     --shadow-glass-strong: 0 12px 48px 0
       color-mix(in srgb, var(--color-black) var(--opacity-medium), transparent);
     --glass-tint1: color-mix(in srgb, var(--color-sky-400) var(--opacity-faint), transparent);
     --glass-tint2: color-mix(in srgb, var(--color-indigo-400) var(--opacity-faint), transparent);
-    --glass-tint3: color-mix(in srgb, var(--color-black) var(--opacity-soft), transparent);
+    --glass-tint3: color-mix(
+      in srgb,
+      var(--color-black) calc(var(--opacity-soft) * 100%),
+      transparent
+    );
     /* Dark accent stripe — slightly less bright + cooler. */
     --footer-accent-line: linear-gradient(
       90deg,

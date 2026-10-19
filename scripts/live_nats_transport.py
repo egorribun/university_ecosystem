@@ -618,3 +618,13 @@ def release_lifecycle_lock(lease: LifecycleLockLease, *, deadline: Deadline) -> 
         error, traceback = pending
         raise error.with_traceback(traceback)
     return clean
+
+
+def revalidate_lifecycle_lock(
+    lease: LifecycleLockLease,
+    *,
+    pinned_state_root: str,
+    deadline: Deadline,
+) -> bool:
+    """Unavailable seam: do not observe or change a retained lease."""
+    return False
