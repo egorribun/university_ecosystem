@@ -39,10 +39,11 @@ Files: tests/test_live_stand.py; tests/test_live_acceptance_workflow.py; scripts
 
 ## Task 2: Evidence-validating coordinator
 
-Files: scripts/owned_nats_outage.py; tests/test_owned_nats_outage.py.
+Files: scripts/owned_nats_coordinator.py; tests/test_owned_nats_outage_coordinator.py; tests/helpers/owned_nats_coordinator.py; existing pure contracts in scripts/owned_nats_outage.py.
 
 - [x] First finish the pure inventory validator RED/GREEN cycle. Admission accepts only the caller's already verified signed selection, not a self-authenticated arbitrary inventory.
-- [ ] Define immutable actual evidence records and a narrow operation protocol. The adapter must not replace raw evidence with admitted/drained/valid booleans.
+- [x] Define immutable actual evidence records and a narrow operation protocol with NOT_READY runner/wait seams. The adapter must not replace raw evidence with admitted/drained/valid booleans.
+- [ ] Observe hosted assertion RED for the new deterministic coordinator/wait tests before implementing either seam.
 - [ ] Cover valid exact success, bad ownership/inventory/participants, zero/nonzero pending count, empty/duplicate/mismatched event correlation, retry0/1..4/terminal/DLQ/prematureprocessed states, and exact retained event IDs.
 - [ ] Cover failed/partial/timed-out stop, no send afterward, primary budget exhaustion, independent restoration, health failure, owner drift, changed target and every non-target runtime field.
 - [ ] Cover exact broker envelope/subject/room/type/message/chat matching and missing-message-only polling; reject missing-stream/auth/transport/parse errors.
@@ -94,3 +95,5 @@ Broker RED: de592 job 118102431402 produced 39 NOT_READY broker assertion failur
 Deadline RED: 9c3 job 118109224196 produced 27 deadline assertion failures plus the absent workflow step; 271 tests passed in 72.90s, including all 39 broker cases. Minimal absolute-deadline implementation now awaits its own GREEN. It supplies only validated budgets; coordinator and adapters must separately prove bounded nested operations, no send after uncertain stop, independent safe restoration, and client/lock cleanup. No runtime command or workflow outage step is enabled.
 
 Deadline scoped GREEN: 7195378 job 118116223502 has all27 deadline cases passing, with298 total PASS and only the intentionally absent workflow step failing in72.36s. The new coordinator boundary/test proposal will live in scripts/owned_nats_coordinator.py and tests/test_owned_nats_outage_coordinator.py, importing the existing pure contracts without runtime imports of app/live_stand. It remains under review, not published or executable. Restoration will use only the captured container ID under the pinned daemon; each Compose read retains explicit owner project/overlay. Independent client-close and lock-release cleanup budgets must not extend acceptance or consume each other's opportunity.
+
+Coordinator scaffold is now source-defined but unavailable. Its adapter boundary requires exact captured container-ID stop/start under the pinned daemon; owner/resource drift fails acceptance, while restoration of a still-verifiable original target remains mandatory. The inner finally restores before drain/receipt; the outer finally closes clients and releases the lock with separate fresh10second reserves. All ordinary operations remain capped at10seconds, stop at15seconds, within their phase budgets. The in-memory fake checks these operation contracts outside runner exception handling. The CLI and live workflow remain disabled until deterministic behavior and bounded transport are verified.
