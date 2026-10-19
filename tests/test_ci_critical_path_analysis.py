@@ -1558,3 +1558,208 @@ def test_parser_rejects_oversized_job_and_step_collections() -> None:
                 ]
             }
         )
+
+
+def _attempt_cli_exit_code(argv: list[str]) -> int:
+    try:
+        return main(argv)
+    except SystemExit as error:
+        assert isinstance(error.code, int)
+        return error.code
+
+
+def _jobs_for_explicit_attempt() -> dict[str, object]:
+    payload = _payload()
+    assert isinstance(payload, dict)
+    for record in cast(list[dict[str, object]], payload["jobs"]):
+        record.update(run_id=777, run_attempt=3, head_sha="a" * 40)
+    return payload
+
+
+def _install_attempt_gh(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: dict[str, object],
+    *,
+    returncode: int = 0,
+) -> list[list[str]]:
+    records = cast(list[dict[str, object]], payload["jobs"])
+    body = json.dumps([{"total_count": len(records), "jobs": records}]).encode()
+    calls: list[list[str]] = []
+
+    class _Pipe:
+        def __init__(self, content: bytes) -> None:
+            self.content = content
+
+        def read(self, maximum: int) -> bytes:
+            chunk, self.content = self.content[:maximum], self.content[maximum:]
+            return chunk
+
+        def close(self) -> None:
+            pass
+
+    class _Process:
+        def __init__(self) -> None:
+            self.stdout = _Pipe(body if returncode == 0 else b"")
+            self.stderr = _Pipe(b"" if returncode == 0 else b"HTTP 502")
+            self.returncode = returncode
+
+        def poll(self) -> int:
+            return self.returncode
+
+        def kill(self) -> None:
+            self.returncode = -9
+
+        def wait(self, *, timeout: float) -> int:
+            del timeout
+            return self.returncode
+
+    def popen(argv: list[str], **_kwargs: object) -> _Process:
+        calls.append(argv)
+        return _Process()
+
+    monkeypatch.setattr(analyzer.subprocess, "Popen", popen)
+    return calls
+
+
+def _attempt_cli_args(output: Path) -> list[str]:
+    return [
+        "--repository",
+        "owner/repo",
+        "--run-id",
+        "777",
+        "--concurrency-cap",
+        "20",
+        "--diagnostic-lower-bound",
+        "--output",
+        str(output),
+    ]
+
+
+@pytest.mark.parametrize("run_attempt", [None, "3"])
+def test_cli_attempt_scope_and_legacy_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    run_attempt: str | None,
+) -> None:
+    calls = _install_attempt_gh(monkeypatch, _jobs_for_explicit_attempt())
+    output = tmp_path / "report.json"
+    argv = _attempt_cli_args(output)
+    if run_attempt is not None:
+        argv.extend(["--run-attempt", run_attempt])
+
+    assert _attempt_cli_exit_code(argv) == 0
+    endpoint = (
+        "repos/owner/repo/actions/runs/777/attempts/3/jobs?per_page=100"
+        if run_attempt is not None
+        else "repos/owner/repo/actions/runs/777/jobs?per_page=100"
+    )
+    assert calls == [["gh", "api", "--paginate", "--slurp", endpoint]]
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["provenance"]["run_attempt"] == 3
+
+
+def test_cli_offline_explicit_attempt_accepts_matching_jobs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    jobs_path = tmp_path / "jobs.json"
+    jobs_path.write_text(json.dumps(_jobs_for_explicit_attempt()), encoding="utf-8")
+    output = tmp_path / "report.json"
+
+    def fail_fetch(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("offline fixtures must not invoke gh")
+
+    monkeypatch.setattr(analyzer.subprocess, "Popen", fail_fetch)
+    argv = _attempt_cli_args(output)
+    argv.extend(["--run-attempt", "3", "--jobs-json", str(jobs_path)])
+    assert _attempt_cli_exit_code(argv) == 0
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["provenance"]["run_attempt"] == 3
+
+
+@pytest.mark.parametrize(
+    ("run_attempt", "diagnostic"),
+    [
+        ("0", "positive integer"),
+        ("-1", "positive integer"),
+        ("true", "invalid int value"),
+        ("3.0", "invalid int value"),
+    ],
+)
+def test_cli_rejects_invalid_attempt_before_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    run_attempt: str,
+    diagnostic: str,
+) -> None:
+    def fail_fetch(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("invalid attempts must fail before invoking gh")
+
+    monkeypatch.setattr(analyzer.subprocess, "Popen", fail_fetch)
+    output = tmp_path / "report.json"
+    argv = _attempt_cli_args(output)
+    argv.extend(["--run-attempt", run_attempt])
+    assert _attempt_cli_exit_code(argv) == 2
+    assert diagnostic in capsys.readouterr().err
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("input_mode", ["offline", "live"])
+@pytest.mark.parametrize(
+    "bad_identity",
+    ["missing", "mismatch", "boolean", "all_missing", "all_mismatch"],
+)
+def test_cli_explicit_attempt_rejects_job_identity_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    bad_identity: str,
+    input_mode: str,
+) -> None:
+    payload = _jobs_for_explicit_attempt()
+    records = cast(list[dict[str, object]], payload["jobs"])
+    targets = records if bad_identity.startswith("all_") else records[-1:]
+    for record in targets:
+        if bad_identity.endswith("missing"):
+            record.pop("run_attempt")
+        elif bad_identity.endswith("mismatch"):
+            record["run_attempt"] = 2
+        else:
+            record["run_attempt"] = True
+    output = tmp_path / "report.json"
+    argv = _attempt_cli_args(output)
+    argv.extend(["--run-attempt", "3"])
+    if input_mode == "offline":
+        jobs_path = tmp_path / "jobs.json"
+        jobs_path.write_text(json.dumps(payload), encoding="utf-8")
+        argv.extend(["--jobs-json", str(jobs_path)])
+    else:
+        _install_attempt_gh(monkeypatch, payload)
+
+    assert _attempt_cli_exit_code(argv) == 2
+    assert "run_attempt" in capsys.readouterr().err
+    assert not output.exists()
+
+
+def test_cli_explicit_attempt_does_not_fallback_after_fetch_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls = _install_attempt_gh(monkeypatch, _jobs_for_explicit_attempt(), returncode=1)
+    output = tmp_path / "report.json"
+    argv = _attempt_cli_args(output)
+    argv.extend(["--run-attempt", "3"])
+
+    assert _attempt_cli_exit_code(argv) == 2
+    assert "HTTP 502" in capsys.readouterr().err
+    assert calls == [
+        [
+            "gh",
+            "api",
+            "--paginate",
+            "--slurp",
+            "repos/owner/repo/actions/runs/777/attempts/3/jobs?per_page=100",
+        ]
+    ]
+    assert not output.exists()

@@ -168,7 +168,7 @@ jobs:
                   trap 'rm -rf -- "$focused_dir"' EXIT
                   uv run --frozen --no-sync pytest -q -p no:cacheprovider --no-cov \
                     --basetemp="$focused_dir/pytest" \
-                    tests/test_user_analytics_window_contracts.py tests/test_stats_api.py tests/test_email_reset_fragment_redaction.py
+                    tests/test_user_analytics_window_contracts.py tests/test_stats_api.py tests/test_email_reset_fragment_redaction.py tests/test_ci_critical_path_analysis.py tests/test_quality_workflow_contract.py::test_ci_success_publishes_current_run_health_artifact
 
             - name: Build pinned Helm dependencies
               uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1

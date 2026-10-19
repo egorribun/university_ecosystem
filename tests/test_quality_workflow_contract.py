@@ -841,6 +841,7 @@ def test_ci_success_publishes_current_run_health_artifact() -> None:
     analyzer_run = analyzer["run"]
     assert "--diagnostic-lower-bound" in analyzer_run
     assert "${GITHUB_RUN_ID}" in analyzer_run
+    assert '--run-attempt "${GITHUB_RUN_ATTEMPT}"' in analyzer_run
     assert "--concurrency-cap 20" in analyzer_run
     renderer = next(
         step
