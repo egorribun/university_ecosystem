@@ -2,7 +2,7 @@ name: Owned Live Acceptance
 
 # Pull requests run the auth and password-reset smoke set on the owned Core
 # stack. Scheduled and manually dispatched runs exercise the full suite on
-# Core; manual runs also smoke a caller-selected frozen RC on the full stack.
+# Core; manual runs also smoke the reviewed manifest-selected RC on the full stack.
 # GitHub activates schedule/workflow_dispatch only after this file reaches the
 # repository's default branch; non-default manual refs are guarded below.
 on:
@@ -11,11 +11,6 @@ on:
   schedule:
     - cron: "0 3 * * *"
   workflow_dispatch:
-    inputs:
-      frozen_rc_sha:
-        description: Full 40-character commit SHA for the frozen-RC full-stack smoke
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -191,20 +186,51 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+    outputs:
+      source_sha: ${{ steps.resolve-frozen-rc.outputs.source_sha }}
     steps:
-      - name: Require main and an immutable commit SHA
+      - name: Require the protected main workflow ref
         env:
           WORKFLOW_REF: ${{ github.ref }}
-          FROZEN_RC_SHA: ${{ inputs.frozen_rc_sha }}
         run: |
-          if [ "$WORKFLOW_REF" != "refs/heads/main" ]; then
+          set -euo pipefail
+          if [[ "$WORKFLOW_REF" != "refs/heads/main" ]]; then
             echo "::error::Frozen-RC smoke must be dispatched from the protected main ref."
             exit 1
           fi
-          if [[ ! "$FROZEN_RC_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::Frozen-RC smoke requires a full lowercase 40-character commit SHA."
+
+      - name: Check out the trusted workflow commit without persisting credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Verify the reviewed manifest source commit
+        env:
+          EXPECTED_WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The trusted workflow commit SHA is unavailable or malformed."
             exit 1
           fi
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$EXPECTED_WORKFLOW_SHA" ]]; then
+            echo "::error::The manifest checkout does not match the trusted workflow SHA."
+            exit 1
+          fi
+
+      - name: Resolve the reviewed frozen-RC manifest
+        id: resolve-frozen-rc
+        run: |
+          set -euo pipefail
+          source_sha="$(python3 scripts/quality/resolve_frozen_rc_manifest.py \
+            --manifest quality/frozen-rc.json)"
+          if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The reviewed frozen-RC manifest did not resolve an exact SHA."
+            exit 1
+          fi
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
 
   frozen-rc-full-smoke:
     name: Frozen-RC full-stack smoke
@@ -222,14 +248,14 @@ jobs:
       - name: Check out the immutable frozen RC without persisting credentials
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.frozen_rc_sha }}
+          ref: ${{ needs.validate-frozen-rc.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Verify the checked-out frozen-RC commit
         id: verify-frozen-rc
         env:
-          EXPECTED_FROZEN_RC_SHA: ${{ inputs.frozen_rc_sha }}
+          EXPECTED_FROZEN_RC_SHA: ${{ needs.validate-frozen-rc.outputs.source_sha }}
         run: |
           set -euo pipefail
           actual_sha="$(git rev-parse HEAD)"
@@ -349,7 +375,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: frozen-rc-live-receipt-${{ inputs.frozen_rc_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: frozen-rc-live-receipt-${{ steps.verify-frozen-rc.outputs.checked_out_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: frozen-rc-live-receipt.json
           if-no-files-found: error
           retention-days: 90

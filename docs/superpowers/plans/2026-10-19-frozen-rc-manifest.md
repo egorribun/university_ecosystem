@@ -33,11 +33,13 @@
 
 **Interfaces:** The tests expect parse_manifest(document: object) -> str and CLI --manifest PATH. CLI returns 0 with SHA plus newline, or 1 with empty stdout and the fixed sanitized diagnostic.
 
-- [ ] Publish the reviewed tests for shape/types, null, SHA boundaries, duplicate keys, malformed/UTF-8 data, 4096/4097-byte limits, missing/directory/symlink paths, mocked nonregular rejection before open, a mocked cap-plus-one bounded read, read OSError, excessive JSON nesting, and import without side effects.
-- [ ] Require empty dispatch inputs, main-first rejection, trusted workflow checkout verification, validated job output, exact frozen checkout/ref, unchanged Core behavior and always-owned cleanup/metadata receipt.
-- [ ] Add the isolated focused coverage step after locked dependency sync in unit shard zero; leave normal full shards and provenance untouched.
-- [ ] Observe hosted assertion RED for the missing parser/manifest and old dispatch contract. Fix formatting/collection infrastructure first if it prevents behavioral RED. Do not implement before RED.
-- [ ] Record exact source/run/job and failures in audit/status, not an inferred failure.
+- [x] Publish the reviewed tests for shape/types, null, SHA boundaries, duplicate keys, malformed/UTF-8 data, 4096/4097-byte limits, missing/directory/symlink paths, mocked nonregular rejection before open, a mocked cap-plus-one bounded read, read OSError, excessive JSON nesting, and import without side effects.
+- [x] Require empty dispatch inputs, main-first rejection, trusted workflow checkout verification, validated job output, exact frozen checkout/ref, unchanged Core behavior and always-owned cleanup/metadata receipt.
+- [x] Add the isolated focused coverage step after locked dependency sync in unit shard zero; leave normal full shards and provenance untouched.
+- [x] Observe hosted assertion RED for the missing parser/manifest and old dispatch contract. Fix formatting/collection infrastructure first if it prevents behavioral RED. Do not implement before RED.
+- [x] Record exact source/run/job and failures in audit/status, not an inferred failure.
+
+Hosted RED: e6dc850, job117841029396, 43 failed / 2 passed at 2026-10-19 01:04:32 UTC. No production implementation preceded this result.
 
 ## Task 2: Implement bounded source selection and exact full-smoke wiring
 
@@ -45,14 +47,14 @@
 
 **Interfaces:** parse_manifest(document: object) -> str raises ValueError for invalid data. The CLI loads at most 4097 bytes, rejects duplicate keys, and emits only validated source SHA. Validation-job output source_sha is the sole full-smoke checkout input.
 
-- [ ] Implement exact-key/type/version validation and lowercase full-match SHA checking, rejecting null.
-- [ ] Implement bounded regular-file loading, symlink rejection, duplicate detection, stable sanitized read/validation errors and no import-side CLI execution.
-- [ ] Add the initial unfrozen manifest and verify source_sha is null before publication.
-- [ ] Remove freeform dispatch inputs. Preserve main-first rejection; verify trusted workflow SHA after checkout; resolve the fixed manifest and revalidate output before GITHUB_OUTPUT.
-- [ ] Keep frozen job event/main/needs guards. Its first checkout consumes source_sha; its immediate verifier binds subsequent stand --ref and receipt name to that same verified SHA.
-- [ ] Preserve full stack/mode, disabled caches, owner state-directory identity, always-run stop and metadata-only receipt/upload. Preserve PR/nightly paths and permissions.
-- [ ] Update active instructions for the tracked selection, explicitly retaining unresolved default-branch bootstrap/pre-merge ordering. Do not present null as a selected RC.
-- [ ] Obtain independent static review before publishing the narrow implementation.
+- [x] Implement exact-key/type/version validation and lowercase full-match SHA checking, rejecting null.
+- [x] Implement bounded regular-file loading, symlink rejection, duplicate detection, stable sanitized read/validation errors and no import-side CLI execution.
+- [x] Add the initial unfrozen manifest and verify source_sha is null before publication.
+- [x] Remove freeform dispatch inputs. Preserve main-first rejection; verify trusted workflow SHA after checkout; resolve the fixed manifest and revalidate output before GITHUB_OUTPUT.
+- [x] Keep frozen job event/main/needs guards. Its first checkout consumes source_sha; its immediate verifier binds subsequent stand --ref and receipt name to that same verified SHA.
+- [x] Preserve full stack/mode, disabled caches, owner state-directory identity, always-run stop and metadata-only receipt/upload. Preserve PR/nightly paths and permissions.
+- [x] Update active instructions for the tracked selection, explicitly retaining unresolved default-branch bootstrap/pre-merge ordering. Do not present null as a selected RC.
+- [x] Obtain independent static review before publishing the narrow implementation.
 
 ## Task 3: Verify source acceptance without overstating release acceptance
 

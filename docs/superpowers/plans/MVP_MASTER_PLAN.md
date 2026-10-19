@@ -53,7 +53,7 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
   отдельный план после MVP. «Проверка аудитории при создании» относится к этой
   будущей модели и не является задачей текущего релиза.
 - Продуктовая приёмка — на Core; full — отдельный smoke на замороженном релизном
-  SHA. Использовать утверждённый Compose inventory, а не постоянное число сервисов
+  SHA из reviewed tracked manifest `quality/frozen-rc.json`. Использовать утверждённый Compose inventory, а не постоянное число сервисов
   из старого отчёта. Остановка сохраняет данные; удаление только после проверки
   владельца. Чужие env, тома, backups и процессы сохраняются.
 - RU/EN, light/dark; обязательные ширины 390/768/1440 px. На 360/1024 px —
@@ -704,6 +704,21 @@ failure исправлять, не маскировать ретраями/skip.
 nightly/manual activation после merge проверить отдельно, не считать активной
 только по наличию файла на рабочей ветке.
 
+Ручной frozen-RC запуск не принимает inputs: точный lowercase 40-hex SHA задаётся
+reviewed изменением `quality/frozen-rc.json` (`schema_version: 1`, `source_sha`).
+Начальное `source_sha: null` означает unfrozen и блокирует full smoke. Валидатор
+читает manifest из checkout точного workflow SHA на main; full job получает только
+проверенный output и до установки зависимостей сверяет собственный checkout.
+Артефакт receipt привязан к фактически проверенному RC SHA, run ID и attempt.
+См. [спецификацию](../specs/2026-10-19-frozen-rc-manifest.md).
+
+Source-интеграция на `egorribun` не решает bootstrap: trusted workflow и manifest
+должны уже быть доступны на default branch, тогда как full smoke кандидата нужен
+до ordinary merge. Порядок активации требует отдельного решения; не подменять
+кандидат текущим main SHA, не разрешать произвольный branch dispatch и не считать
+static contracts или PR Core доказательством frozen-RC full smoke. Текущая работа
+не выбирает RC и не разрешает main/bootstrap update, merge или deploy.
+
 ### Блок 5. Визуальная и performance-приёмка
 
 - Сделать пакеты скриншотов текущих экранов RU/EN, light/dark, desktop/mobile.
@@ -876,7 +891,7 @@ chaos/recovery/rollback сохраняют данные; runner не удали�
   RUST-P3-03 проверять действующим builder, не реализовывать экспорт повторно.
 - Получить независимый auth/session/data review и утверждение визуальных пакетов.
   Заморозить code/dependencies/config/docs; пройти финальные Core scenarios,
-  backup/restore и full smoke на этом RC. Изменение поведения после freeze
+  backup/restore и full smoke на этом RC, выбранном reviewed manifest. Изменение поведения после freeze
   создаёт новый кандидат и требует повторить затронутую приёмку.
 - Обычный merge единственного PR после required checks. Для resulting main SHA
   получить новое push-main evidence согласно `quality/release-required-checks.json`;
