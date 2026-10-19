@@ -1,6 +1,6 @@
 {
   "title": "Activity",
-  "pageDescription": "Track your attendance, grades, and participation",
+  "pageDescription": "Track your event registrations, grades, and participation",
   "hero": {
     "badge": "Analytics"
   },
@@ -34,6 +34,17 @@
       "180d_other": "over the last {{count}} days"
     }
   },
+  "trendUnits": {
+    "percentagePoints": "pp",
+    "points_one": "point",
+    "points_few": "points",
+    "points_many": "points",
+    "points_other": "points",
+    "events_one": "event",
+    "events_few": "events",
+    "events_many": "events",
+    "events_other": "events"
+  },
   "common": {
     "separator": " \u2022 ",
     "noData": "No data"
@@ -45,16 +56,16 @@
   },
   "sections": {
     "attendance": {
-      "title": "Attendance",
+      "title": "Event registrations",
       "summary": "{{present}}/{{total}} {{period}}",
-      "recent": "Recent attendance",
-      "lessonFallback": "Lesson",
+      "recent": "Recent registrations",
+      "lessonFallback": "Event",
       "status": {
-        "present": "attended",
+        "present": "registered",
         "late": "late",
-        "absent": "absent"
+        "not registered": "not registered"
       },
-      "dialogTitle": "Attendance",
+      "dialogTitle": "Event registrations",
       "dialogTotal": "Total: {{present}}/{{total}} {{period}}"
     },
     "grades": {
@@ -86,7 +97,7 @@
     "streakDays_few": "{{count}} day streak",
     "streakDays_many": "{{count}} days streak",
     "streakDays_other": "{{count}} days streak",
-    "excellent": "Excellent attendance! Keep it up!",
+    "excellent": "Excellent registration activity! Keep it up!",
     "good": "Good progress! A little more consistency.",
     "improving": "Your grades are improving!",
     "active": "Very active community member!",
@@ -94,7 +105,7 @@
   },
   "charts": {
     "title": "Analytics",
-    "attendanceTrend": "Attendance trend",
+    "attendanceTrend": "Registration rate trend",
     "gradesBySubject": "Grades by subject",
     "noChartData": "Not enough data to display chart"
   },
@@ -109,7 +120,7 @@
   },
   "comparative": {
     "title": "Period Comparison",
-    "attendanceLabel": "Attendance",
+    "attendanceLabel": "Registrations",
     "gradesLabel": "Avg. grade",
     "participationLabel": "Events",
     "vsPrevious": "vs {{value}}",
@@ -136,22 +147,22 @@
     "participationType": "Participation"
   },
   "a11y": {
-    "attendanceCard": "Attendance statistics",
+    "attendanceCard": "Event registration statistics",
     "gradesCard": "Grade statistics",
     "participationCard": "Participation statistics",
     "periodSelector": "Select time period for activity statistics",
     "timeline": "Activity timeline",
-    "streak": "Attendance streak",
-    "ringAttendance": "Attendance ring showing {{value}}%",
+    "streak": "Consecutive days of registered events",
+    "ringAttendance": "Registration ring showing {{value}}%",
     "ringGrades": "Grade gauge showing {{value}} out of {{max}}",
     "ringParticipation": "Participation count showing {{value}} events",
-    "attendanceTrend": "Line chart showing attendance percentage over time",
+    "attendanceTrend": "Line chart showing event registration percentage over time",
     "gradesBySubject": "Bar chart showing grades by subject",
     "heatmapCalendar": "Activity heatmap calendar showing daily contributions"
   },
   "empty": {
     "title": "No activity yet",
-    "description": "Your activity will appear here as you attend classes and participate in events"
+    "description": "Your activity will appear here as you receive grades and register for events"
   },
   "error": {
     "title": "Activity is temporarily unavailable",

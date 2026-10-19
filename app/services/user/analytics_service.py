@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
+from zoneinfo import ZoneInfo
 
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.deps.cache import BaseCache
+from app.models import Grade
 from app.repositories.user_stats_repository import UserStatsRepository
+from app.schemas.dtos.analytics import ParticipationStatsDTO
 from app.services import stats_cache
 
 logger = get_logger(__name__)
@@ -34,12 +38,17 @@ class UserAnalyticsService:
         self.db = db
         self.stats_repo = UserStatsRepository(db)
 
+    @staticmethod
+    def _as_utc(value: datetime) -> datetime:
+        """Normalize database timestamps; SQLite drops timezone metadata."""
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
     def _dt_to_iso(self, value: datetime | None) -> str:
         if value is None:
             return ""
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=UTC)
-        return value.astimezone(UTC).isoformat()
+        return self._as_utc(value).isoformat()
 
     async def _cached(
         self,
@@ -95,27 +104,76 @@ class UserAnalyticsService:
                 user_id, window_start, previous_start, now
             )
 
-            # The aggregate sub-select yields exactly one row, repeated on every
-            # "recent" row, so the first row carries all four counters.
-            head = rows[0] if rows else None
-            total = int(getattr(head, "current_total", 0) or 0)
-            attended = int(getattr(head, "current_attended", 0) or 0)
-            previous_total = int(getattr(head, "previous_total", 0) or 0)
-            previous_attended = int(getattr(head, "previous_attended", 0) or 0)
+            campus_zone = ZoneInfo(settings.campus_timezone)
+            total = 0
+            attended = 0
+            previous_total = 0
+            previous_attended = 0
+            daily_counts: dict[date, dict[str, int]] = {}
+            streak_dates: set[date] = set()
+            recent_candidates: list[tuple[datetime, Any]] = []
+
+            # The repository returns only active, past event rows, never an empty head.
+            for row in rows:
+                starts_at = self._as_utc(row.starts_at)
+                registered = bool(row.is_registered)
+
+                if registered:
+                    streak_dates.add(starts_at.astimezone(campus_zone).date())
+
+                if previous_start <= starts_at < window_start:
+                    previous_total += 1
+                    previous_attended += int(registered)
+                elif starts_at >= window_start:
+                    total += 1
+                    attended += int(registered)
+                    campus_date = starts_at.astimezone(campus_zone).date()
+                    counts = daily_counts.setdefault(
+                        campus_date, {"registered": 0, "total": 0}
+                    )
+                    counts["total"] += 1
+                    counts["registered"] += int(registered)
+
+                    if registered:
+                        recent_candidates.append((self._as_utc(row.registered_at), row))
 
             percent = attended / total * 100 if total else 0.0
             previous_percent = (
                 previous_attended / previous_total * 100 if previous_total else 0.0
             )
 
+            recent_candidates.sort(key=lambda item: item[0], reverse=True)
             recent = [
                 {
-                    "date": self._dt_to_iso(row.starts_at or row.registered_at),
+                    "date": self._dt_to_iso(row.starts_at),
                     "status": "present",
                     "course": row.title or None,
                 }
-                for row in rows
-                if getattr(row, "rn", None) is not None
+                for _, row in recent_candidates[:_RECENT_LIMIT]
+            ]
+
+            today = self._as_utc(now).astimezone(campus_zone).date()
+            yesterday = today - timedelta(days=1)
+            anchor: date | None
+            if today in streak_dates:
+                anchor = today
+            elif yesterday in streak_dates:
+                anchor = yesterday
+            else:
+                anchor = None
+
+            streak_days = 0
+            while anchor is not None and anchor in streak_dates:
+                streak_days += 1
+                anchor -= timedelta(days=1)
+
+            daily = [
+                {
+                    "date": day.isoformat(),
+                    "registered": counts["registered"],
+                    "total": counts["total"],
+                }
+                for day, counts in sorted(daily_counts.items())
             ]
             return {
                 "percent": round(percent, 2),
@@ -123,6 +181,8 @@ class UserAnalyticsService:
                 "total": total,
                 "trend": round(percent - previous_percent, 2),
                 "period_key": cache_period_key,
+                "streak_days": streak_days,
+                "daily": daily,
                 "recent": recent,
             }
 
@@ -147,10 +207,17 @@ class UserAnalyticsService:
     ) -> dict[str, Any]:
         async def compute(cache_period_key: str) -> dict[str, Any]:
             now, window_start, previous_start = self._windows(period_days)
-            current = await self.stats_repo.get_grades(user_id, window_start, now)
-            previous = await self.stats_repo.get_grades(
-                user_id, previous_start, window_start
+            window_grades = await self.stats_repo.get_grades(
+                user_id, previous_start, now
             )
+            current: list[Grade] = []
+            previous: list[Grade] = []
+            for grade in window_grades:
+                created_at = self._as_utc(grade.created_at)
+                if created_at >= window_start:
+                    current.append(grade)
+                else:
+                    previous.append(grade)
 
             def average(grades: Any) -> float:
                 return (
@@ -202,15 +269,26 @@ class UserAnalyticsService:
     ) -> dict[str, Any]:
         async def compute(cache_period_key: str) -> dict[str, Any]:
             now, window_start, previous_start = self._windows(period_days)
-            rows = await self.stats_repo.get_participation_stats_raw(
-                user_id=user_id, window_start=window_start, now=now
+            window_rows = await self.stats_repo.get_participation_stats_raw(
+                user_id=user_id, window_start=previous_start, now=now
             )
-            previous_rows = await self.stats_repo.get_participation_stats_raw(
-                user_id=user_id, window_start=previous_start, now=window_start
-            )
+            rows: list[ParticipationStatsDTO] = []
+            previous_rows: list[ParticipationStatsDTO] = []
+            for row in window_rows:
+                starts_at = self._as_utc(row.starts_at)
+                if starts_at >= window_start:
+                    rows.append(row)
+                else:
+                    previous_rows.append(row)
 
             hours = sum(
-                max(0.0, (row.ends_at - row.starts_at).total_seconds() / 3600)
+                max(
+                    0.0,
+                    (
+                        self._as_utc(row.ends_at) - self._as_utc(row.starts_at)
+                    ).total_seconds()
+                    / 3600,
+                )
                 for row in rows
             )
             groups = {row.event_type for row in rows if row.event_type}

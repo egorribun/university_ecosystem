@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest"
 
 import {
   parseAttendanceRecent,
+  parseAttendanceDaily,
+  parseStreakDays,
   parseGradeRecent,
   parseParticipationRecent,
   toNumber,
@@ -82,5 +84,33 @@ describe("activity parsers closure", () => {
       { title: "Tournament", date: "" },
       { title: "Seminar", date: "" },
     ])
+  })
+})
+
+describe("registration aggregate parsers", () => {
+  it("retains valid leap days and rejects impossible or non-calendar dates", () => {
+    const valid = { date: "2024-02-29", registered: 0, total: 2 }
+    expect(
+      parseAttendanceDaily([
+        valid,
+        { ...valid, date: "2026-02-29" },
+        { ...valid, date: "2026-13-01" },
+        { ...valid, date: "2026-04-20T00:00:00Z" },
+        { ...valid, date: 20260420 },
+        { ...valid, registered: "1" },
+        { ...valid, total: 1.5 },
+        { ...valid, total: Number.MAX_SAFE_INTEGER + 1 },
+      ])
+    ).toEqual([valid])
+    expect(parseAttendanceDaily(undefined)).toEqual([])
+    expect(parseAttendanceDaily({})).toEqual([])
+  })
+
+  it("accepts only safe nonnegative integer streak counts", () => {
+    expect(parseStreakDays(0)).toBe(0)
+    expect(parseStreakDays(36)).toBe(36)
+    for (const value of [null, true, "3", -1, 0.5, Number.NaN, Infinity, 2 ** 53]) {
+      expect(parseStreakDays(value)).toBeUndefined()
+    }
   })
 })

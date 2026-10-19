@@ -16,6 +16,8 @@ import {
 import {
   toNumber,
   parseAttendanceRecent,
+  parseAttendanceDaily,
+  parseStreakDays,
   parseGradeRecent,
   parseParticipationRecent,
 } from "@/features/activity/parsers"
@@ -23,10 +25,9 @@ import {
 /**
  * useActivityData — Wave 112 SW2.
  *
- * Public API is byte-equivalent to the previous bare-axios implementation:
- * consumers (ActivityFeature) get the same `attendance/grades/participation`
- * objects with fallback defaults, the same loading/hasInitiallyLoaded flags,
- * and the same derived chart/heatmap data.
+ * ActivityFeature receives normalized summaries and loading state. Registration
+ * trends use complete backend daily aggregates; optional streakDays is an
+ * authoritative backend count, never an inference from the capped recent feed.
  *
  * What changed: data fetching + cancellation now flows through TanStack Query
  * (`useActivitySummaryQuery`). Benefits:
@@ -101,6 +102,8 @@ export default function useActivityData() {
         day: "numeric",
         month: "long",
         year: "numeric",
+        // Calendar keys already describe a campus day, not a browser-local instant.
+        ...(/^\d{4}-\d{2}-\d{2}$/.test(value) ? { timeZone: "UTC" } : {}),
       })
     },
     [locale]
@@ -127,6 +130,8 @@ export default function useActivityData() {
           ? d.period_label
           : labelByPeriod(resolvedPeriodKey)
       return {
+        daily: parseAttendanceDaily(d.daily),
+        streakDays: parseStreakDays(d.streak_days),
         percent: toNumber(d.percent),
         present: toNumber(d.present),
         total: toNumber(d.total),
@@ -186,25 +191,16 @@ export default function useActivityData() {
     (!availability.attendance || !availability.grades || !availability.participation)
 
   // ── Chart data derivation (Phase B) ───────────────
-  const attendanceTrendData = useMemo(() => {
-    const recent = attendance?.recent
-    if (!recent?.length) return []
-    const byDate = new Map<string, { present: number; total: number }>()
-    for (const item of recent) {
-      const key = item.date.slice(0, 10)
-      const prev = byDate.get(key) ?? { present: 0, total: 0 }
-      byDate.set(key, {
-        present: prev.present + (item.status === "present" ? 1 : 0),
-        total: prev.total + 1,
-      })
-    }
-    return [...byDate.entries()]
-      .map(([date, { present, total }]) => ({
-        date,
-        value: Math.round((present / total) * 100),
-      }))
-      .sort((a, b) => a.date.localeCompare(b.date))
-  }, [attendance?.recent])
+  const attendanceTrendData = useMemo(
+    () =>
+      (attendance?.daily ?? [])
+        .map(({ date, registered, total }) => ({
+          date,
+          value: Math.round((registered / total) * 100),
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    [attendance?.daily]
+  )
 
   const gradesBySubject = useMemo(() => {
     const recent = grades?.recent

@@ -64,7 +64,7 @@ export function ParticipationCard({
                   count: participation?.events ?? 0,
                 })}
               </span>
-              <TrendChip value={participation?.trend} />
+              <TrendChip value={participation?.trend} unit="events" />
             </div>
             <p className="text-sm text-text-secondary">
               {[

@@ -66,7 +66,7 @@ export function GradesCard({ grades, hasInitiallyLoaded, ringSize }: GradesCardP
                     ? `${gradesAnimated}/100`
                     : `${gradesAnimated}/5`}
               </span>
-              <TrendChip value={grades?.trend} />
+              <TrendChip value={grades?.trend} unit="points" />
             </div>
             <p className="text-sm text-text-secondary">
               {t("activity:sections.grades.averageLabel")}

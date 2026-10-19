@@ -28,17 +28,8 @@ export function ActivityMotivation({
     return t("activity:motivation.default")
   }, [hasInitiallyLoaded, attendance?.percent, grades?.trend, participation?.events, t])
 
-  // RC-78-01: extract to primitive — React Compiler requires primitive deps, not property access
-  const recentAttendance = attendance?.recent
-  const streak = useMemo(() => {
-    if (!recentAttendance?.length) return 0
-    let count = 0
-    for (const entry of recentAttendance) {
-      if (entry.status === "present") count++
-      else break
-    }
-    return count
-  }, [recentAttendance])
+  // The backend counts consecutive campus event days independently of the recent feed.
+  const streak = attendance?.streakDays ?? 0
 
   if (!hasInitiallyLoaded) return null
 

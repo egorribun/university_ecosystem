@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AttendanceCard } from "../AttendanceCard"
 import { GradesCard } from "../GradesCard"
 import { ParticipationCard } from "../ParticipationCard"
+import TrendChip from "../TrendChip"
 import enActivity from "@/i18n/locales/en/activity.json"
 import ruActivity from "@/i18n/locales/ru/activity.json"
 
@@ -128,5 +129,29 @@ describe("activity trend units", () => {
     const attendance = within(screen.getByRole("group", { name }))
     expect(attendance.getByText(expected)).toBeVisible()
     expect(attendance.queryByText(/[-−]0[.,]0/)).not.toBeInTheDocument()
+  })
+})
+
+describe("localized trend plurals", () => {
+  it.each([
+    { language: "en", unit: "points" as const, value: 1, expected: "+1.0 point" },
+    { language: "en", unit: "events" as const, value: -1, expected: "-1 event" },
+    { language: "ru", unit: "points" as const, value: 5, expected: "+5,0 баллов" },
+    { language: "ru", unit: "events" as const, value: 1, expected: "+1 событие" },
+    { language: "ru", unit: "events" as const, value: 5, expected: "+5 событий" },
+    { language: "ru", unit: "events" as const, value: -2, expected: "-2 события" },
+  ])("formats $expected in $language", async ({ language, unit, value, expected }) => {
+    const i18n = createInstance()
+    await i18n.init({
+      lng: language,
+      resources: { en: { activity: enActivity }, ru: { activity: ruActivity } },
+      interpolation: { escapeValue: false },
+    })
+    render(
+      <I18nextProvider i18n={i18n}>
+        <TrendChip value={value} unit={unit} />
+      </I18nextProvider>
+    )
+    expect(screen.getByText(expected)).toBeVisible()
   })
 })
