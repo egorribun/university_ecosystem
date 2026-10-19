@@ -52,10 +52,8 @@ describe("useScheduleClock", () => {
     const after = new Date("2026-07-15T09:31:00.000Z")
     const timersBefore = vi.getTimerCount()
     const visibility = mockVisibilityState("visible")
-    const rendered = renderHook(
-      ({ enabled }: { enabled: boolean }) => useScheduleClock(enabled),
-      { initialProps: { enabled: false } }
-    )
+    const useClock = ({ enabled }: { enabled: boolean }) => useScheduleClock(enabled)
+    const rendered = renderHook(useClock, { initialProps: { enabled: false } })
     try {
       expect(rendered.result.current.getTime()).toBe(before.getTime())
       vi.setSystemTime(after)

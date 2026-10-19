@@ -26,6 +26,11 @@ Owned Live [39186008781](https://github.com/egorribun/university_ecosystem/actio
 
 На f4 Owned Live 39190366009 прошёл 20 browser PASS / 2 SKIP и owned stop/receipt/upload; artifact 12160197117 связан с checkout f295a2a и точным tree f4. PostgreSQL: 178 PASS / 9 SKIP; Checkov успешен. Эти результаты не заменяют проверку новой реализации. Baseline319, dispositions, workflows/catalogs и required gates не меняются. Общий процент закрытия по-прежнему не установлен.
 
+
+На реализации [bd4fd6f](https://github.com/egorribun/university_ecosystem/commit/bd4fd6f0f6cb6435978764f0ca4107ac4d031def) оба pre-commit gates, все четыре frontend shards и frontend aggregate успешны: 9318 PASS / 771 файл. Новый useScheduleClock (7 tests) и ScheduleHeader behavior (16 tests) явно присутствуют в успешном shard 4. TypeScript, ESLint, i18n, message contract и knip прошли; отдельный Prettier gate указал только новый useScheduleClock.test.tsx. Точечная коррекция выносит тот же typed renderHook callback в локальную функцию без изменения assertions или production-кода. Backend/aggregate/quality и собственная проверка скорректированного source остаются обязательными; это не полный принятый checkpoint.
+
+Owned Live реализации bd4fd: run39193378751/job117870791307, 20 browser PASS / 2 SKIP, stop/receipt/upload успешны. Artifact12161352829 связан с checkout b267cf3 и точным tree9636b432 исходного bd4fd. Безопасный owned lifecycle завершён до публикации formatter correction; backend/quality не объявлены принятыми заранее.
+
 ## Проверенные Matrix исправления после hosted RED
 
 База — tests-first [efd5483](https://github.com/egorribun/university_ecosystem/commit/efd5483c97810fff477aaf54201f710799f7b02e). Ruff correction прошла оба pre-commit gates; production-код до этой партии не менялся. На efd реально подтверждены четыре backend message contracts ([shard 0](https://github.com/egorribun/university_ecosystem/actions/runs/39158872405/job/117768386874): 4 FAIL / 5379 PASS / 49 SKIP), два frontend image-ID contracts и отдельный workflow concurrency contract ([shard 3](https://github.com/egorribun/university_ecosystem/actions/runs/39158872405/job/117773682192): 1 FAIL / 3413 PASS / 32 SKIP). Это конкретные ожидаемые RED, не formatting/fixture failures.
