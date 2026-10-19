@@ -39,10 +39,15 @@ describe("useActivityData", () => {
       present: 19,
       total: 20,
       trend: 2.5,
+      streak_days: 7,
       period_key: "90d",
+      daily: [
+        { date: "2026-04-21", registered: 0, total: 1 },
+        { date: "2026-04-20", registered: 1, total: 2 },
+      ],
       recent: [
         { date: "2026-04-20T10:00:00Z", status: "present" },
-        { date: "2026-04-21T10:00:00Z", status: "absent" },
+        { date: "2026-04-21T10:00:00Z", status: "present" },
       ],
     },
     grades: {
@@ -75,6 +80,7 @@ describe("useActivityData", () => {
     const { result } = renderHook(() => useActivityData())
 
     expect(result.current.attendance?.percent).toBe(95)
+    expect(result.current.attendance).toMatchObject({ streakDays: 7 })
     expect(result.current.grades?.average).toBe(4.8)
     expect(result.current.participation?.events).toBe(10)
     expect(result.current.availability).toEqual({
@@ -137,21 +143,103 @@ describe("useActivityData", () => {
     expect(result.current.isPartial).toBe(true)
   })
 
-  it("derives chart data correctly", () => {
+  it("uses complete daily attendance aggregates instead of the recent sample", () => {
     const { result } = renderHook(() => useActivityData())
 
-    // Attendance trend: one day present, one day absent
-    expect(result.current.attendanceTrendData).toHaveLength(2)
-    // 2026-04-20 is present (100%)
-    expect(result.current.attendanceTrendData[0]!.value).toBe(100)
-    // 2026-04-21 is absent (0%)
-    expect(result.current.attendanceTrendData[1]!.value).toBe(0)
-
-    // Grades by subject
-    expect(result.current.gradesBySubject).toHaveLength(1)
-    expect(result.current.gradesBySubject[0]!.label).toBe("Math")
-    expect(result.current.gradesBySubject[0]!.value).toBe(4.5) // (5+4)/2
+    // All recent rows are present, but they are not each day's denominator.
+    expect(result.current.attendanceTrendData).toEqual([
+      { date: "2026-04-20", value: 50 },
+      { date: "2026-04-21", value: 0 },
+    ])
+    expect(result.current.gradesBySubject).toEqual([{ label: "Math", value: 4.5, max: 5 }])
   })
+
+  it("does not synthesize trend points from recent rows without daily aggregates", () => {
+    const recentOnlyAttendance = {
+      percent: 95,
+      present: 19,
+      total: 20,
+      trend: 2.5,
+      period_key: "90d",
+      recent: mockData.attendance.recent,
+    }
+    vi.mocked(useActivitySummaryQuery).mockReturnValue({
+      data: { ...mockData, attendance: recentOnlyAttendance },
+      isFetching: false,
+      isSuccess: true,
+    } as unknown as ReturnType<typeof useActivitySummaryQuery>)
+
+    const { result } = renderHook(() => useActivityData())
+
+    expect(result.current.attendanceTrendData).toEqual([])
+  })
+
+  it("retains zero-registration daily points when the recent feed is empty", () => {
+    vi.mocked(useActivitySummaryQuery).mockReturnValue({
+      data: {
+        ...mockData,
+        attendance: {
+          ...mockData.attendance,
+          present: 0,
+          total: 1,
+          percent: 0,
+          recent: [],
+          daily: [{ date: "2026-04-21", registered: 0, total: 1 }],
+        },
+      },
+      isFetching: false,
+      isSuccess: true,
+    } as unknown as ReturnType<typeof useActivitySummaryQuery>)
+
+    const { result } = renderHook(() => useActivityData())
+
+    expect(result.current.attendanceTrendData).toEqual([{ date: "2026-04-21", value: 0 }])
+  })
+
+  it("rejects malformed daily counters without inventing percentages", () => {
+    vi.mocked(useActivitySummaryQuery).mockReturnValue({
+      data: {
+        ...mockData,
+        attendance: {
+          ...mockData.attendance,
+          daily: [
+            null,
+            5,
+            {},
+            { date: "not a date", registered: 1, total: 2 },
+            { date: "2026-04-21", registered: -1, total: 2 },
+            { date: "2026-04-21", registered: 3, total: 2 },
+            { date: "2026-04-21", registered: 0, total: 0 },
+            { date: "2026-04-21", registered: 0.5, total: 2 },
+            { date: "2026-04-21", registered: Number.POSITIVE_INFINITY, total: 2 },
+            { date: "2026-04-21", registered: 1, total: Number.NaN },
+            { date: "2026-04-21", registered: 1, total: 2 },
+          ],
+        },
+      },
+      isFetching: false,
+      isSuccess: true,
+    } as unknown as ReturnType<typeof useActivitySummaryQuery>)
+
+    const { result } = renderHook(() => useActivityData())
+
+    expect(result.current.attendanceTrendData).toEqual([{ date: "2026-04-21", value: 50 }])
+  })
+
+  it.each([undefined, null, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, true, "7"])(
+    "does not invent an authoritative streak from invalid value %s",
+    (streakDays) => {
+      vi.mocked(useActivitySummaryQuery).mockReturnValue({
+        data: { ...mockData, attendance: { ...mockData.attendance, streak_days: streakDays } },
+        isFetching: false,
+        isSuccess: true,
+      } as unknown as ReturnType<typeof useActivitySummaryQuery>)
+
+      const { result } = renderHook(() => useActivityData())
+
+      expect(Reflect.get(result.current.attendance ?? {}, "streakDays")).toBeUndefined()
+    }
+  )
 
   it("treats days older than a capped activity section as unknown, not zero", () => {
     const capped = Array.from({ length: 5 }, (_, index) => ({
@@ -309,5 +397,24 @@ describe("useActivityData", () => {
       participation: true,
     })
     expect(result.current.isPartial).toBe(true)
+  })
+
+  it("formats a campus calendar date without shifting it to the browser's previous day", () => {
+    const original = Date.prototype.toLocaleDateString
+    type DateFormatArgs = Parameters<Date["toLocaleDateString"]>
+    function browserFormat(this: Date, ...[locales, options]: DateFormatArgs) {
+      return original.call(this, locales, {
+        ...options,
+        timeZone: options?.timeZone ?? "America/Los_Angeles",
+      })
+    }
+    const spy = vi.spyOn(Date.prototype, "toLocaleDateString").mockImplementation(browserFormat)
+    try {
+      const { result } = renderHook(() => useActivityData())
+
+      expect(result.current.formatDate("2026-04-20")).toBe("April 20, 2026")
+    } finally {
+      spy.mockRestore()
+    }
   })
 })

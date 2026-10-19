@@ -26,9 +26,15 @@
 - Hidden date rollover must refresh even at the same hour/minute after a full day.
 - Countdown visibility and its actual seconds must use the same zone, including quarter-hour offsets.
 
-## Current evidence
+## Accepted implementation checkpoint
 
-Hosted f4dfcbe Matrix 39190366176 establishes frontend assertion RED (10 failures / 9295 passes) and exact ICS RED (job117862849856: 1 failure / 5584 passes / 33 skips). Owned Live stop/receipt is successful and source-tree bound. Minimal implementation and supplemental helper/lifecycle tests have independent static review; full implemented-source CI is pending. The separate cache-test blank-line formatter defect is corrected without removing RED assertions. No finding is declared closed by static review alone.
+Implementation bd4fd6f and formatter correction f8545c8 completed their own final-source CI at f8545c8: Matrix 39194937435, 23 terminal workflows (21 success/two skips), 136 check runs, all 78 exact required pairs present (77 success/one neutral Checkov comparison uncertainty). Python 16417 PASS/174 SKIP, frontend 9318 PASS/771 files, PostgreSQL 178 PASS/9 SKIP; quality contract/artifacts/checksum and 4459-line diff coverage passed. Owned Live stop/receipt/upload passed and its checkout tree equals f854. See STATUS and AUDIT supplements for exact source links, artifacts and limits. Quiet backend logs establish a successful full cohort, not an individually printed ICS PASS. No release/main/bootstrap/merge/deploy is claimed.
+
+The supplemental helper tests are not represented as an independently observed pre-implementation helper-level RED; the published f4 behavioral regressions drove the implementation. Independent formatter failures were tracked separately from those genuine assertions.
+
+## Historical RED evidence
+
+Hosted f4dfcbe Matrix 39190366176 establishes frontend assertion RED (10 failures / 9295 passes) and exact ICS RED (job117862849856: 1 failure / 5584 passes / 33 skips). Owned Live stop/receipt is successful and source-tree bound. Minimal implementation and supplemental helper/lifecycle tests received independent static review; their final-source CI is now accepted as recorded above. The separate cache-test blank-line formatter defect is corrected without removing RED assertions. No finding is declared closed by static review alone.
 
 ## Task 1: Publish precise failing regressions
 
@@ -37,7 +43,7 @@ Hosted f4dfcbe Matrix 39190366176 establishes frontend assertion RED (10 failure
 - [x] Review the six test-only diffs against current source and fixture contracts.
 - [x] Keep Date/timer/visibility restoration exact; leave real timeouts where asynchronous waitFor is used.
 - [x] Publish tests with this spec/plan and truthful audit/status evidence, after the previous source reaches its CI checkpoint.
-- [x] Observe exact hosted assertion failures for escaping, adjacent selection and campus time. Fix any setup/type/format failure before counting RED.
+- [x] Observe exact hosted assertion failures for escaping, adjacent selection and campus time. Distinguish setup/type/format gate errors from behavioral RED; fix independent formatting defects without treating them as behavioral evidence.
 
 ## Task 2: Correct ICS and adjacent selection
 
@@ -45,7 +51,7 @@ Hosted f4dfcbe Matrix 39190366176 establishes frontend assertion RED (10 failure
 
 - [x] Join description fields with real newlines before the existing _escape call; retain the escaping implementation.
 - [x] Allow a valid next lesson starting at the current lesson's end, retaining half-open current intervals and invalid-bound rejection.
-- [ ] Verify the exact new regressions and all existing related tests in hosted CI.
+- [x] Verify the exact new regressions and all existing related tests in hosted CI.
 
 ## Task 3: Share the campus calendar and effective instant
 
@@ -57,13 +63,13 @@ Hosted f4dfcbe Matrix 39190366176 establishes frontend assertion RED (10 failure
 - useScheduleTime(todayLessons, hasToday, nowTick?) retains existing two-argument callers and return shape; an external tick disables its internal ticker.
 - Existing nowParity/isoWeekNumber retain their default local semantics and gain an optional campus-zone input.
 
-- [x] Add pure utility regressions for calendar/ISO boundaries and clock parts before implementing those helpers.
+- [x] Add supplemental utility regressions for calendar/ISO boundaries and clock parts alongside the minimal helpers driven by the observed hosted behavioral RED.
 - [x] Use Gregorian/latn/h23 Intl parts and UTC calendar arithmetic, never host getters for known campus-zone dates.
 - [x] Extract the existing ticker with epoch-minute equality; keep exactly one enabled schedule ticker in orchestration and correct cleanup.
 - [x] Have useScheduleData obtain the shared instant before deriving weekday/parity and pass it to time calculations.
 - [x] Replace fixed initial parity with derived automatic parity plus nullable manual override. Preserve React Dispatch/SetStateAction, explicit same-value choices and queued updaters.
 - [x] Keep the returned nowTick as the actual instant and all query/storage behavior unchanged.
-- [ ] Verify null resolution, manual choice, current/next selection and midnight/full-day resume contracts.
+- [x] Verify null resolution, manual choice, current/next selection and midnight/full-day resume contracts.
 
 ## Task 4: Reconcile visible consumers with that clock
 
@@ -72,13 +78,13 @@ Hosted f4dfcbe Matrix 39190366176 establishes frontend assertion RED (10 failure
 - [x] Derive past-filter and countdown-window minutes from the same campus utility and supplied actual instant.
 - [x] Keep getSecondsUntilTarget's existing two-argument fallback; allow its caller to provide the campus zone.
 - [x] Recompute actual countdown seconds when zone/target changes and on each visible second tick. Keep hidden ticks paused and the existing callback policy.
-- [ ] Verify Header with the real countdown, quarter-hour zone changes and first-visible-tick catch-up. Keep page-filter proof explicitly scoped to its mocked hook boundary.
+- [x] Verify Header with the real countdown, quarter-hour zone changes and first-visible-tick catch-up. Keep page-filter proof explicitly scoped to its mocked hook boundary.
 - [x] Do not change unrelated calendar month navigation, selected-week behavior or other countdown product semantics.
 
 ## Task 5: Validate and record the corrected source
 
 - [x] Obtain independent review of the narrow implementation and compatibility paths.
 - [x] Before publication, reconcile affected source catalogs and baseline line metadata while preserving all identities and gates. The six test-only paths currently have no baseline entries.
-- [ ] Require full backend/frontend/quality/security CI on the implemented SHA; focused results are not a full verdict.
+- [x] Require full backend/frontend/quality/security CI on the implemented SHA; focused results are not a full verdict.
 - [x] Verify owned-live stop/receipt and exact source-tree provenance before superseding a run.
-- [ ] Update the three AUD IDs with precise proof limits; retain other open findings and the unknown aggregate closure percentage.
+- [x] Update the three AUD IDs with precise proof limits; retain other open findings and the unknown aggregate closure percentage.

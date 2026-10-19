@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -30,9 +31,11 @@ async def test_stats_requires_auth(async_client, path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/stats/attendance", "/stats/summary"])
 async def test_attendance_stats_returns_expected_payload(
-    async_client, db_session, user_factory
+    async_client, db_session, user_factory, monkeypatch, path
 ):
+    monkeypatch.setattr(settings, "campus_timezone", "Asia/Kathmandu")
     now = datetime.now(UTC)
     admin = await user_factory(role="admin")
     password = "StatsPass123!"
@@ -99,12 +102,15 @@ async def test_attendance_stats_returns_expected_payload(
 
     await _login(async_client, student.email, password)
 
-    response = await async_client.get("/stats/attendance")
+    response = await async_client.get(path)
     assert response.status_code == 200
     payload = response.json()
+    if path == "/stats/summary":
+        payload = payload["attendance"]
 
     # Attendance == registration: 6 of the 7 active events of the current window,
     # against 1 of 2 in the previous window (50 %).
+    assert type(payload.get("streak_days")) is int
     assert payload["present"] == 6
     assert payload["total"] == 7
     assert payload["percent"] == pytest.approx(85.71, rel=1e-3)
@@ -115,6 +121,16 @@ async def test_attendance_stats_returns_expected_payload(
     assert [entry["status"] for entry in payload["recent"]] == ["present"] * 5
     assert payload["recent"][0]["course"] == "Philosophy of Science"
     assert payload["recent"][4]["course"] == "Modern Physics"
+
+    expected_daily: dict[str, dict[str, int]] = {}
+    for event in [*current_attended_events, current_missed]:
+        day = event.starts_at.astimezone(ZoneInfo("Asia/Kathmandu")).date().isoformat()
+        counts = expected_daily.setdefault(day, {"registered": 0, "total": 0})
+        counts["total"] += 1
+        counts["registered"] += int(event in current_attended_events)
+    assert payload.get("daily") == [
+        {"date": day, **counts} for day, counts in sorted(expected_daily.items())
+    ]
 
 
 @pytest.mark.asyncio

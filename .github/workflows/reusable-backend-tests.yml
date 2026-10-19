@@ -156,6 +156,20 @@ jobs:
                   uv run --frozen --no-sync coverage report --rcfile="$rcfile" \
                     --data-file="$datafile" --include="$target" --fail-under=100
 
+            # Surface analytics regressions before the long shard; the full suite,
+            # coverage collection and provenance below remain mandatory on success.
+            - name: Verify activity analytics regression contracts
+              if: ${{ inputs.shard-id == 0 }}
+              timeout-minutes: 5
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  focused_dir="$(mktemp -d "$RUNNER_TEMP/activity-regressions.XXXXXX")"
+                  trap 'rm -rf -- "$focused_dir"' EXIT
+                  uv run --frozen --no-sync pytest -q -p no:cacheprovider --no-cov \
+                    --basetemp="$focused_dir/pytest" \
+                    tests/test_user_analytics_window_contracts.py tests/test_stats_api.py
+
             - name: Build pinned Helm dependencies
               uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
               with:
@@ -582,6 +596,7 @@ jobs:
                   $pytestArgs = @(
                     $env:INTEGRATION_TEST_PATTERN,
                     "tests/test_events_localization.py",
+                    "tests/test_user_analytics_window_contracts.py",
                     "tests/test_migrations_runtime.py",
                     "tests/test_query_plans.py",
                     "tests/test_news_repository_db.py::test_comment_service_commits_create_and_edit_across_sessions",
