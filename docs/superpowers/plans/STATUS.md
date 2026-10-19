@@ -26,9 +26,11 @@ Manifest source_sha остаётся null: actual RC, main/bootstrap activation,
 
 ## Следующая партия: AUD-471 SMTP configuration
 
-Tests-first проверяет composed Settings для non-development API password-reset producer: SMTP_HOST непустой, SMTP_PORT 1..65535, существующий TLS и anonymous relay contract сохранены. Проверяются constructor/process/dotenv precedence, production/staging, dev/testing Mailpit, неправильные значения и worker scope; два успешных production fixtures получают synthetic relay перед reload. Validator, delivery/retry/DLQ и deployment пока не меняются; сначала нужен hosted assertion RED.
+Tests-first проверяет composed Settings для non-development API password-reset producer: SMTP_HOST непустой, SMTP_PORT 1..65535, существующий TLS и anonymous relay contract сохранены. Проверяются constructor/process/dotenv precedence, production/staging, dev/testing Mailpit, неправильные значения и worker scope; два успешных production fixtures получают synthetic relay перед reload. На tests-first 49592 получен настоящий RED: 15 DID NOT RAISE failures / 184 PASS в focused job117996727411, без setup/format ошибок. После чтения лога добавляется отдельный after-model validator в composed Settings; доставка/retry/DLQ и deployment не меняются. Собственный GREEN и полный CI ещё ожидаются; AUD-471 пока не принята.
 
 Outbox MFA — отдельный SMTP consumer: тесту задан encrypted relay, отсутствие SMTP у outbox не объявляется допустимой доставкой. В focused gate сохранены все прежние analytics/security/CI tests; добавлены config targets. Для читаемого списка путей синхронизированы только две baseline line_number (+7), ни одна identity/disposition не добавлена. Owned NATS outage и PDF acceptance остаются следующими отдельными задачами; outage не запускался.
+
+Два существующих staging CWV fixtures дополнены synthetic encrypted relay без изменения assertions/API role. Их проверяют прежние полные backend cohorts; дополнительных изменений focused workflow или baseline в implementation batch нет. Это review-based совместимость fixtures, не отдельный заявленный hosted RED.
 
 ## Проверенные Matrix исправления после hosted RED
 

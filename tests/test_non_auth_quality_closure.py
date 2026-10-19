@@ -600,6 +600,11 @@ def _settings_values() -> dict[str, object]:
         "revocation_redis_url": "redis://revocation.internal:6380/0",
         # Keep unrelated production guards valid so these cases reach the CWV
         # validation paths under test. All credentials are ephemeral test keys.
+        "smtp_host": "relay.aud471.invalid",
+        "smtp_port": 587,
+        "smtp_security": "starttls",
+        "smtp_user": "",
+        "smtp_password": "",
         "elasticsearch_password": secrets.token_urlsafe(32),
         "spicedb_preshared_key": secrets.token_urlsafe(32),
         "ws_hub_internal_secret": secrets.token_urlsafe(32),

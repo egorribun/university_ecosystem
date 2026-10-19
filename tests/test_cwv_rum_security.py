@@ -63,6 +63,11 @@ def _valid_staging_environment_settings() -> dict[str, object]:
     spotify_key = Fernet.generate_key().decode("ascii")
     totp_key = Fernet.generate_key().decode("ascii")
     return {
+        "smtp_host": "relay.aud471.invalid",
+        "smtp_port": 587,
+        "smtp_security": "starttls",
+        "smtp_user": "",
+        "smtp_password": "",
         "elasticsearch_password": secrets.token_urlsafe(32),
         "spicedb_preshared_key": secrets.token_urlsafe(32),
         "ws_hub_internal_secret": secrets.token_urlsafe(32),

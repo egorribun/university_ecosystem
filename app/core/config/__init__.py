@@ -362,6 +362,22 @@ class Settings(
             raise ValueError("CWV exporter GitHub OIDC policy is incomplete")
         return self
 
+    @model_validator(mode="after")
+    def _validate_api_reset_smtp_settings(self) -> Settings:
+        """Require API reset-email config without changing worker delivery policy."""
+        environment = str(self.environment).strip().lower()
+        if environment in _DEVELOPMENT_ENVIRONMENTS or self.app_process_role != "api":
+            return self
+        if not self.smtp_host.strip():
+            raise ValueError(
+                "SMTP_HOST is required for non-development API password-reset delivery"
+            )
+        if not 1 <= self.smtp_port <= 65535:
+            raise ValueError(
+                "SMTP_PORT must be between 1 and 65535 for non-development API delivery"
+            )
+        return self
+
     @cached_property
     def app_base_url_clean(self) -> str:
         for candidate in (self.app_base_url, self.frontend_origin):
