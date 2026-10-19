@@ -271,7 +271,7 @@ def _assert_initial_component_walk(ops, state_root):
         assert call["flags"] & os.O_NOFOLLOW
         assert call["flags"] & os.O_CLOEXEC
     secrets_fd = directory_calls[-1]["fd"]
-    leaves = ops["opens"][len(expected_dirs):]
+    leaves = ops["opens"][len(expected_dirs) :]
     assert {call["name"] for call in leaves} == {_MARKER, _KEY_FILE}
     assert len(leaves) == 2
     for call in leaves:
@@ -535,7 +535,7 @@ def test_missing_required_open_capability_fails_closed_without_io(
         supported.add(counted_open)
     if missing == "dir_fd":
         supported.discard(counted_open)
-    clock, deadline = _deadline()
+    _clock, deadline = _deadline()
 
     with monkeypatch.context() as guard:
         guard.setattr(os, "open", counted_open)
