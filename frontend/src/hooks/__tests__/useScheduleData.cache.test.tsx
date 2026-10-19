@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
 import { useScheduleData } from "../useScheduleData"
+import { CampusTimezoneProvider, useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import { scheduleGroupsQueryOptions, pageScheduleQueryOptions } from "@/api/hooks/schedule"
 import { currentUserQueryOptions } from "@/api/hooks/users"
 import type { ScheduleGroup, Lesson } from "@/components/schedule/scheduleUtils"
@@ -65,6 +66,52 @@ function wrapper(client: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
+}
+
+function campusBoundaryClient(groupId: string): QueryClient {
+  const client = newClient()
+  const lessons: Lesson[] = [
+    {
+      id: "odd-early",
+      group_id: groupId,
+      weekday: "monday",
+      start_time: "00:15",
+      end_time: "00:45",
+      subject: "Early campus lesson",
+      teacher: "Teacher",
+      room: "101",
+      lesson_type: "lecture",
+      parity: "odd",
+    },
+    {
+      id: "even-only",
+      group_id: groupId,
+      weekday: "monday",
+      start_time: "00:20",
+      end_time: "00:40",
+      subject: "Other parity",
+      teacher: "Teacher",
+      room: "102",
+      lesson_type: "lecture",
+      parity: "even",
+    },
+    {
+      id: "odd-late",
+      group_id: groupId,
+      weekday: "monday",
+      start_time: "01:00",
+      end_time: "02:00",
+      subject: "Later campus lesson",
+      teacher: "Teacher",
+      room: "103",
+      lesson_type: "lecture",
+      parity: "odd",
+    },
+  ]
+  client.setQueryData(scheduleGroupsQueryOptions().queryKey, [{ id: groupId, name: "Campus" }])
+  client.setQueryData(pageScheduleQueryOptions(groupId).queryKey, lessons)
+  setAuthFixture({ id: "campus-fixture-user", role: "student", group_id: groupId } as UserState)
+  return client
 }
 
 describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
@@ -541,6 +588,58 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     expect(result.current.todayLessons.map((lesson) => lesson.id)).toEqual(["even-only"])
   })
 
+  it.each([
+    { timeZone: "UTC", parity: "even" },
+    { timeZone: "Europe/Moscow", parity: "odd" },
+  ])("initializes parity in the configured campus zone $timeZone", async ({ timeZone, parity }) => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    // The same instant is Sunday/week 42 in UTC and Monday/week 43 in Moscow.
+    vi.setSystemTime(new Date("2026-10-18T21:30:00.000Z"))
+    const groups: ScheduleGroup[] = [{ id: "group-boundary", name: "Boundary" }]
+    const lessons: Lesson[] = [
+      {
+        id: "odd-only",
+        group_id: "group-boundary",
+        weekday: "monday",
+        start_time: "09:00",
+        end_time: "10:00",
+        subject: "Odd week",
+        teacher: "Teacher",
+        room: "1",
+        lesson_type: "lecture",
+        parity: "odd",
+      },
+      {
+        id: "even-only",
+        group_id: "group-boundary",
+        weekday: "monday",
+        start_time: "11:00",
+        end_time: "12:00",
+        subject: "Even week",
+        teacher: "Teacher",
+        room: "2",
+        lesson_type: "lecture",
+        parity: "even",
+      },
+    ]
+    const client = newClient()
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
+    client.setQueryData(pageScheduleQueryOptions("group-boundary").queryKey, lessons)
+    setAuthFixture({ id: "u-boundary", role: "student", group_id: "group-boundary" } as UserState)
+
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>
+          <CampusTimezoneProvider timeZone={timeZone}>{children}</CampusTimezoneProvider>
+        </QueryClientProvider>
+      ),
+    })
+
+    await waitFor(() => expect(result.current.selectedGroup).toBe("group-boundary"))
+    expect(result.current.currentParity).toBe(parity)
+    expect(result.current.schedule.map((lesson) => lesson.id)).toEqual([parity + "-only"])
+  })
+
   it("lists lesson days for the month the mini-calendar shows, not only today", async () => {
     vi.useFakeTimers({ toFake: ["Date"] })
     vi.setSystemTime(new Date("2026-08-15T12:00:00.000Z"))
@@ -666,4 +765,172 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     await waitFor(() => expect(getDatabaseMock).toHaveBeenCalledTimes(2))
     expect(second.result.current.rawSchedule).toEqual([lesson])
   })
+
+  it.each([
+    { zone: "UTC", parity: "even", day: -1, today: [], current: null, next: null },
+    {
+      zone: "Europe/Moscow",
+      parity: "odd",
+      day: 0,
+      today: ["odd-early", "odd-late"],
+      current: "odd-early",
+      next: "odd-late",
+    },
+  ])("uses the $zone campus day and clock at the week boundary", async (expected) => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-10-18T21:30:00Z"))
+    const groupId = "campus-boundary"
+    const client = campusBoundaryClient(groupId)
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>
+          <CampusTimezoneProvider timeZone={expected.zone}>{children}</CampusTimezoneProvider>
+        </QueryClientProvider>
+      ),
+    })
+
+    await waitFor(() => expect(result.current.selectedGroup).toBe(groupId))
+    expect(result.current.currentParity).toBe(expected.parity)
+    expect(result.current.todayIdx).toBe(expected.day)
+    expect(result.current.hasToday).toBe(expected.day >= 0)
+    expect(result.current.todayLessons.map((lesson) => lesson.id)).toEqual(expected.today)
+    expect(result.current.currentLesson?.id ?? null).toBe(expected.current)
+    expect(result.current.nextLesson?.id ?? null).toBe(expected.next)
+  })
+
+  it("updates automatic parity after campus timezone resolution and refresh", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-10-18T21:30:00Z"))
+    const groupId = "campus-refresh"
+    const client = campusBoundaryClient(groupId)
+    let timeZone: string | null = null
+    const contextWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <CampusTimezoneProvider timeZone={timeZone}>{children}</CampusTimezoneProvider>
+      </QueryClientProvider>
+    )
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ campus_timezone: "UTC" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    )
+    try {
+      const { result, rerender } = renderHook(
+        () => ({ data: useScheduleData(), timeZone: useCampusTimezone() }),
+        { wrapper: contextWrapper }
+      )
+      await waitFor(() => {
+        expect(result.current.timeZone).toBe("UTC")
+        expect(result.current.data.selectedGroup).toBe(groupId)
+        expect(result.current.data.currentParity).toBe("even")
+      })
+
+      timeZone = "Europe/Moscow"
+      rerender()
+      await waitFor(() => {
+        expect(result.current.timeZone).toBe("Europe/Moscow")
+        expect(result.current.data.currentParity).toBe("odd")
+      })
+      expect(result.current.data.schedule.map((lesson) => lesson.id)).toEqual([
+        "odd-early",
+        "odd-late",
+      ])
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
+
+  it("preserves an explicit current-parity choice and queued functional updates", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-10-18T21:30:00Z"))
+    const groupId = "campus-manual"
+    const client = campusBoundaryClient(groupId)
+    let timeZone = "UTC"
+    const contextWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <CampusTimezoneProvider timeZone={timeZone}>{children}</CampusTimezoneProvider>
+      </QueryClientProvider>
+    )
+    const { result, rerender } = renderHook(() => useScheduleData(), { wrapper: contextWrapper })
+    await waitFor(() => {
+      expect(result.current.selectedGroup).toBe(groupId)
+      expect(result.current.currentParity).toBe("even")
+    })
+
+    act(() => result.current.setCurrentParity((previous) => previous))
+    timeZone = "Europe/Moscow"
+    rerender()
+    expect(result.current.currentParity).toBe("even")
+    expect(result.current.schedule.map((lesson) => lesson.id)).toEqual(["even-only"])
+
+    act(() => {
+      result.current.setCurrentParity((previous) => (previous === "even" ? "odd" : "even"))
+      result.current.setCurrentParity((previous) => (previous === "even" ? "odd" : "even"))
+    })
+    expect(result.current.currentParity).toBe("even")
+  })
+
+  it.each([
+    { zone: "UTC", parity: "even", day: -1, today: [], next: null },
+    {
+      zone: "Europe/Moscow",
+      parity: "odd",
+      day: 0,
+      today: ["odd-early", "odd-late"],
+      next: "odd-early",
+    },
+  ])("refreshes the $zone campus date after a hidden boundary", async (expected) => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] })
+    vi.setSystemTime(new Date("2026-10-18T20:59:30Z"))
+    const groupId = "campus-midnight"
+    const client = campusBoundaryClient(groupId)
+    const originalVisibility = Object.getOwnPropertyDescriptor(document, "visibilityState")
+    let visibility: DocumentVisibilityState = "hidden"
+    let unmount: (() => void) | undefined
+    try {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => visibility,
+      })
+      const rendered = renderHook(() => useScheduleData(), {
+        wrapper: ({ children }: { children: ReactNode }) => (
+          <QueryClientProvider client={client}>
+            <CampusTimezoneProvider timeZone={expected.zone}>{children}</CampusTimezoneProvider>
+          </QueryClientProvider>
+        ),
+      })
+      unmount = rendered.unmount
+      await waitFor(() => expect(rendered.result.current.selectedGroup).toBe(groupId))
+      expect(rendered.result.current.currentParity).toBe("even")
+      expect(rendered.result.current.todayIdx).toBe(-1)
+      expect(rendered.result.current.hasToday).toBe(false)
+
+      await act(async () => {
+        vi.advanceTimersByTime(30_000)
+      })
+      expect(rendered.result.current.todayIdx).toBe(-1)
+      visibility = "visible"
+      act(() => document.dispatchEvent(new Event("visibilitychange")))
+
+      await waitFor(() => {
+        expect(rendered.result.current.currentParity).toBe(expected.parity)
+        expect(rendered.result.current.todayIdx).toBe(expected.day)
+      })
+      expect(rendered.result.current.hasToday).toBe(expected.day >= 0)
+      const today = rendered.result.current.todayLessons.map((lesson) => lesson.id)
+      expect(today).toEqual(expected.today)
+      expect(rendered.result.current.currentLesson).toBeNull()
+      expect(rendered.result.current.nextLesson?.id ?? null).toBe(expected.next)
+    } finally {
+      unmount?.()
+      if (originalVisibility) {
+        Object.defineProperty(document, "visibilityState", originalVisibility)
+      } else {
+        Reflect.deleteProperty(document, "visibilityState")
+      }
+      vi.useRealTimers()
+    }
+  })
+
 })

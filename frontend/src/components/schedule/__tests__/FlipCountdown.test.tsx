@@ -1,5 +1,6 @@
 import { act, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { CampusTimezoneProvider } from "@/contexts/CampusTimezoneContext"
 
 const translationMocks = vi.hoisted(() => ({
   useTranslation: vi.fn(() => ({
@@ -79,6 +80,29 @@ describe("FlipCountdown", () => {
     expect(translationMocks.useTranslation).toHaveBeenCalledWith(["schedule"])
   })
 
+  it("recomputes the actual countdown when the campus timezone changes", () => {
+    vi.setSystemTime(new Date("2026-10-18T21:30:00Z"))
+    const { rerender } = render(
+      <CampusTimezoneProvider timeZone="Asia/Kathmandu">
+        <FlipCountdown targetMinutes={210} />
+      </CampusTimezoneProvider>
+    )
+    expect(screen.getByRole("timer")).toHaveAttribute(
+      "aria-label",
+      "schedule:countdown.ariaLabel:15:0"
+    )
+
+    rerender(
+      <CampusTimezoneProvider timeZone="Asia/Kolkata">
+        <FlipCountdown targetMinutes={210} />
+      </CampusTimezoneProvider>
+    )
+    expect(screen.getByRole("timer")).toHaveAttribute(
+      "aria-label",
+      "schedule:countdown.ariaLabel:30:0"
+    )
+  })
+
   it("marks the timer urgent within the last 5 minutes", () => {
     // 5s left ≤ 300 → urgent branch
     render(<FlipCountdown targetMinutes={600} />)
@@ -156,6 +180,39 @@ describe("FlipCountdown", () => {
     // Still 5s left — interval body early-returns when hidden
     expect(screen.getByLabelText("5 schedule:countdown.unitSeconds")).toBeInTheDocument()
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" })
+  })
+
+  it("catches up to the actual instant on the first visible tick", () => {
+    const originalVisibility = Object.getOwnPropertyDescriptor(document, "visibilityState")
+    let visibility: DocumentVisibilityState = "hidden"
+    let unmount: (() => void) | undefined
+    try {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => visibility,
+      })
+      const rendered = render(<FlipCountdown targetMinutes={600} />)
+      unmount = rendered.unmount
+      act(() => vi.advanceTimersByTime(3000))
+      expect(screen.getByRole("timer")).toHaveAttribute(
+        "aria-label",
+        "schedule:countdown.ariaLabel:0:5"
+      )
+
+      visibility = "visible"
+      act(() => vi.advanceTimersByTime(1000))
+      expect(screen.getByRole("timer")).toHaveAttribute(
+        "aria-label",
+        "schedule:countdown.ariaLabel:0:1"
+      )
+    } finally {
+      unmount?.()
+      if (originalVisibility) {
+        Object.defineProperty(document, "visibilityState", originalVisibility)
+      } else {
+        Reflect.deleteProperty(document, "visibilityState")
+      }
+    }
   })
 
   it("restarts its interval when the target lesson changes", () => {

@@ -4,6 +4,7 @@ import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import Schedule from "@/pages/Schedule"
+import { CampusTimezoneProvider } from "@/contexts/CampusTimezoneContext"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 const {
@@ -212,6 +213,7 @@ vi.mock("@/components/schedule/ScheduleDesktopTable", () => ({
     getLessonTypeLabel: (value?: string | null) => string
   }) => (
     <div data-testid="desktop-view">
+      <span data-testid="visible-lesson-ids">{schedule.map((lesson) => lesson.id).join(",")}</span>
       <span data-testid="desktop-labels">
         {getLessonTypeLabel("lecture")}|{getLessonTypeLabel("missing")}|{getLessonTypeLabel(null)}
       </span>
@@ -327,12 +329,18 @@ vi.mock("framer-motion", () => ({
   },
 }))
 
-async function renderSchedule() {
+async function renderSchedule(timeZone?: string) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   const result = await renderWithRouter({
-    ui: Schedule,
+    ui: timeZone
+      ? () => (
+          <CampusTimezoneProvider timeZone={timeZone}>
+            <Schedule />
+          </CampusTimezoneProvider>
+        )
+      : Schedule,
     path: "/schedule",
     initialPath: "/schedule",
     queryClient,
@@ -462,6 +470,25 @@ describe("Schedule page behavior", () => {
     expect(screen.getByRole("button", { name: /reset filters/i })).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /reset filters/i }))
     expect(uiState.resetPreferences).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ["UTC", "21:00", "21:15", "21:45"],
+    ["Europe/Moscow", "00:00", "00:15", "00:45"],
+  ])("filters past lessons against %s campus time", async (zone, pastStart, start, end) => {
+    const current = { ...baseLesson, id: "campus-current", start_time: start, end_time: end }
+    const past = { ...baseLesson, id: "campus-past", start_time: pastStart, end_time: start }
+    uiState.showPastLessons = false
+    scheduleState.hasToday = true
+    scheduleState.nowTick = new Date("2026-10-18T21:30:00Z")
+    scheduleState.schedule = [past, current]
+    scheduleState.rawSchedule = [past, current]
+    scheduleState.currentLesson = current
+
+    await renderSchedule(zone)
+
+    expect(screen.getByTestId("visible-lesson-ids")).toHaveTextContent(/^campus-current$/)
+    expect(screen.queryByRole("button", { name: /reset filters/i })).not.toBeInTheDocument()
   })
 
   it("ignores stale keyboard cells and an unavailable current weekday index", async () => {

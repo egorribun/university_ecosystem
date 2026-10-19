@@ -4,6 +4,7 @@ import { createInstance } from "i18next"
 import { I18nextProvider } from "react-i18next"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ScheduleHeader } from "@/components/schedule/ScheduleHeader"
+import { CampusTimezoneProvider } from "@/contexts/CampusTimezoneContext"
 import type { Lesson } from "@/components/schedule/scheduleUtils"
 import enSchedule from "@/i18n/locales/en/schedule.json"
 import enCommon from "@/i18n/locales/en/common.json"
@@ -47,7 +48,7 @@ const lesson: Lesson = {
   lesson_type: "lecture",
 }
 
-async function renderHeader(props: Partial<HeaderProps> = {}, language = "en") {
+async function renderHeader(props: Partial<HeaderProps> = {}, language = "en", timeZone?: string) {
   const i18n = createInstance()
   await i18n.init({
     lng: language,
@@ -58,7 +59,15 @@ async function renderHeader(props: Partial<HeaderProps> = {}, language = "en") {
     interpolation: { escapeValue: false },
   })
   const view = render(<ScheduleHeader {...baseProps} {...props} />, {
-    wrapper: ({ children }) => <I18nextProvider i18n={i18n}>{children}</I18nextProvider>,
+    wrapper: ({ children }) => (
+      <I18nextProvider i18n={i18n}>
+        {timeZone ? (
+          <CampusTimezoneProvider timeZone={timeZone}>{children}</CampusTimezoneProvider>
+        ) : (
+          children
+        )}
+      </I18nextProvider>
+    ),
   })
   return {
     ...view,
@@ -222,6 +231,29 @@ describe("ScheduleHeader user-visible behavior", () => {
       timeLeftText: "Next lesson starts in 30 minutes",
       timeLeftShort: "30min",
     })
+    expect(screen.getByRole("timer", { name: "30 minutes 0 seconds remaining" })).toBeVisible()
+  })
+
+  it.each([
+    ["UTC", "22:00:00", "23:00:00"],
+    ["Europe/Moscow", "01:00:00", "02:00:00"],
+  ])("uses %s campus time for the visible countdown", async (zone, start, end) => {
+    const instant = new Date("2026-10-18T21:30:00Z")
+    vi.setSystemTime(instant)
+    const nextLesson = { ...lesson, start_time: start, end_time: end }
+
+    await renderHeader(
+      {
+        nextLesson,
+        todayLessons: [nextLesson],
+        nowTick: instant,
+        timeLeftText: "Next lesson starts in 30 minutes",
+        timeLeftShort: "30min",
+      },
+      "en",
+      zone
+    )
+
     expect(screen.getByRole("timer", { name: "30 minutes 0 seconds remaining" })).toBeVisible()
   })
 

@@ -66,6 +66,19 @@ describe("useScheduleTime", () => {
     expect(result.current.timeLeftShort).toContain("1h")
   })
 
+  it("finds a lesson that starts exactly when the current lesson ends", () => {
+    vi.setSystemTime(new Date(2026, 3, 26, 9, 30))
+    const adjacentLessons: Lesson[] = [
+      mockLessons[0]!,
+      { ...mockLessons[1]!, start_time: "10:30", end_time: "11:30" },
+    ]
+
+    const { result } = renderHook(() => useScheduleTime(adjacentLessons, true))
+
+    expect(result.current.currentLesson?.subject).toBe("Math")
+    expect(result.current.nextLesson?.subject).toBe("Physics")
+  })
+
   it("identifies next lesson when between lessons at 10:45", () => {
     const date = new Date(2026, 3, 26, 10, 45)
     vi.setSystemTime(date)
@@ -113,6 +126,37 @@ describe("useScheduleTime", () => {
     })
 
     expect(result.current.nowTick.getTime()).toBe(date.getTime())
+  })
+
+  it("refreshes the date after a hidden day even at the same wall-clock minute", () => {
+    const before = new Date(2026, 6, 15, 9, 30)
+    const after = new Date(2026, 6, 16, 9, 30)
+    vi.setSystemTime(before)
+    const originalVisibility = Object.getOwnPropertyDescriptor(document, "visibilityState")
+    let visibility: DocumentVisibilityState = "hidden"
+    let unmount: (() => void) | undefined
+    try {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => visibility,
+      })
+      const rendered = renderHook(() => useScheduleTime(mockLessons, true))
+      unmount = rendered.unmount
+      expect(rendered.result.current.nowTick.getTime()).toBe(before.getTime())
+
+      vi.setSystemTime(after)
+      visibility = "visible"
+      act(() => document.dispatchEvent(new Event("visibilitychange")))
+
+      expect(rendered.result.current.nowTick.getTime()).toBe(after.getTime())
+    } finally {
+      unmount?.()
+      if (originalVisibility) {
+        Object.defineProperty(document, "visibilityState", originalVisibility)
+      } else {
+        Reflect.deleteProperty(document, "visibilityState")
+      }
+    }
   })
 
   it("pauses ticker when page is hidden", () => {

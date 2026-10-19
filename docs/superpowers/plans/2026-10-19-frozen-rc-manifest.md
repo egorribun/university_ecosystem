@@ -60,8 +60,10 @@ Hosted RED: e6dc850, job117841029396, 43 failed / 2 passed at 2026-10-19 01:04:3
 
 **Files:** Only targeted corrections and evidence updates in the files above.
 
-- [ ] Confirm focused pytest passes and isolated validator coverage reports 100% line/branch coverage. Add missing behavioral cases rather than exclusions.
-- [ ] Wait for all hosted workflows on the implemented SHA; verify required context/app pairs and blocking CodeQL, including Checkov CKV_GHA_7.
-- [ ] Verify owned live completion, stop, metadata receipt and synthetic-merge/source tree equivalence before superseding a run.
-- [ ] Record passed, failed and unexecuted stages separately. Static workflow tests and PR Core do not prove main-only frozen full smoke.
-- [ ] Retain actual release-candidate selection/bootstrap/full-smoke as pending operational acceptance; do not merge or deploy.
+- [x] Confirm focused pytest passes and isolated validator coverage reports 100% line/branch coverage. Add missing behavioral cases rather than exclusions.
+- [x] Wait for all hosted workflows on the implemented SHA; verify required context/app pairs and blocking CodeQL, including Checkov CKV_GHA_7.
+- [x] Verify owned live completion, stop, metadata receipt and synthetic-merge/source tree equivalence before superseding a run.
+- [x] Record passed, failed and unexecuted stages separately. Static workflow tests and PR Core do not prove main-only frozen full smoke.
+- [x] Retain actual release-candidate selection/bootstrap/full-smoke as pending operational acceptance; do not merge or deploy.
+
+Source acceptance: 7b340e7 passed the complete hosted Matrix and required-check mapping on 2026-10-19. Checkov IaC succeeded; its separate code-scanning comparison remained neutral/inconclusive. The frozen-RC manifest remains null, and actual main-only full smoke/bootstrap is not executed or authorized by this source checkpoint.

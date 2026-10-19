@@ -228,6 +228,29 @@ class TestGenerateScheduleIcs:
         lesson.lesson_type = "lecture"
         return lesson
 
+    def test_generated_description_uses_single_escaped_line_breaks(self, monkeypatch):
+        monkeypatch.setattr(settings, "campus_timezone", "Europe/Istanbul")
+
+        class _FixedDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                value = datetime(2026, 1, 4, 22, 30, tzinfo=UTC)
+                return value if tz is None else value.astimezone(tz)
+
+        monkeypatch.setattr(ical, "datetime", _FixedDateTime)
+        result = generate_schedule_ics(
+            self._make_mock_group(),
+            [self._make_mock_lesson(parity="both")],
+            weeks=1,
+            locale="en",
+        )
+        descriptions = [
+            line for line in result.split("\r\n") if line.startswith("DESCRIPTION:")
+        ]
+        assert descriptions == [
+            r"DESCRIPTION:Lesson type: Lecture\nTeacher: Dr. Smith\nRoom: 101"
+        ]
+
     def test_generate_empty_schedule(self):
         group = self._make_mock_group()
         result = generate_schedule_ics(group, [], weeks=1)
