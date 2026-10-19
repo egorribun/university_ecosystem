@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from uuid import UUID
 
@@ -329,15 +329,21 @@ def classify_outbox_drain(
 
 
 class BrokerVerdict(StrEnum):
-    NOT_READY = "not_ready"
     VALID = "valid"
     MISSING = "missing"
     INVALID = "invalid"
 
 
 def classify_broker_error(status: object, error_code: object) -> BrokerVerdict:
-    """Unavailable pure seam; only the exact missing-message error may be polled."""
-    return BrokerVerdict.NOT_READY
+    """Only the server's exact missing-message error is pollable."""
+    if (
+        type(status) is int
+        and status == 404
+        and type(error_code) is int
+        and error_code == 10037
+    ):
+        return BrokerVerdict.MISSING
+    return BrokerVerdict.INVALID
 
 
 def validate_broker_receipt(
@@ -347,5 +353,78 @@ def validate_broker_receipt(
     sequence: int,
     envelope: object,
 ) -> BrokerVerdict:
-    """Unavailable pure seam for existing CHAT_EVENTS storage evidence."""
-    return BrokerVerdict.NOT_READY
+    """Bind existing stream storage evidence to the exact committed message."""
+    if (
+        not all(
+            _is_canonical_uuid(value)
+            for value in (message.message_id, message.chat_id, message.sender_id)
+        )
+        or not isinstance(message.content, str)
+        or subject != f"chat.{message.chat_id}"
+        or type(sequence) is not int
+        or sequence <= 0
+        or not isinstance(envelope, Mapping)
+        or envelope.get("type") != "new_message"
+        or envelope.get("room") != message.chat_id
+    ):
+        return BrokerVerdict.INVALID
+
+    payload = envelope.get("payload")
+    if (
+        not isinstance(payload, Mapping)
+        or payload.get("type") != "new_message"
+        or payload.get("chat_id") != message.chat_id
+    ):
+        return BrokerVerdict.INVALID
+
+    stored_message = payload.get("message")
+    if (
+        not isinstance(stored_message, Mapping)
+        or stored_message.get("id") != message.message_id
+        or stored_message.get("chat_id") != message.chat_id
+        or stored_message.get("sender_id") != message.sender_id
+        or stored_message.get("content") != message.content
+    ):
+        return BrokerVerdict.INVALID
+    return BrokerVerdict.VALID
+
+
+class DeadlineVerdict(StrEnum):
+    NOT_READY = "not_ready"
+    VALID = "valid"
+    EXPIRED = "expired"
+    INVALID = "invalid"
+
+
+@dataclass(frozen=True)
+class DeadlineBudget:
+    verdict: DeadlineVerdict
+    seconds: float | None = None
+
+
+@dataclass
+class _DeadlineClockState:
+    """Shared sample history for a deadline and its child phases."""
+
+    reader: object
+    last_sample: float | None = None
+    invalid: bool = False
+
+
+@dataclass(frozen=True)
+class Deadline:
+    """Absolute-deadline evidence; no transport or lifecycle operations."""
+
+    expires_at: float | None
+    verdict: DeadlineVerdict
+    _clock: _DeadlineClockState = field(repr=False, compare=False)
+
+    @classmethod
+    def after(cls, cap_seconds: object, *, clock: object) -> Deadline:
+        return cls(None, DeadlineVerdict.NOT_READY, _DeadlineClockState(clock))
+
+    def child(self, cap_seconds: object) -> Deadline:
+        return Deadline(None, DeadlineVerdict.NOT_READY, self._clock)
+
+    def timeout_for(self, cap_seconds: object) -> DeadlineBudget:
+        return DeadlineBudget(DeadlineVerdict.NOT_READY)
