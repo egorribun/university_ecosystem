@@ -18,6 +18,7 @@ from fastapi import FastAPI
 
 import app.core.lifespan as lifecycle
 from app.core.config import Settings
+from app.core.config.notifications import validate_api_smtp_configuration
 
 
 def _valid_production_settings() -> dict[str, object]:
@@ -281,7 +282,13 @@ def _settings_with_smtp_source(
     else:
         raise AssertionError(f"unexpected settings source: {source}")
 
-    return Settings(**values)
+    configured = Settings(**values)
+    validate_api_smtp_configuration(
+        environment=configured.environment,
+        smtp_host=configured.smtp_host,
+        smtp_port=configured.smtp_port,
+    )
+    return configured
 
 
 @pytest.mark.parametrize(

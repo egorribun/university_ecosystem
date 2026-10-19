@@ -23,6 +23,22 @@ from .base import (
 _logger = get_logger(__name__)
 
 
+def validate_api_smtp_configuration(
+    *, environment: str, smtp_host: str, smtp_port: int
+) -> None:
+    """Validate reset-email configuration when starting the API, not migrations."""
+    if environment.strip().lower() in _DEVELOPMENT_ENVIRONMENTS:
+        return
+    if not smtp_host.strip():
+        raise ValueError(
+            "SMTP_HOST is required for non-development API password-reset delivery"
+        )
+    if not 1 <= smtp_port <= 65535:
+        raise ValueError(
+            "SMTP_PORT must be between 1 and 65535 for non-development API delivery"
+        )
+
+
 def _validate_webpush_subject(value: str) -> str:
     from email.utils import parseaddr
     from urllib.parse import urlparse

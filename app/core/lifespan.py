@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from app.core.config import settings
+from app.core.config.notifications import validate_api_smtp_configuration
 from app.core.database import Base, engine, init_database, wait_db
 from app.core.events import register_event_listeners
 from app.core.logging import get_logger
@@ -489,6 +490,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # displacing polling. This applies in testing as well as production.
     if settings.embedded_cdc_outbox_worker_enabled:
         require_supported_cdc_transport()
+
+    # API startup owns this requirement; shared Settings also serve migrations.
+    # A worker role label must not bypass validation of an actual API process.
+    validate_api_smtp_configuration(
+        environment=settings.environment,
+        smtp_host=settings.smtp_host,
+        smtp_port=settings.smtp_port,
+    )
 
     # RZ-33-14: Clear the stop event so the scheduler works after hot-reload.
     _SCHEDULER_STOP.clear()
