@@ -26,8 +26,10 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
     assert "pull_request" in triggers
     assert "schedule" in triggers
     assert "workflow_dispatch" in triggers
-    assert triggers["workflow_dispatch"]["inputs"]["frozen_rc_sha"]["required"] is True
-    assert triggers["workflow_dispatch"]["inputs"]["frozen_rc_sha"]["type"] == "string"
+    assert triggers["workflow_dispatch"] in (None, {}), (
+        "manual dispatch must not accept runtime parameters"
+    )
+    assert "inputs.frozen_rc_sha" not in source
     schedules = triggers["schedule"]
     assert len(schedules) == 1
     assert re.fullmatch(
@@ -104,6 +106,7 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
     )
     assert "--stack core" in steps[up_index]["run"]
     assert "--in-place" in steps[up_index]["run"]
+    assert '--ref "$STAND_REF"' in steps[up_index]["run"]
     assert '--state-dir "$LIVE_STATE_DIR"' in steps[up_index]["run"]
     assert (
         steps[up_index]["env"]["STAND_REF"]
@@ -185,10 +188,40 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
     validation_script = "\n".join(step.get("run", "") for step in validation["steps"])
     assert '"refs/heads/main"' in validation_script
     assert "^[0-9a-f]{40}$" in validation_script
+    assert validation["if"] == "${{ github.event_name == 'workflow_dispatch' }}"
+    assert validation["outputs"] == {
+        "source_sha": "${{ steps.resolve-frozen-rc.outputs.source_sha }}"
+    }
+    validation_steps = validation["steps"]
+    assert validation_steps[0]["env"]["WORKFLOW_REF"] == "${{ github.ref }}"
+    assert '"$WORKFLOW_REF" != "refs/heads/main"' in validation_steps[0]["run"]
+    assert "exit 1" in validation_steps[0]["run"]
+    validation_checkout = validation_steps[1]
+    assert validation_checkout["uses"].startswith("actions/checkout@")
+    assert validation_checkout["with"]["ref"] == "${{ github.sha }}"
+    assert validation_checkout["with"]["persist-credentials"] is False
+    verify_manifest_source = validation_steps[2]
+    assert verify_manifest_source["env"]["EXPECTED_WORKFLOW_SHA"] == "${{ github.sha }}"
+    assert "git rev-parse HEAD" in verify_manifest_source["run"]
+    assert '"$actual_sha" != "$EXPECTED_WORKFLOW_SHA"' in verify_manifest_source["run"]
+    resolve_manifest = validation_steps[3]
+    assert resolve_manifest["id"] == "resolve-frozen-rc"
+    assert (
+        "python3 scripts/quality/resolve_frozen_rc_manifest.py"
+        in resolve_manifest["run"]
+    )
+    assert "--manifest quality/frozen-rc.json" in resolve_manifest["run"]
+    assert "source_sha=$source_sha" in resolve_manifest["run"]
+    assert "GITHUB_OUTPUT" in resolve_manifest["run"]
     frozen = jobs["frozen-rc-full-smoke"]
+    assert frozen["if"] == (
+        "${{ github.event_name == 'workflow_dispatch' && "
+        "github.ref == 'refs/heads/main' && "
+        "needs.validate-frozen-rc.result == 'success' }}"
+    )
     assert frozen["needs"] == "validate-frozen-rc"
     assert frozen.get("cache-mode") == "none", (
-        "caller-selected frozen-RC code must have no default-branch cache access"
+        "manifest-selected frozen-RC code must have no default-branch cache access"
     )
     frozen_uv = next(
         step
@@ -196,7 +229,7 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
         if step.get("uses", "").startswith("astral-sh/setup-uv@")
     )
     assert frozen_uv["with"].get("enable-cache") is False, (
-        "caller-selected frozen-RC code must not restore or save a shared uv cache"
+        "manifest-selected frozen-RC code must not restore or save a shared uv cache"
     )
     frozen_node = next(
         step
@@ -226,10 +259,17 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
         for step in frozen["steps"]
         if step.get("uses", "").startswith("actions/checkout@")
     )
-    assert frozen_checkout["with"]["ref"] == "${{ inputs.frozen_rc_sha }}"
+    assert frozen_checkout["with"]["ref"] == (
+        "${{ needs.validate-frozen-rc.outputs.source_sha }}"
+    )
+    assert frozen_checkout["with"]["persist-credentials"] is False
     frozen_checkout_index = frozen["steps"].index(frozen_checkout)
+    assert frozen_checkout_index == 0
     verify_checkout = frozen["steps"][frozen_checkout_index + 1]
     assert verify_checkout["id"] == "verify-frozen-rc"
+    assert verify_checkout["env"]["EXPECTED_FROZEN_RC_SHA"] == (
+        "${{ needs.validate-frozen-rc.outputs.source_sha }}"
+    )
     assert "git rev-parse HEAD" in verify_checkout["run"]
     assert '"$actual_sha" != "$EXPECTED_FROZEN_RC_SHA"' in verify_checkout["run"]
     assert "checked_out_sha=$actual_sha" in verify_checkout["run"]
@@ -245,10 +285,37 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
         frozen_up["env"]["FROZEN_RC_VERIFIED_SHA"]
         == "${{ steps.verify-frozen-rc.outputs.checked_out_sha }}"
     )
-    assert '"$FROZEN_RC_VERIFIED_SHA"' in frozen_up["run"]
+    assert '--ref "$FROZEN_RC_VERIFIED_SHA"' in frozen_up["run"]
     assert "--mode full" in frozen_e2e["run"]
     assert frozen_e2e["id"] == "frozen-rc-e2e"
     assert "--stack core" not in frozen_up["run"]
+    assert frozen_up["id"] == "start-frozen-rc"
+    frozen_stop = next(
+        step for step in frozen["steps"] if "live_stand.py stop" in step.get("run", "")
+    )
+    assert frozen_stop["id"] == "stop-frozen-rc"
+    assert frozen_stop["if"] == (
+        "${{ always() && steps.start-frozen-rc.outcome != 'skipped' }}"
+    )
+    for owned_step in (frozen_up, frozen_e2e, frozen_stop):
+        assert "--in-place" in owned_step["run"]
+        assert '--state-dir "$LIVE_STATE_DIR"' in owned_step["run"]
+        assert "teardown" not in owned_step["run"]
+    frozen_steps = frozen["steps"]
+    assert frozen_steps.index(verify_checkout) < frozen_steps.index(frozen_up)
+    state_selection = frozen_steps[frozen_steps.index(frozen_up) - 1]
+    assert state_selection["name"] == "Select unique owned frozen-RC state directory"
+    assert "run-%s-%s-frozen-rc-full" in state_selection["run"]
+    assert '"$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"' in state_selection["run"]
+    assert "GITHUB_ENV" in state_selection["run"]
+    assert all(
+        "live_stand.py teardown" not in step.get("run", "") for step in frozen_steps
+    )
+    assert (
+        frozen_steps.index(frozen_up)
+        < frozen_steps.index(frozen_e2e)
+        < frozen_steps.index(frozen_stop)
+    )
 
     receipt_index = next(
         index
@@ -257,11 +324,22 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
     )
     receipt = frozen["steps"][receipt_index]
     assert receipt["if"] == "${{ always() }}"
+    assert receipt["env"] == {
+        "VERIFIED_SHA": "${{ steps.verify-frozen-rc.outputs.checked_out_sha }}",
+        "E2E_OUTCOME": "${{ steps.frozen-rc-e2e.outcome }}",
+        "STAND_START_OUTCOME": "${{ steps.start-frozen-rc.outcome }}",
+        "STAND_STOP_OUTCOME": "${{ steps.stop-frozen-rc.outcome }}",
+    }
+    assert frozen_steps.index(frozen_stop) < receipt_index
     assert (
         receipt["env"]["VERIFIED_SHA"]
         == "${{ steps.verify-frozen-rc.outputs.checked_out_sha }}"
     )
     for safe_field in (
+        '"schema": "ue-live-acceptance-receipt-v1"',
+        '"kind": "frozen-rc-full-smoke"',
+        '"event": os.environ["GITHUB_EVENT_NAME"]',
+        '"stack": "full"',
         '"source_sha": source_sha',
         '"workflow_ref": os.environ["GITHUB_WORKFLOW_REF"]',
         '"run_id": int(os.environ["GITHUB_RUN_ID"])',
@@ -270,12 +348,19 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
     ):
         assert safe_field in receipt["run"]
     assert "os.environ.copy" not in receipt["run"]
+    assert "os.environ.items" not in receipt["run"]
     assert "stdout" not in receipt["run"] and "stderr" not in receipt["run"]
     receipt_upload = frozen["steps"][receipt_index + 1]
     assert receipt_upload["name"] == "Upload the metadata-only frozen-RC receipt"
+    assert receipt_upload["if"] == "${{ always() }}"
+    assert receipt_upload["with"]["retention-days"] == 90
+    assert "${{ github.run_attempt }}" in receipt_upload["with"]["name"]
     assert receipt_upload["with"]["path"] == "frozen-rc-live-receipt.json"
     assert receipt_upload["with"]["if-no-files-found"] == "error"
-    assert "${{ inputs.frozen_rc_sha }}" in receipt_upload["with"]["name"]
+    assert (
+        "${{ steps.verify-frozen-rc.outputs.checked_out_sha }}"
+        in receipt_upload["with"]["name"]
+    )
     assert "${{ github.run_id }}" in receipt_upload["with"]["name"]
 
 
