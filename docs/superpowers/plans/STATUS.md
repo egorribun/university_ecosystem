@@ -10,15 +10,15 @@
 
 ## Текущая проверка аудита
 
-Подтверждённая нижняя граница: 66 из 512 исходных AUD IDs. AUD-048 и AUD-052 сверены с точными существующими regression cases и повторным исполнением на 052. [Scope и evidence](../../audits/AUDIT-2026-10.md#evidence-checkpoint-66-verified-original-aud-ids). Это не полная сверка или объявление всех 512 пунктов закрытыми.
+Подтверждённая нижняя граница: 67 из 512 исходных AUD IDs. AUD-058 принят после обеих past-origin проверок на 834984b: файл useSwipeGesture.test.ts имеет 14 PASS. [Scope и evidence](../../audits/AUDIT-2026-10.md#evidence-checkpoint-67-verified-original-aud-ids). Это не полная сверка или объявление всех 512 пунктов закрытыми.
 
 На 052 frontend: 9373 PASS / 777 файлов, все frontend static gates прошли. Go integration с race detector проходит после изоляции HTTP-клиентов. Early backend: 509 PASS / 1 FAIL; все 34 collector cases и 21 runner contract PASS, единственный FAIL — отсутствующий NATS outage step. PostgreSQL: 202 PASS / 9 прежних SKIP. Baseline 319, dispositions 263 и 78 required context/app pairs не изменены.
 
 Live 39312764119: 22 PASS / 2 прежних SKIP, cleanup 19:53:21 UTC, upload 19:53:22; artifact 12215969189. Исправление URL import также подтверждено собственным static GREEN. Последний полностью принятый CI checkpoint остаётся e150 из-за NATS capability hold.
 
-AUD-058 получает две дополнительные проверки пересечения исходной точки свайпа после превышения threshold; прежние exact-origin и положительные close controls сохранены, implementation не меняется. Приёмка ожидает фактического исполнения.
+AUD-058: обе дополнительные проверки пересечения исходной точки свайпа прошли; прежние controls сохранены, implementation не менялась. AUD-059 получает отдельный real-motion regression для градиента Spotlight; исправление компонента ожидает intended RED.
 
-Следующий NATS slice — только pure parser supplied signed metadata: typed NOT_READY seam и 36 cases перед реализацией. SIGNED_METADATA не означает provenance файлов/ключа или runtime admission. Файлы, lock, Docker, SQL, HTTP, coordinator и CLI не подключаются; outage не включён. [План](2026-10-19-owned-nats-owner-parser.md).
+NATS parser: на 834984b два положительных cases дали intended SIGNED_METADATA assertion RED; early backend 543 PASS / 3 FAIL, включая прежний outage hold. Минимальная реализация сохраняет все 36 tests, собственный GREEN ожидается. SIGNED_METADATA не означает provenance файлов/ключа или runtime admission. Чтение owner/key файлов, lock, Docker, SQL, HTTP, coordinator и CLI не подключаются; outage не включён. Pure относится к вызову parser, не к обычной инициализации пути при импорте legacy live_stand. [План](2026-10-19-owned-nats-owner-parser.md).
 
 AUD-017 остаётся pending до ответа владельца о направлении start-date сортировки и названии режима. P1 holds 164/167/169/174 остаются. Merge/deploy не выполняются.
 

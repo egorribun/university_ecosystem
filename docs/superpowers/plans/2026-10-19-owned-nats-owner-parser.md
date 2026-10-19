@@ -17,7 +17,7 @@ Use the existing canonical HMAC signer, project/port validators and reviewed Cor
 - [x] Review the actual current writer, canonical signer and complete Core marker shape.
 - [x] Add a typed NOT_READY seam with no I/O or operational wiring.
 - [x] Add 36 deterministic cases, including two current-writer-compatible ASCII/Unicode positive cases, re-signed semantic invalids, wrong key/signature, malformed caller pins, duplicate JSON and size/type/encoding failures.
-- [ ] Observe the two positive metadata assertions RED on the unavailable seam; setup errors do not count.
+- [x] Observe both positive metadata assertions RED on source 834984b, job 118282261816, test line 128; setup passes.
 - [ ] Implement only this pure parser after RED, then verify all cases and code gates on its own source.
 - [ ] Add descriptor-safe existing-file reading and bounded lifecycle lock handling as separately tested slices.
 
@@ -30,3 +30,9 @@ Current owner/key paths remain .secrets/live-stand.json and .secrets/live-stand-
 The PostgreSQL spec uses the existing owner-pinned bootstrap principal, with read-only principal verification and read-only SQL transactions; it does not request a new read-only role. Do not change _actors, roles, credentials, app.bypass_rls or RLS settings. SQL statement/lock timeouts bound database work, not necessarily a remote psql process waiting for stdin. A fixed-argv remote watchdog is a future capability requirement against the exact pinned container; its presence is not proven by generic image ancestry. Local Docker-client reaping never proves remote completion.
 
 This module remains disconnected from the coordinator, CLI and live workflow. The approved NATS outage is not enabled by metadata-parser tests.
+
+## Minimal implementation after observed RED
+
+The 36 tests are unchanged. The implementation rejects duplicate/nonfinite JSON, wrong exact schema/types/key size, incomplete Core metadata, mismatched pins and signatures, and returns repr-private signed metadata only. Legacy project/port validators and canonical signer are reused without invoking their I/O loaders. Parsing/validation failures return NOT_READY; assertions and unexpected I/O exceptions are not swallowed. Own-source GREEN is pending.
+
+The parser call uses only supplied bytes/pins and pure legacy helpers. Importing existing live_stand still performs its ordinary REPO_ROOT = Path(__file__).resolve() initialization; tests guard parser invocation, not Python module loading. No claim of an I/O-free import or descriptor-safe owner-file reading.
