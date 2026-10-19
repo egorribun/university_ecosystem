@@ -118,9 +118,11 @@ class FakePorts:
         self.records = core_container_snapshots()
         self.records_after_start: tuple[ContainerSnapshot, ...] | None = None
         self.nats = next(record for record in self.records if record.service == "nats")
+        # Synthetic absolute paths are evidence only; no directory is opened.
+        # The adapter validates the real repository and system-temp state root.
         self.owner = OwnerEvidence(
             repository="/workspace/owned-nats-repo",
-            worktree="/tmp/ue-live-acceptance/run-owned-nats-core",
+            worktree="/fixtures/system-temp/ue-live-acceptance/run-owned-nats-core",
             project_name="ue-live-0123456789abcdef",
             published_ports=tuple(
                 (name, 20000 + index) for index, name in enumerate(OWNER_PORT_NAMES)
@@ -217,8 +219,7 @@ class FakePorts:
             else self.records
         )
         records = tuple(
-            self.snapshot() if record.service == "nats" else record
-            for record in source
+            self.snapshot() if record.service == "nats" else record for record in source
         )
         resource = (
             self.resource_after_stop
@@ -273,10 +274,11 @@ class FakePorts:
         if name == "release_lock" and args != (self.lease,):
             self.contract_errors.append("release targeted a different lease")
             raise AssertionError("invalid lock lease")
-        if (
-            name in {"inspect_container", "start_container", "stop_container"}
-            and args != (self.nats.container_id, DAEMON)
-        ):
+        if name in {
+            "inspect_container",
+            "start_container",
+            "stop_container",
+        } and args != (self.nats.container_id, DAEMON):
             self.contract_errors.append("operation targeted a different container")
             raise AssertionError("invalid container authority")
         if (

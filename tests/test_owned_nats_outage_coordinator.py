@@ -74,7 +74,9 @@ def test_valid_path_binds_exact_event_and_restores_before_drain() -> None:
     assert result.outcome is OutageOutcome.ACCEPTED
     assert result.stage is OutageStage.COMPLETE
     assert ports.owner.repository.startswith("/")
-    assert ports.owner.worktree.startswith("/tmp/ue-live-acceptance/run-")
+    assert ports.owner.worktree.startswith(
+        "/fixtures/system-temp/ue-live-acceptance/run-"
+    )
     assert ports.owner.repository != ports.owner.worktree
     assert trace.count("stop_container") == trace.count("send_message_once") == 1
     assert trace.count("create_dm_once") == trace.count("start_container") == 1

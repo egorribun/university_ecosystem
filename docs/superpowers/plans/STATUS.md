@@ -8,6 +8,10 @@
 
 Работа только через GitHub plugin, ветка `egorribun`, существующий [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git и принимает работу максимум трёх GPT-6 Luna Max агентов с непересекающимися файлами. Merge/deploy и обходы проверок не выполнялись.
 
+## Текущая проверка coordinator
+
+f917: fast job118135431503 остановился на Ruff S108 в синтетических путях fixtures и двух форматированиях, до запуска backend tests. Это не behavioral RED. Исправляются только пути данных fixtures и формат; все 94 проверки и NOT_READY сохраняются. Дополнительно выбраны 10 существующих historical regression cases; их named evidence, как и три AUD-165 cases, ещё ожидается. Нижняя подтверждённая граница остаётся 25 IDs; outage не включён.
+
 ## Последний принятый CI checkpoint
 
 [e15027a](https://github.com/egorribun/university_ecosystem/commit/e15027afdb4793838de373463654fb9ffc31d079), [Matrix 39240974262](https://github.com/egorribun/university_ecosystem/actions/runs/39240974262), принят 2026-10-19 в 11:46 UTC: все 23 workflows terminal, 21 SUCCESS / два SKIP. Matrix: 86 jobs, 72 SUCCESS / 14 SKIP. По двум страницам 100+36 сверены 136 check runs с актуальными 78 required context/app pairs: 77 SUCCESS / один NEUTRAL, без missing/duplicates/pending/failures.
