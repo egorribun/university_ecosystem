@@ -7923,11 +7923,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         metavar="TRACKED_SPEC",
         help="diagnostic-only rerun; serial full-suite specs may depend on earlier cases",
     )
-    for command_name in ("status", "stop", "down", "quiesce", "teardown"):
+    for command_name in (
+        "status",
+        "stop",
+        "down",
+        "quiesce",
+        "teardown",
+        "nats-outage",
+    ):
         command_parser = commands.add_parser(command_name)
         add_state_options(command_parser)
     args = parser.parse_args(argv)
     try:
+        if args.command == "nats-outage":
+            raise StandError("owned NATS acceptance is not ready")
         selected_specs = (
             _validated_live_e2e_specs(args.specs, mode=args.mode)
             if args.command == "e2e"

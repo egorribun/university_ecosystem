@@ -7451,6 +7451,22 @@ def test_nats_outage_cli_exposes_owned_state_options(
     assert "--state-dir" in help_text
 
 
+def test_nats_outage_scaffold_refuses_before_state_side_effects(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def unexpected_state_configuration(_args: Any) -> None:
+        pytest.fail("unavailable NATS runner must not configure owned state")
+
+    monkeypatch.setattr(
+        live_stand, "_configure_state_mode", unexpected_state_configuration
+    )
+
+    assert live_stand.main(["nats-outage"]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "live_stand: owned NATS acceptance is not ready\n"
+
+
 def test_main_reports_stand_errors_with_exit_code_two(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
