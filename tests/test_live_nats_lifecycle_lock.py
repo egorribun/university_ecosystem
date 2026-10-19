@@ -20,17 +20,27 @@ except ImportError:
 
 
 @pytest.fixture
-def lock_case(tmp_path):
+def lock_case(tmp_path, monkeypatch):
+    """Require real POSIX primitives on the hosted Ubuntu contract runner."""
     required = ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK", "O_CLOEXEC")
-    if (
-        _fcntl is None
-        or os.name != "posix"
-        or any(getattr(os, name, 0) <= 0 for name in required)
-        or os.open not in os.supports_dir_fd
-        or os.stat not in os.supports_dir_fd
-        or os.stat not in os.supports_follow_symlinks
-    ):
-        pytest.skip("requires POSIX nofollow descriptor-relative flock support")
+    assert _fcntl is not None, "this contract requires fcntl"
+    assert os.name == "posix", "this contract requires a POSIX host"
+    assert all(getattr(os, name, 0) > 0 for name in required)
+    assert os.open in os.supports_dir_fd
+    assert os.stat in os.supports_dir_fd
+    assert os.stat in os.supports_follow_symlinks
+    real_flock = _fcntl.flock
+    allowed = {
+        _fcntl.LOCK_UN,
+        _fcntl.LOCK_SH | _fcntl.LOCK_NB,
+        _fcntl.LOCK_EX | _fcntl.LOCK_NB,
+    }
+
+    def nonblocking(fd, operation):
+        assert operation in allowed, "blocking or malformed flock is forbidden"
+        return real_flock(fd, operation)
+
+    monkeypatch.setattr(_fcntl, "flock", nonblocking)
     root = tmp_path.resolve() / "run-lock"
     root.mkdir()
     lock = root.parent / f".{root.name}.lifecycle.lock"
@@ -42,19 +52,10 @@ def _no_sleep(_seconds):
     raise AssertionError("uncontended acquisition must not sleep")
 
 
-def _acquire(root, deadline, fcntl):
-    real_flock = fcntl.flock
-
-    def nonblocking(fd, operation):
-        if not operation & fcntl.LOCK_UN:
-            assert operation & fcntl.LOCK_NB, "blocking flock is forbidden"
-        return real_flock(fd, operation)
-
-    with pytest.MonkeyPatch.context() as guard:
-        guard.setattr(fcntl, "flock", nonblocking)
-        return transport.acquire_existing_lifecycle_lock(
-            str(root), deadline=deadline, sleep=_no_sleep
-        )
+def _acquire(root, deadline):
+    return transport.acquire_existing_lifecycle_lock(
+        str(root), deadline=deadline, sleep=_no_sleep
+    )
 
 
 def _probe(lock, fcntl, operation, *, blocked):
@@ -87,7 +88,7 @@ def test_existing_empty_lock_holds_exclusive_without_mutation(lock_case):
     root, lock, fcntl = lock_case
     before = _snapshot(lock)
     deadline = Deadline.after(10.0, clock=lambda: 0.0)
-    lease = _acquire(root, deadline, fcntl)
+    lease = _acquire(root, deadline)
     assert lease is not None
     try:
         shown = repr(lease)
@@ -105,7 +106,7 @@ def test_existing_empty_lock_holds_exclusive_without_mutation(lock_case):
 
 
 def test_nofollow_relative_walk_and_each_acquired_fd_closed_once(lock_case):
-    root, lock, fcntl = lock_case
+    root, lock, _lock_api = lock_case
     deadline = Deadline.after(10.0, clock=lambda: 0.0)
     real_open, real_close = os.open, os.close
     opened, closed = [], []
@@ -127,7 +128,7 @@ def test_nofollow_relative_walk_and_each_acquired_fd_closed_once(lock_case):
         guard.setattr(os, "open", traced_open)
         guard.setattr(os, "close", traced_close)
         guard.setattr(os, "supports_dir_fd", os.supports_dir_fd | {traced_open})
-        lease = _acquire(root, deadline, fcntl)
+        lease = _acquire(root, deadline)
         if lease is not None:
             released = transport.release_lifecycle_lock(lease, deadline=deadline)
     assert lease is not None

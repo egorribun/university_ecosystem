@@ -76,7 +76,7 @@
     --bg-surface-active: var(--bg-surface-hover);
     --bg-surface-raised: var(--color-white);
     --bg-surface-tint: color-mix(in srgb, var(--primary-main) var(--opacity-faint), transparent);
-    --bg-panel: color-mix(in srgb, white var(--opacity-strong), transparent);
+    --bg-panel: color-mix(in srgb, white calc(var(--opacity-strong) * 100%), transparent);
 
     /* Text */
     --text-primary: var(--color-slate-900);
@@ -148,7 +148,8 @@
       0 8px 16px color-mix(in srgb, black var(--opacity-faint), transparent);
     --raw-shadow-premium-lift: 0 20px 40px -12px
       color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
-    --raw-shadow-glass: 0 35px 80px color-mix(in srgb, black var(--opacity-dim), transparent);
+    --raw-shadow-glass: 0 35px 80px
+      color-mix(in srgb, black calc(var(--opacity-dim) * 100%), transparent);
     --raw-shadow-glass-strong: 0 45px 90px
       color-mix(in srgb, black var(--opacity-medium), transparent);
     --raw-shadow-up: 0 -4px 12px color-mix(in srgb, black var(--opacity-faint), transparent);
@@ -159,7 +160,7 @@
 
     /* Semantic Glows */
     --shadow-glow-primary: 0 0 12px
-      color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
+      color-mix(in srgb, var(--primary-main) calc(var(--opacity-dim) * 100%), transparent);
     --shadow-glow-error: 0 0 12px
       color-mix(in srgb, var(--error-text) var(--opacity-dim), transparent);
     --shadow-glow-warning: 0 0 12px
@@ -376,7 +377,11 @@
     --bg-surface: var(--color-slate-800);
     --bg-surface-hover: var(--color-slate-700);
     --bg-surface-raised: var(--color-slate-800);
-    --bg-panel: color-mix(in srgb, var(--color-slate-800) var(--opacity-strong), transparent);
+    --bg-panel: color-mix(
+      in srgb,
+      var(--color-slate-800) calc(var(--opacity-strong) * 100%),
+      transparent
+    );
 
     /* Text */
     --text-primary: var(--color-slate-50);

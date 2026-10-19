@@ -10,6 +10,8 @@
 
 ## Текущая проверка аудита
 
+Последний incremental результат: на 71b73b6 реальный SDK/MSW ETag cohort прошёл оба теста (frontend shard: 2616 PASS / 195 файлов). Повторная OpenAPI generation и security/baseline gates прошли. Focused backend: 672 PASS / 3 FAIL, два ожидаемых unavailable-lock RED и прежний outage hold. Новый platform skip отклонён inventory gate и заменяется явным требованием POSIX к этой Ubuntu capability suite, без waiver. AUD-072 получил собственный browser RED с cleanup; четыре доказанных percentage positions исправляются отдельно, whole finding пока открыт. Оставшееся форматирование live spec исправляется без изменения assertions.
+
 Подтверждённая нижняя граница: 68 из 512 исходных AUD IDs. AUD-059 принят после повторного actual Motion GREEN и исправленного static gate на c94d9be. [Scope и evidence](../../audits/AUDIT-2026-10.md#evidence-checkpoint-68-verified-original-aud-ids). Это не полная сверка или объявление всех 512 пунктов закрытыми.
 
 На 052 frontend: 9373 PASS / 777 файлов, все frontend static gates прошли. Go integration с race detector проходит после изоляции HTTP-клиентов. Early backend: 509 PASS / 1 FAIL; все 34 collector cases и 21 runner contract PASS, единственный FAIL — отсутствующий NATS outage step. PostgreSQL: 202 PASS / 9 прежних SKIP. Baseline 319, dispositions 263 и 78 required context/app pairs не изменены.

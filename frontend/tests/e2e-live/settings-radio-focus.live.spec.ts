@@ -80,10 +80,7 @@ async function readSemanticTokens(page: Page, scheme: "light" | "dark") {
           `color-mix(in srgb, ${panelBase} 70%, transparent)`
         ),
         glass: read("box-shadow", "var(--raw-shadow-glass)"),
-        glassExpected: read(
-          "box-shadow",
-          "0 35px 80px color-mix(in srgb, black 20%, transparent)"
-        ),
+        glassExpected: read("box-shadow", "0 35px 80px color-mix(in srgb, black 20%, transparent)"),
         glow: read("box-shadow", "var(--shadow-glow-primary)"),
         glowExpected: read(
           "box-shadow",
