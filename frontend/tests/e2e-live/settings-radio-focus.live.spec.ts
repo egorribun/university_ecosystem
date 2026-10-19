@@ -73,7 +73,95 @@ async function readSemanticTokens(page: Page, scheme: "light" | "dark") {
         }
       }
       const panelBase = colorScheme === "dark" ? "var(--color-slate-800)" : "white"
+      const dark = colorScheme === "dark"
+      const mix = (color: string, percentage: number) =>
+        `color-mix(in srgb, ${color} ${percentage}%, transparent)`
+      const shadow = (geometry: string, color: string, percentage: number) =>
+        `${geometry} ${mix(color, percentage)}`
+      const gradient = (direction: string, stops: string[]) =>
+        `linear-gradient(${direction}, ${stops.join(", ")})`
+      const cases = [
+        {
+          name: "bg-surface-tint",
+          property: "background-color",
+          expected: mix("var(--primary-main)", 5),
+        },
+        {
+          name: "error-bg",
+          property: "background-color",
+          expected: mix("var(--error-text)", 10),
+        },
+        {
+          name: "shadow-matte-card",
+          property: "box-shadow",
+          expected: [
+            shadow("0 4px 20px", dark ? "black" : "var(--color-slate-400)", dark ? 20 : 10),
+            shadow("0 1px 3px", "black", dark ? 10 : 5),
+          ].join(", "),
+        },
+        {
+          name: "shadow-matte-card-hover",
+          property: "box-shadow",
+          expected: [
+            shadow("0 8px 30px", dark ? "black" : "var(--color-slate-400)", dark ? 30 : 20),
+            shadow("0 2px 6px", "black", dark ? 20 : 10),
+          ].join(", "),
+        },
+        {
+          name: "raw-shadow-sm",
+          property: "box-shadow",
+          expected: [shadow("0 1px 3px", "black", 10), shadow("0 1px 2px", "black", 5)].join(", "),
+        },
+        {
+          name: "raw-shadow-inner-premium",
+          property: "box-shadow",
+          expected: shadow("inset 0 1px 0", "white", 10),
+        },
+        {
+          name: "glass-bg-low",
+          property: "background-color",
+          expected: mix("white", 10),
+        },
+        {
+          name: "glass-sheen",
+          property: "background-image",
+          expected: gradient("135deg", [
+            `${mix("white", 20)} 0%`,
+            `${mix("white", 5)} 50%`,
+            "transparent 100%",
+          ]),
+        },
+        {
+          name: "grad-news-hero",
+          property: "background-image",
+          expected: gradient("180deg", [
+            "transparent 30%",
+            `${mix("var(--color-slate-900)", 70)} 95%`,
+          ]),
+        },
+        {
+          name: "msg-header-bg",
+          property: "background-color",
+          expected: mix(dark ? "var(--color-slate-900)" : "white", 90),
+        },
+        {
+          name: "glass-border",
+          property: "background-color",
+          expected: mix(dark ? "var(--color-white)" : "white", dark ? 10 : 20),
+        },
+        {
+          name: "glass-tint3",
+          property: "background-color",
+          expected: mix(dark ? "var(--color-black)" : "white", dark ? 30 : 5),
+        },
+      ]
       return {
+        cohort: cases.map(({ name, property, expected }) => ({
+          name,
+          property,
+          actual: read(property, `var(--${name})`),
+          expected: read(property, expected),
+        })),
         panel: read("background-color", "var(--bg-panel)"),
         panelExpected: read(
           "background-color",
@@ -130,6 +218,16 @@ test("Semantic tokens preserve percentage alpha in both themes", async ({ page }
       expect.soft(tokens.panel, `${scheme} panel percentage`).toBe(tokens.panelExpected)
       expect.soft(tokens.glass, `${scheme} glass percentage`).toBe(tokens.glassExpected)
       expect.soft(tokens.glow, `${scheme} glow percentage`).toBe(tokens.glowExpected)
+      for (const probe of tokens.cohort) {
+        const label = `${scheme} ${probe.name} percentage`
+        expect(probe.expected, label).not.toBe("")
+        if (probe.property === "background-color") {
+          expect(probe.expected, label).not.toBe("rgba(0, 0, 0, 0)")
+        } else {
+          expect(probe.expected, label).not.toBe("none")
+        }
+        expect.soft(probe.actual, label).toBe(probe.expected)
+      }
     }
   } finally {
     await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" })

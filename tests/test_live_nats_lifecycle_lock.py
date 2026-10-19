@@ -422,3 +422,391 @@ def test_unsupported_lock_capability_refuses_before_io(capability):
 
     assert result is None
     assert attempted == []
+
+
+def _exercise_cleanup_fault(
+    root,
+    fcntl,
+    deadline,
+    observations,
+    *,
+    fault_stage,
+    cleanup_error,
+    primary_error=None,
+):
+    real_open, real_close = os.open, os.close
+    guarded_flock = fcntl.flock
+    real_identity = transport._lifecycle_leaf_identity
+    opened, close_attempts, closed, unlocks, faults = [], [], [], [], []
+    live_fds = set()
+    identity_calls = []
+    observations.update(
+        opened=opened,
+        close_attempts=close_attempts,
+        closed=closed,
+        unlocks=unlocks,
+        faults=faults,
+        identity_calls=identity_calls,
+    )
+
+    def inject(stage, fd):
+        if stage == fault_stage and fd == opened[-1] and not faults:
+            faults.append((stage, fd))
+            raise cleanup_error
+
+    def traced_open(path, flags, mode=0o777, *, dir_fd=None):
+        fd = real_open(path, flags, mode, dir_fd=dir_fd)
+        opened.append(fd)
+        live_fds.add(fd)
+        return fd
+
+    def traced_close(fd):
+        close_attempts.append(fd)
+        inject("before_close", fd)
+        real_close(fd)
+        live_fds.remove(fd)
+        closed.append(fd)
+        inject("after_close", fd)
+
+    def traced_flock(fd, operation):
+        if operation == fcntl.LOCK_UN:
+            unlocks.append(fd)
+            inject("before_unlock", fd)
+        result = guarded_flock(fd, operation)
+        if operation == fcntl.LOCK_UN:
+            inject("after_unlock", fd)
+        return result
+
+    def traced_identity(*args, **kwargs):
+        identity = real_identity(*args, **kwargs)
+        identity_calls.append(identity)
+        if len(identity_calls) == 2 and primary_error is not None:
+            raise primary_error
+        return identity
+
+    try:
+        with pytest.MonkeyPatch.context() as guard:
+            guard.setattr(os, "open", traced_open)
+            guard.setattr(os, "close", traced_close)
+            guard.setattr(os, "supports_dir_fd", os.supports_dir_fd | {traced_open})
+            guard.setattr(fcntl, "flock", traced_flock)
+            guard.setattr(transport, "_lifecycle_leaf_identity", traced_identity)
+            lease = _acquire(root, deadline)
+            assert lease is not None
+            return transport.release_lifecycle_lock(lease, deadline=deadline)
+    finally:
+        observations["unclosed_fds"] = sorted(live_fds)
+        # Only test-owned descriptors remain here. Instrumentation is gone,
+        # and no new descriptor has been opened since acquisition.
+        for fd in sorted(live_fds):
+            real_close(fd)
+
+
+def _assert_cleanup_fault_attempts(observations, fault_stage):
+    opened = observations["opened"]
+    assert len(opened) >= 2
+    assert len(observations["identity_calls"]) == 2
+    assert observations["unlocks"] == [opened[-1]]
+    assert observations["faults"] == [(fault_stage, opened[-1])]
+    assert observations["close_attempts"] == list(reversed(opened))
+    assert Counter(observations["close_attempts"]) == Counter(opened)
+
+
+@pytest.mark.parametrize("released", [False, True], ids=["unreleased", "released"])
+@pytest.mark.parametrize("error_type", [OSError, SystemExit])
+def test_unlock_fault_still_attempts_each_close_once(lock_case, released, error_type):
+    root, lock, fcntl = lock_case
+    deadline = Deadline.after(10.0, clock=lambda: 0.0)
+    observations = {}
+    fault_stage = "after_unlock" if released else "before_unlock"
+    cleanup_error = error_type("synthetic unlock failure")
+
+    if error_type is OSError:
+        result = _exercise_cleanup_fault(
+            root,
+            fcntl,
+            deadline,
+            observations,
+            fault_stage=fault_stage,
+            cleanup_error=cleanup_error,
+        )
+        assert result is False
+    else:
+        with pytest.raises(SystemExit) as caught:
+            _exercise_cleanup_fault(
+                root,
+                fcntl,
+                deadline,
+                observations,
+                fault_stage=fault_stage,
+                cleanup_error=cleanup_error,
+            )
+        assert caught.value is cleanup_error
+
+    _assert_cleanup_fault_attempts(observations, fault_stage)
+    assert observations["closed"] == list(reversed(observations["opened"]))
+    assert observations["unclosed_fds"] == []
+    _probe(lock, fcntl, fcntl.LOCK_EX, blocked=False)
+
+
+@pytest.mark.parametrize("released", [False, True], ids=["unreleased", "released"])
+@pytest.mark.parametrize("error_type", [OSError, SystemExit])
+def test_close_fault_is_not_retried_and_later_closes_continue(
+    lock_case, released, error_type
+):
+    root, lock, fcntl = lock_case
+    deadline = Deadline.after(10.0, clock=lambda: 0.0)
+    observations = {}
+    fault_stage = "after_close" if released else "before_close"
+    cleanup_error = error_type("synthetic close failure")
+
+    if error_type is OSError:
+        result = _exercise_cleanup_fault(
+            root,
+            fcntl,
+            deadline,
+            observations,
+            fault_stage=fault_stage,
+            cleanup_error=cleanup_error,
+        )
+        assert result is False
+    else:
+        with pytest.raises(SystemExit) as caught:
+            _exercise_cleanup_fault(
+                root,
+                fcntl,
+                deadline,
+                observations,
+                fault_stage=fault_stage,
+                cleanup_error=cleanup_error,
+            )
+        assert caught.value is cleanup_error
+
+    _assert_cleanup_fault_attempts(observations, fault_stage)
+    opened = observations["opened"]
+    expected_closed = list(reversed(opened if released else opened[:-1]))
+    assert observations["closed"] == expected_closed
+    assert observations["unclosed_fds"] == ([] if released else [opened[-1]])
+    _probe(lock, fcntl, fcntl.LOCK_EX, blocked=False)
+
+
+@pytest.mark.parametrize("released", [False, True], ids=["unreleased", "released"])
+@pytest.mark.parametrize("operation", ["unlock", "close"])
+def test_primary_interrupt_survives_cleanup_interrupt(lock_case, released, operation):
+    root, lock, fcntl = lock_case
+    deadline = Deadline.after(10.0, clock=lambda: 0.0)
+    observations = {}
+    primary_error = KeyboardInterrupt("synthetic revalidation interruption")
+    cleanup_error = SystemExit("synthetic cleanup interruption")
+    fault_stage = f"{'after' if released else 'before'}_{operation}"
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _exercise_cleanup_fault(
+            root,
+            fcntl,
+            deadline,
+            observations,
+            fault_stage=fault_stage,
+            cleanup_error=cleanup_error,
+            primary_error=primary_error,
+        )
+
+    assert caught.value is primary_error
+    _assert_cleanup_fault_attempts(observations, fault_stage)
+    opened = observations["opened"]
+    leaves_open = operation == "close" and not released
+    expected_closed = list(reversed(opened[:-1] if leaves_open else opened))
+    assert observations["closed"] == expected_closed
+    assert observations["unclosed_fds"] == ([opened[-1]] if leaves_open else [])
+    _probe(lock, fcntl, fcntl.LOCK_EX, blocked=False)
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    (
+        "contention-deadline",
+        "contention-release",
+        "post-flock-expiry",
+        "replace-lock",
+        "replace-root",
+        "replace-ancestor",
+    ),
+)
+def test_contention_and_post_acquisition_races_clean_original_inode(
+    lock_case, scenario
+):
+    base, _fixture_lock, fcntl = lock_case
+    ancestor = base / "ancestor"
+    ancestor.mkdir()
+    root = ancestor / "run-lock"
+    root.mkdir()
+    lock = ancestor / f".{root.name}.lifecycle.lock"
+    lock.touch(mode=0o600)
+
+    replacement = base / "replacement"
+    displaced = base / "displaced"
+    target = None
+    if scenario == "replace-lock":
+        replacement.touch(mode=0o600)
+        target = lock
+    elif scenario == "replace-root":
+        replacement.mkdir()
+        target = root
+    elif scenario == "replace-ancestor":
+        replacement.mkdir()
+        (replacement / root.name).mkdir()
+        (replacement / lock.name).touch(mode=0o600)
+        target = ancestor
+
+    real_open, real_close = os.open, os.close
+    # Retains lock_case's exact-operation guard for every real flock below.
+    real_flock = fcntl.flock
+    ex_nb = fcntl.LOCK_EX | fcntl.LOCK_NB
+    sh_nb = fcntl.LOCK_SH | fcntl.LOCK_NB
+    independent = []
+    independent_closed = []
+    opened, closed, unlocks, sleeps = [], [], [], []
+    attempts = 0
+    acquired = 0
+    now = [0.0]
+    cap = 0.125
+    deadline = Deadline.after(cap, clock=lambda: now[0])
+    contended = scenario.startswith("contention-")
+    attempt_limit = (
+        3
+        if scenario == "contention-deadline"
+        else 2
+        if scenario == "contention-release"
+        else 1
+    )
+
+    def independent_open():
+        fd = real_open(lock, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+        independent.append(fd)
+        return fd
+
+    def identity(fd):
+        info = os.fstat(fd)
+        return info.st_dev, info.st_ino
+
+    def traced_open(path, flags, mode=0o777, *, dir_fd=None):
+        fd = real_open(path, flags, mode, dir_fd=dir_fd)
+        opened.append(fd)
+        return fd
+
+    def traced_close(fd):
+        closed.append(fd)
+        return real_close(fd)
+
+    def bounded_sleep(seconds):
+        assert contended, "uncontended acquisition must not sleep"
+        sleep_limit = 3 if scenario == "contention-deadline" else 1
+        assert len(sleeps) < sleep_limit, "retry sleep exceeded the test budget"
+        assert 0.0 < seconds <= min(0.05, cap - now[0])
+        sleeps.append(seconds)
+        now[0] += seconds
+        if scenario == "contention-release":
+            real_flock(holder, fcntl.LOCK_UN)
+
+    def traced_flock(fd, operation):
+        nonlocal attempts, acquired
+        if operation == fcntl.LOCK_UN:
+            unlocks.append(fd)
+            return real_flock(fd, operation)
+
+        assert operation == ex_nb
+        # Assert BEFORE the real syscall, including on busy-loop regressions.
+        assert attempts < attempt_limit, "flock retry exceeded the test budget"
+        attempts += 1
+        real_flock(fd, operation)
+        acquired += 1
+
+        # This separate open-file description must see the actual EX lock.
+        with pytest.raises(BlockingIOError):
+            real_flock(witness, sh_nb)
+
+        if scenario == "post-flock-expiry":
+            now[0] = cap
+        elif target is not None:
+            target.rename(displaced)
+            replacement.rename(target)
+
+    try:
+        holder = independent_open()
+        witness = independent_open()
+        original_identity = identity(holder)
+        assert identity(witness) == original_identity
+        if contended:
+            real_flock(holder, ex_nb)
+
+        lease = None
+        released = None
+        with pytest.MonkeyPatch.context() as guard:
+            guard.setattr(os, "open", traced_open)
+            guard.setattr(os, "close", traced_close)
+            guard.setattr(os, "supports_dir_fd", os.supports_dir_fd | {traced_open})
+            guard.setattr(fcntl, "flock", traced_flock)
+            try:
+                # _acquire intentionally uses _no_sleep, so do not use it here.
+                lease = transport.acquire_existing_lifecycle_lock(
+                    str(root), deadline=deadline, sleep=bounded_sleep
+                )
+                if scenario == "contention-release":
+                    assert lease is not None
+                    assert closed == []
+                    with pytest.raises(BlockingIOError):
+                        real_flock(witness, sh_nb)
+                else:
+                    assert lease is None
+            finally:
+                if lease is not None:
+                    released = transport.release_lifecycle_lock(
+                        lease, deadline=deadline
+                    )
+
+        assert attempts == attempt_limit
+        assert opened
+        assert closed == list(reversed(opened))
+        assert Counter(closed) == Counter(opened)
+
+        if scenario == "contention-deadline":
+            assert acquired == 0
+            assert unlocks == []
+            assert sleeps == pytest.approx([0.05, 0.05, 0.025])
+            assert now[0] == cap
+            # Refusal must not unlock the independent holder.
+            with pytest.raises(BlockingIOError):
+                real_flock(witness, sh_nb)
+            real_flock(holder, fcntl.LOCK_UN)
+        else:
+            assert acquired == 1
+            assert unlocks == [opened[-1]]
+            if scenario == "contention-release":
+                assert sleeps == [0.05]
+                assert now[0] == 0.05
+                assert released is True
+            else:
+                assert sleeps == []
+                assert now[0] == (cap if scenario == "post-flock-expiry" else 0.0)
+
+        assert identity(holder) == original_identity
+        assert identity(witness) == original_identity
+        if scenario in {"replace-lock", "replace-ancestor"}:
+            current = lock.stat()
+            assert (current.st_dev, current.st_ino) != original_identity
+
+        # Probe the ORIGINAL inode, not merely the new pathname.
+        real_flock(witness, ex_nb)
+        real_flock(witness, fcntl.LOCK_UN)
+    finally:
+        # On a regression, close only still-unclosed test-owned descriptors.
+        # Keep these rescue attempts separate from the production-close oracle.
+        for fd in reversed(opened):
+            if fd not in closed:
+                real_close(fd)
+        for fd in reversed(independent):
+            independent_closed.append(fd)
+            real_close(fd)
+
+    assert independent_closed == list(reversed(independent))
+    assert Counter(closed + independent_closed) == Counter(opened + independent)
