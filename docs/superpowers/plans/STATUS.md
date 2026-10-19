@@ -10,13 +10,17 @@
 
 ## Текущая проверка аудита
 
-630: все101 coordinator cases прошли. [Backend job118170208950](https://github.com/egorribun/university_ecosystem/actions/runs/39285009543/job/118170208950):1 FAIL /436 PASS за126.37s; единственный FAIL — намеренно отсутствующий live outage step. Checkout8c3bcd13c59b454ab2ea323a4ca49ac3f856e682 совпадает с treefa6eddd2406cf8beb881b277d791afa5b21662cf. Принят только deterministic coordinator; transport/CLI/outage ещё не включены.
+Подтверждённая нижняя граница:56 из512 исходных AUD IDs. Добавлены AUD-007/023/064 по проверенным существующим исправлениям и AUD-022 после собственного RED/GREEN. Это не полный процент закрытия. [Реестр и scope](../../audits/AUDIT-2026-10.md#evidence-checkpoint-56-verified-original-aud-ids).
 
-AUD-022 воспроизведён двумя real-client тестами: [frontend job118171264522](https://github.com/egorribun/university_ecosystem/actions/runs/39285009543/job/118171264522),2 FAIL /2609 PASS. После настоящего контролируемого HTTP500 wrapper разрешал promise без события, а обе реальные формы доходили до закрытия. Исправлен только create-вызов: throwOnError:true. Уточнено существующее exact-call ожидание; новые regression assertions не изменены. Собственный GREEN ещё ожидается.
+На1d995 все9357 frontend-тестов в773 файлах, typecheck, lint, format, i18n, message contracts и knip прошли. AUD-022: оба real-client HTTP500 regression cases GREEN; соседние API5 / create-dialog48 / form-dialog3 также PASS. Исправление ограничено create-only throwOnError:true, без generated/global-client изменений. [План и доказательства](2026-10-19-event-create-http-failure.md).
 
-Нижняя подтверждённая граница остаётся52 исходных AUD IDs; AUD-022 не засчитывается до проверки. [Реестр и границы доказательств](../../audits/AUDIT-2026-10.md#evidence-checkpoint-52-verified-original-aud-ids), [план AUD-022](2026-10-19-event-create-http-failure.md). Исходные P1:14 приняты,164/167/169/174 — отдельные holds. AUD-053 требует настоящего focus behavior proof.
+Все101 deterministic coordinator cases остаются GREEN; early backend job118180128840 имеет1 FAIL /436 PASS за119.96s. Единственный FAIL — намеренно отсутствующий live outage step. Bounded transport/CLI/outage не включены. Полный принятый CI checkpoint остаётся e150.
 
-Следующая NATS-задача — tests-first bounded private subprocess collector и затем owner-scoped adapter, без повторного использования старых unbounded lifecycle helpers. Полный принятый CI checkpoint остаётся e150; merge/deploy не выполняются.
+Ordinary Live39287160621:20 PASS /2 ожидаемых SKIP, cleanup16:56:01 UTC, upload16:56:02; artifact12205386033. Предыдущий630 Live упал до browser на HTTP2 download error при Caddy build, cleanup выполнен. Успешный следующий запуск не доказывает устранение сетевой причины или старого login flake.
+
+Следующий tests-first slice: три news-regressions без production correction и private subprocess NOT_READY seam с29 cases. До реализации требуется настоящий hosted assertion RED. Output-cap oracle пока доказывает только размер возвращённых данных; bounded accumulation, descendants/process groups, все read/selector budgets и remote-exec cleanup остаются отдельными обязательными проверками. Никаких новых skips, baselines или waivers.
+
+Исходные P1:14 приняты,164/167/169/174 остаются отдельными holds. AUD-031 требует persisted translation-clear/reload proof; AUD-053 — настоящего focus behavior proof. Merge/deploy не выполняются.
 
 ## Последний принятый CI checkpoint
 
@@ -49,8 +53,8 @@ Boundary tests 0f57 сначала остановились на Ruff RUF043; э
 [Согласованный NATS-only proof](../specs/2026-10-18-owned-nats-outbox-acceptance.md) выполняется по [плану](2026-10-19-owned-nats-outage.md).
 
 - На 7195378 все 251 pure NATS cases (inventory, correlation, restoration evidence, worker policy, outbox state, broker evidence, deadlines) и прежние CLI/frozen-RC contracts прошли: early job 118116223502, 1 FAIL / 298 PASS / 72.36s. Единственный FAIL — намеренно отсутствующий live outage step. Следующий coverage report и later shard stages в этом job не выполнялись; full GREEN не заявляется.
-- CLI разрешает help, но actual invocation по-прежнему блокируется до state/I/O. Coordinator runner/wait пока являются NOT_READY seams с детерминированными safety tests; hosted RED ещё не получен. Bounded adapters не реализованы. NATS не отключался; pure snapshot/deadline проверки не являются runtime restoration proof.
-- Следующий этап: наблюдаемый coordinator RED и минимальная реализация с независимым restoration budget, затем bounded owner-scoped transport и только после safety verification — точный PR repository/ref gate и hosted outage. Подробная RED/GREEN история сохранена в audit supplement. PDF AUD-015 остаётся отдельной подготовленной задачей.
+- CLI разрешает help, но actual invocation по-прежнему блокируется до state/I/O. Coordinator runner/wait прошли собственный RED/GREEN,101 deterministic cases PASS. Bounded adapters не реализованы. NATS не отключался; pure snapshot/deadline проверки не являются runtime restoration proof.
+- Следующий этап: private subprocess RED/GREEN и bounded owner-scoped transport и только после safety verification — точный PR repository/ref gate и hosted outage. Подробная RED/GREEN история сохранена в audit supplement. PDF AUD-015 остаётся отдельной подготовленной задачей.
 
 Отдельный ordinary Live на 2a2 (run 39259367152/job 118087289920) дал 19 PASS / 2 SKIP / 1 FLAKY и остался FAILED: redacted frame password-reset.live.spec.ts:174 указывает на initial loginWith после регистрации, но причина ещё не установлена. Stop/receipt/upload успешны; artifact 12190998654. Ослабление теста или приёмка через повтор не выполняются. Следующий fb822 Live 39261859320/job 118095392215 прошёл 20 PASS / 2 SKIP с успешным cleanup/receipt/upload (artifact 12192064647), но это не устанавливает причину или устранение flake.
 

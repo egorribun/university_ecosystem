@@ -44,9 +44,9 @@ Files: scripts/owned_nats_coordinator.py; tests/test_owned_nats_outage_coordinat
 - [x] First finish the pure inventory validator RED/GREEN cycle. Admission accepts only the caller's already verified signed selection, not a self-authenticated arbitrary inventory.
 - [x] Define immutable actual evidence records and a narrow operation protocol with NOT_READY runner/wait seams. The adapter must not replace raw evidence with admitted/drained/valid booleans.
 - [x] Observe hosted assertion RED for all101 coordinator/wait cases before implementation:8481 job118162897442,102FAIL335PASS107.40s including the absent workflow step.
-- [ ] Cover valid exact success, bad ownership/inventory/participants, zero/nonzero pending count, empty/duplicate/mismatched event correlation, retry0/1..4/terminal/DLQ/prematureprocessed states, and exact retained event IDs.
-- [ ] Cover failed/partial/timed-out stop, no send afterward, primary budget exhaustion, independent restoration, health failure, owner drift, changed target and every non-target runtime field.
-- [ ] Cover exact broker envelope/subject/room/type/message/chat matching and missing-message-only polling; reject missing-stream/auth/transport/parse errors.
+- [x] Cover valid exact success, bad ownership/inventory/participants, zero/nonzero pending count, empty/duplicate/mismatched event correlation, retry0/1..4/terminal/DLQ/prematureprocessed states, and exact retained event IDs.
+- [x] Cover failed/partial/timed-out stop, no send afterward, primary budget exhaustion, independent restoration, health failure, owner drift, changed target and every non-target runtime field.
+- [x] Cover exact broker envelope/subject/room/type/message/chat matching and missing-message-only polling; reject missing-stream/auth/transport/parse errors.
 - [x] Implement only after observed behavior RED; all101 deterministic tests are GREEN on630 job118170208950. The command and workflow still do not invoke live transport.
 
 ## Task 3: Bounded owner-scoped transport
@@ -107,3 +107,5 @@ Ruling: final signed-owner and complete-inventory verification belongs after bro
 Coordinator implementation published only after the supplemental RED above. Review corrections are covered: stop invocation flag follows a valid child deadline; late returned lease remains available to cleanup; full owner/runtime validation runs again after broker receipt under the primary deadline. Independent recovery and close/release budgets remain separate. Hosted GREEN is pending; no transport or operational enablement.
 
 Task2 scoped GREEN:630 job118170208950 has101 coordinator cases PASS,436 total PASS and only the absent workflow step FAIL in126.37s. Exact checkout8c3bcd13c59b454ab2ea323a4ca49ac3f856e682 matches source treefa6eddd2406cf8beb881b277d791afa5b21662cf. Next: a tests-first bounded private subprocess collector, then the owner-scoped adapter. Every nested process/lock/daemon/config operation must respect absolute remaining budgets and output caps; local Docker timeout is not proof of remote cleanup. Legacy unbounded helpers are not reused unchanged.
+
+Task3 private collector first slice: scripts/owned_nats_process.py remains NOT_READY; tests/test_owned_nats_process.py adds29 cases for fixed argv/cwd/env/stdin, invalid input, deadline admission, returned output caps, private diagnostics, bounded Popen.wait, owned direct-child reaping and unsupported-containment refusal. Hosted RED is pending. The cap oracle proves returned-byte limits only, not bounded retained memory or prompt overflow termination. Descendant/process-group proof, every read/selector deadline and remote-exec cleanup remain mandatory before transport enablement. No transport/CLI/outage is enabled; no platform skip or waiver is added.

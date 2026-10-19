@@ -44,6 +44,7 @@ describe("NewsList", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    intersectionCallback = undefined
 
     disconnectObserver = vi.fn<() => void>()
     class MockIntersectionObserver implements IntersectionObserver {
@@ -103,6 +104,45 @@ describe("NewsList", () => {
     render(<NewsList {...defaultProps} newsList={[]} hasNextPage fetchNextPage={fetchNextPage} />)
 
     expect(screen.queryByText(/no news yet/i)).not.toBeInTheDocument()
+    intersectionCallback?.(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    )
+    expect(fetchNextPage).toHaveBeenCalledOnce()
+  })
+
+  it("does not restart failed pagination when the cached-list sentinel intersects", () => {
+    const fetchNextPage = vi.fn()
+    const refreshNews = vi.fn()
+    const { rerender } = render(
+      <NewsList
+        {...defaultProps}
+        isError
+        hasNextPage
+        fetchNextPage={fetchNextPage}
+        refreshNews={refreshNews}
+      />
+    )
+
+    intersectionCallback?.(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    )
+    expect(fetchNextPage).not.toHaveBeenCalled()
+    expect(screen.getAllByTestId("news-card")).toHaveLength(2)
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }))
+    expect(refreshNews).toHaveBeenCalledOnce()
+
+    rerender(
+      <NewsList
+        {...defaultProps}
+        isError={false}
+        hasNextPage
+        fetchNextPage={fetchNextPage}
+        refreshNews={refreshNews}
+      />
+    )
+    expect(intersectionCallback).toBeDefined()
     intersectionCallback?.(
       [{ isIntersecting: true } as IntersectionObserverEntry],
       {} as IntersectionObserver

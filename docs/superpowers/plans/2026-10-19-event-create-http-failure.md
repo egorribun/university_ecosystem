@@ -4,7 +4,7 @@ Date: 2026-10-19. Original finding: AUD-022. Work only through GitHub plugin on 
 
 ## Verified source path
 
-The event wrapper calls the generated create endpoint without throwOnError and returns data. Axios rejects HTTP500, but the generated client's outer catch returns an error value. A resolved undefined result reaches EventFormDialog's success callback and EventCreateDialog's reset/close path. Existing rejection-only component mocks do not cover this boundary. Hosted reproduction is still required.
+The event wrapper calls the generated create endpoint without throwOnError and returns data. Axios rejects HTTP500, but the generated client's outer catch returns an error value. A resolved undefined result reaches EventFormDialog's success callback and EventCreateDialog's reset/close path. Existing rejection-only component mocks do not cover this boundary. The intended hosted RED and own-source GREEN are recorded below.
 
 ## Tests-first contract
 
@@ -20,7 +20,7 @@ The event wrapper calls the generated create endpoint without throwOnError and r
 - [x] Observe assertion RED:630 job118171264522, two intended failures after verified HTTP500 POST/body,2609 other tests pass.
 - [x] Apply the minimal create-only throwOnError correction; preserve upload validation, successful creation and post-create refresh behavior. Do not edit generated code or global client defaults.
 - [x] Update the existing generated-call expectation to require the corrected create contract without weakening other assertions.
-- [ ] Verify both new cases, existing API/dialog cases, lint/typechecks and full applicable CI. Retain any unrelated intentional NATS workflow failure explicitly.
-- [ ] Reconcile AUD-022 only after own-source regression GREEN, with the jsdom/HTTP-mock boundary stated.
+- [x] Verify both new cases, existing API/dialog cases and all frontend shards plus lint/typechecks on1d995:9357 PASS across773 files. Full CI is not green: the unrelated intentional NATS workflow capability failure remains explicit.
+- [x] Reconcile AUD-022 after own-source regression GREEN, with the jsdom/HTTP-mock boundary stated.
 
-The correction is published for its own GREEN verification. The two new real-client tests are unchanged; no global SDK setting or generated file is modified. Until those tests and applicable regressions pass, AUD-022 remains open.
+The two unchanged real-client tests PASS in job118180350816 on run39287160560. Existing API5, create-dialog48 and form-dialog3 cases and frontend lint/typechecks also pass. Checkout19bf6ab49b31c92bd68b4d4e1f335ab3f2659e66 matches source1d995 tree9622298dc8628e8eab36b1ab33863c3d77e20b75. AUD-022 is accepted at this scoped frontend boundary, not as deployment or full CI acceptance. No global SDK setting or generated file is modified.
