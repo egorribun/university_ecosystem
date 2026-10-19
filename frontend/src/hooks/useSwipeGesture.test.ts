@@ -271,3 +271,30 @@ describe("useSwipeGesture — cancellation when disabled", () => {
     expect(onSwipeClose).not.toHaveBeenCalled()
   })
 })
+
+describe("useSwipeGesture: reversing past the starting point", () => {
+  it.each([
+    { direction: "right" as const, startX: 100, beyondThresholdX: 200, pastOriginX: 99 },
+    { direction: "left" as const, startX: 200, beyondThresholdX: 100, pastOriginX: 201 },
+  ])(
+    "cancels a $direction close swipe after it crosses 1px past its origin",
+    ({ direction, startX, beyondThresholdX, pastOriginX }) => {
+      const onSwipeClose = vi.fn()
+      const { result } = renderHook(() =>
+        useSwipeGesture({ direction, threshold: 80, onSwipeClose, enabled: true })
+      )
+
+      act(() => result.current.handlers.onTouchStart(touch(startX)))
+      act(() => result.current.handlers.onTouchMove(touch(beyondThresholdX)))
+      expect(Math.abs(result.current.dragOffset)).toBeGreaterThan(80)
+
+      act(() => result.current.handlers.onTouchMove(touch(pastOriginX)))
+      expect(result.current.dragOffset).toBe(0)
+
+      act(() => result.current.handlers.onTouchEnd())
+      expect(onSwipeClose).not.toHaveBeenCalled()
+      expect(result.current.dragOffset).toBe(0)
+      expect(result.current.isDragging).toBe(false)
+    }
+  )
+})

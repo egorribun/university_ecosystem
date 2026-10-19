@@ -10,17 +10,17 @@
 
 ## Текущая проверка аудита
 
-Подтверждённая нижняя граница: 64 из 512 исходных AUD IDs. На ab1b приняты AUD-031 (populated→null UI payload и отдельное fresh-session persistence), AUD-035 (семь real-client mutations и stories query 422/304 после RED), AUD-053 (настоящий SearchDialog Tab/Shift+Tab/Escape на двух Core browser projects). [Точный scope и источники](../../audits/AUDIT-2026-10.md#evidence-checkpoint-64-verified-original-aud-ids). Полный процент сверки всех находок пока не установлен.
+Подтверждённая нижняя граница: 66 из 512 исходных AUD IDs. AUD-048 и AUD-052 сверены с точными существующими regression cases и повторным исполнением на 052. [Scope и evidence](../../audits/AUDIT-2026-10.md#evidence-checkpoint-66-verified-original-aud-ids). Это не полная сверка или объявление всех 512 пунктов закрытыми.
 
-Frontend unit suite: 9373 PASS в 777 файлах. Typecheck/format/i18n/contracts/knip прошли. Единственный frontend static дефект — три ESLint no-undef для URL в новом Node-контракте; добавляется явный node:url import, без suppression.
+На 052 frontend: 9373 PASS / 777 файлов, все frontend static gates прошли. Go integration с race detector проходит после изоляции HTTP-клиентов. Early backend: 509 PASS / 1 FAIL; все 34 collector cases и 21 runner contract PASS, единственный FAIL — отсутствующий NATS outage step. PostgreSQL: 202 PASS / 9 прежних SKIP. Baseline 319, dispositions 263 и 78 required context/app pairs не изменены.
 
-Live 39310016261: 22 PASS / 2 прежних SKIP, cleanup 19:34:58 UTC, receipt upload 19:34:59; artifact 12215379845. Новый SearchDialog case не имеет skip-path, исполняется в desktop и mobile-emulated Chromium. Это не физический мобильный браузер или полный live набор.
+Live 39312764119: 22 PASS / 2 прежних SKIP, cleanup 19:53:21 UTC, upload 19:53:22; artifact 12215969189. Исправление URL import также подтверждено собственным static GREEN. Последний полностью принятый CI checkpoint остаётся e150 из-за NATS capability hold.
 
-Early backend: 487 PASS / 2 FAIL. Реальный тест подтвердил чтение ready stdout после истечения work deadline; добавляется проверка перед каждым ready-key I/O. Независимый Go regression подтвердил сброс общего HTTP-пула при cleanup другого сервера; helper переключается на server.Client(). Собственный GREEN обеих правок ожидается. Единственный разрешённый S603 остаётся локальным; baseline 319, dispositions 263 и context/app pairs 78 не меняются.
+AUD-058 получает две дополнительные проверки пересечения исходной точки свайпа после превышения threshold; прежние exact-origin и положительные close controls сохранены, implementation не меняется. Приёмка ожидает фактического исполнения.
 
-Три runner-контракта расширенного smoke явно включаются в ранний pytest command, сохраняя 631 строку workflow. NATS live adapter/CLI/outage всё ещё выключены; capability failure не обходится. AUD-017 ждёт ответа владельца о направлении start-date сортировки и названии режима.
+Следующий NATS slice — только pure parser supplied signed metadata: typed NOT_READY seam и 36 cases перед реализацией. SIGNED_METADATA не означает provenance файлов/ключа или runtime admission. Файлы, lock, Docker, SQL, HTTP, coordinator и CLI не подключаются; outage не включён. [План](2026-10-19-owned-nats-owner-parser.md).
 
-Последний полный принятый checkpoint — e150. P1 holds 164/167/169/174 остаются. Merge/deploy не выполняются.
+AUD-017 остаётся pending до ответа владельца о направлении start-date сортировки и названии режима. P1 holds 164/167/169/174 остаются. Merge/deploy не выполняются.
 
 ## Последний принятый CI checkpoint
 

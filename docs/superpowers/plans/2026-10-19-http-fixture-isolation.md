@@ -15,8 +15,10 @@ The fixture file is unchanged at source ccc8. Nine httptest-backed requests use 
 - [x] Route existing httptest requests through a test-only client helper, initially preserving the global-client behavior.
 - [x] Add a regression that fully drains/closes a target response, closes an unrelated httptest server, then requires the target's second connection to be reused. Observe the intended assertion RED, not setup failure.
 - [x] Change only the helper to return the target server's own client. Do not disable parallel tests or add retries.
-- [ ] Verify the regression, old response-header/error controls, race/integration tests, formatting and lint on the new source.
+- [x] Verify the regression, old response-header/error controls, race/integration tests, formatting and lint on the new source.
 
 Use httptrace.GotConn with atomic.Bool for the reuse observation. Both response bodies must be drained and closed. Do not close the target fixture between requests. The manual-listener shutdown test has an active response until teardown and is a separate path. This is test transport isolation, not a change to product proxy behavior or a new accepted AUD ID.
 
 Observed intended RED on ab1b: run 39310016686 / job 118258426196 fails the reuse assertion at main_test.go:1029, 19:24:12 UTC. Both request setup and response drain succeed. The correction changes only the helper parameter and return value to server.Client(); all nine mapped request sites and the new regression remain unchanged. Independent review found no lifecycle/keepalive blocker. Corrected-source execution remains pending.
+
+Corrected source 052: Go integration job 118267989262 runs integration tags and the race detector and passes cmd/docker-log-proxy at 19:43:50 UTC. Normal Go test/lint jobs also report success. The regression is unchanged from the observed ab1b RED; the helper now uses the corresponding server's own client. This is a verified fixture-isolation correction, not a product proxy behavior change.

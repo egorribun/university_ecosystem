@@ -129,3 +129,7 @@ Run 39306435037 / job 118247616361 passes all 33 private collector cases; overal
 ## Stale-ready assertion RED and correction
 
 On ab1b, run 39310016686 / job 118258426422 confirms stdout readiness and then records a post-expiry read: [16] instead of [], at 19:26:47 UTC. Overall 487 PASS / 2 FAIL includes the absent outage step. The correction checks the same work deadline at the start of every ready-key dispatch, including later keys in a batch, and breaks the outer loop on expiry/invalidity so the normal wait/EXITED branch cannot run. The existing independent cleanup reserve is unchanged. The regression is retained verbatim; own-source GREEN remains pending. This prevents new dispatch after observed expiry, not hard preemption of a syscall already started. Live transport remains off.
+
+## 052 dispatch GREEN and pure marker extraction
+
+Job 118267989692 verifies all 34 collector cases and 21 runner contracts, with 509 PASS / 1 FAIL in 133.12s; only the absent outage step fails. The next smaller prerequisite is the [pure signed-marker parser](2026-10-19-owned-nats-owner-parser.md): caller-supplied bounded bytes/key/pins, no filesystem or runtime operations. It starts NOT_READY with two positive SIGNED_METADATA assertions awaiting RED. Safe key/file provenance, lifecycle locking and daemon/resource observation remain separate later slices. PostgreSQL uses the existing pinned bootstrap principal for read-only queries, not a new role; SQL timeouts alone do not establish remote psql termination.
