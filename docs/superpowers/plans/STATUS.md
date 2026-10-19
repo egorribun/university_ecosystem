@@ -10,13 +10,15 @@
 
 ## Текущая проверка coordinator и сверка аудита
 
-5c71: [backend job118145641655](https://github.com/egorribun/university_ecosystem/actions/runs/39276791679/job/118145641655) дал 95 FAIL / 333 PASS за 131.75s: 94 ожидаемых NOT_READY assertion failures и один отсутствующий workflow step. Checkout82bdade6cee65e11ad03444947073d974cfbc7b9 совпадает с tree258772557ebb0a7eef87e40afc51cd090cb3d535. Оба pre-commit прошли. Полный CI checkpoint по-прежнему e150; focused PASS не превращает красный прогон в зелёный.
+8481: [backend job118162897442](https://github.com/egorribun/university_ecosystem/actions/runs/39282803244/job/118162897442) дал102 FAIL /335 PASS за107.40s. Все101 coordinator cases наблюдались как NOT_READY assertion RED, плюс ожидаемо отсутствующий workflow step. Checkout e3185a46da7f3d48079b283881605562566bb962 совпадает с tree38f34cbc07a1694be093f0dabcd4c59c41cb444d.
 
-Нижняя подтверждённая граница увеличена с25 до46 исходных AUD IDs: добавлены21 сверенные существующие исправления с точным source/test equality и named regression evidence. Полный перечень и границы каждой проверки находятся в [аудите](../../audits/AUDIT-2026-10.md#evidence-reconciliation-checkpoint-46-verified-original-aud-ids). Это не21 новых исправлений, не общий процент и не deployment verdict. В исходных18 P1 приняты14;164/167/169/174 остаются отдельными operational/proof holds. AUD-053 не закрывается только по mocked focus-trap wiring.
+Минимальный evidence coordinator реализован и ожидает собственного hosted GREEN. Stop precheck не разрешает лишний start, возможный partial stop требует восстановления исходного проверенного target, финальная проверка owner/полного inventory выполняется после broker receipt, а cleanup имеет отдельные бюджеты. Live transport, CLI и outage step ещё не включены.
 
-Перед публикацией реализации добавлены семь tests-first safety cases: истечение deadline до вызова stop не разрешает start; поздно полученный lease освобождается; окончательная проверка после broker receipt ловит owner/resource/non-target/NATS-health/identity drift. Всего ожидается101 coordinator case, собственный RED новых семи ещё не наблюдался. Runner/wait остаются NOT_READY, транспорт и live outage не включены. Два существующих regression selectors для AUD-002/206 добавлены для named evidence без новых строк workflow.
+Нижняя подтверждённая граница теперь52 исходных AUD IDs. Полный перечень и границы доказательств находятся в [аудите](../../audits/AUDIT-2026-10.md#evidence-checkpoint-52-verified-original-aud-ids). Это не общий процент и не новые исправления всех перечисленных пунктов. Исходные P1:14 приняты,164/167/169/174 остаются отдельными holds. AUD-053 не закрывается только по mocked wiring.
 
-Обычный Live5c71:20 PASS /2 SKIP, cleanup15:32:45 UTC и upload15:32:46 подтверждены завершённым логом. Статусы steps заметно запаздывали; это не доказательство реального длительного setup. Прежний login flake не объявлен исправленным.
+AUD-022 остаётся открытым: реальный generated client может вернуть HTTP-ошибку как значение и позволить закрыть форму. Добавлены два tests-first HTTP500 regression cases через настоящий клиент и обе формы; hosted RED ещё ожидается, production frontend пока не изменён. [План исправления](2026-10-19-event-create-http-failure.md).
+
+Полный принятый CI checkpoint остаётся e150. Последующие focused PASS и исходный анализ не являются полной приёмкой или deployment verdict.
 
 ## Последний принятый CI checkpoint
 

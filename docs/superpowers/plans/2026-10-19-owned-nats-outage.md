@@ -43,7 +43,7 @@ Files: scripts/owned_nats_coordinator.py; tests/test_owned_nats_outage_coordinat
 
 - [x] First finish the pure inventory validator RED/GREEN cycle. Admission accepts only the caller's already verified signed selection, not a self-authenticated arbitrary inventory.
 - [x] Define immutable actual evidence records and a narrow operation protocol with NOT_READY runner/wait seams. The adapter must not replace raw evidence with admitted/drained/valid booleans.
-- [ ] Observe hosted assertion RED for the new deterministic coordinator/wait tests before implementing either seam.
+- [x] Observe hosted assertion RED for all101 coordinator/wait cases before implementation:8481 job118162897442,102FAIL335PASS107.40s including the absent workflow step.
 - [ ] Cover valid exact success, bad ownership/inventory/participants, zero/nonzero pending count, empty/duplicate/mismatched event correlation, retry0/1..4/terminal/DLQ/prematureprocessed states, and exact retained event IDs.
 - [ ] Cover failed/partial/timed-out stop, no send afterward, primary budget exhaustion, independent restoration, health failure, owner drift, changed target and every non-target runtime field.
 - [ ] Cover exact broker envelope/subject/room/type/message/chat matching and missing-message-only polling; reject missing-stream/auth/transport/parse errors.
@@ -103,3 +103,5 @@ Coordinator hosted execution is still pending: f917 fast job118135431503 failed 
 Coordinator RED observed on 5c71: job118145641655 reports 94 NOT_READY assertion failures plus the absent workflow step, with333 PASS in131.75s. The reviewed implementation draft is not published. Review adds seven tests-first cases before implementation: stop pre-invocation expiry must not start an untouched target; a late acquired lease must be released; final owner/resource/non-target/NATS-health/target-identity drift after broker receipt fails acceptance. These seven new cases still await observed RED. The existing94 assertions remain unchanged.
 
 Ruling: final signed-owner and complete-inventory verification belongs after broker receipt under the original primary deadline, not only before drain. Restoration is required only once stop invocation could have side effects; it must still be limited to the verifiable original target under the pinned daemon. This clarifies the accepted safety boundary without adding runtime authority. If wrong, the cost would be unsafe targeting or accepting a drifted stand; the new tests guard both boundaries. No bounded adapter or operational outage is enabled.
+
+Coordinator implementation published only after the supplemental RED above. Review corrections are covered: stop invocation flag follows a valid child deadline; late returned lease remains available to cleanup; full owner/runtime validation runs again after broker receipt under the primary deadline. Independent recovery and close/release budgets remain separate. Hosted GREEN is pending; no transport or operational enablement.
