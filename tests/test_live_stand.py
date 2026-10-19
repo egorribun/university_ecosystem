@@ -7439,6 +7439,18 @@ def test_up_refuses_to_stop_an_existing_stand_on_a_different_daemon(
     assert marker_path.read_bytes() == marker_before
 
 
+def test_nats_outage_cli_exposes_owned_state_options(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        live_stand.main(["nats-outage", "--help"])
+
+    assert exit_info.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "--in-place" in help_text
+    assert "--state-dir" in help_text
+
+
 def test_main_reports_stand_errors_with_exit_code_two(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

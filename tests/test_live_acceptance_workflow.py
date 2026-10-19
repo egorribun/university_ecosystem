@@ -364,6 +364,69 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
     assert "${{ github.run_id }}" in receipt_upload["with"]["name"]
 
 
+def test_nats_outage_is_gated_and_receipted_as_metadata_only() -> None:
+    _source, workflow = _workflow()
+    job = workflow["jobs"]["live-acceptance"]
+    steps = job["steps"]
+
+    outage_indices = [
+        index for index, step in enumerate(steps) if step.get("id") == "nats-outage"
+    ]
+    assert len(outage_indices) == 1, (
+        "the Core live job must contain exactly one owned NATS outage step"
+    )
+
+    outage_index = outage_indices[0]
+    outage = steps[outage_index]
+    core_index = next(
+        index for index, step in enumerate(steps) if step.get("id") == "core-e2e"
+    )
+    stop_index = next(
+        index for index, step in enumerate(steps) if step.get("id") == "stop-stand"
+    )
+
+    assert outage_index == core_index + 1
+    assert outage_index < stop_index
+    assert outage["if"] == (
+        "${{ github.event_name == 'pull_request' && "
+        "github.event.pull_request.head.repo.full_name == "
+        "'egorribun/university_ecosystem' && "
+        "github.event.pull_request.head.ref == 'egorribun' && "
+        "steps.core-e2e.outcome == 'success' }}"
+    )
+    assert "scripts/live_stand.py nats-outage" in outage["run"]
+    assert "--in-place" in outage["run"]
+    assert '--state-dir "$LIVE_STATE_DIR"' in outage["run"]
+    timeout = outage.get("timeout-minutes")
+    assert type(timeout) is int and 1 <= timeout <= 15
+
+    stop = steps[stop_index]
+    assert "always()" in stop.get("if", "")
+    assert '--state-dir "$LIVE_STATE_DIR"' in stop["run"]
+
+    receipt = next(
+        step
+        for step in steps
+        if step.get("name") == "Write the metadata-only Core receipt"
+    )
+    assert receipt["if"] == "${{ always() }}"
+    assert receipt["env"]["NATS_OUTAGE_OUTCOME"] == "${{ steps.nats-outage.outcome }}"
+    assert '"nats_outage": os.environ.get("NATS_OUTAGE_OUTCOME", "")' in receipt["run"]
+    assert '"schema": "ue-live-acceptance-receipt-v1"' in receipt["run"]
+    assert '"kind": "owned-core-live-acceptance"' in receipt["run"]
+    assert (
+        'allowed_outcomes = {"success", "failure", "cancelled", "skipped"}'
+        in receipt["run"]
+    )
+    assert (
+        "if any(value not in allowed_outcomes for value in outcomes.values())"
+        in receipt["run"]
+    )
+    assert "os.environ.copy" not in receipt["run"]
+    assert "os.environ.items" not in receipt["run"]
+    assert "stdout" not in receipt["run"] and "stderr" not in receipt["run"]
+
+
 def test_workflow_actions_are_immutable_and_only_read_repository_contents() -> None:
     source, workflow = _workflow()
     read_only_permissions = {"contents": "read"}
