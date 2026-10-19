@@ -8,9 +8,15 @@
 
 Работа только через GitHub plugin, ветка `egorribun`, существующий [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git и принимает работу максимум трёх GPT-6 Luna Max агентов с непересекающимися файлами. Merge/deploy и обходы проверок не выполнялись.
 
-## Текущая проверка coordinator
+## Текущая проверка coordinator и сверка аудита
 
-f917: fast job118135431503 остановился на Ruff S108 в синтетических путях fixtures и двух форматированиях, до запуска backend tests. Это не behavioral RED. Исправляются только пути данных fixtures и формат; все 94 проверки и NOT_READY сохраняются. Дополнительно выбраны 10 существующих historical regression cases; их named evidence, как и три AUD-165 cases, ещё ожидается. Нижняя подтверждённая граница остаётся 25 IDs; outage не включён.
+5c71: [backend job118145641655](https://github.com/egorribun/university_ecosystem/actions/runs/39276791679/job/118145641655) дал 95 FAIL / 333 PASS за 131.75s: 94 ожидаемых NOT_READY assertion failures и один отсутствующий workflow step. Checkout82bdade6cee65e11ad03444947073d974cfbc7b9 совпадает с tree258772557ebb0a7eef87e40afc51cd090cb3d535. Оба pre-commit прошли. Полный CI checkpoint по-прежнему e150; focused PASS не превращает красный прогон в зелёный.
+
+Нижняя подтверждённая граница увеличена с25 до46 исходных AUD IDs: добавлены21 сверенные существующие исправления с точным source/test equality и named regression evidence. Полный перечень и границы каждой проверки находятся в [аудите](../../audits/AUDIT-2026-10.md#evidence-reconciliation-checkpoint-46-verified-original-aud-ids). Это не21 новых исправлений, не общий процент и не deployment verdict. В исходных18 P1 приняты14;164/167/169/174 остаются отдельными operational/proof holds. AUD-053 не закрывается только по mocked focus-trap wiring.
+
+Перед публикацией реализации добавлены семь tests-first safety cases: истечение deadline до вызова stop не разрешает start; поздно полученный lease освобождается; окончательная проверка после broker receipt ловит owner/resource/non-target/NATS-health/identity drift. Всего ожидается101 coordinator case, собственный RED новых семи ещё не наблюдался. Runner/wait остаются NOT_READY, транспорт и live outage не включены. Два существующих regression selectors для AUD-002/206 добавлены для named evidence без новых строк workflow.
+
+Обычный Live5c71:20 PASS /2 SKIP, cleanup15:32:45 UTC и upload15:32:46 подтверждены завершённым логом. Статусы steps заметно запаздывали; это не доказательство реального длительного setup. Прежний login flake не объявлен исправленным.
 
 ## Последний принятый CI checkpoint
 

@@ -656,3 +656,71 @@ def test_drain_uses_the_actual_observed_retry_counter(
     assert ports.sleep.calls == []
     if expected is OutageOutcome.FAILED:
         assert "broker_last_message" not in names(ports)
+
+
+def test_expiry_before_stop_invocation_does_not_start_an_untouched_target() -> None:
+    ports = FakePorts()
+    reads_after_pending = 0
+
+    def expire_before_stop() -> float:
+        nonlocal reads_after_pending
+        if ports.calls and ports.calls[-1].name == "pending_count":
+            reads_after_pending += 1
+            # The fake's call check and caller's post-check must both succeed.
+            if reads_after_pending >= 3:
+                ports.clock.now = 181
+        return ports.clock.now
+
+    result = run_owned_outage(ports, clock=expire_before_stop, sleep=ports.sleep)
+    assert ports.contract_errors == []
+    assert result.outcome is OutageOutcome.FAILED
+    assert reads_after_pending >= 3
+    assert names(ports).count("pending_count") == 1
+    assert "stop_container" not in names(ports)
+    assert "start_container" not in names(ports)
+    assert "send_message_once" not in names(ports)
+    assert names(ports)[-2:] == ["close_clients", "release_lock"]
+
+
+def test_late_acquired_lease_is_released_without_starting_preflight() -> None:
+    ports = FakePorts()
+    ports.advance["acquire_lock"] = 11
+    assert_failed(ports)
+    assert "read_signed_owner" not in names(ports)
+    assert names(ports).count("release_lock") == 1
+    assert ports.calls[-1].args == (ports.lease,)
+
+
+@pytest.mark.parametrize(
+    "drift", ["owner", "resource", "non-target", "nats-health", "target-identity"]
+)
+def test_broker_receipt_cannot_hide_final_owner_or_inventory_drift(
+    drift: str, monkeypatch
+) -> None:
+    ports = FakePorts()
+    original_receipt = ports.broker_last_message
+
+    def receipt_then_drift(*args: object, deadline: Deadline):
+        receipt = original_receipt(*args, deadline=deadline)
+        if drift == "owner":
+            ports.owner_after_stop = replace(ports.owner, source_sha="b" * 40)
+        elif drift == "resource":
+            ports.resource_after_stop = "f" * 64
+        elif drift == "nats-health":
+            ports.nats = replace(ports.nats, health="unhealthy")
+        elif drift == "target-identity":
+            ports.nats = replace(ports.nats, identity="f" * 64)
+        else:
+            ports.records_after_start = tuple(
+                replace(row, restart_count=1) if row.service == "backend" else row
+                for row in ports.records
+            )
+        return receipt
+
+    monkeypatch.setattr(ports, "broker_last_message", receipt_then_drift)
+    assert_failed(ports, sends=1, restores=1)
+    trace = names(ports)
+    assert trace.count("broker_last_message") == 1
+    receipt_index = trace.index("broker_last_message")
+    assert trace.index("start_container") < receipt_index
+    assert "read_signed_owner" in trace[receipt_index + 1 :]

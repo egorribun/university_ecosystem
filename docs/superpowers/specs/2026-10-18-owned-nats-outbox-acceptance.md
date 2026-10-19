@@ -34,7 +34,7 @@ Wait for a retryable outage attempt: processed_at is NULL, error_count is positi
 
 ## Restoration and delivery receipt
 
-Always start the same NATS service in finally. Start failure, health timeout, ownership drift, changed container identities or changed non-NATS runtime state fails acceptance. Revalidate the signed complete inventory before accepting a result. The workflow's existing always-run owner-scoped cleanup remains mandatory.
+Once a stop invocation could have taken effect, always attempt restoration in finally using only the original container identity under the pinned daemon. If that authority no longer verifies, fail without starting an unverified or replacement target. Start failure, health timeout, ownership drift, changed container identities or changed non-NATS runtime state fails acceptance. Revalidate the signed complete inventory before accepting a result. The workflow's existing always-run owner-scoped cleanup remains mandatory.
 
 After healthy restoration, require that the same event has processed_at set, retains a positive error_count proving the outage attempt, and has no exact DLQ entry. Do not require status='processed': current success and DLQ paths do not maintain that status, and both stamp processed_at.
 
