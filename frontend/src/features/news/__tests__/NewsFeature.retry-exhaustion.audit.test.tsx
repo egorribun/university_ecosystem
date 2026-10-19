@@ -255,10 +255,7 @@ async function verifyRetryExhaustion() {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     expect(state()).toMatchObject({ status: "success", fetchStatus: "idle" })
     expect(client.getQueryData(queryKey)).toMatchObject({
-      pages: [
-        { next_cursor: "audit-next" },
-        { next_cursor: null, has_more: false },
-      ],
+      pages: [{ next_cursor: "audit-next" }, { next_cursor: null, has_more: false }],
     })
   } finally {
     view?.unmount()

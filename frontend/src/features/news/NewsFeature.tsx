@@ -39,6 +39,7 @@ export const NewsFeature = () => {
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
+    queryKey,
   } = useNewsListQuery({ language })
 
   const [addOpen, setAddOpen] = useState(false)
@@ -66,8 +67,8 @@ export const NewsFeature = () => {
 
   const refreshNews = useCallback(() => {
     resetEtagCache()
-    void queryClient.invalidateQueries({ queryKey: ["news", "list"] })
-  }, [queryClient])
+    void queryClient.invalidateQueries({ queryKey, exact: true })
+  }, [queryClient, queryKey])
 
   /* ── Filter + sort + search ── */
   const filteredNews = useMemo(() => {

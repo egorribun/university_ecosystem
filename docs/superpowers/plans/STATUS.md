@@ -10,21 +10,17 @@
 
 ## Текущая проверка аудита
 
-Подтверждённая нижняя граница:56 из512 исходных AUD IDs. Добавлены AUD-007/023/064 по проверенным существующим исправлениям и AUD-022 после собственного RED/GREEN. Это не полный процент закрытия. [Реестр и scope](../../audits/AUDIT-2026-10.md#evidence-checkpoint-56-verified-original-aud-ids).
+Подтверждённая нижняя граница: 57 из 512 исходных AUD IDs. Добавлен AUD-010: знаменатель оценок соответствует единой шкале выборки, с отдельными hook/chart regressions. Это не полный процент закрытия. [Реестр и границы](../../audits/AUDIT-2026-10.md#evidence-checkpoint-57-verified-original-aud-ids).
 
-На1d995 все9357 frontend-тестов в773 файлах, typecheck, lint, format, i18n, message contracts и knip прошли. AUD-022: оба real-client HTTP500 regression cases GREEN; соседние API5 / create-dialog48 / form-dialog3 также PASS. Исправление ограничено create-only throwOnError:true, без generated/global-client изменений. [План и доказательства](2026-10-19-event-create-http-failure.md).
+На 6605 автоматический retry после исчерпания попыток и независимый scroll-сценарий прошли свои регрессии. Анонимный Retry воспроизведён корректно после исправления тестового наблюдения fetch init; теперь исправляется invalidation точного текущего queryKey. Frontend: 9359 PASS / 1 FAIL в 775 файлах; typecheck/ESLint/i18n/contracts/knip прошли, форматирование одного нового теста ещё исправляется. AUD-033 пока не засчитывается.
 
-Все101 deterministic coordinator cases остаются GREEN; early backend job118180128840 имеет1 FAIL /436 PASS за119.96s. Единственный FAIL — намеренно отсутствующий live outage step. Bounded transport/CLI/outage не включены. Полный принятый CI checkpoint остаётся e150.
+Private collector: supplemental RED получен, 30 FAIL / 437 PASS в early job 118209999806, включая KeyboardInterrupt. Реализация опубликована только для проверки: cleanup вызывается из nested finally, до распространения прерывания. Новых suppressions/waivers/skips нет. Подтверждение direct-child reaping не означает завершения descendants или remote exec. Adapter, CLI execution и outage остаются выключены.
 
-Ordinary Live39287160621:20 PASS /2 ожидаемых SKIP, cleanup16:56:01 UTC, upload16:56:02; artifact12205386033. Предыдущий630 Live упал до browser на HTTP2 download error при Caddy build, cleanup выполнен. Успешный следующий запуск не доказывает устранение сетевой причины или старого login flake.
+AUD-013 сохраняется открытым: recent cap может обрезать сам граничный день; новый counterexample опубликован до изменения production logic. Для AUD-016 добавлены реальные SQLite и PostgreSQL parity assertions, без новых skip markers. AUD-009 получает именованный запуск существующих cache regressions. [План доказательств](2026-10-19-activity-event-proof.md).
 
-На dc21 получен настоящий RED обоих автоматических retry-путей новостей: job118197976374 (1 FAIL /2345 PASS) и job118197977733 (1 FAIL /2169 PASS). Добавлены минимальные error guards; собственный GREEN ожидается. Анонимный Retry пока упал на неверной проверке MSW Request.credentials, не на invalidation: проверка перенесена на настоящий fetch init через call-through spy. Production invalidation не изменена. Форматирование двух новых тестов исправляется без ослабления assertions, hosted проверка ещё требуется.
+Ordinary Live 39295675126: 20 PASS / 2 ожидаемых SKIP, cleanup 17:51:38 UTC и upload 17:51:40 подтверждены; artifact 12207744519. Это не outage и не полный browser acceptance. Последний полностью принятый CI checkpoint остаётся e150; отдельная историческая timing-report anomaly не обходится.
 
-Private subprocess: job118198065266 дал28 behavioral NOT_READY failures, один repr PASS; общий early результат29 FAIL /437 PASS за129.64s. Независимая проверка unpublished реализации выявила пропуск cleanup при KeyboardInterrupt. Добавлен тридцатый regression case; seam остаётся NOT_READY до supplemental RED и коррекции. Descendant/process-group, retained-memory, read/selector и remote-exec proof ещё не приняты.
-
-Обычный Live dc21 прошёл20 PASS /2 SKIP, cleanup17:31:46 UTC и upload17:31:48 подтверждены; artifact12207770730. Отдельная ошибка timing report старого1d вызвана инверсией API timestamps у skipped job. Strict parser и result gates сохранены; эта диагностическая ошибка не заменяет основной failed/cancelled результат. Полный принятый checkpoint остаётся e150.
-
-Исходные P1:14 приняты,164/167/169/174 остаются отдельными holds. AUD-031 требует persisted translation-clear/reload proof; AUD-053 — настоящего focus behavior proof. Merge/deploy не выполняются.
+Исходные P1: 14 приняты, 164/167/169/174 остаются отдельными holds. AUD-031 требует persisted translation-clear/reload proof; AUD-053 требует настоящего focus behavior proof. Merge/deploy не выполняются.
 
 ## Последний принятый CI checkpoint
 

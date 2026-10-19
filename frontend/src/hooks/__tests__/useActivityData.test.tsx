@@ -417,4 +417,52 @@ describe("useActivityData", () => {
       spy.mockRestore()
     }
   })
+
+  it("keeps a capped boundary day unknown despite complete daily attendance totals", () => {
+    const recent = Array.from({ length: 5 }, (_, index) => ({
+      date: `2026-04-20T${String(15 - index).padStart(2, "0")}:00:00+00:00`,
+      status: "present",
+      course: `Event ${index}`,
+    }))
+    vi.mocked(useActivitySummaryQuery).mockReturnValue({
+      data: {
+        attendance: {
+          percent: 100,
+          present: 6,
+          total: 6,
+          trend: 100,
+          streak_days: 1,
+          period_key: "90d",
+          daily: [{ date: "2026-04-20", registered: 6, total: 6 }],
+          recent,
+        },
+        grades: { average: 0, scale: "5", trend: 0, recent: [] },
+        participation: {
+          events: 6,
+          hours: 6,
+          groups: 1,
+          trend: 6,
+          recent: recent.map(({ date, course }) => ({
+            date,
+            title: course,
+            role: "workshop",
+          })),
+        },
+      },
+      isFetching: false,
+      isSuccess: true,
+    } as unknown as ReturnType<typeof useActivitySummaryQuery>)
+
+    const { result } = renderHook(() => useActivityData())
+
+    expect(result.current.attendance?.daily).toEqual([
+      { date: "2026-04-20", registered: 6, total: 6 },
+    ])
+    expect(result.current.attendance?.recent).toHaveLength(5)
+    expect(result.current.participation?.events).toBe(6)
+    expect(result.current.participation?.recent).toHaveLength(5)
+    // Ten sampled contributions are not a complete count for this day.
+    expect(result.current.heatmapData.get("2026-04-20")).toBe(10)
+    expect(result.current.heatmapCoveredFrom).toBe("2026-04-21")
+  })
 })

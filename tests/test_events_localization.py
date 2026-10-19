@@ -356,6 +356,43 @@ async def test_get_all_events_search_deterministic_order(db_session, user_factor
     # First 3 events contain "Symposium", unrelated does not
     assert ordered_ids == event_ids[:3]
 
+    from app.repositories.event_repository import EventRepository
+
+    repo = EventRepository(db_session)
+    parity_cases = [
+        ("all-search", shared_phrase, None, None, None, {0, 1, 2}),
+        ("active-search", shared_phrase, None, None, True, {0, 1, 2}),
+        ("archived-search", shared_phrase, None, None, False, set()),
+        ("main-location", shared_phrase, None, "MAIN", None, {0, 1}),
+        ("translated-title", shared_phrase, None, "Satellite", True, {2}),
+        ("excluded-type", shared_phrase, "workshop", None, None, set()),
+        ("combined-no-match", shared_phrase, "workshop", "Main", True, set()),
+        ("missing-search", "unmatchedparitytoken", None, None, None, set()),
+    ]
+    for case, search_query, event_type, location, active, indexes in parity_cases:
+        listed = await repo.search_events(
+            search_query=search_query,
+            event_type=event_type,
+            location=location,
+            is_active=active,
+            query_embedding=None,
+            now=now,
+            limit=len(events_data) + 1,
+        )
+        expected_ids = {event_ids[index] for index in indexes}
+        listed_ids = [row.event.id for row in listed]
+        assert set(listed_ids) == expected_ids, case
+        assert len(listed_ids) == len(expected_ids), case
+        total = await repo.count_search_events(
+            search_query=search_query,
+            event_type=event_type,
+            location=location,
+            is_active=active,
+            query_embedding=None,
+            now=now,
+        )
+        assert total == len(listed_ids) == len(expected_ids), case
+
 
 @pytest.mark.asyncio
 async def test_events_pagination_semantics(async_client, db_session, user_factory):

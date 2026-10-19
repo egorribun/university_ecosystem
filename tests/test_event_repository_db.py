@@ -229,3 +229,90 @@ async def test_user_attended_event_query_rejects_unbounded_limits(
         await event_repo_db.list_user_attended_events(
             uuid.uuid4(), limit=limit, locale="en"
         )
+
+
+@pytest.mark.parametrize(
+    ("event_type", "location", "time_filter", "expected_indexes"),
+    [
+        pytest.param(None, None, None, {0, 1, 2, 3, 4, 6}, id="all-visible"),
+        pytest.param(None, None, True, {0, 1, 3, 4, 6}, id="active"),
+        pytest.param(None, None, False, {2}, id="archived"),
+        pytest.param("WORK", None, None, {0, 1, 2, 4, 6}, id="type"),
+        pytest.param(None, "HALL A", None, {0, 1, 2, 3, 6}, id="location"),
+        pytest.param("WORK", "HALL A", None, {0, 1, 2, 6}, id="combined"),
+        pytest.param("WORK", "HALL A", True, {0, 1, 6}, id="combined-active"),
+        pytest.param("WORK", "HALL A", False, {2}, id="combined-archived"),
+        pytest.param("missing", None, None, set(), id="no-type-match"),
+        pytest.param(None, "missing", None, set(), id="no-location-match"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_filtered_event_total_matches_exhaustive_listing(
+    event_repo_db,
+    db_session,
+    user_factory,
+    event_type: str | None,
+    location: str | None,
+    time_filter: bool | None,
+    expected_indexes: set[int],
+) -> None:
+    user = await user_factory()
+    now = datetime(2026, 10, 17, 12, tzinfo=UTC)
+    records = [
+        Event(
+            title=f"Parity {index}",
+            event_type=kind,
+            location=place,
+            event_type_en="workshop" if index == 6 else None,
+            location_en="Hall A" if index == 6 else None,
+            starts_at=now + timedelta(hours=end_offset - 2),
+            ends_at=now + timedelta(hours=end_offset),
+            created_at=now,
+            created_by=user.id,
+            is_active=visible,
+        )
+        for index, (kind, place, end_offset, visible) in enumerate(
+            [
+                ("workshop", "Hall A", 2, True),
+                ("workshop", "Hall A", 0, True),
+                ("workshop", "Hall A", -1, True),
+                ("lecture", "Hall A", 2, True),
+                ("workshop", "Remote", 2, True),
+                ("workshop", "Hall A", 2, False),
+                ("Лекция", "Удалённо", 2, True),
+            ]
+        )
+    ]
+    db_session.add_all(records)
+    await db_session.flush()
+
+    # The limit exceeds this entire isolated fixture, making the list exhaustive.
+    listed = await event_repo_db.search_events(
+        event_type=event_type,
+        location=location,
+        is_active=time_filter,
+        now=now,
+        limit=len(records) + 1,
+    )
+    expected_ids = {records[index].id for index in expected_indexes}
+    listed_ids = [row.event.id for row in listed]
+    assert set(listed_ids) == expected_ids
+    assert len(listed_ids) == len(expected_ids)
+
+    total = await event_repo_db.count_search_events(
+        event_type=event_type,
+        location=location,
+        is_active=time_filter,
+        now=now,
+    )
+    assert total == len(listed_ids) == len(expected_ids)
+
+    first_page = await event_repo_db.search_events(
+        event_type=event_type,
+        location=location,
+        is_active=time_filter,
+        now=now,
+        limit=1,
+    )
+    assert len(first_page) == min(total, 1)
+    assert {row.event.id for row in first_page} <= expected_ids

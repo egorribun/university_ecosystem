@@ -14,6 +14,7 @@ const { state, mockResetEtagCache } = vi.hoisted(() => ({
     query: {
       current: {
         news: [] as NewsItem[],
+        queryKey: ["news", "list", { language: "en", limit: 12 }],
         isLoading: false,
         isError: false,
         isFetching: false,
@@ -163,8 +164,9 @@ const NEWS = [
   },
 ] satisfies NewsItem[]
 
-function renderFeature() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function renderFeature(
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+) {
   return render(
     <QueryClientProvider client={client}>
       <NewsFeature />
@@ -182,6 +184,7 @@ describe("NewsFeature closure", () => {
     state.url.current = { params: { q: "", cat: "all", sort: "newest" } }
     state.query.current = {
       news: NEWS,
+      queryKey: ["news", "list", { language: "en", limit: 12 }],
       isLoading: false,
       isError: false,
       isFetching: false,
@@ -197,7 +200,9 @@ describe("NewsFeature closure", () => {
   })
 
   it("filters, exposes controls, refreshes, paginates, and opens the form", () => {
-    renderFeature()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidate = vi.spyOn(client, "invalidateQueries")
+    renderFeature(client)
 
     expect(screen.getByTestId("news-header")).toHaveAttribute("data-admin", "true")
     expect(screen.getByTestId("news-header")).toHaveAttribute("data-count", "2")
@@ -218,6 +223,8 @@ describe("NewsFeature closure", () => {
     fireEvent.click(screen.getByTestId("news-next"))
     expect(state.query.current.fetchNextPage).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByTestId("news-refresh"))
+    expect(invalidate).toHaveBeenCalledTimes(1)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: state.query.current.queryKey, exact: true })
     fireEvent.click(screen.getByTestId("news-add"))
     expect(screen.getByTestId("news-form")).toHaveAttribute("data-open", "true")
     fireEvent.click(screen.getByTestId("news-form-close"))
