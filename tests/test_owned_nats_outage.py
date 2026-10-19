@@ -81,7 +81,7 @@ def test_inventory_accepts_exact_core_projection_and_completed_initializers() ->
     "selected",
     [
         (),
-        SERVICES + ("backend",),
+        (*SERVICES, "backend"),
         tuple(service for service in SERVICES if service != "nats"),
         tuple(service for service in SERVICES if service != "postgres"),
         tuple(service for service in SERVICES if service != "minio"),
@@ -112,9 +112,7 @@ def test_inventory_requires_one_unique_container_per_selected_service(
     if case == "missing":
         records = records[1:]
     elif case == "extra":
-        records += (
-            replace(records[0], service="unselected", container_id="f" * 64),
-        )
+        records += (replace(records[0], service="unselected", container_id="f" * 64),)
     elif case == "duplicate-service":
         records += (replace(records[0], container_id="f" * 64),)
     else:
