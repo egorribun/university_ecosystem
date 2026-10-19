@@ -134,6 +134,46 @@ describe("activity trend units", () => {
 
 describe("localized trend plurals", () => {
   it.each([
+    {
+      initialLanguage: "ru",
+      language: "ru",
+      formattedLocale: "ru",
+      expected: "+2,5 п.п.",
+    },
+    {
+      initialLanguage: "en",
+      language: "",
+      formattedLocale: "en",
+      expected: "+2.5 pp",
+    },
+  ])(
+    "uses $formattedLocale when resolvedLanguage is unavailable",
+    async ({ initialLanguage, language, formattedLocale, expected }) => {
+      const i18n = createInstance()
+      await i18n.init({
+        lng: initialLanguage,
+        resources: { en: { activity: enActivity }, ru: { activity: ruActivity } },
+        interpolation: { escapeValue: false },
+      })
+      i18n.resolvedLanguage = undefined
+      i18n.language = language
+
+      const numberFormat = vi.spyOn(Intl, "NumberFormat")
+      render(
+        <I18nextProvider i18n={i18n}>
+          <TrendChip value={2.5} unit="percentagePoints" />
+        </I18nextProvider>
+      )
+
+      expect(numberFormat).toHaveBeenCalledWith(formattedLocale, {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      })
+      expect(screen.getByText(expected)).toBeVisible()
+    }
+  )
+
+  it.each([
     { language: "en", unit: "points" as const, value: 1, expected: "+1.0 point" },
     { language: "en", unit: "events" as const, value: -1, expected: "-1 event" },
     { language: "ru", unit: "points" as const, value: 5, expected: "+5,0 баллов" },

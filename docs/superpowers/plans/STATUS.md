@@ -36,6 +36,8 @@ Tests-first e3/424 дали реальные frontend/backend RED, включа�
 
 895 Owned Live: 20 browser PASS / 2 SKIP, stop/receipt/upload SUCCESS; artifact 12165692559. Checkout 99b0c6aa24ceb6f395e4f09cbf885e123d296002 имеет точный source tree 275abe46a6a5edf8488e87831d07390ad62a58f3. Архив не извлекался. Это собственная live-проверка 895, но она не заменяет failed coverage gate. Последний полностью принятый checkpoint остаётся f854.
 
+На tests-only c740 backend был заблокирован только Ruff-форматированием нового email test; это не security RED. Frontend aggregate diagnostic job 117932846660 сообщил ровно две zero-hit ветви из 15341: TrendChip.tsx:23, fallback к i18n.language и к английскому по умолчанию. Добавляются точные supplemental tests без изменения компонента; formatter correction совпадает с опубликованным в hosted log blob. C740 live 20/2 завершил stop/receipt/upload с exact-tree artifact 12168024738. Новый корректирующий source требует собственных результатов.
+
 ## Следующая проверка: безопасные email diagnostics
 
 При сверке AUD-471 подтверждён source-level путь: reset URL использует #token, а email sanitizer скрывает только query credentials. Это не утверждение фактической утечки или deployment incident. [Узкий план](2026-10-19-reset-link-fragment-redaction.md) добавляет восемь synthetic regression cases до изменения application-кода; hosted RED ещё требуется. В существующий bounded early gate добавлен этот файл, analytics и полные shards сохранены.

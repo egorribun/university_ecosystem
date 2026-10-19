@@ -22,8 +22,7 @@ def reset_token() -> str:
 @pytest.mark.parametrize("key", ["token", "TOKEN", "code", "CoDe", "%74oken"])
 def test_reset_fragment_credentials_are_redacted(key: str, reset_token: str) -> None:
     link = (
-        f"https://example.test/reset-password?locale=ru"
-        f"#{key}={reset_token}&locale=en"
+        f"https://example.test/reset-password?locale=ru#{key}={reset_token}&locale=en"
     )
 
     sanitized = email_utils._redact_sensitive_query(link)

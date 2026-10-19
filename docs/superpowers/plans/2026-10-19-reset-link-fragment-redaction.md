@@ -19,3 +19,7 @@ Remove token/code values from both query and fragment diagnostics. Preserve exis
 ## Current status
 
 Tests and workflow extension prepared; application code unchanged. Hosted RED and acceptance are pending. Synthetic credentials are generated in tests; no actual reset URL is used. Existing tests preserve harmless #section1 and must keep passing.
+
+## Execution record
+
+- Tests-first c740 published the eight synthetic cases and bounded focused command without application changes. Fast pre-commit job 117926625749 stopped on Ruff joining adjacent f-strings; no backend assertion RED occurred. Apply only the exact hosted formatter output (blob f4e9fc02bd8c050c953821c0b7e8828528eecf2a) and rerun. Preserve all assertions and wait for genuine RED before implementing sanitizer changes.
