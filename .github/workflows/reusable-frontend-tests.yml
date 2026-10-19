@@ -519,6 +519,57 @@ jobs:
       - name: Merge frontend coverage shards
         run: node scripts/merge-vitest-coverage.mjs --input=.coverage-shards --output=coverage --expected-shards=4
 
+      - name: Report merged frontend zero-hit branch arms
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          import path from "node:path";
+
+          const root = process.cwd();
+          if (!process.env.GITHUB_WORKSPACE) throw new Error("Missing coverage workspace");
+          const directory = path.relative(process.env.GITHUB_WORKSPACE, root);
+          if (!directory || path.isAbsolute(directory) || directory.split(path.sep).includes("..")) {
+            throw new Error("Coverage working directory is outside the repository");
+          }
+          const report = JSON.parse(readFileSync("coverage/coverage-final.json", "utf8"));
+          if (!report || typeof report !== "object" || Array.isArray(report)) {
+            throw new Error("Invalid merged frontend coverage object");
+          }
+          const rows = [];
+          let total = 0;
+          let unlocated = 0;
+          for (const [file, entry] of Object.entries(report).sort()) {
+            const relative = path.relative(root, path.resolve(file));
+            if (!relative || path.isAbsolute(relative) || relative.split(path.sep).includes("..")) {
+              throw new Error("Coverage source is outside the frontend directory");
+            }
+            if (!entry?.b || typeof entry.b !== "object" || Array.isArray(entry.b)) {
+              throw new Error("Invalid frontend branch counters");
+            }
+            for (const [id, counts] of Object.entries(entry.b)) {
+              if (!/^\d+$/.test(id) || !Number.isSafeInteger(Number(id)) || !Array.isArray(counts)) {
+                throw new Error("Invalid frontend branch metadata");
+              }
+              for (const [arm, hits] of counts.entries()) {
+                if (!Number.isSafeInteger(hits) || hits < 0) {
+                  throw new Error("Invalid frontend branch hit count");
+                }
+                total += 1;
+                if (hits !== 0) continue;
+                const location = entry.branchMap?.[id]?.locations?.[arm]?.start;
+                const line = Number.isSafeInteger(location?.line) && location.line > 0 ? location.line : null;
+                const column = Number.isSafeInteger(location?.column) && location.column >= 0 ? location.column : null;
+                if (line === null) unlocated += 1;
+                rows.push({ path: directory.split(path.sep).join("/") + "/" + relative.split(path.sep).join("/"), branch: Number(id), arm, line, column, hits: 0 });
+              }
+            }
+          }
+          rows.sort((a, b) => a.path.localeCompare(b.path) || a.branch - b.branch || a.arm - b.arm);
+          for (const row of rows.slice(0, 200)) console.log(JSON.stringify(row));
+          console.log(JSON.stringify({ diagnostic: "frontend_branch_arms", total, zero: rows.length, unlocated, emitted: Math.min(rows.length, 200), truncated: Math.max(rows.length - 200, 0) }));
+          NODE
+
       - name: Download Vitest shard reports
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:

@@ -25,39 +25,39 @@
 
 ## Task 2: Provide complete daily aggregates
 
-- [ ] Repository/service return daily [{date, registered, total}] from the existing active-event population and exact current half-open window.
-- [ ] Preserve the existing five-SQL-query GET budget for /stats/summary. Daily and complete streak data must not be bolted on as extra sequential queries that exceed the current contract. Keep aggregation/query design portable and verify it on both SQLite and PostgreSQL without weakening the budget.
-- [ ] Use validated campus timezone for calendar dates, with explicit aware/naive normalization compatible with the database contracts.
-- [ ] Include zero-registration event-days and omit zero-event days; return ascending dates without the recent cap.
-- [ ] Preserve existing aggregate/previous-window values and recent feed behavior.
-- [ ] Retain summary/attendance endpoint propagation, authentication, user/period cache isolation, bypass and invalidation.
-- [ ] Inspect cache transition: cached older payloads cannot fabricate percentages; missing daily remains unavailable until refreshed.
-- [ ] Verify related service, repository and HTTP tests on hosted CI.
+- [x] Repository/service return daily [{date, registered, total}] from the existing active-event population and exact current half-open window.
+- [x] Preserve the existing five-SQL-query GET budget for /stats/summary. Daily and complete streak data must not be bolted on as extra sequential queries that exceed the current contract. Keep aggregation/query design portable and verify it on both SQLite and PostgreSQL without weakening the budget.
+- [x] Use validated campus timezone for calendar dates, with explicit aware/naive normalization compatible with the database contracts.
+- [x] Include zero-registration event-days and omit zero-event days; return ascending dates without the recent cap.
+- [x] Preserve existing aggregate/previous-window values and recent feed behavior.
+- [x] Retain summary/attendance endpoint propagation, authentication, user/period cache isolation, bypass and invalidation.
+- [x] Inspect cache transition: cached older payloads cannot fabricate percentages; missing daily remains unavailable until refreshed.
+- [x] Verify related service, repository and HTTP tests on hosted CI.
 
 ## Task 3: Render truthful chart values and metric units
 
-- [ ] Extend response/domain types and parser contracts for complete daily data; missing/invalid data cannot become a recent-derived 100% chart.
-- [ ] Preserve campus date keys and sort valid series; format date-only chart labels without shifting UTC midnight into the browser's prior day. Preserve existing timestamp feed formatting.
-- [ ] Pass explicit percentage-point, score-point or event-count units from real cards.
-- [ ] Localize numerical formatting, signs, unit/plural strings in EN/RU; do not display negative rounded zero.
-- [ ] Preserve intended generic TrendChip compatibility where used outside the three cards and update direct tests consistently with the chosen explicit API.
-- [ ] Reconcile adjacent registration labels without claiming physical attendance.
-- [ ] Verify all frontend regression/static/translation/build gates.
+- [x] Extend response/domain types and parser contracts for complete daily data; missing/invalid data cannot become a recent-derived 100% chart.
+- [x] Preserve campus date keys and sort valid series; format date-only chart labels without shifting UTC midnight into the browser's prior day. Preserve existing timestamp feed formatting.
+- [x] Pass explicit percentage-point, score-point or event-count units from real cards.
+- [x] Localize numerical formatting, signs, unit/plural strings in EN/RU; do not display negative rounded zero.
+- [x] Preserve intended generic TrendChip compatibility where used outside the three cards and update direct tests consistently with the chosen explicit API.
+- [x] Reconcile adjacent registration labels without claiming physical attendance.
+- [x] Verify all frontend regression/static/translation/build gates.
 
 ## Task 4: Compute the owner-confirmed streak
 
 - [x] Obtain genuine RED for unique consecutive current dates, duplicates, gaps, stale history, period independence, campus midnight, inactive/future/other-user exclusions and missing-authority frontend behavior.
-- [ ] Compute streak_days from complete user registration history for eligible active events strictly before now, in campus calendar dates.
-- [ ] Count only a run ending today or yesterday; keep history independent of period and recent cap.
-- [ ] Keep response/cache as the existing bounded snapshot and preserve cache invalidation; do not claim a real-time day-rollover counter.
-- [ ] Map authoritative count to optional streakDays and preserve the more-than-two-days badge threshold; never infer a count from capped recent rows.
-- [ ] Preserve unrelated motivation-message priority and loading behavior.
-- [ ] Verify all related backend/API/frontend regressions.
+- [x] Compute streak_days from complete user registration history for eligible active events strictly before now, in campus calendar dates.
+- [x] Count only a run ending today or yesterday; keep history independent of period and recent cap.
+- [x] Keep response/cache as the existing bounded snapshot and preserve cache invalidation; do not claim a real-time day-rollover counter.
+- [x] Map authoritative count to optional streakDays and preserve the more-than-two-days badge threshold; never infer a count from capped recent rows.
+- [x] Preserve unrelated motivation-message priority and loading behavior.
+- [x] Verify all related backend/API/frontend regressions.
 
 ## Task 5: Own full-source acceptance
 
-- [ ] Independent implementation review, including malformed/empty datasets, exact time boundaries, localization and cache paths.
-- [ ] Reconcile source metadata without adding scanner exceptions, baselines, skips or lowering thresholds.
+- [x] Independent implementation review, including malformed/empty datasets, exact time boundaries, localization and cache paths.
+- [x] Reconcile source metadata without adding scanner exceptions, baselines, skips or lowering thresholds.
 - [ ] Full backend/frontend/quality/security CI on the implementation SHA, exact 78 required context/app pairs, and source-tree-bound owned-live cleanup.
 - [ ] Record precise AUD-011/AUD-012/AUD-014 evidence only after their corresponding hosted proof.
 
@@ -86,3 +86,5 @@ No main update, RC selection, merge or deployment. No aggregate closure percenta
 - On 820, both pre-commits/static gates and dark/light smoke passed; early backend analytics succeeded, PostgreSQL passed 201/9, and owned live passed 231 contracts plus20 browser/2skip with exact-tree cleanup receipt12164947692. Full backend cohorts were still running; frontend9352pass/1fail is not acceptance.
 - Correct the observed AnimatedRing/ParticipationCard fixture failure by giving its useTranslation double the real i18n language fields. Keep application behavior and all assertions unchanged.
 - Add a supplemental61-day current streak case under period30, including historical other-user/inactive exclusion. The36-day period cases do not prove continuation before both comparison windows; this narrow extra test closes that verification gap before AUD-014 acceptance. No application change or independently observed pre-implementation RED is claimed for this supplemental case.
+
+- Current 895 terminal evidence: all four backend cohorts passed (16435/174), all frontend cohorts passed (9353/772 files), PostgreSQL passed 202/9 including the named 61-day test, and focused analytics passed 37. Own live 20/2 completed stop/receipt/upload with exact-tree artifact 12165692559. These functional/static results do not satisfy full-source acceptance: quality job 117922581472 failed because frontend.branches is below 100. Python diff-cover 4521/0/100 passed separately; frontend branch percentage/locations were not logged. Add read-only merged-report diagnostics, then tests for the observed missing branches; retain all thresholds and provenance. Task 5 full acceptance and AUD closure remain unchecked.
