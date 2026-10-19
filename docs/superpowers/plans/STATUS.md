@@ -10,15 +10,17 @@
 
 ## Текущая проверка аудита
 
-Подтверждённая нижняя граница: 58 из 512 исходных AUD IDs. AUD-033 принят после RED/GREEN обоих автоматических retry-путей; отдельный анонимный Retry также прошёл настоящий запрос/query/button regression, но не добавляет ещё один AUD ID. [Реестр и scope](../../audits/AUDIT-2026-10.md#evidence-checkpoint-58-verified-original-aud-ids).
+Подтверждённая нижняя граница: 61 из 512 исходных AUD IDs. На source 84bf приняты AUD-009 (пять cache regressions), AUD-013 (29 hook tests после собственного RED) и AUD-016 (десять DB cases, два service cases и восемь PG FTS parity assertions). [Реестр и точный scope](../../audits/AUDIT-2026-10.md#evidence-checkpoint-61-verified-original-aud-ids). Это не полный процент закрытия.
 
-На 8d5 frontend имеет 9360 PASS / 1 FAIL в 775 файлах; typecheck/ESLint/format/i18n/contracts/knip прошли. Единственный FAIL — новый AUD-013 counterexample, после которого исправляется incomplete boundary day. Два прежних неверных cutoff assertions уточнены; malformed-date поведение сохранено. Собственный GREEN ожидается, AUD-013 не засчитывается.
+Frontend: 9363 PASS в 775 файлах; static gates прошли. PostgreSQL: 202 PASS / 9 прежних SKIP. Baseline integrity подтверждает прежние 319 identities без изменений baseline/dispositions. Ровно одно разрешённое S603-исключение остаётся локальным к внутреннему Popen.
 
-Backend/PG проверки на 8d5 не выполнялись из-за static gates. Владелец 18:03 UTC разрешил ровно одно документированное S603-исключение для проверенного внутреннего Popen; общего отключения правила нет. Остальные замечания устранены изменением тестовых fixtures, без baseline/allowlist/disposition изменений. Добавлен 31-й repeated-interruption regression; реализация этого нового сценария остаётся прежней до RED. Live transport/CLI/outage выключены.
+Early backend: 483 PASS / 2 FAIL. Новый repeated-wait-interruption regression подтвердил пропуск reaping; подготовлено ограниченное исходным deadline исправление с сохранением original exception и соседними проверками. Собственный GREEN ожидается. Второй FAIL — намеренно отсутствующий outage step. Live adapter/CLI/outage остаются выключены.
 
-Новые aiohttp advisories блокируют dependency gate для 3.14.3. Подготовлен ограниченный hosted probe для 3.14.4 с обычным семидневным cutoff, без emergency override. Исходный audit failure сохраняется; lock ещё не обновлён. [План](2026-10-19-aiohttp-advisories.md). AUD-009/016 ждут реального backend/PG evidence, не результатов skipped jobs.
+aiohttp 3.14.4 разрешён настоящим uv resolver: все артефакты старше 14 дней, обычный семидневный cutoff соблюдён. Полный lock hash проверен независимо; обновляется только aiohttp, временный probe полностью удаляется. Frozen install/audit нового source ещё должны пройти. [План](2026-10-19-aiohttp-advisories.md).
 
-Обычный Live 39298318511 прошёл 20 PASS / 2 SKIP, cleanup 18:12:33 UTC и upload 18:12:35 подтверждены; artifact 12211566103. Последний полностью принятый CI checkpoint остаётся e150. Исходные P1: 14 приняты, 164/167/169/174 остаются holds; AUD-031 и AUD-053 требуют недостающего persistence/focus proof. Merge/deploy не выполняются.
+AUD-035: новые real-client mutation/query regressions публикуются tests-first, production fix пока не применяется. Go integration отдельно выявил CloseIdleConnections в параллельном HTTP fixture; причина исследуется, зелёный повтор не будет подменять исправление.
+
+Обычный Live 39301611568: 20 PASS / 2 SKIP, cleanup 18:36:11 UTC, receipt upload 18:36:13; artifact 12212756285. Последний полностью принятый CI checkpoint остаётся e150. Исходные P1: 14 приняты, 164/167/169/174 остаются holds. AUD-031/053 требуют persistence/focus proof. Merge/deploy не выполняются.
 
 ## Последний принятый CI checkpoint
 

@@ -239,7 +239,6 @@ jobs:
         run: uv export --frozen --no-hashes --no-dev --no-emit-workspace > /tmp/requirements.txt
 
       - name: Run Python known-vulnerability allowlist gate
-        id: python_audit
         shell: bash
         run: |
           # OSV's batch endpoint avoids a flaky N+1 request pattern while the
@@ -260,67 +259,6 @@ jobs:
             --report /tmp/pip-audit.json \
             --scanner-status "$pip_audit_status" \
             --allowlist security/audit-allowlist.yaml
-
-      - name: Probe mature aiohttp lock candidate
-        if: >-
-          ${{ failure() && steps.python_audit.outcome == 'failure' &&
-              github.repository == 'egorribun/university_ecosystem' &&
-              github.event_name == 'pull_request' && github.event.pull_request.number == 1306 &&
-              github.event.pull_request.head.repo.full_name == 'egorribun/university_ecosystem' &&
-              github.event.pull_request.head.ref == 'egorribun' }}
-        timeout-minutes: 5
-        shell: bash
-        env:
-          UV_HTTP_TIMEOUT: "30"
-          UV_HTTP_RETRIES: "2"
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import os
-          import tomllib
-          from pathlib import Path
-          if os.environ.get("UV_EXCLUDE_NEWER_PACKAGE"):
-              raise SystemExit("Package maturity override is forbidden")
-          config = tomllib.loads(Path("pyproject.toml").read_text())["tool"]["uv"]
-          if config.get("required-version") != "==0.12.23":
-              raise SystemExit("Unexpected resolver version policy")
-          if config.get("exclude-newer") != "7 days" or config.get("exclude-newer-package"):
-              raise SystemExit("Unexpected package maturity policy")
-          PY
-          backup_dir="$(mktemp -d "$RUNNER_TEMP/aiohttp-lock-probe.XXXXXX")"
-          cp uv.lock "$backup_dir/uv.lock"
-          cleanup_probe() {
-            cp "$backup_dir/uv.lock" uv.lock
-            rm -rf -- "$backup_dir"
-          }
-          trap cleanup_probe EXIT
-          export UV_CACHE_DIR="$backup_dir/uv-cache"
-          mkdir -p "$UV_CACHE_DIR"
-          timeout --kill-after=5s 180s uv lock --upgrade-package 'aiohttp==3.14.4' --exclude-newer '7 days'
-          uv lock --check
-          git diff --exit-code -- . ':(exclude)uv.lock'
-          git diff --check -- uv.lock
-          git diff -- uv.lock > "$backup_dir/lock.diff"
-          python - "$backup_dir/lock.diff" <<'PY'
-          import hashlib
-          import json
-          import sys
-          import tomllib
-          from pathlib import Path
-          diff = Path(sys.argv[1]).read_bytes()
-          if not diff or len(diff) > 400_000:
-              raise SystemExit("Missing or oversized lock diff")
-          lock = Path("uv.lock").read_bytes()
-          packages = tomllib.loads(lock.decode())["package"]
-          matches = [package for package in packages if package["name"] == "aiohttp"]
-          if len(matches) != 1 or matches[0]["version"] != "3.14.4":
-              raise SystemExit("Unexpected aiohttp resolution")
-          print("AIOHTTP_LOCK_CANDIDATE_SHA256=" + hashlib.sha256(lock).hexdigest())
-          print("AIOHTTP_PACKAGE_METADATA=" + json.dumps(matches[0], sort_keys=True))
-          print("BEGIN_AIOHTTP_LOCK_DIFF")
-          print(diff.decode(), end="")
-          print("END_AIOHTTP_LOCK_DIFF")
-          PY
 
   npm-audit:
     name: Node.js Dependency Audit

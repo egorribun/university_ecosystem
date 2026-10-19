@@ -144,8 +144,10 @@ def _cleanup_child(
     outcome: ProcessOutcome,
     stdout: bytearray,
     stderr: bytearray,
+    pending_exception: BaseException | None = None,
 ) -> PrivateProcessResult:
     # Never signal a numeric PID/group after this Popen child was reaped.
+    cleanup_exception: KeyboardInterrupt | SystemExit | None = None
     if child.returncode is None:
         try:
             os.killpg(child.pid, signal.SIGKILL)
@@ -156,12 +158,22 @@ def _cleanup_child(
                 os.kill(child.pid, signal.SIGKILL)
             except OSError:
                 pass
-        budget = deadline.timeout_for(_OPERATION_CAP)
-        if budget.verdict is DeadlineVerdict.VALID and budget.seconds is not None:
+        while child.returncode is None:
+            budget = deadline.timeout_for(_OPERATION_CAP)
+            if budget.verdict is not DeadlineVerdict.VALID or budget.seconds is None:
+                break
             try:
                 child.wait(timeout=budget.seconds)
             except (subprocess.TimeoutExpired, OSError, ValueError):
-                pass
+                break
+            except (KeyboardInterrupt, SystemExit) as exc:
+                # Retry against the same absolute deadline, never a fresh grace.
+                if pending_exception is None and cleanup_exception is None:
+                    cleanup_exception = exc
+                continue
+            break
+    if cleanup_exception is not None:
+        raise cleanup_exception
     if child.returncode is not None:
         return _result(
             outcome,
@@ -221,6 +233,7 @@ def run_private_process(
     input_offset = 0
     input_view = memoryview(request.stdin)
     result: PrivateProcessResult
+    pending_exception: BaseException | None = None
     try:
         # Caller-owned argv is trusted internal input, never a public command API.
         child = subprocess.Popen(  # noqa: S603 -- reviewed internal argv, no shell
@@ -312,6 +325,9 @@ def run_private_process(
     except Exception:
         # Raw exceptions and child output remain private.
         reason = ProcessOutcome.CLEANUP_UNCERTAIN
+    except BaseException as exc:
+        pending_exception = exc
+        raise
     finally:
         try:
             if selector is not None:
@@ -324,6 +340,8 @@ def run_private_process(
             _close_stream(child.stderr)
         finally:
             # Also runs before KeyboardInterrupt/SystemExit propagate.
-            result = _cleanup_child(child, operation, reason, stdout, stderr)
+            result = _cleanup_child(
+                child, operation, reason, stdout, stderr, pending_exception
+            )
 
     return result

@@ -405,37 +405,8 @@ def test_keyboard_interrupt_reaps_child_before_propagating(
     assert owned_children.children[0].returncode is not None
 
 
-def test_repeated_keyboard_interrupts_reap_child_before_propagating(
-    monkeypatch, tmp_path, owned_children
-):
-    deadline = _deadline()
-    owned_children.deadline = deadline
-    request = _request(tmp_path, "import signal; signal.pause()")
-    if not process._process_tree_containment_available():
-        result = process.run_private_process(request, deadline=deadline)
-        _assert_supported_or_fail_closed(result, owned_children)
-        return
-
-    selector_interrupts = 0
-    real_selector = selectors.DefaultSelector
-
-    class InterruptingSelector:
-        def __init__(self):
-            self.inner = real_selector()
-
-        def select(self, timeout=None):
-            nonlocal selector_interrupts
-            if selector_interrupts == 0:
-                selector_interrupts += 1
-                raise KeyboardInterrupt
-            return self.inner.select(timeout)
-
-        def __getattr__(self, name):
-            return getattr(self.inner, name)
-
-    monkeypatch.setattr(selectors, "DefaultSelector", InterruptingSelector)
-
-    wait_interrupts = 0
+def _interrupt_next_captured_wait(monkeypatch, interrupt):
+    wait_interrupts = []
     captured_popen = subprocess.Popen
 
     def interrupt_cleanup_wait(*args, **kwargs):
@@ -454,10 +425,9 @@ def test_repeated_keyboard_interrupts_reap_child_before_propagating(
                 in_collector_wait = False
 
         def interrupt_once(*wait_args, **wait_kwargs):
-            nonlocal wait_interrupts
-            if in_collector_wait and wait_interrupts == 0:
-                wait_interrupts += 1
-                raise KeyboardInterrupt
+            if in_collector_wait and not wait_interrupts:
+                wait_interrupts.append(interrupt)
+                raise interrupt
             return real_wait(*wait_args, **wait_kwargs)
 
         monkeypatch.setattr(captured, "wait", tracked_wait)
@@ -466,13 +436,80 @@ def test_repeated_keyboard_interrupts_reap_child_before_propagating(
 
     monkeypatch.setattr(subprocess, "Popen", interrupt_cleanup_wait)
 
-    with pytest.raises(KeyboardInterrupt):
+    return wait_interrupts
+
+
+def test_repeated_keyboard_interrupts_reap_child_before_propagating(
+    monkeypatch, tmp_path, owned_children
+):
+    deadline = _deadline()
+    owned_children.deadline = deadline
+    request = _request(tmp_path, "import signal; signal.pause()")
+    if not process._process_tree_containment_available():
+        result = process.run_private_process(request, deadline=deadline)
+        _assert_supported_or_fail_closed(result, owned_children)
+        return
+
+    selector_interrupts = 0
+    selector_exception = KeyboardInterrupt("selector")
+    real_selector = selectors.DefaultSelector
+
+    class InterruptingSelector:
+        def __init__(self):
+            self.inner = real_selector()
+
+        def select(self, timeout=None):
+            nonlocal selector_interrupts
+            if selector_interrupts == 0:
+                selector_interrupts += 1
+                raise selector_exception
+            return self.inner.select(timeout)
+
+        def __getattr__(self, name):
+            return getattr(self.inner, name)
+
+    monkeypatch.setattr(selectors, "DefaultSelector", InterruptingSelector)
+
+    wait_exception = KeyboardInterrupt("cleanup wait")
+    wait_interrupts = _interrupt_next_captured_wait(monkeypatch, wait_exception)
+
+    with pytest.raises(KeyboardInterrupt) as propagated:
         process.run_private_process(request, deadline=deadline)
 
+    assert propagated.value is selector_exception
     assert selector_interrupts == 1
-    assert wait_interrupts == 1
+    assert wait_interrupts == [wait_exception]
     assert len(owned_children.children) == 1
     child = owned_children.children[0]
     # Inspect only: poll() could itself reap and conceal missing cleanup.
     assert child.returncode is not None
     assert child.returncode != 97  # The synthetic watchdog must not do cleanup.
+
+
+@pytest.mark.parametrize("interrupt_type", [KeyboardInterrupt, SystemExit])
+def test_cleanup_wait_interrupt_propagates_after_reaping(
+    monkeypatch, tmp_path, owned_children, interrupt_type
+):
+    deadline = _deadline()
+    owned_children.deadline = deadline
+    request = _request(
+        tmp_path,
+        "import os, signal; os.write(1, b'x' * 8192); signal.pause()",
+        stdout_limit=128,
+    )
+    if not process._process_tree_containment_available():
+        result = process.run_private_process(request, deadline=deadline)
+        _assert_supported_or_fail_closed(result, owned_children)
+        return
+    wait_exception = interrupt_type("cleanup wait")
+    wait_interrupts = _interrupt_next_captured_wait(monkeypatch, wait_exception)
+
+    with pytest.raises(interrupt_type) as propagated:
+        process.run_private_process(request, deadline=deadline)
+
+    assert propagated.value is wait_exception
+    assert wait_interrupts == [wait_exception]
+    assert len(owned_children.children) == 1
+    child = owned_children.children[0]
+    assert child.returncode is not None
+    assert child.returncode != 97
