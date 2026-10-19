@@ -483,3 +483,46 @@ async def test_attendance_streak_excludes_inactive_future_and_other_user_events(
     )
 
     assert result.get("streak_days") == 1
+
+
+@pytest.mark.asyncio
+async def test_attendance_streak_continues_before_comparison_windows(
+    db_session, user_factory
+):
+    user = await user_factory()
+    other = await user_factory()
+    for days in range(61):
+        await add_event(
+            db_session,
+            user.id,
+            title=f"Complete history day {days}",
+            starts_at=NOW - timedelta(days=days, hours=1),
+            attendee_id=user.id,
+        )
+
+    # These older rows must not extend the user's run beyond 61 days.
+    for title, attendee_id, active in [
+        ("Other user's old registration", other.id, True),
+        ("Inactive old registration", user.id, False),
+    ]:
+        await add_event(
+            db_session,
+            user.id,
+            title=title,
+            starts_at=NOW - timedelta(days=61, hours=1),
+            attendee_id=attendee_id,
+            active=active,
+        )
+
+    result = await UserAnalyticsService(db_session).get_attendance_stats(
+        user_id=user.id, period_days=30, skip_cache=True
+    )
+
+    # A two-window cutoff would truncate this current run to 60 days.
+    assert result["streak_days"] == 61
+    assert result["present"] == 30
+    assert result["total"] == 30
+    assert result["percent"] == 100.0
+    assert result["trend"] == 0.0
+    assert len(result["daily"]) == 30
+    assert len(result["recent"]) == 5

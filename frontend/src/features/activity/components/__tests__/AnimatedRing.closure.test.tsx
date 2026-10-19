@@ -7,6 +7,7 @@ vi.mock("@/hooks/useAnimatedFloat", () => ({
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
+    i18n: { language: "en", resolvedLanguage: "en" },
     t: (key: string, options?: { value?: string }) => options?.value ?? key,
   }),
 }))
