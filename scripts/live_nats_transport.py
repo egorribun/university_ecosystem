@@ -15,9 +15,13 @@ import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from scripts import live_stand
 from scripts.owned_nats_coordinator import OwnerEvidence
+
+if TYPE_CHECKING:
+    from scripts.owned_nats_outage import Deadline
 
 MAX_OWNER_MARKER_BYTES = 65_536
 _V11_OWNER_KEYS = frozenset(
@@ -177,3 +181,20 @@ def parse_signed_owner_v11(
         return OwnerParseResult(OwnerParseStatus.SIGNED_METADATA, owner)
     except (live_stand.StandError, RecursionError, TypeError, ValueError):
         return not_ready
+
+
+def read_signed_owner_v11_from_state(
+    *,
+    pinned_repository: str,
+    pinned_state_root: str,
+    pinned_source_sha: str,
+    deadline: Deadline,
+) -> OwnerParseResult:
+    """Unavailable existing-file reader; no filesystem or admission claim.
+
+    Future reads require an initial nofollow component walk from the root,
+    fixed descriptor-relative regular leaves and mandatory descriptor cleanup.
+    Post-read ancestor pathname revalidation and lifecycle locking are separate.
+    """
+    del pinned_repository, pinned_state_root, pinned_source_sha, deadline
+    return OwnerParseResult(OwnerParseStatus.NOT_READY)

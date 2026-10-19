@@ -48,8 +48,7 @@ vi.mock("framer-motion", () => ({
   // Snapshot-only mock; the separate real-motion suite verifies subscriptions.
   useMotionTemplate: (strings: TemplateStringsArray, ...values: Array<{ get: () => number }>) =>
     strings.reduce(
-      (result, fragment, index) =>
-        `${result}${fragment}${index < values.length ? values[index].get() : ""}`,
+      (result, fragment, index) => `${result}${fragment}${values[index]?.get() ?? ""}`,
       ""
     ),
   useMotionValue: () => motionValueFactory(),

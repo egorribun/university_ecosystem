@@ -40,3 +40,7 @@ The parser call uses only supplied bytes/pins and pure legacy helpers. Importing
 ## Original 36-case GREEN and additive boundaries
 
 Job 118288482456 on exact 2caf407 tree reports all 36 parser cases PASS; total 545 PASS / 1 FAIL in 157.30s, with only the absent outage step failing. Both pre-commit gates, inventory and baseline integrity pass. Thirty additive cases retain the original 36 unchanged and cover nested duplicate ports, exact 65536-byte valid payload, nonfinite/deep JSON and wrong container/string-field/pin types. These new cases await execution; no implementation or runtime authority changes accompany them.
+
+## Expanded parser verification
+
+All 66 parser cases pass on 0aa309f in job 118296093110 at 20:46:18 UTC; total 575 PASS / 1 FAIL in 136.73s, only the absent outage workflow. Pure parser code/tests are preserved while a separately unavailable existing-file reader seam is specified in the [reader plan](2026-10-19-owned-nats-owner-reader.md).
