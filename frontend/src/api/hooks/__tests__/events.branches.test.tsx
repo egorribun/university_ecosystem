@@ -1526,7 +1526,6 @@ describe("useEventNavigation (events.ts:482-525)", () => {
   })
 })
 
-
 describe("main events date-order identities", () => {
   it("keeps ASC and DESC as distinct canonical query identities", () => {
     const asc = { language: "ru", is_active: true, order: "starts_at_asc" as const }
