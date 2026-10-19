@@ -272,3 +272,149 @@ def test_even_resigned_malformed_caller_pins_are_rejected(
     payload[field] = value
     pins[pin] = value
     _assert_not_ready(_parse(_legacy_marker(payload), pins))
+
+
+def test_nested_duplicate_published_port_key_is_rejected(owner_case):
+    payload, pins = owner_case
+    raw = _legacy_marker(payload)
+    first_port = live_stand.LIVE_PORT_SPECS[0][0]
+    needle = b'"published_ports": {'
+    assert raw.count(needle) == 1
+    duplicate = (
+        needle
+        + json.dumps(first_port).encode("utf-8")
+        + b": "
+        + str(payload["published_ports"][first_port]).encode("ascii")
+        + b","
+    )
+    raw = raw.replace(needle, duplicate, 1)
+    _assert_not_ready(_parse(raw, pins))
+
+
+def test_valid_marker_at_exact_size_limit_is_accepted(owner_case):
+    payload, pins = owner_case
+    raw = _legacy_marker(payload)
+    assert len(raw) < transport.MAX_OWNER_MARKER_BYTES
+    bounded = raw + b" " * (transport.MAX_OWNER_MARKER_BYTES - len(raw))
+    assert len(bounded) == transport.MAX_OWNER_MARKER_BYTES
+
+    result = _parse(bounded, pins)
+
+    assert result.status is transport.OwnerParseStatus.SIGNED_METADATA
+    assert result.owner is not None
+    assert result.owner.project_name == payload["project_name"]
+
+
+@pytest.mark.parametrize("root", [b"[]", b"null", b"17", b'"marker"'])
+def test_json_root_must_be_an_object(owner_case, root):
+    _payload, pins = owner_case
+    _assert_not_ready(_parse(root, pins))
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("published_ports", []),
+        ("published_ports", None),
+        ("service_roots", {}),
+        ("service_roots", "core"),
+        ("selected_services", {}),
+        ("selected_services", None),
+    ],
+    ids=[
+        "ports-list",
+        "ports-null",
+        "roots-object",
+        "roots-string",
+        "services-object",
+        "services-null",
+    ],
+)
+def test_resigned_wrong_container_values_are_rejected(owner_case, field, value):
+    payload, pins = owner_case
+    payload[field] = value
+    _assert_not_ready(_parse(_legacy_marker(payload), pins))
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("repository", None),
+        ("worktree", 17),
+        ("project_name", []),
+        ("daemon_fingerprint", {}),
+        ("compose_resource_fingerprint", False),
+        ("stack", None),
+        ("source_sha", 42),
+        ("signature", 3),
+    ],
+    ids=[
+        "repository-null",
+        "worktree-int",
+        "project-list",
+        "daemon-object",
+        "resource-bool",
+        "stack-null",
+        "source-int",
+        "signature-int",
+    ],
+)
+def test_wrong_string_field_types_are_rejected(owner_case, field, value):
+    payload, pins = owner_case
+    if field == "signature":
+        data = json.loads(_legacy_marker(payload))
+        data["signature"] = value
+        raw = json.dumps(data).encode("utf-8")
+    else:
+        payload[field] = value
+        raw = _legacy_marker(payload)
+    _assert_not_ready(_parse(raw, pins))
+
+
+@pytest.mark.parametrize(
+    "pin, value",
+    [
+        ("pinned_repository", None),
+        ("pinned_repository", 17),
+        ("pinned_state_root", []),
+        ("pinned_state_root", False),
+        ("pinned_source_sha", None),
+        ("pinned_source_sha", 42),
+    ],
+    ids=[
+        "repository-null",
+        "repository-int",
+        "state-list",
+        "state-bool",
+        "source-null",
+        "source-int",
+    ],
+)
+def test_wrong_caller_pin_types_are_rejected(owner_case, pin, value):
+    payload, pins = owner_case
+    raw = _legacy_marker(payload)
+    pins[pin] = value
+    _assert_not_ready(_parse(raw, pins))
+
+
+@pytest.mark.parametrize("constant", [b"NaN", b"Infinity", b"-Infinity"])
+def test_nonfinite_json_numbers_are_rejected(owner_case, constant):
+    payload, pins = owner_case
+    raw = _legacy_marker(payload)
+    first_port = live_stand.LIVE_PORT_SPECS[0][0]
+    needle = (
+        json.dumps(first_port).encode("utf-8")
+        + b": "
+        + str(payload["published_ports"][first_port]).encode("ascii")
+    )
+    replacement = json.dumps(first_port).encode("utf-8") + b": " + constant
+    assert needle in raw
+    raw = raw.replace(needle, replacement, 1)
+    _assert_not_ready(_parse(raw, pins))
+
+
+def test_deeply_nested_invalid_json_within_size_limit_is_rejected(owner_case):
+    _payload, pins = owner_case
+    raw = b"[" * 2_000 + b"0"
+    assert len(raw) < transport.MAX_OWNER_MARKER_BYTES
+    _assert_not_ready(_parse(raw, pins))

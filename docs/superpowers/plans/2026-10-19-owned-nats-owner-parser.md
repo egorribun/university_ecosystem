@@ -18,7 +18,7 @@ Use the existing canonical HMAC signer, project/port validators and reviewed Cor
 - [x] Add a typed NOT_READY seam with no I/O or operational wiring.
 - [x] Add 36 deterministic cases, including two current-writer-compatible ASCII/Unicode positive cases, re-signed semantic invalids, wrong key/signature, malformed caller pins, duplicate JSON and size/type/encoding failures.
 - [x] Observe both positive metadata assertions RED on source 834984b, job 118282261816, test line 128; setup passes.
-- [ ] Implement only this pure parser after RED, then verify all cases and code gates on its own source.
+- [x] Implement only the pure parser after RED; all original 36 cases and code gates pass on 2caf407.
 - [ ] Add descriptor-safe existing-file reading and bounded lifecycle lock handling as separately tested slices.
 
 Test fixtures use the existing legacy canonical signer independently of the parser. They forbid the listed legacy I/O helpers and guard common direct file/process APIs only during the parser call, restoring them before pytest reporting. Source review is also required: these guards are not an operating-system sandbox or proof against every possible API. No filesystem/provenance or remote-exec test is claimed here.
@@ -36,3 +36,7 @@ This module remains disconnected from the coordinator, CLI and live workflow. Th
 The 36 tests are unchanged. The implementation rejects duplicate/nonfinite JSON, wrong exact schema/types/key size, incomplete Core metadata, mismatched pins and signatures, and returns repr-private signed metadata only. Legacy project/port validators and canonical signer are reused without invoking their I/O loaders. Parsing/validation failures return NOT_READY; assertions and unexpected I/O exceptions are not swallowed. Own-source GREEN is pending.
 
 The parser call uses only supplied bytes/pins and pure legacy helpers. Importing existing live_stand still performs its ordinary REPO_ROOT = Path(__file__).resolve() initialization; tests guard parser invocation, not Python module loading. No claim of an I/O-free import or descriptor-safe owner-file reading.
+
+## Original 36-case GREEN and additive boundaries
+
+Job 118288482456 on exact 2caf407 tree reports all 36 parser cases PASS; total 545 PASS / 1 FAIL in 157.30s, with only the absent outage step failing. Both pre-commit gates, inventory and baseline integrity pass. Thirty additive cases retain the original 36 unchanged and cover nested duplicate ports, exact 65536-byte valid payload, nonfinite/deep JSON and wrong container/string-field/pin types. These new cases await execution; no implementation or runtime authority changes accompany them.
