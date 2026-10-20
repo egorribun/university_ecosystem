@@ -1,4 +1,4 @@
-import { useState, useEffect, type ChangeEvent, type FormEvent } from "react"
+import { useState, useEffect, useId, type ChangeEvent, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import api from "@/api/client"
 import { logError } from "@/app/logger"
@@ -96,6 +96,7 @@ export function AddLessonDialog({
   refresh,
 }: AddLessonDialogProps) {
   const { t } = useTranslation(["schedule", "common"])
+  const dialogTitleId = useId()
   const { activeDialog, closeDialog, showSnackbar, addDay } = useSchedulePage()
 
   const isOpen = activeDialog === "add"
@@ -194,8 +195,14 @@ export function AddLessonDialog({
   }
 
   return (
-    <Dialog open={isOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
-      <DialogTitle>{t("schedule:dialog.addTitle")}</DialogTitle>
+    <Dialog
+      open={isOpen}
+      onClose={closeDialog}
+      maxWidth="sm"
+      fullWidth
+      ariaLabelledBy={dialogTitleId}
+    >
+      <DialogTitle id={dialogTitleId}>{t("schedule:dialog.addTitle")}</DialogTitle>
       <form onSubmit={handleSubmit}>
         <DialogContent className="space-y-5 pt-4">
           <div className="space-y-5" role="presentation">

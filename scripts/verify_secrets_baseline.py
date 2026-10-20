@@ -153,6 +153,13 @@ _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES = {
     ),
 }
 _FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS = {
+    "public_compose_inspection_test_sentinel": (
+        "public Compose inspection test sentinel",
+        "live-stand-inspection-placeholder",
+        "LIVE_VAPID_PRIVATE_KEY",
+        "no-I/O request expectation",
+        "not credential material",
+    ),
     "internal_demo_stand_account_fixture": (
         "docs/superpowers/plans/MVP_MASTER_PLAN.md:37",
         "external operational status remains unverified",
@@ -167,7 +174,11 @@ _FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS = {
     ),
 }
 _FALSE_POSITIVE_EXACT_IDENTITY_CATEGORIES = frozenset(
-    {"external_kubernetes_secret_reference", "source_contract_identifier"}
+    {
+        "external_kubernetes_secret_reference",
+        "source_contract_identifier",
+        "public_compose_inspection_test_sentinel",
+    }
 )
 _FALSE_POSITIVE_CATEGORIES = (
     _FALSE_POSITIVE_HEX_CATEGORIES
@@ -749,7 +760,23 @@ _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES = frozenset(
     }
 )
 
+_PUBLIC_COMPOSE_INSPECTION_TEST_SENTINEL_IDENTITIES = frozenset(
+    {
+        (
+            "tests/test_live_nats_transport.py",
+            "Secret Keyword",
+            (
+                *(74, 70, 48, 200, 151, 59, 103, 95, 251, 150),
+                *(7, 200, 234, 230, 69, 166, 253, 9, 215, 53),
+            ),
+        ),
+    }
+)
+
 _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
+    "public_compose_inspection_test_sentinel": (
+        _PUBLIC_COMPOSE_INSPECTION_TEST_SENTINEL_IDENTITIES
+    ),
     "external_kubernetes_secret_reference": _EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES,
     "source_contract_identifier": _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES,
 }
@@ -1246,6 +1273,13 @@ def validate_false_positive_dispositions(
             tuple(raw_digest_bytes),
         )
         if (
+            exact_source_identity in _PUBLIC_COMPOSE_INSPECTION_TEST_SENTINEL_IDENTITIES
+            and category != "public_compose_inspection_test_sentinel"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: public Compose sentinel changed category"
+            )
+        if (
             exact_source_identity in _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES
             and category != "source_contract_identifier"
         ):
@@ -1333,6 +1367,14 @@ def validate_false_positive_dispositions(
             or expires_on - reviewed_on > timedelta(days=90)
         ):
             raise BaselineArtifactError(f"{artifact}: date range is invalid")
+
+        if (
+            category == "public_compose_inspection_test_sentinel"
+            and expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: public Compose sentinel exceeds approved expiry"
+            )
 
         finding = FindingIdentity(path, finding_type, hashed_secret, 1)
         if finding in findings:

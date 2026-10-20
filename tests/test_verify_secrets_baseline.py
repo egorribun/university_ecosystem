@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+import hashlib
 import json
 import shutil
 import subprocess
@@ -1688,3 +1690,130 @@ def test_disposition_file_is_protected_by_existing_owner_policy_gates() -> None:
     )
     assert "--owner-authored-disposition-update" in security_audit
     assert '--trusted-disposition-source-sha "$HEAD_SHA"' in security_audit
+
+
+def _public_compose_sentinel_record() -> dict[str, Any]:
+    record = _reviewed_exact_disposition(
+        "tests/test_live_nats_transport.py",
+        "Secret Keyword",
+        (
+            *(74, 70, 48, 200, 151, 59, 103, 95, 251, 150),
+            *(7, 200, 234, 230, 69, 166, 253, 9, 215, 53),
+        ),
+        "public_compose_inspection_test_sentinel",
+    )
+    record["reviewed_on"] = "2026-10-20"
+    record["evidence"] = (
+        "Public Compose inspection test sentinel "
+        "live-stand-inspection-placeholder in LIVE_VAPID_PRIVATE_KEY; "
+        "no-I/O request expectation; not credential material."
+    )
+    return record
+
+
+@pytest.mark.parametrize(
+    "today",
+    [verifier.date(2026, 10, 20), verifier.date(2027, 1, 10)],
+)
+def test_public_compose_sentinel_matches_only_approved_identity(
+    today: verifier.date,
+) -> None:
+    record = _public_compose_sentinel_record()
+    identity = record["identity"]
+
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(record), today=today
+    ) == {
+        verifier.FindingIdentity(
+            identity["path"],
+            identity["type"],
+            bytes(identity["hashed_secret_bytes"]).hex(),
+            1,
+        )
+    }
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "path",
+        "type",
+        "value",
+        "category",
+        "evidence",
+        "approval",
+        "extended-expiry",
+    ],
+)
+def test_public_compose_sentinel_refuses_scope_mutation(change: str) -> None:
+    record = _public_compose_sentinel_record()
+    if change == "path":
+        record["identity"]["path"] = "tests/other.py"
+    elif change == "type":
+        record["identity"]["type"] = "Basic Auth Credentials"
+    elif change == "value":
+        record["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif change == "category":
+        record["category"] = "ci_test_contract_sentinel"
+    elif change == "evidence":
+        record["evidence"] = "Reviewed public fixture."
+    elif change == "approval":
+        record["approval_status"] = "pending"
+    else:
+        record["expires_on"] = "2027-01-11"
+
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record),
+            today=verifier.date(2026, 10, 20),
+        )
+
+
+def test_public_compose_sentinel_expires_after_approved_date() -> None:
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(_public_compose_sentinel_record()),
+            today=verifier.date(2027, 1, 11),
+        )
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        "public Compose inspection test sentinel",
+        "live-stand-inspection-placeholder",
+        "LIVE_VAPID_PRIVATE_KEY",
+        "no-I/O request expectation",
+        "not credential material",
+    ],
+)
+def test_public_compose_sentinel_requires_each_semantic_marker(marker: str) -> None:
+    record = _public_compose_sentinel_record()
+    evidence = record["evidence"]
+    start = evidence.casefold().index(marker.casefold())
+    record["evidence"] = evidence[:start] + evidence[start + len(marker) :]
+
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record),
+            today=verifier.date(2026, 10, 20),
+        )
+
+
+def test_public_compose_sentinel_identity_matches_fixed_source_literal() -> None:
+    record = _public_compose_sentinel_record()
+    source_path = Path(__file__).resolve().parents[1] / record["identity"]["path"]
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
+    values = [
+        value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Dict)
+        for key, value in zip(node.keys, node.values, strict=True)
+        if isinstance(key, ast.Constant) and key.value == "LIVE_VAPID_PRIVATE_KEY"
+    ]
+    assert len(values) == 1
+    value = values[0]
+    assert isinstance(value, ast.Constant)
+    assert value.value == "live-stand-inspection-placeholder"
+    digest = hashlib.sha1(value.value.encode("utf-8"), usedforsecurity=False).digest()
+    assert digest == bytes(record["identity"]["hashed_secret_bytes"])

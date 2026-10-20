@@ -203,4 +203,85 @@ describe("ScheduleMiniCalendar local date rollover", () => {
       expect(vi.getTimerCount()).toBe(timerCount)
     }
   })
+
+  it("uses the supplied clock without a ticker and preserves the controlled month", () => {
+    const beforeMidnight = new Date(2026, 5, 30, 23, 59, 45)
+    const afterMidnight = new Date(2026, 6, 1, 0, 0, 15)
+    const clickTime = new Date(2026, 6, 1, 0, 0, 25)
+    const displayedMonth = new Date(2026, 5, 1)
+    vi.setSystemTime(beforeMidnight)
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible")
+    const addEventListener = vi.spyOn(document, "addEventListener")
+    const timerCount = vi.getTimerCount()
+    const onMonthChange = vi.fn()
+    const onDayClick = vi.fn()
+    let unmount: (() => void) | undefined
+
+    try {
+      const view = render(
+        <ScheduleMiniCalendar
+          month={displayedMonth}
+          nowTick={beforeMidnight}
+          onMonthChange={onMonthChange}
+          onDayClick={onDayClick}
+        />
+      )
+      unmount = view.unmount
+
+      expect(screen.getByRole("button", { name: "June 30, 2026" })).toHaveAttribute(
+        "aria-current",
+        "date"
+      )
+      expect(vi.getTimerCount()).toBe(timerCount)
+
+      vi.setSystemTime(afterMidnight)
+      view.rerender(
+        <ScheduleMiniCalendar
+          month={displayedMonth}
+          nowTick={afterMidnight}
+          onMonthChange={onMonthChange}
+          onDayClick={onDayClick}
+        />
+      )
+
+      expect(screen.getByRole("grid", { name: "June 2026" })).toBeInTheDocument()
+      const yesterday = screen.getByRole("button", { name: "June 30, 2026" })
+      expect(yesterday).not.toHaveAttribute("aria-current")
+      expect(yesterday).not.toHaveAttribute("data-today")
+      expect(onMonthChange).not.toHaveBeenCalled()
+      expect(onDayClick).not.toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(timerCount)
+      expect(
+        addEventListener.mock.calls.filter(([type]) => type === "visibilitychange")
+      ).toHaveLength(0)
+
+      vi.setSystemTime(clickTime)
+      fireEvent.click(screen.getByRole("button", { name: "common:today" }))
+
+      expect(onMonthChange).toHaveBeenCalledExactlyOnceWith(clickTime)
+      expect(onDayClick).not.toHaveBeenCalled()
+      expect(screen.getByRole("grid", { name: "June 2026" })).toBeInTheDocument()
+
+      view.rerender(
+        <ScheduleMiniCalendar
+          month={clickTime}
+          nowTick={afterMidnight}
+          onMonthChange={onMonthChange}
+          onDayClick={onDayClick}
+        />
+      )
+
+      expect(screen.getByRole("grid", { name: "July 2026" })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "July 1, 2026" })).toHaveAttribute(
+        "aria-current",
+        "date"
+      )
+      expect(vi.getTimerCount()).toBe(timerCount)
+    } finally {
+      unmount?.()
+      addEventListener.mockRestore()
+      visibility.mockRestore()
+      expect(vi.getTimerCount()).toBe(timerCount)
+    }
+  })
 })

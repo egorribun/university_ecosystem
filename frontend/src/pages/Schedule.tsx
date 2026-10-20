@@ -396,6 +396,7 @@ function ScheduleContent() {
                   className="sticky top-20"
                   lessonDays={miniCalendarLessonDays}
                   month={miniCalendarMonth}
+                  nowTick={nowTick}
                   onMonthChange={setMiniCalendarMonth}
                   isLoading={isLoading}
                 />

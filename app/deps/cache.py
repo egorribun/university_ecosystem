@@ -4,6 +4,7 @@ import asyncio
 import fnmatch
 import hashlib
 import inspect
+import math
 import re
 import string
 import threading
@@ -134,13 +135,36 @@ class MemoryCache(BaseCache):
             ttl_seconds=float(effective_ttl),
         )
 
-        # Evict oldest if full
+        self._store_entry(key, entry, expires_at)
+        return entry
+
+    def _store_entry(self, key: str, entry: CacheEntry, expires_at: float) -> None:
         if key not in self._entries and len(self._entries) >= self._max_size:
             self._entries.popitem(last=False)
-
         self._entries[key] = (entry, expires_at)
         self._entries.move_to_end(key)
-        return entry
+
+    def _promote(
+        self, key: str, entry: CacheEntry, source_expires_at: float | None
+    ) -> None:
+        """Copy an L2 entry while retaining its absolute expiration bound."""
+        normalized_payload, _serialized = _normalize_payload(entry.payload)
+        now = time_module.time()
+        if source_expires_at is not None and source_expires_at - now < 1:
+            return
+
+        expires_at = now + self._default_ttl if self._default_ttl else 0.0
+        if source_expires_at is not None:
+            expires_at = (
+                min(expires_at, source_expires_at) if expires_at else source_expires_at
+            )
+        promoted = CacheEntry(
+            etag=entry.etag,
+            payload=normalized_payload,
+            stored_at=entry.stored_at,
+            ttl_seconds=entry.ttl_seconds,
+        )
+        self._store_entry(key, promoted, expires_at)
 
     async def invalidate(self, *keys: str) -> None:
         if not keys:
@@ -657,19 +681,48 @@ class TieredCache(BaseCache):
         self.l2 = l2
 
     async def get(self, key: str) -> CacheEntry | None:
-        # Check L1 first
         entry = await self.l1.get(key)
         if entry is not None:
             return entry
 
-        # Fallback to L2
         entry = await self.l2.get(key)
-        if entry is not None:
-            # Backfill L1
-            await self.l1.set(key, entry.payload)
-            return entry
+        if entry is None:
+            return None
 
-        return None
+        if (
+            isinstance(entry.stored_at, bool)
+            or not isinstance(entry.stored_at, int | float)
+            or isinstance(entry.ttl_seconds, bool)
+            or not isinstance(entry.ttl_seconds, int | float)
+            or entry.ttl_seconds < 0
+        ):
+            return None
+        try:
+            if not math.isfinite(entry.stored_at) or not math.isfinite(
+                entry.ttl_seconds
+            ):
+                return None
+            source_expires_at = (
+                entry.stored_at + entry.ttl_seconds if entry.ttl_seconds else None
+            )
+            if source_expires_at is not None and not math.isfinite(source_expires_at):
+                return None
+        except OverflowError:
+            return None
+
+        if source_expires_at is not None:
+            remaining = source_expires_at - time_module.time()
+            if remaining <= 0:
+                return None
+            if remaining < 1:
+                return entry
+
+        if type(self.l1) is MemoryCache:
+            self.l1._promote(key, entry, source_expires_at)
+        elif source_expires_at is None:
+            # Other backends cannot express an absolute promotion deadline.
+            await self.l1.set(key, entry.payload)
+        return entry
 
     async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:
         # Set in both layers

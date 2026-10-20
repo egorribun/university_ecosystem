@@ -153,3 +153,13 @@ AUD-116's exact existing-endpoint smoke command passes in job 118571825464 at 10
 Tests-first additions cover actual Grafana signed-shift configuration (three predicted REDs), Python-incompatible release versions with four-file no-write checks (two predicted REDs, stable/rc controls), and actual default/override Helm listener alignment (one predicted RED/one control). The pure-Node release suite joins test:wasm exactly once with a registration guard. No dependency, release or deployment changes.
 
 Only backend line 155 changes: retain all 83 old node arguments, add three small nodes and two duration-reporting options, and move nine existing/new regressions earlier. The 631-line span, protected lines and 300-second budget remain. GC/database/task cleanup stays intact; the order change is evidence scheduling, not a proven speedup. Verified ledger: 117/512.
+
+## 2026-10-20 11:00 UTC — verified boundaries and fail-closed follow-up
+
+AUD-106/114/117 complete their respective named/static evidence and bring the lower bound to 120/512. Actual 7735 RED supports the Grafana sign correction (three failures/174 controls), release-version Python-validity gate (two failures/622 controls), Helm PORT alignment (default PASS/override FAIL), clock outcome tracking and bounded cache promotion. New corrections remain unaccepted until their own GREEN.
+
+Keep the existing SemVer predicate, adding an independently documented Python-validity intersection and 33 compatibility/rejection cases; no normalization, dependency or process is introduced. Grafana changes only two signs; Helm adds only the quoted PORT environment value. Exact formatter cleanup is complete.
+
+Owner approval at 10:46 UTC authorizes one fixed public Compose sentinel disposition through 2027-01-10, not a broad exclusion. Preserve the first 263 records, append one, and retain baseline 319 unchanged. Sixteen new policy cases and the complete existing verifier suite run in a separate frozen/no-sync Contract step even after tests-first profile failures. Existing pinned scanning still must prove the actual match.
+
+The profile protection suite is selected in the existing ten-minute Contract job without changing profile membership. Backend line 155 adds eight small cache-control nodes while preserving all old selections and its budget/line coordinates. This is not a demonstrated runtime optimization. Work pauses at the owner's checkpoint; e150 remains the last fully accepted CI source.

@@ -267,6 +267,19 @@ for the MVP release; the current plan is
      remain unchanged. The policy records do not establish current-source validation or
      hosted-check results.
 
+     On 2026-10-20 UTC, the owner approved exactly one additional public Compose
+     inspection test sentinel at `tests/test_live_nats_transport.py`, detector
+     `Secret Keyword`. Its exact path/type/finding-digest identity is recorded in
+     the finite `public_compose_inspection_test_sentinel` category, extending
+     263 prior records to 264 while preserving all prior records. Required
+     semantic evidence and a fixed maximum expiry of 2027-01-10 bind this
+     singleton; changed identities, reclassification and expiry extension remain
+     fail-closed. No raw digest is duplicated here. This authorizes no baseline
+     edit, pragma, broad exclusion, credential change or other disposition.
+     The baseline remains 319 identities, with all 78 required context/app pairs,
+     blocking CodeQL and the finite migration exception unchanged. Source
+     integration is not scanner or test evidence; each hosted gate still applies.
+
    - `gitleaks` (repo secret scanning).
    - `bandit` (Python security static analysis).
    - `mypy` (strict type-checking for backend auth, services, api, core, repositories, graphql).

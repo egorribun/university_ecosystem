@@ -10,7 +10,7 @@ import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping
 from contextlib import asynccontextmanager, suppress
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 import uvicorn
@@ -484,6 +484,9 @@ class WorkerMetrics:
     _last_run: float | None = None
     _last_success: float | None = None
     _last_failure: float | None = None
+    _last_cycle_succeeded: bool = field(
+        default=True, init=False, repr=False, compare=False
+    )
 
     def mark_startup(self) -> None:
         now = time.time()
@@ -510,6 +513,7 @@ class WorkerMetrics:
         else:
             self.failures_total.inc()
             self._last_failure = now
+        self._last_cycle_succeeded = success
 
     @property
     def last_run(self) -> float | None:
@@ -525,11 +529,7 @@ class WorkerMetrics:
 
     @property
     def status(self) -> str:
-        if self._last_failure is not None and (
-            self._last_success is None or self._last_failure > self._last_success
-        ):
-            return "degraded"
-        return "ok"
+        return "ok" if self._last_cycle_succeeded else "degraded"
 
 
 def create_worker_metrics(name: str) -> WorkerMetrics:

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react"
 import { Camera as PhotoCamera } from "lucide-react"
 import { Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
 import SmartImage from "@/components/media/SmartImage"
@@ -65,6 +65,7 @@ export function NewsDetailEditDialog({
   onError,
 }: NewsDetailEditDialogProps) {
   const { t } = useTranslation(["news", "common"])
+  const dialogTitleId = useId()
   const queryClient = useQueryClient()
 
   const [editData, setEditData] = useState(initialData)
@@ -198,8 +199,14 @@ export function NewsDetailEditDialog({
   }
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="lg" fullWidth>
-      <DialogTitle>{t("news:dialogs.edit.title")}</DialogTitle>
+    <Dialog
+      open={open}
+      onClose={handleClose}
+      maxWidth="lg"
+      fullWidth
+      ariaLabelledBy={dialogTitleId}
+    >
+      <DialogTitle id={dialogTitleId}>{t("news:dialogs.edit.title")}</DialogTitle>
       <DialogContent className="space-y-6 pt-4">
         {!sourceReady || sourceLoading || sourceLoadFailed ? (
           <div role={sourceLoadFailed ? "alert" : "status"}>

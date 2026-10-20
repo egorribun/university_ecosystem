@@ -35,8 +35,8 @@ datasources:
         tags: ['service', 'instance']
         mappedTags: [{ key: 'service.name', value: 'service' }]
         mapTagNamesEnabled: true
-        spanStartTimeShift: '1h'
-        spanEndTimeShift: '-1h'
+        spanStartTimeShift: '-1h'
+        spanEndTimeShift: '1h'
         filterByTraceID: true
         filterBySpanID: true
       tracesToMetrics:

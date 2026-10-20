@@ -7395,6 +7395,40 @@
       "reviewed_on": "2026-10-18",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_live_nats_transport.py",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          74,
+          70,
+          48,
+          200,
+          151,
+          59,
+          103,
+          95,
+          251,
+          150,
+          7,
+          200,
+          234,
+          230,
+          69,
+          166,
+          253,
+          9,
+          215,
+          53
+        ]
+      },
+      "category": "public_compose_inspection_test_sentinel",
+      "evidence": "Public Compose inspection test sentinel live-stand-inspection-placeholder in LIVE_VAPID_PRIVATE_KEY; no-I/O request expectation; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-20",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

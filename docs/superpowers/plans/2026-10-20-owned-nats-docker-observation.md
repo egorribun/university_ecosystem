@@ -169,3 +169,11 @@ The focused 44a9d818 cohort has 990 PASS / eight known FAIL in 236.01 seconds. E
 9cface Core job 118570418071 completes 36 PASS / two fixed SKIP with successful owned-container cleanup and receipt upload. Artifact 12256873702 has digest fb48be7fd1efb05e81362264bffbd9ab5547db49bef36afdf389567f4744e0c1. This is not the separate NATS outage runtime or full-smoke proof.
 
 The focused backend cohort times out near 98% under the unchanged 300-second limit; no parser/Compose/daemon selections are removed. Duration reporting and small-case ordering do not weaken fixture cleanup or establish a performance fix. No coordinator/runtime/CLI/outage activation, new process waiver or policy change occurs. Public-sentinel approval remains pending, baseline 319/dispositions 263 unchanged. Latest ledger: 117/512; e150 remains last fully accepted CI.
+
+## 2026-10-20 11:00 UTC — singleton approval and unchanged runtime hold
+
+The owner explicitly approved the exact public inspection-sentinel disposition at 10:46 UTC. One record extends 263 to 264, with exact path/type/digest admission, semantic markers, cross-category refusal and maximum expiry 2027-01-10. Baseline 319 is byte-identical. Source review and AST/hash binding do not replace the next hash-pinned scanner result; actual matching remains unverified until that lane executes.
+
+No NATS coordinator, CLI collection, runtime admission or outage step is activated. The intentional outage hold remains. The 7735 Core run has 36 PASS / two fixed SKIP, successful owned cleanup and receipt 12259570447, digest b6d9df2425cf496981f70c7aee943953f8836ce969e0b5ef9843a64c8145a3c6. This is not NATS outage/full-smoke acceptance.
+
+The 124 pure correlation/preparation/decode cases are merely candidates for a finite isolation profile; only new protection expectations are added, not cleanup exemptions. Observation, collector, filesystem, lock and runtime cases are excluded. Current verified audit lower bound 120/512; e150 remains the last fully accepted CI. Pause follows the owner's request, with no autonomous continuation until they return.

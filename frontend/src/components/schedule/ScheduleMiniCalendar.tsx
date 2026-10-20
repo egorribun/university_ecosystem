@@ -2,12 +2,15 @@ import { useMemo, useState, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { cn } from "@/utils/cn"
+import { useScheduleClock } from "@/hooks/useScheduleClock"
 
 interface ScheduleMiniCalendarProps {
   /** Days that have lessons (0-based day-of-month) */
   lessonDays?: Set<number>
   /** Current month to display (default: now) */
   month?: Date
+  /** Shared instant; standalone calendars own their clock. */
+  nowTick?: Date
   onMonthChange?: (date: Date) => void
   /** Called when a day is clicked */
   onDayClick?: (date: Date) => void
@@ -19,14 +22,15 @@ interface ScheduleMiniCalendarProps {
 export function ScheduleMiniCalendar({
   lessonDays = new Set(),
   month,
+  nowTick,
   onMonthChange,
   onDayClick,
   isLoading = false,
   className,
 }: ScheduleMiniCalendarProps) {
   const { t, i18n } = useTranslation(["common"])
-  // CQ-71-04: stable reference — avoid new Date() on every render
-  const [now] = useState(() => new Date())
+  const localNow = useScheduleClock(nowTick === undefined)
+  const now = nowTick ?? localNow
 
   // Controlled + uncontrolled month support
   const [internalMonth, setInternalMonth] = useState(() => month ?? now)

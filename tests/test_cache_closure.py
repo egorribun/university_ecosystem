@@ -413,3 +413,233 @@ async def test_tiered_backfill_does_not_extend_source_or_l1_expiry(
 
         now = expires_at
         assert await l1.get("bounded-entry") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("source_ttl", "l1_ttl", "fill_at", "returned", "promoted", "expires_at"),
+    [
+        pytest.param(10, 60, 105.0, True, True, 110.0, id="source-bound"),
+        pytest.param(10, 2, 101.0, True, True, 103.0, id="short-l1"),
+        pytest.param(10, 0, 105.0, True, True, 110.0, id="unbounded-l1"),
+        pytest.param(10, 60, 109.0, True, True, 110.0, id="exact-one-second"),
+        pytest.param(10, 60, 109.5, True, False, None, id="subsecond"),
+        pytest.param(0, 2, 105.0, True, True, 107.0, id="source-zero"),
+        pytest.param(0, 0, 105.0, True, True, None, id="both-zero"),
+        pytest.param(10, 60, 110.0, False, False, None, id="exact-expiry"),
+        pytest.param(10, 60, 110.1, False, False, None, id="expired"),
+        pytest.param(-1, 60, 105.0, False, False, None, id="negative"),
+        pytest.param("nan", 60, 105.0, False, False, None, id="nonfinite"),
+    ],
+)
+async def test_tiered_redis_envelope_promotion_preserves_expiry(
+    source_ttl: int | str,
+    l1_ttl: int,
+    fill_at: float,
+    returned: bool,
+    promoted: bool,
+    expires_at: float | None,
+) -> None:
+    from app.deps import cache
+
+    now = fill_at
+    payload = {"value": "original"}
+    l1 = cache.MemoryCache(default_ttl=l1_ttl)
+    l2 = cache.RedisCache("redis://redis.invalid:6379/0", default_ttl=10)
+    client = AsyncMock()
+    client.get.return_value = cache.orjson.dumps(
+        {
+            "etag": "source-etag",
+            "payload": payload,
+            "stored_at": 100.0,
+            "ttl_seconds": source_ttl,
+        }
+    )
+    l2._client = client
+    tiered = cache.TieredCache(l1, l2)
+    clock = SimpleNamespace(time=lambda: now, perf_counter=lambda: now)
+
+    with (
+        patch.object(cache, "time_module", clock),
+        patch.object(
+            cache.Redis,
+            "from_url",
+            side_effect=AssertionError("unexpected Redis connection"),
+        ) as connect,
+    ):
+        result = await tiered.get("bounded-entry")
+        assert (result is not None) is returned
+        if result is not None:
+            assert result.payload == payload
+
+        local = await l1.get("bounded-entry")
+        assert (local is not None) is promoted
+        if local is not None:
+            assert local.payload == payload
+            assert local.etag == "source-etag"
+            assert local.stored_at == 100.0
+            assert local.ttl_seconds == float(source_ttl)
+
+        if expires_at is not None:
+            now = expires_at - 0.001
+            assert await l1.get("bounded-entry") is not None
+            now = expires_at
+            assert await l1.get("bounded-entry") is None
+        elif promoted:
+            now = 1000.0
+            assert await l1.get("bounded-entry") is not None
+
+    connect.assert_not_called()
+    client.get.assert_awaited_once_with("bounded-entry")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source_ttl", [0.0, 10.0])
+async def test_tiered_non_memory_promotion_requires_unbounded_source(
+    source_ttl: float,
+) -> None:
+    from app.deps import cache
+
+    entry = cache.CacheEntry("source", {"value": 1}, 100.0, source_ttl)
+    l1 = AsyncMock()
+    l1.get.return_value = None
+    l2 = AsyncMock()
+    l2.get.return_value = entry
+    tiered = cache.TieredCache(l1, l2)
+
+    with patch.object(cache, "time_module", SimpleNamespace(time=lambda: 105.0)):
+        assert await tiered.get("key") is entry
+
+    if source_ttl:
+        l1.set.assert_not_awaited()
+    else:
+        l1.set.assert_awaited_once_with("key", entry.payload)
+
+
+@pytest.mark.asyncio
+async def test_tiered_rechecks_expiry_after_awaiting_l2() -> None:
+    from app.deps import cache
+
+    now = 109.0
+    entry = cache.CacheEntry("source", {"value": 1}, 100.0, 10.0)
+    l1 = cache.MemoryCache(default_ttl=60)
+    l2 = AsyncMock()
+
+    async def read_after_expiry(key: str) -> cache.CacheEntry:
+        nonlocal now
+        assert key == "key"
+        now = 110.0
+        return entry
+
+    l2.get.side_effect = read_after_expiry
+    tiered = cache.TieredCache(l1, l2)
+
+    with patch.object(cache, "time_module", SimpleNamespace(time=lambda: now)):
+        assert await tiered.get("key") is None
+        assert await l1.get("key") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("stored_at", "ttl"),
+    [
+        pytest.param(True, 10.0, id="boolean-time"),
+        pytest.param("100", 10.0, id="text-time"),
+        pytest.param(100.0, True, id="boolean-ttl"),
+        pytest.param(100.0, "10", id="text-ttl"),
+        pytest.param(float("nan"), 10.0, id="nonfinite-time"),
+        pytest.param(1e308, 1e308, id="overflowed-deadline"),
+        pytest.param(10**1000, 10.0, id="nonrepresentable-time"),
+    ],
+)
+async def test_tiered_refuses_malformed_source_metadata(stored_at, ttl) -> None:
+    from app.deps import cache
+
+    l1 = cache.MemoryCache(default_ttl=60)
+    l2 = AsyncMock()
+    l2.get.return_value = cache.CacheEntry("source", {"value": 1}, stored_at, ttl)
+    tiered = cache.TieredCache(l1, l2)
+
+    with patch.object(cache, "time_module", SimpleNamespace(time=lambda: 105.0)):
+        assert await tiered.get("key") is None
+        assert await l1.get("key") is None
+
+
+@pytest.mark.asyncio
+async def test_tiered_promotion_rechecks_after_normalization() -> None:
+    from app.deps import cache
+
+    now = 109.0
+    entry = cache.CacheEntry("source", {"value": 1}, 100.0, 10.0)
+    l1 = cache.MemoryCache(default_ttl=60)
+    l2 = AsyncMock()
+    l2.get.return_value = entry
+    tiered = cache.TieredCache(l1, l2)
+    normalize = cache._normalize_payload
+
+    def normalize_after_expiry(payload):
+        nonlocal now
+        result = normalize(payload)
+        now = 110.0
+        return result
+
+    with (
+        patch.object(cache, "time_module", SimpleNamespace(time=lambda: now)),
+        patch.object(cache, "_normalize_payload", normalize_after_expiry),
+    ):
+        assert await tiered.get("key") is entry
+        assert await l1.get("key") is None
+
+
+@pytest.mark.asyncio
+async def test_tiered_promotion_preserves_lru_and_payload_ownership() -> None:
+    from app.deps import cache
+
+    l1 = cache.MemoryCache(default_ttl=60, max_size=10)
+    l2 = cache.MemoryCache(default_ttl=10)
+    tiered = cache.TieredCache(l1, l2)
+
+    with patch.object(cache, "time_module", SimpleNamespace(time=lambda: 100.0)):
+        for index in range(10):
+            await l1.set(f"existing-{index}", {"index": index})
+        assert await l1.get("existing-0") is not None
+        original = await l2.set("promoted", {"nested": [1]})
+        assert await tiered.get("promoted") is original
+
+        local = await l1.get("promoted")
+        assert local is not None
+        assert local.payload is not original.payload
+        assert local.payload["nested"] is not original.payload["nested"]
+        local.payload["nested"].append(2)
+        assert original.payload == {"nested": [1]}
+        assert await l1.get("existing-1") is None
+        assert await l1.get("existing-0") is not None
+        assert len(l1._entries) == 10
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source_ttl", [0.0, 10.0])
+async def test_tiered_does_not_bypass_memory_subclass_set(source_ttl: float) -> None:
+    from app.deps import cache
+
+    calls: list[str] = []
+
+    class CustomMemoryCache(cache.MemoryCache):
+        async def set(self, key, payload, ttl=None):
+            calls.append(key)
+            return await super().set(key, payload, ttl)
+
+    l1 = CustomMemoryCache(default_ttl=60)
+    l2 = AsyncMock()
+    entry = cache.CacheEntry("source", {"value": 1}, 100.0, source_ttl)
+    l2.get.return_value = entry
+    tiered = cache.TieredCache(l1, l2)
+
+    with patch.object(cache, "time_module", SimpleNamespace(time=lambda: 105.0)):
+        assert await tiered.get("key") is entry
+        if source_ttl:
+            assert calls == []
+            assert await l1.get("key") is None
+        else:
+            assert calls == ["key"]
+            assert await l1.get("key") is not None

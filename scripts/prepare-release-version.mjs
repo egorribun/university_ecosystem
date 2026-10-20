@@ -5,6 +5,23 @@ import { fileURLToPath } from "node:url";
 const SEMVER_PATTERN =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 
+// Packaging 26.0's _VERSION_PATTERN, without captures or Python-only
+// possessive quantifiers. The existing SemVer gate remains independently
+// required. This checks validity, not cross-ecosystem ordering equivalence.
+// https://github.com/pypa/packaging/blob/26.0/src/packaging/version.py
+const PYTHON_VERSION_PATTERN = new RegExp(
+  [
+    String.raw`^v?(?:[0-9]+!)?[0-9]+(?:\.[0-9]+)*`,
+    String.raw`(?:[._-]?(?:alpha|a|beta|b|preview|pre|c|rc)[._-]?[0-9]*)?`,
+    String.raw`(?:-[0-9]+|[._-]?(?:post|rev|r)[._-]?[0-9]*)?`,
+    String.raw`(?:[._-]?dev[._-]?[0-9]*)?`,
+    String.raw`(?:\+[a-z0-9]+(?:[._-][a-z0-9]+)*)?`,
+    // Unlike $, this cannot match before a trailing newline.
+    String.raw`(?![\s\S])`,
+  ].join(""),
+  "iu",
+);
+
 function replaceExactlyOnce(content, pattern, replacement, label) {
   const matches = [...content.matchAll(pattern)];
   if (matches.length !== 1) {
@@ -44,6 +61,12 @@ function updatePackageDocument(
 export function prepareReleaseVersion(repositoryRoot, version) {
   if (!SEMVER_PATTERN.test(version)) {
     throw new Error(`Invalid semantic version: ${version}`);
+  }
+
+  if (!PYTHON_VERSION_PATTERN.test(version)) {
+    throw new Error(
+      `Version is not valid for Python package metadata: ${version}`,
+    );
   }
 
   const targets = {

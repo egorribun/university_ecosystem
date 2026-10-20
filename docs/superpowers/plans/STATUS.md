@@ -437,3 +437,49 @@ Only backend workflow line 155 gains the three small Helm/worker/cache nodes; it
 Baseline 319, dispositions 263, pending exact public-sentinel approval, all 78 required context/app pairs, blocking CodeQL, the finite migration exception and disabled NATS outage boundary remain unchanged. e150 remains the last fully accepted CI source. The new regression predictions are not accepted findings.
 
 Verified lower bound: 117/512 (22.9%). Only AUD-115 and AUD-116 are added at this checkpoint; the new tests-first findings remain unaccepted.
+
+## 2026-10-20 11:00 UTC — verified 120-ID checkpoint and bounded corrections
+
+Source 7735f048c01ce0a2ada8238200ede3a3f4450ffb and checkout 3354d611121400ebf98e79596b2fa119f553c0ca have identical tree 99e3cec6eb1ff16706f85ac447b2f048a4e39a25.
+
+- AUD-106 is accepted: Node job 118580011731 passes all nine actual ESLint path/exemption cases at 10:33:21 UTC; static job 118580011888 succeeds and confirms clean formatting. The temporary diagnostic and its imports are gone.
+- AUD-114 is accepted: job 118580011789 passes all twenty-six News mutation-contract cases at 10:33:05 UTC, and the same clean static gate verifies the exact formatter cleanup. This covers session-scoped dirty/pristine synchronization and image reset, not completion of in-flight saves across session changes.
+- AUD-117 is accepted: job 118579468121 explicitly passes all four direct/tiered healthy/down Redis-wrapper cases at 10:31:53–54 UTC. These use actual cache wrappers with controlled clients, not a real Redis outage. The eight current-count/index acceptance/rejection cases also pass; full 208/eight runtime acceptance is not claimed.
+
+Core job 118578250523 completes 36 PASS / two fixed SKIP at 10:44:56 UTC with successful owned-container cleanup. Receipt artifact 12259570447 has digest b6d9df2425cf496981f70c7aee943953f8836ce969e0b5ef9843a64c8145a3c6.
+
+### Observed RED and corrections awaiting GREEN
+
+The focused backend prints a complete 1005-case summary: 1000 PASS / five FAIL in 294.57 seconds, then the step reaches its unchanged 300-second limit during exit. Failures are the intentional outage hold, AUD-122's override, AUD-125's equal/backward clocks and AUD-126's late backfill. This is not a successfully completed gate. Duration reporting exposes repeated 0.44–0.66-second teardown costs, without attributing them exclusively to GC or database cleanup.
+
+- AUD-119: frontend job 118580011789 has exactly three calendar failures: two stale local-midnight markers and missing parent clock forwarding. Reuse the existing visibility-aware clock, disable its local ticker when a parent instant is supplied, and leave selected-month state independent. Add one supplied-clock control for no timer/listener, controlled-month preservation and actual click-time Today semantics.
+- AUD-120: Contract job 118579055243 reports three inverted-range failures / 174 PASS. Change only the two one-hour shift signs in actual Grafana provisioning. No running Grafana or deployment proof is claimed.
+- AUD-121: Node job 118580011731 reports 622 PASS / exactly two Python-incompatible version failures. Retain the existing SemVer gate and intersect it with the reviewed packaging 26.0 validity grammar, including absolute end-of-input. Do not normalize accepted strings or promise equal cross-ecosystem ordering. Thirty-three additional compatibility/rejection cases preserve all four target files and the existing SemVer admission boundary; no new dependency or process is introduced.
+- AUD-122: the default-port render passes and the 3100 override fails because Node remains at 3000. Set the container PORT environment value from the same quoted chart setting, preserving Service and named-probe behavior.
+- AUD-124: five accessible-name failures occur across News edit, Add/Edit lesson and subject/fallback lesson details; both new EventCreate controls pass within its fifty-case suite. Associate the four missing visible titles with unconditional instance-specific useId values. EventCreate, shared Dialog, focus behavior and permissions remain unchanged. The original truncated target-list provenance remains explicit.
+- AUD-125: equal/backward timestamps report ok after failure while the increasing-clock control passes. Track the last recorded outcome in a non-init internal field; preserve timestamps, metric updates, constructor parameters and startup behavior. This is not a new concurrency-ordering guarantee.
+- AUD-126: late L2 backfill survives past source expiry; the shorter-L1 control passes. Concrete MemoryCache promotion now caps an absolute expiry by both source deadline and local TTL, retaining source metadata and normalized payload ownership/LRU. Expired/invalid metadata misses; subsecond entries are returned without promotion. Non-concrete L1 types conservatively skip finite promotion and retain the legacy TTL-zero set path, including subclass overrides. Twenty-five supplemental cases plus the existing compatibility control cover Redis-envelope parsing, boundary clocks, invalid metadata, payload ownership and LRU without network. Remote PTTL, NATS per-entry expiry, clock skew and freshness at eventual consumption are not established.
+
+Only backend workflow line 155 gains the eight small cache-control nodes. Its 631-line span, protected lines, all existing selections and the 300-second budget remain unchanged.
+
+### Tests-first isolation-profile experiment, not an optimization claim
+
+Independent source review identifies 27 exact pure functions: four correlation functions (24 cases) and twenty-three daemon/Compose preparation-decoding functions (100 cases). The 7735 job actually passes all 124 underlying cases. Their reviewed callgraphs use fresh in-memory data and guarded pure validators; observation/collector, filesystem, lease and application/database cases are excluded. Global autouse infrastructure still exists.
+
+Add only the profile protection expectations first: 27 positive exact path/name pairs and six negative sibling/path controls, preserving every old case. The resulting 145-case protection suite predicts 55 failures until a separately reviewed profile change; no profile membership or GC/database/task cleanup changes in this commit. Select it in the existing ten-minute Contract job rather than enlarging the near-limit backend cohort. A future admission must retain task cancellation, ordinary GC and all nonadmitted cleanup, and still needs measured runtime evidence.
+
+### Owner-approved singleton disposition
+
+At 10:46 UTC the owner explicitly approved the previously requested single public Compose inspection sentinel at tests/test_live_nats_transport.py, detector Secret Keyword, through 2027-01-10. Append one exact path/type/digest record in the finite public_compose_inspection_test_sentinel category: 263 prior objects and their order are preserved, giving 264. Its semantic markers, cross-category refusal and fixed maximum expiry are independently reviewed. No baseline entry, pragma, broad exclusion, other identity or credential change is authorized.
+
+Sixteen additive policy cases cover the exact identity, each semantic marker, scope mutations, inclusive expiry and source-literal/SHA-1 binding. The latter is dependency-free and is not represented as detector execution. The full existing verifier test file runs in a separate Contract-job step even when the tests-first consumer/profile step fails. No new dependency or job budget is added. The unchanged hash-pinned detect-secrets 1.5.0 lane must still prove actual matching of the authorized finding and absence of unmatched findings.
+
+The .secrets.baseline blob and its 319 identities remain unchanged. All 78 required context/app pairs, blocking CodeQL, the finite migration exception and disabled NATS outage boundary remain intact. e150 remains the last fully accepted CI source; this checkpoint is not release or deployment acceptance.
+
+Verified lower bound: 120/512 (23.4%). Only AUD-106, AUD-114 and AUD-117 are added here; the seven new corrections and isolation-profile experiment remain unaccepted pending their own evidence.
+
+### Owner-requested safe pause — 2026-10-20 11:02 UTC
+
+The owner requested a checkpoint and pause before their own work. This commit preserves the prepared corrections and authorized singleton policy update; it is not a green/release checkpoint. New source checks, scanner matching and the seven fixes still require their own hosted results. The tests-first isolation-profile cases deliberately remain RED until a future reviewed implementation. No cleanup/profile membership change, NATS outage activation, merge or deployment is performed.
+
+After publishing this checkpoint, the assistant stops autonomous branch writes and follow-up work. The normal GitHub Actions triggered by the commit may still be queued/running; their completion must not be assumed. The preceding 7735 owned Core run is already complete with verified cleanup. Resume only on the owner's new instruction, first reading the fresh egorribun HEAD, subsequent commits and current check results; do not overwrite their intervening changes.

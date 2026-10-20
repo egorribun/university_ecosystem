@@ -52,6 +52,8 @@ spec:
               containerPort: {{ .Values.frontend.service.port }}
               protocol: TCP
           env:
+            - name: PORT
+              value: {{ .Values.frontend.service.port | quote }}
             # Node SSR requests and JWKS discovery use the in-cluster backend;
             # browser requests remain relative and flow through the gateway.
             - name: BACKEND_ORIGIN

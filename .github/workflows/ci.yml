@@ -1566,12 +1566,18 @@ jobs:
         # Contract coverage includes test_file_processor_contract.py (ProcessResult
         # callback schema) alongside the existing ws-hub NATS contract.
         run: |
-          uv run pytest tests/contracts/ -v \
+          uv run pytest tests/contracts/ tests/test_live_stand_cleanup_profile_contract.py -v \
             --tb=short \
             -p no:cacheprovider \
             -k "not integration"
         env:
           PACT_DO_NOT_TRACK: "true"
+
+      - name: Verify exact security disposition contracts
+        if: ${{ !cancelled() }}
+        run: |
+          uv run --frozen --no-sync pytest tests/test_verify_secrets_baseline.py -v \
+            --tb=short -p no:cacheprovider
 
   # Compare frontend MSW mocks with the authoritative OpenAPI contract.
   # This hermetic drift check remains a required PR/main-push gate.

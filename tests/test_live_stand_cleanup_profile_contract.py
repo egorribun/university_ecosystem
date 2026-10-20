@@ -153,6 +153,114 @@ _TARGET_CASES = (
         "tests/test_backup_paired_snapshot_restore.py",
         "test_application_storage_key_rejects_keys_outside_app_contract",
     ),
+    (
+        "tests/test_owned_nats_correlation.py",
+        "test_http_message_must_match_intent_and_have_a_canonical_id",
+    ),
+    (
+        "tests/test_owned_nats_correlation.py",
+        "test_single_event_requires_exact_type_and_aggregate",
+    ),
+    (
+        "tests/test_owned_nats_correlation.py",
+        "test_each_payload_field_is_independently_bound_to_the_message",
+    ),
+    (
+        "tests/test_owned_nats_correlation.py",
+        "test_missing_payload_fields_are_not_replaced_by_defaults",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_daemon_request_uses_only_explicit_pins",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_daemon_request_refuses_unsupported_pins",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_daemon_decode_matches_exact_private_metadata",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_daemon_decode_refuses_nonexit_outcomes",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_daemon_decode_refuses_process_or_payload_ambiguity",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_daemon_decode_refuses_missing_or_different_pin",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_daemon_boundaries_refuse_unusable_deadline",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_daemon_boundaries_refuse_postcheck_expiry",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_daemon_boundaries_share_original_deadline",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_daemon_private_fields_are_not_represented",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_compose_request_uses_exact_in_place_pins_and_private_environment",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_compose_decode_matches_independent_resource_projection",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_compose_boundaries_refuse_unadmitted_owner",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_compose_prepare_refuses_unreviewed_layout",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_compose_decode_refuses_process_evidence",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_compose_decode_refuses_ambiguous_or_different_json",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_compose_boundaries_keep_the_shared_deadline",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_compose_prepare_snapshots_inputs_before_clock_callback",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_compose_decode_retains_fingerprint_across_clock_callback",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_compose_boundaries_refuse_missing_exact_class_fields",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_compose_decode_refuses_malformed_process_field_types",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_compose_decode_refuses_deeply_nested_private_json",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_compose_decode_enforces_exact_json_container_depth",
+    ),
 )
 _NEAR_MISS_CASES = (
     (
@@ -166,6 +274,30 @@ _NEAR_MISS_CASES = (
     (
         "tests/test_cwv_contract_vectors.py",
         "test_route_group_allowlist_is_complete_and_normalizes_url_delimiters_near_miss",
+    ),
+    (
+        "tests/test_owned_nats_correlation.py",
+        "test_exact_query_must_return_one_event_without_latest_row_fallback",
+    ),
+    (
+        "tests/test_owned_nats_outage.py",
+        "test_each_payload_field_is_independently_bound_to_the_message",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_compose_observation_collects_exact_request_under_shared_deadline",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_daemon_observation_collects_exact_request_once",
+    ),
+    (
+        "tests/test_live_nats_transport.py",
+        "test_daemon_decode_matches_exact_private_metadata_near_miss",
+    ),
+    (
+        "tests/test_live_stand.py",
+        "test_daemon_decode_matches_exact_private_metadata",
     ),
 )
 _TARGET_NAME = _TARGET_CASES[0][1]
