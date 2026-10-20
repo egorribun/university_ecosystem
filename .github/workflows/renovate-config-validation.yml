@@ -143,7 +143,12 @@ jobs:
                       and artifact["size"] > 0 and artifact["size"] == entry["size"],
                       "Artifact size mismatch")
               uploaded = timestamp(entry["upload_time_iso_8601"])
-              require(timestamp(artifact["upload-time"]) == uploaded
+              locked_upload = timestamp(artifact["upload-time"])
+              if locked_upload != uploaded or uploaded > timestamp(pillow_cutoff):
+                  print(f"Artifact timestamp diagnostic: index={index} "
+                        f"lock={locked_upload.isoformat()} pypi={uploaded.isoformat()} "
+                        f"cutoff={pillow_cutoff}")
+              require(locked_upload == uploaded
                       and uploaded <= timestamp(pillow_cutoff), "Artifact timestamp mismatch")
               if index == 0:
                   require(name == "pillow-13.0.0.tar.gz" and entry["packagetype"] == "sdist",
