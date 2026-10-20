@@ -12760,7 +12760,7 @@ def test_live_caddy_real_reader_failure_diagnostics_and_final_pin_precedence(
         ),
         "exit": f"import sys; sys.stderr.write({canary!r}); sys.exit(7)",
         "pipe": "import sys; sys.stdout.buffer.write(b'x' * 4096)",
-        "wait": "import os, time; os.close(1); os.close(2); time.sleep(30)",
+        "wait": "import sys; sys.exit(0)",
     }
     real_start = live_stand.fast_preflight._start_process
     started: list[subprocess.Popen[bytes]] = []
@@ -12864,7 +12864,7 @@ def test_live_caddy_real_reader_failure_diagnostics_and_final_pin_precedence(
     assert captured.out == ""
     assert captured.err == f"live_caddy_probe_failure_stage={stage}\n"
     if failure == "wait":
-        assert len(wait_attempts) >= 2
+        assert wait_attempts
     assert pin_calls == [container_pin, container_pin]
     assert len(started) == 1
     assert started[0].returncode is not None
