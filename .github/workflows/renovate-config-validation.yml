@@ -77,6 +77,22 @@ jobs:
               require(parsed.tzinfo is not None and parsed.utcoffset() == dt.timedelta(0), "Non-UTC upload")
               return parsed
           
+          def uv_upload_timestamp(value):
+              # uv 0.12.23 File::try_from_pypi stores Timestamp::as_millisecond.
+              uploaded = timestamp(value)
+              return uploaded.replace(microsecond=(uploaded.microsecond // 1000) * 1000)
+
+          require(
+              uv_upload_timestamp("2026-10-16T22:18:09.718711Z")
+              == timestamp("2026-10-16T22:18:09.718Z"),
+              "uv millisecond truncation regression",
+          )
+          require(
+              uv_upload_timestamp("2026-10-16T22:18:09.719Z")
+              != timestamp("2026-10-16T22:18:09.718Z"),
+              "Distinct milliseconds must not compare equal",
+          )
+
           def filename(url):
               require(isinstance(url, str), "Invalid artifact URL")
               parsed = urlsplit(url)
@@ -144,11 +160,8 @@ jobs:
                       "Artifact size mismatch")
               uploaded = timestamp(entry["upload_time_iso_8601"])
               locked_upload = timestamp(artifact["upload-time"])
-              if locked_upload != uploaded or uploaded > timestamp(pillow_cutoff):
-                  print(f"Artifact timestamp diagnostic: index={index} "
-                        f"lock={locked_upload.isoformat()} pypi={uploaded.isoformat()} "
-                        f"cutoff={pillow_cutoff}")
-              require(locked_upload == uploaded
+              expected_upload = uv_upload_timestamp(entry["upload_time_iso_8601"])
+              require(locked_upload == expected_upload
                       and uploaded <= timestamp(pillow_cutoff), "Artifact timestamp mismatch")
               if index == 0:
                   require(name == "pillow-13.0.0.tar.gz" and entry["packagetype"] == "sdist",
