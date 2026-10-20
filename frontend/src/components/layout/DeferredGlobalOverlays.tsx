@@ -65,11 +65,14 @@ type DeferredOverlayStore = {
   subscribe: (listener: () => void) => () => void
   getSnapshot: () => boolean
   getServerSnapshot: () => boolean
+  subscribeOpenRequest: (listener: () => void) => () => void
 }
 
 export function createDeferredOverlayStore(): DeferredOverlayStore {
   let ready = false
   let cleanup: (() => void) | null = null
+  let pendingSearchOpen = false
+  let openRequestListener: (() => void) | null = null
   const listeners = new Set<() => void>()
 
   const notify = () => {
@@ -78,6 +81,7 @@ export function createDeferredOverlayStore(): DeferredOverlayStore {
 
   const start = () => {
     ensurePushMessageBridge()
+    let active = true
     const lifecycle = createDeferredMountLifecycle(() => {
       if (ready) return
       ready = true
@@ -117,7 +121,27 @@ export function createDeferredOverlayStore(): DeferredOverlayStore {
       window.addEventListener(eventName, promoteOnInteraction, DEFERRED_INTERACTION_OPTIONS)
     )
 
+    // Preserve search intent until the lazy dialog installs its own listener.
+    // Once attached, that listener remains the only owner of shortcut toggles.
+    const captureSearchIntent = (event: KeyboardEvent) => {
+      if (!active || openRequestListener !== null || event.defaultPrevented) return
+      if (event.key === "Escape") {
+        pendingSearchOpen = false
+        return
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === "k") {
+        event.preventDefault()
+        pendingSearchOpen = true
+        promoteOnInteraction()
+      }
+    }
+    document.addEventListener("keydown", captureSearchIntent)
+
     cleanup = () => {
+      active = false
+      document.removeEventListener("keydown", captureSearchIntent)
+      pendingSearchOpen = false
+      openRequestListener = null
       lifecycle.unmount()
       clearDeferredTimer(timer, window.clearTimeout)
       const idleWindow = window as Window & {
@@ -147,6 +171,16 @@ export function createDeferredOverlayStore(): DeferredOverlayStore {
     subscribe,
     getSnapshot: () => ready,
     getServerSnapshot: () => false,
+    subscribeOpenRequest: (listener) => {
+      openRequestListener = listener
+      if (pendingSearchOpen) {
+        pendingSearchOpen = false
+        listener()
+      }
+      return () => {
+        if (openRequestListener === listener) openRequestListener = null
+      }
+    },
   }
 }
 
@@ -186,7 +220,7 @@ export function DeferredGlobalOverlays() {
       <OfflineIndicator />
       {ready ? (
         <Suspense fallback={null}>
-          <SearchDialog />
+          <SearchDialog subscribeOpenRequest={store.subscribeOpenRequest} />
           <LivePushToasts />
           <InstallPrompt />
           <DeferredOverlayReadinessSignal />

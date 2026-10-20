@@ -513,5 +513,12 @@ def observe_compose_metadata(
     *,
     deadline: Deadline,
 ) -> ComposeMetadataResult:
-    """Unavailable composition boundary; no collection or runtime admission."""
-    return ComposeMetadataResult(ComposeMetadataStatus.NOT_READY)
+    """Observe supplied Compose metadata once, without runtime admission."""
+    admitted = _compose_owner(owner)
+    if admitted is None:
+        return ComposeMetadataResult(ComposeMetadataStatus.NOT_READY)
+    request = prepare_compose_config(admitted, pins, compose, deadline=deadline)
+    if request is None:
+        return ComposeMetadataResult(ComposeMetadataStatus.NOT_READY)
+    result = process.run_private_process(request, deadline=deadline)
+    return decode_compose_config(result, owner=admitted, deadline=deadline)

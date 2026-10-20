@@ -302,10 +302,7 @@ def test_deployment_pool_defaults_match_database_settings(
     text = path.read_text(encoding="utf-8")
     assert text.count(heading) == 1
     section = text.split(heading, 1)[1].split("\n### ", 1)[0]
-    paragraphs = [
-        " ".join(paragraph.split()) for paragraph in section.strip().split("\n\n")
-    ]
-    defaults = [paragraph for paragraph in paragraphs if defaults_marker in paragraph]
+    defaults = [line for line in section.splitlines() if defaults_marker in line]
     assert len(defaults) == 1
 
     fields = database.DatabaseSettings.model_fields

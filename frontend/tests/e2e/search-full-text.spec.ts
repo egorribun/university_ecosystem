@@ -1,5 +1,5 @@
 import { test, type Page } from "./test"
-import { useMockApi } from "./utils/mockApi"
+import { useMockApi as setupMockApi } from "./utils/mockApi"
 import { gotoWithTransientRetry } from "./utils/navigation"
 import {
   expectEmptySearchResults,
@@ -10,7 +10,7 @@ import {
 
 async function prepareSearch(page: Page): Promise<void> {
   await installSearchReadinessProbe(page)
-  const { login } = await useMockApi(page)
+  const { login } = await setupMockApi(page)
   await login(page)
   await gotoWithTransientRetry(page, "/dashboard", { waitUntil: "domcontentloaded" })
 }

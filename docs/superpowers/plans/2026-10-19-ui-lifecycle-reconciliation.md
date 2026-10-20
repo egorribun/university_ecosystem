@@ -228,3 +228,13 @@ Baseline 319, dispositions 263, 78 required context/app pairs, blocking CodeQL a
 Core live job 118513510726 subsequently succeeds on 72b24b3. This later pass does not explain the preceding reverse-Tab failure: no relevant focus implementation changed between those runs. AUD-104 stays open while the added state assertions investigate reproducibility; a passing rerun alone is not treated as a causal fix.
 
 Service workers are blocked only for the three new controlled Core search scenarios and their corresponding regular scenarios so interception is deterministic. Existing Core keyboard/navbar cases keep their original context configuration; these controlled scenarios do not prove service-worker search behavior.
+
+## 2026-10-20 08:34 UTC — search proof and native-focus diagnosis
+
+ce03 SearchDialog behavior has 23 PASS in job 118524020061 (2263 PASS overall). Core job 118522672667 has 34 PASS / two FAIL / two existing SKIP, with both failures confined to the compact-navbar declaration; all six controlled search instances pass. The regular helper's non-React useMockApi import is aliased setupMockApi to satisfy hook naming without suppression; AUD-105 awaits corrected static proof.
+
+AUD-104's diagnostic frames establish native forward Tab scrolls out of compact state. Re-establish compact mode while settings retains focus before independently testing reverse Tab; do not require traversal to preserve scroll. No production behavior, manual blur, prevented scroll or conditional success is introduced. Both projects must pass the corrected test before closure.
+
+AUD-107 has two actual first-shortcut failures and two passing controls in job 118524019167 (2284 PASS / two FAIL). Preserve real lazy loading and the normal mounted toggle owner while addressing queued opening intent. No corrected-source acceptance yet.
+
+The correction queues store-local opening intent until the lazy dialog subscribes, then leaves shortcut toggles to the existing dialog handler. Escape and final cleanup clear pending intent; no event replay or module-global flag is introduced. Current four regressions do not establish deterministic cold-import/unmount race coverage.

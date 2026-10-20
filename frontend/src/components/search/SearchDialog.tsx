@@ -90,7 +90,11 @@ function saveRecentSearch(query: string) {
   }
 }
 
-export function SearchDialog() {
+interface SearchDialogProps {
+  subscribeOpenRequest?: (listener: () => void) => () => void
+}
+
+export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
   const { t } = useTranslation(["common"])
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -121,6 +125,8 @@ export function SearchDialog() {
     document.addEventListener("keydown", handler)
     return () => document.removeEventListener("keydown", handler)
   }, [open])
+
+  useEffect(() => subscribeOpenRequest?.(() => setOpen(true)), [subscribeOpenRequest])
 
   // Focus input when opened
   useEffect(() => {

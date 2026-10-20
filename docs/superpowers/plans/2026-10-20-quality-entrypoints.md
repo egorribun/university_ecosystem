@@ -119,3 +119,7 @@ Baseline 319, dispositions 263, 78 required context/app pairs, blocking CodeQL a
 Core live job 118513510726 subsequently succeeds on 72b24b3. This later pass does not explain the preceding reverse-Tab failure: no relevant focus implementation changed between those runs. AUD-104 stays open while the added state assertions investigate reproducibility; a passing rerun alone is not treated as a causal fix.
 
 Service workers are blocked only for the three new controlled Core search scenarios and their corresponding regular scenarios so interception is deterministic. Existing Core keyboard/navbar cases keep their original context configuration; these controlled scenarios do not prove service-worker search behavior.
+
+## 2026-10-20 08:34 UTC — actual selection verified
+
+AUD-103 is now accepted: ce03 Contract job 118523150422 executes twenty named generator guards (174 PASS total), completing the previously verified real Promtool and producer layers. AUD-106 remains open: ce03 Node/WASM job's 598 PASS omitted eslint-architecture.test.mjs. Add that existing suite exactly once to test:wasm and protect its selection; do not change the ESLint exemptions before observing its RED. Two existing formatter warnings are corrected without changing assertions. AUD-109's two defaults cases fail while both explicit 5/5 controls pass; correct the bilingual defaults and narrow the test parser to the defaults bullet, then require new GREEN. Latest verified audit lower bound is 106/512; e150 remains the last fully accepted CI source.

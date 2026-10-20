@@ -147,3 +147,7 @@ Baseline 319, dispositions 263, 78 required context/app pairs, blocking CodeQL a
 Core live job 118513510726 subsequently succeeds on 72b24b3. This later pass does not explain the preceding reverse-Tab failure: no relevant focus implementation changed between those runs. AUD-104 stays open while the added state assertions investigate reproducibility; a passing rerun alone is not treated as a causal fix.
 
 Service workers are blocked only for the three new controlled Core search scenarios and their corresponding regular scenarios so interception is deterministic. Existing Core keyboard/navbar cases keep their original context configuration; these controlled scenarios do not prove service-worker search behavior.
+
+## 2026-10-20 08:34 UTC — composition RED and bounded correction
+
+On ce03, focused job 118523935315 executes all sixteen new observation cases: twelve unavailable-stub failures and four passing admission controls. Overall 964 PASS / fifteen FAIL in 273.91 seconds includes two documentation failures and the intentional outage hold. The correction snapshots the owner, prepares once, calls existing run_private_process once with the identical Deadline, and decodes against that snapshot. No caller or outage is enabled. Require all sixteen corrected-source passes before accepting this boundary; it does not establish real daemon inventory or provenance. Sentinel approval remains pending; baseline and dispositions are unchanged.

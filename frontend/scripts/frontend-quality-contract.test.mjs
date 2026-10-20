@@ -153,6 +153,10 @@ test("canonical test:ci executes the frontend quality contract tests", async () 
   )
   const command = packageJson.scripts["test:wasm"]
   assert.match(command, /scripts\/frontend-quality-contract\.test\.mjs/u)
+  assert.equal(
+    command.split(/\s+/u).filter((arg) => arg === "scripts/eslint-architecture.test.mjs").length,
+    1
+  )
   assert.match(command, /scripts\/stryker-inventory\.test\.mjs/u)
   assert.match(command, /scripts\/run-stryker\.test\.mjs/u)
   assert.match(command, /scripts\/verify-stryker-evidence\.test\.mjs/u)
