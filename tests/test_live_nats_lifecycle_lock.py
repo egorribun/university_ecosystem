@@ -10,6 +10,8 @@ from types import ModuleType
 import pytest
 
 from scripts import live_nats_transport as transport
+from scripts import live_stand
+from scripts.owned_nats_coordinator import OwnerEvidence
 from scripts.owned_nats_outage import Deadline
 
 _fcntl: ModuleType | None
@@ -1023,3 +1025,237 @@ def test_retained_lease_revalidation_preserves_cleanup_ownership(lock_case, scen
             finally:
                 if witness is not None:
                     real_close(witness)
+
+
+@pytest.fixture
+def leased_owner_case(lock_case):
+    root, lock, fcntl = lock_case
+    now = [0.0]
+    deadline = Deadline.after(10.0, clock=lambda: now[0])
+    assert deadline.expires_at is not None
+    lease = _acquire(root, deadline)
+    assert lease is not None
+
+    pins = {
+        "pinned_repository": str(root.parent / "repository"),
+        "pinned_state_root": str(root),
+        "pinned_source_sha": "a" * 40,
+    }
+    ports = {
+        name: 20_000 + index
+        for index, (name, _service, _target) in enumerate(live_stand.LIVE_PORT_SPECS)
+    }
+    owner = OwnerEvidence(
+        repository=pins["pinned_repository"],
+        worktree=pins["pinned_state_root"],
+        project_name="ue-live-0123456789abcdef",
+        published_ports=live_stand._validate_published_ports(ports),
+        schema_version=11,
+        daemon_fingerprint="1" * 64,
+        compose_resource_fingerprint="2" * 64,
+        resume_compose_resource_fingerprint=None,
+        resume_compose_resource_schema_version=None,
+        source_sha=pins["pinned_source_sha"],
+        stack="core",
+        service_roots=live_stand.LIVE_CORE_SERVICE_ROOTS,
+        selected_services=live_stand.LIVE_CORE_EXPECTED_SERVICES,
+    )
+    signed = transport.OwnerParseResult(
+        transport.OwnerParseStatus.SIGNED_METADATA, owner
+    )
+    case = {
+        "lease": lease,
+        "pins": pins,
+        "deadline": deadline,
+        "now": now,
+        "signed": signed,
+        "read_result": signed,
+        "events": [],
+        "post_drift": False,
+        "expire_after_read": False,
+        "raise_at": None,
+        "error": None,
+    }
+    real_revalidate = transport.revalidate_lifecycle_lock
+    real_release = transport.release_lifecycle_lock
+    forbidden_calls = []
+
+    def forbidden(*_args, **_kwargs):
+        forbidden_calls.append(True)
+        raise AssertionError(
+            "composition must not own lifecycle, launch processes, or mutate state"
+        )
+
+    def revalidate(candidate, *, pinned_state_root, deadline):
+        assert deadline is case["deadline"]
+        assert pinned_state_root == case["pins"]["pinned_state_root"]
+        stage = "before" if not case["events"] else "after"
+        case["events"].append(stage)
+        if case["raise_at"] == stage:
+            raise case["error"]
+        valid = real_revalidate(
+            candidate,
+            pinned_state_root=pinned_state_root,
+            deadline=deadline,
+        )
+        return valid and not (stage == "after" and case["post_drift"])
+
+    def read(*, pinned_repository, pinned_state_root, pinned_source_sha, deadline):
+        assert deadline is case["deadline"]
+        assert {
+            "pinned_repository": pinned_repository,
+            "pinned_state_root": pinned_state_root,
+            "pinned_source_sha": pinned_source_sha,
+        } == case["pins"]
+        case["events"].append("read")
+        if case["raise_at"] == "read":
+            raise case["error"]
+        if case["expire_after_read"]:
+            now[0] = deadline.expires_at
+        return case["read_result"]
+
+    try:
+        with pytest.MonkeyPatch.context() as guard:
+            guard.setattr(transport, "revalidate_lifecycle_lock", revalidate)
+            guard.setattr(transport, "read_signed_owner_v11_from_state", read)
+            guard.setattr(transport, "acquire_existing_lifecycle_lock", forbidden)
+            guard.setattr(transport, "release_lifecycle_lock", forbidden)
+            guard.setattr("scripts.owned_nats_process.run_private_process", forbidden)
+            guard.setattr("subprocess.Popen", forbidden)
+            guard.setattr("subprocess.run", forbidden)
+            for name in (
+                "write",
+                "mkdir",
+                "makedirs",
+                "unlink",
+                "remove",
+                "rename",
+                "replace",
+                "chmod",
+                "truncate",
+                "ftruncate",
+            ):
+                guard.setattr(os, name, forbidden)
+            case["release_for_test"] = real_release
+            yield case
+            assert forbidden_calls == []
+            if not lease._released:
+                _probe(lock, fcntl, fcntl.LOCK_EX, blocked=True)
+    finally:
+        if not lease._released:
+            cleanup = Deadline.after(10.0, clock=lambda: 0.0)
+            assert real_release(lease, deadline=cleanup)
+        _probe(lock, fcntl, fcntl.LOCK_EX, blocked=False)
+
+
+def _read_leased(case, *, lease=None):
+    return transport.read_signed_owner_v11_under_lease(
+        case["lease"] if lease is None else lease,
+        **case["pins"],
+        deadline=case["deadline"],
+    )
+
+
+def _leased_not_ready(result):
+    assert result.status is transport.OwnerParseStatus.NOT_READY
+    assert result.owner is None
+
+
+def test_leased_owner_returns_signed_metadata_after_both_checks(leased_owner_case):
+    case = leased_owner_case
+
+    result = _read_leased(case)
+
+    assert result == case["signed"]
+    assert result.owner is not None
+    assert case["events"] == ["before", "read", "after"]
+    assert case["lease"]._released is False
+
+
+@pytest.mark.parametrize("kind", ["invalid", "released", "wrong-root"])
+def test_leased_owner_invalid_lease_prevents_read(leased_owner_case, kind):
+    case = leased_owner_case
+    candidate = case["lease"]
+    if kind == "invalid":
+        candidate = object()
+    elif kind == "released":
+        assert case["release_for_test"](candidate, deadline=case["deadline"])
+    else:
+        case["pins"]["pinned_state_root"] += "-other"
+
+    _leased_not_ready(_read_leased(case, lease=candidate))
+
+    assert "read" not in case["events"]
+    assert "after" not in case["events"]
+    if kind != "released":
+        assert case["lease"]._released is False
+
+
+def test_leased_owner_reader_rejection_stays_not_ready(leased_owner_case):
+    case = leased_owner_case
+    case["read_result"] = transport.OwnerParseResult(
+        transport.OwnerParseStatus.NOT_READY
+    )
+
+    _leased_not_ready(_read_leased(case))
+
+    assert case["events"][:2] == ["before", "read"]
+    # Early failure may omit the second observation; it must never retry.
+    assert case["events"] in (
+        ["before", "read"],
+        ["before", "read", "after"],
+    )
+    assert case["lease"]._released is False
+
+
+def test_leased_owner_initial_expiry_prevents_read(leased_owner_case):
+    case = leased_owner_case
+    case["now"][0] = case["deadline"].expires_at
+
+    _leased_not_ready(_read_leased(case))
+
+    assert "read" not in case["events"]
+    assert case["lease"]._released is False
+
+
+def test_leased_owner_post_read_drift_rejects_signed_result(leased_owner_case):
+    case = leased_owner_case
+    case["post_drift"] = True
+
+    _leased_not_ready(_read_leased(case))
+
+    assert case["events"] == ["before", "read", "after"]
+    assert case["lease"]._released is False
+
+
+def test_leased_owner_post_read_expiry_rejects_signed_result(leased_owner_case):
+    case = leased_owner_case
+    case["expire_after_read"] = True
+
+    _leased_not_ready(_read_leased(case))
+
+    assert case["events"][:2] == ["before", "read"]
+    assert case["events"] in (
+        ["before", "read"],
+        ["before", "read", "after"],
+    )
+    assert case["lease"]._released is False
+
+
+@pytest.mark.parametrize("stage", ["before", "read", "after"])
+@pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt, SystemExit])
+def test_leased_owner_propagates_without_consuming_lease(
+    leased_owner_case, stage, error_type
+):
+    case = leased_owner_case
+    error = error_type("synthetic private composition failure")
+    case["raise_at"] = stage
+    case["error"] = error
+
+    with pytest.raises(error_type) as caught:
+        _read_leased(case)
+
+    assert caught.value is error
+    expected = ["before", "read", "after"]
+    assert case["events"] == expected[: expected.index(stage) + 1]
+    assert case["lease"]._released is False

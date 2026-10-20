@@ -669,3 +669,15 @@ def revalidate_lifecycle_lock(
         return identity == lease._lock_identity and _reader_deadline_live(deadline)
     except (_ReaderNotReady, OSError, ValueError):
         return False
+
+
+def read_signed_owner_v11_under_lease(
+    lease: LifecycleLockLease,
+    *,
+    pinned_repository: str,
+    pinned_state_root: str,
+    pinned_source_sha: str,
+    deadline: Deadline,
+) -> OwnerParseResult:
+    """Unavailable composition seam; caller owns lease and trusted provenance."""
+    return OwnerParseResult(OwnerParseStatus.NOT_READY)

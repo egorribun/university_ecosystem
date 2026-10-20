@@ -1631,10 +1631,10 @@ async function scanRepository(options = {}) {
     const extension = path.extname(filePath).toLowerCase()
     return SOURCE_EXTENSIONS.has(extension)
   })
-  const files = scopeCandidates.filter((filePath) => {
-    const basename = path.basename(filePath)
-    return !SKIPPED_FILE_PATTERNS.some((pattern) => pattern.test(basename))
-  })
+  const files = scopeCandidates.filter(
+    (filePath) =>
+      !isScopeExcluded(path.relative(FRONTEND_ROOT, filePath).replaceAll(path.sep, "/"))
+  )
   const reports = []
   for (const filePath of files) {
     const source = await readFile(filePath, "utf8")

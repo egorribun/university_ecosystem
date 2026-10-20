@@ -38,3 +38,21 @@ The ordinary Web Vitals reporter returns only when sendBeacon accepts the payloa
 - AUD-080: direct/group/direct listbox regression requires true multiselect semantics only in group mode, two retained selected rows and the original direct-selection callback. Absent or false in direct mode is accepted equivalently. Production accessibility markup is unchanged before RED.
 - AUD-065: add actual static digit and accessible-label assertions immediately after changing the target from 600 to 601, then after one second. Keep the existing hidden-to-visible wall-clock catch-up and interval tests. Production source is unchanged; new hosted execution is needed before accepting the original finding.
 - AUD-061: scanRepository fixture includes valid App, invalid excluded test/generated/vendor files and an invalid ordinary production control. Require inventory exclusions and actual files/references/errors to agree, with production errors still blocking. The existing Node suite is appended after the existing scanner CLI and translation-parity test in i18n:check because no prior hosted command selected it. No workflow or scope-policy exclusion is added; scanner production is unchanged before RED. Temporary fixture cleanup is limited to its own mkdtemp path.
+
+## Corrected-source GREEN and next observed boundaries
+
+Exact source 68a29ba97ecdf26b1b6d4291ce3f3698dd3d90c6; hosted checkout debeed2c51a68e6631d1bd84443c48f94ba8d1da has identical tree 2c10b87c3cb1e1f8f60b70cff51d7cf9eee12be9.
+
+- AUD-065: all fifteen FlipCountdown cases pass in job 118379988574 at 00:17:03 UTC, including existing hidden-to-visible wall-clock catch-up and new immediate displayed-target/static-digit assertions. Production was already corrected. The target change updates accessible label and actual static digits without advancing time, then continues ticking.
+- AUD-067: all twenty-one EditLessonDialog branch cases pass in job 118379988739 at 00:17:46 UTC, including eight previous REDs. Clearing either field invalidates helper/form and prevents forced-submit transport; restoration retains the original ISO date and permits one request. This validates displayed HH:MM, not full calendar timestamps or backend persistence.
+- AUD-077: all twenty-eight ordinary Web Vitals cases pass in job 118379988715 at 00:21:23 UTC. False-beacon now invokes exactly one existing keepalive fetch with unchanged payload; accepted beacons do not duplicate transport. Remote delivery is not claimed.
+
+Ledger is now 75. Original scope limitations remain in force.
+
+Static job 118379988451 passes TypeScript, ESLint, Prettier, message-contract and knip. Its only failure is AUD-061: twenty-eight existing Node tests pass, but excluded __tests__, generated and vendor files emit missing-key errors in both locales at fixture line 435. The production scanner CLI and eighteen translation-parity tests pass. Job 118379988739 observes five AUD-075 failures for Ctrl/Meta/Shift/Alt/middle-button cancellation; secondary/pre-cancelled and ordinary controls pass. Job 118379988715 observes AUD-080 missing aria-multiselectable=true at line 376.
+
+Apply existing isScopeExcluded policy to actual scan candidates without changing inventory or exclusions; preserve default modified-click behavior; mark only group listboxes multiselectable. Keep all regression assertions unchanged and require own GREEN before accepting those three findings.
+
+## AUD-062 stable-data rollover tests first
+
+AUD-062 adds two tests first for today/week rollover across Istanbul midnight while UTC remains the previous day. Keep the same array, query object and zone; advance only the clock sixty seconds. Assert old-day removal, next-day inclusion and moving week edge, without rerender, post-transition scope clicks or network prefetch. Unmount before restoring timers. Production stays unchanged before observed RED; a later minute ticker must preserve current half-open eight-day week, cap, ordering and null-zone behavior. No immediate background-resume guarantee is claimed.

@@ -453,6 +453,7 @@ export function NewChatModal({
                   role="listbox"
                   aria-label={t("messenger:searchUsers")}
                   aria-busy={isLoading}
+                  aria-multiselectable={isGroupMode}
                 >
                   {users.map((user) => {
                     // Wave 211 G4 — group mode: a row tap toggles selection (the

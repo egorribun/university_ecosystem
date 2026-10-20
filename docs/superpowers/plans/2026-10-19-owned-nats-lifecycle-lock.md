@@ -49,3 +49,13 @@ No retained-identity implementation is added until those REDs are observed. The 
 On 80c0553 / job 118373791182, the eight revalidation cases produce exactly two intended failures: unchanged returns False twice instead of True, and expiry-after-fstat observes no metadata call. The six refusal cases pass. Aggregate 707 PASS / 3 FAIL includes the existing outage hold. Hosted Ruff normalized only the 86-character test signature; the formatted blob ced83172492ee72cd0021f4738f666dee4cb089b exactly matches the emitted diff and changes no assertions.
 
 The implementation retains the raw root pin, traversed edge tuples, lock name/parent/fd and acquired device/inode after the existing acquisition checks. Revalidation rejects released/default/foreign-pin/incomplete/expired or unsupported cases before metadata work, then reuses bounded nofollow directory and leaf helpers. It never opens, reads content, flocks, closes or changes the lease; ordinary readiness/OS/value errors return False and interruptions propagate. Caller cleanup remains required on every result. The unchanged eight-case cohort must pass on the new source before any adapter uses this capability. No owner-reader/Docker/SQL/HTTP/coordinator/CLI wiring is added.
+
+## Thirty-eight-case GREEN and leased-reader composition tests first
+
+Exact source 68a29ba97ecdf26b1b6d4291ce3f3698dd3d90c6; hosted checkout debeed2c51a68e6631d1bd84443c48f94ba8d1da has identical tree 2c10b87c3cb1e1f8f60b70cff51d7cf9eee12be9.
+
+Focused job 118379872619 reports 709 PASS / 1 existing disabled-outage workflow FAIL in 186.13 seconds. All thirty-eight lifecycle-lock cases pass, including eight revalidation cases. The next seventeen composition tests and unavailable read_signed_owner_v11_under_lease seam do not enable runtime work.
+
+Use a real held lease, real metadata revalidation and controlled signed-reader result with identical independent pins and Deadline through before/read/after checks. Invalid/released/wrong-root or initially expired leases prevent reading; refusal, post-read drift and expiry remain NOT_READY; RuntimeError/KeyboardInterrupt/SystemExit propagate at all stages. Process launches, nested public acquire/release and mutations are guarded and recorded. Caller retains cleanup ownership, verified by an original-inode probe and independent cleanup deadline. Expected unavailable-seam outcome is thirteen RED and four passing, not yet observed.
+
+Trusted CI creation is an explicit precondition. This is readonly I/O orchestration, not a pure function or authenticated provenance/runtime admission. Current UID/mode verification, self-consistent key/marker replacement, daemon observation, Docker/SQL/HTTP adapters, coordinator and CLI remain separate open boundaries. No outage is enabled.

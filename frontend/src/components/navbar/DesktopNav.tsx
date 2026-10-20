@@ -41,6 +41,16 @@ export const DesktopNav = ({
               data-active={active || undefined}
               onPointerDown={markScrollFromBottom}
               onClick={(e) => {
+                if (
+                  e.defaultPrevented ||
+                  e.button !== 0 ||
+                  e.ctrlKey ||
+                  e.metaKey ||
+                  e.shiftKey ||
+                  e.altKey
+                ) {
+                  return
+                }
                 if (isSameTarget(item.to)) {
                   e.preventDefault()
                   scrollToTop(prefersReducedMotion ? "auto" : "smooth")

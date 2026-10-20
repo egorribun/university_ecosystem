@@ -1,5 +1,5 @@
 import { createElement } from "react"
-import { fireEvent, render, screen, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query"
 import { describe, it, expect, vi, beforeEach } from "vitest"
@@ -830,4 +830,89 @@ describe("EventsCard", () => {
     prepareOnKey({ key: "Spacebar" }, callback)
     expect(callback).toHaveBeenCalledOnce()
   })
+
+  it.each(["today", "week"] as const)(
+    "refreshes the %s scope on the next minute tick after campus midnight",
+    (scope) => {
+      vi.useFakeTimers()
+      let rendered: ReturnType<typeof renderCard> | undefined
+
+      try {
+        vi.setSystemTime(new Date("2026-10-19T20:59:30.000Z"))
+        campusZone.current = "Europe/Istanbul"
+        const events = [
+          {
+            id: "old-campus-day",
+            title: "Old campus day",
+            starts_at: "2026-10-19T10:00:00.000Z",
+            location: "",
+          },
+          {
+            id: "new-campus-day",
+            title: "New campus day",
+            starts_at: "2026-10-20T06:00:00.000Z",
+            location: "",
+          },
+          {
+            id: "entering-week-edge",
+            title: "Entering week edge",
+            starts_at: "2026-10-27T06:00:00.000Z",
+            location: "",
+          },
+        ]
+        const queryResult = {
+          data: events,
+          isPending: false,
+          isLoading: false,
+          isFetching: false,
+          isError: false,
+        }
+        eventsState.current = queryResult
+
+        rendered = renderCard()
+        if (scope === "week") {
+          fireEvent.click(screen.getByRole("button", { name: "dashboard:scope.week" }))
+        }
+        const listName =
+          scope === "today" ? "dashboard:aria.eventsToday" : "dashboard:aria.eventsWeek"
+        const eventLabels = () =>
+          within(screen.getByRole("list", { name: listName }))
+            .getAllByRole("button")
+            .map((button) => button.getAttribute("aria-label"))
+
+        expect(eventLabels()).toEqual(
+          scope === "today"
+            ? ["dashboard:aria.eventItem:Old campus day"]
+            : [
+                "dashboard:aria.eventItem:Old campus day",
+                "dashboard:aria.eventItem:New campus day",
+              ]
+        )
+
+        act(() => {
+          vi.advanceTimersByTime(60_000)
+        })
+
+        expect(eventsState.current).toBe(queryResult)
+        expect(eventsState.current.data).toBe(events)
+        expect(campusZone.current).toBe("Europe/Istanbul")
+        expect(eventLabels()).toEqual(
+          scope === "today"
+            ? ["dashboard:aria.eventItem:New campus day"]
+            : [
+                "dashboard:aria.eventItem:New campus day",
+                "dashboard:aria.eventItem:Entering week edge",
+              ]
+        )
+        expect(mockPrefetchDashboardEvents).not.toHaveBeenCalled()
+        expect(mockPrefetchEventsListQuery).not.toHaveBeenCalled()
+      } finally {
+        try {
+          rendered?.unmount()
+        } finally {
+          vi.useRealTimers()
+        }
+      }
+    }
+  )
 })
