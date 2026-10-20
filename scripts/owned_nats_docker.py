@@ -9,11 +9,15 @@ daemon authenticity or complete container inventory.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
+import json
+import math
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+from scripts import live_stand
 from scripts import owned_nats_process as process
+from scripts.owned_nats_coordinator import OwnerEvidence
 from scripts.owned_nats_outage import Deadline, DeadlineVerdict
 from scripts.owned_nats_process import (
     LocalCleanup,
@@ -24,7 +28,6 @@ from scripts.owned_nats_process import (
 
 if TYPE_CHECKING:
     from scripts.live_stand import ComposeResourceEvidence
-    from scripts.owned_nats_coordinator import OwnerEvidence
 
 _STDOUT_LIMIT = 256
 _STDERR_LIMIT = 1024
@@ -240,6 +243,91 @@ class ComposeMetadataResult:
     evidence: ComposeResourceEvidence | None = field(default=None, repr=False)
 
 
+_COMPOSE_STDOUT_LIMIT = 1_048_576
+_COMPOSE_STDERR_LIMIT = 16_384
+
+
+def _compose_owner(owner: object) -> OwnerEvidence | None:
+    if type(owner) is not OwnerEvidence:
+        return None
+    try:
+        snapshot = replace(owner)
+        source_sha = snapshot.source_sha
+        if type(source_sha) is not str:
+            return None
+        string_fields = (
+            snapshot.repository,
+            snapshot.worktree,
+            snapshot.project_name,
+            snapshot.daemon_fingerprint,
+            snapshot.compose_resource_fingerprint,
+            snapshot.stack,
+        )
+        if any(type(value) is not str for value in string_fields):
+            return None
+        if (
+            type(snapshot.schema_version) is not int
+            or snapshot.schema_version != 11
+            or not _absolute_path(snapshot.repository, allow_root=False)
+            or not _absolute_path(snapshot.worktree, allow_root=False)
+            or not _fingerprint(snapshot.daemon_fingerprint)
+            or not _fingerprint(snapshot.compose_resource_fingerprint)
+            or len(source_sha) != 40
+            or any(character not in "0123456789abcdef" for character in source_sha)
+            or snapshot.resume_compose_resource_fingerprint is not None
+            or snapshot.resume_compose_resource_schema_version is not None
+            or snapshot.stack != live_stand.LIVE_STACK_CORE
+        ):
+            return None
+        for actual, expected in (
+            (snapshot.service_roots, live_stand.LIVE_CORE_SERVICE_ROOTS),
+            (snapshot.selected_services, live_stand.LIVE_CORE_EXPECTED_SERVICES),
+        ):
+            if (
+                type(actual) is not tuple
+                or len(actual) != len(expected)
+                or any(type(name) is not str for name in actual)
+                or actual != expected
+            ):
+                return None
+        pairs = snapshot.published_ports
+        if type(pairs) is not tuple or len(pairs) != len(live_stand.LIVE_PORT_SPECS):
+            return None
+        ports: dict[str, int] = {}
+        for pair in pairs:
+            if type(pair) is not tuple or len(pair) != 2:
+                return None
+            name, port = pair
+            if type(name) is not str or type(port) is not int or name in ports:
+                return None
+            ports[name] = port
+        live_stand._validate_project_name(snapshot.project_name)
+        normalized = live_stand._validate_published_ports(ports)
+        return replace(snapshot, published_ports=normalized)
+    except (AttributeError, live_stand.StandError):
+        return None
+
+
+def _compose_layout(owner: OwnerEvidence, compose: ComposeConfigPins) -> bool:
+    expected_files = (
+        f"{owner.repository}/{live_stand.COMPOSE_FILES[0]}",
+        f"{owner.repository}/{live_stand.OVERLAY}",
+        f"{owner.worktree}/{live_stand.IN_PLACE_OVERLAY}",
+    )
+    return (
+        _absolute_path(compose.project_directory, allow_root=False)
+        and compose.project_directory == owner.repository
+        and _absolute_path(compose.env_file, allow_root=False)
+        and compose.env_file == f"{owner.worktree}/.env.docker"
+        and type(compose.compose_files) is tuple
+        and len(compose.compose_files) == len(expected_files)
+        and all(
+            _absolute_path(path, allow_root=False) for path in compose.compose_files
+        )
+        and compose.compose_files == expected_files
+    )
+
+
 def prepare_compose_config(
     owner: OwnerEvidence,
     pins: DockerReadPins,
@@ -247,8 +335,110 @@ def prepare_compose_config(
     *,
     deadline: Deadline,
 ) -> PrivateProcessRequest | None:
-    """Unavailable no-I/O preparation boundary; no transport is connected."""
-    return None
+    """Prepare the reviewed Core in-place config request without transport I/O."""
+    admitted = _compose_owner(owner)
+    if (
+        admitted is None
+        or type(pins) is not DockerReadPins
+        or type(compose) is not ComposeConfigPins
+    ):
+        return None
+    try:
+        pinned = replace(pins)
+        layout = replace(compose)
+        if not _compose_layout(admitted, layout):
+            return None
+        daemon_request = prepare_daemon_read(pinned, deadline=deadline)
+        if (
+            daemon_request is None
+            or pinned.cwd != admitted.worktree
+            or pinned.daemon_fingerprint != admitted.daemon_fingerprint
+        ):
+            return None
+        ports = dict(admitted.published_ports)
+        environment = dict(daemon_request.env)
+        environment.update(
+            {
+                "COMPOSE_PROJECT_NAME": admitted.project_name,
+                "LIVE_BASE_URL": f"http://localhost:{ports['CADDY_HTTP']}",
+                "LIVE_VAPID_PUBLIC_KEY": live_stand.COMPOSE_INSPECTION_PLACEHOLDER,
+                "LIVE_VAPID_PRIVATE_KEY": live_stand.COMPOSE_INSPECTION_PLACEHOLDER,
+                "LIVE_STAND_STATE_ROOT": admitted.worktree,
+                # Admission checked the optional legacy field as an exact string.
+                "LIVE_STAND_SOURCE_SHA": cast(str, admitted.source_sha),
+            }
+        )
+        for name in live_stand.LIVE_TRUSTED_PROXY_SETTINGS:
+            environment[name] = ""
+        for name, port in admitted.published_ports:
+            key = "LIVE_MAILPIT_PORT" if name == "MAILPIT" else f"LIVE_HOST_PORT_{name}"
+            environment[key] = str(port)
+        argv = [
+            *daemon_request.argv[:5],
+            "compose",
+            "--project-directory",
+            layout.project_directory,
+            "-p",
+            admitted.project_name,
+            "--env-file",
+            layout.env_file,
+        ]
+        for path in layout.compose_files:
+            argv.extend(("-f", path))
+        argv.extend(("config", "--format", "json"))
+        request = PrivateProcessRequest(
+            argv=tuple(argv),
+            cwd=admitted.worktree,
+            env=environment,
+            stdin=b"",
+            stdout_limit=_COMPOSE_STDOUT_LIMIT,
+            stderr_limit=_COMPOSE_STDERR_LIMIT,
+            input_limit=0,
+        )
+    except AttributeError:
+        return None
+    return request if _live(deadline) else None
+
+
+def _compose_stdout(result: object) -> bytes | None:
+    if type(result) is not PrivateProcessResult:
+        return None
+    try:
+        if (
+            result.outcome is not ProcessOutcome.EXITED
+            or type(result.returncode) is not int
+            or result.returncode != 0
+            or result.local_cleanup is not LocalCleanup.CONFIRMED
+            or type(result.stdout) is not bytes
+            or not 0 < len(result.stdout) <= _COMPOSE_STDOUT_LIMIT
+            or type(result.stderr) is not bytes
+            or len(result.stderr) > _COMPOSE_STDERR_LIMIT
+            or result.stderr != b""
+        ):
+            return None
+        return result.stdout
+    except AttributeError:
+        return None
+
+
+def _compose_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("ambiguous Compose JSON")
+        result[key] = value
+    return result
+
+
+def _compose_json_constant(_value: str) -> None:
+    raise ValueError("non-finite Compose JSON")
+
+
+def _compose_json_float(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("non-finite Compose JSON")
+    return number
 
 
 def decode_compose_config(
@@ -257,5 +447,40 @@ def decode_compose_config(
     owner: OwnerEvidence,
     deadline: Deadline,
 ) -> ComposeMetadataResult:
-    """Unavailable supplied-data boundary; no inventory claim is made."""
-    return ComposeMetadataResult(ComposeMetadataStatus.NOT_READY)
+    """Match supplied private config metadata, not runtime inventory."""
+    not_ready = ComposeMetadataResult(ComposeMetadataStatus.NOT_READY)
+    admitted = _compose_owner(owner)
+    raw = _compose_stdout(result)
+    if admitted is None or raw is None or not _live(deadline):
+        return not_ready
+    expected_fingerprint = admitted.compose_resource_fingerprint
+    try:
+        project = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_compose_json_object,
+            parse_constant=_compose_json_constant,
+            parse_float=_compose_json_float,
+        )
+    except (UnicodeError, ValueError, RecursionError):
+        return not_ready
+    if type(project) is not dict or not _live(deadline):
+        return not_ready
+    try:
+        evidence = live_stand._compose_resource_evidence_from_project(
+            project,
+            admitted.project_name,
+            dict(admitted.published_ports),
+            stack=admitted.stack,
+            service_roots=admitted.service_roots,
+        )
+    except (live_stand.StandError, TypeError, ValueError, RecursionError):
+        return not_ready
+    if (
+        evidence.fingerprint != expected_fingerprint
+        or evidence.stack != admitted.stack
+        or evidence.service_roots != admitted.service_roots
+        or evidence.selected_services != admitted.selected_services
+        or not _live(deadline)
+    ):
+        return not_ready
+    return ComposeMetadataResult(ComposeMetadataStatus.MATCHED_METADATA, evidence)

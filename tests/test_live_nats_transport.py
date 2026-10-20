@@ -9,6 +9,7 @@ import io
 import json
 import os
 import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -1410,3 +1411,197 @@ def test_compose_boundaries_keep_the_shared_deadline(compose_case, operation, ex
             deadline=deadline,
         )
         _assert_compose_not_ready(result)
+
+
+def test_compose_prepare_snapshots_inputs_before_clock_callback(compose_case):
+    owner, pins, compose, _model, _raw, _evidence = compose_case
+    original_project = owner.project_name
+    original_source = owner.source_sha
+    original_state = owner.worktree
+    expected_argv = (
+        pins.executable,
+        "--config",
+        pins.config_directory,
+        "--host",
+        pins.endpoint,
+        "compose",
+        "--project-directory",
+        compose.project_directory,
+        "-p",
+        original_project,
+        "--env-file",
+        compose.env_file,
+        "-f",
+        compose.compose_files[0],
+        "-f",
+        compose.compose_files[1],
+        "-f",
+        compose.compose_files[2],
+        "config",
+        "--format",
+        "json",
+    )
+    calls = 0
+
+    def clock():
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            object.__setattr__(owner, "project_name", "changed")
+            object.__setattr__(owner, "source_sha", "b" * 40)
+            object.__setattr__(owner, "published_ports", ())
+            object.__setattr__(pins, "executable", "/changed/docker")
+            object.__setattr__(pins, "cwd", "/changed/state")
+            object.__setattr__(pins, "environment", ())
+            object.__setattr__(compose, "project_directory", "/changed/repository")
+            object.__setattr__(compose, "env_file", "/changed/env")
+            object.__setattr__(compose, "compose_files", ())
+        return 0.0
+
+    deadline = Deadline.after(10, clock=clock)
+
+    request = _compose_call(
+        docker.prepare_compose_config, owner, pins, compose, deadline=deadline
+    )
+
+    assert calls >= 2
+    assert type(request) is process.PrivateProcessRequest
+    assert request.argv == expected_argv
+    assert request.cwd == original_state
+    assert request.env["COMPOSE_PROJECT_NAME"] == original_project
+    assert request.env["LIVE_STAND_SOURCE_SHA"] == original_source
+    assert request.env["LC_ALL"] == "C"
+    assert request.env["LIVE_HOST_PORT_CADDY_HTTP"] == "20012"
+
+
+@pytest.mark.parametrize("initially_matches", [True, False])
+def test_compose_decode_retains_fingerprint_across_clock_callback(
+    compose_case, initially_matches
+):
+    owner, _pins, _compose, _model, raw, evidence = compose_case
+    matching = owner.compose_resource_fingerprint
+    different = "b" * 64
+    assert matching != different
+    admitted = matching if initially_matches else different
+    substituted = different if initially_matches else matching
+    owner = replace(owner, compose_resource_fingerprint=admitted)
+    calls = 0
+
+    def clock():
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            object.__setattr__(owner, "compose_resource_fingerprint", substituted)
+        return 0.0
+
+    deadline = Deadline.after(10, clock=clock)
+
+    result = _compose_call(
+        docker.decode_compose_config,
+        _daemon_result(stdout=raw),
+        owner=owner,
+        deadline=deadline,
+    )
+
+    assert calls >= 2
+    assert owner.compose_resource_fingerprint == substituted
+    if initially_matches:
+        assert result == docker.ComposeMetadataResult(
+            docker.ComposeMetadataStatus.MATCHED_METADATA, evidence
+        )
+    else:
+        _assert_compose_not_ready(result)
+
+
+@pytest.mark.parametrize(
+    ("target", "field"),
+    [
+        ("owner", "repository"),
+        ("pins", "executable"),
+        ("compose", "env_file"),
+        ("result", "stdout"),
+    ],
+)
+def test_compose_boundaries_refuse_missing_exact_class_fields(
+    compose_case, target, field
+):
+    owner, pins, compose, _model, raw, _evidence = compose_case
+    supplied = _daemon_result(stdout=raw)
+    instances = {
+        "owner": owner,
+        "pins": pins,
+        "compose": compose,
+        "result": supplied,
+    }
+    object.__delattr__(instances[target], field)
+
+    if target != "result":
+        assert (
+            _compose_call(
+                docker.prepare_compose_config,
+                owner,
+                pins,
+                compose,
+                deadline=_daemon_deadline(),
+            )
+            is None
+        )
+    if target in {"owner", "result"}:
+        result = _compose_call(
+            docker.decode_compose_config,
+            supplied,
+            owner=owner,
+            deadline=_daemon_deadline(),
+        )
+        _assert_compose_not_ready(result)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "string-outcome",
+        "string-cleanup",
+        "bool-returncode",
+        "float-returncode",
+        "mutable-stdout",
+        "string-stderr",
+    ],
+)
+def test_compose_decode_refuses_malformed_process_field_types(compose_case, mutation):
+    owner, _pins, _compose, _model, raw, _evidence = compose_case
+    changes = {
+        "string-outcome": {"outcome": process.ProcessOutcome.EXITED.value},
+        "string-cleanup": {"local_cleanup": process.LocalCleanup.CONFIRMED.value},
+        "bool-returncode": {"returncode": False},
+        "float-returncode": {"returncode": 0.0},
+        "mutable-stdout": {"stdout": bytearray(raw)},
+        "string-stderr": {"stderr": ""},
+    }
+    supplied = replace(_daemon_result(stdout=raw), **changes[mutation])
+
+    result = _compose_call(
+        docker.decode_compose_config,
+        supplied,
+        owner=owner,
+        deadline=_daemon_deadline(),
+    )
+
+    _assert_compose_not_ready(result)
+
+
+def test_compose_decode_refuses_deeply_nested_private_json(compose_case):
+    owner, _pins, _compose, _model, raw, _evidence = compose_case
+    depth = sys.getrecursionlimit() + 1
+    assert depth <= 16_384
+    nested = b"[" * depth + b"0" + b"]" * depth
+    supplied = b'{"unselected_nested_value":' + nested + b"," + raw[1:]
+    assert len(supplied) <= 1_048_576
+
+    result = _compose_call(
+        docker.decode_compose_config,
+        _daemon_result(stdout=supplied),
+        owner=owner,
+        deadline=_daemon_deadline(),
+    )
+
+    _assert_compose_not_ready(result)

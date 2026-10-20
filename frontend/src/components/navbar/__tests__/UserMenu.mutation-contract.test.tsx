@@ -269,3 +269,66 @@ describe("UserMenu mutation contracts", () => {
     expect(screen.getByTestId("settings-icon")).toHaveClass("h-4", "w-4")
   })
 })
+
+describe("AUD-104 compact profile keyboard access", () => {
+  it.each([
+    ["expanded", false],
+    ["compact", true],
+  ] as const)("keeps the %s profile tab order usable", async (_label, isCompact) => {
+    const userActions = userEvent.setup()
+    renderMenu({ isCompact })
+
+    const avatar = screen.getByRole("button", {
+      name: "navigation:aria.openProfile",
+    })
+    const settings = screen.getByRole("button", {
+      name: "navigation:menu.settings",
+    })
+
+    avatar.focus()
+    expect(avatar).toHaveFocus()
+    await userActions.tab()
+
+    if (isCompact) {
+      expect(settings).toHaveFocus()
+    } else {
+      expect(
+        screen.getByRole("button", {
+          name: "navigation:aria.openProfile: Ada Lovelace",
+        })
+      ).toHaveFocus()
+      await userActions.tab()
+      expect(settings).toHaveFocus()
+    }
+  })
+
+  it("restores name keyboard activation after leaving compact mode", async () => {
+    const userActions = userEvent.setup()
+    const go = vi.fn()
+    const { rerender } = renderMenu({ go, isCompact: true })
+
+    screen.getByRole("button", {
+      name: "navigation:aria.openProfile",
+    }).focus()
+    await userActions.tab()
+    expect(
+      screen.getByRole("button", { name: "navigation:menu.settings" })
+    ).toHaveFocus()
+
+    rerender(
+      <UserMenu go={go} isAuth isCompact={false} loading={false} t={t} user={user} />
+    )
+
+    screen.getByRole("button", {
+      name: "navigation:aria.openProfile",
+    }).focus()
+    await userActions.tab()
+    expect(
+      screen.getByRole("button", {
+        name: "navigation:aria.openProfile: Ada Lovelace",
+      })
+    ).toHaveFocus()
+    await userActions.keyboard("{Enter}")
+    expect(go).toHaveBeenCalledExactlyOnceWith("/profile")
+  })
+})

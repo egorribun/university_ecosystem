@@ -3,6 +3,7 @@ import { JSDOM } from "jsdom"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { runInContext } from "node:vm"
 
 import {
   applyDocumentLanguage,
@@ -147,5 +148,74 @@ describe("static shell i18n integration", () => {
     expect(document.querySelector('[data-i18n="notFound.login"]')?.textContent).toBe(
       notFoundStrings?.login
     )
+  })
+})
+
+describe("AUD-101 prepaint theme selection", () => {
+  it.each([
+    ["system follows dark media", "system", true, true],
+    ["system follows light media", "system", false, false],
+    ["explicit dark overrides light media", "dark", false, true],
+    ["explicit light overrides dark media", "light", true, false],
+    ["missing preference follows dark media", null, true, true],
+    ["missing preference follows light media", null, false, false],
+    ["invalid preference follows dark media", "sepia", true, true],
+    ["empty preference follows dark media", "", true, true],
+  ] as const)("%s", async (_label, storedTheme, mediaDark, expectedDark) => {
+    const script = await fs.readFile(path.join(publicDir, "theme-init.js"), "utf-8")
+    const dom = new JSDOM("<!doctype html><html><head></head><body></body></html>", {
+      url: "https://example.test/",
+      runScripts: "outside-only",
+    })
+
+    try {
+      Object.defineProperty(dom.window, "matchMedia", {
+        configurable: true,
+        value: (query: string) => ({
+          matches: query === "(prefers-color-scheme: dark)" && mediaDark,
+        }),
+      })
+      if (storedTheme !== null) {
+        dom.window.localStorage.setItem("ue-mode", storedTheme)
+      }
+
+      runInContext(script, dom.getInternalVMContext(), { timeout: 1000 })
+
+      expect(dom.window.document.documentElement.classList.contains("dark")).toBe(
+        expectedDark
+      )
+      expect(dom.window.localStorage.getItem("ue-mode")).toBe(storedTheme)
+      expect(Reflect.get(dom.window, "__UE_THEME_INIT_SCRIPT_RAN__")).toBe(true)
+    } finally {
+      dom.window.close()
+    }
+  })
+
+  it("initializes the theme only once in the same document", async () => {
+    const script = await fs.readFile(path.join(publicDir, "theme-init.js"), "utf-8")
+    const dom = new JSDOM("<!doctype html><html><head></head><body></body></html>", {
+      url: "https://example.test/",
+      runScripts: "outside-only",
+    })
+
+    try {
+      Object.defineProperty(dom.window, "matchMedia", {
+        configurable: true,
+        value: () => ({ matches: false }),
+      })
+      dom.window.localStorage.setItem("ue-mode", "dark")
+
+      runInContext(script, dom.getInternalVMContext(), { timeout: 1000 })
+      expect(dom.window.document.documentElement.classList.contains("dark")).toBe(true)
+
+      dom.window.document.documentElement.classList.remove("dark")
+      runInContext(script, dom.getInternalVMContext(), { timeout: 1000 })
+
+      expect(dom.window.document.documentElement.classList.contains("dark")).toBe(false)
+      expect(Reflect.get(dom.window, "__UE_THEME_INIT_SCRIPT_RAN__")).toBe(true)
+      expect(dom.window.localStorage.getItem("ue-mode")).toBe("dark")
+    } finally {
+      dom.window.close()
+    }
   })
 })
