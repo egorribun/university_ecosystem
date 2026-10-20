@@ -7,7 +7,7 @@
     s = localStorage.getItem("ue-mode")
   } catch (e) {}
   var m = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
-  var dark = s ? s === "dark" : m
+  var dark = s === "dark" || (s !== "light" && m)
   var html = document.documentElement
   if (dark) html.classList.add("dark")
 

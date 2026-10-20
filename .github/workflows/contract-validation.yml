@@ -173,6 +173,105 @@ jobs:
           uv run --frozen --no-sync python "$harness" check \
             "$fixture_dir/diagnostics.json"
 
+
+      - name: Verify Kubernetes alert-rule behavior
+        if: always()
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          harness="scripts/quality/check_prometheus_alert_rules.py"
+          fixture_dir="$(mktemp -d "$RUNNER_TEMP/prometheus-alert-contract.XXXXXX")"
+          attempted=0
+
+          cleanup() {
+            status=$?
+            trap - EXIT
+            cleanup_status=0
+            if [[ "$attempted" == 1 ]]; then
+              container_id=""
+              if [[ -s "$fixture_dir/container.cid" ]]; then
+                container_id="$(cat "$fixture_dir/container.cid")"
+              fi
+              if [[ "$container_id" =~ ^[0-9a-f]{64}$ ]]; then
+                if ! timeout --kill-after=2s 8s \
+                  docker rm -f "$container_id"; then
+                  echo "::error::Owned Promtool container cleanup failed"
+                  cleanup_status=1
+                fi
+              else
+                echo "::error::Promtool container identity unavailable; cleanup unproven"
+                cleanup_status=1
+              fi
+            fi
+            if ! rm -rf -- "$fixture_dir"; then
+              echo "::error::Promtool fixture cleanup failed"
+              cleanup_status=1
+            fi
+            if [[ "$status" == 0 ]]; then
+              status="$cleanup_status"
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+
+          image="$(timeout --kill-after=2s 10s \
+            uv run --frozen --no-sync python "$harness" image)"
+          timeout --kill-after=2s 10s \
+            uv run --frozen --no-sync python "$harness" rules \
+            > "$fixture_dir/rules.json"
+          timeout --kill-after=2s 10s \
+            uv run --frozen --no-sync python "$harness" fixture \
+            > "$fixture_dir/tests.json"
+          chmod 755 "$fixture_dir"
+          chmod 644 "$fixture_dir/rules.json" "$fixture_dir/tests.json"
+
+          if ! timeout --kill-after=2s 5s \
+            docker image inspect "$image" > /dev/null 2>&1; then
+            timeout --kill-after=5s 45s docker pull "$image"
+          fi
+
+          attempted=1
+          timeout --kill-after=2s 10s \
+            docker create \
+            --cidfile "$fixture_dir/container.cid" \
+            --pull=never --network=none \
+            --mount "type=bind,source=$fixture_dir,target=/fixtures,readonly" \
+            --workdir=/fixtures \
+            --entrypoint=/bin/promtool \
+            "$image" test rules tests.json > /dev/null
+
+          container_id="$(cat "$fixture_dir/container.cid")"
+          if [[ ! "$container_id" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Invalid owned Promtool container identity"
+            exit 1
+          fi
+          attach_status=0
+          timeout --kill-after=5s 30s \
+            docker start --attach "$container_id" || attach_status=$?
+
+          state="$(timeout --kill-after=2s 5s \
+            docker inspect --type container \
+            --format '{{.State.Status}} {{.State.ExitCode}}' \
+            "$container_id")"
+
+          if [[ ! "$state" =~ ^exited[[:space:]]([0-9]+)$ ]]; then
+            echo "::error::Promtool did not reach a verified exited state"
+            exit 1
+          fi
+          tool_status="${BASH_REMATCH[1]}"
+
+          if [[ "$attach_status" != 0 ]]; then
+            echo "::error::Promtool attachment or execution failed"
+            exit "$attach_status"
+          fi
+          if [[ "$tool_status" != 0 ]]; then
+            echo "::error::Promtool rule evaluation failed"
+            exit 1
+          fi
+
   # Wave 2 / Task 2.3 — openapi-diff backward-compatibility gate.
   # Compares the generated spec against the event's immutable baseline snapshot
   # to prevent accidental breaking changes (removed paths, required fields, etc.).

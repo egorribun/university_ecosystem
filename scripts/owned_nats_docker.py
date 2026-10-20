@@ -245,6 +245,7 @@ class ComposeMetadataResult:
 
 _COMPOSE_STDOUT_LIMIT = 1_048_576
 _COMPOSE_STDERR_LIMIT = 16_384
+_COMPOSE_JSON_MAX_DEPTH = 64
 
 
 def _compose_owner(owner: object) -> OwnerEvidence | None:
@@ -441,6 +442,20 @@ def _compose_json_float(value: str) -> float:
     return number
 
 
+def _compose_json_depth_within_limit(project: object) -> bool:
+    """Bound every decoded container, counting the root container as depth one."""
+    pending: list[tuple[object, int]] = [(project, 1)]
+    while pending:
+        value, depth = pending.pop()
+        if not isinstance(value, (dict, list)):
+            continue
+        if depth > _COMPOSE_JSON_MAX_DEPTH:
+            return False
+        children = value.values() if isinstance(value, dict) else value
+        pending.extend((child, depth + 1) for child in children)
+    return True
+
+
 def decode_compose_config(
     result: PrivateProcessResult,
     *,
@@ -463,7 +478,12 @@ def decode_compose_config(
         )
     except (UnicodeError, ValueError, RecursionError):
         return not_ready
-    if type(project) is not dict or not _live(deadline):
+    if (
+        type(project) is not dict
+        or not _live(deadline)
+        or not _compose_json_depth_within_limit(project)
+        or not _live(deadline)
+    ):
         return not_ready
     try:
         evidence = live_stand._compose_resource_evidence_from_project(

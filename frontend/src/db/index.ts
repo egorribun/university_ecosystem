@@ -25,17 +25,36 @@ let dbPromise: Promise<AppDatabase> | null = null
 
 export async function getDatabase(): Promise<AppDatabase> {
   if (!dbPromise) {
-    dbPromise = createRxDatabase<AppCollections>({
+    const pending: Promise<AppDatabase> = createRxDatabase<AppCollections>({
       name: "university_ecosystem_rxdb",
       storage: wrappedValidateAjvStorage({ storage: getRxStorageDexie() }),
-    }).then(async (db) => {
-      await db.addCollections({
-        schedule: { schema: scheduleSchema },
-        notes: { schema: notesSchema },
-        messages: { schema: messagesSchema },
-      })
-      return db
-    })
+    }).then(
+      async (db) => {
+        try {
+          await db.addCollections({
+            schedule: { schema: scheduleSchema },
+            notes: { schema: notesSchema },
+            messages: { schema: messagesSchema },
+          })
+          return db
+        } catch (error) {
+          try {
+            // Release the failed instance without deleting persisted documents.
+            await db.close()
+          } catch {
+            // Unproven cleanup must not open another instance or replace the cause.
+            throw error
+          }
+          if (dbPromise === pending) dbPromise = null
+          throw error
+        }
+      },
+      (error: unknown) => {
+        if (dbPromise === pending) dbPromise = null
+        throw error
+      }
+    )
+    dbPromise = pending
   }
   return dbPromise
 }

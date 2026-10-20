@@ -5,12 +5,15 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 from shutil import which
 from typing import Any
 
 import pytest
 import yaml
+
+from scripts.quality import check_prometheus_alert_rules as alert_contract
 
 WORKFLOW = (
     Path(__file__).resolve().parents[1] / ".github/workflows/contract-validation.yml"
@@ -267,3 +270,115 @@ def test_comparison_uses_extracted_event_snapshot_and_existing_err_policy() -> N
         step.get("run") == "npm install --global @oasdiff-js/oasdiff-js@1.0.0"
         for step in steps
     )
+
+
+def test_prometheus_generator_preserves_actual_rule_groups() -> None:
+    source = WORKFLOW.parents[2] / "k8s/monitoring/prometheus-rules.yaml"
+    manifest = yaml.safe_load(source.read_text(encoding="utf-8"))
+
+    assert alert_contract.rules() == {"groups": manifest["spec"]["groups"]}
+
+
+def test_prometheus_generator_uses_the_existing_compose_image() -> None:
+    source = WORKFLOW.parents[2] / "docker-compose.observability.yml"
+    compose = yaml.safe_load(source.read_text(encoding="utf-8"))
+
+    assert alert_contract.image() == compose["services"]["prometheus"]["image"]
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "prom/prometheus:latest",
+        "prom/prometheus:v3.15.0",
+        "untrusted/prometheus:v3.15.0@sha256:" + "a" * 64,
+        "prom/prometheus:v3.15.0@sha256:" + "a" * 63,
+    ],
+)
+def test_prometheus_generator_image_cli_rejects_unpinned_or_wrong_sources(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    reference: str,
+) -> None:
+    (tmp_path / "docker-compose.observability.yml").write_text(
+        yaml.safe_dump({"services": {"prometheus": {"image": reference}}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(alert_contract, "ROOT", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["alert-contract", "image"])
+
+    with pytest.raises(ValueError, match="immutable official Prometheus image"):
+        alert_contract.main()
+
+    assert capsys.readouterr().out == ""
+
+
+def test_prometheus_generator_has_six_actual_metric_boundary_cases() -> None:
+    generated = alert_contract.fixture()
+    assert generated["rule_files"] == ["rules.json"]
+    assert generated["evaluation_interval"] == "30s"
+    tests = generated["tests"]
+    assert isinstance(tests, list)
+    assert len(tests) == 6
+    by_name = {case["name"]: case for case in tests}
+    assert len(by_name) == 6
+
+    expected = {
+        "OutboxStagnant": (
+            {"outbox_pending_events_total": 101},
+            {"outbox_pending_events_total": 100},
+            "4m30s",
+            "5m",
+        ),
+        "DatabasePoolSaturation": (
+            {"db_pool_checkedout": 9, "db_pool_size": 10},
+            {"db_pool_checkedout": 8, "db_pool_size": 10},
+            "4m30s",
+            "5m",
+        ),
+        "DatabasePoolExhausted": (
+            {"db_pool_checkedout": 10, "db_pool_size": 10},
+            {"db_pool_checkedout": 9, "db_pool_size": 10},
+            "30s",
+            "1m",
+        ),
+    }
+    assert set(by_name) == {
+        f"{alert}-{level}" for alert in expected for level in ("high", "low")
+    }
+
+    for alert, (high, low, pending_time, firing_time) in expected.items():
+        for level, series in (("high", high), ("low", low)):
+            case = by_name[f"{alert}-{level}"]
+            assert case["interval"] == "30s"
+            assert case["input_series"] == [
+                {"series": name, "values": f"{value}+0x12"}
+                for name, value in series.items()
+            ]
+            checks = case["promql_expr_test"]
+            if level == "high":
+                expected_checks = [
+                    (pending_time, "pending", 1),
+                    (pending_time, "firing", 0),
+                    (firing_time, "pending", 0),
+                    (firing_time, "firing", 1),
+                ]
+            else:
+                expected_checks = [
+                    ("6m", "pending", 0),
+                    ("6m", "firing", 0),
+                ]
+
+            assert len(checks) == len(expected_checks)
+            for check, (time, state, value) in zip(
+                checks, expected_checks, strict=True
+            ):
+                assert check == {
+                    "expr": (
+                        f'count(ALERTS{{alertname="{alert}",'
+                        f'alertstate="{state}"}}) or vector(0)'
+                    ),
+                    "eval_time": time,
+                    "exp_samples": [{"labels": "{}", "value": value}],
+                }

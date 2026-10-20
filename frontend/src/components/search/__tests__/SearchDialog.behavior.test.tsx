@@ -113,6 +113,29 @@ function press(input: HTMLElement, key: string) {
   return event
 }
 
+const HIGHLIGHT_OPEN = "\u0000MARK_OPEN\u0000"
+const HIGHLIGHT_CLOSE = "\u0000MARK_CLOSE\u0000"
+
+async function showSearchSummary(summary: string) {
+  apiGet.mockResolvedValue({
+    data: {
+      ...response,
+      results: {
+        ...response.results,
+        news: [{ ...response.results.news[0], summary }],
+      },
+    },
+  })
+  await renderSearch()
+  const htmlSetter = vi.spyOn(Element.prototype, "innerHTML", "set")
+  await showResults()
+  const result = screen.getByRole("button", { name: /^Physics news/u })
+  const paragraphs = result.querySelectorAll("p")
+  expect(paragraphs).toHaveLength(2)
+  expect(htmlSetter).not.toHaveBeenCalled()
+  return paragraphs.item(1)
+}
+
 describe("SearchDialog user behavior", () => {
   beforeEach(() => {
     localStorage.clear()
@@ -365,5 +388,46 @@ describe("SearchDialog user behavior", () => {
     )
     await screen.findByText("No matching results")
     expect(container.querySelector(".animate-spin")).not.toBeInTheDocument()
+  })
+
+  it("renders a valid highlight pair while escaping all supplied text", async () => {
+    const before = '<img src=x onerror="void 0"> Before & '
+    const matched = "<strong>physics & lab</strong>"
+    const after = " after <script>void 0</script>"
+    const summary = await showSearchSummary(
+      `${before}${HIGHLIGHT_OPEN}${matched}${HIGHLIGHT_CLOSE}${after}`
+    )
+
+    expect(summary.textContent).toBe(`${before}${matched}${after}`)
+    const marks = summary.querySelectorAll("mark")
+    expect(marks).toHaveLength(1)
+    expect(marks.item(0)).toHaveTextContent(matched)
+    expect(marks.item(0).childElementCount).toBe(0)
+    expect(summary.querySelector("img, script, strong, [onerror]")).toBeNull()
+    expect(summary.textContent).not.toContain(HIGHLIGHT_OPEN)
+    expect(summary.textContent).not.toContain(HIGHLIGHT_CLOSE)
+  })
+
+  it("keeps raw HTML-like summaries as text rather than treating them as highlights", async () => {
+    const supplied = '<mark>physics</mark> & <img src=x onerror="void 0">'
+    const summary = await showSearchSummary(supplied)
+
+    expect(summary.textContent).toBe(supplied)
+    expect(summary.childElementCount).toBe(0)
+  })
+
+  it.each([
+    ["unclosed", `${HIGHLIGHT_OPEN}physics <img src=x>`],
+    ["orphan close", `physics${HIGHLIGHT_CLOSE}<script>void 0</script>`],
+    [
+      "nested",
+      `${HIGHLIGHT_OPEN}outer${HIGHLIGHT_OPEN}inner${HIGHLIGHT_CLOSE}${HIGHLIGHT_CLOSE}`,
+    ],
+    ["unknown", "\u0000MARK_UNKNOWN\u0000physics <img src=x>"],
+  ])("keeps %s highlight syntax as literal safe text", async (_kind, supplied) => {
+    const summary = await showSearchSummary(supplied)
+
+    expect(summary.textContent).toBe(supplied)
+    expect(summary.childElementCount).toBe(0)
   })
 })

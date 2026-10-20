@@ -122,6 +122,8 @@ export const UserMenu = ({
           <button
             type="button"
             onClick={() => go("/profile")}
+            disabled={isCompact}
+            aria-hidden={isCompact}
             aria-label={profileNameLabel}
             title={profileTitle}
             className="m-0 min-h-11 max-w-full cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap border-none bg-transparent p-0 font-bold tracking-tight text-base text-text-primary transition-colors hover:text-brand"

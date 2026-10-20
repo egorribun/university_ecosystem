@@ -1605,3 +1605,32 @@ def test_compose_decode_refuses_deeply_nested_private_json(compose_case):
     )
 
     _assert_compose_not_ready(result)
+
+
+@pytest.mark.parametrize("container_depth", [64, 65])
+def test_compose_decode_enforces_exact_json_container_depth(
+    compose_case, container_depth
+):
+    owner, _pins, _compose, _model, raw, evidence = compose_case
+    nested = b"0"
+    for index in range(container_depth - 1):
+        if index % 2:
+            nested = b'{"child":' + nested + b"}"
+        else:
+            nested = b"[" + nested + b"]"
+    supplied = b'{"unselected_nested_value":' + nested + b"," + raw[1:]
+    assert len(supplied) <= 1_048_576
+
+    result = _compose_call(
+        docker.decode_compose_config,
+        _daemon_result(stdout=supplied),
+        owner=owner,
+        deadline=_daemon_deadline(),
+    )
+
+    if container_depth == 64:
+        assert result == docker.ComposeMetadataResult(
+            docker.ComposeMetadataStatus.MATCHED_METADATA, evidence
+        )
+    else:
+        _assert_compose_not_ready(result)

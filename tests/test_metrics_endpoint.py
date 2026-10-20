@@ -196,3 +196,31 @@ def test_metrics_reset_isolation():
     metrics_bundle.reset()
     # After reset, the fresh collector should be zeroed (default 0.0)
     assert metrics_bundle.queue_size._value.get() == 0.0
+
+
+def test_aud103_alert_inputs_are_real_exported_gauges():
+    from prometheus_client import CollectorRegistry, generate_latest
+    from prometheus_client.parser import text_string_to_metric_families
+
+    from app.workers import outbox
+
+    registry = CollectorRegistry()
+    collectors = (
+        metrics_module._DB_POOL_SIZE,
+        metrics_module._DB_POOL_CHECKEDOUT,
+        outbox.OUTBOX_PENDING_EVENTS,
+    )
+    for collector in collectors:
+        assert collector is not None
+        registry.register(collector)
+
+    families = list(
+        text_string_to_metric_families(generate_latest(registry).decode("utf-8"))
+    )
+    samples = {sample.name for family in families for sample in family.samples}
+    assert samples == {
+        "db_pool_size",
+        "db_pool_checkedout",
+        "outbox_pending_events_total",
+    }
+    assert all(family.type == "gauge" for family in families)
