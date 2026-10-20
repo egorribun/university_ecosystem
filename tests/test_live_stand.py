@@ -11022,7 +11022,7 @@ def test_live_bounded_reader_caps_flood_and_reaps_its_direct_child(
     ):
         live_stand._run_live_bounded_read(
             (
-                sys.executable,
+                context.executable,
                 "-c",
                 "import os; block=b'x'*65536; [os.write(i % 2 + 1, block) for i in range(64)]",
             ),
@@ -11056,7 +11056,7 @@ def test_live_bounded_reader_times_out_and_reaps_its_direct_child(
         match="Caddy access-log redaction proof failed",
     ):
         live_stand._run_live_bounded_read(
-            (sys.executable, "-c", "import time; time.sleep(30)"),
+            (context.executable, "-c", "import time; time.sleep(30)"),
             context=context,
             deadline=started_at + 3,
             maximum_bytes=1024,
@@ -11088,7 +11088,7 @@ def test_live_bounded_reader_reaps_child_after_its_pipes_close(
     ):
         live_stand._run_live_bounded_read(
             (
-                sys.executable,
+                context.executable,
                 "-c",
                 # The parent bounds this child to one second and then reaps it.
                 "import os, time; os.close(1); os.close(2); time.sleep(30)",

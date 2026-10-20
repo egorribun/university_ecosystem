@@ -194,7 +194,9 @@ async def test_middleware_redis_failure_uses_stricter_memory_fallback(monkeypatc
     fallback_check.assert_awaited_once()
     assert fallback_check.await_args.args[1:] == (2, 60)
     assert sent[0]["status"] == 429
-    assert dict(sent[0]["headers"])[b"X-RateLimit-Limit"] == b"4"
+    headers = sent[0]["headers"]
+    assert all(name == name.lower() for name, _value in headers)
+    assert dict(headers)[b"x-ratelimit-limit"] == b"4"
 
 
 @pytest.mark.asyncio
@@ -235,11 +237,13 @@ async def test_middleware_blocked_response_includes_rate_limit_headers():
 
     await middleware(_http_scope(), AsyncMock(), send)
 
-    headers = dict(sent[0]["headers"])
-    assert headers[b"Retry-After"] == b"0"
-    assert headers[b"X-RateLimit-Limit"] == b"3"
-    assert headers[b"X-RateLimit-Remaining"] == b"0"
-    assert b"X-RateLimit-Reset" in headers
+    raw_headers = sent[0]["headers"]
+    assert all(name == name.lower() for name, _value in raw_headers)
+    headers = dict(raw_headers)
+    assert headers[b"retry-after"] == b"0"
+    assert headers[b"x-ratelimit-limit"] == b"3"
+    assert headers[b"x-ratelimit-remaining"] == b"0"
+    assert b"x-ratelimit-reset" in headers
 
 
 @pytest.mark.asyncio
