@@ -12714,3 +12714,178 @@ def test_live_caddy_probe_brackets_one_union_read_within_the_shared_deadline(
     assert len(completed_reads) == 1
     assert completed_reads[0].stdout == completed_reads[0].stderr == b""
     assert list(tmp_path.glob("aud174-caddy-probe-*.json")) == []
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_stage"),
+    [
+        ("stdout-overflow", "log_size"),
+        ("stderr-overflow", "log_size"),
+        ("combined-overflow", "log_size"),
+        ("exit", "log_exit"),
+        ("pipe", "log_pipe_io"),
+    ],
+)
+@pytest.mark.parametrize("post_pin_failure", [False, True])
+def test_live_caddy_real_reader_failure_diagnostics_and_final_pin_precedence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    failure: str,
+    expected_stage: str,
+    post_pin_failure: bool,
+) -> None:
+    owner = object()
+    context = _aud174_docker_read_context(tmp_path)
+    output_directory = tmp_path / "output"
+    output_directory.mkdir()
+    container_pin = ("a" * 64, "b" * 64)
+    password_nonce = uuid4().hex
+    correlations = {"desktop": uuid4().hex, "mobile": uuid4().hex}
+    completed_at = {
+        "desktop": 1_798_000_000_000,
+        "mobile": 1_798_000_000_100,
+    }
+    cap = live_stand._LIVE_CADDY_PROBE_MAX_BYTES
+    canary = f"private-reader-{uuid4().hex}"
+    scripts = {
+        "stdout-overflow": f"import sys; sys.stdout.buffer.write(b'x' * {cap + 1})",
+        "stderr-overflow": f"import sys; sys.stderr.buffer.write(b'x' * {cap + 1})",
+        "combined-overflow": (
+            "import sys; "
+            f"sys.stdout.buffer.write(b'x' * {cap // 2}); "
+            "sys.stdout.buffer.flush(); "
+            f"sys.stderr.buffer.write(b'y' * {cap - cap // 2 + 1})"
+        ),
+        "exit": f"import sys; sys.stderr.write({canary!r}); sys.exit(7)",
+        "pipe": "import sys; sys.stdout.buffer.write(b'x' * 4096)",
+    }
+    real_start = live_stand.fast_preflight._start_process
+    started: list[subprocess.Popen[bytes]] = []
+
+    def start_fixture(
+        check: live_stand.fast_preflight.CheckSpec,
+        *,
+        repo_root: Path,
+        env: Mapping[str, str] | None = None,
+    ) -> subprocess.Popen[bytes]:
+        assert check.command[0] == context.executable
+        assert check.command[1] == "logs"
+        process = real_start(
+            live_stand.fast_preflight.CheckSpec(
+                "bounded-reader-fixture",
+                (context.executable, "-c", scripts[failure]),
+            ),
+            repo_root=repo_root,
+            env=env,
+        )
+        started.append(process)
+        return process
+
+    pin_calls: list[tuple[str, str]] = []
+
+    def check_pin(
+        _owner: object,
+        pin: tuple[str, str],
+        **_kwargs: object,
+    ) -> None:
+        pin_calls.append(pin)
+        if post_pin_failure and len(pin_calls) == 2:
+            raise live_stand.StandError(canary)
+
+    monkeypatch.setattr(live_stand.fast_preflight, "_start_process", start_fixture)
+    monkeypatch.setattr(
+        live_stand,
+        "_read_live_caddy_probe_observations",
+        lambda *_args, **_kwargs: completed_at,
+    )
+    monkeypatch.setattr(live_stand, "_assert_live_caddy_container_pin", check_pin)
+
+    if failure == "pipe":
+        drain_name = (
+            "_live_drain_windows_pipes"
+            if os.name == "nt"
+            else "_live_drain_posix_pipes"
+        )
+        real_drain = getattr(live_stand, drain_name)
+
+        def fail_pipe_read(_descriptor: int, _size: int) -> bytes:
+            raise OSError(canary)
+
+        def drain_with_io_failure(
+            process: subprocess.Popen[bytes],
+            *,
+            stdout: bytearray,
+            stderr: bytearray,
+            work_deadline: float,
+            maximum_bytes: int,
+        ) -> bool:
+            # Patch only after startup, not subprocess's exec-error pipe.
+            with monkeypatch.context() as pipe_patch:
+                pipe_patch.setattr(live_stand.os, "read", fail_pipe_read)
+                return real_drain(
+                    process,
+                    stdout=stdout,
+                    stderr=stderr,
+                    work_deadline=work_deadline,
+                    maximum_bytes=maximum_bytes,
+                )
+
+        monkeypatch.setattr(live_stand, drain_name, drain_with_io_failure)
+
+    with pytest.raises(live_stand.StandError) as caught:
+        live_stand._verify_live_caddy_probe_log(
+            owner,
+            output_directory,
+            started_at_ms=1_797_999_999_000,
+            finished_at_ms=1_798_000_001_000,
+            password_nonce=password_nonce,
+            correlation_ids=correlations,
+            container_pin=container_pin,
+            docker_context=context,
+        )
+
+    stage = "post_pin" if post_pin_failure else expected_stage
+    captured = capsys.readouterr()
+    assert str(caught.value) == live_stand._LIVE_CADDY_PROBE_FAILURE
+    assert captured.out == ""
+    assert captured.err == f"live_caddy_probe_failure_stage={stage}\n"
+    assert pin_calls == [container_pin, container_pin]
+    assert len(started) == 1
+    assert started[0].returncode is not None
+    assert started[0].stdout is not None and started[0].stdout.closed
+    assert started[0].stderr is not None and started[0].stderr.closed
+    for value in (canary, password_nonce, *correlations.values()):
+        assert value not in captured.err
+        assert value not in str(caught.value)
+
+
+@pytest.mark.parametrize("exit_code", [0, 7])
+def test_live_bounded_reader_accepts_exact_combined_cap_and_preserves_exit_status(
+    tmp_path: Path,
+    exit_code: int,
+) -> None:
+    context = _aud174_docker_read_context(tmp_path)
+    cap = live_stand._LIVE_CADDY_PROBE_MAX_BYTES
+    first = cap // 2
+    second = cap - first
+    script = (
+        "import sys; "
+        f"sys.stdout.buffer.write(b'x' * {first}); "
+        "sys.stdout.buffer.flush(); "
+        f"sys.stderr.buffer.write(b'y' * {second}); "
+        "sys.stderr.buffer.flush(); "
+        f"sys.exit({exit_code})"
+    )
+
+    result = live_stand._run_live_bounded_read(
+        (context.executable, "-c", script),
+        context=context,
+        deadline=live_stand.time.monotonic() + 10,
+        maximum_bytes=cap,
+        command_timeout_seconds=5,
+    )
+
+    assert result.returncode == exit_code
+    assert result.stdout == b"x" * first
+    assert result.stderr == b"y" * second

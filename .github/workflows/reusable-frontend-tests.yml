@@ -307,6 +307,19 @@ jobs:
         env:
           CI: "true"
 
+      - name: Run worker and export regression contracts
+        run: >-
+          npm exec -- vitest run
+          src/workers/__tests__/crypto.worker.closure.test.ts
+          src/workers/__tests__/crypto.worker.parity.test.ts
+          src/utils/__tests__/cryptoWorker.test.ts
+          src/utils/__tests__/activityExport.test.ts
+          src/utils/__tests__/activityExport.closure.test.ts
+          src/utils/__tests__/activityExport.pdf.test.ts
+          --reporter=verbose
+        env:
+          CI: "true"
+
   unit-tests-shard:
     name: Unit Tests (shard ${{ matrix.shard }}/4)
     needs: wasm-build

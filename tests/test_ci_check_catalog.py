@@ -714,13 +714,17 @@ def test_expansion_rejects_unknown_reusable_job() -> None:
     assert any("reusable job does not exist" in error for error in errors)
 
 
-@pytest.mark.parametrize("classification", ["advisory", "nightly", "manual", "internal"])
+@pytest.mark.parametrize(
+    "classification", ["advisory", "nightly", "manual", "internal"]
+)
 def test_required_profile_cannot_be_downgraded_by_job_override(
     classification: str,
 ) -> None:
     value = _catalog()
     workflow = next(
-        item for item in value["workflows"] if item["path"] == ".github/workflows/ci.yml"
+        item
+        for item in value["workflows"]
+        if item["path"] == ".github/workflows/ci.yml"
     )
     job = workflow["jobs"]["ci-diagnostic"]
     job["classification"] = classification
@@ -739,7 +743,9 @@ def test_required_profile_events_cannot_be_removed_by_job_override(
 ) -> None:
     value = _catalog()
     workflow = next(
-        item for item in value["workflows"] if item["path"] == ".github/workflows/ci.yml"
+        item
+        for item in value["workflows"]
+        if item["path"] == ".github/workflows/ci.yml"
     )
     workflow["jobs"]["ci-diagnostic"]["required_events"] = [remaining_event]
 
@@ -753,7 +759,9 @@ def test_required_profile_events_cannot_be_removed_by_job_override(
 def test_identical_required_policy_and_metadata_overrides_remain_valid() -> None:
     value = _catalog()
     workflow = next(
-        item for item in value["workflows"] if item["path"] == ".github/workflows/ci.yml"
+        item
+        for item in value["workflows"]
+        if item["path"] == ".github/workflows/ci.yml"
     )
     job = workflow["jobs"]["ci-diagnostic"]
     profile = value["profiles"][job["profile"]]
