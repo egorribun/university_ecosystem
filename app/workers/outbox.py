@@ -189,6 +189,11 @@ class OutboxWorker:
                         # Keep connection alive
                         await asyncio.sleep(30)
                         await conn.execute("SELECT 1")
+                except asyncpg.InterfaceError as exc:
+                    # Classify before close() itself changes the connection state.
+                    if not conn.is_closed():
+                        raise
+                    raise ConnectionError("Outbox listener connection closed") from exc
                 finally:
                     await conn.close()
             except asyncio.CancelledError:
@@ -196,6 +201,7 @@ class OutboxWorker:
             except (
                 OSError,
                 ConnectionError,
+                asyncpg.ConnectionDoesNotExistError,
             ) as e:  # RZ-22-01: narrowed — DB/network reconnect
                 logger.warning("OutboxWorker listen connection lost, retrying: %s", e)
                 await asyncio.sleep(5)

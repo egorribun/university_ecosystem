@@ -117,7 +117,7 @@ beforeEach(() => {
   hydrationListeners = []
   const addWindowListener = window.addEventListener.bind(window)
   vi.spyOn(window, "addEventListener").mockImplementation((type, listener, options) => {
-    if (type === "ue:app-hydrated") {
+    if (String(type) === "ue:app-hydrated") {
       hydrationListeners.push(listener)
       hydrationListenerRemovers.push(() => {
         window.removeEventListener(type, listener, options)
@@ -161,6 +161,11 @@ describe("browser entrypoint", () => {
   it("installs bootstrap guards, hydrates the document, and reports deferred TTI", async () => {
     vi.stubEnv("PROD", false)
     const readBootstrapStatus = observeServiceWorkerBootstrap()
+    const { markAppHydrated } = await import("../app/hydration")
+    mocks.hydrateRoot.mockImplementation(() => {
+      performanceClockValue = 145
+      markAppHydrated()
+    })
 
     await importMain()
     await waitForDeferredWork()
@@ -734,7 +739,7 @@ describe("AUD-097 provider-commit bootstrap timing", () => {
         for (const listener of hydrationListeners) {
           expect(
             removeListener.mock.calls.some(
-              ([type, removed]) => type === "ue:app-hydrated" && removed === listener
+              ([type, removed]) => String(type) === "ue:app-hydrated" && removed === listener
             )
           ).toBe(true)
         }
