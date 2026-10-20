@@ -13,15 +13,36 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def image() -> str:
-    compose = yaml.safe_load(
-        (ROOT / "docker-compose.observability.yml").read_text(encoding="utf-8")
+    node = yaml.compose(
+        (ROOT / "docker-compose.observability.yml").read_text(encoding="utf-8"),
+        Loader=yaml.SafeLoader,
     )
-    reference = compose["services"]["prometheus"]["image"]
-    if not isinstance(reference, str) or not re.fullmatch(
-        r"prom/prometheus:v\d+\.\d+\.\d+@sha256:[0-9a-f]{64}", reference
+    message = "Expected the existing immutable official Prometheus image"
+    for name in ("services", "prometheus", "image"):
+        if not isinstance(node, yaml.MappingNode):
+            raise ValueError(message)
+        if node.tag != "tag:yaml.org,2002:map":
+            raise ValueError(message)
+
+        children = {}
+        for key, value in node.value:
+            if not isinstance(key, yaml.ScalarNode):
+                raise ValueError(message)
+            if key.tag != "tag:yaml.org,2002:str" or key.value in children:
+                raise ValueError(message)
+            children[key.value] = value
+
+        if name not in children:
+            raise ValueError(message)
+        node = children[name]
+
+    if not isinstance(node, yaml.ScalarNode):
+        raise ValueError(message)
+    if node.tag != "tag:yaml.org,2002:str" or not re.fullmatch(
+        r"prom/prometheus:v\d+\.\d+\.\d+@sha256:[0-9a-f]{64}", node.value
     ):
-        raise ValueError("Expected the existing immutable official Prometheus image")
-    return reference
+        raise ValueError(message)
+    return node.value
 
 
 def rules() -> dict[str, object]:
@@ -37,8 +58,7 @@ def rules() -> dict[str, object]:
 def state_check(alert: str, state: str, time: str, expected: int) -> dict[str, object]:
     return {
         "expr": (
-            f'count(ALERTS{{alertname="{alert}",alertstate="{state}"}})'
-            " or vector(0)"
+            f'count(ALERTS{{alertname="{alert}",alertstate="{state}"}}) or vector(0)'
         ),
         "eval_time": time,
         "exp_samples": [{"labels": "{}", "value": expected}],

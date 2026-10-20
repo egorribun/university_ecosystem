@@ -279,11 +279,32 @@ def test_prometheus_generator_preserves_actual_rule_groups() -> None:
     assert alert_contract.rules() == {"groups": manifest["spec"]["groups"]}
 
 
-def test_prometheus_generator_uses_the_existing_compose_image() -> None:
+def _existing_prometheus_image() -> str:
     source = WORKFLOW.parents[2] / "docker-compose.observability.yml"
-    compose = yaml.safe_load(source.read_text(encoding="utf-8"))
+    node = yaml.compose(
+        source.read_text(encoding="utf-8"),
+        Loader=yaml.SafeLoader,
+    )
+    for name in ("services", "prometheus", "image"):
+        assert isinstance(node, yaml.MappingNode)
+        assert node.tag == "tag:yaml.org,2002:map"
+        matches = [
+            value
+            for key, value in node.value
+            if isinstance(key, yaml.ScalarNode)
+            and key.tag == "tag:yaml.org,2002:str"
+            and key.value == name
+        ]
+        assert len(matches) == 1
+        node = matches[0]
 
-    assert alert_contract.image() == compose["services"]["prometheus"]["image"]
+    assert isinstance(node, yaml.ScalarNode)
+    assert node.tag == "tag:yaml.org,2002:str"
+    return node.value
+
+
+def test_prometheus_generator_uses_the_existing_compose_image() -> None:
+    assert alert_contract.image() == _existing_prometheus_image()
 
 
 @pytest.mark.parametrize(
@@ -382,3 +403,63 @@ def test_prometheus_generator_has_six_actual_metric_boundary_cases() -> None:
                     "eval_time": time,
                     "exp_samples": [{"labels": "{}", "value": value}],
                 }
+
+
+def test_prometheus_image_cli_ignores_unrelated_compose_tags(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    reference = _existing_prometheus_image()
+    (tmp_path / "docker-compose.observability.yml").write_text(
+        "services:\n"
+        "  unrelated:\n"
+        "    ports: !override []\n"
+        "  prometheus:\n"
+        f"    image: {reference}\n"
+        "    ports: !override []\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(alert_contract, "ROOT", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["alert-contract", "image"])
+
+    alert_contract.main()
+
+    assert capsys.readouterr().out == f"{reference}\n"
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        "services: {}\nservices: {}\n",
+        "services:\n  prometheus: {}\n  prometheus: {}\n",
+        "services:\n  prometheus:\n    image: $IMAGE\n    image: $IMAGE\n",
+        "{}\n",
+        "services: {}\n",
+        "services:\n  prometheus: {}\n",
+        "services: !override {}\n",
+        "services:\n  prometheus: !override {}\n",
+        "services:\n  prometheus:\n    image: !override $IMAGE\n",
+        "services:\n  prometheus:\n    image: 123\n",
+        "services:\n  prometheus:\n    image: {}\n",
+        "services:\n  prometheus:\n    image: $IMAGE\n    123: ignored\n",
+    ],
+)
+def test_prometheus_image_cli_rejects_ambiguous_or_nonstring_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    document: str,
+) -> None:
+    reference = _existing_prometheus_image()
+    (tmp_path / "docker-compose.observability.yml").write_text(
+        document.replace("$IMAGE", reference),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(alert_contract, "ROOT", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["alert-contract", "image"])
+
+    with pytest.raises(ValueError, match="immutable official Prometheus image"):
+        alert_contract.main()
+
+    assert capsys.readouterr().out == ""
