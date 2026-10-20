@@ -3,14 +3,14 @@
   "expected": {
     "computed_columns": ["events.search_vector"],
     "effective_counts": {
-      "both": 81,
-      "python_only": 40,
+      "both": 85,
+      "python_only": 41,
       "server_only": 0
     },
-    "effective_default_count": 121,
-    "migration_head": "202610120002",
+    "effective_default_count": 126,
+    "migration_head": "202610200001",
     "source_counts": {
-      "both": 81,
+      "both": 85,
       "python_only": 17,
       "server_only": 0
     },
@@ -29,8 +29,8 @@
       "schedule.lesson_type",
       "users.demo_seed_key"
     ],
-    "source_mapped_column_count": 98,
-    "table_count": 44
+    "source_mapped_column_count": 102,
+    "table_count": 46
   },
   "exceptions": [
     {
@@ -224,6 +224,12 @@
       "kind": "json_application_default",
       "owner": "backend-notifications",
       "reason": "The mutable JSON default is application-owned; a server expression requires an explicit dialect and round-trip decision."
+    },
+    {
+      "column": "quarantine_reservations.id",
+      "kind": "inherited_uuid7_primary_key",
+      "owner": "backend-platform",
+      "reason": "UUIDv7 is supplied by UUID7PrimaryKeyMixin; a database fallback could violate the time-ordered identifier contract."
     },
     {
       "column": "recovery_codes.id",

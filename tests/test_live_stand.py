@@ -11851,3 +11851,448 @@ def test_live_caddy_pin_dispatch_preserves_core_verifier(
     )
 
     assert calls == [(owner, 33.0, context)]
+
+
+_LIVE_CORE_CADDY_MOUNT_FIELDS = (
+    "Type",
+    "Name",
+    "Source",
+    "Destination",
+    "Driver",
+    "Mode",
+    "RW",
+    "Propagation",
+)
+
+
+def _aud174_core_caddy_raw_record(
+    owner: live_stand.StandOwner, service: str, index: int
+) -> dict[str, Any]:
+    container_id = f"{index:064x}"
+    labels = {
+        "com.docker.compose.project": owner.project_name,
+        "com.docker.compose.service": service,
+        "com.docker.compose.oneoff": "False",
+        "org.example.owner-proof": f"owned:{service}",
+    }
+    mounts: list[dict[str, Any]] = []
+    if service == "caddy":
+        mounts.append(
+            {
+                "Type": "bind",
+                "Source": "/workspace/infrastructure/Caddyfile",
+                "Destination": "/etc/caddy/Caddyfile",
+                "Mode": "ro",
+                "RW": False,
+                "Propagation": "rprivate",
+            }
+        )
+    elif service == "backend":
+        mounts.append(
+            {
+                "Type": "volume",
+                "Name": f"{owner.project_name}_app-data",
+                "Source": "/var/lib/docker/volumes/app-data/_data",
+                "Destination": "/data",
+                "Driver": "local",
+                "Mode": "z",
+                "RW": True,
+                "Propagation": "",
+            }
+        )
+    is_caddy = service == "caddy"
+    return {
+        "Id": container_id,
+        "Name": f"/{owner.project_name}-{service}-1",
+        "Image": f"sha256:{index:064x}",
+        "Config": {
+            "Image": f"example/{service}:private-test",
+            "Labels": labels,
+        },
+        "Mounts": mounts,
+        "State": {
+            "Running": is_caddy,
+            "Status": "running" if is_caddy else "exited",
+            "Health": {"Status": "healthy"} if is_caddy else None,
+        },
+    }
+
+
+def _aud174_core_caddy_wire_record(record: dict[str, Any]) -> dict[str, Any]:
+    state = record["State"]
+    health = state["Health"]
+    return {
+        "Id": record["Id"],
+        "Name": record["Name"],
+        "Image": record["Image"],
+        "ConfigImage": record["Config"]["Image"],
+        "Labels": record["Config"]["Labels"],
+        "State": {
+            "Running": state["Running"],
+            "Status": state["Status"],
+            "Health": None if health is None else {"Status": health["Status"]},
+        },
+        "Mounts": record["Mounts"],
+    }
+
+
+def _aud174_core_caddy_normalized_record(
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    wire = _aud174_core_caddy_wire_record(record)
+    state = wire["State"]
+    return {
+        "Id": wire["Id"],
+        "Name": wire["Name"],
+        "Image": wire["Image"],
+        "Config": {"Image": wire["ConfigImage"], "Labels": wire["Labels"]},
+        "State": state,
+        "Mounts": [
+            {key: mount.get(key) for key in _LIVE_CORE_CADDY_MOUNT_FIELDS}
+            for mount in wire["Mounts"]
+        ],
+    }
+
+
+def _aud174_core_caddy_setup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    response_kind: str = "valid",
+    expire_after: str | None = None,
+) -> tuple[
+    live_stand.StandOwner,
+    live_stand.ComposeResourceEvidence,
+    live_stand._LiveDockerReadContext,
+    dict[str, Any],
+]:
+    project_name = _PROJECTION_PROJECT
+    services = live_stand.LIVE_CORE_EXPECTED_SERVICES
+    owner = live_stand.StandOwner(
+        repository=str(tmp_path),
+        worktree=str(tmp_path),
+        project_name=project_name,
+        published_ports=tuple(_port_map().items()),
+        schema_version=live_stand.OWNER_SCHEMA_VERSION,
+        daemon_fingerprint=hashlib.sha256(b"private-core-daemon").hexdigest(),
+        compose_resource_fingerprint=hashlib.sha256(
+            b"private-core-compose"
+        ).hexdigest(),
+        stack=live_stand.LIVE_STACK_CORE,
+        service_roots=live_stand.LIVE_CORE_SERVICE_ROOTS,
+        selected_services=services,
+    )
+    evidence = _projection_expected(core=True)
+    context = _aud174_docker_read_context(tmp_path)
+    deadline = 100.5
+    now = [100.0]
+    raw_records = {
+        f"{index:064x}": _aud174_core_caddy_raw_record(owner, service, index)
+        for index, service in enumerate(services, start=1)
+    }
+    container_ids = tuple(raw_records)
+    events: list[tuple[str, Any]] = []
+    state: dict[str, Any] = {
+        "owner": owner,
+        "evidence": evidence,
+        "context": context,
+        "deadline": deadline,
+        "now": now,
+        "raw_records": raw_records,
+        "ids": container_ids,
+        "events": events,
+        "response_kind": response_kind,
+        "expire_after": expire_after,
+    }
+
+    def load_owner(worktree: Path) -> live_stand.StandOwner:
+        assert worktree == tmp_path
+        events.append(("owner", worktree))
+        return owner
+
+    def daemon_fingerprint(
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> str:
+        assert deadline == state["deadline"]
+        assert docker_context is context
+        events.append(("daemon", docker_context))
+        assert owner.daemon_fingerprint is not None
+        return owner.daemon_fingerprint
+
+    def verify_resources(
+        worktree: Path,
+        observed_owner: live_stand.StandOwner,
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> live_stand.ComposeResourceEvidence:
+        assert worktree == tmp_path
+        assert observed_owner == owner
+        assert deadline == state["deadline"]
+        assert docker_context is context
+        events.append(("resources", observed_owner))
+        return evidence
+
+    def bounded_read(
+        command: Sequence[str],
+        *,
+        context: live_stand._LiveDockerReadContext,
+        deadline: float,
+        maximum_bytes: int,
+        command_timeout_seconds: float,
+    ) -> subprocess.CompletedProcess[bytes]:
+        normalized = tuple(command)
+        assert normalized[0] == "docker"
+        assert context is context_value
+        assert deadline == state["deadline"]
+        assert maximum_bytes == live_stand._LIVE_CADDY_PROBE_MAX_BYTES
+        assert (
+            command_timeout_seconds == live_stand._LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS
+        )
+        arguments = normalized[1:]
+        events.append(("docker", arguments))
+        if arguments[:1] == ("ps",):
+            assert arguments == (
+                "ps",
+                "--all",
+                "--quiet",
+                "--no-trunc",
+                "--filter",
+                f"label=com.docker.compose.project={project_name}",
+            )
+            if expire_after == "ps":
+                now[0] = deadline
+            output = "".join(f"{container_id}\n" for container_id in container_ids)
+            return subprocess.CompletedProcess(normalized, 0, output.encode(), b"")
+        assert arguments[:4] == ("inspect", "--type", "container", "--format"), (
+            "Core Caddy pin must inspect the captured IDs in one bounded batch"
+        )
+        assert arguments[4] == live_stand._LIVE_CADDY_CORE_INSPECT_FORMAT
+        assert arguments[5:] == container_ids
+        lines = [
+            json.dumps(
+                _aud174_core_caddy_wire_record(raw_records[container_id]),
+                separators=(",", ":"),
+            )
+            for container_id in container_ids
+        ]
+        if response_kind == "foreign":
+            foreign = _aud174_core_caddy_wire_record(raw_records[container_ids[0]])
+            foreign["Id"] = "f" * 64
+            lines[0] = json.dumps(foreign, separators=(",", ":"))
+        elif response_kind == "missing":
+            lines.pop()
+        elif response_kind == "duplicate":
+            lines[-1] = lines[0]
+        elif response_kind == "malformed":
+            lines[0] = "{" + lines[0]
+        elif response_kind == "duplicate-key":
+            lines[0] = lines[0].replace(
+                '"Name":', f'"Id":"{container_ids[0]}","Name":', 1
+            )
+        elif response_kind == "missing-field":
+            lines[0] = lines[0].replace('"ConfigImage":', '"RemovedConfigImage":', 1)
+        elif response_kind != "valid":
+            raise AssertionError("unknown private test response case")
+        if expire_after == "inspect":
+            now[0] = deadline
+        output = "\n".join(lines) + "\n"
+        return subprocess.CompletedProcess(normalized, 0, output.encode(), b"")
+
+    monkeypatch.setattr(live_stand, "WORKTREE", tmp_path)
+    monkeypatch.setattr(live_stand, "_require_worktree", lambda: None)
+    monkeypatch.setattr(live_stand.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(live_stand, "load_stand_owner", load_owner)
+    monkeypatch.setattr(live_stand, "docker_daemon_fingerprint", daemon_fingerprint)
+    monkeypatch.setattr(
+        live_stand, "_verify_stand_owner_compose_resources", verify_resources
+    )
+    context_value = context
+    monkeypatch.setattr(live_stand, "_run_live_bounded_read", bounded_read)
+    return owner, evidence, context, state
+
+
+def test_live_core_caddy_projection_preserves_identity_inputs_and_missing_mount_fields(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner, evidence, context, state = _aud174_core_caddy_setup(monkeypatch, tmp_path)
+    expected_records = tuple(state["raw_records"].values())
+    encoded = (
+        "\n".join(
+            json.dumps(_aud174_core_caddy_wire_record(record), separators=(",", ":"))
+            for record in expected_records
+        )
+        + "\n"
+    )
+
+    projected = live_stand._parse_live_core_caddy_inspect_batch(encoded, state["ids"])
+
+    for actual, expected in zip(projected, expected_records, strict=True):
+        normalized_expected = _aud174_core_caddy_normalized_record(expected)
+        assert actual == normalized_expected
+        actual_record = live_stand._core_container_record_from_inspect(
+            expected["Id"], owner, evidence, actual
+        )
+        expected_record = live_stand._core_container_record_from_inspect(
+            expected["Id"], owner, evidence, expected
+        )
+        assert actual_record == expected_record
+    assert context is state["context"]
+
+
+@pytest.mark.parametrize(
+    "response_kind",
+    ["foreign", "missing", "duplicate", "malformed", "duplicate-key", "missing-field"],
+)
+def test_live_core_caddy_batched_pin_rejects_nonbijective_or_malformed_responses(
+    response_kind: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    owner, _evidence, context, state = _aud174_core_caddy_setup(
+        monkeypatch, tmp_path, response_kind=response_kind
+    )
+
+    with pytest.raises(
+        live_stand.StandError, match="Caddy access-log redaction proof failed"
+    ) as error:
+        live_stand._verified_live_core_caddy_container(
+            owner, deadline=state["deadline"], docker_context=context
+        )
+
+    assert str(error.value) == "Caddy access-log redaction proof failed"
+    assert "f" * 64 not in str(error.value)
+    commands = [value for name, value in state["events"] if name == "docker"]
+    assert commands[0][0] == "ps"
+    assert len(commands) == 2
+    assert commands[1][0:4] == ("inspect", "--type", "container", "--format")
+
+
+def test_live_core_caddy_batched_pin_returns_the_existing_container_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner, evidence, context, state = _aud174_core_caddy_setup(monkeypatch, tmp_path)
+    caddy_id = next(
+        container_id
+        for container_id, raw in state["raw_records"].items()
+        if raw["Config"]["Labels"]["com.docker.compose.service"] == "caddy"
+    )
+    expected = live_stand._core_container_record_from_inspect(
+        caddy_id, owner, evidence, state["raw_records"][caddy_id]
+    )
+
+    actual = live_stand._verified_live_core_caddy_container(
+        owner, deadline=state["deadline"], docker_context=context
+    )
+
+    assert actual == (caddy_id, expected.identity)
+    commands = [value for name, value in state["events"] if name == "docker"]
+    assert len(commands) == 2
+    assert commands[0][0] == "ps"
+    assert commands[1][0:4] == ("inspect", "--type", "container", "--format")
+    assert commands[1][5:] == state["ids"]
+    assert len(state["ids"]) == len(live_stand.LIVE_CORE_EXPECTED_SERVICES)
+    event_names = [name for name, _ in state["events"]]
+    assert event_names.count("owner") == 2
+    assert event_names.count("daemon") == 2
+    assert event_names.count("resources") == 1
+
+
+@pytest.mark.parametrize("expired_command", ["ps", "inspect"])
+def test_live_core_caddy_batched_pin_stops_after_a_command_expires_deadline(
+    expired_command: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    owner, _evidence, context, state = _aud174_core_caddy_setup(
+        monkeypatch, tmp_path, expire_after=expired_command
+    )
+
+    with pytest.raises(
+        live_stand.StandError, match="Caddy access-log redaction proof failed"
+    ):
+        live_stand._verified_live_core_caddy_container(
+            owner, deadline=state["deadline"], docker_context=context
+        )
+
+    commands = [value for name, value in state["events"] if name == "docker"]
+    expected_commands = ["ps"] if expired_command == "ps" else ["ps", "inspect"]
+    assert [command[0] for command in commands] == expected_commands
+
+
+def test_live_core_caddy_inspect_command_rejects_more_than_sixty_four_ids() -> None:
+    ids = tuple(f"{index:064x}" for index in range(1, 66))
+
+    with pytest.raises(live_stand._DockerProjectionError):
+        live_stand._build_live_core_caddy_inspect_command(ids)
+
+
+def test_live_core_caddy_projection_ignores_future_mount_fields_outside_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner, evidence, _context, state = _aud174_core_caddy_setup(monkeypatch, tmp_path)
+    caddy_id, caddy_raw = next(
+        (container_id, raw)
+        for container_id, raw in state["raw_records"].items()
+        if raw["Config"]["Labels"]["com.docker.compose.service"] == "caddy"
+    )
+    original_identity = live_stand._core_container_record_from_inspect(
+        caddy_id, owner, evidence, caddy_raw
+    ).identity
+    caddy_raw["Mounts"][0]["FutureMetadata"] = {
+        "version": 2,
+        "opaque": ["ignored"],
+    }
+    encoded = (
+        "\n".join(
+            json.dumps(
+                _aud174_core_caddy_wire_record(raw),
+                separators=(",", ":"),
+            )
+            for raw in state["raw_records"].values()
+        )
+        + "\n"
+    )
+
+    parsed = live_stand._parse_live_core_caddy_inspect_batch(encoded, state["ids"])
+
+    assert parsed == tuple(
+        _aud174_core_caddy_normalized_record(raw)
+        for raw in state["raw_records"].values()
+    )
+    caddy_index = state["ids"].index(caddy_id)
+    assert "FutureMetadata" not in parsed[caddy_index]["Mounts"][0]
+    actual_identity = live_stand._core_container_record_from_inspect(
+        caddy_id, owner, evidence, parsed[caddy_index]
+    ).identity
+    assert actual_identity == original_identity
+
+
+def test_live_core_caddy_template_uses_safe_health_map_lookup() -> None:
+    assert (
+        '"Health":{{if eq (index .State "Health") nil}}null{{else}}'
+        '{"Status":{{json (index (index .State "Health") "Status")}}}{{end}}},'
+    ) in live_stand._LIVE_CADDY_CORE_INSPECT_FORMAT
+
+
+@pytest.mark.parametrize("missing", ["deadline", "docker_context"])
+def test_live_core_caddy_pin_requires_deadline_and_context_before_any_read(
+    missing: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner, _evidence, context, state = _aud174_core_caddy_setup(monkeypatch, tmp_path)
+
+    with pytest.raises(
+        live_stand.StandError, match="Caddy access-log redaction proof failed"
+    ):
+        if missing == "deadline":
+            live_stand._verified_live_core_caddy_container(
+                owner, docker_context=context
+            )
+        else:
+            live_stand._verified_live_core_caddy_container(
+                owner, deadline=state["deadline"]
+            )
+
+    assert state["events"] == []

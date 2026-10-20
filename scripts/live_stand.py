@@ -2584,6 +2584,30 @@ _DOCKER_INSPECT_FORMAT = (
 )
 
 
+_LIVE_CADDY_CORE_INSPECT_FORMAT = (
+    '{"Id":{{json .Id}},'
+    '"Name":{{json .Name}},'
+    '"Image":{{json .Image}},'
+    '"ConfigImage":{{json .Config.Image}},'
+    '"Labels":{{json .Config.Labels}},'
+    '"State":{"Running":{{json .State.Running}},'
+    '"Status":{{json .State.Status}},'
+    '"Health":{{if eq (index .State "Health") nil}}null{{else}}'
+    '{"Status":{{json (index (index .State "Health") "Status")}}}{{end}}},'
+    '"Mounts":{{json .Mounts}}}'
+)
+_LIVE_CADDY_CORE_MOUNT_FIELDS = (
+    "Type",
+    "Name",
+    "Source",
+    "Destination",
+    "Driver",
+    "Mode",
+    "RW",
+    "Propagation",
+)
+
+
 class _DockerProjectionError(ValueError):
     """Signal an incomplete or ambiguous batched Docker projection."""
 
@@ -2732,6 +2756,126 @@ def _parse_docker_inspect_projection_batch(
     if set(parsed) != expected:
         raise _DockerProjectionError
     return tuple(parsed[container_id] for container_id in ids)
+
+
+def _reject_nonstandard_docker_json_constant(_value: str) -> object:
+    raise _DockerProjectionError
+
+
+def _build_live_core_caddy_inspect_command(
+    container_ids: Iterable[str],
+) -> tuple[str, ...]:
+    ids = _validated_docker_container_ids(
+        container_ids, maximum=_LIVE_CADDY_PROBE_MAX_PROJECT_CONTAINERS
+    )
+    if not ids:
+        raise _DockerProjectionError
+    return (
+        "docker",
+        "inspect",
+        "--type",
+        "container",
+        "--format",
+        _LIVE_CADDY_CORE_INSPECT_FORMAT,
+        *ids,
+    )
+
+
+def _parse_live_core_caddy_inspect_batch(
+    output: str, expected_ids: Sequence[str]
+) -> tuple[dict[str, object], ...]:
+    ids = _validated_docker_container_ids(
+        expected_ids, maximum=_LIVE_CADDY_PROBE_MAX_PROJECT_CONTAINERS
+    )
+    if not ids or not isinstance(output, str):
+        raise _DockerProjectionError
+    lines = output.splitlines()
+    if len(lines) != len(ids) or any(not line.strip() for line in lines):
+        raise _DockerProjectionError
+
+    expected = set(ids)
+    parsed_by_id: dict[str, dict[str, object]] = {}
+    for line in lines:
+        try:
+            value = json.loads(
+                line,
+                object_pairs_hook=_reject_duplicate_docker_json_keys,
+                parse_constant=_reject_nonstandard_docker_json_constant,
+            )
+        except (json.JSONDecodeError, _DockerProjectionError):
+            raise _DockerProjectionError from None
+        if not isinstance(value, dict) or set(value) != {
+            "Id",
+            "Name",
+            "Image",
+            "ConfigImage",
+            "Labels",
+            "State",
+            "Mounts",
+        }:
+            raise _DockerProjectionError
+        container_id = value["Id"]
+        name = value["Name"]
+        image = value["Image"]
+        config_image = value["ConfigImage"]
+        labels = value["Labels"]
+        state = value["State"]
+        mounts = value["Mounts"]
+        if (
+            not isinstance(container_id, str)
+            or not _DOCKER_INSPECT_CONTAINER_ID.fullmatch(container_id)
+            or container_id not in expected
+            or container_id in parsed_by_id
+            or not isinstance(name, str)
+            or not isinstance(image, str)
+            or not isinstance(config_image, str)
+            or not isinstance(labels, dict)
+            or not all(
+                isinstance(key, str) and isinstance(label, str)
+                for key, label in labels.items()
+            )
+            or not isinstance(state, dict)
+            or set(state) != {"Running", "Status", "Health"}
+            or not isinstance(state["Running"], bool)
+            or (state["Status"] is not None and not isinstance(state["Status"], str))
+            or not isinstance(mounts, list)
+        ):
+            raise _DockerProjectionError
+        health = state["Health"]
+        if health is not None and (
+            not isinstance(health, dict)
+            or set(health) != {"Status"}
+            or not isinstance(health["Status"], str)
+        ):
+            raise _DockerProjectionError
+
+        normalized_mounts: list[dict[str, object]] = []
+        for mount in mounts:
+            if (
+                not isinstance(mount, dict)
+                or "Type" not in mount
+                or not isinstance(mount["Type"], str)
+            ):
+                raise _DockerProjectionError
+            normalized_mounts.append(
+                {key: mount.get(key) for key in _LIVE_CADDY_CORE_MOUNT_FIELDS}
+            )
+        parsed_by_id[container_id] = {
+            "Id": container_id,
+            "Name": name,
+            "Image": image,
+            "Config": {"Image": config_image, "Labels": labels},
+            "State": {
+                "Running": state["Running"],
+                "Status": state["Status"],
+                "Health": health,
+            },
+            "Mounts": normalized_mounts,
+        }
+
+    if set(parsed_by_id) != expected:
+        raise _DockerProjectionError
+    return tuple(parsed_by_id[container_id] for container_id in ids)
 
 
 def _parse_docker_inspect_projection_inventory(
@@ -8530,6 +8674,73 @@ def _live_caddy_marker_identity(
     return (*identity, timestamp)
 
 
+def _live_core_caddy_container_inventory(
+    owner: StandOwner,
+    evidence: ComposeResourceEvidence,
+    *,
+    deadline: float,
+    docker_context: _LiveDockerReadContext,
+) -> dict[str, CoreContainerRecord]:
+    selected = owner.selected_services
+    selected_set = set(selected)
+    if (
+        owner.stack != LIVE_STACK_CORE
+        or evidence.stack != LIVE_STACK_CORE
+        or not selected
+        or len(selected_set) != len(selected)
+        or evidence.selected_services != selected
+        or set(evidence.managed_services) != selected_set
+        or not LIVE_CORE_QUIESCE_DATA_STORES <= selected_set
+    ):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+
+    _live_probe_remaining(deadline)
+    try:
+        container_ids = _validated_docker_container_ids(
+            _project_container_ids(
+                owner.project_name,
+                deadline=deadline,
+                docker_context=docker_context,
+            ),
+            maximum=_LIVE_CADDY_PROBE_MAX_PROJECT_CONTAINERS,
+        )
+    except _DockerProjectionError:
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+    if not container_ids:
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+
+    _live_probe_remaining(deadline)
+    command = _build_live_core_caddy_inspect_command(container_ids)
+    output = _docker_output(
+        command[1:],
+        _LIVE_CADDY_PROBE_FAILURE,
+        deadline=deadline,
+        docker_context=docker_context,
+    )
+    _live_probe_remaining(deadline)
+    try:
+        raw_records = _parse_live_core_caddy_inspect_batch(output, container_ids)
+    except _DockerProjectionError:
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+
+    records: dict[str, CoreContainerRecord] = {}
+    service_to_id: dict[str, str] = {}
+    for container_id, raw_record in zip(container_ids, raw_records, strict=True):
+        inspected = _core_container_record_from_inspect(
+            container_id, owner, evidence, raw_record
+        )
+        if inspected.service not in selected_set:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        if inspected.service in service_to_id:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        service_to_id[inspected.service] = container_id
+        records[container_id] = inspected
+    if set(service_to_id) != selected_set:
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+    _live_probe_remaining(deadline)
+    return records
+
+
 def _verified_live_core_caddy_container(
     owner: StandOwner,
     *,
@@ -8538,6 +8749,8 @@ def _verified_live_core_caddy_container(
 ) -> tuple[str, str]:
     """Return the sole running Caddy ID and identity in the signed Core projection."""
     try:
+        if deadline is None or docker_context is None:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
         if owner.stack != LIVE_STACK_CORE:
             raise StandError(_LIVE_CADDY_PROBE_FAILURE)
         _assert_core_owner_unchanged(
@@ -8549,7 +8762,7 @@ def _verified_live_core_caddy_container(
             deadline=deadline,
             docker_context=docker_context,
         )
-        records = _core_quiesce_container_inventory(
+        records = _live_core_caddy_container_inventory(
             owner,
             evidence,
             deadline=deadline,

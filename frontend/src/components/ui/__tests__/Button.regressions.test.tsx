@@ -39,6 +39,29 @@ function expectUtility(
 }
 
 describe("Button semantic CSS", () => {
+  it.each([
+    ["text-label-xs", "font-size", "var(--text-label-xs)"],
+    ["duration-fast", "transition-duration", "var(--motion-duration-fast)"],
+    ["opacity-soft", "opacity", "var(--opacity-soft)"],
+  ] as const)(
+    "generates the named %s utility from its theme token",
+    (className, property, value) => {
+      const element = document.createElement("button")
+      element.className = className
+      expectUtility(element, className, property, value)
+    }
+  )
+
+  it("preserves the primitive opacity value without emitting a self-referential theme alias", () => {
+    const opacitySoftValues: string[] = []
+    stylesheet.walkDecls("--opacity-soft", (declaration) => {
+      opacitySoftValues.push(declaration.value)
+    })
+
+    expect(opacitySoftValues).toContain(".3")
+    expect(opacitySoftValues).not.toContain("var(--opacity-soft)")
+  })
+
   it.each([undefined, "gradient"] as const)(
     "uses the existing hover opacity token for variant %s",
     (variant) => {

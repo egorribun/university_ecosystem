@@ -91,14 +91,21 @@ def test_phase_four_policy_accounts_for_all_remaining_exceptions() -> None:
             Path(__file__).resolve().parents[1] / "quality/model-default-policy.json"
         ).read_text(encoding="utf-8")
     )
-    # AUD180 adds the news ownership table, so inventory follows the graph head.
-    assert policy["expected"]["migration_head"] == "202610120002"
+    # The source-derived inventory follows migrations after this historical phase.
+    assert policy["expected"]["migration_head"] == "202610200001"
     assert policy["expected"]["effective_counts"] == {
-        "both": 81,
-        "python_only": 40,
+        "both": 85,
+        "python_only": 41,
         "server_only": 0,
     }
-    assert len(policy["exceptions"]) == 40
+    assert len(policy["exceptions"]) == 41
+    quarantine_id = next(
+        item
+        for item in policy["exceptions"]
+        if item["column"] == "quarantine_reservations.id"
+    )
+    assert quarantine_id["kind"] == "inherited_uuid7_primary_key"
+    assert quarantine_id["owner"] == "backend-platform"
 
 
 def test_conflicting_timestamp_default_is_rejected() -> None:

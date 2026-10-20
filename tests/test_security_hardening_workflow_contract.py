@@ -298,7 +298,14 @@ def test_standalone_security_scanners_verify_trusted_base_before_consuming_polic
             "PR_AUTHOR": "${{ github.event.pull_request.user.login }}",
         }
         run = verify["run"]
-        assert 'git fetch --no-tags --depth=1 origin "$BASE_SHA"' in run
+        if workflow_name == "gitleaks.yml":
+            # A depth-limited fetch changes the history boundary even after a
+            # full checkout; history scanning must preserve complete ancestry.
+            assert checkout["with"]["fetch-depth"] == 0
+            assert 'git fetch --no-tags origin "$BASE_SHA"' in run
+            assert "--depth" not in run
+        else:
+            assert 'git fetch --no-tags --depth=1 origin "$BASE_SHA"' in run
         assert 'git diff --quiet "$BASE_SHA" -- "$path"' in run
         assert 'BASE_REPOSITORY" != "$GITHUB_REPOSITORY"' in run
         assert 'PR_AUTHOR" != "egorribun"' in run
@@ -318,6 +325,7 @@ def test_standalone_security_scanners_verify_trusted_base_before_consuming_polic
                         "Initialize CodeQL",
                         "Dependency Review",
                         "Run Gitleaks",
+                        "Run complete Gitleaks history",
                         "Run zizmor",
                     )
                 )

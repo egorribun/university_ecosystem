@@ -300,6 +300,12 @@ def _prepare_scan(
     if os.path.normcase(str(resolved_top_level)) != os.path.normcase(str(repository)):
         raise GitleaksGateError("Git checkout root does not match the workspace")
 
+    shallow_result = _run_git(
+        repository, ("rev-parse", "--is-shallow-repository"), git_environment
+    )
+    if shallow_result.stdout.strip() != "false":
+        raise GitleaksGateError("Git checkout history is shallow and incomplete")
+
     checkout_result = _run_git(repository, ("rev-parse", "HEAD"), git_environment)
     if checkout_result.stdout.strip() != expected_checkout:
         raise GitleaksGateError("Git checkout commit does not match the event")

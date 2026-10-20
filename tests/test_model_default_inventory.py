@@ -58,6 +58,13 @@ def test_repository_inventory_is_current_and_owner_scoped() -> None:
     columns = {item["column"]: item for item in inventory["columns"]}
     assert columns["active_sessions.signing_key"]["exception_owner"] == "backend-auth"
     assert columns["groups.id"]["exception_kind"] == "inherited_uuid7_primary_key"
+    assert (
+        columns["quarantine_reservations.id"]["exception_kind"]
+        == "inherited_uuid7_primary_key"
+    )
+    assert (
+        columns["quarantine_reservations.id"]["exception_owner"] == "backend-platform"
+    )
     assert columns["events.search_vector"]["classification"] == "computed"
     assert all(
         item["exception_owner"] is not None

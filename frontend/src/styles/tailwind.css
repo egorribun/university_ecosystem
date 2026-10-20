@@ -106,15 +106,15 @@
   --spacing-nav-action-gap: var(--nav-action-gap);
 
   /* Typography Scale (Fluid) */
-  --font-size-xs: var(--fs-xs);
-  --font-size-sm: var(--fs-sm);
-  --font-size-base: var(--fs-base);
-  --font-size-lg: var(--fs-lg);
-  --font-size-xl: var(--fs-xl);
-  --font-size-2xl: var(--fs-2xl);
-  --font-size-3xl: var(--fs-h3);
-  --font-size-4xl: var(--fs-h2);
-  --font-size-5xl: var(--fs-h1);
+  --text-xs: var(--fs-xs);
+  --text-sm: var(--fs-sm);
+  --text-base: var(--fs-base);
+  --text-lg: var(--fs-lg);
+  --text-xl: var(--fs-xl);
+  --text-2xl: var(--fs-2xl);
+  --text-3xl: var(--fs-h3);
+  --text-4xl: var(--fs-h2);
+  --text-5xl: var(--fs-h1);
 
   /* Letter Spacing */
   --tracking-widest-xl: var(--tracking-widest-xl);
@@ -127,20 +127,20 @@
   --font-display: "Outfit", "Inter", system-ui, sans-serif;
 
   /* Micro-Label Typography (mirrors theme.css tokens) */
-  --font-size-label-xs: var(--fs-label-xs);
-  --font-size-label-md: var(--fs-label-md);
-  --font-size-micro: var(--fs-micro);
-  --font-size-badge: var(--fs-badge);
-  --font-size-badge-sm: var(--fs-badge-sm);
-  --font-size-input: var(--fs-input);
-  --font-size-fluid-title-sm: var(--fs-fluid-title-sm);
-  --font-size-fluid-map-title: var(--fs-fluid-map-title);
-  --font-size-body-sm: var(--fs-body-sm);
-  --font-size-date-day: var(--fs-date-day);
-  --font-size-page-title: var(--fs-page-title);
-  --font-size-card-stat: var(--fs-card-stat);
-  --font-size-detail-title: var(--fs-detail-title);
-  --font-size-icon-lg: var(--fs-icon-lg);
+  --text-label-xs: var(--fs-label-xs);
+  --text-label-md: var(--fs-label-md);
+  --text-micro: var(--fs-micro);
+  --text-badge: var(--fs-badge);
+  --text-badge-sm: var(--fs-badge-sm);
+  --text-input: var(--fs-input);
+  --text-fluid-title-sm: var(--fs-fluid-title-sm);
+  --text-fluid-map-title: var(--fs-fluid-map-title);
+  --text-body-sm: var(--fs-body-sm);
+  --text-date-day: var(--fs-date-day);
+  --text-page-title: var(--fs-page-title);
+  --text-card-stat: var(--fs-card-stat);
+  --text-detail-title: var(--fs-detail-title);
+  --text-icon-lg: var(--fs-icon-lg);
 
   /* Shadows */
   --shadow-xs: var(--raw-shadow-xs);
@@ -189,7 +189,7 @@
 
   /* Opacity Scale */
 
-  /* Durations and Opacities are automatically discovered if they follow --duration-* and --opacity-* */
+  /* Duration and opacity utilities use their matching Tailwind namespaces. */
 
   /* Screens / Breakpoints */
   --breakpoint-mobile: 48rem;
@@ -289,6 +289,70 @@
     ),
     linear-gradient(112deg, var(--primary-main) 0%, var(--primary-hover) 100%);
   --bg-footer-dark: var(--grad-nav-dark);
+}
+
+/* Map runtime motion tokens to Tailwind's named duration utility namespace. */
+@theme inline {
+  --transition-duration-instant: var(--motion-duration-instant);
+  --transition-duration-rapid: var(--motion-duration-rapid);
+  --transition-duration-fast: var(--motion-duration-fast);
+  --transition-duration-base: var(--motion-duration-base);
+  --transition-duration-default: var(--motion-duration-default);
+  --transition-duration-medium: var(--motion-duration-medium);
+  --transition-duration-slow: var(--motion-duration-slow);
+  --transition-duration-slower: var(--motion-duration-slower);
+  --transition-duration-lazy: var(--motion-duration-lazy);
+  --transition-duration-hero: var(--motion-duration-hero);
+  --transition-duration-typing: var(--motion-duration-typing);
+  --transition-duration-shimmer: var(--motion-duration-shimmer);
+  --transition-duration-pulse: var(--motion-duration-pulse);
+  --transition-duration-pulse-slow: var(--motion-duration-pulse-slow);
+  --transition-duration-aura: var(--motion-duration-aura);
+}
+
+/* Keep the raw opacity tokens as the source of truth for named utilities. */
+@utility opacity-micro {
+  opacity: var(--opacity-micro);
+}
+
+@utility opacity-whisper {
+  opacity: var(--opacity-whisper);
+}
+
+@utility opacity-faint {
+  opacity: var(--opacity-faint);
+}
+
+@utility opacity-subtle {
+  opacity: var(--opacity-subtle);
+}
+
+@utility opacity-low {
+  opacity: var(--opacity-low);
+}
+
+@utility opacity-dim {
+  opacity: var(--opacity-dim);
+}
+
+@utility opacity-soft {
+  opacity: var(--opacity-soft);
+}
+
+@utility opacity-medium {
+  opacity: var(--opacity-medium);
+}
+
+@utility opacity-strong {
+  opacity: var(--opacity-strong);
+}
+
+@utility opacity-hover {
+  opacity: var(--opacity-hover);
+}
+
+@utility opacity-heavy {
+  opacity: var(--opacity-heavy);
 }
 
 /* ── Animation Keyframes ── */
@@ -734,7 +798,7 @@
   text-decoration: none;
   opacity: var(--opacity-heavy);
   padding: 0.25rem 0.25rem;
-  font-size: var(--font-size-sm);
+  font-size: var(--fs-sm);
   font-weight: 500;
   transition:
     opacity var(--motion-duration-fast) var(--ease-premium),

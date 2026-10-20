@@ -91,6 +91,12 @@ def _create_pull_request_graph(tmp_path: Path) -> tuple[Path, str, str, str]:
     shutil.copyfile(GITLEAKS_CONFIG_PATH, repo / ".gitleaks.toml")
     _git(repo, "init", "-b", "main")
     _git(repo, "config", "core.autocrlf", "false")
+    for index in range(4):
+        (repo / f"base-history-{index:02d}.txt").write_text(
+            f"history {index}\n", encoding="utf-8"
+        )
+        _git(repo, "add", ".")
+        _commit(repo, "base history")
     (repo / "base.txt").write_text("base\n", encoding="utf-8")
     _git(repo, "add", ".")
     _commit(repo, "base")
@@ -473,7 +479,8 @@ def test_workflow_security_policy_guard_keeps_read_only_pull_request_scope() -> 
         if step["name"] == "Verify security policy inputs against protected base"
     )
     assert policy_guard["if"] == "${{ github.event_name == 'pull_request' }}"
-    assert 'git fetch --no-tags --depth=1 origin "$BASE_SHA"' in policy_guard["run"]
+    assert 'git fetch --no-tags origin "$BASE_SHA"' in policy_guard["run"]
+    assert "--depth=" not in policy_guard["run"]
     assert 'BASE_REPOSITORY" != "$GITHUB_REPOSITORY' in policy_guard["run"]
     assert 'PR_AUTHOR" != "egorribun' in policy_guard["run"]
 
@@ -625,6 +632,106 @@ def _advance_base_and_merge_pull_request(
     )
     checkout = _git(repo, "rev-parse", "HEAD").stdout.strip()
     return advanced_base, checkout
+
+
+def test_depth_one_base_fetch_adds_shared_ancestors_to_difference_range(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "source-root"
+    source_root.mkdir()
+    source, original_base_sha, event_head, _ = _create_pull_request_graph(source_root)
+    base_sha, checkout_sha = _advance_base_and_merge_pull_request(source, event_head)
+    _git(source, "branch", "synthetic-merge-checkout", checkout_sha)
+
+    remote = tmp_path / "origin.git"
+    full_clone = tmp_path / "full-clone"
+    _git(source, "clone", "--bare", str(source), str(remote))
+    _git(
+        source,
+        "clone",
+        "-c",
+        "core.autocrlf=false",
+        "--no-local",
+        str(remote),
+        str(full_clone),
+    )
+    _git(full_clone, "switch", "--detach", checkout_sha)
+
+    assert _git(full_clone, "rev-parse", "--is-shallow-repository").stdout.strip() == (
+        "false"
+    )
+    full_range = set(
+        _git(full_clone, "rev-list", f"{base_sha}..{event_head}").stdout.splitlines()
+    )
+    _git(full_clone, "fetch", "--no-tags", "--depth=1", "origin", base_sha)
+
+    assert _git(full_clone, "rev-parse", "--is-shallow-repository").stdout.strip() == (
+        "true"
+    )
+    shallow_range = set(
+        _git(full_clone, "rev-list", f"{base_sha}..{event_head}").stdout.splitlines()
+    )
+    assert original_base_sha not in full_range
+    assert original_base_sha in shallow_range
+    assert len(shallow_range - full_range) >= 4
+
+
+def test_prepare_scan_refuses_a_checkout_made_shallow_by_base_fetch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_root = tmp_path / "source-root"
+    source_root.mkdir()
+    source, base_sha, event_head, checkout_sha = _create_pull_request_graph(source_root)
+    _git(source, "branch", "synthetic-merge-checkout", checkout_sha)
+
+    remote = tmp_path / "origin.git"
+    full_clone = tmp_path / "full-clone"
+    _git(source, "clone", "--bare", str(source), str(remote))
+    _git(
+        source,
+        "clone",
+        "-c",
+        "core.autocrlf=false",
+        "--no-local",
+        str(remote),
+        str(full_clone),
+    )
+    _git(full_clone, "switch", "--detach", checkout_sha)
+    event = _pull_request_environment(base_sha, event_head, checkout_sha, full_clone)
+
+    assert _git(full_clone, "rev-parse", "--is-shallow-repository").stdout.strip() == (
+        "false"
+    )
+    prepare_scan(full_clone, event)
+    _git(full_clone, "fetch", "--no-tags", "--depth=1", "origin", base_sha)
+    assert _git(full_clone, "rev-parse", "--is-shallow-repository").stdout.strip() == (
+        "true"
+    )
+
+    scanner_calls: list[list[str]] = []
+
+    def unexpected_scan(
+        command: list[str],
+        environment: dict[str, str],
+        *,
+        timeout_seconds: int,
+        cwd: Path,
+    ) -> SimpleNamespace:
+        scanner_calls.append(command)
+        return SimpleNamespace(returncode=0, stdout="")
+
+    monkeypatch.setattr(gitleaks_ci, "_run_silent", unexpected_scan)
+    with pytest.raises(GitleaksGateError, match="shallow"):
+        prepare_scan(full_clone, event)
+    with pytest.raises(GitleaksGateError, match="shallow"):
+        execute_scan(
+            {
+                **event,
+                "GITLEAKS_REPORT_PATH": str(tmp_path / "report.sarif"),
+                "GITLEAKS_BIN": str(tmp_path / "gitleaks"),
+            }
+        )
+    assert scanner_calls == []
 
 
 def test_pr_scan_rejects_base_advanced_merge_before_scanner_launch(

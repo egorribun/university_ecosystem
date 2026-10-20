@@ -383,6 +383,19 @@ constraints and indexes remain explicitly owned by migration-only metadata in
 Physical removal needs a separate reviewed maintenance plan; it is not part of
 this online revision.
 
+## 2026-10-20: quarantine storage inventory update
+
+Revision `202610200001` adds `quarantine_storage_scopes` and
+`quarantine_reservations`. The scope identifier is supplied by callers; the
+reservation identifier inherits the existing UUIDv7 mixin and remains
+application-generated. The current source inventory therefore has 46 tables
+and 126 effective defaults (85 both, 41 Python-only and 0 server-only), with
+102 source-level default declarations. The policy names
+`quarantine_reservations.id` under the existing inherited UUIDv7 exception,
+owned by `backend-platform`; it creates no new exception category. These are
+source/model inventory counts, not deployed PostgreSQL catalog evidence. The
+historical phase snapshots above remain unchanged.
+
 ## Related Decisions
 
 - [ADR-003: Background Jobs](ADR-003-background-jobs.md)
