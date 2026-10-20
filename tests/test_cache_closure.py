@@ -384,3 +384,32 @@ def test_etag_matches_ignores_empty_header_parts() -> None:
     from app.deps.cache import etag_matches
 
     assert etag_matches("abc", " , ") is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("l1_ttl", "fill_at", "expires_at"),
+    [
+        pytest.param(60, 109.5, 110.0, id="late-subsecond-backfill"),
+        pytest.param(2, 101.0, 103.0, id="short-l1-control"),
+    ],
+)
+async def test_tiered_backfill_does_not_extend_source_or_l1_expiry(
+    l1_ttl: int,
+    fill_at: float,
+    expires_at: float,
+) -> None:
+    from app.deps import cache
+
+    now = 100.0
+    l1 = cache.MemoryCache(default_ttl=l1_ttl)
+    l2 = cache.MemoryCache(default_ttl=10)
+    tiered = cache.TieredCache(l1, l2)
+
+    with patch.object(cache, "time_module", SimpleNamespace(time=lambda: now)):
+        original = await l2.set("bounded-entry", {"value": "original"})
+        now = fill_at
+        assert await tiered.get("bounded-entry") is original
+
+        now = expires_at
+        assert await l1.get("bounded-entry") is None

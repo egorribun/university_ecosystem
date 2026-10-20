@@ -145,3 +145,11 @@ Node job 118561272673 supplies authoritative architecture-fixture formatting. Ap
 Core job 118559639143 refuses the measured 216 versus historical 198 mismatch before any Docker startup; state selection/start/stop steps skip and receipt upload succeeds. Focused job 118560600461 independently reproduces four count/index failures. Change only finite limit 198→216, canonical passed 190→208 and six canonical fixture/output literals; preserve exact eight skip identities, all other validation and the obsolete-190 negative case. This is expected accounting, not full runtime acceptance.
 
 AUD-116 fixes the selected CLI target to the existing endpoint smoke suite; AUD-117 recognizes only the configured TieredCache.l2 Redis backend through its existing probe. Both await GREEN after their observed RED. AUD-118's three named SDK fallback cases pass at 09:49:42–43 in the focused cohort and are accepted without a production rewrite. No workflow budget or selection changes.
+
+## 2026-10-20 10:24 UTC — cleanup, CLI proof and next contracts
+
+AUD-116's exact existing-endpoint smoke command passes in job 118571825464 at 10:18:19 UTC; accept the target correction, not live multi-service execution. The cohort then reaches its unchanged timeout before healthy-tiered Redis and final count controls, so AUD-117 remains pending. The corrected collection preflight and Core 36/two acceptance pass. Remove the temporary formatter diagnostic/imports and apply the exact returned News fixture format; do not suppress the formatter.
+
+Tests-first additions cover actual Grafana signed-shift configuration (three predicted REDs), Python-incompatible release versions with four-file no-write checks (two predicted REDs, stable/rc controls), and actual default/override Helm listener alignment (one predicted RED/one control). The pure-Node release suite joins test:wasm exactly once with a registration guard. No dependency, release or deployment changes.
+
+Only backend line 155 changes: retain all 83 old node arguments, add three small nodes and two duration-reporting options, and move nine existing/new regressions earlier. The 631-line span, protected lines and 300-second budget remain. GC/database/task cleanup stays intact; the order change is evidence scheduling, not a proven speedup. Verified ledger: 117/512.

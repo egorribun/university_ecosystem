@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("react-i18next", () => ({
@@ -116,5 +116,91 @@ describe("ScheduleMiniCalendar", () => {
     expect(screen.getByRole("grid")).toHaveAttribute("aria-busy", "true")
     expect(screen.getAllByRole("presentation")).toHaveLength(35)
     expect(screen.queryAllByRole("gridcell")).toHaveLength(0)
+  })
+})
+
+describe("ScheduleMiniCalendar local date rollover", () => {
+  it("moves today's marker after local midnight without changing the displayed month", () => {
+    vi.setSystemTime(new Date(2026, 5, 15, 23, 59, 45))
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible")
+    const timerCount = vi.getTimerCount()
+    const onMonthChange = vi.fn()
+    const onDayClick = vi.fn()
+    let unmount: (() => void) | undefined
+
+    try {
+      const view = render(
+        <ScheduleMiniCalendar onMonthChange={onMonthChange} onDayClick={onDayClick} />
+      )
+      unmount = view.unmount
+
+      expect(screen.getByRole("button", { name: "June 15, 2026" })).toHaveAttribute(
+        "aria-current",
+        "date"
+      )
+
+      act(() => {
+        vi.advanceTimersByTime(30_000)
+      })
+
+      expect(screen.getByRole("grid", { name: "June 2026" })).toBeInTheDocument()
+      const yesterday = screen.getByRole("button", { name: "June 15, 2026" })
+      const today = screen.getByRole("button", { name: "June 16, 2026" })
+      expect(yesterday).not.toHaveAttribute("aria-current")
+      expect(yesterday).not.toHaveAttribute("data-today")
+      expect(today).toHaveAttribute("aria-current", "date")
+      expect(today).toHaveAttribute("data-today", "true")
+      expect(onMonthChange).not.toHaveBeenCalled()
+      expect(onDayClick).not.toHaveBeenCalled()
+    } finally {
+      unmount?.()
+      visibility.mockRestore()
+      expect(vi.getTimerCount()).toBe(timerCount)
+    }
+  })
+
+  it("preserves the displayed month at midnight until Today is explicitly requested", () => {
+    vi.setSystemTime(new Date(2026, 5, 30, 23, 59, 45))
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible")
+    const timerCount = vi.getTimerCount()
+    const onMonthChange = vi.fn()
+    const onDayClick = vi.fn()
+    let unmount: (() => void) | undefined
+
+    try {
+      const view = render(
+        <ScheduleMiniCalendar onMonthChange={onMonthChange} onDayClick={onDayClick} />
+      )
+      unmount = view.unmount
+
+      expect(screen.getByRole("button", { name: "June 30, 2026" })).toHaveAttribute(
+        "aria-current",
+        "date"
+      )
+
+      act(() => {
+        vi.advanceTimersByTime(30_000)
+      })
+
+      expect(screen.getByRole("grid", { name: "June 2026" })).toBeInTheDocument()
+      const yesterday = screen.getByRole("button", { name: "June 30, 2026" })
+      expect(yesterday).not.toHaveAttribute("aria-current")
+      expect(yesterday).not.toHaveAttribute("data-today")
+      expect(onMonthChange).not.toHaveBeenCalled()
+      expect(onDayClick).not.toHaveBeenCalled()
+
+      fireEvent.click(screen.getByRole("button", { name: "common:today" }))
+
+      expect(screen.getByRole("grid", { name: "July 2026" })).toBeInTheDocument()
+      const today = screen.getByRole("button", { name: "July 1, 2026" })
+      expect(today).toHaveAttribute("aria-current", "date")
+      expect(today).toHaveAttribute("data-today", "true")
+      expect(onMonthChange).toHaveBeenCalledExactlyOnceWith(new Date(2026, 6, 1, 0, 0, 15))
+      expect(onDayClick).not.toHaveBeenCalled()
+    } finally {
+      unmount?.()
+      visibility.mockRestore()
+      expect(vi.getTimerCount()).toBe(timerCount)
+    }
   })
 })

@@ -1180,3 +1180,44 @@ def test_bounded_shutdown_joins_only_started_threads_with_shared_budget(
             thread.join.assert_not_called()
             thread.is_alive.assert_not_called()
     logger.warning.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("success_at", "failure_at", "recovery_at"),
+    [
+        pytest.param(100.0, 100.0, 100.0, id="equal-clock"),
+        pytest.param(100.0, 90.0, 80.0, id="backward-clock"),
+        pytest.param(100.0, 110.0, 120.0, id="increasing-clock-control"),
+    ],
+)
+def test_worker_status_tracks_last_outcome_not_wall_clock(
+    success_at: float,
+    failure_at: float,
+    recovery_at: float,
+) -> None:
+    from app.core import observability
+
+    worker = observability.create_worker_metrics("outcome-clock-contract")
+    assert worker.status == "ok"
+    assert worker.last_failure is None
+    clock = MagicMock(side_effect=[success_at, failure_at, recovery_at])
+
+    with patch.object(observability, "time", SimpleNamespace(time=clock)):
+        worker.record_success(notifications_created=2)
+        assert worker.status == "ok"
+        assert worker.last_success == success_at
+        assert worker.last_run == success_at
+
+        worker.record_failure()
+        assert worker.status == "degraded"
+        assert worker.last_failure == failure_at
+        assert worker.last_success == success_at
+        assert worker.last_run == failure_at
+
+        worker.record_success()
+        assert worker.status == "ok"
+        assert worker.last_success == recovery_at
+        assert worker.last_failure == failure_at
+        assert worker.last_run == recovery_at
+
+    assert clock.call_count == 3

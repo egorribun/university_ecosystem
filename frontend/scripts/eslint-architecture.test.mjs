@@ -1,12 +1,10 @@
 import assert from "node:assert/strict"
-import { readFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import path from "node:path"
 import test, { after } from "node:test"
 import { fileURLToPath } from "node:url"
 
 import { ESLint } from "eslint"
-import { format, resolveConfig } from "prettier"
 
 const frontendRoot = fileURLToPath(new URL("..", import.meta.url))
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url))
@@ -241,32 +239,3 @@ for (const componentPath of [
     assert.deepEqual(warnings, [])
   })
 }
-
-test("temporary news fixture formatter diagnostic", { timeout: 10_000 }, async (t) => {
-  const fixture = "src/components/news/__tests__/NewsDetailEditDialog.mutation-contract.test.tsx"
-  const filepath = fileURLToPath(new URL("../" + fixture, import.meta.url))
-  let source
-  let formatted
-
-  try {
-    source = await readFile(filepath, "utf8")
-    const options = await resolveConfig(filepath, { editorconfig: true })
-    assert.ok(options)
-    formatted = await format(source, { ...options, filepath })
-  } catch {
-    assert.fail("Unable to prepare the fixed news fixture formatting diagnostic")
-  }
-
-  if (source !== formatted) {
-    const diagnostic = JSON.stringify({
-      fixture: "frontend/" + fixture,
-      formatted,
-    })
-    assert.ok(
-      new TextEncoder().encode(diagnostic).byteLength < 65_536,
-      "Fixed news fixture formatting diagnostic exceeds its output limit"
-    )
-    t.diagnostic(diagnostic)
-    assert.fail("News fixture differs from installed Prettier output")
-  }
-})

@@ -109,3 +109,53 @@ test("fails before writing when a version declaration is ambiguous", () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+for (const version of ["2.3.4-nightly.1", "2.3.4-feature-x"]) {
+  test(`rejects Python-incompatible ${version} before writing any target`, () => {
+    const root = createFixture();
+    try {
+      const targets = [
+        path.join(root, "frontend", "package.json"),
+        path.join(root, "frontend", "package-lock.json"),
+        path.join(root, "pyproject.toml"),
+        path.join(root, "app", "core", "versioning.py"),
+      ];
+      const originals = targets.map((target) => readFileSync(target, "utf8"));
+
+      assert.throws(() => prepareReleaseVersion(root, version));
+
+      for (const [index, target] of targets.entries()) {
+        assert.equal(readFileSync(target, "utf8"), originals[index]);
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
+
+test("preserves stable release versions across all four targets", () => {
+  const root = createFixture();
+  try {
+    prepareReleaseVersion(root, "2.3.4");
+
+    const packageDocument = JSON.parse(
+      readFileSync(path.join(root, "frontend", "package.json"), "utf8"),
+    );
+    const lockDocument = JSON.parse(
+      readFileSync(path.join(root, "frontend", "package-lock.json"), "utf8"),
+    );
+    assert.equal(packageDocument.version, "2.3.4");
+    assert.equal(lockDocument.version, "2.3.4");
+    assert.equal(lockDocument.packages[""].version, "2.3.4");
+    assert.match(
+      readFileSync(path.join(root, "pyproject.toml"), "utf8"),
+      /^version = "2\.3\.4"$/mu,
+    );
+    assert.match(
+      readFileSync(path.join(root, "app", "core", "versioning.py"), "utf8"),
+      /^API_VERSION: Final\[str\] = "2\.3\.4"$/mu,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

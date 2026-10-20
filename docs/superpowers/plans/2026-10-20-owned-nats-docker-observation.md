@@ -163,3 +163,9 @@ The f06 focused cohort completes in 253.94 seconds with 979 PASS, the new unrela
 ## 2026-10-20 10:02 UTC — boundary retained
 
 The focused 44a9d818 cohort has 990 PASS / eight known FAIL in 236.01 seconds. Existing Compose and daemon boundary controls remain selected; the intentional outage hold remains. No coordinator, runtime caller, CLI collection or outage activation is introduced. Public-sentinel approval remains pending, baseline 319/dispositions 263 and the existing process boundary are untouched. Core preflight's collection-count refusal occurs before Docker startup; it is not NATS runtime evidence. e150 remains the last fully accepted CI source.
+
+## 2026-10-20 10:24 UTC — runtime boundary unchanged
+
+9cface Core job 118570418071 completes 36 PASS / two fixed SKIP with successful owned-container cleanup and receipt upload. Artifact 12256873702 has digest fb48be7fd1efb05e81362264bffbd9ab5547db49bef36afdf389567f4744e0c1. This is not the separate NATS outage runtime or full-smoke proof.
+
+The focused backend cohort times out near 98% under the unchanged 300-second limit; no parser/Compose/daemon selections are removed. Duration reporting and small-case ordering do not weaken fixture cleanup or establish a performance fix. No coordinator/runtime/CLI/outage activation, new process waiver or policy change occurs. Public-sentinel approval remains pending, baseline 319/dispositions 263 unchanged. Latest ledger: 117/512; e150 remains last fully accepted CI.

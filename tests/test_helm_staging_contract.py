@@ -3217,3 +3217,54 @@ def test_first_party_service_names_and_references_fit_dns_labels(
     for reference in gateway_refs:
         assert reference["kind"] == "Service"
         assert reference["port"] in service_ports[reference["name"]]
+
+
+@pytest.mark.parametrize("port", [3000, 3100], ids=["default", "override"])
+def test_frontend_service_port_matches_node_listener(port: int) -> None:
+    assert shutil.which("helm") is not None, "Actual Helm rendering is required"
+    resources = _render_staging(
+        "--set",
+        f"frontend.service.port={port}",
+        release_name="frontend-listener-contract",
+    )
+    deployment = _component_resource(resources, "Deployment", "frontend")
+    service = _component_resource(resources, "Service", "frontend")
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+
+    assert container["name"] == "frontend"
+    assert "command" not in container
+    assert "args" not in container
+    runtime = (ROOT / "frontend.Dockerfile").read_text(encoding="utf-8")
+    defaults = re.findall(r"^ENV PORT=([0-9]+)$", runtime, re.MULTILINE)
+    assert defaults == ["3000"]
+    assert 'CMD ["node", "scripts/server-prod.mjs"]' in runtime
+
+    port_entries = [entry for entry in container["env"] if entry["name"] == "PORT"]
+    assert len(port_entries) <= 1
+    listener_port = defaults[0]
+    if port_entries:
+        assert "valueFrom" not in port_entries[0]
+        listener_port = port_entries[0]["value"]
+        assert isinstance(listener_port, str)
+    assert listener_port == str(port)
+
+    http_ports = [entry for entry in container["ports"] if entry["name"] == "http"]
+    assert http_ports == [{"name": "http", "containerPort": port, "protocol": "TCP"}]
+    assert service["spec"]["ports"] == [
+        {
+            "port": port,
+            "targetPort": "http",
+            "protocol": "TCP",
+            "name": "http",
+        }
+    ]
+    for probe in ("startupProbe", "livenessProbe", "readinessProbe"):
+        assert container[probe]["httpGet"] == {
+            "path": "/healthz",
+            "port": "http",
+        }
+
+    labels = deployment["spec"]["template"]["metadata"]["labels"]
+    assert all(
+        labels[key] == value for key, value in service["spec"]["selector"].items()
+    )

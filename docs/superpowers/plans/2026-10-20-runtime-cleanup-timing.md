@@ -89,3 +89,9 @@ AUD-115's real processor case fails in job 118546836542: no export, no exporter 
 ## 2026-10-20 10:02 UTC — thread fix accepted, Go coverage pending
 
 On 44a9d818 / checkout ba478d71 (identical tree 160ddba4), focused job 118560600461 passes both AUD-111 failed-start/shared-budget cases at 09:49:40 UTC. AUD-111 is accepted within that controlled boundary. The cohort totals 990 PASS / eight known FAIL in 236.01 seconds; the five-minute budget is unchanged. AUD-115's real canceled-parent batch flush passes in job 118560600165, but 99.9% coverage exposes its untested warning branch. Add an exporter-shutdown error control through the real SimpleSpanProcessor, with separately owned cleanup and repeated-call assertions. Keep the 100% threshold, real batch regression and five-second production cleanup context unchanged; require a new successful coverage/race job before closure.
+
+## 2026-10-20 10:24 UTC — telemetry accepted, timing diagnosis retained
+
+On 9cface / checkout 926c452d (tree 9bbe41e3), job 118571825595 passes the real BatchSpanProcessor cancellation and SimpleSpanProcessor exporter-error controls at 10:13:44 UTC with race detection and 100.0% coverage. Go lint/integration succeed. AUD-115 is accepted for the telemetry cleanup phase, not a total shutdown SLA.
+
+Backend job 118571825464 times out at 300 seconds near 98%, after 985 logged outcomes. Consecutive-test intervals rise broadly versus 44a9; identical autouse fixtures perform GC and database cleanup, but isolated cost attribution is not yet measured. Keep all cleanup and the budget; add duration reporting and order small regressions earlier without dropping any old node. No performance improvement is claimed. AUD-125 adds equal/backward/increasing-clock outcome regressions; AUD-126 adds late-subsecond and shorter-L1 expiration controls. Their predicted failures are not observed RED. Verified ledger: 117/512.

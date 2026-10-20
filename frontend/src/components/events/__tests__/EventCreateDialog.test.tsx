@@ -1286,4 +1286,36 @@ describe("EventCreateDialog", () => {
       outsideAction.remove()
     }
   })
+
+  it("names the create dialog from its visible title", () => {
+    render(<EventCreateDialog {...baseProps} />)
+
+    expect(screen.getByRole("dialog", { name: "events:dialogs.create.title" })).toBeInTheDocument()
+  })
+
+  it("names discard confirmation and restores the create name when editing resumes", async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<EventCreateDialog {...baseProps} onClose={onClose} />)
+
+    await user.type(fieldByLabel("events:form.title"), "Preserved draft")
+    await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+
+    expect(
+      screen.getByRole("dialog", { name: "common:dialogs.unsavedChanges.title" })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole("dialog", { name: "events:dialogs.create.title" })
+    ).not.toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.keepEditing" }))
+
+    expect(screen.getByRole("dialog", { name: "events:dialogs.create.title" })).toBeInTheDocument()
+    expect(
+      screen.queryByRole("dialog", { name: "common:dialogs.unsavedChanges.title" })
+    ).not.toBeInTheDocument()
+    expect(fieldByLabel("events:form.title")).toHaveValue("Preserved draft")
+    expect(onClose).not.toHaveBeenCalled()
+  })
 })

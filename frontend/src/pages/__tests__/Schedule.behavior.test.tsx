@@ -259,16 +259,19 @@ vi.mock("@/components/schedule/ScheduleMiniCalendar", () => ({
   ScheduleMiniCalendar: ({
     lessonDays,
     month,
+    nowTick,
     onMonthChange,
   }: {
     lessonDays: Set<number>
     month?: Date
+    nowTick?: Date
     onMonthChange?: (next: Date) => void
   }) => (
     <aside
       data-testid="mini-calendar"
       data-days={[...lessonDays].join(",")}
       data-month={month?.getMonth()}
+      data-now={nowTick?.getTime()}
     >
       <button type="button" onClick={() => onMonthChange?.(new Date(2026, 8, 1))}>
         show-september
@@ -625,5 +628,29 @@ describe("Schedule page behavior", () => {
     uiState.weekOffset = -2
     rerender(<Schedule />)
     expect(screen.getByRole("status")).toHaveTextContent("-2")
+  })
+
+  it("shares the current instant without resetting the calendar's chosen month", async () => {
+    scheduleState.nowTick = new Date(2026, 5, 30, 23, 59, 45)
+    const { rerender } = await renderSchedule()
+
+    expect(screen.getByTestId("mini-calendar")).toHaveAttribute(
+      "data-now",
+      String(scheduleState.nowTick.getTime())
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "show-september" }))
+    expect(screen.getByTestId("mini-calendar")).toHaveAttribute("data-month", "8")
+    expect(screen.getByTestId("mini-calendar")).toHaveAttribute("data-days", "7")
+
+    scheduleState.nowTick = new Date(2026, 6, 1, 0, 0, 15)
+    rerender(<Schedule />)
+
+    expect(screen.getByTestId("mini-calendar")).toHaveAttribute(
+      "data-now",
+      String(scheduleState.nowTick.getTime())
+    )
+    expect(screen.getByTestId("mini-calendar")).toHaveAttribute("data-month", "8")
+    expect(screen.getByTestId("mini-calendar")).toHaveAttribute("data-days", "7")
   })
 })

@@ -440,6 +440,12 @@ describe("AddLessonDialog", () => {
     await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
     expect(screen.queryByText("schedule:dialog.addTitle")).not.toBeInTheDocument()
   })
+
+  it("names the add dialog from its visible title", () => {
+    renderDialog()
+
+    expect(screen.getByRole("dialog", { name: "schedule:dialog.addTitle" })).toBeInTheDocument()
+  })
 })
 
 describe("recurring lesson datetime contract", () => {

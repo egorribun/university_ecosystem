@@ -850,3 +850,13 @@ test("icon generation retains a failing exit status for a missing source image",
   assert.deepEqual(result.generatedOutputs, [])
   assert.doesNotMatch(result.stdout, /Created /u)
 })
+
+test("the PR Node suite executes release-version regressions exactly once", async () => {
+  const packageJson = await readJson(new URL("package.json", frontendRoot))
+  const argumentsList = packageJson.scripts["test:wasm"].split(/\s+/u)
+  const matching = argumentsList.filter(
+    (argument) => argument === "../scripts/tests/prepare-release-version.test.mjs"
+  )
+
+  assert.deepEqual(matching, ["../scripts/tests/prepare-release-version.test.mjs"])
+})

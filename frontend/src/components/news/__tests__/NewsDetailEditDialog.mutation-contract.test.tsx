@@ -792,9 +792,7 @@ describe("NewsDetailEditDialog mutation contracts", () => {
 
         view.rerender(
           <QueryClientProvider client={view.client}>
-            <NewsDetailEditDialog
-              {...makeProps({ newsId, language, initialData: replacement })}
-            />
+            <NewsDetailEditDialog {...makeProps({ newsId, language, initialData: replacement })} />
           </QueryClientProvider>
         )
 
