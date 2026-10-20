@@ -1071,3 +1071,65 @@ def test_configure_metrics_credential_and_otel_branches(monkeypatch) -> None:
     ):
         metrics.configure_metrics(app)
     assert app.state._metrics_configured is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tiered", [False, True], ids=["direct", "tiered"])
+@pytest.mark.parametrize("available", [False, True], ids=["down", "healthy"])
+async def test_cache_metrics_probe_the_actual_redis_layer(tiered, available):
+    from app.core import metrics
+    from app.deps import cache as cache_module
+
+    redis_backend = cache_module.RedisCache(
+        url="redis://redis.invalid:6379/0",
+        default_ttl=60,
+    )
+    backend = (
+        cache_module.TieredCache(
+            cache_module.MemoryCache(default_ttl=60),
+            redis_backend,
+        )
+        if tiered
+        else redis_backend
+    )
+    client = AsyncMock()
+    client.ping.return_value = True
+    client.info.return_value = {"used_memory": 12}
+    client.dbsize.return_value = 4
+    if not available:
+        client.ping.side_effect = OSError("synthetic Redis outage")
+
+    entries = MagicMock()
+    memory = MagicMock()
+    health = MagicMock()
+    with (
+        patch.object(cache_module, "get_cache", return_value=backend),
+        patch.object(
+            redis_backend,
+            "_get_client",
+            new=AsyncMock(return_value=client),
+        ) as get_client,
+        patch.object(metrics, "_CACHE_ENTRIES", entries),
+        patch.object(metrics, "_CACHE_MEMORY_BYTES", memory),
+        patch.object(metrics, "_REDIS_HEALTH", health),
+        patch.object(metrics, "record_redis_command") as record_command,
+    ):
+        await metrics._record_cache_metrics()
+
+    get_client.assert_awaited_once_with()
+    client.ping.assert_awaited_once_with()
+    health.set.assert_called_once_with(1 if available else 0)
+    if available:
+        client.info.assert_awaited_once_with(section="memory")
+        client.dbsize.assert_awaited_once_with()
+        entries.set.assert_called_once_with(4.0)
+        memory.set.assert_called_once_with(12.0)
+        record_command.assert_called_once()
+        assert record_command.call_args.args[0] == "ping"
+        assert record_command.call_args.kwargs == {"success": True}
+    else:
+        client.info.assert_not_awaited()
+        client.dbsize.assert_not_awaited()
+        entries.set.assert_not_called()
+        memory.set.assert_not_called()
+        record_command.assert_called_once_with("ping", 0.0, success=False)

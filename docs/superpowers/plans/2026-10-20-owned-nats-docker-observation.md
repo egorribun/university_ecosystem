@@ -155,3 +155,7 @@ On ce03, focused job 118523935315 executes all sixteen new observation cases: tw
 ## 2026-10-20 09:00 UTC — composition verified, runtime still disabled
 
 Source 3cc49cd and identical-tree checkout 257a3d35: focused job 118535985402 passes all sixteen named Compose observation cases at 08:47:01–05 UTC. Overall 978 PASS / one intentional outage hold in 267.37 seconds. The previous 48 preparation/decode and 73 daemon contracts remain selected. This does not establish real daemon provenance or authorize runtime admission. No coordinator/CLI/outage activation, baseline/disposition edit or new process waiver occurs. Public-sentinel approval remains pending.
+
+## 2026-10-20 09:33 UTC — unchanged runtime boundary
+
+The f06 focused cohort completes in 253.94 seconds with 979 PASS, the new unrelated thread-start regression and the intentional outage hold. Compose preparation/decode/observation controls remain selected and passing. No runtime caller, coordinator, CLI or outage is activated. The public inspection fixture is still the sole reported secret finding at tests/test_live_nats_transport.py:1195; approval remains pending. Baseline 319, dispositions 263 and the existing process waiver are unchanged. Latest audit ledger: 110/512; targeted proof is not release acceptance.

@@ -235,14 +235,18 @@ def _shutdown_otel_providers_bounded(providers: Iterable[object | None]) -> None
         for index, provider in enumerate(providers, start=1)
         if provider is not None
     ]
+    started_threads: list[threading.Thread] = []
     for thread in threads:
-        with suppress(RuntimeError):
+        try:
             thread.start()
+        except RuntimeError:
+            continue
+        started_threads.append(thread)
 
     # Keep both failed startup and normal process teardown below the public
     # 2.05 s SLA even if an exporter ignores the SDK timeout argument.
     deadline = time.monotonic() + 1.8
-    for thread in threads:
+    for thread in started_threads:
         remaining = max(0.0, deadline - time.monotonic())
         thread.join(timeout=remaining)
         if thread.is_alive():

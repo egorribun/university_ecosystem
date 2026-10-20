@@ -1820,6 +1820,81 @@ def test_live_playwright_rejects_same_count_with_unexpected_skip_identity(
 
 
 @pytest.mark.parametrize(
+    ("passed", "accepted"),
+    [
+        pytest.param(208, True, id="current-216-instance-inventory"),
+        pytest.param(190, False, id="obsolete-198-instance-inventory"),
+        pytest.param(207, False, id="one-pass-missing"),
+        pytest.param(209, False, id="one-pass-extra"),
+    ],
+)
+def test_live_playwright_full_count_matches_collected_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    passed: int,
+    accepted: bool,
+) -> None:
+    identities = _source_derived_live_skip_identities()
+    assert len(identities) == 8
+    private_title = "private inventory title not for logs"
+    stdout = (
+        _live_skip_reporter_rows(identities, title=private_title)
+        + f"{passed} passed (3m)\n8 skipped\n"
+    ).encode("utf-8")
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+
+    if accepted:
+        live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
+    else:
+        with pytest.raises(live_stand.StandError, match="skip identity accounting"):
+            live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
+
+    printed = capsys.readouterr()
+    assert f"live E2E counts passed={passed} skipped=8" in printed.out
+    if accepted:
+        assert "live E2E skip accounting=verified count=8" in printed.out
+        assert "live E2E outcome=passed exit_code=0" in printed.out
+    else:
+        assert "skip accounting=verified" not in printed.out
+        assert "live E2E outcome=failed exit_code=0" in printed.out
+    assert private_title not in printed.out + printed.err
+    assert printed.err == ""
+    assert completed.stdout == completed.stderr == b""
+
+
+@pytest.mark.parametrize(
+    ("index", "accepted"),
+    [
+        pytest.param(198, True, id="previous-boundary"),
+        pytest.param(199, True, id="above-previous-boundary"),
+        pytest.param(216, True, id="current-boundary"),
+        pytest.param(217, False, id="above-current-boundary"),
+    ],
+)
+def test_live_playwright_skip_index_matches_collected_inventory(
+    index: int,
+    accepted: bool,
+) -> None:
+    identity = _source_derived_live_skip_identities()[0]
+    row = _live_skip_reporter_rows([identity], title="private title")
+    assert row.startswith("  -    1 ")
+    row = row.replace("  -    1 ", f"  -  {index:>3} ", 1)
+
+    identities, rejected, overflow = live_stand._live_playwright_skipped_identities(
+        row, cwd=ROOT / "frontend"
+    )
+
+    assert identities == ([identity] if accepted else [])
+    assert rejected == (0 if accepted else 1)
+    assert overflow is False
+
+
+@pytest.mark.parametrize(
     ("project", "route", "newline"),
     [("desktop", "profile", "\n"), ("mobile", "other", "\r\n")],
 )

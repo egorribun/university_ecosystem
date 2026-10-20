@@ -662,4 +662,242 @@ describe("NewsDetailEditDialog mutation contracts", () => {
       view.client.clear()
     }
   })
+
+  it("preserves a dirty English draft through a same-item refresh", async () => {
+    const source = {
+      ...initialData,
+      title: "Russian source title",
+      content: "Russian source content",
+    }
+    apiMocks.fetchNewsItem.mockResolvedValue({ status: 200, data: source })
+    const view = renderDialog({ language: "en" })
+
+    try {
+      await screen.findByDisplayValue(source.title)
+      fireEvent.change(screen.getByDisplayValue(source.title_en), {
+        target: { value: "Unsaved English translation" },
+      })
+      view.rerender(
+        <QueryClientProvider client={view.client}>
+          <NewsDetailEditDialog
+            {...makeProps({
+              language: "en",
+              initialData: {
+                ...initialData,
+                title: "Refreshed localized title",
+                title_en: "Refreshed translation",
+              },
+            })}
+          />
+        </QueryClientProvider>
+      )
+
+      expect(screen.getByDisplayValue("Unsaved English translation")).toBeInTheDocument()
+      expect(screen.getByDisplayValue(source.title)).toBeInTheDocument()
+      expect(screen.queryByRole("status")).not.toBeInTheDocument()
+      expect(apiMocks.fetchNewsItem).toHaveBeenCalledOnce()
+
+      fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
+      await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+      expect(apiMocks.updateNews).toHaveBeenCalledWith("news-contract", {
+        ...source,
+        title_en: "Unsaved English translation",
+      })
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
+      )
+    } finally {
+      view.unmount()
+      view.client.clear()
+    }
+  })
+
+  it("preserves an image-only draft through a same-item refresh", async () => {
+    const create = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:image-only-draft")
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    const view = renderDialog()
+
+    try {
+      const file = new File(["draft"], "draft.png", { type: "image/png" })
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      fireEvent.change(input, { target: { files: [file] } })
+      expect(create).toHaveBeenCalledWith(file)
+      view.rerender(
+        <QueryClientProvider client={view.client}>
+          <NewsDetailEditDialog
+            {...makeProps({
+              initialData: {
+                ...initialData,
+                title: "Refreshed image-only title",
+                image_url: "https://example.test/refreshed.png",
+              },
+            })}
+          />
+        </QueryClientProvider>
+      )
+
+      expect(screen.getByTestId("edit-preview")).toHaveAttribute("src", "blob:image-only-draft")
+      expect(screen.getByDisplayValue(initialData.title)).toBeInTheDocument()
+      expect(revoke).not.toHaveBeenCalled()
+
+      fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
+      await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+      expect(apiMocks.uploadNewsImage).toHaveBeenCalledExactlyOnceWith(file)
+      expect(apiMocks.updateNews).toHaveBeenCalledWith("news-contract", {
+        ...initialData,
+        image_url: "https://example.test/uploaded.png",
+      })
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
+      )
+    } finally {
+      view.unmount()
+      view.client.clear()
+      create.mockRestore()
+      revoke.mockRestore()
+    }
+  })
+
+  it.each(["new-item", "language", "close-reopen"] as const)(
+    "clears a selected image across the %s session boundary",
+    async (boundary) => {
+      const create = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:previous-session")
+      const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+      const view = renderDialog()
+      const replacement = {
+        ...initialData,
+        title: "Replacement session title",
+        content: "Replacement session content",
+        image_url: "https://example.test/replacement-session.png",
+      }
+
+      try {
+        const file = new File(["previous"], "previous.png", { type: "image/png" })
+        const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+        fireEvent.change(input, { target: { files: [file] } })
+        expect(screen.getByTestId("edit-preview")).toHaveAttribute("src", "blob:previous-session")
+
+        const newsId = boundary === "new-item" ? "news-next" : "news-contract"
+        const language = boundary === "language" ? "en" : "ru"
+        apiMocks.fetchNewsItem.mockResolvedValue({ status: 200, data: replacement })
+
+        if (boundary === "close-reopen") {
+          // Exercise an external close, not handleClose's existing cleanup.
+          view.rerender(
+            <QueryClientProvider client={view.client}>
+              <NewsDetailEditDialog {...makeProps({ open: false })} />
+            </QueryClientProvider>
+          )
+        }
+
+        view.rerender(
+          <QueryClientProvider client={view.client}>
+            <NewsDetailEditDialog
+              {...makeProps({ newsId, language, initialData: replacement })}
+            />
+          </QueryClientProvider>
+        )
+
+        await screen.findByDisplayValue(replacement.title)
+        expect(screen.getByTestId("edit-preview")).toHaveAttribute("src", replacement.image_url)
+        expect(screen.getByText("common:buttons.uploadPhoto")).toBeInTheDocument()
+        expect(
+          screen.queryByRole("button", { name: "common:buttons.reset" })
+        ).not.toBeInTheDocument()
+        expect(revoke).toHaveBeenCalledExactlyOnceWith("blob:previous-session")
+        expect(document.querySelector<HTMLInputElement>('input[type="file"]')).toHaveValue("")
+
+        if (boundary === "language") {
+          expect(apiMocks.fetchNewsItem).toHaveBeenCalledExactlyOnceWith(
+            newsId,
+            expect.objectContaining({ language: "ru", signal: expect.any(AbortSignal) })
+          )
+        } else {
+          expect(apiMocks.fetchNewsItem).not.toHaveBeenCalled()
+        }
+
+        fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
+        await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+        expect(apiMocks.updateNews).toHaveBeenCalledWith(newsId, replacement)
+        expect(apiMocks.uploadNewsImage).not.toHaveBeenCalled()
+        await waitFor(() =>
+          expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
+        )
+      } finally {
+        view.unmount()
+        view.client.clear()
+        create.mockRestore()
+        revoke.mockRestore()
+      }
+    }
+  )
+
+  it("aborts a pristine English source request when same-item data refreshes", async () => {
+    const requests: Array<{
+      signal: AbortSignal
+      resolve: (value: { status: number; data: typeof initialData }) => void
+    }> = []
+    apiMocks.fetchNewsItem.mockImplementation(
+      (_newsId: string, options: { signal: AbortSignal }) =>
+        new Promise<{ status: number; data: typeof initialData }>((resolve) => {
+          requests.push({ signal: options.signal, resolve })
+        })
+    )
+    const view = renderDialog({ language: "en" })
+
+    try {
+      expect(requests).toHaveLength(1)
+      view.rerender(
+        <QueryClientProvider client={view.client}>
+          <NewsDetailEditDialog
+            {...makeProps({
+              language: "en",
+              initialData: { ...initialData, title: "Refreshed localized display" },
+            })}
+          />
+        </QueryClientProvider>
+      )
+
+      expect(requests).toHaveLength(2)
+      expect(requests[0]!.signal.aborted).toBe(true)
+      expect(requests[1]!.signal.aborted).toBe(false)
+      expect(apiMocks.fetchNewsItem).toHaveBeenNthCalledWith(
+        2,
+        "news-contract",
+        expect.objectContaining({ language: "ru", signal: requests[1]!.signal })
+      )
+
+      await act(async () => {
+        requests[0]!.resolve({
+          status: 200,
+          data: { ...initialData, title: "Stale pending source" },
+        })
+      })
+      expect(screen.queryByDisplayValue("Stale pending source")).not.toBeInTheDocument()
+      expect(screen.getByRole("status")).toHaveTextContent("common:statuses.loading")
+      expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+
+      const current = {
+        ...initialData,
+        title: "Current refreshed source",
+        content: "Current refreshed source content",
+      }
+      await act(async () => {
+        requests[1]!.resolve({ status: 200, data: current })
+      })
+      await screen.findByDisplayValue(current.title)
+      expect(screen.queryByDisplayValue("Stale pending source")).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
+      await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+      expect(apiMocks.updateNews).toHaveBeenCalledWith("news-contract", current)
+      expect(apiMocks.fetchNewsItem).toHaveBeenCalledTimes(2)
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
+      )
+    } finally {
+      view.unmount()
+      view.client.clear()
+    }
+  })
 })

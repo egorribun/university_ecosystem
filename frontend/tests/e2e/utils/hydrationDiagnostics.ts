@@ -1,7 +1,6 @@
 export function isHydrationDiagnostic(message: string, includeMismatch = false): boolean {
   const normalized = message.toLowerCase()
-  return (
-    normalized.includes("hydration") ||
-    (includeMismatch && normalized.includes("did not match"))
-  )
+  if (normalized.includes("hydration")) return true
+  if (includeMismatch && normalized.includes("did not match")) return true
+  return /\bminified react error #(418|423|425)\b/u.test(normalized)
 }

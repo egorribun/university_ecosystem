@@ -246,3 +246,9 @@ Source 3cc49cd / checkout 257a3d35 share tree eaf9ec9857c808adb96a3888e1e404584c
 AUD-107 has four real-dialog and eighteen existing lifecycle passes in job 118536398994 (2286 PASS). Six new store ownership/cleanup controls remain unexecuted; keep it outside the ledger until checked. No deterministic cold-import/native race claim.
 
 Next tests-first cases cover AUD-110's actual serialized motion collector, AUD-112's actual regular diagnostic classifier, AUD-113 cache updates/removal, and AUD-114 dirty same-item refresh with reset controls. Existing behavior is retained before RED; preserve pristine refresh and all source/image cleanup controls. Motion collection uses root plus descendants and actual JSDOM styles without changing Core's inventory. Latest verified lower bound: 109/512.
+
+## 2026-10-20 09:33 UTC — search lifecycle verified, remaining UI RED reproduced
+
+AUD-107 enters the ledger at 110/512: f06 job 118546333989 passes 24 lifecycle and four real-dialog cases (2292 PASS overall). Core job 118545359975 has 36 PASS / two fixed SKIP, successful cleanup and receipt 12253583196, digest f9a48fb8344754f23fa07169bb61ed6377134a63d275d332ff264dcfd1322891. Cold-import/native races are not newly proven.
+
+Actual selected RED: AUD-110 five collector failures, AUD-112 six minified-code failures (job 118546333829); AUD-113 three update/removal failures (118546333924); AUD-114 one dirty-refresh failure (118546334084). Preservation controls pass. Corrections inspect every duration component, recognize exact code tokens, subscribe through stable reference snapshots, and preserve session-scoped edits while resetting images at session boundaries. Three cache and six English/image/abort controls supplement the existing regressions. Corrected-source GREEN remains required; no native reduced-motion/full-nightly or in-flight save-session claim.

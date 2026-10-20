@@ -270,7 +270,9 @@ func initializeTracerShutdown(ctx context.Context, cfg *config.Config, logger *s
 		return func() {}
 	}
 	return func() {
-		if shutErr := tp.Shutdown(ctx); shutErr != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if shutErr := tp.Shutdown(shutdownCtx); shutErr != nil {
 			logger.WarnContext(ctx, "Failed to shutdown tracer provider", "err", shutErr)
 		}
 	}

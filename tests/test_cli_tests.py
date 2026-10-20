@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -81,3 +82,16 @@ def test_smoke_failure():
 
         assert result.exit_code == 1
         assert "Smoke tests failed!" in result.stdout
+
+
+def test_smoke_targets_the_existing_endpoint_smoke_suite():
+    target = Path(__file__).resolve().parent / "test_smoke.py"
+    assert target.is_file()
+
+    with patch("app.cli.tests.subprocess.run") as mock_run:
+        mock_run.return_value.returncode = 0
+
+        result = runner.invoke(app, ["smoke"])
+
+    assert result.exit_code == 0
+    mock_run.assert_called_once_with(["pytest", "tests/test_smoke.py"])

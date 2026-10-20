@@ -79,3 +79,9 @@ AUD-111 adds two selected synthetic-thread cases for failed-start handling and o
 AUD-115 uses the pinned real Go BatchSpanProcessor through a behavior-equivalent constructor seam. An ended sampled span must flush after parent cancellation, exporter shutdown must receive a future deadline, and repeated public cleanup must not duplicate export/shutdown. The test directly shuts down its retained processor under a separate one-second context in cleanup even when assertions fail, then restores provider/propagator hooks. This cleanup is not production proof. The production canceled context remains unchanged pending RED. No network exporter, SDK change or new waiver is introduced.
 
 Current verified audit lower bound is 109/512. e150 remains the last fully accepted CI source; unresolved outage and public-sentinel approval are unchanged.
+
+## 2026-10-20 09:33 UTC — observed shutdown failures and bounded corrections
+
+f06 focused job 118546836331 reports 979 PASS / two FAIL in 253.94 seconds. AUD-111's failed-start case raises on joining an unstarted thread; its all-started control passes. Join only the successfully started threads while preserving the shared 1.8-second deadline. The remaining failure is the intentional outage hold.
+
+AUD-115's real processor case fails in job 118546836542: no export, no exporter shutdown and no deadline after cancellation. Normal/noop controls and Go lint pass. Cleanup receives a fresh five-second context using WithoutCancel to retain values, with independent test cleanup unchanged and a new deadline upper-bound assertion. This is not a total service grace guarantee. Require corrected-source execution before closure. Latest ledger: 110/512; no runtime outage activation or new waiver.

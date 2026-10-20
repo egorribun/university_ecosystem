@@ -1270,4 +1270,5 @@ func TestInitializeTracerShutdown_FlushesBatchAfterParentCancellation(t *testing
 	assert.False(t, exporter.canceledShutdown.Load())
 	assert.True(t, exporter.shutdownHasDeadline.Load())
 	assert.Positive(t, exporter.shutdownRemainingNanos.Load())
+	assert.LessOrEqual(t, exporter.shutdownRemainingNanos.Load(), (5 * time.Second).Nanoseconds())
 }

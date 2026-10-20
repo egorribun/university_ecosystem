@@ -220,6 +220,7 @@ test("live Playwright collection has a closed source inventory", async (t) => {
   let phase = "versions"
   let ownedRoot
   let summary
+  let failure
   try {
     const frontendRoot = await realpath(fileURLToPath(new URL("../", import.meta.url)))
     const liveRoot = path.join(frontendRoot, "tests", "e2e-live")
@@ -248,12 +249,18 @@ test("live Playwright collection has a closed source inventory", async (t) => {
     requireCollection(inventory !== null)
     const reviewed = new Set()
     for (const line of inventory[1].trimEnd().split("\n")) {
-      const entry = line.match(/^    "(tests\/e2e-live\/[a-z0-9-]+\.live\.spec\.ts)",$/u)
+      const entry = line.match(/^ {4}"(tests\/e2e-live\/[a-z0-9-]+\.live\.spec\.ts)",$/u)
       requireCollection(entry !== null)
       requireCollection(!reviewed.has(entry[1]))
       reviewed.add(entry[1])
     }
     requireCollection(reviewed.size > 0 && reviewed.size <= 256)
+
+    const expectedCount = Number(
+      launcher.match(/^_PLAYWRIGHT_SKIP_IDENTITY_LIMIT = ([1-9][0-9]*)$/mu)?.[1]
+    )
+    requireCollection(Number.isSafeInteger(expectedCount) && expectedCount > 0)
+    requireCollection(expectedCount <= 10_000)
 
     phase = "spawn"
     ownedRoot = await mkdtemp(path.join(tmpdir(), "ue-live-playwright-"))
@@ -396,20 +403,23 @@ test("live Playwright collection has a closed source inventory", async (t) => {
         requireCollection(seenFiles[project].has(source))
       }
     }
+    phase = "collection-count"
+    requireCollection(identities.size === expectedCount)
     summary =
       `live collection source_sha=${sourceSha} files=${reviewed.size} projects=2 ` +
       `desktop=${counts.desktop} mobile=${counts.mobile} total=${identities.size}`
   } catch {
     // Phase is assigned only fixed literals, never captured child or report data.
-    throw new Error(`Live Playwright collection unavailable or invalid phase=${phase}`)
+    failure = new Error(`Live Playwright collection unavailable or invalid phase=${phase}`)
   } finally {
     if (ownedRoot !== undefined) {
       try {
         await rm(ownedRoot, { recursive: true, force: true })
       } catch {
-        throw new Error("Live Playwright collection temporary cleanup failed")
+        failure = new Error("Live Playwright collection temporary cleanup failed")
       }
     }
   }
+  if (failure) throw failure
   t.diagnostic(summary)
 })

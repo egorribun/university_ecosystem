@@ -75,13 +75,29 @@ export function NewsDetailEditDialog({
   const [newImage, setNewImage] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const dirtyRef = useRef(false)
+
+  useEffect(() => {
+    dirtyRef.current = false
+    setNewImage(null)
+    setPreviewUrl(null)
+    if (imageInputRef.current) imageInputRef.current.value = ""
+  }, [open, newsId, language])
+
+  const handleFieldChange = (
+    field: "title" | "content" | "title_en" | "content_en",
+    value: string
+  ) => {
+    dirtyRef.current = true
+    setEditData((current) => ({ ...current, [field]: value }))
+  }
 
   const sourceReady = language !== "en" || englishSourceLoadedFor === `${newsId}:en`
 
   // English responses contain localized title/content in the base fields. Load
   // the Russian source explicitly before allowing the two-language editor to save.
   useEffect(() => {
-    if (!open) return
+    if (!open || dirtyRef.current) return
     if (language !== "en") {
       setEditData(initialData)
       setSourceLoading(false)
@@ -141,6 +157,7 @@ export function NewsDetailEditDialog({
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = getSelectedNewsImageFile(event.target.files)
     if (!file) return
+    dirtyRef.current = true
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setNewImage(file)
     setPreviewUrl(URL.createObjectURL(file))
@@ -197,7 +214,7 @@ export function NewsDetailEditDialog({
                   type="text"
                   value={editData.title}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    setEditData({ ...editData, title: e.target.value })
+                    handleFieldChange("title", e.target.value)
                   }
                   maxLength={100}
                 />
@@ -207,7 +224,7 @@ export function NewsDetailEditDialog({
                   id="edit-content"
                   value={editData.content}
                   onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                    setEditData({ ...editData, content: e.target.value })
+                    handleFieldChange("content", e.target.value)
                   }
                   maxLength={3000}
                   rows={6}
@@ -221,7 +238,7 @@ export function NewsDetailEditDialog({
                   type="text"
                   value={editData.title_en}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    setEditData({ ...editData, title_en: e.target.value })
+                    handleFieldChange("title_en", e.target.value)
                   }
                   maxLength={100}
                 />
@@ -231,7 +248,7 @@ export function NewsDetailEditDialog({
                   id="edit-content-en"
                   value={editData.content_en}
                   onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                    setEditData({ ...editData, content_en: e.target.value })
+                    handleFieldChange("content_en", e.target.value)
                   }
                   maxLength={3000}
                   rows={6}

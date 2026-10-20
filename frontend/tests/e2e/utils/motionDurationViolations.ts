@@ -6,6 +6,9 @@ export function collectMotionDurationViolations(root: Element) {
     return 0
   }
 
+  const exceedsDurationLimit = (value: string): boolean =>
+    value.split(",").some((duration) => parseDurationMs(duration) > 1)
+
   const offenders: {
     selector: string
     transitionDuration: string
@@ -15,9 +18,10 @@ export function collectMotionDurationViolations(root: Element) {
   for (const el of [root, ...root.querySelectorAll("*")]) {
     if (el.tagName.toLowerCase() === "svg") continue
     const styles = getComputedStyle(el)
-    const transitionMs = parseDurationMs(styles.transitionDuration)
-    const animationMs = parseDurationMs(styles.animationDuration)
-    if (transitionMs > 1 || animationMs > 1) {
+    if (
+      exceedsDurationLimit(styles.transitionDuration) ||
+      exceedsDurationLimit(styles.animationDuration)
+    ) {
       const id = (el as HTMLElement).id
       const classes = Array.from(el.classList).slice(0, 3).join(".")
       offenders.push({

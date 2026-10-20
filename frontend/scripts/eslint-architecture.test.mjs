@@ -1,10 +1,12 @@
 import assert from "node:assert/strict"
+import { readFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import path from "node:path"
 import test, { after } from "node:test"
 import { fileURLToPath } from "node:url"
 
 import { ESLint } from "eslint"
+import { format, resolveConfig } from "prettier"
 
 const frontendRoot = fileURLToPath(new URL("..", import.meta.url))
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url))
@@ -227,3 +229,31 @@ for (const componentPath of [
     assert.deepEqual(warnings, [])
   })
 }
+
+test("temporary architecture fixture formatter diagnostic", { timeout: 10_000 }, async (t) => {
+  const filepath = fileURLToPath(import.meta.url)
+  let source
+  let formatted
+
+  try {
+    source = await readFile(filepath, "utf8")
+    const options = await resolveConfig(filepath, { editorconfig: true })
+    assert.ok(options)
+    formatted = await format(source, { ...options, filepath })
+  } catch {
+    assert.fail("Unable to prepare the fixed architecture fixture formatting diagnostic")
+  }
+
+  if (source !== formatted) {
+    const diagnostic = JSON.stringify({
+      fixture: "frontend/scripts/eslint-architecture.test.mjs",
+      formatted,
+    })
+    assert.ok(
+      new TextEncoder().encode(diagnostic).byteLength < 32_768,
+      "Fixed fixture formatting diagnostic exceeds its output limit"
+    )
+    t.diagnostic(diagnostic)
+    assert.fail("Architecture fixture differs from installed Prettier output")
+  }
+})
