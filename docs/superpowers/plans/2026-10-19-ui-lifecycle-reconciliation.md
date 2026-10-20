@@ -150,3 +150,11 @@ AUD-090 adds repeated Enter while isRenaming is rendered true, retention of the 
 On 2c85f95, job 118442418080 observes all three numeric fraction failures and both pending-Enter duplication failures; Settings container job 118442418051 cannot find the selected tab after validating 1.5. Total frontend is 9433 PASS / six intended FAIL across 784 files.
 
 The schema adds only an integer check after finite validation, preserving union/parseInt compatibility, range checks, fallback and Spotify values. saveRename returns immediately when isRenaming is rendered true, before trimming, callbacks or editing-state changes. Existing draft, Escape, blank/undefined and normal-save behaviors remain untouched. All new regression assertions are unchanged. Own corrected-source GREEN is pending; no claim covers every pre-render same-tick race or a physical full-router integration.
+
+## Fractional tabs and pending rename accepted
+
+Source 1ed440f88de239971ce9e4e6900a41ed6adad7c3 has 9439 frontend PASS across 784 files in jobs 118448485907, 118448485830, 118448485880 and 118448485741. All use checkout 8bbbd09fc76189c0caa6993acfb008728a2d367b with identical source tree 07c72b763fa54ec77bd1bcc6e435b06d76ec8579. The 27 schema cases, six actual Settings closure cases and 41 GroupInfoPanel branch cases pass. Static checks and production build also succeed.
+
+AUD-089 accepts integer-only numeric tabs with General fallback while preserving historical string parsing and valid indices. The selected General panel is tested through the real schema and Settings conditional rendering, not the full router or browser ARIA surface. AUD-090 accepts suppression of rename callbacks while the pending prop is true, draft retention and one settled submission; it does not claim every same-tick race before a parent update is eliminated.
+
+Owned Core run 39367414064 / job 118447292623 finishes 28 browser PASS / two existing SKIP at 04:20:48 UTC on the same verified checkout/tree. Owned containers stop and the metadata receipt completes at 04:21:10, with upload at 04:21:11. Artifact 12241160221 has SHA-256 f4eaf7e8131cf21cfb7a512b4eae2c39155c4c77b3665c8157ebb9fe7719a502. This is the owned Core cohort, not the full 59-spec acceptance or an outage run.

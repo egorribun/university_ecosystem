@@ -1763,3 +1763,144 @@ def test_cli_explicit_attempt_does_not_fallback_after_fetch_failure(
         ]
     ]
     assert not output.exists()
+
+
+
+def _aud093_independent_jobs(
+    first_seconds: int, second_seconds: int
+) -> dict[str, object]:
+    """Keep the one-hour scheduling gap distinct from dependency duration."""
+    return _bound_payload(
+        {
+            "total_count": 2,
+            "jobs": [
+                {
+                    "id": 1,
+                    "name": "independent-first",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "queued_at": "2026-08-31T10:00:00Z",
+                    "started_at": "2026-08-31T10:00:00Z",
+                    "completed_at": f"2026-08-31T10:00:{first_seconds:02d}Z",
+                    "needs": [],
+                    "steps": [],
+                },
+                {
+                    "id": 2,
+                    "name": "independent-second",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "queued_at": "2026-08-31T10:00:00Z",
+                    "started_at": "2026-08-31T11:00:00Z",
+                    "completed_at": f"2026-08-31T11:00:{second_seconds:02d}Z",
+                    "needs": [],
+                    "steps": [],
+                },
+            ],
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("first_seconds", "second_seconds", "expected_wall", "expected_bound"),
+    [
+        pytest.param(10, 10, 3610.0, 10.0, id="staggered-independent"),
+        pytest.param(0, 0, 0.0, 0.0, id="all-zero-duration"),
+        pytest.param(10, 0, 10.0, 10.0, id="late-zero-duration"),
+    ],
+)
+def test_aud093_diagnostic_bound_excludes_independent_scheduling_gap(
+    first_seconds: int,
+    second_seconds: int,
+    expected_wall: float,
+    expected_bound: float,
+) -> None:
+    payload = _aud093_independent_jobs(first_seconds, second_seconds)
+    jobs = parse_jobs(payload)
+    dag = _dag_payload(payload)
+    strict = analyze_jobs(
+        jobs,
+        repository="egorribun/university_ecosystem",
+        run_id=33349026009,
+        concurrency_cap=20,
+        dag=dag,
+        trusted_provenance=_trusted_provenance(dag),
+    )
+    strict_summary = cast(dict[str, object], strict["summary"])
+    assert strict_summary["critical_path_kind"] == "exact"
+    assert strict_summary["critical_path_seconds"] == expected_bound
+    strict_rows = cast(list[dict[str, object]], strict["jobs"])
+    assert all(row["needs"] == [] for row in strict_rows)
+
+    diagnostic = analyze_jobs(
+        jobs,
+        repository="egorribun/university_ecosystem",
+        run_id=33349026009,
+        concurrency_cap=20,
+        diagnostic_lower_bound=True,
+    )
+    summary = cast(dict[str, object], diagnostic["summary"])
+    assert summary["analysis_mode"] == "diagnostic-lower-bound"
+    assert summary["critical_path_kind"] == "lower-bound"
+    assert "critical_path_seconds" not in summary
+    assert summary["wall_clock_seconds"] == expected_wall
+    rows = cast(list[dict[str, object]], diagnostic["jobs"])
+    assert all(row["needs"] == "unknown" for row in rows)
+    assert all(row["critical_path_end_seconds"] is None for row in rows)
+    assert rows[1]["github_queue_wait_seconds"] == 3600.0
+    assert summary["critical_path_lower_bound_seconds"] == expected_bound
+
+
+@pytest.mark.parametrize(
+    ("first_seconds", "second_seconds", "expected_wall", "expected_bound"),
+    [
+        pytest.param(10, 10, 3610.0, 10.0, id="staggered-independent"),
+        pytest.param(0, 0, 0.0, 0.0, id="all-zero-duration"),
+        pytest.param(10, 0, 10.0, 10.0, id="late-zero-duration"),
+    ],
+)
+def test_aud093_cli_serializes_execution_bound_separately_from_wall_span(
+    tmp_path: Path,
+    first_seconds: int,
+    second_seconds: int,
+    expected_wall: float,
+    expected_bound: float,
+) -> None:
+    payload = _aud093_independent_jobs(first_seconds, second_seconds)
+    jobs_path = tmp_path / "jobs.json"
+    jobs_path.write_text(json.dumps(payload), encoding="utf-8")
+    output = tmp_path / "report.json"
+
+    assert (
+        main(
+            [
+                "--repository",
+                "egorribun/university_ecosystem",
+                "--run-id",
+                "33349026009",
+                "--run-attempt",
+                "1",
+                "--concurrency-cap",
+                "20",
+                "--jobs-json",
+                str(jobs_path),
+                "--output",
+                str(output),
+                "--diagnostic-lower-bound",
+            ]
+        )
+        == 0
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    digest = report.pop("report_sha256")
+    canonical = json.dumps(
+        report, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    assert digest == hashlib.sha256(canonical.encode()).hexdigest()
+    assert report["analysis_mode"] == "diagnostic-lower-bound"
+    assert report["provenance"]["run_attempt"] == 1
+    summary = report["summary"]
+    assert summary["critical_path_kind"] == "lower-bound"
+    assert "critical_path_seconds" not in summary
+    assert summary["wall_clock_seconds"] == expected_wall
+    assert summary["critical_path_lower_bound_seconds"] == expected_bound

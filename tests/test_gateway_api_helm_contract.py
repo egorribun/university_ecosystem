@@ -74,6 +74,7 @@ def _resources(*overrides: str) -> list[dict[str, Any]]:
 def _render_gateway_template_isolated(
     *overrides: str,
     client_ip_detection: str = '{"directSourceIP":{}}',
+    release_name: str = "gateway-contract",
 ) -> subprocess.CompletedProcess[str]:
     """Render the production Gateway template without the chart-wide fail gate.
 
@@ -100,7 +101,7 @@ def _render_gateway_template_isolated(
         command = [
             _helm(),
             "template",
-            "gateway-contract",
+            release_name,
             str(test_chart),
             "--namespace",
             "university-ecosystem",

@@ -55,3 +55,9 @@ On 2c85f95 / job 118442456006, fourteen composition cases fail at required one-c
 The implementation uses existing preparation, refuses without collection when it returns None, retains the admitted fingerprint before the callback, invokes the existing private collector exactly once with the same Deadline, and decodes against that retained fingerprint. Unexpected exceptions and interrupts propagate unchanged. No fresh budget, retry, direct subprocess call or suppression is added.
 
 Preparation/decoding still perform no transport I/O. Composition can invoke the existing collector when explicitly called; current tests replace that boundary and no coordinator/CLI/runtime caller is connected. Module documentation reflects this distinction. Own composition GREEN remains pending; complete inventory, executable/config/socket provenance, daemon authenticity, health admission and outage remain unproved.
+
+## Collector composition GREEN
+
+Source 1ed440f88de239971ce9e4e6900a41ed6adad7c3 and hosted checkout 8bbbd09fc76189c0caa6993acfb008728a2d367b share tree 07c72b763fa54ec77bd1bcc6e435b06d76ec8579. Job 118448423252 passes all twenty-one observation-composition cases at 04:12:46–51 UTC, with aggregate 861 PASS / one existing disabled-outage hold in 246.72 seconds. Exact request/deadline identity, one collection, refusal before collection, result rejection, postcollection expiry, exception/interrupt identity and retained precollection fingerprint are covered.
+
+The tests substitute the existing collector boundary. No runtime caller, coordinator, CLI, complete inventory or actual outage is enabled. Next work is explicit in-place Core Compose request preparation and private supplied-JSON projection under the original deadline, before any inventory or transport composition is accepted. Caller-owned signature/key/lease/source and Docker/plugin/config provenance remain preconditions, not facts established by this helper.

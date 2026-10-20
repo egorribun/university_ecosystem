@@ -1926,3 +1926,138 @@ async def test_di_propagates_permanent_nats_errors_before_yield(
             await asyncio.wait_for(provider.aclose(), timeout=0.5)
 
     connect.assert_awaited_once_with()
+
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failed_steps", "cancel_di"),
+    [
+        pytest.param(("container",), False, id="di-close-failure"),
+        pytest.param(("cache",), False, id="later-async-finalizer-failure"),
+        pytest.param(("webpush",), False, id="later-sync-finalizer-failure"),
+        pytest.param((), False, id="successful-ordered-shutdown"),
+        pytest.param(("container", "cache"), False, id="di-and-cache-failures"),
+        pytest.param(("container",), True, id="di-finalizer-raised-cancellation"),
+        pytest.param(
+            ("container", "cache"), True, id="di-cancellation-and-cache-failure"
+        ),
+    ],
+)
+async def test_aud091_shutdown_attempts_independent_finalizers_in_order(
+    monkeypatch: pytest.MonkeyPatch,
+    failed_steps: tuple[str, ...],
+    cancel_di: bool,
+) -> None:
+    app = FastAPI()
+    order: list[str] = []
+    failures: dict[str, BaseException] = {
+        name: (
+            asyncio.CancelledError("synthetic finalizer cancellation")
+            if name == "container" and cancel_di
+            else RuntimeError(f"synthetic {name} failure")
+        )
+        for name in failed_steps
+    }
+
+    async def background() -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            order.append("background-cancelled")
+            raise
+
+    task = asyncio.create_task(background())
+    await asyncio.sleep(0)
+    app.state.background_tasks = {task}
+
+    def record(name: str) -> None:
+        order.append(name)
+        if name == "container":
+            assert app.state._dishka_container_closed is True
+            assert task.cancelled()
+        if name in failures:
+            raise failures[name]
+
+    container = MagicMock()
+    container.close = AsyncMock(side_effect=lambda: record("container"))
+    app.state.dishka_container = container
+    cdc_worker = MagicMock()
+    cdc_worker.stop = AsyncMock(side_effect=lambda: record("cdc"))
+    app.state.cdc_outbox_worker = cdc_worker
+    app.state.partition_stopper = AsyncMock(side_effect=lambda: record("partition"))
+    scheduler_stop = MagicMock()
+    scheduler_stop.set.side_effect = lambda: record("scheduler")
+
+    try:
+        monkeypatch.setattr("app.core.lifespan._SCHEDULER_STOP", scheduler_stop)
+        for target, name in (
+            ("app.api.health.set_shutdown_flag", "readiness"),
+            ("app.core.lifespan.webpush.cleanup", "webpush"),
+            ("app.core.lifespan.shutdown_observability", "observability"),
+            (
+                "app.services.geolocation.shutdown_geolocation_service",
+                "geolocation",
+            ),
+        ):
+            monkeypatch.setattr(
+                target, MagicMock(side_effect=lambda name=name: record(name))
+            )
+        for target, name in (
+            ("app.api.ws.presence.stop_presence_pubsub", "presence"),
+            ("app.core.lifespan.shutdown_cache", "cache"),
+            ("app.core.feature_flags.shutdown_feature_flags", "flags"),
+            ("app.core.ratelimit.stop_memory_cleanup_task", "ratelimit"),
+            ("app.core.spicedb.close_global_spicedb_channel", "spicedb"),
+            ("app.auth.security.close_hibp_client", "hibp"),
+        ):
+            monkeypatch.setattr(
+                target, AsyncMock(side_effect=lambda name=name: record(name))
+            )
+
+        if not failed_steps:
+            await _shutdown_subsystems(app)
+        else:
+            expected_primary = failures[failed_steps[-1]]
+            with pytest.raises(type(expected_primary)) as caught:
+                await _shutdown_subsystems(app)
+            assert caught.value is expected_primary
+
+            chain: list[BaseException] = []
+            seen: set[int] = set()
+            current: BaseException | None = caught.value
+            while current is not None:
+                assert id(current) not in seen, "cleanup exception chain cycles"
+                seen.add(id(current))
+                chain.append(current)
+                current = current.__context__
+
+            expected_chain = [failures[name] for name in reversed(failed_steps)]
+            assert len(chain) == len(expected_chain)
+            assert all(
+                actual is expected
+                for actual, expected in zip(chain, expected_chain, strict=True)
+            )
+
+        assert app.state._dishka_container_closed is True
+        assert task.cancelled()
+        assert order == [
+            "readiness",
+            "scheduler",
+            "cdc",
+            "background-cancelled",
+            "container",
+            "presence",
+            "webpush",
+            "cache",
+            "partition",
+            "flags",
+            "ratelimit",
+            "spicedb",
+            "observability",
+            "geolocation",
+            "hibp",
+        ]
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)

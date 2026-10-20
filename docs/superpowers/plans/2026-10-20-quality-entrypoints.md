@@ -39,3 +39,7 @@ AUD-087 sets process.exitCode=1 in each existing output-error catch while contin
 ## AUD-088 rendered contract accepted
 
 AUD-088 is accepted as the original rendered frontend/gateway positive-minimum defect. The two off-peak/daytime cases pass at 03:50:21/22 UTC and the disabled-state case at 03:50:23 in job 118442456006. They execute Helm against the tracked chart/dependency archives with synthetic CLI overrides and no dependency update or cluster contact. Hibernation remains disabled by default; no replicas, schedules or deployment settings change. This does not prove real KEDA zeroing, wake readiness, cron execution or availability. The verified lower bound becomes 87/512; other new findings remain open until their own corrected-source GREEN.
+
+## Corrected entrypoints accepted
+
+Source 1ed440f88de239971ce9e4e6900a41ed6adad7c3 and hosted checkout 8bbbd09fc76189c0caa6993acfb008728a2d367b have identical tree 07c72b763fa54ec77bd1bcc6e435b06d76ec8579. Contract job 118448021392 passes all four Make cases and totals 129 PASS. Node job 118448485714 passes all 596 cases, including JSONC discovery and all five real icon subprocess oracles. AUD-082/083/087 now have their own corrected-source GREEN and are accepted within the scopes above; no formatter, generator, baseline or security gate is bypassed.

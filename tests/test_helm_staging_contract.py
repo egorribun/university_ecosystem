@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -11,6 +12,8 @@ from typing import Any
 
 import pytest
 import yaml
+
+from tests.test_gateway_api_helm_contract import _render_gateway_template_isolated
 
 ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "charts" / "university-ecosystem"
@@ -3075,3 +3078,143 @@ def test_external_https_jwks_override_keeps_existing_443_egress_only() -> None:
         rule.get("ports") == [{"protocol": "TCP", "port": 443}]
         for rule in processor_policy["spec"]["egress"]
     )
+
+
+
+_SERVICE_COMPONENTS = (
+    "backend",
+    "frontend",
+    "gateway",
+    "ws-hub",
+    "file-processor",
+)
+
+
+@pytest.mark.parametrize("environment", ["development", "staging"])
+@pytest.mark.parametrize(
+    ("release", "full_override", "base"),
+    [
+        ("short", "", "short-university-ecosystem"),
+        ("short", "campus", "campus"),
+        ("short", "b" * 48, "b" * 48),
+        ("r" * 53, "", "r" * 53 + "-universit"),
+        ("short", "f" * 63, "f" * 63),
+    ],
+    ids=[
+        "short-default",
+        "short-full-override",
+        "file-processor-exact-limit",
+        "long-release",
+        "long-full-override",
+    ],
+)
+def test_first_party_service_names_and_references_fit_dns_labels(
+    environment: str,
+    release: str,
+    full_override: str,
+    base: str,
+) -> None:
+    assert shutil.which("helm") is not None, "Actual Helm rendering is required"
+    overrides = (
+        "--set-string",
+        f"global.environment={environment}",
+        "--set-string",
+        f"fullnameOverride={full_override}",
+    )
+    resources = _render_staging(*overrides, release_name=release)
+    services = {
+        resource["metadata"]["labels"]["app.kubernetes.io/component"]: resource
+        for resource in resources
+        if resource.get("kind") == "Service"
+        and resource["metadata"].get("labels", {}).get("app.kubernetes.io/component")
+        in _SERVICE_COMPONENTS
+    }
+    assert set(services) == set(_SERVICE_COMPONENTS)
+    expected = {
+        component: f"{base[:62 - len(component)].rstrip('-')}-{component}"
+        for component in _SERVICE_COMPONENTS
+    }
+    names = {
+        component: resource["metadata"]["name"]
+        for component, resource in services.items()
+    }
+    assert names == expected
+    assert len(set(names.values())) == len(_SERVICE_COMPONENTS)
+    assert all(
+        len(name) <= 63 and re.fullmatch(r"[a-z][a-z0-9-]*[a-z0-9]", name)
+        for name in names.values()
+    )
+    service_ports = {
+        resource["metadata"]["name"]: {
+            port["port"] for port in resource["spec"]["ports"]
+        }
+        for resource in services.values()
+    }
+    deployments = {
+        resource["metadata"]["labels"]["app.kubernetes.io/component"]: resource
+        for resource in resources
+        if resource.get("kind") == "Deployment"
+        and resource["metadata"].get("labels", {}).get("app.kubernetes.io/component")
+        in _SERVICE_COMPONENTS
+    }
+    for component, service in services.items():
+        labels = deployments[component]["spec"]["template"]["metadata"]["labels"]
+        assert all(
+            labels[key] == value for key, value in service["spec"]["selector"].items()
+        )
+    env = {
+        component: {
+            entry["name"]: entry["value"]
+            for entry in deployment["spec"]["template"]["spec"]["containers"][0]["env"]
+            if "value" in entry
+        }
+        for component, deployment in deployments.items()
+    }
+    backend = f"http://{names['backend']}:8000"
+    jwks = f"{backend}/.well-known/jwks.json"
+    assert env["frontend"]["BACKEND_ORIGIN"] == backend
+    assert env["gateway"]["BACKEND_URL"] == backend
+    assert env["gateway"]["FILE_PROCESSOR_ADDR"] == f"{names['file-processor']}:50051"
+    assert env["file-processor"]["FP_JWKS_URL"] == jwks
+    assert env["ws-hub"]["BACKEND_INTERNAL_URL"] == backend
+    assert env["ws-hub"]["JWKS_URL"] == jwks
+    if environment == "development":
+        assert env["gateway"]["JWKS_ENDPOINT"] == jwks
+    else:
+        assert env["gateway"]["JWKS_ENDPOINT"] == (
+            "https://api.university.staging.example.org/.well-known/jwks.json"
+        )
+
+    ingress_refs = [
+        path["backend"]["service"]
+        for resource in resources
+        if resource.get("kind") == "Ingress"
+        for rule in resource["spec"]["rules"]
+        for path in rule["http"]["paths"]
+    ]
+    assert ingress_refs
+    for reference in ingress_refs:
+        assert reference["port"]["number"] in service_ports[reference["name"]]
+
+    gateway_result = _render_gateway_template_isolated(
+        "--set-string",
+        f"fullnameOverride={full_override}",
+        release_name=release,
+    )
+    assert gateway_result.returncode == 0, gateway_result.stderr
+    gateway_resources = [
+        resource
+        for resource in yaml.safe_load_all(gateway_result.stdout)
+        if isinstance(resource, dict)
+    ]
+    gateway_refs = [
+        reference
+        for resource in gateway_resources
+        if resource.get("kind") == "HTTPRoute"
+        for rule in resource["spec"]["rules"]
+        for reference in rule.get("backendRefs", [])
+    ]
+    assert gateway_refs
+    for reference in gateway_refs:
+        assert reference["kind"] == "Service"
+        assert reference["port"] in service_ports[reference["name"]]
