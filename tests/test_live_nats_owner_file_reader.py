@@ -64,12 +64,15 @@ def owner_files(tmp_path):
     state_root = tmp_path / "ue-live-acceptance" / "run-reader"
     secrets = state_root / ".secrets"
     secrets.mkdir(parents=True)
+    state_root.chmod(0o700)
+    secrets.chmod(0o700)
     marker = secrets / _MARKER
     key_file = secrets / _KEY_FILE
     pins = {
         "pinned_repository": str(tmp_path / "repository"),
         "pinned_state_root": str(state_root),
         "pinned_source_sha": "a" * 40,
+        "pinned_owner_uid": os.getuid(),
     }
     ports = {
         name: 20_000 + index
@@ -93,6 +96,7 @@ def owner_files(tmp_path):
     signed = {**payload, "signature": live_stand._owner_signature(payload, _KEY)}
     marker_bytes = json.dumps(signed, indent=2).encode("utf-8")
     marker.write_bytes(marker_bytes)
+    marker.chmod(0o600)
     key_file.write_bytes(_KEY)
     key_file.chmod(0o600)
     return SimpleNamespace(
@@ -849,3 +853,227 @@ def test_expiry_during_ancestor_revalidation_stops_work_and_closes_fds(
     assert ops["reads_after_expiry"] == []
     assert ops["stats_after_expiry"] == []
     _assert_fds_closed(ops)
+
+
+@pytest.fixture
+def private_owner_files(owner_files):
+    assert os.name == "posix", "private descriptor policy requires POSIX"
+    assert callable(getattr(os, "getuid", None))
+    for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK", "O_CLOEXEC"):
+        value = getattr(os, name, None)
+        assert type(value) is int and value > 0
+    assert os.open in os.supports_dir_fd
+    assert os.stat in os.supports_dir_fd
+    assert os.stat in os.supports_follow_symlinks
+    return owner_files
+
+
+def _provenance_targets(files):
+    return files.state_root, files.secrets, files.marker, files.key_file
+
+
+def _provenance_stat(info, **changes):
+    values = {
+        name: getattr(info, name)
+        for name in (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_uid",
+            "st_gid",
+            "st_nlink",
+            "st_size",
+            "st_atime_ns",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+    }
+    values.update(changes)
+    return SimpleNamespace(**values)
+
+
+def _observe_provenance_read(monkeypatch, files, deadline, **kwargs):
+    forbidden_calls = []
+
+    def forbidden(*_args, **_kwargs):
+        forbidden_calls.append(True)
+        raise AssertionError(
+            "reader must not mutate permissions or infer the pinned UID"
+        )
+
+    with monkeypatch.context() as guard:
+        for name in ("chmod", "chown", "fchmod", "fchown", "getuid", "geteuid"):
+            if hasattr(os, name):
+                guard.setattr(os, name, forbidden)
+        result, ops = _observe_reader_call(guard, files, deadline, **kwargs)
+    assert forbidden_calls == []
+    return result, ops
+
+
+def _record_provenance_parser(monkeypatch, original):
+    calls = []
+
+    def recorded(*args, **kwargs):
+        calls.append(True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(transport, "parse_signed_owner_v11", recorded)
+    return calls
+
+
+def _assert_provenance_refusal(result, ops, parser_calls):
+    _not_ready(result)
+    assert parser_calls == []
+    assert ops["write_attempts"] == []
+    assert Counter(ops["opened_fds"]) == Counter(ops["close_attempts"])
+    _assert_fds_closed(ops)
+
+
+def test_private_descriptor_policy_accepts_explicit_creator_uid(
+    monkeypatch, private_owner_files
+):
+    files = private_owner_files
+    targets = _provenance_targets(files)
+    before = tuple(
+        (path.stat().st_uid, stat.S_IMODE(path.stat().st_mode)) for path in targets
+    )
+    assert before == (
+        (files.pins["pinned_owner_uid"], 0o700),
+        (files.pins["pinned_owner_uid"], 0o700),
+        (files.pins["pinned_owner_uid"], 0o600),
+        (files.pins["pinned_owner_uid"], 0o600),
+    )
+    leaf_before = (_snapshot(files.marker), _snapshot(files.key_file))
+    clock, deadline = _deadline()
+
+    result, ops = _observe_provenance_read(monkeypatch, files, deadline, clock=clock)
+
+    assert result.status is transport.OwnerParseStatus.SIGNED_METADATA
+    assert isinstance(result.owner, OwnerEvidence)
+    after = tuple(
+        (path.stat().st_uid, stat.S_IMODE(path.stat().st_mode)) for path in targets
+    )
+    assert after == before
+    assert (_snapshot(files.marker), _snapshot(files.key_file)) == leaf_before
+    assert ops["write_attempts"] == []
+    _assert_initial_component_walk(ops, files.state_root)
+    assert Counter(ops["opened_fds"]) == Counter(ops["close_attempts"])
+    _assert_fds_closed(ops)
+
+
+@pytest.mark.parametrize("uid", [None, True, -1], ids=["none", "bool", "negative"])
+def test_invalid_pinned_owner_uid_refuses_before_io(
+    monkeypatch, private_owner_files, uid
+):
+    files = private_owner_files
+    files.pins["pinned_owner_uid"] = uid
+    calls = _record_provenance_parser(monkeypatch, transport.parse_signed_owner_v11)
+    clock, deadline = _deadline()
+
+    result, ops = _observe_provenance_read(monkeypatch, files, deadline, clock=clock)
+
+    _assert_provenance_refusal(result, ops, calls)
+    assert ops["opens"] == []
+    assert ops["reads"] == []
+
+
+@pytest.mark.parametrize(
+    ("attribute", "mode"),
+    [
+        ("state_root", 0o750),
+        ("secrets", 0o2700),
+        ("marker", 0o640),
+        ("key_file", 0o400),
+    ],
+    ids=[
+        "run-group-access",
+        "secrets-special-bit",
+        "marker-group-read",
+        "key-readonly",
+    ],
+)
+def test_noncontract_descriptor_mode_refuses_before_reads(
+    monkeypatch, private_owner_files, attribute, mode
+):
+    files = private_owner_files
+    target = getattr(files, attribute)
+    target.chmod(mode)
+    observed_mode = target.stat().st_mode
+    assert stat.S_IMODE(observed_mode) == mode
+    calls = _record_provenance_parser(monkeypatch, transport.parse_signed_owner_v11)
+    clock, deadline = _deadline()
+
+    result, ops = _observe_provenance_read(monkeypatch, files, deadline, clock=clock)
+
+    _assert_provenance_refusal(result, ops, calls)
+    assert ops["reads"] == []
+    assert target.stat().st_mode == observed_mode
+
+
+def test_wrong_descriptor_uid_refuses_each_protected_object(
+    monkeypatch, private_owner_files
+):
+    files = private_owner_files
+    real_fstat = os.fstat
+    original_parser = transport.parse_signed_owner_v11
+
+    for target in _provenance_targets(files):
+        metadata = target.stat()
+        identity = (metadata.st_dev, metadata.st_ino)
+        injected = []
+
+        def wrong_uid(fd, *, target_identity=identity, captured=injected):
+            info = real_fstat(fd)
+            if (info.st_dev, info.st_ino) == target_identity:
+                captured.append(fd)
+                return _provenance_stat(info, st_uid=files.pins["pinned_owner_uid"] + 1)
+            return info
+
+        clock, deadline = _deadline()
+        with monkeypatch.context() as guard:
+            calls = _record_provenance_parser(guard, original_parser)
+            guard.setattr(os, "fstat", wrong_uid)
+            result, ops = _observe_provenance_read(guard, files, deadline, clock=clock)
+
+        _assert_provenance_refusal(result, ops, calls)
+        assert injected
+        assert ops["reads"] == []
+
+
+def test_retained_run_mode_drift_after_reads_refuses_before_parser(
+    monkeypatch, private_owner_files
+):
+    files = private_owner_files
+    root_info = files.state_root.stat()
+    identity = (root_info.st_dev, root_info.st_ino)
+    real_fstat = os.fstat
+    changed = []
+    observed_drift = []
+    calls = _record_provenance_parser(monkeypatch, transport.parse_signed_owner_v11)
+
+    def after_read(name, data):
+        if name == _KEY_FILE and not data:
+            changed.append(True)
+
+    def changed_root_mode(fd):
+        info = real_fstat(fd)
+        if changed and (info.st_dev, info.st_ino) == identity:
+            observed_drift.append(fd)
+            return _provenance_stat(info, st_mode=stat.S_IFMT(info.st_mode) | 0o750)
+        return info
+
+    clock, deadline = _deadline()
+    with monkeypatch.context() as guard:
+        guard.setattr(os, "fstat", changed_root_mode)
+        result, ops = _observe_provenance_read(
+            guard, files, deadline, clock=clock, after_read=after_read
+        )
+
+    _assert_provenance_refusal(result, ops, calls)
+    assert changed == [True]
+    assert observed_drift
+    for leaf in (_MARKER, _KEY_FILE):
+        assert any(
+            name == leaf and count == 0 for name, _requested, count in ops["reads"]
+        )
+    assert files.state_root.stat().st_mode == root_info.st_mode

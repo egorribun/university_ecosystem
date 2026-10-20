@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import type { ForwardRefExoticComponent, ReactNode, RefAttributes } from "react"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Message } from "@/components/messenger/types"
@@ -42,15 +42,25 @@ vi.mock("framer-motion", async () => {
       children as ReactNode
     )
   })
+  const motionComponents = new Map<
+    string,
+    ForwardRefExoticComponent<Props & RefAttributes<HTMLElement>>
+  >()
   const motion = new Proxy(
     {},
     {
-      get: (_target, key) =>
-        typeof key === "string"
-          ? React.forwardRef<HTMLElement, Props>(function MotionElement(props, ref) {
-              return React.createElement(Motion, { ...props, ref, "data-motion-tag": key })
-            })
-          : undefined,
+      get: (_target, key) => {
+        if (typeof key !== "string") return undefined
+
+        let component = motionComponents.get(key)
+        if (!component) {
+          component = React.forwardRef<HTMLElement, Props>(function MotionElement(props, ref) {
+            return React.createElement(Motion, { ...props, ref, "data-motion-tag": key })
+          })
+          motionComponents.set(key, component)
+        }
+        return component
+      },
     }
   )
   return {

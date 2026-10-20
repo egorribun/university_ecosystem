@@ -884,10 +884,7 @@ describe("EventsCard", () => {
         expect(eventLabels()).toEqual(
           scope === "today"
             ? ["dashboard:aria.eventItem:Old campus day"]
-            : [
-                "dashboard:aria.eventItem:Old campus day",
-                "dashboard:aria.eventItem:New campus day",
-              ]
+            : ["dashboard:aria.eventItem:Old campus day", "dashboard:aria.eventItem:New campus day"]
         )
 
         act(() => {

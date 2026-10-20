@@ -314,6 +314,7 @@ def read_signed_owner_v11_from_state(
     pinned_repository: str,
     pinned_state_root: str,
     pinned_source_sha: str,
+    pinned_owner_uid: int,
     deadline: Deadline,
 ) -> OwnerParseResult:
     """Read existing fixed files into signed metadata, never runtime admission.
@@ -325,6 +326,7 @@ def read_signed_owner_v11_from_state(
     current daemon check is performed.
     Syscalls, including on network/FUSE mounts, cannot be hard-preempted.
     """
+    # Tests-first policy input; UID/private-mode enforcement is not implemented yet.
     not_ready = OwnerParseResult(OwnerParseStatus.NOT_READY)
     if (
         type(deadline) is not Deadline
@@ -677,6 +679,7 @@ def read_signed_owner_v11_under_lease(
     pinned_repository: str,
     pinned_state_root: str,
     pinned_source_sha: str,
+    pinned_owner_uid: int,
     deadline: Deadline,
 ) -> OwnerParseResult:
     """Compose conditional metadata with sampled lease checks, not provenance.
@@ -691,6 +694,7 @@ def read_signed_owner_v11_under_lease(
         pinned_repository=pinned_repository,
         pinned_state_root=pinned_state_root,
         pinned_source_sha=pinned_source_sha,
+        pinned_owner_uid=pinned_owner_uid,
         deadline=deadline,
     )
     if result.status is not OwnerParseStatus.SIGNED_METADATA or result.owner is None:

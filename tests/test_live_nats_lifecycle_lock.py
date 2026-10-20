@@ -1040,6 +1040,7 @@ def leased_owner_case(lock_case):
         "pinned_repository": str(root.parent / "repository"),
         "pinned_state_root": str(root),
         "pinned_source_sha": "a" * 40,
+        "pinned_owner_uid": os.getuid(),
     }
     ports = {
         name: 20_000 + index
@@ -1100,12 +1101,20 @@ def leased_owner_case(lock_case):
         )
         return valid and not (stage == "after" and case["post_drift"])
 
-    def read(*, pinned_repository, pinned_state_root, pinned_source_sha, deadline):
+    def read(
+        *,
+        pinned_repository,
+        pinned_state_root,
+        pinned_source_sha,
+        pinned_owner_uid,
+        deadline,
+    ):
         assert deadline is case["deadline"]
         assert {
             "pinned_repository": pinned_repository,
             "pinned_state_root": pinned_state_root,
             "pinned_source_sha": pinned_source_sha,
+            "pinned_owner_uid": pinned_owner_uid,
         } == case["pins"]
         case["events"].append("read")
         if case["raise_at"] == "read":
