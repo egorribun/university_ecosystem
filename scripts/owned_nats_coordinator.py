@@ -817,5 +817,5 @@ class _Coordinator:
 
 
 def run_owned_outage(ports: OutagePorts, *, clock: Clock, sleep: Sleep) -> OutageResult:
-    """Coordinate raw evidence only; live transport and CLI remain unavailable."""
+    """Coordinate owned Core outage evidence without claiming live proof."""
     return _Coordinator(ports, clock, sleep).run()

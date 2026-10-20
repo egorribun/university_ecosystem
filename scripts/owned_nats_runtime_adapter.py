@@ -25,7 +25,13 @@ class RuntimeReadNotReady(RuntimeError):
 class OwnedCoreRuntimePort:
     """Forward owner lease callbacks and bind runtime reads to that exact lease."""
 
-    __slots__ = ("_compose_pins", "_docker_pins", "_lease", "_owner_port")
+    __slots__ = (
+        "_compose_pins",
+        "_docker_pins",
+        "_lazy_core",
+        "_lease",
+        "_owner_port",
+    )
 
     def __init__(
         self,
@@ -43,7 +49,24 @@ class OwnedCoreRuntimePort:
             self._owner_port = owner_port
             self._docker_pins = replace(docker_pins)
             self._compose_pins = replace(compose_pins)
+            self._lazy_core = False
             self._lease: transport.LifecycleLockLease | None = None
+        except (AttributeError, TypeError, ValueError) as error:
+            raise RuntimeReadNotReady from error
+
+    @classmethod
+    def for_owned_core(cls, owner_port: SignedOwnerLeasePort) -> OwnedCoreRuntimePort:
+        """Create the fixed source-bound lazy Core path without reading Docker."""
+        if type(owner_port) is not SignedOwnerLeasePort:
+            raise RuntimeReadNotReady
+        try:
+            runtime = cls.__new__(cls)
+            runtime._owner_port = owner_port
+            runtime._docker_pins = None
+            runtime._compose_pins = None
+            runtime._lazy_core = True
+            runtime._lease = None
+            return runtime
         except (AttributeError, TypeError, ValueError) as error:
             raise RuntimeReadNotReady from error
 
@@ -61,6 +84,15 @@ class OwnedCoreRuntimePort:
             )
         except AttributeError:
             return False
+
+    def _bootstrap_active(
+        self, lease: transport.LifecycleLockLease, deadline: object
+    ) -> bool:
+        return (
+            self._lease is lease
+            and self._same_active_lease()
+            and self._deadline_live(deadline)
+        )
 
     def acquire_lock(self, *, deadline: Deadline) -> object | None:
         """Retain the exact owner-port lease for all coordinator callbacks."""
@@ -86,16 +118,76 @@ class OwnedCoreRuntimePort:
         """Reread signed owner evidence only while the retained lease is held."""
         if not self._same_active_lease() or not self._deadline_live(deadline):
             raise RuntimeReadNotReady
+        lease = self._lease
+        if type(lease) is not transport.LifecycleLockLease:
+            raise RuntimeReadNotReady
         try:
             owner = self._owner_port.read_signed_owner(deadline=deadline)
         except Exception:
             raise RuntimeReadNotReady from None
         if (
-            not self._same_active_lease()
-            or not self._deadline_live(deadline)
+            not self._bootstrap_active(lease, deadline)
             or type(owner) is not OwnerEvidence
         ):
             raise RuntimeReadNotReady
+
+        if self._lazy_core:
+            if not self._bootstrap_active(lease, deadline):
+                raise RuntimeReadNotReady
+            try:
+                resolved = docker.resolve_core_docker_pins(owner, deadline=deadline)
+            except Exception:
+                raise RuntimeReadNotReady from None
+            if not self._bootstrap_active(lease, deadline):
+                raise RuntimeReadNotReady
+            if (
+                type(resolved) is not tuple
+                or len(resolved) != 2
+                or type(resolved[0]) is not docker.DockerReadPins
+                or type(resolved[1]) is not docker.ComposeConfigPins
+                or not docker._factory_provenance_valid(resolved[0])
+                or not self._valid_pins(
+                    owner,
+                    resolved[0].daemon_fingerprint,
+                    resolved[0],
+                    resolved[1],
+                )
+            ):
+                raise RuntimeReadNotReady
+            if not self._bootstrap_active(lease, deadline):
+                raise RuntimeReadNotReady
+            try:
+                after_factory = self._owner_port.read_signed_owner(deadline=deadline)
+            except Exception:
+                raise RuntimeReadNotReady from None
+            if (
+                not self._bootstrap_active(lease, deadline)
+                or type(after_factory) is not OwnerEvidence
+                or after_factory != owner
+            ):
+                raise RuntimeReadNotReady
+            try:
+                docker_pins = replace(resolved[0])
+                compose_pins = replace(resolved[1])
+            except (AttributeError, TypeError, ValueError) as error:
+                raise RuntimeReadNotReady from error
+            if (
+                not self._bootstrap_active(lease, deadline)
+                or not self._valid_pins(
+                    owner,
+                    docker_pins.daemon_fingerprint,
+                    docker_pins,
+                    compose_pins,
+                )
+                or not docker._factory_provenance_valid(docker_pins)
+            ):
+                raise RuntimeReadNotReady
+            self._docker_pins = docker_pins
+            self._compose_pins = compose_pins
+            self._lazy_core = False
+            if not self._bootstrap_active(lease, deadline):
+                raise RuntimeReadNotReady
+            return after_factory
         return owner
 
     def release_lock(self, lease: object, *, deadline: Deadline) -> None:

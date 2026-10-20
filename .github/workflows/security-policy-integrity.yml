@@ -177,6 +177,7 @@ jobs:
               scripts/quality/filter_checkov_sarif.py|\
               scripts/verify_secrets_baseline.py|\
               scripts/quality/coverage_provenance.py|\
+              scripts/quality/verify_frontend_diff_coverage.mjs|\
               scripts/quality/pytest_shard_manifest.py|\
               scripts/quality/normalize_coverage_reports.py|\
               scripts/quality/validate_quality_contract.py|\

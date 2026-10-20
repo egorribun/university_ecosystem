@@ -207,3 +207,79 @@ describe("schedule calendar export selection and serialization — AUD-066", () 
     )
   })
 })
+
+describe("schedule calendar export boundary ordering — AUD coverage", () => {
+  it("fails closed when the selected week cannot be represented by the date shifter", () => {
+    const selection = selectGoogleCalendarLesson(
+      input({
+        now: new Date("0001-06-01T12:00:00.000Z"),
+        timeZone: "UTC",
+        weekOffset: 0,
+      })
+    )
+
+    expect(selection).toEqual({ status: "unavailable" })
+  })
+
+  it("uses lesson ID as a deterministic tie-break for equal weekday and start time", () => {
+    const selection = ready(
+      selectGoogleCalendarLesson(
+        input({
+          schedule: [
+            lesson({ id: "z-last", start_time: "09:15" }),
+            lesson({ id: "a-first", start_time: "09:15" }),
+          ],
+          visibleWeekdays: ["tuesday"],
+        })
+      )
+    )
+
+    expect(selection.lesson.id).toBe("a-first")
+
+    const reversed = ready(
+      selectGoogleCalendarLesson(
+        input({
+          schedule: [
+            lesson({ id: "a-first", start_time: "09:15" }),
+            lesson({ id: "z-last", start_time: "09:15" }),
+          ],
+          visibleWeekdays: ["tuesday"],
+        })
+      )
+    )
+    expect(reversed.lesson.id).toBe("a-first")
+  })
+
+  it("fails closed when the selected occurrence crosses the supported four-digit year", () => {
+    const selection = selectGoogleCalendarLesson(
+      input({
+        schedule: [lesson({ weekday: "sunday" })],
+        weekdayConfigs: [{ id: "sun", backend: ["sunday"], long: "Sunday", short: "Sun" }],
+        visibleWeekdays: ["sunday"],
+        now: new Date("9999-12-31T12:00:00.000Z"),
+        timeZone: "UTC",
+        weekOffset: 0,
+      })
+    )
+
+    expect(selection).toEqual({ status: "unavailable" })
+  })
+})
+
+describe("schedule calendar export stable ID tie", () => {
+  it("preserves input order when all three sort keys match", () => {
+    const selection = ready(
+      selectGoogleCalendarLesson(
+        input({
+          schedule: [
+            lesson({ id: "same-id", subject: "First record", start_time: "09:15" }),
+            lesson({ id: "same-id", subject: "Second record", start_time: "09:15" }),
+          ],
+          visibleWeekdays: ["tuesday"],
+        })
+      )
+    )
+
+    expect(selection.lesson.subject).toBe("First record")
+  })
+})

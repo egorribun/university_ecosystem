@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import selectors
 import shutil
 import signal
 import sys
@@ -764,12 +765,13 @@ def test_pr_scan_rejects_base_advanced_merge_before_scanner_launch(
     assert "private-synthetic-marker" not in str(error.value)
 
 
-def _linux_process_state(pid: int) -> str | None:
+def _linux_process_identity(pid: int) -> tuple[str, int, int] | None:
     status_path = Path("/proc") / str(pid) / "stat"
     try:
-        return status_path.read_text(encoding="ascii").rsplit(") ", 1)[1][0]
+        fields = status_path.read_text(encoding="ascii").rsplit(") ", 1)[1].split()
     except FileNotFoundError:
         return None
+    return fields[0], int(fields[2]), int(fields[19])
 
 
 def test_scan_timeout_kills_descendant_or_rejects_unsupported_platform(
@@ -829,16 +831,18 @@ def test_scan_timeout_kills_descendant_or_rejects_unsupported_platform(
 
     child_record = tmp_path / "child-process.txt"
     child_code = (
-        "import os, signal, sys, time; "
+        "import os, signal, sys; "
         "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "stat_fields = open('/proc/self/stat', encoding='ascii').read()"
+        ".rsplit(') ', 1)[1].split(); "
         "open(sys.argv[1], 'w', encoding='ascii').write("
-        "f'{os.getpid()} {os.getpgid(0)}\\n'); "
-        "time.sleep(30)"
+        "f'{os.getpid()} {os.getpgid(0)} {stat_fields[19]}\\n'); "
+        "signal.pause()"
     )
     parent_code = (
-        "import subprocess, sys, time; "
+        "import signal, subprocess, sys; "
         f"subprocess.Popen([sys.executable, '-c', {child_code!r}, {str(child_record)!r}]); "
-        "time.sleep(30)"
+        "signal.pause()"
     )
     original_spawn = asyncio.create_subprocess_exec
     spawned: list[tuple[asyncio.subprocess.Process, dict[str, object]]] = []
@@ -869,22 +873,66 @@ def test_scan_timeout_kills_descendant_or_rejects_unsupported_platform(
         process, spawn_kwargs = spawned[0]
         assert spawn_kwargs.get("start_new_session") is True
         assert process.returncode is not None
-        child_pid_text, child_group_text = child_record.read_text(
+        child_pid_text, child_group_text, child_start_text = child_record.read_text(
             encoding="ascii"
         ).split()
         child_pid = int(child_pid_text)
-        assert int(child_group_text) == process.pid
-        child_state = _linux_process_state(child_pid)
+        child_group = int(child_group_text)
+        child_start_time = int(child_start_text)
+        assert child_group == process.pid
         child_deadline = time.monotonic() + 0.5
-        while child_state not in {None, "Z"} and time.monotonic() < child_deadline:
-            time.sleep(0.01)
-            child_state = _linux_process_state(child_pid)
-        assert child_state in {None, "Z"}
+        pidfd: int | None = None
+        try:
+            try:
+                pidfd = os.pidfd_open(child_pid, 0)
+            except ProcessLookupError:
+                pass
+            else:
+                with selectors.DefaultSelector() as selector:
+                    selector.register(pidfd, selectors.EVENT_READ)
+                    remaining = child_deadline - time.monotonic()
+                    assert remaining > 0
+                    assert selector.select(remaining)
+            child_identity = _linux_process_identity(child_pid)
+            assert child_identity is None or child_identity == (
+                "Z",
+                child_group,
+                child_start_time,
+            )
+        finally:
+            if pidfd is not None:
+                os.close(pidfd)
     finally:
         if child_record.exists():
-            child_pid = int(child_record.read_text(encoding="ascii").split()[0])
-            if _linux_process_state(child_pid) not in {None, "Z"}:
-                os.kill(child_pid, signal.SIGKILL)
+            child_pid_text, child_group_text, child_start_text = child_record.read_text(
+                encoding="ascii"
+            ).split()
+            child_pid = int(child_pid_text)
+            child_group = int(child_group_text)
+            child_start_time = int(child_start_text)
+            child_identity = _linux_process_identity(child_pid)
+            if child_identity is not None and child_identity != (
+                "Z",
+                child_group,
+                child_start_time,
+            ):
+                assert child_identity[1:] == (child_group, child_start_time)
+                try:
+                    pidfd = os.pidfd_open(child_pid, 0)
+                except ProcessLookupError:
+                    pass
+                else:
+                    try:
+                        current_identity = _linux_process_identity(child_pid)
+                        if current_identity == child_identity:
+                            signal.pidfd_send_signal(pidfd, signal.SIGKILL)
+                            with selectors.DefaultSelector() as selector:
+                                selector.register(pidfd, selectors.EVENT_READ)
+                                assert selector.select(0.5)
+                    except ProcessLookupError:
+                        pass
+                    finally:
+                        os.close(pidfd)
 
 
 def test_scan_cleanup_bounds_unconfirmed_direct_child_reap(

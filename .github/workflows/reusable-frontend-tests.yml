@@ -598,10 +598,21 @@ jobs:
           COMPARE_BRANCH: ${{ github.base_ref }}
         run: |
           uv sync --frozen
+          if ($LASTEXITCODE -ne 0) { throw "Frontend diff coverage dependency sync failed." }
+          node --test tests/verify_frontend_diff_coverage.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Frontend diff coverage contract tests failed." }
           git fetch origin $env:COMPARE_BRANCH
-          # The current authored frontend diff is fully covered; keep the
-          # ratchet strict so newly changed source cannot reintroduce debt.
-          uv run diff-cover frontend/coverage/lcov.info --compare-branch=origin/$env:COMPARE_BRANCH --fail-under=100
+          if ($LASTEXITCODE -ne 0) { throw "Failed to fetch frontend diff coverage comparison branch." }
+          $normalizedLcov = Join-Path $env:RUNNER_TEMP ("frontend-diff-lcov-{0}-{1}-{2}.info" -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT, ([guid]::NewGuid().ToString("N")))
+          if (Test-Path -LiteralPath $normalizedLcov) { throw "Refusing to overwrite a pre-existing normalized LCOV path." }
+          try {
+            node scripts/quality/verify_frontend_diff_coverage.mjs --repo-root "$env:GITHUB_WORKSPACE" --base-ref "origin/$env:COMPARE_BRANCH" --output "$normalizedLcov"
+            if ($LASTEXITCODE -ne 0) { throw "Frontend diff coverage preflight failed." }
+            uv run diff-cover "$normalizedLcov" --compare-branch=origin/$env:COMPARE_BRANCH --fail-under=100
+            if ($LASTEXITCODE -ne 0) { throw "Frontend differential coverage is below 100%." }
+          } finally {
+            if (Test-Path -LiteralPath $normalizedLcov) { Remove-Item -LiteralPath $normalizedLcov -Force }
+          }
 
       - name: Write frontend coverage provenance
         working-directory: ${{ github.workspace }}

@@ -460,3 +460,34 @@ describe("useMapWeather — defensive API handling", () => {
     setItemSpy.mockRestore()
   })
 })
+
+describe("useMapWeather — provider wall-clock seconds", () => {
+  it("accepts valid second precision and skips malformed second fields", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        current: FIXTURE_API_RESPONSE.current,
+        hourly: {
+          time: [
+            "2026-05-15T13:45:12.5",
+            "2026-05-15T14:45:12",
+            "2026-05-15T15:45:12.a",
+            "2026-05-15T16:45:12.5.1",
+          ],
+          temperature_2m: [15, 16, 17, 18],
+          weather_code: [1, 2, 3, 4],
+        },
+      }),
+    } as Response)
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.hourlyForecast).toEqual([
+      { hour: 13, temperature: 15, condition: "clear" },
+      { hour: 14, temperature: 16, condition: "cloudy" },
+    ])
+  })
+})

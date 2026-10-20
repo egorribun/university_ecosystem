@@ -141,6 +141,7 @@ def test_policy_integrity_protects_workflows_and_scanner_adapters() -> None:
         "scripts/check_dependency_audit_report.py",
         "scripts/quality/validate_semgrep_sarif.py",
         "scripts/quality/coverage_provenance.py",
+        "scripts/quality/verify_frontend_diff_coverage.mjs",
         "scripts/quality/pytest_shard_manifest.py",
         "scripts/quality/normalize_coverage_reports.py",
         "scripts/quality/validate_quality_contract.py",

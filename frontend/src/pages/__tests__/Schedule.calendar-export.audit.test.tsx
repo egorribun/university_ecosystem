@@ -341,3 +341,60 @@ describe("Schedule Google Calendar export — AUD-066", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
   })
 })
+
+describe("Schedule Calendar export invalid-time accessibility — AUD coverage", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    localStorage.setItem("ue:language", "en")
+    fixture.lessons = []
+    fixture.setSelectedGroup("group-1")
+    useScheduleUIStore.setState({
+      weekOffset: 0,
+      viewMode: "week",
+      hiddenWeekdays: [],
+      showPastLessons: true,
+      compactMode: false,
+    })
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+    useScheduleUIStore.setState({
+      weekOffset: 0,
+      viewMode: "week",
+      hiddenWeekdays: [],
+      showPastLessons: true,
+      compactMode: false,
+    })
+  })
+
+  it("explains why the first matching lesson cannot be exported", async () => {
+    fixture.lessons = [
+      {
+        id: "invalid-time-first",
+        group_id: "group-1",
+        weekday: "tuesday",
+        parity: "both",
+        subject: "Linear Algebra",
+        teacher: "Ada Lovelace",
+        room: "B-202",
+        lesson_type: "lecture",
+        start_time: "9:15",
+        end_time: "10:45",
+      },
+    ]
+    const open = vi.spyOn(window, "open").mockReturnValue(null)
+
+    await renderSchedule()
+    const calendarItem = openExportMenu()
+    const reason = "The first lesson of the filtered week has no valid start and end time."
+
+    expect(calendarItem).toBeDisabled()
+    expect(calendarItem).toHaveAttribute("title", reason)
+    expect(calendarItem).toHaveAttribute("aria-describedby")
+    expect(screen.getByText(reason)).toBeInTheDocument()
+    fireEvent.click(calendarItem)
+    expect(open).not.toHaveBeenCalled()
+  })
+})

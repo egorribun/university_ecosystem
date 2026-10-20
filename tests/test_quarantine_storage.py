@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import errno
 import json
 import os
 from collections.abc import Iterator
@@ -223,7 +224,7 @@ async def test_static_quarantine_delete_verifies_existing_and_already_absent_fil
 
 @pytest.mark.asyncio
 async def test_static_quarantine_inventory_and_delete_do_not_follow_symlinks(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     storage = StaticFSStorage(tmp_path)
     quarantine = tmp_path / "quarantine"
@@ -233,15 +234,80 @@ async def test_static_quarantine_inventory_and_delete_do_not_follow_symlinks(
     link = quarantine / "linked.bin"
     try:
         os.symlink(outside, link)
-    except (OSError, NotImplementedError) as exc:
-        pytest.skip(
-            f"Creating a filesystem symlink is unavailable: {type(exc).__name__}"
-        )
-
+    except NotImplementedError:
+        assert not os.path.lexists(link)
+    except OSError as exc:
+        unsupported_errors = {
+            errno.EACCES,
+            errno.EINVAL,
+            errno.ENOSYS,
+            errno.EPERM,
+        }
+        unsupported_errors.add(getattr(errno, "EOPNOTSUPP", errno.ENOSYS))
+        if (
+            exc.errno not in unsupported_errors
+            and getattr(exc, "winerror", None) != 1314
+        ):
+            raise
+        assert not os.path.lexists(link)
     page = await storage.list_quarantine_page(None, limit=10)
     assert page.objects == ()
-    with pytest.raises(ValueError, match="Symlink detected"):
-        await storage.delete_quarantine_key("quarantine/linked.bin")
+    if os.path.lexists(link):
+        with pytest.raises(ValueError, match="Symlink detected"):
+            await storage.delete_quarantine_key("quarantine/linked.bin")
+        assert outside.read_bytes() == b"must remain"
+
+    synthetic_link = quarantine / "synthetic-linked.bin"
+
+    class SymlinkEntry:
+        name = synthetic_link.name
+
+        def is_symlink(self) -> bool:
+            return True
+
+        def is_dir(self, *, follow_symlinks: bool) -> bool:
+            raise AssertionError("symlink entries must not be followed")
+
+        def is_file(self, *, follow_symlinks: bool) -> bool:
+            raise AssertionError("symlink entries must not be followed")
+
+    class DirectoryScan:
+        def __enter__(self) -> DirectoryScan:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def __iter__(self) -> Iterator[SymlinkEntry]:
+            return iter([SymlinkEntry()])
+
+    with monkeypatch.context() as scan_patch:
+        scan_patch.setattr(
+            "app.services.storage.os.scandir",
+            lambda _path: DirectoryScan(),
+        )
+        assert StaticFSStorage._read_quarantine_directory(quarantine) == [
+            (synthetic_link.name, "symlink")
+        ]
+
+    original_is_symlink = Path.is_symlink
+
+    def observe_synthetic_symlink(path: Path) -> bool:
+        if path == synthetic_link:
+            return True
+        return original_is_symlink(path)
+
+    with monkeypatch.context() as synthetic_patch:
+        synthetic_patch.setattr(
+            storage,
+            "_read_quarantine_directory",
+            lambda _path: [(synthetic_link.name, "symlink")],
+        )
+        synthetic_patch.setattr(Path, "is_symlink", observe_synthetic_symlink)
+        page = await storage.list_quarantine_page(None, limit=10)
+        assert page.objects == ()
+        with pytest.raises(ValueError, match="Symlink detected"):
+            await storage.delete_quarantine_key("quarantine/synthetic-linked.bin")
     assert outside.read_bytes() == b"must remain"
 
 

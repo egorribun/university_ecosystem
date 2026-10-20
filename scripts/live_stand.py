@@ -9054,44 +9054,68 @@ def _caddy_probe_timestamp_argument(timestamp_ms: int) -> str:
         raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
 
 
-def _read_live_caddy_probe_log(
+def _read_live_caddy_probe_logs(
     owner: StandOwner,
     *,
     container_pin: tuple[str, str],
-    completed_at_ms: int,
-    project: str,
+    completed_at_ms: Mapping[str, int],
     password_nonce: str,
-    correlation_id: str,
+    correlation_ids: Mapping[str, str],
     deadline: float,
     docker_context: _LiveDockerReadContext | None = None,
 ) -> None:
-    """Read one timestamp-bounded window from the reverified exact Caddy container."""
+    """Verify both project windows from one read bracketed by fresh pins."""
+    completed: subprocess.CompletedProcess[bytes] | None = None
+    stdout = b""
+    stderr = b""
     try:
-        if project not in LIVE_CADDY_PROBE_PROJECTS or time.monotonic() >= deadline:
+        if (
+            not isinstance(completed_at_ms, Mapping)
+            or set(completed_at_ms) != set(LIVE_CADDY_PROBE_PROJECTS)
+            or not isinstance(correlation_ids, Mapping)
+            or set(correlation_ids) != set(LIVE_CADDY_PROBE_PROJECTS)
+            or not isinstance(password_nonce, str)
+            or re.fullmatch(r"[0-9a-f]{32}", password_nonce) is None
+            or any(
+                not isinstance(correlation_ids[project], str)
+                or re.fullmatch(r"[0-9a-f]{32}", correlation_ids[project]) is None
+                for project in LIVE_CADDY_PROBE_PROJECTS
+            )
+            or len({password_nonce, *correlation_ids.values()}) != 3
+        ):
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        project_windows: dict[str, tuple[int, int]] = {}
+        for project in LIVE_CADDY_PROBE_PROJECTS:
+            observed_at_ms = completed_at_ms[project]
+            if type(observed_at_ms) is not int or observed_at_ms <= 0:
+                raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+            since_ms = max(1, observed_at_ms - _LIVE_CADDY_PROBE_WINDOW_MS)
+            until_ms = observed_at_ms + _LIVE_CADDY_PROBE_WINDOW_MS
+            project_windows[project] = (since_ms, until_ms)
+
+        if time.monotonic() >= deadline:
             raise StandError(_LIVE_CADDY_PROBE_FAILURE)
         if docker_context is None:
             docker_context = _new_live_docker_read_context()
-        since_ms = max(1, completed_at_ms - _LIVE_CADDY_PROBE_WINDOW_MS)
-        until_ms = completed_at_ms + _LIVE_CADDY_PROBE_WINDOW_MS
-        since = _caddy_probe_timestamp_argument(since_ms)
-        until = _caddy_probe_timestamp_argument(until_ms)
         _assert_live_caddy_container_pin(
             owner,
             container_pin,
             deadline=deadline,
             docker_context=docker_context,
         )
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
+        remaining = _live_probe_remaining(deadline)
+        if remaining is None:
             raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        since_ms = min(window[0] for window in project_windows.values())
+        until_ms = max(window[1] for window in project_windows.values())
         command = [
             "docker",
             "logs",
             "--timestamps",
             "--since",
-            since,
+            _caddy_probe_timestamp_argument(since_ms),
             "--until",
-            until,
+            _caddy_probe_timestamp_argument(until_ms),
             container_pin[0],
         ]
         completed = _run_live_bounded_read(
@@ -9107,25 +9131,41 @@ def _read_live_caddy_probe_log(
         stderr = completed.stderr or b""
         if completed.returncode != 0:
             raise StandError(_LIVE_CADDY_PROBE_FAILURE)
-        _assert_live_caddy_probe_redaction(
-            stdout,
-            stderr=stderr,
-            password_nonce=password_nonce,
-            correlation_id=correlation_id,
-            project=project,
-            since_ms=since_ms,
-            until_ms=until_ms,
-        )
-    except (OSError, RuntimeError, StandError, subprocess.SubprocessError):
+
+        invalid_project_row = False
+        for project in LIVE_CADDY_PROBE_PROJECTS:
+            window = project_windows[project]
+            try:
+                _assert_live_caddy_probe_redaction(
+                    stdout,
+                    stderr=stderr,
+                    password_nonce=password_nonce,
+                    correlation_id=correlation_ids[project],
+                    project=project,
+                    since_ms=window[0],
+                    until_ms=window[1],
+                )
+            except StandError:
+                invalid_project_row = True
+        if invalid_project_row:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        _live_probe_remaining(deadline)
+    except (
+        OSError,
+        RuntimeError,
+        StandError,
+        subprocess.SubprocessError,
+        ValueError,
+        TypeError,
+    ):
         raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
     finally:
+        if completed is not None:
+            completed.stdout = b""
+            completed.stderr = b""
+        stdout = b""
+        stderr = b""
         try:
-            if "completed" in locals():
-                completed.stdout = b""
-                completed.stderr = b""
-            stdout = b""
-            stderr = b""
-            _live_probe_remaining(deadline)
             if docker_context is None:
                 raise StandError(_LIVE_CADDY_PROBE_FAILURE)
             _assert_live_caddy_container_pin(
@@ -9150,7 +9190,7 @@ def _verify_live_caddy_probe_log(
     container_pin: tuple[str, str],
     docker_context: _LiveDockerReadContext | None = None,
 ) -> None:
-    """Require a fresh correlated redaction row for both Playwright projects."""
+    """Require fresh correlated redaction rows for both Playwright projects."""
     try:
         if (
             not isinstance(password_nonce, str)
@@ -9176,27 +9216,12 @@ def _verify_live_caddy_probe_log(
             deadline=deadline,
         )
         _live_probe_remaining(deadline)
-        _assert_live_caddy_container_pin(
+        _read_live_caddy_probe_logs(
             owner,
-            container_pin,
-            deadline=deadline,
-            docker_context=docker_context,
-        )
-        for project in LIVE_CADDY_PROBE_PROJECTS:
-            _read_live_caddy_probe_log(
-                owner,
-                container_pin=container_pin,
-                completed_at_ms=observations[project],
-                project=project,
-                password_nonce=password_nonce,
-                correlation_id=correlation_ids[project],
-                deadline=deadline,
-                docker_context=docker_context,
-            )
-        _live_probe_remaining(deadline)
-        _assert_live_caddy_container_pin(
-            owner,
-            container_pin,
+            container_pin=container_pin,
+            completed_at_ms=observations,
+            password_nonce=password_nonce,
+            correlation_ids=correlation_ids,
             deadline=deadline,
             docker_context=docker_context,
         )
@@ -9644,15 +9669,41 @@ def main(argv: Sequence[str] | None = None) -> int:
         add_state_options(command_parser)
     args = parser.parse_args(argv)
     try:
-        if args.command == "nats-outage":
-            raise StandError("owned NATS acceptance is not ready")
         selected_specs = (
             _validated_live_e2e_specs(args.specs, mode=args.mode)
             if args.command == "e2e"
             else ()
         )
-        _configure_state_mode(args)
-        if args.command == "up":
+        if args.command == "nats-outage" and (not args.in_place or not args.state_dir):
+            raise StandError("owned NATS outage requires --in-place and --state-dir")
+        try:
+            _configure_state_mode(args)
+        except Exception:
+            if args.command == "nats-outage":
+                raise StandError("owned NATS acceptance failed") from None
+            raise
+        if args.command == "nats-outage":
+            try:
+                from scripts.owned_nats_coordinator import (
+                    OutageOutcome,
+                    OutageResult,
+                    OutageStage,
+                )
+                from scripts.owned_nats_outage_cli import run_owned_nats_outage
+
+                result = run_owned_nats_outage(
+                    args.state_dir,
+                    in_place=args.in_place,
+                )
+            except Exception:
+                raise StandError("owned NATS acceptance failed") from None
+            if (
+                type(result) is not OutageResult
+                or result.outcome is not OutageOutcome.ACCEPTED
+                or result.stage is not OutageStage.COMPLETE
+            ):
+                raise StandError("owned NATS acceptance failed")
+        elif args.command == "up":
             up(args.ref, stack=args.stack)
         elif args.command == "verify-endpoints":
             verify_live_endpoints(args.base_url, args.mailpit_url)

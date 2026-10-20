@@ -468,11 +468,11 @@ def test_nats_outage_is_gated_and_receipted_as_metadata_only() -> None:
         "github.event.pull_request.head.ref == 'egorribun' && "
         "steps.core-e2e.outcome == 'success' }}"
     )
-    assert "scripts/live_stand.py nats-outage" in outage["run"]
+    assert "python -m scripts.live_stand nats-outage" in outage["run"]
+    assert "scripts/live_stand.py nats-outage" not in outage["run"]
     assert "--in-place" in outage["run"]
     assert '--state-dir "$LIVE_STATE_DIR"' in outage["run"]
-    timeout = outage.get("timeout-minutes")
-    assert type(timeout) is int and 1 <= timeout <= 15
+    assert outage.get("timeout-minutes") == 10
 
     stop = steps[stop_index]
     assert "always()" in stop.get("if", "")
@@ -499,6 +499,69 @@ def test_nats_outage_is_gated_and_receipted_as_metadata_only() -> None:
     assert "os.environ.copy" not in receipt["run"]
     assert "os.environ.items" not in receipt["run"]
     assert "stdout" not in receipt["run"] and "stderr" not in receipt["run"]
+
+
+def test_live_stand_nats_outage_dispatches_once_and_redacts_failures(
+    monkeypatch, capsys, tmp_path
+) -> None:
+    from scripts import live_stand, owned_nats_outage_cli
+    from scripts.owned_nats_coordinator import OutageOutcome, OutageResult, OutageStage
+
+    state_dir = str(tmp_path / "ue-live-acceptance" / "run-test-core")
+    configured: list[object] = []
+    monkeypatch.setattr(
+        live_stand, "_configure_state_mode", lambda args: configured.append(args)
+    )
+    calls: list[tuple[object, object]] = []
+
+    def accept(state: object, *, in_place: object) -> OutageResult:
+        calls.append((state, in_place))
+        return OutageResult(OutageOutcome.ACCEPTED, OutageStage.COMPLETE)
+
+    monkeypatch.setattr(owned_nats_outage_cli, "run_owned_nats_outage", accept)
+    argv = ["nats-outage", "--in-place", "--state-dir", state_dir]
+    assert live_stand.main(argv) == 0
+    assert calls == [(state_dir, True)]
+    assert len(configured) == 1
+    assert capsys.readouterr().out == ""
+    assert capsys.readouterr().err == ""
+
+    def fail_with_private_detail(state: object, *, in_place: object) -> OutageResult:
+        calls.append((state, in_place))
+        raise RuntimeError("private nonce owner credential detail")
+
+    monkeypatch.setattr(
+        owned_nats_outage_cli,
+        "run_owned_nats_outage",
+        fail_with_private_detail,
+    )
+    assert live_stand.main(argv) == 2
+    assert calls == [(state_dir, True), (state_dir, True)]
+    error = capsys.readouterr().err
+    assert error == "live_stand: owned NATS acceptance failed\n"
+    assert "private nonce" not in error
+    assert "credential" not in error
+
+
+def test_live_stand_nats_outage_requires_owned_in_place_state_before_dispatch(
+    monkeypatch, capsys
+) -> None:
+    from scripts import live_stand, owned_nats_outage_cli
+
+    calls: list[tuple[object, object]] = []
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    monkeypatch.setattr(
+        owned_nats_outage_cli,
+        "run_owned_nats_outage",
+        lambda state, *, in_place: calls.append((state, in_place)),
+    )
+
+    assert live_stand.main(["nats-outage"]) == 2
+    assert calls == []
+    assert (
+        "owned NATS outage requires --in-place and --state-dir"
+        in capsys.readouterr().err
+    )
 
 
 def test_workflow_actions_are_immutable_and_only_read_repository_contents() -> None:

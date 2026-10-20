@@ -112,6 +112,14 @@ jobs:
           uv run --frozen --no-sync python -m scripts.live_stand e2e
           --in-place --state-dir "$LIVE_STATE_DIR" --mode "$LIVE_E2E_MODE"
 
+      - name: Run owned NATS outage acceptance
+        id: nats-outage
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == 'egorribun/university_ecosystem' && github.event.pull_request.head.ref == 'egorribun' && steps.core-e2e.outcome == 'success' }}
+        timeout-minutes: 10
+        run: >-
+          uv run --frozen --no-sync python -m scripts.live_stand nats-outage
+          --in-place --state-dir "$LIVE_STATE_DIR"
+
       - name: Stop owned containers and preserve stand data
         id: stop-stand
         if: ${{ always() && steps.start-stand.outcome != 'skipped' }}
@@ -127,6 +135,7 @@ jobs:
           CHECKOUT_OUTCOME: ${{ steps.verify-event-commit.outcome }}
           STAND_START_OUTCOME: ${{ steps.start-stand.outcome }}
           E2E_OUTCOME: ${{ steps.core-e2e.outcome }}
+          NATS_OUTAGE_OUTCOME: ${{ steps.nats-outage.outcome }}
           STAND_STOP_OUTCOME: ${{ steps.stop-stand.outcome }}
         run: |
           set -euo pipefail
@@ -148,6 +157,7 @@ jobs:
               "checkout_verification": os.environ.get("CHECKOUT_OUTCOME", ""),
               "stand_start": os.environ.get("STAND_START_OUTCOME", ""),
               "e2e": os.environ.get("E2E_OUTCOME", ""),
+              "nats_outage": os.environ.get("NATS_OUTAGE_OUTCOME", ""),
               "stand_stop": os.environ.get("STAND_STOP_OUTCOME", ""),
           }
           if any(value not in allowed_outcomes for value in outcomes.values()):

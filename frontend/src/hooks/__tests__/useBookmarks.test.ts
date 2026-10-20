@@ -81,6 +81,61 @@ describe("useBookmarks", () => {
     expect(result.current.isBookmarked("x")).toBe(false)
   })
 
+  it("uses a readable fallback actor when crypto.randomUUID throws", async () => {
+    await withBroadcastChannelUnavailable(async () => {
+      const originalCrypto = globalThis.crypto
+      const randomUUID = vi.fn(() => {
+        throw new Error("randomUUID unavailable")
+      })
+      vi.spyOn(Math, "random").mockReturnValue(0.5)
+      vi.stubGlobal(
+        "crypto",
+        new Proxy(originalCrypto, {
+          get(target, property, receiver) {
+            if (property === "randomUUID") return randomUUID
+            const value = Reflect.get(target, property, receiver)
+            return typeof value === "function" ? value.bind(target) : value
+          },
+        })
+      )
+      vi.resetModules()
+      const fallbackTab = await import("../useBookmarks")
+      const fallback = renderHook(() => fallbackTab.useBookmarks())
+      try {
+        act(() => fallback.result.current.toggleBookmark("fallback-actor"))
+
+        const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as {
+          items: Record<string, { actor: string; bookmarked: boolean }>
+        }
+        expect(randomUUID).toHaveBeenCalledOnce()
+        expect(fallback.result.current.isBookmarked("fallback-actor")).toBe(true)
+        expect(stored.items["fallback-actor"]?.bookmarked).toBe(true)
+        expect(stored.items["fallback-actor"]?.actor).toMatch(/^tab-[a-z0-9]+-[a-z0-9]+$/)
+      } finally {
+        fallback.unmount()
+      }
+
+      vi.stubGlobal(
+        "crypto",
+        new Proxy(originalCrypto, {
+          get(target, property, receiver) {
+            if (property === "randomUUID") return () => "reload-actor"
+            const value = Reflect.get(target, property, receiver)
+            return typeof value === "function" ? value.bind(target) : value
+          },
+        })
+      )
+      vi.resetModules()
+      const reloadedTab = await import("../useBookmarks")
+      const reloaded = renderHook(() => reloadedTab.useBookmarks())
+      try {
+        expect(reloaded.result.current.isBookmarked("fallback-actor")).toBe(true)
+      } finally {
+        reloaded.unmount()
+      }
+    })
+  })
+
   it("toggleBookmark adds + persists to localStorage", () => {
     const { result } = renderHook(() => useBookmarks())
     act(() => result.current.toggleBookmark("a1"))

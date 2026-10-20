@@ -12,7 +12,9 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
+import sys
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING, cast
@@ -40,6 +42,10 @@ _RUNTIME_CONTAINER_ID_STDOUT_LIMIT = _RUNTIME_CONTAINER_ID_LIMIT * 66
 _RUNTIME_INSPECT_BATCH_SIZE = 64
 _RUNTIME_INSPECT_STDOUT_LIMIT = 1_048_576
 _RUNTIME_INSPECT_STDERR_LIMIT = 16_384
+_CONTEXT_STDOUT_LIMIT = 256
+_CONTEXT_STDERR_LIMIT = 1_024
+_DEFAULT_DOCKER_ENDPOINT = "unix:///var/run/docker.sock"
+_DEFAULT_DOCKER_CONTEXT_FORMAT = "{{json .Endpoints.docker.Host}}"
 _RUNTIME_INSPECT_FORMAT = (
     '{"Id":{{json .Id}},'
     '"Name":{{json .Name}},'
@@ -47,22 +53,22 @@ _RUNTIME_INSPECT_FORMAT = (
     '"Config":{"Image":{{json .Config.Image}},'
     '"Labels":{{json .Config.Labels}}},'
     '"Mounts":[{{range $i, $m := .Mounts}}{{if $i}},{{end}}'
-    '{"Type":{{json $m.Type}},'
-    '"Name":{{json $m.Name}},'
-    '"Source":{{json $m.Source}},'
-    '"Destination":{{json $m.Destination}},'
-    '"Driver":{{json $m.Driver}},'
-    '"Mode":{{json $m.Mode}},'
-    '"RW":{{json $m.RW}},'
-    '"Propagation":{{json $m.Propagation}}'
+    '{"Type":{{json (index $m "Type")}},'
+    '"Name":{{json (index $m "Name")}},'
+    '"Source":{{json (index $m "Source")}},'
+    '"Destination":{{json (index $m "Destination")}},'
+    '"Driver":{{json (index $m "Driver")}},'
+    '"Mode":{{json (index $m "Mode")}},'
+    '"RW":{{json (index $m "RW")}},'
+    '"Propagation":{{json (index $m "Propagation")}}'
     "}{{end}}],"
     '"State":{"Running":{{json .State.Running}},'
     '"Status":{{json .State.Status}},'
-    '"Health":{{if .State.Health}}'
-    '{"Status":{{json .State.Health.Status}}}'
+    '"Health":{{with index .State "Health"}}'
+    '{"Status":{{json (index . "Status")}}}'
     "{{else}}null{{end}},"
     '"ExitCode":{{json .State.ExitCode}},'
-    '"OOMKilled":{{json .State.OOMKilled}},'
+    '"OOMKilled":{{json .State.OOMKilled}}},'
     '"RestartCount":{{json .RestartCount}}}'
 )
 
@@ -75,6 +81,21 @@ class DockerReadPins:
     cwd: str = field(repr=False)
     environment: tuple[tuple[str, str], ...] = field(repr=False)
     daemon_fingerprint: str = field(repr=False)
+    _executable_identity: tuple[int, int, int, int] | None = field(
+        default=None, repr=False
+    )
+    _factory_seal: object | None = field(default=None, repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class _DockerPinFactorySeal:
+    executable: str = field(repr=False)
+    endpoint: str = field(repr=False)
+    config_directory: str = field(repr=False)
+    cwd: str = field(repr=False)
+    environment: tuple[tuple[str, str], ...] = field(repr=False)
+    daemon_fingerprint: str = field(repr=False)
+    executable_identity: tuple[int, int, int, int] = field(repr=False)
 
 
 class DaemonMetadataStatus(StrEnum):
@@ -152,11 +173,252 @@ def _environment(value: object) -> dict[str, str] | None:
     return environment
 
 
+def _valid_executable_identity(value: object) -> bool:
+    return (
+        type(value) is tuple
+        and len(value) == 4
+        and all(type(item) is int and item >= 0 for item in value)
+    )
+
+
+def _factory_provenance_valid(pins: object) -> bool:
+    if type(pins) is not DockerReadPins:
+        return False
+    try:
+        identity = pins._executable_identity
+        seal = pins._factory_seal
+        if identity is None and seal is None:
+            return True
+        if type(seal) is not _DockerPinFactorySeal:
+            return False
+        pin_strings = (
+            pins.executable,
+            pins.endpoint,
+            pins.config_directory,
+            pins.cwd,
+            pins.daemon_fingerprint,
+        )
+        seal_strings = (
+            seal.executable,
+            seal.endpoint,
+            seal.config_directory,
+            seal.cwd,
+            seal.daemon_fingerprint,
+        )
+        if (
+            any(type(value) is not str for value in (*pin_strings, *seal_strings))
+            or not _valid_executable_identity(identity)
+            or not _valid_executable_identity(seal.executable_identity)
+            or _environment(pins.environment) is None
+            or _environment(seal.environment) is None
+        ):
+            return False
+        return (
+            seal.executable == pins.executable
+            and seal.endpoint == pins.endpoint
+            and seal.config_directory == pins.config_directory
+            and seal.cwd == pins.cwd
+            and seal.environment == pins.environment
+            and seal.daemon_fingerprint == pins.daemon_fingerprint
+            and seal.executable_identity == identity
+        )
+    except AttributeError:
+        return False
+
+
+def _factory_executable_matches(pins: DockerReadPins) -> bool:
+    if not _factory_provenance_valid(pins):
+        return False
+    if pins._factory_seal is None:
+        return True
+    try:
+        actual = live_stand._live_docker_executable_identity(pins.executable)
+    except (AttributeError, OSError, RuntimeError, live_stand.StandError):
+        return False
+    return actual == pins._executable_identity
+
+
+def _not_ready_process_result(
+    cleanup: LocalCleanup = LocalCleanup.NOT_STARTED,
+) -> PrivateProcessResult:
+    return PrivateProcessResult(ProcessOutcome.NOT_READY, None, b"", b"", cleanup)
+
+
+def _run_pinned_docker_process(
+    pins: DockerReadPins,
+    request: PrivateProcessRequest,
+    *,
+    deadline: Deadline,
+) -> PrivateProcessResult:
+    if (
+        type(pins) is not DockerReadPins
+        or type(request) is not PrivateProcessRequest
+        or not _factory_provenance_valid(pins)
+        or not _live(deadline)
+    ):
+        return _not_ready_process_result()
+    try:
+        snapshot = replace(pins)
+        if (
+            not _absolute_path(snapshot.executable, allow_root=False)
+            or not _absolute_path(snapshot.config_directory, allow_root=True)
+            or not _absolute_path(snapshot.cwd, allow_root=True)
+            or not _local_endpoint(snapshot.endpoint)
+            or request.argv[:5]
+            != (
+                snapshot.executable,
+                "--config",
+                snapshot.config_directory,
+                "--host",
+                snapshot.endpoint,
+            )
+            or request.cwd != snapshot.cwd
+            or not _factory_executable_matches(snapshot)
+            or not _live(deadline)
+        ):
+            return _not_ready_process_result()
+    except (AttributeError, TypeError, ValueError):
+        return _not_ready_process_result()
+
+    result = process.run_private_process(request, deadline=deadline)
+    if type(result) is not PrivateProcessResult:
+        return _not_ready_process_result(LocalCleanup.UNPROVEN)
+    if not _live(deadline) or not _factory_executable_matches(snapshot):
+        cleanup = (
+            result.local_cleanup
+            if type(result.local_cleanup) is LocalCleanup
+            else LocalCleanup.UNPROVEN
+        )
+        return _not_ready_process_result(cleanup)
+    return result
+
+
+def _linux_core_supported() -> bool:
+    return (
+        sys.platform == "linux"
+        and os.name == "posix"
+        and "WSL_DISTRO_NAME" not in os.environ
+        and "WSL_INTEROP" not in os.environ
+    )
+
+
+def _context_snapshot(
+    owner: OwnerEvidence, context: object
+) -> tuple[live_stand._LiveDockerReadContext, str, str] | None:
+    if type(context) is not live_stand._LiveDockerReadContext:
+        return None
+    try:
+        snapshot = replace(context)
+        if (
+            type(snapshot.executable) is not str
+            or not _absolute_path(snapshot.executable, allow_root=False)
+            or not _valid_executable_identity(snapshot.executable_identity)
+            or type(snapshot.cwd) is not str
+            or snapshot.cwd != owner.worktree
+            or not _absolute_path(snapshot.cwd, allow_root=False)
+            or type(snapshot.environment) is not tuple
+            or len(snapshot.environment) > 512
+        ):
+            return None
+        environment: dict[str, str] = {}
+        size = 0
+        for pair in snapshot.environment:
+            if type(pair) is not tuple or len(pair) != 2:
+                return None
+            name, value = pair
+            if (
+                type(name) is not str
+                or not name
+                or "=" in name
+                or "\x00" in name
+                or type(value) is not str
+                or "\x00" in value
+                or name in environment
+            ):
+                return None
+            size += len(name) + len(value)
+            if size > 65_536 or name.upper().startswith("DOCKER_"):
+                return None
+            environment[name] = value
+        home = environment.get("HOME")
+        if type(home) is not str or not _absolute_path(home, allow_root=False):
+            return None
+        config_directory = f"{home}/.docker"
+        if not _absolute_path(config_directory, allow_root=False):
+            return None
+        live_stand._assert_live_docker_read_context(snapshot)
+    except (
+        AttributeError,
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        live_stand.StandError,
+    ):
+        return None
+    return snapshot, home, config_directory
+
+
+def _context_process_result(
+    context: live_stand._LiveDockerReadContext,
+    config_directory: str,
+    environment: dict[str, str],
+    arguments: tuple[str, ...],
+    *,
+    deadline: Deadline,
+) -> bytes | None:
+    if not _live(deadline):
+        return None
+    try:
+        request = PrivateProcessRequest(
+            argv=(context.executable, "--config", config_directory, *arguments),
+            cwd=context.cwd,
+            env=environment,
+            stdin=b"",
+            stdout_limit=_CONTEXT_STDOUT_LIMIT,
+            stderr_limit=_CONTEXT_STDERR_LIMIT,
+            input_limit=0,
+        )
+        live_stand._assert_live_docker_read_context(context)
+        if not _live(deadline):
+            return None
+        result = process.run_private_process(request, deadline=deadline)
+        live_stand._assert_live_docker_read_context(context)
+    except (
+        AttributeError,
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        live_stand.StandError,
+    ):
+        return None
+    if (
+        type(result) is not PrivateProcessResult
+        or result.outcome is not ProcessOutcome.EXITED
+        or type(result.returncode) is not int
+        or result.returncode != 0
+        or result.local_cleanup is not LocalCleanup.CONFIRMED
+        or type(result.stdout) is not bytes
+        or not 0 < len(result.stdout) <= _CONTEXT_STDOUT_LIMIT
+        or type(result.stderr) is not bytes
+        or len(result.stderr) > _CONTEXT_STDERR_LIMIT
+        or result.stderr != b""
+        or not _live(deadline)
+    ):
+        return None
+    return result.stdout
+
+
 def prepare_daemon_read(
     pins: DockerReadPins, *, deadline: Deadline
 ) -> PrivateProcessRequest | None:
     """Prepare one explicit local request without inspecting paths or executing."""
-    if type(pins) is not DockerReadPins or not _live(deadline):
+    if (
+        type(pins) is not DockerReadPins
+        or not _factory_provenance_valid(pins)
+        or not _live(deadline)
+    ):
         return None
     try:
         if (
@@ -252,7 +514,7 @@ def observe_daemon_metadata(
     if request is None:
         return DaemonMetadataResult(DaemonMetadataStatus.NOT_READY)
     expected_fingerprint = pins.daemon_fingerprint
-    result = process.run_private_process(request, deadline=deadline)
+    result = _run_pinned_docker_process(pins, request, deadline=deadline)
     return decode_daemon_read(
         result, pinned_daemon=expected_fingerprint, deadline=deadline
     )
@@ -431,6 +693,102 @@ def _compose_layout(owner: OwnerEvidence, compose: ComposeConfigPins) -> bool:
         )
         and compose.compose_files == expected_files
     )
+
+
+def resolve_core_docker_pins(
+    owner: OwnerEvidence, *, deadline: Deadline
+) -> tuple[DockerReadPins, ComposeConfigPins] | None:
+    """Resolve fixed Linux Core pins from signed evidence under its held lease.
+
+    Call only after the coordinator has acquired its lifecycle lease and read the
+    signed owner. This resolver does not acquire a lock or authenticate owner data.
+    """
+    admitted = _compose_owner(owner)
+    if admitted is None or not _linux_core_supported() or not _live(deadline):
+        return None
+    try:
+        context = live_stand._new_live_docker_read_context()
+    except (
+        AttributeError,
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        live_stand.StandError,
+    ):
+        return None
+    context_values = _context_snapshot(admitted, context)
+    if context_values is None:
+        return None
+    context, home, config_directory = context_values
+    compose = ComposeConfigPins(
+        project_directory=admitted.repository,
+        env_file=f"{admitted.worktree}/.env.docker",
+        compose_files=(
+            f"{admitted.repository}/{live_stand.COMPOSE_FILES[0]}",
+            f"{admitted.repository}/{live_stand.OVERLAY}",
+            f"{admitted.worktree}/{live_stand.IN_PLACE_OVERLAY}",
+        ),
+    )
+    if not _compose_layout(admitted, compose) or not _live(deadline):
+        return None
+
+    context_environment = {"HOME": home, "LANG": "C", "LC_ALL": "C"}
+    current_context = _context_process_result(
+        context,
+        config_directory,
+        context_environment,
+        ("context", "show"),
+        deadline=deadline,
+    )
+    if current_context != b"default\n" or not _live(deadline):
+        return None
+    current_endpoint = _context_process_result(
+        context,
+        config_directory,
+        context_environment,
+        (
+            "context",
+            "inspect",
+            "default",
+            "--format",
+            _DEFAULT_DOCKER_CONTEXT_FORMAT,
+        ),
+        deadline=deadline,
+    )
+    if current_endpoint != b'"unix:///var/run/docker.sock"\n' or not _live(deadline):
+        return None
+
+    environment = (("LANG", "C"), ("LC_ALL", "C"))
+    seal = _DockerPinFactorySeal(
+        executable=context.executable,
+        endpoint=_DEFAULT_DOCKER_ENDPOINT,
+        config_directory=config_directory,
+        cwd=admitted.worktree,
+        environment=environment,
+        daemon_fingerprint=admitted.daemon_fingerprint,
+        executable_identity=context.executable_identity,
+    )
+    pins = DockerReadPins(
+        executable=context.executable,
+        endpoint=_DEFAULT_DOCKER_ENDPOINT,
+        config_directory=config_directory,
+        cwd=admitted.worktree,
+        environment=environment,
+        daemon_fingerprint=admitted.daemon_fingerprint,
+        _executable_identity=context.executable_identity,
+        _factory_seal=seal,
+    )
+    daemon = observe_daemon_metadata(pins, deadline=deadline)
+    if (
+        type(daemon) is not DaemonMetadataResult
+        or daemon.status is not DaemonMetadataStatus.MATCHED_METADATA
+        or daemon.fingerprint != admitted.daemon_fingerprint
+        or not _factory_executable_matches(pins)
+        or not _live(deadline)
+    ):
+        return None
+    return pins, compose
 
 
 def prepare_compose_config(
@@ -624,7 +982,7 @@ def observe_compose_metadata(
     request = prepare_compose_config(admitted, pins, compose, deadline=deadline)
     if request is None:
         return ComposeMetadataResult(ComposeMetadataStatus.NOT_READY)
-    result = process.run_private_process(request, deadline=deadline)
+    result = _run_pinned_docker_process(pins, request, deadline=deadline)
     return decode_compose_config(result, owner=admitted, deadline=deadline)
 
 
@@ -1166,7 +1524,7 @@ def observe_owned_core_runtime(
         metadata, admitted_pins, deadline=deadline
     ):
         return None
-    id_result = process.run_private_process(id_request, deadline=deadline)
+    id_result = _run_pinned_docker_process(admitted_pins, id_request, deadline=deadline)
     if not _pinned_daemon_matches(metadata, admitted_pins, deadline=deadline):
         return None
     container_ids = decode_container_id_read(id_result, metadata, deadline=deadline)
@@ -1185,7 +1543,7 @@ def observe_owned_core_runtime(
     for request in inspect_requests:
         if not _pinned_daemon_matches(metadata, admitted_pins, deadline=deadline):
             return None
-        result = process.run_private_process(request, deadline=deadline)
+        result = _run_pinned_docker_process(admitted_pins, request, deadline=deadline)
         if not _pinned_daemon_matches(metadata, admitted_pins, deadline=deadline):
             return None
         inspect_results.append(result)
