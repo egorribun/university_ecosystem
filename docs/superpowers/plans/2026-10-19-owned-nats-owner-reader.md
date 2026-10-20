@@ -48,3 +48,13 @@ Ten additive cases use explicit hosted POSIX capability assertions, not new skip
 After observed RED, policy checks should reuse already-observed descriptor metadata, without additional filesystem calls or altered deadline/ancestor sequencing. Required UID must be an exact nonnegative int. Only the retained run root/.secrets and marker/key receive exact private-mode checks; ordinary ancestors and lock helpers keep their current semantics. UID joins leaf metadata snapshots. Existing baseline metadata has zero entries for all three edited Python files; no baseline change is needed.
 
 UID/private modes establish sampled caller-selected policy only. They cannot prove original creator, historical privacy, exclusive key possession, atomicity, absence of ACL/privileged access, or exclusion of same-UID self-consistent key/marker replacement. Trusted CI creation remains an external precondition. No chmod/chown, new credential, Docker/SQL/HTTP adapter, coordinator replacement or CLI wiring is added to production.
+
+## Observed private-policy RED and metadata-only enforcement
+
+The ten private-policy cases on 19a2f8a produce one valid-object PASS and nine intended SIGNED_METADATA-versus-NOT_READY failures. Focused job 118398335180 totals 727 PASS / 10 FAIL in 263.41 seconds, including the existing disabled-outage workflow hold. Existing reader and all fifty-five lock/composition cases retain their assertions.
+
+The next implementation validates exact nonnegative integer pinned_owner_uid before I/O, reuses each already observed directory stat result, and checks only run-root/.secrets descriptors against UID/0700. Leaf snapshots include UID and require UID/0600 after the existing descriptor/name comparison. Initial and post-read checks use the same observations and deadline sequence; no extra filesystem calls, permission repair, default identity, exception swallowing or cleanup changes are introduced. Ordinary ancestors and standalone locks keep their previous semantics.
+
+Own corrected-source GREEN is pending. Sampled UID/private modes are not original-creator authentication, historical privacy, exclusive key possession, atomicity or protection from same-UID self-consistent key/marker replacement. Trusted CI creation remains a precondition; Docker/SQL/HTTP adapters, coordinator/CLI wiring and outage remain disabled.
+
+The initial UID loop spoofs descriptor metadata only. For leaves, named/descriptor UID disagreement can itself reject. A self-consistent wrong-UID leaf and same-UID re-signed replacement remain useful distinct follow-on tests; the current implementation explicitly checks UID but this initial cohort is not exhaustive provenance proof.

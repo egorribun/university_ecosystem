@@ -242,6 +242,7 @@ def _reader_metadata(info: os.stat_result) -> tuple[int, ...]:
         info.st_dev,
         info.st_ino,
         info.st_mode,
+        info.st_uid,
         info.st_nlink,
         info.st_size,
         info.st_mtime_ns,
@@ -251,7 +252,7 @@ def _reader_metadata(info: os.stat_result) -> tuple[int, ...]:
 
 def _reader_check_directory(
     deadline: Deadline, name: str, parent_fd: int, child_fd: int
-) -> None:
+) -> os.stat_result:
     info = _reader_call(deadline, lambda: os.fstat(child_fd))
     entry = _reader_call(
         deadline,
@@ -263,6 +264,14 @@ def _reader_check_directory(
         or (info.st_dev, info.st_ino) != (entry.st_dev, entry.st_ino)
     ):
         raise _ReaderNotReady
+    return info
+
+
+def _reader_check_private_metadata(
+    info: os.stat_result, *, pinned_owner_uid: int, mode: int
+) -> None:
+    if info.st_uid != pinned_owner_uid or stat.S_IMODE(info.st_mode) != mode:
+        raise _ReaderNotReady
 
 
 def _reader_leaf_metadata(
@@ -271,6 +280,7 @@ def _reader_leaf_metadata(
     parent_fd: int,
     leaf_fd: int,
     *,
+    pinned_owner_uid: int,
     max_size: int,
     exact_size: int | None = None,
 ) -> tuple[int, ...]:
@@ -288,6 +298,7 @@ def _reader_leaf_metadata(
     snapshot = _reader_metadata(info)
     if snapshot != _reader_metadata(entry):
         raise _ReaderNotReady
+    _reader_check_private_metadata(info, pinned_owner_uid=pinned_owner_uid, mode=0o600)
     return snapshot
 
 
@@ -323,13 +334,16 @@ def read_signed_owner_v11_from_state(
     descriptor/name metadata before and after both reads. Each ancestor edge is
     rechecked after both reads, but these observations are not an atomic file-pair
     or namespace snapshot. No lifecycle lock, key-provenance authentication or
-    current daemon check is performed.
+    current daemon check is performed. The retained run root and .secrets must
+    match the caller-pinned UID and mode 0700; both leaves must match UID and 0600.
+    These sampled checks do not authenticate creation or same-UID replacements.
     Syscalls, including on network/FUSE mounts, cannot be hard-preempted.
     """
-    # Tests-first policy input; UID/private-mode enforcement is not implemented yet.
     not_ready = OwnerParseResult(OwnerParseStatus.NOT_READY)
     if (
         type(deadline) is not Deadline
+        or type(pinned_owner_uid) is not int
+        or pinned_owner_uid < 0
         or not _reader_api_supported()
         or not _absolute_pin(pinned_repository)
         or not _absolute_pin(pinned_state_root)
@@ -344,6 +358,7 @@ def read_signed_owner_v11_from_state(
     if not components:
         return not_ready
 
+    private_edge_start = len(components) - 1
     opened_fds: list[int] = []
     traversed_edges: list[tuple[str, int, int]] = []
     result = not_ready
@@ -355,7 +370,7 @@ def read_signed_owner_v11_from_state(
         parent_fd = _reader_open(
             deadline, opened_fds, "/", directory_flags, dir_fd=None
         )
-        for component in [*components, ".secrets"]:
+        for index, component in enumerate([*components, ".secrets"]):
             child_fd = _reader_open(
                 deadline,
                 opened_fds,
@@ -363,7 +378,11 @@ def read_signed_owner_v11_from_state(
                 directory_flags,
                 dir_fd=parent_fd,
             )
-            _reader_check_directory(deadline, component, parent_fd, child_fd)
+            info = _reader_check_directory(deadline, component, parent_fd, child_fd)
+            if index >= private_edge_start:
+                _reader_check_private_metadata(
+                    info, pinned_owner_uid=pinned_owner_uid, mode=0o700
+                )
             traversed_edges.append((component, parent_fd, child_fd))
             parent_fd = child_fd
         leaf_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
@@ -373,26 +392,55 @@ def read_signed_owner_v11_from_state(
             deadline, opened_fds, marker_name, leaf_flags, dir_fd=parent_fd
         )
         marker_before = _reader_leaf_metadata(
-            deadline, marker_name, parent_fd, marker_fd, max_size=MAX_OWNER_MARKER_BYTES
+            deadline,
+            marker_name,
+            parent_fd,
+            marker_fd,
+            pinned_owner_uid=pinned_owner_uid,
+            max_size=MAX_OWNER_MARKER_BYTES,
         )
         key_fd = _reader_open(
             deadline, opened_fds, key_name, leaf_flags, dir_fd=parent_fd
         )
         key_before = _reader_leaf_metadata(
-            deadline, key_name, parent_fd, key_fd, max_size=32, exact_size=32
+            deadline,
+            key_name,
+            parent_fd,
+            key_fd,
+            pinned_owner_uid=pinned_owner_uid,
+            max_size=32,
+            exact_size=32,
         )
         marker_bytes = _reader_bytes(marker_fd, MAX_OWNER_MARKER_BYTES, deadline)
         key_bytes = _reader_bytes(key_fd, 32, deadline)
         marker_after = _reader_leaf_metadata(
-            deadline, marker_name, parent_fd, marker_fd, max_size=MAX_OWNER_MARKER_BYTES
+            deadline,
+            marker_name,
+            parent_fd,
+            marker_fd,
+            pinned_owner_uid=pinned_owner_uid,
+            max_size=MAX_OWNER_MARKER_BYTES,
         )
         key_after = _reader_leaf_metadata(
-            deadline, key_name, parent_fd, key_fd, max_size=32, exact_size=32
+            deadline,
+            key_name,
+            parent_fd,
+            key_fd,
+            pinned_owner_uid=pinned_owner_uid,
+            max_size=32,
+            exact_size=32,
         )
         if marker_before != marker_after or key_before != key_after:
             raise _ReaderNotReady
-        for component, ancestor_fd, descendant_fd in traversed_edges:
-            _reader_check_directory(deadline, component, ancestor_fd, descendant_fd)
+        for index, edge in enumerate(traversed_edges):
+            component, ancestor_fd, descendant_fd = edge
+            info = _reader_check_directory(
+                deadline, component, ancestor_fd, descendant_fd
+            )
+            if index >= private_edge_start:
+                _reader_check_private_metadata(
+                    info, pinned_owner_uid=pinned_owner_uid, mode=0o700
+                )
         result = _reader_call(
             deadline,
             lambda: parse_signed_owner_v11(

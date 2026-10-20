@@ -4,23 +4,23 @@
 
 ## Текущий приоритет
 
-Полное закрытие [октябрьского аудита](../../audits/AUDIT-2026-10.md): все 512 AUD IDs, включая 507 исторически открытых пунктов и пять исторически закрытых. Для каждого нужны проверенное исправление и regression/runtime evidence либо обоснованный disposition. Исторический статус и наличие commit не заменяют приёмку текущего source. Общий процент закрытия пока не установлен. Приёмка MVP продолжается после этого приоритета.
+Полное закрытие [октябрьского аудита](../../audits/AUDIT-2026-10.md): все 512 AUD IDs, включая 507 исторически открытых пунктов и пять исторически закрытых. Для каждого нужны проверенное исправление и regression/runtime evidence либо обоснованный disposition. Исторический статус и наличие commit не заменяют приёмку текущего source. Полная сверка ещё не завершена; ниже указана подтверждённая нижняя граница закрытия. Приёмка MVP продолжается после этого приоритета.
 
-Работа только через GitHub plugin, ветка `egorribun`, существующий [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git и принимает работу максимум трёх GPT-6 Luna Max агентов с непересекающимися файлами. Merge/deploy и обходы проверок не выполнялись.
+Работа только через GitHub plugin, ветка `egorribun`, существующий [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Merge/deploy и обходы проверок не выполнялись.
 
 ## Текущая проверка аудита
 
-Подтверждённая нижняя граница: 75 из 512 исходных AUD IDs. На 68a29ba собственные hosted tests подтверждают AUD-065 (обновление countdown), AUD-067 (очистка времени занятия) и AUD-077 (fallback при sendBeacon=false). Прежние принятые IDs сохраняются. [Scope, IDs и доказательства](../../audits/AUDIT-2026-10.md#evidence-checkpoint-75-verified-original-aud-ids). Это не полная сверка всех пунктов и не приёмка всего CI.
+Подтверждённая нижняя граница: 82 из 512 исходных AUD IDs. На 19a2f8a приняты AUD-061/062/063/068/069/075/080 по собственным регрессиям и зелёным static gates. Прежние принятые IDs сохраняются. [Scope, IDs и доказательства](../../audits/AUDIT-2026-10.md#evidence-checkpoint-82-verified-original-aud-ids). Это не полная сверка всех пунктов и не приёмка всего CI.
 
 На 47f35bf: frontend 9388 PASS / 779 файлов, все frontend static gates и production build прошли. Real SDK/Axios/MSW ETag cohort подтверждает разделение order/query/cache/ETag; повторная OpenAPI generation не даёт diff. PostgreSQL: 203 PASS / 9 прежних SKIP, включая raw HTTP rank/date counterexample. Оба pre-commit и inventory gates проходят. Exact hosted checkout/tree проверены.
 
-NATS: на 965a82d focused backend — 726 PASS / 1 прежний outage hold; все 55 lock/composition cases проходят. Следующие 10 tests-first cases требуют явный caller UID и проверяют private descriptor policy; новый обязательный аргумент ещё не означает enforcement/provenance. Runtime adapters и outage не включены. [Reader plan](2026-10-19-owned-nats-owner-reader.md), [lock plan](2026-10-19-owned-nats-lifecycle-lock.md).
+NATS: на 19a2f8a focused backend — 727 PASS / 10 FAIL: девять intended private-policy RED и прежний outage hold. Положительный private-object control и прежние 55 lock/composition cases проходят. Следующая metadata-only реализация проверяет явный UID и 0700/0600 без новых syscalls; own GREEN ещё нужен. Runtime adapters и outage не включены. [Reader plan](2026-10-19-owned-nats-owner-reader.md).
 
 Actual Core 911db82: 26 PASS / 2 прежних SKIP, cleanup 2026-10-20 00:03:56 UTC, receipt artifact 12230572763, exact source tree проверен. Обе темы проходят первые четыре и следующие семнадцать AUD-072 declarations при неизменённых assertions. Whole AUD-072 открыт: остальные consumers, theme collisions, malformed one-color mixes, AUD-085 utility emission и AUD-073 contrast не объявляются исправленными.
 
-AUD-065/067/077 остаются принятыми. На 965a82d frontend — 9410 PASS / 5 intended FAIL / 782 файла; все 27 EventsCard cases проходят. Подтверждены RED lazy map reopen, delayed chat focus и footer route lifecycle; применяются узкие corrections без изменения assertions. Один remaining 100-column array format исправляется. Ledger пока 75. Следующий tests-first AUD-066 проверяет реальную цепочку Schedule→Settings→Google single-lesson preparation, не full-calendar sync. [Evidence](2026-10-19-ui-lifecycle-reconciliation.md).
+Frontend 19a2f8a — 9415 PASS / 2 intended AUD-066 FAIL / 783 файла. Все static gates проходят, включая formatter и scanner29. Семь UI/scanner находок приняты; исправление calendar payload готовится отдельно, без обещания full-calendar sync. [Evidence](2026-10-19-ui-lifecycle-reconciliation.md).
 
-d8682a6 Core run 39347788213 / job 118386982969 passes 26 cases with two existing skips at 00:49:54 UTC. Owned stop completes at 00:50:16; artifact 12233220470 has SHA-256 d453a55a8b120f21c47d5cd6415a89b9c796ad59c44f3e3513835aa68300d87b. Checkout ed29b9907bbe12b0044c73f3a5513272aaa1d6c1 has the previously verified exact source tree. Newer 965a82d Live remains separately pending.
+Core run 39351706318 / job 118397156239 passes 26 browser cases with two existing skips at 01:21:44 UTC. Owned stop finishes at 01:22:05; artifact 12234715078 has SHA-256 748f254f3a75782421dee130d0da97dd8a8194c05a5347d4354ec4f9c78834c1 and the same verified checkout. This does not replace full-CI acceptance or prove the disabled outage scenario.
 
 История промежуточных RED/GREEN, коррекции тестов и receipts сохранены в audit supplements и тематических планах. Прежний platform skip устранён; результаты текущих проверок описаны выше. Новых skip identities или waiver нет. P1 holds 164/167/169/174 сохраняются. Последний полностью принятый CI — e150. Baseline 319, dispositions 263, 78 required context/app pairs и security gates неизменны. Merge/deploy не выполняются.
 
