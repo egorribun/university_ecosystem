@@ -198,3 +198,10 @@ def decode_daemon_read(
         DaemonMetadataStatus.MATCHED_METADATA,
         fingerprint,
     )
+
+
+def observe_daemon_metadata(
+    pins: DockerReadPins, *, deadline: Deadline
+) -> DaemonMetadataResult:
+    """Unavailable collector composition; no runtime caller is connected."""
+    return DaemonMetadataResult(DaemonMetadataStatus.NOT_READY)

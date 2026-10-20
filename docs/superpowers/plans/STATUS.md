@@ -10,7 +10,7 @@
 
 ## Текущая проверка аудита
 
-Подтверждённая нижняя граница: 84 из 512 исходных AUD IDs. AUD-084 принят по named Linux regression на a71c6d7; прежние 83 IDs сохраняются. [Scope, IDs и доказательства](../../audits/AUDIT-2026-10.md#evidence-checkpoint-84-verified-original-aud-ids). Это не полная сверка и не приёмка всего CI.
+Подтверждённая нижняя граница: 86 из 512 исходных AUD IDs. Приняты AUD-071 по настоящим desktop/mobile browser regressions и AUD-086 по named stability cases; прежние 84 IDs сохраняются. [Scope, IDs и доказательства](../../audits/AUDIT-2026-10.md#evidence-checkpoint-86-verified-original-aud-ids). Это не полная сверка и не приёмка всего CI.
 
 На 47f35bf: frontend 9388 PASS / 779 файлов, все frontend static gates и production build прошли. Real SDK/Axios/MSW ETag cohort подтверждает разделение order/query/cache/ETag; повторная OpenAPI generation не даёт diff. PostgreSQL: 203 PASS / 9 прежних SKIP, включая raw HTTP rank/date counterexample. Оба pre-commit и inventory gates проходят. Exact hosted checkout/tree проверены.
 
@@ -18,11 +18,11 @@ NATS: на a27af92 focused backend — 736 PASS / 1 прежний outage hold. 
 
 Actual Core 911db82: 26 PASS / 2 прежних SKIP, cleanup 2026-10-20 00:03:56 UTC, receipt artifact 12230572763, exact source tree проверен. Обе темы проходят первые четыре и следующие семнадцать AUD-072 declarations при неизменённых assertions. Whole AUD-072 открыт: остальные consumers, theme collisions, malformed one-color mixes, AUD-085 utility emission и AUD-073 contrast не объявляются исправленными.
 
-Frontend 3258d71 — 9430 PASS / 784 файла, без failures. Все static gates и production build проходят. AUD-066 принят как подготовка одного занятия выбранной недели с фильтрами и campus timezone, не full-calendar sync. Следующий AUD-071 проверяется настоящим браузерным hit test до изменения production. [Evidence](2026-10-19-ui-lifecycle-reconciliation.md).
+Frontend 4f64cda — 9430 PASS / 784 файла, без failures. Все static gates и production build проходят. AUD-066 принят как подготовка одного занятия выбранной недели с фильтрами и campus timezone, не full-calendar sync. AUD-071 теперь подтверждён неизменённым browser hit test на desktop/mobile; AUD-089/090 получают новые регрессии до изменения production. [Evidence](2026-10-19-ui-lifecycle-reconciliation.md).
 
 Core a27af92 run 39353709178 / job 118403589608 passes 26 browser cases with two existing skips at 01:45:40 UTC. Owned stop and receipt finish at 01:46:02; artifact 12234748128 has SHA-256 d8e280b30eaf28edf69b07e8db66a9b848f91f4900cd7db1a999ac25edd342d3. Checkout f7c8ff223aad624287d28f0b7c93dc6d207c6ff0 has the exact a27 source tree. No outage execution or full release acceptance follows.
 
-На a71c6d7 все 21 Compose projection cases проходят. Реализация daemon request/decode после шести наблюдавшихся RED ожидает own GREEN; операции остаются без I/O. Все 28 existing AUD-084 cases прошли в verbose focused job; production preflight не меняется. Workflow расширен только на прежней строке 155, без сдвига baseline coordinates. [Scope](2026-10-20-owned-nats-docker-observation.md).
+На a71c6d7 все 21 Compose projection cases проходят. Все 52 daemon request/decode cases проходят на 4f64; операции остаются без I/O. Следующая collector composition пока unavailable и получает тесты. Все 28 existing AUD-084 cases прошли в verbose focused job; production preflight не меняется. Workflow расширен только на прежней строке 155, без сдвига baseline coordinates. [Scope](2026-10-20-owned-nats-docker-observation.md).
 
 История промежуточных RED/GREEN, коррекции тестов и receipts сохранены в audit supplements и тематических планах. Прежний platform skip устранён; результаты текущих проверок описаны выше. Новых skip identities или waiver нет. P1 holds 164/167/169/174 сохраняются. Последний полностью принятый CI — e150. Baseline 319, dispositions 263, 78 required context/app pairs и security gates неизменны. Merge/deploy не выполняются.
 
@@ -40,7 +40,7 @@ Python 16509 PASS / 174 SKIP; frontend 9355 PASS / 772 файла; PostgreSQL 20
 
 AUD-471 принят на уровне исправленного source, регрессий и собственного полного CI: реальный API startup требует SMTP вне development до открытия ресурсов, независимо от process-role label; общая загрузка Settings для Alembic не требует API SMTP. TLS, precedence, role schemas, migration secrets, revocation/TOTP requirements и email delivery/retry/DLQ semantics сохранены. Это не deployment или доставка через реальный почтовый провайдер.
 
-Предыдущие принятые AUD-003/004/006 (f854), AUD-011/012/014 и reset-fragment diagnostic correction (606d) сохраняют прежний ограниченный scope. Подробная история RED/коррекций — в [audit supplements](../../audits/AUDIT-2026-10.md). Manifest source_sha остаётся null: actual RC, main/bootstrap activation, pre-merge full smoke и deployment — отдельные решения. Общий процент закрытия не установлен.
+Предыдущие принятые AUD-003/004/006 (f854), AUD-011/012/014 и reset-fragment diagnostic correction (606d) сохраняют прежний ограниченный scope. Подробная история RED/коррекций — в [audit supplements](../../audits/AUDIT-2026-10.md). Manifest source_sha остаётся null: actual RC, main/bootstrap activation, pre-merge full smoke и deployment — отдельные решения. Полная сверка ещё не завершена; подтверждённая нижняя граница указана выше.
 
 ## Последняя партия: AUD-471 и граница запуска API
 
@@ -130,4 +130,16 @@ Source a71c6d7c756c53bd31ea661053a9974ee9fdc497 is bound to checkout fbb400bb797
 
 AUD-084 is accepted narrowly for bounded runner return when an exited parent leaves inherited output pipes open. The real Linux regression test_run_check_deadline_when_descendant_inherits_output_pipes passes at 02:16:19 UTC. Source was already corrected and is unchanged; adding named selection supplies the missing source-bound proof. Windows drain cases are simulated API controls, not physical Windows execution. Bounded return does not claim termination of every detached descendant.
 
-AUD-071 воспроизведён настоящим browser hit test на desktop/mobile. Исправление pointer events только у Snackbar content и форматирование теста ожидают own GREEN. Шесть daemon assertions получили реализацию проверки explicit inputs и supplied bytes без I/O; runtime adapters/outage остаются выключенными. Core после двух ожидаемых failures остановил owned containers в 02:22:24 UTC. Эти результаты не заменяют полный CI.
+После a71 RED исправление AUD-071 на 4f64 прошло настоящий browser hit test на desktop/mobile и formatter. Все 52 daemon assertions проходят после реализации проверки explicit inputs и supplied bytes без I/O; runtime adapters/outage остаются выключенными. Core после двух ожидаемых failures остановил owned containers в 02:22:24 UTC. Эти результаты не заменяют полный CI.
+
+## Latest acceptance and next tests
+
+Source 4f64cdad18186e3c8634505f11931dd99de5ccda is bound to hosted checkout ac85a98a815cd2c6d5aa17f363b73323bb3a4bcc and identical tree 77fa13ecba7ed054a4b6b8f452a1a73316729ba3. Frontend finishes 9430 PASS across 784 files. Static job 118436013198 and production build 118436013233 pass. Focused backend job 118435856906 reports 837 PASS / one existing disabled-outage hold in 220.14 seconds, including all fifty-two daemon request/decode cases.
+
+AUD-071 is accepted: Core run 39363500028 / job 118434859608 passes 28 browser cases with two existing skips at 03:33:51 UTC. The unchanged paused-clock hit-target and ordinary-click assertions now pass on desktop and mobile. Pointer events are restored only for Snackbar content; outer positioning, Alert markup and dismissal timing remain unchanged. Owned stop and receipt finish at 03:34:13; artifact 12238472787 has SHA-256 f795e14acd6f54805ffb4791aca20c6aa4439f72df490713b6401a12e82c8024.
+
+AUD-086 is accepted for paired-artifact stability debounce. Earlier source a71c6d7 and checkout fbb400bb797ed0fd683515f19da1d9275c483953 have identical tree e164ddb9bbe0550e010832adead33404763a552d. Job 118415281373 explicitly passes all seven behavioral cases at 02:13:08 UTC: unchanged fresh samples, same-metadata content changes, either output changing despite restored mtime, disappearance/reappearance, stale outputs, missing client assets and continuous churn. Its Node cohort totals 590 PASS / zero FAIL/SKIP. Source blob aa7ea4265ec21ed9d88fc253785d0bc9660adb72 and test blob ce5227820d601c7412d7788f36431d287ab192b3 are unchanged in 4f64. This establishes sampled shell/server stability, not producer completion, stability of every client asset or universally safe producer termination.
+
+The lower bound advances from 84 to 86 original AUD IDs. None of these results enables outage, replaces full-CI acceptance or establishes deployment readiness.
+
+Tests-first партия AUD-082/083/087/089/090 не меняет их production source. Existing AUD-088 render cases добавлены только в прежнюю строку 155 focused selection; нужны три named PASS, не SKIP. No-I/O daemon validation завершила свой bounded proof, но collector composition, inventory и outage ещё не готовы. [Quality entrypoints](2026-10-20-quality-entrypoints.md).

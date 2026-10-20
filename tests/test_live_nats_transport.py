@@ -689,3 +689,219 @@ def test_daemon_private_fields_are_not_represented():
         _DAEMON_FINGERPRINT,
     )
     assert _DAEMON_FINGERPRINT not in repr(result)
+
+
+def _mock_daemon_collection(monkeypatch, supplied, *, action=None):
+    calls = []
+
+    def collect(request, *, deadline):
+        calls.append((request, deadline))
+        if action is not None:
+            action()
+        return supplied
+
+    monkeypatch.setattr(process, "run_private_process", collect)
+    return calls
+
+
+def _assert_one_daemon_collection(calls, deadline):
+    pins = _daemon_pins()
+    expected = process.PrivateProcessRequest(
+        argv=(
+            pins.executable,
+            "--config",
+            pins.config_directory,
+            "--host",
+            pins.endpoint,
+            "info",
+            "--format",
+            "{{.ID}}",
+        ),
+        cwd=pins.cwd,
+        env={},
+        stdin=b"",
+        stdout_limit=256,
+        stderr_limit=1024,
+        input_limit=0,
+    )
+    assert len(calls) == 1
+    request, actual_deadline = calls[0]
+    assert type(request) is process.PrivateProcessRequest
+    assert request == expected
+    assert actual_deadline is deadline
+
+
+def test_daemon_observation_collects_exact_request_once(monkeypatch, daemon_no_process):
+    deadline = _daemon_deadline()
+    calls = _mock_daemon_collection(monkeypatch, _daemon_result())
+
+    result = docker.observe_daemon_metadata(_daemon_pins(), deadline=deadline)
+
+    _assert_one_daemon_collection(calls, deadline)
+    assert result == docker.DaemonMetadataResult(
+        docker.DaemonMetadataStatus.MATCHED_METADATA,
+        _DAEMON_FINGERPRINT,
+    )
+
+
+@pytest.mark.parametrize(
+    "pins",
+    [
+        pytest.param(None, id="none"),
+        pytest.param(object(), id="wrong-class"),
+        pytest.param(
+            replace(_daemon_pins(), endpoint="ssh://host"),
+            id="unsupported-endpoint",
+        ),
+        pytest.param(
+            replace(_daemon_pins(), environment=(("DOCKER_CONTEXT", "other"),)),
+            id="steering-environment",
+        ),
+    ],
+)
+def test_daemon_observation_refuses_pins_before_collection(
+    monkeypatch, daemon_no_process, pins
+):
+    deadline = _daemon_deadline()
+    calls = _mock_daemon_collection(monkeypatch, _daemon_result())
+
+    result = docker.observe_daemon_metadata(pins, deadline=deadline)
+
+    _assert_daemon_not_ready(result)
+    assert calls == []
+
+
+@pytest.mark.parametrize("state", ["expired", "invalid", "regressed"])
+def test_daemon_observation_refuses_deadline_before_collection(
+    monkeypatch, daemon_no_process, state
+):
+    clock = _DaemonClock()
+    deadline = Deadline.after(0 if state == "invalid" else 10, clock=clock)
+    if state == "expired":
+        clock.now = 10
+    elif state == "regressed":
+        clock.now = -1
+    calls = _mock_daemon_collection(monkeypatch, _daemon_result())
+
+    result = docker.observe_daemon_metadata(_daemon_pins(), deadline=deadline)
+
+    _assert_daemon_not_ready(result)
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "supplied",
+    [
+        pytest.param(None, id="wrong-result-class"),
+        pytest.param(
+            _daemon_result(outcome=process.ProcessOutcome.TIMED_OUT),
+            id="timed-out",
+        ),
+        pytest.param(_daemon_result(returncode=False), id="boolean-returncode"),
+        pytest.param(
+            _daemon_result(local_cleanup=process.LocalCleanup.UNPROVEN),
+            id="unproven-cleanup",
+        ),
+        pytest.param(_daemon_result(stdout=b"\xff"), id="invalid-utf8"),
+        pytest.param(_daemon_result(stderr=b"private-diagnostic"), id="stderr"),
+    ],
+)
+def test_daemon_observation_decodes_collected_result_fail_closed(
+    monkeypatch, daemon_no_process, supplied
+):
+    deadline = _daemon_deadline()
+    calls = _mock_daemon_collection(monkeypatch, supplied)
+
+    result = docker.observe_daemon_metadata(_daemon_pins(), deadline=deadline)
+
+    _assert_one_daemon_collection(calls, deadline)
+    _assert_daemon_not_ready(result)
+
+
+def test_daemon_observation_rejects_postcollection_expiry(
+    monkeypatch, daemon_no_process
+):
+    clock = _DaemonClock()
+    deadline = Deadline.after(10, clock=clock)
+
+    def expire():
+        clock.now = 10
+
+    calls = _mock_daemon_collection(monkeypatch, _daemon_result(), action=expire)
+
+    result = docker.observe_daemon_metadata(_daemon_pins(), deadline=deadline)
+
+    _assert_one_daemon_collection(calls, deadline)
+    _assert_daemon_not_ready(result)
+
+
+@pytest.mark.parametrize("failure_type", [RuntimeError, KeyboardInterrupt, SystemExit])
+def test_daemon_observation_preserves_collector_exception_identity(
+    monkeypatch, daemon_no_process, failure_type
+):
+    deadline = _daemon_deadline()
+    failure = failure_type("private-collector-failure")
+
+    def fail():
+        raise failure
+
+    calls = _mock_daemon_collection(monkeypatch, _daemon_result(), action=fail)
+
+    with pytest.raises(failure_type) as caught:
+        docker.observe_daemon_metadata(_daemon_pins(), deadline=deadline)
+
+    assert caught.value is failure
+    _assert_one_daemon_collection(calls, deadline)
+
+
+@pytest.mark.parametrize(
+    "return_original", [True, False], ids=["original", "substituted"]
+)
+def test_daemon_observation_retains_precollection_fingerprint(
+    monkeypatch, daemon_no_process, return_original
+):
+    pins = _daemon_pins()
+    deadline = _daemon_deadline()
+    substituted_id = b"substituted-daemon-fixture"
+    substituted_fingerprint = hashlib.sha256(substituted_id).hexdigest()
+    supplied_id = _DAEMON_ID if return_original else substituted_id
+
+    def mutate_pin():
+        object.__setattr__(pins, "daemon_fingerprint", substituted_fingerprint)
+
+    calls = _mock_daemon_collection(
+        monkeypatch,
+        _daemon_result(stdout=supplied_id + b"\n"),
+        action=mutate_pin,
+    )
+
+    result = docker.observe_daemon_metadata(pins, deadline=deadline)
+
+    _assert_one_daemon_collection(calls, deadline)
+    assert pins.daemon_fingerprint == substituted_fingerprint
+    if return_original:
+        assert result == docker.DaemonMetadataResult(
+            docker.DaemonMetadataStatus.MATCHED_METADATA,
+            _DAEMON_FINGERPRINT,
+        )
+    else:
+        _assert_daemon_not_ready(result)
+
+
+def test_daemon_observation_never_refreshes_deadline(monkeypatch, daemon_no_process):
+    deadline = _daemon_deadline()
+    calls = _mock_daemon_collection(monkeypatch, _daemon_result())
+    fresh_deadlines = []
+
+    def forbidden_deadline(*_args, **_kwargs):
+        fresh_deadlines.append("unexpected-fresh-deadline")
+        raise AssertionError("daemon observation must retain its caller deadline")
+
+    monkeypatch.setattr(Deadline, "after", forbidden_deadline)
+
+    result = docker.observe_daemon_metadata(_daemon_pins(), deadline=deadline)
+
+    assert fresh_deadlines == []
+    _assert_one_daemon_collection(calls, deadline)
+    assert result.status is docker.DaemonMetadataStatus.MATCHED_METADATA
+    assert result.fingerprint == _DAEMON_FINGERPRINT

@@ -70,6 +70,18 @@ describe("settingsSearchSchema — tab field", () => {
     expect(parse({ tab: 999 }).tab).toBe(0)
   })
 
+  it.each([0.5, 1.5, 4.5])("falls back to General for numeric fractional tab=%s", (tab) => {
+    expect(parse({ tab }).tab).toBe(SETTINGS_TAB.GENERAL)
+  })
+
+  it.each([
+    ["1.5", SETTINGS_TAB.ACCOUNT],
+    ["2suffix", SETTINGS_TAB.SECURITY],
+    [" 4 ", SETTINGS_TAB.SESSIONS],
+  ])("preserves parseInt compatibility for string tab=%s", (tab, expected) => {
+    expect(parse({ tab }).tab).toBe(expected)
+  })
+
   it("accepts all valid tab indices (0-5)", () => {
     expect(parse({ tab: 0 }).tab).toBe(0)
     expect(parse({ tab: 1 }).tab).toBe(1)

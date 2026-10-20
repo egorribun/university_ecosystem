@@ -1,11 +1,11 @@
 import assert from "node:assert/strict"
 import { randomUUID } from "node:crypto"
 import { spawnSync } from "node:child_process"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import test from "node:test"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { join, resolve } from "node:path"
 
 import strykerConfig, { mutationRunnerReuse, mutationThresholds } from "../stryker.config.mjs"
@@ -14,6 +14,7 @@ const frontendRoot = new URL("../", import.meta.url)
 const repositoryRoot = new URL("../../", import.meta.url)
 const liveSetupUrl = new URL("./playwright-live-global-setup.mjs", import.meta.url).href
 const require = createRequire(import.meta.url)
+const { parseConfigFileTextToJson } = require("typescript")
 
 async function readJson(url) {
   return JSON.parse(await readFile(url, "utf8"))
@@ -722,4 +723,126 @@ test("the transitive glob override is the supported non-deprecated release", asy
     false,
     "LHCI must not retain rimraf@3, whose callback-era glob contract is incompatible with glob@13"
   )
+})
+
+test("VS Code pytest discovery points to tracked repository tests", async () => {
+  const settingsUrl = new URL(".vscode/settings.json", repositoryRoot)
+  const source = await readFile(settingsUrl, "utf8")
+  const parsed = parseConfigFileTextToJson(fileURLToPath(settingsUrl), source)
+
+  assert.equal(parsed.error, undefined, "VS Code settings must parse as JSONC")
+  assert.equal(parsed.config["python.testing.pytestEnabled"], true)
+  assert.deepEqual(parsed.config["python.testing.pytestArgs"], ["tests"])
+
+  const path = parsed.config["python.testing.pytestArgs"][0]
+  const testsUrl = new URL(`${path}/`, repositoryRoot)
+  const knownTestUrl = new URL("test_quality_configuration.py", testsUrl)
+  assert.equal((await stat(testsUrl)).isDirectory(), true)
+  assert.equal((await stat(knownTestUrl)).isFile(), true)
+})
+
+const iconOutputNames = [
+  "favicon-16x16.png",
+  "favicon-32x32.png",
+  "apple-touch-icon.png",
+  "icon-192.png",
+  "icon-512.png",
+  "favicon.ico",
+]
+
+async function runIconGenerator({ blockedOutputs = [], missingInput = false } = {}) {
+  const temporary = await mkdtemp(join(tmpdir(), "icon-generator-contract-"))
+  try {
+    const scriptsDirectory = join(temporary, "scripts")
+    const publicDirectory = join(temporary, "public")
+    await mkdir(scriptsDirectory)
+    await mkdir(publicDirectory)
+    const source = await readFile(new URL("./generate-icons.js", import.meta.url), "utf8")
+    const sharpImport = 'import sharp from "sharp"'
+    assert.equal(source.split(sharpImport).length, 2)
+    const sharpUrl = pathToFileURL(require.resolve("sharp")).href
+    const scriptPath = join(scriptsDirectory, "generate-icons.mjs")
+    // Preserve the CLI body and relative public/ layout, resolving only sharp
+    // from the real installation rather than from the temporary directory.
+    await writeFile(
+      scriptPath,
+      source.replace(sharpImport, `import sharp from ${JSON.stringify(sharpUrl)}`),
+      "utf8"
+    )
+    if (!missingInput) {
+      const sharp = require("sharp")
+      const pixels = Buffer.alloc(64 * 64 * 4)
+      for (let y = 16; y < 48; y += 1) {
+        for (let x = 16; x < 48; x += 1) {
+          const offset = (y * 64 + x) * 4
+          pixels.set([51, 102, 153, 255], offset)
+        }
+      }
+      await sharp(pixels, { raw: { width: 64, height: 64, channels: 4 } })
+        .png()
+        .toFile(join(publicDirectory, "guu_logo.png"))
+    }
+    // Directory collisions reject writes even when tests run as root.
+    for (const name of blockedOutputs) {
+      assert.ok(iconOutputNames.includes(name))
+      await mkdir(join(publicDirectory, name))
+    }
+    const result = spawnSync(process.execPath, [scriptPath], {
+      cwd: temporary,
+      env: {},
+      encoding: "utf8",
+      timeout: 30_000,
+      maxBuffer: 64 * 1024,
+    })
+    assert.equal(result.error, undefined)
+    assert.equal(result.signal, null)
+    const generatedOutputs = []
+    for (const entry of await readdir(publicDirectory, { withFileTypes: true })) {
+      if (entry.isFile() && iconOutputNames.includes(entry.name)) {
+        const contents = await readFile(join(publicDirectory, entry.name))
+        assert.ok(contents.length > 0, `${entry.name} must not be empty`)
+        generatedOutputs.push(entry.name)
+      }
+    }
+    return { ...result, generatedOutputs: generatedOutputs.sort() }
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
+}
+
+test("icon generation exits successfully only after producing every output", async () => {
+  const result = await runIconGenerator()
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stderr, "")
+  assert.deepEqual(result.generatedOutputs, [...iconOutputNames].sort())
+  for (const name of iconOutputNames) {
+    assert.ok(result.stdout.includes(`Created ${name}`), result.stdout)
+  }
+})
+
+for (const [label, blockedOutputs] of [
+  ["first PNG", ["favicon-16x16.png"]],
+  ["favicon", ["favicon.ico"]],
+  ["all outputs", iconOutputNames],
+]) {
+  test(`icon generation reports failure and continues after blocked ${label}`, async () => {
+    const result = await runIconGenerator({ blockedOutputs })
+    assert.equal(result.status, 1, result.stderr)
+    const expectedOutputs = iconOutputNames.filter((name) => !blockedOutputs.includes(name))
+    assert.deepEqual(result.generatedOutputs, [...expectedOutputs].sort())
+    for (const name of blockedOutputs) {
+      assert.ok(result.stderr.includes(`Error creating ${name}`), result.stderr)
+    }
+    for (const name of expectedOutputs) {
+      assert.ok(result.stdout.includes(`Created ${name}`), result.stdout)
+    }
+  })
+}
+
+test("icon generation retains a failing exit status for a missing source image", async () => {
+  const result = await runIconGenerator({ missingInput: true })
+  assert.equal(result.status, 1, result.stderr)
+  assert.match(result.stderr, /Source image guu_logo\.png not found/u)
+  assert.deepEqual(result.generatedOutputs, [])
+  assert.doesNotMatch(result.stdout, /Created /u)
 })

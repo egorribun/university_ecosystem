@@ -128,3 +128,19 @@ On a71c6d7, Core run 39357053154 / job 118414135257 reports 26 PASS / 2 FAIL / 2
 The correction restores pointer events only on direct Snackbar content with the existing Tailwind child variant, retaining the outer pass-through positioning wrapper and existing DOM structure. Alert and timers are unchanged. The same browser assertions remain intact. Static job 118415281486 reports only a Prettier warning in that new live test; its 98-character centerInsideViewport expression is collapsed without changing behavior. Own corrected-source browser and formatter GREEN remain required; AUD-071 stays open.
 
 Owned stop and receipt finish at 02:22:24 UTC; artifact 12235089831 has SHA-256 d8828cdf1c1606ccda4fa5f0cc843571b10c4c27f8d0bfda2ca46a531bddd71d. This failed regression run still cleaned up its owned containers.
+
+## Snackbar corrected-source acceptance
+
+Source 4f64cdad18186e3c8634505f11931dd99de5ccda is bound to hosted checkout ac85a98a815cd2c6d5aa17f363b73323bb3a4bcc and identical tree 77fa13ecba7ed054a4b6b8f452a1a73316729ba3. Frontend finishes 9430 PASS across 784 files. Static job 118436013198 and production build 118436013233 pass. Focused backend job 118435856906 reports 837 PASS / one existing disabled-outage hold in 220.14 seconds, including all fifty-two daemon request/decode cases.
+
+AUD-071 is accepted: Core run 39363500028 / job 118434859608 passes 28 browser cases with two existing skips at 03:33:51 UTC. The unchanged paused-clock hit-target and ordinary-click assertions now pass on desktop and mobile. Pointer events are restored only for Snackbar content; outer positioning, Alert markup and dismissal timing remain unchanged. Owned stop and receipt finish at 03:34:13; artifact 12238472787 has SHA-256 f795e14acd6f54805ffb4791aca20c6aa4439f72df490713b6401a12e82c8024.
+
+AUD-086 is accepted for paired-artifact stability debounce. Earlier source a71c6d7 and checkout fbb400bb797ed0fd683515f19da1d9275c483953 have identical tree e164ddb9bbe0550e010832adead33404763a552d. Job 118415281373 explicitly passes all seven behavioral cases at 02:13:08 UTC: unchanged fresh samples, same-metadata content changes, either output changing despite restored mtime, disappearance/reappearance, stale outputs, missing client assets and continuous churn. Its Node cohort totals 590 PASS / zero FAIL/SKIP. Source blob aa7ea4265ec21ed9d88fc253785d0bc9660adb72 and test blob ce5227820d601c7412d7788f36431d287ab192b3 are unchanged in 4f64. This establishes sampled shell/server stability, not producer completion, stability of every client asset or universally safe producer termination.
+
+The lower bound advances from 84 to 86 original AUD IDs. None of these results enables outage, replaces full-CI acceptance or establishes deployment readiness.
+
+## Pending-input and settings-selection tests first
+
+AUD-089 adds three numeric-fraction counterexamples to the real settings schema, plus three controls preserving existing parseInt string compatibility. A real-schema-to-Settings conditional-rendering case requires exactly the General panel and selected tab. Its router/tab/panel dependencies retain the existing mocks: this is not a full-router or real tab ARIA integration claim. Production remains unchanged before observed RED; a future integer check must not silently rewrite string-coercion compatibility.
+
+AUD-090 adds repeated Enter while isRenaming is rendered true, retention of the editing draft, exactly one trimmed submission after settled rerender, and submit/pending/reopen behavior. Each repeated press requeries the actual textbox. Existing mouse-disabled, Escape, blank/undefined and happy-path assertions remain unchanged. Production stays unchanged before RED. A later pending guard would cover rendered pending state, not every same-tick race before the parent updates its prop.

@@ -933,4 +933,79 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
     resolveSearch?.({ data: [] })
     expect(await screen.findByText("messenger:noUsersFound")).toBeTruthy()
   })
+
+  it("retains pending rename drafts and submits once after settling", () => {
+    const onRename = vi.fn()
+    const props = {
+      ...baseProps,
+      chat: groupChat(OWNER),
+      currentUserId: OWNER,
+      onRename,
+    }
+    const { rerender } = render(<GroupInfoPanel {...props} isRenaming />, { wrapper })
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:renameGroup" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:groupName" }), {
+      target: { value: "  Pending draft  " },
+    })
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+
+    for (let press = 0; press < 3; press += 1) {
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "messenger:groupName" }), {
+        key: "Enter",
+      })
+      expect(onRename).not.toHaveBeenCalled()
+      const editor = screen.getByRole("textbox", { name: "messenger:groupName" })
+      expect(editor).toHaveValue("  Pending draft  ")
+    }
+
+    rerender(<GroupInfoPanel {...props} isRenaming={false} />)
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
+    const settledEditor = screen.getByRole("textbox", { name: "messenger:groupName" })
+    expect(settledEditor).toHaveValue("  Pending draft  ")
+
+    fireEvent.keyDown(settledEditor, { key: "Enter" })
+
+    expect(onRename).toHaveBeenCalledTimes(1)
+    expect(onRename).toHaveBeenCalledWith("Pending draft")
+    expect(screen.queryByRole("textbox", { name: "messenger:groupName" })).toBeNull()
+  })
+
+  it("blocks submission after reopening a pending rename", () => {
+    const onRename = vi.fn()
+    const props = {
+      ...baseProps,
+      chat: groupChat(OWNER),
+      currentUserId: OWNER,
+      onRename,
+    }
+    const { rerender } = render(<GroupInfoPanel {...props} />, { wrapper })
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:renameGroup" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:groupName" }), {
+      target: { value: "  First submission  " },
+    })
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "messenger:groupName" }), {
+      key: "Enter",
+    })
+    expect(onRename).toHaveBeenCalledTimes(1)
+    expect(onRename).toHaveBeenCalledWith("First submission")
+    expect(screen.queryByRole("textbox", { name: "messenger:groupName" })).toBeNull()
+
+    rerender(<GroupInfoPanel {...props} isRenaming />)
+    fireEvent.click(screen.getByRole("button", { name: "messenger:renameGroup" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:groupName" }), {
+      target: { value: "  Next draft  " },
+    })
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+
+    for (let press = 0; press < 2; press += 1) {
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "messenger:groupName" }), {
+        key: "Enter",
+      })
+      expect(onRename).toHaveBeenCalledTimes(1)
+      const editor = screen.getByRole("textbox", { name: "messenger:groupName" })
+      expect(editor).toHaveValue("  Next draft  ")
+    }
+  })
 })

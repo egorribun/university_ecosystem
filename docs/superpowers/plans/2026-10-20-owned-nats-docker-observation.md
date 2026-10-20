@@ -39,3 +39,11 @@ The six positive assertions fail on a71c6d7 because preparation returns None and
 Paths and endpoint checks are deliberately restricted capabilities, not existence/provenance checks. Root is supported for directory pins only; ambiguous endpoint query, fragment, percent encoding and backslashes are rejected. Ordinary malformed-data/deadline failures remain private; BaseException is not newly swallowed. Extra defensive shape/Unicode/path branches exceed the representative fifty-two-case cohort and are not claimed as exhaustively tested.
 
 Own corrected-source GREEN is pending. No collector invocation, RuntimeEvidence, container inventory, coordinator/CLI wiring or outage is enabled.
+
+## Request/decode GREEN and collector composition tests first
+
+On 4f64cdad, all fifty-two request/decode cases pass in job 118435856906; its aggregate is 837 PASS / one existing disabled-outage hold. This remains request/supplied-data validation, not an actual observed daemon or complete inventory.
+
+The next observe_daemon_metadata seam is unavailable and returns NOT_READY. Twenty-one additive cases in the already-selected transport suite require one exact request and identical Deadline, no collection for rejected pins/deadlines, decode refusal after one collection, postcollection expiry, original exception identity, retained precollection fingerprint despite callback mutation, and no fresh deadline/retry. Fourteen positive integration oracles are expected to fail initially; seven admission controls should pass. No execution is claimed before hosted observation.
+
+Tests replace only the existing collector boundary and retain direct process guards. The future implementation must capture the admitted expected fingerprint before calling the collector and decode against that retained value. Callback mutation intentionally bypasses frozen-dataclass protection; the proof is expectation retention, not continuing authenticity of a mutated object. No collector import, runtime caller, inventory, coordinator/CLI wiring or outage enablement is introduced by this scaffold.
