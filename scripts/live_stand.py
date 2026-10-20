@@ -6217,6 +6217,29 @@ def _validated_registration_admission_diag(value: object) -> dict[str, object] |
     return dict(record)
 
 
+_PLAYWRIGHT_RESET_REGISTRATION_LINE = re.compile(
+    r"UE_LIVE_RESET_REGISTRATION_V1 project=(desktop|mobile) "
+    r"step=(arm-response|click|await-response)"
+)
+
+
+def _live_playwright_reset_registration_steps(output: str) -> list[tuple[str, str]]:
+    records: list[tuple[str, str]] = []
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 128 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_RESET_REGISTRATION_LINE.fullmatch(line)
+        if match is None:
+            continue
+        record = (match.group(1), match.group(2))
+        if record not in records:
+            records.append(record)
+        if len(records) == 6:
+            break
+    return records
+
+
 def _live_playwright_registration_admission_diagnostics(
     output: str,
 ) -> list[dict[str, object]]:
@@ -7633,6 +7656,9 @@ def _run_live_playwright(
         if return_code != 0
         else []
     )
+    reset_registration_steps = (
+        _live_playwright_reset_registration_steps(stdout) if return_code != 0 else []
+    )
     registration_admission_diagnostics = (
         _live_playwright_registration_admission_diagnostics(stdout)
         if return_code != 0
@@ -7771,6 +7797,11 @@ def _run_live_playwright(
     for record in auth_registration_diagnostics:
         print(
             "live E2E auth registration " + json.dumps(record, separators=(",", ":")),
+            flush=True,
+        )
+    for project, step in reset_registration_steps:
+        print(
+            f"live E2E reset-registration project={project} step={step}",
             flush=True,
         )
     for record in registration_admission_diagnostics:

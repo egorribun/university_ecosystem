@@ -19,6 +19,8 @@ import {
 } from "./fixtures"
 
 import { reportLiveHttpStatus, reportLiveRateLimitRetry } from "./http-status-diagnostic"
+import { reportLivePasswordResetRegistrationFailure } from "./live-ui-diagnostic"
+import { runPasswordResetRegistrationAction } from "./password-reset-registration-action"
 
 const RESET_LINK = /\/reset-password#token=([\w.~-]+)/
 const UNTRUSTED_REDIRECT = "https://redirect-target.invalid/landing"
@@ -105,15 +107,18 @@ test("a student resets with the Mailpit link without retaining tokens or followi
   await page.getByRole("textbox", { name: "E-mail" }).fill(email)
   await page.getByLabel("Пароль", { exact: true }).fill(firstPassword)
   await page.getByLabel("Повторите пароль", { exact: true }).fill(firstPassword)
-  const registered = await withLiveRegistrationAdmission(page, 1, async () => {
-    const registrationResponse = page.waitForResponse(
-      (response) =>
-        response.request().method() === "POST" &&
-        new URL(response.url()).pathname.endsWith("/auth/register")
+  const registered = await withLiveRegistrationAdmission(page, 1, () =>
+    runPasswordResetRegistrationAction(
+      () =>
+        page.waitForResponse(
+          (response) =>
+            response.request().method() === "POST" &&
+            new URL(response.url()).pathname.endsWith("/auth/register")
+        ),
+      () => page.getByRole("button", { name: "Зарегистрироваться" }).click(),
+      (step) => reportLivePasswordResetRegistrationFailure(testInfo.project.name, step)
     )
-    await page.getByRole("button", { name: "Зарегистрироваться" }).click()
-    return registrationResponse
-  })
+  )
   expect(registered.ok()).toBe(true)
   const registrationBody = (await registered.json()) as { id?: unknown }
   if (typeof registrationBody.id !== "string" || registrationBody.id.length === 0) {

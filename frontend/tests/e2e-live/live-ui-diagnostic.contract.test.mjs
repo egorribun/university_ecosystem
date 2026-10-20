@@ -237,13 +237,42 @@ test("UI footer diagnostics emit bounded geometry", () => {
   )
 })
 
-test("UI diagnostic helper cannot inspect the browser, environment, errors, or response bodies", async () => {
-  const source = await readFile(helperUrl, "utf8")
+function assertNoPrivateDiagnosticInspection(source) {
+  const inspectionSource = source
+    .replaceAll('"arm-response"', '""')
+    .replaceAll('"await-response"', '""')
   assert.doesNotMatch(
-    source,
+    inspectionSource,
     /\bimport\b|\brequire\s*\(|process\.(?:env|stderr)|console\.|\.(?:message|stack|json|text|screenshot|storageState|attach)\s*\(|\b(?:page|browser|context|response|request|URL)\b/u
   )
+}
+
+test("UI diagnostic helper cannot inspect the browser, environment, errors, or response bodies", async () => {
+  const source = await readFile(helperUrl, "utf8")
+  assertNoPrivateDiagnosticInspection(source)
   assert.equal((source.match(/process\.stdout\.write\(/gu) ?? []).length, 1)
+})
+
+test("privacy source guard exempts only the two exact finite step literals", () => {
+  assert.doesNotThrow(() =>
+    assertNoPrivateDiagnosticInspection('const steps = ["arm-response", "await-response"]')
+  )
+  for (const source of [
+    "const response = null",
+    "request.method()",
+    "browser.newPage()",
+    'const step = "other-response"',
+    'const step = "await-response-extra"',
+    "const step = 'arm-response'",
+    '"arm-response"; response.json()',
+    '"await-response"; process.env.PRIVATE',
+    '"arm-response"; console.log("private")',
+    '"await-response"; error.stack()',
+  ]) {
+    assert.throws(() => assertNoPrivateDiagnosticInspection(source), {
+      code: "ERR_ASSERTION",
+    })
+  }
 })
 
 test("reset registration diagnostics expose only finite project-step pairs", async () => {

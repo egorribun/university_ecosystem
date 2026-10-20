@@ -69,3 +69,32 @@ test("password reset uses live auth APIs and confines its password-check stub to
   assert.match(source, /await submitLogin\(page, email, firstPassword\)/u)
   assert.match(source, /await loginWith\(page, email, newPassword\)/u)
 })
+
+test("password reset registration keeps admission and observes only a finite failure step", () => {
+  const source = readFileSync(specPath, "utf8")
+  const registration = source.slice(
+    source.indexOf("  const registered ="),
+    source.indexOf("  expect(registered.ok())")
+  )
+  assert.match(
+    registration,
+    /withLiveRegistrationAdmission\(page, 1, \(\) =>\s*runPasswordResetRegistrationAction\(/u
+  )
+  assert.match(registration, /response\.request\(\)\.method\(\) === "POST"/u)
+  assert.match(
+    registration,
+    /new URL\(response\.url\(\)\)\.pathname\.endsWith\("\/auth\/register"\)/u
+  )
+  assert.match(
+    registration,
+    /\(\) => page\.getByRole\("button", \{ name: "Зарегистрироваться" \}\)\.click\(\)/u
+  )
+  assert.match(
+    registration,
+    /\(step\) => reportLivePasswordResetRegistrationFailure\(testInfo\.project\.name, step\)/u
+  )
+  assert.doesNotMatch(
+    registration,
+    /setTimeout|waitForTimeout|\.message|\.stack|\.post\(|\.evaluate\(/u
+  )
+})

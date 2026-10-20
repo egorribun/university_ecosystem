@@ -1575,7 +1575,11 @@ jobs:
             tests/test_live_stand.py::test_live_bounded_read_failure_reason_is_finite \
             tests/test_live_stand.py::test_live_reset_registration_parser_accepts_only_six_unique_pairs \
             tests/test_live_stand.py::test_live_reset_registration_parser_rejects_untrusted_framing \
-            tests/test_live_stand.py::test_live_reset_registration_runner_uses_failure_stdout_only -v \
+            tests/test_live_stand.py::test_live_reset_registration_runner_uses_failure_stdout_only \
+            tests/test_live_stand.py::test_live_caddy_probe_excludes_oversized_gap_between_project_windows \
+            tests/test_live_stand.py::test_live_caddy_probe_coalesces_only_overlapping_or_touching_windows \
+            tests/test_live_stand.py::test_live_caddy_probe_disjoint_reads_share_bytes_and_capture_time \
+            tests/test_live_stand.py::test_live_caddy_probe_disjoint_captures_keep_cross_window_validation -v \
             --tb=short \
             -p no:cacheprovider \
             -k "not integration"

@@ -12973,9 +12973,7 @@ def test_live_reset_registration_runner_uses_failure_stdout_only(
 ) -> None:
     command = live_stand._live_e2e_command(mode="smoke")
     valid = "UE_LIVE_RESET_REGISTRATION_V1 project=desktop step=click\n"
-    stderr_only = (
-        "UE_LIVE_RESET_REGISTRATION_V1 project=mobile step=await-response\n"
-    )
+    stderr_only = "UE_LIVE_RESET_REGISTRATION_V1 project=mobile step=await-response\n"
     private = "private-body https://private.invalid/?token=hidden"
     completed = subprocess.CompletedProcess(
         command,
@@ -13002,3 +13000,312 @@ def test_live_reset_registration_runner_uses_failure_stdout_only(
     assert captured.err == ""
     assert private not in captured.out
     assert completed.stdout == completed.stderr == b""
+
+
+def _aud174_install_window_log_selector(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    owner: object,
+    container_pin: tuple[str, str],
+    context: live_stand._LiveDockerReadContext,
+    records: list[tuple[int, bytes, bytes]],
+    now: list[float] | None = None,
+    read_durations: tuple[float, ...] = (),
+) -> dict[str, Any]:
+    state: dict[str, Any] = {"events": [], "calls": [], "completed": []}
+
+    def check_pin(
+        observed_owner: object,
+        observed_pin: tuple[str, str],
+        *,
+        deadline: float,
+        docker_context: live_stand._LiveDockerReadContext,
+    ) -> None:
+        assert observed_owner is owner
+        assert observed_pin == container_pin
+        assert docker_context is context
+        state["events"].append("pin")
+        if now is not None:
+            assert deadline == 125.0
+            now[0] += 2.0
+
+    def read_logs(
+        command: list[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess[bytes]:
+        assert command[:3] == ["docker", "logs", "--timestamps"]
+        assert command[3] == "--since"
+        assert command[5] == "--until"
+        assert command[7:] == [container_pin[0]]
+        assert kwargs["context"] is context
+        since_ns = live_stand._parse_live_docker_log_timestamp(
+            command[4].encode("ascii")
+        )
+        until_ns = live_stand._parse_live_docker_log_timestamp(
+            command[6].encode("ascii")
+        )
+        selected = [
+            (stdout, stderr)
+            for timestamp_ms, stdout, stderr in records
+            if since_ns <= timestamp_ms * 1_000_000 <= until_ns
+        ]
+        stdout = b"".join(item[0] for item in selected)
+        stderr = b"".join(item[1] for item in selected)
+        state["events"].append("logs")
+        state["calls"].append((list(command), dict(kwargs)))
+        if now is not None:
+            now[0] += read_durations[len(state["calls"]) - 1]
+        if len(stdout) + len(stderr) > kwargs["maximum_bytes"]:
+            raise live_stand._LiveBoundedReadFailure("output_limit")
+        completed = subprocess.CompletedProcess(
+            command, 0, stdout=stdout, stderr=stderr
+        )
+        state["completed"].append(completed)
+        return completed
+
+    monkeypatch.setattr(live_stand, "_assert_live_caddy_container_pin", check_pin)
+    monkeypatch.setattr(live_stand, "_run_live_bounded_read", read_logs)
+    if now is not None:
+        monkeypatch.setattr(live_stand.time, "monotonic", lambda: now[0])
+    return state
+
+
+def test_live_caddy_probe_excludes_oversized_gap_between_project_windows(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner = object()
+    pin = ("a" * 64, "b" * 64)
+    context = _aud174_docker_read_context(tmp_path)
+    base = 1_798_000_000_000
+    observed = {"desktop": base, "mobile": base + 120_000}
+    correlations = {"desktop": "1" * 32, "mobile": "2" * 32}
+    records = [
+        (
+            timestamp,
+            _aud174_access_log_row(
+                f"/login?probe={correlations[project]}&password=REDACTED",
+                timestamp=live_stand._caddy_probe_timestamp_argument(timestamp),
+            ),
+            b"",
+        )
+        for project, timestamp in observed.items()
+    ]
+    gap_timestamp = base + 60_000
+    gap_row = _aud174_access_log_row(
+        "/health",
+        timestamp=live_stand._caddy_probe_timestamp_argument(gap_timestamp),
+    )
+    cap = live_stand._LIVE_CADDY_PROBE_MAX_BYTES
+    gap_rows = gap_row * (cap // len(gap_row) + 1)
+    assert len(gap_rows) > cap
+    records.append((gap_timestamp, gap_rows, b""))
+    state = _aud174_install_window_log_selector(
+        monkeypatch,
+        owner=owner,
+        container_pin=pin,
+        context=context,
+        records=records,
+    )
+
+    _aud174_read_project_logs(
+        owner,
+        container_pin=pin,
+        completed_at_ms=observed,
+        password_nonce="0" * 32,
+        correlation_ids=correlations,
+        deadline=live_stand.time.monotonic() + 25,
+        docker_context=context,
+    )
+
+    assert state["events"] == ["pin", "logs", "logs", "pin"]
+    assert len(state["completed"]) == 2
+    assert all(result.stdout == result.stderr == b"" for result in state["completed"])
+
+
+@pytest.mark.parametrize(
+    ("mobile_offset", "expected_windows"),
+    [
+        (0, [(-5_000, 5_000)]),
+        (2_000, [(-5_000, 7_000)]),
+        (10_000, [(-5_000, 15_000)]),
+        (10_001, [(-5_000, 5_000), (5_001, 15_001)]),
+        (-10_001, [(-15_001, -5_001), (-5_000, 5_000)]),
+        (-2_000, [(-7_000, 5_000)]),
+    ],
+)
+def test_live_caddy_probe_coalesces_only_overlapping_or_touching_windows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    mobile_offset: int,
+    expected_windows: list[tuple[int, int]],
+) -> None:
+    owner = object()
+    pin = ("a" * 64, "b" * 64)
+    context = _aud174_docker_read_context(tmp_path)
+    base = 1_798_000_000_000
+    observed = {"desktop": base, "mobile": base + mobile_offset}
+    correlations = {"desktop": "1" * 32, "mobile": "2" * 32}
+    records = [
+        (
+            timestamp,
+            _aud174_access_log_row(
+                f"/login?probe={correlations[project]}&password=REDACTED",
+                timestamp=live_stand._caddy_probe_timestamp_argument(timestamp),
+            ),
+            b"",
+        )
+        for project, timestamp in observed.items()
+    ]
+    state = _aud174_install_window_log_selector(
+        monkeypatch,
+        owner=owner,
+        container_pin=pin,
+        context=context,
+        records=records,
+    )
+
+    _aud174_read_project_logs(
+        owner,
+        container_pin=pin,
+        completed_at_ms=observed,
+        password_nonce="0" * 32,
+        correlation_ids=correlations,
+        deadline=live_stand.time.monotonic() + 25,
+        docker_context=context,
+    )
+
+    assert [(command[4], command[6]) for command, _kwargs in state["calls"]] == [
+        (
+            live_stand._caddy_probe_timestamp_argument(base + since),
+            live_stand._caddy_probe_timestamp_argument(base + until),
+        )
+        for since, until in expected_windows
+    ]
+    assert state["events"] == ["pin", *(["logs"] * len(expected_windows)), "pin"]
+    assert all(result.stdout == result.stderr == b"" for result in state["completed"])
+
+
+def test_live_caddy_probe_disjoint_reads_share_bytes_and_capture_time(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner = object()
+    pin = ("a" * 64, "b" * 64)
+    context = _aud174_docker_read_context(tmp_path)
+    base = 1_798_000_000_000
+    observed = {"desktop": base, "mobile": base + 120_000}
+    correlations = {"desktop": "1" * 32, "mobile": "2" * 32}
+    rows = {
+        project: _aud174_access_log_row(
+            f"/login?probe={correlations[project]}&password=REDACTED",
+            timestamp=live_stand._caddy_probe_timestamp_argument(timestamp),
+        )
+        for project, timestamp in observed.items()
+    }
+    benign_stderr = _aud174_access_log_row(
+        "/health", timestamp=live_stand._caddy_probe_timestamp_argument(base)
+    )
+    now = [100.0]
+    state = _aud174_install_window_log_selector(
+        monkeypatch,
+        owner=owner,
+        container_pin=pin,
+        context=context,
+        records=[
+            (base, rows["desktop"], benign_stderr),
+            (observed["mobile"], b"", rows["mobile"]),
+        ],
+        now=now,
+        read_durations=(3.0, 1.0),
+    )
+
+    _aud174_read_project_logs(
+        owner,
+        container_pin=pin,
+        completed_at_ms=observed,
+        password_nonce="0" * 32,
+        correlation_ids=correlations,
+        deadline=125.0,
+        docker_context=context,
+    )
+
+    assert state["events"] == ["pin", "logs", "logs", "pin"]
+    first = state["calls"][0][1]
+    second = state["calls"][1][1]
+    cap = live_stand._LIVE_CADDY_PROBE_MAX_BYTES
+    assert first["maximum_bytes"] == cap
+    assert second["maximum_bytes"] == cap - len(rows["desktop"]) - len(benign_stderr)
+    assert first["deadline"] == second["deadline"] == 125.0
+    assert first["command_timeout_seconds"] == pytest.approx(10.0)
+    assert second["command_timeout_seconds"] == pytest.approx(7.0)
+    assert now[0] == pytest.approx(108.0)
+    assert all(result.stdout == result.stderr == b"" for result in state["completed"])
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_stage"),
+    [
+        ("duplicate", "correlation_row"),
+        ("nonce", "nonce_exposure"),
+        ("stderr-error", "stderr_validation"),
+    ],
+)
+def test_live_caddy_probe_disjoint_captures_keep_cross_window_validation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failure: str,
+    expected_stage: str,
+) -> None:
+    owner = object()
+    pin = ("a" * 64, "b" * 64)
+    context = _aud174_docker_read_context(tmp_path)
+    base = 1_798_000_000_000
+    observed = {"desktop": base, "mobile": base + 120_000}
+    correlations = {"desktop": "1" * 32, "mobile": "2" * 32}
+    nonce = "0" * 32
+    rows = {
+        project: _aud174_access_log_row(
+            f"/login?probe={correlations[project]}&password=REDACTED",
+            timestamp=live_stand._caddy_probe_timestamp_argument(timestamp),
+        )
+        for project, timestamp in observed.items()
+    }
+    second_stdout = rows["mobile"]
+    second_stderr = b""
+    second_timestamp = live_stand._caddy_probe_timestamp_argument(observed["mobile"])
+    if failure == "duplicate":
+        second_stdout += _aud174_access_log_row(
+            f"/login?probe={correlations['desktop']}&password=REDACTED",
+            timestamp=second_timestamp,
+        )
+    elif failure == "nonce":
+        second_stderr = _aud174_access_log_row(
+            "/health", timestamp=second_timestamp, message=nonce
+        )
+    else:
+        second_stderr = _aud174_access_log_row(
+            "/health", timestamp=second_timestamp, level="error"
+        )
+    state = _aud174_install_window_log_selector(
+        monkeypatch,
+        owner=owner,
+        container_pin=pin,
+        context=context,
+        records=[
+            (base, rows["desktop"], b""),
+            (observed["mobile"], second_stdout, second_stderr),
+        ],
+    )
+
+    with pytest.raises(live_stand._LiveCaddyProbeStageFailure) as caught:
+        _aud174_read_project_logs(
+            owner,
+            container_pin=pin,
+            completed_at_ms=observed,
+            password_nonce=nonce,
+            correlation_ids=correlations,
+            deadline=live_stand.time.monotonic() + 25,
+            docker_context=context,
+        )
+
+    assert caught.value.stage == expected_stage
+    assert state["events"] == ["pin", "logs", "logs", "pin"]
+    assert all(result.stdout == result.stderr == b"" for result in state["completed"])

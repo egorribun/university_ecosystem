@@ -410,3 +410,20 @@ export function reportLiveActivityGeometry(
     `UE_LIVE_ACTIVITY_GEOMETRY_V1 project=${project} period=${period} indicator_present=${indicatorPresent} radio_present=${radioPresent} dx_milli=${dx} dy_milli=${dy} dw_milli=${dw} dh_milli=${dh}\n`
   )
 }
+
+const emittedPasswordResetRegistrationRecords = new Set<string>()
+
+export function reportLivePasswordResetRegistrationFailure(project: string, step: string): void {
+  if (
+    (project !== "desktop" && project !== "mobile") ||
+    (step !== "arm-response" && step !== "click" && step !== "await-response")
+  ) {
+    return
+  }
+
+  writeRecord(
+    `UE_LIVE_RESET_REGISTRATION_V1 project=${project} step=${step}\n`,
+    emittedPasswordResetRegistrationRecords,
+    6
+  )
+}
