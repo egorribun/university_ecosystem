@@ -22,7 +22,7 @@ Owned Live 39240974198: 20 browser PASS / два штатных SKIP, успеш
 
 ## Текущий source и проверки
 
-Последний опубликованный до этой партии source — 000b1971fb9da21c20b035b227baa9d71ba73ea2. Его synthetic checkout 10f9ed8c4fa88af14c11fe3d8029c077da04c265 имеет тот же tree 85d6261f19f5b4b56b5a5d67b5fdf0f8bb83c5a0. Эта следующая партия сохраняет AUD-128/132/133/135 и News a11y follow-up; их новый hosted GREEN ещё требуется.
+Последний опубликованный source — 999f778590e28e3ca017a2181efe920fee4e12f9: AUD-128/132/133/135 и News a11y follow-up. [Matrix 39418371131](https://github.com/egorribun/university_ecosystem/actions/runs/39418371131) ещё выполняется; эти четыре IDs не добавлены в ledger. Предыдущий source 000b1971fb9da21c20b035b227baa9d71ba73ea2 и его synthetic checkout 10f9ed8c4fa88af14c11fe3d8029c077da04c265 имеют одинаковый tree 85d6261f19f5b4b56b5a5d67b5fdf0f8bb83c5a0.
 
 [Matrix 39413091195](https://github.com/egorribun/university_ecosystem/actions/runs/39413091195) выявил четыре причины отказа:
 
@@ -45,8 +45,8 @@ Owned Live 39240974198: 20 browser PASS / два штатных SKIP, успеш
 
 ## Следующие действия
 
-1. Опубликовать проверенную следующую партию и получить её hosted checks. На 000b проходят Contract 322, verifier 234, Node 657, все четыре frontend shards (9547 PASS), оба pre-commit и integration job. Focused backend: 1051 PASS / один прежний intentional outage hold за 262,58 s, без timeout; это не полный CI GREEN.
-2. Продолжить AUD-136: единая normalized locale для detail key, SDK query, page и SSR loader; optional lang должен попасть в OpenAPI через официальный генератор. AUD-131 подтверждён actual PostgreSQL 2 PASS / 0 SKIP; AUD-134 — 28 media и шесть commit-failure/shared-reference cases. Новая партия: 186 frontend PASS, 73 metrics PASS; эти четыре новых исправления пока не входят в ledger.
+1. Получить hosted checks 999f и опубликовать проверенный AUD-136. На 000b проходят Contract 322, verifier 234, Node 657, все четыре frontend shards (9547 PASS), оба pre-commit и integration job. Focused backend: 1051 PASS / один прежний intentional outage hold за 262,58 s, без timeout; это не полный CI GREEN.
+2. AUD-136: единая normalized locale для detail key, SDK query, page и SSR loader подготовлена; штатный экспорт OpenAPI и генератор SDK добавляют только optional lang у GET event detail. Root проверил OpenAPI contract и оба backend suites: 43 PASS / два прежних PostgreSQL FTS SKIP; пять frontend suites: 187 PASS, включая actual SDK URL/signal и RU/EN cache isolation. Native TypeScript проходит; публикация — через обычные hooks, hosted checks ещё не приняты. AUD-131 подтверждён actual PostgreSQL 2 PASS / 0 SKIP; AUD-134 — 28 media и шесть commit-failure/shared-reference cases. Партия 999f: 186 frontend PASS, 73 metrics PASS; её четыре новых исправления пока не входят в ledger.
 3. Завершить NATS metadata composition, затем bounded transport/coordinator и guarded runtime acceptance по [spec](../specs/2026-10-18-owned-nats-outbox-acceptance.md), [outage plan](2026-10-19-owned-nats-outage.md) и [Docker observation](2026-10-20-owned-nats-docker-observation.md). Runtime/outage отключены; pure metadata match не доказывает daemon authenticity, inventory или restoration.
 4. Закрывать оставшиеся AUD IDs с именованными доказательствами. P1 operational holds AUD-164/167/169/174 сохраняются. AUD-123 требует actual Fluent Bit evidence; source-label assertion его не заменяет.
 

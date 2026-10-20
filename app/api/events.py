@@ -78,6 +78,22 @@ router = APIRouter(prefix="/events", tags=["events"])
 _EVENTS_CACHE_CONTROL = "private, max-age=180"
 
 
+def _document_event_detail_lang(
+    _lang: str | None = Query(
+        default=None,
+        alias="lang",
+        description=(
+            "Requested event detail locale. en/ru and regional tags such as ru-RU "
+            "are recognized. Unsupported values are ignored; resolution then "
+            "checks locale/language query aliases, user preference, Accept-Language, "
+            "and finally en."
+        ),
+    ),
+) -> None:
+    """Expose the existing request locale query in OpenAPI without handler input."""
+    return None
+
+
 def _event_attachment_url_matches_resource(
     storage_url: str,
     event_id: uuid.UUID | int,
@@ -651,7 +667,11 @@ async def delete_event(
     return {"ok": True}
 
 
-@router.get("/{event_id}", response_model=schemas.EventOut)
+@router.get(
+    "/{event_id}",
+    response_model=schemas.EventOut,
+    dependencies=[Depends(_document_event_detail_lang)],
+)
 @cached_endpoint(
     version_resolver=events_cache_version,
     cache_prefix="ue:events:detail",

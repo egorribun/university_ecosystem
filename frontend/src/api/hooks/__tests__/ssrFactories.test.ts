@@ -9,7 +9,7 @@
  * hydration — see W129 SW5 honest deferral #10).
  *
  * Coverage:
- *   - eventDetailQueryOptions(id): queryKey shape + staleTime + retry
+ *   - eventDetailQueryOptions(id, language): locale-aware key + staleTime + retry
  *   - newsDetailQueryOptions(id, language): queryKey shape (W129 SW5
  *     deliberately preserves the legacy ["news", id, language] shape over
  *     a more-consistent ["news", "detail", id, language] for cache
@@ -24,9 +24,12 @@
  *     4-decimal coordinate precision + staleTime + placeholderData
  *     fallback path (sessionStorage cold-mount)
  */
+import axios, { type AxiosAdapter, type InternalAxiosRequestConfig } from "axios"
 import { QueryClient } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { createClient } from "@/api/generated/client"
+import { getEventApiV1EventsEventIdGet } from "@/api/generated/sdk.gen"
 import { eventDetailQueryOptions } from "../events"
 import { newsDetailQueryOptions, prefetchNewsListQuery } from "../news"
 import { scheduleGroupsQueryOptions, pageScheduleQueryOptions } from "../schedule"
@@ -45,42 +48,76 @@ type CapturedPrefetchOptions = {
   getNextPageParam: (lastPage: { next_cursor: string | null }) => string | null
 }
 
-describe("eventDetailQueryOptions (Wave 129 SW2)", () => {
-  it("queryKey shape is ['events', 'detail', id]", () => {
-    const opts = eventDetailQueryOptions("abc-123")
-    expect(opts.queryKey).toEqual(["events", "detail", "abc-123"])
+describe("eventDetailQueryOptions (Wave 129 SW2 + AUD-136)", () => {
+  it("queryKey includes event id and normalized request language", () => {
+    const ru = eventDetailQueryOptions("abc-123", "ru")
+    const en = eventDetailQueryOptions("abc-123", "en")
+
+    expect(ru.queryKey).toEqual(["events", "detail", "abc-123", "ru"])
+    expect(en.queryKey).toEqual(["events", "detail", "abc-123", "en"])
+    expect(ru.queryKey).not.toEqual(en.queryKey)
   })
 
   it("queryKey id is reflected as-is (no normalization)", () => {
-    const opts = eventDetailQueryOptions("11111111-1111-1111-1111-111111111111")
+    const opts = eventDetailQueryOptions("11111111-1111-1111-1111-111111111111", "ru")
     expect(opts.queryKey[2]).toBe("11111111-1111-1111-1111-111111111111")
   })
 
   it("staleTime is 60_000 (60s — matches W129 SW2 plan)", () => {
-    const opts = eventDetailQueryOptions("any-id")
+    const opts = eventDetailQueryOptions("any-id", "ru")
     expect(opts.staleTime).toBe(60_000)
   })
 
   it("retry is 1 (limits SSR loader latency on network blips)", () => {
-    const opts = eventDetailQueryOptions("any-id")
+    const opts = eventDetailQueryOptions("any-id", "ru")
     expect(opts.retry).toBe(1)
   })
 
   it("queryFn is a function (callable)", () => {
-    const opts = eventDetailQueryOptions("any-id")
+    const opts = eventDetailQueryOptions("any-id", "ru")
     expect(typeof opts.queryFn).toBe("function")
   })
 
   it("returns a fresh options object per call (not memoized — caller's responsibility)", () => {
-    const a = eventDetailQueryOptions("id-1")
-    const b = eventDetailQueryOptions("id-1")
+    const a = eventDetailQueryOptions("id-1", "ru")
+    const b = eventDetailQueryOptions("id-1", "ru")
     expect(a).not.toBe(b)
-    // Same shape though
     expect(a.queryKey).toEqual(b.queryKey)
     expect(a.staleTime).toBe(b.staleTime)
   })
-})
 
+  it("serializes the locale into the generated SDK URL and forwards query cancellation", async () => {
+    const requests: InternalAxiosRequestConfig[] = []
+    const adapter: AxiosAdapter = async (config) => {
+      requests.push(config)
+      return {
+        config,
+        data: { id: "event-1" },
+        headers: {},
+        status: 200,
+        statusText: "OK",
+      }
+    }
+    const client = createClient({
+      axios: axios.create({ adapter }),
+      baseURL: "https://events.example.test",
+    })
+    const signal = new AbortController().signal
+
+    const response = await getEventApiV1EventsEventIdGet({
+      client,
+      path: { event_id: "event-1" },
+      query: { lang: "ru" },
+      signal,
+      throwOnError: true,
+    })
+
+    expect(response.data.id).toBe("event-1")
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.url).toBe("https://events.example.test/api/v1/events/event-1?lang=ru")
+    expect(requests[0]?.signal).toBe(signal)
+  })
+})
 describe("newsDetailQueryOptions (Wave 129 SW5)", () => {
   it("queryKey shape is legacy ['news', id, language] — backward-compat preserved", () => {
     const opts = newsDetailQueryOptions("abc-123", "ru")

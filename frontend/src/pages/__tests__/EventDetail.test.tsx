@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   id: "event-1",
   user: { id: "admin-1", role: "admin" } as { id: string; role: string } | null,
   language: "en",
+  detailQueryArgs: [] as unknown[],
   media: { reduced: false, narrow: false },
   navigation: {
     prevId: null as string | null,
@@ -69,7 +70,10 @@ vi.mock("@/contexts/AuthContext", () => ({
 }))
 
 vi.mock("@/api/hooks/events", () => ({
-  useEventDetailQuery: () => mocks.detail,
+  useEventDetailQuery: (id: string | undefined, language: string) => {
+    mocks.detailQueryArgs = [id, language]
+    return mocks.detail
+  },
   useEventNavigation: () => mocks.navigation,
 }))
 
@@ -163,15 +167,18 @@ vi.mock("@/components/events/EventDetailHero", () => ({
 }))
 vi.mock("@/components/events/EventDetailBody", () => ({
   EventDetailBody: ({
+    language,
     onRefresh,
     onError,
     onSuccess,
   }: {
+    language: string
     onRefresh: () => void
     onError: (message: string) => void
     onSuccess: (message: string) => void
   }) => (
     <div>
+      <span data-testid="event-body-language">{language}</span>
       <span>event-body</span>
       <button type="button" onClick={() => void onRefresh()}>
         refresh body
@@ -257,6 +264,7 @@ describe("EventDetail", () => {
     mocks.detail = { data: event, isLoading: false, error: null }
     mocks.user = { id: "admin-1", role: "admin" }
     mocks.language = "en"
+    mocks.detailQueryArgs = []
     mocks.media.reduced = false
     mocks.media.narrow = false
     mocks.navigation = { prevId: null, nextId: null, prevTitle: null, nextTitle: null }
@@ -278,6 +286,17 @@ describe("EventDetail", () => {
   afterEach(() => {
     vi.restoreAllMocks()
     window.history.replaceState(null, "", "/")
+  })
+
+  it.each([
+    ["en-US", "en"],
+    ["ru-RU", "ru"],
+  ])("uses its normalized %s locale for detail fetch and body language", (language, expected) => {
+    mocks.language = language
+    render(<EventDetail />)
+
+    expect(mocks.detailQueryArgs).toEqual(["event-1", expected])
+    expect(screen.getByTestId("event-body-language")).toHaveTextContent(expected)
   })
 
   it("renders the skeleton while the event query is loading", () => {

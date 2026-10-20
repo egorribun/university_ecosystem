@@ -1,4 +1,5 @@
-import { describe, expect, it, vi, beforeEach } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { eventDetailQueryOptions } from "@/api/hooks/events"
 import { Route as EventsDetailRoute } from "../_auth/events.$id"
 import { Route as EventsIndexRoute } from "../_auth/events.index"
 import { Route as NewsIndexRoute } from "../_auth/news.index"
@@ -9,9 +10,9 @@ import { SETTINGS_TAB } from "@/features/settings/schema"
 
 // Mock the query options factories
 vi.mock("@/api/hooks/events", () => ({
-  eventDetailQueryOptions: vi.fn().mockImplementation((id: string) => ({
-    queryKey: ["event", id],
-    queryFn: () => Promise.resolve({ id }),
+  eventDetailQueryOptions: vi.fn().mockImplementation((id: string, language: string) => ({
+    queryKey: ["event", id, language],
+    queryFn: () => Promise.resolve({ id, language }),
   })),
   prefetchEventsListQuery: vi.fn().mockResolvedValue(undefined),
   EVENTS_PAGE_SIZE: 10,
@@ -58,8 +59,12 @@ describe("Route Loaders & validateSearch validation", () => {
 
   let mockQueryClient: any
 
+  const originalSsrLangGetter = globalThis.__ssrLangGetter__
+
   beforeEach(() => {
     vi.clearAllMocks()
+    globalThis.__ssrLangGetter__ = undefined
+    window.localStorage.clear()
 
     mockQueryClient = {
       ensureQueryData: vi.fn().mockImplementation((options: any) => {
@@ -69,21 +74,35 @@ describe("Route Loaders & validateSearch validation", () => {
   })
 
   describe("events.$id.tsx Route", () => {
-    it("calls loader and prefetches event detail query options", async () => {
-      const loader = EventsDetailRoute.options.loader
-      expect(loader).toBeTypeOf("function")
-
-      const context = { queryClient: mockQueryClient }
-      const params = { id: "test-event-uuid" }
-
-      await (loader as any)({ context, params })
-
-      expect(mockQueryClient.ensureQueryData).toHaveBeenCalledWith(
-        expect.objectContaining({
-          queryKey: ["event", "test-event-uuid"],
-        })
-      )
+    afterEach(() => {
+      globalThis.__ssrLangGetter__ = originalSsrLangGetter
+      window.localStorage.clear()
     })
+
+    it.each([
+      ["en", "ru"],
+      ["ru", "en"],
+    ] as const)(
+      "prefetches detail with SSR locale %s even when browser preference is %s",
+      async (ssrLanguage, browserLanguage) => {
+        globalThis.__ssrLangGetter__ = () => ssrLanguage
+        window.localStorage.setItem("ue:language", browserLanguage)
+
+        const loader = EventsDetailRoute.options.loader
+        expect(loader).toBeTypeOf("function")
+
+        const context = { queryClient: mockQueryClient }
+        const params = { id: "test-event-uuid" }
+        await (loader as any)({ context, params })
+
+        expect(eventDetailQueryOptions).toHaveBeenCalledWith("test-event-uuid", ssrLanguage)
+        expect(mockQueryClient.ensureQueryData).toHaveBeenCalledWith(
+          expect.objectContaining({
+            queryKey: ["event", "test-event-uuid", ssrLanguage],
+          })
+        )
+      }
+    )
   })
 
   describe("schedule.tsx Route", () => {

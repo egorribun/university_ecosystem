@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException, Response
+from fastapi.openapi.utils import get_openapi
 
 from app.api import events as api
 from app.schemas import schemas
@@ -49,6 +50,32 @@ def _event_create() -> schemas.EventCreate:
         starts_at=now,
         ends_at=now + timedelta(hours=1),
     )
+
+
+def test_get_event_openapi_documents_optional_lang_query_once() -> None:
+    schema = get_openapi(
+        title="Events API",
+        version="1.0.0",
+        routes=api.router.routes,
+    )
+    parameters = schema["paths"]["/events/{event_id}"]["get"]["parameters"]
+    lang_parameters = [
+        parameter
+        for parameter in parameters
+        if parameter.get("in") == "query" and parameter.get("name") == "lang"
+    ]
+
+    assert len(lang_parameters) == 1
+    lang_parameter = lang_parameters[0]
+    assert lang_parameter["required"] is False
+    lang_schema = lang_parameter["schema"]
+    schema_types = (
+        {option.get("type") for option in lang_schema["anyOf"]}
+        if "anyOf" in lang_schema
+        else {lang_schema.get("type")}
+    )
+    assert schema_types == {"string", "null"} or schema_types == {"string"}
+    assert not {"enum", "pattern", "minLength", "maxLength"}.intersection(lang_schema)
 
 
 def _attendance_dto(user_id: uuid.UUID, event_id: uuid.UUID) -> SimpleNamespace:

@@ -1255,12 +1255,17 @@ describe("eventDetailQueryOptions.queryFn (events.ts:445-451)", () => {
     const ev = makeEvent("detail-1", "Detail title")
     getEventMock.mockResolvedValue({ status: 200, data: ev })
 
-    const opts = eventDetailQueryOptions("detail-1")
-    const out = await opts.queryFn({ signal: undefined })
+    const opts = eventDetailQueryOptions("detail-1", "en")
+    const controller = new AbortController()
+    const out = await opts.queryFn({ signal: controller.signal })
 
     expect(out).toEqual(ev)
     expect(getEventMock).toHaveBeenCalledWith(
-      expect.objectContaining({ path: { event_id: "detail-1" } })
+      expect.objectContaining({
+        path: { event_id: "detail-1" },
+        query: { lang: "en" },
+        signal: controller.signal,
+      })
     )
   })
 })
@@ -1269,12 +1274,14 @@ describe("eventDetailQueryOptions.queryFn (events.ts:445-451)", () => {
 describe("useEventDetailQuery (events.ts:457-466)", () => {
   it("does not fetch when id is undefined (enabled: !!id)", () => {
     const queryClient = freshClient()
-    const { result } = renderHook(() => useEventDetailQuery(undefined), {
+    const { result } = renderHook(() => useEventDetailQuery(undefined, "ru"), {
       wrapper: makeWrapper(queryClient),
     })
     expect(result.current.fetchStatus).toBe("idle")
     expect(getEventMock).not.toHaveBeenCalled()
-    expect(queryClient.getQueryCache().find({ queryKey: ["events", "detail", ""] })).toBeDefined()
+    expect(
+      queryClient.getQueryCache().find({ queryKey: ["events", "detail", "", "ru"] })
+    ).toBeDefined()
   })
 
   it("fetches the event when id is provided", async () => {
@@ -1282,13 +1289,55 @@ describe("useEventDetailQuery (events.ts:457-466)", () => {
     getEventMock.mockResolvedValue({ status: 200, data: ev })
 
     const queryClient = freshClient()
-    const { result } = renderHook(() => useEventDetailQuery("d-2"), {
+    const { result } = renderHook(() => useEventDetailQuery("d-2", "ru"), {
       wrapper: makeWrapper(queryClient),
     })
 
     await waitFor(() => expect(result.current.data).toEqual(ev))
     expect(getEventMock).toHaveBeenCalledWith(
-      expect.objectContaining({ path: { event_id: "d-2" } })
+      expect.objectContaining({
+        path: { event_id: "d-2" },
+        query: { lang: "ru" },
+      })
+    )
+  })
+
+  it("keeps Russian and English detail responses in separate cache entries", async () => {
+    getEventMock.mockImplementation(async (request: unknown) => {
+      const { query } = request as { query: { lang: "en" | "ru" } }
+      return { status: 200, data: makeEvent("locale-event", "Detail " + query.lang) }
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    })
+    const initialProps: { language: "en" | "ru" } = { language: "ru" }
+    const { result, rerender } = renderHook(
+      ({ language }: { language: "en" | "ru" }) => useEventDetailQuery("locale-event", language),
+      {
+        initialProps,
+        wrapper: makeWrapper(queryClient),
+      }
+    )
+
+    await waitFor(() => expect(result.current.data?.title).toBe("Detail ru"))
+    rerender({ language: "en" })
+    await waitFor(() => expect(result.current.data?.title).toBe("Detail en"))
+
+    expect(getEventMock).toHaveBeenCalledTimes(2)
+    expect(getEventMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ query: { lang: "ru" } })
+    )
+    expect(getEventMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ query: { lang: "en" } })
+    )
+    expect(queryClient.getQueryData(["events", "detail", "locale-event", "ru"])).toEqual(
+      makeEvent("locale-event", "Detail ru")
+    )
+    expect(queryClient.getQueryData(["events", "detail", "locale-event", "en"])).toEqual(
+      makeEvent("locale-event", "Detail en")
     )
   })
 })

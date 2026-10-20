@@ -161,7 +161,7 @@ describe("events hooks SSR fallbacks", () => {
     const populatedRequest = createClient()
     seedNavigation(populatedRequest)
     const directRequest = createClient()
-    directRequest.setQueryData(["events", "detail", current.id], current)
+    directRequest.setQueryData(["events", "detail", current.id, "en"], current)
 
     expect(renderNavigation(directRequest, current.id)).toBe("<output>none|none|none|none</output>")
     expect(renderNavigation(populatedRequest, current.id)).toBe(

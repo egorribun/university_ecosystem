@@ -24,6 +24,7 @@ import { useRelatedEvents } from "@/hooks/useRelatedEvents"
 import { useEventRegistration } from "@/hooks/useEventRegistration"
 import { inferEventCategory } from "@/features/events/categories"
 import { setEventsHeroId } from "@/utils/eventsTransition"
+import type { ResolvedLang } from "@/ssrTheme"
 import { useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
 import { logError } from "@/app/logger"
@@ -47,10 +48,10 @@ export default function EventDetail() {
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
   const { t, i18n } = useTranslation(["events", "common"])
-  const language: "en" | "ru" = i18n.language?.startsWith("en") ? "en" : "ru"
+  const language: ResolvedLang = i18n.language?.startsWith("en") ? "en" : "ru"
 
   /* ── Data fetching ── */
-  const { data: event, isLoading, error } = useEventDetailQuery(id)
+  const { data: event, isLoading, error } = useEventDetailQuery(id, language)
   const { prevId, nextId, prevTitle, nextTitle } = useEventNavigation(id)
 
   /* ── Swipe gesture for prev/next navigation ── */

@@ -17,6 +17,7 @@ import { allEventsApiV1EventsGet, myEventsApiV1EventsMyGet } from "@/api/generat
 import type { AllEventsApiV1EventsGetData } from "@/api/generated/types.gen"
 import type { Event } from "@/types/Event"
 import type { PaginatedResponse } from "@/types/Pagination"
+import type { ResolvedLang } from "@/ssrTheme"
 import { StorageItem } from "@/utils/storage"
 import { getConfirmedUserId } from "@/stores/authIdentity"
 import {
@@ -538,16 +539,18 @@ export const useSuspenseMyEventsQuery = (
 // EVENT DETAIL QUERY (Wave 76; Wave 129 SW2 factory extraction)
 // ---------------------------------------------------------------------------
 
-type EventDetailQueryKey = readonly ["events", "detail", string]
+type EventDetailQueryKey = readonly ["events", "detail", string, ResolvedLang]
 
 export type UseEventDetailQueryResult = UseQueryResult<Event, Error>
 
 /**
- * Pure query options factory for a single event by id. Used by both:
+ * Pure query options factory for a single event id and normalized language. Used by both:
  *
  *   - `useEventDetailQuery` (component context, with `enabled: !!id` guard)
  *   - `/events/$id` route loader for SSR pre-fetch via
- *     `queryClient.ensureQueryData(eventDetailQueryOptions(params.id))`
+ *     `queryClient.ensureQueryData(eventDetailQueryOptions(params.id, language))`
+ *
+ * The same language is part of the cache key and explicit API query so a saved user preference cannot put another locale's response under this entry.
  *
  * Caller is responsible for passing a defined id. The route loader path
  * always has a defined `params.id` (TanStack Router params validation);
@@ -557,14 +560,15 @@ export type UseEventDetailQueryResult = UseQueryResult<Event, Error>
  * SSR loader latency on network blips. Dynamic-imported SDK keeps the
  * detail-route bundle lean — hot path on /events/$id only.
  */
-export const eventDetailQueryOptions = (id: string) => ({
-  queryKey: ["events", "detail", id] as EventDetailQueryKey,
+export const eventDetailQueryOptions = (id: string, language: ResolvedLang) => ({
+  queryKey: ["events", "detail", id, language] as EventDetailQueryKey,
   queryFn: async ({ signal }: { signal?: AbortSignal }): Promise<Event> => {
     const { getEventApiV1EventsEventIdGet } = await import("@/api/generated/sdk.gen")
     const response = await getEventApiV1EventsEventIdGet({
       path: { event_id: id },
+      query: { lang: language },
       signal,
-    } as Parameters<typeof getEventApiV1EventsEventIdGet>[0])
+    })
     return response.data as Event
   },
   staleTime: 60_000,
@@ -573,9 +577,10 @@ export const eventDetailQueryOptions = (id: string) => ({
 
 export const useEventDetailQuery = (
   id: string | undefined,
+  language: ResolvedLang,
   options?: Omit<UseQueryOptions<Event, Error, Event, EventDetailQueryKey>, "queryKey" | "queryFn">
 ): UseEventDetailQueryResult => {
-  const baseOptions = eventDetailQueryOptions(id ?? "")
+  const baseOptions = eventDetailQueryOptions(id ?? "", language)
   return useQuery<Event, Error, Event, EventDetailQueryKey>({
     ...baseOptions,
     enabled: !!id,

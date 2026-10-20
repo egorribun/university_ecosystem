@@ -5511,7 +5511,14 @@ export type GetEventApiV1EventsEventIdGetData = {
      */
     event_id: string | number
   }
-  query?: never
+  query?: {
+    /**
+     * Lang
+     *
+     * Requested event detail locale. en/ru and regional tags such as ru-RU are recognized. Unsupported values are ignored; resolution then checks locale/language query aliases, user preference, Accept-Language, and finally en.
+     */
+    lang?: string | null
+  }
   url: "/api/v1/events/{event_id}"
 }
 

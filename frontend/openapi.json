@@ -9922,6 +9922,24 @@
             }
           },
           {
+            "description": "Requested event detail locale. en/ru and regional tags such as ru-RU are recognized. Unsupported values are ignored; resolution then checks locale/language query aliases, user preference, Accept-Language, and finally en.",
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Requested event detail locale. en/ru and regional tags such as ru-RU are recognized. Unsupported values are ignored; resolution then checks locale/language query aliases, user preference, Accept-Language, and finally en.",
+              "title": "Lang"
+            }
+          },
+          {
             "in": "header",
             "name": "if-none-match",
             "required": false,

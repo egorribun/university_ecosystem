@@ -74,6 +74,22 @@ async def test_events_localization(async_client, db_session, user_factory):
 
     headers = await _login(async_client, student.email, password)
 
+    detail_en = await async_client.get(
+        f"/events/{primary.id}?lang=EN-us",
+        headers={**headers, "Accept-Language": "ru"},
+    )
+    assert detail_en.status_code == status.HTTP_200_OK
+    assert detail_en.headers.get("Content-Language") == "en"
+    assert detail_en.json()["title"] == "English Event"
+
+    detail_invalid_lang = await async_client.get(
+        f"/events/{primary.id}?lang=de",
+        headers={**headers, "Accept-Language": "ru"},
+    )
+    assert detail_invalid_lang.status_code == status.HTTP_200_OK
+    assert detail_invalid_lang.headers.get("Content-Language") == "ru"
+    assert detail_invalid_lang.json()["title"] == "Русское событие"
+
     response_en = await async_client.get(
         "/events",
         headers={**headers, "Accept-Language": "en"},
@@ -211,6 +227,27 @@ async def test_events_etag_and_not_modified(
 
     headers = await _login(async_client, student.email, password)
     base_headers = {**headers, "Accept-Language": "en"}
+
+    detail_pattern = "ue:events:detail:*"
+    await fake_cache.invalidate(detail_pattern)
+    detail_cache_client = await fake_cache._get_client()
+    detail_ru = await async_client.get(
+        f"/events/{event.id}?lang=RU",
+        headers=base_headers,
+    )
+    assert detail_ru.status_code == status.HTTP_200_OK
+    assert detail_ru.headers.get("Content-Language") == "ru"
+    assert detail_ru.json()["title"] == "Test event"
+    assert len(await detail_cache_client.keys(detail_pattern)) == 1
+
+    detail_ru_alias = await async_client.get(
+        f"/events/{event.id}?locale=ru-ru",
+        headers=base_headers,
+    )
+    assert detail_ru_alias.status_code == status.HTTP_200_OK
+    assert detail_ru_alias.headers.get("Content-Language") == "ru"
+    assert detail_ru_alias.headers.get("ETag") == detail_ru.headers.get("ETag")
+    assert len(await detail_cache_client.keys(detail_pattern)) == 1
 
     list_response = await async_client.get("/events", headers=base_headers)
     assert list_response.status_code == status.HTTP_200_OK
