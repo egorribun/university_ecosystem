@@ -162,7 +162,9 @@ vi.mock("@/components/ui/ConfirmDialog", () => ({
     ) : null,
 }))
 
-vi.mock("@/components/ui/SEO", () => ({ SEO: () => null }))
+vi.mock("@/components/ui/SEO", async () =>
+  vi.importActual<typeof import("@/components/ui/SEO")>("@/components/ui/SEO")
+)
 
 vi.mock("@/components/settings", () => ({
   Alert: ({ children, onClose }: { children: ReactNode; onClose?: () => void }) => (
@@ -351,6 +353,12 @@ describe("NewsDetail", () => {
     render(<NewsDetail />)
 
     expect(screen.getByTestId("news-detail-skeleton")).toBeInTheDocument()
+    expect(document.title).toBe("news:pageTitle | University Ecosystem")
+    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1)
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      "news:pageDescription"
+    )
     expect(screen.queryByRole("heading")).not.toBeInTheDocument()
     window.dispatchEvent(new Event("scroll"))
     expect(() => frame?.(0)).not.toThrow()
@@ -363,6 +371,12 @@ describe("NewsDetail", () => {
     render(<NewsDetail />)
 
     expect(screen.getByText("news:states.loadError")).toBeInTheDocument()
+    expect(document.title).toBe("news:pageTitle | University Ecosystem")
+    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1)
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      "news:pageDescription"
+    )
     fireEvent.click(screen.getByRole("button", { name: "common:buttons.back" }))
     expect(mocks.navigate).toHaveBeenCalledWith({ to: "/news" })
   })
@@ -490,6 +504,15 @@ describe("NewsDetail", () => {
 
     expect(screen.getByRole("heading", { name: "English title" })).toBeInTheDocument()
     expect(screen.getByText("body:English content")).toBeInTheDocument()
+    expect(document.title).toBe("English title | University Ecosystem")
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      "English content"
+    )
+    expect(document.head.querySelector('meta[property="og:image"]')).toHaveAttribute(
+      "content",
+      article.image_url
+    )
     expect(mocks.setNewsHeroId).toHaveBeenCalledWith("news-1")
 
     fireEvent.click(screen.getByRole("button", { name: "like" }))

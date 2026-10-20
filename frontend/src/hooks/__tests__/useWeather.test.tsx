@@ -6,10 +6,14 @@ import React from "react"
 
 // Mock fetchWeatherSnapshot
 const mockFetchWeatherSnapshot = vi.fn()
-vi.mock("@/api/weather", () => ({
-  WEATHER_CACHE_TTL_MS: 300000,
-  fetchWeatherSnapshot: (...args: unknown[]) => mockFetchWeatherSnapshot(...args),
-}))
+vi.mock("@/api/weather", async () => {
+  const actual = await vi.importActual<typeof import("@/api/weather")>("@/api/weather")
+  return {
+    ...actual,
+    WEATHER_CACHE_TTL_MS: 300000,
+    fetchWeatherSnapshot: (...args: unknown[]) => mockFetchWeatherSnapshot(...args),
+  }
+})
 
 // Mock weatherQueryOptions
 vi.mock("@/api/hooks/weather", () => ({

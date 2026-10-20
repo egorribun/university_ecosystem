@@ -508,17 +508,58 @@ def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
     monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
     monkeypatch.setattr(live_stand, "_require_worktree", lambda **_kwargs: None)
     monkeypatch.setattr(live_stand, "load_stand_owner", lambda _path: owner)
-    daemon_checks: list[live_stand.StandOwner] = []
+    daemon_checks: list[
+        tuple[
+            live_stand.StandOwner,
+            float | None,
+            live_stand._LiveDockerReadContext | None,
+        ]
+    ] = []
+
+    def require_owned_docker_daemon(
+        checked_owner: live_stand.StandOwner,
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> None:
+        assert checked_owner == owner
+        assert deadline is None
+        assert docker_context is None
+        daemon_checks.append((checked_owner, deadline, docker_context))
+
     monkeypatch.setattr(
         live_stand,
         "_require_owned_docker_daemon",
-        lambda checked_owner: daemon_checks.append(checked_owner),
+        require_owned_docker_daemon,
     )
-    resource_checks: list[live_stand.StandOwner] = []
+    resource_checks: list[
+        tuple[
+            Path,
+            live_stand.StandOwner,
+            float | None,
+            live_stand._LiveDockerReadContext | None,
+        ]
+    ] = []
+
+    def verify_compose_resources(
+        checked_worktree: Path,
+        checked_owner: live_stand.StandOwner,
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> None:
+        assert checked_worktree == worktree
+        assert checked_owner == owner
+        assert deadline is None
+        assert docker_context is None
+        resource_checks.append(
+            (checked_worktree, checked_owner, deadline, docker_context)
+        )
+
     monkeypatch.setattr(
         live_stand,
         "_verify_stand_owner_compose_resources",
-        lambda _path, checked_owner, **_kwargs: resource_checks.append(checked_owner),
+        verify_compose_resources,
     )
     monkeypatch.setattr(
         live_stand,
@@ -564,9 +605,9 @@ def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
                 for index in range(len(command))
             ):
                 pytest.fail("live seed command omitted its verified owner target")
-    if daemon_checks != [owner] * 8:
+    if [check[0] for check in daemon_checks] != [owner] * 8:
         pytest.fail("each seed subprocess must reverify the owned Docker daemon")
-    if resource_checks != [owner] * 6:
+    if [check[1] for check in resource_checks] != [owner] * 6:
         pytest.fail("each seed subprocess must verify signed Compose resources")
     if any("TEST_PASSWORD" in environment for environment in non_admin_environments):
         pytest.fail("only admin-account seeding may receive the admin password")
@@ -624,10 +665,22 @@ def test_seed_refuses_ownership_metadata_changed_after_it_was_loaded(
     )
     monkeypatch.setattr(live_stand, "_require_worktree", lambda: None)
     monkeypatch.setattr(live_stand, "load_stand_owner", lambda _path: changed_owner)
+
+    def unexpected_daemon_check(
+        checked_owner: live_stand.StandOwner,
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> None:
+        assert checked_owner == changed_owner
+        assert deadline is None
+        assert docker_context is None
+        pytest.fail("daemon check ran with stale ownership data")
+
     monkeypatch.setattr(
         live_stand,
         "_require_owned_docker_daemon",
-        lambda _owner: pytest.fail("daemon check ran with stale ownership data"),
+        unexpected_daemon_check,
     )
 
     with pytest.raises(live_stand.StandError, match="metadata changed"):
@@ -666,6 +719,16 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
     playwright_runs: list[tuple[Path, dict[str, str], str, bool, bool]] = []
     playwright_environment_objects: list[dict[str, str]] = []
     playwright_failures_remaining = 0
+    probe_nonce = "f" * 32
+    probe_correlation_ids = {"desktop": "a" * 32, "mobile": "b" * 32}
+    docker_context = object()
+    container_pin = ("c" * 64, "d" * 64)
+    e2e_daemon_calls: list[tuple[float | None, object | None]] = []
+    e2e_resource_calls: list[tuple[float | None, object | None]] = []
+    caddy_pin_calls: list[tuple[float | None, object | None]] = []
+    probe_log_calls: list[
+        tuple[int, int, str, dict[str, str], tuple[str, str], object | None]
+    ] = []
     dependency_runs: list[tuple[Path, dict[str, str]]] = []
     owner_marker_paths: list[Path] = []
     event_order: list[str] = []
@@ -782,11 +845,87 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
     monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
     monkeypatch.setattr(live_stand, "_require_worktree", lambda: None)
     monkeypatch.setattr(live_stand, "load_stand_owner", lambda _path: owner)
-    monkeypatch.setattr(live_stand, "_require_owned_docker_daemon", lambda _owner: None)
+
+    def require_owned_docker_daemon(
+        checked_owner: live_stand.StandOwner,
+        *,
+        deadline: float | None = None,
+        docker_context: object | None = None,
+    ) -> None:
+        assert checked_owner == owner
+        e2e_daemon_calls.append((deadline, docker_context))
+
+    def verify_compose_resources(
+        checked_worktree: Path,
+        checked_owner: live_stand.StandOwner,
+        *,
+        deadline: float | None = None,
+        docker_context: object | None = None,
+    ) -> None:
+        assert checked_worktree == worktree
+        assert checked_owner == owner
+        e2e_resource_calls.append((deadline, docker_context))
+
+    def verify_caddy_pin(
+        checked_owner: live_stand.StandOwner,
+        *,
+        deadline: float | None = None,
+        docker_context: object | None = None,
+    ) -> tuple[str, str]:
+        assert checked_owner == owner
+        assert deadline is not None
+        assert docker_context is expected_docker_context
+        caddy_pin_calls.append((deadline, docker_context))
+        return container_pin
+
+    def verify_probe_log(
+        checked_owner: live_stand.StandOwner,
+        output_directory: Path,
+        *,
+        started_at_ms: int,
+        finished_at_ms: int,
+        password_nonce: str,
+        correlation_ids: Mapping[str, str],
+        container_pin: tuple[str, str],
+        docker_context: object | None = None,
+    ) -> None:
+        assert checked_owner == owner
+        assert output_directory.is_dir()
+        assert finished_at_ms >= started_at_ms
+        assert password_nonce == probe_nonce
+        assert dict(correlation_ids) == probe_correlation_ids
+        assert container_pin == expected_container_pin
+        assert docker_context is expected_docker_context
+        probe_log_calls.append(
+            (
+                started_at_ms,
+                finished_at_ms,
+                password_nonce,
+                dict(correlation_ids),
+                container_pin,
+                docker_context,
+            )
+        )
+
+    expected_docker_context = docker_context
+    expected_container_pin = container_pin
+    monkeypatch.setattr(
+        live_stand, "_new_live_docker_read_context", lambda: expected_docker_context
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_new_live_caddy_probe_values",
+        lambda: (probe_nonce, dict(probe_correlation_ids)),
+    )
+    monkeypatch.setattr(live_stand, "_verified_live_caddy_container", verify_caddy_pin)
+    monkeypatch.setattr(live_stand, "_verify_live_caddy_probe_log", verify_probe_log)
+    monkeypatch.setattr(
+        live_stand, "_require_owned_docker_daemon", require_owned_docker_daemon
+    )
     monkeypatch.setattr(
         live_stand,
         "_verify_stand_owner_compose_resources",
-        lambda *_args, **_kwargs: None,
+        verify_compose_resources,
     )
     monkeypatch.setattr(
         live_stand,
@@ -841,6 +980,42 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
             "playwright",
         ]:
             pytest.fail("locked dependencies must be ready before Playwright starts")
+        if len(e2e_daemon_calls) != 10 or len(e2e_resource_calls) != 8:
+            pytest.fail("legacy fixture callbacks must retain each optional read pin")
+        if len(caddy_pin_calls) != 2 or len(probe_log_calls) != 2:
+            pytest.fail("each successful probe run must verify its pinned Caddy log")
+        for run_index, (deadline, context) in enumerate(caddy_pin_calls):
+            if deadline is None or context is not expected_docker_context:
+                pytest.fail(
+                    "each probe must reuse its pinned Docker context and deadline"
+                )
+            if e2e_daemon_calls[run_index * 5 + 4] != (deadline, context):
+                pytest.fail("the E2E daemon check must share the probe deadline")
+            if e2e_resource_calls[run_index * 4 + 3] != (deadline, context):
+                pytest.fail("the E2E Compose check must share the probe deadline")
+            if any(
+                call != (None, None)
+                for call in e2e_daemon_calls[run_index * 5 : run_index * 5 + 4]
+            ):
+                pytest.fail(
+                    "seed daemon checks must retain the ordinary no-deadline path"
+                )
+            if any(
+                call != (None, None)
+                for call in e2e_resource_calls[run_index * 4 : run_index * 4 + 3]
+            ):
+                pytest.fail(
+                    "seed Compose checks must retain the ordinary no-deadline path"
+                )
+        if any(
+            environment.get("LIVE_CADDY_LOG_PROBE") != probe_nonce
+            or json.loads(environment.get("LIVE_CADDY_PROBE_IDS", "{}"))
+            != probe_correlation_ids
+            for _cwd, environment, _password, _output, _configs in playwright_runs
+        ):
+            pytest.fail(
+                "the Playwright child must receive only this run's probe values"
+            )
         if any(marker.exists() for marker in owner_marker_paths):
             pytest.fail(
                 "the output ownership marker must be removed with its temp root"
@@ -1000,6 +1175,12 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
             pytest.fail("a Playwright failure must use the stand error exit code")
         if len(runs) != 9 or len(dependency_runs) != 3 or len(playwright_runs) != 3:
             pytest.fail("the failure-path E2E run must reach Playwright after seeding")
+        if len(e2e_daemon_calls) != 15 or len(e2e_resource_calls) != 12:
+            pytest.fail(
+                "the failure path must retain all deadline and context arguments"
+            )
+        if len(caddy_pin_calls) != 3 or len(probe_log_calls) != 2:
+            pytest.fail("failed Playwright must not produce a Caddy log proof")
         failure_environment = playwright_runs[-1][1]
         if in_place_mode:
             if failure_environment.get("LIVE_STAND_STATE_ROOT") != str(
@@ -1693,7 +1874,7 @@ def test_live_playwright_verifies_exact_full_suite_skip_identities(
     private_title = "private skip title token=do-not-print"
     stdout = (
         _live_skip_reporter_rows(identities, title=private_title)
-        + "208 passed (3m)\n8 skipped\n"
+        + "212 passed (3m)\n8 skipped\n"
     ).encode("utf-8")
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
@@ -1709,7 +1890,7 @@ def test_live_playwright_verifies_exact_full_suite_skip_identities(
     printed = capsys.readouterr()
     expected_output = [
         "+ " + " ".join(live_stand._live_e2e_command()),
-        "live E2E counts passed=208 skipped=8",
+        "live E2E counts passed=212 skipped=8",
         *(
             f"live E2E skipped project={project} source={source} line={line_number}"
             for project, source, line_number in identities
@@ -1733,7 +1914,7 @@ def test_live_playwright_canonical_full_rejects_flaky_or_interrupted_counts(
     newline = chr(10)
     stdout = (
         _live_skip_reporter_rows(identities, title="private title")
-        + f"208 passed{newline}8 skipped{newline}1 {extra_summary}{newline}"
+        + f"212 passed{newline}8 skipped{newline}1 {extra_summary}{newline}"
     ).encode("utf-8")
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
@@ -1764,7 +1945,7 @@ def test_live_playwright_canonical_full_rejects_missing_or_duplicate_skip_rows(
     newline = chr(10)
     stdout = (
         _live_skip_reporter_rows(observed, title="private title")
-        + f"208 passed{newline}8 skipped{newline}"
+        + f"212 passed{newline}8 skipped{newline}"
     ).encode("utf-8")
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
@@ -1792,7 +1973,7 @@ def test_live_playwright_rejects_same_count_with_unexpected_skip_identity(
     private_title = "private skip title token=do-not-print"
     stdout = (
         _live_skip_reporter_rows(substituted, title=private_title)
-        + "208 passed (3m)\n8 skipped\n"
+        + "212 passed (3m)\n8 skipped\n"
     ).encode("utf-8")
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
@@ -1807,7 +1988,7 @@ def test_live_playwright_rejects_same_count_with_unexpected_skip_identity(
         live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
 
     printed = capsys.readouterr()
-    assert "live E2E counts passed=208 skipped=8" in printed.out
+    assert "live E2E counts passed=212 skipped=8" in printed.out
     assert (
         "live E2E skip accounting=failed observed=8 rejected=0 overflow=false"
         in printed.out
@@ -1822,10 +2003,12 @@ def test_live_playwright_rejects_same_count_with_unexpected_skip_identity(
 @pytest.mark.parametrize(
     ("passed", "accepted"),
     [
-        pytest.param(208, True, id="current-216-instance-inventory"),
+        pytest.param(212, True, id="current-220-instance-inventory"),
+        pytest.param(210, False, id="obsolete-218-instance-inventory"),
         pytest.param(190, False, id="obsolete-198-instance-inventory"),
-        pytest.param(207, False, id="one-pass-missing"),
-        pytest.param(209, False, id="one-pass-extra"),
+        pytest.param(209, False, id="three-passes-missing"),
+        pytest.param(211, False, id="one-pass-missing"),
+        pytest.param(213, False, id="one-pass-extra"),
     ],
 )
 def test_live_playwright_full_count_matches_collected_inventory(
@@ -4848,6 +5031,7 @@ def test_live_playwright_focused_scope_is_fixed_and_diagnostic_only(
                 "tests/e2e-live/password-reset.live.spec.ts",
                 "tests/e2e-live/search-dialog-keyboard.live.spec.ts",
                 "tests/e2e-live/settings-radio-focus.live.spec.ts",
+                live_stand.LIVE_CADDY_PROBE_SPEC,
             ),
         ),
     ],
@@ -4869,6 +5053,282 @@ def test_live_e2e_mode_maps_to_fixed_playwright_selection(
     else:
         expected_windows = windows_base
     assert live_stand._live_e2e_command(mode=mode, platform="nt") == expected_windows
+
+
+@pytest.mark.parametrize(
+    ("mode", "specs", "expire_after"),
+    [
+        ("smoke", None, None),
+        ("full", (live_stand.LIVE_CADDY_PROBE_SPEC,), None),
+        ("smoke", None, "compose"),
+        ("full", (live_stand.LIVE_CADDY_PROBE_SPEC,), "daemon"),
+        ("full", (live_stand.LIVE_CADDY_PROBE_SPEC,), "container"),
+        ("full", ("tests/e2e-live/auth-roles.live.spec.ts",), None),
+    ],
+    ids=(
+        "smoke",
+        "full-probe",
+        "compose-expired",
+        "daemon-expired",
+        "container-expired",
+        "no-probe",
+    ),
+)
+def test_live_e2e_probe_admission_is_bounded_and_keeps_nonprobe_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    mode: str,
+    specs: tuple[str, ...] | None,
+    expire_after: str | None,
+) -> None:
+    now = [100.0]
+    real_time = live_stand.time
+    monkeypatch.setattr(
+        live_stand,
+        "time",
+        SimpleNamespace(monotonic=lambda: now[0], time_ns=real_time.time_ns),
+    )
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    owner = live_stand.StandOwner(
+        repository=str(tmp_path.resolve()),
+        worktree=str(worktree.resolve()),
+        project_name="ue-live-0123456789abcdef",
+        published_ports=tuple(_port_map().items()),
+        schema_version=live_stand.OWNER_SCHEMA_VERSION,
+        stack=live_stand.LIVE_STACK_CORE,
+        service_roots=live_stand.LIVE_CORE_SERVICE_ROOTS,
+        selected_services=live_stand.LIVE_CORE_EXPECTED_SERVICES,
+    )
+    docker_context = object()
+    container_pin = ("a" * 64, "b" * 64)
+    nonce = "1" * 32
+    expected_correlation_ids = {"desktop": "2" * 32, "mobile": "3" * 32}
+    events: list[tuple[str, float | None, object | None]] = []
+    playwright_calls: list[tuple[str, dict[str, str]]] = []
+    verification_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+    monkeypatch.setattr(live_stand, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", False)
+    monkeypatch.setattr(live_stand, "_require_worktree", lambda: None)
+    monkeypatch.setattr(live_stand, "load_stand_owner", lambda _path: owner)
+    monkeypatch.setattr(live_stand, "_seed_locked", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        live_stand,
+        "_live_e2e_environment",
+        lambda *, output_directory, npm_config_directory: {
+            "LIVE_E2E_OUTPUT_DIR": output_directory,
+            "PLAYWRIGHT_TEST_OUTPUT_DIR": output_directory,
+        },
+    )
+    monkeypatch.setattr(
+        live_stand, "_ensure_live_e2e_dependencies", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        live_stand, "_stand_base_url", lambda _ports: "http://localhost:24000"
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_new_live_caddy_probe_values",
+        lambda: (nonce, dict(expected_correlation_ids)),
+    )
+    monkeypatch.setattr(
+        live_stand, "_new_live_docker_read_context", lambda: docker_context
+    )
+    probe_selected = mode == "smoke" or (
+        specs is not None and live_stand.LIVE_CADDY_PROBE_SPEC in specs
+    )
+    expected_deadline = 125.0 if probe_selected else None
+    expected_context = docker_context if probe_selected else None
+    expected_specs = (
+        live_stand.LIVE_E2E_SMOKE_FILES if mode == "smoke" else tuple(specs or ())
+    )
+
+    def record_admission(
+        name: str,
+        checked_owner: live_stand.StandOwner,
+        deadline: float | None,
+        actual_context: object | None,
+    ) -> None:
+        assert checked_owner == owner
+        assert deadline == expected_deadline
+        assert actual_context is expected_context
+        events.append((name, deadline, actual_context))
+        if expire_after == name:
+            now[0] = 126.0
+
+    original_remaining = live_stand._live_probe_remaining
+
+    def observe_deadline(deadline: float | None) -> float | None:
+        events.append(("deadline", deadline, None))
+        return original_remaining(deadline)
+
+    def run_playwright(
+        *,
+        cwd: Path,
+        environment: dict[str, str],
+        mode: str,
+        specs: Sequence[str] | None = None,
+    ) -> None:
+        assert cwd == worktree / "frontend"
+        if mode == "smoke":
+            assert specs is None
+        else:
+            assert tuple(specs or ()) == expected_specs
+        events.append(("playwright", None, None))
+        playwright_calls.append((mode, dict(environment)))
+
+    def verify_resources(
+        checked_worktree: Path,
+        checked_owner: live_stand.StandOwner,
+        *,
+        deadline: float | None = None,
+        docker_context: object | None = None,
+    ) -> None:
+        assert checked_worktree == worktree
+        record_admission("compose", checked_owner, deadline, docker_context)
+
+    def require_owned_docker_daemon(
+        checked_owner: live_stand.StandOwner,
+        *,
+        deadline: float | None = None,
+        docker_context: object | None = None,
+    ) -> None:
+        record_admission("daemon", checked_owner, deadline, docker_context)
+
+    def verify_core_caddy_container(
+        checked_owner: live_stand.StandOwner,
+        *,
+        deadline: float | None = None,
+        docker_context: object | None = None,
+    ) -> tuple[str, str]:
+        record_admission("container", checked_owner, deadline, docker_context)
+        return container_pin
+
+    def verify_log(
+        checked_owner: live_stand.StandOwner,
+        output_path: Path,
+        *,
+        started_at_ms: int,
+        finished_at_ms: int,
+        password_nonce: str,
+        correlation_ids: Mapping[str, str],
+        container_pin: tuple[str, str],
+        docker_context: object | None = None,
+    ) -> None:
+        assert checked_owner == owner
+        assert output_path.is_dir()
+        assert finished_at_ms >= started_at_ms
+        assert password_nonce == nonce
+        assert dict(correlation_ids) == expected_correlation_ids
+        assert container_pin == expected_container_pin
+        assert docker_context is expected_docker_context
+        events.append(("log-proof", None, docker_context))
+        verification_calls.append(
+            {
+                "output_path": output_path,
+                "started_at_ms": started_at_ms,
+                "finished_at_ms": finished_at_ms,
+                "password_nonce": password_nonce,
+                "correlation_ids": dict(correlation_ids),
+                "container_pin": container_pin,
+                "docker_context": docker_context,
+            }
+        )
+
+    expected_docker_context = docker_context
+    expected_container_pin = container_pin
+
+    monkeypatch.setattr(live_stand, "_live_probe_remaining", observe_deadline)
+    monkeypatch.setattr(
+        live_stand, "_verify_stand_owner_compose_resources", verify_resources
+    )
+    monkeypatch.setattr(
+        live_stand, "_require_owned_docker_daemon", require_owned_docker_daemon
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_verified_live_core_caddy_container",
+        verify_core_caddy_container,
+    )
+    monkeypatch.setattr(live_stand, "_run_live_playwright", run_playwright)
+    monkeypatch.setattr(live_stand, "_verify_live_caddy_probe_log", verify_log)
+
+    if expire_after is None:
+        live_stand._e2e_locked("synthetic admin password", mode=mode, specs=specs)
+    else:
+        with pytest.raises(live_stand.StandError):
+            live_stand._e2e_locked("synthetic admin password", mode=mode, specs=specs)
+        expected_expired_names = {
+            "compose": ["deadline", "compose", "deadline"],
+            "daemon": ["deadline", "compose", "deadline", "daemon", "deadline"],
+            "container": [
+                "deadline",
+                "compose",
+                "deadline",
+                "daemon",
+                "deadline",
+                "container",
+                "deadline",
+            ],
+        }
+        assert [event[0] for event in events] == expected_expired_names[expire_after]
+        assert all(event[1] == 125.0 for event in events)
+        assert playwright_calls == []
+        assert verification_calls == []
+        return
+
+    if specs is not None and live_stand.LIVE_CADDY_PROBE_SPEC not in specs:
+        assert events == [
+            ("compose", None, None),
+            ("daemon", None, None),
+            ("playwright", None, None),
+        ]
+        assert playwright_calls[0][0] == "full"
+        assert verification_calls == []
+        return
+
+    assert events == [
+        ("deadline", 125.0, None),
+        ("compose", 125.0, docker_context),
+        ("deadline", 125.0, None),
+        ("daemon", 125.0, docker_context),
+        ("deadline", 125.0, None),
+        ("container", 125.0, docker_context),
+        ("deadline", 125.0, None),
+        ("playwright", None, None),
+        ("log-proof", None, docker_context),
+    ]
+    if mode == "smoke":
+        selected_files = live_stand.LIVE_E2E_SMOKE_FILES
+        assert selected_files == (
+            "tests/e2e-live/auth-roles.live.spec.ts",
+            "tests/e2e-live/password-reset.live.spec.ts",
+            "tests/e2e-live/search-dialog-keyboard.live.spec.ts",
+            "tests/e2e-live/settings-radio-focus.live.spec.ts",
+            live_stand.LIVE_CADDY_PROBE_SPEC,
+        )
+        assert live_stand._live_e2e_command(mode="smoke", platform="posix") == (
+            *live_stand.LIVE_E2E_COMMAND,
+            "--",
+            *selected_files,
+        )
+    assert len(playwright_calls) == 1
+    mode_seen, playwright_environment = playwright_calls[0]
+    assert mode_seen == mode
+    assert playwright_environment["LIVE_CADDY_LOG_PROBE"] == nonce
+    assert (
+        json.loads(playwright_environment["LIVE_CADDY_PROBE_IDS"])
+        == expected_correlation_ids
+    )
+    assert len(verification_calls) == 1
+    verification = verification_calls[0]
+    assert verification["password_nonce"] == nonce
+    assert verification["correlation_ids"] == expected_correlation_ids
+    assert verification["container_pin"] == container_pin
+    assert verification["docker_context"] is docker_context
+    assert verification["started_at_ms"] <= verification["finished_at_ms"]
 
 
 def test_e2e_cli_forwards_explicit_mode_without_starting_a_stand(
@@ -5159,10 +5619,20 @@ def _prepare_owned_stand(
     monkeypatch.setattr(live_stand, "REPO_ROOT", repo_root)
     monkeypatch.setattr(live_stand, "WORKTREE", worktree)
     monkeypatch.setattr(live_stand, "_git", lambda *args: ".git")
+
+    def docker_daemon_fingerprint(
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> str:
+        assert deadline is None
+        assert docker_context is None
+        return daemon_fingerprint
+
     monkeypatch.setattr(
         live_stand,
         "docker_daemon_fingerprint",
-        lambda: daemon_fingerprint,
+        docker_daemon_fingerprint,
         raising=False,
     )
     _install_compose_config_mock(
@@ -5448,7 +5918,13 @@ def test_docker_daemon_fingerprint_hashes_engine_id_without_printing(
     assert calls == [
         (
             ["docker", "info", "--format", "{{.ID}}"],
-            {"check": True, "capture_output": True, "text": True},
+            {
+                "check": True,
+                "capture_output": True,
+                "text": True,
+                "encoding": "utf-8",
+                "errors": "replace",
+            },
         )
     ]
     assert engine_id not in capsys.readouterr().out
@@ -6143,8 +6619,21 @@ def test_destructive_lifecycle_refuses_a_different_docker_daemon(
     monkeypatch.setattr(
         live_stand, "load_stand_owner", lambda _worktree: owner_with_daemon
     )
+
+    def different_daemon_fingerprint(
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> str:
+        assert deadline is None
+        assert docker_context is None
+        return "b" * 64
+
     monkeypatch.setattr(
-        live_stand, "docker_daemon_fingerprint", lambda: "b" * 64, raising=False
+        live_stand,
+        "docker_daemon_fingerprint",
+        different_daemon_fingerprint,
+        raising=False,
     )
     commands: list[list[str]] = []
     monkeypatch.setattr(
@@ -6167,7 +6656,13 @@ def test_destructive_lifecycle_fails_closed_when_daemon_identity_is_unavailable(
     marker_before = marker.read_bytes()
     commands: list[list[str]] = []
 
-    def unavailable() -> str:
+    def unavailable(
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> str:
+        assert deadline is None
+        assert docker_context is None
         raise live_stand.StandError("cannot verify Docker daemon identity")
 
     monkeypatch.setattr(live_stand, "docker_daemon_fingerprint", unavailable)
@@ -6322,6 +6817,7 @@ def test_teardown_preflight_rejects_unregistered_anonymous_container_volume(
                         "Id": container_id,
                         "ProjectLabel": project_name,
                         "ServiceLabel": "backend",
+                        "OneoffLabel": "False",
                         "Mounts": [
                             {
                                 "Type": "volume",
@@ -6359,6 +6855,7 @@ def _batched_inspect_test_row(
     *,
     project: str = "ue-live-0123456789abcdef",
     service: str = "backend",
+    oneoff_label: str | None = "False",
     mounts: list[dict[str, object]] | None = None,
 ) -> str:
     return json.dumps(
@@ -6366,6 +6863,7 @@ def _batched_inspect_test_row(
             "Id": container_id,
             "ProjectLabel": project,
             "ServiceLabel": service,
+            "OneoffLabel": oneoff_label,
             "Mounts": [] if mounts is None else mounts,
         },
         separators=(",", ":"),
@@ -6510,7 +7008,7 @@ def test_compose_container_ownership_rejects_duplicate_json_keys(
         + container_id
         + '","ProjectLabel":"'
         + project_name
-        + '","ServiceLabel":"backend","Mounts":[]}\n'
+        + '","ServiceLabel":"backend","OneoffLabel":"False","Mounts":[]}\n'
     )
     _stub_batched_inspection(
         monkeypatch,
@@ -7494,7 +7992,19 @@ def test_up_refuses_to_stop_an_existing_stand_on_a_different_daemon(
         "_git",
         lambda *args: "" if "status" in args else "resolved-sha",
     )
-    monkeypatch.setattr(live_stand, "docker_daemon_fingerprint", lambda: "b" * 64)
+
+    def different_daemon_fingerprint(
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> str:
+        assert deadline is None
+        assert docker_context is None
+        return "b" * 64
+
+    monkeypatch.setattr(
+        live_stand, "docker_daemon_fingerprint", different_daemon_fingerprint
+    )
 
     def capture_unexpected_compose(command: list[str], **_: Any) -> None:
         commands.append(list(command))
@@ -9307,6 +9817,24 @@ def _projection_expected(
         selected_services=selected,
         network_bindings=tuple(sorted(bindings)),
         service_networks=tuple((name, ("default",)) for name in sorted(selected)),
+        service_mounts=tuple(
+            (
+                service,
+                tuple(
+                    (
+                        mount["type"],
+                        (
+                            volumes[mount["source"]]["resolved_name"]
+                            if mount["type"] == "volume"
+                            else mount["source"]
+                        ),
+                        mount["target"],
+                    )
+                    for mount in details["volumes"]
+                ),
+            )
+            for service, details in sorted(mounts.items())
+        ),
     )
 
 
@@ -9339,10 +9867,14 @@ def _install_projection_process(
     calls: list[tuple[str, ...]] = []
 
     def control_environment(
-        project_name: str, published_ports: Mapping[str, int]
+        project_name: str,
+        published_ports: Mapping[str, int],
+        *,
+        base_environment: Mapping[str, str] | None = None,
     ) -> dict[str, str]:
         assert project_name == _PROJECTION_PROJECT
         assert dict(published_ports) == ports
+        assert base_environment is None
         return environment
 
     def fake_run(
@@ -9638,3 +10170,1683 @@ def test_compose_resource_wrapper_preserves_preprojection_failures(
     assert len(calls) == (0 if case == "invalid-project" else 1)
     if case != "invalid-project":
         assert caught.value.__suppress_context__ is True
+
+
+def _aud174_access_log_row(
+    uri: str,
+    *,
+    method: str = "GET",
+    logger: str = "http.log.access.log0",
+    status: int = 200,
+    timestamp: str = "2026-10-20T12:00:00.000Z",
+    level: str = "info",
+    message: str = "handled request",
+) -> bytes:
+    payload = {
+        "level": level,
+        "ts": 1_798_000_000.0,
+        "logger": logger,
+        "msg": message,
+        "request": {"method": method, "uri": uri},
+        "status": status,
+    }
+    return (
+        timestamp.encode("ascii") + b" " + json.dumps(payload).encode("utf-8") + b"\n"
+    )
+
+
+def _aud174_docker_read_context(
+    tmp_path: Path,
+) -> live_stand._LiveDockerReadContext:
+    executable = str(Path(sys.executable).resolve(strict=True))
+    return live_stand._LiveDockerReadContext(
+        executable=executable,
+        executable_identity=live_stand._live_docker_executable_identity(executable),
+        cwd=str(tmp_path.resolve(strict=True)),
+        environment=tuple(sorted(os.environ.items())),
+    )
+
+
+def test_live_caddy_probe_accepts_distinct_project_correlations_and_successful_gets() -> (
+    None
+):
+    nonce = "0123456789abcdef" * 2
+    correlations = {
+        "desktop": "1" * 32,
+        "mobile": "2" * 32,
+    }
+    assert correlations["desktop"] != correlations["mobile"]
+    for project, correlation_id in correlations.items():
+        redacted_uri = f"/login?probe={correlation_id}&password=REDACTED"
+        output = _aud174_access_log_row(redacted_uri, status=200)
+
+        live_stand._assert_live_caddy_probe_redaction(
+            output,
+            password_nonce=nonce,
+            correlation_id=correlation_id,
+            project=project,
+        )
+
+
+@pytest.mark.parametrize(
+    ("rows", "status", "method", "logger", "wrong_uri"),
+    [
+        pytest.param(0, 200, "GET", "http.log.access.log0", False, id="missing-row"),
+        pytest.param(2, 200, "GET", "http.log.access.log0", False, id="duplicate-row"),
+        pytest.param(
+            1, 404, "GET", "http.log.access.log0", False, id="unsuccessful-response"
+        ),
+        pytest.param(1, 200, "POST", "http.log.access.log0", False, id="wrong-method"),
+        pytest.param(1, 200, "GET", "other", False, id="wrong-logger"),
+        pytest.param(
+            1,
+            200,
+            "GET",
+            "http.log.access",
+            False,
+            id="unnamed-access-logger-not-configured",
+        ),
+        pytest.param(
+            1, 200, "GET", "http.log.access.log0", True, id="wrong-correlation"
+        ),
+    ],
+)
+def test_live_caddy_probe_rejects_incomplete_or_nonmatching_rows(
+    rows: int, status: int, method: str, logger: str, wrong_uri: bool
+) -> None:
+    nonce = "0123456789abcdef" * 2
+    correlation_id = "1" * 32
+    observed_correlation = "3" * 32 if wrong_uri else correlation_id
+    redacted_uri = f"/login?probe={observed_correlation}&password=REDACTED"
+    output = (
+        _aud174_access_log_row(
+            redacted_uri, method=method, logger=logger, status=status
+        )
+        * rows
+    )
+
+    with pytest.raises(live_stand.StandError) as error:
+        live_stand._assert_live_caddy_probe_redaction(
+            output,
+            password_nonce=nonce,
+            correlation_id=correlation_id,
+            project="desktop",
+        )
+
+    assert str(error.value) == "Caddy access-log redaction proof failed"
+    assert nonce not in str(error.value)
+    assert correlation_id not in str(error.value)
+
+
+def test_live_caddy_probe_rejects_unredacted_value_without_echoing_it() -> None:
+    nonce = "0123456789abcdef" * 2
+    correlation_id = "1" * 32
+    raw_uri = f"/login?probe={correlation_id}&password={nonce}-desktop"
+    output = _aud174_access_log_row(raw_uri)
+
+    with pytest.raises(live_stand.StandError) as error:
+        live_stand._assert_live_caddy_probe_redaction(
+            output,
+            password_nonce=nonce,
+            correlation_id=correlation_id,
+            project="desktop",
+        )
+
+    assert str(error.value) == "Caddy access-log redaction proof failed"
+    assert nonce not in str(error.value)
+    assert raw_uri not in str(error.value)
+
+
+def test_live_caddy_probe_rejects_duplicate_correlations_across_streams() -> None:
+    nonce = "0123456789abcdef" * 2
+    correlation_id = "1" * 32
+    redacted_uri = f"/login?probe={correlation_id}&password=REDACTED"
+    row = _aud174_access_log_row(redacted_uri)
+
+    with pytest.raises(
+        live_stand.StandError,
+        match="Caddy access-log redaction proof failed",
+    ):
+        live_stand._assert_live_caddy_probe_redaction(
+            row,
+            stderr=row,
+            password_nonce=nonce,
+            correlation_id=correlation_id,
+            project="desktop",
+        )
+
+
+def test_live_caddy_probe_rejects_password_nonce_in_stderr() -> None:
+    nonce = "0123456789abcdef" * 2
+    correlation_id = "1" * 32
+    raw_uri = f"/login?probe={correlation_id}&password={nonce}"
+
+    with pytest.raises(
+        live_stand.StandError,
+        match="Caddy access-log redaction proof failed",
+    ):
+        live_stand._assert_live_caddy_probe_redaction(
+            b"",
+            stderr=_aud174_access_log_row(raw_uri),
+            password_nonce=nonce,
+            correlation_id=correlation_id,
+            project="desktop",
+        )
+
+
+def test_live_caddy_probe_rejects_combined_stdout_and_stderr_over_capture_limit() -> (
+    None
+):
+    nonce = "0123456789abcdef" * 2
+    correlation_id = "1" * 32
+    redacted_uri = f"/login?probe={correlation_id}&password=REDACTED"
+
+    with pytest.raises(
+        live_stand.StandError,
+        match="Caddy access-log redaction proof failed",
+    ):
+        live_stand._assert_live_caddy_probe_redaction(
+            _aud174_access_log_row(redacted_uri),
+            stderr=b" " * live_stand._LIVE_CADDY_PROBE_MAX_BYTES,
+            password_nonce=nonce,
+            correlation_id=correlation_id,
+            project="desktop",
+        )
+
+
+def test_live_caddy_probe_rejects_invalid_tokens_and_oversized_log_capture() -> None:
+    nonce = "0123456789abcdef" * 2
+    correlation_id = "1" * 32
+    redacted_uri = f"/login?probe={correlation_id}&password=REDACTED"
+    output = _aud174_access_log_row(redacted_uri)
+
+    for invalid_nonce, invalid_correlation in (
+        ("not-a-random-marker", correlation_id),
+        (nonce, "not-a-correlation"),
+        (nonce, nonce),
+    ):
+        with pytest.raises(
+            live_stand.StandError, match="Caddy access-log redaction proof failed"
+        ):
+            live_stand._assert_live_caddy_probe_redaction(
+                output,
+                password_nonce=invalid_nonce,
+                correlation_id=invalid_correlation,
+                project="desktop",
+            )
+    with pytest.raises(
+        live_stand.StandError, match="Caddy access-log redaction proof failed"
+    ):
+        live_stand._assert_live_caddy_probe_redaction(
+            output + b" " * (live_stand._LIVE_CADDY_PROBE_MAX_BYTES + 1),
+            password_nonce=nonce,
+            correlation_id=correlation_id,
+            project="desktop",
+        )
+
+
+@pytest.mark.parametrize(
+    ("markers", "start_ms", "finish_ms"),
+    [
+        pytest.param(
+            {
+                "desktop": ("desktop", 1_000),
+                "mobile": ("mobile", 2_000),
+            },
+            500,
+            2_500,
+            id="exact-project-markers",
+        ),
+        pytest.param(
+            {"desktop": ("desktop", 1_000)},
+            500,
+            2_500,
+            id="missing-project",
+        ),
+        pytest.param(
+            {
+                "desktop": ("desktop", 1_000),
+                "mobile": ("mobile", 2_000),
+                "unexpected": ("unexpected", 2_000),
+            },
+            500,
+            2_500,
+            id="unexpected-project",
+        ),
+        pytest.param(
+            {
+                "desktop": ("desktop", 1_000),
+                "mobile": ("mobile", 2_000),
+            },
+            1_500,
+            2_500,
+            id="stale-marker",
+        ),
+        pytest.param(
+            {
+                "desktop": ("desktop", 1_000),
+                "mobile": ("mobile", 2_001),
+            },
+            500,
+            2_000,
+            id="marker-after-run",
+        ),
+    ],
+)
+def test_live_caddy_probe_requires_complete_in_run_project_observations(
+    tmp_path: Path,
+    markers: dict[str, tuple[str, int]],
+    start_ms: int,
+    finish_ms: int,
+) -> None:
+    for file_project, (recorded_project, completed_at_ms) in markers.items():
+        marker = {
+            "schema": "aud174-caddy-probe-v1",
+            "project": recorded_project,
+            "completed_at_ms": completed_at_ms,
+        }
+        (tmp_path / f"aud174-caddy-probe-{file_project}.json").write_text(
+            json.dumps(marker), encoding="utf-8"
+        )
+
+    if (
+        len(markers) == 2
+        and set(markers) == {"desktop", "mobile"}
+        and all(
+            file_project == recorded_project
+            and start_ms <= completed_at_ms <= finish_ms
+            for file_project, (recorded_project, completed_at_ms) in markers.items()
+        )
+    ):
+        observations = live_stand._read_live_caddy_probe_observations(
+            tmp_path, started_at_ms=start_ms, finished_at_ms=finish_ms
+        )
+        assert observations == {"desktop": 1_000, "mobile": 2_000}
+        assert list(tmp_path.glob("aud174-caddy-probe-*.json")) == []
+    else:
+        with pytest.raises(
+            live_stand.StandError,
+            match="Caddy access-log redaction proof failed",
+        ):
+            live_stand._read_live_caddy_probe_observations(
+                tmp_path, started_at_ms=start_ms, finished_at_ms=finish_ms
+            )
+
+
+def test_live_caddy_probe_marker_reads_are_bounded_and_descriptor_verified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for project, completed_at_ms in (("desktop", 1_000), ("mobile", 2_000)):
+        (tmp_path / f"aud174-caddy-probe-{project}.json").write_text(
+            json.dumps(
+                {
+                    "schema": "aud174-caddy-probe-v1",
+                    "project": project,
+                    "completed_at_ms": completed_at_ms,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    original_read = os.read
+    read_sizes: list[int] = []
+    bytes_by_inode: dict[int, int] = {}
+
+    def bounded_read(descriptor: int, size: int) -> bytes:
+        read_sizes.append(size)
+        data = original_read(descriptor, size)
+        inode = os.fstat(descriptor).st_ino
+        bytes_by_inode[inode] = bytes_by_inode.get(inode, 0) + len(data)
+        return data
+
+    monkeypatch.setattr(live_stand.os, "read", bounded_read)
+    observations = live_stand._read_live_caddy_probe_observations(
+        tmp_path,
+        started_at_ms=500,
+        finished_at_ms=2_500,
+        deadline=live_stand.time.monotonic() + 5,
+    )
+
+    assert observations == {"desktop": 1_000, "mobile": 2_000}
+    assert read_sizes
+    assert max(read_sizes) <= 64
+    assert len(bytes_by_inode) == 2
+    assert all(
+        count <= live_stand._LIVE_CADDY_PROBE_MARKER_MAX_BYTES + 1
+        for count in bytes_by_inode.values()
+    )
+
+
+def test_live_caddy_probe_marker_deadline_expires_before_read_and_cleans_up(
+    tmp_path: Path,
+) -> None:
+    for project in live_stand.LIVE_CADDY_PROBE_PROJECTS:
+        (tmp_path / f"aud174-caddy-probe-{project}.json").write_text(
+            json.dumps(
+                {
+                    "schema": "aud174-caddy-probe-v1",
+                    "project": project,
+                    "completed_at_ms": 1_000,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    with pytest.raises(
+        live_stand.StandError,
+        match="Caddy access-log redaction proof failed",
+    ):
+        live_stand._read_live_caddy_probe_observations(
+            tmp_path,
+            started_at_ms=500,
+            finished_at_ms=1_500,
+            deadline=live_stand.time.monotonic() - 1,
+        )
+
+    assert list(tmp_path.glob("aud174-caddy-probe-*.json")) == []
+
+
+def test_live_caddy_probe_marker_deadline_expires_during_read_and_cleans_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for project in live_stand.LIVE_CADDY_PROBE_PROJECTS:
+        (tmp_path / f"aud174-caddy-probe-{project}.json").write_text(
+            json.dumps(
+                {
+                    "schema": "aud174-caddy-probe-v1",
+                    "project": project,
+                    "completed_at_ms": 1_000,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    now = [100.0]
+    original_read = os.read
+
+    def expire_after_read(descriptor: int, size: int) -> bytes:
+        data = original_read(descriptor, size)
+        now[0] = 101.0
+        return data
+
+    monkeypatch.setattr(live_stand.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(live_stand.os, "read", expire_after_read)
+    with pytest.raises(
+        live_stand.StandError,
+        match="Caddy access-log redaction proof failed",
+    ):
+        live_stand._read_live_caddy_probe_observations(
+            tmp_path,
+            started_at_ms=500,
+            finished_at_ms=1_500,
+            deadline=100.5,
+        )
+
+    assert list(tmp_path.glob("aud174-caddy-probe-*.json")) == []
+
+
+def test_live_caddy_probe_reads_only_the_reverified_pinned_container(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner = object()
+    container_pin = ("a" * 64, "b" * 64)
+    nonce = "0123456789abcdef" * 2
+    correlation_id = "1" * 32
+    redacted_uri = f"/login?probe={correlation_id}&password=REDACTED"
+    completed_at_ms = 1_798_000_000_000
+    completed = subprocess.CompletedProcess(
+        ["docker", "logs"],
+        0,
+        stdout=_aud174_access_log_row(
+            redacted_uri,
+            timestamp=live_stand._caddy_probe_timestamp_argument(completed_at_ms),
+        ),
+        stderr=b"",
+    )
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    pin_checks: list[tuple[str, str]] = []
+
+    def fake_read(
+        *args: object, **kwargs: object
+    ) -> subprocess.CompletedProcess[bytes]:
+        calls.append((args, kwargs))
+        return completed
+
+    context = _aud174_docker_read_context(tmp_path)
+    monkeypatch.setattr(live_stand, "_run_live_bounded_read", fake_read)
+    monkeypatch.setattr(
+        live_stand,
+        "_assert_live_caddy_container_pin",
+        lambda _owner, pin, **_kwargs: pin_checks.append(pin),
+    )
+
+    live_stand._read_live_caddy_probe_log(
+        owner,
+        container_pin=container_pin,
+        completed_at_ms=completed_at_ms,
+        project="desktop",
+        password_nonce=nonce,
+        correlation_id=correlation_id,
+        deadline=live_stand.time.monotonic() + 30,
+        docker_context=context,
+    )
+
+    command = calls[0][0][0]
+    options = calls[0][1]
+    assert command == [
+        "docker",
+        "logs",
+        "--timestamps",
+        "--since",
+        live_stand._caddy_probe_timestamp_argument(1_798_000_000_000 - 5_000),
+        "--until",
+        live_stand._caddy_probe_timestamp_argument(1_798_000_000_000 + 5_000),
+        container_pin[0],
+    ]
+    assert options["context"] is context
+    assert options["deadline"] > live_stand.time.monotonic()
+    assert options["maximum_bytes"] == live_stand._LIVE_CADDY_PROBE_MAX_BYTES
+    assert options["command_timeout_seconds"] <= 10
+    assert "--tail" not in command
+    assert nonce not in " ".join(command)
+    assert pin_checks == [container_pin, container_pin]
+    assert completed.stdout == completed.stderr == b""
+
+
+def test_live_caddy_probe_accepts_timestamped_access_row_on_stderr(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner = object()
+    container_pin = ("a" * 64, "b" * 64)
+    nonce = "0123456789abcdef" * 2
+    correlation_id = "1" * 32
+    completed_at_ms = 1_798_000_000_000
+    redacted_uri = f"/login?probe={correlation_id}&password=REDACTED"
+    completed = subprocess.CompletedProcess(
+        ["docker", "logs"],
+        0,
+        stdout=b"",
+        stderr=_aud174_access_log_row(
+            redacted_uri,
+            timestamp=live_stand._caddy_probe_timestamp_argument(completed_at_ms),
+        ),
+    )
+    context = _aud174_docker_read_context(tmp_path)
+    monkeypatch.setattr(
+        live_stand,
+        "_run_live_bounded_read",
+        lambda *_args, **_kwargs: completed,
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_assert_live_caddy_container_pin",
+        lambda *_args, **_kwargs: None,
+    )
+
+    live_stand._read_live_caddy_probe_log(
+        owner,
+        container_pin=container_pin,
+        completed_at_ms=completed_at_ms,
+        project="desktop",
+        password_nonce=nonce,
+        correlation_id=correlation_id,
+        deadline=live_stand.time.monotonic() + 30,
+        docker_context=context,
+    )
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stderr"),
+    [
+        pytest.param(
+            0, b"Docker daemon error while reading logs\n", id="malformed-diagnostic"
+        ),
+        pytest.param(
+            0,
+            _aud174_access_log_row(
+                "/unrelated", level="error", message="Caddy log read failed"
+            ),
+            id="structured-error-diagnostic",
+        ),
+        pytest.param(
+            0,
+            _aud174_access_log_row("/unrelated").replace(
+                b'"status": 200', b'"status": 500, "status": 200'
+            ),
+            id="duplicate-json-field",
+        ),
+    ],
+)
+def test_live_caddy_probe_rejects_error_diagnostics_on_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    returncode: int,
+    stderr: bytes,
+) -> None:
+    owner = object()
+    container_pin = ("a" * 64, "b" * 64)
+    nonce = "0123456789abcdef" * 2
+    correlation_id = "1" * 32
+    redacted_uri = f"/login?probe={correlation_id}&password=REDACTED"
+    completed_at_ms = 1_798_000_000_000
+    completed = subprocess.CompletedProcess(
+        ["docker", "logs"],
+        returncode,
+        stdout=_aud174_access_log_row(
+            redacted_uri,
+            timestamp=live_stand._caddy_probe_timestamp_argument(completed_at_ms),
+        ),
+        stderr=stderr,
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_run_live_bounded_read",
+        lambda *_args, **_kwargs: completed,
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_assert_live_caddy_container_pin",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(
+        live_stand.StandError,
+        match="Caddy access-log redaction proof failed",
+    ) as error:
+        live_stand._read_live_caddy_probe_log(
+            owner,
+            container_pin=container_pin,
+            completed_at_ms=completed_at_ms,
+            project="desktop",
+            password_nonce=nonce,
+            correlation_id=correlation_id,
+            deadline=live_stand.time.monotonic() + 30,
+            docker_context=_aud174_docker_read_context(tmp_path),
+        )
+
+    assert "Docker daemon error" not in str(error.value)
+    assert "Caddy log read failed" not in str(error.value)
+
+
+def test_live_caddy_probe_rejects_nonzero_docker_logs_with_valid_access_row(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner = object()
+    container_pin = ("a" * 64, "b" * 64)
+    nonce = "0123456789abcdef" * 2
+    correlation_id = "1" * 32
+    completed_at_ms = 1_798_000_000_000
+    redacted_uri = f"/login?probe={correlation_id}&password=REDACTED"
+    completed = subprocess.CompletedProcess(
+        ["docker", "logs"],
+        1,
+        stdout=b"",
+        stderr=_aud174_access_log_row(
+            redacted_uri,
+            timestamp=live_stand._caddy_probe_timestamp_argument(completed_at_ms),
+        ),
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_run_live_bounded_read",
+        lambda *_args, **_kwargs: completed,
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_assert_live_caddy_container_pin",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(
+        live_stand.StandError,
+        match="Caddy access-log redaction proof failed",
+    ):
+        live_stand._read_live_caddy_probe_log(
+            owner,
+            container_pin=container_pin,
+            completed_at_ms=completed_at_ms,
+            project="desktop",
+            password_nonce=nonce,
+            correlation_id=correlation_id,
+            deadline=live_stand.time.monotonic() + 30,
+            docker_context=_aud174_docker_read_context(tmp_path),
+        )
+
+
+def test_live_caddy_probe_rejects_a_row_outside_the_requested_timestamp_window(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner = object()
+    container_pin = ("a" * 64, "b" * 64)
+    nonce = "0123456789abcdef" * 2
+    correlation_id = "1" * 32
+    redacted_uri = f"/login?probe={correlation_id}&password=REDACTED"
+    completed_at_ms = 1_798_000_000_000
+    outside_window = live_stand._caddy_probe_timestamp_argument(
+        completed_at_ms - live_stand._LIVE_CADDY_PROBE_WINDOW_MS - 1
+    )
+    payload = _aud174_access_log_row(redacted_uri).split(b" ", 1)[1]
+    context = _aud174_docker_read_context(tmp_path)
+    monkeypatch.setattr(
+        live_stand,
+        "_run_live_bounded_read",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["docker", "logs"],
+            0,
+            stdout=outside_window.encode() + b" " + payload,
+            stderr=b"",
+        ),
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_assert_live_caddy_container_pin",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(
+        live_stand.StandError,
+        match="Caddy access-log redaction proof failed",
+    ):
+        live_stand._read_live_caddy_probe_log(
+            owner,
+            container_pin=container_pin,
+            completed_at_ms=completed_at_ms,
+            project="desktop",
+            password_nonce=nonce,
+            correlation_id=correlation_id,
+            deadline=live_stand.time.monotonic() + 30,
+            docker_context=context,
+        )
+
+
+def test_live_caddy_probe_does_not_query_logs_after_container_pin_changes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner = object()
+    container_pin = ("a" * 64, "b" * 64)
+    calls: list[object] = []
+
+    monkeypatch.setattr(
+        live_stand,
+        "_run_live_bounded_read",
+        lambda *a, **k: calls.append(a),
+    )
+
+    def fail_on_pin_change(
+        _owner: object,
+        _pin: tuple[str, str],
+        **_kwargs: object,
+    ) -> None:
+        raise live_stand.StandError("private owner detail")
+
+    monkeypatch.setattr(
+        live_stand, "_assert_live_caddy_container_pin", fail_on_pin_change
+    )
+    with pytest.raises(live_stand.StandError) as error:
+        live_stand._read_live_caddy_probe_log(
+            owner,
+            container_pin=container_pin,
+            completed_at_ms=1_798_000_000_000,
+            project="desktop",
+            password_nonce="f" * 32,
+            correlation_id="1" * 32,
+            deadline=live_stand.time.monotonic() + 30,
+            docker_context=_aud174_docker_read_context(tmp_path),
+        )
+    assert str(error.value) == "Caddy access-log redaction proof failed"
+    assert calls == []
+
+
+def test_live_caddy_probe_hides_docker_timeout_diagnostics(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner = object()
+    container_pin = ("a" * 64, "b" * 64)
+    monkeypatch.setattr(
+        live_stand,
+        "_assert_live_caddy_container_pin",
+        lambda *_args, **_kwargs: None,
+    )
+
+    def timeout(*_args: object, **_kwargs: object) -> None:
+        raise subprocess.TimeoutExpired(["docker", "logs"], 10, output=b"private URI")
+
+    monkeypatch.setattr(live_stand, "_run_live_bounded_read", timeout)
+    with pytest.raises(live_stand.StandError) as error:
+        live_stand._read_live_caddy_probe_log(
+            owner,
+            container_pin=container_pin,
+            completed_at_ms=1_798_000_000_000,
+            project="desktop",
+            password_nonce="f" * 32,
+            correlation_id="1" * 32,
+            deadline=live_stand.time.monotonic() + 30,
+            docker_context=_aud174_docker_read_context(tmp_path),
+        )
+    assert str(error.value) == "Caddy access-log redaction proof failed"
+    assert "private URI" not in str(error.value)
+
+
+def test_live_caddy_probe_deadline_covers_final_container_recheck(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    now = [100.0]
+    context = _aud174_docker_read_context(tmp_path)
+    observed_deadlines: list[float] = []
+    pin_deadlines: list[float | None] = []
+    log_deadlines: list[float] = []
+    pin_calls = 0
+
+    def read_markers(
+        _directory: Path,
+        *,
+        started_at_ms: int,
+        finished_at_ms: int,
+        deadline: float | None = None,
+    ) -> dict[str, int]:
+        assert started_at_ms == 10
+        assert finished_at_ms == 20
+        assert deadline is not None
+        observed_deadlines.append(deadline)
+        return {"desktop": 15, "mobile": 16}
+
+    def check_pin(
+        _owner: object,
+        _pin: tuple[str, str],
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> None:
+        nonlocal pin_calls
+        pin_calls += 1
+        pin_deadlines.append(deadline)
+        assert docker_context is context
+        if pin_calls == 2:
+            now[0] = 125.001
+
+    def read_log(
+        _owner: object,
+        *,
+        deadline: float,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+        **_kwargs: object,
+    ) -> None:
+        assert docker_context is context
+        log_deadlines.append(deadline)
+
+    monkeypatch.setattr(live_stand.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(live_stand, "_read_live_caddy_probe_observations", read_markers)
+    monkeypatch.setattr(live_stand, "_assert_live_caddy_container_pin", check_pin)
+    monkeypatch.setattr(live_stand, "_read_live_caddy_probe_log", read_log)
+
+    with pytest.raises(
+        live_stand.StandError,
+        match="Caddy access-log redaction proof failed",
+    ):
+        live_stand._verify_live_caddy_probe_log(
+            object(),
+            tmp_path,
+            started_at_ms=10,
+            finished_at_ms=20,
+            password_nonce="f" * 32,
+            correlation_ids={"desktop": "1" * 32, "mobile": "2" * 32},
+            container_pin=("a" * 64, "b" * 64),
+            docker_context=context,
+        )
+
+    assert observed_deadlines == [125.0]
+    assert log_deadlines == [125.0, 125.0]
+    assert pin_deadlines == [125.0, 125.0]
+    assert capsys.readouterr().out == ""
+
+
+def test_live_bounded_reader_caps_flood_and_reaps_its_direct_child(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    context = _aud174_docker_read_context(tmp_path)
+    real_start = live_stand.fast_preflight._start_process
+    started: list[subprocess.Popen[bytes]] = []
+
+    def capture_start(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
+        process = real_start(*args, **kwargs)
+        started.append(process)
+        return process
+
+    monkeypatch.setattr(live_stand.fast_preflight, "_start_process", capture_start)
+    started_at = live_stand.time.monotonic()
+    with pytest.raises(
+        live_stand.StandError,
+        match="Caddy access-log redaction proof failed",
+    ):
+        live_stand._run_live_bounded_read(
+            (
+                sys.executable,
+                "-c",
+                "import os; block=b'x'*65536; [os.write(i % 2 + 1, block) for i in range(64)]",
+            ),
+            context=context,
+            deadline=started_at + 5,
+            maximum_bytes=1024,
+            command_timeout_seconds=4,
+        )
+
+    assert live_stand.time.monotonic() - started_at < 3
+    assert len(started) == 1
+    assert started[0].returncode is not None
+
+
+def test_live_bounded_reader_times_out_and_reaps_its_direct_child(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    context = _aud174_docker_read_context(tmp_path)
+    real_start = live_stand.fast_preflight._start_process
+    started: list[subprocess.Popen[bytes]] = []
+
+    def capture_start(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
+        process = real_start(*args, **kwargs)
+        started.append(process)
+        return process
+
+    monkeypatch.setattr(live_stand.fast_preflight, "_start_process", capture_start)
+    started_at = live_stand.time.monotonic()
+    with pytest.raises(
+        live_stand.StandError,
+        match="Caddy access-log redaction proof failed",
+    ):
+        live_stand._run_live_bounded_read(
+            (sys.executable, "-c", "import time; time.sleep(30)"),
+            context=context,
+            deadline=started_at + 3,
+            maximum_bytes=1024,
+            command_timeout_seconds=1,
+        )
+
+    assert live_stand.time.monotonic() - started_at < 2
+    assert len(started) == 1
+    assert started[0].returncode is not None
+
+
+def test_live_bounded_reader_reaps_child_after_its_pipes_close(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    context = _aud174_docker_read_context(tmp_path)
+    real_start = live_stand.fast_preflight._start_process
+    started: list[subprocess.Popen[bytes]] = []
+
+    def capture_start(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
+        process = real_start(*args, **kwargs)
+        started.append(process)
+        return process
+
+    monkeypatch.setattr(live_stand.fast_preflight, "_start_process", capture_start)
+    started_at = live_stand.time.monotonic()
+    with pytest.raises(
+        live_stand.StandError,
+        match="Caddy access-log redaction proof failed",
+    ):
+        live_stand._run_live_bounded_read(
+            (
+                sys.executable,
+                "-c",
+                "import os, time; os.close(1); os.close(2); time.sleep(30)",
+            ),
+            context=context,
+            deadline=started_at + 3,
+            maximum_bytes=1024,
+            command_timeout_seconds=1,
+        )
+
+    assert live_stand.time.monotonic() - started_at < 2
+    assert len(started) == 1
+    assert started[0].returncode is not None
+
+
+def test_live_caddy_probe_rejects_malformed_or_nonregular_observations(
+    tmp_path: Path,
+) -> None:
+    desktop = tmp_path / "aud174-caddy-probe-desktop.json"
+    mobile = tmp_path / "aud174-caddy-probe-mobile.json"
+    desktop.write_text("{", encoding="utf-8")
+    mobile.write_text(
+        json.dumps(
+            {
+                "schema": "aud174-caddy-probe-v1",
+                "project": "mobile",
+                "completed_at_ms": 2_000,
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        live_stand.StandError, match="Caddy access-log redaction proof failed"
+    ):
+        live_stand._read_live_caddy_probe_observations(
+            tmp_path, started_at_ms=500, finished_at_ms=2_500
+        )
+    desktop.unlink(missing_ok=True)
+    desktop.mkdir()
+    with pytest.raises(
+        live_stand.StandError, match="Caddy access-log redaction proof failed"
+    ):
+        live_stand._read_live_caddy_probe_observations(
+            tmp_path, started_at_ms=500, finished_at_ms=2_500
+        )
+
+
+def _aud174_full_probe_setup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> tuple[
+    live_stand.StandOwner,
+    live_stand.ComposeResourceEvidence,
+    live_stand._LiveDockerReadContext,
+    dict[str, Any],
+]:
+    project_name = _PROJECTION_PROJECT
+    model = _projection_model()
+    bind_source = str(tmp_path / "Caddyfile")
+    model["services"].update(
+        {
+            "caddy": {
+                "volumes": [
+                    {
+                        "type": "bind",
+                        "source": bind_source,
+                        "target": "/etc/caddy/Caddyfile",
+                    },
+                    {
+                        "type": "volume",
+                        "source": "app-data",
+                        "target": "/data",
+                    },
+                ]
+            },
+            "frontend": {},
+        }
+    )
+    evidence = live_stand._compose_resource_evidence_from_project(
+        model,
+        project_name,
+        _port_map(),
+    )
+    assert evidence.stack == live_stand.LIVE_STACK_FULL
+    assert set(evidence.managed_services) == {"backend", "caddy", "frontend"}
+    daemon_fingerprint = hashlib.sha256(b"synthetic-daemon").hexdigest()
+    owner = live_stand.StandOwner(
+        repository=str(tmp_path),
+        worktree=str(tmp_path),
+        project_name=project_name,
+        published_ports=tuple(_port_map().items()),
+        schema_version=live_stand.OWNER_SCHEMA_VERSION,
+        daemon_fingerprint=daemon_fingerprint,
+        compose_resource_fingerprint=evidence.fingerprint,
+        stack=live_stand.LIVE_STACK_FULL,
+        service_roots=evidence.service_roots,
+        selected_services=evidence.selected_services,
+    )
+    context = _aud174_docker_read_context(tmp_path)
+    caddy_id = _batched_inspect_test_id(8101)
+    backend_id = _batched_inspect_test_id(8102)
+    stopped_frontend_id = _batched_inspect_test_id(8103)
+    bind_mount = {
+        "Type": "bind",
+        "Name": "",
+        "Source": bind_source,
+        "Destination": "/etc/caddy/Caddyfile",
+        "Driver": "",
+        "Mode": "ro",
+        "RW": False,
+        "Propagation": "rprivate",
+    }
+    volume_name = f"{project_name}_app-data"
+    volume_mount = {
+        "Type": "volume",
+        "Name": volume_name,
+        "Source": volume_name,
+        "Destination": "/data",
+        "Driver": "local",
+        "Mode": "z",
+        "RW": True,
+        "Propagation": "",
+    }
+    raw_caddy = {
+        "Id": caddy_id,
+        "Name": f"/{project_name}-caddy-1",
+        "Image": "sha256:" + "a" * 64,
+        "Config": {
+            "Image": "caddy:2",
+            "Labels": {
+                "com.docker.compose.project": project_name,
+                "com.docker.compose.service": "caddy",
+                "com.docker.compose.oneoff": "False",
+            },
+        },
+        "Mounts": [bind_mount, volume_mount],
+        "State": {"Running": True, "Status": "running"},
+    }
+    rows = {
+        caddy_id: {
+            "Id": caddy_id,
+            "ProjectLabel": project_name,
+            "ServiceLabel": "caddy",
+            "OneoffLabel": "False",
+            "Mounts": [
+                {"Type": "bind", "Name": None},
+                {"Type": "volume", "Name": volume_name},
+            ],
+        },
+        backend_id: {
+            "Id": backend_id,
+            "ProjectLabel": project_name,
+            "ServiceLabel": "backend",
+            "OneoffLabel": "False",
+            "Mounts": [{"Type": "volume", "Name": volume_name}],
+        },
+        stopped_frontend_id: {
+            "Id": stopped_frontend_id,
+            "ProjectLabel": project_name,
+            "ServiceLabel": "frontend",
+            "OneoffLabel": "False",
+            "Mounts": [],
+        },
+    }
+    state: dict[str, Any] = {
+        "owner": owner,
+        "evidence": evidence,
+        "context": context,
+        "ids": [caddy_id, backend_id, stopped_frontend_id],
+        "caddy_id": caddy_id,
+        "raw_caddy": raw_caddy,
+        "rows": rows,
+        "events": [],
+        "owner_loads": 0,
+        "resource_verifications": 0,
+        "daemon_fingerprint": daemon_fingerprint,
+        "daemon_fingerprints": None,
+        "daemon_calls": 0,
+        "expire_after": None,
+        "clock": [100.0],
+        "deadline": 125.0,
+        "ps_outputs": None,
+        "batch_output_override": None,
+        "evidence_after_first": None,
+        "owner_after_first": None,
+    }
+
+    def load_owner(_worktree: Path) -> live_stand.StandOwner:
+        state["owner_loads"] += 1
+        state["events"].append(("owner", state["owner_loads"]))
+        if state["owner_loads"] > 1 and state["owner_after_first"] is not None:
+            return state["owner_after_first"]
+        return state["owner"]
+
+    def daemon_fingerprint(
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> str:
+        state["events"].append(("daemon", deadline, docker_context))
+        state["daemon_calls"] += 1
+        fingerprints = state["daemon_fingerprints"]
+        if fingerprints is not None:
+            return fingerprints[min(state["daemon_calls"] - 1, len(fingerprints) - 1)]
+        return state["daemon_fingerprint"]
+
+    def verify_resources(
+        worktree: Path,
+        observed_owner: live_stand.StandOwner,
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+        **_kwargs: Any,
+    ) -> live_stand.ComposeResourceEvidence:
+        assert worktree == live_stand.WORKTREE
+        assert observed_owner == state["owner"]
+        state["resource_verifications"] += 1
+        state["events"].append(("resources", deadline, docker_context))
+        if (
+            state["resource_verifications"] > 1
+            and state["evidence_after_first"] is not None
+        ):
+            return state["evidence_after_first"]
+        return state["evidence"]
+
+    def docker_output(
+        arguments: Sequence[str],
+        _error_message: str,
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> str:
+        normalized = tuple(arguments)
+        state["events"].append(("docker", normalized, deadline, docker_context))
+        assert deadline == state["deadline"]
+        assert docker_context is context
+        if normalized[:1] == ("ps",):
+            assert normalized == (
+                "ps",
+                "--all",
+                "--quiet",
+                "--no-trunc",
+                "--filter",
+                f"label=com.docker.compose.project={project_name}",
+            )
+            outputs = state["ps_outputs"]
+            if outputs is None:
+                output_ids = state["ids"]
+            else:
+                output_ids = outputs[min(state.get("ps_calls", 0), len(outputs) - 1)]
+            state["ps_calls"] = state.get("ps_calls", 0) + 1
+            result = "".join(f"{container_id}\n" for container_id in output_ids)
+            if state["expire_after"] == "ps" or (
+                state["expire_after"] == "second-ps" and state["ps_calls"] == 2
+            ):
+                state["clock"][0] = state["deadline"]
+            return result
+        if normalized[:4] == ("inspect", "--type", "container", "--format"):
+            template = normalized[4]
+            assert template == live_stand._DOCKER_INSPECT_FORMAT
+            batch_ids = list(normalized[5:])
+            assert batch_ids
+            assert set(batch_ids) <= set(state["ids"])
+            override = state["batch_output_override"]
+            if override is not None:
+                result = override(batch_ids)
+            else:
+                result = (
+                    "\n".join(
+                        json.dumps(state["rows"][container_id], separators=(",", ":"))
+                        for container_id in batch_ids
+                    )
+                    + "\n"
+                )
+            if state["expire_after"] == "batch":
+                state["clock"][0] = state["deadline"]
+            return result
+        if normalized == ("inspect", "--type", "container", caddy_id):
+            if state["expire_after"] == "caddy-inspect":
+                state["clock"][0] = state["deadline"]
+            return json.dumps(state["raw_caddy"], separators=(",", ":"))
+        pytest.fail(f"unexpected Full Caddy Docker inspection: {normalized}")
+
+    monkeypatch.setattr(live_stand, "WORKTREE", tmp_path)
+    monkeypatch.setattr(live_stand, "load_stand_owner", load_owner)
+    monkeypatch.setattr(live_stand, "docker_daemon_fingerprint", daemon_fingerprint)
+    monkeypatch.setattr(
+        live_stand, "_verify_stand_owner_compose_resources", verify_resources
+    )
+    monkeypatch.setattr(live_stand, "_docker_output", docker_output)
+    return owner, evidence, context, state
+
+
+def test_batched_docker_projection_retains_compose_oneoff_label() -> None:
+    container_id = _batched_inspect_test_id(8100)
+    row = _batched_inspect_test_row(container_id, service="caddy")
+
+    parsed = live_stand._parse_docker_inspect_projection_batch(row, [container_id])
+
+    assert parsed[0].oneoff_label == "False"
+
+
+def test_live_full_caddy_pin_accepts_declared_mounts_and_stopped_other_service(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner, evidence, context, state = _aud174_full_probe_setup(monkeypatch, tmp_path)
+    expected_identity = live_stand._core_container_record_from_inspect(
+        state["caddy_id"], owner, evidence, state["raw_caddy"]
+    ).identity
+    assert dict(evidence.service_mounts)["caddy"] == (
+        ("bind", str(tmp_path / "Caddyfile"), "/etc/caddy/Caddyfile"),
+        ("volume", f"{owner.project_name}_app-data", "/data"),
+    )
+    deadline = state["deadline"]
+    monkeypatch.setattr(live_stand.time, "monotonic", lambda: state["clock"][0])
+    monkeypatch.setattr(
+        live_stand,
+        "_core_quiesce_container_inventory",
+        lambda *_args, **_kwargs: pytest.fail(
+            "Full admission must not use the Core quiesce inventory"
+        ),
+    )
+
+    live_stand._assert_live_caddy_container_pin(
+        owner,
+        (state["caddy_id"], expected_identity),
+        deadline=deadline,
+        docker_context=context,
+    )
+
+    docker_events = [event[1] for event in state["events"] if event[0] == "docker"]
+    assert docker_events[0][0] == "ps" and "--all" in docker_events[0]
+    batch = next(
+        event
+        for event in docker_events
+        if event[:4] == ("inspect", "--type", "container", "--format")
+    )
+    assert batch[5:] == tuple(state["ids"])
+    assert ("inspect", "--type", "container", state["caddy_id"]) in docker_events
+    assert any(row["ServiceLabel"] == "frontend" for row in state["rows"].values())
+    assert all(
+        event[2] == deadline and event[3] is context
+        for event in state["events"]
+        if event[0] == "docker"
+    )
+    assert [event[0] for event in state["events"]].index("resources") < [
+        event[0] for event in state["events"]
+    ].index("docker")
+    assert state["resource_verifications"] >= 2
+    assert state["owner_loads"] >= 2
+    event_order = [event[0] for event in state["events"]]
+    assert event_order == [
+        "owner",
+        "daemon",
+        "resources",
+        "docker",
+        "docker",
+        "docker",
+        "docker",
+        "owner",
+        "daemon",
+        "resources",
+    ]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "foreign-bind-source",
+        "wrong-bind-destination",
+        "registered-but-wrong-volume",
+        "missing-bind",
+        "extra-bind",
+        "duplicate-bind",
+    ],
+)
+def test_live_full_caddy_inspect_mounts_match_verified_compose_contract(
+    mutation: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    owner, _evidence, context, state = _aud174_full_probe_setup(monkeypatch, tmp_path)
+    mounts = state["raw_caddy"]["Mounts"]
+    if mutation == "foreign-bind-source":
+        mounts[0]["Source"] = str(tmp_path / "foreign-Caddyfile")
+    elif mutation == "wrong-bind-destination":
+        mounts[0]["Destination"] = "/etc/caddy/other.conf"
+    elif mutation == "registered-but-wrong-volume":
+        mounts[1]["Name"] = "shared-unused"
+    elif mutation == "missing-bind":
+        del mounts[0]
+    elif mutation == "extra-bind":
+        mounts.append(
+            {
+                "Type": "bind",
+                "Name": "",
+                "Source": str(tmp_path / "extra"),
+                "Destination": "/extra",
+                "RW": False,
+            }
+        )
+    else:
+        assert mutation == "duplicate-bind"
+        mounts.append(dict(mounts[0]))
+    monkeypatch.setattr(live_stand.time, "monotonic", lambda: state["clock"][0])
+
+    with pytest.raises(
+        live_stand.StandError, match="Caddy access-log redaction proof failed"
+    ):
+        live_stand._assert_live_caddy_container_pin(
+            owner,
+            (state["caddy_id"], "irrelevant-expected-identity"),
+            deadline=state["deadline"],
+            docker_context=context,
+        )
+
+    docker_events = [event[1] for event in state["events"] if event[0] == "docker"]
+    assert ("inspect", "--type", "container", state["caddy_id"]) in docker_events
+    assert sum(event[0] == "ps" for event in docker_events) == 1
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "foreign-project",
+        "orphan-service",
+        "oneoff-true",
+        "oneoff-missing",
+        "oneoff-malformed",
+        "unregistered-volume",
+        "bind-with-name",
+        "missing-inspect-response",
+        "duplicate-inspect-response",
+    ],
+)
+def test_live_full_caddy_inventory_rejects_unowned_or_ambiguous_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    case: str,
+) -> None:
+    owner, _evidence, context, state = _aud174_full_probe_setup(monkeypatch, tmp_path)
+    caddy_id = state["caddy_id"]
+    caddy_row = state["rows"][caddy_id]
+    if case == "foreign-project":
+        caddy_row["ProjectLabel"] = "ue-live-fedcba9876543210"
+    elif case == "orphan-service":
+        state["rows"][state["ids"][1]]["ServiceLabel"] = "removed-service"
+    elif case == "oneoff-true":
+        caddy_row["OneoffLabel"] = "True"
+    elif case == "oneoff-missing":
+        caddy_row["OneoffLabel"] = None
+    elif case == "oneoff-malformed":
+        caddy_row["OneoffLabel"] = "false"
+    elif case == "unregistered-volume":
+        caddy_row["Mounts"].append({"Type": "volume", "Name": "foreign-volume"})
+    elif case == "bind-with-name":
+        caddy_row["Mounts"][0]["Name"] = "not-a-volume"
+    elif case == "missing-inspect-response":
+        state["batch_output_override"] = (
+            lambda ids: json.dumps(state["rows"][ids[0]], separators=(",", ":")) + "\n"
+        )
+    else:
+        assert case == "duplicate-inspect-response"
+        state["batch_output_override"] = (
+            lambda ids: "\n".join(
+                json.dumps(state["rows"][ids[0]], separators=(",", ":"))
+                for _ in range(len(ids))
+            )
+            + "\n"
+        )
+    monkeypatch.setattr(live_stand.time, "monotonic", lambda: state["clock"][0])
+
+    with pytest.raises(
+        live_stand.StandError, match="Caddy access-log redaction proof failed"
+    ):
+        live_stand._assert_live_caddy_container_pin(
+            owner,
+            (caddy_id, "irrelevant-expected-identity"),
+            deadline=state["deadline"],
+            docker_context=context,
+        )
+
+    docker_events = [event[1] for event in state["events"] if event[0] == "docker"]
+    assert any(
+        event[:4] == ("inspect", "--type", "container", "--format")
+        for event in docker_events
+    )
+    assert ("inspect", "--type", "container", caddy_id) not in docker_events
+
+
+def test_live_full_caddy_inventory_rejects_too_many_captured_ids_before_inspect(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner, _evidence, context, state = _aud174_full_probe_setup(monkeypatch, tmp_path)
+    state["ids"] = [_batched_inspect_test_id(value) for value in range(8_100, 8_165)]
+    monkeypatch.setattr(live_stand.time, "monotonic", lambda: state["clock"][0])
+
+    with pytest.raises(
+        live_stand.StandError, match="Caddy access-log redaction proof failed"
+    ):
+        live_stand._assert_live_caddy_container_pin(
+            owner,
+            (state["caddy_id"], "irrelevant-expected-identity"),
+            deadline=state["deadline"],
+            docker_context=context,
+        )
+
+    assert not any(
+        event[0] == "docker" and event[1][0] == "inspect" for event in state["events"]
+    )
+    assert any(
+        event[0] == "docker" and event[1][0] == "ps" for event in state["events"]
+    )
+
+
+@pytest.mark.parametrize("expire_after", ["ps", "batch", "caddy-inspect", "second-ps"])
+def test_live_full_caddy_inventory_stops_on_expired_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    expire_after: str,
+) -> None:
+    owner, _evidence, context, state = _aud174_full_probe_setup(monkeypatch, tmp_path)
+    state["expire_after"] = expire_after
+    monkeypatch.setattr(live_stand.time, "monotonic", lambda: state["clock"][0])
+
+    with pytest.raises(
+        live_stand.StandError, match="Caddy access-log redaction proof failed"
+    ):
+        live_stand._assert_live_caddy_container_pin(
+            owner,
+            (state["caddy_id"], "irrelevant-expected-identity"),
+            deadline=state["deadline"],
+            docker_context=context,
+        )
+
+    docker_events = [event[1] for event in state["events"] if event[0] == "docker"]
+    if expire_after == "ps":
+        assert docker_events[-1][0] == "ps"
+    elif expire_after == "batch":
+        assert docker_events[-1][:4] == (
+            "inspect",
+            "--type",
+            "container",
+            "--format",
+        )
+    elif expire_after == "caddy-inspect":
+        assert docker_events[-1] == (
+            "inspect",
+            "--type",
+            "container",
+            state["caddy_id"],
+        )
+    else:
+        assert expire_after == "second-ps"
+        assert docker_events[-1][0] == "ps"
+    if expire_after in {"ps", "batch"}:
+        assert not any(
+            event[0] == "docker"
+            and event[1][0] == "inspect"
+            and "--format" not in event[1]
+            for event in state["events"]
+        )
+    else:
+        assert (
+            sum(
+                event == ("inspect", "--type", "container", state["caddy_id"])
+                for event in docker_events
+            )
+            == 1
+        )
+
+
+def test_live_full_caddy_inventory_rechecks_owner_daemon_and_resources(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner, evidence, context, state = _aud174_full_probe_setup(monkeypatch, tmp_path)
+    owner_drift = replace(owner, project_name="ue-live-fedcba9876543210")
+    state["owner_after_first"] = owner_drift
+    monkeypatch.setattr(live_stand.time, "monotonic", lambda: state["clock"][0])
+
+    with pytest.raises(
+        live_stand.StandError, match="Caddy access-log redaction proof failed"
+    ):
+        live_stand._assert_live_caddy_container_pin(
+            owner,
+            (state["caddy_id"], "irrelevant-expected-identity"),
+            deadline=state["deadline"],
+            docker_context=context,
+        )
+
+    assert state["owner_loads"] >= 2
+    assert state["resource_verifications"] >= 1
+    assert evidence.stack == live_stand.LIVE_STACK_FULL
+    docker_events = [event[1] for event in state["events"] if event[0] == "docker"]
+    assert len(docker_events) == 4
+    assert docker_events[0][0] == "ps" and docker_events[-1][0] == "ps"
+
+
+def test_live_full_caddy_inventory_rechecks_daemon_after_captured_inventory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner, _evidence, context, state = _aud174_full_probe_setup(monkeypatch, tmp_path)
+    state["daemon_fingerprints"] = [
+        owner.daemon_fingerprint,
+        hashlib.sha256(b"drifted-daemon").hexdigest(),
+    ]
+    monkeypatch.setattr(live_stand.time, "monotonic", lambda: state["clock"][0])
+
+    with pytest.raises(
+        live_stand.StandError, match="Caddy access-log redaction proof failed"
+    ):
+        live_stand._assert_live_caddy_container_pin(
+            owner,
+            (state["caddy_id"], "irrelevant-expected-identity"),
+            deadline=state["deadline"],
+            docker_context=context,
+        )
+
+    assert state["daemon_calls"] == 2
+    assert state["owner_loads"] == 2
+    assert len([event for event in state["events"] if event[0] == "docker"]) == 4
+
+
+def test_live_full_caddy_inventory_rechecks_mount_evidence_after_capture(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner, evidence, context, state = _aud174_full_probe_setup(monkeypatch, tmp_path)
+    state["evidence_after_first"] = replace(
+        evidence,
+        service_mounts=(
+            (
+                "caddy",
+                (("bind", str(tmp_path / "unverified.conf"), "/etc/caddy/Caddyfile"),),
+            ),
+        ),
+    )
+    monkeypatch.setattr(live_stand.time, "monotonic", lambda: state["clock"][0])
+
+    with pytest.raises(
+        live_stand.StandError, match="Caddy access-log redaction proof failed"
+    ):
+        live_stand._assert_live_caddy_container_pin(
+            owner,
+            (state["caddy_id"], "irrelevant-expected-identity"),
+            deadline=state["deadline"],
+            docker_context=context,
+        )
+
+    docker_events = [event[1] for event in state["events"] if event[0] == "docker"]
+    assert len(docker_events) == 4
+    assert docker_events[-1][0] == "ps"
+    assert state["resource_verifications"] == 2
+
+
+def test_live_full_caddy_inventory_rejects_project_id_change_after_capture(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner, _evidence, context, state = _aud174_full_probe_setup(monkeypatch, tmp_path)
+    state["ps_outputs"] = [
+        list(state["ids"]),
+        [*state["ids"], _batched_inspect_test_id(8104)],
+    ]
+    monkeypatch.setattr(live_stand.time, "monotonic", lambda: state["clock"][0])
+
+    with pytest.raises(
+        live_stand.StandError, match="Caddy access-log redaction proof failed"
+    ):
+        live_stand._assert_live_caddy_container_pin(
+            owner,
+            (state["caddy_id"], "irrelevant-expected-identity"),
+            deadline=state["deadline"],
+            docker_context=context,
+        )
+
+    docker_events = [event[1] for event in state["events"] if event[0] == "docker"]
+    assert len([event for event in docker_events if event[0] == "ps"]) == 2
+    assert docker_events[-1][0] == "ps"
+
+
+def test_live_full_caddy_inventory_rejects_daemon_mismatch_before_project_read(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner, _evidence, context, state = _aud174_full_probe_setup(monkeypatch, tmp_path)
+    state["daemon_fingerprint"] = hashlib.sha256(b"other-daemon").hexdigest()
+    monkeypatch.setattr(live_stand.time, "monotonic", lambda: state["clock"][0])
+
+    with pytest.raises(
+        live_stand.StandError, match="Caddy access-log redaction proof failed"
+    ):
+        live_stand._assert_live_caddy_container_pin(
+            owner,
+            (state["caddy_id"], "irrelevant-expected-identity"),
+            deadline=state["deadline"],
+            docker_context=context,
+        )
+
+    assert not any(event[0] in {"resources", "docker"} for event in state["events"])
+
+
+def test_live_full_caddy_inventory_does_not_accept_owner_without_daemon_pin(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner, _evidence, context, state = _aud174_full_probe_setup(monkeypatch, tmp_path)
+    unsigned_legacy_owner = replace(
+        owner,
+        schema_version=live_stand.PREVIOUS_OWNER_SCHEMA_VERSION,
+        daemon_fingerprint=None,
+        compose_resource_fingerprint=None,
+        selected_services=(),
+    )
+    state["owner"] = unsigned_legacy_owner
+    monkeypatch.setattr(live_stand.time, "monotonic", lambda: state["clock"][0])
+
+    with pytest.raises(live_stand.StandError):
+        live_stand._assert_live_caddy_container_pin(
+            unsigned_legacy_owner,
+            (state["caddy_id"], "irrelevant-expected-identity"),
+            deadline=state["deadline"],
+            docker_context=context,
+        )
+
+    assert not any(event[0] in {"resources", "docker"} for event in state["events"])
+
+
+def test_live_caddy_pin_dispatch_preserves_core_verifier(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner = live_stand.StandOwner(
+        repository=str(tmp_path),
+        worktree=str(tmp_path),
+        project_name=_PROJECTION_PROJECT,
+        published_ports=tuple(_port_map().items()),
+        schema_version=live_stand.OWNER_SCHEMA_VERSION,
+        daemon_fingerprint=hashlib.sha256(b"core-daemon").hexdigest(),
+        compose_resource_fingerprint="1" * 64,
+        stack=live_stand.LIVE_STACK_CORE,
+        service_roots=live_stand.LIVE_CORE_SERVICE_ROOTS,
+        selected_services=live_stand.LIVE_CORE_EXPECTED_SERVICES,
+    )
+    context = _aud174_docker_read_context(tmp_path)
+    expected = (_batched_inspect_test_id(8200), "2" * 64)
+    calls: list[tuple[live_stand.StandOwner, float | None, object | None]] = []
+
+    def verify_core(
+        observed_owner: live_stand.StandOwner,
+        *,
+        deadline: float | None = None,
+        docker_context: object | None = None,
+    ) -> tuple[str, str]:
+        calls.append((observed_owner, deadline, docker_context))
+        return expected
+
+    monkeypatch.setattr(live_stand, "_verified_live_core_caddy_container", verify_core)
+
+    live_stand._assert_live_caddy_container_pin(
+        owner,
+        expected,
+        deadline=33.0,
+        docker_context=context,
+    )
+
+    assert calls == [(owner, 33.0, context)]

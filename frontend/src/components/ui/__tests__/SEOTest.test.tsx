@@ -1,5 +1,6 @@
-import { render } from "@testing-library/react"
+import { act, render, waitFor } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
+import i18n from "@/i18n/config"
 import { SEO } from "../SEO"
 
 describe("SEO Component", () => {
@@ -60,14 +61,51 @@ describe("SEO Component", () => {
     )
   })
 
-  it("omits optional metadata when description and image are absent", () => {
+  it("uses localized root description and image fallbacks when optional metadata is absent", async () => {
+    const originalLanguage = i18n.language
+    await act(async () => {
+      await i18n.changeLanguage("en")
+    })
+
     render(<SEO title="Minimal" />)
 
-    expect(document.head.querySelector('meta[name="description"]')).not.toBeInTheDocument()
-    expect(document.head.querySelector('meta[property="og:description"]')).not.toBeInTheDocument()
-    expect(document.head.querySelector('meta[property="og:image"]')).not.toBeInTheDocument()
-    expect(document.head.querySelector('meta[name="twitter:description"]')).not.toBeInTheDocument()
-    expect(document.head.querySelector('meta[name="twitter:image"]')).not.toBeInTheDocument()
+    const englishDescription = i18n.t("navigation:brandDescription")
+    const englishSocialDescription = i18n.t("navigation:socialDescription")
+    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1)
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      englishDescription
+    )
+    expect(document.head.querySelector('meta[property="og:description"]')).toHaveAttribute(
+      "content",
+      englishSocialDescription
+    )
+    expect(document.head.querySelector('meta[property="og:image"]')).toHaveAttribute(
+      "content",
+      "/og-image.png"
+    )
+    expect(document.head.querySelector('meta[name="twitter:description"]')).toHaveAttribute(
+      "content",
+      englishSocialDescription
+    )
+    expect(document.head.querySelector('meta[name="twitter:image"]')).toHaveAttribute(
+      "content",
+      "/og-image.png"
+    )
+
+    await act(async () => {
+      await i18n.changeLanguage("ru")
+    })
+    await waitFor(() => {
+      expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
+        "content",
+        i18n.t("navigation:brandDescription")
+      )
+    })
+
+    await act(async () => {
+      await i18n.changeLanguage(originalLanguage)
+    })
   })
 
   it("defaults the Open Graph type to website", () => {

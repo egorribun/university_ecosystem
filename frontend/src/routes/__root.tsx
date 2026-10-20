@@ -3,10 +3,13 @@ import {
   HeadContent,
   Outlet,
   Scripts,
+  useHydrated,
+  useRouterState,
   useRouteContext,
 } from "@tanstack/react-router"
 import type { RouterContext } from "@/router"
 import { MainLayout } from "@/components/layout/MainLayout"
+import { SeoReadinessProvider, usePageSeoReady } from "@/components/ui/SEO"
 import { DeferredGlobalOverlays } from "@/components/layout/DeferredGlobalOverlays"
 import { BrandBootLoader } from "@/components/feedback/BrandBootLoader"
 import { BRAND_BOOT_LOADER_CSS } from "@/components/feedback/brandBootLoaderCss"
@@ -201,59 +204,128 @@ function getRootMetadataText(
   return (requestI18n ?? i18n).t(rootMetadataKey, { lng: language })
 }
 
+const PAGE_SEO_ROUTE_IDS: ReadonlySet<string> = new Set([
+  "/_auth/activity",
+  "/_auth/dashboard",
+  "/_auth/events/",
+  "/_auth/events/$id",
+  "/_auth/news/",
+  "/_auth/news/$id",
+  "/_auth/profile",
+  "/_auth/schedule",
+])
+const ACTIVITY_ROUTE_ID = "/_auth/activity"
+
 export const Route = createRootRouteWithContext<RouterContext>()({
   // Keep SSR enabled at the root so public and data routes receive a complete
   // TanStack Start manifest. Child auth/admin layouts may opt down to client
   // rendering, but disabling SSR here can leave <StartClient /> in an empty
   // pending state and reintroduce hydration failures.
   ssr: true,
-  // <HeadContent /> injects this metadata during SSR and on the client.
+  // <HeadContent /> injects route-managed metadata during SSR and on the
+  // client. Page SEO is React-hoisted from the rendered page component, so the
+  // root's overlapping defaults are emitted only when no page SEO is present.
+  // Activity is data-only on the server, so ActivityRootSeoFallback owns its
+  // localized first-render metadata until the Activity page hydrates.
   // Critical font preload remains a post-build responsibility of the
   // withFontPreload() Vite plugin.
-  head: () => ({
-    meta: [
-      { charSet: "UTF-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
-      { name: "color-scheme", content: "light dark" },
-      { name: "theme-color", media: "(prefers-color-scheme: light)", content: "#f8fafc" },
-      { name: "theme-color", media: "(prefers-color-scheme: dark)", content: "#020617" },
-      { name: "description", content: getRootMetadataText("navigation:brandDescription") },
-      { property: "og:type", content: "website" },
-      { property: "og:title", content: getRootMetadataText("navigation:brandName") },
-      { property: "og:description", content: getRootMetadataText("navigation:socialDescription") },
-      { property: "og:url", content: "/" },
-      { property: "og:image", content: "/og-image.png" },
-      { property: "og:locale", content: getRootLanguage() === "en" ? "en_US" : "ru_RU" },
-      { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: getRootMetadataText("navigation:brandName") },
-      { name: "twitter:description", content: getRootMetadataText("navigation:socialDescription") },
-      { name: "twitter:image", content: "/og-image.png" },
-      { name: "google-site-verification", content: "not-applicable" },
-      { name: "mobile-web-app-capable", content: "yes" },
-      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
-      { title: getRootMetadataText("navigation:brandName") },
-    ],
-    links: [
-      { rel: "icon", href: "/favicon.ico", sizes: "any" },
-      { rel: "icon", type: "image/png", sizes: "32x32", href: "/favicon-32x32.png" },
-      { rel: "icon", type: "image/png", sizes: "16x16", href: "/favicon-16x16.png" },
-      { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
-      {
-        rel: "manifest",
-        href: "/manifest.webmanifest",
-        crossOrigin: "use-credentials",
-      },
-      // Wave 117 SW5 — preconnect + dns-prefetch to picsum.photos
-      // (placeholder image CDN used by NewsCard + EventCard heroes).
-      // Saves ~150-300ms on mobile 3G LCP.
-      { rel: "preconnect", href: "https://picsum.photos", crossOrigin: "" },
-      { rel: "dns-prefetch", href: "https://picsum.photos" },
-    ],
-  }),
+  head: ({ matches = [] }) => {
+    const hasPageSeo = matches.some(
+      (match) => PAGE_SEO_ROUTE_IDS.has(match.routeId.toString()) && match.status === "success"
+    )
+    const includeRootSeo = !hasPageSeo
+
+    return {
+      meta: [
+        { charSet: "UTF-8" },
+        { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
+        { name: "color-scheme", content: "light dark" },
+        { name: "theme-color", media: "(prefers-color-scheme: light)", content: "#f8fafc" },
+        { name: "theme-color", media: "(prefers-color-scheme: dark)", content: "#020617" },
+        ...(includeRootSeo
+          ? [
+              { name: "description", content: getRootMetadataText("navigation:brandDescription") },
+              { property: "og:type", content: "website" },
+              { property: "og:title", content: getRootMetadataText("navigation:brandName") },
+              {
+                property: "og:description",
+                content: getRootMetadataText("navigation:socialDescription"),
+              },
+            ]
+          : []),
+        { property: "og:url", content: "/" },
+        ...(includeRootSeo ? [{ property: "og:image", content: "/og-image.png" }] : []),
+        { property: "og:locale", content: getRootLanguage() === "en" ? "en_US" : "ru_RU" },
+        ...(includeRootSeo
+          ? [
+              { name: "twitter:card", content: "summary_large_image" },
+              { name: "twitter:title", content: getRootMetadataText("navigation:brandName") },
+              {
+                name: "twitter:description",
+                content: getRootMetadataText("navigation:socialDescription"),
+              },
+              { name: "twitter:image", content: "/og-image.png" },
+            ]
+          : []),
+        { name: "google-site-verification", content: "not-applicable" },
+        { name: "mobile-web-app-capable", content: "yes" },
+        { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+        ...(includeRootSeo ? [{ title: getRootMetadataText("navigation:brandName") }] : []),
+      ],
+      links: [
+        { rel: "icon", href: "/favicon.ico", sizes: "any" },
+        { rel: "icon", type: "image/png", sizes: "32x32", href: "/favicon-32x32.png" },
+        { rel: "icon", type: "image/png", sizes: "16x16", href: "/favicon-16x16.png" },
+        { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
+        {
+          rel: "manifest",
+          href: "/manifest.webmanifest",
+          crossOrigin: "use-credentials",
+        },
+        // Wave 117 SW5 — preconnect + dns-prefetch to picsum.photos
+        // (placeholder image CDN used by NewsCard + EventCard heroes).
+        // Saves ~150-300ms on mobile 3G LCP.
+        { rel: "preconnect", href: "https://picsum.photos", crossOrigin: "" },
+        { rel: "dns-prefetch", href: "https://picsum.photos" },
+      ],
+    }
+  },
   shellComponent: RootShell,
   loader: async () => ({ campusTimezone: await fetchCampusTimezone() }),
   component: RootComponent,
 })
+
+export function ActivityRootSeoFallback() {
+  const isHydrated = useHydrated()
+  const hasPageSeo = usePageSeoReady()
+  const isSuccessfulActivityRoute = useRouterState({
+    select: (state) =>
+      state.matches.some(
+        (match) => match.routeId.toString() === ACTIVITY_ROUTE_ID && match.status === "success"
+      ),
+  })
+
+  if (!isSuccessfulActivityRoute || (isHydrated && hasPageSeo)) return null
+
+  const brandName = getRootMetadataText("navigation:brandName")
+  const brandDescription = getRootMetadataText("navigation:brandDescription")
+  const socialDescription = getRootMetadataText("navigation:socialDescription")
+
+  return (
+    <>
+      <title>{brandName}</title>
+      <meta name="description" content={brandDescription} />
+      <meta property="og:type" content="website" />
+      <meta property="og:title" content={brandName} />
+      <meta property="og:description" content={socialDescription} />
+      <meta property="og:image" content="/og-image.png" />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content={brandName} />
+      <meta name="twitter:description" content={socialDescription} />
+      <meta name="twitter:image" content="/og-image.png" />
+    </>
+  )
+}
 
 function RootShell({ children }: { children: React.ReactNode }) {
   // Wave 125 Phase 2 — minimal SSR-rendered HTML scaffold.
@@ -316,25 +388,27 @@ function RootShell({ children }: { children: React.ReactNode }) {
     [isDark && "dark", isLhci && "lhci-mode"].filter(Boolean).join(" ") || undefined
 
   return (
-    <html lang={lang} className={htmlClassName} suppressHydrationWarning>
-      <head>
-        <HeadContent />
-        {themeInitScriptSrc === undefined ? null : (
-          <script
-            id="theme-init-script"
-            src={themeInitScriptSrc}
-            nonce={ssrNonce}
-            suppressHydrationWarning
-          />
-        )}
-        {isLhci ? (
-          <style id="lhci-static-effects" data-lhci-static-effects="">
-            {LHCI_STATIC_EFFECTS_CSS}
-          </style>
-        ) : null}
-        <style>{CRITICAL_SHELL_CSS}</style>
-      </head>
-      {/*
+    <SeoReadinessProvider>
+      <html lang={lang} className={htmlClassName} suppressHydrationWarning>
+        <head>
+          <HeadContent />
+          <ActivityRootSeoFallback />
+          {themeInitScriptSrc === undefined ? null : (
+            <script
+              id="theme-init-script"
+              src={themeInitScriptSrc}
+              nonce={ssrNonce}
+              suppressHydrationWarning
+            />
+          )}
+          {isLhci ? (
+            <style id="lhci-static-effects" data-lhci-static-effects="">
+              {LHCI_STATIC_EFFECTS_CSS}
+            </style>
+          ) : null}
+          <style>{CRITICAL_SHELL_CSS}</style>
+        </head>
+        {/*
         W156 SW3 polish — `suppressHydrationWarning` on <body> because browser
         extensions (LastPass / 1Password / Microsoft Bing Copilot / Grammarly /
         etc.) inject attributes like `__processed_<uuid>__="true"` and
@@ -349,27 +423,27 @@ function RootShell({ children }: { children: React.ReactNode }) {
         hydration checks); it's the canonical React 19 fix for extension-
         injected attributes.
       */}
-      <body suppressHydrationWarning>
-        <div
-          id="lhci-marker"
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
-            background: "white",
-            color: "black",
-            display: "none",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "1.5rem",
-            zIndex: "var(--z-debug)" as unknown as number,
-          }}
-        >
-          LHCI RENDER START
-        </div>
-        {/*
+        <body suppressHydrationWarning>
+          <div
+            id="lhci-marker"
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100%",
+              background: "white",
+              color: "black",
+              display: "none",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "1.5rem",
+              zIndex: "var(--z-debug)" as unknown as number,
+            }}
+          >
+            LHCI RENDER START
+          </div>
+          {/*
           W156 SW3 polish — `className="ready"` rendered server-side via JSX
           so the opacity-1 state is in the SSR HTML from the start. Pre-W156
           SW3 main.tsx imperatively added `.ready` via classList.add post-
@@ -385,15 +459,16 @@ function RootShell({ children }: { children: React.ReactNode }) {
           fallback below preserves visibility independently.
           main.tsx still hides the lhci-marker on LHCI builds (separate concern).
         */}
-        <div id="root" className="ready" data-ssr-auth={ssrAuthMarker}>
-          {children}
-        </div>
-        <noscript>
-          <style>{`#root { display: block !important; }`}</style>
-        </noscript>
-        {isStaticSpaDocumentMount ? null : <Scripts />}
-      </body>
-    </html>
+          <div id="root" className="ready" data-ssr-auth={ssrAuthMarker}>
+            {children}
+          </div>
+          <noscript>
+            <style>{`#root { display: block !important; }`}</style>
+          </noscript>
+          {isStaticSpaDocumentMount ? null : <Scripts />}
+        </body>
+      </html>
+    </SeoReadinessProvider>
   )
 }
 

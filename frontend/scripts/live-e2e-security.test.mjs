@@ -257,7 +257,7 @@ test("live Playwright collection has a closed source inventory", async (t) => {
     requireCollection(reviewed.size > 0 && reviewed.size <= 256)
 
     const expectedCount = Number(
-      launcher.match(/^_PLAYWRIGHT_SKIP_IDENTITY_LIMIT = ([1-9][0-9]*)$/mu)?.[1]
+      launcher.match(/^_PLAYWRIGHT_FULL_COLLECTION_COUNT = ([1-9][0-9]*)$/mu)?.[1]
     )
     requireCollection(Number.isSafeInteger(expectedCount) && expectedCount > 0)
     requireCollection(expectedCount <= 10_000)

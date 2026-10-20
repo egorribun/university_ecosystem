@@ -24,6 +24,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
     HeadContent: () => null,
     Scripts: mockedScripts,
     Outlet: () => <div data-testid="outlet">Outlet Content</div>,
+    useRouterState: vi.fn().mockReturnValue(false),
     useRouteContext: vi.fn().mockImplementation(() => {
       return {
         queryClient: new QueryClient(),
@@ -77,6 +78,9 @@ vi.mock("@tanstack/react-query-persist-client", () => ({
 // same document-level ownership as the production hydrateRoot call.
 const renderDocumentShell = (Shell: any, children: ReactNode) =>
   render(<Shell>{children}</Shell>, { container: document, baseElement: document })
+
+const shellDocumentElement = (shellTree: any) =>
+  shellTree?.type === "html" ? shellTree : shellTree?.props?.children
 
 const REACT_DOCUMENT_SCRIPT_WARNING =
   "Encountered a script tag while rendering React component. " +
@@ -150,7 +154,7 @@ describe("__root.tsx components", () => {
   })
 
   it("uses the request or pre-paint language for the root document title", () => {
-    const getHead = () => (Route.options as any).head()
+    const getHead = () => (Route.options as any).head({ matches: [] })
     const getDocumentTitle = () =>
       getHead().meta.find((entry: { title?: string }) => "title" in entry).title
     const getMeta = (key: string) =>
@@ -189,7 +193,7 @@ describe("__root.tsx components", () => {
   })
 
   it("uses the selected browser locale when root metadata is reevaluated after a switch", () => {
-    const getHead = () => (Route.options as any).head()
+    const getHead = () => (Route.options as any).head({ matches: [] })
     const getDocumentTitle = () =>
       getHead().meta.find((entry: { title?: string }) => "title" in entry).title
     const getMeta = (key: string) =>
@@ -390,7 +394,9 @@ describe("__root.tsx components", () => {
       vi.stubGlobal("__ssrOriginGetter__", () => "https://app.example")
       const Shell = (Route.options as any).shellComponent
       const shellTree = Shell({ children: null }) as any
-      const head = shellTree.props.children.find((child: any) => child?.type === "head")
+      const head = shellDocumentElement(shellTree).props.children.find(
+        (child: any) => child?.type === "head"
+      )
       const script = head.props.children.find(
         (child: any) => child?.props?.id === "theme-init-script"
       )
@@ -564,7 +570,9 @@ describe("__root.tsx components", () => {
       try {
         const Shell = (Route.options as any).shellComponent
         const shellTree = Shell({ children: null }) as any
-        const head = shellTree.props.children.find((child: any) => child?.type === "head")
+        const head = shellDocumentElement(shellTree).props.children.find(
+          (child: any) => child?.type === "head"
+        )
         const script = head.props.children.find(
           (child: any) => child?.props?.id === "theme-init-script"
         )
@@ -632,7 +640,9 @@ describe("__root.tsx components", () => {
       try {
         const Shell = (Route.options as any).shellComponent
         const shellTree = Shell({ children: null }) as any
-        const head = shellTree.props.children.find((child: any) => child?.type === "head")
+        const head = shellDocumentElement(shellTree).props.children.find(
+          (child: any) => child?.type === "head"
+        )
         const script = head.props.children.find(
           (child: any) => child?.props?.id === "theme-init-script"
         )
@@ -660,7 +670,9 @@ describe("__root.tsx components", () => {
       try {
         const Shell = (Route.options as any).shellComponent
         const shellTree = Shell({ children: null }) as any
-        const head = shellTree.props.children.find((child: any) => child?.type === "head")
+        const head = shellDocumentElement(shellTree).props.children.find(
+          (child: any) => child?.type === "head"
+        )
         const script = head.props.children.find(
           (child: any) => child?.props?.id === "theme-init-script"
         )
@@ -683,7 +695,9 @@ describe("__root.tsx components", () => {
       try {
         const Shell = (Route.options as any).shellComponent
         const shellTree = Shell({ children: null }) as any
-        const head = shellTree.props.children.find((child: any) => child?.type === "head")
+        const head = shellDocumentElement(shellTree).props.children.find(
+          (child: any) => child?.type === "head"
+        )
         const script = head.props.children.find(
           (child: any) => child?.props?.id === "theme-init-script"
         )
@@ -703,7 +717,9 @@ describe("__root.tsx components", () => {
       document.body.append(existingRoot)
       const Shell = (Route.options as any).shellComponent
       const shellTree = Shell({ children: null }) as any
-      const shellBody = shellTree.props.children.find((child: any) => child?.type === "body")
+      const shellBody = shellDocumentElement(shellTree).props.children.find(
+        (child: any) => child?.type === "body"
+      )
       const shellRoot = shellBody.props.children.find((child: any) => child?.props?.id === "root")
 
       expect(shellRoot.props["data-ssr-auth"]).toBe("authenticated:admin")
@@ -767,7 +783,9 @@ describe("__root.tsx components", () => {
         zIndex: "var(--z-debug)",
       })
       const shellTree = Shell({ children: null }) as any
-      const body = shellTree.props.children.find((child: any) => child?.type === "body")
+      const body = shellDocumentElement(shellTree).props.children.find(
+        (child: any) => child?.type === "body"
+      )
       const noscript = body.props.children.find((child: any) => child?.type === "noscript")
       expect(noscript.props.children.props.children).toBe("#root { display: block !important; }")
     })
@@ -881,6 +899,111 @@ describe("__root.tsx components", () => {
           ],
         })
       }
+    })
+
+    it("keeps route-managed root SEO out of matches with page metadata", () => {
+      const headFn = Route.options.head
+      expect(headFn).toBeDefined()
+      if (!headFn) throw new Error("Root head metadata is missing")
+
+      const rootHead = headFn({ matches: [] } as any) as any
+      const dashboardHead = headFn({
+        matches: [{ routeId: "/_auth/dashboard", status: "success" }],
+      } as any) as any
+      const newsHead = headFn({
+        matches: [{ routeId: "/_auth/news/", status: "success" }],
+      } as any) as any
+      const publicHead = headFn({
+        matches: [{ routeId: "/_public/login", status: "success" }],
+      } as any) as any
+      const failedDashboardHead = headFn({
+        matches: [{ routeId: "/_auth/dashboard", status: "error" }],
+      } as any) as any
+      const pageSeoRouteIds = [
+        "/_auth/activity",
+        "/_auth/dashboard",
+        "/_auth/events/",
+        "/_auth/events/$id",
+        "/_auth/news/",
+        "/_auth/news/$id",
+        "/_auth/profile",
+        "/_auth/schedule",
+      ]
+      const originalSsr = import.meta.env.SSR
+      import.meta.env.SSR = false
+      const activityClientHead = headFn({
+        matches: [{ routeId: "/_auth/activity", status: "success" }],
+      } as any) as any
+      import.meta.env.SSR = true
+      const activityServerHead = headFn({
+        matches: [{ routeId: "/_auth/activity", status: "success" }],
+      } as any) as any
+      import.meta.env.SSR = originalSsr
+
+      const rootTitle = rootHead.meta.find((meta: { title?: string }) => meta.title)?.title
+      expect(rootTitle).toBe("Экосистема ГУУ")
+      expect(
+        rootHead.meta.filter((meta: { name?: string }) => meta.name === "description")
+      ).toHaveLength(1)
+      expect(dashboardHead.meta.some((meta: { title?: string }) => meta.title)).toBe(false)
+      expect(
+        dashboardHead.meta.some((meta: { name?: string }) => meta.name === "description")
+      ).toBe(false)
+      expect(
+        newsHead.meta.some((meta: { property?: string }) => meta.property === "og:title")
+      ).toBe(false)
+      expect(
+        newsHead.meta.some((meta: { property?: string }) => meta.property === "og:description")
+      ).toBe(false)
+      expect(newsHead.meta.some((meta: { name?: string }) => meta.name === "twitter:card")).toBe(
+        false
+      )
+      expect(publicHead.meta.some((meta: { name?: string }) => meta.name === "description")).toBe(
+        true
+      )
+      expect(failedDashboardHead.meta.some((meta: { title?: string }) => meta.title)).toBe(true)
+      expect(
+        failedDashboardHead.meta.filter((meta: { name?: string }) => meta.name === "description")
+      ).toHaveLength(1)
+      expect(
+        dashboardHead.meta.some(
+          (meta: { name?: string }) => meta.name === "google-site-verification"
+        )
+      ).toBe(true)
+      expect(dashboardHead.links).toEqual(rootHead.links)
+      for (const routeId of pageSeoRouteIds) {
+        const pageHead = headFn({ matches: [{ routeId, status: "success" }] } as any) as any
+        expect(pageHead.meta.some((meta: { title?: string }) => meta.title)).toBe(false)
+        expect(pageHead.meta.some((meta: { name?: string }) => meta.name === "description")).toBe(
+          false
+        )
+        expect(
+          pageHead.meta.some((meta: { property?: string }) => meta.property === "og:type")
+        ).toBe(false)
+        expect(
+          pageHead.meta.some((meta: { property?: string }) => meta.property === "og:title")
+        ).toBe(false)
+        expect(
+          pageHead.meta.some((meta: { property?: string }) => meta.property === "og:description")
+        ).toBe(false)
+        expect(
+          pageHead.meta.some((meta: { property?: string }) => meta.property === "og:image")
+        ).toBe(false)
+        expect(pageHead.meta.some((meta: { name?: string }) => meta.name === "twitter:card")).toBe(
+          false
+        )
+        expect(pageHead.meta.some((meta: { name?: string }) => meta.name === "twitter:title")).toBe(
+          false
+        )
+        expect(
+          pageHead.meta.some((meta: { name?: string }) => meta.name === "twitter:description")
+        ).toBe(false)
+        expect(pageHead.meta.some((meta: { name?: string }) => meta.name === "twitter:image")).toBe(
+          false
+        )
+      }
+      expect(activityClientHead.meta.some((meta: { title?: string }) => meta.title)).toBe(false)
+      expect(activityServerHead.meta.some((meta: { title?: string }) => meta.title)).toBe(false)
     })
   })
 })

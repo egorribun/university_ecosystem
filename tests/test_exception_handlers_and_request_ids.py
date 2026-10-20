@@ -203,15 +203,20 @@ async def test_asgi_json_problem_emits_problem_json() -> None:
         detail_text="nope",
         locale="en",
         instance="http://x/y",
-        headers={"X-Custom": "v"},
+        headers={"X-Custom": "v", "mIxEd-Header": "MiXeD", "x-lower": "lower"},
     )
     start = sent[0]
     assert start["type"] == "http.response.start"
     assert start["status"] == 403
-    # ASGI header keys are encoded preserving input case — lookup case-insensitively
-    hdrs = {k.lower(): v for k, v in start["headers"]}
+    # ASGI requires every response header name to be lowercase bytes.
+    raw_headers = start["headers"]
+    assert all(name == name.lower() for name, _value in raw_headers)
+    hdrs = dict(raw_headers)
     assert hdrs[b"content-type"] == b"application/problem+json"
+    assert hdrs[b"content-length"] == str(len(sent[1]["body"])).encode("ascii")
     assert hdrs[b"x-custom"] == b"v"
+    assert hdrs[b"mixed-header"] == b"MiXeD"
+    assert hdrs[b"x-lower"] == b"lower"
     body = json.loads(sent[1]["body"])
     assert body["detail"] == "nope"  # detail_text wins
     assert body["status"] == 403

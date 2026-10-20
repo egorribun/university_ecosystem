@@ -156,7 +156,9 @@ vi.mock("@/components/ui/Snackbar", () => ({
       </div>
     ) : null,
 }))
-vi.mock("@/components/ui/SEO", () => ({ SEO: () => null }))
+vi.mock("@/components/ui/SEO", async () =>
+  vi.importActual<typeof import("@/components/ui/SEO")>("@/components/ui/SEO")
+)
 
 vi.mock("@/components/events/EventsBackdrop", () => ({ EventsBackdrop: () => <div /> }))
 vi.mock("@/components/events/EventDetailSkeleton", () => ({
@@ -305,6 +307,12 @@ describe("EventDetail", () => {
     render(<EventDetail />)
 
     expect(screen.getByTestId("event-detail-skeleton")).toBeInTheDocument()
+    expect(document.title).toBe("events:pageTitle | University Ecosystem")
+    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1)
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      "events:pageDescription"
+    )
   })
 
   it("renders a navigable not-found state for failed or absent data", () => {
@@ -313,6 +321,12 @@ describe("EventDetail", () => {
     render(<EventDetail />)
 
     expect(screen.getByText("events:detail.messages.notFound")).toBeInTheDocument()
+    expect(document.title).toBe("events:pageTitle | University Ecosystem")
+    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1)
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      "events:pageDescription"
+    )
     fireEvent.click(screen.getByRole("button", { name: "common:buttons.back" }))
     expect(mocks.navigate).toHaveBeenCalledWith({ to: "/events" })
   })
@@ -322,6 +336,15 @@ describe("EventDetail", () => {
 
     expect(screen.getByRole("heading", { name: event.title })).toBeInTheDocument()
     expect(screen.getByText(event.description)).toBeInTheDocument()
+    expect(document.title).toBe("Open lecture | University Ecosystem")
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      event.description
+    )
+    expect(document.head.querySelector('meta[property="og:image"]')).toHaveAttribute(
+      "content",
+      event.image_url
+    )
     expect(mocks.setEventsHeroId).toHaveBeenCalledWith(event.id)
 
     fireEvent.click(screen.getByRole("button", { name: "edit" }))

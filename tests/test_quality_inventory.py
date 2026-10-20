@@ -10,6 +10,7 @@ try:
     from scripts.quality import generate_test_inventory as inventory
     from scripts.quality.check_orphans_and_anti_patterns import (
         check_anti_patterns,
+        check_go_duplicates,
         check_python_duplicates_and_imports,
         find_python_repository_references,
         find_typescript_repository_references,
@@ -359,6 +360,123 @@ class TestA:
     check_python_duplicates_and_imports(test_file_dup, errors)
     assert len(errors) == 1
     assert "duplicate test function 'test_foo'" in errors[0]
+
+
+def test_python_duplicate_checker_scopes_nested_functions_independently(
+    tmp_path: Path,
+) -> None:
+    test_file = tmp_path / "test_nested_duplicates.py"
+    test_file.write_text(
+        """
+def test_parent_one():
+    @pytest.mark.parametrize("value", [1])
+    def test_helper():
+        pass
+
+def test_parent_two():
+    @pytest.mark.parametrize("value", [2])
+    def test_helper():
+        pass
+
+async def test_async_parent_one():
+    @pytest.mark.parametrize("value", [1])
+    def test_async_helper():
+        pass
+
+async def test_async_parent_two():
+    @pytest.mark.parametrize("value", [2])
+    def test_async_helper():
+        pass
+""",
+        encoding="utf-8",
+    )
+    errors: list[str] = []
+
+    check_python_duplicates_and_imports(test_file, errors)
+
+    assert errors == []
+
+
+def test_python_duplicate_checker_detects_async_and_mixed_same_scope_duplicates(
+    tmp_path: Path,
+) -> None:
+    test_file = tmp_path / "test_async_duplicates.py"
+    test_file.write_text(
+        """
+class TestOuter:
+    class TestAsync:
+        @pytest.mark.asyncio
+        async def test_duplicate(self):
+            pass
+
+        @pytest.mark.asyncio
+        async def test_duplicate(self):
+            pass
+
+def test_parent():
+    @pytest.mark.parametrize("value", [1])
+    def test_nested(self):
+        pass
+
+    @pytest.mark.asyncio
+    async def test_nested(self):
+        pass
+""",
+        encoding="utf-8",
+    )
+    errors: list[str] = []
+
+    check_python_duplicates_and_imports(test_file, errors)
+
+    assert len(errors) == 2
+    assert all("duplicate test function" in error for error in errors)
+
+
+def test_go_duplicate_checker_ignores_comments_and_literals(tmp_path: Path) -> None:
+    test_file = tmp_path / "duplicates_test.go"
+    test_file.write_text(
+        r"""package sample
+// func TestLineComment(t *testing.T) {}
+/* func TestBlockComment(t *testing.T) {} */
+var interpreted = "escaped quote: \" // func TestInterpreted(t *testing.T) {}"
+var raw = `raw string:
+func TestRaw(t *testing.T) {}
+// still literal
+/* still a raw string */`
+var slash = '/'
+var quote = '\''
+var backslash = '\\'
+
+func TestLineComment(t *testing.T) {}
+func TestBlockComment(t *testing.T) {}
+func TestInterpreted(t *testing.T) {}
+func TestRaw(t *testing.T) {}
+""",
+        encoding="utf-8",
+    )
+    errors: list[str] = []
+
+    check_go_duplicates(test_file, errors)
+
+    assert errors == []
+
+
+def test_go_duplicate_checker_still_rejects_real_duplicate_declarations(
+    tmp_path: Path,
+) -> None:
+    test_file = tmp_path / "duplicates_test.go"
+    test_file.write_text(
+        "package sample\n"
+        "func /* declaration comment */ TestDuplicate(t *testing.T) {}\n"
+        "func TestDuplicate(t *testing.T) {}\n",
+        encoding="utf-8",
+    )
+    errors: list[str] = []
+
+    check_go_duplicates(test_file, errors)
+
+    assert len(errors) == 1
+    assert "duplicate test function name 'TestDuplicate'" in errors[0]
 
 
 def test_matches_source_normalizes_frontend_closure_test_suffix() -> None:

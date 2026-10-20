@@ -109,9 +109,9 @@ vi.mock("@/components/motion/PageFadeIn", () => ({
   default: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }))
 
-vi.mock("@/components/ui/SEO", () => ({
-  SEO: () => null,
-}))
+vi.mock("@/components/ui/SEO", async () =>
+  vi.importActual<typeof import("@/components/ui/SEO")>("@/components/ui/SEO")
+)
 
 vi.mock("qrcode.react", () => ({
   QRCodeSVG: ({ value }: { value: string }) => <svg data-testid="qr-code" data-value={value} />,
@@ -381,6 +381,12 @@ describe("Profile behavior", () => {
 
     expect(screen.getByTestId("profile-skeleton")).toBeInTheDocument()
     expect(screen.queryByTestId("profile-root")).not.toBeInTheDocument()
+    expect(document.title).toBe("profile:pageTitle | University Ecosystem")
+    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1)
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      "brandDescription"
+    )
   })
 
   it("opens the editor when settings links to the profile edit search state", () => {

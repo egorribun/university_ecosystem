@@ -213,6 +213,7 @@ export default function Dashboard() {
   if (authLoading) {
     return (
       <PageLayout variant="full" className="py-0 md:py-0">
+        <SEO title={t("dashboard:pageTitle")} />
         <DashboardSkeleton />
       </PageLayout>
     )

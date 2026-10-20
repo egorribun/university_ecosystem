@@ -337,10 +337,10 @@ describe("weatherQueryOptions (Wave 130 SW3)", () => {
     expect(opts.retry).toBe(1)
   })
 
-  it("refetchOnWindowFocus + refetchOnMount disabled (avoid spam)", () => {
+  it("keeps focus refetch disabled and refreshes only stale data on mount", () => {
     const opts = weatherQueryOptions({ lat: 0, lon: 0 })
     expect(opts.refetchOnWindowFocus).toBe(false)
-    expect(opts.refetchOnMount).toBe(false)
+    expect(opts.refetchOnMount).toBe(true)
   })
 
   it("placeholderData returns undefined when sessionStorage is empty", () => {

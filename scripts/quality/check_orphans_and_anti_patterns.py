@@ -82,20 +82,40 @@ class PythonTestVisitor(ast.NodeVisitor):
         self.imported_modules: set[str] = set()
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        self.scopes.append(set())
-        self.generic_visit(node)
-        self.scopes.pop()
+        self._visit_scoped_body(node)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_function(node)
+
+    def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         if node.name.startswith("test_"):
             current_scope = self.scopes[-1]
             if node.name in current_scope:
                 self.errors.append(
                     f"ERROR: {safe_relative_path(self.file_path)}: "
-                    f"duplicate test function '{node.name}' in class/module context"
+                    f"duplicate test function '{node.name}' in the same scope"
                 )
             current_scope.add(node.name)
-        self.generic_visit(node)
+        self._visit_scoped_body(node)
+
+    def _visit_scoped_body(self, node: ast.AST) -> None:
+        for field_name, value in ast.iter_fields(node):
+            if field_name == "body":
+                self.scopes.append(set())
+                try:
+                    for child in value:
+                        self.visit(child)
+                finally:
+                    self.scopes.pop()
+            elif isinstance(value, ast.AST):
+                self.visit(value)
+            elif isinstance(value, list):
+                for child in value:
+                    if isinstance(child, ast.AST):
+                        self.visit(child)
 
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
@@ -629,9 +649,65 @@ def _references_inventory_target(
     return False
 
 
+def _mask_go_comments_and_literals(content: str) -> str:
+    masked = list(content)
+    length = len(content)
+    index = 0
+
+    def blank(start: int, end: int, *, literal: bool = False) -> None:
+        marker_written = False
+        for position in range(start, end):
+            if content[position] in "\r\n":
+                continue
+            if literal and not marker_written:
+                masked[position] = "\0"
+                marker_written = True
+            else:
+                masked[position] = " "
+
+    while index < length:
+        if content.startswith("//", index):
+            end = content.find("\n", index + 2)
+            if end == -1:
+                end = length
+            blank(index, end)
+            index = end
+            continue
+
+        if content.startswith("/*", index):
+            closing = content.find("*/", index + 2)
+            end = length if closing == -1 else closing + 2
+            blank(index, end)
+            index = end
+            continue
+
+        quote = content[index]
+        if quote in {'"', "'", "`"}:
+            end = index + 1
+            while end < length:
+                current = content[end]
+                if quote != "`" and current == "\\":
+                    end += 2
+                    continue
+                if current == quote:
+                    end += 1
+                    break
+                if quote != "`" and current in "\r\n":
+                    break
+                end += 1
+            blank(index, min(end, length), literal=True)
+            index = max(end, index + 1)
+            continue
+
+        index += 1
+
+    return "".join(masked)
+
+
 def check_go_duplicates(file_path: Path, errors: list[str]) -> None:
     try:
         content = file_path.read_text(encoding="utf-8")
+        content = _mask_go_comments_and_literals(content)
         pattern = re.compile(r"\bfunc\s+(Test\w+)\b")
         seen_funcs = set()
         for match in pattern.finditer(content):

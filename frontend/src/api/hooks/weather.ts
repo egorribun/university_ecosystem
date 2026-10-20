@@ -61,5 +61,5 @@ export const weatherQueryOptions = (
   gcTime: 30 * 60_000,
   retry: 1,
   refetchOnWindowFocus: false,
-  refetchOnMount: false,
+  refetchOnMount: true,
 })

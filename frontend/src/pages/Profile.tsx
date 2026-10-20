@@ -153,7 +153,14 @@ export default function Profile() {
     if (shouldEditFromSearch) setEdit(true)
   }, [shouldEditFromSearch])
 
-  if (loading) return <ProfileSkeleton />
+  if (loading) {
+    return (
+      <>
+        <SEO title={t("profile:pageTitle")} />
+        <ProfileSkeleton />
+      </>
+    )
+  }
 
   const isOnline = Boolean(
     (user as { is_online?: boolean; online?: boolean } | null)?.is_online ??

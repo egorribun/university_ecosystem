@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react"
+import { act, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, it, expect, vi } from "vitest"
+import { afterEach, describe, it, expect, vi } from "vitest"
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -54,6 +54,10 @@ const baseProps = {
 }
 
 describe("MapSidebar", () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it("renders nothing when no building is selected", () => {
     const { container } = render(
       <MapSidebar {...baseProps} building={undefined} floor={undefined} />
@@ -96,5 +100,38 @@ describe("MapSidebar", () => {
     render(<MapSidebar {...baseProps} onClose={onClose} />)
     await user.click(screen.getByRole("button", { name: "sidebar.close" }))
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it("updates the building status at open and close time and releases its timers", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 6, 6, 7, 59))
+    const clearInterval = vi.spyOn(window, "clearInterval")
+    const clearTimeout = vi.spyOn(window, "clearTimeout")
+    const view = render(<MapSidebar {...baseProps} />)
+
+    try {
+      const closedBeforeOpening = screen.getByText("hours.closedNow")
+      expect(closedBeforeOpening).toHaveStyle({ color: "var(--color-rose-500)" })
+
+      // Let the panel's unrelated entrance timer finish before testing the clock.
+      act(() => vi.advanceTimersByTime(260))
+      act(() => vi.advanceTimersByTime(59_740))
+
+      const openDuringHours = screen.getByText("hours.openNow")
+      expect(openDuringHours).toHaveStyle({ color: "var(--color-emerald-500)" })
+
+      vi.setSystemTime(new Date(2026, 6, 6, 21, 59))
+      act(() => vi.advanceTimersByTime(60_000))
+
+      const closedAtClosingTime = screen.getByText("hours.closedNow")
+      expect(closedAtClosingTime).toHaveStyle({ color: "var(--color-rose-500)" })
+    } finally {
+      view.unmount()
+    }
+
+    expect(clearInterval).toHaveBeenCalledOnce()
+    expect(clearTimeout).toHaveBeenCalled()
+    clearInterval.mockRestore()
+    clearTimeout.mockRestore()
   })
 })

@@ -18,7 +18,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -156,8 +156,14 @@ def _terminate_process(process: subprocess.Popen[bytes]) -> None:
     process.kill()
 
 
-def _start_process(check: CheckSpec, *, repo_root: Path) -> subprocess.Popen[bytes]:
+def _start_process(
+    check: CheckSpec,
+    *,
+    repo_root: Path,
+    env: Mapping[str, str] | None = None,
+) -> subprocess.Popen[bytes]:
     """Start one trusted command without shell interpolation."""
+    environment = None if env is None else dict(env)
 
     if os.name == "nt":
         return subprocess.Popen(  # noqa: S603
@@ -167,6 +173,7 @@ def _start_process(check: CheckSpec, *, repo_root: Path) -> subprocess.Popen[byt
             stderr=subprocess.PIPE,
             shell=False,
             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+            env=environment,
         )
     return subprocess.Popen(  # noqa: S603
         check.command,
@@ -175,6 +182,7 @@ def _start_process(check: CheckSpec, *, repo_root: Path) -> subprocess.Popen[byt
         stderr=subprocess.PIPE,
         shell=False,
         start_new_session=True,
+        env=environment,
     )
 
 

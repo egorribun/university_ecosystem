@@ -34,9 +34,11 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import math
 import os
 import re
 import secrets
+import selectors
 import shutil
 import socket
 import stat
@@ -46,13 +48,17 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, BinaryIO, cast
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
+
+from scripts import fast_preflight
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKTREE_NAME = "ue-live"
@@ -230,11 +236,14 @@ SEED_SCRIPTS = (
     "scripts/seed_live_authorization.py",
 )
 LIVE_E2E_COMMAND = ("npm", "run", "test:e2e:live")
+LIVE_CADDY_PROBE_SPEC = "tests/e2e-live/zzz-aud174-prehydration-caddy-log.live.spec.ts"
+LIVE_CADDY_PROBE_PROJECTS = ("desktop", "mobile")
 LIVE_E2E_SMOKE_FILES = (
     "tests/e2e-live/auth-roles.live.spec.ts",
     "tests/e2e-live/password-reset.live.spec.ts",
     "tests/e2e-live/search-dialog-keyboard.live.spec.ts",
     "tests/e2e-live/settings-radio-focus.live.spec.ts",
+    LIVE_CADDY_PROBE_SPEC,
 )
 LIVE_E2E_WINDOWS_COMMAND = (
     "cmd.exe",
@@ -322,6 +331,7 @@ class ComposeResourceEvidence:
     selected_services: tuple[str, ...] = ()
     network_bindings: tuple[tuple[str, str, bool], ...] = ()
     service_networks: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    service_mounts: tuple[tuple[str, tuple[tuple[str, str | None, str], ...]], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -915,29 +925,62 @@ def _owner_signature(payload: dict[str, object], key: bytes) -> str:
     return hmac.new(key, canonical.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-def docker_daemon_fingerprint() -> str:
+def docker_daemon_fingerprint(
+    *,
+    deadline: float | None = None,
+    docker_context: _LiveDockerReadContext | None = None,
+) -> str:
     """Return a stable, non-secret fingerprint for the selected Docker daemon."""
     try:
-        result = subprocess.run(
-            ["docker", "info", "--format", "{{.ID}}"],  # noqa: S607
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (OSError, subprocess.CalledProcessError) as error:
+        if deadline is not None:
+            if docker_context is None:
+                raise StandError("cannot verify Docker daemon identity")
+            command = _live_docker_command(
+                ["docker", "info", "--format", "{{.ID}}"], docker_context
+            )
+            result = _run_live_bounded_read(
+                command,
+                context=docker_context,
+                deadline=deadline,
+                maximum_bytes=4096,
+                command_timeout_seconds=_LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS,
+            )
+            if result.returncode != 0 or result.stderr:
+                raise StandError("cannot verify Docker daemon identity")
+            stdout = (result.stdout or b"").decode("utf-8", errors="strict")
+        else:
+            stdout = _docker_output(
+                ["info", "--format", "{{.ID}}"],
+                "cannot verify Docker daemon identity",
+                docker_context=docker_context,
+            )
+    except (
+        OSError,
+        RuntimeError,
+        StandError,
+        UnicodeError,
+        subprocess.SubprocessError,
+    ) as error:
         raise StandError("cannot verify Docker daemon identity") from error
-    daemon_id = result.stdout.strip()
+    daemon_id = stdout.strip()
     if not daemon_id:
         raise StandError("cannot verify Docker daemon identity")
     return hashlib.sha256(daemon_id.encode("utf-8")).hexdigest()
 
 
-def _require_owned_docker_daemon(owner: StandOwner) -> None:
+def _require_owned_docker_daemon(
+    owner: StandOwner,
+    *,
+    deadline: float | None = None,
+    docker_context: _LiveDockerReadContext | None = None,
+) -> None:
     if owner.daemon_fingerprint is None:
         raise StandError(
             "cannot verify Docker daemon ownership for this stand; refusing lifecycle command"
         )
-    current_fingerprint = docker_daemon_fingerprint()
+    current_fingerprint = docker_daemon_fingerprint(
+        deadline=deadline, docker_context=docker_context
+    )
     if not hmac.compare_digest(current_fingerprint, owner.daemon_fingerprint):
         raise StandError("different Docker daemon detected; refusing lifecycle command")
 
@@ -1734,7 +1777,11 @@ def _write_stand_owner_update(worktree: Path, updated: StandOwner) -> StandOwner
 
 
 def _owner_compose_resource_evidence(
-    worktree: Path, owner: StandOwner
+    worktree: Path,
+    owner: StandOwner,
+    *,
+    deadline: float | None = None,
+    docker_context: _LiveDockerReadContext | None = None,
 ) -> ComposeResourceEvidence:
     if owner.schema_version in {
         RESOURCE_OWNER_SCHEMA_VERSION,
@@ -1746,10 +1793,16 @@ def _owner_compose_resource_evidence(
             owner.project_name,
             dict(owner.published_ports),
             legacy_projection=True,
+            deadline=deadline,
+            docker_context=docker_context,
         )
     if owner.stack == LIVE_STACK_FULL:
         return _compose_resource_evidence(
-            worktree, owner.project_name, dict(owner.published_ports)
+            worktree,
+            owner.project_name,
+            dict(owner.published_ports),
+            deadline=deadline,
+            docker_context=docker_context,
         )
     return _compose_resource_evidence(
         worktree,
@@ -1757,6 +1810,8 @@ def _owner_compose_resource_evidence(
         dict(owner.published_ports),
         stack=owner.stack,
         service_roots=owner.service_roots,
+        deadline=deadline,
+        docker_context=docker_context,
     )
 
 
@@ -1863,6 +1918,8 @@ def _verify_stand_owner_compose_resources(
     owner: StandOwner,
     *,
     allow_existing_owned_volumes: bool = True,
+    deadline: float | None = None,
+    docker_context: _LiveDockerReadContext | None = None,
 ) -> ComposeResourceEvidence:
     """Fail closed if the signed owner no longer matches the resolved Compose model."""
     current = load_stand_owner(worktree)
@@ -1881,7 +1938,14 @@ def _verify_stand_owner_compose_resources(
         raise StandError(
             "live stand ownership lacks Compose resource evidence; refusing lifecycle operation"
         )
-    evidence = _owner_compose_resource_evidence(worktree, current)
+    if deadline is not None:
+        _live_probe_remaining(deadline)
+    evidence = _owner_compose_resource_evidence(
+        worktree,
+        current,
+        deadline=deadline,
+        docker_context=docker_context,
+    )
     if not hmac.compare_digest(
         evidence.fingerprint, current.compose_resource_fingerprint
     ):
@@ -1903,7 +1967,11 @@ def _verify_stand_owner_compose_resources(
         allow_existing_owned=allow_existing_owned_volumes,
         managed_networks=evidence.managed_networks,
         managed_services=evidence.managed_services,
+        deadline=deadline,
+        docker_context=docker_context,
     )
+    if deadline is not None:
+        _live_probe_remaining(deadline)
     return evidence
 
 
@@ -1972,6 +2040,8 @@ def stand_environment(
 def compose_control_environment(
     project_name: str,
     published_ports: Mapping[str, int] = DEFAULT_PUBLISHED_PORTS,
+    *,
+    base_environment: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     """Build a secret-free environment for read/stop/remove Compose commands."""
     _validate_project_name(project_name)
@@ -1981,7 +2051,7 @@ def compose_control_environment(
         )
     else:
         ports = dict(_validate_published_ports(published_ports, allow_privileged=True))
-    env = os.environ.copy()
+    env = dict(os.environ if base_environment is None else base_environment)
     env["COMPOSE_PROJECT_NAME"] = project_name
     env["LIVE_BASE_URL"] = _stand_base_url(ports)
     # Compose interpolates these required live-overlay fields while loading
@@ -2125,23 +2195,65 @@ def _compose_resource_evidence(
     stack: str = LIVE_STACK_FULL,
     service_roots: Sequence[str] | None = None,
     legacy_projection: bool = False,
+    deadline: float | None = None,
+    docker_context: _LiveDockerReadContext | None = None,
 ) -> ComposeResourceEvidence:
     """Resolve removable resources and service topology without runtime secrets."""
     _validate_project_name(project_name)
-    command = compose_command("config", "--format", "json", project_name=project_name)
+    command = _live_docker_command(
+        compose_command("config", "--format", "json", project_name=project_name),
+        docker_context,
+    )
+    compose_environment = compose_control_environment(
+        project_name,
+        published_ports,
+        base_environment=(
+            docker_context.environment_dict() if docker_context is not None else None
+        ),
+    )
     try:
-        completed = subprocess.run(  # noqa: S603 - fixed Compose argv and validated project
-            command,
-            cwd=worktree,
-            env=compose_control_environment(project_name, published_ports),
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (OSError, subprocess.CalledProcessError):
+        if deadline is not None:
+            if docker_context is None:
+                raise StandError("cannot verify resolved Compose resource ownership")
+            completed = _run_live_bounded_read(
+                command,
+                context=docker_context,
+                deadline=deadline,
+                cwd=worktree,
+                environment=compose_environment,
+                maximum_bytes=_LIVE_CADDY_PROBE_MAX_BYTES,
+                command_timeout_seconds=_LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS,
+            )
+            if completed.returncode != 0 or completed.stderr:
+                raise StandError("cannot verify resolved Compose resource ownership")
+            completed_stdout: object = (completed.stdout or b"").decode(
+                "utf-8", errors="strict"
+            )
+        else:
+            run_options: dict[str, object] = {
+                "cwd": worktree,
+                "env": compose_environment,
+            }
+            completed = subprocess.run(  # noqa: S603 - fixed Compose argv and validated project
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+                **run_options,
+            )
+            if docker_context is not None:
+                _assert_live_docker_read_context(docker_context)
+            completed_stdout = completed.stdout
+    except (
+        OSError,
+        RuntimeError,
+        StandError,
+        UnicodeError,
+        subprocess.SubprocessError,
+    ):
         raise StandError("cannot verify resolved Compose resource ownership") from None
     try:
-        project = json.loads(completed.stdout)
+        project = json.loads(completed_stdout)
     except (json.JSONDecodeError, TypeError):
         raise StandError("cannot parse resolved Compose resource ownership") from None
     return _compose_resource_evidence_from_project(
@@ -2424,6 +2536,24 @@ def _compose_resource_evidence_from_project(
                 for service, details in service_mounts.items()
             )
         ),
+        service_mounts=tuple(
+            (
+                service_name,
+                tuple(
+                    (
+                        mount["type"],
+                        (
+                            volumes[mount["source"]]["resolved_name"]
+                            if mount["type"] == "volume"
+                            else mount["source"]
+                        ),
+                        mount["target"],
+                    )
+                    for mount in details["volumes"]
+                ),
+            )
+            for service_name, details in sorted(service_mounts.items())
+        ),
     )
 
 
@@ -2446,6 +2576,7 @@ _DOCKER_INSPECT_FORMAT = (
     '{"Id":{{json .Id}},'
     '"ProjectLabel":{{json (index .Config.Labels "com.docker.compose.project")}},'
     '"ServiceLabel":{{json (index .Config.Labels "com.docker.compose.service")}},'
+    '"OneoffLabel":{{json (index .Config.Labels "com.docker.compose.oneoff")}},'
     '"Mounts":[{{range $i, $m := .Mounts}}{{if $i}},{{end}}'
     '{"Type":{{json $m.Type}},'
     '"Name":{{if eq $m.Type "volume"}}{{json $m.Name}}{{else}}null{{end}}'
@@ -2468,6 +2599,7 @@ class _DockerContainerProjection:
     container_id: str
     project_label: str | None
     service_label: str | None
+    oneoff_label: str | None
     mounts: tuple[_DockerMountProjection, ...]
 
 
@@ -2553,6 +2685,7 @@ def _parse_docker_inspect_projection_batch(
             "Id",
             "ProjectLabel",
             "ServiceLabel",
+            "OneoffLabel",
             "Mounts",
         }:
             raise _DockerProjectionError
@@ -2560,6 +2693,7 @@ def _parse_docker_inspect_projection_batch(
         container_id = value["Id"]
         project_label = value["ProjectLabel"]
         service_label = value["ServiceLabel"]
+        oneoff_label = value["OneoffLabel"]
         raw_mounts = value["Mounts"]
         if (
             not isinstance(container_id, str)
@@ -2568,6 +2702,7 @@ def _parse_docker_inspect_projection_batch(
             or container_id in parsed
             or (project_label is not None and not isinstance(project_label, str))
             or (service_label is not None and not isinstance(service_label, str))
+            or (oneoff_label is not None and not isinstance(oneoff_label, str))
             or not isinstance(raw_mounts, list)
         ):
             raise _DockerProjectionError
@@ -2590,6 +2725,7 @@ def _parse_docker_inspect_projection_batch(
             container_id=container_id,
             project_label=project_label,
             service_label=service_label,
+            oneoff_label=oneoff_label,
             mounts=tuple(mounts),
         )
 
@@ -2631,6 +2767,8 @@ def _assert_compose_volume_ownership(
     allow_existing_owned: bool,
     managed_networks: Sequence[tuple[str, str]] = (),
     managed_services: Sequence[str] = (),
+    deadline: float | None = None,
+    docker_context: _LiveDockerReadContext | None = None,
 ) -> tuple[tuple[str, str], ...]:
     """Check every project resource that Compose teardown could remove."""
     _validate_project_name(project_name)
@@ -2641,13 +2779,45 @@ def _assert_compose_volume_ownership(
 
     def inventory(command: list[str], error_message: str) -> str:
         try:
+            if deadline is not None:
+                if docker_context is None:
+                    raise StandError(error_message)
+                _live_probe_remaining(deadline)
+                completed = _run_live_bounded_read(
+                    command,
+                    context=docker_context,
+                    deadline=deadline,
+                    maximum_bytes=_LIVE_CADDY_PROBE_MAX_BYTES,
+                    command_timeout_seconds=_LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS,
+                )
+                if completed.returncode != 0 or completed.stderr:
+                    raise StandError(error_message)
+                output = (completed.stdout or b"").decode("utf-8", errors="replace")
+                _live_probe_remaining(deadline)
+                return output
+            selected_command = _live_docker_command(command, docker_context)
+            run_options: dict[str, object] = {}
+            if docker_context is not None:
+                run_options = {
+                    "cwd": docker_context.cwd,
+                    "env": docker_context.environment_dict(),
+                }
             completed = subprocess.run(  # noqa: S603 - fixed Docker inventory probes with validated resource names
-                command,
+                selected_command,
                 check=True,
                 capture_output=True,
                 text=True,
+                **run_options,
             )
-        except (OSError, subprocess.CalledProcessError):
+            if docker_context is not None:
+                _assert_live_docker_read_context(docker_context)
+        except (
+            OSError,
+            RuntimeError,
+            StandError,
+            UnicodeError,
+            subprocess.SubprocessError,
+        ):
             raise StandError(error_message) from None
         output = completed.stdout
         if not isinstance(output, str):
@@ -2828,17 +2998,56 @@ def _run(
     subprocess.run(command, cwd=cwd, env=env, check=True)  # noqa: S603 - fixed argv
 
 
-def _docker_output(arguments: Sequence[str], error_message: str) -> str:
+def _docker_output(
+    arguments: Sequence[str],
+    error_message: str,
+    *,
+    deadline: float | None = None,
+    docker_context: _LiveDockerReadContext | None = None,
+) -> str:
     try:
+        command = ["docker", *arguments]
+        if deadline is not None:
+            if docker_context is None:
+                raise StandError(error_message)
+            _live_probe_remaining(deadline)
+            completed = _run_live_bounded_read(
+                command,
+                context=docker_context,
+                deadline=deadline,
+                maximum_bytes=_LIVE_CADDY_PROBE_MAX_BYTES,
+                command_timeout_seconds=_LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS,
+            )
+            if completed.returncode != 0 or completed.stderr:
+                raise StandError(error_message)
+            output = (completed.stdout or b"").decode("utf-8", errors="replace")
+            _live_probe_remaining(deadline)
+            return output
+        selected_command = _live_docker_command(command, docker_context)
+        run_options: dict[str, object] = {}
+        if docker_context is not None:
+            run_options = {
+                "cwd": docker_context.cwd,
+                "env": docker_context.environment_dict(),
+            }
         completed = subprocess.run(  # noqa: S603 - fixed Docker inventory/cleanup argv
-            ["docker", *arguments],  # noqa: S607 - fixed executable name
+            selected_command,
             check=True,
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
+            **run_options,
         )
-    except (OSError, subprocess.CalledProcessError):
+        if docker_context is not None:
+            _assert_live_docker_read_context(docker_context)
+    except (
+        OSError,
+        RuntimeError,
+        StandError,
+        UnicodeError,
+        subprocess.SubprocessError,
+    ):
         raise StandError(error_message) from None
     if not isinstance(completed.stdout, str):
         raise StandError(error_message)
@@ -2846,9 +3055,18 @@ def _docker_output(arguments: Sequence[str], error_message: str) -> str:
 
 
 def _docker_inspect_object(
-    arguments: Sequence[str], error_message: str
+    arguments: Sequence[str],
+    error_message: str,
+    *,
+    deadline: float | None = None,
+    docker_context: _LiveDockerReadContext | None = None,
 ) -> dict[str, object]:
-    output = _docker_output(arguments, error_message)
+    output = _docker_output(
+        arguments,
+        error_message,
+        deadline=deadline,
+        docker_context=docker_context,
+    )
     try:
         value = json.loads(output)
     except json.JSONDecodeError:
@@ -2860,7 +3078,12 @@ def _docker_inspect_object(
     return value
 
 
-def _project_container_ids(project_name: str) -> tuple[str, ...]:
+def _project_container_ids(
+    project_name: str,
+    *,
+    deadline: float | None = None,
+    docker_context: _LiveDockerReadContext | None = None,
+) -> tuple[str, ...]:
     output = _docker_output(
         [
             "ps",
@@ -2871,6 +3094,8 @@ def _project_container_ids(project_name: str) -> tuple[str, ...]:
             f"label=com.docker.compose.project={project_name}",
         ],
         "cannot verify live Core container inventory",
+        deadline=deadline,
+        docker_context=docker_context,
     )
     ids = tuple(line for line in output.splitlines() if line)
     if any(not re.fullmatch(r"[0-9a-f]{64}", item) for item in ids):
@@ -3577,7 +3802,11 @@ def _configure_live_trusted_proxy_peers(
 
 
 def _core_quiesce_container_inventory(
-    owner: StandOwner, evidence: ComposeResourceEvidence
+    owner: StandOwner,
+    evidence: ComposeResourceEvidence,
+    *,
+    deadline: float | None = None,
+    docker_context: _LiveDockerReadContext | None = None,
 ) -> dict[str, CoreContainerRecord]:
     """Require one verified container for every service in the signed Core projection."""
     selected = owner.selected_services
@@ -3595,9 +3824,18 @@ def _core_quiesce_container_inventory(
 
     records: dict[str, CoreContainerRecord] = {}
     service_to_id: dict[str, str] = {}
-    for container_id in _project_container_ids(owner.project_name):
+    if deadline is not None:
+        _live_probe_remaining(deadline)
+    for container_id in _project_container_ids(
+        owner.project_name,
+        deadline=deadline,
+        docker_context=docker_context,
+    ):
         raw_record = _docker_inspect_object(
-            ["inspect", container_id], "cannot verify live Core container identity"
+            ["inspect", container_id],
+            "cannot verify live Core container identity",
+            deadline=deadline,
+            docker_context=docker_context,
         )
         inspected = _core_container_record_from_inspect(
             container_id, owner, evidence, raw_record
@@ -3612,6 +3850,8 @@ def _core_quiesce_container_inventory(
         records[container_id] = inspected
     if set(service_to_id) != selected_set:
         raise StandError("live Core container inventory is incomplete")
+    if deadline is not None:
+        _live_probe_remaining(deadline)
     return records
 
 
@@ -3713,10 +3953,21 @@ def quiesce() -> None:
         _quiesce_locked()
 
 
-def _assert_core_owner_unchanged(owner: StandOwner) -> None:
+def _assert_core_owner_unchanged(
+    owner: StandOwner,
+    *,
+    deadline: float | None = None,
+    docker_context: _LiveDockerReadContext | None = None,
+) -> None:
+    if deadline is not None:
+        _live_probe_remaining(deadline)
     if load_stand_owner(WORKTREE) != owner:
         raise StandError("live stand ownership metadata changed during Core teardown")
-    _require_owned_docker_daemon(owner)
+    _require_owned_docker_daemon(
+        owner, deadline=deadline, docker_context=docker_context
+    )
+    if deadline is not None:
+        _live_probe_remaining(deadline)
 
 
 def _remove_core_compose_containers(
@@ -4547,6 +4798,15 @@ def _validated_live_e2e_specs(
     )
 
 
+def _live_e2e_probe_selected(mode: str, selected_specs: Sequence[str]) -> bool:
+    """Enable the proof exactly when its fixed spec is in the chosen lane."""
+    if mode == "smoke":
+        return LIVE_CADDY_PROBE_SPEC in LIVE_E2E_SMOKE_FILES
+    return mode == "full" and (
+        not selected_specs or LIVE_CADDY_PROBE_SPEC in selected_specs
+    )
+
+
 def _live_e2e_command(
     *,
     mode: str = "full",
@@ -4826,6 +5086,7 @@ _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES = (
     "tests/e2e-live/story-viewer-memory.live.spec.ts",
     "tests/e2e-live/story-viewer-reduced-motion.live.spec.ts",
     "tests/e2e-live/totp-recovery.live.spec.ts",
+    "tests/e2e-live/zzz-aud174-prehydration-caddy-log.live.spec.ts",
 )
 _PLAYWRIGHT_FAILURE_SOURCES = {
     **{source: source for source in _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES},
@@ -6840,6 +7101,7 @@ _PLAYWRIGHT_SKIPPED_ROW_HEADER = re.compile(
     r"(?P<source>[^ :\t]{1,160}):(?P<line>[1-9][0-9]{0,4}):"
     r"(?P<column>[1-9][0-9]{0,4}) \u203a (?=.)"
 )
+_PLAYWRIGHT_FULL_COLLECTION_COUNT = 220
 _PLAYWRIGHT_SKIP_IDENTITY_LIMIT = 216
 _PLAYWRIGHT_SKIP_SCAN_LINE_LIMIT = 8192
 _PLAYWRIGHT_SKIP_LINE_LENGTH_LIMIT = 4096
@@ -7198,7 +7460,7 @@ def _run_live_playwright(
         )
         skip_accounting_passed = (
             _live_playwright_counts(stdout)
-            == {"passed": 208, "skipped": len(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)}
+            == {"passed": 212, "skipped": len(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)}
             and not skip_rejected_rows
             and not skip_overflow
             and sorted(skip_identities) == sorted(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)
@@ -7582,6 +7844,1155 @@ def _run_live_playwright(
         raise StandError("live Playwright E2E skip identity accounting failed")
 
 
+_LIVE_CADDY_PROBE_MAX_BYTES = 1_048_576
+_LIVE_CADDY_PROBE_MARKER_MAX_BYTES = 256
+_LIVE_CADDY_PROBE_MAX_OUTPUT_DIRECTORY_ENTRIES = 512
+_LIVE_CADDY_PROBE_WINDOW_MS = 5_000
+_LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS = 10
+_LIVE_CADDY_PROBE_ADMISSION_TIMEOUT_SECONDS = 25
+_LIVE_CADDY_PROBE_MAX_PROJECT_CONTAINERS = 64
+_LIVE_CADDY_PROBE_TOTAL_TIMEOUT_SECONDS = 25
+_LIVE_CADDY_PROBE_FAILURE = "Caddy access-log redaction proof failed"
+_LIVE_CADDY_ACCESS_LOGGER = "http.log.access.log0"
+_LIVE_CADDY_PROBE_READ_CHUNK_BYTES = 16_384
+_LIVE_CADDY_PROBE_CLEANUP_RESERVE_SECONDS = 0.25
+_LIVE_CADDY_PROBE_WINDOWS_POLL_SECONDS = 0.01
+_LIVE_CADDY_PROBE_WINDOWS_BROKEN_PIPE = 109
+_LIVE_CADDY_PROBE_WINDOWS_PEEK: object | None = None
+_LIVE_CADDY_PROBE_WINDOWS_KERNEL32: object | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _LiveDockerReadContext:
+    executable: str
+    executable_identity: tuple[int, int, int, int]
+    cwd: str
+    environment: tuple[tuple[str, str], ...]
+
+    def environment_dict(self) -> dict[str, str]:
+        return dict(self.environment)
+
+
+def _live_probe_remaining(deadline: float | None) -> float | None:
+    if deadline is None:
+        return None
+    if type(deadline) not in (int, float) or not math.isfinite(deadline):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+    remaining = float(deadline) - time.monotonic()
+    if remaining <= 0:
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+    return remaining
+
+
+def _live_docker_executable_identity(path: str) -> tuple[int, int, int, int]:
+    info = os.stat(path, follow_symlinks=True)
+    if not stat.S_ISREG(info.st_mode):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+
+
+def _new_live_docker_read_context() -> _LiveDockerReadContext:
+    """Snapshot the trusted local Docker selection for one redaction proof."""
+    environment = dict(os.environ)
+    selected = shutil.which("docker", path=environment.get("PATH"))
+    if selected is None:
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+    try:
+        executable = str(Path(selected).resolve(strict=True))
+        identity = _live_docker_executable_identity(executable)
+        cwd = str(Path.cwd().resolve(strict=True))
+    except (OSError, RuntimeError):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+    return _LiveDockerReadContext(
+        executable=executable,
+        executable_identity=identity,
+        cwd=cwd,
+        environment=tuple(sorted(environment.items())),
+    )
+
+
+def _assert_live_docker_read_context(context: _LiveDockerReadContext) -> None:
+    try:
+        current = _live_docker_executable_identity(context.executable)
+    except (OSError, RuntimeError):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+    if current != context.executable_identity:
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+
+
+def _live_docker_command(
+    command: Sequence[str], context: _LiveDockerReadContext | None
+) -> list[str]:
+    result = list(command)
+    if result and result[0] == "docker" and context is not None:
+        _assert_live_docker_read_context(context)
+        result[0] = context.executable
+    return result
+
+
+def _live_windows_peek_named_pipe_api() -> Callable[..., int]:
+    """Load the availability-only Windows pipe API used for bounded reads."""
+    global _LIVE_CADDY_PROBE_WINDOWS_KERNEL32, _LIVE_CADDY_PROBE_WINDOWS_PEEK
+    if _LIVE_CADDY_PROBE_WINDOWS_PEEK is None:
+        import ctypes as ctypes_module
+        from ctypes import wintypes
+
+        ctypes_api = cast(Any, ctypes_module)
+        loader = cast(Callable[..., object], ctypes_api.WinDLL)
+        kernel32 = loader("kernel32", use_last_error=True)
+        peek = cast(Any, kernel32).PeekNamedPipe
+        peek.argtypes = (
+            wintypes.HANDLE,
+            wintypes.LPVOID,
+            wintypes.DWORD,
+            wintypes.LPVOID,
+            ctypes_module.POINTER(wintypes.DWORD),
+            wintypes.LPVOID,
+        )
+        peek.restype = wintypes.BOOL
+        _LIVE_CADDY_PROBE_WINDOWS_KERNEL32 = kernel32
+        _LIVE_CADDY_PROBE_WINDOWS_PEEK = peek
+    return cast(Callable[..., int], _LIVE_CADDY_PROBE_WINDOWS_PEEK)
+
+
+def _live_windows_pipe_available(stream: BinaryIO) -> int | None:
+    import ctypes as ctypes_module
+    import msvcrt
+    from ctypes import wintypes
+
+    available = wintypes.DWORD()
+    handle = wintypes.HANDLE(msvcrt.get_osfhandle(stream.fileno()))
+    succeeded = _live_windows_peek_named_pipe_api()(
+        handle, None, 0, None, ctypes_module.byref(available), None
+    )
+    if succeeded:
+        return int(available.value)
+    ctypes_api = cast(Any, ctypes_module)
+    error_code = cast(Callable[[], int], ctypes_api.get_last_error)()
+    if error_code == _LIVE_CADDY_PROBE_WINDOWS_BROKEN_PIPE:
+        return None
+    win_error = cast(Callable[[int], OSError], ctypes_api.WinError)
+    raise win_error(error_code)
+
+
+def _live_drain_windows_pipes(
+    process: subprocess.Popen[bytes],
+    *,
+    stdout: bytearray,
+    stderr: bytearray,
+    work_deadline: float,
+    maximum_bytes: int,
+) -> bool:
+    streams = (process.stdout, process.stderr)
+    buffers = (stdout, stderr)
+    open_pipes = [stream is not None for stream in streams]
+    while any(open_pipes):
+        if time.monotonic() >= work_deadline:
+            return False
+        made_progress = False
+        for index, stream in enumerate(streams):
+            if not open_pipes[index] or stream is None:
+                continue
+            available = _live_windows_pipe_available(stream)
+            if available is None:
+                open_pipes[index] = False
+                continue
+            if available < 0:
+                raise OSError("PeekNamedPipe returned a negative byte count")
+            if available == 0:
+                continue
+            remaining = maximum_bytes - len(stdout) - len(stderr)
+            chunk = os.read(
+                stream.fileno(),
+                min(
+                    available,
+                    _LIVE_CADDY_PROBE_READ_CHUNK_BYTES,
+                    remaining + 1,
+                ),
+            )
+            if not chunk:
+                raise OSError(
+                    "PeekNamedPipe reported bytes but the pipe read was empty"
+                )
+            buffers[index].extend(chunk[:remaining])
+            if len(chunk) > remaining:
+                return False
+            made_progress = True
+        if not any(open_pipes):
+            return True
+        if not made_progress:
+            remaining = work_deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(min(_LIVE_CADDY_PROBE_WINDOWS_POLL_SECONDS, remaining))
+    return process.poll() is not None
+
+
+def _live_drain_posix_pipes(
+    process: subprocess.Popen[bytes],
+    *,
+    stdout: bytearray,
+    stderr: bytearray,
+    work_deadline: float,
+    maximum_bytes: int,
+) -> bool:
+    streams = (process.stdout, process.stderr)
+    buffers = {"stdout": stdout, "stderr": stderr}
+    if any(stream is None for stream in streams):
+        return False
+    selector = selectors.DefaultSelector()
+    try:
+        for name, stream in zip(("stdout", "stderr"), streams, strict=True):
+            if stream is None:
+                return False
+            os.set_blocking(stream.fileno(), False)
+            selector.register(stream, selectors.EVENT_READ, name)
+        while selector.get_map():
+            remaining = work_deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            ready = selector.select(min(remaining, 0.05))
+            for key, _events in ready:
+                if time.monotonic() >= work_deadline:
+                    return False
+                target = buffers[cast(str, key.data)]
+                output_remaining = maximum_bytes - len(stdout) - len(stderr)
+                chunk = os.read(
+                    key.fd,
+                    min(_LIVE_CADDY_PROBE_READ_CHUNK_BYTES, output_remaining + 1),
+                )
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    key.fileobj.close()
+                    continue
+                target.extend(chunk[:output_remaining])
+                if len(chunk) > output_remaining:
+                    return False
+        return True
+    finally:
+        selector.close()
+
+
+def _run_live_bounded_read(
+    command: Sequence[str],
+    *,
+    context: _LiveDockerReadContext,
+    deadline: float,
+    cwd: str | Path | None = None,
+    environment: Mapping[str, str] | None = None,
+    maximum_bytes: int = _LIVE_CADDY_PROBE_MAX_BYTES,
+    command_timeout_seconds: float = _LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS,
+) -> subprocess.CompletedProcess[bytes]:
+    """Capture fixed local read-only command output under one shared deadline."""
+    try:
+        shared_remaining = _live_probe_remaining(deadline)
+        if (
+            shared_remaining is None
+            or type(maximum_bytes) is not int
+            or maximum_bytes < 0
+            or type(command_timeout_seconds) not in (int, float)
+            or not math.isfinite(command_timeout_seconds)
+            or command_timeout_seconds <= 0
+        ):
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        started = time.monotonic()
+        command_deadline = min(
+            float(deadline), started + float(command_timeout_seconds)
+        )
+        command_budget = command_deadline - started
+        reserve = min(_LIVE_CADDY_PROBE_CLEANUP_RESERVE_SECONDS, command_budget / 2)
+        work_deadline = command_deadline - reserve
+        if work_deadline <= started:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        _assert_live_docker_read_context(context)
+        argv = _live_docker_command(command, context)
+        if (
+            not argv
+            or len(argv) > 128
+            or argv[0] != context.executable
+            or any(type(argument) is not str or "\x00" in argument for argument in argv)
+            or sum(map(len, argv)) > 65_536
+        ):
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        process_environment = (
+            context.environment_dict() if environment is None else dict(environment)
+        )
+        process = fast_preflight._start_process(
+            fast_preflight.CheckSpec("live-caddy-log-read", tuple(argv)),
+            repo_root=Path(context.cwd if cwd is None else cwd),
+            env=process_environment,
+        )
+    except (OSError, RuntimeError, StandError, ValueError, TypeError):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+
+    stdout = bytearray()
+    stderr = bytearray()
+    completed = False
+    cleanup_ok = True
+    return_code: int | None = None
+    try:
+        if process.stdout is None or process.stderr is None:
+            raise OSError("Docker read pipes were unavailable")
+        if os.name == "nt":
+            completed = _live_drain_windows_pipes(
+                process,
+                stdout=stdout,
+                stderr=stderr,
+                work_deadline=work_deadline,
+                maximum_bytes=maximum_bytes,
+            )
+        else:
+            completed = _live_drain_posix_pipes(
+                process,
+                stdout=stdout,
+                stderr=stderr,
+                work_deadline=work_deadline,
+                maximum_bytes=maximum_bytes,
+            )
+        if completed:
+            # Keep the reserved tail for killing and reaping a child that closed
+            # both pipes but is still running.
+            remaining = work_deadline - time.monotonic()
+            if remaining > 0:
+                try:
+                    return_code = process.wait(timeout=remaining)
+                except subprocess.TimeoutExpired:
+                    completed = False
+            else:
+                completed = False
+    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError):
+        completed = False
+    finally:
+        if process.poll() is None:
+            try:
+                process.kill()
+            except OSError:
+                if process.poll() is None:
+                    cleanup_ok = False
+            remaining = command_deadline - time.monotonic()
+            if remaining > 0:
+                try:
+                    process.wait(timeout=remaining)
+                except (OSError, subprocess.TimeoutExpired, ValueError):
+                    cleanup_ok = False
+            elif process.poll() is None:
+                cleanup_ok = False
+        for stream in (process.stdout, process.stderr):
+            if stream is not None and not stream.closed:
+                try:
+                    stream.close()
+                except (OSError, ValueError):
+                    cleanup_ok = False
+
+    if not completed or not cleanup_ok or return_code is None:
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+    try:
+        _assert_live_docker_read_context(context)
+        _live_probe_remaining(deadline)
+    except (OSError, RuntimeError, StandError):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+    return subprocess.CompletedProcess(
+        argv, return_code, stdout=bytes(stdout), stderr=bytes(stderr)
+    )
+
+
+def _new_live_caddy_probe_values() -> tuple[str, dict[str, str]]:
+    """Generate run-only credentials that never enter an observation file or output."""
+    nonce = secrets.token_hex(16)
+    correlations = {
+        project: secrets.token_hex(16) for project in LIVE_CADDY_PROBE_PROJECTS
+    }
+    values = (nonce, *correlations.values())
+    while len(set(values)) != len(values):
+        nonce = secrets.token_hex(16)
+        correlations = {
+            project: secrets.token_hex(16) for project in LIVE_CADDY_PROBE_PROJECTS
+        }
+        values = (nonce, *correlations.values())
+    return nonce, correlations
+
+
+def _reject_live_caddy_probe_json_constant(_value: str) -> None:
+    raise ValueError
+
+
+def _assert_live_caddy_probe_redaction(
+    output: bytes,
+    *,
+    stderr: bytes = b"",
+    password_nonce: str,
+    correlation_id: str,
+    project: str,
+    since_ms: int | None = None,
+    until_ms: int | None = None,
+) -> None:
+    """Require one successful, exactly correlated request with a redacted password."""
+    if (
+        type(output) is not bytes
+        or type(stderr) is not bytes
+        or len(output) + len(stderr) > _LIVE_CADDY_PROBE_MAX_BYTES
+        or project not in LIVE_CADDY_PROBE_PROJECTS
+        or not isinstance(password_nonce, str)
+        or re.fullmatch(r"[0-9a-f]{32}", password_nonce) is None
+        or not isinstance(correlation_id, str)
+        or re.fullmatch(r"[0-9a-f]{32}", correlation_id) is None
+        or password_nonce == correlation_id
+        or (since_ms is None) != (until_ms is None)
+    ):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+
+    nonce_bytes = password_nonce.encode("ascii")
+    correlation_bytes = correlation_id.encode("ascii")
+    if nonce_bytes in output or nonce_bytes in stderr:
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+
+    matching_rows = [
+        line
+        for stream in (output, stderr)
+        for line in stream.splitlines()
+        if correlation_bytes in line
+    ]
+    if len(matching_rows) != 1:
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+
+    # Docker forwards container stderr to this process's stderr. Accept it only
+    # as timestamped Caddy JSON records, never as unstructured CLI diagnostics.
+    stderr_rows = stderr.splitlines()
+    for line in stderr_rows:
+        if not line:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        try:
+            timestamp_bytes, payload_bytes = line.split(b" ", 1)
+            _parse_live_docker_log_timestamp(timestamp_bytes)
+            stderr_payload = json.loads(
+                payload_bytes,
+                object_pairs_hook=_reject_duplicate_docker_json_keys,
+                parse_constant=_reject_live_caddy_probe_json_constant,
+            )
+        except (
+            ValueError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            RecursionError,
+        ):
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+        level = (
+            stderr_payload.get("level") if isinstance(stderr_payload, dict) else None
+        )
+        if (
+            not isinstance(stderr_payload, dict)
+            or not isinstance(level, str)
+            or level not in {"debug", "info", "warn", "error", "panic", "fatal"}
+            or not isinstance(stderr_payload.get("msg"), str)
+            or (
+                "logger" in stderr_payload
+                and not isinstance(stderr_payload.get("logger"), str)
+            )
+            or level in {"error", "panic", "fatal"}
+        ):
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+
+    try:
+        timestamp_bytes, payload_bytes = matching_rows[0].split(b" ", 1)
+        _parse_live_docker_log_timestamp(timestamp_bytes)
+        payload = json.loads(
+            payload_bytes,
+            object_pairs_hook=_reject_duplicate_docker_json_keys,
+            parse_constant=_reject_live_caddy_probe_json_constant,
+        )
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+
+    if since_ms is not None and until_ms is not None:
+        try:
+            row_timestamp_ns = _parse_live_docker_log_timestamp(timestamp_bytes)
+        except (ValueError, OverflowError):
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+        if (
+            type(since_ms) is not int
+            or type(until_ms) is not int
+            or since_ms <= 0
+            or until_ms < since_ms
+            or not since_ms * 1_000_000 <= row_timestamp_ns <= until_ms * 1_000_000
+        ):
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+
+    if not isinstance(payload, dict):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+    request = payload.get("request")
+    expected_uri = f"/login?probe={correlation_id}&password=REDACTED"
+    if (
+        payload.get("logger") != _LIVE_CADDY_ACCESS_LOGGER
+        or not isinstance(request, dict)
+        or request.get("method") != "GET"
+        or request.get("uri") != expected_uri
+        or type(payload.get("status")) is not int
+        or payload.get("status") != 200
+    ):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+
+
+def _parse_live_docker_log_timestamp(value: bytes) -> int:
+    """Parse Docker's UTC RFC3339Nano prefix into an exact nanosecond value."""
+    try:
+        text = value.decode("ascii")
+    except UnicodeDecodeError:
+        raise ValueError from None
+    match = re.fullmatch(
+        r"(?P<date>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})"
+        r"(?:\.(?P<fraction>\d{1,9}))?Z",
+        text,
+    )
+    if match is None:
+        raise ValueError
+    whole_seconds = datetime.strptime(match.group("date"), "%Y-%m-%dT%H:%M:%S").replace(
+        tzinfo=UTC
+    )
+    epoch = datetime(1970, 1, 1, tzinfo=UTC)
+    difference = whole_seconds - epoch
+    seconds = difference.days * 86_400 + difference.seconds
+    fraction = (match.group("fraction") or "").ljust(9, "0")
+    return seconds * 1_000_000_000 + int(fraction or "0")
+
+
+def _read_live_caddy_probe_observations(
+    output_directory: Path,
+    *,
+    started_at_ms: int,
+    finished_at_ms: int,
+    deadline: float | None = None,
+) -> dict[str, int]:
+    """Read and remove the two fixed, bounded, value-free project markers."""
+    expected_names = {
+        f"aud174-caddy-probe-{project}.json" for project in LIVE_CADDY_PROBE_PROJECTS
+    }
+    observed: dict[str, int] = {}
+    cleanup_failed = False
+    try:
+        if (
+            type(started_at_ms) is not int
+            or type(finished_at_ms) is not int
+            or started_at_ms <= 0
+            or finished_at_ms < started_at_ms
+        ):
+            raise ValueError
+        directory_info = output_directory.lstat()
+        if not stat.S_ISDIR(directory_info.st_mode) or _path_is_reparse_point(
+            output_directory
+        ):
+            raise ValueError
+        if deadline is not None:
+            _live_probe_remaining(deadline)
+        marker_names: set[str] = set()
+        entry_count = 0
+        with os.scandir(output_directory) as iterator:
+            while True:
+                if deadline is not None:
+                    _live_probe_remaining(deadline)
+                try:
+                    child = next(iterator)
+                except StopIteration:
+                    break
+                entry_count += 1
+                if entry_count > _LIVE_CADDY_PROBE_MAX_OUTPUT_DIRECTORY_ENTRIES:
+                    raise ValueError
+                if deadline is not None:
+                    _live_probe_remaining(deadline)
+                if child.name.startswith("aud174-caddy-probe-"):
+                    marker_names.add(child.name)
+        if marker_names != expected_names:
+            raise ValueError
+
+        for project in LIVE_CADDY_PROBE_PROJECTS:
+            if deadline is not None:
+                _live_probe_remaining(deadline)
+            marker_path = output_directory / f"aud174-caddy-probe-{project}.json"
+            before = marker_path.lstat()
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or _path_is_reparse_point(marker_path)
+                or before.st_size > _LIVE_CADDY_PROBE_MARKER_MAX_BYTES
+            ):
+                raise ValueError
+            binary_flag_name = "O_BINARY"
+            no_follow_flag_name = "O_NOFOLLOW"
+            open_flags = os.O_RDONLY | getattr(os, binary_flag_name, 0)
+            open_flags |= getattr(os, no_follow_flag_name, 0)
+            descriptor = os.open(marker_path, open_flags)
+            raw_buffer = bytearray()
+            try:
+                opened = os.fstat(descriptor)
+                path_at_open = marker_path.lstat()
+                if (
+                    _live_caddy_marker_identity(before)
+                    != _live_caddy_marker_identity(opened)
+                    or _live_caddy_marker_identity(opened)
+                    != _live_caddy_marker_identity(path_at_open)
+                    or not stat.S_ISREG(opened.st_mode)
+                ):
+                    raise ValueError
+                while len(raw_buffer) <= _LIVE_CADDY_PROBE_MARKER_MAX_BYTES:
+                    if deadline is not None:
+                        _live_probe_remaining(deadline)
+                    chunk = os.read(
+                        descriptor,
+                        min(
+                            64,
+                            _LIVE_CADDY_PROBE_MARKER_MAX_BYTES + 1 - len(raw_buffer),
+                        ),
+                    )
+                    raw_buffer.extend(chunk)
+                    if deadline is not None:
+                        _live_probe_remaining(deadline)
+                    if not chunk:
+                        break
+                opened_after = os.fstat(descriptor)
+                path_after = marker_path.lstat()
+                if (
+                    len(raw_buffer) > _LIVE_CADDY_PROBE_MARKER_MAX_BYTES
+                    or _live_caddy_marker_identity(opened)
+                    != _live_caddy_marker_identity(opened_after)
+                    or _live_caddy_marker_identity(opened_after)
+                    != _live_caddy_marker_identity(path_after)
+                    or len(raw_buffer) != opened_after.st_size
+                ):
+                    raise ValueError
+            finally:
+                os.close(descriptor)
+            raw = bytes(raw_buffer)
+            if len(raw) != before.st_size:
+                raise ValueError
+            marker = json.loads(raw.decode("utf-8"))
+            if (
+                not isinstance(marker, dict)
+                or set(marker) != {"schema", "project", "completed_at_ms"}
+                or marker["schema"] != "aud174-caddy-probe-v1"
+                or marker["project"] != project
+                or type(marker["completed_at_ms"]) is not int
+                or not started_at_ms <= marker["completed_at_ms"] <= finished_at_ms
+            ):
+                raise ValueError
+            observed[project] = marker["completed_at_ms"]
+        if set(observed) != set(LIVE_CADDY_PROBE_PROJECTS):
+            raise ValueError
+        return observed
+    except (
+        OSError,
+        RuntimeError,
+        UnicodeError,
+        ValueError,
+        TypeError,
+        json.JSONDecodeError,
+    ):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+    finally:
+        for project in LIVE_CADDY_PROBE_PROJECTS:
+            marker_path = output_directory / f"aud174-caddy-probe-{project}.json"
+            try:
+                marker_path.lstat()
+            except FileNotFoundError:
+                continue
+            except OSError:
+                cleanup_failed = True
+                continue
+            try:
+                marker_path.unlink()
+            except OSError:
+                cleanup_failed = True
+        if cleanup_failed:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+
+
+def _live_caddy_marker_identity(
+    info: os.stat_result,
+    *,
+    windows: bool | None = None,
+) -> tuple[int, ...]:
+    """Return a stable file identity using the platform's correct timestamp."""
+    if windows is None:
+        windows = os.name == "nt"
+    if type(windows) is not bool:
+        raise ValueError
+
+    identity = (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_size,
+        info.st_mtime_ns,
+    )
+    if any(type(value) is not int for value in identity):
+        raise ValueError
+    timestamp_name = "st_birthtime_ns" if windows else "st_ctime_ns"
+    timestamp = getattr(info, timestamp_name, None)
+    if type(timestamp) is not int:
+        raise ValueError
+    return (*identity, timestamp)
+
+
+def _verified_live_core_caddy_container(
+    owner: StandOwner,
+    *,
+    deadline: float | None = None,
+    docker_context: _LiveDockerReadContext | None = None,
+) -> tuple[str, str]:
+    """Return the sole running Caddy ID and identity in the signed Core projection."""
+    try:
+        if owner.stack != LIVE_STACK_CORE:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        _assert_core_owner_unchanged(
+            owner, deadline=deadline, docker_context=docker_context
+        )
+        evidence = _verify_stand_owner_compose_resources(
+            WORKTREE,
+            owner,
+            deadline=deadline,
+            docker_context=docker_context,
+        )
+        records = _core_quiesce_container_inventory(
+            owner,
+            evidence,
+            deadline=deadline,
+            docker_context=docker_context,
+        )
+        caddy_records = [
+            (container_id, record)
+            for container_id, record in records.items()
+            if record.service == "caddy"
+        ]
+        if (
+            len(caddy_records) != 1
+            or not caddy_records[0][1].running
+            or caddy_records[0][1].status != "running"
+        ):
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        _assert_core_owner_unchanged(
+            owner, deadline=deadline, docker_context=docker_context
+        )
+        container_id, record = caddy_records[0]
+        return container_id, record.identity
+    except (OSError, RuntimeError, StandError, subprocess.SubprocessError):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+
+
+def _assert_live_full_owner_unchanged(
+    owner: StandOwner,
+    *,
+    deadline: float,
+    docker_context: _LiveDockerReadContext,
+) -> None:
+    _live_probe_remaining(deadline)
+    if owner.stack != LIVE_STACK_FULL or load_stand_owner(WORKTREE) != owner:
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+    _require_owned_docker_daemon(
+        owner, deadline=deadline, docker_context=docker_context
+    )
+    _live_probe_remaining(deadline)
+
+
+def _verified_live_full_caddy_container(
+    owner: StandOwner,
+    *,
+    deadline: float | None = None,
+    docker_context: _LiveDockerReadContext | None = None,
+) -> tuple[str, str]:
+    """Pin Caddy from the complete captured inventory of a signed Full owner."""
+    try:
+        if deadline is None or docker_context is None:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        _live_probe_remaining(deadline)
+        _assert_live_full_owner_unchanged(
+            owner, deadline=deadline, docker_context=docker_context
+        )
+        evidence = _verify_stand_owner_compose_resources(
+            WORKTREE,
+            owner,
+            deadline=deadline,
+            docker_context=docker_context,
+        )
+        if (
+            evidence.stack != LIVE_STACK_FULL
+            or not evidence.managed_services
+            or len(set(evidence.managed_services)) != len(evidence.managed_services)
+            or "caddy" not in evidence.managed_services
+        ):
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        _live_probe_remaining(deadline)
+
+        container_ids = _project_container_ids(
+            owner.project_name,
+            deadline=deadline,
+            docker_context=docker_context,
+        )
+        try:
+            captured_ids = _validated_docker_container_ids(
+                container_ids,
+                maximum=_LIVE_CADDY_PROBE_MAX_PROJECT_CONTAINERS,
+            )
+        except _DockerProjectionError:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+        if not captured_ids:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        commands = _build_docker_inspect_projection_commands(captured_ids)
+        if len(commands) != 1:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        _live_probe_remaining(deadline)
+        inspect_outputs = (
+            _docker_output(
+                commands[0][1:],
+                _LIVE_CADDY_PROBE_FAILURE,
+                deadline=deadline,
+                docker_context=docker_context,
+            ),
+        )
+        _live_probe_remaining(deadline)
+        try:
+            projections = _parse_docker_inspect_projection_inventory(
+                captured_ids, inspect_outputs
+            )
+        except _DockerProjectionError:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+
+        declared_volumes = set(evidence.declared_volume_names)
+        managed_services = set(evidence.managed_services)
+        caddy_projections: list[_DockerContainerProjection] = []
+        for projection in projections:
+            if (
+                projection.project_label != owner.project_name
+                or projection.service_label not in managed_services
+                or projection.oneoff_label != "False"
+            ):
+                raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+            for mount in projection.mounts:
+                if mount.mount_type == "volume":
+                    if mount.name not in declared_volumes:
+                        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+                elif mount.name is not None:
+                    raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+            if projection.service_label == "caddy":
+                caddy_projections.append(projection)
+        if len(caddy_projections) != 1:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        caddy_id = caddy_projections[0].container_id
+
+        _live_probe_remaining(deadline)
+        caddy_record = _docker_inspect_object(
+            ["inspect", "--type", "container", caddy_id],
+            _LIVE_CADDY_PROBE_FAILURE,
+            deadline=deadline,
+            docker_context=docker_context,
+        )
+        caddy_config = caddy_record.get("Config")
+        caddy_labels = (
+            caddy_config.get("Labels") if isinstance(caddy_config, dict) else None
+        )
+        raw_mounts = caddy_record.get("Mounts")
+        caddy_mount_contracts = [
+            mounts for service, mounts in evidence.service_mounts if service == "caddy"
+        ]
+        if (
+            not isinstance(caddy_labels, dict)
+            or caddy_labels.get("com.docker.compose.oneoff") != "False"
+            or not isinstance(raw_mounts, list)
+            or len(caddy_mount_contracts) != 1
+            or not caddy_mount_contracts[0]
+        ):
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        expected_mounts = caddy_mount_contracts[0]
+        if any(
+            not isinstance(mount, tuple)
+            or len(mount) != 3
+            or not isinstance(mount[0], str)
+            or mount[0] not in _DOCKER_INSPECT_MOUNT_TYPES
+            or not isinstance(mount[2], str)
+            or not mount[2]
+            or (
+                mount[0] in {"volume", "bind"}
+                and (not isinstance(mount[1], str) or not mount[1])
+            )
+            or (mount[0] == "tmpfs" and mount[1] is not None)
+            for mount in expected_mounts
+        ) or len({mount[2] for mount in expected_mounts}) != len(expected_mounts):
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        inspected_mounts: list[_DockerMountProjection] = []
+        inspected_mount_contract: list[tuple[str, str | None, str]] = []
+        for mount in raw_mounts:
+            if not isinstance(mount, dict):
+                raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+            mount_type = mount.get("Type")
+            mount_name = mount.get("Name") if mount_type == "volume" else None
+            mount_source = mount.get("Source") if mount_type == "bind" else mount_name
+            mount_target = mount.get("Destination")
+            if (
+                not isinstance(mount_type, str)
+                or mount_type not in _DOCKER_INSPECT_MOUNT_TYPES
+                or (mount_type == "volume" and not isinstance(mount_name, str))
+                or (mount_type != "volume" and mount.get("Name") not in (None, ""))
+                or (
+                    mount_type == "bind"
+                    and (not isinstance(mount_source, str) or not mount_source)
+                )
+                or (mount_type == "tmpfs" and mount_source is not None)
+                or not isinstance(mount_target, str)
+                or not mount_target
+            ):
+                raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+            inspected_mounts.append(_DockerMountProjection(mount_type, mount_name))
+            inspected_mount_contract.append((mount_type, mount_source, mount_target))
+        if tuple(inspected_mounts) != caddy_projections[0].mounts:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        if len({mount[2] for mount in inspected_mount_contract}) != len(
+            inspected_mount_contract
+        ) or sorted(inspected_mount_contract) != sorted(expected_mounts):
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+
+        inspected_caddy = _core_container_record_from_inspect(
+            caddy_id, owner, evidence, caddy_record
+        )
+        if (
+            inspected_caddy.service != "caddy"
+            or not inspected_caddy.running
+            or inspected_caddy.status != "running"
+        ):
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        _live_probe_remaining(deadline)
+
+        current_ids = _project_container_ids(
+            owner.project_name,
+            deadline=deadline,
+            docker_context=docker_context,
+        )
+        try:
+            current_ids = _validated_docker_container_ids(
+                current_ids,
+                maximum=_LIVE_CADDY_PROBE_MAX_PROJECT_CONTAINERS,
+            )
+        except _DockerProjectionError:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+        if set(current_ids) != set(captured_ids):
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        _assert_live_full_owner_unchanged(
+            owner, deadline=deadline, docker_context=docker_context
+        )
+        current_evidence = _verify_stand_owner_compose_resources(
+            WORKTREE,
+            owner,
+            deadline=deadline,
+            docker_context=docker_context,
+        )
+        if current_evidence != evidence:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        _live_probe_remaining(deadline)
+        return caddy_id, inspected_caddy.identity
+    except (OSError, RuntimeError, StandError, subprocess.SubprocessError):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+
+
+def _verified_live_caddy_container(
+    owner: StandOwner,
+    *,
+    deadline: float | None = None,
+    docker_context: _LiveDockerReadContext | None = None,
+) -> tuple[str, str]:
+    """Dispatch the pin check to the exact signed Core or Full owner contract."""
+    if owner.stack == LIVE_STACK_CORE:
+        return _verified_live_core_caddy_container(
+            owner,
+            deadline=deadline,
+            docker_context=docker_context,
+        )
+    if owner.stack == LIVE_STACK_FULL:
+        return _verified_live_full_caddy_container(
+            owner,
+            deadline=deadline,
+            docker_context=docker_context,
+        )
+    raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+
+
+def _assert_live_caddy_container_pin(
+    owner: StandOwner,
+    expected_pin: tuple[str, str],
+    *,
+    deadline: float | None = None,
+    docker_context: _LiveDockerReadContext | None = None,
+) -> None:
+    if (
+        _verified_live_caddy_container(
+            owner,
+            deadline=deadline,
+            docker_context=docker_context,
+        )
+        != expected_pin
+    ):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+
+
+def _caddy_probe_timestamp_argument(timestamp_ms: int) -> str:
+    if type(timestamp_ms) is not int or timestamp_ms <= 0:
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+    try:
+        return (
+            datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC)
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z")
+        )
+    except (OverflowError, OSError, ValueError):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+
+
+def _read_live_caddy_probe_log(
+    owner: StandOwner,
+    *,
+    container_pin: tuple[str, str],
+    completed_at_ms: int,
+    project: str,
+    password_nonce: str,
+    correlation_id: str,
+    deadline: float,
+    docker_context: _LiveDockerReadContext | None = None,
+) -> None:
+    """Read one timestamp-bounded window from the reverified exact Caddy container."""
+    try:
+        if project not in LIVE_CADDY_PROBE_PROJECTS or time.monotonic() >= deadline:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        if docker_context is None:
+            docker_context = _new_live_docker_read_context()
+        since_ms = max(1, completed_at_ms - _LIVE_CADDY_PROBE_WINDOW_MS)
+        until_ms = completed_at_ms + _LIVE_CADDY_PROBE_WINDOW_MS
+        since = _caddy_probe_timestamp_argument(since_ms)
+        until = _caddy_probe_timestamp_argument(until_ms)
+        _assert_live_caddy_container_pin(
+            owner,
+            container_pin,
+            deadline=deadline,
+            docker_context=docker_context,
+        )
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        command = [
+            "docker",
+            "logs",
+            "--timestamps",
+            "--since",
+            since,
+            "--until",
+            until,
+            container_pin[0],
+        ]
+        completed = _run_live_bounded_read(
+            command,
+            context=docker_context,
+            deadline=deadline,
+            maximum_bytes=_LIVE_CADDY_PROBE_MAX_BYTES,
+            command_timeout_seconds=min(
+                _LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS, remaining
+            ),
+        )
+        stdout = completed.stdout or b""
+        stderr = completed.stderr or b""
+        if completed.returncode != 0:
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        _assert_live_caddy_probe_redaction(
+            stdout,
+            stderr=stderr,
+            password_nonce=password_nonce,
+            correlation_id=correlation_id,
+            project=project,
+            since_ms=since_ms,
+            until_ms=until_ms,
+        )
+    except (OSError, RuntimeError, StandError, subprocess.SubprocessError):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+    finally:
+        try:
+            if "completed" in locals():
+                completed.stdout = b""
+                completed.stderr = b""
+            stdout = b""
+            stderr = b""
+            _live_probe_remaining(deadline)
+            if docker_context is None:
+                raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+            _assert_live_caddy_container_pin(
+                owner,
+                container_pin,
+                deadline=deadline,
+                docker_context=docker_context,
+            )
+            _live_probe_remaining(deadline)
+        except (OSError, RuntimeError, StandError, subprocess.SubprocessError):
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+
+
+def _verify_live_caddy_probe_log(
+    owner: StandOwner,
+    output_directory: Path,
+    *,
+    started_at_ms: int,
+    finished_at_ms: int,
+    password_nonce: str,
+    correlation_ids: Mapping[str, str],
+    container_pin: tuple[str, str],
+    docker_context: _LiveDockerReadContext | None = None,
+) -> None:
+    """Require a fresh correlated redaction row for both Playwright projects."""
+    try:
+        if (
+            not isinstance(password_nonce, str)
+            or re.fullmatch(r"[0-9a-f]{32}", password_nonce) is None
+            or not isinstance(correlation_ids, Mapping)
+            or set(correlation_ids) != set(LIVE_CADDY_PROBE_PROJECTS)
+            or any(
+                not isinstance(value, str)
+                or re.fullmatch(r"[0-9a-f]{32}", value) is None
+                for value in correlation_ids.values()
+            )
+            or len({password_nonce, *correlation_ids.values()}) != 3
+        ):
+            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        if docker_context is None:
+            docker_context = _new_live_docker_read_context()
+        deadline = time.monotonic() + _LIVE_CADDY_PROBE_TOTAL_TIMEOUT_SECONDS
+        _live_probe_remaining(deadline)
+        observations = _read_live_caddy_probe_observations(
+            output_directory,
+            started_at_ms=started_at_ms,
+            finished_at_ms=finished_at_ms,
+            deadline=deadline,
+        )
+        _live_probe_remaining(deadline)
+        _assert_live_caddy_container_pin(
+            owner,
+            container_pin,
+            deadline=deadline,
+            docker_context=docker_context,
+        )
+        for project in LIVE_CADDY_PROBE_PROJECTS:
+            _read_live_caddy_probe_log(
+                owner,
+                container_pin=container_pin,
+                completed_at_ms=observations[project],
+                project=project,
+                password_nonce=password_nonce,
+                correlation_id=correlation_ids[project],
+                deadline=deadline,
+                docker_context=docker_context,
+            )
+        _live_probe_remaining(deadline)
+        _assert_live_caddy_container_pin(
+            owner,
+            container_pin,
+            deadline=deadline,
+            docker_context=docker_context,
+        )
+        _live_probe_remaining(deadline)
+        print("live Caddy access-log redaction=verified projects=2", flush=True)
+    except (OSError, RuntimeError, StandError, subprocess.SubprocessError):
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+
+
 def _e2e_locked(
     admin_password: str,
     *,
@@ -7603,9 +9014,14 @@ def _e2e_locked(
         )
         frontend = (REPO_ROOT if IN_PLACE_MODE else WORKTREE) / "frontend"
         playwright_environment: dict[str, str] = {}
+        probe_nonce = ""
+        probe_ids: dict[str, str] = {}
+        container_pin: tuple[str, str] | None = None
         try:
             _ensure_live_e2e_dependencies(frontend, environment)
             playwright_environment = dict(environment)
+            probe_enabled = _live_e2e_probe_selected(mode, selected_specs)
+            probe_started_at_ms = 0
             ports = dict(owner.published_ports)
             try:
                 primary_repository_root = str(REPO_ROOT.resolve(strict=True))
@@ -7625,8 +9041,46 @@ def _e2e_locked(
                 playwright_environment["LIVE_STAND_STATE_ROOT"] = str(
                     WORKTREE.resolve(strict=True)
                 )
-            _verify_stand_owner_compose_resources(WORKTREE, owner)
-            _require_owned_docker_daemon(owner)
+            if probe_enabled:
+                probe_nonce, probe_ids = _new_live_caddy_probe_values()
+                playwright_environment["LIVE_CADDY_LOG_PROBE"] = probe_nonce
+                playwright_environment["LIVE_CADDY_PROBE_IDS"] = json.dumps(
+                    probe_ids, separators=(",", ":")
+                )
+            if probe_enabled:
+                admission_deadline = (
+                    time.monotonic() + _LIVE_CADDY_PROBE_ADMISSION_TIMEOUT_SECONDS
+                )
+                docker_context = _new_live_docker_read_context()
+                _live_probe_remaining(admission_deadline)
+                _verify_stand_owner_compose_resources(
+                    WORKTREE,
+                    owner,
+                    deadline=admission_deadline,
+                    docker_context=docker_context,
+                )
+                _live_probe_remaining(admission_deadline)
+                _require_owned_docker_daemon(
+                    owner,
+                    deadline=admission_deadline,
+                    docker_context=docker_context,
+                )
+                _live_probe_remaining(admission_deadline)
+                container_pin = _verified_live_caddy_container(
+                    owner,
+                    deadline=admission_deadline,
+                    docker_context=docker_context,
+                )
+                _live_probe_remaining(admission_deadline)
+                probe_started_at_ms = time.time_ns() // 1_000_000
+            else:
+                docker_context = None
+                _verify_stand_owner_compose_resources(
+                    WORKTREE,
+                    owner,
+                    docker_context=docker_context,
+                )
+                _require_owned_docker_daemon(owner, docker_context=docker_context)
             if selected_specs:
                 _run_live_playwright(
                     cwd=frontend,
@@ -7640,7 +9094,25 @@ def _e2e_locked(
                     environment=playwright_environment,
                     mode=mode,
                 )
+            if probe_enabled:
+                if container_pin is None:
+                    raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+                _verify_live_caddy_probe_log(
+                    owner,
+                    output_path,
+                    started_at_ms=probe_started_at_ms,
+                    finished_at_ms=time.time_ns() // 1_000_000,
+                    password_nonce=probe_nonce,
+                    correlation_ids=probe_ids,
+                    container_pin=container_pin,
+                    docker_context=docker_context,
+                )
         finally:
+            playwright_environment.pop("LIVE_CADDY_LOG_PROBE", None)
+            playwright_environment.pop("LIVE_CADDY_PROBE_IDS", None)
+            probe_nonce = ""
+            probe_ids.clear()
+            container_pin = None
             playwright_environment.pop("TEST_PASSWORD", None)
             playwright_environment.pop("LIVE_BASE_URL", None)
             playwright_environment.pop("LIVE_MAILPIT_URL", None)

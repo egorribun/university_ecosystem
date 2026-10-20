@@ -173,9 +173,11 @@ class TestAsgiJsonProblem:
             )
 
         start_msg = messages[0]
-        headers_dict = {k.decode(): v.decode() for k, v in start_msg["headers"]}
-        assert headers_dict.get("Retry-After") == "60"
-        assert headers_dict.get("X-Custom") == "value"
+        raw_headers = start_msg["headers"]
+        assert all(name == name.lower() for name, _value in raw_headers)
+        headers_dict = dict(raw_headers)
+        assert headers_dict[b"retry-after"] == b"60"
+        assert headers_dict[b"x-custom"] == b"value"
 
     @pytest.mark.asyncio
     async def test_detail_text_overrides_key(self):

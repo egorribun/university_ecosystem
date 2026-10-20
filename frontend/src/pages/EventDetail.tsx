@@ -158,29 +158,37 @@ export default function EventDetail() {
 
   /* ── Loading state ── */
   if (isLoading) {
-    return <EventDetailSkeleton isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+    return (
+      <>
+        <SEO title={t("events:pageTitle")} description={t("events:pageDescription")} />
+        <EventDetailSkeleton isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+      </>
+    )
   }
 
   /* ── Error / not found state ── */
   if (error || !event) {
     return (
-      <div className="events-theme aurora-mesh relative min-h-[60vh] flex items-center justify-center px-4">
-        <EventsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
-        <div className="relative z-[1] glass-layer-surface glass-noise rounded-2xl p-8 sm:p-10 max-w-[28rem] text-center space-y-4">
-          <div
-            className="mb-2 inline-flex h-16 w-16 items-center justify-center rounded-full bg-surface-elevated text-text-secondary"
-            aria-hidden="true"
-          >
-            <InfoIcon size={32} />
+      <>
+        <SEO title={t("events:pageTitle")} description={t("events:pageDescription")} />
+        <div className="events-theme aurora-mesh relative min-h-[60vh] flex items-center justify-center px-4">
+          <EventsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+          <div className="relative z-[1] glass-layer-surface glass-noise rounded-2xl p-8 sm:p-10 max-w-[28rem] text-center space-y-4">
+            <div
+              className="mb-2 inline-flex h-16 w-16 items-center justify-center rounded-full bg-surface-elevated text-text-secondary"
+              aria-hidden="true"
+            >
+              <InfoIcon size={32} />
+            </div>
+            <p className="text-lg font-semibold text-text-primary">
+              {t("events:detail.messages.notFound")}
+            </p>
+            <Button variant="glass" onClick={() => navigate({ to: "/events" })}>
+              {t("common:buttons.back")}
+            </Button>
           </div>
-          <p className="text-lg font-semibold text-text-primary">
-            {t("events:detail.messages.notFound")}
-          </p>
-          <Button variant="glass" onClick={() => navigate({ to: "/events" })}>
-            {t("common:buttons.back")}
-          </Button>
         </div>
-      </div>
+      </>
     )
   }
 

@@ -69,7 +69,7 @@ async def asgi_json_problem(
     ]
     if headers:
         for k, v in headers.items():
-            response_headers.append((k.encode("latin-1"), v.encode("latin-1")))
+            response_headers.append((k.lower().encode("latin-1"), v.encode("latin-1")))
 
     await send(
         {

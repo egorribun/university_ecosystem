@@ -256,21 +256,31 @@ export default function NewsDetail() {
 
   /* ══════════════ LOADING ══════════════ */
   if (query.isLoading) {
-    return <NewsDetailSkeleton isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+    return (
+      <>
+        <SEO title={t("news:pageTitle")} description={t("news:pageDescription")} />
+        <NewsDetailSkeleton isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+      </>
+    )
   }
 
   /* ══════════════ ERROR ══════════════ */
   if (query.isError || !query.data) {
     return (
-      <div className="news-theme aurora-mesh relative min-h-[60vh] flex items-center justify-center px-4">
-        <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
-        <div className="relative z-[1] glass-layer-surface glass-noise rounded-2xl p-8 sm:p-10 max-w-[28rem] text-center space-y-4">
-          <p className="text-lg font-semibold text-(--error-text)">{t("news:states.loadError")}</p>
-          <Button variant="glass" onClick={handleBack}>
-            {t("common:buttons.back")}
-          </Button>
+      <>
+        <SEO title={t("news:pageTitle")} description={t("news:pageDescription")} />
+        <div className="news-theme aurora-mesh relative min-h-[60vh] flex items-center justify-center px-4">
+          <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+          <div className="relative z-[1] glass-layer-surface glass-noise rounded-2xl p-8 sm:p-10 max-w-[28rem] text-center space-y-4">
+            <p className="text-lg font-semibold text-(--error-text)">
+              {t("news:states.loadError")}
+            </p>
+            <Button variant="glass" onClick={handleBack}>
+              {t("common:buttons.back")}
+            </Button>
+          </div>
         </div>
-      </div>
+      </>
     )
   }
 

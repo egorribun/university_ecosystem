@@ -1,7 +1,7 @@
 import type { ReactNode } from "react"
 import { hydrateRoot, type Root } from "react-dom/client"
 import { renderToString } from "react-dom/server"
-import { act, waitFor } from "@testing-library/react"
+import { act, render, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { PersistQueryClientProvider, type Persister } from "@tanstack/react-query-persist-client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -12,7 +12,10 @@ import { getConfirmedUserId } from "@/stores/authIdentity"
 import { testUser } from "@/tests/mocks/handlers"
 import Dashboard from "../Dashboard"
 
-const sdk = vi.hoisted(() => ({ newsList: vi.fn() }))
+const sdk = vi.hoisted(() => ({
+  newsList: vi.fn(),
+  auth: { user: { role: "admin", group_id: null }, loading: false },
+}))
 
 vi.mock("@/api/generated/sdk.gen", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/generated/sdk.gen")>()
@@ -23,7 +26,7 @@ vi.mock("@/api/generated/sdk.gen", async (importOriginal) => {
 })
 
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: { role: "admin", group_id: null }, loading: false }),
+  useAuth: () => sdk.auth,
 }))
 
 vi.mock("@/contexts/LanguageContext", () => ({
@@ -59,7 +62,6 @@ vi.mock("@/hooks/useDashboardStories", () => ({
 
 vi.mock("@/hooks/useWeather", () => ({ useWeather: () => ({ data: undefined }) }))
 
-vi.mock("@/components/ui/SEO", () => ({ SEO: () => null }))
 vi.mock("@/components/layout/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <main>{children}</main>,
 }))
@@ -140,15 +142,35 @@ describe("Dashboard news during persisted-query hydration", () => {
   beforeEach(() => {
     window.localStorage.clear()
     acceptBrowserSessionGeneration()
+    sdk.auth.loading = false
     useAuthStore.setState({ user: null, loading: true, pendingMfa: null, authOperation: false })
   })
 
   afterEach(() => {
+    sdk.auth.loading = false
     useAuthStore.setState({ user: null, loading: true, pendingMfa: null, authOperation: false })
     vi.unstubAllGlobals()
     if (typeof window !== "undefined") window.sessionStorage.clear()
     if (typeof window !== "undefined") window.localStorage.clear()
     vi.restoreAllMocks()
+  })
+
+  it("keeps localized dashboard head metadata during the auth-loading fallback", () => {
+    sdk.auth.loading = true
+    const queryClient = makeQueryClient()
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <Dashboard />
+      </QueryClientProvider>
+    )
+
+    expect(document.title).toBe("Dashboard | University Ecosystem")
+    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1)
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      "Everything you need—profile, schedule, news, and campus events—in one place."
+    )
   })
 
   it("keeps the SSR news skeleton through cold persistence restore, then displays the confirmed owner's result", async () => {

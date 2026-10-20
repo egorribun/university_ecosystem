@@ -3,13 +3,16 @@ import { useQuery } from "@tanstack/react-query"
 
 import { weatherQueryOptions } from "@/api/hooks/weather"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
-import { WEATHER_CACHE_TTL_MS, fetchWeatherSnapshot } from "@/api/weather"
+import { WEATHER_CACHE_TTL_MS, WeatherFetchError, fetchWeatherSnapshot } from "@/api/weather"
 import type { WeatherCoordinates, WeatherSnapshot } from "@/api/weather"
 import { getWeatherIconMeta } from "@/utils/weatherIcons"
 import type { WeatherAnimationVariant } from "@/utils/weatherIcons"
 import useMediaQuery from "./useMediaQuery"
 
 const WEATHER_TRANSLATION_BASE = "dashboard:weather.conditions"
+
+const getWeatherFallback = (error: Error | null): WeatherSnapshot | null =>
+  error instanceof WeatherFetchError ? error.fallback : null
 
 // Lighthouse audits run without the transactional backend and must not make
 // an external Open-Meteo request in the critical navigation window. Keep a
@@ -101,7 +104,7 @@ export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult =>
   }, [])
 
   const data = useMemo<WeatherData | null>(() => {
-    const snapshot = query.data
+    const snapshot = query.data ?? getWeatherFallback(query.error)
     if (!snapshot) return null
     const meta = getWeatherIconMeta(snapshot.conditionCode)
     const animation: WeatherAnimationVariant = prefersReducedMotion ? "none" : meta.animation
@@ -112,7 +115,7 @@ export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult =>
       translationKey: `${WEATHER_TRANSLATION_BASE}.${meta.translationKeySuffix}`,
       animation,
     }
-  }, [query.data, prefersReducedMotion])
+  }, [query.data, query.error, prefersReducedMotion])
 
   const refresh = useCallback(async () => {
     forceRefreshRef.current = true

@@ -7,6 +7,7 @@ import { getPrimaryIcon } from "@/utils/buildingCategoryIcons"
 import { getRoomStatus } from "@/utils/roomStatus"
 import { useAppShell } from "@/contexts/AppShellContext"
 import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
+import { useMinuteClock } from "@/hooks/useMinuteClock"
 import useFocusTrap from "@/hooks/useFocusTrap"
 
 interface TodayLesson {
@@ -148,7 +149,9 @@ export function MapSidebar({
   const { t } = useTranslation("map")
   const { setOverlayState } = useAppShell()
   const campusTimeZone = useCampusTimezone()
+  const minuteClock = useMinuteClock()
   const isOpen = !!building
+  const isBuildingOpenNow = building ? isOpenNow(building.hours, new Date(minuteClock)) : false
   const sidebarTitleId = useId()
   const sidebarDescriptionId = useId()
 
@@ -443,15 +446,13 @@ export function MapSidebar({
           <span
             className="font-bold text-[10px] px-1.5 py-0.5 rounded-full"
             style={{
-              backgroundColor: isOpenNow(building.hours)
+              backgroundColor: isBuildingOpenNow
                 ? "color-mix(in srgb, var(--color-emerald-500) 15%, transparent)"
                 : "color-mix(in srgb, var(--color-rose-500) 15%, transparent)",
-              color: isOpenNow(building.hours)
-                ? "var(--color-emerald-500)"
-                : "var(--color-rose-500)",
+              color: isBuildingOpenNow ? "var(--color-emerald-500)" : "var(--color-rose-500)",
             }}
           >
-            {isOpenNow(building.hours) ? t("hours.openNow") : t("hours.closedNow")}
+            {isBuildingOpenNow ? t("hours.openNow") : t("hours.closedNow")}
           </span>
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[var(--text-secondary)]">
