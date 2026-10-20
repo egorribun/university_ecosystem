@@ -123,7 +123,11 @@ class VectorService:
         distance = model.embedding.cosine_distance(embedding)
         score = (1.0 - distance).label("similarity_score")
 
-        stmt = select(model, score).where(score >= min_score)
+        stmt = select(model, score).where(
+            score >= min_score,
+            score > -math.inf,
+            score < math.inf,
+        )
 
         if hasattr(model, "is_active"):
             stmt = stmt.where(model.is_active == True)  # noqa: E712
@@ -132,7 +136,12 @@ class VectorService:
 
         stmt = stmt.order_by(score.desc()).limit(limit)
         result = await self.db.execute(stmt)
-        return [(row[0], float(row[1])) for row in result.all()]
+        scored_results: list[tuple[Any, float]] = []
+        for row in result.all():
+            similarity = float(row[1])
+            if math.isfinite(similarity):
+                scored_results.append((row[0], similarity))
+        return scored_results
 
     async def search_similar(
         self, model: Any, embedding: list[float], limit: int = 5, min_score: float = 0.5

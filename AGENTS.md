@@ -280,6 +280,20 @@ for the MVP release; the current plan is
      blocking CodeQL and the finite migration exception unchanged. Source
      integration is not scanner or test evidence; each hosted gate still applies.
 
+     On 2026-10-20 UTC, the owner separately approved exactly 18 additional
+     font-provenance identities and the reviewed validator/test diff: 16 public
+     checksums and two npm SRI findings. The exact path/type/digest tuples are
+     recorded in `quality/security-false-positive-dispositions.json`, in the
+     existing `public_integrity_digest` category. The SRI support adds only two
+     finite path/type pairs. All prior 264 records remain unchanged, bringing
+     the approved scope to 282; the additions expire on 2027-01-10. Changed or
+     unmatched identities remain fail-closed. No category-wide match, further
+     identity, baseline entry, inline pragma, broad exclusion, bypass, expiry
+     extension, or context change is authorized. Baseline319, all 78 required
+     context/app pairs, blocking CodeQL, hooks and finite131 remain unchanged.
+     Approval does not establish final-source scan, tests, hosted CI or release
+     acceptance; each still requires its own evidence.
+
    - `gitleaks` (repo secret scanning). On 2026-10-20 the owner approved
      exactly 25 immutable historical commit/path/rule/line fingerprints:
      24 public, synthetic, or prose findings and one separately reviewed

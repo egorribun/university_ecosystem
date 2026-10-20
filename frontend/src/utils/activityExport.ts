@@ -4,6 +4,7 @@
  */
 import { logError } from "@/app/logger"
 import i18n from "@/i18n/config"
+import type { jsPDF } from "jspdf"
 
 export interface ExportResult {
   success: boolean
@@ -11,6 +12,51 @@ export interface ExportResult {
 }
 
 const IMAGE_LOAD_TIMEOUT_MS = 10_000
+const ACTIVITY_PDF_FONT_FILE = "inter-latin-cyrillic-400.ttf"
+const ACTIVITY_PDF_FONT_FAMILY = "InterLatinCyrillic"
+const BASE64_CHUNK_SIZE = 0x4000
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  let binary = ""
+
+  for (let offset = 0; offset < bytes.length; offset += BASE64_CHUNK_SIZE) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + BASE64_CHUNK_SIZE))
+  }
+
+  return btoa(binary)
+}
+
+async function loadActivityPdfFont(fontUrl: string): Promise<ArrayBuffer> {
+  const controller = new AbortController()
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error("Activity PDF font load timed out"))
+      controller.abort()
+    }, IMAGE_LOAD_TIMEOUT_MS)
+  })
+  const request = async () => {
+    const response = await fetch(fontUrl, { signal: controller.signal })
+    if (controller.signal.aborted) throw new Error("Activity PDF font load timed out")
+    if (!response.ok) throw new Error("Activity PDF font could not be loaded")
+    return response.arrayBuffer()
+  }
+
+  try {
+    return await Promise.race([request(), timeout])
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId)
+  }
+}
+
+async function registerActivityPdfFont(pdf: jsPDF): Promise<void> {
+  const { default: fontUrl } = await import("@/assets/fonts/inter-latin-cyrillic-400.ttf?url")
+  const fontBase64 = arrayBufferToBase64(await loadActivityPdfFont(fontUrl))
+  pdf.addFileToVFS(ACTIVITY_PDF_FONT_FILE, fontBase64)
+  pdf.addFont(ACTIVITY_PDF_FONT_FILE, ACTIVITY_PDF_FONT_FAMILY, "normal")
+  pdf.setFont(ACTIVITY_PDF_FONT_FAMILY, "normal")
+}
 
 function loadImageWithTimeout(
   src: string,
@@ -73,6 +119,8 @@ export async function exportActivityAsPdf(
 
     const pageWidth = pdf.internal.pageSize.getWidth()
     const pageHeight = pdf.internal.pageSize.getHeight()
+
+    await registerActivityPdfFont(pdf)
 
     pdf.setFontSize(14)
     pdf.text(title, 10, 12)

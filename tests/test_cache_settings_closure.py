@@ -34,6 +34,34 @@ def test_cache_ttl_validators_reject_invalid_values():
         CacheSettings(cache_warmup_max_age_seconds=-1)
 
 
+@pytest.mark.parametrize(
+    "field",
+    (
+        "cache_user_max_size",
+        "cache_config_max_size",
+        "cache_news_l1_max_size",
+        "cache_schedule_l1_max_size",
+    ),
+)
+@pytest.mark.parametrize("value", (0, -1))
+def test_cache_l1_capacity_rejects_non_positive_values(field, value):
+    with pytest.raises(ValidationError, match="greater than zero"):
+        CacheSettings(**{field: value})
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "cache_user_max_size",
+        "cache_config_max_size",
+        "cache_news_l1_max_size",
+        "cache_schedule_l1_max_size",
+    ),
+)
+def test_cache_l1_capacity_accepts_positive_boundary(field):
+    assert getattr(CacheSettings(**{field: 1}), field) == 1
+
+
 def test_nats_auth_token_file_is_loaded(monkeypatch):
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as handle:
         handle.write("  token-from-file  \n")

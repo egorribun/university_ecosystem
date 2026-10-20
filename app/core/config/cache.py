@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import cached_property
 
-from pydantic import field_validator
+from pydantic import ValidationInfo, field_validator
 
 from .base import (
     BaseAppSettings,
@@ -48,6 +48,17 @@ class CacheSettings(BaseAppSettings):
     cache_schedule_l1_max_size: int = 100
     cache_schedule_l1_ttl_s: float = 120.0
     cache_schedule_l2_ttl_s: float = 7200.0
+
+    @field_validator(
+        "cache_user_max_size",
+        "cache_config_max_size",
+        "cache_news_l1_max_size",
+        "cache_schedule_l1_max_size",
+    )
+    @classmethod
+    def _validate_cache_l1_max_size(cls, value: int, info: ValidationInfo) -> int:
+        label = (info.field_name or "cache_l1_max_size").upper()
+        return _validate_positive_int(value, label=label)
 
     @field_validator("nats_auth_token", mode="before")
     @classmethod

@@ -99,6 +99,14 @@ _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES = {
                 "frontend/scripts/stryker-inventory.test.mjs",
                 "Base64 High Entropy String",
             ),
+            (
+                "frontend/scripts/generate-activity-pdf-font.py",
+                "Base64 High Entropy String",
+            ),
+            (
+                "frontend/src/assets/fonts/inter-latin-cyrillic-400.provenance.json",
+                "Base64 High Entropy String",
+            ),
         }
     ),
     "public_totp_algorithm_alphabet": frozenset(

@@ -11083,6 +11083,229 @@ def test_live_caddy_probe_deadline_covers_final_container_recheck(
     assert capsys.readouterr().out == ""
 
 
+def _aud174_diagnostic_verifier_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    password_nonce: str,
+    correlations: Mapping[str, str],
+    pin_check: Callable[..., None] | None = None,
+    log_reader: Callable[..., subprocess.CompletedProcess[bytes]] | None = None,
+    marker_reader: Callable[..., Mapping[str, int]] | None = None,
+    docker_context: live_stand._LiveDockerReadContext | None = None,
+) -> tuple[
+    object,
+    Path,
+    tuple[str, str],
+    dict[str, int],
+    live_stand._LiveDockerReadContext,
+]:
+    owner = object()
+    output_directory = tmp_path / "playwright-output"
+    output_directory.mkdir()
+    container_pin = ("a" * 64, "b" * 64)
+    completed_at = {"desktop": 1_798_000_000_000, "mobile": 1_798_000_000_100}
+    context = docker_context or _aud174_docker_read_context(tmp_path)
+
+    def valid_rows() -> bytes:
+        return _aud174_two_project_rows(completed_at, correlations)
+
+    monkeypatch.setattr(
+        live_stand,
+        "_read_live_caddy_probe_observations",
+        marker_reader or (lambda *_args, **_kwargs: completed_at),
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_assert_live_caddy_container_pin",
+        pin_check or (lambda *_args, **_kwargs: None),
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_run_live_bounded_read",
+        log_reader
+        or (
+            lambda *_args, **_kwargs: subprocess.CompletedProcess(
+                ["docker", "logs"], 0, stdout=valid_rows(), stderr=b""
+            )
+        ),
+    )
+    return owner, output_directory, container_pin, completed_at, context
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_stage"),
+    [
+        pytest.param("input", "input_validation", id="input-validation"),
+        pytest.param("context", "context_resolution", id="context-resolution"),
+        pytest.param("deadline", "deadline", id="deadline"),
+        pytest.param("markers", "marker_observation", id="marker-observation"),
+        pytest.param("pre-pin", "pre_pin", id="pre-pin"),
+        pytest.param("log-read", "log_read", id="log-read"),
+        pytest.param("log-size", "log_size", id="log-size"),
+        pytest.param("nonce", "nonce_exposure", id="nonce-exposure"),
+        pytest.param("stderr", "stderr_validation", id="stderr-validation"),
+        pytest.param("correlation", "correlation_row", id="correlation-row"),
+        pytest.param("project-row", "project_row", id="project-row"),
+        pytest.param("post-pin", "post_pin", id="post-pin"),
+        pytest.param("internal", "internal", id="internal"),
+    ],
+)
+def test_live_caddy_probe_emits_only_fixed_stage_code_on_failure(
+    failure: str,
+    expected_stage: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    password_nonce = uuid4().hex
+    correlations = {
+        project: uuid4().hex for project in live_stand.LIVE_CADDY_PROBE_PROJECTS
+    }
+    secret_text = f"private-exception-{uuid4().hex}"
+    owner = object()
+    output_directory = tmp_path / "playwright-output"
+    output_directory.mkdir()
+    container_pin = ("a" * 64, "b" * 64)
+    completed_at = {"desktop": 1_798_000_000_000, "mobile": 1_798_000_000_100}
+    context: live_stand._LiveDockerReadContext | None = _aud174_docker_read_context(
+        tmp_path
+    )
+    pin_calls = 0
+
+    def read_markers(*_args: object, **_kwargs: object) -> Mapping[str, int]:
+        if failure == "internal":
+            raise KeyError(secret_text)
+        return completed_at
+
+    def read_logs(
+        *_args: object, **_kwargs: object
+    ) -> subprocess.CompletedProcess[bytes]:
+        if failure == "log-read":
+            raise subprocess.TimeoutExpired(["docker", "logs"], 10, output=secret_text)
+        rows = _aud174_two_project_rows(completed_at, correlations)
+        if failure == "log-size":
+            rows = b"x" * (live_stand._LIVE_CADDY_PROBE_MAX_BYTES + 1)
+        if failure == "nonce":
+            rows += password_nonce.encode("ascii") + b"\n"
+        stderr = b""
+        if failure == "stderr":
+            stderr = b"unstructured " + secret_text.encode("ascii") + b"\n"
+        if failure == "correlation":
+            rows = _aud174_access_log_row(
+                f"/login?probe={correlations['desktop']}&password=REDACTED",
+                timestamp=live_stand._caddy_probe_timestamp_argument(
+                    completed_at["desktop"]
+                ),
+            )
+        if failure == "project-row":
+            rows = b"".join(
+                _aud174_access_log_row(
+                    f"/login?probe={correlations[project]}&password=REDACTED",
+                    status=500 if project == "desktop" else 200,
+                    timestamp=live_stand._caddy_probe_timestamp_argument(
+                        completed_at[project]
+                    ),
+                )
+                for project in live_stand.LIVE_CADDY_PROBE_PROJECTS
+            )
+        return subprocess.CompletedProcess(
+            ["docker", "logs"], 0, stdout=rows, stderr=stderr
+        )
+
+    def check_pin(*_args: object, **_kwargs: object) -> None:
+        nonlocal pin_calls
+        pin_calls += 1
+        if failure == "pre-pin" and pin_calls == 1:
+            raise live_stand.StandError(secret_text)
+        if failure == "post-pin" and pin_calls == 2:
+            raise live_stand.StandError(secret_text)
+
+    monkeypatch.setattr(live_stand, "_read_live_caddy_probe_observations", read_markers)
+    monkeypatch.setattr(live_stand, "_assert_live_caddy_container_pin", check_pin)
+    monkeypatch.setattr(live_stand, "_run_live_bounded_read", read_logs)
+    if failure == "context":
+
+        def fail_context() -> live_stand._LiveDockerReadContext:
+            raise live_stand.StandError(secret_text)
+
+        monkeypatch.setattr(
+            live_stand,
+            "_new_live_docker_read_context",
+            fail_context,
+        )
+        context = None
+    elif failure == "deadline":
+        monkeypatch.setattr(
+            live_stand,
+            "_live_probe_remaining",
+            lambda _deadline: (_ for _ in ()).throw(live_stand.StandError(secret_text)),
+        )
+    elif failure == "markers":
+        monkeypatch.setattr(
+            live_stand,
+            "_read_live_caddy_probe_observations",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                live_stand.StandError(secret_text)
+            ),
+        )
+
+    with pytest.raises(live_stand.StandError) as caught:
+        live_stand._verify_live_caddy_probe_log(
+            owner,
+            output_directory,
+            started_at_ms=1_797_999_999_000,
+            finished_at_ms=1_798_000_001_000,
+            password_nonce=(
+                "bad-" + password_nonce if failure == "input" else password_nonce
+            ),
+            correlation_ids=correlations,
+            container_pin=container_pin,
+            docker_context=context,
+        )
+
+    assert str(caught.value) == "Caddy access-log redaction proof failed"
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"live_caddy_probe_failure_stage={expected_stage}\n"
+    assert secret_text not in captured.err
+    assert password_nonce not in captured.err
+    assert all(value not in captured.err for value in correlations.values())
+
+
+def test_live_caddy_probe_success_emits_no_failure_stage(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    password_nonce = uuid4().hex
+    correlations = {
+        project: uuid4().hex for project in live_stand.LIVE_CADDY_PROBE_PROJECTS
+    }
+    owner, directory, pin, _completed_at, context = _aud174_diagnostic_verifier_inputs(
+        monkeypatch,
+        tmp_path,
+        password_nonce=password_nonce,
+        correlations=correlations,
+    )
+
+    live_stand._verify_live_caddy_probe_log(
+        owner,
+        directory,
+        started_at_ms=1_797_999_999_000,
+        finished_at_ms=1_798_000_001_000,
+        password_nonce=password_nonce,
+        correlation_ids=correlations,
+        container_pin=pin,
+        docker_context=context,
+    )
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert captured.out == "live Caddy access-log redaction=verified projects=2\n"
+    assert "failure_stage" not in captured.out
+
+
 def test_live_bounded_reader_caps_flood_and_reaps_its_direct_child(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

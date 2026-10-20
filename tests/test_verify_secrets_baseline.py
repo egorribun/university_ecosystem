@@ -1095,6 +1095,16 @@ def test_independent_contract_fingerprint_category_remains_exact() -> None:
             "Base64 High Entropy String",
         ),
         (
+            "public_package_integrity_metadata",
+            "frontend/scripts/generate-activity-pdf-font.py",
+            "Base64 High Entropy String",
+        ),
+        (
+            "public_package_integrity_metadata",
+            "frontend/src/assets/fonts/inter-latin-cyrillic-400.provenance.json",
+            "Base64 High Entropy String",
+        ),
+        (
             "public_totp_algorithm_alphabet",
             "frontend/tests/e2e-live/totp-recovery.live.spec.ts",
             "Base64 High Entropy String",
@@ -1192,6 +1202,21 @@ def test_non_hex_dispositions_are_scoped_to_reviewed_path_and_type(
             "public_package_integrity_metadata",
             "frontend/scripts/stryker-inventory.test.mjs",
             "Secret Keyword",
+        ),
+        (
+            "public_package_integrity_metadata",
+            "frontend/scripts/generate-activity-pdf-font.py",
+            "Secret Keyword",
+        ),
+        (
+            "public_package_integrity_metadata",
+            "frontend/src/assets/fonts/inter-latin-cyrillic-400.provenance.json",
+            "Hex High Entropy String",
+        ),
+        (
+            "public_package_integrity_metadata",
+            "frontend/src/assets/fonts/unreviewed.provenance.json",
+            "Base64 High Entropy String",
         ),
         (
             "public_totp_algorithm_alphabet",

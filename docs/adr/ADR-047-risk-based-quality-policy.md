@@ -401,6 +401,24 @@ On 2026-10-16, the owner approved exactly nine additional exact-match `Secret Ke
 
 This decision authorizes only those nine exact identities. It does not permit category-wide matching, automatic approval, baseline entries, inline pragmas, broad scanner exclusions, bypasses, reclassification, or context changes. The baseline remains at 319 identities, all 78 required contexts remain unchanged, CodeQL remains blocking, hooks remain unchanged, and the finite 131-file migration exception is untouched. These policy records do not establish current-source scan, final-source validation, or hosted-check results. No release readiness is implied.
 
+## Owner-approved exact 18 font-provenance dispositions (2026-10-20 UTC)
+
+The owner separately approved exactly 18 additional path/type/finding-digest
+identities and the reviewed validator/test diff: 16 public checksums for the
+PDF font, source assets and generation tools, plus two npm SRI findings. The
+records remain in the existing `public_integrity_digest` category; SRI support
+adds only the two reviewed finite path/type pairs. The exact tuples are in
+`quality/security-false-positive-dispositions.json`. The prior 264 records are
+preserved unchanged, for 282 approved identities; additions expire on 2027-01-10.
+
+Changed or unmatched identities remain blocking. This permits no category-wide
+match, automatic approval, other identity, reclassification, baseline entry,
+inline pragma, broad exclusion, expiry extension, bypass or context change.
+The 319 baseline identities, 78 required context/app pairs, blocking CodeQL,
+hooks and finite131 migration exception remain unchanged. Approval is separate
+from integration, final-source scanning, tests and hosted checks, and establishes
+no release or visual acceptance.
+
 ## Consequences
 
 - The MVP can be released once product acceptance passes; mutation debt

@@ -7997,6 +7997,24 @@ _LIVE_CADDY_PROBE_ADMISSION_TIMEOUT_SECONDS = 25
 _LIVE_CADDY_PROBE_MAX_PROJECT_CONTAINERS = 64
 _LIVE_CADDY_PROBE_TOTAL_TIMEOUT_SECONDS = 25
 _LIVE_CADDY_PROBE_FAILURE = "Caddy access-log redaction proof failed"
+_LIVE_CADDY_PROBE_DIAGNOSTIC_PREFIX = "live_caddy_probe_failure_stage="
+_LIVE_CADDY_PROBE_DIAGNOSTIC_CODES = frozenset(
+    {
+        "input_validation",
+        "context_resolution",
+        "deadline",
+        "marker_observation",
+        "pre_pin",
+        "log_read",
+        "log_size",
+        "nonce_exposure",
+        "correlation_row",
+        "stderr_validation",
+        "project_row",
+        "post_pin",
+        "internal",
+    }
+)
 _LIVE_CADDY_ACCESS_LOGGER = "http.log.access.log0"
 _LIVE_CADDY_PROBE_READ_CHUNK_BYTES = 16_384
 _LIVE_CADDY_PROBE_CLEANUP_RESERVE_SECONDS = 0.25
@@ -8004,6 +8022,31 @@ _LIVE_CADDY_PROBE_WINDOWS_POLL_SECONDS = 0.01
 _LIVE_CADDY_PROBE_WINDOWS_BROKEN_PIPE = 109
 _LIVE_CADDY_PROBE_WINDOWS_PEEK: object | None = None
 _LIVE_CADDY_PROBE_WINDOWS_KERNEL32: object | None = None
+
+
+class _LiveCaddyProbeStageFailure(StandError):
+    """Carry only a finite diagnostic code while preserving the generic error."""
+
+    def __init__(self, stage: str) -> None:
+        self.stage = (
+            stage
+            if isinstance(stage, str) and stage in _LIVE_CADDY_PROBE_DIAGNOSTIC_CODES
+            else "internal"
+        )
+        super().__init__(_LIVE_CADDY_PROBE_FAILURE)
+
+
+def _emit_live_caddy_probe_diagnostic(stage: str) -> None:
+    code = (
+        stage
+        if isinstance(stage, str) and stage in _LIVE_CADDY_PROBE_DIAGNOSTIC_CODES
+        else "internal"
+    )
+    try:
+        sys.stderr.write(f"{_LIVE_CADDY_PROBE_DIAGNOSTIC_PREFIX}{code}\n")
+        sys.stderr.flush()
+    except (OSError, ValueError):
+        pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -8371,11 +8414,12 @@ def _assert_live_caddy_probe_redaction(
     until_ms: int | None = None,
 ) -> None:
     """Require one successful, exactly correlated request with a redacted password."""
+    if type(output) is not bytes or type(stderr) is not bytes:
+        raise _LiveCaddyProbeStageFailure("input_validation")
+    if len(output) + len(stderr) > _LIVE_CADDY_PROBE_MAX_BYTES:
+        raise _LiveCaddyProbeStageFailure("log_size")
     if (
-        type(output) is not bytes
-        or type(stderr) is not bytes
-        or len(output) + len(stderr) > _LIVE_CADDY_PROBE_MAX_BYTES
-        or project not in LIVE_CADDY_PROBE_PROJECTS
+        project not in LIVE_CADDY_PROBE_PROJECTS
         or not isinstance(password_nonce, str)
         or re.fullmatch(r"[0-9a-f]{32}", password_nonce) is None
         or not isinstance(correlation_id, str)
@@ -8383,12 +8427,12 @@ def _assert_live_caddy_probe_redaction(
         or password_nonce == correlation_id
         or (since_ms is None) != (until_ms is None)
     ):
-        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        raise _LiveCaddyProbeStageFailure("input_validation")
 
     nonce_bytes = password_nonce.encode("ascii")
     correlation_bytes = correlation_id.encode("ascii")
     if nonce_bytes in output or nonce_bytes in stderr:
-        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        raise _LiveCaddyProbeStageFailure("nonce_exposure")
 
     matching_rows = [
         line
@@ -8397,14 +8441,14 @@ def _assert_live_caddy_probe_redaction(
         if correlation_bytes in line
     ]
     if len(matching_rows) != 1:
-        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        raise _LiveCaddyProbeStageFailure("correlation_row")
 
     # Docker forwards container stderr to this process's stderr. Accept it only
     # as timestamped Caddy JSON records, never as unstructured CLI diagnostics.
     stderr_rows = stderr.splitlines()
     for line in stderr_rows:
         if not line:
-            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+            raise _LiveCaddyProbeStageFailure("stderr_validation")
         try:
             timestamp_bytes, payload_bytes = line.split(b" ", 1)
             _parse_live_docker_log_timestamp(timestamp_bytes)
@@ -8419,7 +8463,7 @@ def _assert_live_caddy_probe_redaction(
             json.JSONDecodeError,
             RecursionError,
         ):
-            raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+            raise _LiveCaddyProbeStageFailure("stderr_validation") from None
         level = (
             stderr_payload.get("level") if isinstance(stderr_payload, dict) else None
         )
@@ -8434,7 +8478,7 @@ def _assert_live_caddy_probe_redaction(
             )
             or level in {"error", "panic", "fatal"}
         ):
-            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+            raise _LiveCaddyProbeStageFailure("stderr_validation")
 
     try:
         timestamp_bytes, payload_bytes = matching_rows[0].split(b" ", 1)
@@ -8445,13 +8489,13 @@ def _assert_live_caddy_probe_redaction(
             parse_constant=_reject_live_caddy_probe_json_constant,
         )
     except (ValueError, UnicodeDecodeError, json.JSONDecodeError, RecursionError):
-        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+        raise _LiveCaddyProbeStageFailure("project_row") from None
 
     if since_ms is not None and until_ms is not None:
         try:
             row_timestamp_ns = _parse_live_docker_log_timestamp(timestamp_bytes)
         except (ValueError, OverflowError):
-            raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+            raise _LiveCaddyProbeStageFailure("project_row") from None
         if (
             type(since_ms) is not int
             or type(until_ms) is not int
@@ -8459,10 +8503,10 @@ def _assert_live_caddy_probe_redaction(
             or until_ms < since_ms
             or not since_ms * 1_000_000 <= row_timestamp_ns <= until_ms * 1_000_000
         ):
-            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+            raise _LiveCaddyProbeStageFailure("project_row")
 
     if not isinstance(payload, dict):
-        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        raise _LiveCaddyProbeStageFailure("project_row")
     request = payload.get("request")
     expected_uri = f"/login?probe={correlation_id}&password=REDACTED"
     if (
@@ -8473,7 +8517,7 @@ def _assert_live_caddy_probe_redaction(
         or type(payload.get("status")) is not int
         or payload.get("status") != 200
     ):
-        raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+        raise _LiveCaddyProbeStageFailure("project_row")
 
 
 def _parse_live_docker_log_timestamp(value: bytes) -> int:
@@ -9068,6 +9112,7 @@ def _read_live_caddy_probe_logs(
     completed: subprocess.CompletedProcess[bytes] | None = None
     stdout = b""
     stderr = b""
+    stage = "input_validation"
     try:
         if (
             not isinstance(completed_at_ms, Mapping)
@@ -9083,29 +9128,33 @@ def _read_live_caddy_probe_logs(
             )
             or len({password_nonce, *correlation_ids.values()}) != 3
         ):
-            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+            raise _LiveCaddyProbeStageFailure("input_validation")
         project_windows: dict[str, tuple[int, int]] = {}
         for project in LIVE_CADDY_PROBE_PROJECTS:
             observed_at_ms = completed_at_ms[project]
             if type(observed_at_ms) is not int or observed_at_ms <= 0:
-                raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+                raise _LiveCaddyProbeStageFailure("input_validation")
             since_ms = max(1, observed_at_ms - _LIVE_CADDY_PROBE_WINDOW_MS)
             until_ms = observed_at_ms + _LIVE_CADDY_PROBE_WINDOW_MS
             project_windows[project] = (since_ms, until_ms)
 
         if time.monotonic() >= deadline:
-            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+            raise _LiveCaddyProbeStageFailure("deadline")
         if docker_context is None:
+            stage = "context_resolution"
             docker_context = _new_live_docker_read_context()
+        stage = "pre_pin"
         _assert_live_caddy_container_pin(
             owner,
             container_pin,
             deadline=deadline,
             docker_context=docker_context,
         )
+        stage = "deadline"
         remaining = _live_probe_remaining(deadline)
         if remaining is None:
-            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+            raise _LiveCaddyProbeStageFailure("deadline")
+        stage = "input_validation"
         since_ms = min(window[0] for window in project_windows.values())
         until_ms = max(window[1] for window in project_windows.values())
         command = [
@@ -9118,6 +9167,7 @@ def _read_live_caddy_probe_logs(
             _caddy_probe_timestamp_argument(until_ms),
             container_pin[0],
         ]
+        stage = "log_read"
         completed = _run_live_bounded_read(
             command,
             context=docker_context,
@@ -9130,9 +9180,9 @@ def _read_live_caddy_probe_logs(
         stdout = completed.stdout or b""
         stderr = completed.stderr or b""
         if completed.returncode != 0:
-            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+            raise _LiveCaddyProbeStageFailure("log_read")
 
-        invalid_project_row = False
+        invalid_stage: str | None = None
         for project in LIVE_CADDY_PROBE_PROJECTS:
             window = project_windows[project]
             try:
@@ -9145,11 +9195,18 @@ def _read_live_caddy_probe_logs(
                     since_ms=window[0],
                     until_ms=window[1],
                 )
+            except _LiveCaddyProbeStageFailure as error:
+                if invalid_stage is None:
+                    invalid_stage = error.stage
             except StandError:
-                invalid_project_row = True
-        if invalid_project_row:
-            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+                if invalid_stage is None:
+                    invalid_stage = "project_row"
+        if invalid_stage is not None:
+            raise _LiveCaddyProbeStageFailure(invalid_stage)
+        stage = "deadline"
         _live_probe_remaining(deadline)
+    except _LiveCaddyProbeStageFailure:
+        raise
     except (
         OSError,
         RuntimeError,
@@ -9158,7 +9215,7 @@ def _read_live_caddy_probe_logs(
         ValueError,
         TypeError,
     ):
-        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+        raise _LiveCaddyProbeStageFailure(stage) from None
     finally:
         if completed is not None:
             completed.stdout = b""
@@ -9167,16 +9224,20 @@ def _read_live_caddy_probe_logs(
         stderr = b""
         try:
             if docker_context is None:
-                raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+                raise _LiveCaddyProbeStageFailure("context_resolution")
+            stage = "post_pin"
             _assert_live_caddy_container_pin(
                 owner,
                 container_pin,
                 deadline=deadline,
                 docker_context=docker_context,
             )
+            stage = "deadline"
             _live_probe_remaining(deadline)
+        except _LiveCaddyProbeStageFailure:
+            raise
         except (OSError, RuntimeError, StandError, subprocess.SubprocessError):
-            raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+            raise _LiveCaddyProbeStageFailure(stage) from None
 
 
 def _verify_live_caddy_probe_log(
@@ -9191,6 +9252,7 @@ def _verify_live_caddy_probe_log(
     docker_context: _LiveDockerReadContext | None = None,
 ) -> None:
     """Require fresh correlated redaction rows for both Playwright projects."""
+    stage = "input_validation"
     try:
         if (
             not isinstance(password_nonce, str)
@@ -9204,18 +9266,26 @@ def _verify_live_caddy_probe_log(
             )
             or len({password_nonce, *correlation_ids.values()}) != 3
         ):
-            raise StandError(_LIVE_CADDY_PROBE_FAILURE)
+            raise _LiveCaddyProbeStageFailure("input_validation")
         if docker_context is None:
+            stage = "context_resolution"
             docker_context = _new_live_docker_read_context()
+        stage = "deadline"
         deadline = time.monotonic() + _LIVE_CADDY_PROBE_TOTAL_TIMEOUT_SECONDS
         _live_probe_remaining(deadline)
-        observations = _read_live_caddy_probe_observations(
-            output_directory,
-            started_at_ms=started_at_ms,
-            finished_at_ms=finished_at_ms,
-            deadline=deadline,
-        )
+        stage = "marker_observation"
+        try:
+            observations = _read_live_caddy_probe_observations(
+                output_directory,
+                started_at_ms=started_at_ms,
+                finished_at_ms=finished_at_ms,
+                deadline=deadline,
+            )
+        except (OSError, RuntimeError, StandError, ValueError, TypeError):
+            raise _LiveCaddyProbeStageFailure("marker_observation") from None
+        stage = "deadline"
         _live_probe_remaining(deadline)
+        stage = "log_read"
         _read_live_caddy_probe_logs(
             owner,
             container_pin=container_pin,
@@ -9225,9 +9295,17 @@ def _verify_live_caddy_probe_log(
             deadline=deadline,
             docker_context=docker_context,
         )
+        stage = "deadline"
         _live_probe_remaining(deadline)
         print("live Caddy access-log redaction=verified projects=2", flush=True)
+    except _LiveCaddyProbeStageFailure as error:
+        _emit_live_caddy_probe_diagnostic(error.stage)
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
     except (OSError, RuntimeError, StandError, subprocess.SubprocessError):
+        _emit_live_caddy_probe_diagnostic(stage)
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+    except Exception:
+        _emit_live_caddy_probe_diagnostic("internal")
         raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
 
 

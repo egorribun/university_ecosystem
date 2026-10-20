@@ -1,7 +1,12 @@
+import math
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import Boolean, Column, DateTime, Integer, MetaData, Table
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.orm import registry
 
 from app.core.config import settings
 from app.services.vector_service import SemanticSearchUnavailableError, VectorService
@@ -97,13 +102,12 @@ async def test_search_similar_with_scores_success(vector_service, mock_db):
         # Mock distance calculation
         mock_distance = MagicMock()
 
-        # Setup operation mocks — label() must return a MagicMock that supports
-        # comparison operators (__ge__) because the result is used in
-        # `where(score >= min_score)`.
+        # The SQL query compares the labeled score to the threshold and finite bounds.
         mock_score_column = MagicMock()
         mock_score_column.desc.return_value = mock_score_column
-        # SQLAlchemy column-like: __ge__ should return a clause element, not raise
         mock_score_column.__ge__ = MagicMock(return_value=MagicMock())
+        mock_score_column.__gt__ = MagicMock(return_value=MagicMock())
+        mock_score_column.__lt__ = MagicMock(return_value=MagicMock())
 
         # When 1.0 - distance is called:
         mock_sub_result = MagicMock()
@@ -163,6 +167,8 @@ async def test_search_similar_with_scores_no_attributes(vector_service, mock_db)
         mock_score_column = MagicMock()
         mock_score_column.desc.return_value = mock_score_column
         mock_score_column.__ge__ = MagicMock(return_value=MagicMock())
+        mock_score_column.__gt__ = MagicMock(return_value=MagicMock())
+        mock_score_column.__lt__ = MagicMock(return_value=MagicMock())
 
         mock_sub_result = MagicMock()
         mock_sub_result.label.return_value = mock_score_column
@@ -230,6 +236,8 @@ async def test_search_similar_with_scores_model_attributes(vector_service, mock_
         mock_score_column = MagicMock()
         mock_score_column.desc.return_value = mock_score_column
         mock_score_column.__ge__ = MagicMock(return_value=MagicMock())
+        mock_score_column.__gt__ = MagicMock(return_value=MagicMock())
+        mock_score_column.__lt__ = MagicMock(return_value=MagicMock())
 
         mock_sub_result = MagicMock()
         mock_sub_result.label.return_value = mock_score_column
@@ -364,3 +372,101 @@ async def test_embedding_request_passes_finite_deadlines_to_http_transport(monke
     for operation in ("connect", "read", "write", "pool"):
         assert deadlines[operation] is not None
         assert 0 < deadlines[operation] <= 10.0
+
+
+@pytest.mark.asyncio
+async def test_search_similar_with_scores_excludes_non_finite_scores(
+    vector_service, mock_db
+):
+    with (
+        patch.object(settings, "semantic_search_enabled", True),
+        patch("app.services.vector_service.select"),
+    ):
+        mock_model = MagicMock()
+        mock_score_column = MagicMock()
+        mock_score_column.desc.return_value = mock_score_column
+        mock_score_column.__ge__ = MagicMock(return_value=MagicMock())
+        mock_score_column.__gt__ = MagicMock(return_value=MagicMock())
+        mock_score_column.__lt__ = MagicMock(return_value=MagicMock())
+        mock_distance = MagicMock()
+        mock_sub_result = MagicMock()
+        mock_sub_result.label.return_value = mock_score_column
+        mock_distance.__rsub__ = MagicMock(return_value=mock_sub_result)
+        mock_model.embedding.cosine_distance.return_value = mock_distance
+
+        finite_positive = MagicMock()
+        not_a_number = MagicMock()
+        positive_infinity = MagicMock()
+        negative_infinity = MagicMock()
+        finite_zero = MagicMock()
+        finite_negative = MagicMock()
+        mock_result = MagicMock()
+        mock_result.all.return_value = [
+            (finite_positive, 0.8),
+            (not_a_number, float("nan")),
+            (positive_infinity, float("inf")),
+            (negative_infinity, float("-inf")),
+            (finite_zero, 0.0),
+            (finite_negative, -0.25),
+        ]
+        mock_db.execute.return_value = mock_result
+
+        results = await vector_service.search_similar_with_scores(
+            mock_model, [0.1], min_score=-1.0
+        )
+
+    assert results == [
+        (finite_positive, 0.8),
+        (finite_zero, 0.0),
+        (finite_negative, -0.25),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_search_query_excludes_non_finite_scores_before_limit(
+    vector_service, mock_db
+):
+    table = Table(
+        "vector_items",
+        MetaData(),
+        Column("id", Integer, primary_key=True),
+        Column("embedding", Vector(2)),
+        Column("is_active", Boolean, nullable=False),
+        Column("deleted_at", DateTime(timezone=True)),
+    )
+
+    class_registry = registry()
+
+    class VectorItem:
+        pass
+
+    class_registry.map_imperatively(VectorItem, table)
+    with patch.object(settings, "semantic_search_enabled", True):
+        result = MagicMock()
+        result.all.return_value = []
+        mock_db.execute.return_value = result
+
+        await vector_service.search_similar_with_scores(
+            VectorItem, [0.25, 0.75], limit=4, min_score=0.63
+        )
+
+    statement = mock_db.execute.await_args.args[0]
+    compiled = statement.compile(dialect=postgresql.dialect())
+    sql = str(compiled)
+    assert sql.index("WHERE") < sql.index("ORDER BY") < sql.index("LIMIT")
+    where_clause = sql.split("WHERE", maxsplit=1)[1].split("ORDER BY", maxsplit=1)[0]
+    assert "vector_items.is_active = true" in where_clause
+    assert "vector_items.deleted_at IS NULL" in where_clause
+    assert "ORDER BY similarity_score DESC" in sql
+
+    def placeholder_for(value: float | int) -> str:
+        name = next(
+            (name for name, bound in compiled.params.items() if bound == value), None
+        )
+        assert name is not None, f"expected SQL bind value {value!r}"
+        return f"%({name})s"
+
+    assert f">= {placeholder_for(0.63)}" in where_clause
+    assert f"> {placeholder_for(-math.inf)}" in where_clause
+    assert f"< {placeholder_for(math.inf)}" in where_clause
+    assert placeholder_for(4) in sql.split("LIMIT", maxsplit=1)[1]
