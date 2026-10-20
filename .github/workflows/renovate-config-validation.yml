@@ -29,6 +29,87 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
+      - name: Generate bounded owner-approved certifi candidate
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == 'egorribun/university_ecosystem' && github.event.pull_request.head.ref == 'egorribun' }}
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          original_lock="$(mktemp)"
+          cp -- uv.lock "$original_lock"
+          export ORIGINAL_CERTIFI_LOCK="$original_lock"
+          trap 'cp -- "$original_lock" uv.lock; rm -f -- "$original_lock"' EXIT
+          timeout --kill-after=5s 180s uv lock --upgrade-package "certifi==2026.10.19"
+          timeout --kill-after=5s 60s uv lock --check
+          python - <<'PY'
+          import copy
+          import difflib
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+          from urllib.parse import urlsplit
+          
+          original = Path(os.environ["ORIGINAL_CERTIFI_LOCK"]).read_bytes()
+          generated = Path("uv.lock").read_bytes()
+          before = tomllib.loads(original.decode("utf-8"))
+          after = tomllib.loads(generated.decode("utf-8"))
+          project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["tool"]["uv"]
+          cutoff = "2026-10-20T02:24:17Z"
+          assert project["required-version"] == "==0.12.23"
+          assert project["exclude-newer"] == "7 days"
+          assert project["exclude-newer-package"] == {"certifi": cutoff}
+          assert "certifi==2026.10.19" in project["constraint-dependencies"]
+          old_packages = [package for package in before["package"] if package["name"] == "certifi"]
+          new_packages = [package for package in after["package"] if package["name"] == "certifi"]
+          assert len(old_packages) == len(new_packages) == 1
+          assert old_packages[0]["version"] == "2026.7.22"
+          package = new_packages[0]
+          assert set(package) == {"name", "version", "source", "sdist", "wheels"}
+          assert package["version"] == "2026.10.19"
+          assert package["source"] == {"registry": "https://pypi.org/simple"}
+          assert len(package["wheels"]) == 1
+          artifacts = [package["sdist"], *package["wheels"]]
+          expected_files = {
+              "certifi-2026.10.19.tar.gz": 137598,
+              "certifi-2026.10.19-py3-none-any.whl": 136464,
+          }
+          for artifact in artifacts:
+              parsed = urlsplit(artifact["url"])
+              assert parsed.scheme == "https" and parsed.netloc == "files.pythonhosted.org"
+              assert not parsed.query and not parsed.fragment
+              assert expected_files[parsed.path.rsplit("/", 1)[-1]] == artifact["size"]
+          requirements = Path("security/detect-secrets-requirements.txt").read_text(encoding="utf-8")
+          requirement = next(line for line in requirements.splitlines() if line.startswith("certifi=="))
+          assert requirement.split()[0] == "certifi==2026.10.19"
+          assert {artifact["hash"] for artifact in artifacts} == set(
+              re.findall(r"--hash=(sha256:[0-9a-f]{64})", requirement)
+          )
+          expected = copy.deepcopy(before)
+          expected["package"][expected["package"].index(old_packages[0])] = package
+          assert expected["options"].get("exclude-newer-package", {}) == {}
+          expected["options"]["exclude-newer-package"] = {"certifi": cutoff}
+          assert not any(item["name"] == "certifi" for item in expected["manifest"]["constraints"])
+          expected["manifest"]["constraints"].append({"name": "certifi", "specifier": "==2026.10.19"})
+          expected["manifest"]["constraints"].sort(key=lambda item: item["name"])
+          assert after == expected, "Unexpected lock change outside approved certifi scope"
+          diff = "".join(
+              difflib.unified_diff(
+                  original.decode("utf-8").splitlines(True),
+                  generated.decode("utf-8").splitlines(True),
+                  fromfile="a/uv.lock",
+                  tofile="b/uv.lock",
+              )
+          )
+          assert 0 < len(diff.encode("utf-8")) <= 32768
+          print("BEGIN CERTIFI CANDIDATE DIFF; NOT CHECKED-IN LOCK VALIDATION")
+          print(diff, end="")
+          print("END CERTIFI CANDIDATE DIFF")
+          PY
+          cp -- "$original_lock" uv.lock
+          cmp -- "$original_lock" uv.lock
+          echo "Original checked-in uv.lock restored before the normal lock gate."
+
       - name: Verify uv.lock is up to date
         run: uv lock --check
 

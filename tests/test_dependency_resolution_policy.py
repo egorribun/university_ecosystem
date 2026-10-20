@@ -94,7 +94,8 @@ def test_dependency_resolution_policy_enforces_cooldown_and_security_visibility(
     assert isinstance(uv, dict)
     assert uv.get("required-version") == "==0.12.23"
     assert uv.get("exclude-newer") == "7 days"
-    assert uv.get("exclude-newer-package", {}) == {}
+    assert uv.get("exclude-newer-package") == {"certifi": "2026-10-20T02:24:17Z"}
+    assert "certifi==2026.10.19" in uv["constraint-dependencies"]
 
     renovate = _read_renovate()
     assert renovate["osvVulnerabilityAlerts"] is True
@@ -264,7 +265,16 @@ def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:
     assert isinstance(lock_options, dict)
     assert "exclude-newer" in lock_options
     assert lock_options["exclude-newer-span"] == "P7D"
-    assert "exclude-newer-package" not in lock_options
+    assert lock_options.get("exclude-newer-package") == {
+        "certifi": "2026-10-20T02:24:17Z"
+    }
+    lock = _read_toml("uv.lock")
+    packages = [package for package in lock["package"] if package["name"] == "certifi"]
+    assert len(packages) == 1
+    assert packages[0]["version"] == "2026.10.19"
+    assert {"name": "certifi", "specifier": "==2026.10.19"} in lock["manifest"][
+        "constraints"
+    ]
 
     runbook = _read_text("docs/DEPENDENCY_COOLDOWN_EMERGENCY.md")
     assert TARGETED_EMERGENCY_COMMAND in runbook

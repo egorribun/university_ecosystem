@@ -43,8 +43,9 @@ vulnerability gates, attach the evidence to the normal PR, and obtain the
 security reviewer approval.
 
 For ordinary regeneration, use `uv lock`. Never use the broad `uv lock --upgrade`
-command; the targeted command above is the sole package-specific cooldown
-exception.
+command. The targeted command above is the default package-specific cooldown
+exception; an explicitly approved exact-release timestamp cutoff may be used
+instead when recorded below and preserved in both project and lock metadata.
 
 ## Prohibited bypasses
 
@@ -89,3 +90,30 @@ reviewed Helm renders differ only in the upload image. No deployment, new
 secret disposition, advisory waiver or merge bypass is authorized by this
 decision. Ordinary hooks, vulnerability and backup compatibility checks,
 78 required contexts and blocking CodeQL remain required on the final source.
+
+## Owner-approved Certifi exception, 2026-10-20
+
+The owner approved only certifi `2026.10.19` in the existing normal PR
+[#1306](https://github.com/egorribun/university_ecosystem/pull/1306), addressing
+[GHSA-6q48-6c7w-9gw2](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2).
+The owner is the approving security reviewer. The fixed release removes the
+affected emSign trust anchor; no TLS verification or advisory gate is disabled.
+
+The exact version constraint and package-specific cutoff
+`2026-10-20T02:24:17Z` admit this release without admitting subsequent uploads.
+The global seven-day maturity policy and every other package remain unchanged.
+The exception covers the matching certifi version and artifact hashes in
+`uv.lock` and `security/detect-secrets-requirements.txt`. It expires on
+2026-10-27 at 02:24:17 UTC, after both release artifacts have matured.
+Remove the cutoff and replace the temporary exact pin with the security floor
+through a reviewed, targeted lock refresh at that point.
+
+For this exact approved release, use pinned uv 0.12.23 and the recorded
+persistent cutoff with `uv lock --upgrade-package "certifi==2026.10.19"`,
+then `uv lock --check`. Review the `uv.lock` diff: only certifi, its exact
+manifest constraint and its package cutoff may change. The temporary hosted
+generation step restores the checked-in lock before the normal lock gate;
+a generated candidate is not a passing checked-in-source validation.
+Final-source lock consistency, scanner integrity, tests and vulnerability
+checks remain required. No baseline edit, new false-positive disposition,
+advisory waiver, merge or deployment is authorized by this exception.
