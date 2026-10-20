@@ -3080,7 +3080,6 @@ def test_external_https_jwks_override_keeps_existing_443_egress_only() -> None:
     )
 
 
-
 _SERVICE_COMPONENTS = (
     "backend",
     "frontend",
@@ -3131,7 +3130,7 @@ def test_first_party_service_names_and_references_fit_dns_labels(
     }
     assert set(services) == set(_SERVICE_COMPONENTS)
     expected = {
-        component: f"{base[:62 - len(component)].rstrip('-')}-{component}"
+        component: f"{base[: 62 - len(component)].rstrip('-')}-{component}"
         for component in _SERVICE_COMPONENTS
     }
     names = {

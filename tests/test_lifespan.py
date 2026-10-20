@@ -1928,7 +1928,6 @@ async def test_di_propagates_permanent_nats_errors_before_yield(
     connect.assert_awaited_once_with()
 
 
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("failed_steps", "cancel_di"),

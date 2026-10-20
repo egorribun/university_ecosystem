@@ -1765,7 +1765,6 @@ def test_cli_explicit_attempt_does_not_fallback_after_fetch_failure(
     assert not output.exists()
 
 
-
 def _aud093_independent_jobs(
     first_seconds: int, second_seconds: int
 ) -> dict[str, object]:
