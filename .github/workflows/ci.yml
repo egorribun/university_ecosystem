@@ -1569,7 +1569,8 @@ jobs:
           uv run pytest tests/contracts/ tests/test_live_stand_cleanup_profile_contract.py tests/test_live_nats_transport.py \
             tests/test_ci_check_catalog.py \
             tests/test_live_stand.py::test_live_caddy_real_reader_failure_diagnostics_and_final_pin_precedence \
-            tests/test_live_stand.py::test_live_bounded_reader_accepts_exact_combined_cap_and_preserves_exit_status -v \
+            tests/test_live_stand.py::test_live_bounded_reader_accepts_exact_combined_cap_and_preserves_exit_status \
+            tests/test_live_stand.py::test_live_bounded_read_failure_reason_is_finite -v \
             --tb=short \
             -p no:cacheprovider \
             -k "not integration"

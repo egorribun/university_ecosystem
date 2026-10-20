@@ -841,6 +841,19 @@ def validate_catalog(
                 continue
             used_profiles.add(profile_name)
             effective = _merge_job(profile, job_entry)
+            if profile.get("classification") == "required":
+                if effective.get("classification") != "required":
+                    errors.append(
+                        f"{job_location}: required profile classification "
+                        "cannot be weakened"
+                    )
+                inherited_events = set(profile.get("required_events") or [])
+                if not inherited_events.issubset(
+                    effective.get("required_events") or []
+                ):
+                    errors.append(
+                        f"{job_location}: required profile events cannot be removed"
+                    )
             try:
                 expected_timeout = _job_timeout(
                     source_job, reusable_timeouts=reusable_timeouts

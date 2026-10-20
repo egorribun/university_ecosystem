@@ -8006,6 +8006,8 @@ _LIVE_CADDY_PROBE_DIAGNOSTIC_CODES = frozenset(
         "marker_observation",
         "pre_pin",
         "log_read",
+        "log_exit",
+        "log_pipe_io",
         "log_size",
         "nonce_exposure",
         "correlation_row",
@@ -8031,6 +8033,18 @@ class _LiveCaddyProbeStageFailure(StandError):
         self.stage = (
             stage
             if isinstance(stage, str) and stage in _LIVE_CADDY_PROBE_DIAGNOSTIC_CODES
+            else "internal"
+        )
+        super().__init__(_LIVE_CADDY_PROBE_FAILURE)
+
+
+class _LiveBoundedReadFailure(StandError):
+    """Carry a finite read failure reason without command or output details."""
+
+    def __init__(self, reason: str) -> None:
+        self.reason = (
+            reason
+            if isinstance(reason, str) and reason in {"output_limit", "pipe_io"}
             else "internal"
         )
         super().__init__(_LIVE_CADDY_PROBE_FAILURE)
@@ -8203,7 +8217,7 @@ def _live_drain_windows_pipes(
                 )
             buffers[index].extend(chunk[:remaining])
             if len(chunk) > remaining:
-                return False
+                raise _LiveBoundedReadFailure("output_limit")
             made_progress = True
         if not any(open_pipes):
             return True
@@ -8254,7 +8268,7 @@ def _live_drain_posix_pipes(
                     continue
                 target.extend(chunk[:output_remaining])
                 if len(chunk) > output_remaining:
-                    return False
+                    raise _LiveBoundedReadFailure("output_limit")
         return True
     finally:
         selector.close()
@@ -8317,25 +8331,30 @@ def _run_live_bounded_read(
     completed = False
     cleanup_ok = True
     return_code: int | None = None
+    failure_reason: str | None = None
     try:
-        if process.stdout is None or process.stderr is None:
-            raise OSError("Docker read pipes were unavailable")
-        if os.name == "nt":
-            completed = _live_drain_windows_pipes(
-                process,
-                stdout=stdout,
-                stderr=stderr,
-                work_deadline=work_deadline,
-                maximum_bytes=maximum_bytes,
-            )
-        else:
-            completed = _live_drain_posix_pipes(
-                process,
-                stdout=stdout,
-                stderr=stderr,
-                work_deadline=work_deadline,
-                maximum_bytes=maximum_bytes,
-            )
+        try:
+            if process.stdout is None or process.stderr is None:
+                raise OSError("Docker read pipes were unavailable")
+            if os.name == "nt":
+                completed = _live_drain_windows_pipes(
+                    process,
+                    stdout=stdout,
+                    stderr=stderr,
+                    work_deadline=work_deadline,
+                    maximum_bytes=maximum_bytes,
+                )
+            else:
+                completed = _live_drain_posix_pipes(
+                    process,
+                    stdout=stdout,
+                    stderr=stderr,
+                    work_deadline=work_deadline,
+                    maximum_bytes=maximum_bytes,
+                )
+        except OSError:
+            raise _LiveBoundedReadFailure("pipe_io") from None
+
         if completed:
             # Keep the reserved tail for killing and reaping a child that closed
             # both pipes but is still running.
@@ -8347,6 +8366,9 @@ def _run_live_bounded_read(
                     completed = False
             else:
                 completed = False
+    except _LiveBoundedReadFailure as error:
+        completed = False
+        failure_reason = error.reason
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError):
         completed = False
     finally:
@@ -8371,7 +8393,11 @@ def _run_live_bounded_read(
                 except (OSError, ValueError):
                     cleanup_ok = False
 
-    if not completed or not cleanup_ok or return_code is None:
+    if not cleanup_ok:
+        raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
+    if failure_reason is not None:
+        raise _LiveBoundedReadFailure(failure_reason) from None
+    if not completed or return_code is None:
         raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
     try:
         _assert_live_docker_read_context(context)
@@ -9168,19 +9194,26 @@ def _read_live_caddy_probe_logs(
             container_pin[0],
         ]
         stage = "log_read"
-        completed = _run_live_bounded_read(
-            command,
-            context=docker_context,
-            deadline=deadline,
-            maximum_bytes=_LIVE_CADDY_PROBE_MAX_BYTES,
-            command_timeout_seconds=min(
-                _LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS, remaining
-            ),
-        )
+        try:
+            completed = _run_live_bounded_read(
+                command,
+                context=docker_context,
+                deadline=deadline,
+                maximum_bytes=_LIVE_CADDY_PROBE_MAX_BYTES,
+                command_timeout_seconds=min(
+                    _LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS, remaining
+                ),
+            )
+        except _LiveBoundedReadFailure as error:
+            failure_stage = {
+                "output_limit": "log_size",
+                "pipe_io": "log_pipe_io",
+            }.get(error.reason, "log_read")
+            raise _LiveCaddyProbeStageFailure(failure_stage) from None
         stdout = completed.stdout or b""
         stderr = completed.stderr or b""
         if completed.returncode != 0:
-            raise _LiveCaddyProbeStageFailure("log_read")
+            raise _LiveCaddyProbeStageFailure("log_exit")
 
         invalid_stage: str | None = None
         for project in LIVE_CADDY_PROBE_PROJECTS:

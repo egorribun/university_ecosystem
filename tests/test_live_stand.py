@@ -12724,6 +12724,7 @@ def test_live_caddy_probe_brackets_one_union_read_within_the_shared_deadline(
         ("combined-overflow", "log_size"),
         ("exit", "log_exit"),
         ("pipe", "log_pipe_io"),
+        ("wait", "log_read"),
     ],
 )
 @pytest.mark.parametrize("post_pin_failure", [False, True])
@@ -12759,9 +12760,11 @@ def test_live_caddy_real_reader_failure_diagnostics_and_final_pin_precedence(
         ),
         "exit": f"import sys; sys.stderr.write({canary!r}); sys.exit(7)",
         "pipe": "import sys; sys.stdout.buffer.write(b'x' * 4096)",
+        "wait": "import os, time; os.close(1); os.close(2); time.sleep(30)",
     }
     real_start = live_stand.fast_preflight._start_process
     started: list[subprocess.Popen[bytes]] = []
+    wait_attempts: list[float | None] = []
 
     def start_fixture(
         check: live_stand.fast_preflight.CheckSpec,
@@ -12779,6 +12782,16 @@ def test_live_caddy_real_reader_failure_diagnostics_and_final_pin_precedence(
             repo_root=repo_root,
             env=env,
         )
+        if failure == "wait":
+            real_wait = process.wait
+
+            def fail_first_wait(timeout: float | None = None) -> int:
+                wait_attempts.append(timeout)
+                if len(wait_attempts) == 1:
+                    raise OSError(canary)
+                return real_wait(timeout=timeout)
+
+            monkeypatch.setattr(process, "wait", fail_first_wait)
         started.append(process)
         return process
 
@@ -12850,6 +12863,8 @@ def test_live_caddy_real_reader_failure_diagnostics_and_final_pin_precedence(
     assert str(caught.value) == live_stand._LIVE_CADDY_PROBE_FAILURE
     assert captured.out == ""
     assert captured.err == f"live_caddy_probe_failure_stage={stage}\n"
+    if failure == "wait":
+        assert len(wait_attempts) >= 2
     assert pin_calls == [container_pin, container_pin]
     assert len(started) == 1
     assert started[0].returncode is not None
@@ -12889,3 +12904,21 @@ def test_live_bounded_reader_accepts_exact_combined_cap_and_preserves_exit_statu
     assert result.returncode == exit_code
     assert result.stdout == b"x" * first
     assert result.stderr == b"y" * second
+
+
+@pytest.mark.parametrize(
+    ("reason", "expected"),
+    [
+        ("output_limit", "output_limit"),
+        ("pipe_io", "pipe_io"),
+        ("unrecognized-reason", "internal"),
+        (None, "internal"),
+        (17, "internal"),
+    ],
+)
+def test_live_bounded_read_failure_reason_is_finite(reason: Any, expected: str) -> None:
+    error = live_stand._LiveBoundedReadFailure(reason)
+
+    assert error.reason == expected
+    assert str(error) == live_stand._LIVE_CADDY_PROBE_FAILURE
+    assert error.args == (live_stand._LIVE_CADDY_PROBE_FAILURE,)

@@ -73,8 +73,12 @@ The validator inspects nested job fields (including action inputs), respects
 quoted expression text such as `'}}'`, and rejects an unterminated `${{ ... }}`.
 Profiles provide the effective required/advisory/nightly/manual/internal
 classification, required event aliases, owner, runbook, artifact contract,
-and retry policy. A job may
-override any profile field when its artifact or retry behavior differs.
+and retry policy. Jobs may override metadata when their artifact or retry
+behavior differs, but an inherited required profile cannot be weakened by a
+job-level classification override or removal of its required event aliases.
+Identical explicit policy and genuine advisory profiles remain valid. This
+inheritance check does not replace independent release-policy/ruleset review
+when changing the selected profile or a profile definition.
 
 The reusable security workflow starts with the required `Security policy
 integrity` job. On pull requests it compares every scanner configuration,
