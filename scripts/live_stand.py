@@ -8,15 +8,15 @@ marker, so its volumes and networks are isolated from other stacks.
 
 Usage::
 
-    python scripts/live_stand.py up [--ref HEAD] [--stack full|core]
+    python -m scripts.live_stand up [--ref HEAD] [--stack full|core]
     # create/refresh the worktree and start (full is the default)
-    python scripts/live_stand.py up --in-place --state-dir <owned-temp-run> --ref HEAD
-    python scripts/live_stand.py seed --demo        # load demo users and content
-    python scripts/live_stand.py e2e [--mode smoke|full]  # reseed and run live Playwright safely
-    python scripts/live_stand.py status             # read-only status
-    python scripts/live_stand.py stop               # stop containers; preserve data
-    python scripts/live_stand.py quiesce --in-place --state-dir <owned-temp-run>  # stop Core writers; retain stores
-    python scripts/live_stand.py teardown           # remove only this run's Compose data
+    python -m scripts.live_stand up --in-place --state-dir <owned-temp-run> --ref HEAD
+    python -m scripts.live_stand seed --demo        # load demo users and content
+    python -m scripts.live_stand e2e [--mode smoke|full]  # reseed and run live Playwright safely
+    python -m scripts.live_stand status             # read-only status
+    python -m scripts.live_stand stop               # stop containers; preserve data
+    python -m scripts.live_stand quiesce --in-place --state-dir <owned-temp-run>  # stop Core writers; retain stores
+    python -m scripts.live_stand teardown           # remove only this run's Compose data
 
 ``down`` remains a compatibility alias for ``stop``. ``teardown`` preserves
 the worktree, ``.env*`` files, secrets and evidence; it removes volumes only

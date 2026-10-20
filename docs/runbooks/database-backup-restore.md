@@ -79,7 +79,7 @@ clean checkout at the stand's source SHA:
 
 ```powershell
 $stateDirectory = 'C:\Temp\ue-live-acceptance\run-<id>'
-uv run python scripts/live_stand.py quiesce --in-place --state-dir $stateDirectory
+uv run python -m scripts.live_stand quiesce --in-place --state-dir $stateDirectory
 ```
 
 This command verifies the signed owner, Docker daemon, current Compose service
@@ -102,7 +102,7 @@ uv run python scripts/backup_db.py snapshot --confirm-source-quiesced
 After the snapshot has reported success, resume the same owned Core stand with:
 
 ```powershell
-uv run python scripts/live_stand.py up --stack core --ref HEAD --in-place --state-dir $stateDirectory
+uv run python -m scripts.live_stand up --stack core --ref HEAD --in-place --state-dir $stateDirectory
 ```
 
 The existing `up` path checks the owner and source binding and reuses verified

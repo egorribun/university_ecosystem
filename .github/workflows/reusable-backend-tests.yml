@@ -257,6 +257,7 @@ jobs:
                   
                   $pytestArgs += @(
                     "--ignore=tests/test_schemathesis_api.py",
+                    "--ignore=tests/integration/test_quarantine_reservations_postgres.py",
                     "--cov=app",
                     "--cov=alembic/versions",
                     "--cov-report=xml:$coverageXmlName",

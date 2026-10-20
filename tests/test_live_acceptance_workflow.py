@@ -7,6 +7,7 @@ import os
 import re
 import runpy
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -45,7 +46,7 @@ def test_live_stand_module_help_resolves_package_without_pythonpath(
                 stderr_limit=32 * 1024,
                 input_limit=0,
             ),
-            deadline=Deadline.after(10),
+            deadline=Deadline.after(10, clock=time.monotonic),
         )
         assert result.outcome is process.ProcessOutcome.EXITED
         assert result.returncode == 0

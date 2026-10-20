@@ -2166,7 +2166,14 @@
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
           "needs": [],
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "gitleaks-results.sarif",
+              "path_pattern": "${{ runner.temp }}/gitleaks-results/results.sarif",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
           "retry_policy": {
             "mode": "none",
             "first_failure_preserved": true,

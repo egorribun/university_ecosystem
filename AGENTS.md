@@ -280,7 +280,18 @@ for the MVP release; the current plan is
      blocking CodeQL and the finite migration exception unchanged. Source
      integration is not scanner or test evidence; each hosted gate still applies.
 
-   - `gitleaks` (repo secret scanning).
+   - `gitleaks` (repo secret scanning). On 2026-10-20 the owner approved
+     exactly 25 immutable historical commit/path/rule/line fingerprints:
+     24 public, synthetic, or prose findings and one separately reviewed
+     `SECRET_KEY` test-helper fixture identity. Repository-local test usage
+     of that singleton is verified; external origin and operational reuse
+     are not verified. The exact finite set is in `.gitleaksignore` and
+     `tests/test_gitleaks_dispositions_contract.py`. This permits no wildcard,
+     path-wide or rule-wide ignore, new identity, history rewrite, scanner
+     bypass, or gate change. New contexts remain blocking. This separate
+     Gitleaks decision changes none of the 319 detect-secrets baseline
+     identities or 264 detect-secrets dispositions. Policy integration does
+     not establish a passing full-history scan or hosted gate.
    - `bandit` (Python security static analysis).
    - `mypy` (strict type-checking for backend auth, services, api, core, repositories, graphql).
    - `no-python2-except` (rejects `except A, B:` comma syntax in favor of `except (A, B):`).

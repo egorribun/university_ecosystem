@@ -112,22 +112,26 @@ def test_normalize_mime_type():
 
 
 @pytest.mark.asyncio
-async def test_quarantine_payload(tmp_path):
-    """Test writing payload to quarantine."""
+async def test_quarantine_payload_uses_durable_admission_service():
+    """Rejected bytes are stored through the quota service under quarantine/."""
     data = b"malicious data"
-
-    # We need to mock _get_storage_backend
     mock_backend = AsyncMock()
 
-    with patch("app.utils.files._get_storage_backend", return_value=mock_backend):
+    with (
+        patch("app.utils.files._get_storage_backend", return_value=mock_backend),
+        patch("app.utils.files.QuarantineService") as service_factory,
+    ):
+        service_factory.return_value.store = AsyncMock(return_value="/static/file")
         await _quarantine_payload(
             data, subdir="avatars", prefix="user", reason="malware"
         )
 
-    mock_backend.save_file.assert_called_once()
-    args = mock_backend.save_file.call_args[0]
-    assert "quarantine/avatars/user_malware" in args[0]
-    assert args[1] == data
+    service_factory.assert_called_once_with(mock_backend)
+    service_factory.return_value.store.assert_awaited_once()
+    key, stored_data = service_factory.return_value.store.await_args.args
+    assert "quarantine/avatars/user_malware" in key
+    assert stored_data == data
+    mock_backend.save_file.assert_not_called()
 
 
 def test_detect_image_mime_webp_svg():
@@ -180,14 +184,60 @@ def test_looks_like_polyglot_svg_no_svg_tag():
 
 
 @pytest.mark.asyncio
-async def test_quarantine_payload_error():
-    """Verify _quarantine_payload handles and logs save_file failures."""
-    mock_backend = AsyncMock()
-    mock_backend.save_file.side_effect = OSError("Disk full")
+async def test_quarantine_payload_error_does_not_log_rejected_bytes(caplog):
+    """Quota/storage failure does not replace rejection or expose payload bytes."""
+    from app.services.quarantine import QuarantineStoreUnavailable
 
-    with patch("app.utils.files._get_storage_backend", return_value=mock_backend):
-        # Should catch and log error without raising
-        await _quarantine_payload(b"data", subdir="dir", prefix="pre", reason="rea")
+    mock_backend = AsyncMock()
+    payload = b"synthetic rejected payload"
+    with (
+        patch("app.utils.files._get_storage_backend", return_value=mock_backend),
+        patch("app.utils.files.QuarantineService") as service_factory,
+    ):
+        service_factory.return_value.store = AsyncMock(
+            side_effect=QuarantineStoreUnavailable("private backend error")
+        )
+        await _quarantine_payload(payload, subdir="dir", prefix="pre", reason="rea")
+
+    assert "Failed to durably store rejected upload" in caplog.text
+    assert payload.decode() not in caplog.text
+    assert "private backend error" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_rejected_attachment_stays_rejected_when_quarantine_quota_is_unavailable():
+    import io
+
+    from fastapi import HTTPException, UploadFile
+
+    from app.services.quarantine import QuarantineStoreUnavailable
+    from app.utils.files import save_attachment
+
+    payload = b"not a pdf"
+    upload = UploadFile(
+        filename="report.pdf",
+        file=io.BytesIO(payload),
+        headers={"content-type": "application/pdf"},
+    )
+    with (
+        patch("app.utils.files.detect_mime_type", return_value="text/plain"),
+        patch("app.utils.files.QuarantineService") as service_factory,
+    ):
+        service_factory.return_value.store = AsyncMock(
+            side_effect=QuarantineStoreUnavailable("quota unavailable")
+        )
+        with pytest.raises(HTTPException) as exc:
+            await save_attachment(
+                upload,
+                "event_files",
+                "attachment",
+                allowed_mime_types={"application/pdf"},
+                allowed_extensions={"pdf"},
+                max_size_bytes=1024,
+            )
+
+    assert exc.value.status_code == 415
+    service_factory.return_value.store.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -360,10 +410,15 @@ async def test_save_attachment_unknown_detected_mime():
         filename="test.bin", file=io.BytesIO(b""), headers={"content-type": ""}
     )
     mock_backend = AsyncMock()
-    with patch("app.utils.files._get_storage_backend", return_value=mock_backend):
+    with (
+        patch("app.utils.files._get_storage_backend", return_value=mock_backend),
+        patch("app.utils.files.QuarantineService") as service_factory,
+    ):
+        service_factory.return_value.store = AsyncMock()
         with pytest.raises(HTTPException) as exc:
             await save_attachment(upload, "dir", "prefix")
         assert exc.value.status_code == 415
+    service_factory.return_value.store.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -404,10 +459,15 @@ async def test_save_attachment_blocked_extension():
         headers={"content-type": "application/pdf"},
     )
     mock_backend = AsyncMock()
-    with patch("app.utils.files._get_storage_backend", return_value=mock_backend):
+    with (
+        patch("app.utils.files._get_storage_backend", return_value=mock_backend),
+        patch("app.utils.files.QuarantineService") as service_factory,
+    ):
+        service_factory.return_value.store = AsyncMock()
         with pytest.raises(HTTPException) as exc:
             await save_attachment(upload, "dir", "prefix", allowed_extensions={".pdf"})
         assert exc.value.status_code == 415
+    service_factory.return_value.store.assert_awaited_once()
 
 
 @pytest.mark.asyncio

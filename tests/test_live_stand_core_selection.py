@@ -4,6 +4,7 @@ import hashlib
 import os
 import stat
 import subprocess
+from collections.abc import Callable, Sequence
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
@@ -20,6 +21,47 @@ EXPECTED_CORE_ROOTS = (
     "outbox-worker",
     "spicedb",
 )
+
+
+def _assert_unbudgeted_docker_read(
+    deadline: float | None,
+    docker_context: live_stand._LiveDockerReadContext | None,
+) -> None:
+    assert deadline is None
+    assert docker_context is None
+
+
+def _fixed_owner_compose_evidence(
+    evidence: live_stand.ComposeResourceEvidence,
+) -> Callable[..., live_stand.ComposeResourceEvidence]:
+    def provide(
+        _worktree: Path,
+        _owner: live_stand.StandOwner,
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> live_stand.ComposeResourceEvidence:
+        _assert_unbudgeted_docker_read(deadline, docker_context)
+        return evidence
+
+    return provide
+
+
+def _ignore_compose_volume_ownership(
+    _project_name: str,
+    _managed_volumes: Sequence[tuple[str, str]],
+    *,
+    declared_volume_names: Sequence[str],
+    allow_existing_owned: bool,
+    managed_networks: Sequence[tuple[str, str]] = (),
+    managed_services: Sequence[str] = (),
+    deadline: float | None = None,
+    docker_context: live_stand._LiveDockerReadContext | None = None,
+) -> tuple[tuple[str, str], ...]:
+    _assert_unbudgeted_docker_read(deadline, docker_context)
+    return ()
+
+
 EXPECTED_CORE_SERVICES = (
     "backend",
     "caddy",
@@ -409,7 +451,18 @@ def signed_core_owner(
     monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
     monkeypatch.setattr(live_stand, "WORKTREE", worktree)
     monkeypatch.setattr(live_stand, "IN_PLACE_MODE", False)
-    monkeypatch.setattr(live_stand, "docker_daemon_fingerprint", lambda: "a" * 64)
+
+    def fake_daemon_fingerprint(
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> str:
+        _assert_unbudgeted_docker_read(deadline, docker_context)
+        return "a" * 64
+
+    monkeypatch.setattr(
+        live_stand, "docker_daemon_fingerprint", fake_daemon_fingerprint
+    )
     active_services_seen: list[tuple[str, ...] | None] = []
 
     def choose_published_ports(
@@ -497,9 +550,18 @@ def test_lifecycle_rejects_signed_owner_with_stale_selection_before_compose_call
     monkeypatch.setattr(
         live_stand,
         "_owner_compose_resource_evidence",
-        lambda _worktree, _owner: mismatched_evidence,
+        _fixed_owner_compose_evidence(mismatched_evidence),
     )
-    monkeypatch.setattr(live_stand, "_require_owned_docker_daemon", lambda _owner: None)
+
+    def no_daemon_check(
+        _owner: live_stand.StandOwner,
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> None:
+        _assert_unbudgeted_docker_read(deadline, docker_context)
+
+    monkeypatch.setattr(live_stand, "_require_owned_docker_daemon", no_daemon_check)
     compose_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
     monkeypatch.setattr(
         live_stand,
@@ -535,7 +597,7 @@ def test_core_status_is_read_only_and_queries_only_signed_services(
     monkeypatch.setattr(
         live_stand,
         "_owner_compose_resource_evidence",
-        lambda _worktree, _owner: evidence,
+        _fixed_owner_compose_evidence(evidence),
     )
 
     calls: list[tuple[list[str], dict[str, Any]]] = []
@@ -635,10 +697,10 @@ def test_core_teardown_never_removes_a_replacement_container(
     monkeypatch.setattr(
         live_stand,
         "_owner_compose_resource_evidence",
-        lambda _worktree, _owner: evidence,
+        _fixed_owner_compose_evidence(evidence),
     )
     monkeypatch.setattr(
-        live_stand, "_assert_compose_volume_ownership", lambda *_args, **_kwargs: ()
+        live_stand, "_assert_compose_volume_ownership", _ignore_compose_volume_ownership
     )
 
     original_id = "a" * 64
@@ -716,10 +778,10 @@ def test_core_teardown_preserves_network_referenced_by_stopped_foreign_container
     monkeypatch.setattr(
         live_stand,
         "_owner_compose_resource_evidence",
-        lambda _worktree, _owner: evidence,
+        _fixed_owner_compose_evidence(evidence),
     )
     monkeypatch.setattr(
-        live_stand, "_assert_compose_volume_ownership", lambda *_args, **_kwargs: ()
+        live_stand, "_assert_compose_volume_ownership", _ignore_compose_volume_ownership
     )
     monkeypatch.setattr(live_stand, "_project_container_ids", lambda _project: ())
 
@@ -799,10 +861,10 @@ def test_core_teardown_removes_exact_owned_resources_and_preserves_local_state(
     monkeypatch.setattr(
         live_stand,
         "_owner_compose_resource_evidence",
-        lambda _worktree, _owner: evidence,
+        _fixed_owner_compose_evidence(evidence),
     )
     monkeypatch.setattr(
-        live_stand, "_assert_compose_volume_ownership", lambda *_args, **_kwargs: ()
+        live_stand, "_assert_compose_volume_ownership", _ignore_compose_volume_ownership
     )
 
     project_inventory_reads = 0

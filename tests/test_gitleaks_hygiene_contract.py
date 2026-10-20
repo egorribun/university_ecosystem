@@ -1,27 +1,183 @@
-"""Regression contracts for repository secret-scanning coverage."""
+"""Regression contracts for complete-history secret scanning in CI."""
 
 from __future__ import annotations
 
-import tomllib
+import asyncio
+import os
+import shutil
+import signal
+import sys
+import time
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 import yaml
+
+from scripts.quality import gitleaks_ci
+from scripts.quality.gitleaks_ci import (
+    GitleaksGateError,
+    build_gitleaks_command,
+    execute_scan,
+    prepare_scan,
+)
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 GITLEAKS_CONFIG_PATH = REPOSITORY_ROOT / ".gitleaks.toml"
 GITLEAKS_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "gitleaks.yml"
+CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+SETUP_GO_ACTION = "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e"
+UPLOAD_ARTIFACT_ACTION = (
+    "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+)
+SYNTHETIC_RESOLUTION_MARKER = "merge-resolution-only-contract-marker"
 
 
 def _workflow_triggers(workflow: dict[object, object]) -> dict[str, object]:
-    """Support PyYAML's YAML 1.1 parsing of the ``on`` key as ``True``."""
+    """Support PyYAML's YAML 1.1 parsing of the "on" key as True."""
 
     triggers = workflow.get("on", workflow.get(True))
     assert isinstance(triggers, dict)
     return triggers
 
 
+def _git(repo: Path, *args: str, check: bool = True) -> SimpleNamespace:
+    command = ["git", "-C", str(repo), *args]
+
+    async def run() -> SimpleNamespace:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10)
+        except BaseException:
+            if process.returncode is None:
+                process.kill()
+                await process.wait()
+            raise
+        result = SimpleNamespace(
+            returncode=process.returncode,
+            stdout=stdout.decode("utf-8", errors="replace"),
+            stderr=stderr.decode("utf-8", errors="replace"),
+        )
+        if check and result.returncode != 0:
+            raise AssertionError(result.stderr)
+        return result
+
+    return asyncio.run(run())
+
+
+def _commit(repo: Path, message: str) -> None:
+    _git(
+        repo,
+        "-c",
+        "user.name=Contract Test",
+        "-c",
+        "user.email=contract@example.invalid",
+        "commit",
+        "-m",
+        message,
+    )
+
+
+def _create_pull_request_graph(tmp_path: Path) -> tuple[Path, str, str, str]:
+    """Build 30+ commits and a merge-only change without touching the checkout."""
+
+    repo = tmp_path / "source"
+    repo.mkdir()
+    shutil.copyfile(GITLEAKS_CONFIG_PATH, repo / ".gitleaks.toml")
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "core.autocrlf", "false")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _commit(repo, "base")
+    base_sha = _git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    _git(repo, "switch", "-c", "pull-request")
+    for index in range(32):
+        (repo / f"step-{index:02d}.txt").write_text(
+            f"change {index}\n", encoding="utf-8"
+        )
+        _git(repo, "add", ".")
+        _commit(repo, f"change {index}")
+
+    (repo / "conflict.txt").write_text("common\n", encoding="utf-8")
+    _git(repo, "add", "conflict.txt")
+    _commit(repo, "add merge base")
+
+    _git(repo, "switch", "-c", "resolution-side")
+    (repo / "conflict.txt").write_text("side parent\n", encoding="utf-8")
+    _git(repo, "add", "conflict.txt")
+    _commit(repo, "side change")
+    side_sha = _git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    _git(repo, "switch", "pull-request")
+    (repo / "conflict.txt").write_text("first parent\n", encoding="utf-8")
+    _git(repo, "add", "conflict.txt")
+    _commit(repo, "first-parent change")
+    first_parent_sha = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    (repo / "conflict.txt").write_text(
+        f"resolved\n{SYNTHETIC_RESOLUTION_MARKER}\n", encoding="utf-8"
+    )
+    _git(repo, "add", "conflict.txt")
+    merge_tree = _git(repo, "write-tree").stdout.strip()
+    merge_sha = _git(
+        repo,
+        "-c",
+        "user.name=Contract Test",
+        "-c",
+        "user.email=contract@example.invalid",
+        "commit-tree",
+        merge_tree,
+        "-p",
+        first_parent_sha,
+        "-p",
+        side_sha,
+        "-m",
+        "resolve conflict",
+    ).stdout.strip()
+    _git(repo, "reset", "--hard", merge_sha)
+    head_sha = _git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    _git(repo, "switch", "--detach", base_sha)
+    _git(
+        repo,
+        "-c",
+        "user.name=Contract Test",
+        "-c",
+        "user.email=contract@example.invalid",
+        "merge",
+        "--no-ff",
+        "-m",
+        "synthetic checkout merge",
+        head_sha,
+    )
+    checkout_sha = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    return repo, base_sha, head_sha, checkout_sha
+
+
+def _pull_request_environment(
+    base_sha: str,
+    head_sha: str,
+    checkout_sha: str,
+    repository: Path,
+) -> dict[str, str]:
+    return {
+        "GITLEAKS_EVENT_NAME": "pull_request",
+        "GITLEAKS_BASE_SHA": base_sha,
+        "GITLEAKS_EVENT_HEAD_SHA": head_sha,
+        "GITHUB_SHA": checkout_sha,
+        "GITHUB_WORKSPACE": str(repository),
+    }
+
+
 def test_gitleaks_allowlist_contains_only_existing_lockfile_paths() -> None:
     """Stale file and placeholder exceptions must not hide secret findings."""
+
+    import tomllib
 
     with GITLEAKS_CONFIG_PATH.open("rb") as config_file:
         allowlist = tomllib.load(config_file)["allowlist"]
@@ -33,6 +189,8 @@ def test_gitleaks_allowlist_contains_only_existing_lockfile_paths() -> None:
 
 def test_gitleaks_configuration_extends_default_detection_rules() -> None:
     """The custom repository config must retain the built-in detector rules."""
+
+    import tomllib
 
     with GITLEAKS_CONFIG_PATH.open("rb") as config_file:
         config = tomllib.load(config_file)
@@ -47,6 +205,657 @@ def test_gitleaks_scans_main_pushes_and_pull_requests_without_duplicate_runs() -
     triggers = _workflow_triggers(workflow)
 
     assert triggers["push"]["branches"] == ["main"]
-    # ``pull_request.branches`` filters the base branch, so PRs into main stay
-    # covered without duplicating the push scan on the source branch.
+    # The pull-request base-branch filter keeps source-branch pushes from
+    # duplicating the protected-branch scan.
     assert triggers["pull_request"]["branches"] == ["main"]
+
+
+def test_gitleaks_workflow_pins_complete_graph_scanner_and_redacted_artifact() -> None:
+    workflow = yaml.safe_load(GITLEAKS_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["gitleaks"]
+    assert job["name"] == "Gitleaks scan"
+    assert workflow["permissions"] == {"contents": "read"}
+
+    steps = job["steps"]
+    checkout = next(step for step in steps if step["name"] == "Checkout repository")
+    assert checkout["uses"] == CHECKOUT_ACTION
+    assert checkout["with"] == {"fetch-depth": 0, "persist-credentials": False}
+
+    policy_guard = next(
+        step
+        for step in steps
+        if step["name"] == "Verify security policy inputs against protected base"
+    )
+    assert policy_guard["if"] == "${{ github.event_name == 'pull_request' }}"
+    for required in (
+        "BASE_SHA",
+        "BASE_REPOSITORY",
+        "PR_AUTHOR",
+        "policy_paths=(",
+        "BASE_REPOSITORY",
+        "security policy changes require an owner-authored PR",
+    ):
+        assert required in policy_guard["run"]
+    for path in (
+        '".github/workflows"',
+        '".gitleaks.toml"',
+        '".gitleaksignore"',
+        '"native/rust_ext/deny.toml"',
+        '"quality/ci-check-catalog.json"',
+        '"quality/security-false-positive-dispositions.json"',
+        '"security/audit-allowlist.yaml"',
+    ):
+        assert path in policy_guard["run"]
+
+    setup_go = next(step for step in steps if step["name"] == "Set up Go")
+    assert setup_go["uses"] == SETUP_GO_ACTION
+    assert setup_go["with"]["go-version"] == "1.26.9"
+    assert setup_go["with"]["cache"] is False
+
+    install = next(step for step in steps if step["name"] == "Install Gitleaks")
+    assert install["env"]["GOSUMDB"] == "sum.golang.org"
+    assert install["env"]["GOPROXY"] == "https://proxy.golang.org"
+    assert "github.com/zricethezav/gitleaks/v8@v8.30.1" in install["run"]
+    assert "go version -m" in install["run"]
+    assert "v8.30.1" in install["run"]
+    assert "latest" not in install["run"].lower()
+
+    scan = next(
+        step for step in steps if step["name"] == "Run complete Gitleaks history"
+    )
+    assert scan["run"] == "python scripts/quality/gitleaks_ci.py"
+    assert scan["env"]["GITLEAKS_EVENT_NAME"] == "${{ github.event_name }}"
+    assert scan["env"]["GITLEAKS_BASE_SHA"] == (
+        "${{ github.event_name == 'pull_request' && "
+        "github.event.pull_request.base.sha || github.event.before }}"
+    )
+    assert scan["env"]["GITLEAKS_EVENT_HEAD_SHA"] == (
+        "${{ github.event_name == 'pull_request' && "
+        "github.event.pull_request.head.sha || github.event.after }}"
+    )
+    assert scan["env"]["GITLEAKS_REPORT_PATH"] == (
+        "${{ runner.temp }}/gitleaks-results/results.sarif"
+    )
+    assert scan["env"]["GITLEAKS_BIN"] == "${{ runner.temp }}/gitleaks-bin/gitleaks"
+
+    upload = next(
+        step for step in steps if step["name"] == "Upload redacted Gitleaks SARIF"
+    )
+    assert upload["if"] == "${{ always() }}"
+    assert upload["uses"] == UPLOAD_ARTIFACT_ACTION
+    assert upload["with"]["name"] == "gitleaks-results.sarif"
+    assert upload["with"]["path"] == (
+        "${{ runner.temp }}/gitleaks-results/results.sarif"
+    )
+    assert upload["with"]["if-no-files-found"] == "warn"
+    assert all(
+        not step.get("uses", "").startswith("gitleaks/gitleaks-action@")
+        for step in steps
+    )
+
+
+def test_pr_scan_covers_complete_graph_and_merge_resolution_delta(
+    tmp_path: Path,
+) -> None:
+    repo, base_sha, head_sha, checkout_sha = _create_pull_request_graph(tmp_path)
+    plan = prepare_scan(
+        repo, _pull_request_environment(base_sha, head_sha, checkout_sha, repo)
+    )
+
+    count = int(_git(repo, "rev-list", "--count", f"{base_sha}..{head_sha}").stdout)
+    assert count > 30
+    assert plan.git_log_opts == f"{base_sha}..{head_sha} --diff-merges=first-parent"
+    assert "--first-parent" not in plan.git_log_opts.split()
+    assert "--no-merges" not in plan.git_log_opts.split()
+
+    merge_aware_log = _git(
+        repo,
+        "log",
+        "-p",
+        "-U0",
+        *plan.git_log_opts.split(),
+    ).stdout
+    assert SYNTHETIC_RESOLUTION_MARKER in merge_aware_log
+
+    default_merge_log = _git(
+        repo,
+        "-c",
+        "log.diffMerges=off",
+        "log",
+        "-p",
+        "-U0",
+        f"{base_sha}..{head_sha}",
+    ).stdout
+    assert SYNTHETIC_RESOLUTION_MARKER not in default_merge_log
+
+
+def test_pr_scan_rejects_checkout_tree_drift_and_dirty_worktree(tmp_path: Path) -> None:
+    repo, base_sha, head_sha, checkout_sha = _create_pull_request_graph(tmp_path)
+    env = _pull_request_environment(base_sha, head_sha, checkout_sha, repo)
+
+    (repo / "uncommitted.txt").write_text("uncommitted\n", encoding="utf-8")
+    with pytest.raises(GitleaksGateError, match="working tree"):
+        prepare_scan(repo, env)
+
+    _git(repo, "checkout", "--", ".")
+    (repo / "uncommitted.txt").unlink(missing_ok=True)
+    _git(repo, "switch", "--detach", head_sha)
+    (repo / "checkout-only.txt").write_text("merge-only content\n", encoding="utf-8")
+    _git(repo, "add", "checkout-only.txt")
+    drifted_tree = _git(repo, "write-tree").stdout.strip()
+    drifted_sha = _git(
+        repo,
+        "-c",
+        "user.name=Contract Test",
+        "-c",
+        "user.email=contract@example.invalid",
+        "commit-tree",
+        drifted_tree,
+        "-p",
+        base_sha,
+        "-p",
+        head_sha,
+        "-m",
+        "checkout content drift",
+    ).stdout.strip()
+    _git(repo, "switch", "--detach", drifted_sha)
+
+    with pytest.raises(GitleaksGateError, match="tree"):
+        prepare_scan(
+            repo, _pull_request_environment(base_sha, head_sha, drifted_sha, repo)
+        )
+
+
+def test_pr_scan_rejects_reordered_synthetic_merge_parents(tmp_path: Path) -> None:
+    repo, base_sha, head_sha, _ = _create_pull_request_graph(tmp_path)
+    head_tree = _git(repo, "rev-parse", f"{head_sha}^{{tree}}").stdout.strip()
+    reversed_checkout = _git(
+        repo,
+        "-c",
+        "user.name=Contract Test",
+        "-c",
+        "user.email=contract@example.invalid",
+        "commit-tree",
+        head_tree,
+        "-p",
+        head_sha,
+        "-p",
+        base_sha,
+        "-m",
+        "reversed synthetic parents",
+    ).stdout.strip()
+    _git(repo, "switch", "--detach", reversed_checkout)
+    event = _pull_request_environment(base_sha, head_sha, reversed_checkout, repo)
+
+    with pytest.raises(GitleaksGateError, match="parents"):
+        prepare_scan(repo, event)
+
+
+def test_push_scan_requires_nonzero_ancestor_before_and_exact_checkout(
+    tmp_path: Path,
+) -> None:
+    repo, base_sha, head_sha, synthetic_checkout = _create_pull_request_graph(tmp_path)
+    _git(repo, "switch", "--detach", head_sha)
+    valid_env = {
+        "GITLEAKS_EVENT_NAME": "push",
+        "GITLEAKS_BASE_SHA": base_sha,
+        "GITLEAKS_EVENT_HEAD_SHA": head_sha,
+        "GITHUB_SHA": head_sha,
+        "GITHUB_WORKSPACE": str(repo),
+    }
+    plan = prepare_scan(repo, valid_env)
+    assert plan.base_sha == base_sha
+    assert plan.event_head_sha == head_sha
+
+    with pytest.raises(GitleaksGateError, match="commit"):
+        prepare_scan(
+            repo,
+            {
+                **valid_env,
+                "GITLEAKS_BASE_SHA": "0" * 40,
+            },
+        )
+
+    with pytest.raises(GitleaksGateError, match="ancestor"):
+        prepare_scan(
+            repo,
+            {
+                **valid_env,
+                "GITLEAKS_BASE_SHA": synthetic_checkout,
+            },
+        )
+
+    with pytest.raises(GitleaksGateError, match="checkout"):
+        prepare_scan(
+            repo,
+            {
+                **valid_env,
+                "GITHUB_SHA": base_sha,
+            },
+        )
+
+
+def test_scan_command_uses_exact_range_redaction_and_sarif_report(
+    tmp_path: Path,
+) -> None:
+    repo, base_sha, head_sha, checkout_sha = _create_pull_request_graph(tmp_path)
+    plan = prepare_scan(
+        repo, _pull_request_environment(base_sha, head_sha, checkout_sha, repo)
+    )
+    report_path = tmp_path / "reports" / "results.sarif"
+    argv = build_gitleaks_command(Path(tmp_path / "gitleaks"), repo, plan, report_path)
+
+    assert argv[0] == str(tmp_path / "gitleaks")
+    assert argv[1] == "git"
+    assert "--redact=100" in argv
+    assert "--report-format=sarif" in argv
+    assert f"--report-path={report_path}" in argv
+    assert "--exit-code=2" in argv
+    log_opts = argv[argv.index("--log-opts") + 1]
+    assert log_opts == f"{base_sha}..{head_sha} --diff-merges=first-parent"
+    invalid_plan = gitleaks_ci.ScanPlan(
+        event_name=plan.event_name,
+        base_sha=base_sha,
+        event_head_sha=head_sha,
+        git_log_opts=f"{base_sha}..{head_sha} --diff-merges=first-parent --all",
+    )
+    with pytest.raises(GitleaksGateError, match="validated plan"):
+        build_gitleaks_command(
+            Path(tmp_path / "gitleaks"), repo, invalid_plan, report_path
+        )
+
+
+def test_workflow_security_policy_guard_keeps_read_only_pull_request_scope() -> None:
+    workflow = yaml.safe_load(GITLEAKS_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    policy_guard = next(
+        step
+        for step in workflow["jobs"]["gitleaks"]["steps"]
+        if step["name"] == "Verify security policy inputs against protected base"
+    )
+    assert policy_guard["if"] == "${{ github.event_name == 'pull_request' }}"
+    assert 'git fetch --no-tags --depth=1 origin "$BASE_SHA"' in policy_guard["run"]
+    assert 'BASE_REPOSITORY" != "$GITHUB_REPOSITORY' in policy_guard["run"]
+    assert 'PR_AUTHOR" != "egorribun' in policy_guard["run"]
+
+
+def test_gitleaks_runner_entrypoint_is_an_owner_protected_policy_input() -> None:
+    workflow = yaml.safe_load(GITLEAKS_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["gitleaks"]["steps"]
+    policy_guard = next(
+        step
+        for step in steps
+        if step["name"] == "Verify security policy inputs against protected base"
+    )
+    scan_step = next(
+        step for step in steps if step["name"] == "Run complete Gitleaks history"
+    )
+
+    runner_path = "scripts/quality/gitleaks_ci.py"
+    assert scan_step["run"] == f"python {runner_path}"
+    assert f'"{runner_path}"' in policy_guard["run"]
+    assert 'for path in "${policy_paths[@]}"; do' in policy_guard["run"]
+    assert 'git diff --quiet "$BASE_SHA" -- "$path"' in policy_guard["run"]
+    assert 'if [[ "$PR_AUTHOR" != "egorribun" ]]' in policy_guard["run"]
+
+
+def test_prepare_scan_uses_closed_git_calls_and_external_isolated_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base_sha, head_sha, checkout_sha = _create_pull_request_graph(tmp_path)
+    event = {
+        **_pull_request_environment(base_sha, head_sha, checkout_sha, repo),
+        "UNAPPROVED_ENVIRONMENT_VALUE": "synthetic-environment-sentinel",
+    }
+    real_spawn = asyncio.create_subprocess_exec
+    real_wait_for = asyncio.wait_for
+    calls: list[dict[str, object]] = []
+    waits: list[float | None] = []
+
+    async def observe_spawn(
+        *args: object, **kwargs: object
+    ) -> asyncio.subprocess.Process:
+        command = args
+        if command and command[0] == "git":
+            calls.append(kwargs)
+        return await real_spawn(*args, **kwargs)
+
+    async def observe_wait_for(
+        awaitable: object, timeout: float | None = None
+    ) -> object:
+        waits.append(timeout)
+        return await real_wait_for(awaitable, timeout=timeout)
+
+    monkeypatch.setattr(gitleaks_ci.asyncio, "create_subprocess_exec", observe_spawn)
+    monkeypatch.setattr(gitleaks_ci.asyncio, "wait_for", observe_wait_for)
+    prepare_scan(repo, event)
+
+    assert calls
+    assert waits and all(wait is not None and 0 < wait <= 10 for wait in waits)
+    for call in calls:
+        assert call["stdin"] is asyncio.subprocess.DEVNULL
+        assert call["stdout"] is asyncio.subprocess.PIPE
+        assert call["stderr"] is asyncio.subprocess.DEVNULL
+        environment = call["env"]
+        assert isinstance(environment, dict)
+        config_path = Path(environment["GIT_CONFIG_GLOBAL"])
+        assert config_path.is_absolute()
+        assert not config_path.is_relative_to(repo.resolve())
+        assert environment["GIT_CONFIG_NOSYSTEM"] == "1"
+        assert "UNAPPROVED_ENVIRONMENT_VALUE" not in environment
+
+
+def test_execute_scan_runs_quietly_with_deadline_and_validates_redacted_sarif(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, base_sha, head_sha, checkout_sha = _create_pull_request_graph(tmp_path)
+    report_path = tmp_path / "runner-temp" / "gitleaks-results" / "results.sarif"
+    binary = tmp_path / "runner-temp" / "gitleaks-bin" / "gitleaks"
+    event = {
+        **_pull_request_environment(base_sha, head_sha, checkout_sha, repo),
+        "GITLEAKS_REPORT_PATH": str(report_path),
+        "GITLEAKS_BIN": str(binary),
+        "UNAPPROVED_ENVIRONMENT_VALUE": "synthetic-environment-sentinel",
+        "PRIVATE_TEST_SENTINEL": "private-test-sentinel",
+    }
+    observed: dict[str, object] = {}
+
+    def fake_scan(
+        command: list[str],
+        environment: dict[str, str],
+        *,
+        timeout_seconds: int,
+        cwd: Path,
+    ) -> SimpleNamespace:
+        observed["command"] = command
+        observed["environment"] = environment
+        observed["timeout_seconds"] = timeout_seconds
+        observed["cwd"] = cwd
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text('{"version":"2.1.0","runs":[]}', encoding="utf-8")
+        return SimpleNamespace(returncode=0, stdout="")
+
+    monkeypatch.setattr(gitleaks_ci, "_run_silent", fake_scan)
+    assert execute_scan(event) == 0
+
+    command = observed["command"]
+    assert isinstance(command, list)
+    assert "--redact=100" in command
+    assert observed["timeout_seconds"] == 960
+    assert observed["cwd"] == repo.resolve()
+    scan_environment = observed["environment"]
+    assert isinstance(scan_environment, dict)
+    assert "UNAPPROVED_ENVIRONMENT_VALUE" not in scan_environment
+    assert "PRIVATE_TEST_SENTINEL" not in scan_environment
+    assert Path(scan_environment["GIT_CONFIG_GLOBAL"]).is_absolute()
+
+
+def test_gitleaks_rejects_sarif_output_inside_source_checkout(tmp_path: Path) -> None:
+    repo, base_sha, head_sha, checkout_sha = _create_pull_request_graph(tmp_path)
+    plan = prepare_scan(
+        repo, _pull_request_environment(base_sha, head_sha, checkout_sha, repo)
+    )
+    with pytest.raises(GitleaksGateError, match="outside the checkout"):
+        build_gitleaks_command(
+            tmp_path / "gitleaks", repo, plan, repo / "results.sarif"
+        )
+
+
+def _advance_base_and_merge_pull_request(
+    repo: Path, event_head_sha: str
+) -> tuple[str, str]:
+    """Create a non-conflicting base advance and the resulting merge checkout."""
+
+    _git(repo, "switch", "main")
+    (repo / "base-only-advance.txt").write_text("base advance\n", encoding="utf-8")
+    _git(repo, "add", "base-only-advance.txt")
+    _commit(repo, "advance base only")
+    advanced_base = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    _git(repo, "switch", "--detach", advanced_base)
+    _git(
+        repo,
+        "-c",
+        "user.name=Contract Test",
+        "-c",
+        "user.email=contract@example.invalid",
+        "merge",
+        "--no-ff",
+        "-m",
+        "advanced-base checkout merge",
+        event_head_sha,
+    )
+    checkout = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    return advanced_base, checkout
+
+
+def test_pr_scan_rejects_base_advanced_merge_before_scanner_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _, event_head, _ = _create_pull_request_graph(tmp_path)
+    base_sha, checkout_sha = _advance_base_and_merge_pull_request(repo, event_head)
+    report_path = tmp_path / "runner-temp" / "results.sarif"
+    event = {
+        **_pull_request_environment(base_sha, event_head, checkout_sha, repo),
+        "GITLEAKS_REPORT_PATH": str(report_path),
+        "GITLEAKS_BIN": str(tmp_path / "runner-temp" / "gitleaks"),
+        "PRIVATE_TEST_SENTINEL": "private-synthetic-marker",
+    }
+    scanner_calls: list[object] = []
+    monkeypatch.setattr(
+        gitleaks_ci,
+        "_run_silent",
+        lambda *args, **kwargs: scanner_calls.append((args, kwargs)),
+    )
+
+    with pytest.raises(
+        GitleaksGateError,
+        match="merge current base into PR branch before scanning",
+    ) as error:
+        execute_scan(event)
+
+    assert scanner_calls == []
+    assert str(repo) not in str(error.value)
+    assert "private-synthetic-marker" not in str(error.value)
+
+
+def _linux_process_state(pid: int) -> str | None:
+    status_path = Path("/proc") / str(pid) / "stat"
+    try:
+        return status_path.read_text(encoding="ascii").rsplit(") ", 1)[1][0]
+    except FileNotFoundError:
+        return None
+
+
+def test_scan_timeout_kills_descendant_or_rejects_unsupported_platform(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if os.name != "posix":
+        spawn_attempts: list[object] = []
+
+        async def unexpected_spawn(*args: object, **kwargs: object) -> None:
+            spawn_attempts.append((args, kwargs))
+            raise AssertionError("unsupported scanner platform must fail before spawn")
+
+        monkeypatch.setattr(
+            gitleaks_ci.asyncio, "create_subprocess_exec", unexpected_spawn
+        )
+        with pytest.raises(
+            GitleaksGateError, match="Gitleaks process-group cleanup is unavailable"
+        ):
+            asyncio.run(
+                gitleaks_ci._spawn_and_collect(
+                    [sys.executable, "-c", "pass"],
+                    {"PATH": os.environ.get("PATH", "")},
+                    timeout_seconds=1,
+                    max_stdout_bytes=None,
+                    require_process_group_cleanup=True,
+                )
+            )
+        assert spawn_attempts == []
+        return
+
+    if sys.platform != "linux":
+        spawned: list[dict[str, object]] = []
+        original_spawn = asyncio.create_subprocess_exec
+
+        async def capture_spawn(
+            *args: object, **kwargs: object
+        ) -> asyncio.subprocess.Process:
+            spawned.append(dict(kwargs))
+            return await original_spawn(*args, **kwargs)
+
+        monkeypatch.setattr(
+            gitleaks_ci.asyncio, "create_subprocess_exec", capture_spawn
+        )
+        result = asyncio.run(
+            gitleaks_ci._spawn_and_collect(
+                [sys.executable, "-c", "pass"],
+                {"PATH": os.environ.get("PATH", "")},
+                timeout_seconds=2,
+                max_stdout_bytes=None,
+                require_process_group_cleanup=True,
+            )
+        )
+        assert result.returncode == 0
+        assert len(spawned) == 1
+        assert spawned[0].get("start_new_session") is True
+        return
+
+    child_record = tmp_path / "child-process.txt"
+    child_code = (
+        "import os, signal, sys, time; "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "open(sys.argv[1], 'w', encoding='ascii').write("
+        "f'{os.getpid()} {os.getpgid(0)}\\n'); "
+        "time.sleep(30)"
+    )
+    parent_code = (
+        "import subprocess, sys, time; "
+        f"subprocess.Popen([sys.executable, '-c', {child_code!r}, {str(child_record)!r}]); "
+        "time.sleep(30)"
+    )
+    original_spawn = asyncio.create_subprocess_exec
+    spawned: list[tuple[asyncio.subprocess.Process, dict[str, object]]] = []
+
+    async def capture_spawn(
+        *args: object, **kwargs: object
+    ) -> asyncio.subprocess.Process:
+        process = await original_spawn(*args, **kwargs)
+        spawned.append((process, dict(kwargs)))
+        return process
+
+    monkeypatch.setattr(gitleaks_ci.asyncio, "create_subprocess_exec", capture_spawn)
+    started = time.monotonic()
+    try:
+        with pytest.raises(TimeoutError):
+            asyncio.run(
+                gitleaks_ci._spawn_and_collect(
+                    [sys.executable, "-c", parent_code],
+                    {"PATH": os.environ.get("PATH", "")},
+                    timeout_seconds=1,
+                    max_stdout_bytes=None,
+                    require_process_group_cleanup=True,
+                )
+            )
+        elapsed = time.monotonic() - started
+        assert elapsed < 3
+        assert len(spawned) == 1
+        process, spawn_kwargs = spawned[0]
+        assert spawn_kwargs.get("start_new_session") is True
+        assert process.returncode is not None
+        child_pid_text, child_group_text = child_record.read_text(
+            encoding="ascii"
+        ).split()
+        child_pid = int(child_pid_text)
+        assert int(child_group_text) == process.pid
+        child_state = _linux_process_state(child_pid)
+        child_deadline = time.monotonic() + 0.5
+        while child_state not in {None, "Z"} and time.monotonic() < child_deadline:
+            time.sleep(0.01)
+            child_state = _linux_process_state(child_pid)
+        assert child_state in {None, "Z"}
+    finally:
+        if child_record.exists():
+            child_pid = int(child_record.read_text(encoding="ascii").split()[0])
+            if _linux_process_state(child_pid) not in {None, "Z"}:
+                os.kill(child_pid, signal.SIGKILL)
+
+
+def test_scan_cleanup_bounds_unconfirmed_direct_child_reap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class NeverReapedProcess:
+        pid = 424242
+        returncode = None
+        killed = False
+        terminated = False
+
+        async def wait(self) -> int:
+            await asyncio.Event().wait()
+            return 0
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def kill(self) -> None:
+            self.killed = True
+
+    signals: list[tuple[int, int]] = []
+    if os.name == "posix":
+        monkeypatch.setattr(
+            gitleaks_ci.os,
+            "killpg",
+            lambda pid, sig: signals.append((pid, sig)),
+        )
+    monkeypatch.setattr(gitleaks_ci, "_TERMINATION_TERM_GRACE_SECONDS", 0.01)
+    monkeypatch.setattr(gitleaks_ci, "_TERMINATION_REAP_TIMEOUT_SECONDS", 0.05)
+    process = NeverReapedProcess()
+    started = time.monotonic()
+
+    reaped = asyncio.run(gitleaks_ci._terminate_and_reap(process))
+
+    assert reaped is False
+    if os.name == "posix":
+        assert [sig for _, sig in signals] == [signal.SIGKILL]
+        assert process.terminated is False
+        assert process.killed is False
+    else:
+        assert signals == []
+        assert process.terminated is True
+        assert process.killed is True
+    assert time.monotonic() - started < 0.5
+
+
+def test_scan_cleanup_does_not_signal_after_leader_is_already_reaped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class AlreadyReapedProcess:
+        pid = 424242
+        returncode = 0
+        signal_calls = 0
+        wait_calls = 0
+
+        async def wait(self) -> int:
+            self.wait_calls += 1
+            return 0
+
+        def terminate(self) -> None:
+            self.signal_calls += 1
+
+        def kill(self) -> None:
+            self.signal_calls += 1
+
+    group_signals: list[tuple[int, int]] = []
+    if os.name == "posix":
+        monkeypatch.setattr(
+            gitleaks_ci.os,
+            "killpg",
+            lambda pid, sig: group_signals.append((pid, sig)),
+        )
+    process = AlreadyReapedProcess()
+
+    cleanup_confirmed = asyncio.run(gitleaks_ci._terminate_and_reap(process))
+
+    assert cleanup_confirmed is False
+    assert process.signal_calls == 0
+    assert process.wait_calls == 0
+    assert group_signals == []

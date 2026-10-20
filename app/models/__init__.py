@@ -95,6 +95,12 @@ from app.models.notifications import (
 from app.models.notifications import (
     UserPushTopic as UserPushTopic,
 )
+from app.models.quarantine import (
+    QuarantineReservation as QuarantineReservation,
+)
+from app.models.quarantine import (
+    QuarantineStorageScope as QuarantineStorageScope,
+)
 from app.models.schedule import Group as Group
 from app.models.schedule import Schedule as Schedule
 from app.models.spotify import SpotifyIntegration as SpotifyIntegration

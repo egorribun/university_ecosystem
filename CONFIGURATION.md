@@ -117,6 +117,11 @@ corresponding plaintext variable.
 |----------|-------------|---------|
 | `STORAGE_BACKEND` | `static`, `local`, `s3`, `minio` | `static` |
 | `STORAGE_STATIC_BASE_URL` | Public URL for static files | `/static` |
+| `STORAGE_QUARANTINE_QUOTA_BYTES` | Charged rejected-upload payload bytes per shared storage scope | `1073741824` |
+| `STORAGE_QUARANTINE_RETENTION_DAYS` | TTL for acknowledged stored quarantine objects; ambiguous pending writes remain charged | `7` |
+| `STORAGE_QUARANTINE_SWEEP_INTERVAL_SECONDS` | API quarantine cleanup interval | `300` |
+| `STORAGE_QUARANTINE_INVENTORY_PAGE_SIZE` | Maximum objects per bootstrap inventory page | `100` |
+| `STORAGE_QUARANTINE_SCOPE_ID` | Shared scope override for aliases of one physical store; see [quarantine runbook](docs/runbooks/upload-quarantine.md) | Empty |
 | `STORAGE_S3_BUCKET` | S3 bucket name | Empty |
 | `STORAGE_S3_REGION` | AWS Region | Empty |
 | `STORAGE_S3_ENDPOINT_URL` | Custom S3 endpoint (for example the Compose SeaweedFS service `http://minio:9000`) | Empty |

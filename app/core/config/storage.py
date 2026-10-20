@@ -37,6 +37,16 @@ class StorageSettings(BaseAppSettings):
     storage_s3_base_url: str = ""
 
     static_dir: str = "app/static"
+    storage_quarantine_retention_days: int = Field(default=7, ge=1, le=3650)
+    storage_quarantine_quota_bytes: int = Field(
+        default=1_073_741_824, ge=1, le=9_223_372_036_854_775_807
+    )
+    storage_quarantine_sweep_interval_seconds: int = Field(default=300, ge=1, le=86_400)
+    storage_quarantine_inventory_page_size: int = Field(default=100, ge=1, le=1000)
+    # Set this when the same physical storage is mounted under different paths or
+    # addressed through different S3 endpoint aliases. The value is hashed before
+    # persistence so configuration labels are not stored in the ledger.
+    storage_quarantine_scope_id: str = Field(default="", max_length=128)
     image_max_width: int = 1920
     image_max_height: int = 1920
     # Guard decoder allocations before EXIF transpose/load. The upper bound is

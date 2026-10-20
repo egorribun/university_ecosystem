@@ -29,6 +29,7 @@ handoffs are intentionally not part of the canonical index.
 - [Kubernetes notes](../k8s/README.md)
 - [Database backup and restore runbook](runbooks/database-backup-restore.md)
 - [S3 storage migration runbook](runbooks/s3-seaweedfs-cutover.md)
+- [Rejected-upload quarantine and capacity](runbooks/upload-quarantine.md)
 - [Observability configuration and reference examples](observability/README.md)
 - [Dependency cooldown emergency procedure](DEPENDENCY_COOLDOWN_EMERGENCY.md)
 - [Manual MFA verification checklist](manual-mfa-checklist.md)
@@ -56,14 +57,17 @@ handoffs are intentionally not part of the canonical index.
   [2026-10-16 owner update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16)
   records the intermediate owner-approved scope of 252 after the 18-, 7-, and
   2-identity approvals, preserving the prior 250 records. The later nine-identity
-  Go source-contract approval extends the current scope to 261; see the
+  Go source-contract approval extended the historical scope to 261; see the
   [nine-identity audit update](audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).
   The 319-identity baseline and 78 required contexts remain unchanged. The
   [post-pragma-removal update](audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16)
   distinguishes the historical 243-policy unfiltered scan from the private
   conditional 250-overlay result. The policy approvals do not establish passing
   tests, final-source validation, or hosted-check results. Git and PR #1306 determine published source
-  and hosted status. See the [two-identity update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16)
+  and hosted status. The current detect-secrets disposition scope is 264;
+  the separate finite Gitleaks approval covers 25 historical fingerprints.
+  See [current status](superpowers/plans/STATUS.md) and the [Gitleaks decision](audits/AUDIT-2026-10.md#exact-historical-gitleaks-owner-decision-and-quarantine-evidence--2026-10-20).
+  See the [two-identity update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16)
   and the [nine-identity update](audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).
 - [Scoped platform review template](superpowers/plans/AUDIT_PROMPT.md).
 - [Machine-enforced quality contract](../quality/quality-contract.json)

@@ -460,7 +460,8 @@ test("live Playwright global setup verifies endpoints against the signed owner m
     "--frozen",
     "--no-sync",
     "python",
-    "scripts/live_stand.py",
+    "-m",
+    "scripts.live_stand",
     "verify-endpoints",
     "--base-url",
     "http://localhost:24123",
@@ -474,6 +475,7 @@ test("live Playwright global setup verifies endpoints against the signed owner m
     PATH: process.env.PATH,
     HOME: "C:/test/live-setup-home",
   })
+  assert.equal(Object.hasOwn(options.env, "PYTHONPATH"), false)
   assert.doesNotMatch(
     JSON.stringify(args),
     /TEST_PASSWORD|do-not-forward-this-password|CHROMATIC_PROJECT_TOKEN|never-an-argument/u
@@ -522,7 +524,8 @@ test("live Playwright setup verifies an in-place stand from the primary checkout
     "--frozen",
     "--no-sync",
     "python",
-    "scripts/live_stand.py",
+    "-m",
+    "scripts.live_stand",
     "verify-endpoints",
     "--base-url",
     baseUrl,
@@ -539,6 +542,7 @@ test("live Playwright setup verifies an in-place stand from the primary checkout
     PATH: process.env.PATH,
     HOME: "C:/test/live-setup-home",
   })
+  assert.equal(Object.hasOwn(options.env, "PYTHONPATH"), false)
   const serializedCall = JSON.stringify(calls[0])
   assert.doesNotMatch(
     serializedCall,

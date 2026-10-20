@@ -230,6 +230,45 @@ async def _validate_di_container(app: FastAPI) -> None:
         )
 
 
+async def _quarantine_retention_loop(service: Any, *, interval_seconds: float) -> None:
+    """Run bounded quarantine expiry work until lifespan cancellation."""
+    while True:
+        try:
+            await service.sweep_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: keep the managed cleanup worker alive across storage or ledger outages
+            _logger.warning(
+                "Quarantine retention sweep failed",
+                error_type=type(exc).__name__,
+            )
+        await asyncio.sleep(interval_seconds)
+
+
+def _start_quarantine_retention_worker(
+    app: FastAPI,
+    *,
+    service: Any | None = None,
+    interval_seconds: float | None = None,
+) -> asyncio.Task[None]:
+    """Register the quarantine sweeper in the lifespan-owned task set."""
+    if service is None:
+        from app.services.quarantine import QuarantineService
+        from app.utils.files import _get_storage_backend
+
+        service = QuarantineService(_get_storage_backend())
+    if interval_seconds is None:
+        interval_seconds = settings.storage_quarantine_sweep_interval_seconds
+    if not hasattr(app.state, "background_tasks"):
+        app.state.background_tasks = set()
+    task = asyncio.create_task(
+        _quarantine_retention_loop(service, interval_seconds=interval_seconds),
+        name="quarantine_retention_worker",
+    )
+    app.state.background_tasks.add(task)
+    return task
+
+
 async def _startup_background_workers(app: FastAPI) -> None:
     """Stage 5: Pub/Sub workers, Outbox, and NATS task processors."""
     if settings.embedded_cdc_outbox_worker_enabled:
@@ -311,6 +350,9 @@ async def _startup_background_workers(app: FastAPI) -> None:
         _logger.info(
             "Background workers (Outbox, NATS) disabled in testing environment"
         )
+
+    if settings.environment != "testing" and settings.app_process_role == "api":
+        _start_quarantine_retention_worker(app)
 
     if settings.partition_management_enabled:
         try:

@@ -800,7 +800,7 @@ def test_start_script_waits_for_the_full_stack_without_auto_removing_containers(
         assert 'type = "http"' in entry.group(1), name
         assert (
             f"url = (Get-LocalServiceUrl -Name {live_name} "
-            f'-DefaultPort {default_port} -Path "{path}")'
+            f'-DefaultPort {default_port} -Path "{path}" -ForReadiness)'
         ) in entry.group(1), name
 
     frontend_entry = re.search(r"frontend\s+= @\{([^\n]+)", services_block)
@@ -839,7 +839,27 @@ def test_launcher_resolves_readiness_and_prometheus_ports_from_live_map() -> Non
     assert '"LIVE_HOST_PORT_$Name"' in url_helper
     assert "[Environment]::GetEnvironmentVariable($environmentName)" in url_helper
     assert "$parsedPort -lt 1024 -or $parsedPort -gt 65535" in script
-    assert 'return "http://localhost:$($port)$Path"' in script
+    assert "[switch]$ForReadiness" in url_helper
+    assert "$hostName = if ($ForReadiness) {" in url_helper
+    assert '"127.0.0.1"' in url_helper
+    assert '"localhost"' in url_helper
+    assert 'return "http://$($hostName):$($port)$Path"' in url_helper
+
+    readiness_url_lines = [
+        line
+        for line in script.splitlines()
+        if "Get-LocalServiceUrl" in line
+        and (
+            "url = (Get-LocalServiceUrl" in line or "-Uri (Get-LocalServiceUrl" in line
+        )
+    ]
+    assert len(readiness_url_lines) == 13
+    assert all("-ForReadiness" in line for line in readiness_url_lines)
+    displayed_url_lines = [
+        line for line in script.splitlines() if "$siteUrl = Get-LocalServiceUrl" in line
+    ]
+    assert len(displayed_url_lines) == 2
+    assert all("-ForReadiness" not in line for line in displayed_url_lines)
     assert "Get-LocalServiceUrl -Name PROMETHEUS -DefaultPort 9090" in script
     assert "Get-LocalServiceUrl -Name GATEWAY -DefaultPort 8080" in script
     assert "Get-LocalServiceUrl -Name FRONTEND" not in script
@@ -1295,9 +1315,9 @@ def test_launcher_seed_commands_are_compose_project_safe() -> None:
         '--env-file .env.docker"'
     ) in launcher
     expected_commands = (
-        'Write-Host "       python scripts/live_stand.py up --ref HEAD"',
-        'Write-Host "       python scripts/live_stand.py seed --demo"',
-        'Write-Host "       python scripts/live_stand.py e2e (optional)"',
+        'Write-Host "       python -m scripts.live_stand up --ref HEAD"',
+        'Write-Host "       python -m scripts.live_stand seed --demo"',
+        'Write-Host "       python -m scripts.live_stand e2e (optional)"',
     )
     for command in expected_commands:
         assert launcher.count(command) == 1, (
@@ -1315,9 +1335,9 @@ def test_launcher_seed_commands_are_compose_project_safe() -> None:
         "Choose a stack only when host resources are available for that selection."
         in launcher
     )
-    live_stand_up = 'Write-Host "       python scripts/live_stand.py up --ref HEAD"'
-    live_stand_seed = 'Write-Host "       python scripts/live_stand.py seed --demo"'
-    live_stand_e2e = 'Write-Host "       python scripts/live_stand.py e2e (optional)"'
+    live_stand_up = 'Write-Host "       python -m scripts.live_stand up --ref HEAD"'
+    live_stand_seed = 'Write-Host "       python -m scripts.live_stand seed --demo"'
+    live_stand_e2e = 'Write-Host "       python -m scripts.live_stand e2e (optional)"'
     assert launcher.count(live_stand_up) == 1
     assert launcher.count(live_stand_seed) == 1
     assert launcher.count(live_stand_e2e) == 1

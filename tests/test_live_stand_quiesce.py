@@ -14,6 +14,24 @@ SOURCE_SHA = "a" * 40
 OWNER_FINGERPRINT = "b" * 64
 
 
+def _assert_unbudgeted_docker_read(
+    deadline: float | None,
+    docker_context: live_stand._LiveDockerReadContext | None,
+) -> None:
+    assert deadline is None
+    assert docker_context is None
+
+
+def _fail_before_container_inventory(
+    _project_name: str,
+    *,
+    deadline: float | None = None,
+    docker_context: live_stand._LiveDockerReadContext | None = None,
+) -> tuple[str, ...]:
+    _assert_unbudgeted_docker_read(deadline, docker_context)
+    pytest.fail("Docker inventory must not be reached")
+
+
 @pytest.fixture
 def quiesce_stand(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any]:
     repository = tmp_path / "repository"
@@ -30,7 +48,18 @@ def quiesce_stand(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, 
     monkeypatch.setattr(live_stand, "WORKTREE", state_root)
     monkeypatch.setattr(live_stand, "IN_PLACE_MODE", True)
     monkeypatch.setattr(live_stand, "SOURCE_SHA", SOURCE_SHA)
-    monkeypatch.setattr(live_stand, "docker_daemon_fingerprint", lambda: "d" * 64)
+
+    def fake_daemon_fingerprint(
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> str:
+        _assert_unbudgeted_docker_read(deadline, docker_context)
+        return "d" * 64
+
+    monkeypatch.setattr(
+        live_stand, "docker_daemon_fingerprint", fake_daemon_fingerprint
+    )
     monkeypatch.setattr(
         live_stand,
         "_ensure_private_state_directory",
@@ -85,8 +114,13 @@ def quiesce_stand(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, 
     def verify_resources(
         worktree: Path,
         candidate: live_stand.StandOwner,
-        **_kwargs: Any,
+        *,
+        allow_existing_owned_volumes: bool = True,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
     ) -> live_stand.ComposeResourceEvidence:
+        assert allow_existing_owned_volumes is True
+        _assert_unbudgeted_docker_read(deadline, docker_context)
         evidence_calls.append((worktree, candidate))
         if candidate != owner:
             raise live_stand.StandError("live stand ownership metadata changed")
@@ -149,16 +183,27 @@ def quiesce_stand(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, 
         "make_record": make_record,
     }
 
-    monkeypatch.setattr(
-        live_stand,
-        "_project_container_ids",
-        lambda _project_name: tuple(inventory["records"]),
-    )
-    monkeypatch.setattr(
-        live_stand,
-        "_docker_inspect_object",
-        lambda arguments, _message: inventory["records"][arguments[-1]],
-    )
+    def project_container_ids(
+        _project_name: str,
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> tuple[str, ...]:
+        _assert_unbudgeted_docker_read(deadline, docker_context)
+        return tuple(inventory["records"])
+
+    def inspect_container(
+        arguments: list[str],
+        _message: str,
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> dict[str, Any]:
+        _assert_unbudgeted_docker_read(deadline, docker_context)
+        return inventory["records"][arguments[-1]]
+
+    monkeypatch.setattr(live_stand, "_project_container_ids", project_container_ids)
+    monkeypatch.setattr(live_stand, "_docker_inspect_object", inspect_container)
     return inventory
 
 
@@ -305,11 +350,18 @@ def test_quiesce_requires_both_datastore_services_in_signed_projection(
         managed_services=selected,
     )
     inventory_calls: list[str] = []
-    monkeypatch.setattr(
-        live_stand,
-        "_project_container_ids",
-        lambda project: inventory_calls.append(project) or (),
-    )
+
+    def record_inventory_read(
+        project: str,
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> tuple[str, ...]:
+        _assert_unbudgeted_docker_read(deadline, docker_context)
+        inventory_calls.append(project)
+        return ()
+
+    monkeypatch.setattr(live_stand, "_project_container_ids", record_inventory_read)
 
     with pytest.raises(live_stand.StandError, match="projection is incomplete"):
         live_stand._core_quiesce_container_inventory(
@@ -333,9 +385,7 @@ def test_quiesce_rejects_source_drift_before_inspecting_or_stopping(
 
     monkeypatch.setattr(live_stand, "_git", modified_source)
     monkeypatch.setattr(
-        live_stand,
-        "_project_container_ids",
-        lambda _project: pytest.fail("source drift must fail before Docker inventory"),
+        live_stand, "_project_container_ids", _fail_before_container_inventory
     )
     monkeypatch.setattr(
         live_stand, "_run", lambda command, **_kwargs: calls.append(command)
@@ -463,13 +513,17 @@ def test_quiesce_rejects_a_full_stack_before_container_or_compose_control(
     )
     monkeypatch.setattr(live_stand, "load_stand_owner", lambda _path: full_owner)
     calls: list[list[str]] = []
-    monkeypatch.setattr(
-        live_stand,
-        "_project_container_ids",
-        lambda _project: pytest.fail(
-            "non-Core owner must fail before Docker inventory"
-        ),
-    )
+
+    def fail_for_non_core_owner(
+        _project_name: str,
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> tuple[str, ...]:
+        _assert_unbudgeted_docker_read(deadline, docker_context)
+        pytest.fail("non-Core owner must fail before Docker inventory")
+
+    monkeypatch.setattr(live_stand, "_project_container_ids", fail_for_non_core_owner)
     monkeypatch.setattr(
         live_stand, "_run", lambda command, **_kwargs: calls.append(command)
     )
@@ -513,11 +567,22 @@ def test_quiesce_revalidates_compose_projection_before_stop(
     calls = 0
 
     def drift_on_final_check(
-        worktree: Path, owner: live_stand.StandOwner, **kwargs: Any
+        worktree: Path,
+        owner: live_stand.StandOwner,
+        *,
+        allow_existing_owned_volumes: bool = True,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
     ) -> live_stand.ComposeResourceEvidence:
         nonlocal calls
         calls += 1
-        evidence = original_verifier(worktree, owner, **kwargs)
+        evidence = original_verifier(
+            worktree,
+            owner,
+            allow_existing_owned_volumes=allow_existing_owned_volumes,
+            deadline=deadline,
+            docker_context=docker_context,
+        )
         if calls >= 2:
             return replace(evidence, fingerprint="f" * 64)
         return evidence
@@ -548,11 +613,22 @@ def test_quiesce_rechecks_inventory_and_health_immediately_before_stop(
     verifier_calls = 0
 
     def drift_during_projection_check(
-        worktree: Path, candidate: live_stand.StandOwner, **kwargs: Any
+        worktree: Path,
+        candidate: live_stand.StandOwner,
+        *,
+        allow_existing_owned_volumes: bool = True,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
     ) -> live_stand.ComposeResourceEvidence:
         nonlocal verifier_calls
         verifier_calls += 1
-        evidence = original_verifier(worktree, candidate, **kwargs)
+        evidence = original_verifier(
+            worktree,
+            candidate,
+            allow_existing_owned_volumes=allow_existing_owned_volumes,
+            deadline=deadline,
+            docker_context=docker_context,
+        )
         if verifier_calls == 2:
             if drift == "container identity":
                 service = next(

@@ -1857,7 +1857,12 @@ function Test-ServiceHttp {
 }
 
 function Get-LocalServiceUrl {
-    param([string]$Name, [int]$DefaultPort, [string]$Path)
+    param(
+        [string]$Name,
+        [int]$DefaultPort,
+        [string]$Path,
+        [switch]$ForReadiness
+    )
 
     $environmentName = if ($Name -ieq "MAILPIT") {
         "LIVE_MAILPIT_PORT"
@@ -1874,7 +1879,12 @@ function Get-LocalServiceUrl {
         $port = $parsedPort
     }
 
-    return "http://localhost:$($port)$Path"
+    $hostName = if ($ForReadiness) {
+        "127.0.0.1"
+    } else {
+        "localhost"
+    }
+    return "http://$($hostName):$($port)$Path"
 }
 
 function Wait-PrometheusTargets {
@@ -1891,7 +1901,7 @@ function Wait-PrometheusTargets {
     do {
         try {
             $response = Invoke-RestMethod `
-                -Uri (Get-LocalServiceUrl -Name PROMETHEUS -DefaultPort 9090 -Path "/api/v1/targets?state=active") `
+                -Uri (Get-LocalServiceUrl -Name PROMETHEUS -DefaultPort 9090 -Path "/api/v1/targets?state=active" -ForReadiness) `
                 -TimeoutSec 5
             $targets = @($response.data.activeTargets)
             $lastProblems = @()
@@ -2891,14 +2901,14 @@ Assert-ManagedComposeVolumeOwnership -ComposeModel $ownershipComposeModel
 function Get-LiveAcceptanceCoreReadinessInventory {
     return [ordered]@{
         backend = @{ type = "docker"; service = "backend"; ready = $false }
-        caddy = @{ type = "http"; service = "caddy"; url = (Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/healthz"); ready = $false }
-        site = @{ type = "http"; service = "caddy"; url = (Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/login"); timeout = 20; ready = $false }
+        caddy = @{ type = "http"; service = "caddy"; url = (Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/healthz" -ForReadiness); ready = $false }
+        site = @{ type = "http"; service = "caddy"; url = (Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/login" -ForReadiness); timeout = 20; ready = $false }
         flagd = @{ type = "docker"; service = "flagd"; ready = $false }
         flagdHealth = @{ type = "docker"; service = "flagd-healthprobe"; ready = $false }
         frontend = @{ type = "docker"; service = "frontend"; requireHealth = $true; ready = $false }
-        gateway = @{ type = "http"; service = "gateway"; url = (Get-LocalServiceUrl -Name GATEWAY -DefaultPort 8080 -Path "/health"); ready = $false }
+        gateway = @{ type = "http"; service = "gateway"; url = (Get-LocalServiceUrl -Name GATEWAY -DefaultPort 8080 -Path "/health" -ForReadiness); ready = $false }
         imgproxy = @{ type = "docker"; service = "imgproxy"; ready = $false }
-        mailpit = @{ type = "http"; service = "mailpit"; url = (Get-LocalServiceUrl -Name MAILPIT -DefaultPort 8025 -Path "/api/v1/info"); ready = $false }
+        mailpit = @{ type = "http"; service = "mailpit"; url = (Get-LocalServiceUrl -Name MAILPIT -DefaultPort 8025 -Path "/api/v1/info" -ForReadiness); ready = $false }
         migrations = @{ type = "job"; service = "migrations"; ready = $false }
         minio = @{ type = "docker"; service = "minio"; ready = $false }
         minioInit = @{ type = "job"; service = "minio-init"; ready = $false }
@@ -2913,7 +2923,7 @@ function Get-LiveAcceptanceCoreReadinessInventory {
         spicedbMigrate = @{ type = "job"; service = "spicedb-migrate"; ready = $false }
         tempo = @{ type = "docker"; service = "tempo"; ready = $false }
         tempoProbe = @{ type = "docker"; service = "tempo-healthprobe"; ready = $false }
-        wshub = @{ type = "http"; service = "ws-hub"; url = (Get-LocalServiceUrl -Name WS_HUB -DefaultPort 8083 -Path "/health"); ready = $false }
+        wshub = @{ type = "http"; service = "ws-hub"; url = (Get-LocalServiceUrl -Name WS_HUB -DefaultPort 8083 -Path "/health" -ForReadiness); ready = $false }
     }
 }
 
@@ -3095,14 +3105,14 @@ $fullReadiness = [ordered]@{
     flagd         = @{ type = "docker"; service = "flagd-healthprobe"; ready = $false }
     backend       = @{ type = "docker"; service = "backend"; ready = $false }
     elasticsearch = @{ type = "docker"; service = "elasticsearch"; ready = $false }
-    gateway       = @{ type = "http"; service = "gateway"; url = (Get-LocalServiceUrl -Name GATEWAY -DefaultPort 8080 -Path "/health"); ready = $false }
+    gateway       = @{ type = "http"; service = "gateway"; url = (Get-LocalServiceUrl -Name GATEWAY -DefaultPort 8080 -Path "/health" -ForReadiness); ready = $false }
     # SeaweedFS storage publishes no host port; its container healthcheck
     # probes the internal S3 API.
     minio         = @{ type = "docker"; service = "minio"; ready = $false }
     temporal      = @{ type = "docker"; service = "temporal"; ready = $false }
-    grafana       = @{ type = "http"; service = "grafana"; url = (Get-LocalServiceUrl -Name GRAFANA -DefaultPort 3000 -Path "/api/health"); ready = $false }
+    grafana       = @{ type = "http"; service = "grafana"; url = (Get-LocalServiceUrl -Name GRAFANA -DefaultPort 3000 -Path "/api/health" -ForReadiness); ready = $false }
     notifications = @{ type = "docker"; service = "notifications-worker"; ready = $false }
-    prometheus    = @{ type = "http"; service = "prometheus"; url = (Get-LocalServiceUrl -Name PROMETHEUS -DefaultPort 9090 -Path "/-/healthy"); ready = $false }
+    prometheus    = @{ type = "http"; service = "prometheus"; url = (Get-LocalServiceUrl -Name PROMETHEUS -DefaultPort 9090 -Path "/-/healthy" -ForReadiness); ready = $false }
     # Docker health verifies the frontend through its local /healthz endpoint.
     # The site check verifies rendered /login through the Caddy host entry.
     frontend      = @{ type = "docker"; service = "frontend"; requireHealth = $true; ready = $false }
@@ -3110,14 +3120,14 @@ $fullReadiness = [ordered]@{
     nats          = @{ type = "docker"; service = "nats"; ready = $false }
     outbox        = @{ type = "docker"; service = "outbox-worker"; ready = $false }
     spicedb       = @{ type = "docker"; service = "spicedb"; ready = $false }
-    wshub         = @{ type = "http"; service = "ws-hub"; url = (Get-LocalServiceUrl -Name WS_HUB -DefaultPort 8083 -Path "/health"); ready = $false }
-    caddy         = @{ type = "http"; service = "caddy"; url = (Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/healthz"); ready = $false }
-    site          = @{ type = "http"; service = "caddy"; url = (Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/login"); timeout = 20; ready = $false }
+    wshub         = @{ type = "http"; service = "ws-hub"; url = (Get-LocalServiceUrl -Name WS_HUB -DefaultPort 8083 -Path "/health" -ForReadiness); ready = $false }
+    caddy         = @{ type = "http"; service = "caddy"; url = (Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/healthz" -ForReadiness); ready = $false }
+    site          = @{ type = "http"; service = "caddy"; url = (Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/login" -ForReadiness); timeout = 20; ready = $false }
     fileprocessor = @{ type = "docker"; service = "file-processor"; ready = $false }
     loki          = @{ type = "docker"; service = "loki-healthprobe"; ready = $false }
     tempo         = @{ type = "docker"; service = "tempo-healthprobe"; ready = $false }
     alloy         = @{ type = "docker"; service = "alloy"; ready = $false }
-    pyroscope     = @{ type = "http"; service = "pyroscope"; url = (Get-LocalServiceUrl -Name PYROSCOPE -DefaultPort 4040 -Path "/ready"); ready = $false }
+    pyroscope     = @{ type = "http"; service = "pyroscope"; url = (Get-LocalServiceUrl -Name PYROSCOPE -DefaultPort 4040 -Path "/ready" -ForReadiness); ready = $false }
 }
 
 if ($script:LiveAcceptanceCore) {
@@ -3284,9 +3294,9 @@ Write-Host "Demo seeding and optional live E2E stand (separate from this stack):
 Write-Host "  Use the owner-checked stand for synthetic demo data; direct seeding into this Compose database is disabled."
 Write-Host "  The stand runs the full stack by default; explicitly select its owner-bound Core dependency closure with --stack core."
 Write-Host "  Choose a stack only when host resources are available for that selection."
-Write-Host "       python scripts/live_stand.py up --ref HEAD"
-Write-Host "       python scripts/live_stand.py seed --demo"
-Write-Host "       python scripts/live_stand.py e2e (optional)"
+Write-Host "       python -m scripts.live_stand up --ref HEAD"
+Write-Host "       python -m scripts.live_stand seed --demo"
+Write-Host "       python -m scripts.live_stand e2e (optional)"
 Write-Host ""
 Write-Host "Commands:" -ForegroundColor Gray
 Write-Host "  Stop:      .\start-docker.ps1 -Down"

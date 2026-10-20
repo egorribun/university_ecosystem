@@ -13,6 +13,27 @@ import pytest
 
 from scripts import live_stand
 
+
+def _assert_unbudgeted_docker_read(
+    deadline: float | None,
+    docker_context: live_stand._LiveDockerReadContext | None,
+) -> None:
+    assert deadline is None
+    assert docker_context is None
+
+
+def _fixed_daemon_fingerprint(value: str):
+    def fingerprint(
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> str:
+        _assert_unbudgeted_docker_read(deadline, docker_context)
+        return value
+
+    return fingerprint
+
+
 _PROJECT_NAME = "ue-live-aaaaaaaaaaaaaaaa"
 _DAEMON_FINGERPRINT = "d" * 64
 _COMPOSE_SOURCE = """name: ${COMPOSE_PROJECT_NAME:?required}
@@ -141,6 +162,7 @@ def _install_hermetic_stand(
                             "Id": container_id,
                             "ProjectLabel": labels.get("com.docker.compose.project"),
                             "ServiceLabel": labels.get("com.docker.compose.service"),
+                            "OneoffLabel": labels.get("com.docker.compose.oneoff"),
                             "Mounts": [],
                         }
                     )
@@ -260,9 +282,21 @@ def _install_hermetic_stand(
         "_git",
         lambda *args: "a" * 40 if args[-2:] == ("rev-parse", "HEAD") else "",
     )
-    monkeypatch.setattr(live_stand.secrets, "token_hex", lambda _bytes: "a" * 16)
+    probe_token_counter = 0
+
+    def fake_token_hex(byte_count: int) -> str:
+        nonlocal probe_token_counter
+        if byte_count == 8:
+            return "a" * 16
+        assert byte_count == 16
+        probe_token_counter += 1
+        return f"{probe_token_counter:032x}"
+
+    monkeypatch.setattr(live_stand.secrets, "token_hex", fake_token_hex)
     monkeypatch.setattr(
-        live_stand, "docker_daemon_fingerprint", lambda: _DAEMON_FINGERPRINT
+        live_stand,
+        "docker_daemon_fingerprint",
+        _fixed_daemon_fingerprint(_DAEMON_FINGERPRINT),
     )
     monkeypatch.setattr(
         live_stand, "load_vapid", lambda _worktree: {"public": "pub", "private": "priv"}
@@ -977,10 +1011,17 @@ def test_bind_refuses_docker_daemon_change_during_resource_resolution(
         volume_name=f"{_PROJECT_NAME}_app-data",
     )
     daemon_fingerprints = iter((_DAEMON_FINGERPRINT, _DAEMON_FINGERPRINT, "e" * 64))
+
+    def next_daemon_fingerprint(
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> str:
+        _assert_unbudgeted_docker_read(deadline, docker_context)
+        return next(daemon_fingerprints)
+
     monkeypatch.setattr(
-        live_stand,
-        "docker_daemon_fingerprint",
-        lambda: next(daemon_fingerprints),
+        live_stand, "docker_daemon_fingerprint", next_daemon_fingerprint
     )
     owner = live_stand.create_stand_owner(
         worktree, published_ports=_valid_published_ports()
@@ -1089,7 +1130,13 @@ def test_stop_rechecks_daemon_after_resource_preflight(
     daemon_checks = 0
     lifecycle_calls: list[list[str]] = []
 
-    def check_daemon(_owner: live_stand.StandOwner) -> None:
+    def check_daemon(
+        _owner: live_stand.StandOwner,
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> None:
+        _assert_unbudgeted_docker_read(deadline, docker_context)
         nonlocal daemon_checks
         daemon_checks += 1
         if daemon_checks == 2:
@@ -1197,7 +1244,13 @@ def test_seed_rechecks_daemon_after_resource_preflight(
     daemon_checks = 0
     lifecycle_calls: list[list[str]] = []
 
-    def check_daemon(_owner: live_stand.StandOwner) -> None:
+    def check_daemon(
+        _owner: live_stand.StandOwner,
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> None:
+        _assert_unbudgeted_docker_read(deadline, docker_context)
         nonlocal daemon_checks
         daemon_checks += 1
         if daemon_checks == 2:
@@ -1249,13 +1302,36 @@ def test_e2e_rechecks_daemon_after_resource_preflight(
         "_ensure_live_e2e_dependencies",
         lambda _frontend, _environment: events.append("dependencies"),
     )
+    probe_budget: tuple[float, live_stand._LiveDockerReadContext] | None = None
+
+    def resource_preflight(
+        _path: Path,
+        _owner: live_stand.StandOwner,
+        *,
+        allow_existing_owned_volumes: bool = True,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> None:
+        nonlocal probe_budget
+        assert allow_existing_owned_volumes is True
+        assert isinstance(deadline, float)
+        assert isinstance(docker_context, live_stand._LiveDockerReadContext)
+        probe_budget = (deadline, docker_context)
+        events.append("resource-preflight")
+
     monkeypatch.setattr(
-        live_stand,
-        "_verify_stand_owner_compose_resources",
-        lambda _path, _owner: events.append("resource-preflight"),
+        live_stand, "_verify_stand_owner_compose_resources", resource_preflight
     )
 
-    def changed_daemon(_owner: live_stand.StandOwner) -> None:
+    def changed_daemon(
+        _owner: live_stand.StandOwner,
+        *,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
+    ) -> None:
+        assert probe_budget is not None
+        assert deadline == probe_budget[0]
+        assert docker_context is probe_budget[1]
         events.append("daemon-check")
         raise live_stand.StandError("different Docker daemon detected")
 
@@ -1328,7 +1404,9 @@ def test_up_prepares_environment_before_fingerprinting_and_starting(
 
     monkeypatch.setattr(live_stand, "ensure_worktree", fake_ensure_worktree)
     monkeypatch.setattr(
-        live_stand, "docker_daemon_fingerprint", lambda: _DAEMON_FINGERPRINT
+        live_stand,
+        "docker_daemon_fingerprint",
+        _fixed_daemon_fingerprint(_DAEMON_FINGERPRINT),
     )
     monkeypatch.setattr(
         live_stand,
@@ -1346,8 +1424,13 @@ def test_up_prepares_environment_before_fingerprinting_and_starting(
         project_name: str,
         published_ports: dict[str, int],
         *,
+        stack: str = live_stand.LIVE_STACK_FULL,
+        service_roots: tuple[str, ...] | None = None,
         legacy_projection: bool = False,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
     ) -> live_stand.ComposeResourceEvidence:
+        _assert_unbudgeted_docker_read(deadline, docker_context)
         assert actual_worktree == worktree
         assert published_ports == ports
         assert (worktree / ".env.docker").is_file(), (
@@ -1373,7 +1456,10 @@ def test_up_prepares_environment_before_fingerprinting_and_starting(
         allow_existing_owned: bool,
         managed_networks: tuple[tuple[str, str], ...] = (),
         managed_services: tuple[str, ...] = (),
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
     ) -> tuple[tuple[str, str], ...]:
+        _assert_unbudgeted_docker_read(deadline, docker_context)
         assert project_name == _PROJECT_NAME
         assert managed_volumes == (("app-data", f"{_PROJECT_NAME}_app-data"),)
         assert declared_volume_names == (f"{_PROJECT_NAME}_app-data",)
@@ -1389,7 +1475,9 @@ def test_up_prepares_environment_before_fingerprinting_and_starting(
         )
         if daemon_changes_after_resource_check and events.count("volume-check") == 1:
             monkeypatch.setattr(
-                live_stand, "docker_daemon_fingerprint", lambda: "e" * 64
+                live_stand,
+                "docker_daemon_fingerprint",
+                _fixed_daemon_fingerprint("e" * 64),
             )
         events.append("volume-check")
         return ()
@@ -1548,8 +1636,14 @@ def test_existing_v5_stand_can_retry_after_incomplete_startup_with_owned_volumes
         actual_worktree: Path,
         project_name: str,
         published_ports: dict[str, int],
-        **kwargs: Any,
+        *,
+        stack: str = live_stand.LIVE_STACK_FULL,
+        service_roots: tuple[str, ...] | None = None,
+        legacy_projection: bool = False,
+        deadline: float | None = None,
+        docker_context: live_stand._LiveDockerReadContext | None = None,
     ) -> live_stand.ComposeResourceEvidence:
+        _assert_unbudgeted_docker_read(deadline, docker_context)
         nonlocal evidence_calls
         evidence_calls += 1
         # Existing-owner preflight is call 1; the first bind after PrepareOnly
@@ -1557,7 +1651,14 @@ def test_existing_v5_stand_can_retry_after_incomplete_startup_with_owned_volumes
         if failure_stage == "resource-bind" and evidence_calls == 2:
             raise live_stand.StandError("simulated resource registration failure")
         return original_resource_evidence(
-            actual_worktree, project_name, published_ports, **kwargs
+            actual_worktree,
+            project_name,
+            published_ports,
+            stack=stack,
+            service_roots=service_roots,
+            legacy_projection=legacy_projection,
+            deadline=deadline,
+            docker_context=docker_context,
         )
 
     monkeypatch.setattr(

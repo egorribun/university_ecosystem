@@ -2,7 +2,7 @@
 Seed script — creates demo data after a fresh Docker install.
 
 Usage:
-    python scripts/live_stand.py seed --demo
+    python -m scripts.live_stand seed --demo
 
 Run through the owner-checked live stand command, or the narrowly scoped
 admin-smoke GitHub workflow target. Direct execution against any other database

@@ -1,6 +1,6 @@
 """Initialize authorization only for the verified, disposable live stand.
 
-Run last through ``python scripts/live_stand.py seed --demo``. The SQL admin
+Run last through ``python -m scripts.live_stand seed --demo``. The SQL admin
 seed must have committed first. This is not a production provisioning command
 and does not grant access to arbitrary users with a local admin role.
 """
