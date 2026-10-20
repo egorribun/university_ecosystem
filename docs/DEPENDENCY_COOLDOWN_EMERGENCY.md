@@ -163,3 +163,20 @@ ordinary hooks, final-source lock consistency and vulnerability gates remain
 required. At this preparation checkpoint the new lock and real-codec results
 are not yet verified. No advisory waiver, scanner disposition, baseline edit,
 merge or deployment is authorized by this exception.
+
+The hosted generator on source `19509334`,
+[run 39505978632](https://github.com/egorribun/university_ecosystem/actions/runs/39505978632),
+job 118914878260, validates the source distribution and 47 wheels against PyPI.
+Merge checkout `fc5b468231e3f9ff8b693679f344cdfae83ad121` has the same tree
+`66babb04edf7b7e1ccb3072306016db51fe64541`. Candidate lock checking and the
+whole-lock scope guard pass; the restored original lock then fails normally.
+The reviewed 131-line diff is integrated and the temporary generator removed.
+Final-source compatibility and vulnerability checks remain required.
+
+The initial metadata guard rejected sub-millisecond precision: authoritative
+PyPI time `22:18:09.718711Z` versus generated `22:18:09.718Z`.
+Pinned [uv 0.12.23 stores milliseconds](https://github.com/astral-sh/uv/blob/0.12.23/crates/uv-distribution-types/src/file.rs#L56).
+The corrected comparison uses exact millisecond truncation, not a tolerance;
+the unmodified raw PyPI timestamp still must meet the original cutoff.
+Both the observed truncation and distinct-millisecond rejection controls pass
+inside the successful generator. No upload-time boundary was relaxed.
