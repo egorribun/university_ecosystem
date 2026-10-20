@@ -9165,7 +9165,7 @@ def _read_live_caddy_probe_logs(
     deadline: float,
     docker_context: _LiveDockerReadContext | None = None,
 ) -> None:
-    """Verify both project windows from one read bracketed by fresh pins."""
+    """Verify coalesced probe windows under shared budgets and fresh pins."""
     completed: subprocess.CompletedProcess[bytes] | None = None
     stdout = b""
     stderr = b""
@@ -9195,6 +9195,16 @@ def _read_live_caddy_probe_logs(
             until_ms = observed_at_ms + _LIVE_CADDY_PROBE_WINDOW_MS
             project_windows[project] = (since_ms, until_ms)
 
+        capture_windows: list[tuple[int, int]] = []
+        for since_ms, until_ms in sorted(project_windows.values()):
+            if capture_windows and since_ms <= capture_windows[-1][1]:
+                capture_windows[-1] = (
+                    capture_windows[-1][0],
+                    max(capture_windows[-1][1], until_ms),
+                )
+            else:
+                capture_windows.append((since_ms, until_ms))
+
         if time.monotonic() >= deadline:
             raise _LiveCaddyProbeStageFailure("deadline")
         if docker_context is None:
@@ -9211,40 +9221,64 @@ def _read_live_caddy_probe_logs(
         remaining = _live_probe_remaining(deadline)
         if remaining is None:
             raise _LiveCaddyProbeStageFailure("deadline")
-        stage = "input_validation"
-        since_ms = min(window[0] for window in project_windows.values())
-        until_ms = max(window[1] for window in project_windows.values())
-        command = [
-            "docker",
-            "logs",
-            "--timestamps",
-            "--since",
-            _caddy_probe_timestamp_argument(since_ms),
-            "--until",
-            _caddy_probe_timestamp_argument(until_ms),
-            container_pin[0],
-        ]
-        stage = "log_read"
-        try:
-            completed = _run_live_bounded_read(
-                command,
-                context=docker_context,
-                deadline=deadline,
-                maximum_bytes=_LIVE_CADDY_PROBE_MAX_BYTES,
-                command_timeout_seconds=min(
-                    _LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS, remaining
-                ),
-            )
-        except _LiveBoundedReadFailure as error:
-            failure_stage = {
-                "output_limit": "log_size",
-                "pipe_io": "log_pipe_io",
-            }.get(error.reason, "log_read")
-            raise _LiveCaddyProbeStageFailure(failure_stage) from None
-        stdout = completed.stdout or b""
-        stderr = completed.stderr or b""
-        if completed.returncode != 0:
-            raise _LiveCaddyProbeStageFailure("log_exit")
+        capture_deadline = time.monotonic() + min(
+            _LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS, remaining
+        )
+        remaining_bytes = _LIVE_CADDY_PROBE_MAX_BYTES
+        for since_ms, until_ms in capture_windows:
+            stage = "deadline"
+            remaining = _live_probe_remaining(deadline)
+            capture_remaining = capture_deadline - time.monotonic()
+            if remaining is None or capture_remaining <= 0:
+                raise _LiveCaddyProbeStageFailure("deadline")
+            stage = "input_validation"
+            command = [
+                "docker",
+                "logs",
+                "--timestamps",
+                "--since",
+                _caddy_probe_timestamp_argument(since_ms),
+                "--until",
+                _caddy_probe_timestamp_argument(until_ms),
+                container_pin[0],
+            ]
+            stage = "log_read"
+            try:
+                completed = _run_live_bounded_read(
+                    command,
+                    context=docker_context,
+                    deadline=min(deadline, capture_deadline),
+                    maximum_bytes=remaining_bytes,
+                    command_timeout_seconds=min(capture_remaining, remaining),
+                )
+            except _LiveBoundedReadFailure as error:
+                failure_stage = {
+                    "output_limit": "log_size",
+                    "pipe_io": "log_pipe_io",
+                }.get(error.reason, "log_read")
+                raise _LiveCaddyProbeStageFailure(failure_stage) from None
+            if completed.returncode != 0:
+                raise _LiveCaddyProbeStageFailure("log_exit")
+            received_bytes = len(completed.stdout or b"") + len(completed.stderr or b"")
+            if received_bytes > remaining_bytes:
+                raise _LiveCaddyProbeStageFailure("log_size")
+            remaining_bytes -= received_bytes
+            if len(capture_windows) > 1:
+                # Do not manufacture a valid row from two truncated captures.
+                # Keep the legacy single-capture final-line behavior unchanged.
+                if completed.stdout and not completed.stdout.endswith(b"\n"):
+                    raise _LiveCaddyProbeStageFailure("project_row")
+                if completed.stderr and not completed.stderr.endswith(b"\n"):
+                    raise _LiveCaddyProbeStageFailure("stderr_validation")
+            stdout += completed.stdout or b""
+            stderr += completed.stderr or b""
+            completed.stdout = b""
+            completed.stderr = b""
+            completed = None
+            stage = "deadline"
+            if time.monotonic() >= capture_deadline:
+                raise _LiveCaddyProbeStageFailure("deadline")
+            _live_probe_remaining(deadline)
 
         invalid_stage: str | None = None
         for project in LIVE_CADDY_PROBE_PROJECTS:

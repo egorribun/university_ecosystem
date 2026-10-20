@@ -12704,7 +12704,7 @@ def test_live_caddy_probe_brackets_one_union_read_within_the_shared_deadline(
     assert "--tail" not in command
     options = log_calls[0][1]
     assert options["context"] is context
-    assert options["deadline"] == pytest.approx(125.0)
+    assert options["deadline"] == pytest.approx(114.3)
     assert options["maximum_bytes"] == live_stand._LIVE_CADDY_PROBE_MAX_BYTES
     assert (
         options["command_timeout_seconds"]
@@ -13233,7 +13233,7 @@ def test_live_caddy_probe_disjoint_reads_share_bytes_and_capture_time(
     cap = live_stand._LIVE_CADDY_PROBE_MAX_BYTES
     assert first["maximum_bytes"] == cap
     assert second["maximum_bytes"] == cap - len(rows["desktop"]) - len(benign_stderr)
-    assert first["deadline"] == second["deadline"] == 125.0
+    assert first["deadline"] == second["deadline"] == 112.0
     assert first["command_timeout_seconds"] == pytest.approx(10.0)
     assert second["command_timeout_seconds"] == pytest.approx(7.0)
     assert now[0] == pytest.approx(108.0)
@@ -13309,3 +13309,511 @@ def test_live_caddy_probe_disjoint_captures_keep_cross_window_validation(
     assert caught.value.stage == expected_stage
     assert state["events"] == ["pin", "logs", "logs", "pin"]
     assert all(result.stdout == result.stderr == b"" for result in state["completed"])
+
+
+def _aud174_install_real_window_children(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    owner: object,
+    pin: tuple[str, str],
+    context: live_stand._LiveDockerReadContext,
+    scripts: list[str],
+) -> dict[str, Any]:
+    state: dict[str, Any] = {
+        "events": [],
+        "started": [],
+        "calls": [],
+        "completed": [],
+        "sizes": [],
+    }
+    real_start = live_stand.fast_preflight._start_process
+    real_read = live_stand._run_live_bounded_read
+
+    def start_fixture(
+        check: live_stand.fast_preflight.CheckSpec,
+        *,
+        repo_root: Path,
+        env: Mapping[str, str] | None = None,
+    ) -> subprocess.Popen[bytes]:
+        assert check.command[0] == context.executable
+        assert check.command[1] == "logs"
+        index = len(state["started"])
+        assert index < len(scripts)
+        process = real_start(
+            live_stand.fast_preflight.CheckSpec(
+                "bounded-window-fixture",
+                (context.executable, "-c", scripts[index]),
+            ),
+            repo_root=repo_root,
+            env=env,
+        )
+        state["started"].append(process)
+        return process
+
+    def record_read(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        assert kwargs["context"] is context
+        state["events"].append("logs")
+        state["calls"].append((args, dict(kwargs)))
+        result = real_read(*args, **kwargs)
+        state["sizes"].append((len(result.stdout), len(result.stderr)))
+        state["completed"].append(result)
+        return result
+
+    def check_pin(
+        observed_owner: object,
+        observed_pin: tuple[str, str],
+        *,
+        deadline: float,
+        docker_context: live_stand._LiveDockerReadContext,
+    ) -> None:
+        assert observed_owner is owner
+        assert observed_pin == pin
+        assert docker_context is context
+        assert deadline > 0
+        state["events"].append("pin")
+
+    monkeypatch.setattr(live_stand.fast_preflight, "_start_process", start_fixture)
+    monkeypatch.setattr(live_stand, "_run_live_bounded_read", record_read)
+    monkeypatch.setattr(live_stand, "_assert_live_caddy_container_pin", check_pin)
+    return state
+
+
+@pytest.mark.parametrize("extra_stream", [None, "stdout", "stderr"])
+def test_live_caddy_disjoint_real_reads_enforce_aggregate_cap(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    extra_stream: str | None,
+) -> None:
+    owner = object()
+    pin = ("a" * 64, "b" * 64)
+    context = _aud174_docker_read_context(tmp_path)
+    base = 1_798_000_000_000
+    observed = {"desktop": base, "mobile": base + 120_000}
+    correlations = {"desktop": "1" * 32, "mobile": "2" * 32}
+    rows = {
+        project: _aud174_access_log_row(
+            f"/login?probe={correlations[project]}&password=REDACTED",
+            timestamp=live_stand._caddy_probe_timestamp_argument(timestamp),
+        )
+        for project, timestamp in observed.items()
+    }
+    cap = live_stand._LIVE_CADDY_PROBE_MAX_BYTES
+    first_stderr = _aud174_access_log_row(
+        "/health", timestamp=live_stand._caddy_probe_timestamp_argument(base)
+    )
+    padding_row = _aud174_access_log_row(
+        "/health",
+        timestamp=live_stand._caddy_probe_timestamp_argument(observed["mobile"]),
+        message="",
+    )
+    padding = cap - sum(
+        map(len, (rows["desktop"], first_stderr, rows["mobile"], padding_row))
+    )
+    assert padding > 0
+    assert padding_row.count(b'"msg": ""') == 1
+    first_script = (
+        "import sys; "
+        f"sys.stdout.buffer.write({rows['desktop']!r}); "
+        "sys.stdout.buffer.flush(); "
+        f"sys.stderr.buffer.write({first_stderr!r}); "
+        "sys.stderr.buffer.flush(); "
+    )
+    second_script = (
+        "import sys; "
+        f"sys.stdout.buffer.write({rows['mobile']!r}); "
+        "sys.stdout.buffer.flush(); "
+        f"row = {padding_row!r}; "
+        f"row = row.replace(b'\"msg\": \"\"', "
+        f"b'\"msg\": \"' + b'x' * {padding} + b'\"', 1); "
+        "sys.stderr.buffer.write(row); "
+        "sys.stderr.buffer.flush(); "
+    )
+    if extra_stream is not None:
+        second_script += f"sys.{extra_stream}.buffer.write(b'\\n'); "
+    state = _aud174_install_real_window_children(
+        monkeypatch,
+        owner=owner,
+        pin=pin,
+        context=context,
+        scripts=[first_script, second_script],
+    )
+
+    def read_project_logs() -> None:
+        _aud174_read_project_logs(
+            owner,
+            container_pin=pin,
+            completed_at_ms=observed,
+            password_nonce="0" * 32,
+            correlation_ids=correlations,
+            deadline=live_stand.time.monotonic() + 25,
+            docker_context=context,
+        )
+
+    if extra_stream is None:
+        read_project_logs()
+        assert sum(sum(size) for size in state["sizes"]) == cap
+        assert len(state["completed"]) == 2
+    else:
+        with pytest.raises(live_stand._LiveCaddyProbeStageFailure) as caught:
+            read_project_logs()
+        assert caught.value.stage == "log_size"
+        assert len(state["completed"]) == 1
+
+    assert state["events"] == ["pin", "logs", "logs", "pin"]
+    assert state["calls"][0][1]["maximum_bytes"] == cap
+    assert state["calls"][1][1]["maximum_bytes"] == (
+        cap - len(rows["desktop"]) - len(first_stderr)
+    )
+    assert state["calls"][0][1]["deadline"] == state["calls"][1][1]["deadline"]
+    assert len(state["started"]) == 2
+    for process in state["started"]:
+        assert process.returncode is not None
+        assert process.stdout is not None and process.stdout.closed
+        assert process.stderr is not None and process.stderr.closed
+    assert all(result.stdout == result.stderr == b"" for result in state["completed"])
+
+
+@pytest.mark.parametrize("stream", ["stdout", "stderr", "crlf"])
+def test_live_caddy_disjoint_reads_preserve_record_boundaries(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    stream: str,
+) -> None:
+    owner = object()
+    pin = ("a" * 64, "b" * 64)
+    context = _aud174_docker_read_context(tmp_path)
+    base = 1_798_000_000_000
+    observed = {"desktop": base, "mobile": base + 120_000}
+    correlations = {"desktop": "1" * 32, "mobile": "2" * 32}
+    rows = {
+        project: _aud174_access_log_row(
+            f"/login?probe={correlations[project]}&password=REDACTED",
+            timestamp=live_stand._caddy_probe_timestamp_argument(timestamp),
+        )
+        for project, timestamp in observed.items()
+    }
+    desktop, mobile = rows["desktop"], rows["mobile"]
+    split_at = desktop.index(b'"request"') + 4
+    first, second = desktop[:split_at], desktop[split_at:] + mobile
+    assert first and not first.endswith(b"\n")
+    assert first + second == desktop + mobile
+    if stream == "stdout":
+        records = [(base, first, b""), (observed["mobile"], second, b"")]
+    elif stream == "stderr":
+        records = [(base, b"", first), (observed["mobile"], b"", second)]
+    else:
+        records = [
+            (base, desktop[:-1] + b"\r\n", b""),
+            (observed["mobile"], b"", mobile[:-1] + b"\r\n"),
+        ]
+    state = _aud174_install_window_log_selector(
+        monkeypatch,
+        owner=owner,
+        container_pin=pin,
+        context=context,
+        records=records,
+    )
+
+    def read_project_logs() -> None:
+        _aud174_read_project_logs(
+            owner,
+            container_pin=pin,
+            completed_at_ms=observed,
+            password_nonce="0" * 32,
+            correlation_ids=correlations,
+            deadline=live_stand.time.monotonic() + 25,
+            docker_context=context,
+        )
+
+    if stream == "crlf":
+        read_project_logs()
+        assert state["events"] == ["pin", "logs", "logs", "pin"]
+        assert len(state["completed"]) == 2
+    else:
+        with pytest.raises(live_stand._LiveCaddyProbeStageFailure) as caught:
+            read_project_logs()
+        expected = "project_row" if stream == "stdout" else "stderr_validation"
+        assert caught.value.stage == expected
+        assert state["events"] in (
+            ["pin", "logs", "pin"],
+            ["pin", "logs", "logs", "pin"],
+        )
+        assert state["completed"]
+    assert state["events"].count("pin") == 2
+    assert all(result.stdout == result.stderr == b"" for result in state["completed"])
+
+
+@pytest.mark.parametrize("first_duration", [10.0, 10.25])
+def test_live_caddy_disjoint_capture_deadline_prevents_second_read(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    first_duration: float,
+) -> None:
+    owner = object()
+    pin = ("a" * 64, "b" * 64)
+    context = _aud174_docker_read_context(tmp_path)
+    base = 1_798_000_000_000
+    observed = {"desktop": base, "mobile": base + 120_000}
+    correlations = {"desktop": "1" * 32, "mobile": "2" * 32}
+    rows = {
+        project: _aud174_access_log_row(
+            f"/login?probe={correlations[project]}&password=REDACTED",
+            timestamp=live_stand._caddy_probe_timestamp_argument(timestamp),
+        )
+        for project, timestamp in observed.items()
+    }
+    records = [
+        (timestamp, rows[project], b"") for project, timestamp in observed.items()
+    ]
+    now = [100.0]
+    state = _aud174_install_window_log_selector(
+        monkeypatch,
+        owner=owner,
+        container_pin=pin,
+        context=context,
+        records=records,
+        now=now,
+        read_durations=(first_duration,),
+    )
+
+    with pytest.raises(live_stand._LiveCaddyProbeStageFailure) as caught:
+        _aud174_read_project_logs(
+            owner,
+            container_pin=pin,
+            completed_at_ms=observed,
+            password_nonce="0" * 32,
+            correlation_ids=correlations,
+            deadline=125.0,
+            docker_context=context,
+        )
+    assert caught.value.stage == "deadline"
+    assert state["events"] == ["pin", "logs", "pin"]
+    assert len(state["calls"]) == 1
+    assert state["calls"][0][1]["deadline"] == 112.0
+    assert state["calls"][0][1]["command_timeout_seconds"] == pytest.approx(10.0)
+    assert now[0] == pytest.approx(104.0 + first_duration)
+    assert now[0] < 125.0
+    assert len(state["completed"]) == 1
+    assert state["completed"][0].stdout == b""
+    assert state["completed"][0].stderr == b""
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_stage"),
+    [("exit", "log_exit"), ("pipe", "log_pipe_io"), ("wait", "log_read")],
+)
+@pytest.mark.parametrize("post_pin_failure", [False, True])
+def test_live_caddy_disjoint_second_read_failure_preserves_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    failure: str,
+    expected_stage: str,
+    post_pin_failure: bool,
+) -> None:
+    owner = object()
+    pin = ("a" * 64, "b" * 64)
+    context = _aud174_docker_read_context(tmp_path)
+    base = 1_798_000_000_000
+    observed = {"desktop": base, "mobile": base + 120_000}
+    correlations = {"desktop": uuid4().hex, "mobile": uuid4().hex}
+    rows = {
+        project: _aud174_access_log_row(
+            f"/login?probe={correlations[project]}&password=REDACTED",
+            timestamp=live_stand._caddy_probe_timestamp_argument(timestamp),
+        )
+        for project, timestamp in observed.items()
+    }
+    nonce = uuid4().hex
+    canary = f"private-second-read-{uuid4().hex}"
+    scripts = [
+        (
+            "import sys; "
+            f"sys.stdout.buffer.write({rows['desktop']!r}); "
+            "sys.stdout.buffer.flush(); "
+        ),
+        (
+            "import sys; "
+            f"sys.stdout.buffer.write({rows['mobile']!r}); "
+            "sys.stdout.buffer.flush(); "
+        ),
+    ]
+    if failure == "exit":
+        scripts[1] += f"sys.stderr.write({canary!r}); sys.exit(7); "
+    state = _aud174_install_real_window_children(
+        monkeypatch, owner=owner, pin=pin, context=context, scripts=scripts
+    )
+    wait_attempts: list[float | None] = []
+    pipe_attempts: list[int] = []
+
+    if failure == "wait":
+        fixture_start = live_stand.fast_preflight._start_process
+
+        def start_with_second_wait_failure(
+            check: live_stand.fast_preflight.CheckSpec,
+            *,
+            repo_root: Path,
+            env: Mapping[str, str] | None = None,
+        ) -> subprocess.Popen[bytes]:
+            process = fixture_start(check, repo_root=repo_root, env=env)
+            if len(state["started"]) == 2:
+                assert process is state["started"][1]
+                real_wait = process.wait
+
+                def fail_first_wait(timeout: float | None = None) -> int:
+                    wait_attempts.append(timeout)
+                    if len(wait_attempts) == 1:
+                        raise OSError(canary)
+                    return real_wait(timeout=timeout)
+
+                monkeypatch.setattr(process, "wait", fail_first_wait)
+            return process
+
+        monkeypatch.setattr(
+            live_stand.fast_preflight, "_start_process", start_with_second_wait_failure
+        )
+
+    if failure == "pipe":
+        drain_name = (
+            "_live_drain_windows_pipes"
+            if os.name == "nt"
+            else "_live_drain_posix_pipes"
+        )
+        real_drain = getattr(live_stand, drain_name)
+
+        def fail_pipe_read(descriptor: int, _size: int) -> bytes:
+            pipe_attempts.append(descriptor)
+            raise OSError(canary)
+
+        def drain_with_second_pipe_failure(
+            process: subprocess.Popen[bytes],
+            *,
+            stdout: bytearray,
+            stderr: bytearray,
+            work_deadline: float,
+            maximum_bytes: int,
+        ) -> bool:
+            is_second = len(state["started"]) == 2 and process is state["started"][1]
+            if not is_second:
+                return real_drain(
+                    process,
+                    stdout=stdout,
+                    stderr=stderr,
+                    work_deadline=work_deadline,
+                    maximum_bytes=maximum_bytes,
+                )
+            with monkeypatch.context() as pipe_patch:
+                pipe_patch.setattr(live_stand.os, "read", fail_pipe_read)
+                return real_drain(
+                    process,
+                    stdout=stdout,
+                    stderr=stderr,
+                    work_deadline=work_deadline,
+                    maximum_bytes=maximum_bytes,
+                )
+
+        monkeypatch.setattr(live_stand, drain_name, drain_with_second_pipe_failure)
+
+    fixture_pin = live_stand._assert_live_caddy_container_pin
+
+    def check_final_pin(
+        observed_owner: object,
+        observed_pin: tuple[str, str],
+        *,
+        deadline: float,
+        docker_context: live_stand._LiveDockerReadContext,
+    ) -> None:
+        fixture_pin(
+            observed_owner,
+            observed_pin,
+            deadline=deadline,
+            docker_context=docker_context,
+        )
+        if post_pin_failure and state["events"].count("pin") == 2:
+            raise live_stand.StandError(canary)
+
+    monkeypatch.setattr(live_stand, "_assert_live_caddy_container_pin", check_final_pin)
+    with pytest.raises(live_stand._LiveCaddyProbeStageFailure) as caught:
+        _aud174_read_project_logs(
+            owner,
+            container_pin=pin,
+            completed_at_ms=observed,
+            password_nonce=nonce,
+            correlation_ids=correlations,
+            deadline=live_stand.time.monotonic() + 25,
+            docker_context=context,
+        )
+
+    assert caught.value.stage == ("post_pin" if post_pin_failure else expected_stage)
+    assert state["events"] == ["pin", "logs", "logs", "pin"]
+    assert len(state["started"]) == 2
+    assert len(state["completed"]) == (2 if failure == "exit" else 1)
+    assert state["sizes"][0] == (len(rows["desktop"]), 0)
+    assert all(result.stdout == result.stderr == b"" for result in state["completed"])
+    for process in state["started"]:
+        assert process.returncode is not None
+        assert process.stdout is not None and process.stdout.closed
+        assert process.stderr is not None and process.stderr.closed
+    if failure == "wait":
+        assert wait_attempts
+    if failure == "pipe":
+        assert pipe_attempts
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+    for private_value in (canary, nonce, *correlations.values()):
+        assert private_value not in str(caught.value)
+
+
+def test_live_caddy_capture_deadline_cannot_be_rebased_during_reader_admission(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner = object()
+    pin = ("a" * 64, "b" * 64)
+    context = _aud174_docker_read_context(tmp_path)
+    real_read = live_stand._run_live_bounded_read
+    now = [100.0]
+    state = _aud174_install_window_log_selector(
+        monkeypatch,
+        owner=owner,
+        container_pin=pin,
+        context=context,
+        records=[],
+        now=now,
+    )
+    started: list[object] = []
+
+    def forbid_start(*args: Any, **_kwargs: Any) -> None:
+        started.append(args)
+        raise AssertionError("expired capture phase must not start a child")
+
+    def delayed_admission(
+        command: list[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess[bytes]:
+        state["events"].append("logs")
+        state["calls"].append((list(command), dict(kwargs)))
+        # Model scheduling delay after relative allowance sampling, not a sleep.
+        now[0] = 113.0
+        return real_read(command, **kwargs)
+
+    monkeypatch.setattr(live_stand.fast_preflight, "_start_process", forbid_start)
+    monkeypatch.setattr(live_stand, "_run_live_bounded_read", delayed_admission)
+    with pytest.raises(live_stand._LiveCaddyProbeStageFailure) as caught:
+        _aud174_read_project_logs(
+            owner,
+            container_pin=pin,
+            completed_at_ms={
+                "desktop": 1_798_000_000_000,
+                "mobile": 1_798_000_120_000,
+            },
+            password_nonce="0" * 32,
+            correlation_ids={"desktop": "1" * 32, "mobile": "2" * 32},
+            deadline=125.0,
+            docker_context=context,
+        )
+
+    assert caught.value.stage == "log_read"
+    assert state["events"] == ["pin", "logs", "pin"]
+    assert state["calls"][0][1]["deadline"] == 112.0
+    assert state["calls"][0][1]["command_timeout_seconds"] == pytest.approx(10.0)
+    assert now[0] == 115.0
+    assert started == []

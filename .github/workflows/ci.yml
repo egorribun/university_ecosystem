@@ -1579,7 +1579,14 @@ jobs:
             tests/test_live_stand.py::test_live_caddy_probe_excludes_oversized_gap_between_project_windows \
             tests/test_live_stand.py::test_live_caddy_probe_coalesces_only_overlapping_or_touching_windows \
             tests/test_live_stand.py::test_live_caddy_probe_disjoint_reads_share_bytes_and_capture_time \
-            tests/test_live_stand.py::test_live_caddy_probe_disjoint_captures_keep_cross_window_validation -v \
+            tests/test_live_stand.py::test_live_caddy_probe_disjoint_captures_keep_cross_window_validation \
+            tests/test_live_stand.py::test_live_caddy_disjoint_real_reads_enforce_aggregate_cap \
+            tests/test_live_stand.py::test_live_caddy_disjoint_reads_preserve_record_boundaries \
+            tests/test_live_stand.py::test_live_caddy_disjoint_capture_deadline_prevents_second_read \
+            tests/test_live_stand.py::test_live_caddy_disjoint_second_read_failure_preserves_cleanup \
+            tests/test_live_stand.py::test_live_caddy_capture_deadline_cannot_be_rebased_during_reader_admission \
+            tests/test_live_stand.py::test_live_caddy_probe_reads_one_union_window_from_reverified_pinned_container \
+            tests/test_live_stand.py::test_live_caddy_probe_brackets_one_union_read_within_the_shared_deadline -v \
             --tb=short \
             -p no:cacheprovider \
             -k "not integration"
