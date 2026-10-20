@@ -1,20 +1,25 @@
-"""Pure signed-marker claims, not file provenance or runtime admission."""
+"""No-I/O marker and daemon claims, not provenance or runtime admission."""
 
 from __future__ import annotations
 
 import builtins
 import copy
+import hashlib
 import io
 import json
 import os
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from scripts import live_nats_transport as transport
 from scripts import live_stand
+from scripts import owned_nats_docker as docker
+from scripts import owned_nats_process as process
 from scripts.owned_nats_coordinator import OwnerEvidence
+from scripts.owned_nats_outage import Deadline
 
 _SIGNING_BYTES = bytes(range(32))
 
@@ -418,3 +423,269 @@ def test_deeply_nested_invalid_json_within_size_limit_is_rejected(owner_case):
     raw = b"[" * 2_000 + b"0"
     assert len(raw) < transport.MAX_OWNER_MARKER_BYTES
     _assert_not_ready(_parse(raw, pins))
+
+
+_DAEMON_ID = b"owned-daemon-fixture"
+_DAEMON_FINGERPRINT = hashlib.sha256(_DAEMON_ID).hexdigest()
+
+
+class _DaemonClock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+
+def _daemon_pins():
+    return docker.DockerReadPins(
+        executable="/owned-tools/docker",
+        endpoint="unix:///owned-runtime/docker.sock",
+        config_directory="/owned-state/docker-config",
+        cwd="/owned-source/repository",
+        environment=(),
+        daemon_fingerprint=_DAEMON_FINGERPRINT,
+    )
+
+
+def _daemon_result(**changes):
+    result = process.PrivateProcessResult(
+        outcome=process.ProcessOutcome.EXITED,
+        returncode=0,
+        stdout=_DAEMON_ID + b"\n",
+        stderr=b"",
+        local_cleanup=process.LocalCleanup.CONFIRMED,
+    )
+    return replace(result, **changes)
+
+
+def _daemon_deadline():
+    return Deadline.after(10, clock=_DaemonClock())
+
+
+def _assert_daemon_not_ready(result):
+    assert result == docker.DaemonMetadataResult(docker.DaemonMetadataStatus.NOT_READY)
+
+
+@pytest.fixture
+def daemon_no_process(monkeypatch):
+    calls = []
+
+    def forbidden(*_args, **_kwargs):
+        calls.append("unexpected-process")
+        raise AssertionError("daemon preparation and decoding must not execute")
+
+    monkeypatch.setattr(process, "run_private_process", forbidden)
+    monkeypatch.setattr(subprocess, "Popen", forbidden)
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    monkeypatch.setattr(os, "system", forbidden)
+    yield
+    assert calls == []
+
+
+@pytest.mark.parametrize("environment", [(), (("LC_ALL", "C"), ("LANG", "C.UTF-8"))])
+def test_daemon_request_uses_only_explicit_pins(
+    monkeypatch, daemon_no_process, environment
+):
+    monkeypatch.setenv("DOCKER_CONTEXT", "ambient-context")
+    monkeypatch.setenv("DOCKER_HOST", "unix:///ambient-runtime/docker.sock")
+    monkeypatch.setenv("COMPOSE_FILE", "/ambient-source/compose.yml")
+    pins = replace(_daemon_pins(), environment=environment)
+
+    request = docker.prepare_daemon_read(pins, deadline=_daemon_deadline())
+
+    assert type(request) is process.PrivateProcessRequest
+    assert request.argv == (
+        pins.executable,
+        "--config",
+        pins.config_directory,
+        "--host",
+        pins.endpoint,
+        "info",
+        "--format",
+        "{{.ID}}",
+    )
+    assert request.cwd == pins.cwd
+    assert type(request.env) is dict
+    assert request.env == dict(environment)
+    assert request.stdin == b""
+    assert request.stdout_limit == 256
+    assert request.stderr_limit == 1024
+    assert request.input_limit == 0
+    assert pins == replace(_daemon_pins(), environment=environment)
+    request.env["LOCAL_TEST_CHANGE"] = "not-in-pins"
+    assert pins.environment == environment
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"executable": "docker"},
+        {"executable": "/owned-tools/../docker"},
+        {"cwd": "relative-source"},
+        {"config_directory": "/owned-state/\x00config"},
+        {"endpoint": "ssh://host"},
+        {"endpoint": "tcp://host:2375"},
+        {"endpoint": "unix:///owned-runtime/../docker.sock"},
+        {"daemon_fingerprint": "not-a-fingerprint"},
+        {"environment": (("DOCKER_CONTEXT", "other"),)},
+        {"environment": (("PATH", "/owned-tools"),)},
+        {"environment": (("LANG", "unsupported-locale"),)},
+        {"environment": (("LANG", "C"), ("LANG", "C"))},
+        {"environment": [("LANG", "C")]},
+    ],
+)
+def test_daemon_request_refuses_unsupported_pins(daemon_no_process, changes):
+    pins = replace(_daemon_pins(), **changes)
+
+    assert docker.prepare_daemon_read(pins, deadline=_daemon_deadline()) is None
+
+
+@pytest.mark.parametrize("ending", [b"", b"\n", b"\r\n"], ids=["none", "lf", "crlf"])
+def test_daemon_decode_matches_exact_private_metadata(daemon_no_process, ending):
+    supplied = _daemon_result(stdout=_DAEMON_ID + ending)
+
+    result = docker.decode_daemon_read(
+        supplied,
+        pinned_daemon=_DAEMON_FINGERPRINT,
+        deadline=_daemon_deadline(),
+    )
+
+    assert result.status is docker.DaemonMetadataStatus.MATCHED_METADATA
+    assert result.fingerprint == _DAEMON_FINGERPRINT
+    assert _DAEMON_FINGERPRINT not in repr(result)
+    assert _DAEMON_ID.decode() not in repr(result)
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        process.ProcessOutcome.NOT_READY,
+        process.ProcessOutcome.INVALID,
+        process.ProcessOutcome.TIMED_OUT,
+        process.ProcessOutcome.OUTPUT_LIMIT,
+        process.ProcessOutcome.START_FAILED,
+        process.ProcessOutcome.CONTAINMENT_UNAVAILABLE,
+        process.ProcessOutcome.CLEANUP_UNCERTAIN,
+    ],
+)
+def test_daemon_decode_refuses_nonexit_outcomes(daemon_no_process, outcome):
+    result = docker.decode_daemon_read(
+        _daemon_result(outcome=outcome),
+        pinned_daemon=_DAEMON_FINGERPRINT,
+        deadline=_daemon_deadline(),
+    )
+
+    _assert_daemon_not_ready(result)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"returncode": 1},
+        {"returncode": None},
+        {"returncode": False},
+        {"local_cleanup": process.LocalCleanup.NOT_STARTED},
+        {"local_cleanup": process.LocalCleanup.UNPROVEN},
+        {"stderr": b"private-diagnostic"},
+        {"stderr": b"x" * 1025},
+        {"stdout": b"x" * 257},
+        {"stdout": ""},
+        {"stdout": b""},
+        {"stdout": b"\xff"},
+        {"stdout": _DAEMON_ID + b"\nextra"},
+        {"stdout": b" " + _DAEMON_ID},
+        {"stdout": _DAEMON_ID + b" "},
+        {"stdout": _DAEMON_ID + b"\n\n"},
+        {"stdout": _DAEMON_ID + b"\x00"},
+    ],
+)
+def test_daemon_decode_refuses_process_or_payload_ambiguity(daemon_no_process, changes):
+    result = docker.decode_daemon_read(
+        _daemon_result(**changes),
+        pinned_daemon=_DAEMON_FINGERPRINT,
+        deadline=_daemon_deadline(),
+    )
+
+    _assert_daemon_not_ready(result)
+
+
+@pytest.mark.parametrize("pin", ["f" * 64, "A" * 64, "", None])
+def test_daemon_decode_refuses_missing_or_different_pin(daemon_no_process, pin):
+    result = docker.decode_daemon_read(
+        _daemon_result(), pinned_daemon=pin, deadline=_daemon_deadline()
+    )
+
+    _assert_daemon_not_ready(result)
+
+
+@pytest.mark.parametrize("state", ["expired", "invalid", "regressed"])
+def test_daemon_boundaries_refuse_unusable_deadline(daemon_no_process, state):
+    clock = _DaemonClock()
+    deadline = Deadline.after(0 if state == "invalid" else 10, clock=clock)
+    if state == "expired":
+        clock.now = 10
+    elif state == "regressed":
+        clock.now = -1
+
+    assert docker.prepare_daemon_read(_daemon_pins(), deadline=deadline) is None
+    result = docker.decode_daemon_read(
+        _daemon_result(),
+        pinned_daemon=_DAEMON_FINGERPRINT,
+        deadline=deadline,
+    )
+    _assert_daemon_not_ready(result)
+
+
+@pytest.mark.parametrize("operation", ["prepare", "decode"])
+def test_daemon_boundaries_refuse_postcheck_expiry(daemon_no_process, operation):
+    samples = iter((0.0, 0.0, 10.0))
+    deadline = Deadline.after(10, clock=lambda: next(samples, 10.0))
+
+    if operation == "prepare":
+        assert docker.prepare_daemon_read(_daemon_pins(), deadline=deadline) is None
+    else:
+        result = docker.decode_daemon_read(
+            _daemon_result(),
+            pinned_daemon=_DAEMON_FINGERPRINT,
+            deadline=deadline,
+        )
+        _assert_daemon_not_ready(result)
+
+
+def test_daemon_boundaries_share_original_deadline(monkeypatch, daemon_no_process):
+    clock = _DaemonClock()
+    deadline = Deadline.after(10, clock=clock)
+
+    def forbidden_deadline(*_args, **_kwargs):
+        raise AssertionError("daemon boundaries must not create a fresh deadline")
+
+    monkeypatch.setattr(Deadline, "after", forbidden_deadline)
+    request = docker.prepare_daemon_read(_daemon_pins(), deadline=deadline)
+    assert type(request) is process.PrivateProcessRequest
+
+    clock.now = 10
+    result = docker.decode_daemon_read(
+        _daemon_result(),
+        pinned_daemon=_DAEMON_FINGERPRINT,
+        deadline=deadline,
+    )
+    _assert_daemon_not_ready(result)
+
+
+def test_daemon_private_fields_are_not_represented():
+    pins = _daemon_pins()
+    rendered = repr(pins)
+    for value in (
+        pins.executable,
+        pins.endpoint,
+        pins.config_directory,
+        pins.cwd,
+        pins.daemon_fingerprint,
+    ):
+        assert value not in rendered
+    result = docker.DaemonMetadataResult(
+        docker.DaemonMetadataStatus.MATCHED_METADATA,
+        _DAEMON_FINGERPRINT,
+    )
+    assert _DAEMON_FINGERPRINT not in repr(result)

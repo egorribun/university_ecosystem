@@ -2144,6 +2144,26 @@ def _compose_resource_evidence(
         project = json.loads(completed.stdout)
     except (json.JSONDecodeError, TypeError):
         raise StandError("cannot parse resolved Compose resource ownership") from None
+    return _compose_resource_evidence_from_project(
+        project,
+        project_name,
+        published_ports,
+        stack=stack,
+        service_roots=service_roots,
+        legacy_projection=legacy_projection,
+    )
+
+
+def _compose_resource_evidence_from_project(
+    project: object,
+    project_name: str,
+    published_ports: Mapping[str, int],
+    *,
+    stack: str = LIVE_STACK_FULL,
+    service_roots: Sequence[str] | None = None,
+    legacy_projection: bool = False,
+) -> ComposeResourceEvidence:
+    """Project already parsed Compose data without performing transport I/O."""
     if not isinstance(project, dict) or project.get("name") != project_name:
         raise StandError("resolved Compose project does not match live stand ownership")
 

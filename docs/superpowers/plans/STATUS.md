@@ -10,7 +10,7 @@
 
 ## Текущая проверка аудита
 
-Подтверждённая нижняя граница: 82 из 512 исходных AUD IDs. На 19a2f8a приняты AUD-061/062/063/068/069/075/080 по собственным регрессиям и зелёным static gates. Прежние принятые IDs сохраняются. [Scope, IDs и доказательства](../../audits/AUDIT-2026-10.md#evidence-checkpoint-82-verified-original-aud-ids). Это не полная сверка всех пунктов и не приёмка всего CI.
+Подтверждённая нижняя граница: 83 из 512 исходных AUD IDs. На 3258d71 принят AUD-066 по собственным регрессиям и зелёным static/build gates; прежние 82 IDs сохраняются. [Scope, IDs и доказательства](../../audits/AUDIT-2026-10.md#evidence-checkpoint-83-verified-original-aud-ids). Это не полная сверка всех пунктов и не приёмка всего CI.
 
 На 47f35bf: frontend 9388 PASS / 779 файлов, все frontend static gates и production build прошли. Real SDK/Axios/MSW ETag cohort подтверждает разделение order/query/cache/ETag; повторная OpenAPI generation не даёт diff. PostgreSQL: 203 PASS / 9 прежних SKIP, включая raw HTTP rank/date counterexample. Оба pre-commit и inventory gates проходят. Exact hosted checkout/tree проверены.
 
@@ -18,9 +18,11 @@ NATS: на a27af92 focused backend — 736 PASS / 1 прежний outage hold. 
 
 Actual Core 911db82: 26 PASS / 2 прежних SKIP, cleanup 2026-10-20 00:03:56 UTC, receipt artifact 12230572763, exact source tree проверен. Обе темы проходят первые четыре и следующие семнадцать AUD-072 declarations при неизменённых assertions. Whole AUD-072 открыт: остальные consumers, theme collisions, malformed one-color mixes, AUD-085 utility emission и AUD-073 contrast не объявляются исправленными.
 
-Frontend 19a2f8a — 9415 PASS / 2 intended AUD-066 FAIL / 783 файла. Все static gates проходят, включая formatter и scanner29. Семь UI/scanner находок приняты; исправление calendar payload и дополнительные тесты опубликованы следующим срезом; own GREEN ещё нужен, full-calendar sync не заявляется. [Evidence](2026-10-19-ui-lifecycle-reconciliation.md).
+Frontend 3258d71 — 9430 PASS / 784 файла, без failures. Все static gates и production build проходят. AUD-066 принят как подготовка одного занятия выбранной недели с фильтрами и campus timezone, не full-calendar sync. Следующий AUD-071 проверяется настоящим браузерным hit test до изменения production. [Evidence](2026-10-19-ui-lifecycle-reconciliation.md).
 
-Core run 39351706318 / job 118397156239 passes 26 browser cases with two existing skips at 01:21:44 UTC. Owned stop finishes at 01:22:05; artifact 12234715078 has SHA-256 748f254f3a75782421dee130d0da97dd8a8194c05a5347d4354ec4f9c78834c1 and the same verified checkout. This does not replace full-CI acceptance or prove the disabled outage scenario.
+Core a27af92 run 39353709178 / job 118403589608 passes 26 browser cases with two existing skips at 01:45:40 UTC. Owned stop and receipt finish at 01:46:02; artifact 12234748128 has SHA-256 d8e280b30eaf28edf69b07e8db66a9b848f91f4900cd7db1a999ac25edd342d3. Checkout f7c8ff223aad624287d28f0b7c93dc6d207c6ff0 has the exact a27 source tree. No outage execution or full release acceptance follows.
+
+Следующий NATS срез выделяет прежнюю Compose projection без I/O и вводит unavailable daemon request/decode seams с тестами. Existing AUD-084 suites добавлены в verbose focused selection для source-bound доказательства; production preflight не меняется. Workflow расширен только на прежней строке 155, без сдвига baseline coordinates. [Scope](2026-10-20-owned-nats-docker-observation.md).
 
 История промежуточных RED/GREEN, коррекции тестов и receipts сохранены в audit supplements и тематических планах. Прежний platform skip устранён; результаты текущих проверок описаны выше. Новых skip identities или waiver нет. P1 holds 164/167/169/174 сохраняются. Последний полностью принятый CI — e150. Baseline 319, dispositions 263, 78 required context/app pairs и security gates неизменны. Merge/deploy не выполняются.
 

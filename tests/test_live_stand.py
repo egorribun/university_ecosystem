@@ -9113,3 +9113,453 @@ def test_live_playwright_suppresses_login_failure_rows_after_success(
     printed = capsys.readouterr()
     assert "live E2E login failure " not in printed.out
     assert printed.err == ""
+
+
+_PROJECTION_PROJECT = "ue-live-0123456789abcdef"
+
+
+def _projection_model(*, core: bool = False) -> dict[str, Any]:
+    names = live_stand.LIVE_CORE_EXPECTED_SERVICES if core else ("backend",)
+    services: dict[str, Any] = {name: {} for name in names}
+    services["backend"]["volumes"] = [
+        {"type": "volume", "source": "app-data", "target": "/data"}
+    ]
+    if core:
+        services["caddy"]["depends_on"] = [name for name in names if name != "caddy"]
+    return {
+        "name": _PROJECTION_PROJECT,
+        "volumes": {
+            "app-data": {
+                "name": f"{_PROJECTION_PROJECT}_app-data",
+                "external": False,
+            },
+            "unused": {"name": "shared-unused", "external": True},
+        },
+        "networks": {"unused-net": {"name": "shared-net", "external": True}},
+        "services": services,
+    }
+
+
+def _projection_expected(
+    *,
+    core: bool = False,
+    legacy: bool = False,
+    target: str = "/data",
+) -> Any:
+    """Independent expected projection for the fixed synthetic models."""
+    project_name = _PROJECTION_PROJECT
+    selected = live_stand.LIVE_CORE_EXPECTED_SERVICES if core else ("backend",)
+    roots = live_stand.LIVE_CORE_SERVICE_ROOTS if core else ("backend",)
+    stack = live_stand.LIVE_STACK_CORE if core else live_stand.LIVE_STACK_FULL
+    volume_name = f"{project_name}_app-data"
+    network_name = f"{project_name}_default"
+    retain_unused = not core or legacy
+
+    volumes = {"app-data": {"external": False, "resolved_name": volume_name}}
+    networks = {"default": {"external": False, "resolved_name": network_name}}
+    if retain_unused:
+        volumes["unused"] = {
+            "external": True,
+            "resolved_name": "shared-unused",
+        }
+        networks["unused-net"] = {
+            "external": True,
+            "resolved_name": "shared-net",
+        }
+
+    mounts: dict[str, Any] = {
+        name: {
+            "volumes": [],
+            "volumes_from": [],
+            "networks": ["default"],
+            "network_mode": None,
+        }
+        for name in selected
+    }
+    mounts["backend"]["volumes"] = [
+        {"type": "volume", "source": "app-data", "target": target}
+    ]
+    projection: dict[str, Any] = {
+        "project_name": project_name,
+        "volumes": volumes,
+        "networks": networks,
+        "service_mounts": mounts,
+    }
+    if not legacy:
+        projection.update(
+            {
+                "stack": stack,
+                "service_roots": list(roots),
+                "selected_services": list(selected),
+            }
+        )
+        if core:
+            projection["published_port_names"] = [
+                "BACKEND",
+                "CADDY_HTTP",
+                "CADDY_HTTPS",
+                "FRONTEND",
+                "GATEWAY",
+                "IMGPROXY",
+                "MAILPIT",
+                "MINIO",
+                "POSTGRES",
+                "WS_HUB",
+            ]
+
+    canonical = json.dumps(
+        projection,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+    declared_volumes = (
+        tuple(sorted((volume_name, "shared-unused")))
+        if retain_unused
+        else (volume_name,)
+    )
+    bindings = [("default", network_name, False)]
+    if retain_unused:
+        bindings.append(("unused-net", "shared-net", True))
+    return live_stand.ComposeResourceEvidence(
+        fingerprint=hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        managed_volumes=(("app-data", volume_name),),
+        declared_volume_names=declared_volumes,
+        managed_networks=(("default", network_name),),
+        managed_services=tuple(sorted(selected)),
+        stack=stack,
+        service_roots=roots,
+        selected_services=selected,
+        network_bindings=tuple(sorted(bindings)),
+        service_networks=tuple((name, ("default",)) for name in sorted(selected)),
+    )
+
+
+def _install_projection_process(
+    monkeypatch: pytest.MonkeyPatch,
+    worktree: Path,
+    ports: dict[str, int],
+    stdout: Any,
+    *,
+    error: Exception | None = None,
+) -> list[tuple[str, ...]]:
+    """Allow exactly one expected mocked call, with no subprocess fallback."""
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", False)
+    environment = {"COMPOSE_PROJECT_NAME": _PROJECTION_PROJECT}
+    expected_command = [
+        "docker",
+        "compose",
+        "-p",
+        _PROJECTION_PROJECT,
+        "--env-file",
+        ".env.docker",
+        "-f",
+        "docker-compose.full.yml",
+        "-f",
+        live_stand.OVERLAY,
+        "config",
+        "--format",
+        "json",
+    ]
+    calls: list[tuple[str, ...]] = []
+
+    def control_environment(
+        project_name: str, published_ports: Mapping[str, int]
+    ) -> dict[str, str]:
+        assert project_name == _PROJECTION_PROJECT
+        assert dict(published_ports) == ports
+        return environment
+
+    def fake_run(
+        command: Sequence[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess[str]:
+        assert list(command) == expected_command
+        assert kwargs == {
+            "cwd": worktree,
+            "env": environment,
+            "check": True,
+            "capture_output": True,
+            "text": True,
+        }
+        assert calls == [], "unexpected additional process invocation"
+        calls.append(tuple(command))
+        if error is not None:
+            raise error
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(live_stand, "compose_control_environment", control_environment)
+    monkeypatch.setattr(live_stand.subprocess, "run", fake_run)
+    return calls
+
+
+def _assert_projection_pair(
+    monkeypatch: pytest.MonkeyPatch,
+    worktree: Path,
+    model: object,
+    *,
+    core: bool = False,
+    legacy: bool = False,
+    ports: dict[str, int] | None = None,
+    roots: Sequence[str] | None = None,
+    expected_error: str | None = None,
+) -> Any:
+    published_ports = _port_map() if ports is None else ports
+    original = json.dumps(model, sort_keys=True)
+    direct_model = json.loads(original)
+    calls = _install_projection_process(
+        monkeypatch, worktree, published_ports, json.dumps(model)
+    )
+    stack = live_stand.LIVE_STACK_CORE if core else live_stand.LIVE_STACK_FULL
+    service_roots = (
+        live_stand.LIVE_CORE_SERVICE_ROOTS if core and roots is None else roots
+    )
+    options = {
+        "stack": stack,
+        "service_roots": service_roots,
+        "legacy_projection": legacy,
+    }
+    if expected_error is None:
+        wrapped = live_stand._compose_resource_evidence(
+            worktree, _PROJECTION_PROJECT, published_ports, **options
+        )
+        assert len(calls) == 1
+        direct = live_stand._compose_resource_evidence_from_project(
+            direct_model, _PROJECTION_PROJECT, published_ports, **options
+        )
+        assert wrapped == direct
+    else:
+        with pytest.raises(live_stand.StandError) as wrapped_error:
+            live_stand._compose_resource_evidence(
+                worktree, _PROJECTION_PROJECT, published_ports, **options
+            )
+        assert len(calls) == 1
+        with pytest.raises(live_stand.StandError) as direct_error:
+            live_stand._compose_resource_evidence_from_project(
+                direct_model, _PROJECTION_PROJECT, published_ports, **options
+            )
+        assert str(wrapped_error.value) == expected_error
+        assert str(direct_error.value) == expected_error
+        wrapped = None
+
+    assert len(calls) == 1
+    assert json.dumps(model, sort_keys=True) == original
+    assert json.dumps(direct_model, sort_keys=True) == original
+    return wrapped
+
+
+def test_compose_resource_projection_full_matches_existing_wrapper(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    observed = _assert_projection_pair(monkeypatch, tmp_path, _projection_model())
+    assert observed == _projection_expected()
+
+
+def test_compose_resource_projection_core_preserves_closure_and_filtering(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    model = _projection_model(core=True)
+    expected = _projection_expected(core=True)
+    original = _assert_projection_pair(monkeypatch, tmp_path, model, core=True)
+    assert original == expected
+
+    changed_ports = _port_map()
+    changed_ports["CADDY_HTTP"] += 1000
+    changed_ports["GRAFANA"] += 1000
+    port_changed = _assert_projection_pair(
+        monkeypatch,
+        tmp_path,
+        model,
+        core=True,
+        ports=changed_ports,
+    )
+    assert port_changed == expected
+
+    unused_changed = json.loads(json.dumps(model))
+    unused_changed["volumes"]["unused"]["name"] = "other-shared-unused"
+    unused_changed["networks"]["unused-net"]["name"] = "other-shared-net"
+    unused_observed = _assert_projection_pair(
+        monkeypatch, tmp_path, unused_changed, core=True
+    )
+    assert unused_observed == expected
+
+    mount_changed = json.loads(json.dumps(model))
+    mount_changed["services"]["backend"]["volumes"][0]["target"] = "/data/é"
+    changed = _assert_projection_pair(monkeypatch, tmp_path, mount_changed, core=True)
+    assert changed == _projection_expected(core=True, target="/data/é")
+    assert changed.fingerprint != original.fingerprint
+
+
+@pytest.mark.parametrize("core", [False, True], ids=["full", "core"])
+def test_compose_resource_projection_legacy_preserves_schema(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, core: bool
+) -> None:
+    model = _projection_model(core=core)
+    observed = _assert_projection_pair(
+        monkeypatch, tmp_path, model, core=core, legacy=True
+    )
+    assert observed == _projection_expected(core=core, legacy=True)
+    assert "shared-unused" in observed.declared_volume_names
+    assert ("unused-net", "shared-net", True) in observed.network_bindings
+
+    modern = _assert_projection_pair(monkeypatch, tmp_path, model, core=core)
+    assert observed.fingerprint != modern.fingerprint
+    if core:
+        assert "shared-unused" not in modern.declared_volume_names
+        assert ("unused-net", "shared-net", True) not in modern.network_bindings
+
+
+@pytest.mark.parametrize(
+    ("case", "message"),
+    [
+        (
+            "root-list",
+            "resolved Compose project does not match live stand ownership",
+        ),
+        (
+            "wrong-name",
+            "resolved Compose project does not match live stand ownership",
+        ),
+        ("volumes-list", "resolved Compose resource inventory is invalid"),
+        ("external-type", "resolved Compose volume ownership is ambiguous"),
+        (
+            "unscoped-volume",
+            "refusing unscoped Compose volume outside the live stand project",
+        ),
+        (
+            "volumes-from",
+            "Compose volumes_from is unsupported for owned teardown",
+        ),
+        (
+            "anonymous-volume",
+            "anonymous Compose volumes are unsupported for owned teardown",
+        ),
+        (
+            "undeclared-volume",
+            "resolved Compose mount refers to an undeclared volume",
+        ),
+    ],
+)
+def test_compose_resource_projection_preserves_malformed_model_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    case: str,
+    message: str,
+) -> None:
+    model: Any = _projection_model()
+    if case == "root-list":
+        model = []
+    elif case == "wrong-name":
+        model["name"] = "wrong-project"
+    elif case == "volumes-list":
+        model["volumes"] = []
+    elif case == "external-type":
+        model["volumes"]["app-data"]["external"] = 1
+    elif case == "unscoped-volume":
+        model["volumes"]["app-data"]["name"] = "unscoped-data"
+    elif case == "volumes-from":
+        model["services"]["backend"]["volumes_from"] = ["other"]
+    elif case == "anonymous-volume":
+        model["services"]["backend"]["volumes"][0].pop("source")
+    else:
+        assert case == "undeclared-volume"
+        model["services"]["backend"]["volumes"][0]["source"] = "undeclared"
+
+    _assert_projection_pair(monkeypatch, tmp_path, model, expected_error=message)
+
+
+@pytest.mark.parametrize(
+    ("case", "message"),
+    [
+        (
+            "missing-root",
+            "reviewed live Core service roots are missing from Compose",
+        ),
+        (
+            "missing-dependency",
+            "resolved Compose dependency references an unknown service",
+        ),
+        (
+            "extra-service",
+            "resolved live Core dependency closure differs from reviewed services",
+        ),
+        (
+            "wrong-roots",
+            "resolved Compose service roots differ from live owner selection",
+        ),
+    ],
+)
+def test_compose_resource_projection_preserves_core_selection_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    case: str,
+    message: str,
+) -> None:
+    model = _projection_model(core=True)
+    roots: Sequence[str] | None = None
+    if case == "missing-root":
+        model["services"].pop("mailpit")
+    elif case == "missing-dependency":
+        model["services"]["caddy"]["depends_on"].append("absent-service")
+    elif case == "extra-service":
+        model["services"]["extra-service"] = {}
+        model["services"]["caddy"]["depends_on"].append("extra-service")
+    else:
+        assert case == "wrong-roots"
+        roots = ("backend",)
+
+    _assert_projection_pair(
+        monkeypatch,
+        tmp_path,
+        model,
+        core=True,
+        roots=roots,
+        expected_error=message,
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["invalid-project", "os-error", "process-error", "invalid-json", "none-output"],
+)
+def test_compose_resource_wrapper_preserves_preprojection_failures(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, case: str
+) -> None:
+    ports = _port_map()
+    stdout: Any = json.dumps(_projection_model())
+    error: Exception | None = None
+    project_name = _PROJECTION_PROJECT
+    if case == "invalid-project":
+        project_name = "invalid-project"
+        message = f"refusing unexpected Compose project name {project_name!r}"
+    elif case == "os-error":
+        error = OSError("synthetic process failure")
+        message = "cannot verify resolved Compose resource ownership"
+    elif case == "process-error":
+        error = subprocess.CalledProcessError(1, ["docker", "compose"])
+        message = "cannot verify resolved Compose resource ownership"
+    elif case == "invalid-json":
+        stdout = "{"
+        message = "cannot parse resolved Compose resource ownership"
+    else:
+        assert case == "none-output"
+        stdout = None
+        message = "cannot parse resolved Compose resource ownership"
+
+    calls = _install_projection_process(
+        monkeypatch, tmp_path, ports, stdout, error=error
+    )
+
+    def unexpected_projection(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("projection must not run after a wrapper admission failure")
+
+    monkeypatch.setattr(
+        live_stand,
+        "_compose_resource_evidence_from_project",
+        unexpected_projection,
+    )
+    with pytest.raises(live_stand.StandError) as caught:
+        live_stand._compose_resource_evidence(tmp_path, project_name, ports)
+    assert str(caught.value) == message
+    assert len(calls) == (0 if case == "invalid-project" else 1)
+    if case != "invalid-project":
+        assert caught.value.__suppress_context__ is True

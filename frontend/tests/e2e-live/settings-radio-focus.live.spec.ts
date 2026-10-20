@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test"
-import { expect, loginAs, test } from "./fixtures"
+import { expect, loginAs, ROLES, test } from "./fixtures"
 
 test.use({ trace: "off", screenshot: "off", video: "off" })
 
@@ -231,5 +231,74 @@ test("Semantic tokens preserve percentage alpha in both themes", async ({ page }
     }
   } finally {
     await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" })
+  }
+})
+
+test("Settings Snackbar content receives a real pointer click on Profile", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  // Install before navigation, but let authentication and rendering run normally.
+  await page.clock.install()
+
+  try {
+    await loginAs(page, "student")
+    await page.goto("/profile")
+    await page.waitForFunction(() => window.__APP_HYDRATED === true)
+    await expect(page).toHaveURL(/\/profile$/u)
+
+    const email = page.getByRole("button", {
+      name: ROLES.student.email,
+      exact: true,
+    })
+    await expect(email).toHaveCount(1)
+    await expect(email).toBeVisible()
+    await expect(email).toBeEnabled()
+    // Scroll and finish normal actionability checks before pausing app timers.
+    await email.click({ trial: true })
+
+    const feedback = page.getByTestId("profile-save-feedback")
+    const alert = feedback.getByRole("alert")
+    await expect(alert).toHaveCount(0)
+
+    const pauseTime = await page.evaluate(() => Date.now() + 1000)
+    await page.clock.pauseAt(pauseTime)
+    const pausedNow = await page.evaluate(() => Date.now())
+
+    // This production handler only opens local feedback; it does not copy or navigate.
+    await email.click({ timeout: 3000 })
+    await expect(page).toHaveURL(/\/profile$/u)
+    await expect(alert).toHaveCount(1)
+    await expect(alert).toBeVisible()
+
+    const close = alert.getByRole("button", { name: "×", exact: true })
+    await expect(close).toHaveCount(1)
+    await expect(close).toBeVisible()
+    await expect(close).toBeEnabled()
+
+    const hit = await close.evaluate((button) => {
+      const rect = button.getBoundingClientRect()
+      const x = rect.left + rect.width / 2
+      const y = rect.top + rect.height / 2
+      const target = document.elementFromPoint(x, y)
+      return {
+        positiveArea: rect.width > 0 && rect.height > 0,
+        centerInsideViewport:
+          x >= 0 && x < window.innerWidth && y >= 0 && y < window.innerHeight,
+        ownsCenter: target !== null && button.contains(target),
+        pointerEvents: getComputedStyle(button).pointerEvents,
+      }
+    })
+
+    expect(hit, "the visible close button must own its actual browser hit target").toMatchObject({
+      positiveArea: true,
+      centerInsideViewport: true,
+      ownsCenter: true,
+    })
+
+    await close.click({ timeout: 3000 })
+    await expect(alert).toHaveCount(0)
+    expect(await page.evaluate(() => Date.now())).toBe(pausedNow)
+  } finally {
+    // Resume even on the intended RED, before owned-session fixture cleanup.
+    await page.clock.resume()
   }
 })
