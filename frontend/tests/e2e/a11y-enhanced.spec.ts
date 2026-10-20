@@ -1,3 +1,4 @@
+import { collectMotionDurationViolations } from "./utils/motionDurationViolations"
 import { blockBackgroundNetwork, expect, test, type Page } from "./test"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
@@ -211,40 +212,7 @@ test.describe("@a11y enhanced WCAG 2.2 AA + tab-order + reduced-motion", () => {
 
     // Collect elements that still have a non-trivial animation/transition
     // duration even under reduced-motion emulation.
-    const violations = await page.evaluate(() => {
-      const parseDurationMs = (value: string): number => {
-        const trimmed = value.trim()
-        if (trimmed.endsWith("ms")) return parseFloat(trimmed)
-        if (trimmed.endsWith("s")) return parseFloat(trimmed) * 1000
-        return 0
-      }
-
-      const offenders: {
-        selector: string
-        transitionDuration: string
-        animationDuration: string
-      }[] = []
-
-      // Only inspect visible, non-SVG elements to keep the walk fast.
-      for (const el of document.querySelectorAll("*")) {
-        if (el.tagName.toLowerCase() === "svg") continue
-        const styles = getComputedStyle(el)
-        const transitionMs = parseDurationMs(styles.transitionDuration)
-        const animationMs = parseDurationMs(styles.animationDuration)
-        if (transitionMs > 1 || animationMs > 1) {
-          const id = (el as HTMLElement).id
-          const classes = Array.from(el.classList).slice(0, 3).join(".")
-          offenders.push({
-            selector: `${el.tagName.toLowerCase()}${id ? "#" + id : ""}${classes ? "." + classes : ""}`,
-            transitionDuration: styles.transitionDuration,
-            animationDuration: styles.animationDuration,
-          })
-          if (offenders.length >= 10) break // cap output size
-        }
-      }
-
-      return offenders
-    })
+    const violations = await page.locator("html").evaluate(collectMotionDurationViolations)
 
     // Surface violations in the failure message so triage is fast.
     expect(violations, JSON.stringify(violations, null, 2)).toEqual([])

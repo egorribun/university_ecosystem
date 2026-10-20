@@ -1524,6 +1524,128 @@ describe("useEventNavigation (events.ts:482-525)", () => {
     expect(result.current.nextId).toBe("after")
     expect(result.current.nextTitle).toBe("Last title")
   })
+
+  it.each([
+    {
+      name: "neighbor titles",
+      prevId: "a",
+      prevTitle: "Updated A",
+      nextId: "c",
+      nextTitle: "Updated C",
+    },
+    {
+      name: "neighbor identities",
+      prevId: "replacement-before",
+      prevTitle: "Replacement before",
+      nextId: "replacement-after",
+      nextTitle: "Replacement after",
+    },
+  ])("observes updated $name without changing the current id", async (replacement) => {
+    const queryClient = freshClient()
+    queryClient.setQueryDefaults(["events", "list"], { gcTime: Infinity })
+    const queryKey = eventsListQueryKey({ language: "ru" })
+    queryClient.setQueryData(queryKey, {
+      pages: [{ items: [makeEvent("a", "A"), makeEvent("b", "B"), makeEvent("c", "C")] }],
+    })
+
+    const { result, unmount } = renderHook(() => useEventNavigation("b"), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    try {
+      expect(result.current).toEqual({
+        prevId: "a",
+        prevTitle: "A",
+        nextId: "c",
+        nextTitle: "C",
+      })
+
+      await act(async () => {
+        queryClient.setQueryData(queryKey, {
+          pages: [
+            {
+              items: [
+                makeEvent(replacement.prevId, replacement.prevTitle),
+                makeEvent("b", "B"),
+                makeEvent(replacement.prevId, "Duplicate must not replace the first title"),
+                makeEvent(replacement.nextId, replacement.nextTitle),
+              ],
+            },
+          ],
+        })
+      })
+
+      await waitFor(
+        () =>
+          expect(result.current).toEqual({
+            prevId: replacement.prevId,
+            prevTitle: replacement.prevTitle,
+            nextId: replacement.nextId,
+            nextTitle: replacement.nextTitle,
+          }),
+        { timeout: 1_000 }
+      )
+      expect(allEventsMock).not.toHaveBeenCalled()
+      expect(myEventsMock).not.toHaveBeenCalled()
+      expect(getEventMock).not.toHaveBeenCalled()
+    } finally {
+      unmount()
+      queryClient.clear()
+    }
+  })
+
+  it("forgets removed event-list data without changing the current id", async () => {
+    const queryClient = freshClient()
+    queryClient.setQueryDefaults(["events", "list"], { gcTime: Infinity })
+    queryClient.setQueryDefaults(["users", "me"], { gcTime: Infinity })
+    const queryKey = eventsListQueryKey({ language: "ru" })
+    queryClient.setQueryData(queryKey, {
+      pages: [{ items: [makeEvent("a", "A"), makeEvent("b", "B"), makeEvent("c", "C")] }],
+    })
+    queryClient.setQueryData(["users", "me"], {
+      pages: [
+        {
+          items: [makeEvent("foreign-before"), makeEvent("b"), makeEvent("foreign-after")],
+        },
+      ],
+    })
+
+    const { result, unmount } = renderHook(() => useEventNavigation("b"), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    try {
+      expect(result.current).toEqual({
+        prevId: "a",
+        prevTitle: "A",
+        nextId: "c",
+        nextTitle: "C",
+      })
+
+      await act(async () => {
+        queryClient.removeQueries({ queryKey, exact: true })
+      })
+
+      expect(queryClient.getQueryData(queryKey)).toBeUndefined()
+      expect(queryClient.getQueryData(["users", "me"])).toBeDefined()
+      await waitFor(
+        () =>
+          expect(result.current).toEqual({
+            prevId: null,
+            prevTitle: null,
+            nextId: null,
+            nextTitle: null,
+          }),
+        { timeout: 1_000 }
+      )
+      expect(allEventsMock).not.toHaveBeenCalled()
+      expect(myEventsMock).not.toHaveBeenCalled()
+      expect(getEventMock).not.toHaveBeenCalled()
+    } finally {
+      unmount()
+      queryClient.clear()
+    }
+  })
 })
 
 describe("main events date-order identities", () => {

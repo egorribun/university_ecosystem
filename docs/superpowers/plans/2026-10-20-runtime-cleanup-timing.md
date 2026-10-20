@@ -71,3 +71,11 @@ AUD-096 has two expected reconnect failures in job 118465432563; cancellation, o
 AUD-097 has seven intended timing failures in frontend shard 118465493049 (2232 PASS / seven FAIL); disabled, failed-initialization and LHCI controls pass. The correction records the genuine provider-tree commit event before deferred telemetry initializes, reports once when both duration and reporter exist, and removes the listener on disabled or failed Web Vitals initialization. APP_TTI retains its wire name but is not browser TTI, completion of all Suspense descendants or route-data readiness. Two overload-related test typing errors are corrected without a suppression; the original fixture now publishes the actual hydration event instead of relying on telemetry initialization time.
 
 AUD-098 has an observed natural-exit watchdog failure in Node job 118463052515 (597 PASS / one FAIL, zero SKIP), while the real-timer IPC control passes. The correction unreferences only the diagnostic IPC channel after installing its message handler. It does not force exit or remove support for querying a genuinely live process. All three corrected findings await their own GREEN and are excluded from 99.
+
+## 2026-10-20 09:00 UTC — next shutdown regressions
+
+AUD-111 adds two selected synthetic-thread cases for failed-start handling and one shared 1.8-second join budget; one RED is predicted, not yet observed. No real thread is created by these tests. Only backend workflow line 155 changes and its 631-line span/300-second bound are retained.
+
+AUD-115 uses the pinned real Go BatchSpanProcessor through a behavior-equivalent constructor seam. An ended sampled span must flush after parent cancellation, exporter shutdown must receive a future deadline, and repeated public cleanup must not duplicate export/shutdown. The test directly shuts down its retained processor under a separate one-second context in cleanup even when assertions fail, then restores provider/propagator hooks. This cleanup is not production proof. The production canceled context remains unchanged pending RED. No network exporter, SDK change or new waiver is introduced.
+
+Current verified audit lower bound is 109/512. e150 remains the last fully accepted CI source; unresolved outage and public-sentinel approval are unchanged.

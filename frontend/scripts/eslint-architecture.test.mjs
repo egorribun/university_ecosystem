@@ -190,13 +190,9 @@ for (const componentPath of [
       componentPath
     )
 
+    const warnings = messages.filter(({ ruleId }) => ruleId === "i18next/no-literal-string")
     assert.equal(messages.some(({ fatal }) => fatal), false)
-    assert.deepEqual(
-      messages
-        .filter(({ ruleId }) => ruleId === "i18next/no-literal-string")
-        .map(({ severity }) => severity),
-      [1]
-    )
+    assert.deepEqual(warnings.map(({ severity }) => severity), [1])
   })
 
   test(`${componentPath} preserves translated text and existing exemptions`, async () => {
@@ -215,8 +211,9 @@ for (const componentPath of [
       componentPath
     )
 
+    const warnings = messages.filter(({ ruleId }) => ruleId === "i18next/no-literal-string")
     assert.equal(messages.some(({ fatal }) => fatal), false)
-    assert.deepEqual(messages.filter(({ ruleId }) => ruleId === "i18next/no-literal-string"), [])
+    assert.deepEqual(warnings, [])
   })
 
   test(`${componentPath} keeps test fixtures exempt from translation warnings`, async () => {
@@ -225,7 +222,8 @@ for (const componentPath of [
       componentPath.replace(/\.tsx$/, ".test.tsx")
     )
 
+    const warnings = messages.filter(({ ruleId }) => ruleId === "i18next/no-literal-string")
     assert.equal(messages.some(({ fatal }) => fatal), false)
-    assert.deepEqual(messages.filter(({ ruleId }) => ruleId === "i18next/no-literal-string"), [])
+    assert.deepEqual(warnings, [])
   })
 }

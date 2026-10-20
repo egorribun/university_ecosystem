@@ -238,3 +238,11 @@ AUD-104's diagnostic frames establish native forward Tab scrolls out of compact 
 AUD-107 has two actual first-shortcut failures and two passing controls in job 118524019167 (2284 PASS / two FAIL). Preserve real lazy loading and the normal mounted toggle owner while addressing queued opening intent. No corrected-source acceptance yet.
 
 The correction queues store-local opening intent until the lazy dialog subscribes, then leaves shortcut toggles to the existing dialog handler. Escape and final cleanup clear pending intent; no event replay or module-global flag is introduced. Current four regressions do not establish deterministic cold-import/unmount race coverage.
+
+## 2026-10-20 09:00 UTC — native keyboard and strict search verified
+
+Source 3cc49cd / checkout 257a3d35 share tree eaf9ec9857c808adb96a3888e1e404584c48befe. Core job 118535048190 has 36 PASS / two fixed SKIP, successful cleanup, receipt 12251734381 and digest 010b1a9fe601740208d87897c3462d7850da6e7e30cd7f3e54dec34497a0d982. AUD-104 and AUD-105 enter the ledger: compact traversal is tested with independent valid forward/reverse preconditions, and six shared strict search instances pass. SearchDialog has 23 behavior plus three focus-trap passes; regular-helper TypeScript/ESLint passes. This is not the whole nightly suite or service-worker search proof.
+
+AUD-107 has four real-dialog and eighteen existing lifecycle passes in job 118536398994 (2286 PASS). Six new store ownership/cleanup controls remain unexecuted; keep it outside the ledger until checked. No deterministic cold-import/native race claim.
+
+Next tests-first cases cover AUD-110's actual serialized motion collector, AUD-112's actual regular diagnostic classifier, AUD-113 cache updates/removal, and AUD-114 dirty same-item refresh with reset controls. Existing behavior is retained before RED; preserve pristine refresh and all source/image cleanup controls. Motion collection uses root plus descendants and actual JSDOM styles without changing Core's inventory. Latest verified lower bound: 109/512.

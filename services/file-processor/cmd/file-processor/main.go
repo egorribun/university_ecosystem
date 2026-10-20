@@ -103,6 +103,7 @@ var (
 	newOTelResourceFunc = func(ctx context.Context, options ...resource.Option) (*resource.Resource, error) {
 		return resource.New(ctx, options...)
 	}
+	newOTelBatchSpanProcessorFunc = sdktrace.NewBatchSpanProcessor
 )
 
 // legacyNatsJetStream keeps the legacy subscriber seam narrow enough to test
@@ -1404,7 +1405,7 @@ func initTracer(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*
 	}
 
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter),
+		sdktrace.WithSpanProcessor(newOTelBatchSpanProcessorFunc(exporter)),
 		sdktrace.WithResource(res),
 	)
 	otel.SetTracerProvider(tp)

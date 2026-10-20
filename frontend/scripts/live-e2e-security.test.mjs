@@ -1,9 +1,12 @@
 import assert from "node:assert/strict"
+import { spawnSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises"
+import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import test from "node:test"
+import { fileURLToPath } from "node:url"
 import {
   assertNoLiveE2EOutputOverride,
   resolveLiveE2EOutputDirectory,
@@ -206,4 +209,207 @@ test("live group messenger acceptance checks member delivery and non-member isol
     spec,
     /loginAs\([^\n]*["']admin["']|routeWebSocket|WebSocket\s*=\s*new\s+Mock/u
   )
+})
+
+test("live Playwright collection has a closed source inventory", async (t) => {
+  const requireCollection = (condition) => {
+    if (!condition) throw new Error("Live Playwright collection contract failed")
+  }
+  const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value)
+
+  let phase = "versions"
+  let ownedRoot
+  let summary
+  try {
+    const frontendRoot = await realpath(fileURLToPath(new URL("../", import.meta.url)))
+    const liveRoot = path.join(frontendRoot, "tests", "e2e-live")
+    const suppliedSha = process.env.GITHUB_SHA
+    const sourceSha = suppliedSha === undefined ? "unverified" : suppliedSha
+    requireCollection(sourceSha === "unverified" || /^[0-9a-f]{40}$/u.test(sourceSha))
+    requireCollection(!process.env.CI || sourceSha !== "unverified")
+
+    const require = createRequire(import.meta.url)
+    const packagePath = require.resolve("playwright/package.json")
+    const playwrightPackage = JSON.parse(await readFile(packagePath, "utf8"))
+    const testPackage = JSON.parse(
+      await readFile(require.resolve("@playwright/test/package.json"), "utf8")
+    )
+    requireCollection(playwrightPackage.version === "1.63.0" && testPackage.version === "1.63.0")
+    const cli = path.join(path.dirname(packagePath), "cli.js")
+
+    phase = "inventory"
+    const launcher = await readFile(
+      path.join(frontendRoot, "..", "scripts", "live_stand.py"),
+      "utf8"
+    )
+    const inventory = launcher.match(
+      /^_PLAYWRIGHT_FAILURE_DECLARATION_SOURCES = \(\n([\s\S]*?)^\)/mu
+    )
+    requireCollection(inventory !== null)
+    const reviewed = new Set()
+    for (const line of inventory[1].trimEnd().split("\n")) {
+      const entry = line.match(/^    "(tests\/e2e-live\/[a-z0-9-]+\.live\.spec\.ts)",$/u)
+      requireCollection(entry !== null)
+      requireCollection(!reviewed.has(entry[1]))
+      reviewed.add(entry[1])
+    }
+    requireCollection(reviewed.size > 0 && reviewed.size <= 256)
+
+    phase = "spawn"
+    ownedRoot = await mkdtemp(path.join(tmpdir(), "ue-live-playwright-"))
+    const outputDirectory = path.join(ownedRoot, "playwright-output")
+    await mkdir(outputDirectory)
+    await writeFile(
+      path.join(ownedRoot, ".ue-live-e2e-output-owner"),
+      "ue-live-playwright-output-v1\n",
+      { flag: "wx" }
+    )
+    for (const name of ["npm-userconfig", "npm-globalconfig"]) {
+      await writeFile(path.join(ownedRoot, name), "", { flag: "wx" })
+    }
+
+    const environment = {
+      CI: "true",
+      HOME: ownedRoot,
+      PATH: path.dirname(process.execPath),
+      TMPDIR: tmpdir(),
+      TMP: tmpdir(),
+      TEMP: tmpdir(),
+      LANG: "C.UTF-8",
+      LC_ALL: "C.UTF-8",
+      LIVE_BASE_URL: "http://localhost:20000",
+      LIVE_MAILPIT_URL: "http://127.0.0.1:20001",
+      TEST_PASSWORD: randomBytes(32).toString("base64url"),
+      LIVE_E2E_OUTPUT_DIR: outputDirectory,
+      PLAYWRIGHT_TEST_OUTPUT_DIR: outputDirectory,
+      NPM_CONFIG_USERCONFIG: path.join(ownedRoot, "npm-userconfig"),
+      NPM_CONFIG_GLOBALCONFIG: path.join(ownedRoot, "npm-globalconfig"),
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1",
+    }
+    if (process.platform === "win32") {
+      requireCollection(
+        typeof process.env.SYSTEMROOT === "string" && process.env.SYSTEMROOT.length > 0
+      )
+      environment.SYSTEMROOT = process.env.SYSTEMROOT
+    }
+
+    const collected = spawnSync(
+      process.execPath,
+      [cli, "test", "--list", "--reporter=json", "--config=playwright.live.config.ts"],
+      {
+        cwd: frontendRoot,
+        env: environment,
+        shell: false,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        encoding: "utf8",
+        timeout: 60_000,
+        killSignal: "SIGKILL",
+        maxBuffer: 8 * 1024 * 1024,
+      }
+    )
+    requireCollection(
+      collected.error === undefined &&
+        collected.signal === null &&
+        collected.status === 0 &&
+        typeof collected.stdout === "string" &&
+        collected.stdout.length > 0
+    )
+
+    phase = "report-root"
+    const report = JSON.parse(collected.stdout)
+    requireCollection(isRecord(report))
+    requireCollection(Array.isArray(report.errors) && report.errors.length === 0)
+    requireCollection(isRecord(report.config))
+    requireCollection(
+      typeof report.config.rootDir === "string" && path.resolve(report.config.rootDir) === liveRoot
+    )
+    requireCollection(Array.isArray(report.suites))
+
+    phase = "projects"
+    requireCollection(Array.isArray(report.config.projects) && report.config.projects.length === 2)
+    const projectNames = report.config.projects.map((project) => {
+      requireCollection(isRecord(project))
+      requireCollection(project.name === "desktop" || project.name === "mobile")
+      requireCollection(project.repeatEach === 1)
+      return project.name
+    })
+    requireCollection(new Set(projectNames).size === 2)
+
+    const counts = { desktop: 0, mobile: 0 }
+    const seenFiles = { desktop: new Set(), mobile: new Set() }
+    const identities = new Set()
+    const pending = [...report.suites]
+    let visited = 0
+    while (pending.length > 0) {
+      phase = "spec-path"
+      visited += 1
+      requireCollection(visited <= 10_000)
+      const suite = pending.pop()
+      requireCollection(isRecord(suite))
+      requireCollection(Array.isArray(suite.specs))
+      if (suite.suites !== undefined) {
+        requireCollection(Array.isArray(suite.suites))
+        requireCollection(pending.length + suite.suites.length <= 10_000)
+        pending.push(...suite.suites)
+      }
+      for (const spec of suite.specs) {
+        phase = "spec-path"
+        requireCollection(isRecord(spec))
+        requireCollection(
+          typeof spec.file === "string" && /^[a-z0-9-]+\.live\.spec\.ts$/u.test(spec.file)
+        )
+        const source = `tests/e2e-live/${spec.file}`
+        requireCollection(reviewed.has(source))
+        requireCollection(
+          typeof spec.id === "string" && spec.id.length > 0 && spec.id.length <= 256
+        )
+        requireCollection(
+          Number.isSafeInteger(spec.line) &&
+            spec.line > 0 &&
+            Number.isSafeInteger(spec.column) &&
+            spec.column > 0
+        )
+
+        phase = "instances"
+        requireCollection(Array.isArray(spec.tests) && spec.tests.length > 0)
+        for (const instance of spec.tests) {
+          requireCollection(isRecord(instance))
+          const project = instance.projectName
+          requireCollection(project === "desktop" || project === "mobile")
+          requireCollection(Array.isArray(instance.results) && instance.results.length === 0)
+          const identity = JSON.stringify([project, source, spec.id])
+          requireCollection(!identities.has(identity))
+          identities.add(identity)
+          requireCollection(identities.size <= 10_000)
+          counts[project] += 1
+          seenFiles[project].add(source)
+        }
+      }
+    }
+
+    phase = "coverage"
+    for (const project of ["desktop", "mobile"]) {
+      requireCollection(counts[project] > 0)
+      requireCollection(seenFiles[project].size === reviewed.size)
+      for (const source of reviewed) {
+        requireCollection(seenFiles[project].has(source))
+      }
+    }
+    summary =
+      `live collection source_sha=${sourceSha} files=${reviewed.size} projects=2 ` +
+      `desktop=${counts.desktop} mobile=${counts.mobile} total=${identities.size}`
+  } catch {
+    // Phase is assigned only fixed literals, never captured child or report data.
+    throw new Error(`Live Playwright collection unavailable or invalid phase=${phase}`)
+  } finally {
+    if (ownedRoot !== undefined) {
+      try {
+        await rm(ownedRoot, { recursive: true, force: true })
+      } catch {
+        throw new Error("Live Playwright collection temporary cleanup failed")
+      }
+    }
+  }
+  t.diagnostic(summary)
 })

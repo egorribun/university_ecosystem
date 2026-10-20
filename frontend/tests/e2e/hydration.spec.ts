@@ -1,6 +1,7 @@
 import { expect, test } from "./test"
 import { gotoWithTransientRetry } from "./utils/navigation"
 import { useMockApi } from "./utils/mockApi"
+import { isHydrationDiagnostic } from "./utils/hydrationDiagnostics"
 
 test.describe("React Hydration Verification", () => {
   let hydrationErrors: string[] = []
@@ -34,11 +35,11 @@ test.describe("React Hydration Verification", () => {
 
     // 1. Test public /login first (does not require login token)
     await page.goto("/login", { waitUntil: "domcontentloaded", timeout: 30_000 })
-    expect(hydrationErrors.filter((err) => err.toLowerCase().includes("hydration"))).toEqual([])
+    expect(hydrationErrors.filter((err) => isHydrationDiagnostic(err))).toEqual([])
 
     // 2. Log in mock student to access protected pages
     await mock.login(page)
-    expect(hydrationErrors.filter((err) => err.toLowerCase().includes("hydration"))).toEqual([])
+    expect(hydrationErrors.filter((err) => isHydrationDiagnostic(err))).toEqual([])
 
     // Clear capture list before navigating protected sections
     hydrationErrors = []
@@ -55,10 +56,7 @@ test.describe("React Hydration Verification", () => {
         timeout: 15_000,
       })
       // Assert no hydration-specific errors or mismatches
-      const hydrationSpecific = hydrationErrors.filter(
-        (err) =>
-          err.toLowerCase().includes("hydration") || err.toLowerCase().includes("did not match")
-      )
+      const hydrationSpecific = hydrationErrors.filter((err) => isHydrationDiagnostic(err, true))
       expect(hydrationSpecific).toEqual([])
     }
   })

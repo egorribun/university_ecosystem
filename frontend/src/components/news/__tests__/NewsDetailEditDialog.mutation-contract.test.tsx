@@ -532,4 +532,134 @@ describe("NewsDetailEditDialog mutation contracts", () => {
     expect(screen.queryByRole("button", { name: "common:buttons.reset" })).not.toBeInTheDocument()
     vi.restoreAllMocks()
   })
+
+  it("preserves dirty text through a same-item refresh and saves the draft", async () => {
+    const user = userEvent.setup()
+    const view = renderDialog()
+
+    try {
+      const draft = {
+        ...initialData,
+        title: "Unsaved draft title",
+        content: "Unsaved draft content",
+      }
+      fireEvent.change(screen.getByDisplayValue(initialData.title), {
+        target: { value: draft.title },
+      })
+      fireEvent.change(screen.getByDisplayValue(initialData.content), {
+        target: { value: draft.content },
+      })
+      expect(screen.getByDisplayValue(draft.title)).toHaveValue(draft.title)
+      expect(screen.getByDisplayValue(draft.content)).toHaveValue(draft.content)
+
+      const refreshed = {
+        ...initialData,
+        title: "Refreshed server title",
+        content: "Refreshed server content",
+      }
+      view.rerender(
+        <QueryClientProvider client={view.client}>
+          <NewsDetailEditDialog {...makeProps({ initialData: refreshed })} />
+        </QueryClientProvider>
+      )
+
+      expect(screen.getByDisplayValue(draft.title)).toHaveValue(draft.title)
+      expect(screen.getByDisplayValue(draft.content)).toHaveValue(draft.content)
+      expect(screen.queryByDisplayValue(refreshed.title)).not.toBeInTheDocument()
+      expect(screen.queryByDisplayValue(refreshed.content)).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+      await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+      expect(apiMocks.updateNews).toHaveBeenCalledWith("news-contract", draft)
+      expect(apiMocks.fetchNewsItem).not.toHaveBeenCalled()
+      expect(apiMocks.uploadNewsImage).not.toHaveBeenCalled()
+    } finally {
+      view.unmount()
+      view.client.clear()
+    }
+  })
+
+  it("discards dirty text on cancel and reloads current data on reopen", async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    const view = renderDialog({ onClose })
+
+    try {
+      fireEvent.change(screen.getByDisplayValue(initialData.title), {
+        target: { value: "Cancelled draft title" },
+      })
+      fireEvent.change(screen.getByDisplayValue(initialData.content), {
+        target: { value: "Cancelled draft content" },
+      })
+
+      await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+      expect(onClose).toHaveBeenCalledOnce()
+      expect(apiMocks.updateNews).not.toHaveBeenCalled()
+      view.rerender(
+        <QueryClientProvider client={view.client}>
+          <NewsDetailEditDialog {...makeProps({ open: false, onClose })} />
+        </QueryClientProvider>
+      )
+
+      const replacement = {
+        ...initialData,
+        title: "Current title on reopen",
+        content: "Current content on reopen",
+      }
+      view.rerender(
+        <QueryClientProvider client={view.client}>
+          <NewsDetailEditDialog {...makeProps({ open: true, onClose, initialData: replacement })} />
+        </QueryClientProvider>
+      )
+
+      expect(await screen.findByDisplayValue(replacement.title)).toHaveValue(replacement.title)
+      expect(screen.getByDisplayValue(replacement.content)).toHaveValue(replacement.content)
+      expect(screen.queryByDisplayValue("Cancelled draft title")).not.toBeInTheDocument()
+      expect(screen.queryByDisplayValue("Cancelled draft content")).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+      await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+      expect(apiMocks.updateNews).toHaveBeenCalledWith("news-contract", replacement)
+    } finally {
+      view.unmount()
+      view.client.clear()
+    }
+  })
+
+  it("resets a dirty open form when switching to a different news item", async () => {
+    const user = userEvent.setup()
+    const view = renderDialog()
+
+    try {
+      fireEvent.change(screen.getByDisplayValue(initialData.title), {
+        target: { value: "Previous item draft title" },
+      })
+      fireEvent.change(screen.getByDisplayValue(initialData.content), {
+        target: { value: "Previous item draft content" },
+      })
+
+      const replacement = {
+        ...initialData,
+        title: "Different item title",
+        content: "Different item content",
+      }
+      view.rerender(
+        <QueryClientProvider client={view.client}>
+          <NewsDetailEditDialog {...makeProps({ newsId: "news-next", initialData: replacement })} />
+        </QueryClientProvider>
+      )
+
+      expect(await screen.findByDisplayValue(replacement.title)).toHaveValue(replacement.title)
+      expect(screen.getByDisplayValue(replacement.content)).toHaveValue(replacement.content)
+      expect(screen.queryByDisplayValue("Previous item draft title")).not.toBeInTheDocument()
+      expect(screen.queryByDisplayValue("Previous item draft content")).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+      await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+      expect(apiMocks.updateNews).toHaveBeenCalledWith("news-next", replacement)
+    } finally {
+      view.unmount()
+      view.client.clear()
+    }
+  })
 })

@@ -1103,3 +1103,80 @@ def test_notification_queue_metrics_require_prometheus() -> None:
     ):
         with pytest.raises(RuntimeError, match="prometheus-client"):
             observability.create_notification_queue_metrics()
+
+
+@pytest.mark.parametrize(
+    "first_start_fails",
+    [False, True],
+    ids=["all-started-control", "first-start-runtime-error"],
+)
+def test_bounded_shutdown_joins_only_started_threads_with_shared_budget(
+    first_start_fails: bool,
+) -> None:
+    from app.core import observability
+
+    providers = (object(), object(), object())
+    threads = [MagicMock() for _ in providers]
+    events: list[tuple[str, int]] = []
+    joined: list[tuple[int, float]] = []
+    now = [10.0]
+
+    for index, thread in enumerate(threads):
+
+        def start(index: int = index) -> None:
+            events.append(("start", index))
+            if first_start_fails and index == 0:
+                raise RuntimeError("synthetic thread start failure")
+
+        def join(*, timeout: float, index: int = index) -> None:
+            events.append(("join", index))
+            if first_start_fails and index == 0:
+                raise RuntimeError("cannot join thread before it is started")
+            joined.append((index, timeout))
+            now[0] += 0.6
+
+        thread.start.side_effect = start
+        thread.join.side_effect = join
+        thread.is_alive.return_value = False
+
+    factory = MagicMock(side_effect=threads)
+    monotonic = MagicMock(side_effect=lambda: now[0])
+    logger = MagicMock()
+    with (
+        patch.object(observability, "threading", SimpleNamespace(Thread=factory)),
+        patch.object(observability, "time", SimpleNamespace(monotonic=monotonic)),
+        patch.object(observability, "_logger", logger),
+    ):
+        observability._shutdown_otel_providers_bounded(providers)
+
+    assert factory.call_count == len(providers)
+    for index, (provider, constructor_call) in enumerate(
+        zip(providers, factory.call_args_list, strict=True), start=1
+    ):
+        assert constructor_call.args == ()
+        assert constructor_call.kwargs == {
+            "target": observability._shutdown_otel_provider,
+            "args": (provider,),
+            "name": f"otel-shutdown-{index}",
+            "daemon": True,
+        }
+
+    successful_indices = [1, 2] if first_start_fails else [0, 1, 2]
+    assert events == [
+        *[("start", index) for index in range(len(providers))],
+        *[("join", index) for index in successful_indices],
+    ]
+    assert [index for index, _timeout in joined] == successful_indices
+    expected_budgets = [1.8, 1.2] if first_start_fails else [1.8, 1.2, 0.6]
+    assert [timeout for _index, timeout in joined] == pytest.approx(expected_budgets)
+    assert monotonic.call_count == 1 + len(successful_indices)
+
+    for index, thread in enumerate(threads):
+        thread.start.assert_called_once_with()
+        if index in successful_indices:
+            assert thread.join.call_count == 1
+            thread.is_alive.assert_called_once_with()
+        else:
+            thread.join.assert_not_called()
+            thread.is_alive.assert_not_called()
+    logger.warning.assert_not_called()

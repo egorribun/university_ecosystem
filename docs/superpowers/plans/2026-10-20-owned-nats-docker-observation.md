@@ -151,3 +151,7 @@ Service workers are blocked only for the three new controlled Core search scenar
 ## 2026-10-20 08:34 UTC — composition RED and bounded correction
 
 On ce03, focused job 118523935315 executes all sixteen new observation cases: twelve unavailable-stub failures and four passing admission controls. Overall 964 PASS / fifteen FAIL in 273.91 seconds includes two documentation failures and the intentional outage hold. The correction snapshots the owner, prepares once, calls existing run_private_process once with the identical Deadline, and decodes against that snapshot. No caller or outage is enabled. Require all sixteen corrected-source passes before accepting this boundary; it does not establish real daemon inventory or provenance. Sentinel approval remains pending; baseline and dispositions are unchanged.
+
+## 2026-10-20 09:00 UTC — composition verified, runtime still disabled
+
+Source 3cc49cd and identical-tree checkout 257a3d35: focused job 118535985402 passes all sixteen named Compose observation cases at 08:47:01–05 UTC. Overall 978 PASS / one intentional outage hold in 267.37 seconds. The previous 48 preparation/decode and 73 daemon contracts remain selected. This does not establish real daemon provenance or authorize runtime admission. No coordinator/CLI/outage activation, baseline/disposition edit or new process waiver occurs. Public-sentinel approval remains pending.

@@ -538,3 +538,184 @@ describe("DeferredGlobalOverlays", () => {
     }
   })
 })
+
+describe("deferred search intent ownership", () => {
+  const keydown = (key: string, options: KeyboardEventInit = {}) =>
+    new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key,
+      ...options,
+    })
+
+  it("retains a shortcut after an ordinary interaction already promoted the store", () => {
+    const store = createDeferredOverlayStore()
+    const notify = vi.fn()
+    const unsubscribe = store.subscribe(notify)
+    let unsubscribeOpen: (() => void) | undefined
+
+    try {
+      document.dispatchEvent(keydown("a"))
+      expect(store.getSnapshot()).toBe(true)
+      expect(notify).toHaveBeenCalledOnce()
+
+      const shortcut = keydown("k", { ctrlKey: true })
+      document.dispatchEvent(shortcut)
+      expect(shortcut.defaultPrevented).toBe(true)
+
+      const open = vi.fn()
+      unsubscribeOpen = store.subscribeOpenRequest(open)
+
+      expect(open).toHaveBeenCalledOnce()
+      expect(notify).toHaveBeenCalledOnce()
+    } finally {
+      unsubscribeOpen?.()
+      unsubscribe()
+    }
+  })
+
+  it("cancels a pending search request when Escape arrives before attachment", () => {
+    const store = createDeferredOverlayStore()
+    const unsubscribe = store.subscribe(vi.fn())
+    let unsubscribeOpen: (() => void) | undefined
+
+    try {
+      document.dispatchEvent(keydown("k", { metaKey: true }))
+      const escape = keydown("Escape")
+      document.dispatchEvent(escape)
+
+      const open = vi.fn()
+      unsubscribeOpen = store.subscribeOpenRequest(open)
+
+      expect(store.getSnapshot()).toBe(true)
+      expect(escape.defaultPrevented).toBe(false)
+      expect(open).not.toHaveBeenCalled()
+    } finally {
+      unsubscribeOpen?.()
+      unsubscribe()
+    }
+  })
+
+  it("consumes pending intent once and leaves mounted shortcuts to the dialog", () => {
+    const store = createDeferredOverlayStore()
+    const unsubscribe = store.subscribe(vi.fn())
+    let unsubscribeOpen: (() => void) | undefined
+
+    try {
+      document.dispatchEvent(keydown("k", { ctrlKey: true }))
+      document.dispatchEvent(keydown("k", { metaKey: true }))
+
+      const firstOpen = vi.fn()
+      unsubscribeOpen = store.subscribeOpenRequest(firstOpen)
+      expect(firstOpen).toHaveBeenCalledOnce()
+
+      unsubscribeOpen()
+      const mountedOpen = vi.fn()
+      unsubscribeOpen = store.subscribeOpenRequest(mountedOpen)
+      expect(mountedOpen).not.toHaveBeenCalled()
+
+      const shortcut = keydown("k", { ctrlKey: true })
+      document.dispatchEvent(shortcut)
+
+      expect(shortcut.defaultPrevented).toBe(false)
+      expect(firstOpen).toHaveBeenCalledOnce()
+      expect(mountedOpen).not.toHaveBeenCalled()
+    } finally {
+      unsubscribeOpen?.()
+      unsubscribe()
+    }
+  })
+
+  it("ignores an old capture callback after cleanup and restart", () => {
+    const addEventListener = vi.spyOn(document, "addEventListener")
+    const removeEventListener = vi.spyOn(document, "removeEventListener")
+    const store = createDeferredOverlayStore()
+    const unsubscribe = store.subscribe(vi.fn())
+    let unsubscribeRestarted: (() => void) | undefined
+    let unsubscribeOpen: (() => void) | undefined
+
+    try {
+      const registration = addEventListener.mock.calls.find(
+        ([eventName]) => eventName === "keydown"
+      )
+      expect(registration).toBeDefined()
+      const capture = registration?.[1] as EventListener
+
+      document.dispatchEvent(keydown("k", { ctrlKey: true }))
+      unsubscribe()
+      expect(removeEventListener).toHaveBeenCalledWith("keydown", capture)
+
+      unsubscribeRestarted = store.subscribe(vi.fn())
+      const staleShortcut = keydown("k", { metaKey: true })
+      capture(staleShortcut)
+
+      const open = vi.fn()
+      unsubscribeOpen = store.subscribeOpenRequest(open)
+
+      expect(staleShortcut.defaultPrevented).toBe(false)
+      expect(store.getSnapshot()).toBe(false)
+      expect(open).not.toHaveBeenCalled()
+    } finally {
+      unsubscribeOpen?.()
+      unsubscribeRestarted?.()
+      unsubscribe()
+      addEventListener.mockRestore()
+      removeEventListener.mockRestore()
+    }
+  })
+
+  it("preserves an owner reattached before the lifecycle subscription restarts", () => {
+    const store = createDeferredOverlayStore()
+    const unsubscribe = store.subscribe(vi.fn())
+    const unsubscribeFirstOpen = store.subscribeOpenRequest(vi.fn())
+    let unsubscribeRestarted: (() => void) | undefined
+    let unsubscribeOpen: (() => void) | undefined
+
+    try {
+      unsubscribe()
+      unsubscribeFirstOpen()
+
+      const open = vi.fn()
+      unsubscribeOpen = store.subscribeOpenRequest(open)
+      unsubscribeRestarted = store.subscribe(vi.fn())
+
+      const mountedShortcut = keydown("k", { ctrlKey: true })
+      document.dispatchEvent(mountedShortcut)
+
+      expect(mountedShortcut.defaultPrevented).toBe(false)
+      expect(open).not.toHaveBeenCalled()
+
+      unsubscribeOpen()
+      document.dispatchEvent(keydown("k", { metaKey: true }))
+      const replacementOpen = vi.fn()
+      unsubscribeOpen = store.subscribeOpenRequest(replacementOpen)
+
+      expect(replacementOpen).toHaveBeenCalledOnce()
+    } finally {
+      unsubscribeOpen?.()
+      unsubscribeRestarted?.()
+      unsubscribeFirstOpen()
+      unsubscribe()
+    }
+  })
+
+  it("does not queue an opening request for a shortcut already handled elsewhere", () => {
+    const store = createDeferredOverlayStore()
+    const unsubscribe = store.subscribe(vi.fn())
+    let unsubscribeOpen: (() => void) | undefined
+
+    try {
+      const shortcut = keydown("k", { ctrlKey: true })
+      shortcut.preventDefault()
+      document.dispatchEvent(shortcut)
+      const open = vi.fn()
+      unsubscribeOpen = store.subscribeOpenRequest(open)
+
+      expect(shortcut.defaultPrevented).toBe(true)
+      expect(open).not.toHaveBeenCalled()
+    } finally {
+      unsubscribeOpen?.()
+      unsubscribe()
+    }
+  })
+})

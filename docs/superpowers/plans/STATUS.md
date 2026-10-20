@@ -317,3 +317,36 @@ Source ce03f6482c3c71f2902793337e47b3c2cf0925d6 and checkout 0cac93a97566369420b
 Core cleanup and metadata receipt upload succeeded; artifact 12250332856 has digest 8c2255611329324e2477771ed9f6f27cacf643229987667dce6a8c5db22435e9. This does not turn the failed Core run into acceptance.
 
 Baseline 319, dispositions 263, the pending public-sentinel approval, 78 required context/app pairs, blocking CodeQL, migration exception and the last fully accepted source e150 remain unchanged. No full-green or release claim is made.
+
+## Verification checkpoint — 2026-10-20 09:00 UTC
+
+Source 3cc49cd1e500f2960625e018942a6efaee842e2d and checkout 257a3d35376b0cb12b6aedb6c9cba883f16660b7 share tree eaf9ec9857c808adb96a3888e1e404584c48befe. The verified lower bound is now 109/512 (21.3%), adding AUD-104, AUD-105 and AUD-109.
+
+### Newly verified original findings
+
+- AUD-104: Core run 39394888535 / job 118535048190 reports 36 PASS / two existing SKIP at 08:56:45 UTC. Both projects execute the corrected native-keyboard scenario. Forward Tab skips the disabled hidden name; reverse Tab independently starts from a re-established compact state while settings retains focus, then reaches the avatar. Returning to expanded state restores name access and Enter navigation. This corrects a demonstrated test-precondition error, not a production scrolling behavior. The prior component suite remains 12 PASS in job 118536398965.
+- AUD-105: that same Core run passes all six controlled search instances after real authentication. Shared regular/live scenario functions require the exact query, successful controlled response and visible results, highlights or positive empty state; missing UI cannot pass. SearchDialog's 23 behavior cases and three focus-trap cases pass in job 118536398965 (2263 PASS total). The corrected regular utility alias passes TypeScript and ESLint in job 118536398935; its only remaining formatting warning names the separate architecture-test file. This is not proof of the whole main-only regular nightly suite, native backend search, or service-worker search behavior.
+- AUD-109: job 118535985402 passes all four bilingual defaults/explicit-override cases at 08:48:23–24 UTC. The per-process CPU-derived defaults and 540-second recycle are documented consistently; the explicit 5/5 override remains unchanged. No runtime defaults were altered.
+
+Owned Core cleanup and receipt upload succeed. Artifact 12251734381 has digest 010b1a9fe601740208d87897c3462d7850da6e7e30cd7f3e54dec34497a0d982.
+
+### Remaining work and bounded evidence
+
+The focused backend cohort reports 978 PASS / one intentional disabled-outage hold in 267.37 seconds. All sixteen named Compose observation cases pass at 08:47:01–05 UTC, in addition to the preceding preparation/decode and daemon-observation contracts. This accepts the tested composition boundary only: no runtime caller, daemon provenance, coordinator, CLI or outage is activated.
+
+AUD-106 now has actual hosted RED: Node job 118536398799 reports 613 PASS / three FAIL (616 total). Each moved navigation component fails its untranslated-JSX warning case; all six translation/exemption controls pass. Correct only the three obsolete ESLint file paths. Extract warning arrays in the tests without changing rule identity, severity or expected values to remove the remaining formatting ambiguity; require hosted GREEN.
+
+AUD-107's four real-dialog shortcut cases and eighteen existing lifecycle cases pass in job 118536398994 (2286 PASS total). Six supplementary store-level cases now cover post-promotion intent, Escape, one-time consumption, mounted ownership, stale callbacks, replay ordering and already-prevented shortcuts. Those new cases are unexecuted; this finding remains outside the ledger pending their proof. They do not claim deterministic cold-module loading or native-browser race coverage.
+
+### Next tests-first slice
+
+- AUD-110 extracts the actual browser-serialized reduced-motion collector without correcting its parser yet. Twelve selected Vitest cases use owned DOM and actual JSDOM computed styles: five predicted list/unit failures and seven controls, preserving root/descendant order, literal SVG-tag exclusion, hidden HTML inspection and the ten-offender cap. No Core inventory, threshold or regular browser scenario count changes. Collector proof is not native Chromium reduced-motion acceptance.
+- AUD-111 adds two selected synthetic-thread orchestration cases. One failed thread start must not prevent joining successfully started threads under the shared 1.8-second budget. No real threads run in this new test; implementation remains unchanged pending RED.
+- AUD-112 extracts the actual regular hydration diagnostic classifier with existing phase-specific behavior unchanged. Twenty-four cases in the already-selected hydration suite predict six minified-code failures and eighteen controls. No claim that the regular browser scenario ran.
+- AUD-113 adds three real QueryClient update/removal cases with unchanged current event ID, owned-client cleanup and local infinite GC retention. No rerender, mocked cache subscription or network request supplies the expected change; implementation remains unchanged pending RED.
+- AUD-114 adds one dirty-refresh regression and two cancel/reopen/new-item controls using the actual dialog. Existing pristine-refresh, language/source and image-cleanup controls remain intact. This slice covers Russian-editor text, not all dirty image or English-source races.
+- AUD-115 adds a real BatchSpanProcessor cancellation/flush regression and an equivalent constructor seam. A retained processor receives independent bounded test cleanup even on assertion failure; public shutdown is observed before that cleanup. The canceled production context remains unchanged pending RED. No network exporter, SDK upgrade or new lint waiver is introduced.
+
+The hosted collection contract invokes pinned Playwright 1.63.0 --list with an explicit synthetic environment and owned temporary output. It privately validates exact source coverage and both projects, then emits only source SHA and integer counts. Failure output uses fixed phases, never raw JSON/stderr/environment. Listing imports modules but runs no browser, stand, global setup or test bodies. A direct-child timeout is not descendant containment. The historical full-suite 190 PASS / eight fixed runtime SKIP gate is unchanged until exact collection and runtime-skip evidence are reconciled.
+
+Only backend workflow line 155 adds the two cheap orchestration cases; its 631-line span, protected lines and 300-second budget remain. Baseline 319, dispositions 263, pending public-sentinel approval, 78 required context/app pairs, blocking CodeQL and finite migration exception are unchanged. e150 remains the last fully accepted CI source; current partial GREEN and intentional holds do not constitute full acceptance or release.
