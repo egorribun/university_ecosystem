@@ -13,6 +13,7 @@ from pathlib import Path
 from shutil import which
 from typing import Any
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -72,15 +73,29 @@ PRECOMMIT_SEMGREP_IMAGE = (
 )
 
 _DIGEST = re.compile(r"@sha256:[0-9a-f]{64}$")
-_SCRIPT_IMAGE = re.compile(
-    r"(?<![A-Za-z0-9_./-])(?:"
-    r"[a-z0-9.-]+(?:/[a-z0-9._-]+)+(?::[A-Za-z0-9._-]+)?"
-    r"|(?:redis|nats|alpine|caddy|postgres|mysql|mongo|rabbitmq|ubuntu|debian|"
-    r"node|python|golang|rust):[A-Za-z0-9._-]+"
-    r")(?:@sha256:[0-9a-f]{64})?"
+_SHELL_ASSIGNMENT = re.compile(
+    r"(?m)^[ \t]*(?:export[ \t]+)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)=(?P<value>[^\n]*)$"
+)
+_SHELL_VARIABLE_REFERENCE = re.compile(
+    r"^\$(?:\{(?P<braced>[A-Za-z_][A-Za-z0-9_]*)\}|(?P<plain>[A-Za-z_][A-Za-z0-9_]*))$"
+)
+_POWERSHELL_ASSIGNMENT_START = re.compile(
+    r"(?im)^[ \t]*\$(?P<name>[A-Za-z_][A-Za-z0-9_]*)[ \t]*(?P<operator>\+=|-=|\*=|/=|%=|=)"
+)
+_POWERSHELL_LITERAL_ARRAY = re.compile(
+    r"(?ims)^[ \t]*\$(?P<name>[A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*@\([ \t]*"
+    r"(?P<items>.*?)^[ \t]*\)[ \t]*$"
+)
+_POWERSHELL_FOREACH = re.compile(
+    r"(?im)^[ \t]*foreach[ \t]*\([ \t]*\$(?P<item>[A-Za-z_][A-Za-z0-9_]*)"
+    r"[ \t]+in[ \t]+\$(?P<array>[A-Za-z_][A-Za-z0-9_]*)[ \t]*\)[ \t]*\{"
+)
+_POWERSHELL_DOCKER_PULL = re.compile(
+    r"(?im)^[ \t]*docker[ \t]+pull[ \t]+\$(?P<item>[A-Za-z_][A-Za-z0-9_]*)"
 )
 _DOCKER_RUN_OPTIONS_WITH_VALUE = {
     "--add-host",
+    "--cidfile",
     "--cpus",
     "--entrypoint",
     "--env",
@@ -88,6 +103,7 @@ _DOCKER_RUN_OPTIONS_WITH_VALUE = {
     "--hostname",
     "--label",
     "--memory",
+    "--mount",
     "--name",
     "--network",
     "--pids-limit",
@@ -140,13 +156,49 @@ def _image_values(value: Any) -> Iterator[str]:
 
 
 def _docker_cli_images(script: str) -> Iterator[str]:
+    """Extract Docker image arguments, resolving simple earlier assignments.
+
+    Dynamic shell expressions remain unresolved; this parser is deliberately
+    limited to the command forms used by workflow run scalars.
+    """
+
     flattened = script.replace("\\\n", " ")
-    for match in re.finditer(r"\bdocker\s+(run|pull)\s+([^\n]+)", flattened):
+    assignments = iter(_SHELL_ASSIGNMENT.finditer(flattened))
+    next_assignment = next(assignments, None)
+    bindings: dict[str, str] = {}
+
+    for match in re.finditer(r"\bdocker\s+(run|create|pull)\s+([^\n]+)", flattened):
+        while next_assignment is not None and next_assignment.start() < match.start():
+            name = next_assignment.group("name")
+            try:
+                value_tokens = shlex.split(
+                    next_assignment.group("value"), comments=True, posix=True
+                )
+            except ValueError:
+                value_tokens = []
+
+            if len(value_tokens) == 1 and not any(
+                char in value_tokens[0] for char in ("$", "`", "\\")
+            ):
+                bindings[name] = value_tokens[0]
+            else:
+                # A dynamic or malformed reassignment must clear an older
+                # literal binding rather than make that old value look live.
+                bindings.pop(name, None)
+            next_assignment = next(assignments, None)
+
         command, remainder = match.groups()
         tokens = shlex.split(remainder, comments=True, posix=True)
         if command == "pull":
-            if tokens:
-                yield tokens[0]
+            index = 0
+            while index < len(tokens) and tokens[index].startswith("-"):
+                option = tokens[index].split("=", 1)[0]
+                if "=" not in tokens[index] and option == "--platform":
+                    index += 2
+                else:
+                    index += 1
+            if index < len(tokens):
+                yield _resolve_shell_image_reference(tokens[index], bindings)
             continue
 
         index = 0
@@ -159,8 +211,124 @@ def _docker_cli_images(script: str) -> Iterator[str]:
                 else:
                     index += 1
                 continue
-            yield token
+            yield _resolve_shell_image_reference(token, bindings)
             break
+
+
+def _resolve_shell_image_reference(token: str, bindings: dict[str, str]) -> str:
+    variable_match = _SHELL_VARIABLE_REFERENCE.fullmatch(token)
+    if variable_match is None:
+        return token
+    name = variable_match.group("braced") or variable_match.group("plain")
+    return bindings.get(name, token)
+
+
+def _powershell_block_end(script: str, opening_brace: int) -> int | None:
+    depth = 0
+    quote: str | None = None
+    index = opening_brace
+    while index < len(script):
+        character = script[index]
+        if quote == "'":
+            if character == "'":
+                if index + 1 < len(script) and script[index + 1] == "'":
+                    index += 2
+                    continue
+                quote = None
+        elif quote == '"':
+            if character == "`":
+                index += 2
+                continue
+            if character == '"':
+                quote = None
+        elif character == "#":
+            newline = script.find("\n", index)
+            if newline < 0:
+                return None
+            index = newline + 1
+            continue
+        elif character == "`":
+            index += 2
+            continue
+        elif character in {"'", '"'}:
+            quote = character
+        elif character == "{":
+            depth += 1
+        elif character == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+        index += 1
+    return None
+
+
+def _powershell_literal_array_items(items: str) -> list[str] | None:
+    result: list[str] = []
+    for line in items.splitlines():
+        value = line.strip()
+        if not value or value.startswith("#"):
+            continue
+        if value.endswith(","):
+            value = value[:-1].rstrip()
+        if len(value) < 2 or value[0] not in {"'", '"'} or value[-1] != value[0]:
+            return None
+        content = value[1:-1]
+        if value[0] == '"' and ("`" in content or '"' in content):
+            return None
+        if value[0] == "'" and "'" in content:
+            return None
+        result.append(content)
+    return result
+
+
+def _powershell_cli_images(script: str) -> Iterator[str]:
+    """Resolve image literals from a simple PowerShell array consumed by pull."""
+    assignments = list(_POWERSHELL_ASSIGNMENT_START.finditer(script))
+    arrays = list(_POWERSHELL_LITERAL_ARRAY.finditer(script))
+    for loop in _POWERSHELL_FOREACH.finditer(script):
+        array_name = loop.group("array").casefold()
+        item_name = loop.group("item").casefold()
+        block_end = _powershell_block_end(script, loop.end() - 1)
+        body = script[loop.end() : block_end if block_end is not None else len(script)]
+        if not any(
+            pull.group("item").casefold() == item_name
+            for pull in _POWERSHELL_DOCKER_PULL.finditer(body)
+        ):
+            continue
+
+        prior_assignments = [
+            assignment
+            for assignment in assignments
+            if assignment.start() < loop.start()
+            and assignment.group("name").casefold() == array_name
+        ]
+        if not prior_assignments:
+            continue
+        latest_assignment = prior_assignments[-1]
+        literal_array = next(
+            (
+                array
+                for array in arrays
+                if array.start() == latest_assignment.start()
+                and array.group("name").casefold() == array_name
+            ),
+            None,
+        )
+        if literal_array is None:
+            earlier_literal_arrays = [
+                array
+                for array in arrays
+                if array.start() < latest_assignment.start()
+                and array.group("name").casefold() == array_name
+            ]
+            if earlier_literal_arrays and latest_assignment.group("operator") != "=":
+                yield "<modified PowerShell image array>"
+            continue
+        parsed_items = _powershell_literal_array_items(literal_array.group("items"))
+        if parsed_items is None:
+            yield "<unparsed PowerShell image array>"
+        else:
+            yield from parsed_items
 
 
 def _assert_pinned(ref: str, *, source: str) -> None:
@@ -866,6 +1034,141 @@ def test_checkov_aggregate_gate_rejects_non_success_outcomes() -> None:
         assert report in run
 
 
+def test_docker_cli_images_resolve_only_preceding_simple_image_assignments() -> None:
+    pinned_image = EXPECTED_EXTERNAL_IMAGES["redis:7-alpine"]
+    script = f"""harness="scripts/quality/check_prometheus_alert_rules.py"
+image='{pinned_image}'
+docker pull "$image"
+image="{pinned_image}"
+docker create --cidfile /tmp/container.cid \
+  --mount type=bind,source=/tmp,target=/tmp \
+  --entrypoint /bin/true "${{image}}"
+"""
+
+    assert list(_docker_cli_images(script)) == [pinned_image, pinned_image]
+
+
+def test_docker_cli_image_parser_rejects_unpinned_and_path_shaped_refs() -> None:
+    scripts = (
+        'image="redis:7-alpine"\ndocker pull "$image"',
+        'image="scripts/quality/check_prometheus_alert_rules.py"\ndocker pull "$image"',
+        "docker pull scripts/quality/check_prometheus_alert_rules.py",
+    )
+
+    for script in scripts:
+        images = list(_docker_cli_images(script))
+        assert len(images) == 1
+        with pytest.raises(AssertionError, match="unpinned static image"):
+            _assert_pinned(images[0], source="parser-control")
+
+
+def test_docker_cli_dynamic_reassignment_clears_prior_literal_binding() -> None:
+    pinned_image = EXPECTED_EXTERNAL_IMAGES["redis:7-alpine"]
+    script = f'''image="{pinned_image}"
+docker pull "$image"
+image="$(resolve_image)"
+docker create --cidfile /tmp/container.cid \
+  --mount type=bind,source=/tmp,target=/tmp "$image"
+'''
+
+    assert list(_docker_cli_images(script)) == [pinned_image, "$image"]
+
+
+def test_powershell_docker_pull_resolves_its_literal_array_and_loop_variable() -> None:
+    script = f'''$images = @(
+  "{EXPECTED_EXTERNAL_IMAGES["nats:2.15.0-alpine"]}",
+  "{EXPECTED_EXTERNAL_IMAGES["postgres:15-alpine"]}"
+)
+foreach ($image in $images) {{
+  docker pull $image
+}}
+'''
+
+    assert list(_powershell_cli_images(script)) == [
+        EXPECTED_EXTERNAL_IMAGES["nats:2.15.0-alpine"],
+        EXPECTED_EXTERNAL_IMAGES["postgres:15-alpine"],
+    ]
+
+
+def test_powershell_docker_pull_loop_rejects_an_unpinned_literal_array_entry() -> None:
+    script = """$images = @(
+  "redis:7-alpine",
+  "postgres:15-alpine@sha256:fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b"
+)
+foreach ($image in $images) {
+  docker pull $image
+}
+"""
+
+    images = list(_powershell_cli_images(script))
+    assert len(images) == 2
+    with pytest.raises(AssertionError, match="unpinned static image"):
+        for image in images:
+            _assert_pinned(image, source="powershell-loop-control")
+
+
+def test_powershell_literal_array_without_matching_docker_pull_is_not_an_image() -> (
+    None
+):
+    script = """$harness = @(
+  "scripts/quality/check_prometheus_alert_rules.py"
+)
+foreach ($path in $harness) {
+  Write-Host $path
+}
+"""
+
+    assert list(_powershell_cli_images(script)) == []
+
+
+def test_powershell_dynamic_reassignment_does_not_reuse_stale_literal_array() -> None:
+    script = """$images = @(
+  "redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2"
+)
+$images = Get-Images
+foreach ($image in $images) {
+  docker pull $image
+}
+"""
+
+    assert list(_powershell_cli_images(script)) == []
+
+
+def test_powershell_array_append_after_literal_binding_fails_closed() -> None:
+    script = """$images = @(
+  "redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2"
+)
+$images += "redis:latest"
+foreach ($image in $images) {
+  docker pull $image
+}
+"""
+
+    images = list(_powershell_cli_images(script))
+    assert images == ["<modified PowerShell image array>"]
+    with pytest.raises(AssertionError, match="unpinned static image"):
+        _assert_pinned(images[0], source="powershell-array-append-control")
+
+
+def test_reusable_backend_image_pull_loop_keeps_all_four_audited_pins() -> None:
+    workflow = _workflow(WORKFLOWS / "reusable-backend-tests.yml")
+    images = [
+        image
+        for scalar in _scalars(workflow)
+        for image in _powershell_cli_images(scalar)
+    ]
+
+    assert Counter(images) == Counter(
+        EXPECTED_EXTERNAL_IMAGES[image]
+        for image in (
+            "nats:2.15.0-alpine",
+            "postgres:15-alpine",
+            "redis:7-alpine",
+            "pgvector/pgvector:pg17",
+        )
+    )
+
+
 def test_all_static_external_workflow_images_are_digest_pinned() -> None:
     for path in sorted(WORKFLOWS.glob("*.yml")):
         workflow = _workflow(path)
@@ -877,10 +1180,8 @@ def test_all_static_external_workflow_images_are_digest_pinned() -> None:
         for scalar in _scalars(workflow):
             for image in _docker_cli_images(scalar):
                 _assert_pinned(image, source=source)
-            if "docker pull" in scalar:
-                for quoted in re.findall(r'["\']([^"\']+)["\']', scalar):
-                    if _SCRIPT_IMAGE.fullmatch(quoted):
-                        _assert_pinned(quoted, source=source)
+            for image in _powershell_cli_images(scalar):
+                _assert_pinned(image, source=source)
 
 
 def test_external_workflow_images_use_the_audited_digests() -> None:

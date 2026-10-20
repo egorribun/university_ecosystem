@@ -95,7 +95,7 @@ function OpenEditHarness({ lesson, children }: { lesson: Lesson; children: React
   return <>{children}</>
 }
 
-function renderDialog(props: ReturnType<typeof makeBaseProps>, lesson: Lesson = SAMPLE) {
+function renderDialog(props: Parameters<typeof EditLessonDialog>[0], lesson: Lesson = SAMPLE) {
   return render(
     <SchedulePageProvider>
       <OpenEditHarness lesson={lesson}>
@@ -147,9 +147,15 @@ describe("EditLessonDialog — branches", () => {
     expect(createLessonParityUpdater("even")(null)).toBeNull()
 
     const changed = { ...SAMPLE, subject: "Changed" }
+    const optimistic = { ...SAMPLE, subject: "Optimistic" }
     expect(replaceLessonById([SAMPLE], SAMPLE.id, changed)).toEqual([changed])
-    expect(createOptimisticLessonUpdater(SAMPLE.id, changed)([SAMPLE])).toEqual([changed])
-    expect(createRollbackUpdater([SAMPLE])([])).toEqual([SAMPLE])
+    expect(createOptimisticLessonUpdater(SAMPLE.id, optimistic)([SAMPLE])).toEqual([optimistic])
+    const rollback = createRollbackUpdater(optimistic, SAMPLE)
+    expect(rollback([optimistic])).toEqual([SAMPLE])
+    expect(rollback([{ ...optimistic, subject: "Newer edit" }])).toEqual([
+      { ...optimistic, subject: "Newer edit" },
+    ])
+    expect(rollback([])).toEqual([])
   })
 
   it("edits every text field (subject/teacher/room) via change handlers", () => {
@@ -251,13 +257,19 @@ describe("EditLessonDialog — branches", () => {
     await waitFor(() => expect(apiMocks.patch).toHaveBeenCalledTimes(1))
     expect(apiMocks.patch).toHaveBeenCalledWith(
       "/schedule/l1",
-      expect.objectContaining({ subject: "Линейная алгебра", lesson_type: "lecture" })
+      expect.objectContaining({
+        subject: "Линейная алгебра",
+        lesson_type: "lecture",
+      })
     )
     // Optimistic update applied + refresh fired on success.
     expect(props.applyScheduleUpdate).toHaveBeenCalled()
     const optimisticUpdater = props.applyScheduleUpdate.mock.calls[0]![0]!
     const optimisticResult = optimisticUpdater([SAMPLE, { ...SAMPLE, id: "unrelated" }])
-    expect(optimisticResult[0]).toMatchObject({ id: "l1", lesson_type: "lecture" })
+    expect(optimisticResult[0]).toMatchObject({
+      id: "l1",
+      lesson_type: "lecture",
+    })
     expect(optimisticResult[1]).toMatchObject({ id: "unrelated" })
     await waitFor(() => expect(props.refresh).toHaveBeenCalledTimes(1))
     // Dialog closed during the optimistic path.
@@ -278,9 +290,162 @@ describe("EditLessonDialog — branches", () => {
     )
     // applyScheduleUpdate called twice: once for the optimistic write, once for the revert.
     await waitFor(() => expect(props.applyScheduleUpdate).toHaveBeenCalledTimes(2))
+    const optimisticUpdater = props.applyScheduleUpdate.mock.calls[0]![0]!
     const rollbackUpdater = props.applyScheduleUpdate.mock.calls[1]![0]!
-    expect(rollbackUpdater([])).toEqual(props.schedule)
+    expect(rollbackUpdater(optimisticUpdater(props.schedule))).toEqual(props.schedule)
     expect(props.refresh).not.toHaveBeenCalled()
+  })
+
+  it("invalidates a fetched receipt instead of rolling back its confirmed value", async () => {
+    const user = userEvent.setup()
+    let rejectPatch!: (error: Error) => void
+    apiMocks.patch.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectPatch = reject
+        })
+    )
+    const invalidate = vi.fn().mockResolvedValue(undefined)
+    const applyScheduleUpdate = vi.fn((updater: (previous: Lesson[]) => Lesson[]) => ({
+      schedule: updater([SAMPLE]),
+      isCurrent: () => false,
+      invalidate,
+    }))
+    const props = {
+      ...makeBaseProps(),
+      applyScheduleUpdate,
+    }
+    renderDialog(props)
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    await waitFor(() => expect(apiMocks.patch).toHaveBeenCalledTimes(1))
+    rejectPatch(new Error("acknowledgement lost after refresh"))
+
+    await waitFor(() => expect(invalidate).toHaveBeenCalledOnce())
+    expect(props.applyScheduleUpdate).toHaveBeenCalledOnce()
+    expect(logError).toHaveBeenCalledWith("Failed to update lesson", expect.any(Error))
+  })
+
+  it("rolls back this edit without replacing unrelated newer cache data", async () => {
+    const user = userEvent.setup()
+    let rejectPatch!: (error: Error) => void
+    apiMocks.patch.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectPatch = reject
+        })
+    )
+    const unrelated = {
+      ...SAMPLE,
+      id: "unrelated",
+      subject: "Original unrelated",
+    }
+    const removed = { ...SAMPLE, id: "removed" }
+    const added = { ...SAMPLE, id: "added", subject: "Newer lesson" }
+    const cache = { current: [SAMPLE, unrelated, removed] }
+    const applyScheduleUpdate = vi.fn((updater: (previous: Lesson[]) => Lesson[]) => {
+      cache.current = updater(cache.current)
+      return cache.current
+    })
+    const props = {
+      ...makeBaseProps(),
+      schedule: cache.current,
+      applyScheduleUpdate,
+    }
+    renderDialog(props)
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    await waitFor(() => expect(apiMocks.patch).toHaveBeenCalledTimes(1))
+
+    cache.current = [cache.current[0]!, { ...unrelated, subject: "Newer unrelated value" }, added]
+    rejectPatch(new Error("network"))
+    await waitFor(() =>
+      expect(logError).toHaveBeenCalledWith("Failed to update lesson", expect.any(Error))
+    )
+
+    expect(cache.current).toEqual([
+      SAMPLE,
+      { ...unrelated, subject: "Newer unrelated value" },
+      added,
+    ])
+  })
+
+  it("does not roll back a same-lesson value replaced while the PATCH was pending", async () => {
+    const user = userEvent.setup()
+    let rejectPatch!: (error: Error) => void
+    apiMocks.patch.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectPatch = reject
+        })
+    )
+    const unrelated = { ...SAMPLE, id: "unrelated" }
+    const cache = { current: [SAMPLE, unrelated] }
+    const applyScheduleUpdate = vi.fn((updater: (previous: Lesson[]) => Lesson[]) => {
+      cache.current = updater(cache.current)
+      return cache.current
+    })
+    const props = {
+      ...makeBaseProps(),
+      schedule: cache.current,
+      applyScheduleUpdate,
+    }
+    renderDialog(props)
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    await waitFor(() => expect(apiMocks.patch).toHaveBeenCalledTimes(1))
+
+    cache.current = [{ ...cache.current[0]!, subject: "Authoritative newer subject" }, unrelated]
+    rejectPatch(new Error("network"))
+    await waitFor(() =>
+      expect(logError).toHaveBeenCalledWith("Failed to update lesson", expect.any(Error))
+    )
+
+    expect(cache.current[0]).toMatchObject({
+      id: SAMPLE.id,
+      subject: "Authoritative newer subject",
+    })
+  })
+
+  it("does not resurrect a same-lesson deletion made while the PATCH was pending", async () => {
+    const user = userEvent.setup()
+    let rejectPatch!: (error: Error) => void
+    apiMocks.patch.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectPatch = reject
+        })
+    )
+    const unrelated = { ...SAMPLE, id: "unrelated" }
+    const cache = { current: [SAMPLE, unrelated] }
+    const applyScheduleUpdate = vi.fn((updater: (previous: Lesson[]) => Lesson[]) => {
+      cache.current = updater(cache.current)
+      return cache.current
+    })
+    const props = {
+      ...makeBaseProps(),
+      schedule: cache.current,
+      applyScheduleUpdate,
+    }
+    renderDialog(props)
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    await waitFor(() => expect(apiMocks.patch).toHaveBeenCalledTimes(1))
+
+    cache.current = cache.current.filter((lesson) => lesson.id !== SAMPLE.id)
+    rejectPatch(new Error("network"))
+    await waitFor(() =>
+      expect(logError).toHaveBeenCalledWith("Failed to update lesson", expect.any(Error))
+    )
+
+    expect(cache.current).toEqual([unrelated])
+  })
+
+  it("exposes the visible lesson type and week labels as Select accessible names", () => {
+    renderDialog(makeBaseProps())
+
+    expect(screen.getByRole("combobox", { name: "schedule:form.lessonType" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "schedule:form.week" })).toBeInTheDocument()
   })
 
   it("submits via form Enter (handleSubmit preventDefault path)", async () => {
@@ -309,7 +474,9 @@ describe("EditLessonDialog — branches", () => {
 
   it("does not submit an invalid edit form", () => {
     renderDialog(makeBaseProps())
-    fireEvent.change(screen.getByLabelText("schedule:form.subject"), { target: { value: "" } })
+    fireEvent.change(screen.getByLabelText("schedule:form.subject"), {
+      target: { value: "" },
+    })
 
     fireEvent.submit(screen.getByRole("button", { name: "common:buttons.save" }).closest("form")!)
 

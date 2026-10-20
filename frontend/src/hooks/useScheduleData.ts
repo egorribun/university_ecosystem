@@ -32,6 +32,21 @@ import { useScheduleClock } from "./useScheduleClock"
 import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import { getCampusClockParts } from "@/utils/campusTimezone"
 
+export type ScheduleUpdateReceipt = {
+  schedule: Lesson[]
+  isCurrent: () => boolean
+  invalidate: () => Promise<void>
+}
+
+type ScheduleQueryScope = {
+  queryHash: string
+  revision: () => number
+  activate: () => void
+  deactivate: () => void
+  recordAuthoritativeUpdate: () => void
+  isCurrent: (revision: number) => boolean
+}
+
 export function useScheduleData() {
   const { user } = useAuth()
   const { anonymous } = useAnonymousReadMode()
@@ -67,16 +82,64 @@ export function useScheduleData() {
 
   // ── TanStack Query: Schedule ───────────────────────
   const activeGroupId = selectedGroup
-  const scheduleKey =
-    activeGroupId == null
-      ? null
-      : anonymous
-        ? anonymousScheduleQueryKey(activeGroupId)
-        : scheduleQueryKey(activeGroupId)
-
+  const scheduleKey = useMemo(
+    () =>
+      activeGroupId == null
+        ? null
+        : anonymous
+          ? anonymousScheduleQueryKey(activeGroupId)
+          : scheduleQueryKey(activeGroupId),
+    [activeGroupId, anonymous]
+  )
   const scheduleQuery = useQuery(
     pageScheduleQueryOptions(activeGroupId, anonymous, translation.language)
   )
+  const scheduleQueryScope = useMemo<ScheduleQueryScope | null>(() => {
+    if (!scheduleKey) return null
+
+    const queryHash = queryClient
+      .getQueryCache()
+      .find({ queryKey: scheduleKey, exact: true })?.queryHash
+    if (!queryHash) return null
+
+    let revision = 0
+    let active = false
+    return {
+      queryHash,
+      revision: () => revision,
+      activate: () => {
+        active = true
+      },
+      deactivate: () => {
+        active = false
+      },
+      recordAuthoritativeUpdate: () => {
+        revision += 1
+      },
+      isCurrent: (expectedRevision: number) => active && revision === expectedRevision,
+    }
+  }, [queryClient, scheduleKey])
+
+  useEffect(() => {
+    if (!scheduleQueryScope) return
+
+    scheduleQueryScope.activate()
+    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+      if (
+        event.type === "updated" &&
+        event.query.queryHash === scheduleQueryScope.queryHash &&
+        event.action.type === "success" &&
+        !event.action.manual
+      ) {
+        scheduleQueryScope.recordAuthoritativeUpdate()
+      }
+    })
+
+    return () => {
+      scheduleQueryScope.deactivate()
+      unsubscribe()
+    }
+  }, [queryClient, scheduleQueryScope])
 
   const groupScheduleRaw = useMemo(() => scheduleQuery.data ?? [], [scheduleQuery.data])
   const groupSchedule = useMemo(
@@ -191,14 +254,23 @@ export function useScheduleData() {
 
   // ── Optimistic updates ─────────────────────────────
   const applyScheduleUpdate = useCallback(
-    (updater: (prev: Lesson[]) => Lesson[]) => {
-      if (!scheduleKey || activeGroupId == null) return
-      queryClient.setQueryData<Lesson[]>(scheduleKey, (prev) => {
+    (updater: (prev: Lesson[]) => Lesson[]): ScheduleUpdateReceipt | undefined => {
+      if (!scheduleKey || activeGroupId == null) return undefined
+      const scope = scheduleQueryScope
+      const revision = scope?.revision()
+      const schedule = queryClient.setQueryData<Lesson[]>(scheduleKey, (prev) => {
         const base = Array.isArray(prev) ? [...prev] : []
         return normalizeLessons(updater(base))
       })
+      if (!schedule) return undefined
+
+      return {
+        schedule,
+        isCurrent: () => Boolean(scope && revision !== undefined && scope.isCurrent(revision)),
+        invalidate: () => queryClient.invalidateQueries({ queryKey: scheduleKey, exact: true }),
+      }
     },
-    [scheduleKey, activeGroupId, queryClient, normalizeLessons]
+    [scheduleKey, activeGroupId, queryClient, normalizeLessons, scheduleQueryScope]
   )
 
   const refresh = useCallback(() => {

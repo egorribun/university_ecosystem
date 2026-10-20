@@ -97,7 +97,14 @@ export function AddLessonDialog({
 }: AddLessonDialogProps) {
   const { t } = useTranslation(["schedule", "common"])
   const dialogTitleId = useId()
-  const { activeDialog, closeDialog, showSnackbar, addDay } = useSchedulePage()
+  const {
+    activeDialog,
+    dialogSessionId,
+    isDialogSessionCurrent,
+    closeDialog,
+    showSnackbar,
+    addDay,
+  } = useSchedulePage()
 
   const isOpen = activeDialog === "add"
 
@@ -111,7 +118,8 @@ export function AddLessonDialog({
     parity: "both",
   })
 
-  const [isAdding, setIsAdding] = useState(false)
+  const [addingSessionId, setAddingSessionId] = useState<number | null>(null)
+  const isAdding = addingSessionId === dialogSessionId
 
   const isFormValid = isAddLessonFormValid(addFields)
 
@@ -125,7 +133,7 @@ export function AddLessonDialog({
     })
   }, [defaultLessonType, lessonTypeOptions])
 
-  const handleAddLesson = async () => {
+  const handleAddLesson = async (sessionId: number) => {
     if (!selectedGroupId || !addDay) return
 
     // Resolve backend lesson type
@@ -144,25 +152,28 @@ export function AddLessonDialog({
     }
 
     try {
-      setIsAdding(true)
+      setAddingSessionId(sessionId)
       await api.post("/schedule", payload)
       showSnackbar(t("schedule:snackbar.added"))
-      closeDialog()
       refresh()
-      // Reset fields partially?
-      setAddFields(resetAddLessonTextFields)
+      if (isDialogSessionCurrent(sessionId)) {
+        closeDialog()
+        setAddFields(resetAddLessonTextFields)
+      }
     } catch (e) {
       logError("Failed to add lesson", e)
-      showSnackbar(t("schedule:snackbar.addError"), "error")
+      if (isDialogSessionCurrent(sessionId)) {
+        showSnackbar(t("schedule:snackbar.addError"), "error")
+      }
     } finally {
-      setIsAdding(false)
+      setAddingSessionId((current) => (current === sessionId ? null : current))
     }
   }
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     if (isFormValid && !isAdding) {
-      handleAddLesson()
+      void handleAddLesson(dialogSessionId)
     }
   }
 
@@ -250,13 +261,15 @@ export function AddLessonDialog({
             </div>
             <div>
               <label
-                htmlFor="add-lesson-type"
+                id="add-lesson-type-label"
+                htmlFor="add-lesson-type-trigger"
                 className="mb-2 block text-sm font-semibold opacity-strong"
               >
                 {t("schedule:form.lessonType")}
               </label>
               <Select
                 id="add-lesson-type"
+                aria-labelledby="add-lesson-type-label"
                 value={addFields.lessonType}
                 onValueChange={handleLessonTypeChange}
                 options={lessonTypeOptions}
@@ -297,13 +310,15 @@ export function AddLessonDialog({
             </div>
             <div>
               <label
-                htmlFor="add-lesson-parity"
+                id="add-lesson-parity-label"
+                htmlFor="add-lesson-parity-trigger"
                 className="mb-2 block text-sm font-semibold opacity-strong"
               >
                 {t("schedule:form.week")}
               </label>
               <Select
                 id="add-lesson-parity"
+                aria-labelledby="add-lesson-parity-label"
                 value={addFields.parity}
                 onValueChange={handleParityChange}
                 options={[

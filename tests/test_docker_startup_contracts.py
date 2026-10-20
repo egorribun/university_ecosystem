@@ -1899,7 +1899,8 @@ def test_helm_frontend_matches_the_node_ssr_runtime_contract() -> None:
     assert "nginx-cache" not in deployment
     assert "name: BACKEND_ORIGIN" in deployment
     assert (
-        'value: "http://{{ include "university-ecosystem.fullname" . }}-backend:'
+        'value: "http://{{ include "university-ecosystem.componentName" '
+        '(dict "root" . "component" "backend") }}:{{ .Values.backend.service.port }}"'
         in deployment
     )
     assert "{{ .Values.frontend.service.port }}" in network_policy

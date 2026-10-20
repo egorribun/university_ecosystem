@@ -1,7 +1,8 @@
-"""Bounded request, metadata and collector boundaries for Docker observation.
+"""Bounded metadata and owner-scoped inventory reads for Docker observation.
 
-Preparation and decoding perform no transport I/O. Composition delegates once
-to the existing collector; no coordinator or CLI caller is connected.
+Preparation and decoding perform no transport I/O; the collector composes the
+metadata and inventory reads under one deadline. No coordinator or CLI caller
+is connected.
 Matching supplied daemon metadata does not prove configuration provenance,
 daemon authenticity or complete container inventory.
 """
@@ -11,14 +12,15 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
 from scripts import live_stand
 from scripts import owned_nats_process as process
-from scripts.owned_nats_coordinator import OwnerEvidence
-from scripts.owned_nats_outage import Deadline, DeadlineVerdict
+from scripts.owned_nats_coordinator import OwnerEvidence, RuntimeEvidence
+from scripts.owned_nats_outage import ContainerSnapshot, Deadline, DeadlineVerdict
 from scripts.owned_nats_process import (
     LocalCleanup,
     PrivateProcessRequest,
@@ -32,6 +34,37 @@ if TYPE_CHECKING:
 _STDOUT_LIMIT = 256
 _STDERR_LIMIT = 1024
 _PATH_LIMIT = 4096
+_RUNTIME_CONTAINER_ID = re.compile(r"[0-9a-f]{64}\Z")
+_RUNTIME_CONTAINER_ID_LIMIT = 10_000
+_RUNTIME_CONTAINER_ID_STDOUT_LIMIT = _RUNTIME_CONTAINER_ID_LIMIT * 66
+_RUNTIME_INSPECT_BATCH_SIZE = 64
+_RUNTIME_INSPECT_STDOUT_LIMIT = 1_048_576
+_RUNTIME_INSPECT_STDERR_LIMIT = 16_384
+_RUNTIME_INSPECT_FORMAT = (
+    '{"Id":{{json .Id}},'
+    '"Name":{{json .Name}},'
+    '"Image":{{json .Image}},'
+    '"Config":{"Image":{{json .Config.Image}},'
+    '"Labels":{{json .Config.Labels}}},'
+    '"Mounts":[{{range $i, $m := .Mounts}}{{if $i}},{{end}}'
+    '{"Type":{{json $m.Type}},'
+    '"Name":{{json $m.Name}},'
+    '"Source":{{json $m.Source}},'
+    '"Destination":{{json $m.Destination}},'
+    '"Driver":{{json $m.Driver}},'
+    '"Mode":{{json $m.Mode}},'
+    '"RW":{{json $m.RW}},'
+    '"Propagation":{{json $m.Propagation}}'
+    "}{{end}}],"
+    '"State":{"Running":{{json .State.Running}},'
+    '"Status":{{json .State.Status}},'
+    '"Health":{{if .State.Health}}'
+    '{"Status":{{json .State.Health.Status}}}'
+    "{{else}}null{{end}},"
+    '"ExitCode":{{json .State.ExitCode}},'
+    '"OOMKilled":{{json .State.OOMKilled}},'
+    '"RestartCount":{{json .RestartCount}}}'
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -593,3 +626,581 @@ def observe_compose_metadata(
         return ComposeMetadataResult(ComposeMetadataStatus.NOT_READY)
     result = process.run_private_process(request, deadline=deadline)
     return decode_compose_config(result, owner=admitted, deadline=deadline)
+
+
+def _runtime_metadata_pair(value: object) -> CoordinatorMetadataPair | None:
+    if type(value) is not CoordinatorMetadataPair:
+        return None
+    try:
+        owner = _compose_owner(value.owner)
+        daemon_fingerprint = value.daemon_fingerprint
+        resource_fingerprint = value.resource_fingerprint
+        service_roots = value.service_roots
+        selected_services = value.selected_services
+    except AttributeError:
+        return None
+    if (
+        owner is None
+        or daemon_fingerprint != owner.daemon_fingerprint
+        or resource_fingerprint != owner.compose_resource_fingerprint
+        or service_roots != owner.service_roots
+        or selected_services != owner.selected_services
+    ):
+        return None
+    return CoordinatorMetadataPair(
+        owner=owner,
+        daemon_fingerprint=daemon_fingerprint,
+        resource_fingerprint=resource_fingerprint,
+        service_roots=service_roots,
+        selected_services=selected_services,
+    )
+
+
+def _runtime_pins(
+    metadata: CoordinatorMetadataPair,
+    pins: object,
+    *,
+    deadline: Deadline,
+) -> tuple[DockerReadPins, PrivateProcessRequest] | None:
+    if type(pins) is not DockerReadPins:
+        return None
+    try:
+        snapshot = replace(pins)
+        request = prepare_daemon_read(snapshot, deadline=deadline)
+        if (
+            request is None
+            or snapshot.cwd != metadata.owner.worktree
+            or snapshot.daemon_fingerprint != metadata.daemon_fingerprint
+        ):
+            return None
+    except AttributeError:
+        return None
+    return snapshot, request
+
+
+def prepare_container_id_read(
+    metadata: CoordinatorMetadataPair,
+    pins: DockerReadPins,
+    *,
+    deadline: Deadline,
+) -> PrivateProcessRequest | None:
+    """Prepare a project-wide Docker list, including stopped/orphan containers."""
+    admitted = _runtime_metadata_pair(metadata)
+    if admitted is None:
+        return None
+    pinned = _runtime_pins(admitted, pins, deadline=deadline)
+    if pinned is None:
+        return None
+    _snapshot, daemon_request = pinned
+    argv = (
+        *daemon_request.argv[:5],
+        "ps",
+        "--all",
+        "--quiet",
+        "--no-trunc",
+        "--filter",
+        f"label=com.docker.compose.project={admitted.owner.project_name}",
+    )
+    request = PrivateProcessRequest(
+        argv=argv,
+        cwd=daemon_request.cwd,
+        env=dict(daemon_request.env),
+        stdin=b"",
+        stdout_limit=_RUNTIME_CONTAINER_ID_STDOUT_LIMIT,
+        stderr_limit=_RUNTIME_INSPECT_STDERR_LIMIT,
+        input_limit=0,
+    )
+    return request if _live(deadline) else None
+
+
+def _container_ids(values: object) -> tuple[str, ...] | None:
+    if (
+        type(values) is not tuple
+        or len(values) > _RUNTIME_CONTAINER_ID_LIMIT
+        or any(
+            type(value) is not str or _RUNTIME_CONTAINER_ID.fullmatch(value) is None
+            for value in values
+        )
+        or len(set(values)) != len(values)
+    ):
+        return None
+    return values
+
+
+def _bounded_process_result(
+    result: object, *, stdout_limit: int, stderr_limit: int
+) -> PrivateProcessResult | None:
+    if type(result) is not PrivateProcessResult:
+        return None
+    try:
+        if (
+            result.outcome is not ProcessOutcome.EXITED
+            or type(result.returncode) is not int
+            or result.returncode != 0
+            or result.local_cleanup is not LocalCleanup.CONFIRMED
+            or type(result.stdout) is not bytes
+            or len(result.stdout) > stdout_limit
+            or type(result.stderr) is not bytes
+            or len(result.stderr) > stderr_limit
+            or result.stderr != b""
+        ):
+            return None
+    except AttributeError:
+        return None
+    return result
+
+
+def decode_container_id_read(
+    result: PrivateProcessResult,
+    metadata: CoordinatorMetadataPair,
+    *,
+    deadline: Deadline,
+) -> tuple[str, ...] | None:
+    """Decode only a bounded complete set of canonical IDs for the pinned project."""
+    admitted = _runtime_metadata_pair(metadata)
+    supplied = _bounded_process_result(
+        result,
+        stdout_limit=_RUNTIME_CONTAINER_ID_STDOUT_LIMIT,
+        stderr_limit=_RUNTIME_INSPECT_STDERR_LIMIT,
+    )
+    if admitted is None or supplied is None or not _live(deadline):
+        return None
+    try:
+        raw = supplied.stdout.decode("ascii")
+        raw = raw.replace("\r\n", "\n")
+        if raw.endswith("\n"):
+            raw = raw[:-1]
+        if "\r" in raw:
+            return None
+        values = () if raw == "" else tuple(raw.split("\n"))
+    except UnicodeError:
+        return None
+    ids = _container_ids(values)
+    if ids is None or not _live(deadline):
+        return None
+    return ids
+
+
+def prepare_container_inspect_reads(
+    metadata: CoordinatorMetadataPair,
+    pins: DockerReadPins,
+    container_ids: tuple[str, ...],
+    *,
+    deadline: Deadline,
+) -> tuple[PrivateProcessRequest, ...] | None:
+    """Prepare bounded inspect batches containing only previously captured IDs."""
+    admitted = _runtime_metadata_pair(metadata)
+    ids = _container_ids(container_ids)
+    if admitted is None or ids is None:
+        return None
+    pinned = _runtime_pins(admitted, pins, deadline=deadline)
+    if pinned is None:
+        return None
+    _snapshot, daemon_request = pinned
+    requests = tuple(
+        PrivateProcessRequest(
+            argv=(
+                *daemon_request.argv[:5],
+                "inspect",
+                "--type",
+                "container",
+                "--format",
+                _RUNTIME_INSPECT_FORMAT,
+                *ids[start : start + _RUNTIME_INSPECT_BATCH_SIZE],
+            ),
+            cwd=daemon_request.cwd,
+            env=dict(daemon_request.env),
+            stdin=b"",
+            stdout_limit=_RUNTIME_INSPECT_STDOUT_LIMIT,
+            stderr_limit=_RUNTIME_INSPECT_STDERR_LIMIT,
+            input_limit=0,
+        )
+        for start in range(0, len(ids), _RUNTIME_INSPECT_BATCH_SIZE)
+    )
+    return requests if _live(deadline) else None
+
+
+def _runtime_compose_evidence(
+    metadata: CoordinatorMetadataPair, evidence: object
+) -> ComposeResourceEvidence | None:
+    if type(evidence) is not live_stand.ComposeResourceEvidence:
+        return None
+    try:
+        snapshot = replace(evidence)
+        if (
+            type(snapshot.fingerprint) is not str
+            or snapshot.fingerprint != metadata.resource_fingerprint
+            or snapshot.stack != metadata.owner.stack
+            or snapshot.service_roots != metadata.service_roots
+            or snapshot.selected_services != metadata.selected_services
+            or snapshot.managed_services != metadata.selected_services
+            or type(snapshot.declared_volume_names) is not tuple
+            or any(type(name) is not str for name in snapshot.declared_volume_names)
+        ):
+            return None
+    except AttributeError:
+        return None
+    return snapshot
+
+
+def _runtime_stand_owner(owner: OwnerEvidence) -> live_stand.StandOwner:
+    return live_stand.StandOwner(
+        repository=owner.repository,
+        worktree=owner.worktree,
+        project_name=owner.project_name,
+        published_ports=owner.published_ports,
+        schema_version=owner.schema_version,
+        daemon_fingerprint=owner.daemon_fingerprint,
+        compose_resource_fingerprint=owner.compose_resource_fingerprint,
+        resume_compose_resource_fingerprint=owner.resume_compose_resource_fingerprint,
+        resume_compose_resource_schema_version=(
+            owner.resume_compose_resource_schema_version
+        ),
+        source_sha=owner.source_sha,
+        stack=owner.stack,
+        service_roots=owner.service_roots,
+        selected_services=owner.selected_services,
+    )
+
+
+def _pinned_daemon_matches(
+    metadata: CoordinatorMetadataPair,
+    pins: DockerReadPins,
+    *,
+    deadline: Deadline,
+) -> bool:
+    observed = observe_daemon_metadata(pins, deadline=deadline)
+    return (
+        type(observed) is DaemonMetadataResult
+        and observed.status is DaemonMetadataStatus.MATCHED_METADATA
+        and observed.fingerprint == metadata.daemon_fingerprint
+        and _live(deadline)
+    )
+
+
+def _runtime_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    return _compose_json_object(pairs)
+
+
+def _runtime_json_constant(_value: str) -> None:
+    raise ValueError("non-finite runtime inspect JSON")
+
+
+def _runtime_mounts(value: object) -> bool:
+    if type(value) is not list:
+        return False
+    fields = {
+        "Type",
+        "Name",
+        "Source",
+        "Destination",
+        "Driver",
+        "Mode",
+        "RW",
+        "Propagation",
+    }
+    for mount in value:
+        if type(mount) is not dict or set(mount) != fields:
+            return False
+        if type(mount["Type"]) is not str or mount["Type"] not in {
+            "volume",
+            "bind",
+            "tmpfs",
+        }:
+            return False
+        if (
+            any(
+                item is not None and type(item) is not str
+                for item in (
+                    mount["Name"],
+                    mount["Source"],
+                    mount["Destination"],
+                    mount["Driver"],
+                    mount["Mode"],
+                    mount["Propagation"],
+                )
+            )
+            or type(mount["RW"]) is not bool
+        ):
+            return False
+    return True
+
+
+def _runtime_snapshot(
+    metadata: CoordinatorMetadataPair,
+    evidence: ComposeResourceEvidence,
+    expected_id: str,
+    value: object,
+) -> ContainerSnapshot | None:
+    if type(value) is not dict or set(value) != {
+        "Id",
+        "Name",
+        "Image",
+        "Config",
+        "Mounts",
+        "State",
+        "RestartCount",
+    }:
+        return None
+    try:
+        container_id = value["Id"]
+        name = value["Name"]
+        image = value["Image"]
+        config = value["Config"]
+        mounts = value["Mounts"]
+        state = value["State"]
+        restart_count = value["RestartCount"]
+        if (
+            type(container_id) is not str
+            or _RUNTIME_CONTAINER_ID.fullmatch(container_id) is None
+            or container_id != expected_id
+            or type(name) is not str
+            or type(image) is not str
+            or type(config) is not dict
+            or set(config) != {"Image", "Labels"}
+            or type(config["Image"]) is not str
+            or type(config["Labels"]) is not dict
+            or any(
+                type(key) is not str or type(label) is not str
+                for key, label in config["Labels"].items()
+            )
+            or config["Labels"].get("com.docker.compose.oneoff") != "False"
+            or not _runtime_mounts(mounts)
+            or type(state) is not dict
+            or set(state) != {"Running", "Status", "Health", "ExitCode", "OOMKilled"}
+            or type(state["Running"]) is not bool
+            or (state["Status"] is not None and type(state["Status"]) is not str)
+            or (
+                state["Health"] is not None
+                and (
+                    type(state["Health"]) is not dict
+                    or set(state["Health"]) != {"Status"}
+                    or type(state["Health"]["Status"]) is not str
+                )
+            )
+            or type(state["ExitCode"]) is not int
+            or type(state["OOMKilled"]) is not bool
+            or type(restart_count) is not int
+        ):
+            return None
+    except (KeyError, TypeError):
+        return None
+
+    owner = metadata.owner
+    record = {
+        "Id": container_id,
+        "Name": name,
+        "Image": image,
+        "Config": {"Image": config["Image"], "Labels": config["Labels"]},
+        "Mounts": mounts,
+        "State": {
+            "Running": state["Running"],
+            "Status": state["Status"],
+            "Health": state["Health"],
+        },
+    }
+    try:
+        projected = live_stand._core_container_record_from_inspect(
+            container_id,
+            _runtime_stand_owner(owner),
+            evidence,
+            record,
+        )
+    except (live_stand.StandError, TypeError, ValueError, RecursionError):
+        return None
+    return ContainerSnapshot(
+        container_id=container_id,
+        service=projected.service,
+        identity=projected.identity,
+        running=projected.running,
+        status=projected.status,
+        health=projected.health,
+        restart_count=restart_count,
+        exit_code=state["ExitCode"],
+        oom_killed=state["OOMKilled"],
+    )
+
+
+def decode_container_inspect_reads(
+    metadata: CoordinatorMetadataPair,
+    compose_evidence: ComposeResourceEvidence,
+    container_ids: tuple[str, ...],
+    results: tuple[PrivateProcessResult, ...],
+    *,
+    deadline: Deadline,
+) -> tuple[ContainerSnapshot, ...] | None:
+    """Bind every projected inspect response to exactly one captured container ID."""
+    admitted = _runtime_metadata_pair(metadata)
+    evidence = (
+        _runtime_compose_evidence(admitted, compose_evidence)
+        if admitted is not None
+        else None
+    )
+    ids = _container_ids(container_ids)
+    if (
+        admitted is None
+        or evidence is None
+        or ids is None
+        or type(results) is not tuple
+        or not _live(deadline)
+    ):
+        return None
+    batches = tuple(
+        ids[start : start + _RUNTIME_INSPECT_BATCH_SIZE]
+        for start in range(0, len(ids), _RUNTIME_INSPECT_BATCH_SIZE)
+    )
+    if len(results) != len(batches):
+        return None
+    snapshots: list[ContainerSnapshot] = []
+    seen: set[str] = set()
+    try:
+        for expected_batch, supplied in zip(batches, results, strict=True):
+            result = _bounded_process_result(
+                supplied,
+                stdout_limit=_RUNTIME_INSPECT_STDOUT_LIMIT,
+                stderr_limit=_RUNTIME_INSPECT_STDERR_LIMIT,
+            )
+            if result is None:
+                return None
+            output = result.stdout.decode("utf-8")
+            lines = output.splitlines()
+            if len(lines) != len(expected_batch) or any(not line for line in lines):
+                return None
+            parsed: dict[str, ContainerSnapshot] = {}
+            for line in lines:
+                raw_record = json.loads(
+                    line,
+                    object_pairs_hook=_runtime_json_object,
+                    parse_float=_compose_json_float,
+                    parse_constant=_runtime_json_constant,
+                )
+                if type(raw_record) is not dict or not _compose_json_depth_within_limit(
+                    raw_record
+                ):
+                    return None
+                identity = raw_record.get("Id")
+                if (
+                    type(identity) is not str
+                    or identity not in expected_batch
+                    or identity in parsed
+                ):
+                    return None
+                snapshot = _runtime_snapshot(admitted, evidence, identity, raw_record)
+                if snapshot is None:
+                    return None
+                parsed[identity] = snapshot
+            if set(parsed) != set(expected_batch):
+                return None
+            for container_id in expected_batch:
+                if container_id in seen:
+                    return None
+                seen.add(container_id)
+                snapshots.append(parsed[container_id])
+            if not _live(deadline):
+                return None
+    except (UnicodeError, ValueError, RecursionError):
+        return None
+    if seen != set(ids) or not _live(deadline):
+        return None
+    return tuple(snapshots)
+
+
+def observe_owned_core_runtime(
+    owner: OwnerEvidence,
+    pins: DockerReadPins,
+    compose: ComposeConfigPins,
+    *,
+    deadline: Deadline,
+) -> RuntimeEvidence | None:
+    """Collect private read-only owner-scoped inventory evidence under one deadline.
+
+    Caller-supplied signed-owner/key provenance and the authority of the local
+    Docker executable, config and socket remain external preconditions. The
+    result is evidence for the existing coordinator validator, not an outage
+    admission or a substitute for its inventory verdict.
+    """
+    admitted_owner = _compose_owner(owner)
+    if admitted_owner is None or type(pins) is not DockerReadPins:
+        return None
+    try:
+        admitted_pins = replace(pins)
+        admitted_compose = replace(compose)
+    except TypeError:
+        return None
+    if (
+        admitted_pins.cwd != admitted_owner.worktree
+        or admitted_pins.daemon_fingerprint != admitted_owner.daemon_fingerprint
+        or not _live(deadline)
+    ):
+        return None
+
+    daemon = observe_daemon_metadata(admitted_pins, deadline=deadline)
+    if (
+        type(daemon) is not DaemonMetadataResult
+        or daemon.status is not DaemonMetadataStatus.MATCHED_METADATA
+        or daemon.fingerprint != admitted_owner.daemon_fingerprint
+        or not _live(deadline)
+    ):
+        return None
+    compose_result = observe_compose_metadata(
+        admitted_owner,
+        admitted_pins,
+        admitted_compose,
+        deadline=deadline,
+    )
+    if type(compose_result) is not ComposeMetadataResult:
+        return None
+    metadata = _runtime_metadata_pair(
+        compose_coordinator_metadata(admitted_owner, daemon, compose_result)
+    )
+    evidence = (
+        _runtime_compose_evidence(metadata, compose_result.evidence)
+        if metadata is not None
+        else None
+    )
+    if metadata is None or evidence is None or not _live(deadline):
+        return None
+
+    id_request = prepare_container_id_read(metadata, admitted_pins, deadline=deadline)
+    if id_request is None or not _pinned_daemon_matches(
+        metadata, admitted_pins, deadline=deadline
+    ):
+        return None
+    id_result = process.run_private_process(id_request, deadline=deadline)
+    if not _pinned_daemon_matches(metadata, admitted_pins, deadline=deadline):
+        return None
+    container_ids = decode_container_id_read(id_result, metadata, deadline=deadline)
+    if container_ids is None:
+        return None
+
+    inspect_requests = prepare_container_inspect_reads(
+        metadata,
+        admitted_pins,
+        container_ids,
+        deadline=deadline,
+    )
+    if inspect_requests is None:
+        return None
+    inspect_results: list[PrivateProcessResult] = []
+    for request in inspect_requests:
+        if not _pinned_daemon_matches(metadata, admitted_pins, deadline=deadline):
+            return None
+        result = process.run_private_process(request, deadline=deadline)
+        if not _pinned_daemon_matches(metadata, admitted_pins, deadline=deadline):
+            return None
+        inspect_results.append(result)
+
+    containers = decode_container_inspect_reads(
+        metadata,
+        evidence,
+        container_ids,
+        tuple(inspect_results),
+        deadline=deadline,
+    )
+    if containers is None or not _live(deadline):
+        return None
+    return RuntimeEvidence(
+        daemon_fingerprint=metadata.daemon_fingerprint,
+        resource_fingerprint=metadata.resource_fingerprint,
+        containers=containers,
+    )

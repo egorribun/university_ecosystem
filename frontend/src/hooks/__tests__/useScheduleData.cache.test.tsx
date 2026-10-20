@@ -3,13 +3,17 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
-import { useScheduleData } from "../useScheduleData"
+import { useScheduleData } from "@/hooks/useScheduleData"
 import { CampusTimezoneProvider, useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import { scheduleGroupsQueryOptions, pageScheduleQueryOptions } from "@/api/hooks/schedule"
 import { currentUserQueryOptions } from "@/api/hooks/users"
 import type { ScheduleGroup, Lesson } from "@/components/schedule/scheduleUtils"
 import { useAuthStore } from "@/stores/useAuthStore"
 import type { UserState } from "@/types/Auth"
+import {
+  createOptimisticLessonUpdater,
+  createRollbackUpdater,
+} from "@/components/schedule/dialogs/EditLessonDialog"
 
 /**
  * Wave 130 polish — closes §Honesty probe #4 (vitest count delta from
@@ -110,7 +114,11 @@ function campusBoundaryClient(groupId: string): QueryClient {
   ]
   client.setQueryData(scheduleGroupsQueryOptions().queryKey, [{ id: groupId, name: "Campus" }])
   client.setQueryData(pageScheduleQueryOptions(groupId).queryKey, lessons)
-  setAuthFixture({ id: "campus-fixture-user", role: "student", group_id: groupId } as UserState)
+  setAuthFixture({
+    id: "campus-fixture-user",
+    role: "student",
+    group_id: groupId,
+  } as UserState)
   return client
 }
 
@@ -145,7 +153,9 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
 
     setAuthFixture({ id: "u1", role: "admin", group_id: null } as UserState)
 
-    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
 
     await waitFor(() => {
       expect(result.current.groups).toEqual(groups)
@@ -163,13 +173,19 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     const client = newClient()
     client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
 
-    setAuthFixture({ id: "u1", role: "student", group_id: "group-2" } as UserState)
+    setAuthFixture({
+      id: "u1",
+      role: "student",
+      group_id: "group-2",
+    } as UserState)
 
     // Mock /schedule/{groupId} response — auto-select effect should fire it
     // once group_id is resolved on next tick.
     apiGetMock.mockResolvedValueOnce({ data: [], status: 200 })
 
-    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
 
     await waitFor(() => {
       expect(result.current.selectedGroup).toBe("group-2")
@@ -189,11 +205,17 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     const client = newClient()
     client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
 
-    setAuthFixture({ id: "u1", role: "student", group_id: "group-MISSING" } as UserState)
+    setAuthFixture({
+      id: "u1",
+      role: "student",
+      group_id: "group-MISSING",
+    } as UserState)
 
     apiGetMock.mockResolvedValueOnce({ data: [], status: 200 })
 
-    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
 
     await waitFor(() => {
       // Auto-select falls back to groups[0] since user.group_id doesn't exist.
@@ -204,9 +226,15 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
   it("does not select a group while the available group list is empty", async () => {
     const client = newClient()
     client.setQueryData(scheduleGroupsQueryOptions().queryKey, [])
-    setAuthFixture({ id: "u-empty", role: "admin", group_id: null } as UserState)
+    setAuthFixture({
+      id: "u-empty",
+      role: "admin",
+      group_id: null,
+    } as UserState)
 
-    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
 
     await waitFor(() => expect(result.current.groups).toEqual([]))
     expect(result.current.selectedGroup).toBeNull()
@@ -262,9 +290,15 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     client.setQueryData(pageScheduleQueryOptions("group-A").queryKey, lessons)
 
     // useAuth mirrors what AuthProvider would surface from /users/me on hydration.
-    setAuthFixture({ id: "u1", role: "student", group_id: "group-A" } as UserState)
+    setAuthFixture({
+      id: "u1",
+      role: "student",
+      group_id: "group-A",
+    } as UserState)
 
-    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
 
     await waitFor(() => {
       expect(result.current.groups).toEqual(groups)
@@ -328,9 +362,15 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
 
     const bulkUpsert = vi.fn().mockResolvedValue(undefined)
     getDatabaseMock.mockResolvedValue({ schedule: { bulkUpsert } } as never)
-    setAuthFixture({ id: "u-object", role: "student", group_id: "group-object" } as UserState)
+    setAuthFixture({
+      id: "u-object",
+      role: "student",
+      group_id: "group-object",
+    } as UserState)
 
-    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
 
     await waitFor(() => {
       expect(result.current.selectedGroup).toBe("group-object")
@@ -352,7 +392,12 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
           room: "202",
           building: "North",
         }),
-        expect.objectContaining({ subject: "", teacher: "", room: "303", building: "South" }),
+        expect.objectContaining({
+          subject: "",
+          teacher: "",
+          room: "303",
+          building: "South",
+        }),
       ])
     )
 
@@ -371,6 +416,398 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: pageScheduleQueryOptions("group-object").queryKey,
     })
+  })
+
+  it("rolls back a failed save after schedule normalization and QueryClient structural sharing", async () => {
+    const groupId = "rollback-structural-sharing"
+    const lesson: Lesson = {
+      id: "lesson-rollback",
+      group_id: groupId,
+      weekday: "monday",
+      parity: "both",
+      start_time: "09:00",
+      end_time: "10:00",
+      subject: "Before save",
+      teacher: "Teacher",
+      room: "101",
+      lesson_type: "lecture",
+    }
+    const other: Lesson = {
+      ...lesson,
+      id: "lesson-normalized",
+      weekday: "Tuesday",
+      subject: "Unrelated lesson",
+    }
+    const client = newClient()
+    const scheduleKey = pageScheduleQueryOptions(groupId).queryKey
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, [{ id: groupId, name: "Group" }])
+    // These aliases force useScheduleData's real normalizeLessons callback to
+    // canonicalize the cache value on each applyScheduleUpdate call.
+    client.setQueryData(scheduleKey, [lesson, other])
+    setAuthFixture({
+      id: "rollback-user",
+      role: "student",
+      group_id: groupId,
+    } as UserState)
+
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
+    await waitFor(() => expect(result.current.selectedGroup).toBe(groupId))
+    let previous: Lesson | undefined
+    const optimistic: Lesson = { ...lesson, subject: "Saving" }
+    let optimisticReceipt: ReturnType<typeof result.current.applyScheduleUpdate>
+    await act(async () => {
+      optimisticReceipt = result.current.applyScheduleUpdate((rows) => {
+        previous = rows.find((row) => row.id === lesson.id)
+        return createOptimisticLessonUpdater(lesson.id, optimistic)(rows)
+      })
+    })
+    expect(previous).toEqual(lesson)
+
+    const afterOptimistic = client.getQueryData<Lesson[]>(scheduleKey)!
+    const structurallySharedLesson = afterOptimistic.find((row) => row.id === lesson.id)!
+    expect(structurallySharedLesson).toEqual(optimistic)
+    expect(structurallySharedLesson).not.toBe(optimistic)
+    expect(afterOptimistic.find((row) => row.id === other.id)?.weekday).toBe("tuesday")
+
+    const receiptLesson = optimisticReceipt?.schedule.find((row) => row.id === lesson.id)
+    expect(receiptLesson).toBe(structurallySharedLesson)
+    await act(async () => {
+      result.current.applyScheduleUpdate(createRollbackUpdater(receiptLesson!, previous))
+    })
+
+    expect(client.getQueryData<Lesson[]>(scheduleKey)?.find((row) => row.id === lesson.id)).toEqual(
+      previous
+    )
+  })
+
+  it("rolls back only its row while preserving concurrent unrelated changes", async () => {
+    const groupId = "rollback-unrelated"
+    const target: Lesson = {
+      id: "lesson-target",
+      group_id: groupId,
+      weekday: "monday",
+      parity: "both",
+      start_time: "09:00",
+      end_time: "10:00",
+      subject: "Before save",
+    }
+    const unrelated: Lesson = {
+      ...target,
+      id: "lesson-unrelated",
+      subject: "Before update",
+    }
+    const removed: Lesson = {
+      ...target,
+      id: "lesson-removed",
+      subject: "Remove me",
+    }
+    const client = newClient()
+    const scheduleKey = pageScheduleQueryOptions(groupId).queryKey
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, [{ id: groupId, name: "Group" }])
+    client.setQueryData(scheduleKey, [target, unrelated, removed])
+    setAuthFixture({
+      id: "rollback-user",
+      role: "student",
+      group_id: groupId,
+    } as UserState)
+
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
+    await waitFor(() => expect(result.current.selectedGroup).toBe(groupId))
+    let previous: Lesson | undefined
+    const optimistic = { ...target, subject: "Saving" }
+    let optimisticReceipt: ReturnType<typeof result.current.applyScheduleUpdate>
+    await act(async () => {
+      optimisticReceipt = result.current.applyScheduleUpdate((rows) => {
+        previous = rows.find((row) => row.id === target.id)
+        return createOptimisticLessonUpdater(target.id, optimistic)(rows)
+      })
+    })
+
+    await act(async () => {
+      result.current.applyScheduleUpdate((rows) => [
+        ...rows
+          .filter((row) => row.id !== removed.id)
+          .map((row) => (row.id === unrelated.id ? { ...row, subject: "Concurrent update" } : row)),
+        { ...target, id: "lesson-added", subject: "Concurrent addition" },
+      ])
+    })
+    const receiptLesson = optimisticReceipt?.schedule.find((row) => row.id === target.id)
+    await act(async () => {
+      result.current.applyScheduleUpdate(createRollbackUpdater(receiptLesson!, previous))
+    })
+
+    const rows = client.getQueryData<Lesson[]>(scheduleKey)!
+    expect(rows.find((row) => row.id === target.id)).toEqual(previous)
+    expect(rows.find((row) => row.id === unrelated.id)?.subject).toBe("Concurrent update")
+    expect(rows.find((row) => row.id === "lesson-added")?.subject).toBe("Concurrent addition")
+    expect(rows.some((row) => row.id === removed.id)).toBe(false)
+  })
+
+  it("keeps an authoritative newer edit to the same row after a failed save", async () => {
+    const groupId = "rollback-same-row-newer"
+    const original: Lesson = {
+      id: "lesson-concurrent",
+      group_id: groupId,
+      weekday: "monday",
+      parity: "both",
+      start_time: "09:00",
+      end_time: "10:00",
+      subject: "Original",
+    }
+    const client = newClient()
+    const scheduleKey = pageScheduleQueryOptions(groupId).queryKey
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, [{ id: groupId, name: "Group" }])
+    client.setQueryData(scheduleKey, [original])
+    setAuthFixture({
+      id: "rollback-user",
+      role: "student",
+      group_id: groupId,
+    } as UserState)
+
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
+    await waitFor(() => expect(result.current.selectedGroup).toBe(groupId))
+    let previous: Lesson | undefined
+    const optimistic = { ...original, subject: "Saving" }
+    let optimisticReceipt: ReturnType<typeof result.current.applyScheduleUpdate>
+    await act(async () => {
+      optimisticReceipt = result.current.applyScheduleUpdate((rows) => {
+        previous = rows.find((row) => row.id === original.id)
+        return createOptimisticLessonUpdater(original.id, optimistic)(rows)
+      })
+    })
+    const authoritative = { ...optimistic, subject: "Newer server value" }
+    await act(async () => {
+      client.setQueryData<Lesson[]>(
+        scheduleKey,
+        (rows) => rows?.map((row) => (row.id === original.id ? authoritative : row)) ?? []
+      )
+    })
+
+    await act(async () => {
+      const receiptLesson = optimisticReceipt?.schedule.find((row) => row.id === original.id)
+      result.current.applyScheduleUpdate(createRollbackUpdater(receiptLesson!, previous))
+    })
+
+    expect(client.getQueryData<Lesson[]>(scheduleKey)?.[0]).toEqual(authoritative)
+  })
+
+  it("keeps a fetched value that confirms the optimistic row before a save rejection", async () => {
+    const groupId = "rollback-fetched-confirmation"
+    const original: Lesson = {
+      id: "lesson-confirmed",
+      group_id: groupId,
+      weekday: "monday",
+      parity: "both",
+      start_time: "09:00",
+      end_time: "10:00",
+      subject: "Before save",
+    }
+    const client = newClient()
+    const scheduleKey = pageScheduleQueryOptions(groupId).queryKey
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, [{ id: groupId, name: "Group" }])
+    client.setQueryData(scheduleKey, [original])
+    setAuthFixture({
+      id: "rollback-user",
+      role: "student",
+      group_id: groupId,
+    } as UserState)
+
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
+    await waitFor(() => expect(result.current.selectedGroup).toBe(groupId))
+    let previous: Lesson | undefined
+    const optimistic = { ...original, subject: "Saved" }
+    let receipt:
+      | {
+          schedule: Lesson[]
+          isCurrent: () => boolean
+          invalidate: () => Promise<void>
+        }
+      | undefined
+    await act(async () => {
+      receipt = result.current.applyScheduleUpdate((rows) => {
+        previous = rows.find((row) => row.id === original.id)
+        return createOptimisticLessonUpdater(original.id, optimistic)(rows)
+      })
+    })
+    const receiptLesson = receipt?.schedule.find((row) => row.id === original.id)
+    if (!receiptLesson) throw new Error("Expected optimistic lesson in the update receipt")
+
+    apiGetMock.mockResolvedValueOnce({
+      data: [{ ...optimistic }],
+      status: 200,
+    } as never)
+    await act(async () => {
+      await client.fetchQuery({
+        ...pageScheduleQueryOptions(groupId),
+        staleTime: 0,
+        queryFn: async () => [{ ...optimistic }],
+      })
+    })
+    const fetchedLesson = client.getQueryData<Lesson[]>(scheduleKey)?.[0]
+    expect(fetchedLesson).toBe(receiptLesson)
+    expect(fetchedLesson?.subject).toBe("Saved")
+    expect(receipt?.isCurrent()).toBe(false)
+
+    // Simulate a PATCH acknowledgement failure after the successful refresh.
+    const invalidateQueries = vi.spyOn(client, "invalidateQueries")
+    await act(async () => {
+      if (receipt?.isCurrent()) {
+        result.current.applyScheduleUpdate(createRollbackUpdater(receiptLesson, previous))
+      } else if (receipt) {
+        await receipt.invalidate()
+      }
+    })
+
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: scheduleKey,
+      exact: true,
+    })
+    expect(client.getQueryData<Lesson[]>(scheduleKey)?.[0]?.subject).toBe("Saved")
+  })
+
+  it("invalidates receipts on group changes and unmount using their captured query keys", async () => {
+    const groupIds = ["receipt-group-a", "receipt-group-b"] as const
+    const lessonFor = (groupId: string): Lesson => ({
+      id: `lesson-${groupId}`,
+      group_id: groupId,
+      weekday: "monday",
+      parity: "both",
+      start_time: "09:00",
+      end_time: "10:00",
+      subject: "Before save",
+    })
+    const client = newClient()
+    const scheduleKeys = groupIds.map((groupId) => pageScheduleQueryOptions(groupId).queryKey)
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, [
+      { id: groupIds[0], name: "Group A" },
+      { id: groupIds[1], name: "Group B" },
+    ])
+    groupIds.forEach((groupId, index) =>
+      client.setQueryData(scheduleKeys[index]!, [lessonFor(groupId)])
+    )
+    setAuthFixture({
+      id: "receipt-admin",
+      role: "admin",
+      group_id: null,
+    } as UserState)
+
+    const queryCache = client.getQueryCache()
+    const unsubscriptions: Array<() => void> = []
+    const originalSubscribe = queryCache.subscribe.bind(queryCache)
+    vi.spyOn(queryCache, "subscribe").mockImplementation((listener) => {
+      const unsubscribe = originalSubscribe(listener)
+      const trackedUnsubscribe = vi.fn(unsubscribe)
+      unsubscriptions.push(trackedUnsubscribe)
+      return trackedUnsubscribe
+    })
+
+    const { result, unmount } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
+    await waitFor(() => expect(result.current.selectedGroup).toBe(groupIds[0]))
+    let firstReceipt:
+      | {
+          schedule: Lesson[]
+          isCurrent: () => boolean
+          invalidate: () => Promise<void>
+        }
+      | undefined
+    act(() => {
+      firstReceipt = result.current.applyScheduleUpdate((rows) =>
+        rows.map((row) => ({ ...row, subject: "Saving group A" }))
+      )
+    })
+    expect(firstReceipt?.isCurrent()).toBe(true)
+
+    const invalidateQueries = vi.spyOn(client, "invalidateQueries")
+    act(() => result.current.setSelectedGroup(groupIds[1]))
+    await waitFor(() => expect(result.current.selectedGroup).toBe(groupIds[1]))
+    expect(firstReceipt?.isCurrent()).toBe(false)
+    await act(async () => firstReceipt?.invalidate())
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: scheduleKeys[0],
+      exact: true,
+    })
+    expect(client.getQueryState(scheduleKeys[1]!)?.isInvalidated).toBe(false)
+    expect(unsubscriptions).toHaveLength(2)
+    expect(unsubscriptions[0]).toHaveBeenCalledOnce()
+    expect(unsubscriptions[1]).not.toHaveBeenCalled()
+
+    let secondReceipt:
+      | {
+          schedule: Lesson[]
+          isCurrent: () => boolean
+          invalidate: () => Promise<void>
+        }
+      | undefined
+    act(() => {
+      secondReceipt = result.current.applyScheduleUpdate((rows) =>
+        rows.map((row) => ({ ...row, subject: "Saving group B" }))
+      )
+    })
+    expect(secondReceipt?.isCurrent()).toBe(true)
+    unmount()
+    expect(secondReceipt?.isCurrent()).toBe(false)
+    await act(async () => secondReceipt?.invalidate())
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: scheduleKeys[1],
+      exact: true,
+    })
+    expect(unsubscriptions[1]).toHaveBeenCalledOnce()
+  })
+
+  it("does not resurrect a row deleted while a save is pending", async () => {
+    const groupId = "rollback-same-row-deleted"
+    const original: Lesson = {
+      id: "lesson-deleted",
+      group_id: groupId,
+      weekday: "Monday",
+      parity: "both",
+      start_time: "09:00",
+      end_time: "10:00",
+      subject: "Original",
+    }
+    const client = newClient()
+    const scheduleKey = pageScheduleQueryOptions(groupId).queryKey
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, [{ id: groupId, name: "Group" }])
+    client.setQueryData(scheduleKey, [original])
+    setAuthFixture({
+      id: "rollback-user",
+      role: "student",
+      group_id: groupId,
+    } as UserState)
+
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
+    await waitFor(() => expect(result.current.selectedGroup).toBe(groupId))
+    let previous: Lesson | undefined
+    const optimistic = { ...original, subject: "Saving" }
+    let optimisticReceipt: ReturnType<typeof result.current.applyScheduleUpdate>
+    await act(async () => {
+      optimisticReceipt = result.current.applyScheduleUpdate((rows) => {
+        previous = rows.find((row) => row.id === original.id)
+        return createOptimisticLessonUpdater(original.id, optimistic)(rows)
+      })
+    })
+    await act(async () => {
+      result.current.applyScheduleUpdate((rows) => rows.filter((row) => row.id !== original.id))
+    })
+
+    await act(async () => {
+      const receiptLesson = optimisticReceipt?.schedule.find((row) => row.id === original.id)
+      result.current.applyScheduleUpdate(createRollbackUpdater(receiptLesson!, previous))
+    })
+
+    expect(client.getQueryData<Lesson[]>(scheduleKey)).toEqual([])
   })
 
   it("skips unknown calendar days and safely handles empty optimistic cache", async () => {
@@ -404,9 +841,15 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     const client = newClient()
     client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
     client.setQueryData(pageScheduleQueryOptions("group-defensive").queryKey, lessons)
-    setAuthFixture({ id: "u-defensive", role: "student", group_id: "group-defensive" } as UserState)
+    setAuthFixture({
+      id: "u-defensive",
+      role: "student",
+      group_id: "group-defensive",
+    } as UserState)
 
-    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
 
     await waitFor(() => {
       expect(result.current.selectedGroup).toBe("group-defensive")
@@ -430,7 +873,9 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     const noGroupClient = newClient()
     act(() => setAuthFixture(null))
     noGroupClient.setQueryData(scheduleGroupsQueryOptions(true).queryKey, [])
-    const noGroup = renderHook(() => useScheduleData(), { wrapper: wrapper(noGroupClient) })
+    const noGroup = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(noGroupClient),
+    })
     expect(() => {
       noGroup.result.current.applyScheduleUpdate((previous) => previous)
       noGroup.result.current.refresh()
@@ -462,9 +907,15 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     client.setQueryData(pageScheduleQueryOptions("group-falsy").queryKey, lessons)
     const bulkUpsert = vi.fn().mockResolvedValue(undefined)
     getDatabaseMock.mockResolvedValue({ schedule: { bulkUpsert } } as never)
-    setAuthFixture({ id: "u-falsy", role: "student", group_id: "group-falsy" } as UserState)
+    setAuthFixture({
+      id: "u-falsy",
+      role: "student",
+      group_id: "group-falsy",
+    } as UserState)
 
-    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
 
     await waitFor(() => {
       expect(result.current.selectedGroup).toBe("group-falsy")
@@ -535,9 +986,15 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     const client = newClient()
     client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
     client.setQueryData(pageScheduleQueryOptions("group-today").queryKey, lessons)
-    setAuthFixture({ id: "u-today", role: "student", group_id: "group-today" } as UserState)
+    setAuthFixture({
+      id: "u-today",
+      role: "student",
+      group_id: "group-today",
+    } as UserState)
 
-    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
 
     await waitFor(() => expect(result.current.selectedGroup).toBe("group-today"))
     expect(result.current.hasToday).toBe(true)
@@ -579,9 +1036,15 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     const client = newClient()
     client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
     client.setQueryData(pageScheduleQueryOptions("group-even").queryKey, lessons)
-    setAuthFixture({ id: "u-even", role: "student", group_id: "group-even" } as UserState)
+    setAuthFixture({
+      id: "u-even",
+      role: "student",
+      group_id: "group-even",
+    } as UserState)
 
-    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
 
     await waitFor(() => expect(result.current.selectedGroup).toBe("group-even"))
     expect(result.current.currentParity).toBe("even")
@@ -625,7 +1088,11 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     const client = newClient()
     client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
     client.setQueryData(pageScheduleQueryOptions("group-boundary").queryKey, lessons)
-    setAuthFixture({ id: "u-boundary", role: "student", group_id: "group-boundary" } as UserState)
+    setAuthFixture({
+      id: "u-boundary",
+      role: "student",
+      group_id: "group-boundary",
+    } as UserState)
 
     const { result } = renderHook(() => useScheduleData(), {
       wrapper: ({ children }: { children: ReactNode }) => (
@@ -674,9 +1141,15 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     const client = newClient()
     client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
     client.setQueryData(pageScheduleQueryOptions("group-cal").queryKey, lessons)
-    setAuthFixture({ id: "u-cal", role: "student", group_id: "group-cal" } as UserState)
+    setAuthFixture({
+      id: "u-cal",
+      role: "student",
+      group_id: "group-cal",
+    } as UserState)
 
-    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
 
     await waitFor(() => expect(result.current.selectedGroup).toBe("group-cal"))
     // September 2026: the Mondays are the 7th, 14th, 21st and 28th.
@@ -706,9 +1179,15 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     client.setQueryData(pageScheduleQueryOptions("group-nullish").queryKey, lessons)
     const bulkUpsert = vi.fn().mockResolvedValue(undefined)
     getDatabaseMock.mockResolvedValue({ schedule: { bulkUpsert } } as never)
-    setAuthFixture({ id: "u-nullish", role: "student", group_id: "group-nullish" } as UserState)
+    setAuthFixture({
+      id: "u-nullish",
+      role: "student",
+      group_id: "group-nullish",
+    } as UserState)
 
-    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
 
     await waitFor(() => {
       expect(result.current.selectedGroup).toBe("group-nullish")
@@ -746,14 +1225,22 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
       lesson_type: "lecture",
     } as Lesson
     const groups: ScheduleGroup[] = [{ id: "group-failure", name: "Failure Group" }]
-    setAuthFixture({ id: "u-failure", role: "student", group_id: "group-failure" } as UserState)
+    setAuthFixture({
+      id: "u-failure",
+      role: "student",
+      group_id: "group-failure",
+    } as UserState)
 
     const firstClient = newClient()
     firstClient.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
     firstClient.setQueryData(pageScheduleQueryOptions("group-failure").queryKey, [lesson])
     const bulkUpsert = vi.fn().mockRejectedValue(new Error("write failed"))
-    getDatabaseMock.mockResolvedValueOnce({ schedule: { bulkUpsert } } as never)
-    const first = renderHook(() => useScheduleData(), { wrapper: wrapper(firstClient) })
+    getDatabaseMock.mockResolvedValueOnce({
+      schedule: { bulkUpsert },
+    } as never)
+    const first = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(firstClient),
+    })
     await waitFor(() => expect(bulkUpsert).toHaveBeenCalledOnce())
     first.unmount()
 
@@ -761,13 +1248,22 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     secondClient.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
     secondClient.setQueryData(pageScheduleQueryOptions("group-failure").queryKey, [lesson])
     getDatabaseMock.mockRejectedValueOnce(new Error("database unavailable"))
-    const second = renderHook(() => useScheduleData(), { wrapper: wrapper(secondClient) })
+    const second = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(secondClient),
+    })
     await waitFor(() => expect(getDatabaseMock).toHaveBeenCalledTimes(2))
     expect(second.result.current.rawSchedule).toEqual([lesson])
   })
 
   it.each([
-    { zone: "UTC", parity: "even", day: -1, today: [], current: null, next: null },
+    {
+      zone: "UTC",
+      parity: "even",
+      day: -1,
+      today: [],
+      current: null,
+      next: null,
+    },
     {
       zone: "Europe/Moscow",
       parity: "odd",
@@ -852,7 +1348,9 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
         <CampusTimezoneProvider timeZone={timeZone}>{children}</CampusTimezoneProvider>
       </QueryClientProvider>
     )
-    const { result, rerender } = renderHook(() => useScheduleData(), { wrapper: contextWrapper })
+    const { result, rerender } = renderHook(() => useScheduleData(), {
+      wrapper: contextWrapper,
+    })
     await waitFor(() => {
       expect(result.current.selectedGroup).toBe(groupId)
       expect(result.current.currentParity).toBe("even")

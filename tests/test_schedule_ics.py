@@ -229,3 +229,60 @@ async def test_schedule_endpoint_preserves_existing_vary_values(
         if value.strip()
     }
     assert {"Origin", "Accept-Language"} <= cached_vary_values
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("locale", "expected_type", "expected_description"),
+    [
+        ("en", "Project work", "Lesson type: Project work"),
+        ("ru", "Проектная работа", "Тип занятия: Проектная работа"),
+    ],
+)
+async def test_schedule_ics_endpoint_localizes_project_lesson_type(
+    async_client,
+    db_session,
+    locale: str,
+    expected_type: str,
+    expected_description: str,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    from app.main import app
+    from app.schemas.dtos.schedule import ScheduleDTO
+
+    group = models.Group(name="PR-01", course=1, faculty="IT")
+    db_session.add(group)
+    await db_session.commit()
+    await db_session.refresh(group)
+
+    lesson = models.Schedule(
+        group_id=group.id,
+        subject="Capstone workshop",
+        teacher="Dr. Brown",
+        room="Studio 4",
+        weekday="monday",
+        start_time=datetime(2026, 1, 5, 9, 0, tzinfo=UTC),
+        end_time=datetime(2026, 1, 5, 10, 30, tzinfo=UTC),
+        parity="both",
+        lesson_type="project",
+    )
+    db_session.add(lesson)
+    await db_session.commit()
+    await db_session.refresh(lesson)
+
+    mock_service = AsyncMock()
+    mock_service.get_schedule = AsyncMock(
+        return_value=[ScheduleDTO.model_validate(lesson)]
+    )
+    install_dishka_override(app, ScheduleService=mock_service)
+
+    response = await async_client.get(
+        f"/schedule/ics?group={group.id}",
+        headers={"Accept-Language": locale},
+    )
+
+    assert response.status_code == 200
+    assert response.headers.get("Content-Language") == locale
+    assert f"SUMMARY:Capstone workshop ({expected_type})" in response.text
+    assert expected_description in response.text

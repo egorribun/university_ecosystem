@@ -12,13 +12,16 @@ import {
   getTimeStr,
   getEndTimeStr,
 } from "@/components/schedule/scheduleUtils"
+import type { ScheduleUpdateReceipt } from "@/hooks/useScheduleData"
 import { useSchedulePage } from "@/contexts/SchedulePageContext"
 
 interface EditLessonDialogProps {
   schedule: Lesson[]
   lessonTypeOptions: { value: string; label: string }[]
   toBackendLessonType: (val?: string | null) => string
-  applyScheduleUpdate: (updater: (prev: Lesson[]) => Lesson[]) => void
+  applyScheduleUpdate: (
+    updater: (prev: Lesson[]) => Lesson[]
+  ) => ScheduleUpdateReceipt | Lesson[] | undefined | void
   refresh: () => void
 }
 
@@ -111,14 +114,24 @@ export function createOptimisticLessonUpdater(
   }
 }
 
-export function createRollbackUpdater(backup: Lesson[]): (lessons: Lesson[]) => Lesson[] {
-  return function rollback(_lessons: Lesson[]): Lesson[] {
-    return backup
+export function createRollbackUpdater(
+  optimisticLesson: Lesson,
+  previousLesson: Lesson | undefined
+): (lessons: Lesson[]) => Lesson[] {
+  return function rollback(lessons: Lesson[]): Lesson[] {
+    if (!previousLesson) return lessons
+    const optimisticIndex = lessons.findIndex(
+      (lesson) => lesson.id === optimisticLesson.id && lesson === optimisticLesson
+    )
+    if (optimisticIndex < 0) return lessons
+
+    const rolledBack = [...lessons]
+    rolledBack[optimisticIndex] = previousLesson
+    return rolledBack
   }
 }
 
 export function EditLessonDialog({
-  schedule,
   lessonTypeOptions,
   toBackendLessonType,
   applyScheduleUpdate,
@@ -142,12 +155,22 @@ export function EditLessonDialog({
 
   const handleSave = async (lesson: Lesson) => {
     const optimisticId = lesson.id
-    const backup = schedule.map((lesson) => ({ ...lesson }))
+    let previousLesson: Lesson | undefined
     const backendLessonType = toBackendLessonType(lesson.lesson_type)
     const updatedLesson = { ...lesson, lesson_type: backendLessonType }
 
-    // Optimistic update
-    applyScheduleUpdate(createOptimisticLessonUpdater(optimisticId, updatedLesson))
+    // Capture the rollback base from the same cache updater that performs the
+    // optimistic write, then use the actual post-normalization/post-sharing row
+    // as the operation token.
+    const updateResult = applyScheduleUpdate((previous) => {
+      previousLesson = previous.find((current) => current.id === optimisticId)
+      return createOptimisticLessonUpdater(optimisticId, updatedLesson)(previous)
+    })
+    const receipt = updateResult && !Array.isArray(updateResult) ? updateResult : undefined
+    const optimisticSchedule = Array.isArray(updateResult) ? updateResult : receipt?.schedule
+    const optimisticCacheLesson = Array.isArray(optimisticSchedule)
+      ? optimisticSchedule.find((current) => current.id === optimisticId)
+      : undefined
     closeDialog()
 
     try {
@@ -162,7 +185,11 @@ export function EditLessonDialog({
       logError("Failed to update lesson", err)
       showSnackbar(t("schedule:snackbar.updateError"), "error")
       // Revert optimistic update
-      applyScheduleUpdate(createRollbackUpdater(backup))
+      if (receipt && !receipt.isCurrent()) {
+        void receipt.invalidate()
+      } else if (optimisticCacheLesson && previousLesson) {
+        applyScheduleUpdate(createRollbackUpdater(optimisticCacheLesson, previousLesson))
+      }
     } finally {
       setIsSaving(false)
     }
@@ -263,13 +290,15 @@ export function EditLessonDialog({
               </div>
               <div>
                 <label
-                  htmlFor="edit-lesson-type"
+                  id="edit-lesson-type-label"
+                  htmlFor="edit-lesson-type-trigger"
                   className="mb-2 block text-sm font-semibold opacity-strong"
                 >
                   {t("schedule:form.lessonType")}
                 </label>
                 <Select
                   id="edit-lesson-type"
+                  aria-labelledby="edit-lesson-type-label"
                   value={editLesson.lesson_type || ""}
                   onValueChange={handleLessonTypeChange}
                   options={lessonTypeOptions}
@@ -310,13 +339,15 @@ export function EditLessonDialog({
               </div>
               <div>
                 <label
-                  htmlFor="edit-lesson-parity"
+                  id="edit-lesson-parity-label"
+                  htmlFor="edit-lesson-parity-trigger"
                   className="mb-2 block text-sm font-semibold opacity-strong"
                 >
                   {t("schedule:form.week")}
                 </label>
                 <Select
                   id="edit-lesson-parity"
+                  aria-labelledby="edit-lesson-parity-label"
                   value={editLesson.parity}
                   onValueChange={handleParityChange}
                   options={[

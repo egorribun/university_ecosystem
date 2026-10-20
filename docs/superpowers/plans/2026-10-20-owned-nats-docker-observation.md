@@ -4,6 +4,14 @@
 
 Runtime observation, coordinator/CLI wiring and outage remain disabled. Prepared requests and supplied bytes do not establish actual Docker execution, executable/config/socket provenance, trusted daemon identity, complete inventory, health, image trust or mount admission.
 
+## Current inventory-read candidate — 2026-10-20
+
+The owner-scoped read boundary now composes admitted daemon/Compose metadata, an exact-project `ps --all --quiet --no-trunc` listing and captured-ID-only batched inspect requests. The listing includes stopped and same-project orphan containers. Canonical unique 64-hex IDs, exact response ID sets, bounded strict JSON, retained metadata, the original deadline and daemon rechecks bind the projected evidence. The existing coordinator still owns the inventory/health verdict. This helper can invoke the existing collector if explicitly called; no coordinator, CLI or runtime entrypoint is connected.
+
+Independent review reproduced a one-off-container false acceptance in the first private candidate. The corrected decoder requires exact Compose `oneoff=False` metadata and rejects true, missing and malformed labels; normal long-lived-service controls remain. Source still relies on the existing Core identity projection and does not establish executable/config/socket provenance or image/mount trust by itself.
+
+Root observed the missing-request RED before integration, then reproduced 371 PASS with canonical fixtures: 46 new inventory contracts, all 224 original transport cases and 101 coordinator cases. The original transport test file is byte-identical; only the additive inventory cases enter `tests/contracts/`, already selected by the existing ten-minute Contract job. No cleanup exemption, profile admission, removed selection or budget increase is added. The focused backend cohort's latest 288.75 seconds is close to its 300-second cap; private-copy timings are not used as hosted headroom evidence. Ruff and formatting pass. Hosted evidence, actual owner/lease and Docker authority, adapter wiring and the live outage proof remain required.
+
 ## No-I/O Compose projection extraction
 
 Extract the existing parsed-project body into _compose_resource_evidence_from_project; the legacy wrapper retains project validation, current process invocation/environment, JSON decoding and exact error behavior. The extraction adds no subprocess call or waiver. The existing projection body stays byte-for-byte unchanged.

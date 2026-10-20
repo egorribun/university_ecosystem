@@ -1566,7 +1566,7 @@ jobs:
         # Contract coverage includes test_file_processor_contract.py (ProcessResult
         # callback schema) alongside the existing ws-hub NATS contract.
         run: |
-          uv run pytest tests/contracts/ tests/test_live_stand_cleanup_profile_contract.py -v \
+          uv run pytest tests/contracts/ tests/test_live_stand_cleanup_profile_contract.py tests/test_live_nats_transport.py -v \
             --tb=short \
             -p no:cacheprovider \
             -k "not integration"
