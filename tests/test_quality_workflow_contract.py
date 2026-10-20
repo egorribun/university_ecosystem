@@ -6742,3 +6742,58 @@ def test_focused_migration_tests_append_to_existing_coverage_producer() -> None:
         "artifacts/coverage/python/producer/coverage-provenance-migration.json"
         in str(upload["with"]["path"])
     )
+
+
+def test_aud257_postgres_regression_has_explicit_integration_routing() -> None:
+    relative = "tests/integration/test_aud257_vector_service_postgres.py"
+    source = (REPOSITORY_ROOT / relative).read_text(encoding="utf-8")
+    module = ast.parse(source)
+    skip_conditions = [
+        node.args[0]
+        for node in ast.walk(module)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "skipif"
+    ]
+    assert len(skip_conditions) == 1
+    expected = ast.parse('os.getenv("RUN_INTEGRATION_TESTS") != "1"', mode="eval").body
+    assert ast.dump(skip_conditions[0]) == ast.dump(expected)
+    assert "pytest.mark.integration" in source
+    assert 'assert db_session.get_bind().dialect.name == "postgresql"' in source
+    assert not any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "pytest"
+        and node.func.attr in {"skip", "importorskip"}
+        for node in ast.walk(module)
+    )
+
+    reusable = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    unit_scripts = "\n".join(
+        str(step.get("run", "")) for step in reusable["jobs"]["unit-tests"]["steps"]
+    )
+    assert relative not in re.findall(r'--ignore=([^"\s]+)', unit_scripts)
+    integration = reusable["jobs"]["integration-tests"]
+    assert integration["env"]["RUN_INTEGRATION_TESTS"] == "1"
+    assert integration["env"]["DATABASE_URL"].startswith("postgresql+asyncpg://")
+    assert integration["services"]["postgres"]["image"].startswith(
+        "pgvector/pgvector:pg17@sha256:"
+    )
+    step = _provenance_step(integration, "Run integration tests")
+    assert step["env"]["INTEGRATION_TEST_PATTERN"] == (
+        "${{ inputs.integration-test-pattern }}"
+    )
+    script = str(step["run"])
+    assert "$env:INTEGRATION_TEST_PATTERN" in script
+    assert f"--ignore={relative}" not in script
+    assert "--ignore=tests/integration" not in script
+
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    caller = ci["jobs"]["backend-tests"]
+    assert caller["with"]["integration-test-pattern"] == "tests/integration/"
+    assert caller["with"]["run-integration-tests"] == "${{ matrix.run-integration }}"
+    assert any(
+        leg.get("run-integration") is True
+        for leg in caller["strategy"]["matrix"]["include"]
+    )

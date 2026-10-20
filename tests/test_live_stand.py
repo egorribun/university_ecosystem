@@ -13423,7 +13423,7 @@ def test_live_caddy_disjoint_real_reads_enforce_aggregate_cap(
         f"sys.stdout.buffer.write({rows['mobile']!r}); "
         "sys.stdout.buffer.flush(); "
         f"row = {padding_row!r}; "
-        f"row = row.replace(b'\"msg\": \"\"', "
+        f'row = row.replace(b\'"msg": ""\', '
         f"b'\"msg\": \"' + b'x' * {padding} + b'\"', 1); "
         "sys.stderr.buffer.write(row); "
         "sys.stderr.buffer.flush(); "
