@@ -23,3 +23,18 @@ Production is unchanged until observed RED. The later minimal correction should 
 ## Other reviewed scope
 
 AUD-061 scanner exclusion consistency, AUD-062 day rollover, AUD-063 rejected React.lazy recovery, AUD-066 calendar export, AUD-068 delayed search focus, AUD-069 late footer observation, AUD-071 Snackbar pointer hit-testing, AUD-074 print-media behavior, AUD-075 modified navigation clicks and AUD-080 group listbox semantics remain separate open items. AUD-065 has source improvements but still needs a displayed-target regression and source-bound execution reconciliation. None is accepted merely because tests exist.
+
+## Observed AUD-067/077 RED and narrow corrections
+
+80c0553 frontend job 118373599522 records eight expected new time-editor failures at helper line 331 and Save-disabled line 356; the other 2616 cases pass. Job 118373599628 records only the new false-beacon failure at line 172 (zero fetch calls), with 2339 other cases passing. Exact checkout a0527e2b54daaca915b4218af7d93d53544a0148/tree 004a4877fd815db7b2676a19f3ba90c1bba2e9bb is verified. No runtime/setup failure is substituted for these assertions.
+
+Time validation now checks both displayed HH:MM values against bounded clock ranges after the subject guard. Getter parameter types require only the single time field they read, allowing the partial validator input without casts; runtime getter behavior and date-bearing serialization are unchanged. This validates displayed time, not an entire calendar timestamp. Existing tests retain exact original ISO dates and chronological positive controls. The test's two controlled suffix cases now use literal regex alternatives, resolving the security lint warning without suppression.
+
+The ordinary Web Vitals reporter returns only when sendBeacon accepts the payload. False reaches the unchanged keepalive fetch path; exceptions and unavailable-browser controls remain unchanged. These corrections still require own-source GREEN and do not yet add AUD-067/077 to the ledger.
+
+## Next bounded tests
+
+- AUD-075: seven additive integrated TanStack Link/memory-router cases cover Ctrl/Meta/Shift/Alt, middle/secondary click and pre-cancelled events; the two ordinary same-target controls gain explicit cancellation and one-scroll assertions. React or Link composition can already suppress secondary/pre-cancelled callbacks, so those are preservation controls, not independent proof of a source guard. No native tab/window opening is claimed from jsdom. Production navigation is unchanged before RED.
+- AUD-080: direct/group/direct listbox regression requires true multiselect semantics only in group mode, two retained selected rows and the original direct-selection callback. Absent or false in direct mode is accepted equivalently. Production accessibility markup is unchanged before RED.
+- AUD-065: add actual static digit and accessible-label assertions immediately after changing the target from 600 to 601, then after one second. Keep the existing hidden-to-visible wall-clock catch-up and interval tests. Production source is unchanged; new hosted execution is needed before accepting the original finding.
+- AUD-061: scanRepository fixture includes valid App, invalid excluded test/generated/vendor files and an invalid ordinary production control. Require inventory exclusions and actual files/references/errors to agree, with production errors still blocking. The existing Node suite is appended after the existing scanner CLI and translation-parity test in i18n:check because no prior hosted command selected it. No workflow or scope-policy exclusion is added; scanner production is unchanged before RED. Temporary fixture cleanup is limited to its own mkdtemp path.

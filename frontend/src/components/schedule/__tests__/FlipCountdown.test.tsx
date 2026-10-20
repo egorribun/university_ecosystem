@@ -227,6 +227,34 @@ describe("FlipCountdown", () => {
     clearIntervalSpy.mockRestore()
   })
 
+  it("updates the displayed countdown when the target lesson changes", () => {
+    const { container, rerender } = render(<FlipCountdown targetMinutes={600} />)
+    const displayedDigits = () => {
+      const digits = container.querySelectorAll(".sched-flip-top span")
+      return Array.from(digits, (digit) => digit.textContent).join("")
+    }
+
+    expect(screen.getByRole("timer")).toHaveAttribute(
+      "aria-label",
+      "schedule:countdown.ariaLabel:0:5"
+    )
+    expect(displayedDigits()).toBe("0005")
+
+    rerender(<FlipCountdown targetMinutes={601} />)
+    expect(screen.getByRole("timer")).toHaveAttribute(
+      "aria-label",
+      "schedule:countdown.ariaLabel:1:5"
+    )
+    expect(displayedDigits()).toBe("0105")
+
+    act(() => vi.advanceTimersByTime(1000))
+    expect(screen.getByRole("timer")).toHaveAttribute(
+      "aria-label",
+      "schedule:countdown.ariaLabel:1:4"
+    )
+    expect(displayedDigits()).toBe("0104")
+  })
+
   it("uses the latest completion callback and tolerates an omitted callback", () => {
     const first = vi.fn()
     const latest = vi.fn()

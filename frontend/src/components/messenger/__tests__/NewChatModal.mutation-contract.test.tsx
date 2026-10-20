@@ -357,6 +357,37 @@ describe("NewChatModal motion/layout mutation contract", () => {
     expect(screen.queryByRole("button", { name: /messenger:removeMember/ })).toBeNull()
   })
 
+  it("declares multiselect semantics only while selecting group members", async () => {
+    state.get.mockResolvedValue({ data: [user("one"), user("two")] })
+    const onSelect = vi.fn()
+    render(<NewChatModal open onClose={() => {}} onSelect={onSelect} onCreateGroup={() => {}} />, {
+      wrapper,
+    })
+
+    const listbox = screen.getByRole("listbox", { name: "messenger:searchUsers" })
+    expect(listbox).not.toHaveAttribute("aria-multiselectable", "true")
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+      target: { value: "users" },
+    })
+    const first = await within(listbox).findByRole("option", { name: /User one/ })
+    const second = within(listbox).getByRole("option", { name: /User two/ })
+
+    fireEvent.click(screen.getByRole("tab", { name: "messenger:modeGroup" }))
+    expect(listbox).toHaveAttribute("aria-multiselectable", "true")
+    fireEvent.click(first)
+    fireEvent.click(second)
+    expect(first).toHaveAttribute("aria-selected", "true")
+    expect(second).toHaveAttribute("aria-selected", "true")
+    expect(within(listbox).getAllByRole("option", { selected: true })).toHaveLength(2)
+    expect(onSelect).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole("tab", { name: "messenger:modeDirect" }))
+    expect(listbox).not.toHaveAttribute("aria-multiselectable", "true")
+    expect(within(listbox).queryAllByRole("option", { selected: true })).toHaveLength(0)
+    fireEvent.click(first)
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith("one")
+  })
+
   it("keeps DM rows single-select and group rows checkbox-selectable", async () => {
     state.get.mockResolvedValue({ data: [user("one"), user("two")] })
     const onSelect = vi.fn()

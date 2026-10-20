@@ -434,6 +434,12 @@ class LifecycleLockLease:
     _opened_fds: list[int] = field(default_factory=list)
     _unlock: Callable[[], None] | None = None
     _released: bool = False
+    _pinned_state_root: str | None = None
+    _traversed_edges: tuple[tuple[str, int, int], ...] = ()
+    _lock_name: str | None = None
+    _lock_parent_fd: int | None = None
+    _lock_fd: int | None = None
+    _lock_identity: tuple[int, int] | None = None
 
 
 def _lifecycle_leaf_identity(
@@ -594,6 +600,12 @@ def acquire_existing_lifecycle_lock(
             deadline, lock_name, lock_parent_fd, lock_fd
         ):
             raise _ReaderNotReady
+        lease._pinned_state_root = pinned_state_root
+        lease._traversed_edges = tuple(traversed_edges)
+        lease._lock_name = lock_name
+        lease._lock_parent_fd = lock_parent_fd
+        lease._lock_fd = lock_fd
+        lease._lock_identity = identity
         return _reader_call(deadline, lambda: lease)
     except (_ReaderNotReady, OSError, ValueError):
         pass
@@ -626,5 +638,34 @@ def revalidate_lifecycle_lock(
     pinned_state_root: str,
     deadline: Deadline,
 ) -> bool:
-    """Unavailable seam: do not observe or change a retained lease."""
-    return False
+    """Observe the retained namespace without consuming or repairing the lease.
+
+    A successful sample is not atomic namespace continuity or authentication.
+    The caller owns release on both success and failure.
+    """
+    if (
+        type(lease) is not LifecycleLockLease
+        or lease._released
+        or not lease._opened_fds
+        or lease._unlock is None
+        or type(pinned_state_root) is not str
+        or pinned_state_root != lease._pinned_state_root
+        or not lease._traversed_edges
+        or lease._lock_name is None
+        or lease._lock_parent_fd is None
+        or lease._lock_fd is None
+        or lease._lock_identity is None
+        or type(deadline) is not Deadline
+        or not _reader_deadline_live(deadline)
+        or not _reader_api_supported()
+    ):
+        return False
+    try:
+        for name, parent_fd, child_fd in lease._traversed_edges:
+            _reader_check_directory(deadline, name, parent_fd, child_fd)
+        identity = _lifecycle_leaf_identity(
+            deadline, lease._lock_name, lease._lock_parent_fd, lease._lock_fd
+        )
+        return identity == lease._lock_identity and _reader_deadline_live(deadline)
+    except (_ReaderNotReady, OSError, ValueError):
+        return False

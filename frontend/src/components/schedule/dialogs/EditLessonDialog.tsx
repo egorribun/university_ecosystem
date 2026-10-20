@@ -25,7 +25,9 @@ interface EditLessonDialogProps {
 export function isEditLessonFormValid(
   lesson: Pick<Lesson, "subject" | "start_time" | "end_time"> | null
 ): boolean {
-  return !!lesson?.subject?.trim() && !!lesson?.start_time && !!lesson?.end_time
+  if (!lesson?.subject?.trim()) return false
+  const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/
+  return timePattern.test(getTimeStr(lesson)) && timePattern.test(getEndTimeStr(lesson))
 }
 
 export function getLessonDatePart(value: string | null | undefined, now: Date): string {

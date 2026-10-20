@@ -106,9 +106,17 @@ describe("DesktopNav", () => {
       "opacity-0",
       "pointer-events-none"
     )
-    await expectNoRouterNavigation(router, () => {
-      fireEvent.click(screen.getByRole("link", { name: "News" }))
+    const event = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
     })
+    expect(event.defaultPrevented).toBe(false)
+    await expectNoRouterNavigation(router, () => {
+      fireEvent(screen.getByRole("link", { name: "News" }), event)
+    })
+    expect(event.defaultPrevented).toBe(true)
+    expect(scrollToTop).toHaveBeenCalledOnce()
     expect(scrollToTop).toHaveBeenCalledWith("auto")
   })
 
@@ -131,10 +139,93 @@ describe("DesktopNav", () => {
       authProvider: false,
     })
 
-    await expectNoRouterNavigation(router, () => {
-      fireEvent.click(screen.getByRole("link", { name: "Events" }))
+    const event = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
     })
+    expect(event.defaultPrevented).toBe(false)
+    await expectNoRouterNavigation(router, () => {
+      fireEvent(screen.getByRole("link", { name: "Events" }), event)
+    })
+    expect(event.defaultPrevented).toBe(true)
+    expect(scrollToTop).toHaveBeenCalledOnce()
     expect(scrollToTop).toHaveBeenCalledWith("smooth")
+  })
+
+  it.each([
+    { name: "Ctrl", init: { ctrlKey: true } },
+    { name: "Meta", init: { metaKey: true } },
+    { name: "Shift", init: { shiftKey: true } },
+    { name: "Alt", init: { altKey: true } },
+    { name: "middle-button", init: { button: 1 } },
+    { name: "secondary-button", init: { button: 2 } },
+  ])("preserves the default for a same-target $name click", async ({ init }) => {
+    const scrollToTop = vi.fn()
+    const { router } = await renderWithRouter({
+      ui: () => (
+        <DesktopNav
+          menuLinks={navItems}
+          isActive={(to) => to === "/"}
+          isSameTarget={(to) => to === "/"}
+          scrollToTop={scrollToTop}
+          markScrollFromBottom={vi.fn()}
+          prefersReducedMotion
+          isCompact={false}
+        />
+      ),
+      path: "/",
+      initialPath: "/",
+      authProvider: false,
+    })
+    const event = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      ...init,
+    })
+
+    expect(event.defaultPrevented).toBe(false)
+    await expectNoRouterNavigation(router, () => {
+      fireEvent(screen.getByRole("link", { name: "Home" }), event)
+    })
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(scrollToTop).not.toHaveBeenCalled()
+  })
+
+  it("does not scroll for an already-cancelled same-target click", async () => {
+    const scrollToTop = vi.fn()
+    const { router } = await renderWithRouter({
+      ui: () => (
+        <DesktopNav
+          menuLinks={navItems}
+          isActive={(to) => to === "/"}
+          isSameTarget={(to) => to === "/"}
+          scrollToTop={scrollToTop}
+          markScrollFromBottom={vi.fn()}
+          prefersReducedMotion
+          isCompact={false}
+        />
+      ),
+      path: "/",
+      initialPath: "/",
+      authProvider: false,
+    })
+    const event = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+    })
+    event.preventDefault()
+
+    expect(event.defaultPrevented).toBe(true)
+    await expectNoRouterNavigation(router, () => {
+      fireEvent(screen.getByRole("link", { name: "Home" }), event)
+    })
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(scrollToTop).not.toHaveBeenCalled()
   })
 })
 

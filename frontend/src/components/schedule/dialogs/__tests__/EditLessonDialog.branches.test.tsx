@@ -370,7 +370,7 @@ describe("EditLessonDialog — branches", () => {
       expect.objectContaining({
         [field]: lesson[field]?.includes("T")
           ? `2026-01-15T${restoredTime}:00`
-          : expect.stringMatching(new RegExp(`T${restoredTime}:00$`)),
+          : expect.stringMatching(field === "start_time" ? /T08:30:00$/ : /T11:30:00$/),
       })
     )
   })
