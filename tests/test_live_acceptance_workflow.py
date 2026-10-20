@@ -523,8 +523,9 @@ def test_live_stand_nats_outage_dispatches_once_and_redacts_failures(
     assert live_stand.main(argv) == 0
     assert calls == [(state_dir, True)]
     assert len(configured) == 1
-    assert capsys.readouterr().out == ""
-    assert capsys.readouterr().err == ""
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
 
     def fail_with_private_detail(state: object, *, in_place: object) -> OutageResult:
         calls.append((state, in_place))
@@ -538,7 +539,7 @@ def test_live_stand_nats_outage_dispatches_once_and_redacts_failures(
     assert live_stand.main(argv) == 2
     assert calls == [(state_dir, True), (state_dir, True)]
     error = capsys.readouterr().err
-    assert error == "live_stand: owned NATS acceptance failed\n"
+    assert error == "live_stand: owned NATS acceptance failed reason=runner_exception\n"
     assert "private nonce" not in error
     assert "credential" not in error
 

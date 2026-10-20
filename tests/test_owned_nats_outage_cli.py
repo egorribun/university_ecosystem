@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 
+from scripts import live_stand
 from scripts import owned_nats_outage_cli as cli
-from scripts.owned_nats_coordinator import OutageOutcome, OutageStage
+from scripts.owned_nats_coordinator import OutageOutcome, OutageResult, OutageStage
 from scripts.owned_nats_outage import Deadline
 from scripts.owned_nats_owner_adapter import OwnerFilePins
 from scripts.owned_nats_process import (
@@ -274,11 +276,22 @@ def test_expired_git_preflight_never_constructs_transport_or_reads_owner(
     assert underlying.calls == []
 
 
+@pytest.mark.parametrize(
+    ("failed_operation", "expected_stage"),
+    [
+        ("send_message_once", OutageStage.SEND),
+        ("close_clients", OutageStage.CLEANUP),
+        ("release_lock", OutageStage.CLEANUP),
+    ],
+)
 def test_coordinator_runs_once_and_owns_cleanup_and_restoration(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failed_operation: str,
+    expected_stage: OutageStage,
 ) -> None:
     underlying = FakePorts()
-    underlying.script["send_message_once"] = [RuntimeError("private transport detail")]
+    underlying.script[failed_operation] = [RuntimeError("private transport detail")]
     safe_pins = pins(tmp_path)
     events: list[str] = []
     monkeypatch.setattr(cli.time, "monotonic", underlying.clock)
@@ -318,6 +331,7 @@ def test_coordinator_runs_once_and_owns_cleanup_and_restoration(
 
     names = [call.name for call in underlying.calls]
     assert result.outcome is OutageOutcome.FAILED
+    assert result.stage is expected_stage
     assert len(coordinator_calls) == 1
     assert constructions == [safe_pins]
     assert names.count("acquire_lock") == names.count("release_lock") == 1
@@ -353,3 +367,129 @@ def test_invalid_mode_is_closed_without_preflight_or_transport(
     assert result.stage is OutageStage.PREFLIGHT
     assert calls == []
     assert "/private/nonexistent/path" not in repr(result)
+
+
+@pytest.mark.parametrize("outcome", list(OutageOutcome))
+@pytest.mark.parametrize("stage", list(OutageStage))
+def test_main_reports_only_finite_outage_result_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    outcome: OutageOutcome,
+    stage: OutageStage,
+) -> None:
+    calls: list[tuple[object, object]] = []
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda args: None)
+
+    def run(state_dir: object, *, in_place: object) -> OutageResult:
+        calls.append((state_dir, in_place))
+        return OutageResult(outcome, stage)
+
+    monkeypatch.setattr(cli, "run_owned_nats_outage", run)
+    accepted = outcome is OutageOutcome.ACCEPTED and stage is OutageStage.COMPLETE
+    result = live_stand.main(
+        ["nats-outage", "--in-place", "--state-dir", "/private/state"]
+    )
+    assert result == (0 if accepted else 2)
+    captured = capsys.readouterr()
+    expected = (
+        ""
+        if accepted
+        else "live_stand: owned NATS acceptance failed "
+        f"outcome={outcome.value} stage={stage.value}\n"
+    )
+    assert captured.out == ""
+    assert captured.err == expected
+    assert calls == [("/private/state", True)]
+
+
+@pytest.mark.parametrize("boundary", ["state", "runner"])
+def test_main_outage_exception_diagnostics_never_format_private_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    boundary: str,
+) -> None:
+    calls: list[str] = []
+
+    class PrivateFailure(RuntimeError):
+        def __str__(self) -> str:
+            pytest.fail("private exception must never be formatted")
+
+        def __repr__(self) -> str:
+            pytest.fail("private exception must never be represented")
+
+    def configure(args: object) -> None:
+        calls.append("state")
+        if boundary == "state":
+            raise PrivateFailure("private detail\n::error::injected")
+
+    def run(state_dir: object, *, in_place: object) -> OutageResult:
+        calls.append("runner")
+        raise PrivateFailure("private detail\n::error::injected")
+
+    monkeypatch.setattr(live_stand, "_configure_state_mode", configure)
+    monkeypatch.setattr(cli, "run_owned_nats_outage", run)
+    assert (
+        live_stand.main(["nats-outage", "--in-place", "--state-dir", "/private/state"])
+        == 2
+    )
+    captured = capsys.readouterr()
+    reason = "state_configuration" if boundary == "state" else "runner_exception"
+    assert captured.out == ""
+    assert captured.err == f"live_stand: owned NATS acceptance failed reason={reason}\n"
+    assert calls == (["state"] if boundary == "state" else ["state", "runner"])
+
+
+class _PrivateOutageValue:
+    def __str__(self) -> str:
+        raise AssertionError("private result must never be formatted")
+
+    def __repr__(self) -> str:
+        raise AssertionError("private result must never be represented")
+
+
+@pytest.mark.parametrize(
+    "bad_result",
+    [
+        None,
+        "private detail\n::error::injected",
+        OutageResult(cast(OutageOutcome, "accepted"), OutageStage.COMPLETE),
+        OutageResult(OutageOutcome.ACCEPTED, cast(OutageStage, "complete")),
+        OutageResult(cast(OutageOutcome, "private detail"), OutageStage.PREFLIGHT),
+        OutageResult(
+            OutageOutcome.FAILED, cast(OutageStage, "private\n::error::injected")
+        ),
+        _PrivateOutageValue(),
+        OutageResult(cast(OutageOutcome, _PrivateOutageValue()), OutageStage.PREFLIGHT),
+        OutageResult(OutageOutcome.FAILED, cast(OutageStage, _PrivateOutageValue())),
+    ],
+    ids=[
+        "missing",
+        "private-string",
+        "string-outcome",
+        "string-stage",
+        "private-outcome",
+        "private-stage",
+        "hostile-result",
+        "hostile-outcome",
+        "hostile-stage",
+    ],
+)
+def test_main_outage_rejects_untyped_result_without_emitting_values(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    bad_result: object,
+) -> None:
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda args: None)
+    monkeypatch.setattr(
+        cli, "run_owned_nats_outage", lambda *args, **kwargs: bad_result
+    )
+    assert (
+        live_stand.main(["nats-outage", "--in-place", "--state-dir", "/private/state"])
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert (
+        captured.err
+        == "live_stand: owned NATS acceptance failed reason=invalid_result\n"
+    )

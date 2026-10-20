@@ -6744,7 +6744,7 @@ def test_focused_migration_tests_append_to_existing_coverage_producer() -> None:
     )
 
 
-def test_aud257_postgres_regression_has_explicit_integration_routing() -> None:
+def test_aud257_postgres_regression_has_explicit_pg_routing() -> None:
     relative = "tests/integration/test_aud257_vector_service_postgres.py"
     source = (REPOSITORY_ROOT / relative).read_text(encoding="utf-8")
     module = ast.parse(source)
