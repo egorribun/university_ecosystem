@@ -9856,7 +9856,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             _configure_state_mode(args)
         except Exception:
             if args.command == "nats-outage":
-                raise StandError("owned NATS acceptance failed") from None
+                raise StandError(
+                    "owned NATS acceptance failed reason=state_configuration"
+                ) from None
             raise
         if args.command == "nats-outage":
             try:
@@ -9872,13 +9874,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                     in_place=args.in_place,
                 )
             except Exception:
-                raise StandError("owned NATS acceptance failed") from None
+                raise StandError(
+                    "owned NATS acceptance failed reason=runner_exception"
+                ) from None
             if (
                 type(result) is not OutageResult
-                or result.outcome is not OutageOutcome.ACCEPTED
+                or type(result.outcome) is not OutageOutcome
+                or type(result.stage) is not OutageStage
+            ):
+                raise StandError("owned NATS acceptance failed reason=invalid_result")
+            if (
+                result.outcome is not OutageOutcome.ACCEPTED
                 or result.stage is not OutageStage.COMPLETE
             ):
-                raise StandError("owned NATS acceptance failed")
+                raise StandError(
+                    "owned NATS acceptance failed "
+                    f"outcome={result.outcome.value} stage={result.stage.value}"
+                )
         elif args.command == "up":
             up(args.ref, stack=args.stack)
         elif args.command == "verify-endpoints":

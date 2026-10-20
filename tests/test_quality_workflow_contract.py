@@ -6797,3 +6797,81 @@ def test_aud257_postgres_regression_has_explicit_pg_routing() -> None:
         leg.get("run-integration") is True
         for leg in caller["strategy"]["matrix"]["include"]
     )
+
+
+def test_frozen_rc_preflight_uses_bounded_parallel_merged_coverage() -> None:
+    workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    step = _provenance_step(
+        workflow["jobs"]["unit-tests"],
+        "Verify frozen-RC contracts and complete validator coverage",
+    )
+    assert step["if"] == "${{ inputs.shard-id == 0 }}"
+    assert step["timeout-minutes"] == 5
+    assert step["shell"] == "bash"
+    script = str(step["run"])
+    assert (
+        'focused_dir="$(mktemp -d "$RUNNER_TEMP/frozen-rc-coverage.XXXXXX")"'
+        in script
+    )
+    assert "trap 'rm -rf -- \"$focused_dir\"' EXIT" in script
+    assert 'rcfile="$focused_dir/coverage.ini"' in script
+    assert 'datafile="$focused_dir/.coverage"' in script
+    assert (
+        'target="$GITHUB_WORKSPACE/scripts/quality/resolve_frozen_rc_manifest.py"'
+        in script
+    )
+    assert (
+        "printf '[run]\\nbranch = True\\ninclude = %s\\n' \"$target\" > \"$rcfile\""
+        in script
+    )
+    commands = script.replace("\\\n", " ").splitlines()
+    pytest_commands = [
+        shlex.split(line)
+        for line in commands
+        if "uv run --frozen --no-sync pytest" in line
+    ]
+    assert len(pytest_commands) == 1
+    command = pytest_commands[0]
+    assert command[:6] == [
+        "COVERAGE_FILE=$datafile",
+        "uv",
+        "run",
+        "--frozen",
+        "--no-sync",
+        "pytest",
+    ]
+    assert command[6:12] == [
+        "--cov",
+        "--cov-branch",
+        "--cov-config=$rcfile",
+        "--cov-report=",
+        "-n",
+        "2",
+    ]
+    assert command.count("-n") == 1
+    selectors = [argument for argument in command if argument.startswith("tests/")]
+    assert len(selectors) == 93
+    assert selectors[0] == "tests/test_frozen_rc_manifest.py"
+    assert not any(
+        argument in {"-k", "-m", "-x", "--lf", "--last-failed", "--no-cov"}
+        or argument.startswith(
+            ("--ignore", "--deselect", "--maxfail", "--cov-fail-under")
+        )
+        for argument in command
+    )
+    reports = [shlex.split(line) for line in commands if "coverage report" in line]
+    assert reports == [
+        [
+            "uv",
+            "run",
+            "--frozen",
+            "--no-sync",
+            "coverage",
+            "report",
+            "--rcfile=$rcfile",
+            "--data-file=$datafile",
+            "--include=$target",
+            "--fail-under=100",
+        ]
+    ]
+    assert "coverage run" not in script
