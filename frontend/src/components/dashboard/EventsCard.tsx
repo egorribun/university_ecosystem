@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/Skeleton"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { cn } from "@/utils/cn"
 import { useDashboardEvents, prefetchDashboardEvents } from "@/hooks/useDashboardEvents"
+import { useMinuteClock } from "@/hooks/useMinuteClock"
 import type { DashboardEvent } from "@/hooks/useDashboardEvents"
 import { prefetchEventsListQuery, EVENTS_PAGE_SIZE } from "@/api/hooks/events"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -63,6 +64,8 @@ const EventsCardContent = memo(function EventsCardContent({
   const { language } = useLanguage()
   const queryClient = useQueryClient()
   const timeZone = useCampusTimezone()
+  const clock = useMinuteClock()
+  const campusToday = getCampusDateKey(new Date(clock), timeZone)
   // Wave 189 SW3 — migrated from framer-motion's `useReducedMotion()` (jsdom-
   // incompat per W184 SW6 Gotcha) to project's `useMediaQuery` DEFAULT export.
   // Behaviour preserved: hook returns boolean (was `boolean | null`).
@@ -87,21 +90,19 @@ const EventsCardContent = memo(function EventsCardContent({
   }
 
   const todayEvents = useMemo(() => {
-    const today = getCampusDateKey(new Date(), timeZone)
-    if (!today) return []
+    if (!campusToday) return []
 
     return events
       .filter((e) => e.starts_at)
       .map((e) => ({ ...e, d: toDate(e.starts_at!) }))
-      .filter((e) => !isNaN(e.d.getTime()) && getCampusDateKey(e.d, timeZone) === today)
+      .filter((e) => !isNaN(e.d.getTime()) && getCampusDateKey(e.d, timeZone) === campusToday)
       .sort((a, b) => a.d.getTime() - b.d.getTime())
       .slice(0, 6)
-  }, [events, timeZone])
+  }, [events, timeZone, campusToday])
 
   const weekEvents = useMemo(() => {
-    const today = getCampusDateKey(new Date(), timeZone)
-    if (!today) return []
-    const end = shiftCampusDateKey(today, 8)
+    if (!campusToday) return []
+    const end = shiftCampusDateKey(campusToday, 8)
 
     return events
       .filter((e) => e.starts_at)
@@ -109,11 +110,11 @@ const EventsCardContent = memo(function EventsCardContent({
       .filter((e) => {
         if (isNaN(e.d.getTime())) return false
         const eventDay = getCampusDateKey(e.d, timeZone)
-        return eventDay !== null && eventDay >= today && eventDay < end
+        return eventDay !== null && eventDay >= campusToday && eventDay < end
       })
       .sort((a, b) => a.d.getTime() - b.d.getTime())
       .slice(0, 6)
-  }, [events, timeZone])
+  }, [events, timeZone, campusToday])
 
   const scopedEvents = eventsScope === "today" ? todayEvents : weekEvents
 

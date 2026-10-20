@@ -1632,8 +1632,7 @@ async function scanRepository(options = {}) {
     return SOURCE_EXTENSIONS.has(extension)
   })
   const files = scopeCandidates.filter(
-    (filePath) =>
-      !isScopeExcluded(path.relative(FRONTEND_ROOT, filePath).replaceAll(path.sep, "/"))
+    (filePath) => !isScopeExcluded(path.relative(FRONTEND_ROOT, filePath).replaceAll(path.sep, "/"))
   )
   const reports = []
   for (const filePath of files) {

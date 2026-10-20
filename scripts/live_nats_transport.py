@@ -679,5 +679,24 @@ def read_signed_owner_v11_under_lease(
     pinned_source_sha: str,
     deadline: Deadline,
 ) -> OwnerParseResult:
-    """Unavailable composition seam; caller owns lease and trusted provenance."""
-    return OwnerParseResult(OwnerParseStatus.NOT_READY)
+    """Compose conditional metadata with sampled lease checks, not provenance.
+
+    The caller retains cleanup ownership; no atomicity or runtime admission is implied.
+    """
+    if not revalidate_lifecycle_lock(
+        lease, pinned_state_root=pinned_state_root, deadline=deadline
+    ):
+        return OwnerParseResult(OwnerParseStatus.NOT_READY)
+    result = read_signed_owner_v11_from_state(
+        pinned_repository=pinned_repository,
+        pinned_state_root=pinned_state_root,
+        pinned_source_sha=pinned_source_sha,
+        deadline=deadline,
+    )
+    if result.status is not OwnerParseStatus.SIGNED_METADATA or result.owner is None:
+        return OwnerParseResult(OwnerParseStatus.NOT_READY)
+    if not revalidate_lifecycle_lock(
+        lease, pinned_state_root=pinned_state_root, deadline=deadline
+    ):
+        return OwnerParseResult(OwnerParseStatus.NOT_READY)
+    return result

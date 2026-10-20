@@ -875,10 +875,11 @@ describe("EventsCard", () => {
         }
         const listName =
           scope === "today" ? "dashboard:aria.eventsToday" : "dashboard:aria.eventsWeek"
-        const eventLabels = () =>
-          within(screen.getByRole("list", { name: listName }))
-            .getAllByRole("button")
-            .map((button) => button.getAttribute("aria-label"))
+        const eventLabels = () => {
+          const list = screen.getByRole("list", { name: listName })
+          const buttons = within(list).getAllByRole("button")
+          return buttons.map((button) => button.getAttribute("aria-label"))
+        }
 
         expect(eventLabels()).toEqual(
           scope === "today"
