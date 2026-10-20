@@ -137,3 +137,11 @@ f06 Node job 118546333849 passes all 617 cases, including nine corrected ESLint 
 Eight additive pure acceptance/index cases and a measured-count/source-constant check precede any production count change. They preserve exact identities and finite source/reporter validation. A mismatch intentionally stops the owned preflight before Docker. Do not turn it into a skip or lower-bound gate.
 
 Static checks expose collection regex-space/unsafe-finally issues and two formatter warnings. Fix cleanup error propagation without suppressing cleanup failures. A temporary diagnostic obtains bounded exact installed-Prettier output for the one fixed public architecture fixture; remove it and its imports after applying the result. AUD-106 remains uncounted until that cleanup is verified. Next named cohorts cover CLI smoke target, real tiered Redis-wrapper metrics and existing Elasticsearch SDK fallback evidence. Latest ledger: 110/512.
+
+## 2026-10-20 10:02 UTC — exact formatter output and count reconciliation
+
+Node job 118561272673 supplies authoritative architecture-fixture formatting. Apply it, replacing its resolved temporary diagnostic with one bounded diagnostic for the fixed public News mutation-contract fixture. Remove that diagnostic and imports after the resulting exact formatter output is applied. Do not count AUD-106 or AUD-114 until clean verification.
+
+Core job 118559639143 refuses the measured 216 versus historical 198 mismatch before any Docker startup; state selection/start/stop steps skip and receipt upload succeeds. Focused job 118560600461 independently reproduces four count/index failures. Change only finite limit 198→216, canonical passed 190→208 and six canonical fixture/output literals; preserve exact eight skip identities, all other validation and the obsolete-190 negative case. This is expected accounting, not full runtime acceptance.
+
+AUD-116 fixes the selected CLI target to the existing endpoint smoke suite; AUD-117 recognizes only the configured TieredCache.l2 Redis backend through its existing probe. Both await GREEN after their observed RED. AUD-118's three named SDK fallback cases pass at 09:49:42–43 in the focused cohort and are accepted without a production rewrite. No workflow budget or selection changes.

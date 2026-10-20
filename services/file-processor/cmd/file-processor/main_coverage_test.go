@@ -9,6 +9,7 @@ package main
 // remain covered by the integration suite rather than synthetic mocks.
 
 import (
+	"bytes"
 	"context"
 	"crypto/rsa"
 	"errors"
@@ -43,6 +44,7 @@ import (
 
 type recordingTraceExporter struct {
 	shutdownCalled bool
+	shutdownError  error
 }
 
 func (*recordingTraceExporter) ExportSpans(context.Context, []sdktrace.ReadOnlySpan) error {
@@ -51,7 +53,7 @@ func (*recordingTraceExporter) ExportSpans(context.Context, []sdktrace.ReadOnlyS
 
 func (exporter *recordingTraceExporter) Shutdown(context.Context) error {
 	exporter.shutdownCalled = true
-	return nil
+	return exporter.shutdownError
 }
 
 func discardLogger() *slog.Logger {
@@ -1271,4 +1273,59 @@ func TestInitializeTracerShutdown_FlushesBatchAfterParentCancellation(t *testing
 	assert.True(t, exporter.shutdownHasDeadline.Load())
 	assert.Positive(t, exporter.shutdownRemainingNanos.Load())
 	assert.LessOrEqual(t, exporter.shutdownRemainingNanos.Load(), (5 * time.Second).Nanoseconds())
+}
+
+func TestInitializeTracerShutdown_LogsExporterShutdownFailure(t *testing.T) {
+	oldExporter := newOTLPTraceExporterFunc
+	oldResource := newOTelResourceFunc
+	oldProcessor := newOTelBatchSpanProcessorFunc
+	oldProvider := otel.GetTracerProvider()
+	oldPropagator := otel.GetTextMapPropagator()
+	shutdownErr := errors.New("synthetic tracer shutdown failure")
+	exporter := &recordingTraceExporter{shutdownError: shutdownErr}
+	var processor sdktrace.SpanProcessor
+
+	t.Cleanup(func() {
+		newOTLPTraceExporterFunc = oldExporter
+		newOTelResourceFunc = oldResource
+		newOTelBatchSpanProcessorFunc = oldProcessor
+		defer otel.SetTracerProvider(oldProvider)
+		defer otel.SetTextMapPropagator(oldPropagator)
+		if processor != nil {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			// If an earlier assertion prevented public cleanup, the first
+			// processor shutdown returns the deliberately injected error.
+			if err := processor.Shutdown(cleanupCtx); err != nil {
+				assert.ErrorIs(t, err, shutdownErr)
+			}
+		}
+	})
+	newOTLPTraceExporterFunc = func(context.Context, ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
+		return exporter, nil
+	}
+	newOTelResourceFunc = func(context.Context, ...resource.Option) (*resource.Resource, error) {
+		return resource.Empty(), nil
+	}
+	newOTelBatchSpanProcessorFunc = func(exporter sdktrace.SpanExporter, _ ...sdktrace.BatchSpanProcessorOption) sdktrace.SpanProcessor {
+		processor = sdktrace.NewSimpleSpanProcessor(exporter)
+		return processor
+	}
+
+	var output bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&output, nil))
+	shutdown := initializeTracerShutdown(context.Background(), &config.Config{
+		Environment:  "development",
+		OTLPEndpoint: "127.0.0.1:4317",
+	}, logger)
+	require.NotNil(t, shutdown)
+	require.NotNil(t, processor)
+	assert.NotPanics(t, shutdown)
+	assert.True(t, exporter.shutdownCalled)
+	logged := output.String()
+	assert.Contains(t, logged, "level=WARN")
+	assert.Contains(t, logged, `msg="Failed to shutdown tracer provider"`)
+	assert.Contains(t, logged, `err="synthetic tracer shutdown failure"`)
+	assert.NotPanics(t, shutdown)
+	assert.Equal(t, logged, output.String())
 }

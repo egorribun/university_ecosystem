@@ -825,9 +825,11 @@ async def _record_cache_metrics() -> None:
     ]
     if all(checks):
         return
-    from app.deps.cache import RedisCache, get_cache
+    from app.deps.cache import RedisCache, TieredCache, get_cache
 
     backend = get_cache()
+    if isinstance(backend, TieredCache):
+        backend = backend.l2
     if isinstance(backend, RedisCache):
         try:
             client: Any = await backend._get_client()

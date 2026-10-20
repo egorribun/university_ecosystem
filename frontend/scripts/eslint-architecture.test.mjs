@@ -193,8 +193,14 @@ for (const componentPath of [
     )
 
     const warnings = messages.filter(({ ruleId }) => ruleId === "i18next/no-literal-string")
-    assert.equal(messages.some(({ fatal }) => fatal), false)
-    assert.deepEqual(warnings.map(({ severity }) => severity), [1])
+    assert.equal(
+      messages.some(({ fatal }) => fatal),
+      false
+    )
+    assert.deepEqual(
+      warnings.map(({ severity }) => severity),
+      [1]
+    )
   })
 
   test(`${componentPath} preserves translated text and existing exemptions`, async () => {
@@ -214,7 +220,10 @@ for (const componentPath of [
     )
 
     const warnings = messages.filter(({ ruleId }) => ruleId === "i18next/no-literal-string")
-    assert.equal(messages.some(({ fatal }) => fatal), false)
+    assert.equal(
+      messages.some(({ fatal }) => fatal),
+      false
+    )
     assert.deepEqual(warnings, [])
   })
 
@@ -225,13 +234,17 @@ for (const componentPath of [
     )
 
     const warnings = messages.filter(({ ruleId }) => ruleId === "i18next/no-literal-string")
-    assert.equal(messages.some(({ fatal }) => fatal), false)
+    assert.equal(
+      messages.some(({ fatal }) => fatal),
+      false
+    )
     assert.deepEqual(warnings, [])
   })
 }
 
-test("temporary architecture fixture formatter diagnostic", { timeout: 10_000 }, async (t) => {
-  const filepath = fileURLToPath(import.meta.url)
+test("temporary news fixture formatter diagnostic", { timeout: 10_000 }, async (t) => {
+  const fixture = "src/components/news/__tests__/NewsDetailEditDialog.mutation-contract.test.tsx"
+  const filepath = fileURLToPath(new URL("../" + fixture, import.meta.url))
   let source
   let formatted
 
@@ -241,19 +254,19 @@ test("temporary architecture fixture formatter diagnostic", { timeout: 10_000 },
     assert.ok(options)
     formatted = await format(source, { ...options, filepath })
   } catch {
-    assert.fail("Unable to prepare the fixed architecture fixture formatting diagnostic")
+    assert.fail("Unable to prepare the fixed news fixture formatting diagnostic")
   }
 
   if (source !== formatted) {
     const diagnostic = JSON.stringify({
-      fixture: "frontend/scripts/eslint-architecture.test.mjs",
+      fixture: "frontend/" + fixture,
       formatted,
     })
     assert.ok(
-      new TextEncoder().encode(diagnostic).byteLength < 32_768,
-      "Fixed fixture formatting diagnostic exceeds its output limit"
+      new TextEncoder().encode(diagnostic).byteLength < 65_536,
+      "Fixed news fixture formatting diagnostic exceeds its output limit"
     )
     t.diagnostic(diagnostic)
-    assert.fail("Architecture fixture differs from installed Prettier output")
+    assert.fail("News fixture differs from installed Prettier output")
   }
 })

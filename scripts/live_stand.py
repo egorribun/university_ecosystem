@@ -6840,7 +6840,7 @@ _PLAYWRIGHT_SKIPPED_ROW_HEADER = re.compile(
     r"(?P<source>[^ :\t]{1,160}):(?P<line>[1-9][0-9]{0,4}):"
     r"(?P<column>[1-9][0-9]{0,4}) \u203a (?=.)"
 )
-_PLAYWRIGHT_SKIP_IDENTITY_LIMIT = 198
+_PLAYWRIGHT_SKIP_IDENTITY_LIMIT = 216
 _PLAYWRIGHT_SKIP_SCAN_LINE_LIMIT = 8192
 _PLAYWRIGHT_SKIP_LINE_LENGTH_LIMIT = 4096
 
@@ -7198,7 +7198,7 @@ def _run_live_playwright(
         )
         skip_accounting_passed = (
             _live_playwright_counts(stdout)
-            == {"passed": 190, "skipped": len(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)}
+            == {"passed": 208, "skipped": len(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)}
             and not skip_rejected_rows
             and not skip_overflow
             and sorted(skip_identities) == sorted(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)

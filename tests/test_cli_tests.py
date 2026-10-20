@@ -70,7 +70,7 @@ def test_smoke_success():
         mock_run.assert_called()
         cmd = mock_run.call_args[0][0]
         assert "pytest" in cmd
-        assert "tests/smoke" in cmd
+        assert "tests/test_smoke.py" in cmd
 
 
 def test_smoke_failure():

@@ -159,3 +159,7 @@ Source 3cc49cd and identical-tree checkout 257a3d35: focused job 118535985402 pa
 ## 2026-10-20 09:33 UTC — unchanged runtime boundary
 
 The f06 focused cohort completes in 253.94 seconds with 979 PASS, the new unrelated thread-start regression and the intentional outage hold. Compose preparation/decode/observation controls remain selected and passing. No runtime caller, coordinator, CLI or outage is activated. The public inspection fixture is still the sole reported secret finding at tests/test_live_nats_transport.py:1195; approval remains pending. Baseline 319, dispositions 263 and the existing process waiver are unchanged. Latest audit ledger: 110/512; targeted proof is not release acceptance.
+
+## 2026-10-20 10:02 UTC — boundary retained
+
+The focused 44a9d818 cohort has 990 PASS / eight known FAIL in 236.01 seconds. Existing Compose and daemon boundary controls remain selected; the intentional outage hold remains. No coordinator, runtime caller, CLI collection or outage activation is introduced. Public-sentinel approval remains pending, baseline 319/dispositions 263 and the existing process boundary are untouched. Core preflight's collection-count refusal occurs before Docker startup; it is not NATS runtime evidence. e150 remains the last fully accepted CI source.

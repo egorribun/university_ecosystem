@@ -43,10 +43,10 @@ def run(
 
 @app.command()
 def smoke() -> None:
-    """Run smoke tests against the live environment."""
+    """Run the endpoint smoke test suite."""
     # This could run a specific set of tests or a separate script
     typer.echo("Running smoke tests...")
-    cmd = ["pytest", "tests/smoke"]
+    cmd = ["pytest", "tests/test_smoke.py"]
     result = subprocess.run(cmd)  # nosec B603
 
     if result.returncode != 0:

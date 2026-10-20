@@ -382,3 +382,30 @@ The expected current full outcome would be 208 PASS plus eight exact skips, not 
 AUD-116 adds a regression for the absent tests/smoke CLI target; the existing endpoint smoke file is tests/test_smoke.py, not the separate live multi-service script. AUD-117 adds four direct/tiered real-cache-wrapper cases with mocked Redis acquisition, predicting two tiered failures and two direct controls. No network runs in these cases. AUD-118's API/service/test blobs and Elasticsearch dependency blocks match the last accepted source, but old quiet job logs did not expose named cases; select its existing three SDK-fallback cases for fresh evidence instead of modifying already-correct exception handling.
 
 Only backend workflow line 155 adds the small named cohorts; 631 lines, protected lines and the 300-second budget remain. Baseline 319, dispositions 263, pending public-sentinel approval, 78 required context/app pairs, blocking CodeQL and finite migration exception remain unchanged. e150 remains the last fully accepted CI source. Current targeted GREEN, test-first RED and cleanup receipts are not full acceptance or release.
+
+## 2026-10-20 10:02 UTC — corrected-source evidence and next gate repairs
+
+Source 44a9d818cd1b8b25918e9404df3319c9c8716b11 and hosted checkout ba478d7120637fc98e8364edf11fc0f251f02861 have identical tree 160ddba4785e994ac81c34ad072d906d9ba02d24.
+
+- AUD-110: frontend job 118561272734 passes all fourteen motion collector cases at 09:47:25 UTC, including the five previously failing duration-list cases. This accepts scanning every animation/transition duration component, not native reduced-motion behavior.
+- AUD-111: focused backend job 118560600461 passes both failed-start/shared-budget cases at 09:49:40 UTC. Only successfully started threads are joined within the existing shared 1.8-second budget. These are controlled thread-boundary tests, not total process-shutdown timing.
+- AUD-112: frontend job 118561272734 passes all thirty-two hydration diagnostic cases at 09:47:26 UTC. Exact React code tokens 418/423/425 are recognized without broad numeric false positives; this is classifier evidence, not real hydration recovery.
+- AUD-118: backend job 118560600461 explicitly passes the three existing SDK connection/timeout/API-error fallback cases at 09:49:42–43 UTC. API/service/test blobs and pinned Elasticsearch dependency blocks were independently matched to the earlier accepted source; no unnecessary exception-handling rewrite is made.
+
+- AUD-113: frontend job 118561272679 passes all ninety event branch cases at 09:50:26 UTC (2297 PASS overall), including the three original RED cases and three supplementary controls. Unchanged-ID navigation now follows QueryClient list updates/removals with stable snapshots; ordering/filtering/deduplication and invalid-session behavior are preserved. This is controlled cache-subscription evidence, not browser acceptance.
+
+The backend cohort has 990 PASS / eight FAIL in 236.01 seconds. Its failures are exactly the intentional outage hold, the new smoke CLI target case, two tiered Redis metric cases and four full-count/index regressions. Frontend shard 1 has 2672 PASS; shard 2 has 2272 PASS; shard 3 has 2292 PASS; shard 4 has 2297 PASS. These partial cohorts do not constitute all-required-check acceptance.
+
+### Repairs requiring new hosted evidence
+
+AUD-116 now points the existing CLI command at tests/test_smoke.py, with its obsolete assertion and misleading live-environment description corrected. It does not invoke the separate multi-service live script. AUD-117 unwraps only TieredCache.l2 before the existing RedisCache admission; disabled metrics, direct Redis, non-Redis fallback and exception handling remain unchanged. Their observed RED cases remain selected, and neither finding is counted yet.
+
+The actual 216-instance collection disagreed with the historical 198 bound in Node and Core preflight. Core job 118559639143 refuses at collection-count before state selection or Docker startup; its receipt write/upload succeeds. Four independent pure acceptance/index cases also fail as predicted. Update only the finite bound to 216, canonical pass expectation to 208 and six canonical fixture/output literals, preserving eight exact skip identities and the obsolete-190/missing/extra/index-217 rejection controls. This sets the expected full outcome; it does not claim 208 runtime passes.
+
+AUD-115's real canceled-parent BatchSpanProcessor regression now passes under the race-enabled job 118560600165, but coverage is 99.9% because the shutdown-error warning branch is untested. Add a deterministic real SimpleSpanProcessor exporter-shutdown failure case with independently owned cleanup, warning assertions and idempotence control; keep the 100% threshold unchanged. The original batch-flush regression remains intact. AUD-115 is not counted until the coverage gate passes.
+
+The installed formatter's exact architecture-fixture output is recovered from Node job 118561272673 and applied without changing assertions. Retarget the one temporary bounded diagnostic to the fixed public News mutation-contract fixture, the only other remaining formatter warning. Once its exact output is obtained, remove the diagnostic and both imports completely. AUD-106 remains uncounted pending clean verification. AUD-114's complete 26-case suite passes, but its formatter cleanup is still pending.
+
+Baseline 319, dispositions 263, pending public-sentinel approval, all 78 required context/app pairs, blocking CodeQL and finite migration exception are unchanged. No workflow selection/budget, NATS runtime admission, release or deployment changes are made. e150 remains the last fully accepted CI source.
+
+The verified lower bound is 115/512 (22.5%). Only the five accepted findings above enter this checkpoint.
