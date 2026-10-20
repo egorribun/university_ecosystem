@@ -124,6 +124,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
     setIsEditingName(true)
   }
   const saveRename = () => {
+    if (isRenaming) return
     const trimmed = nameDraft === undefined ? "" : nameDraft.trim()
     if (trimmed) onRename(trimmed)
     setIsEditingName(false)

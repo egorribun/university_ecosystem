@@ -47,3 +47,11 @@ On 4f64cdad, all fifty-two request/decode cases pass in job 118435856906; its ag
 The next observe_daemon_metadata seam is unavailable and returns NOT_READY. Twenty-one additive cases in the already-selected transport suite require one exact request and identical Deadline, no collection for rejected pins/deadlines, decode refusal after one collection, postcollection expiry, original exception identity, retained precollection fingerprint despite callback mutation, and no fresh deadline/retry. Fourteen positive integration oracles are expected to fail initially; seven admission controls should pass. No execution is claimed before hosted observation.
 
 Tests replace only the existing collector boundary and retain direct process guards. The future implementation must capture the admitted expected fingerprint before calling the collector and decode against that retained value. Callback mutation intentionally bypasses frozen-dataclass protection; the proof is expectation retention, not continuing authenticity of a mutated object. No collector import, runtime caller, inventory, coordinator/CLI wiring or outage enablement is introduced by this scaffold.
+
+## Collector composition after observed RED
+
+On 2c85f95 / job 118442456006, fourteen composition cases fail at required one-call or exception-propagation assertions and all seven admission controls pass. The entire focused job is 847 PASS / 15 FAIL, including the existing disabled-outage hold.
+
+The implementation uses existing preparation, refuses without collection when it returns None, retains the admitted fingerprint before the callback, invokes the existing private collector exactly once with the same Deadline, and decodes against that retained fingerprint. Unexpected exceptions and interrupts propagate unchanged. No fresh budget, retry, direct subprocess call or suppression is added.
+
+Preparation/decoding still perform no transport I/O. Composition can invoke the existing collector when explicitly called; current tests replace that boundary and no coordinator/CLI/runtime caller is connected. Module documentation reflects this distinction. Own composition GREEN remains pending; complete inventory, executable/config/socket provenance, daemon authenticity, health admission and outage remain unproved.

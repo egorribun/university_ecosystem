@@ -54,7 +54,7 @@ _NPM_SOURCE = dedent(
     root = Path(__file__).resolve().parents[1]
     frontend = root / "frontend"
     arguments = sys.argv[1:]
-    normalize_args = ["exec", "--", "prettier", "--write", "openapi.json"]
+    normalize_args = ["exec", "--no", "--", "prettier", "--write", "openapi.json"]
     generate_args = ["run", "generate:api", "--prefix", str(frontend)]
     normalizing = arguments == normalize_args
     generating = arguments == generate_args

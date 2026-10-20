@@ -144,3 +144,9 @@ The lower bound advances from 84 to 86 original AUD IDs. None of these results e
 AUD-089 adds three numeric-fraction counterexamples to the real settings schema, plus three controls preserving existing parseInt string compatibility. A real-schema-to-Settings conditional-rendering case requires exactly the General panel and selected tab. Its router/tab/panel dependencies retain the existing mocks: this is not a full-router or real tab ARIA integration claim. Production remains unchanged before observed RED; a future integer check must not silently rewrite string-coercion compatibility.
 
 AUD-090 adds repeated Enter while isRenaming is rendered true, retention of the editing draft, exactly one trimmed submission after settled rerender, and submit/pending/reopen behavior. Each repeated press requeries the actual textbox. Existing mouse-disabled, Escape, blank/undefined and happy-path assertions remain unchanged. Production stays unchanged before RED. A later pending guard would cover rendered pending state, not every same-tick race before the parent updates its prop.
+
+## Numeric-tab and pending-rename RED corrections
+
+On 2c85f95, job 118442418080 observes all three numeric fraction failures and both pending-Enter duplication failures; Settings container job 118442418051 cannot find the selected tab after validating 1.5. Total frontend is 9433 PASS / six intended FAIL across 784 files.
+
+The schema adds only an integer check after finite validation, preserving union/parseInt compatibility, range checks, fallback and Spotify values. saveRename returns immediately when isRenaming is rendered true, before trimming, callbacks or editing-state changes. Existing draft, Escape, blank/undefined and normal-save behaviors remain untouched. All new regression assertions are unchanged. Own corrected-source GREEN is pending; no claim covers every pre-render same-tick race or a physical full-router integration.

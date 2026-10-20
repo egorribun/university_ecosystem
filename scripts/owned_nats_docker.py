@@ -1,7 +1,9 @@
-"""No-I/O request and metadata boundaries for a future Docker observation.
+"""Bounded request, metadata and collector boundaries for Docker observation.
 
-Prepared requests and supplied process results do not prove execution,
-executable/config provenance, daemon authenticity or complete inventory.
+Preparation and decoding perform no transport I/O. Composition delegates once
+to the existing collector; no coordinator or CLI caller is connected.
+Matching supplied daemon metadata does not prove configuration provenance,
+daemon authenticity or complete container inventory.
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ import hashlib
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from scripts import owned_nats_process as process
 from scripts.owned_nats_outage import Deadline, DeadlineVerdict
 from scripts.owned_nats_process import (
     LocalCleanup,
@@ -203,5 +206,12 @@ def decode_daemon_read(
 def observe_daemon_metadata(
     pins: DockerReadPins, *, deadline: Deadline
 ) -> DaemonMetadataResult:
-    """Unavailable collector composition; no runtime caller is connected."""
-    return DaemonMetadataResult(DaemonMetadataStatus.NOT_READY)
+    """Collect once under the caller deadline and retain the admitted expectation."""
+    request = prepare_daemon_read(pins, deadline=deadline)
+    if request is None:
+        return DaemonMetadataResult(DaemonMetadataStatus.NOT_READY)
+    expected_fingerprint = pins.daemon_fingerprint
+    result = process.run_private_process(request, deadline=deadline)
+    return decode_daemon_read(
+        result, pinned_daemon=expected_fingerprint, deadline=deadline
+    )

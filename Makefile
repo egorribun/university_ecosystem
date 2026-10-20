@@ -95,16 +95,16 @@ alembic-check:
 		DATABASE_URL=sqlite+aiosqlite:///./ci-migrations.db alembic -c alembic.ini downgrade base
 
 generate-api:
-	python3 - <<'PY'
-	import json
-	import pathlib
-	from app.main import app
+	# Keep the tracked schema and propagate exporter failures before generation.
+	python3 -c "import json; import pathlib; from app.main import app; \
+	schema_path = pathlib.Path('frontend/openapi.json'); \
+	schema_path.write_text( \
+	    json.dumps(app.openapi(), indent=2, sort_keys=True) + '\n', \
+	    encoding='utf-8')"
 
-	schema_path = pathlib.Path("frontend/openapi.json")
-	schema_path.write_text(json.dumps(app.openapi()))
-	PY
-	npm run generate:api --prefix $(FRONTEND_DIR)
-	rm -f frontend/openapi.json
+	# Use installed formatting tools only; do not fetch a missing dependency.
+	cd "$(FRONTEND_DIR)" && npm exec --no -- prettier --write openapi.json
+	npm run generate:api --prefix "$(FRONTEND_DIR)"
 
 # Docker commands
 docker-build:

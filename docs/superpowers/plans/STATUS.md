@@ -10,19 +10,19 @@
 
 ## Текущая проверка аудита
 
-Подтверждённая нижняя граница: 86 из 512 исходных AUD IDs. Приняты AUD-071 по настоящим desktop/mobile browser regressions и AUD-086 по named stability cases; прежние 84 IDs сохраняются. [Scope, IDs и доказательства](../../audits/AUDIT-2026-10.md#evidence-checkpoint-86-verified-original-aud-ids). Это не полная сверка и не приёмка всего CI.
+Подтверждённая нижняя граница: 87 из 512 исходных AUD IDs. AUD-088 принят только на уровне rendered configuration по трём named PASS без пропусков; прежние 86 IDs сохраняются. [Scope, IDs и доказательства](../../audits/AUDIT-2026-10.md#evidence-checkpoint-87-verified-original-aud-ids). Это не полная сверка, не приёмка всего CI и не доказательство работы кластера.
 
 На 47f35bf: frontend 9388 PASS / 779 файлов, все frontend static gates и production build прошли. Real SDK/Axios/MSW ETag cohort подтверждает разделение order/query/cache/ETag; повторная OpenAPI generation не даёт diff. PostgreSQL: 203 PASS / 9 прежних SKIP, включая raw HTTP rank/date counterexample. Оба pre-commit и inventory gates проходят. Exact hosted checkout/tree проверены.
 
-NATS: на a27af92 focused backend — 736 PASS / 1 прежний outage hold. Все 57 reader и 55 lock/composition cases проходят, включая девять прежних private-policy RED. Explicit UID/0700/0600 проверяются по уже наблюдаемым metadata; это не authentication происхождения ключа. Exact checkout/tree проверены. Runtime adapters и outage не включены. [Reader plan](2026-10-19-owned-nats-owner-reader.md).
+NATS: на 2c85f95 focused backend — 847 PASS / 15 FAIL: четырнадцать ожидаемых collector-composition RED и прежний outage hold. Подтверждены 52 request/decode cases, 21 projection case и 28 preflight cases. Composition получила реализацию после RED, но её own GREEN ещё нужен; coordinator/CLI callers и outage не подключены. [Plan](2026-10-20-owned-nats-docker-observation.md).
 
 Actual Core 911db82: 26 PASS / 2 прежних SKIP, cleanup 2026-10-20 00:03:56 UTC, receipt artifact 12230572763, exact source tree проверен. Обе темы проходят первые четыре и следующие семнадцать AUD-072 declarations при неизменённых assertions. Whole AUD-072 открыт: остальные consumers, theme collisions, malformed one-color mixes, AUD-085 utility emission и AUD-073 contrast не объявляются исправленными.
 
-Frontend 4f64cda — 9430 PASS / 784 файла, без failures. Все static gates и production build проходят. AUD-066 принят как подготовка одного занятия выбранной недели с фильтрами и campus timezone, не full-calendar sync. AUD-071 теперь подтверждён неизменённым browser hit test на desktop/mobile; AUD-089/090 получают новые регрессии до изменения production. [Evidence](2026-10-19-ui-lifecycle-reconciliation.md).
+Frontend 2c85f95 — 9433 PASS / 6 intended FAIL / 784 файла. Новые RED относятся к fractional tab и pending Enter; static gates проходят, исправления ожидают own GREEN. AUD-066 принят как подготовка одного занятия выбранной недели с фильтрами и campus timezone, не full-calendar sync. AUD-071 теперь подтверждён неизменённым browser hit test на desktop/mobile; AUD-089/090 получают новые регрессии до изменения production. [Evidence](2026-10-19-ui-lifecycle-reconciliation.md).
 
-Core a27af92 run 39353709178 / job 118403589608 passes 26 browser cases with two existing skips at 01:45:40 UTC. Owned stop and receipt finish at 01:46:02; artifact 12234748128 has SHA-256 d8e280b30eaf28edf69b07e8db66a9b848f91f4900cd7db1a999ac25edd342d3. Checkout f7c8ff223aad624287d28f0b7c93dc6d207c6ff0 has the exact a27 source tree. No outage execution or full release acceptance follows.
+Последний проверенный Core 4f64: run 39363500028 / job 118434859608, 28 PASS / 2 прежних SKIP в 03:33:51 UTC. Stop/receipt завершены в 03:34:13; artifact 12238472787, SHA-256 f795e14acd6f54805ffb4791aca20c6aa4439f72df490713b6401a12e82c8024. Это own-source browser proof, не full-CI, outage или deployment acceptance.
 
-На a71c6d7 все 21 Compose projection cases проходят. Все 52 daemon request/decode cases проходят на 4f64; операции остаются без I/O. Следующая collector composition пока unavailable и получает тесты. Все 28 existing AUD-084 cases прошли в verbose focused job; production preflight не меняется. Workflow расширен только на прежней строке 155, без сдвига baseline coordinates. [Scope](2026-10-20-owned-nats-docker-observation.md).
+На a71c6d7 все 21 Compose projection cases проходят. Все 52 daemon request/decode cases проходят на 4f64; операции остаются без I/O. Collector composition реализована после четырнадцати наблюдавшихся RED и ожидает own GREEN; runtime callers не подключены. Все 28 existing AUD-084 cases прошли в verbose focused job; production preflight не меняется. Workflow расширен только на прежней строке 155, без сдвига baseline coordinates. [Scope](2026-10-20-owned-nats-docker-observation.md).
 
 История промежуточных RED/GREEN, коррекции тестов и receipts сохранены в audit supplements и тематических планах. Прежний platform skip устранён; результаты текущих проверок описаны выше. Новых skip identities или waiver нет. P1 holds 164/167/169/174 сохраняются. Последний полностью принятый CI — e150. Baseline 319, dispositions 263, 78 required context/app pairs и security gates неизменны. Merge/deploy не выполняются.
 
@@ -143,3 +143,15 @@ AUD-086 is accepted for paired-artifact stability debounce. Earlier source a71c6
 The lower bound advances from 84 to 86 original AUD IDs. None of these results enables outage, replaces full-CI acceptance or establishes deployment readiness.
 
 Tests-first партия AUD-082/083/087/089/090 не меняет их production source. Existing AUD-088 render cases добавлены только в прежнюю строку 155 focused selection; нужны три named PASS, не SKIP. No-I/O daemon validation завершила свой bounded proof, но collector composition, inventory и outage ещё не готовы. [Quality entrypoints](2026-10-20-quality-entrypoints.md).
+
+## Entrypoint and pending-input correction checkpoint
+
+Source 2c85f95d2c9db0b7b51667947b89278752511570 is bound to checkout f64150fdefa36eee5a5928cc6cbbf919b489bceb and identical tree 5fb25a811b5a81caf12f8170f9c00573b2f03103. Contract job 118441928877 reports 125 PASS / four intended Make recipe FAIL in 32.27 seconds. Node job 118442417955 reports 592 PASS / four intended FAIL: VS Code still points at root/tests and three icon write-error scenarios exit zero. Icon success and missing-input controls pass.
+
+Frontend totals 9433 PASS / six intended FAIL across 784 files. Job 118442418080 observes numeric 0.5/1.5/4.5 instead of General and duplicate pending rename callbacks; job 118442418051 observes no selected tab after real-schema validation of a fractional value. Existing behaviors and string-coercion controls remain passing.
+
+Focused backend job 118442456006 reports 847 PASS / 15 FAIL in 226.67 seconds: fourteen unavailable collector-composition assertions plus the existing disabled-outage hold. Its three Helm hibernation tests explicitly PASS, with no skips for those nodes.
+
+AUD-088 is accepted as the original rendered frontend/gateway positive-minimum defect. The two off-peak/daytime cases pass at 03:50:21/22 UTC and the disabled-state case at 03:50:23 in job 118442456006. They execute Helm against the tracked chart/dependency archives with synthetic CLI overrides and no dependency update or cluster contact. Hibernation remains disabled by default; no replicas, schedules or deployment settings change. This does not prove real KEDA zeroing, wake readiness, cron execution or availability. The verified lower bound becomes 87/512; other new findings remain open until their own corrected-source GREEN.
+
+AUD-082/083/087/089/090 получили узкие исправления после наблюдавшихся RED; own GREEN ещё требуется. Makefile сохраняет baseline line188 без изменения baseline, использует один continued Python command и не удаляет tracked schema. Collector composition делегирует существующему collector, но runtime callers/outage остаются не подключены. Защитные gates, dispositions и required contexts не ослаблены.
