@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
+import { existsSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import process from "node:process"
 import test from "node:test"
@@ -21,7 +22,7 @@ function reportInChild(calls) {
     [
       "--input-type=module",
       "--eval",
-      `import { ${helperExports} } from ${JSON.stringify(helperUrl.href)};\n${calls}`,
+      `import assert from "node:assert/strict";\nimport * as liveUiDiagnostics from ${JSON.stringify(helperUrl.href)};\nimport { ${helperExports} } from ${JSON.stringify(helperUrl.href)};\n${calls}`,
     ],
     { encoding: "utf8" }
   )
@@ -243,4 +244,211 @@ test("UI diagnostic helper cannot inspect the browser, environment, errors, or r
     /\bimport\b|\brequire\s*\(|process\.(?:env|stderr)|console\.|\.(?:message|stack|json|text|screenshot|storageState|attach)\s*\(|\b(?:page|browser|context|response|request|URL)\b/u
   )
   assert.equal((source.match(/process\.stdout\.write\(/gu) ?? []).length, 1)
+})
+
+test("reset registration diagnostics expose only finite project-step pairs", async () => {
+  const diagnostics = await import(helperUrl.href)
+  assert.equal(typeof diagnostics.reportLivePasswordResetRegistrationFailure, "function")
+  const output = reportInChild(`
+    const report = liveUiDiagnostics.reportLivePasswordResetRegistrationFailure;
+    assert.equal(typeof report, "function");
+    for (const project of ["desktop", "mobile"]) {
+      for (const step of ["arm-response", "click", "await-response"]) {
+        report(project, step);
+        report(project, step);
+      }
+    }
+  `)
+  assert.equal(
+    output,
+    ["desktop", "mobile"]
+      .flatMap((project) =>
+        ["arm-response", "click", "await-response"].map(
+          (step) => `UE_LIVE_RESET_REGISTRATION_V1 project=${project} step=${step}\n`
+        )
+      )
+      .join("")
+  )
+})
+
+test("reset registration diagnostics reject malformed values without coercion", async () => {
+  const diagnostics = await import(helperUrl.href)
+  assert.equal(typeof diagnostics.reportLivePasswordResetRegistrationFailure, "function")
+  const output = reportInChild(`
+    const report = liveUiDiagnostics.reportLivePasswordResetRegistrationFailure;
+    assert.equal(typeof report, "function");
+    const privateValue = {
+      toString() { throw new Error("private-value-must-not-be-read"); },
+      [Symbol.toPrimitive]() { throw new Error("private-coercion"); }
+    };
+    for (const value of [
+      "private-account@example.invalid",
+      "click\\nprivate", "await-response\\r",
+      "", null, undefined, 17, privateValue
+    ]) {
+      report(value, "click");
+      report("desktop", value);
+    }
+  `)
+  assert.equal(output, "")
+})
+
+test("reset registration diagnostic sink failure never escapes", async () => {
+  const diagnostics = await import(helperUrl.href)
+  assert.equal(typeof diagnostics.reportLivePasswordResetRegistrationFailure, "function")
+  const output = reportInChild(`
+    const report = liveUiDiagnostics.reportLivePasswordResetRegistrationFailure;
+    assert.equal(typeof report, "function");
+    const originalWrite = process.stdout.write;
+    process.stdout.write = () => { throw new Error("private-sink-error"); };
+    try {
+      assert.doesNotThrow(() => report("desktop", "click"));
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  `)
+  assert.equal(output, "")
+})
+
+const registrationActionUrl = new URL("./password-reset-registration-action.ts", import.meta.url)
+
+function registrationActionInChild(calls) {
+  assert.ok(existsSync(registrationActionUrl), "the registration action helper must exist")
+  return reportInChild(`
+    const actionModule = await import(${JSON.stringify(registrationActionUrl.href)});
+    const run = actionModule.runPasswordResetRegistrationAction;
+    const report = liveUiDiagnostics.reportLivePasswordResetRegistrationFailure;
+    assert.equal(typeof run, "function");
+    assert.equal(typeof report, "function");
+    ${calls}
+  `)
+}
+
+for (const failedStep of ["arm-response", "click", "await-response"]) {
+  test(`reset registration preserves the original ${failedStep} failure`, () => {
+    const output = registrationActionInChild(`
+      const failedStep = ${JSON.stringify(failedStep)};
+      const original = new Error("private-message private-token private-account");
+      Object.defineProperty(original, "stack", {
+        get() { throw new Error("private-stack-must-not-be-read"); }
+      });
+      const events = [];
+      const result = run(
+        () => {
+          events.push("arm");
+          if (failedStep === "arm-response") throw original;
+          return failedStep === "await-response"
+            ? Promise.reject(original)
+            : Promise.resolve({ status: 200 });
+        },
+        async () => {
+          events.push("click");
+          if (failedStep === "click") throw original;
+        },
+        (...args) => {
+          assert.deepEqual(args, [failedStep]);
+          events.push("report");
+          report("desktop", ...args);
+        }
+      );
+      await assert.rejects(result, (error) => error === original);
+      assert.deepEqual(events, failedStep === "arm-response"
+        ? ["arm", "report"] : ["arm", "click", "report"]);
+    `)
+    assert.equal(
+      output,
+      `UE_LIVE_RESET_REGISTRATION_V1 project=desktop step=${failedStep}\n`
+    )
+  })
+}
+
+test("reset registration handles the abandoned waiter after click rejection", () => {
+  const output = registrationActionInChild(`
+    const clickError = new Error("private-click");
+    const lateError = new Error("private-late-response");
+    let rejectWaiter;
+    const waiter = new Promise((_resolve, reject) => { rejectWaiter = reject; });
+    const unhandled = [];
+    const onUnhandled = (error) => { unhandled.push(error); };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      await assert.rejects(
+        run(() => waiter, async () => { throw clickError; },
+          (step) => report("mobile", step)),
+        (error) => error === clickError
+      );
+      rejectWaiter(lateError);
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.deepEqual(unhandled, []);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  `)
+  assert.equal(output, "UE_LIVE_RESET_REGISTRATION_V1 project=mobile step=click\n")
+})
+
+test("reset registration handles early waiter rejection during a pending click", () => {
+  const output = registrationActionInChild(`
+    const original = new Error("private-early-response");
+    let finishClick;
+    let rejectWaiter;
+    const waiter = new Promise((_resolve, reject) => { rejectWaiter = reject; });
+    const click = new Promise((resolve) => { finishClick = resolve; });
+    const unhandled = [];
+    const onUnhandled = (error) => { unhandled.push(error); };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const result = run(() => waiter, () => click,
+        (step) => report("desktop", step));
+      const rejection = assert.rejects(result, (error) => error === original);
+      rejectWaiter(original);
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.deepEqual(unhandled, []);
+      finishClick();
+      await rejection;
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  `)
+  assert.equal(output, "UE_LIVE_RESET_REGISTRATION_V1 project=desktop step=await-response\n")
+})
+
+test("reset registration keeps success identity and waits for click completion", () => {
+  const output = registrationActionInChild(`
+    const response = { status: 200 };
+    const events = [];
+    let finishClick;
+    let finished = false;
+    let reports = 0;
+    const pending = run(
+      () => { events.push("arm"); return Promise.resolve(response); },
+      () => {
+        events.push("click");
+        return new Promise((resolve) => { finishClick = resolve; });
+      },
+      () => { reports += 1; }
+    ).then((value) => { finished = true; return value; });
+    await Promise.resolve();
+    assert.equal(finished, false);
+    assert.deepEqual(events, ["arm", "click"]);
+    finishClick();
+    assert.equal(await pending, response);
+    assert.equal(reports, 0);
+  `)
+  assert.equal(output, "")
+})
+
+test("reset registration reporter failure cannot replace the original error", () => {
+  const output = registrationActionInChild(`
+    const original = new Error("private-original");
+    await assert.rejects(
+      run(
+        () => Promise.resolve({ status: 200 }),
+        async () => { throw original; },
+        () => { throw new Error("private-reporter"); }
+      ),
+      (error) => error === original
+    );
+  `)
+  assert.equal(output, "")
 })

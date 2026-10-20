@@ -1572,7 +1572,10 @@ jobs:
             tests/test_images_v2.py::test_pillow_thumbnail_real_codec_preserves_transparency \
             tests/test_live_stand.py::test_live_caddy_real_reader_failure_diagnostics_and_final_pin_precedence \
             tests/test_live_stand.py::test_live_bounded_reader_accepts_exact_combined_cap_and_preserves_exit_status \
-            tests/test_live_stand.py::test_live_bounded_read_failure_reason_is_finite -v \
+            tests/test_live_stand.py::test_live_bounded_read_failure_reason_is_finite \
+            tests/test_live_stand.py::test_live_reset_registration_parser_accepts_only_six_unique_pairs \
+            tests/test_live_stand.py::test_live_reset_registration_parser_rejects_untrusted_framing \
+            tests/test_live_stand.py::test_live_reset_registration_runner_uses_failure_stdout_only -v \
             --tb=short \
             -p no:cacheprovider \
             -k "not integration"

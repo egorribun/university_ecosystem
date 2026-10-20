@@ -12922,3 +12922,83 @@ def test_live_bounded_read_failure_reason_is_finite(reason: Any, expected: str) 
     assert error.reason == expected
     assert str(error) == live_stand._LIVE_CADDY_PROBE_FAILURE
     assert error.args == (live_stand._LIVE_CADDY_PROBE_FAILURE,)
+
+
+def test_live_reset_registration_parser_accepts_only_six_unique_pairs() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_steps", None)
+    assert callable(parser)
+    expected = [
+        (project, step)
+        for project in ("desktop", "mobile")
+        for step in ("arm-response", "click", "await-response")
+    ]
+    output = "".join(
+        f"UE_LIVE_RESET_REGISTRATION_V1 project={project} step={step}\r\n"
+        for project, step in expected * 3
+    )
+    assert parser(output) == expected
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "",
+        "UE_LIVE_RESET_REGISTRATION_V1 project=desktop step=click",
+        "UE_LIVE_RESET_REGISTRATION_V1 project=private step=click\n",
+        "UE_LIVE_RESET_REGISTRATION_V1 project=desktop step=private\n",
+        "UE_LIVE_RESET_REGISTRATION_V1 project=desktop step=click extra=x\n",
+        "private UE_LIVE_RESET_REGISTRATION_V1 project=desktop step=click\n",
+        "private\rUE_LIVE_RESET_REGISTRATION_V1 project=desktop step=click\n",
+        "private\vUE_LIVE_RESET_REGISTRATION_V1 project=desktop step=click\n",
+        "private\u2028UE_LIVE_RESET_REGISTRATION_V1 project=desktop step=click\n",
+        "UE_LIVE_RESET_REGISTRATION_V1 project=desktop step=click\r\r\n",
+        "\x1b[31mUE_LIVE_RESET_REGISTRATION_V1 project=desktop step=click\n",
+        "x" * 1_024 + "\n",
+    ],
+)
+def test_live_reset_registration_parser_rejects_untrusted_framing(
+    output: str,
+) -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_steps", None)
+    assert callable(parser)
+    assert parser(output) == []
+
+
+@pytest.mark.parametrize("return_code", [0, 1])
+def test_live_reset_registration_runner_uses_failure_stdout_only(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    return_code: int,
+) -> None:
+    command = live_stand._live_e2e_command(mode="smoke")
+    valid = "UE_LIVE_RESET_REGISTRATION_V1 project=desktop step=click\n"
+    stderr_only = (
+        "UE_LIVE_RESET_REGISTRATION_V1 project=mobile step=await-response\n"
+    )
+    private = "private-body https://private.invalid/?token=hidden"
+    completed = subprocess.CompletedProcess(
+        command,
+        return_code,
+        stdout=(valid + valid + private + "\n").encode(),
+        stderr=(stderr_only + private).encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    if return_code:
+        with pytest.raises(live_stand.StandError, match="exit code 1"):
+            live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    else:
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+
+    captured = capsys.readouterr()
+    expected = ["+ " + " ".join(command)]
+    if return_code:
+        expected.append("live E2E reset-registration project=desktop step=click")
+    outcome = "failed" if return_code else "passed"
+    expected.append(f"live E2E outcome={outcome} exit_code={return_code}")
+    assert captured.out.splitlines() == expected
+    assert captured.err == ""
+    assert private not in captured.out
+    assert completed.stdout == completed.stderr == b""
