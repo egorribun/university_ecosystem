@@ -181,9 +181,7 @@ describe("AUD-101 prepaint theme selection", () => {
 
       runInContext(script, dom.getInternalVMContext(), { timeout: 1000 })
 
-      expect(dom.window.document.documentElement.classList.contains("dark")).toBe(
-        expectedDark
-      )
+      expect(dom.window.document.documentElement.classList.contains("dark")).toBe(expectedDark)
       expect(dom.window.localStorage.getItem("ue-mode")).toBe(storedTheme)
       expect(Reflect.get(dom.window, "__UE_THEME_INIT_SCRIPT_RAN__")).toBe(true)
     } finally {

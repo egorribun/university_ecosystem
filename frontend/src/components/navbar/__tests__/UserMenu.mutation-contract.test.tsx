@@ -307,21 +307,21 @@ describe("AUD-104 compact profile keyboard access", () => {
     const go = vi.fn()
     const { rerender } = renderMenu({ go, isCompact: true })
 
-    screen.getByRole("button", {
-      name: "navigation:aria.openProfile",
-    }).focus()
+    screen
+      .getByRole("button", {
+        name: "navigation:aria.openProfile",
+      })
+      .focus()
     await userActions.tab()
-    expect(
-      screen.getByRole("button", { name: "navigation:menu.settings" })
-    ).toHaveFocus()
+    expect(screen.getByRole("button", { name: "navigation:menu.settings" })).toHaveFocus()
 
-    rerender(
-      <UserMenu go={go} isAuth isCompact={false} loading={false} t={t} user={user} />
-    )
+    rerender(<UserMenu go={go} isAuth isCompact={false} loading={false} t={t} user={user} />)
 
-    screen.getByRole("button", {
-      name: "navigation:aria.openProfile",
-    }).focus()
+    screen
+      .getByRole("button", {
+        name: "navigation:aria.openProfile",
+      })
+      .focus()
     await userActions.tab()
     expect(
       screen.getByRole("button", {

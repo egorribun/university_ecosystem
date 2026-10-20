@@ -181,10 +181,7 @@ function deferredDatabaseOperation<T>() {
   return { promise, resolve, reject }
 }
 
-function expectOriginalInitializationError(
-  results: PromiseSettledResult<unknown>[],
-  error: Error
-) {
+function expectOriginalInitializationError(results: PromiseSettledResult<unknown>[], error: Error) {
   for (const result of results) {
     expect(result.status).toBe("rejected")
     if (result.status === "rejected") {
@@ -261,12 +258,10 @@ describe("AUD-102 production initialization recovery", () => {
     })
     const replacement = makeDatabase()
 
-    createRxDatabase
-      .mockResolvedValueOnce(database)
-      .mockImplementationOnce(async () => {
-        expect(closeFinished).toBe(true)
-        return replacement
-      })
+    createRxDatabase.mockResolvedValueOnce(database).mockImplementationOnce(async () => {
+      expect(closeFinished).toBe(true)
+      return replacement
+    })
 
     const initialCallers = Promise.allSettled([calls.request(), calls.request()])
 
@@ -338,9 +333,7 @@ describe("AUD-102 production initialization recovery", () => {
       })
       const unusedReplacement = makeDatabase()
 
-      createRxDatabase
-        .mockResolvedValueOnce(database)
-        .mockResolvedValueOnce(unusedReplacement)
+      createRxDatabase.mockResolvedValueOnce(database).mockResolvedValueOnce(unusedReplacement)
 
       try {
         const firstCallers = await Promise.allSettled([calls.request(), calls.request()])
