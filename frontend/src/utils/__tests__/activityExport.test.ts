@@ -1,5 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import fontUrl from "@/assets/fonts/inter-latin-cyrillic-400.ttf?url"
 import { exportActivityAsPng, exportActivityAsPdf } from "../activityExport"
+
+const { pdfMocks } = vi.hoisted(() => ({
+  pdfMocks: {
+    addFileToVFS: vi.fn(),
+    addFont: vi.fn(),
+    setFont: vi.fn(),
+    save: vi.fn(),
+  },
+}))
 
 // Mock dependencies
 vi.mock("html-to-image", () => ({
@@ -15,10 +25,13 @@ vi.mock("jspdf", () => ({
           getHeight: () => 297,
         },
       }
+      addFileToVFS = pdfMocks.addFileToVFS
+      addFont = pdfMocks.addFont
+      setFont = pdfMocks.setFont
       setFontSize = vi.fn()
       text = vi.fn()
       addImage = vi.fn()
-      save = vi.fn()
+      save = pdfMocks.save
     }
   ),
 }))
@@ -28,6 +41,15 @@ vi.mock("@/app/logger", () => ({
 }))
 
 describe("activityExport", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
   describe("exportActivityAsPng", () => {
     let mockElement: HTMLElement
 
@@ -35,9 +57,7 @@ describe("activityExport", () => {
       mockElement = document.createElement("div")
       vi.spyOn(document, "createElement")
       const mockAnchor = { click: vi.fn(), href: "", download: "" } as unknown as HTMLAnchorElement
-      vi.mocked(document.createElement).mockReturnValueOnce(
-        mockAnchor as unknown as HTMLAnchorElement
-      )
+      vi.mocked(document.createElement).mockReturnValueOnce(mockAnchor)
     })
 
     it("successfully triggers a PNG download", async () => {
@@ -52,21 +72,37 @@ describe("activityExport", () => {
 
     beforeEach(() => {
       mockElement = document.createElement("div")
-      global.Image = class {
-        onload: (() => void) | null = null
-        onerror: (() => void) | null = null
-        src: string = ""
-        width: number = 800
-        height: number = 600
-        constructor() {
-          setTimeout(() => this.onload?.(), 10)
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new Uint8Array([0, 1, 2]))))
+      vi.stubGlobal(
+        "Image",
+        class {
+          onload: (() => void) | null = null
+          onerror: (() => void) | null = null
+          readonly width = 800
+          readonly height = 600
+
+          set src(_value: string) {
+            queueMicrotask(() => this.onload?.())
+          }
         }
-      } as unknown as typeof Image
+      )
     })
 
     it("successfully triggers a PDF save", async () => {
       const result = await exportActivityAsPdf(mockElement, "Activity Log", "activity.pdf")
-      expect(result.success).toBe(true)
+
+      expect(result).toEqual({ success: true })
+      expect(fetch).toHaveBeenCalledExactlyOnceWith(fontUrl, {
+        signal: expect.any(AbortSignal),
+      })
+      expect(pdfMocks.addFileToVFS).toHaveBeenCalledWith("inter-latin-cyrillic-400.ttf", "AAEC")
+      expect(pdfMocks.addFont).toHaveBeenCalledWith(
+        "inter-latin-cyrillic-400.ttf",
+        "InterLatinCyrillic",
+        "normal"
+      )
+      expect(pdfMocks.setFont).toHaveBeenCalledWith("InterLatinCyrillic", "normal")
+      expect(pdfMocks.save).toHaveBeenCalledExactlyOnceWith("activity.pdf")
     })
   })
 })

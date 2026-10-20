@@ -117,3 +117,11 @@ a generated candidate is not a passing checked-in-source validation.
 Final-source lock consistency, scanner integrity, tests and vulnerability
 checks remain required. No baseline edit, new false-positive disposition,
 advisory waiver, merge or deployment is authorized by this exception.
+
+The bounded generation was executed on source `dd27830a` in
+[run 39494503454](https://github.com/egorribun/university_ecosystem/actions/runs/39494503454),
+job 118875905694. The candidate passes `uv lock --check`; all other 229 package
+records remain unchanged. The original lock was restored and the ordinary
+checked-in lock gate correctly refused it. The reviewed generated diff is
+integrated by the follow-up, which removes the temporary generator. This
+records generation provenance, not a passing final-source security gate.
