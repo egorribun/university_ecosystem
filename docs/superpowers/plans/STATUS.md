@@ -10,7 +10,7 @@
 
 ## Текущая проверка аудита
 
-Подтверждённая нижняя граница: 83 из 512 исходных AUD IDs. На 3258d71 принят AUD-066 по собственным регрессиям и зелёным static/build gates; прежние 82 IDs сохраняются. [Scope, IDs и доказательства](../../audits/AUDIT-2026-10.md#evidence-checkpoint-83-verified-original-aud-ids). Это не полная сверка всех пунктов и не приёмка всего CI.
+Подтверждённая нижняя граница: 84 из 512 исходных AUD IDs. AUD-084 принят по named Linux regression на a71c6d7; прежние 83 IDs сохраняются. [Scope, IDs и доказательства](../../audits/AUDIT-2026-10.md#evidence-checkpoint-84-verified-original-aud-ids). Это не полная сверка и не приёмка всего CI.
 
 На 47f35bf: frontend 9388 PASS / 779 файлов, все frontend static gates и production build прошли. Real SDK/Axios/MSW ETag cohort подтверждает разделение order/query/cache/ETag; повторная OpenAPI generation не даёт diff. PostgreSQL: 203 PASS / 9 прежних SKIP, включая raw HTTP rank/date counterexample. Оба pre-commit и inventory gates проходят. Exact hosted checkout/tree проверены.
 
@@ -22,7 +22,7 @@ Frontend 3258d71 — 9430 PASS / 784 файла, без failures. Все static 
 
 Core a27af92 run 39353709178 / job 118403589608 passes 26 browser cases with two existing skips at 01:45:40 UTC. Owned stop and receipt finish at 01:46:02; artifact 12234748128 has SHA-256 d8e280b30eaf28edf69b07e8db66a9b848f91f4900cd7db1a999ac25edd342d3. Checkout f7c8ff223aad624287d28f0b7c93dc6d207c6ff0 has the exact a27 source tree. No outage execution or full release acceptance follows.
 
-Следующий NATS срез выделяет прежнюю Compose projection без I/O и вводит unavailable daemon request/decode seams с тестами. Existing AUD-084 suites добавлены в verbose focused selection для source-bound доказательства; production preflight не меняется. Workflow расширен только на прежней строке 155, без сдвига baseline coordinates. [Scope](2026-10-20-owned-nats-docker-observation.md).
+На a71c6d7 все 21 Compose projection cases проходят. Реализация daemon request/decode после шести наблюдавшихся RED ожидает own GREEN; операции остаются без I/O. Все 28 existing AUD-084 cases прошли в verbose focused job; production preflight не меняется. Workflow расширен только на прежней строке 155, без сдвига baseline coordinates. [Scope](2026-10-20-owned-nats-docker-observation.md).
 
 История промежуточных RED/GREEN, коррекции тестов и receipts сохранены в audit supplements и тематических планах. Прежний platform skip устранён; результаты текущих проверок описаны выше. Новых skip identities или waiver нет. P1 holds 164/167/169/174 сохраняются. Последний полностью принятый CI — e150. Baseline 319, dispositions 263, 78 required context/app pairs и security gates неизменны. Merge/deploy не выполняются.
 
@@ -123,3 +123,11 @@ CodeQL: пять успешных языковых анализов и успе�
 Закрыть quality/live gates, пройти два полных запуска 59 specs с paired DB/S3 persistence/restore между ними, затем risk/a11y, 36 Linux captures News/Events/Schedule и решение владельца, serial LHCI 7×3, frozen-RC full smoke, final security review, ordinary merge/main checks, шесть GHCR images и релиз. Единственный утверждённый визуальный пакет — Home12 на `ddbbc84d`.
 
 Staging/production не развёрнуты; фактические trusted proxy/CNI/PVC/CSI проверки и соответствующие operational решения остаются открытыми.
+
+## Последняя проверка границ
+
+Source a71c6d7c756c53bd31ea661053a9974ee9fdc497 is bound to checkout fbb400bb797ed0fd683515f19da1d9275c483953 and identical tree e164ddb9bbe0550e010832adead33404763a552d. Focused job 118415057333 reports 831 PASS / 7 FAIL in 212.74 seconds: six intended unavailable daemon request/decode assertions and the existing disabled-outage workflow hold. All twenty-one Compose projection cases and all twenty-eight existing preflight cases pass.
+
+AUD-084 is accepted narrowly for bounded runner return when an exited parent leaves inherited output pipes open. The real Linux regression test_run_check_deadline_when_descendant_inherits_output_pipes passes at 02:16:19 UTC. Source was already corrected and is unchanged; adding named selection supplies the missing source-bound proof. Windows drain cases are simulated API controls, not physical Windows execution. Bounded return does not claim termination of every detached descendant.
+
+AUD-071 воспроизведён настоящим browser hit test на desktop/mobile. Исправление pointer events только у Snackbar content и форматирование теста ожидают own GREEN. Шесть daemon assertions получили реализацию проверки explicit inputs и supplied bytes без I/O; runtime adapters/outage остаются выключенными. Core после двух ожидаемых failures остановил owned containers в 02:22:24 UTC. Эти результаты не заменяют полный CI.

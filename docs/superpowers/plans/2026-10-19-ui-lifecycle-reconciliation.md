@@ -120,3 +120,11 @@ This is draft preparation, not saving into a remote Google account, whole-schedu
 The affected component is settings/ui/Feedback Snackbar, not the separate ui/Snackbar. Existing standalone Alert fireEvent tests do not prove browser hit testing through the pointer-events-none ancestor. The next test uses the real Profile email button, which opens local feedback without clipboard access, profile writes or navigation. It is appended to the already-selected settings-radio-focus live UI carrier; no smoke selection changes are made.
 
 Install the browser clock before navigation, keep it running through authentication/readiness, then pause immediately before opening feedback. Require a visible, enabled close button with positive area and viewport center, verify elementFromPoint resolves to that button or its descendant, and use an ordinary unforced click. Disappearance must occur with unchanged paused time, excluding automatic dismissal. Always resume the clock before fixture cleanup. No CSS injection, DOM substitute, synthetic click or duration change is introduced. Production remains unchanged until the intended hit-target RED is observed.
+
+## AUD-071 observed browser RED and narrow correction
+
+On a71c6d7, Core run 39357053154 / job 118414135257 reports 26 PASS / 2 FAIL / 2 existing SKIP. Both desktop and mobile failures reach the browser hit-target assertion at settings-radio-focus.live.spec.ts:291 after profile readiness, feedback visibility and close-button checks. Production Snackbar's pointer-events-none ancestor prevents that assertion. No synthetic click or auto-dismiss result is used.
+
+The correction restores pointer events only on direct Snackbar content with the existing Tailwind child variant, retaining the outer pass-through positioning wrapper and existing DOM structure. Alert and timers are unchanged. The same browser assertions remain intact. Static job 118415281486 reports only a Prettier warning in that new live test; its 98-character centerInsideViewport expression is collapsed without changing behavior. Own corrected-source browser and formatter GREEN remain required; AUD-071 stays open.
+
+Owned stop and receipt finish at 02:22:24 UTC; artifact 12235089831 has SHA-256 d8828cdf1c1606ccda4fa5f0cc843571b10c4c27f8d0bfda2ca46a531bddd71d. This failed regression run still cleaned up its owned containers.

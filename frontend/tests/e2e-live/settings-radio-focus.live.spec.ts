@@ -281,8 +281,7 @@ test("Settings Snackbar content receives a real pointer click on Profile", async
       const target = document.elementFromPoint(x, y)
       return {
         positiveArea: rect.width > 0 && rect.height > 0,
-        centerInsideViewport:
-          x >= 0 && x < window.innerWidth && y >= 0 && y < window.innerHeight,
+        centerInsideViewport: x >= 0 && x < window.innerWidth && y >= 0 && y < window.innerHeight,
         ownsCenter: target !== null && button.contains(target),
         pointerEvents: getComputedStyle(button).pointerEvents,
       }
