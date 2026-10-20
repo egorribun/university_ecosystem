@@ -55,7 +55,7 @@ spec:
             # Node SSR requests and JWKS discovery use the in-cluster backend;
             # browser requests remain relative and flow through the gateway.
             - name: BACKEND_ORIGIN
-              value: "http://{{ include "university-ecosystem.fullname" . }}-backend:{{ .Values.backend.service.port }}"
+              value: "http://{{ include "university-ecosystem.componentName" (dict "root" . "component" "backend") }}:{{ .Values.backend.service.port }}"
           # TD-04 (audit Wave 12): explicit probe timing.
           startupProbe:
             httpGet:

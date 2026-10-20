@@ -108,6 +108,71 @@ jobs:
             --format text \
             --fail-severity error
 
+
+      - name: Verify Spectral response-rule behavior
+        if: always()
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          harness="scripts/quality/check_spectral_operation_responses.py"
+          fixture_dir="$(mktemp -d "$RUNNER_TEMP/spectral-response-contract.XXXXXX")"
+          container_name="spectral-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${fixture_dir##*/}"
+          attempted=0
+
+          cleanup() {
+            status=$?
+            trap - EXIT
+            cleanup_status=0
+            if [[ "$attempted" == 1 ]]; then
+              container_id=""
+              if [[ -s "$fixture_dir/container.cid" ]]; then
+                container_id="$(cat "$fixture_dir/container.cid")"
+              fi
+              if [[ "$container_id" =~ ^[0-9a-f]{64}$ ]]; then
+                if ! timeout --kill-after=2s 8s \
+                  docker rm -f "$container_id"; then
+                  echo "::error::Owned Spectral container cleanup failed"
+                  cleanup_status=1
+                fi
+              else
+                echo "::error::Spectral container identity unavailable; cleanup unproven"
+                cleanup_status=1
+              fi
+            fi
+            if ! rm -rf -- "$fixture_dir"; then
+              echo "::error::Spectral fixture cleanup failed"
+              cleanup_status=1
+            fi
+            if [[ "$status" == 0 ]]; then
+              status="$cleanup_status"
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+
+          image="$(uv run --frozen --no-sync python "$harness" image)"
+          uv run --frozen --no-sync python "$harness" fixture \
+            > "$fixture_dir/openapi.json"
+          chmod 755 "$fixture_dir"
+          chmod 644 "$fixture_dir/openapi.json"
+
+          attempted=1
+          timeout --kill-after=5s 45s \
+            docker run --name "$container_name" \
+            --cidfile "$fixture_dir/container.cid" \
+            --pull=never --network=none \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/work,readonly" \
+            --mount "type=bind,source=$fixture_dir,target=/fixtures,readonly" \
+            -w /work "$image" lint /fixtures/openapi.json \
+            --ruleset .spectral.yml --format json --fail-severity error \
+            > "$fixture_dir/diagnostics.json"
+
+          uv run --frozen --no-sync python "$harness" check \
+            "$fixture_dir/diagnostics.json"
+
   # Wave 2 / Task 2.3 — openapi-diff backward-compatibility gate.
   # Compares the generated spec against the event's immutable baseline snapshot
   # to prevent accidental breaking changes (removed paths, required fields, etc.).

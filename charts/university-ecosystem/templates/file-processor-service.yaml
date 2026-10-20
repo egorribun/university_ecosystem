@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "university-ecosystem.fullname" . }}-file-processor
+  name: {{ include "university-ecosystem.componentName" (dict "root" . "component" "file-processor") }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "university-ecosystem.labels" . | nindent 4 }}

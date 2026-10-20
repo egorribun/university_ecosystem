@@ -88,9 +88,9 @@ spec:
             - name: REVOCATION_REDIS_URL_FILE
               value: {{ printf "/run/secrets/%s/%s" $connectionsSecretName (required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey) | quote }}
             - name: BACKEND_INTERNAL_URL
-              value: {{ printf "http://%s-backend:%v" (include "university-ecosystem.fullname" .) .Values.backend.service.port | quote }}
+              value: {{ printf "http://%s:%v" (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port | quote }}
             - name: JWKS_URL
-              value: {{ printf "http://%s-backend:%v/.well-known/jwks.json" (include "university-ecosystem.fullname" .) .Values.backend.service.port | quote }}
+              value: {{ printf "http://%s:%v/.well-known/jwks.json" (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port | quote }}
             - name: ALLOWED_ORIGINS
               value: {{ join "," .Values.wsHub.config.allowedOrigins | quote }}
             - name: WS_ALLOWED_ORIGINS

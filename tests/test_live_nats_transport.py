@@ -905,3 +905,508 @@ def test_daemon_observation_never_refreshes_deadline(monkeypatch, daemon_no_proc
     _assert_one_daemon_collection(calls, deadline)
     assert result.status is docker.DaemonMetadataStatus.MATCHED_METADATA
     assert result.fingerprint == _DAEMON_FINGERPRINT
+
+
+_COMPOSE_ROOTS = (
+    "caddy",
+    "mailpit",
+    "notifications-worker",
+    "outbox-worker",
+    "spicedb",
+)
+_COMPOSE_SERVICES = (
+    "backend",
+    "caddy",
+    "flagd",
+    "flagd-healthprobe",
+    "frontend",
+    "gateway",
+    "imgproxy",
+    "mailpit",
+    "migrations",
+    "minio",
+    "minio-init",
+    "nats",
+    "notifications-worker",
+    "outbox-worker",
+    "postgres",
+    "postgres-databases-init",
+    "redis",
+    "revocation-redis",
+    "spicedb",
+    "spicedb-migrate",
+    "tempo",
+    "tempo-healthprobe",
+    "ws-hub",
+)
+_COMPOSE_PORT_NAMES = (
+    "BACKEND",
+    "FRONTEND",
+    "POSTGRES",
+    "GATEWAY",
+    "WS_HUB",
+    "TEMPORAL_GRPC",
+    "TEMPORAL_WEB",
+    "IMGPROXY",
+    "GRAFANA",
+    "PROMETHEUS",
+    "ALLOY",
+    "PYROSCOPE",
+    "CADDY_HTTP",
+    "CADDY_HTTPS",
+    "MINIO",
+    "MAILPIT",
+)
+
+
+@pytest.fixture
+def compose_case():
+    project = "ue-live-0123456789abcdef"
+    repository = "/owned-source/repository"
+    state = "/owned-state/ue-live-acceptance/run-compose"
+    ports = tuple(
+        sorted((name, 20_000 + index) for index, name in enumerate(_COMPOSE_PORT_NAMES))
+    )
+    mount = {"type": "volume", "source": "app-data", "target": "/app/data"}
+    services = {name: {} for name in _COMPOSE_SERVICES}
+    services["caddy"]["depends_on"] = {
+        name: {"condition": "service_started"}
+        for name in _COMPOSE_SERVICES
+        if name != "caddy"
+    }
+    services["backend"] = {
+        "volumes": [mount],
+        "environment": {"PRIVATE_CONFIG": "private-compose-config-fixture"},
+        "labels": {"private.fixture.label": "private-compose-label-fixture"},
+    }
+    model = {
+        "name": project,
+        "services": services,
+        "volumes": {"app-data": {}},
+        "networks": {"default": {}},
+    }
+    projection = {
+        "project_name": project,
+        "volumes": {
+            "app-data": {
+                "external": False,
+                "resolved_name": f"{project}_app-data",
+            }
+        },
+        "networks": {
+            "default": {
+                "external": False,
+                "resolved_name": f"{project}_default",
+            }
+        },
+        "service_mounts": {
+            name: {
+                "volumes": [dict(mount)] if name == "backend" else [],
+                "volumes_from": [],
+                "networks": ["default"],
+                "network_mode": None,
+            }
+            for name in _COMPOSE_SERVICES
+        },
+        "stack": "core",
+        "service_roots": list(_COMPOSE_ROOTS),
+        "selected_services": list(_COMPOSE_SERVICES),
+        "published_port_names": [
+            "BACKEND",
+            "CADDY_HTTP",
+            "CADDY_HTTPS",
+            "FRONTEND",
+            "GATEWAY",
+            "IMGPROXY",
+            "MAILPIT",
+            "MINIO",
+            "POSTGRES",
+            "WS_HUB",
+        ],
+    }
+    canonical = json.dumps(
+        projection, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("utf-8")
+    fingerprint = hashlib.sha256(canonical).hexdigest()
+    owner = OwnerEvidence(
+        repository=repository,
+        worktree=state,
+        project_name=project,
+        published_ports=ports,
+        schema_version=11,
+        daemon_fingerprint=_DAEMON_FINGERPRINT,
+        compose_resource_fingerprint=fingerprint,
+        resume_compose_resource_fingerprint=None,
+        resume_compose_resource_schema_version=None,
+        source_sha="a" * 40,
+        stack="core",
+        service_roots=_COMPOSE_ROOTS,
+        selected_services=_COMPOSE_SERVICES,
+    )
+    pins = replace(
+        _daemon_pins(),
+        cwd=state,
+        environment=(("LC_ALL", "C"),),
+    )
+    compose = docker.ComposeConfigPins(
+        project_directory=repository,
+        env_file=f"{state}/.env.docker",
+        compose_files=(
+            f"{repository}/docker-compose.full.yml",
+            f"{repository}/docker-compose.live.yml",
+            f"{state}/docker-compose.live-state.yml",
+        ),
+    )
+    evidence = live_stand.ComposeResourceEvidence(
+        fingerprint=fingerprint,
+        managed_volumes=(("app-data", f"{project}_app-data"),),
+        declared_volume_names=(f"{project}_app-data",),
+        managed_networks=(("default", f"{project}_default"),),
+        managed_services=_COMPOSE_SERVICES,
+        stack="core",
+        service_roots=_COMPOSE_ROOTS,
+        selected_services=_COMPOSE_SERVICES,
+        network_bindings=(("default", f"{project}_default", False),),
+        service_networks=tuple((name, ("default",)) for name in _COMPOSE_SERVICES),
+    )
+    raw = json.dumps(model, separators=(",", ":")).encode("utf-8")
+    return owner, pins, compose, model, raw, evidence
+
+
+def _compose_call(function, *args, **kwargs):
+    attempted = []
+
+    def forbidden(*_args, **_kwargs):
+        attempted.append(True)
+        raise AssertionError("Compose preparation and decoding must perform no I/O")
+
+    class ForbiddenEnvironment:
+        __getitem__ = forbidden
+        __iter__ = forbidden
+        __len__ = forbidden
+        __contains__ = forbidden
+        get = forbidden
+        keys = forbidden
+        items = forbidden
+        values = forbidden
+        copy = forbidden
+
+    try:
+        with pytest.MonkeyPatch.context() as guard:
+            guard.setattr(builtins, "open", forbidden)
+            guard.setattr(io, "open", forbidden)
+            guard.setattr(os, "environ", ForbiddenEnvironment())
+            guard.setattr(os, "getenv", forbidden)
+            for name in (
+                "open",
+                "stat",
+                "lstat",
+                "listdir",
+                "scandir",
+                "readlink",
+                "system",
+                "mkdir",
+                "makedirs",
+                "remove",
+                "unlink",
+                "rename",
+                "replace",
+            ):
+                guard.setattr(os, name, forbidden)
+            for name in (
+                "open",
+                "read_bytes",
+                "read_text",
+                "write_bytes",
+                "write_text",
+                "resolve",
+                "stat",
+                "lstat",
+                "exists",
+                "is_file",
+                "is_dir",
+                "mkdir",
+                "unlink",
+            ):
+                guard.setattr(Path, name, forbidden)
+            guard.setattr(subprocess, "run", forbidden)
+            guard.setattr(subprocess, "Popen", forbidden)
+            guard.setattr(process, "run_private_process", forbidden)
+            guard.setattr(Deadline, "after", forbidden)
+            guard.setattr(Deadline, "child", forbidden)
+            for name in (
+                "compose_command",
+                "compose_control_environment",
+                "_compose_resource_evidence",
+                "docker_daemon_fingerprint",
+                "load_stand_owner",
+                "stand_lifecycle_lock",
+            ):
+                guard.setattr(live_stand, name, forbidden)
+            return function(*args, **kwargs)
+    finally:
+        assert attempted == []
+
+
+def _assert_compose_not_ready(result):
+    assert result == docker.ComposeMetadataResult(
+        docker.ComposeMetadataStatus.NOT_READY
+    )
+
+
+def test_compose_request_uses_exact_in_place_pins_and_private_environment(compose_case):
+    owner, pins, compose, _model, _raw, _evidence = compose_case
+    deadline = _daemon_deadline()
+
+    request = _compose_call(
+        docker.prepare_compose_config, owner, pins, compose, deadline=deadline
+    )
+
+    assert type(request) is process.PrivateProcessRequest
+    assert request.argv == (
+        pins.executable,
+        "--config",
+        pins.config_directory,
+        "--host",
+        pins.endpoint,
+        "compose",
+        "--project-directory",
+        owner.repository,
+        "-p",
+        owner.project_name,
+        "--env-file",
+        compose.env_file,
+        "-f",
+        compose.compose_files[0],
+        "-f",
+        compose.compose_files[1],
+        "-f",
+        compose.compose_files[2],
+        "config",
+        "--format",
+        "json",
+    )
+    expected_env = {
+        "LC_ALL": "C",
+        "COMPOSE_PROJECT_NAME": owner.project_name,
+        "LIVE_BASE_URL": "http://localhost:20012",
+        "LIVE_VAPID_PUBLIC_KEY": "live-stand-inspection-placeholder",
+        "LIVE_VAPID_PRIVATE_KEY": "live-stand-inspection-placeholder",
+        "TRUSTED_PROXIES": "",
+        "GATEWAY_TRUSTED_PROXIES": "",
+        "WS_HUB_TRUSTED_PROXIES": "",
+        "LIVE_STAND_STATE_ROOT": owner.worktree,
+        "LIVE_STAND_SOURCE_SHA": "a" * 40,
+    }
+    for name, port in owner.published_ports:
+        key = "LIVE_MAILPIT_PORT" if name == "MAILPIT" else f"LIVE_HOST_PORT_{name}"
+        expected_env[key] = str(port)
+    assert type(request.env) is dict
+    assert request.env == expected_env
+    assert request.cwd == owner.worktree
+    assert request.stdin == b""
+    assert request.stdout_limit == 1_048_576
+    assert request.stderr_limit == 16_384
+    assert request.input_limit == 0
+    assert pins.environment == (("LC_ALL", "C"),)
+    assert deadline.expires_at == 10
+    assert owner.worktree not in repr(compose)
+
+
+def test_compose_decode_matches_independent_resource_projection(compose_case):
+    owner, _pins, _compose, model, raw, evidence = compose_case
+    before = copy.deepcopy(model)
+    supplied = _daemon_result(stdout=raw)
+    deadline = _daemon_deadline()
+
+    result = _compose_call(
+        docker.decode_compose_config, supplied, owner=owner, deadline=deadline
+    )
+
+    assert result.status is docker.ComposeMetadataStatus.MATCHED_METADATA
+    assert result.evidence == evidence
+    assert model == before
+    assert supplied.stdout == raw
+    assert deadline.expires_at == 10
+    for private_value in (
+        owner.project_name,
+        owner.compose_resource_fingerprint,
+        "private-compose-config-fixture",
+        "private-compose-label-fixture",
+    ):
+        assert private_value not in repr(result)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "wrong-class",
+        "bool-schema",
+        "full-stack",
+        "resume",
+        "selection",
+        "bool-port",
+        "duplicate-port-name",
+        "privileged-port",
+    ],
+)
+def test_compose_boundaries_refuse_unadmitted_owner(compose_case, mutation):
+    owner, pins, compose, _model, raw, _evidence = compose_case
+    first_name, _first_port = owner.published_ports[0]
+    changes = {
+        "bool-schema": {"schema_version": True},
+        "full-stack": {"stack": "full"},
+        "resume": {"resume_compose_resource_fingerprint": "b" * 64},
+        "selection": {"selected_services": owner.selected_services[:-1]},
+        "bool-port": {
+            "published_ports": ((first_name, True), *owner.published_ports[1:])
+        },
+        "duplicate-port-name": {
+            "published_ports": (*owner.published_ports, owner.published_ports[0])
+        },
+        "privileged-port": {
+            "published_ports": ((first_name, 80), *owner.published_ports[1:])
+        },
+    }
+    invalid = (
+        object() if mutation == "wrong-class" else replace(owner, **changes[mutation])
+    )
+
+    assert (
+        _compose_call(
+            docker.prepare_compose_config,
+            invalid,
+            pins,
+            compose,
+            deadline=_daemon_deadline(),
+        )
+        is None
+    )
+    result = _compose_call(
+        docker.decode_compose_config,
+        _daemon_result(stdout=raw),
+        owner=invalid,
+        deadline=_daemon_deadline(),
+    )
+    _assert_compose_not_ready(result)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["project-directory", "env-file", "file-order", "missing-file", "cwd", "daemon"],
+)
+def test_compose_prepare_refuses_unreviewed_layout(compose_case, mutation):
+    owner, pins, compose, _model, _raw, _evidence = compose_case
+    if mutation == "project-directory":
+        compose = replace(compose, project_directory="/another-repository")
+    elif mutation == "env-file":
+        compose = replace(compose, env_file=f"{owner.repository}/.env.docker")
+    elif mutation == "file-order":
+        compose = replace(compose, compose_files=tuple(reversed(compose.compose_files)))
+    elif mutation == "missing-file":
+        compose = replace(compose, compose_files=compose.compose_files[:-1])
+    elif mutation == "cwd":
+        pins = replace(pins, cwd=owner.repository)
+    else:
+        pins = replace(pins, daemon_fingerprint="b" * 64)
+
+    assert (
+        _compose_call(
+            docker.prepare_compose_config,
+            owner,
+            pins,
+            compose,
+            deadline=_daemon_deadline(),
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("mutation", ["nonexit", "cleanup", "stderr", "oversize"])
+def test_compose_decode_refuses_process_evidence(compose_case, mutation):
+    owner, _pins, _compose, _model, raw, _evidence = compose_case
+    changes = {
+        "nonexit": {"outcome": process.ProcessOutcome.TIMED_OUT},
+        "cleanup": {"local_cleanup": process.LocalCleanup.UNPROVEN},
+        "stderr": {"stderr": b"private-compose-error"},
+        "oversize": {"stdout": b" " * 1_048_577},
+    }
+    supplied = replace(_daemon_result(stdout=raw), **changes[mutation])
+
+    result = _compose_call(
+        docker.decode_compose_config,
+        supplied,
+        owner=owner,
+        deadline=_daemon_deadline(),
+    )
+
+    _assert_compose_not_ready(result)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "root",
+        "duplicate-root",
+        "duplicate-nested",
+        "nan",
+        "overflow",
+        "utf8",
+        "trailing",
+        "resource-drift",
+    ],
+)
+def test_compose_decode_refuses_ambiguous_or_different_json(compose_case, mutation):
+    owner, _pins, _compose, model, raw, _evidence = compose_case
+    if mutation == "root":
+        raw = b"[]"
+    elif mutation == "duplicate-root":
+        raw = b'{"name":"other",' + raw[1:]
+    elif mutation == "duplicate-nested":
+        raw = raw.replace(
+            b'"PRIVATE_CONFIG":',
+            b'"PRIVATE_CONFIG":"duplicate","PRIVATE_CONFIG":',
+            1,
+        )
+    elif mutation == "nan":
+        raw = b'{"unselected_private_number":NaN,' + raw[1:]
+    elif mutation == "overflow":
+        raw = b'{"unselected_private_number":1e999,' + raw[1:]
+    elif mutation == "utf8":
+        raw = b"\xff" + raw
+    elif mutation == "trailing":
+        raw += b"{}"
+    else:
+        model["services"]["backend"]["volumes"][0]["target"] = "/other/data"
+        raw = json.dumps(model).encode("utf-8")
+
+    result = _compose_call(
+        docker.decode_compose_config,
+        _daemon_result(stdout=raw),
+        owner=owner,
+        deadline=_daemon_deadline(),
+    )
+
+    _assert_compose_not_ready(result)
+
+
+@pytest.mark.parametrize("operation", ["prepare", "decode"])
+@pytest.mark.parametrize("expiry", ["before", "during"])
+def test_compose_boundaries_keep_the_shared_deadline(compose_case, operation, expiry):
+    owner, pins, compose, _model, raw, _evidence = compose_case
+    samples = iter((0.0, 11.0) if expiry == "before" else (0.0, 0.0, 11.0))
+    deadline = Deadline.after(10, clock=samples.__next__)
+
+    if operation == "prepare":
+        result = _compose_call(
+            docker.prepare_compose_config, owner, pins, compose, deadline=deadline
+        )
+        assert result is None
+    else:
+        result = _compose_call(
+            docker.decode_compose_config,
+            _daemon_result(stdout=raw),
+            owner=owner,
+            deadline=deadline,
+        )
+        _assert_compose_not_ready(result)

@@ -477,7 +477,11 @@ def test_gateway_api_template_preserves_tls_redirect_and_route_dispatch() -> Non
         'type: {{ if eq $path.pathType "Exact" }}Exact{{ else }}PathPrefix{{ end }}'
         in template
     )
-    assert 'name: {{ printf "%s-%s" $fullname $path.service }}' in template
+    assert (
+        'name: {{ include "university-ecosystem.componentName" '
+        '(dict "root" $root "component" $path.service) }}'
+        in template
+    )
     service_port_keys = {
         "backend": "backend",
         "gateway": "gateway",

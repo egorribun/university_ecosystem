@@ -158,3 +158,13 @@ Source 1ed440f88de239971ce9e4e6900a41ed6adad7c3 has 9439 frontend PASS across 78
 AUD-089 accepts integer-only numeric tabs with General fallback while preserving historical string parsing and valid indices. The selected General panel is tested through the real schema and Settings conditional rendering, not the full router or browser ARIA surface. AUD-090 accepts suppression of rename callbacks while the pending prop is true, draft retention and one settled submission; it does not claim every same-tick race before a parent update is eliminated.
 
 Owned Core run 39367414064 / job 118447292623 finishes 28 browser PASS / two existing SKIP at 04:20:48 UTC on the same verified checkout/tree. Owned containers stop and the metadata receipt completes at 04:21:10, with upload at 04:21:11. Artifact 12241160221 has SHA-256 f4eaf7e8131cf21cfb7a512b4eae2c39155c4c77b3665c8157ebb9fe7719a502. This is the owned Core cohort, not the full 59-spec acceptance or an outage run.
+
+## AUD-100 IndexedDB version accepted
+
+The shared version-four constant is used by both page and worker. Unchanged 41-case page suite and two-case actual worker migration suite pass in source-bound jobs 118448485830 / 118448485741. Page cases cover worker-shaped existing stores, version-three data retention and page-first store creation; worker cases use fake-indexeddb to exercise initOfflineQueue. This closes the original version mismatch, not real-browser cross-tab upgrade blocking or sync delivery.
+
+## AUD-097 provider-commit timing tests first
+
+Eleven new entrypoint cases separate bootstrap start, the existing real ue:app-hydrated publisher and deferred telemetry clocks. They cover both arrival orders, repeated publication, missing/stale markers, a commit emitted during the mocked render call, disabled/import/init-failed telemetry, independent observability failure and LHCI omission. Test-owned event listeners are tracked and removed after assertions, not during leak assertions. The old telemetry-clock fixture remains unchanged until actual RED.
+
+The intended metric remains APP_TTI for wire compatibility but denotes bootstrap-to-provider-tree commit, not standardized browser interactivity, router/data readiness or completion of every Suspense subtree. Preserve the ten-second deferral and certification reporter's LCP/INP/CLS whitelist. Do not fabricate an endpoint from hydrateRoot return, telemetry readiness or an already-true boolean marker. No production telemetry change is included yet.

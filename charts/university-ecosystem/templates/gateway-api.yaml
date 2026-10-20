@@ -162,7 +162,7 @@ spec:
       backendRefs:
         - group: ""
           kind: Service
-          name: {{ printf "%s-%s" $fullname $path.service }}
+          name: {{ include "university-ecosystem.componentName" (dict "root" $root "component" $path.service) }}
           port: {{ if eq $path.service "backend" }}{{ $root.Values.backend.service.port }}{{ else if eq $path.service "gateway" }}{{ $root.Values.gateway.service.port }}{{ else if eq $path.service "frontend" }}{{ $root.Values.frontend.service.port }}{{ else if eq $path.service "ws-hub" }}{{ $root.Values.wsHub.service.port }}{{ else }}{{ fail (printf "unsupported Gateway API service %q" $path.service) }}{{ end }}
     {{- end }}
 {{- $hasGatewayCatchAll := false }}
@@ -197,7 +197,7 @@ spec:
       backendRefs:
         - group: ""
           kind: Service
-          name: {{ printf "%s-gateway" $fullname }}
+          name: {{ include "university-ecosystem.componentName" (dict "root" $root "component" "gateway") }}
           port: {{ $root.Values.gateway.service.port }}
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1

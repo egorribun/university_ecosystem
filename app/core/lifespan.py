@@ -1,7 +1,7 @@
 import asyncio
 import random
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -563,6 +563,7 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
     from app.auth.security import close_hibp_client
     from app.core.feature_flags import shutdown_feature_flags
     from app.core.ratelimit import stop_memory_cleanup_task
+    from app.core.spicedb import close_global_spicedb_channel
     from app.services.geolocation import shutdown_geolocation_service
 
     # MOD-06 (audit 2026-03-15 Wave 7): Signal K8s readiness probe to return
@@ -588,25 +589,24 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
     if _bg_tasks:
         await asyncio.gather(*_bg_tasks, return_exceptions=True)
 
-    # Orderly pool and client teardown.  Set the marker before closing so it is
-    # still reliable if a provider finalizer raises during shutdown.
-    app.state._state.update(_DISHKA_CONTAINER_CLOSED_STATE)
-    await app.state.dishka_container.close()
-    await stop_presence_pubsub()
-    webpush.cleanup()
-    await shutdown_cache()
+    # Register independent finalizers in reverse execution order. Callback
+    # failures remain observable while later cleanup is still attempted.
+    async with AsyncExitStack() as cleanup:
+        cleanup.push_async_callback(close_hibp_client)
+        cleanup.callback(shutdown_geolocation_service)
+        cleanup.callback(shutdown_observability)
+        cleanup.push_async_callback(close_global_spicedb_channel)
+        cleanup.push_async_callback(stop_memory_cleanup_task)
+        cleanup.push_async_callback(shutdown_feature_flags)
 
-    partition_stopper = getattr(app.state, "partition_stopper", None)
-    if partition_stopper is not None:
-        await partition_stopper()
+        partition_stopper = getattr(app.state, "partition_stopper", None)
+        if partition_stopper is not None:
+            cleanup.push_async_callback(partition_stopper)
 
-    await shutdown_feature_flags()
-    await stop_memory_cleanup_task()
+        cleanup.push_async_callback(shutdown_cache)
+        cleanup.callback(webpush.cleanup)
+        cleanup.push_async_callback(stop_presence_pubsub)
 
-    from app.core.spicedb import close_global_spicedb_channel
-
-    await close_global_spicedb_channel()
-
-    shutdown_observability()
-    shutdown_geolocation_service()
-    await close_hibp_client()
+        # Preserve restart detection even if a provider finalizer raises.
+        app.state._state.update(_DISHKA_CONTAINER_CLOSED_STATE)
+        await app.state.dishka_container.close()

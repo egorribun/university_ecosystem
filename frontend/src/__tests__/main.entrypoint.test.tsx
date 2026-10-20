@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
 
 let requestedIdleOptions: IdleRequestOptions | undefined
 let performanceClockValue = 100
+let hydrationListenerRemovers: Array<() => void> = []
+let hydrationListeners: EventListenerOrEventListenerObject[] = []
 
 vi.mock("react-dom/client", () => ({
   createRoot: mocks.createRoot,
@@ -110,6 +112,19 @@ beforeEach(() => {
   requestedIdleOptions = undefined
   performanceClockValue = 100
   vi.useRealTimers()
+  delete window.__APP_HYDRATED
+  hydrationListenerRemovers = []
+  hydrationListeners = []
+  const addWindowListener = window.addEventListener.bind(window)
+  vi.spyOn(window, "addEventListener").mockImplementation((type, listener, options) => {
+    if (type === "ue:app-hydrated") {
+      hydrationListeners.push(listener)
+      hydrationListenerRemovers.push(() => {
+        window.removeEventListener(type, listener, options)
+      })
+    }
+    addWindowListener(type, listener, options)
+  })
 
   document.documentElement.innerHTML =
     '<head></head><body><div id="lhci-marker">audit</div><div id="root"></div></body>'
@@ -134,6 +149,10 @@ afterEach(async () => {
   } finally {
     vi.useRealTimers()
     vi.unstubAllEnvs()
+    for (const removeListener of hydrationListenerRemovers) removeListener()
+    hydrationListenerRemovers = []
+    hydrationListeners = []
+    delete window.__APP_HYDRATED
     vi.restoreAllMocks()
   }
 })
@@ -568,5 +587,208 @@ describe("browser entrypoint", () => {
 
     await expect(importMain()).rejects.toThrow("Root element not found")
     expect(mocks.hydrateRoot).not.toHaveBeenCalled()
+  })
+})
+
+function holdObservabilityIdle() {
+  let pending: IdleRequestCallback | undefined
+  Object.defineProperty(window, "requestIdleCallback", {
+    configurable: true,
+    value: (callback: IdleRequestCallback, options?: IdleRequestOptions) => {
+      requestedIdleOptions = options
+      pending = callback
+      return 1
+    },
+  })
+  return async () => {
+    const callback = pending
+    if (!callback) throw new Error("Expected a pending observability idle callback")
+    pending = undefined
+    callback({ didTimeout: true, timeRemaining: () => 0 } as IdleDeadline)
+    await vi.dynamicImportSettled()
+  }
+}
+
+describe("AUD-097 provider-commit bootstrap timing", () => {
+  it.each([
+    { label: "hydration before telemetry", hydrationFirst: true, duplicate: false },
+    { label: "telemetry before hydration", hydrationFirst: false, duplicate: false },
+    { label: "duplicate hydration publication", hydrationFirst: true, duplicate: true },
+  ])("uses the captured commit time for $label", async ({ hydrationFirst, duplicate }) => {
+    vi.stubEnv("PROD", false)
+    mocks.initWebVitals.mockReturnValue(true)
+    const releaseIdle = holdObservabilityIdle()
+    const { markAppHydrated } = await import("../app/hydration")
+
+    await importMain()
+    expect(requestedIdleOptions).toEqual({ timeout: 10_000 })
+    expect(mocks.reportBootstrapTTI).not.toHaveBeenCalled()
+
+    if (hydrationFirst) {
+      performanceClockValue = 145
+      markAppHydrated()
+      expect(mocks.reportBootstrapTTI).not.toHaveBeenCalled()
+
+      performanceClockValue = 10_100
+      await releaseIdle()
+    } else {
+      performanceClockValue = 125
+      await releaseIdle()
+      expect(mocks.reportBootstrapTTI).not.toHaveBeenCalled()
+
+      performanceClockValue = 145
+      markAppHydrated()
+      await vi.dynamicImportSettled()
+    }
+
+    expect(mocks.reportBootstrapTTI).toHaveBeenCalledExactlyOnceWith(45)
+
+    if (duplicate) {
+      performanceClockValue = 20_100
+      markAppHydrated()
+      window.dispatchEvent(new Event("ue:app-hydrated"))
+      await vi.dynamicImportSettled()
+
+      expect(mocks.reportBootstrapTTI).toHaveBeenCalledExactlyOnceWith(45)
+    }
+  })
+
+  it("does not report before a provider commit", async () => {
+    vi.stubEnv("PROD", false)
+    mocks.initWebVitals.mockReturnValue(true)
+    const releaseIdle = holdObservabilityIdle()
+
+    await importMain()
+    performanceClockValue = 10_100
+    await releaseIdle()
+
+    expect(mocks.initWebVitals).toHaveBeenCalledOnce()
+    expect(window.__APP_HYDRATED).toBeUndefined()
+    expect(mocks.reportBootstrapTTI).not.toHaveBeenCalled()
+  })
+
+  it("observes a provider commit during the render call", async () => {
+    vi.stubEnv("PROD", false)
+    mocks.initWebVitals.mockReturnValue(true)
+    const releaseIdle = holdObservabilityIdle()
+    const { markAppHydrated } = await import("../app/hydration")
+    mocks.hydrateRoot.mockImplementation(() => {
+      performanceClockValue = 145
+      markAppHydrated()
+    })
+
+    await importMain()
+    expect(mocks.reportBootstrapTTI).not.toHaveBeenCalled()
+    performanceClockValue = 10_100
+    await releaseIdle()
+
+    expect(mocks.reportBootstrapTTI).toHaveBeenCalledExactlyOnceWith(45)
+  })
+
+  it("does not invent a timestamp from an existing boolean marker", async () => {
+    vi.stubEnv("PROD", false)
+    window.__APP_HYDRATED = true
+    mocks.initWebVitals.mockReturnValue(true)
+    const releaseIdle = holdObservabilityIdle()
+
+    await importMain()
+    performanceClockValue = 10_100
+    await releaseIdle()
+
+    expect(mocks.reportBootstrapTTI).not.toHaveBeenCalled()
+  })
+
+  it.each(["disabled", "init-failure", "import-failure"] as const)(
+    "releases an unused hydration listener after %s",
+    async (mode) => {
+      vi.stubEnv("PROD", false)
+      const releaseIdle = holdObservabilityIdle()
+      const { markAppHydrated } = await import("../app/hydration")
+      const removeListener = vi.spyOn(window, "removeEventListener")
+      const failure = new Error("synthetic web-vitals initialization failure")
+
+      if (mode === "disabled") {
+        mocks.initWebVitals.mockReturnValue(false)
+      } else if (mode === "init-failure") {
+        mocks.initWebVitals.mockImplementation(() => {
+          throw failure
+        })
+      } else {
+        vi.doMock("../app/webVitals", () => {
+          throw failure
+        })
+      }
+
+      try {
+        await importMain()
+        performanceClockValue = 10_100
+        await releaseIdle()
+
+        if (mode === "disabled") {
+          expect(mocks.initWebVitals).toHaveBeenCalledOnce()
+          expect(mocks.logError).not.toHaveBeenCalled()
+        } else {
+          expect(mocks.logError).toHaveBeenCalled()
+        }
+
+        for (const listener of hydrationListeners) {
+          expect(
+            removeListener.mock.calls.some(
+              ([type, removed]) => type === "ue:app-hydrated" && removed === listener
+            )
+          ).toBe(true)
+        }
+
+        performanceClockValue = 20_100
+        markAppHydrated()
+        await vi.dynamicImportSettled()
+        expect(mocks.reportBootstrapTTI).not.toHaveBeenCalled()
+      } finally {
+        if (mode === "import-failure") {
+          vi.doMock("../app/webVitals", () => ({
+            initWebVitals: mocks.initWebVitals,
+            reportBootstrapTTI: mocks.reportBootstrapTTI,
+          }))
+        }
+      }
+    }
+  )
+
+  it("keeps reporting when observability fails", async () => {
+    vi.stubEnv("PROD", false)
+    mocks.initWebVitals.mockReturnValue(true)
+    const failure = new Error("synthetic observability initialization failure")
+    mocks.initObservability.mockImplementation(() => {
+      throw failure
+    })
+    const releaseIdle = holdObservabilityIdle()
+    const { markAppHydrated } = await import("../app/hydration")
+
+    await importMain()
+    performanceClockValue = 145
+    markAppHydrated()
+    performanceClockValue = 10_100
+    await releaseIdle()
+
+    expect(mocks.logError).toHaveBeenCalledWith("Deferred observability init failed", failure)
+    expect(mocks.reportBootstrapTTI).toHaveBeenCalledExactlyOnceWith(45)
+  })
+
+  it("keeps LHCI telemetry disabled after a provider commit", async () => {
+    vi.stubEnv("PROD", false)
+    vi.stubEnv("VITE_LHCI", "true")
+    holdObservabilityIdle()
+    const { markAppHydrated } = await import("../app/hydration")
+
+    await importMain()
+    performanceClockValue = 145
+    markAppHydrated()
+    await vi.dynamicImportSettled()
+
+    expect(requestedIdleOptions).toBeUndefined()
+    expect(mocks.initObservability).not.toHaveBeenCalled()
+    expect(mocks.initWebVitals).not.toHaveBeenCalled()
+    expect(mocks.reportBootstrapTTI).not.toHaveBeenCalled()
+    expect(hydrationListeners).toHaveLength(0)
   })
 })

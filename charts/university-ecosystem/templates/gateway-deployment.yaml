@@ -1,4 +1,4 @@
-{{- $jwksEndpoint := printf "http://%s-backend:%v/.well-known/jwks.json" (include "university-ecosystem.fullname" .) .Values.backend.service.port -}}
+{{- $jwksEndpoint := printf "http://%s:%v/.well-known/jwks.json" (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port -}}
 {{- if or (eq .Values.global.environment "staging") (eq .Values.global.environment "production") -}}
 {{- $jwksEndpoint = printf "%s/.well-known/jwks.json" (trimSuffix "/" (required "global.jwtIssuer must be set" .Values.global.jwtIssuer)) -}}
 {{- end -}}
@@ -90,9 +90,9 @@ spec:
             - name: JWT_AUDIENCE
               value: {{ required "gateway.config.jwtAudience must be set" .Values.gateway.config.jwtAudience | quote }}
             - name: BACKEND_URL
-              value: "http://{{ include "university-ecosystem.fullname" . }}-backend:8000"
+              value: "http://{{ include "university-ecosystem.componentName" (dict "root" . "component" "backend") }}:8000"
             - name: FILE_PROCESSOR_ADDR
-              value: "{{ include "university-ecosystem.fullname" . }}-file-processor:50051"
+              value: "{{ include "university-ecosystem.componentName" (dict "root" . "component" "file-processor") }}:50051"
             - name: REDIS_URL_FILE
               value: {{ printf "/run/secrets/%s/%s" $connectionsSecretName (required "connections.redisGatewayURLKey must be set" .Values.connections.redisGatewayURLKey) | quote }}
             - name: REVOCATION_REDIS_URL_FILE

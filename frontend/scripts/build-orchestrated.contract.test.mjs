@@ -399,3 +399,133 @@ test("continuous valid artifact churn cannot stabilize until four paired samples
     assert.equal(state.stable, sample === requiredTicks)
   }
 })
+
+async function waitForTraceResult(promise, label) {
+  let watchdog
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        watchdog = setTimeout(() => {
+          reject(new Error(`${label} did not complete within five seconds`))
+        }, 5000)
+      }),
+    ])
+  } finally {
+    clearTimeout(watchdog)
+  }
+}
+
+async function createTraceAgentChild(t, keepAlive) {
+  const { spawn } = await import("node:child_process")
+  const root = mkdtempSync(path.join(tmpdir(), "ue-build-trace-lifecycle-"))
+  const agentPath = path.join(path.dirname(scriptPath), "build-hang-trace-agent.cjs")
+  const env = {
+    NODE_OPTIONS: "",
+    NODE_ENV: "test",
+    BUILD_HANG_TRACE_MAX_WAIT_MS: "60000",
+    HOME: root,
+    USERPROFILE: root,
+    TMPDIR: root,
+    TMP: root,
+    TEMP: root,
+  }
+  for (const key of ["SystemRoot", "SYSTEMROOT", "WINDIR"]) {
+    if (process.env[key] !== undefined) env[key] = process.env[key]
+  }
+
+  const program = [
+    keepAlive ? "setTimeout(() => {}, 60000);" : "",
+    'process.send({ type: "aud098-ready" });',
+  ].join("\n")
+
+  let child
+  try {
+    child = spawn(process.execPath, ["--require", agentPath, "-e", program], {
+      cwd: root,
+      env,
+      stdio: ["ignore", "ignore", "ignore", "ipc"],
+    })
+  } catch (error) {
+    rmSync(root, { recursive: true, force: true })
+    throw error
+  }
+
+  let spawnError
+  child.on("error", (error) => {
+    spawnError = error
+  })
+  const closed = new Promise((resolve) => {
+    child.once("close", (code, signal) => {
+      resolve({ code, signal, error: spawnError })
+    })
+  })
+  let resolveReady
+  let resolveReply
+  const ready = new Promise((resolve) => {
+    resolveReady = resolve
+  })
+  const reply = new Promise((resolve) => {
+    resolveReply = resolve
+  })
+  child.on("message", (message) => {
+    if (message?.type === "aud098-ready") resolveReady(message)
+    if (message?.type === "build-hang-trace-dump-reply") {
+      resolveReply(message)
+    }
+  })
+
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGKILL")
+    }
+    await waitForTraceResult(closed, "owned diagnostic child cleanup")
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  await waitForTraceResult(ready, "diagnostic child readiness")
+  return { child, closed, reply }
+}
+
+test(
+  "trace agent does not keep an otherwise finished IPC child alive",
+  { timeout: 20000 },
+  async (t) => {
+    const { closed } = await createTraceAgentChild(t, false)
+
+    // Neither disconnect nor an exit request may make this pass.
+    const result = await waitForTraceResult(closed, "natural diagnostic child exit")
+
+    assert.equal(result.error, undefined)
+    assert.equal(result.code, 0)
+    assert.equal(result.signal, null)
+  }
+)
+
+test(
+  "trace agent still responds to IPC while real work keeps its child alive",
+  { timeout: 20000 },
+  async (t) => {
+    const { child, reply } = await createTraceAgentChild(t, true)
+
+    await waitForTraceResult(
+      new Promise((resolve, reject) => {
+        const message = { type: "build-hang-trace-dump", reason: "aud098-live-timer" }
+        child.send(message, (error) => {
+          if (error) reject(error)
+          else resolve()
+        })
+      }),
+      "diagnostic IPC request"
+    )
+    const result = await waitForTraceResult(reply, "diagnostic IPC reply")
+
+    assert.equal(result.type, "build-hang-trace-dump-reply")
+    assert.equal(Number.isFinite(result.elapsedMs), true)
+    assert.ok(Array.isArray(result.handles))
+    assert.ok(Array.isArray(result.requests))
+    assert.equal(child.exitCode, null)
+    assert.equal(child.signalCode, null)
+    assert.equal(child.connected, true)
+  }
+)

@@ -1303,6 +1303,7 @@ def _diagnostic_lower_bound_report(
 ) -> dict[str, object]:
     """Report observable timing without inventing dependencies or core roles."""
     peak, average_utilization, wall_seconds = _utilization(jobs, concurrency_cap)
+    lower_bound = max((job.duration_seconds or 0.0 for job in jobs), default=0.0)
     setup_signatures: Counter[str] = Counter()
     job_rows: list[dict[str, object]] = []
     for job in jobs:
@@ -1356,7 +1357,7 @@ def _diagnostic_lower_bound_report(
             "job_count": len(jobs),
             "analysis_mode": "diagnostic-lower-bound",
             "critical_path_kind": "lower-bound",
-            "critical_path_lower_bound_seconds": round(wall_seconds, 3),
+            "critical_path_lower_bound_seconds": round(lower_bound, 3),
             "wall_clock_seconds": round(wall_seconds, 3),
             "peak_slot_utilization": peak,
             "peak_concurrency": peak,

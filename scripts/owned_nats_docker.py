@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from scripts import owned_nats_process as process
 from scripts.owned_nats_outage import Deadline, DeadlineVerdict
@@ -20,6 +21,10 @@ from scripts.owned_nats_process import (
     PrivateProcessResult,
     ProcessOutcome,
 )
+
+if TYPE_CHECKING:
+    from scripts.live_stand import ComposeResourceEvidence
+    from scripts.owned_nats_coordinator import OwnerEvidence
 
 _STDOUT_LIMIT = 256
 _STDERR_LIMIT = 1024
@@ -215,3 +220,42 @@ def observe_daemon_metadata(
     return decode_daemon_read(
         result, pinned_daemon=expected_fingerprint, deadline=deadline
     )
+
+
+@dataclass(frozen=True, slots=True)
+class ComposeConfigPins:
+    project_directory: str = field(repr=False)
+    env_file: str = field(repr=False)
+    compose_files: tuple[str, ...] = field(repr=False)
+
+
+class ComposeMetadataStatus(StrEnum):
+    NOT_READY = "not_ready"
+    MATCHED_METADATA = "matched_metadata"
+
+
+@dataclass(frozen=True, slots=True)
+class ComposeMetadataResult:
+    status: ComposeMetadataStatus
+    evidence: ComposeResourceEvidence | None = field(default=None, repr=False)
+
+
+def prepare_compose_config(
+    owner: OwnerEvidence,
+    pins: DockerReadPins,
+    compose: ComposeConfigPins,
+    *,
+    deadline: Deadline,
+) -> PrivateProcessRequest | None:
+    """Unavailable no-I/O preparation boundary; no transport is connected."""
+    return None
+
+
+def decode_compose_config(
+    result: PrivateProcessResult,
+    *,
+    owner: OwnerEvidence,
+    deadline: Deadline,
+) -> ComposeMetadataResult:
+    """Unavailable supplied-data boundary; no inventory claim is made."""
+    return ComposeMetadataResult(ComposeMetadataStatus.NOT_READY)

@@ -348,6 +348,18 @@ If release name contains chart name it will be used as a full name.
 {{- end }}
 {{- end }}
 
+
+{{/*
+Keep first-party Service names within 63 characters without losing the component.
+Already-valid short names and the root fullname remain unchanged.
+*/}}
+{{- define "university-ecosystem.componentName" -}}
+{{- $suffix := printf "-%s" .component -}}
+{{- $budget := int (sub 63 (len $suffix)) -}}
+{{- $base := include "university-ecosystem.fullname" .root -}}
+{{- printf "%s%s" ($base | trunc $budget | trimSuffix "-") $suffix -}}
+{{- end -}}
+
 {{/*
 Create chart name and version as used by the chart label.
 */}}

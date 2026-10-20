@@ -64,6 +64,15 @@ async def test_shutdown_marks_container_closed_before_close_failure() -> None:
     with (
         patch("app.api.health.set_shutdown_flag"),
         patch("app.core.lifespan._SCHEDULER_STOP"),
+        patch("app.api.ws.presence.stop_presence_pubsub", new_callable=AsyncMock),
+        patch("app.core.lifespan.webpush.cleanup"),
+        patch("app.core.lifespan.shutdown_cache", new_callable=AsyncMock),
+        patch("app.core.feature_flags.shutdown_feature_flags", new_callable=AsyncMock),
+        patch("app.core.ratelimit.stop_memory_cleanup_task", new_callable=AsyncMock),
+        patch("app.core.spicedb.close_global_spicedb_channel", new_callable=AsyncMock),
+        patch("app.core.lifespan.shutdown_observability"),
+        patch("app.services.geolocation.shutdown_geolocation_service"),
+        patch("app.auth.security.close_hibp_client", new_callable=AsyncMock),
         pytest.raises(RuntimeError, match="container close failed"),
     ):
         await _shutdown_subsystems(app)

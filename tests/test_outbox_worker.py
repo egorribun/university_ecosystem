@@ -854,3 +854,150 @@ async def test_wait_for_signals_not_implemented(monkeypatch):
 
     await asyncio.wait_for(wait_task, timeout=1.0)
     assert stop_event.is_set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error_name", "closed_before_error", "failure_stage", "should_retry"),
+    [
+        pytest.param("InterfaceError", True, "execute", True, id="closed-interface"),
+        pytest.param(
+            "ConnectionDoesNotExistError",
+            True,
+            "execute",
+            True,
+            id="driver-disconnect",
+        ),
+        pytest.param(
+            "CancelledError", False, "execute", False, id="cancel-without-retry"
+        ),
+        pytest.param("InterfaceError", False, "execute", False, id="open-interface"),
+        pytest.param(
+            "PostgresSyntaxError", False, "execute", False, id="permanent-sql"
+        ),
+        pytest.param(
+            "InvalidPasswordError", False, "connect", False, id="permanent-auth"
+        ),
+    ],
+)
+async def test_aud096_listener_reconnects_only_for_connection_loss(
+    monkeypatch,
+    error_name,
+    closed_before_error,
+    failure_stage,
+    should_retry,
+):
+    import asyncpg
+
+    worker = OutboxWorker(poll_interval=0.01)
+    worker._is_running = True
+    order = []
+    connections = []
+    sleeps = []
+    expected_sleeps = [30, 5, 30] if should_retry else [30]
+    if failure_stage == "connect":
+        expected_sleeps = []
+    error_type = (
+        asyncio.CancelledError
+        if error_name == "CancelledError"
+        else getattr(asyncpg, error_name)
+    )
+    # The open/closed InterfaceError cases deliberately share the same text.
+    failure = error_type("connection is closed")
+
+    class Connection:
+        def __init__(self, name):
+            self.name = name
+            self.closed = False
+            self.execute_count = 0
+            self.close_count = 0
+
+        def is_closed(self):
+            return self.closed
+
+        async def add_listener(self, channel, callback):
+            assert not self.closed
+            assert channel == worker.CHANNEL
+            assert callback == worker._on_notification
+            order.append(f"listen:{self.name}")
+
+        async def execute(self, query):
+            assert query == "SELECT 1"
+            self.execute_count += 1
+            assert self.execute_count == 1
+            order.append(f"execute:{self.name}")
+            if self.name == "first":
+                self.closed = closed_before_error
+                raise failure
+            worker._is_running = False
+            return "SELECT 1"
+
+        async def close(self):
+            self.close_count += 1
+            assert self.close_count == 1
+            order.append(f"close:{self.name}")
+            self.closed = True
+
+    first = Connection("first")
+    second = Connection("second")
+
+    async def connect(_dsn):
+        assert len(connections) < (2 if should_retry else 1)
+        connection = first if not connections else second
+        if connection is second:
+            assert first.close_count == 1
+            assert first.is_closed()
+        connections.append(connection)
+        order.append(f"connect:{connection.name}")
+        if failure_stage == "connect":
+            raise failure
+        return connection
+
+    async def sleep(seconds):
+        assert len(sleeps) < len(expected_sleeps)
+        assert seconds == expected_sleeps[len(sleeps)]
+        sleeps.append(seconds)
+        order.append(f"sleep:{seconds}")
+
+    try:
+        with monkeypatch.context() as scoped:
+            scoped.setattr(asyncpg, "connect", connect)
+            scoped.setattr(asyncio, "sleep", sleep)
+            if should_retry or error_name == "CancelledError":
+                await worker._listen_loop()
+            else:
+                with pytest.raises(error_type) as caught:
+                    await worker._listen_loop()
+                assert caught.value is failure
+    finally:
+        worker._is_running = False
+
+    assert sleeps == expected_sleeps
+    if should_retry:
+        assert connections == [first, second]
+        assert order == [
+            "connect:first",
+            "listen:first",
+            "sleep:30",
+            "execute:first",
+            "close:first",
+            "sleep:5",
+            "connect:second",
+            "listen:second",
+            "sleep:30",
+            "execute:second",
+            "close:second",
+        ]
+    elif failure_stage == "connect":
+        assert connections == [first]
+        assert first.close_count == 0
+        assert order == ["connect:first"]
+    else:
+        assert connections == [first]
+        assert order == [
+            "connect:first",
+            "listen:first",
+            "sleep:30",
+            "execute:first",
+            "close:first",
+        ]

@@ -33,3 +33,23 @@ Ten actual Helm render cases cover development/staging across short default/full
 Four long-name cases are expected to expose suffixes added after a 63-character base; six controls preserve valid short names. Existing helper and chart source remain unchanged until actual RED. The proposed component helper must preserve each known suffix within the 63-character Service limit and update every generated reference, without renaming Deployments, selectors, HPA/KEDA targets or valid existing names. Distinct known suffixes prevent within-release Service collisions; cross-release truncated-prefix collision resistance is not claimed.
 
 Explicit operator-owned JWKS URLs, release issuer, TLS serverName and dependency endpoints stay unchanged. Actual certificate/hostname alignment remains a deployment concern. Gateway API is tested only through its existing isolated renderer; the full-chart activation gate remains closed. No dependency update, cluster contact or deployment is performed.
+
+## Observed RED and narrow corrections
+
+On db83651 / job 118456912531, all twelve intended failures occur: cleanup traces stop at the failed finalizer or retain only its error; diagnostic output reports 3610 seconds instead of 10; four long-name renders exceed the suffix-aware Service budget. All preservation controls pass. Aggregate 888 PASS / 13 FAIL includes the existing outage hold.
+
+AUD-091 uses AsyncExitStack for sequential independent finalizers after the unchanged readiness/CDC/background-task phase. Single exceptions retain identity; with multiple failures, the last is primary and earlier originals remain in context. Finalizer-raised cancellation is retained, not silently converted to success. No external cancellation shielding or bounded duration is claimed. The existing restart failure test now isolates newly reachable finalizers while retaining its marker and recreation assertions.
+
+AUD-092 adds one component-name helper, changes five Service metadata names and ten generated reference sites, and updates the exact dormant Gateway source assertion. Already-valid short names, Deployments, selectors, ports, explicit JWKS/TLS identities, dependency names and Gateway activation gate remain unchanged. The existing closed values schema still does not admit root nameOverride. Cross-release truncation collisions and other resource-name limits remain outside this correction.
+
+AUD-093 retains wall-clock metrics and strict DAG/provenance semantics, but diagnostic lower bound becomes the maximum measured job execution duration. It does not invent dependencies or incorporate scheduler gaps. These three corrections require their own hosted GREEN before acceptance.
+
+## AUD-094 accepted
+
+Job 118456912531 explicitly passes colon-key round-trip/glob invalidation, four encoding round-trips and non-UTF-8 escape preservation. Source is unchanged; full-file selection supplies the missing proof. Scope remains in-memory grammar enforcement, not operational NATS, TTL or legacy escaped-name migration.
+
+## AUD-096 listener tests first
+
+Six cases exercise actual _listen_loop with deterministic synthetic connections and real asyncpg exception classes. A closed-connection InterfaceError and ConnectionDoesNotExistError must close the first connection before reconnecting and registering the second listener. Cancellation, the same InterfaceError text on an open connection, permanent SQL and authentication errors are preservation controls. Exact connect/sleep cardinalities prevent an accidentally broadened loop from spinning. asyncio.sleep is restored before fixture teardown. Existing successful-listener and builtin reconnect cases remain selected.
+
+Do not classify InterfaceError after finally closes the connection: that would make open-connection programming errors appear retryable. No live PostgreSQL outage, outbox delivery, production retry-policy change or broader PostgresError catch is established by these tests.

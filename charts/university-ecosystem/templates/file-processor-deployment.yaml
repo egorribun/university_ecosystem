@@ -94,7 +94,7 @@ spec:
             - name: FP_JWT_ISSUER
               value: {{ required "global.jwtIssuer must be set" .Values.global.jwtIssuer | quote }}
             - name: FP_JWKS_URL
-              value: {{ default (printf "http://%s-backend:%v/.well-known/jwks.json" (include "university-ecosystem.fullname" .) .Values.backend.service.port) .Values.fileProcessor.config.jwksURL | quote }}
+              value: {{ default (printf "http://%s:%v/.well-known/jwks.json" (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port) .Values.fileProcessor.config.jwksURL | quote }}
             - name: FP_JWKS_REFRESH_INTERVAL
               value: {{ .Values.fileProcessor.config.jwksRefreshInterval | quote }}
             - name: FP_JWT_ACTIVE_KID

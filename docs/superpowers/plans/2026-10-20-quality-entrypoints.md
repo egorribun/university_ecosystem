@@ -43,3 +43,13 @@ AUD-088 is accepted as the original rendered frontend/gateway positive-minimum d
 ## Corrected entrypoints accepted
 
 Source 1ed440f88de239971ce9e4e6900a41ed6adad7c3 and hosted checkout 8bbbd09fc76189c0caa6993acfb008728a2d367b have identical tree 07c72b763fa54ec77bd1bcc6e435b06d76ec8579. Contract job 118448021392 passes all four Make cases and totals 129 PASS. Node job 118448485714 passes all 596 cases, including JSONC discovery and all five real icon subprocess oracles. AUD-082/083/087 now have their own corrected-source GREEN and are accepted within the scopes above; no formatter, generator, baseline or security gate is bypassed.
+
+## AUD-098 diagnostic IPC tests first
+
+Two real Node subprocess cases preload the unchanged trace agent with IPC and an explicit environment. One leaves IPC open and requires natural successful exit without a dump/exit request; the other keeps a real timer active and requires the existing dump reply. The latter proves message delivery must survive any future channel unref. Readiness, exit, reply and cleanup waits are bounded; cleanup targets only the direct owned child, awaits close, then removes its temporary directory. The natural-exit case is expected to fail until observed otherwise. It does not prove real Vite producer completion or general process-tree cleanup.
+
+## AUD-099 actual Spectral tests first
+
+The existing spectral-lint job gains a bounded synthetic-fixture step after its existing pinned enforcement command. The checker extracts and requires the same immutable image from both existing commands; no image literal, dependency or pull is added. Docker uses --pull=never, --network=none and read-only mounts. The exact container ID comes from Docker's CID file; bounded cleanup preserves original failure and makes cleanup failure observable. Runner loss or unresponsive Docker can still leave cleanup unproven.
+
+The fixture exercises 200-only/default-only/400/4XX across the five existing selected verbs, plus excluded HEAD/OPTIONS/TRACE controls. Acceptance requires ten response-rule warnings at the expected operation.responses paths, no such warnings for the positive/excluded controls, and preserved PII/OAS diagnostics. The production ruleset is unchanged for this first run, so missing warnings are expected; the actual pinned tool must establish RED and diagnostic locations before any rule correction. Runtime checks raise explicit errors rather than optimization-sensitive asserts. Unit guards validate checker failure handling but are not a substitute for actual Spectral execution.
