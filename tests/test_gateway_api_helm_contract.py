@@ -479,8 +479,7 @@ def test_gateway_api_template_preserves_tls_redirect_and_route_dispatch() -> Non
     )
     assert (
         'name: {{ include "university-ecosystem.componentName" '
-        '(dict "root" $root "component" $path.service) }}'
-        in template
+        '(dict "root" $root "component" $path.service) }}' in template
     )
     service_port_keys = {
         "backend": "backend",

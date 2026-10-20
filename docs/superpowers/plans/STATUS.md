@@ -185,3 +185,9 @@ AUD-100 is accepted for the shared IndexedDB version mismatch and tested schema/
 The verified lower bound becomes 95/512. AUD-091/092/093 corrections now await their own GREEN and are not counted. AUD-096/097/098/099 and the next Compose preparation/decoding boundary are tests first, not accepted implementations. Baseline 319, dispositions 263, 78 required context/app pairs, blocking CodeQL and finite migration exception are unchanged. Last fully accepted CI remains e150; current intentional outage hold is not a release pass.
 
 Next source changes preserve sequential cleanup with original exception objects, suffix-safe Service names and all generated references, and execution-duration-only diagnostic lower bounds. New listener/telemetry/diagnostic IPC/Spectral regressions and the no-I/O Compose scaffold remain separate from those corrections. No deployment, outage activation, baseline edit or new suppression is included.
+
+## Spectral behavioral RED and scoped rule correction
+
+Source 52db76bcd4b1287f67a497032ccb9a8a0bfbabff and checkout 88a46c6ce6f9c3aa9ef8f22ce864035e5e450805 have identical tree 9d04c284e64bf713bd528a8936f4eb58aa647afb. Actual pinned Spectral job 118461862364 produces zero response-rule diagnostics and the expected PII property warning at 04:57:08 UTC; the checker fails for exactly ten missing 200/default warnings. The owned fixture container is removed by its exact CID before the step reports failure.
+
+The responses schema now rejects maps with no explicit 400–499 or 4XX key. Existing object/required checks, five-verb selector, warning severity, OAS extension and PII rule remain unchanged. AUD-099 is not accepted until corrected-source execution proves the diagnostic paths and preservation controls. A separate exact formatter join in the Gateway source-contract assertion removes the lint blocker without changing its expected text or behavior. The verified ledger remains 95/512.
