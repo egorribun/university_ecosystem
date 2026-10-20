@@ -57,7 +57,7 @@ dependencies = [
   "opentelemetry-semantic-conventions>=0.62b0,<1.0",
   "orjson>=3.11.8,<4",                                # SEC-09: cap serializer API major upgrades
   "pgvector>=0.4.2,<1",                                # SEC-09: cap vector extension API major upgrades
-  "pillow>=12.3.0,<13",                                # SEC-09: cap imaging API major upgrades
+  "pillow>=13.0.0,<14",                                # SEC-09: cap imaging API major upgrades
   "pillow-avif-plugin>=1.5.5,<2",  # TD-26-04: upper bound
   "prometheus-client>=0.25.0,<1",                      # SEC-09: cap metrics API major upgrades
   "protobuf>=6.33.6,<8",  # Shared compatible line: flagd, Authzed, and OTEL support protobuf 7
@@ -446,18 +446,19 @@ members = ["native/rust_ext"]
 # setup-uv action reads this exact requirement before downloading the binary.
 required-version = "==0.12.23"
 exclude-newer = "7 days"
-# Owner-approved certifi security exception; remove after 2026-10-27T02:24:17Z.
-# Exact version constraint and cutoff admit no future certifi release.
-exclude-newer-package = { certifi = "2026-10-20T02:24:17Z" }
+# Owner-approved exact security exceptions; global seven-day cooldown remains.
+# Remove Pillow after 2026-10-23T22:18:10Z; certifi after 2026-10-27T02:24:17Z.
+exclude-newer-package = { certifi = "2026-10-20T02:24:17Z", pillow = "2026-10-16T22:18:10Z" }
 environments = [
     "sys_platform == 'win32'",
     "sys_platform == 'linux'",
     "sys_platform == 'darwin'",
 ]
-# Security floors for packages the application only receives transitively:
-# they bound the resolution without pretending app code imports them.
+# Security floors and exact owner-approved emergency constraints:
+# transitive entries bound resolution without pretending app code imports them.
 constraint-dependencies = [
     "certifi==2026.10.19",  # GHSA-6q48-6c7w-9gw2; bounded emergency release
+    "pillow==13.0.0",  # Nine October advisories; bounded emergency release
     "h2>=4.4.1,<5",  # fixes the h2 advisory in httpx's HTTP/2 transport
     "urllib3>=2.8.0,<2.9",  # PY-P1-01: patched 2.8+ line; urllib3 v3 breaks transport APIs
 ]

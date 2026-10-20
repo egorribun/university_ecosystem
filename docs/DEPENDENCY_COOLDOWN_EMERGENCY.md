@@ -125,3 +125,41 @@ records remain unchanged. The original lock was restored and the ordinary
 checked-in lock gate correctly refused it. The reviewed generated diff is
 integrated by the follow-up, which removes the temporary generator. This
 records generation provenance, not a passing final-source security gate.
+
+## Owner-approved Pillow exception, 2026-10-20
+
+At 21:57 UTC the owner separately approved Pillow `13.0.0`, the direct major
+range change to `>=13.0.0,<14`, and its exact-release cooldown exception in
+normal PR [#1306](https://github.com/egorribun/university_ecosystem/pull/1306).
+The owner is the approving security reviewer. The current Pillow 12.3.0 gate
+reports CVE-2026-112395, CVE-2026-112397, CVE-2026-112400,
+CVE-2026-112403, CVE-2026-112404, CVE-2026-112895, CVE-2026-112896,
+CVE-2026-112897 and CVE-2026-112899.
+[Upstream 13.0.0 release](https://github.com/python-pillow/Pillow/releases/tag/13.0.0)
+and [release notes](https://github.com/python-pillow/Pillow/blob/13.0.0/docs/releasenotes/13.0.0.rst)
+describe the security and compatibility changes.
+
+Only Pillow receives the additional cutoff `2026-10-16T22:18:10Z` and exact
+constraint `pillow==13.0.0`. The targeted command is
+`uv lock --upgrade-package "pillow==13.0.0"`, with pinned uv 0.12.23.
+The certifi exception, global seven-day policy and all unrelated constraints
+remain unchanged. Remove the Pillow cutoff and review the temporary exact pin
+after 2026-10-23 at 22:18:10 UTC, once the admitted artifacts have matured.
+
+The temporary existing-job generator fetches bounded HTTPS release metadata
+from PyPI without redirects. It validates each generated artifact's URL, digest,
+size, non-yanked status and upload time against that inventory and the cutoff.
+Whole-lock comparison permits only the Pillow package, its cutoff/constraint
+and the root project's direct Pillow requirement metadata. The generated diff
+is limited to 128 KiB. The original lock is restored before the normal
+`uv lock --check`; that checked-in gate must remain failing until the reviewed
+candidate is integrated. Artifact records are not authored manually.
+
+Real AVIF tests exercise both explicitly selected native and external handlers
+with RGB/RGBA inputs; real Pillow-only RGBA/LA thumbnail tests check transparency
+and lossy color fidelity. They do not prove plugin-absent startup, deployment,
+or every image format. Existing privacy, image-budget and upload regressions,
+ordinary hooks, final-source lock consistency and vulnerability gates remain
+required. At this preparation checkpoint the new lock and real-codec results
+are not yet verified. No advisory waiver, scanner disposition, baseline edit,
+merge or deployment is authorized by this exception.
