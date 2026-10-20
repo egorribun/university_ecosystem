@@ -419,10 +419,7 @@ describe("SearchDialog user behavior", () => {
   it.each([
     ["unclosed", `${HIGHLIGHT_OPEN}physics <img src=x>`],
     ["orphan close", `physics${HIGHLIGHT_CLOSE}<script>void 0</script>`],
-    [
-      "nested",
-      `${HIGHLIGHT_OPEN}outer${HIGHLIGHT_OPEN}inner${HIGHLIGHT_CLOSE}${HIGHLIGHT_CLOSE}`,
-    ],
+    ["nested", `${HIGHLIGHT_OPEN}outer${HIGHLIGHT_OPEN}inner${HIGHLIGHT_CLOSE}${HIGHLIGHT_CLOSE}`],
     ["unknown", "\u0000MARK_UNKNOWN\u0000physics <img src=x>"],
   ])("keeps %s highlight syntax as literal safe text", async (_kind, supplied) => {
     const summary = await showSearchSummary(supplied)
