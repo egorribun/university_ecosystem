@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import runpy
+import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +22,67 @@ def _workflow() -> tuple[str, dict[str, object]]:
     if "on" not in parsed and True in parsed:
         parsed["on"] = parsed.pop(True)
     return source, parsed
+
+
+def test_live_stand_module_help_resolves_package_without_pythonpath(
+    monkeypatch, capsys
+) -> None:
+    child_environment = {
+        key: os.environ[key]
+        for key in ("PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP")
+        if key in os.environ
+    }
+    if os.name == "posix":
+        from scripts import owned_nats_process as process
+        from scripts.owned_nats_outage import Deadline
+
+        result = process.run_private_process(
+            process.PrivateProcessRequest(
+                argv=(sys.executable, "-m", "scripts.live_stand", "--help"),
+                cwd=str(ROOT),
+                env=child_environment,
+                stdout_limit=32 * 1024,
+                stderr_limit=32 * 1024,
+                input_limit=0,
+            ),
+            deadline=Deadline.after(10),
+        )
+        assert result.outcome is process.ProcessOutcome.EXITED
+        assert result.returncode == 0
+        assert result.local_cleanup is process.LocalCleanup.CONFIRMED
+        help_output = result.stdout
+        error_output = result.stderr
+    else:
+        inherited_pythonpath = {
+            str(Path(entry).resolve())
+            for entry in os.environ.get("PYTHONPATH", "").split(os.pathsep)
+            if entry
+        }
+        monkeypatch.delenv("PYTHONPATH", raising=False)
+        isolated_path = [str(ROOT)]
+        for entry in sys.path:
+            if not entry:
+                continue
+            resolved = str(Path(entry).resolve())
+            if resolved not in inherited_pythonpath and resolved != isolated_path[0]:
+                isolated_path.append(entry)
+        monkeypatch.setattr(sys, "path", isolated_path)
+        monkeypatch.setattr(sys, "argv", ["scripts.live_stand", "--help"])
+        for module_name in ("scripts.live_stand", "scripts.fast_preflight", "scripts"):
+            monkeypatch.delitem(sys.modules, module_name, raising=False)
+
+        with pytest.raises(SystemExit) as result:
+            runpy.run_module("scripts.live_stand", run_name="__main__", alter_sys=True)
+
+        assert result.value.code == 0
+        help_output = capsys.readouterr().out.encode("utf-8")
+        error_output = b""
+
+    assert len(help_output) <= 32 * 1024
+    assert len(error_output) <= 32 * 1024
+    help_text = help_output.decode("utf-8", errors="replace").lower()
+    assert "usage:" in help_text
+    assert "up" in help_text and "e2e" in help_text and "stop" in help_text
 
 
 def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> None:
@@ -102,7 +167,7 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
     up_index = next(
         index
         for index, step in enumerate(steps)
-        if "live_stand.py up" in step.get("run", "")
+        if "python -m scripts.live_stand up" in step.get("run", "")
     )
     assert "--stack core" in steps[up_index]["run"]
     assert "--in-place" in steps[up_index]["run"]
@@ -116,13 +181,13 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
     e2e_index = next(
         index
         for index, step in enumerate(steps)
-        if "live_stand.py e2e" in step.get("run", "")
+        if "python -m scripts.live_stand e2e" in step.get("run", "")
     )
     assert steps[e2e_index]["id"] == "core-e2e"
     stop_index = next(
         index
         for index, step in enumerate(steps)
-        if "live_stand.py stop" in step.get("run", "")
+        if "python -m scripts.live_stand stop" in step.get("run", "")
     )
     assert steps[stop_index]["id"] == "stop-stand"
     assert up_index < e2e_index < stop_index
@@ -275,10 +340,14 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
     assert "checked_out_sha=$actual_sha" in verify_checkout["run"]
     assert "GITHUB_STEP_SUMMARY" in verify_checkout["run"]
     frozen_up = next(
-        step for step in frozen["steps"] if "live_stand.py up" in step.get("run", "")
+        step
+        for step in frozen["steps"]
+        if "python -m scripts.live_stand up" in step.get("run", "")
     )
     frozen_e2e = next(
-        step for step in frozen["steps"] if "live_stand.py e2e" in step.get("run", "")
+        step
+        for step in frozen["steps"]
+        if "python -m scripts.live_stand e2e" in step.get("run", "")
     )
     assert "--stack full" in frozen_up["run"]
     assert (
@@ -291,8 +360,12 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
     assert "--stack core" not in frozen_up["run"]
     assert frozen_up["id"] == "start-frozen-rc"
     frozen_stop = next(
-        step for step in frozen["steps"] if "live_stand.py stop" in step.get("run", "")
+        step
+        for step in frozen["steps"]
+        if "python -m scripts.live_stand stop" in step.get("run", "")
     )
+    assert not re.search(r"\bpython scripts/live_stand\.py (?:up|e2e|stop)\b", source)
+    assert "PYTHONPATH" not in source
     assert frozen_stop["id"] == "stop-frozen-rc"
     assert frozen_stop["if"] == (
         "${{ always() && steps.start-frozen-rc.outcome != 'skipped' }}"

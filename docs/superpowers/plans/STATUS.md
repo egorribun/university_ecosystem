@@ -6,7 +6,7 @@
 
 Полное закрытие [октябрьского аудита](../../audits/AUDIT-2026-10.md): все 512 исходных AUD IDs. Для каждого нужны source-bound исправление с regression/runtime evidence либо обоснованный disposition. Наличие commit не заменяет приёмку. К приёмке MVP вернуться после аудита.
 
-Подтверждённая нижняя граница — **147/512 (28,7%)**. После checkpoint 143 приняты уже существующие исправления AUD-237/238/239/240: root actual PostgreSQL 6 PASS / zero SKIP, encryption/keyring 66 PASS, circuit-breaker suites 75 PASS и attachment/image cohort 245 PASS с 100% трёх модулей; соответствующие source/test files не менялись после полностью принятого e15027a. [Последний ledger и ограничения](../../audits/AUDIT-2026-10.md#evidence-checkpoint-147-verified-original-aud-ids). Исходные таблицы сохраняют исторические статусы.
+Подтверждённая нижняя граница — **152/512 (29,7%)**. После checkpoint 147 приняты AUD-242/243 (69 Spotify и 434 frontend PASS, exact source/test equivalence с принятым e150), AUD-123 (actual Fluent Bit RED/GREEN и собственные hosted проверки), AUD-158/159 (исправленные weather cache/DST и собственный frontend CI). Все четыре frontend shards и aggregate на 77c75e03 успешны: 9597 PASS / 787 файлов. [Последний ledger и ограничения](../../audits/AUDIT-2026-10.md#evidence-checkpoint-152-verified-original-aud-ids). Исходные таблицы сохраняют исторические статусы; отдельный AuthContext timeout параллельного прогона записан, не скрыт повторным GREEN.
 
 Владелец возобновил работу после a572036d6. Работа на egorribun, в одном checkout, через существующий [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — через GitHub plugin. Новые ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -22,7 +22,7 @@ Owned Live 39240974198: 20 browser PASS / два штатных SKIP, успеш
 
 ## Последняя hosted проверка и новая партия
 
-Предыдущий полностью проверенный frontend checkpoint — 299cbc0ab53e93de9c5064a8253c853a519a1f6b, [Matrix 39427747787](https://github.com/egorribun/university_ecosystem/actions/runs/39427747787). Actual checkout d8cad7677b514e32db465c817debbfc045ed7c97 имеет тот же tree bf4522f95bd7c6aa24415d95427895fb457e387b. Все четыре frontend shards и aggregate успешны: 9580 PASS / 785 файлов. Оба pre-commit, actual baseline integrity, Contract Tests, frontend lint/build и отдельные security workflows успешны.
+Последний проверенный frontend checkpoint — 77c75e0303569110271c520d06afea0cfce0de35, [Matrix 39449589632](https://github.com/egorribun/university_ecosystem/actions/runs/39449589632). Actual checkout a1c9063d1483852399bc2d5e15dad1aa6b5a3c92 имеет тот же tree f35c1f658814cf54d0bc9ef70b000db74fd0da39. Все четыре frontend shards и aggregate успешны: 9597 PASS / 787 файлов; lint/build, Contract Tests, source inventory, baseline integrity и security/types также успешны. Full CI остаётся непринятым: отдельные historical Gitleaks findings, прежний missing-outage gate и ошибка module entrypoint Owned Live требуют закрытия; два backend shards ещё выполняются при этом наблюдении.
 
 Focused backend job 118646290769 завершился за 212,05 s: 827 PASS / один прежний intentional outage FAIL; таймаута больше нет. Полный backend shard 1: 3514 PASS / 38 SKIP; shard 2: 5967 PASS / 58 SKIP / один тот же intentional outage FAIL; shard 3: 3859 PASS / 45 SKIP. Shard 0 не доходит до полного набора после focused hold; aggregate coverage не принят. JUnit shards 1/3 проверены по digest. Matrix завершён с failure; полный CI не принят. Deadline, test universe, coverage/JUnit/provenance и required gates сохранены.
 
@@ -58,3 +58,9 @@ Q1/Q4 source migration действует; глобальный mutation score �
 Перед тяжёлым прогоном: RAM ≤75% / free ≥8 GiB; остановка при RAM ≥85% / free <4 GiB. Отдельное исключение для одиночных Linux screenshot-прогонов: ≤80% / ≥6 GiB, container ≤1 GiB / 2 CPU. Удалять только доказанно принадлежащие работе ресурсы; чужие процессы и prune не трогать.
 
 Manifest source_sha остаётся null. Actual RC, main/bootstrap activation, pre-merge full smoke, визуальная приёмка следующих пакетов и deployment — отдельные этапы. Home12 ранее утверждён только в своём exact scope. Merge/deploy и NATS outage не выполнены.
+
+## Локальный Core checkpoint 2026-10-20
+
+Сборка на чистом 77c75e03 остановлена root после подтверждения сильного cgroup memory pressure на выделенном BuildKit с лимитом 4 ГиБ. Остановлен только exact-owned builder, кэш сохранён; sourceStable=true, оставшихся записанных процессов — 0. Peak host RAM 69,2%, minimum free 9,8 ГиБ. Core service containers ещё не стартовали; browser/визуальная приёмка не выполнена. Повторный старт требует нового resource admission и зафиксированного увеличенного лимита builder.
+
+Gitleaks current action имеет дополнительный подтверждённый дефект охвата: PR API без пагинации проверяет только первые 30 старых commits, не текущий HEAD. Root full-range scan существующим pinned 8.30.1 дал 25 findings; они в приватном redacted отчёте на индивидуальном triage. Два прежних historical fingerprints пока не утверждены и не подавлены. Готовится fail-closed скан полного event base/head диапазона.

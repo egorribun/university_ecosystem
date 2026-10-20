@@ -102,21 +102,21 @@ jobs:
         env:
           STAND_REF: ${{ steps.verify-event-commit.outputs.checked_out_sha }}
         run: >-
-          uv run --frozen --no-sync python scripts/live_stand.py up
+          uv run --frozen --no-sync python -m scripts.live_stand up
           --in-place --state-dir "$LIVE_STATE_DIR" --ref "$STAND_REF"
           --stack core
 
       - name: Run live acceptance through the redacting runner
         id: core-e2e
         run: >-
-          uv run --frozen --no-sync python scripts/live_stand.py e2e
+          uv run --frozen --no-sync python -m scripts.live_stand e2e
           --in-place --state-dir "$LIVE_STATE_DIR" --mode "$LIVE_E2E_MODE"
 
       - name: Stop owned containers and preserve stand data
         id: stop-stand
         if: ${{ always() && steps.start-stand.outcome != 'skipped' }}
         run: >-
-          uv run --frozen --no-sync python scripts/live_stand.py stop
+          uv run --frozen --no-sync python -m scripts.live_stand stop
           --in-place --state-dir "$LIVE_STATE_DIR"
 
       - name: Write the metadata-only Core receipt
@@ -311,21 +311,21 @@ jobs:
         env:
           FROZEN_RC_VERIFIED_SHA: ${{ steps.verify-frozen-rc.outputs.checked_out_sha }}
         run: >-
-          uv run --frozen --no-sync python scripts/live_stand.py up
+          uv run --frozen --no-sync python -m scripts.live_stand up
           --in-place --state-dir "$LIVE_STATE_DIR" --ref "$FROZEN_RC_VERIFIED_SHA"
           --stack full
 
       - name: Run full frozen-RC acceptance through the redacting runner
         id: frozen-rc-e2e
         run: >-
-          uv run --frozen --no-sync python scripts/live_stand.py e2e
+          uv run --frozen --no-sync python -m scripts.live_stand e2e
           --in-place --state-dir "$LIVE_STATE_DIR" --mode full
 
       - name: Stop frozen-RC containers and preserve stand data
         id: stop-frozen-rc
         if: ${{ always() && steps.start-frozen-rc.outcome != 'skipped' }}
         run: >-
-          uv run --frozen --no-sync python scripts/live_stand.py stop
+          uv run --frozen --no-sync python -m scripts.live_stand stop
           --in-place --state-dir "$LIVE_STATE_DIR"
 
       - name: Write the metadata-only frozen-RC receipt
