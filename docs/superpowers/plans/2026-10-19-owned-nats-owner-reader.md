@@ -58,3 +58,7 @@ The next implementation validates exact nonnegative integer pinned_owner_uid bef
 Own corrected-source GREEN is pending. Sampled UID/private modes are not original-creator authentication, historical privacy, exclusive key possession, atomicity or protection from same-UID self-consistent key/marker replacement. Trusted CI creation remains a precondition; Docker/SQL/HTTP adapters, coordinator/CLI wiring and outage remain disabled.
 
 The initial UID loop spoofs descriptor metadata only. For leaves, named/descriptor UID disagreement can itself reject. A self-consistent wrong-UID leaf and same-UID re-signed replacement remain useful distinct follow-on tests; the current implementation explicitly checks UID but this initial cohort is not exhaustive provenance proof.
+
+## Private-policy corrected-source GREEN
+
+Source a27af92ed6cfa1c81dc368da2461436874b1d816 is bound to checkout f7c8ff223aad624287d28f0b7c93dc6d207c6ff0 and identical tree f2879fbb70f814e5b2d2e66e50ed322c7560b2fc. Focused backend job 118404400201 reports 736 PASS / 1 existing disabled-outage workflow FAIL in 188.91 seconds at 01:38:03 UTC. All fifty-seven reader cases and fifty-five lock/composition cases pass, including all nine prior private-policy counterexamples. This is sampled explicit UID/private-mode policy evidence, not authenticated creator/key provenance or runtime admission. No outage or Docker/SQL/HTTP adapter is enabled.

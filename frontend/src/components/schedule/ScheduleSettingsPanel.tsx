@@ -29,6 +29,8 @@ interface ScheduleSettingsPanelProps {
   setCurrentParity: (p: "odd" | "even") => void
   /** Export grid ref */
   gridRef?: React.RefObject<HTMLElement | null>
+  googleCalendarUrl?: string | null
+  googleCalendarDisabledReason?: string
 }
 
 export function ScheduleSettingsPanel({
@@ -38,6 +40,8 @@ export function ScheduleSettingsPanel({
   currentParity,
   setCurrentParity,
   gridRef,
+  googleCalendarUrl,
+  googleCalendarDisabledReason,
 }: ScheduleSettingsPanelProps) {
   const { t } = useTranslation(["schedule", "common"])
   const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
@@ -210,7 +214,12 @@ export function ScheduleSettingsPanel({
                 <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-text-secondary">
                   {t("schedule:toolbar.export")}
                 </h3>
-                <ExportDropdown gridRef={gridRef} className="w-full" />
+                <ExportDropdown
+                  gridRef={gridRef}
+                  className="w-full"
+                  googleCalendarUrl={googleCalendarUrl}
+                  googleCalendarDisabledReason={googleCalendarDisabledReason}
+                />
               </section>
 
               <div className="sched-settings-divider" aria-hidden="true" />

@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, screen, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, screen, within } from "@testing-library/react"
 import { QueryClient } from "@tanstack/react-query"
-import type { ReactNode } from "react"
+import { useSyncExternalStore, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { Lesson } from "@/components/schedule/scheduleUtils"
@@ -11,7 +11,33 @@ import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 const fixture = vi.hoisted(() => {
   const lessons: Lesson[] = []
-  return { lessons }
+  const groupState: { selectedGroup: string | null } = {
+    selectedGroup: "group-1",
+  }
+  const listeners = new Set<() => void>()
+
+  return {
+    lessons,
+    weekdayConfigs: [
+      { id: "mon", backend: ["monday"], long: "Monday", short: "Mon" },
+      { id: "tue", backend: ["tuesday"], long: "Tuesday", short: "Tue" },
+    ],
+    weekdayBackend: ["monday", "tuesday"],
+    nowTick: new Date("2026-10-18T21:30:00Z"),
+    lessonTypeLabels: new Map([["lecture", "Lecture"]]),
+    subscribe: (listener: () => void) => {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    getSnapshot: () => groupState.selectedGroup,
+    setSelectedGroup: (selectedGroup: string | null) => {
+      if (groupState.selectedGroup === selectedGroup) return
+      groupState.selectedGroup = selectedGroup
+      listeners.forEach((listener) => listener())
+    },
+  }
 })
 
 vi.mock("@/contexts/AuthContext", () => ({
@@ -23,8 +49,12 @@ vi.mock("@/hooks/useScheduleData", () => ({
   useScheduleData: () => ({
     user: { role: "student" },
     groups: [{ id: "group-1", name: "Export group" }],
-    selectedGroup: "group-1",
-    setSelectedGroup: vi.fn(),
+    selectedGroup: useSyncExternalStore(
+      fixture.subscribe,
+      fixture.getSnapshot,
+      fixture.getSnapshot
+    ),
+    setSelectedGroup: fixture.setSelectedGroup,
     currentParity: "odd",
     setCurrentParity: vi.fn(),
     schedule: fixture.lessons,
@@ -33,11 +63,8 @@ vi.mock("@/hooks/useScheduleData", () => ({
     error: null,
     refresh: vi.fn(),
     applyScheduleUpdate: vi.fn(),
-    weekdayConfigs: [
-      { id: "mon", backend: ["monday"], long: "Monday", short: "Mon" },
-      { id: "tue", backend: ["tuesday"], long: "Tuesday", short: "Tue" },
-    ],
-    weekdayBackend: ["monday", "tuesday"],
+    weekdayConfigs: fixture.weekdayConfigs,
+    weekdayBackend: fixture.weekdayBackend,
     weekdayLabels: ["Monday", "Tuesday"],
     weekdayShort: ["Mon", "Tue"],
     getDayLabel: (day: string) => day,
@@ -50,13 +77,13 @@ vi.mock("@/hooks/useScheduleData", () => ({
       },
     ],
     lessonTypeOptions: [{ value: "lecture", label: "Lecture" }],
-    lessonTypeLabels: new Map([["lecture", "Lecture"]]),
+    lessonTypeLabels: fixture.lessonTypeLabels,
     defaultLessonType: "lecture",
     getLessonTypeColor: () => "var(--badge-lec)",
     toBackendLessonType: (value: string) => value,
     todayIdx: 0,
     hasToday: true,
-    nowTick: new Date("2026-10-18T21:30:00Z"),
+    nowTick: fixture.nowTick,
     todayLessons: [],
     currentLesson: null,
     nextLesson: null,
@@ -159,6 +186,7 @@ describe("Schedule Google Calendar export — AUD-066", () => {
     localStorage.clear()
     localStorage.setItem("ue:language", "en")
     fixture.lessons = []
+    fixture.setSelectedGroup("group-1")
     useScheduleUIStore.setState({
       weekOffset: 0,
       viewMode: "week",
@@ -247,5 +275,69 @@ describe("Schedule Google Calendar export — AUD-066", () => {
 
     expect(open).not.toHaveBeenCalled()
     expect(calendarItem).toBeDisabled()
+  })
+
+  it("rechecks group ownership on the same mounted export menu without replacing schedule inputs", async () => {
+    const lessons: Lesson[] = [
+      {
+        id: "group-1-tuesday",
+        group_id: "group-1",
+        weekday: "tuesday",
+        parity: "both",
+        subject: "Linear Algebra",
+        teacher: "Ada Lovelace",
+        room: "B-202",
+        lesson_type: "lecture",
+        start_time: "09:15",
+        end_time: "10:45",
+      },
+    ]
+    fixture.lessons = lessons
+    const weekdayConfigs = fixture.weekdayConfigs
+    const weekdayBackend = fixture.weekdayBackend
+    const nowTick = fixture.nowTick
+    const lessonTypeLabels = fixture.lessonTypeLabels
+    const hiddenWeekdays = useScheduleUIStore.getState().hiddenWeekdays
+    const open = vi.spyOn(window, "open").mockReturnValue(null)
+
+    await renderSchedule()
+    const calendarItem = openExportMenu()
+    expect(calendarItem).toBeEnabled()
+
+    // Deliberately contradictory fixture metadata exercises the export guard.
+    // This does not model normal group-keyed query cache behavior.
+    act(() => {
+      fixture.setSelectedGroup("group-2")
+    })
+
+    expect(screen.getByRole("menuitem", { name: /Google Calendar/i })).toBe(calendarItem)
+    expect(calendarItem).toBeDisabled()
+    fireEvent.click(calendarItem)
+    expect(open).not.toHaveBeenCalled()
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+
+    expect(fixture.lessons).toBe(lessons)
+    expect(fixture.weekdayConfigs).toBe(weekdayConfigs)
+    expect(fixture.weekdayBackend).toBe(weekdayBackend)
+    expect(fixture.nowTick).toBe(nowTick)
+    expect(fixture.lessonTypeLabels).toBe(lessonTypeLabels)
+    expect(useScheduleUIStore.getState().weekOffset).toBe(0)
+    expect(useScheduleUIStore.getState().hiddenWeekdays).toBe(hiddenWeekdays)
+
+    act(() => {
+      fixture.setSelectedGroup("group-1")
+    })
+
+    expect(screen.getByRole("menuitem", { name: /Google Calendar/i })).toBe(calendarItem)
+    expect(calendarItem).toBeEnabled()
+    fireEvent.click(calendarItem)
+
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(open).toHaveBeenCalledWith(
+      expect.stringContaining("https://calendar.google.com/calendar/r/eventedit?"),
+      "_blank",
+      "noopener"
+    )
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
   })
 })

@@ -208,7 +208,10 @@
     "ics": "iCalendar (.ics)",
     "pdf": "PDF document",
     "png": "Image (PNG)",
-    "googleCalendar": "Google Calendar",
+    "googleCalendar": "Google Calendar: first lesson of filtered week",
+    "googleCalendarUnavailable": "Calendar export is unavailable. Check the selected group, week, schedule and campus time zone.",
+    "googleCalendarEmpty": "No displayed lesson occurs in the selected week with the current filters.",
+    "googleCalendarInvalidTime": "The first lesson of the filtered week has no valid start and end time.",
     "pdfTitle": "Schedule",
     "lessonFallback": "Lesson",
     "typePrefix": "Type: {{type}}"

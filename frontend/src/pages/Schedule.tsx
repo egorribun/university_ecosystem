@@ -36,6 +36,7 @@ import api from "@/api/client"
 import { buildTable } from "@/components/schedule/scheduleUtils"
 import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import { getCampusClockParts } from "@/utils/campusTimezone"
+import { generateGoogleCalendarUrl, selectGoogleCalendarLesson } from "@/utils/scheduleExport"
 
 function ScheduleContent() {
   const { t } = useTranslation(["schedule", "common"])
@@ -55,6 +56,8 @@ function ScheduleContent() {
     isLoading,
     error: scheduleError,
     schedule,
+    selectedGroup,
+    weekdayConfigs,
     weekdayBackend,
     weekdayLabels,
     weekdayShort,
@@ -136,6 +139,39 @@ function ScheduleContent() {
     [weekdayBackend, hiddenWeekdays]
   )
 
+  const googleCalendarSelection = useMemo(
+    () =>
+      selectGoogleCalendarLesson({
+        schedule: displaySchedule,
+        selectedGroup,
+        weekdayConfigs,
+        visibleWeekdays: visibleWeekdayBackend,
+        now: nowTick,
+        weekOffset,
+        timeZone,
+        available: !isLoading && !scheduleError,
+      }),
+    [
+      displaySchedule,
+      selectedGroup,
+      weekdayConfigs,
+      visibleWeekdayBackend,
+      nowTick,
+      weekOffset,
+      timeZone,
+      isLoading,
+      scheduleError,
+    ]
+  )
+  const googleCalendarDisabledReason =
+    googleCalendarSelection.status === "ready"
+      ? undefined
+      : googleCalendarSelection.status === "empty"
+        ? t("schedule:export.googleCalendarEmpty")
+        : googleCalendarSelection.status === "invalid-time"
+          ? t("schedule:export.googleCalendarInvalidTime")
+          : t("schedule:export.googleCalendarUnavailable")
+
   /* ── Keyboard navigation ──────────────────────────────── */
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
@@ -193,6 +229,22 @@ function ScheduleContent() {
   const getLessonTypeLabel = useCallback(
     (val?: string | null) => lessonTypeLabels.get(val ?? "") ?? val ?? "",
     [lessonTypeLabels]
+  )
+  const googleCalendarUrl = useMemo(
+    () =>
+      googleCalendarSelection.status === "ready"
+        ? generateGoogleCalendarUrl(
+            googleCalendarSelection.lesson,
+            googleCalendarSelection.occurrence,
+            {
+              lessonFallback: t("schedule:export.lessonFallback"),
+              typePrefix: t("schedule:export.typePrefix", {
+                type: getLessonTypeLabel(googleCalendarSelection.lesson.lesson_type),
+              }),
+            }
+          )
+        : null,
+    [googleCalendarSelection, getLessonTypeLabel, t]
   )
   const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
 
@@ -363,6 +415,8 @@ function ScheduleContent() {
           currentParity={scheduleData.currentParity}
           setCurrentParity={scheduleData.setCurrentParity}
           gridRef={gridRef}
+          googleCalendarUrl={googleCalendarUrl}
+          googleCalendarDisabledReason={googleCalendarDisabledReason}
         />
 
         {/* ── Confirm deletion dialog ────────────────────── */}

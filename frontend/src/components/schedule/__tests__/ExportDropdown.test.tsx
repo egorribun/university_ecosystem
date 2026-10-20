@@ -14,6 +14,11 @@ vi.mock("react-i18next", () => ({
 
 import { ExportDropdown } from "@/components/schedule/ExportDropdown"
 
+const calendarUrl =
+  "https://calendar.google.com/calendar/r/eventedit?action=TEMPLATE" +
+  "&text=Algebra&dates=20261027T091500%2F20261027T104500" +
+  "&location=B-202&details=Lecture&ctz=Europe%2FIstanbul"
+
 describe("ExportDropdown", () => {
   it("renders the export trigger button", () => {
     render(<ExportDropdown />)
@@ -38,7 +43,7 @@ describe("ExportDropdown", () => {
 
   it("disables PDF/PNG export when there is no grid ref", async () => {
     const user = userEvent.setup()
-    render(<ExportDropdown />)
+    render(<ExportDropdown googleCalendarUrl={calendarUrl} />)
     await user.click(screen.getByRole("button", { name: /schedule:toolbar.export/ }))
     expect(screen.getByRole("menuitem", { name: "schedule:export.pdf" })).toBeDisabled()
     expect(screen.getByRole("menuitem", { name: "schedule:export.png" })).toBeDisabled()

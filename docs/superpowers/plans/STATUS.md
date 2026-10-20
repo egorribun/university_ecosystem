@@ -14,11 +14,11 @@
 
 На 47f35bf: frontend 9388 PASS / 779 файлов, все frontend static gates и production build прошли. Real SDK/Axios/MSW ETag cohort подтверждает разделение order/query/cache/ETag; повторная OpenAPI generation не даёт diff. PostgreSQL: 203 PASS / 9 прежних SKIP, включая raw HTTP rank/date counterexample. Оба pre-commit и inventory gates проходят. Exact hosted checkout/tree проверены.
 
-NATS: на 19a2f8a focused backend — 727 PASS / 10 FAIL: девять intended private-policy RED и прежний outage hold. Положительный private-object control и прежние 55 lock/composition cases проходят. Следующая metadata-only реализация проверяет явный UID и 0700/0600 без новых syscalls; own GREEN ещё нужен. Runtime adapters и outage не включены. [Reader plan](2026-10-19-owned-nats-owner-reader.md).
+NATS: на a27af92 focused backend — 736 PASS / 1 прежний outage hold. Все 57 reader и 55 lock/composition cases проходят, включая девять прежних private-policy RED. Explicit UID/0700/0600 проверяются по уже наблюдаемым metadata; это не authentication происхождения ключа. Exact checkout/tree проверены. Runtime adapters и outage не включены. [Reader plan](2026-10-19-owned-nats-owner-reader.md).
 
 Actual Core 911db82: 26 PASS / 2 прежних SKIP, cleanup 2026-10-20 00:03:56 UTC, receipt artifact 12230572763, exact source tree проверен. Обе темы проходят первые четыре и следующие семнадцать AUD-072 declarations при неизменённых assertions. Whole AUD-072 открыт: остальные consumers, theme collisions, malformed one-color mixes, AUD-085 utility emission и AUD-073 contrast не объявляются исправленными.
 
-Frontend 19a2f8a — 9415 PASS / 2 intended AUD-066 FAIL / 783 файла. Все static gates проходят, включая formatter и scanner29. Семь UI/scanner находок приняты; исправление calendar payload готовится отдельно, без обещания full-calendar sync. [Evidence](2026-10-19-ui-lifecycle-reconciliation.md).
+Frontend 19a2f8a — 9415 PASS / 2 intended AUD-066 FAIL / 783 файла. Все static gates проходят, включая formatter и scanner29. Семь UI/scanner находок приняты; исправление calendar payload и дополнительные тесты опубликованы следующим срезом; own GREEN ещё нужен, full-calendar sync не заявляется. [Evidence](2026-10-19-ui-lifecycle-reconciliation.md).
 
 Core run 39351706318 / job 118397156239 passes 26 browser cases with two existing skips at 01:21:44 UTC. Owned stop finishes at 01:22:05; artifact 12234715078 has SHA-256 748f254f3a75782421dee130d0da97dd8a8194c05a5347d4354ec4f9c78834c1 and the same verified checkout. This does not replace full-CI acceptance or prove the disabled outage scenario.
 
