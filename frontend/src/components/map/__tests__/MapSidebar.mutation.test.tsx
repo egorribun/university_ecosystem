@@ -152,12 +152,18 @@ describe("MapSidebar mutation contracts", () => {
     const view = render(
       <MapSidebar {...baseProps} isMobile building={undefined} floor={undefined} />
     )
-    expect(vi.getTimerCount()).toBe(0)
+    // The minute clock remains active for live open-hours status, but it is
+    // the only timer until a building starts the sheet entrance transition.
+    expect(vi.getTimerCount()).toBe(1)
 
     view.rerender(<MapSidebar {...baseProps} isMobile />)
-    expect(vi.getTimerCount()).toBe(1)
+    expect(vi.getTimerCount()).toBe(2)
     act(() => vi.advanceTimersByTime(260))
     expect(screen.getByRole("dialog").querySelector(".overflow-y-auto")).toBeInTheDocument()
+    expect(vi.getTimerCount()).toBe(1)
+
+    view.unmount()
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it("uses the map translation namespace and exposes the desktop shell contract", () => {

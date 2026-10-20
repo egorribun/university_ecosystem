@@ -11090,6 +11090,7 @@ def test_live_bounded_reader_reaps_child_after_its_pipes_close(
             (
                 sys.executable,
                 "-c",
+                # The parent bounds this child to one second and then reaps it.
                 "import os, time; os.close(1); os.close(2); time.sleep(30)",
             ),
             context=context,

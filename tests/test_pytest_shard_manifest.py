@@ -247,3 +247,21 @@ def test_ci_publishes_and_verifies_the_test_universe_before_combine() -> None:
     assert verify_index < combine_index
     verify = aggregate["steps"][verify_index]
     assert "pytest_shard_manifest.py" in verify["run"]
+
+
+def test_pytest_report_upload_runs_when_failed_and_file_exists() -> None:
+    backend = yaml.safe_load(BACKEND_WORKFLOW.read_text(encoding="utf-8"))
+    unit_steps = backend["jobs"]["unit-tests"]["steps"]
+    run_step = next(step for step in unit_steps if step.get("name") == "Run pytest")
+    upload_step = next(
+        step for step in unit_steps if step.get("name") == "Upload pytest report"
+    )
+
+    assert "--junitxml=pytest-report.xml" in run_step["run"]
+    assert upload_step["if"] == (
+        "${{ always() && hashFiles('pytest-report.xml') != '' }}"
+    )
+    assert upload_step["with"]["path"] == "pytest-report.xml"
+    assert upload_step["with"]["if-no-files-found"] == "warn"
+    assert "continue-on-error" not in run_step
+    assert "continue-on-error" not in upload_step

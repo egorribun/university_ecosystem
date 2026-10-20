@@ -960,6 +960,42 @@ _COMPOSE_PORT_NAMES = (
 )
 
 
+def _independent_service_mount_projection(model, project_name):
+    """Derive the expected mount projection from this test's Compose model."""
+    declared_volumes = model["volumes"]
+    projected = {}
+    evidence = []
+    for service_name, service in sorted(model["services"].items()):
+        raw_networks = service.get("networks")
+        network_mode = service.get("network_mode")
+        if network_mode is not None:
+            service_networks = []
+        elif raw_networks is None or raw_networks == {} or raw_networks == []:
+            service_networks = ["default"]
+        elif isinstance(raw_networks, dict):
+            service_networks = sorted(raw_networks) or ["default"]
+        else:
+            service_networks = sorted(raw_networks) or ["default"]
+
+        raw_mounts = service.get("volumes", [])
+        projected[service_name] = {
+            "volumes": [dict(mount) for mount in raw_mounts],
+            "volumes_from": list(service.get("volumes_from", [])),
+            "networks": service_networks,
+            "network_mode": network_mode,
+        }
+        identities = []
+        for mount in raw_mounts:
+            mount_type = mount["type"]
+            source = mount.get("source")
+            if mount_type == "volume":
+                definition = declared_volumes[source]
+                source = definition.get("name") or f"{project_name}_{source}"
+            identities.append((mount_type, source, mount["target"]))
+        evidence.append((service_name, tuple(identities)))
+    return projected, tuple(evidence)
+
+
 @pytest.fixture
 def compose_case():
     project = "ue-live-0123456789abcdef"
@@ -986,6 +1022,9 @@ def compose_case():
         "volumes": {"app-data": {}},
         "networks": {"default": {}},
     }
+    service_mount_projection, service_mount_evidence = (
+        _independent_service_mount_projection(model, project)
+    )
     projection = {
         "project_name": project,
         "volumes": {
@@ -1000,15 +1039,7 @@ def compose_case():
                 "resolved_name": f"{project}_default",
             }
         },
-        "service_mounts": {
-            name: {
-                "volumes": [dict(mount)] if name == "backend" else [],
-                "volumes_from": [],
-                "networks": ["default"],
-                "network_mode": None,
-            }
-            for name in _COMPOSE_SERVICES
-        },
+        "service_mounts": service_mount_projection,
         "stack": "core",
         "service_roots": list(_COMPOSE_ROOTS),
         "selected_services": list(_COMPOSE_SERVICES),
@@ -1069,6 +1100,7 @@ def compose_case():
         selected_services=_COMPOSE_SERVICES,
         network_bindings=(("default", f"{project}_default", False),),
         service_networks=tuple((name, ("default",)) for name in _COMPOSE_SERVICES),
+        service_mounts=service_mount_evidence,
     )
     raw = json.dumps(model, separators=(",", ":")).encode("utf-8")
     return owner, pins, compose, model, raw, evidence
@@ -1226,6 +1258,10 @@ def test_compose_decode_matches_independent_resource_projection(compose_case):
 
     assert result.status is docker.ComposeMetadataStatus.MATCHED_METADATA
     assert result.evidence == evidence
+    assert dict(result.evidence.service_mounts)["backend"] == (
+        ("volume", f"{owner.project_name}_app-data", "/app/data"),
+    )
+    assert dict(result.evidence.service_mounts)["frontend"] == ()
     assert model == before
     assert supplied.stdout == raw
     assert deadline.expires_at == 10
@@ -1236,6 +1272,31 @@ def test_compose_decode_matches_independent_resource_projection(compose_case):
         "private-compose-label-fixture",
     ):
         assert private_value not in repr(result)
+
+
+def test_compose_decode_rejects_changed_mounts_against_original_fingerprint(
+    compose_case,
+):
+    owner, _pins, _compose, model, _raw, _evidence = compose_case
+    changed_model = copy.deepcopy(model)
+    changed_model["services"]["backend"]["volumes"][0]["target"] = "/app/other"
+    original_mounts, _ = _independent_service_mount_projection(
+        model, owner.project_name
+    )
+    changed_mounts, _ = _independent_service_mount_projection(
+        changed_model, owner.project_name
+    )
+    assert changed_mounts != original_mounts
+    changed_raw = json.dumps(changed_model, separators=(",", ":")).encode("utf-8")
+
+    result = _compose_call(
+        docker.decode_compose_config,
+        _daemon_result(stdout=changed_raw),
+        owner=owner,
+        deadline=_daemon_deadline(),
+    )
+
+    _assert_compose_not_ready(result)
 
 
 @pytest.mark.parametrize(
