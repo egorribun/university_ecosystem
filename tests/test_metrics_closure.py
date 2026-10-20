@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -435,13 +436,73 @@ def test_metrics_route_and_router_fallbacks() -> None:
     request.scope["route"] = SimpleNamespace(path="/items")
     assert metrics._resolve_path_template(request) == "/items"
     request.scope["route"] = SimpleNamespace(path="", owner=None)
-    assert metrics._resolve_path_template(request) == "/raw"
+    assert metrics._resolve_path_template(request) == "unmatched"
     request.scope["route"] = SimpleNamespace(
         path=None, owner=SimpleNamespace(prefix="/owner")
     )
     assert metrics._resolve_router_label(request) == "/owner"
     request.scope["route"] = SimpleNamespace(path=None, owner=None)
     assert metrics._resolve_router_label(request) == "root"
+
+
+def test_request_metrics_use_route_templates_and_bound_unmatched_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core import metrics
+
+    class MetricSink:
+        def __init__(self) -> None:
+            self.label_sets: list[dict[str, str]] = []
+
+        def labels(self, **labels: str) -> MetricSink:
+            self.label_sets.append(labels)
+            return self
+
+        def inc(self) -> None:
+            pass
+
+        def observe(self, _value: float) -> None:
+            pass
+
+    request_count = MetricSink()
+    request_duration = MetricSink()
+    router_duration = MetricSink()
+    router_errors = MetricSink()
+    monkeypatch.setattr(metrics, "_REQUEST_COUNT", request_count)
+    monkeypatch.setattr(metrics, "_REQUEST_DURATION", request_duration)
+    monkeypatch.setattr(metrics, "_ROUTER_DURATION", router_duration)
+    monkeypatch.setattr(metrics, "_ROUTER_ERRORS", router_errors)
+
+    app = FastAPI()
+    app.add_middleware(metrics.PrometheusRequestMetricsMiddleware)
+
+    @app.get("/items/{item_id}")
+    async def get_item(item_id: str) -> dict[str, str]:
+        return {"item_id": item_id}
+
+    app.routes[-1].owner = SimpleNamespace(prefix="/items")
+
+    with TestClient(app) as client:
+        assert client.get("/items/alpha").status_code == 200
+        assert client.get("/items/beta").status_code == 200
+        assert client.get("/missing/alpha").status_code == 404
+        assert client.get("/missing/beta").status_code == 404
+
+    expected_paths = [
+        "/items/{item_id}",
+        "/items/{item_id}",
+        "unmatched",
+        "unmatched",
+    ]
+    assert [labels["path"] for labels in request_count.label_sets] == expected_paths
+    assert [labels["path"] for labels in request_duration.label_sets] == expected_paths
+    assert [labels["path"] for labels in router_duration.label_sets] == expected_paths
+    assert [labels["router"] for labels in router_duration.label_sets] == [
+        "/items",
+        "/items",
+        "root",
+        "root",
+    ]
 
 
 def test_metric_recorders_swallow_backend_errors() -> None:

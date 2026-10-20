@@ -6,7 +6,7 @@
 
 Полное закрытие [октябрьского аудита](../../audits/AUDIT-2026-10.md): все 512 исходных AUD IDs. Для каждого нужны source-bound исправление с regression/runtime evidence либо обоснованный disposition. Наличие commit не заменяет приёмку. К приёмке MVP вернуться после аудита.
 
-Подтверждённая нижняя граница — **120/512 (23,4%)**. Это сверка до 7735f048c; полная reconciliation ещё не закончена. [Последний ledger и ограничения](../../audits/AUDIT-2026-10.md#2026-10-20-1100-utc--verified-120-id-checkpoint-and-bounded-corrections). Исходные таблицы сохраняют исторические статусы.
+Подтверждённая нижняя граница — **132/512 (25,8%)**. Проверены ещё 12 исходных IDs; полная reconciliation ещё не закончена. [Последний ledger и ограничения](../../audits/AUDIT-2026-10.md#evidence-checkpoint-132-verified-original-aud-ids). Исходные таблицы сохраняют исторические статусы.
 
 Владелец возобновил работу после a572036d6. Работа на egorribun, в одном checkout, через существующий [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — через GitHub plugin. Новые ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -22,7 +22,7 @@ Owned Live 39240974198: 20 browser PASS / два штатных SKIP, успеш
 
 ## Текущий source и проверки
 
-Опубликованная контрольная точка — a572036d61a2452bb093b740e9ab264960f6aa51. Она сохраняет семь подготовленных исправлений AUD-119/120/121/122/124/125/126 и exact singleton disposition; GREEN при публикации ещё не был установлен.
+Последний опубликованный до этой партии source — 000b1971fb9da21c20b035b227baa9d71ba73ea2. Его synthetic checkout 10f9ed8c4fa88af14c11fe3d8029c077da04c265 имеет тот же tree 85d6261f19f5b4b56b5a5d67b5fdf0f8bb83c5a0. Эта следующая партия сохраняет AUD-128/132/133/135 и News a11y follow-up; их новый hosted GREEN ещё требуется.
 
 [Matrix 39413091195](https://github.com/egorribun/university_ecosystem/actions/runs/39413091195) выявил четыре причины отказа:
 
@@ -45,8 +45,8 @@ Owned Live 39240974198: 20 browser PASS / два штатных SKIP, успеш
 
 ## Следующие действия
 
-1. Проверить и опубликовать согласованный пакет исправлений CI, finite cleanup-профиля и audit corrections; получить собственные hosted checks. Сохранить selections, 300-секундный focused budget и quality/security gates.
-2. Продолжить tests-first AUD-127/129/130: keyboard radio group, имя/pressed state like, escaping ORG vCard. AUD-128/132 — отдельные задачи. AUD-131 сначала сверить с уже существующим wall-clock schema/model/migration contract.
+1. Опубликовать проверенную следующую партию и получить её hosted checks. На 000b проходят Contract 322, verifier 234, Node 657, все четыре frontend shards (9547 PASS), оба pre-commit и integration job. Focused backend: 1051 PASS / один прежний intentional outage hold за 262,58 s, без timeout; это не полный CI GREEN.
+2. Продолжить AUD-136: единая normalized locale для detail key, SDK query, page и SSR loader; optional lang должен попасть в OpenAPI через официальный генератор. AUD-131 подтверждён actual PostgreSQL 2 PASS / 0 SKIP; AUD-134 — 28 media и шесть commit-failure/shared-reference cases. Новая партия: 186 frontend PASS, 73 metrics PASS; эти четыре новых исправления пока не входят в ledger.
 3. Завершить NATS metadata composition, затем bounded transport/coordinator и guarded runtime acceptance по [spec](../specs/2026-10-18-owned-nats-outbox-acceptance.md), [outage plan](2026-10-19-owned-nats-outage.md) и [Docker observation](2026-10-20-owned-nats-docker-observation.md). Runtime/outage отключены; pure metadata match не доказывает daemon authenticity, inventory или restoration.
 4. Закрывать оставшиеся AUD IDs с именованными доказательствами. P1 operational holds AUD-164/167/169/174 сохраняются. AUD-123 требует actual Fluent Bit evidence; source-label assertion его не заменяет.
 

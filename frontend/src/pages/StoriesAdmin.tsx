@@ -14,6 +14,7 @@ import Layout from "@/components/Layout"
 import PageFadeIn from "@/components/motion/PageFadeIn"
 import SmartImage from "@/components/media/SmartImage"
 import { useAuth } from "@/contexts/AuthContext"
+import { useScheduleClock } from "@/hooks/useScheduleClock"
 import type { StoryItem } from "@/types/Story"
 import { createStory, deleteStory, updateStory, uploadStoryCover } from "@/api/stories"
 import apiClient from "@/api/client"
@@ -44,8 +45,8 @@ function toIso(date: string) {
   return d.toISOString()
 }
 
-function formatTimeLeft(expiresAt: string) {
-  return formatRelativeTime(expiresAt, "en-US") // Simplified for now, but following the requirement
+function formatTimeLeft(expiresAt: string, now: Date) {
+  return formatRelativeTime(expiresAt, "en-US", now) // Simplified for now, but following the requirement
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -82,11 +83,12 @@ const createInitialFormState = (): StoryFormState => ({
 
 type StoryAdminItemProps = {
   story: StoryItem
+  nowTick: Date
   formatDate: (value: Date | string | number) => string
   onRefresh: () => void
 }
 
-function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
+function StoryAdminItem({ story, nowTick, formatDate, onRefresh }: StoryAdminItemProps) {
   const { t } = useTranslation(["stories", "common"])
   const [publishedAt, setPublishedAt] = useState(() => formatInputDate(story.published_at))
   const [expiresAt, setExpiresAt] = useState(() => formatInputDate(story.expires_at))
@@ -111,7 +113,10 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
     }
   }, [coverPreview])
 
-  const timeLeft = useMemo(() => formatTimeLeft(story.expires_at), [story.expires_at])
+  const timeLeft = useMemo(
+    () => formatTimeLeft(story.expires_at, nowTick),
+    [story.expires_at, nowTick]
+  )
 
   const handleTimeSave = async () => {
     setActionError(null)
@@ -395,6 +400,7 @@ export default function StoriesAdmin() {
   const { t } = useTranslation(["stories", "common"])
   const { formatDate } = useLocaleFormatters()
   const isAdmin = user?.role === "admin"
+  const nowTick = useScheduleClock(isAdmin)
   const [stories, setStories] = useState<StoryItem[]>([])
   const [loading, setLoading] = useState(false)
   const [formState, setFormState] = useState<StoryFormState>(() => createInitialFormState())
@@ -703,6 +709,7 @@ export default function StoriesAdmin() {
                   <StoryAdminItem
                     key={story.id}
                     story={story}
+                    nowTick={nowTick}
                     formatDate={(value) => formatDate(value, { preset: "datetime" })}
                     onRefresh={() => void fetchStories()}
                   />

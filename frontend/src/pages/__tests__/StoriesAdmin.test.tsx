@@ -163,6 +163,64 @@ describe("StoriesAdmin", () => {
     })
   })
 
+  it("advances story expiry on one shared clock without changing item order or edits", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-10-20T10:00:00.000Z"))
+    const firstStory = {
+      ...story,
+      id: "story-first",
+      title: "First story",
+      expires_at: "2026-10-20T10:01:00.000Z",
+    }
+    const secondStory = {
+      ...story,
+      id: "story-second",
+      title: "Second story",
+      expires_at: "2026-10-20T10:02:00.000Z",
+    }
+    mocks.getStories.mockResolvedValueOnce({ data: [firstStory, secondStory] })
+    const timersBefore = vi.getTimerCount()
+    const view = render(<StoriesAdmin />)
+    let unmounted = false
+
+    try {
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      expect(screen.getByText(firstStory.title)).toBeInTheDocument()
+      expect(screen.getByText("in 1 minute")).toBeInTheDocument()
+      expect(screen.getByText("in 2 minutes")).toBeInTheDocument()
+
+      const firstExpiryInput = screen.getAllByLabelText("stories:form.expiresAt")[1]!
+      fireEvent.change(firstExpiryInput, { target: { value: "2026-10-20T10:05" } })
+      expect(firstExpiryInput).toHaveValue("2026-10-20T10:05")
+
+      act(() => vi.advanceTimersByTime(60_000))
+      expect(screen.getByText("now")).toBeInTheDocument()
+      expect(screen.getByText("in 1 minute")).toBeInTheDocument()
+      expect(firstExpiryInput).toHaveValue("2026-10-20T10:05")
+      expect(vi.getTimerCount()).toBe(timersBefore + 1)
+      expect(
+        screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)
+      ).toEqual([firstStory.title, secondStory.title])
+
+      act(() => vi.advanceTimersByTime(60_000))
+      expect(screen.getByText("1 minute ago")).toBeInTheDocument()
+      expect(screen.getByText("now")).toBeInTheDocument()
+      expect(
+        screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)
+      ).toEqual([firstStory.title, secondStory.title])
+
+      view.unmount()
+      unmounted = true
+      expect(vi.getTimerCount()).toBe(timersBefore)
+    } finally {
+      if (!unmounted) view.unmount()
+      vi.useRealTimers()
+    }
+  })
+
   it("validates required fields before creating a story", async () => {
     render(<StoriesAdmin />)
     await screen.findByText("stories:list.empty")

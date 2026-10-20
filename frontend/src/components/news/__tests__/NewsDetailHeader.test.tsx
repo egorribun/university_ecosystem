@@ -126,17 +126,44 @@ describe("NewsDetailHeader", () => {
     expect(onToggleLike).toHaveBeenCalledOnce()
   })
 
-  it("names the like action and exposes whether it is pressed", () => {
+  it("keeps the localized like toggle name stable across pressed states", () => {
     const { rerender } = render(<NewsDetailHeader {...baseProps} />)
-    const likeButton = screen.getByRole("button", { name: "common:aria.like" })
+    let likeButton = screen.getByRole("button", {
+      name: "common:aria.like",
+      pressed: false,
+    })
 
     expect(likeButton).toHaveAttribute("aria-pressed", "false")
 
     rerender(<NewsDetailHeader {...baseProps} isLiked />)
-    const unlikeButton = screen.getByRole("button", { name: "common:aria.unlike" })
+    likeButton = screen.getByRole("button", {
+      name: "common:aria.like",
+      pressed: true,
+    })
 
-    expect(unlikeButton).toHaveAttribute("aria-pressed", "true")
-    expect(unlikeButton).toHaveTextContent("42")
+    expect(likeButton).toHaveAttribute("aria-pressed", "true")
+  })
+
+  it("describes the visible like count and updates it when the count changes", () => {
+    const { rerender } = render(<NewsDetailHeader {...baseProps} />)
+    let likeButton = screen.getByRole("button", {
+      name: "common:aria.like",
+      description: "42",
+    })
+    const countId = likeButton.getAttribute("aria-describedby")
+
+    expect(countId).toBeTruthy()
+    expect(document.getElementById(countId!)).toHaveTextContent("42")
+
+    rerender(<NewsDetailHeader {...baseProps} isLiked likesCount={43} />)
+    likeButton = screen.getByRole("button", {
+      name: "common:aria.like",
+      pressed: true,
+      description: "43",
+    })
+
+    expect(likeButton).toHaveAttribute("aria-describedby", countId)
+    expect(document.getElementById(countId!)).toHaveTextContent("43")
   })
 
   it("keeps inactive action styling neutral and applies active state classes", () => {

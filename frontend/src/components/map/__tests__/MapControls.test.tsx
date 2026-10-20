@@ -75,4 +75,24 @@ describe("MapControls", () => {
     await user.click(screen.getByRole("button", { name: "controls.fullscreen" }))
     expect(screen.getByRole("button", { name: "controls.pitchToggle" })).toBeInTheDocument()
   })
+
+  it("toggles a restored flat viewport to 3D on the first click", async () => {
+    const user = userEvent.setup()
+    const map = { easeTo: vi.fn() }
+    const ref = {
+      current: { getMap: vi.fn(() => map) },
+    } as unknown as MutableRefObject<MapRef | null>
+    render(<MapControls mapRef={ref} initialPitch={0} />)
+
+    const pitchButton = screen.getByRole("button", { name: "controls.pitchToggle" })
+    await user.click(pitchButton)
+
+    expect(map.easeTo).toHaveBeenNthCalledWith(1, { pitch: 45, duration: 400 })
+    expect(pitchButton.querySelector("svg")).toHaveClass("lucide-map")
+
+    await user.click(pitchButton)
+
+    expect(map.easeTo).toHaveBeenNthCalledWith(2, { pitch: 0, duration: 400 })
+    expect(pitchButton.querySelector("svg")).toHaveClass("lucide-box")
+  })
 })

@@ -463,6 +463,22 @@ describe("MapLibreMap", () => {
     expect(map.flyTo).not.toHaveBeenCalled()
   })
 
+  it("passes a restored flat viewport pitch to its controls", () => {
+    const map = makeMap()
+    const mapRef = makeRef(map)
+    render(
+      <MapLibreMapComponent
+        {...baseProps}
+        mapRef={mapRef}
+        urlInitialViewport={{ longitude: 37.8, latitude: 55.7, zoom: 17, pitch: 0, bearing: 90 }}
+      />
+    )
+
+    expect(renderedOverlayProps.controls.at(-1)).toEqual(
+      expect.objectContaining({ mapRef, initialPitch: 0 })
+    )
+  })
+
   it("jumps (no animation) when the user prefers reduced motion", async () => {
     const map = makeMap()
     // Scoped spy + mockRestore — restoreAllMocks would wipe the global
