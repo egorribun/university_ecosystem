@@ -1368,9 +1368,8 @@ def validate_false_positive_dispositions(
         ):
             raise BaselineArtifactError(f"{artifact}: date range is invalid")
 
-        if (
-            category == "public_compose_inspection_test_sentinel"
-            and expires_on > date(2027, 1, 10)
+        if category == "public_compose_inspection_test_sentinel" and expires_on > date(
+            2027, 1, 10
         ):
             raise BaselineArtifactError(
                 f"{artifact}: public Compose sentinel exceeds approved expiry"

@@ -14,6 +14,35 @@ export function MapCategoryFilter({ active, onChange }: MapCategoryFilterProps) 
   const { t } = useTranslation("map")
 
   const allCategories: Array<MapCategory | "all"> = ["all", ...MAP_CATEGORIES]
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    const forward = event.key === "ArrowRight" || event.key === "ArrowDown"
+    const backward = event.key === "ArrowLeft" || event.key === "ArrowUp"
+    const group = event.currentTarget.closest('[role="radiogroup"]')
+    if (!group) return
+
+    const radios = Array.from(group.querySelectorAll<HTMLButtonElement>('[role="radio"]'))
+    const focusedIndex = radios.indexOf(event.currentTarget)
+
+    if (focusedIndex < 0 || radios.length === 0) return
+
+    let nextIndex: number
+    if (event.key === "Home") {
+      nextIndex = 0
+    } else if (event.key === "End") {
+      nextIndex = radios.length - 1
+    } else if (forward) {
+      nextIndex = (focusedIndex + 1) % radios.length
+    } else if (backward) {
+      nextIndex = (focusedIndex - 1 + radios.length) % radios.length
+    } else {
+      return
+    }
+
+    event.preventDefault()
+    radios[nextIndex]?.focus()
+    const nextCategory = allCategories[nextIndex]
+    if (nextCategory !== undefined) onChange(nextCategory)
+  }
 
   return (
     <div
@@ -29,6 +58,8 @@ export function MapCategoryFilter({ active, onChange }: MapCategoryFilterProps) 
             type="button"
             role="radio"
             aria-checked={isActive}
+            tabIndex={isActive ? 0 : -1}
+            onKeyDown={handleKeyDown}
             onClick={() => onChange(cat)}
             className="map-category-chip text-xs"
             data-active={isActive || undefined}

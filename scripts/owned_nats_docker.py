@@ -243,6 +243,77 @@ class ComposeMetadataResult:
     evidence: ComposeResourceEvidence | None = field(default=None, repr=False)
 
 
+@dataclass(frozen=True, slots=True)
+class CoordinatorMetadataPair:
+    """Owner-bound metadata pins for the later coordinator inventory check."""
+
+    owner: OwnerEvidence = field(repr=False)
+    daemon_fingerprint: str = field(repr=False)
+    resource_fingerprint: str = field(repr=False)
+    service_roots: tuple[str, ...] = field(repr=False)
+    selected_services: tuple[str, ...] = field(repr=False)
+
+
+def compose_coordinator_metadata(
+    owner: OwnerEvidence,
+    daemon: DaemonMetadataResult,
+    compose: ComposeMetadataResult,
+) -> CoordinatorMetadataPair | None:
+    """Bind matched daemon and Compose metadata to one admitted Core owner.
+
+    The returned pins are the metadata portion of coordinator preflight. They
+    do not establish runtime identity, container inventory or health.
+    """
+    admitted = _compose_owner(owner)
+    if (
+        admitted is None
+        or type(daemon) is not DaemonMetadataResult
+        or type(compose) is not ComposeMetadataResult
+    ):
+        return None
+
+    try:
+        daemon_status = daemon.status
+        daemon_fingerprint = daemon.fingerprint
+        compose_status = compose.status
+        evidence = compose.evidence
+    except AttributeError:
+        return None
+    if (
+        daemon_status is not DaemonMetadataStatus.MATCHED_METADATA
+        or compose_status is not ComposeMetadataStatus.MATCHED_METADATA
+        or type(daemon_fingerprint) is not str
+        or daemon_fingerprint != admitted.daemon_fingerprint
+    ):
+        return None
+    if type(evidence) is not live_stand.ComposeResourceEvidence:
+        return None
+    try:
+        snapshot = replace(evidence)
+        if (
+            type(snapshot.fingerprint) is not str
+            or snapshot.fingerprint != admitted.compose_resource_fingerprint
+            or type(snapshot.stack) is not str
+            or snapshot.stack != admitted.stack
+            or type(snapshot.service_roots) is not tuple
+            or any(type(name) is not str for name in snapshot.service_roots)
+            or snapshot.service_roots != admitted.service_roots
+            or type(snapshot.selected_services) is not tuple
+            or any(type(name) is not str for name in snapshot.selected_services)
+            or snapshot.selected_services != admitted.selected_services
+        ):
+            return None
+    except AttributeError:
+        return None
+    return CoordinatorMetadataPair(
+        owner=admitted,
+        daemon_fingerprint=daemon_fingerprint,
+        resource_fingerprint=snapshot.fingerprint,
+        service_roots=admitted.service_roots,
+        selected_services=admitted.selected_services,
+    )
+
+
 _COMPOSE_STDOUT_LIMIT = 1_048_576
 _COMPOSE_STDERR_LIMIT = 16_384
 _COMPOSE_JSON_MAX_DEPTH = 64

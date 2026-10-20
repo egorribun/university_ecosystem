@@ -112,6 +112,8 @@ export function NewsDetailHeader({
             "transition-colors duration-fast",
             isLiked && "border-(--error-text)/(--opacity-dim) bg-(--error-text)/(--opacity-subtle)"
           )}
+          aria-label={isLiked ? t("common:aria.unlike") : t("common:aria.like")}
+          aria-pressed={isLiked}
         >
           <span className="tabular-nums">{likesCount}</span>
         </Button>

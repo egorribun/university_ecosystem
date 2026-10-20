@@ -180,7 +180,6 @@ for (const version of [
   "2.3.4+linux-x86.7",
   "2.3.4-rc.1+build.7",
 ]) {
-
   test(`preserves compatible release form ${version} without normalization`, () => {
     const root = createFixture();
     try {
@@ -217,7 +216,7 @@ for (const [version, message] of [
   ["2.3.4+build-", "Python package metadata"],
   ["2.3.4+build--7", "Python package metadata"],
   ["2.3.4+build.-7", "Python package metadata"],
-  ["2.3.4\n", "Python package metadata"],
+  ["2.3.4\n", "Invalid semantic version"],
   ["2.3", "Invalid semantic version"],
   ["v2.3.4", "Invalid semantic version"],
   ["1!2.3.4", "Invalid semantic version"],
@@ -226,7 +225,6 @@ for (const [version, message] of [
   ["02.3.4", "Invalid semantic version"],
   ["2.3.4+build..7", "Invalid semantic version"],
 ]) {
-
   test(`rejects incompatible version ${JSON.stringify(version)} before any write`, () => {
     const root = createFixture();
     try {

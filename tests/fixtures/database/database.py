@@ -77,6 +77,41 @@ _PURE_PARSER_TEST_CASES = {
             "test_application_storage_key_rejects_keys_outside_app_contract",
         }
     ),
+    "tests/test_owned_nats_correlation.py": frozenset(
+        {
+            "test_http_message_must_match_intent_and_have_a_canonical_id",
+            "test_single_event_requires_exact_type_and_aggregate",
+            "test_each_payload_field_is_independently_bound_to_the_message",
+            "test_missing_payload_fields_are_not_replaced_by_defaults",
+        }
+    ),
+    "tests/test_live_nats_transport.py": frozenset(
+        {
+            "test_daemon_request_uses_only_explicit_pins",
+            "test_daemon_request_refuses_unsupported_pins",
+            "test_daemon_decode_matches_exact_private_metadata",
+            "test_daemon_decode_refuses_nonexit_outcomes",
+            "test_daemon_decode_refuses_process_or_payload_ambiguity",
+            "test_daemon_decode_refuses_missing_or_different_pin",
+            "test_daemon_boundaries_refuse_unusable_deadline",
+            "test_daemon_boundaries_refuse_postcheck_expiry",
+            "test_daemon_boundaries_share_original_deadline",
+            "test_daemon_private_fields_are_not_represented",
+            "test_compose_request_uses_exact_in_place_pins_and_private_environment",
+            "test_compose_decode_matches_independent_resource_projection",
+            "test_compose_boundaries_refuse_unadmitted_owner",
+            "test_compose_prepare_refuses_unreviewed_layout",
+            "test_compose_decode_refuses_process_evidence",
+            "test_compose_decode_refuses_ambiguous_or_different_json",
+            "test_compose_boundaries_keep_the_shared_deadline",
+            "test_compose_prepare_snapshots_inputs_before_clock_callback",
+            "test_compose_decode_retains_fingerprint_across_clock_callback",
+            "test_compose_boundaries_refuse_missing_exact_class_fields",
+            "test_compose_decode_refuses_malformed_process_field_types",
+            "test_compose_decode_refuses_deeply_nested_private_json",
+            "test_compose_decode_enforces_exact_json_container_depth",
+        }
+    ),
 }
 
 

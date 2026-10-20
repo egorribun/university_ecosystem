@@ -126,6 +126,19 @@ describe("NewsDetailHeader", () => {
     expect(onToggleLike).toHaveBeenCalledOnce()
   })
 
+  it("names the like action and exposes whether it is pressed", () => {
+    const { rerender } = render(<NewsDetailHeader {...baseProps} />)
+    const likeButton = screen.getByRole("button", { name: "common:aria.like" })
+
+    expect(likeButton).toHaveAttribute("aria-pressed", "false")
+
+    rerender(<NewsDetailHeader {...baseProps} isLiked />)
+    const unlikeButton = screen.getByRole("button", { name: "common:aria.unlike" })
+
+    expect(unlikeButton).toHaveAttribute("aria-pressed", "true")
+    expect(unlikeButton).toHaveTextContent("42")
+  })
+
   it("keeps inactive action styling neutral and applies active state classes", () => {
     const { rerender } = render(<NewsDetailHeader {...baseProps} />)
     const inactiveLikeButton = screen.getByText("42").closest("button")!

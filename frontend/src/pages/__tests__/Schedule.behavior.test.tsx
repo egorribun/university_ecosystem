@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react"
 import { QueryClient } from "@tanstack/react-query"
-import type { ReactNode } from "react"
+import { useEffect, useReducer, type ComponentType, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import Schedule from "@/pages/Schedule"
@@ -332,7 +332,7 @@ vi.mock("framer-motion", () => ({
   },
 }))
 
-async function renderSchedule(timeZone?: string) {
+async function renderSchedule(timeZone?: string, Page: ComponentType = Schedule) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -340,16 +340,31 @@ async function renderSchedule(timeZone?: string) {
     ui: timeZone
       ? () => (
           <CampusTimezoneProvider timeZone={timeZone}>
-            <Schedule />
+            <Page />
           </CampusTimezoneProvider>
         )
-      : Schedule,
+      : Page,
     path: "/schedule",
     initialPath: "/schedule",
     queryClient,
     authProvider: false,
   })
   return result
+}
+
+let rerenderMountedSchedule: (() => void) | undefined
+
+function ScheduleRerenderHarness() {
+  const [, forceRender] = useReducer((revision: number) => revision + 1, 0)
+
+  useEffect(() => {
+    rerenderMountedSchedule = () => forceRender()
+    return () => {
+      rerenderMountedSchedule = undefined
+    }
+  }, [forceRender])
+
+  return <Schedule />
 }
 
 describe("Schedule page behavior", () => {
@@ -632,7 +647,7 @@ describe("Schedule page behavior", () => {
 
   it("shares the current instant without resetting the calendar's chosen month", async () => {
     scheduleState.nowTick = new Date(2026, 5, 30, 23, 59, 45)
-    const { rerender } = await renderSchedule()
+    await renderSchedule(undefined, ScheduleRerenderHarness)
 
     expect(screen.getByTestId("mini-calendar")).toHaveAttribute(
       "data-now",
@@ -644,7 +659,12 @@ describe("Schedule page behavior", () => {
     expect(screen.getByTestId("mini-calendar")).toHaveAttribute("data-days", "7")
 
     scheduleState.nowTick = new Date(2026, 6, 1, 0, 0, 15)
-    rerender(<Schedule />)
+    act(() => {
+      if (!rerenderMountedSchedule) {
+        throw new Error("Schedule rerender harness is not mounted")
+      }
+      rerenderMountedSchedule()
+    })
 
     expect(screen.getByTestId("mini-calendar")).toHaveAttribute(
       "data-now",

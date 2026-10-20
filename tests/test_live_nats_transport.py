@@ -1823,3 +1823,141 @@ def test_compose_observation_retains_owner_snapshot_across_callbacks(
         )
     else:
         _assert_compose_not_ready(result)
+
+
+def test_coordinator_metadata_pair_binds_matched_observations_to_core_owner(
+    compose_case,
+):
+    owner, _pins, _compose, _model, _raw, evidence = compose_case
+    daemon = docker.DaemonMetadataResult(
+        docker.DaemonMetadataStatus.MATCHED_METADATA,
+        owner.daemon_fingerprint,
+    )
+    compose = docker.ComposeMetadataResult(
+        docker.ComposeMetadataStatus.MATCHED_METADATA,
+        evidence,
+    )
+
+    operation = getattr(docker, "compose_coordinator_metadata", None)
+    assert callable(operation), "coordinator metadata composition is unavailable"
+    result = _compose_call(operation, owner, daemon, compose)
+
+    assert result is not None
+    assert result == docker.CoordinatorMetadataPair(
+        owner=replace(
+            owner,
+            published_ports=live_stand._validate_published_ports(
+                dict(owner.published_ports)
+            ),
+        ),
+        daemon_fingerprint=owner.daemon_fingerprint,
+        resource_fingerprint=owner.compose_resource_fingerprint,
+        service_roots=owner.service_roots,
+        selected_services=owner.selected_services,
+    )
+    assert owner.repository not in repr(result)
+    assert owner.project_name not in repr(result)
+    assert owner.daemon_fingerprint not in repr(result)
+    assert owner.compose_resource_fingerprint not in repr(result)
+    assert "private-compose-config-fixture" not in repr(result)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "daemon-result-type",
+        "daemon-missing-status",
+        "daemon-missing-fingerprint",
+        "daemon-status",
+        "daemon-fingerprint",
+        "compose-result-type",
+        "compose-missing-status",
+        "compose-missing-evidence-field",
+        "compose-status",
+        "compose-evidence-missing",
+        "compose-evidence-uninitialized",
+        "compose-fingerprint",
+        "compose-stack",
+        "compose-service-roots",
+        "compose-service-roots-type",
+        "compose-selected-services",
+        "compose-selected-services-type",
+        "owner-not-core",
+        "owner-invalid-fingerprint",
+        "owner-uninitialized",
+    ],
+)
+def test_coordinator_metadata_pair_refuses_unmatched_inputs(compose_case, mutation):
+    owner, _pins, _compose, _model, _raw, evidence = compose_case
+    daemon = docker.DaemonMetadataResult(
+        docker.DaemonMetadataStatus.MATCHED_METADATA,
+        owner.daemon_fingerprint,
+    )
+    compose = docker.ComposeMetadataResult(
+        docker.ComposeMetadataStatus.MATCHED_METADATA,
+        evidence,
+    )
+    if mutation == "daemon-result-type":
+        daemon = object()
+    elif mutation == "daemon-missing-status":
+        daemon = object.__new__(docker.DaemonMetadataResult)
+        object.__setattr__(daemon, "fingerprint", owner.daemon_fingerprint)
+    elif mutation == "daemon-missing-fingerprint":
+        daemon = object.__new__(docker.DaemonMetadataResult)
+        object.__setattr__(
+            daemon, "status", docker.DaemonMetadataStatus.MATCHED_METADATA
+        )
+    elif mutation == "daemon-status":
+        daemon = replace(daemon, status=docker.DaemonMetadataStatus.NOT_READY)
+    elif mutation == "daemon-fingerprint":
+        daemon = replace(daemon, fingerprint="3" * 64)
+    elif mutation == "compose-result-type":
+        compose = object()
+    elif mutation == "compose-missing-status":
+        compose = object.__new__(docker.ComposeMetadataResult)
+        object.__setattr__(compose, "evidence", evidence)
+    elif mutation == "compose-missing-evidence-field":
+        compose = object.__new__(docker.ComposeMetadataResult)
+        object.__setattr__(
+            compose, "status", docker.ComposeMetadataStatus.MATCHED_METADATA
+        )
+    elif mutation == "compose-status":
+        compose = replace(compose, status=docker.ComposeMetadataStatus.NOT_READY)
+    elif mutation == "compose-evidence-missing":
+        compose = replace(compose, evidence=None)
+    elif mutation == "compose-fingerprint":
+        compose = replace(compose, evidence=replace(evidence, fingerprint="3" * 64))
+    elif mutation == "compose-evidence-uninitialized":
+        uninitialized = object.__new__(live_stand.ComposeResourceEvidence)
+        object.__setattr__(uninitialized, "fingerprint", evidence.fingerprint)
+        compose = replace(compose, evidence=uninitialized)
+    elif mutation == "compose-stack":
+        compose = replace(compose, evidence=replace(evidence, stack="full"))
+    elif mutation == "compose-service-roots":
+        compose = replace(compose, evidence=replace(evidence, service_roots=()))
+    elif mutation == "compose-service-roots-type":
+        compose = replace(
+            compose,
+            evidence=replace(evidence, service_roots=list(evidence.service_roots)),
+        )
+    elif mutation == "compose-selected-services":
+        compose = replace(compose, evidence=replace(evidence, selected_services=()))
+    elif mutation == "compose-selected-services-type":
+        compose = replace(
+            compose,
+            evidence=replace(
+                evidence, selected_services=list(evidence.selected_services)
+            ),
+        )
+    elif mutation == "owner-not-core":
+        owner = replace(owner, stack="full")
+    elif mutation == "owner-invalid-fingerprint":
+        owner = replace(owner, daemon_fingerprint="not-a-fingerprint")
+    elif mutation == "owner-uninitialized":
+        owner = object.__new__(OwnerEvidence)
+
+    operation = getattr(docker, "compose_coordinator_metadata", None)
+    assert callable(operation), "coordinator metadata composition is unavailable"
+    result = _compose_call(operation, owner, daemon, compose)
+
+    assert result is None
