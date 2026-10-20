@@ -267,3 +267,37 @@ Source 6fa6bdbb5e15ac3208c2e3c8aaa813b134360e55 and checkout f4b5c659def06e79aca
 The next correction changes only the three alert expressions to the real producer metric names: outbox_pending_events_total, db_pool_checkedout and db_pool_size. Thresholds, pending durations, labels and annotations are unchanged. AUD-103 still requires corrected-source actual-tool GREEN and named producer exposition proof; it is not included in the 103/512 ledger.
 
 Separately, prior frontend static job 118504261645 rejects the newly added profile URL regular expression and one long-array formatting choice. The browser assertion now polls the parsed URL pathname for exact /profile equality without a regular expression; this preserves query/fragment tolerance. The SearchDialog fixture array receives a whitespace-only canonical-width join. No suppression, assertion deletion, new skip, secret-policy change or baseline edit is introduced.
+
+## Evidence checkpoint: 105 verified original AUD IDs
+
+Source 72b24b3cee31e7c812e5dc0a743583e96b724808 and checkout 8b84631850bb85651fcdb8f6e32e4219a9677ff4 have identical tree 141470a59d005a982f066bd122b8bffde508d4e2. Frontend static job 118510212101 and Python lint job 118509513060 pass.
+
+AUD-101 is accepted for actual prepaint-script theme selection and one-shot initialization: job 118510212207 passes all 13 staticShellI18n cases at 07:37:23 UTC, including the nine new cases. Explicit light/dark remain authoritative; system, invalid, empty and missing values follow media preference. This is bounded VM/JSDOM evidence, not physical paint or dynamic-module loading.
+
+AUD-102 is accepted for the tested production initialization lifecycle: job 118510212344 passes all 14 index.closure cases at 07:42:40 UTC and finishes with 2291 PASS. Creation failure permits a new attempt; collection failure waits for nondestructive close; failed close retains the original rejected attempt/error without reopening. A pending close keeps callers pending. This does not prove real IndexedDB or cross-tab cleanup. The verified lower bound becomes 105/512.
+
+### Real-tool verification and test-selection correction
+
+Actual pinned Promtool job 118508309959 succeeds at 07:29:52 UTC on the same source/tree with all six rule scenarios. Owned CID daf65e73b51c024f0879c539fe132874a92a43fcd90f1f2682dc1ae4130f0369 is removed. Focused backend job 118510014584 passes the named real-gauge exposition node at 07:41:01 UTC and reports 958 PASS / one intentional disabled-outage hold in 263.99 seconds. All 48 Compose preparation/decode cases, including depth-64 acceptance and depth-65/deeper refusal, pass.
+
+The 20 generator guards were incorrectly placed outside the quick Contract job's tests/contracts/ selection. Its 154 PASS result did not execute them. They are now relocated intact to tests/contracts/test_prometheus_alert_rules.py; only the source-root expression changes for the new directory. The original workflow-contract test file is restored byte-for-byte to blob 5660293abe8719032788e64d499ac384f6ee6c4f. Require 20 named passes in the selected cohort, not only a changed total. AUD-103 remains uncounted pending this verification.
+
+### Search correction and unresolved native focus
+
+The same frontend shard reports 2256 PASS / one expected SearchDialog highlight failure. Its five new safety controls pass. The correction renders only exact backend MARK_OPEN/MARK_CLOSE pairs as React mark children; all surrounding and matched content remains escaped text. Malformed canonical syntax returns the entire literal string, and no HTML parser or innerHTML is introduced.
+
+The three regular full-text scenarios now call shared strict scenario functions rather than returning successfully when UI is absent. Three Core-live wrappers execute those same functions after real student authentication, with only the exact GET search response controlled. Each requires the requested query, HTTP 200 and exact controlled response, then dialog-scoped relevant results, visible highlights or a positive empty-state message. Exact owned routes are removed afterward. No fixed sleeps, informational-success fallbacks or invented /search route remain. This establishes a path to PR execution of shared scenarios, not execution of the entire regular main-only nightly suite or backend search correctness. AUD-105 requires its own corrected-source proof.
+
+AUD-104 remains open despite 12 component cases passing. Source 6fa6bdb's Core run 39385970385 / job 118508036021 reports 29 PASS / one FAIL / two existing SKIP: the new desktop-geometry case fails only in the mobile-emulated project at reverse Tab (line 94). Earlier focused-name release and forward Tab passed, but compact state was not observed again before reverse Tab. Auto-scroll/expansion is only a hypothesis. Additional soft assertions record bounded scroll, boolean compact-control state and fixed focus categories at distinct source frames, while preserving every original hard assertion and the redaction policy. No skip or production focus change is introduced without evidence.
+
+### Next tests-first boundaries
+
+AUD-106 adds nine actual-ESLint path/exemption cases, AUD-107 adds four real deferred-SearchDialog shortcut cases, and AUD-109 adds four bilingual pool-default/example contracts. Their target behavior/documentation is unchanged pending observed RED. The deferred suite does not claim deterministic cold-import unmount coverage. Backend line 155 selects only the four named documentation cases, preserving the 631-line span, protected lines and five-minute budget.
+
+The unavailable observe_compose_metadata seam and 16 guarded in-memory cases specify exactly one existing run_private_process call, the identical Deadline, stable owner snapshots, private failure decoding and collector exception identity. Four admission controls should pass and twelve composition assertions should fail until implementation; this is a prediction, not observed evidence. No real process, coordinator, CLI caller or outage is activated.
+
+Baseline 319, dispositions 263, 78 required context/app pairs, blocking CodeQL and finite migration exception remain unchanged. The public inspection-sentinel disposition still awaits approval. e150 remains the last fully accepted CI source; current partial cohorts and intentional holds are not release acceptance.
+
+Core live job 118513510726 subsequently succeeds on 72b24b3. This later pass does not explain the preceding reverse-Tab failure: no relevant focus implementation changed between those runs. AUD-104 stays open while the added state assertions investigate reproducibility; a passing rerun alone is not treated as a causal fix.
+
+Service workers are blocked only for the three new controlled Core search scenarios and their corresponding regular scenarios so interception is deterministic. Existing Core keyboard/navbar cases keep their original context configuration; these controlled scenarios do not prove service-worker search behavior.

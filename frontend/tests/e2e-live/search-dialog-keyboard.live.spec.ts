@@ -1,4 +1,10 @@
 import { expect, loginAs, test } from "./fixtures"
+import {
+  expectEmptySearchResults,
+  expectHighlightedSearchResults,
+  expectRelevantSearchResults,
+  installSearchReadinessProbe,
+} from "../e2e/utils/searchFullText"
 
 test("SearchDialog traps Tab and restores the original focus", async ({ page }) => {
   await page.addInitScript(() => {
@@ -64,6 +70,29 @@ test("compact navbar preserves native profile keyboard access", async ({ page })
   const name = navbar.locator(".navbar-user-name button")
   const avatar = name.locator("xpath=../preceding-sibling::button[1]")
   const settings = navbar.locator("#navbar-settings-btn")
+  const readKeyboardState = () =>
+    navbar.evaluate((element) => {
+      const name = element.querySelector<HTMLButtonElement>(".navbar-user-name button")
+      const avatar = name?.parentElement?.previousElementSibling
+      const settings = element.querySelector("#navbar-settings-btn")
+      const active = document.activeElement
+
+      return {
+        scrollY: window.scrollY,
+        disabled: name?.disabled === true,
+        hidden: name?.getAttribute("aria-hidden") === "true",
+        focus:
+          active === avatar
+            ? "avatar"
+            : active === name
+              ? "name"
+              : active === settings
+                ? "settings"
+                : active === document.body
+                  ? "body"
+                  : "other",
+      }
+    })
   await expect(navbar).toBeVisible()
   await expect(name).toHaveCount(1)
   await expect(avatar).toHaveCount(1)
@@ -88,9 +117,26 @@ test("compact navbar preserves native profile keyboard access", async ({ page })
   await expect(name).not.toBeFocused()
 
   await avatar.focus()
+  const afterAvatar = await readKeyboardState()
+  expect.soft(afterAvatar.scrollY).toBeGreaterThan(24)
+  expect.soft(afterAvatar.disabled).toBe(true)
+  expect.soft(afterAvatar.hidden).toBe(true)
+  expect.soft(afterAvatar.focus).toBe("avatar")
+
   await page.keyboard.press("Tab")
   await expect(settings).toBeFocused()
+  const afterForward = await readKeyboardState()
+  expect.soft(afterForward.scrollY).toBeGreaterThan(24)
+  expect.soft(afterForward.disabled).toBe(true)
+  expect.soft(afterForward.hidden).toBe(true)
+  expect.soft(afterForward.focus).toBe("settings")
+
   await page.keyboard.press("Shift+Tab")
+  const afterReverse = await readKeyboardState()
+  expect.soft(afterReverse.scrollY).toBeGreaterThan(24)
+  expect.soft(afterReverse.disabled).toBe(true)
+  expect.soft(afterReverse.hidden).toBe(true)
+  expect.soft(afterReverse.focus).toBe("avatar")
   await expect(avatar).toBeFocused()
 
   await page.evaluate(() => window.scrollTo(0, 0))
@@ -102,4 +148,29 @@ test("compact navbar preserves native profile keyboard access", async ({ page })
   await expect(name).toBeFocused()
   await page.keyboard.press("Enter")
   await expect.poll(() => new URL(page.url()).pathname).toBe("/profile")
+})
+
+test.describe("controlled full-text search", () => {
+  test.use({ serviceWorkers: "block" })
+
+  test("full-text search requires the controlled relevant results", async ({ page }) => {
+    await installSearchReadinessProbe(page)
+    await loginAs(page, "student")
+    await page.goto("/dashboard")
+    await expectRelevantSearchResults(page)
+  })
+
+  test("full-text search requires visible matched-term highlights", async ({ page }) => {
+    await installSearchReadinessProbe(page)
+    await loginAs(page, "student")
+    await page.goto("/dashboard")
+    await expectHighlightedSearchResults(page)
+  })
+
+  test("full-text search requires the controlled empty state", async ({ page }) => {
+    await installSearchReadinessProbe(page)
+    await loginAs(page, "student")
+    await page.goto("/dashboard")
+    await expectEmptySearchResults(page)
+  })
 })

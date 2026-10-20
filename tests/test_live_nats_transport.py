@@ -1634,3 +1634,192 @@ def test_compose_decode_enforces_exact_json_container_depth(
         )
     else:
         _assert_compose_not_ready(result)
+
+
+def _assert_one_compose_collection(calls, expected, deadline):
+    assert len(calls) == 1
+    request, actual_deadline = calls[0]
+    assert type(request) is process.PrivateProcessRequest
+    assert request == expected
+    assert actual_deadline is deadline
+
+
+def test_compose_observation_collects_exact_request_under_shared_deadline(
+    monkeypatch, daemon_no_process, compose_case
+):
+    owner, pins, compose, _model, raw, evidence = compose_case
+    deadline = _daemon_deadline()
+    expected = docker.prepare_compose_config(owner, pins, compose, deadline=deadline)
+    assert expected is not None
+    calls = _mock_daemon_collection(monkeypatch, _daemon_result(stdout=raw))
+    refreshed = []
+
+    def forbidden_deadline(*_args, **_kwargs):
+        refreshed.append(True)
+        raise AssertionError("Compose observation must retain its caller deadline")
+
+    monkeypatch.setattr(Deadline, "after", forbidden_deadline)
+    monkeypatch.setattr(Deadline, "child", forbidden_deadline)
+
+    result = docker.observe_compose_metadata(owner, pins, compose, deadline=deadline)
+
+    assert refreshed == []
+    _assert_one_compose_collection(calls, expected, deadline)
+    assert result == docker.ComposeMetadataResult(
+        docker.ComposeMetadataStatus.MATCHED_METADATA, evidence
+    )
+    for private_value in (
+        owner.project_name,
+        owner.worktree,
+        owner.compose_resource_fingerprint,
+    ):
+        assert private_value not in repr(result)
+
+
+@pytest.mark.parametrize("invalid", ["owner", "pins", "layout", "expired"])
+def test_compose_observation_refuses_admission_without_collection(
+    monkeypatch, daemon_no_process, compose_case, invalid
+):
+    owner, pins, compose, _model, raw, _evidence = compose_case
+    clock = _DaemonClock()
+    deadline = Deadline.after(10, clock=clock)
+    if invalid == "owner":
+        owner = None
+    elif invalid == "pins":
+        pins = replace(pins, endpoint="ssh://unapproved-host")
+    elif invalid == "layout":
+        compose = replace(compose, compose_files=())
+    else:
+        clock.now = 10
+    calls = _mock_daemon_collection(monkeypatch, _daemon_result(stdout=raw))
+
+    result = docker.observe_compose_metadata(owner, pins, compose, deadline=deadline)
+
+    _assert_compose_not_ready(result)
+    assert calls == []
+
+
+@pytest.mark.parametrize("failure", ["stderr", "cleanup", "malformed-json"])
+def test_compose_observation_decodes_private_failures_without_retry(
+    monkeypatch, daemon_no_process, compose_case, failure
+):
+    owner, pins, compose, _model, raw, _evidence = compose_case
+    deadline = _daemon_deadline()
+    expected = docker.prepare_compose_config(owner, pins, compose, deadline=deadline)
+    assert expected is not None
+    supplied = _daemon_result(stdout=raw)
+    if failure == "stderr":
+        supplied = replace(supplied, stderr=b"private-compose-diagnostic")
+    elif failure == "cleanup":
+        supplied = replace(supplied, local_cleanup=process.LocalCleanup.UNPROVEN)
+    else:
+        supplied = replace(supplied, stdout=b"private-invalid-compose-json")
+    calls = _mock_daemon_collection(monkeypatch, supplied)
+
+    result = docker.observe_compose_metadata(owner, pins, compose, deadline=deadline)
+
+    _assert_one_compose_collection(calls, expected, deadline)
+    _assert_compose_not_ready(result)
+    assert "private-compose-diagnostic" not in repr(result)
+    assert "private-invalid-compose-json" not in repr(result)
+
+
+def test_compose_observation_rejects_postcollection_expiry(
+    monkeypatch, daemon_no_process, compose_case
+):
+    owner, pins, compose, _model, raw, _evidence = compose_case
+    clock = _DaemonClock()
+    deadline = Deadline.after(10, clock=clock)
+    expected = docker.prepare_compose_config(owner, pins, compose, deadline=deadline)
+    assert expected is not None
+
+    def expire():
+        clock.now = 10
+
+    calls = _mock_daemon_collection(
+        monkeypatch, _daemon_result(stdout=raw), action=expire
+    )
+
+    result = docker.observe_compose_metadata(owner, pins, compose, deadline=deadline)
+
+    _assert_one_compose_collection(calls, expected, deadline)
+    _assert_compose_not_ready(result)
+
+
+@pytest.mark.parametrize("failure_type", [RuntimeError, KeyboardInterrupt, SystemExit])
+def test_compose_observation_preserves_collector_exception_identity(
+    monkeypatch, daemon_no_process, compose_case, failure_type
+):
+    owner, pins, compose, _model, raw, _evidence = compose_case
+    deadline = _daemon_deadline()
+    expected = docker.prepare_compose_config(owner, pins, compose, deadline=deadline)
+    assert expected is not None
+    failure = failure_type("private-compose-collector-failure")
+
+    def fail():
+        raise failure
+
+    calls = _mock_daemon_collection(
+        monkeypatch, _daemon_result(stdout=raw), action=fail
+    )
+
+    with pytest.raises(failure_type) as caught:
+        docker.observe_compose_metadata(owner, pins, compose, deadline=deadline)
+
+    assert caught.value is failure
+    _assert_one_compose_collection(calls, expected, deadline)
+
+
+@pytest.mark.parametrize("mutation_phase", ["clock", "collector"])
+@pytest.mark.parametrize("initially_matches", [True, False])
+def test_compose_observation_retains_owner_snapshot_across_callbacks(
+    monkeypatch, daemon_no_process, compose_case, mutation_phase, initially_matches
+):
+    owner, pins, compose, _model, raw, evidence = compose_case
+    matching = owner.compose_resource_fingerprint
+    different = "b" * 64
+    assert matching != different
+    owner = replace(
+        owner,
+        compose_resource_fingerprint=matching if initially_matches else different,
+    )
+    substituted = different if initially_matches else matching
+    expected = docker.prepare_compose_config(
+        owner, pins, compose, deadline=_daemon_deadline()
+    )
+    assert expected is not None
+    mutations = []
+    armed = False
+
+    def mutate():
+        if mutations:
+            return
+        mutations.append(mutation_phase)
+        object.__setattr__(owner, "compose_resource_fingerprint", substituted)
+        object.__setattr__(owner, "source_sha", "c" * 40)
+
+    def clock():
+        if armed and mutation_phase == "clock":
+            mutate()
+        return 0.0
+
+    deadline = Deadline.after(10, clock=clock)
+    calls = _mock_daemon_collection(
+        monkeypatch,
+        _daemon_result(stdout=raw),
+        action=mutate if mutation_phase == "collector" else None,
+    )
+    armed = True
+
+    result = docker.observe_compose_metadata(owner, pins, compose, deadline=deadline)
+
+    assert mutations == [mutation_phase]
+    assert owner.compose_resource_fingerprint == substituted
+    _assert_one_compose_collection(calls, expected, deadline)
+    assert calls[0][0].env["LIVE_STAND_SOURCE_SHA"] == "a" * 40
+    if initially_matches:
+        assert result == docker.ComposeMetadataResult(
+            docker.ComposeMetadataStatus.MATCHED_METADATA, evidence
+        )
+    else:
+        _assert_compose_not_ready(result)

@@ -178,3 +178,60 @@ test("alias resolution rejects a lexical in-root path whose realpath escapes", (
 
   assert.deepEqual(result, { found: false })
 })
+
+for (const componentPath of [
+  "src/components/layout/Footer.tsx",
+  "src/components/layout/MobileBottomNav.tsx",
+  "src/components/navbar/Navbar.tsx",
+]) {
+  test(`${componentPath} warns about untranslated JSX text`, async () => {
+    const messages = await lintMessages(
+      "export function Fixture() { return <span>Untranslated navigation</span> }\n",
+      componentPath
+    )
+
+    assert.equal(messages.some(({ fatal }) => fatal), false)
+    assert.deepEqual(
+      messages
+        .filter(({ ruleId }) => ruleId === "i18next/no-literal-string")
+        .map(({ severity }) => severity),
+      [1]
+    )
+  })
+
+  test(`${componentPath} preserves translated text and existing exemptions`, async () => {
+    const messages = await lintMessages(
+      [
+        'import { Trans } from "react-i18next"',
+        "export function Fixture({ t }: { t: (key: string) => string }) {",
+        "  return <>",
+        '    <span>{t("navigation.home")}</span>',
+        '    <Trans i18nKey="navigation.home">Navigation home</Trans>',
+        '    <span className="navigation" data-testid="navigation" aria-label="Navigation" />',
+        "  </>",
+        "}",
+        "",
+      ].join("\n"),
+      componentPath
+    )
+
+    assert.equal(messages.some(({ fatal }) => fatal), false)
+    assert.deepEqual(
+      messages.filter(({ ruleId }) => ruleId === "i18next/no-literal-string"),
+      []
+    )
+  })
+
+  test(`${componentPath} keeps test fixtures exempt from translation warnings`, async () => {
+    const messages = await lintMessages(
+      "export function Fixture() { return <span>Untranslated test fixture</span> }\n",
+      componentPath.replace(/\.tsx$/, ".test.tsx")
+    )
+
+    assert.equal(messages.some(({ fatal }) => fatal), false)
+    assert.deepEqual(
+      messages.filter(({ ruleId }) => ruleId === "i18next/no-literal-string"),
+      []
+    )
+  })
+}

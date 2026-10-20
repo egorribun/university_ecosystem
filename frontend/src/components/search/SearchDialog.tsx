@@ -13,7 +13,15 @@
  * Wave 38: AI-powered search foundation
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo, type KeyboardEvent } from "react"
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { m, AnimatePresence } from "framer-motion"
 import { Search, X, FileText, Calendar, ArrowRight, Clock } from "lucide-react"
@@ -43,6 +51,25 @@ interface SearchResponse {
 
 const RECENT_SEARCHES_KEY = "ue:recent-searches"
 const MAX_RECENT = 5
+
+const HIGHLIGHT_OPEN = "\u0000MARK_OPEN\u0000"
+const HIGHLIGHT_CLOSE = "\u0000MARK_CLOSE\u0000"
+
+function renderSearchSummary(summary: string): ReactNode {
+  const [prefix = "", ...segments] = summary.split(HIGHLIGHT_OPEN)
+  if (prefix.includes(HIGHLIGHT_CLOSE)) return summary
+
+  const children: ReactNode[] = [prefix]
+  let offset = prefix.length
+  for (const segment of segments) {
+    const [matched, suffix, extra] = segment.split(HIGHLIGHT_CLOSE)
+    if (suffix === undefined || extra !== undefined) return summary
+    const mark = <mark key={offset}>{matched}</mark>
+    children.push(mark, suffix)
+    offset += HIGHLIGHT_OPEN.length + segment.length
+  }
+  return children
+}
 
 function getRecentSearches(): string[] {
   try {
@@ -281,7 +308,7 @@ export function SearchDialog() {
                         <p className="truncate text-sm font-semibold">{result.title}</p>
                         {result.summary && (
                           <p className="truncate text-xs text-(--text-tertiary)">
-                            {result.summary}
+                            {renderSearchSummary(result.summary)}
                           </p>
                         )}
                       </div>

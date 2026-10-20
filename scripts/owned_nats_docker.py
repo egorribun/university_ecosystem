@@ -504,3 +504,14 @@ def decode_compose_config(
     ):
         return not_ready
     return ComposeMetadataResult(ComposeMetadataStatus.MATCHED_METADATA, evidence)
+
+
+def observe_compose_metadata(
+    owner: OwnerEvidence,
+    pins: DockerReadPins,
+    compose: ComposeConfigPins,
+    *,
+    deadline: Deadline,
+) -> ComposeMetadataResult:
+    """Unavailable composition boundary; no collection or runtime admission."""
+    return ComposeMetadataResult(ComposeMetadataStatus.NOT_READY)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import io
+import re
 import tempfile
 from pathlib import Path
 
@@ -277,3 +278,77 @@ def test_database_settings_reject_invalid_values(field, value, message):
         database.DatabaseSettings(
             database_url="sqlite+aiosqlite:///./test.db", **{field: value}
         )
+
+
+@pytest.mark.parametrize(
+    ("document", "heading", "defaults_marker"),
+    (
+        (
+            "DEPLOY.md",
+            "### Пул соединений базы данных",
+            "Значения по умолчанию",
+        ),
+        (
+            "DEPLOY.en.md",
+            "### Database connection pool",
+            "Default values",
+        ),
+    ),
+)
+def test_deployment_pool_defaults_match_database_settings(
+    document, heading, defaults_marker
+):
+    path = Path(__file__).resolve().parents[1] / "docs" / document
+    text = path.read_text(encoding="utf-8")
+    assert text.count(heading) == 1
+    section = text.split(heading, 1)[1].split("\n### ", 1)[0]
+    paragraphs = [
+        " ".join(paragraph.split()) for paragraph in section.strip().split("\n\n")
+    ]
+    defaults = [paragraph for paragraph in paragraphs if defaults_marker in paragraph]
+    assert len(defaults) == 1
+
+    fields = database.DatabaseSettings.model_fields
+    assert fields["database_pool_size"].default == database._CPU_COUNT * 2 + 1
+    assert fields["database_max_overflow"].default == database._CPU_COUNT * 4
+
+    documented_defaults = re.findall(
+        r"`([^`]+)`", defaults[0].split(defaults_marker, 1)[1]
+    )
+    assert documented_defaults == [
+        "_CPU_COUNT * 2 + 1",
+        "_CPU_COUNT * 4",
+        format(fields["database_pool_timeout"].default, "g"),
+        format(fields["database_pool_recycle"].default, "g"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("document", "heading", "example_marker", "defaults_marker"),
+    (
+        (
+            "DEPLOY.md",
+            "### Пул соединений базы данных",
+            "Например",
+            "Значения по умолчанию",
+        ),
+        (
+            "DEPLOY.en.md",
+            "### Database connection pool",
+            "For example",
+            "Default values",
+        ),
+    ),
+)
+def test_deployment_pool_override_example_remains_explicit(
+    document, heading, example_marker, defaults_marker
+):
+    path = Path(__file__).resolve().parents[1] / "docs" / document
+    text = path.read_text(encoding="utf-8")
+    assert text.count(heading) == 1
+    section = text.split(heading, 1)[1].split("\n### ", 1)[0]
+    examples = [line for line in section.splitlines() if example_marker in line]
+    assert len(examples) == 1
+    assert "`DATABASE_POOL_SIZE=5`" in examples[0]
+    assert "`DATABASE_MAX_OVERFLOW=5`" in examples[0]
+    assert defaults_marker not in examples[0]
