@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import (
     Field,
+    field_validator,
     model_validator,
 )
 
@@ -36,7 +37,42 @@ class EventFileOut(OrmModel):
         return self
 
 
-class EventCreate(BaseModel):
+def _bound_event_string(value: str | None, limit: int) -> str | None:
+    if value is None or len(value) <= limit:
+        return value
+    # Match bounded VARCHAR assignment only for excess ASCII spaces. CleanStr
+    # can expose these when a trailing control protected them from earlier trimming.
+    if value[limit:].strip(" "):
+        raise ValueError(translate("validation.events.string_too_long", limit=limit))
+    return value[:limit]
+
+
+class _EventInput(BaseModel):
+    @field_validator(
+        "title",
+        "title_en",
+        "location",
+        "location_en",
+        "speaker",
+        mode="after",
+        check_fields=False,
+    )
+    @classmethod
+    def _bound_short_text(cls, value: str | None) -> str | None:
+        return _bound_event_string(value, 512)
+
+    @field_validator("event_type", "event_type_en", mode="after", check_fields=False)
+    @classmethod
+    def _bound_event_type(cls, value: str | None) -> str | None:
+        return _bound_event_string(value, 128)
+
+    @field_validator("image_url", mode="after", check_fields=False)
+    @classmethod
+    def _bound_image_url(cls, value: str | None) -> str | None:
+        return _bound_event_string(value, 2048)
+
+
+class EventCreate(_EventInput):
     title: CleanStr
     description: SafeRichText | None = None
     title_en: SanitizedInput = None
@@ -61,7 +97,7 @@ class EventCreate(BaseModel):
         return self
 
 
-class EventUpdate(BaseModel):
+class EventUpdate(_EventInput):
     title: CleanStr | None = None
     description: SafeRichText | None = None
     title_en: SanitizedInput = None

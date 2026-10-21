@@ -82,6 +82,41 @@ start/end pairs with a validation error (HTTP 422), rather than leaking a
 comparison TypeError. All-naive and all-aware pairs retain their existing
 ordering semantics. Public updates still require both non-null endpoints
 when either is supplied; title-only and internal partial-time updates remain
-unchanged. This patch does not introduce event string-length limits or change
-stored data. The size-limit portion of AUD-256 remains open pending an explicit
-compatibility decision; ORM size declarations do not prove migrated SQL bounds.
+unchanged. The timezone correction does not modify stored data. String-input
+bounds are governed by the separate owner-approved exception below.
+
+
+## One-time v1 input-bound exception: events (2026-10-21)
+
+For AUD-256, the owner explicitly approved restricting event creation and
+updates in the existing v1 API after reviewing the compatibility impact.
+The migrated Event columns are unbounded VARCHAR, even though ORM metadata
+declares lengths; these request limits are therefore a deliberate narrowing,
+not merely enforcement of an already universal database constraint.
+This exception is limited to AUD-256 and does not authorize other breaking
+v1 changes. API 1.1.1 retains the separately verified timezone patch.
+
+After inherited whitespace trimming and the existing field sanitizers:
+- title, title_en, location, location_en and speaker are bounded to 512 characters;
+- event_type and event_type_en are bounded to 128 characters;
+- image_url is bounded to 2048 characters.
+
+Non-space overflow is rejected as a validation error (HTTP 422).
+For compatibility with bounded VARCHAR storage, only excess U+0020 spaces
+exposed by later CleanStr control removal are normalized to the bounded
+prefix; spaces inside that prefix remain intact. Non-space characters are
+never silently truncated. Ordinary edge whitespace retains its existing
+normalization, and optional whitespace-only text still becomes None.
+These are post-normalization bounds, not a raw-input JSON Schema maxLength:
+raw input can be longer while normalizing to a valid stored value.
+
+Description/about Text fields and their translations remain uncapped.
+No migration, existing-row rewrite, truncation or deletion is part of this
+change. Existing long rows remain readable, and omitted fields in a partial
+update are not newly validated or rewritten. Only newly supplied bounded
+fields are subject to the input rules.
+
+Validation messages use the existing schema-level translation convention:
+without request locale context, they default to English. Both English and
+Russian dictionary entries exist; this change does not add Accept-Language
+propagation into Pydantic validation.

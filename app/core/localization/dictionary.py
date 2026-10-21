@@ -877,6 +877,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Время окончания должно быть позже времени начала мероприятия",
         "en": "The end time must be later than the start time",
     },
+    "validation.events.string_too_long": {
+        "ru": "Значение поля мероприятия не должно превышать {limit} символов",
+        "en": "The event field must not exceed {limit} characters",
+    },
     "validation.events.timezone_mismatch": {
         "ru": "Время начала и окончания должно быть либо с часовым поясом, либо без него",
         "en": "Start and end times must either both include a timezone or both omit it",

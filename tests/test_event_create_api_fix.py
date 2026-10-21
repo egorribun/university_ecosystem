@@ -403,6 +403,7 @@ async def test_event_title_only_http_patch_preserves_persisted_times(
     )
     record = models.Event(
         title="Before",
+        location="Я" * 513,
         starts_at=datetime(2035, 1, 1, 10, tzinfo=UTC),
         ends_at=datetime(2035, 1, 1, 11, tzinfo=UTC),
         created_by=teacher.id,
@@ -423,6 +424,7 @@ async def test_event_title_only_http_patch_preserves_persisted_times(
         f"/events/{record.id}", headers=headers, json={"title": "After"}
     )
     assert response.status_code == status.HTTP_200_OK
+    assert response.json()["location"] == "Я" * 513
     checker.check_permission.assert_awaited_once_with(
         resource_type="event",
         resource_id=str(record.id),
@@ -431,4 +433,5 @@ async def test_event_title_only_http_patch_preserves_persisted_times(
     )
     await db_session.refresh(record)
     assert record.title == "After"
+    assert record.location == "Я" * 513
     assert (record.starts_at, record.ends_at) == before
