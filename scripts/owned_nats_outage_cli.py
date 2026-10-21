@@ -12,13 +12,20 @@ from __future__ import annotations
 import os
 import stat
 import time
+from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, NoReturn
 
 from scripts import owned_nats_coordinator as coordinator
 from scripts import owned_nats_process as process
-from scripts.owned_nats_coordinator import OutageOutcome, OutageResult, OutageStage
+from scripts.owned_nats_coordinator import (
+    OutageCheckpoint,
+    OutageOutcome,
+    OutageResult,
+    OutageStage,
+    RuntimeObservationPhase,
+)
 from scripts.owned_nats_outage import Deadline, DeadlineVerdict
 from scripts.owned_nats_process import (
     LocalCleanup,
@@ -426,6 +433,14 @@ class _LazyOwnedNatsPorts:
 
         return operation
 
+    @property
+    def runtime_diagnostic(self) -> RuntimeObservationPhase | None:
+        try:
+            phase = getattr(self._transport, "runtime_diagnostic", None)
+        except Exception:
+            return None
+        return phase if type(phase) is RuntimeObservationPhase else None
+
     def __repr__(self) -> str:
         return "<_LazyOwnedNatsPorts>"
 
@@ -438,11 +453,21 @@ def run_owned_nats_outage(state_dir: str | Path, *, in_place: object) -> OutageR
         sleep=time.sleep,
     )
     try:
-        return coordinator.run_owned_outage(
+        result = coordinator.run_owned_outage(
             ports,
             clock=time.monotonic,
             sleep=time.sleep,
         )
+        if (
+            type(result) is OutageResult
+            and result.outcome is OutageOutcome.FAILED
+            and result.stage is OutageStage.PREFLIGHT
+            and result.checkpoint is OutageCheckpoint.OBSERVE_RUNTIME
+        ):
+            phase = ports.runtime_diagnostic
+            if type(phase) is RuntimeObservationPhase:
+                return replace(result, runtime_diagnostic=phase)
+        return result
     except Exception:
         return OutageResult(
             OutageOutcome.FAILED,

@@ -11,7 +11,12 @@ from dataclasses import replace
 
 from scripts import live_nats_transport as transport
 from scripts import owned_nats_docker as docker
-from scripts.owned_nats_coordinator import OwnerEvidence, RuntimeEvidence
+from scripts.owned_nats_coordinator import (
+    OwnerEvidence,
+    RuntimeEvidence,
+    RuntimeObservationPhase,
+    RuntimeObservationRecorder,
+)
 from scripts.owned_nats_outage import Deadline
 from scripts.owned_nats_owner_adapter import (
     SignedOwnerLeasePort,
@@ -31,6 +36,7 @@ class OwnedCoreRuntimePort:
         "_lazy_core",
         "_lease",
         "_owner_port",
+        "_runtime_diagnostic",
     )
 
     def __init__(
@@ -50,6 +56,7 @@ class OwnedCoreRuntimePort:
             self._docker_pins = replace(docker_pins)
             self._compose_pins = replace(compose_pins)
             self._lazy_core = False
+            self._runtime_diagnostic: RuntimeObservationPhase | None = None
             self._lease: transport.LifecycleLockLease | None = None
         except (AttributeError, TypeError, ValueError) as error:
             raise RuntimeReadNotReady from error
@@ -65,10 +72,16 @@ class OwnedCoreRuntimePort:
             runtime._docker_pins = None
             runtime._compose_pins = None
             runtime._lazy_core = True
+            runtime._runtime_diagnostic = None
             runtime._lease = None
             return runtime
         except (AttributeError, TypeError, ValueError) as error:
             raise RuntimeReadNotReady from error
+
+    @property
+    def runtime_diagnostic(self) -> RuntimeObservationPhase | None:
+        phase = self._runtime_diagnostic
+        return phase if type(phase) is RuntimeObservationPhase else None
 
     @staticmethod
     def _deadline_live(deadline: object) -> bool:
@@ -247,6 +260,8 @@ class OwnedCoreRuntimePort:
         deadline: Deadline,
     ) -> RuntimeEvidence:
         """Observe complete owned Core inventory under two same-lease rereads."""
+        self._runtime_diagnostic = RuntimeObservationPhase.RUNTIME_BINDING
+        diagnostic = RuntimeObservationRecorder()
         if (
             not self._same_active_lease()
             or not self._deadline_live(deadline)
@@ -284,8 +299,12 @@ class OwnedCoreRuntimePort:
                 helper_docker_pins,
                 helper_compose_pins,
                 deadline=deadline,
+                diagnostic=diagnostic,
             )
         except Exception:
+            self._runtime_diagnostic = (
+                diagnostic.phase or RuntimeObservationPhase.RUNTIME_BINDING
+            )
             raise RuntimeReadNotReady from None
         if (
             not self._deadline_live(deadline)
@@ -304,9 +323,14 @@ class OwnedCoreRuntimePort:
             or not self._deadline_live(deadline)
             or self._lease is not retained_lease
             or not self._same_active_lease()
-            or type(evidence) is not RuntimeEvidence
         ):
             raise RuntimeReadNotReady
+        if type(evidence) is not RuntimeEvidence:
+            self._runtime_diagnostic = (
+                diagnostic.phase or RuntimeObservationPhase.RUNTIME_BINDING
+            )
+            raise RuntimeReadNotReady
+        self._runtime_diagnostic = None
         return evidence
 
     def __repr__(self) -> str:

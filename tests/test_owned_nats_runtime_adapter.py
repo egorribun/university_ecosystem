@@ -265,7 +265,7 @@ def test_posix_signed_owner_lease_spans_real_runtime_handoff(signed_state, monke
 
     calls = []
 
-    def observe(owner, pins, compose, *, deadline: Deadline):
+    def observe(owner, pins, compose, *, deadline: Deadline, diagnostic=None):
         calls.append((owner, pins, compose, deadline))
         assert port._lease is lease and not lease._released
         assert _lock_is_held(signed_state.lock_path)
@@ -460,7 +460,7 @@ def test_deadline_expiry_during_observation_discards_full_evidence(
     assert runtime_port.acquire_lock(deadline=deadline) is lease
     evidence = _runtime_evidence()
 
-    def observe(*_args, deadline: Deadline):
+    def observe(*_args, deadline: Deadline, diagnostic=None):
         clock.now = deadline.expires_at
         return evidence
 
@@ -548,7 +548,7 @@ def test_helper_pin_mutation_discards_returned_inventory(signed_state, monkeypat
     assert runtime_port.acquire_lock(deadline=deadline) is lease
     evidence = _runtime_evidence()
 
-    def mutate_pins(_owner, pins, _compose, *, deadline: Deadline):
+    def mutate_pins(_owner, pins, _compose, *, deadline: Deadline, diagnostic=None):
         object.__setattr__(pins, "cwd", "/opt/foreign-worktree")
         return evidence
 
@@ -578,7 +578,7 @@ def test_input_pin_objects_are_snapshotted_at_construction(signed_state, monkeyp
     evidence = _runtime_evidence()
     observed = []
 
-    def observe(owner, pins, compose, *, deadline: Deadline):
+    def observe(owner, pins, compose, *, deadline: Deadline, diagnostic=None):
         observed.append((owner, pins, compose, deadline))
         return evidence
 

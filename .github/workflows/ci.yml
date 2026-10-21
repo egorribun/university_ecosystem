@@ -1568,6 +1568,7 @@ jobs:
         run: |
           uv run pytest tests/contracts/ tests/test_live_stand_cleanup_profile_contract.py tests/test_live_nats_transport.py \
             tests/test_owned_nats_outage_cli.py \
+            tests/test_owned_nats_outage_coordinator.py::test_public_result_and_logs_contain_only_closed_labels \
             tests/test_owned_nats_docker_context_pins.py \
             tests/test_owned_nats_runtime_adapter.py \
             tests/test_owned_nats_transport_port.py \

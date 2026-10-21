@@ -941,7 +941,9 @@ def test_main_refuses_runtime_diagnostic_outside_matching_failure(
     )
 
 
-def test_real_lazy_facade_forwards_finite_runtime_failure(monkeypatch, tmp_path, capsys):
+def test_real_lazy_facade_forwards_finite_runtime_failure(
+    monkeypatch, tmp_path, capsys
+):
     from scripts.owned_nats_coordinator import (
         OutageCheckpoint,
         RuntimeObservationPhase,
@@ -958,3 +960,26 @@ def test_real_lazy_facade_forwards_finite_runtime_failure(monkeypatch, tmp_path,
     assert underlying.contract_errors == []
     captured = capsys.readouterr()
     assert captured.out == captured.err == ""
+
+
+def test_runtime_diagnostic_field_is_private_and_not_semantic():
+    from dataclasses import fields
+
+    from scripts.owned_nats_coordinator import (
+        OutageCheckpoint,
+        RuntimeObservationPhase,
+    )
+
+    result = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.PREFLIGHT,
+        OutageCheckpoint.OBSERVE_RUNTIME,
+    )
+    schema = {item.name: item for item in fields(result)}
+    assert set(schema) == {"outcome", "stage", "checkpoint", "runtime_diagnostic"}
+    assert result.runtime_diagnostic is None
+    assert schema["runtime_diagnostic"].compare is False
+    assert schema["runtime_diagnostic"].repr is False
+    annotated = replace(result, runtime_diagnostic=RuntimeObservationPhase.DAEMON)
+    assert annotated == result
+    assert repr(annotated) == repr(result)

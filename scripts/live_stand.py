@@ -9867,6 +9867,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     OutageOutcome,
                     OutageResult,
                     OutageStage,
+                    RuntimeObservationPhase,
                 )
                 from scripts.owned_nats_outage_cli import run_owned_nats_outage
 
@@ -9886,6 +9887,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                     result.checkpoint is not None
                     and type(result.checkpoint) is not OutageCheckpoint
                 )
+                or (
+                    result.runtime_diagnostic is not None
+                    and (
+                        type(result.runtime_diagnostic) is not RuntimeObservationPhase
+                        or result.outcome is not OutageOutcome.FAILED
+                        or result.stage is not OutageStage.PREFLIGHT
+                        or result.checkpoint is not OutageCheckpoint.OBSERVE_RUNTIME
+                    )
+                )
             ):
                 raise StandError("owned NATS acceptance failed reason=invalid_result")
             if (
@@ -9897,10 +9907,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                     if result.checkpoint is None
                     else f" checkpoint={result.checkpoint.value}"
                 )
+                diagnostic = (
+                    ""
+                    if result.runtime_diagnostic is None
+                    else f" runtime_diagnostic={result.runtime_diagnostic.value}"
+                )
                 raise StandError(
                     "owned NATS acceptance failed "
                     f"outcome={result.outcome.value} stage={result.stage.value}"
-                    f"{checkpoint}"
+                    f"{checkpoint}{diagnostic}"
                 )
         elif args.command == "up":
             up(args.ref, stack=args.stack)

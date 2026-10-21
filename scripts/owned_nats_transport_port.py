@@ -28,6 +28,7 @@ from scripts.owned_nats_coordinator import (
     MessagePostEvidence,
     OwnerEvidence,
     RuntimeEvidence,
+    RuntimeObservationPhase,
 )
 from scripts.owned_nats_docker import ComposeConfigPins, DockerReadPins
 from scripts.owned_nats_outage import (
@@ -310,6 +311,11 @@ class OwnedNatsTransportPort:
             return port
         except Exception:
             _not_ready()
+
+    @property
+    def runtime_diagnostic(self) -> RuntimeObservationPhase | None:
+        phase = self._runtime.runtime_diagnostic
+        return phase if type(phase) is RuntimeObservationPhase else None
 
     def __repr__(self) -> str:
         return "<OwnedNatsTransportPort>"

@@ -1250,6 +1250,6 @@ def test_runtime_diagnostic_recorder_is_finite_private_and_resettable():
             raise AssertionError("private value must not be represented")
 
     for invalid in ("daemon", OtherPhase.DAEMON, 1, True, Hostile()):
-        with pytest.raises(TypeError, match="^invalid runtime observation phase$"):
+        with pytest.raises(TypeError, match=r"^invalid runtime observation phase$"):
             recorder.record(invalid)
         assert recorder.phase is None

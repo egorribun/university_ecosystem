@@ -203,11 +203,52 @@ class OutageCheckpoint(StrEnum):
     COORDINATOR_EXCEPTION = "coordinator_exception"
 
 
+class RuntimeObservationPhase(StrEnum):
+    """Finite diagnostic gates, never private process or owner data."""
+
+    OWNER_PINS = "owner_pins"
+    DAEMON = "daemon"
+    COMPOSE_PREPARE = "compose_prepare"
+    COMPOSE_PROCESS = "compose_process"
+    COMPOSE_DECODE = "compose_decode"
+    COMPOSE_BINDING = "compose_binding"
+    CONTAINER_IDS_PREPARE = "container_ids_prepare"
+    CONTAINER_IDS_PROCESS = "container_ids_process"
+    CONTAINER_IDS_DECODE = "container_ids_decode"
+    INSPECT_PREPARE = "inspect_prepare"
+    INSPECT_PROCESS = "inspect_process"
+    INSPECT_DECODE = "inspect_decode"
+    RUNTIME_BINDING = "runtime_binding"
+
+
+@dataclass(slots=True)
+class RuntimeObservationRecorder:
+    """Per-observation private state containing only an exact phase enum."""
+
+    _phase: RuntimeObservationPhase | None = field(default=None, init=False, repr=False)
+
+    @property
+    def phase(self) -> RuntimeObservationPhase | None:
+        phase = self._phase
+        return phase if type(phase) is RuntimeObservationPhase else None
+
+    def record(self, phase: RuntimeObservationPhase) -> None:
+        if type(phase) is not RuntimeObservationPhase:
+            raise TypeError("invalid runtime observation phase")
+        self._phase = phase
+
+    def reset(self) -> None:
+        self._phase = None
+
+
 @dataclass(frozen=True)
 class OutageResult:
     outcome: OutageOutcome
     stage: OutageStage
     checkpoint: OutageCheckpoint | None = field(default=None, compare=False)
+    runtime_diagnostic: RuntimeObservationPhase | None = field(
+        default=None, compare=False, repr=False
+    )
 
 
 class WaitVerdict(StrEnum):

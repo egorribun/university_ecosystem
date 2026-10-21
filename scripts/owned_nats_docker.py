@@ -21,7 +21,12 @@ from typing import TYPE_CHECKING, cast
 
 from scripts import live_stand
 from scripts import owned_nats_process as process
-from scripts.owned_nats_coordinator import OwnerEvidence, RuntimeEvidence
+from scripts.owned_nats_coordinator import (
+    OwnerEvidence,
+    RuntimeEvidence,
+    RuntimeObservationPhase,
+    RuntimeObservationRecorder,
+)
 from scripts.owned_nats_outage import ContainerSnapshot, Deadline, DeadlineVerdict
 from scripts.owned_nats_process import (
     LocalCleanup,
@@ -974,16 +979,34 @@ def observe_compose_metadata(
     compose: ComposeConfigPins,
     *,
     deadline: Deadline,
+    diagnostic: RuntimeObservationRecorder | None = None,
 ) -> ComposeMetadataResult:
     """Observe supplied Compose metadata once, without runtime admission."""
+    if diagnostic is not None:
+        diagnostic.reset()
+        diagnostic.record(RuntimeObservationPhase.COMPOSE_PREPARE)
     admitted = _compose_owner(owner)
     if admitted is None:
         return ComposeMetadataResult(ComposeMetadataStatus.NOT_READY)
     request = prepare_compose_config(admitted, pins, compose, deadline=deadline)
     if request is None:
         return ComposeMetadataResult(ComposeMetadataStatus.NOT_READY)
+    if diagnostic is not None:
+        diagnostic.record(RuntimeObservationPhase.COMPOSE_PROCESS)
     result = _run_pinned_docker_process(pins, request, deadline=deadline)
-    return decode_compose_config(result, owner=admitted, deadline=deadline)
+    process_ok = diagnostic is None or _compose_stdout(result) is not None
+    if diagnostic is not None and process_ok:
+        diagnostic.record(RuntimeObservationPhase.COMPOSE_DECODE)
+    decoded = decode_compose_config(result, owner=admitted, deadline=deadline)
+    if (
+        diagnostic is not None
+        and process_ok
+        and type(decoded) is ComposeMetadataResult
+        and decoded.status is ComposeMetadataStatus.MATCHED_METADATA
+        and type(decoded.evidence) is live_stand.ComposeResourceEvidence
+    ):
+        diagnostic.reset()
+    return decoded
 
 
 def _runtime_metadata_pair(value: object) -> CoordinatorMetadataPair | None:
@@ -1469,6 +1492,7 @@ def observe_owned_core_runtime(
     compose: ComposeConfigPins,
     *,
     deadline: Deadline,
+    diagnostic: RuntimeObservationRecorder | None = None,
 ) -> RuntimeEvidence | None:
     """Collect private read-only owner-scoped inventory evidence under one deadline.
 
@@ -1477,6 +1501,9 @@ def observe_owned_core_runtime(
     result is evidence for the existing coordinator validator, not an outage
     admission or a substitute for its inventory verdict.
     """
+    if diagnostic is not None:
+        diagnostic.reset()
+        diagnostic.record(RuntimeObservationPhase.OWNER_PINS)
     admitted_owner = _compose_owner(owner)
     if admitted_owner is None or type(pins) is not DockerReadPins:
         return None
@@ -1492,6 +1519,8 @@ def observe_owned_core_runtime(
     ):
         return None
 
+    if diagnostic is not None:
+        diagnostic.record(RuntimeObservationPhase.DAEMON)
     daemon = observe_daemon_metadata(admitted_pins, deadline=deadline)
     if (
         type(daemon) is not DaemonMetadataResult
@@ -1500,14 +1529,26 @@ def observe_owned_core_runtime(
         or not _live(deadline)
     ):
         return None
-    compose_result = observe_compose_metadata(
-        admitted_owner,
-        admitted_pins,
-        admitted_compose,
-        deadline=deadline,
-    )
+    if diagnostic is None:
+        compose_result = observe_compose_metadata(
+            admitted_owner,
+            admitted_pins,
+            admitted_compose,
+            deadline=deadline,
+        )
+    else:
+        diagnostic.record(RuntimeObservationPhase.COMPOSE_PREPARE)
+        compose_result = observe_compose_metadata(
+            admitted_owner,
+            admitted_pins,
+            admitted_compose,
+            deadline=deadline,
+            diagnostic=diagnostic,
+        )
     if type(compose_result) is not ComposeMetadataResult:
         return None
+    if diagnostic is not None and diagnostic.phase is None:
+        diagnostic.record(RuntimeObservationPhase.COMPOSE_BINDING)
     metadata = _runtime_metadata_pair(
         compose_coordinator_metadata(admitted_owner, daemon, compose_result)
     )
@@ -1519,18 +1560,42 @@ def observe_owned_core_runtime(
     if metadata is None or evidence is None or not _live(deadline):
         return None
 
+    if diagnostic is not None:
+        diagnostic.record(RuntimeObservationPhase.CONTAINER_IDS_PREPARE)
     id_request = prepare_container_id_read(metadata, admitted_pins, deadline=deadline)
-    if id_request is None or not _pinned_daemon_matches(
-        metadata, admitted_pins, deadline=deadline
-    ):
+    if id_request is None:
         return None
-    id_result = _run_pinned_docker_process(admitted_pins, id_request, deadline=deadline)
+    if diagnostic is not None:
+        diagnostic.record(RuntimeObservationPhase.DAEMON)
     if not _pinned_daemon_matches(metadata, admitted_pins, deadline=deadline):
         return None
+    if diagnostic is not None:
+        diagnostic.record(RuntimeObservationPhase.CONTAINER_IDS_PROCESS)
+    id_result = _run_pinned_docker_process(admitted_pins, id_request, deadline=deadline)
+    if diagnostic is not None:
+        diagnostic.record(RuntimeObservationPhase.DAEMON)
+    if not _pinned_daemon_matches(metadata, admitted_pins, deadline=deadline):
+        return None
+    if diagnostic is not None:
+        process_ok = (
+            _bounded_process_result(
+                id_result,
+                stdout_limit=_RUNTIME_CONTAINER_ID_STDOUT_LIMIT,
+                stderr_limit=_RUNTIME_INSPECT_STDERR_LIMIT,
+            )
+            is not None
+        )
+        diagnostic.record(
+            RuntimeObservationPhase.CONTAINER_IDS_DECODE
+            if process_ok
+            else RuntimeObservationPhase.CONTAINER_IDS_PROCESS
+        )
     container_ids = decode_container_id_read(id_result, metadata, deadline=deadline)
     if container_ids is None:
         return None
 
+    if diagnostic is not None:
+        diagnostic.record(RuntimeObservationPhase.INSPECT_PREPARE)
     inspect_requests = prepare_container_inspect_reads(
         metadata,
         admitted_pins,
@@ -1541,13 +1606,34 @@ def observe_owned_core_runtime(
         return None
     inspect_results: list[PrivateProcessResult] = []
     for request in inspect_requests:
+        if diagnostic is not None:
+            diagnostic.record(RuntimeObservationPhase.DAEMON)
         if not _pinned_daemon_matches(metadata, admitted_pins, deadline=deadline):
             return None
+        if diagnostic is not None:
+            diagnostic.record(RuntimeObservationPhase.INSPECT_PROCESS)
         result = _run_pinned_docker_process(admitted_pins, request, deadline=deadline)
+        if diagnostic is not None:
+            diagnostic.record(RuntimeObservationPhase.DAEMON)
         if not _pinned_daemon_matches(metadata, admitted_pins, deadline=deadline):
             return None
         inspect_results.append(result)
 
+    if diagnostic is not None:
+        process_ok = all(
+            _bounded_process_result(
+                result,
+                stdout_limit=_RUNTIME_INSPECT_STDOUT_LIMIT,
+                stderr_limit=_RUNTIME_INSPECT_STDERR_LIMIT,
+            )
+            is not None
+            for result in inspect_results
+        )
+        diagnostic.record(
+            RuntimeObservationPhase.INSPECT_DECODE
+            if process_ok
+            else RuntimeObservationPhase.INSPECT_PROCESS
+        )
     containers = decode_container_inspect_reads(
         metadata,
         evidence,
@@ -1555,10 +1641,17 @@ def observe_owned_core_runtime(
         tuple(inspect_results),
         deadline=deadline,
     )
-    if containers is None or not _live(deadline):
+    if containers is None:
         return None
-    return RuntimeEvidence(
+    if diagnostic is not None:
+        diagnostic.record(RuntimeObservationPhase.RUNTIME_BINDING)
+    if not _live(deadline):
+        return None
+    runtime_evidence = RuntimeEvidence(
         daemon_fingerprint=metadata.daemon_fingerprint,
         resource_fingerprint=metadata.resource_fingerprint,
         containers=containers,
     )
+    if diagnostic is not None:
+        diagnostic.reset()
+    return runtime_evidence

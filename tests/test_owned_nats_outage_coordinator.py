@@ -318,7 +318,14 @@ def test_public_result_and_logs_contain_only_closed_labels(capsys) -> None:
     result = run(ports)
     captured = capsys.readouterr()
     assert result.outcome is OutageOutcome.FAILED
-    assert {field.name for field in fields(result)} == {"outcome", "stage"}
+    assert {field.name for field in fields(result)} == {
+        "outcome",
+        "stage",
+        "checkpoint",
+        "runtime_diagnostic",
+    }
+    assert result.checkpoint is None
+    assert result.runtime_diagnostic is None
     output = repr(result) + captured.out + captured.err
     for forbidden in (private, MESSAGE, CONTENT, "password=", "cookie=", "token="):
         assert forbidden not in output
