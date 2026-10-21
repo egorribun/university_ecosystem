@@ -90,7 +90,7 @@ bounds are governed by the separate owner-approved exception below.
 
 For AUD-256, the owner explicitly approved restricting event creation and
 updates in the existing v1 API after reviewing the compatibility impact.
-The migrated Event columns are unbounded VARCHAR, even though ORM metadata
+The migrated Event columns have no string-length bound, even though ORM metadata
 declares lengths; these request limits are therefore a deliberate narrowing,
 not merely enforcement of an already universal database constraint.
 This exception is limited to AUD-256 and does not authorize other breaking
@@ -102,7 +102,7 @@ After inherited whitespace trimming and the existing field sanitizers:
 - image_url is bounded to 2048 characters.
 
 Non-space overflow is rejected as a validation error (HTTP 422).
-For compatibility with bounded VARCHAR storage, only excess U+0020 spaces
+For compatibility with bounded character-column storage, only excess U+0020 spaces
 exposed by later CleanStr control removal are normalized to the bounded
 prefix; spaces inside that prefix remain intact. Non-space characters are
 never silently truncated. Ordinary edge whitespace retains its existing
