@@ -303,6 +303,19 @@ jobs:
         id: install-contract-dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Build Storybook static compatibility fixture
+        timeout-minutes: 5
+        shell: bash
+        env:
+          CI: "true"
+        run: |
+          set -euo pipefail
+          output="$(mktemp -d "$RUNNER_TEMP/storybook-static.XXXXXX")"
+          trap 'rm -rf -- "$output"' EXIT
+          npm run build-storybook -- --output-dir "$output" --disable-telemetry
+          test -s "$output/index.html"
+          test -s "$output/iframe.html"
+
       - name: Run frontend WASM and quality contracts
         run: npm run test:wasm
         env:
@@ -329,6 +342,11 @@ jobs:
           src/components/mfa/__tests__/OtpEntry.test.tsx
           src/components/mfa/__tests__/OtpEntry.mutation-contract.test.tsx
           src/components/schedule/__tests__/ScheduleListView.test.tsx
+          src/features/events/__tests__/categories.closure.test.ts
+          src/components/events/EventCard/__tests__/EventCardContent.closure.test.tsx
+          src/components/schedule/__tests__/schedulePrint.contract.test.ts
+          src/components/messenger/__tests__/ChatWindow.ime-edit.audit.test.tsx
+          src/routes/__tests__/activity.search-validation.test.ts
           --reporter=verbose
         env:
           CI: "true"

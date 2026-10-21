@@ -1,5 +1,6 @@
 """Fail-closed contracts for dependency audit policy metadata."""
 
+import json
 from argparse import Namespace
 from pathlib import Path
 from unittest.mock import Mock
@@ -89,3 +90,39 @@ def test_expired_npm_override_fails_before_running_npm_audit(
         )
 
     npm_audit.assert_not_called()
+
+
+def test_storybook_security_floor_and_aligned_lock() -> None:
+    frontend = REPOSITORY_ROOT / "frontend"
+    manifest = json.loads((frontend / "package.json").read_text(encoding="utf-8"))
+    lock = json.loads((frontend / "package-lock.json").read_text(encoding="utf-8"))
+    family = (
+        "storybook",
+        "eslint-plugin-storybook",
+        "@storybook/addon-a11y",
+        "@storybook/addon-docs",
+        "@storybook/addon-onboarding",
+        "@storybook/addon-vitest",
+        "@storybook/builder-vite",
+        "@storybook/react",
+        "@storybook/react-dom-shim",
+        "@storybook/react-vite",
+    )
+    versions = {lock["packages"][f"node_modules/{name}"]["version"] for name in family}
+    assert len(versions) == 1
+    version = versions.pop()
+    parts = tuple(int(part) for part in version.split("."))
+    assert len(parts) == 3 and parts >= (10, 6, 2)
+    for name in family:
+        if name in manifest["devDependencies"]:
+            assert manifest["devDependencies"][name] == f"^{version}"
+            assert lock["packages"][""]["devDependencies"][name] == f"^{version}"
+        assert name not in manifest["dependencies"]
+
+    chromatic = "@chromatic-com/storybook"
+    chromatic_version = lock["packages"][f"node_modules/{chromatic}"]["version"]
+    chromatic_parts = tuple(int(part) for part in chromatic_version.split("."))
+    assert len(chromatic_parts) == 3 and chromatic_parts >= (5, 5, 1)
+    assert manifest["devDependencies"][chromatic] == f"^{chromatic_version}"
+    assert lock["packages"][""]["devDependencies"][chromatic] == f"^{chromatic_version}"
+    assert chromatic not in manifest["dependencies"]

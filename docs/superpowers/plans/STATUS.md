@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **188/512 (36,7%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-188-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **189/512 (36,9%)**; [ledger](../../audits/AUDIT-2026-10.md#inventory-verification-and-storybook-security-follow-through-189-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -843,3 +843,39 @@ AUD-398 пока tests-first: изолированный временный fixt
 обновление готовится без исключений. Описанный риск касается dev-server,
 открытого в браузере, а не статической Storybook сборки. Global CI/NATS
 не приняты; baseline 319, policy 294, required 78 и прочие границы прежние.
+
+
+## Проверка AUD-150 и исправление Storybook
+
+Нижняя граница **189/512 (36,9%)**, остаток323. Добавлен только AUD-150:
+три scope-регрессии прошли в119432893457, проверяемые файлы совпадают
+с текущими. Существующая реализация уже корректна, лишней правки нет.
+AUD-149 получает два существующих Go masking-теста в раннем cohort;
+приёмка ждёт hosted PASS. Очередь:3 quick,111 moderate,84 complex,125 uncertain.
+
+Storybook обновлён согласованно до10.6.2, Chromatic addon до5.5.1.
+Обе версии от12 октября старше cooldown; исключения не нужны.
+Изменены11 package entries и root lock floors, остальные2377 сохранены.
+Integrity metadata взяты из immutable публичного lock, обычный npm ci
+ещё должен подтвердить загрузку. Добавлены floor/alignment contract и
+bounded static Storybook build без dev-server, публикации, токена или
+ослабления origin-защит. Chromatic workflow не включается.
+
+Новое npm audit/static build и общий CI ещё не приняты; NATS остаётся
+отдельно. Required78, baseline319, policy294, Gitleaks25 и finite131 прежние.
+
+
+На a7fabb quick Vitest прошёл95/95, frontend lint/format тоже. Node suite:
+657 PASS и один ожидаемый AUD-398 FAIL: CI ошибочно принял focused fixture,
+при успешном контрольном запуске вне CI. Добавлен только forbidOnly для CI.
+Security/types прошёл mypy, но detect-secrets потребовал metadata refresh:
+одна прежняя запись en/auth.json сдвинулась211→212; применён точный hosted
+diff с timestamp19:42:39. Все319 identities и флаги неизменны.
+AUD-395/396 пока не засчитаны до чистой повторной проверки.
+
+
+Следующая verification-only пачка: AUD-020/021/074/217/222. Текущий код
+уже содержит исправления; существующие suites включены в quick cohort,
+для категории добавлены явные «Мастер-класс»/Workshop cases с одинаковыми
+canonical metadata. Production-код этих пяти находок не меняется,
+новая приёмка пока не заявлена.
