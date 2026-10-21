@@ -211,3 +211,19 @@ fallback; cancellation и неожиданные ошибки не скрыва�
 контроля RuntimeError/ValueError. Собственные GREEN, actual outage и приёмка
 AUD-342 ещё требуются. Ledger остаётся 168/512 (32,8%); последний полностью
 принятый CI по-прежнему e15027a.
+
+
+## Сверка исходного AUD-342, 2026-10-21 02:20 UTC
+
+На 8d45a636 consumer job 118997184302: 957 PASS / один deselected и
+239 policy PASS. Context/NATS и GET/Spotify исправления подтверждены в
+своём тестовом объёме, но actual outage ещё не принят.
+
+Исходные строки AUD-342 относятся к POST обновления токена, а не GET.
+Предыдущее сопоставление было неверным; GET-only GREEN не закрывает находку.
+Добавлены 16 refresh transport tests-first случаев и три helper controls,
+без изменения production refresh. Ledger остаётся 168/512 (32,8%).
+
+Go scanner обнаружил GO-2026-6809 в 1.26.9; официальные fixed версии,
+остальные активные Go pins и границы policy проверяются отдельно.
+Полный CI не принят, предупреждение не подавляется.

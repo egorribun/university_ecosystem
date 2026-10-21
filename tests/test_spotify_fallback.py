@@ -689,3 +689,142 @@ async def test_now_playing_propagates_unexpected_get_errors_and_counts_failure(
     assert get_calls == 1
     assert breaker.failure_count == 1
     assert breaker.metrics.failed_calls == 1
+
+
+def _forbid_spotify_playback_get(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def unexpected_get(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("Playback GET must not follow a failed token refresh")
+
+    monkeypatch.setattr(spotify_api._spotify_http_client, "get", unexpected_get)
+
+
+@pytest.mark.parametrize(
+    "transport_error",
+    [
+        pytest.param(httpx.ConnectError, id="connect-error"),
+        pytest.param(httpx.ReadError, id="read-error"),
+        pytest.param(httpx.WriteError, id="write-error"),
+        pytest.param(httpx.ReadTimeout, id="read-timeout"),
+    ],
+)
+@pytest.mark.parametrize("token_state", ("expired", "missing"))
+@pytest.mark.parametrize("has_cached_track", [False, True], ids=["no-cache", "cached"])
+@pytest.mark.asyncio(loop_scope="session")
+async def test_now_playing_falls_back_on_refresh_transport_errors(
+    async_client: AsyncClient,
+    user_factory: Any,
+    db_session: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    transport_error: type[httpx.TransportError],
+    token_state: str,
+    has_cached_track: bool,
+) -> None:
+    user, password = await _prepare_spotify_transport_user(
+        user_factory, db_session, has_cached_track=has_cached_track
+    )
+    if token_state == "expired":
+        user.spotify.token_expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    else:
+        user.spotify.access_token = None
+    user.spotify.scope = "user-read-currently-playing"
+    user.spotify.spotify_user_id = f"spotify-{uuid.uuid4().hex}"
+    user.spotify.display_name = "Stored Spotify Profile"
+    await db_session.commit()
+    await db_session.refresh(user.spotify)
+    fields = (
+        "spotify_user_id",
+        "display_name",
+        "access_token",
+        "refresh_token",
+        "token_expires_at",
+        "scope",
+        "is_connected",
+        "is_playing",
+        "last_checked_at",
+        "last_track_id",
+        "last_track_name",
+        "last_artist_name",
+        "last_album_name",
+        "last_album_image_url",
+        "last_track_url",
+    )
+    before = {name: getattr(user.spotify, name) for name in fields}
+    breaker = _fresh_spotify_circuit_breaker()
+    monkeypatch.setattr(spotify_api, "_spotify_circuit_breaker", breaker)
+    post_calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def fail_post(url: str, **kwargs: Any) -> None:
+        post_calls.append((url, kwargs))
+        raise transport_error("Spotify token refresh transport failure")
+
+    monkeypatch.setattr(spotify_api._spotify_http_client, "post", fail_post)
+    _forbid_spotify_playback_get(monkeypatch)
+    headers = await _login(async_client, user, password)
+    response = await async_client.get("/spotify/now-playing", headers=headers)
+
+    assert len(post_calls) == 1
+    assert post_calls[0][0] == "https://accounts.spotify.com/api/token"
+    assert post_calls[0][1]["data"] == {
+        "grant_type": "refresh_token",
+        "refresh_token": before["refresh_token"],
+    }
+    assert breaker.failure_count == 1
+    assert breaker.metrics.failed_calls == 1
+    assert breaker.metrics.total_calls == 1
+    if has_cached_track:
+        assert response.status_code == 200
+        body = response.json()
+        assert body["is_playing"] is False
+        assert body["track_id"] == before["last_track_id"]
+        assert body["track_name"] == before["last_track_name"]
+        assert body["artists"] == [before["last_artist_name"]]
+        assert body["album_name"] == before["last_album_name"]
+        assert body["album_image_url"] == before["last_album_image_url"]
+        assert body["track_url"] == before["last_track_url"]
+    else:
+        assert response.status_code == 204
+        assert response.content == b""
+    await db_session.refresh(user.spotify)
+    assert {name: getattr(user.spotify, name) for name in fields} == before
+
+
+@pytest.mark.parametrize(
+    ("error_type", "expected_failures"),
+    [
+        pytest.param(asyncio.CancelledError, 0, id="cancelled"),
+        pytest.param(RuntimeError, 1, id="runtime-error"),
+        pytest.param(ValueError, 1, id="value-error"),
+    ],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_refresh_preserves_cancellation_and_unexpected_error_identity(
+    user_factory: Any,
+    db_session: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[BaseException],
+    expected_failures: int,
+) -> None:
+    user, _ = await _prepare_spotify_transport_user(
+        user_factory, db_session, has_cached_track=True
+    )
+    user.spotify.access_token = None
+    await db_session.commit()
+    await db_session.refresh(user.spotify)
+    breaker = _fresh_spotify_circuit_breaker()
+    monkeypatch.setattr(spotify_api, "_spotify_circuit_breaker", breaker)
+    failure = error_type("Spotify refresh control failure")
+    post_calls: list[str] = []
+
+    async def fail_post(url: str, **kwargs: Any) -> None:
+        post_calls.append(url)
+        raise failure
+
+    monkeypatch.setattr(spotify_api._spotify_http_client, "post", fail_post)
+    _forbid_spotify_playback_get(monkeypatch)
+    with pytest.raises(error_type) as raised:
+        await _ensure_access_token(db_session, user, locale="en")
+    assert raised.value is failure
+    assert post_calls == ["https://accounts.spotify.com/api/token"]
+    assert breaker.failure_count == expected_failures
+    assert breaker.metrics.failed_calls == expected_failures
+    assert breaker.metrics.total_calls == expected_failures
