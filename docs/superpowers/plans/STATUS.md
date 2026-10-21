@@ -455,3 +455,28 @@ Actual Owned 119082103077 на 96c4e47 уже проходит прежние pr
 GO-2026-6809. Это не разрешение на новые scanner dispositions, подавления,
 baseline/gate изменения, merge или deploy. Изменения Go и собственные проверки
 ещё предстоят.
+
+### 2026-10-21: owner-approved Go security refresh, validation pending
+
+The owner approved Go 1.26.9 -> 1.26.10 and fuzz Go 1.27.2 -> 1.27.3,
+with corresponding verified official image indexes, as a narrow exception
+to the seven-day cooldown for GO-2026-6809. Earlier pending-approval notes
+remain historical. Source `133f87d` reproduces reachable
+`crypto/x509@go1.26.9`, fixed in `go1.26.10`, with exit 3 in the
+[required Go vulnerability scan](https://github.com/egorribun/university_ecosystem/actions/runs/39600982588/job/119225455954).
+
+Active toolchain/image pins, benchmark expectations, current developer docs,
+and independent assertions are synchronized. The pin contract now covers
+all 14 active Go workflows and all nine module files plus the workspace.
+Go minimum directives remain 1.26.4. The exact exception and official
+provenance are recorded in `docs/DEPENDENCY_COOLDOWN_EMERGENCY.md`.
+
+The preceding source `133f87d` has 1,184 consumer tests passing (one existing
+deselection) and all 239 policy tests passing, with lint and security/type
+hooks successful. Its tested merge `6b2c344` has the identical tree
+`a89754933a89dad213e777e6c7a0025bfc9168bb`. These results do not transfer
+to the new Go pins: fresh hosted compatibility and security evidence is
+pending. No module dependency, scanner disposition, baseline319, required78,
+blocking CodeQL, hook, or finite131 migration exception is changed.
+No merge or deployment is authorized or performed. Accepted audit progress
+remains **170/512**; this refresh does not accept AUD-466 or live NATS.

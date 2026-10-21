@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
 # Build stage
-FROM golang:1.26.9-alpine3.24@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS builder
+FROM golang:1.26.10-alpine3.24@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS builder
 
 WORKDIR /app
 
@@ -37,7 +37,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # Build the health probe from checksum-verified source with the same patched Go
 # toolchain as the service. Upstream release binaries can lag behind Go and
 # transitive security patches even when the release itself is current.
-FROM golang:1.26.9-alpine3.24@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS health-probe
+FROM golang:1.26.10-alpine3.24@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS health-probe
 ARG GRPC_HEALTH_PROBE_VERSION=v0.4.57
 ENV GOTOOLCHAIN=local
 WORKDIR /probe

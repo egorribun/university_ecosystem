@@ -2784,7 +2784,7 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
     dockerfile = _read("services/caddy/Dockerfile")
     full_caddy = _compose("docker-compose.full.yml")["services"]["caddy"]
 
-    assert "golang:1.26.9-alpine3.24@sha256:" in dockerfile
+    assert "golang:1.26.10-alpine3.24@sha256:" in dockerfile
     runtime_image = (
         "FROM caddy:2.11.7-alpine@sha256:"
         "d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f"
@@ -3024,8 +3024,8 @@ def test_protobuf_generator_uses_the_repository_go_toolchain() -> None:
     dockerfile = _read("Dockerfile.protogen")
 
     assert (
-        "golang:1.26.9-alpine3.24@sha256:"
-        "cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0"
+        "golang:1.26.10-alpine3.24@sha256:"
+        "9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca"
     ) in dockerfile
     assert 'ARG BUF_VERSION="v1.73.0"' in dockerfile
     assert dockerfile.count("GOBIN=/usr/local/bin go install") == 3
@@ -3040,8 +3040,8 @@ def test_protobuf_generator_uses_the_repository_go_toolchain() -> None:
 
 def test_go_service_builders_use_the_patched_repository_toolchain() -> None:
     expected = (
-        "golang:1.26.9-alpine3.24@sha256:"
-        "cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0"
+        "golang:1.26.10-alpine3.24@sha256:"
+        "9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca"
     )
 
     for relative_path in (

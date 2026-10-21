@@ -180,3 +180,24 @@ The corrected comparison uses exact millisecond truncation, not a tolerance;
 the unmodified raw PyPI timestamp still must meet the original cutoff.
 Both the observed truncation and distinct-millisecond rejection controls pass
 inside the successful generator. No upload-time boundary was relaxed.
+
+## Owner-approved Go exception, 2026-10-21
+
+The owner approved a narrowly scoped exception to the seven-day cooldown for
+Go 1.26.10, the fixed release for GO-2026-6809 (CVE-2026-111943), and fuzz-toolchain
+Go 1.27.3. The exception covers only those compiler pins and their corresponding
+official Go container images. The multi-platform index digests are:
+
+- alpine3.24: `sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca`
+- bookworm: `sha256:fe3da92a5cb2881e4aa75e625cb0b7c50571632fb4cf340cbe53e6ccdcffdd51`
+
+These image indexes were verified against docker-library/repo-info commit
+01a4608bd03cd0733af707340902e3308f7b2e76 (2026-10-21 08:01:24 UTC).
+See the [official advisory](https://github.com/golang/vulndb/blob/e0bad56276e98711a598adbab976de7cd914013a/data/reports/GO-2026-6809.yaml),
+[alpine record](https://github.com/docker-library/repo-info/blob/01a4608bd03cd0733af707340902e3308f7b2e76/repos/golang/remote/1.26.10-alpine3.24.md),
+and [bookworm record](https://github.com/docker-library/repo-info/blob/01a4608bd03cd0733af707340902e3308f7b2e76/repos/golang/remote/1.26.10-bookworm.md).
+
+The seven-day policy for all other releases remains unchanged. No module or
+dependency requirements, go.mod/go.sum, scanner policy or dispositions,
+suppressions, baseline, hooks, required contexts, merge, or deployment are part
+of this approval. Ordinary security, test, and hosted gates remain required.
