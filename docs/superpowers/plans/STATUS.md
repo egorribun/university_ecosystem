@@ -312,3 +312,12 @@ callback/metadata boundary и четыре конечных inventory verdicts.
 
 Собственные GREEN и actual сигнал ещё ожидаются. Причина реального NATS
 отказа не объявлена установленной, ledger остаётся 169/512.
+
+
+## AUD-465: последовательный tests-first regression
+
+Добавлена HTTP-проверка запрета retry для persisted COMPLETED с localized409
+и неизменностью четырёх изменяемых handler полей. FAILED/PENDING/stale RETRYING
+сохраняют успешный retry; прежний404 test не изменён. Полный test_api_dlq
+включён в ранний прогон. Production пока не изменён, RED ещё не подтверждён.
+Worker/admin race не считается покрытым; ledger остаётся 169/512.
