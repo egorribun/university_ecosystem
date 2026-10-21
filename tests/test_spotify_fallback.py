@@ -641,3 +641,51 @@ async def test_now_playing_propagates_cancellation_without_breaker_failure(
     assert get_calls == 1
     assert breaker.failure_count == 0
     assert breaker.metrics.failed_calls == 0
+
+
+@pytest.mark.parametrize(
+    "unexpected_error",
+    [
+        pytest.param(RuntimeError, id="runtime-error"),
+        pytest.param(ValueError, id="value-error"),
+    ],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_now_playing_propagates_unexpected_get_errors_and_counts_failure(
+    user_factory: Any,
+    db_session: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    unexpected_error: type[Exception],
+) -> None:
+    user, _ = await _prepare_spotify_transport_user(
+        user_factory, db_session, has_cached_track=True
+    )
+    breaker = _fresh_spotify_circuit_breaker()
+    monkeypatch.setattr(spotify_api, "_spotify_circuit_breaker", breaker)
+    get_calls = 0
+    failure = unexpected_error("unexpected Spotify client failure")
+
+    async def fail_get(url: str, **kwargs: Any) -> None:
+        nonlocal get_calls
+        get_calls += 1
+        raise failure
+
+    monkeypatch.setattr(spotify_api._spotify_http_client, "get", fail_get)
+    request = Request(
+        {
+            "type": "http",
+            "query_string": b"",
+            "headers": [(b"accept-language", b"en")],
+        }
+    )
+    with pytest.raises(unexpected_error) as raised:
+        await call_injected(
+            spotify_api.now_playing,
+            request,
+            user=user,
+            provides={"AsyncDatabaseSession": db_session},
+        )
+    assert raised.value is failure
+    assert get_calls == 1
+    assert breaker.failure_count == 1
+    assert breaker.metrics.failed_calls == 1

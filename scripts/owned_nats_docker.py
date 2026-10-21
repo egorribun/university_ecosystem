@@ -314,7 +314,7 @@ def _context_snapshot(
             or not _absolute_path(snapshot.executable, allow_root=False)
             or not _valid_executable_identity(snapshot.executable_identity)
             or type(snapshot.cwd) is not str
-            or snapshot.cwd != owner.worktree
+            or snapshot.cwd not in (owner.repository, owner.worktree)
             or not _absolute_path(snapshot.cwd, allow_root=False)
             or type(snapshot.environment) is not tuple
             or len(snapshot.environment) > 512
@@ -356,7 +356,7 @@ def _context_snapshot(
         live_stand.StandError,
     ):
         return None
-    return snapshot, home, config_directory
+    return replace(snapshot, cwd=owner.worktree), home, config_directory
 
 
 def _context_process_result(

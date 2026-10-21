@@ -194,3 +194,20 @@ owner.worktree=state root. Добавлены три real-context tests-first с
 но production guard пока не изменён. Частные marker bytes не исследовались;
 дополнительный reader issue не исключён. Ledger остаётся 168/512 (32,8%),
 полный CI и actual NATS не приняты.
+
+
+## Минимальные исправления после RED, 2026-10-21 02:02 UTC
+
+На ea0d20ea consumer job 118992144847 подтвердил именно 9 целевых FAIL /
+946 PASS / один deselected и 239 policy PASS: восемь HTTP transport ошибок
+Spotify и один repository-CWD отказ NATS. Подготовка пароля теперь проходит;
+cancellation и state/unrelated-CWD controls PASS. Оба pre-commit job и inventory
+SUCCESS, метаданные baseline согласованы.
+
+NATS принимает только два подписанных корня запуска и привязывает вложенные
+Docker reads к owner.worktree, без chdir и без ослабления остальных guards.
+Spotify ловит только TransportError вне breaker context и использует прежний
+fallback; cancellation и неожиданные ошибки не скрываются. Добавлены два
+контроля RuntimeError/ValueError. Собственные GREEN, actual outage и приёмка
+AUD-342 ещё требуются. Ledger остаётся 168/512 (32,8%); последний полностью
+принятый CI по-прежнему e15027a.

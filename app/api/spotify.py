@@ -500,7 +500,7 @@ async def now_playing(
                     "https://api.spotify.com/v1/me/player/currently-playing",
                     headers={"Authorization": f"Bearer {access_token}"},
                 )
-        except CircuitBreakerOpenError:
+        except (CircuitBreakerOpenError, httpx.TransportError):
             return None
         return response
 
@@ -510,7 +510,7 @@ async def now_playing(
 
     r = await _request(token)
     if r is None:
-        # Circuit breaker is open, return fallback data
+        # An open breaker or transport failure retains the last known track.
         return _as_response(_fallback_now_playing(user))
     if r.status_code == 401:
         # Access tokens occasionally expire slightly earlier than advertised or
