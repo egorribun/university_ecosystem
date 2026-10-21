@@ -5701,6 +5701,40 @@
         "path": "tests/test_security_hardening_workflow_contract.py",
         "type": "Hex High Entropy String",
         "hashed_secret_bytes": [
+          131,
+          63,
+          18,
+          0,
+          78,
+          67,
+          74,
+          123,
+          14,
+          25,
+          171,
+          136,
+          54,
+          100,
+          222,
+          100,
+          239,
+          17,
+          240,
+          2
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public certifi 2026.10.19 wheel checksum from https://pypi.org/pypi/certifi/2026.10.19/json; exact source reference tests/test_security_hardening_workflow_contract.py:158. Matches the wheel artifact in uv.lock and security/detect-secrets-requirements.txt. Owner approved exactly this identity on 2026-10-21; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-21",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_security_hardening_workflow_contract.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
           225,
           47,
           170,

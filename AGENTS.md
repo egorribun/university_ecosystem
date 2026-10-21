@@ -294,6 +294,18 @@ for the MVP release; the current plan is
      Approval does not establish final-source scan, tests, hosted CI or release
      acceptance; each still requires its own evidence.
 
+     On 2026-10-21 UTC, the owner approved exactly one additional public
+     certifi 2026.10.19 wheel-checksum identity in
+     `tests/test_security_hardening_workflow_contract.py`, detector
+     `Hex High Entropy String`, under `public_integrity_digest`.
+     Its exact path/type/digest record is in the disposition policy, reviewed
+     2026-10-21 and expiring 2027-01-10. The prior 282 records remain unchanged,
+     bringing the approved scope to 283. No further identity, baseline entry,
+     inline pragma, broad exclusion, expiry extension or gate change is
+     authorized. The independent checksum assertion remains. Baseline319,
+     all 78 required context/app pairs, CodeQL, hooks and finite131 remain
+     unchanged; fresh source validation and hosted checks are still required.
+
    - `gitleaks` (repo secret scanning). On 2026-10-20 the owner approved
      exactly 25 immutable historical commit/path/rule/line fingerprints:
      24 public, synthetic, or prose findings and one separately reviewed

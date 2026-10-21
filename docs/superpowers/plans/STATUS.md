@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **165/512 (32,2%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-165-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **168/512 (32,8%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-168-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -153,3 +153,23 @@ Actual 931 Owned завершился 38 browser PASS / два SKIP, Caddy verif
 строке удалён; нового подавления нет. Scanner и contract recheck обязательны,
 новая identity при обнаружении требует отдельного решения. Полный CI пока
 не принят; последний общий checkpoint — e15027a.
+
+
+## Контрольная точка 2026-10-21, 01:16 UTC
+
+Приняты AUD-195 (history sender projection), AUD-252 (actual Compose config)
+и AUD-335 (пять native keyboard pickers в JSDOM). Ledger — 168/512 (32,8%).
+На 37021397 все четыре frontend shard, static gates и production build SUCCESS;
+границы каждого доказательства записаны в ledger, deployment не заявлен.
+
+На 02f59138 consumer job 118978366223: 902 PASS / один deselected и
+239 policy PASS; все 47 checkpoint RED исправлены. Actual NATS ещё ожидается.
+Сканер выявил ровно новую публичную certifi checksum identity. Владелец явно
+разрешил её 2026-10-21 в 01:13 UTC до 2027-01-10: добавлена одна запись,
+283 всего, прежние 282 неизменны. Baseline319 и все quality gates сохранены;
+собственный scanner recheck обязателен.
+
+Следующий tests-first этап — восемь Spotify transport fallback сценариев
+и cancellation control; production Spotify не менялся. Полный fallback module
+и исправленный tooling-lock contract включены в early cohort.
+Полный CI пока не принят; последний общий checkpoint — e15027a.
