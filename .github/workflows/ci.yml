@@ -1591,6 +1591,7 @@ jobs:
             tests/test_security_hardening_workflow_contract.py::test_npm_failure_metadata_is_diagnostic_only_and_keeps_audit_blocking \
             tests/test_gitleaks_hygiene_contract.py::test_gitleaks_workflow_pins_complete_graph_scanner_and_redacted_artifact \
             tests/test_units.py::test_api_version_constants \
+            tests/test_task_registry_closure.py::test_shutdown_deadline_keeps_cancellation_resistant_task_tracked \
             tests/test_cache_settings_closure.py::test_cache_warmup_properties_preserve_uuid_ids_and_skip_invalid_tokens \
             tests/test_cache_settings_closure.py::test_cache_warmup_uuid_ids_load_from_environment \
             tests/test_cache_settings_closure.py::test_cache_warmup_properties_coerce_and_deduplicate_values \

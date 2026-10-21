@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **213/512 (41,6%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-213-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **214/512 (41,8%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-214-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -1034,3 +1034,26 @@ Ledger не включает AUD-044. Virtualenv 21.14.9 ждёт точное c
 AUD-044 ждёт final-source GREEN и остаётся OPEN; ledger 213/512.
 Virtualenv cooldown-разрешение пока не получено, пакеты и security policy
 не меняются. Global CI/NATS не приняты, merge/deploy отсутствуют.
+
+
+## AUD-044 принята; AUD-039 получает реальный deadline-тест
+
+Принята только AUD-044: **214/512 (41,8%)**, остаток 298
+(89 moderate, 84 complex, 125 uncertain). Source 4e71749 / merge e9fa51e5
+имеют одинаковый tree 2f934215. Contract 119521583099 — SUCCESS:
+1387 PASS / 1 deselected за 411,13 s, затем 241 policy PASS за 35,61 s.
+Все семь целевых UUID/config/fan-out случаев прошли; lint, security/types
+и inventory также PASS. Это не новая live-проверка наполнения кеша.
+
+Для AUD-039 старый mocked timeout oracle заменён настоящей coroutine,
+которая выдерживает повторную cancellation до release Event. Внешний
+bounded asyncio.wait проверяет возврат shutdown и сохранение ownership;
+finally освобождает и ограниченно дожидается обеих задач, затем callback
+подтверждает удаление из registry. Новых sleeps и mocked wait/gather нет,
+остальные пять тестов сохранены. Production пока не меняется до RED.
+Гарантия касается ограниченного ожидания, не принудительного завершения
+Python coroutine или процесса. AUD-039 остаётся OPEN.
+
+Virtualenv cooldown-решение ещё ожидается; пакеты и политики не меняются.
+Global CI/NATS не приняты; все finite security/coverage границы сохранены,
+merge/deploy не выполняются.

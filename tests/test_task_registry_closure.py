@@ -1,7 +1,7 @@
 """Closure tests for successful completion and timeout shutdown paths."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -75,21 +75,46 @@ async def test_shutdown_returns_immediately_for_empty_registry():
 
 
 @pytest.mark.asyncio
-async def test_shutdown_logs_and_clears_tasks_after_timeout():
+async def test_shutdown_deadline_keeps_cancellation_resistant_task_tracked():
     registry = TaskRegistry()
-    task = MagicMock()
-    registry._tasks.add(task)
+    started = asyncio.Event()
+    cancel_seen = asyncio.Event()
+    release = asyncio.Event()
+    callback_finished = asyncio.Event()
 
-    with (
-        patch("app.core.task_registry.asyncio.gather", return_value=object()),
-        patch(
-            "app.core.task_registry.asyncio.wait_for",
-            new_callable=AsyncMock,
-            side_effect=TimeoutError,
-        ) as wait_for,
-    ):
-        await registry.shutdown(timeout=0.1)
+    async def cancellation_resistant() -> None:
+        started.set()
+        while not release.is_set():
+            try:
+                await release.wait()
+            except asyncio.CancelledError:
+                cancel_seen.set()
 
-    task.cancel.assert_called_once()
-    wait_for.assert_awaited_once()
-    assert not registry._tasks
+    child = registry.create_task(cancellation_resistant(), name="deadline-resistant")
+    # The registry callback was registered first; this signal follows its cleanup.
+    child.add_done_callback(lambda _task: callback_finished.set())
+    shutdown_task: asyncio.Task[None] | None = None
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1.0)
+        shutdown_task = asyncio.create_task(registry.shutdown(timeout=0.05))
+        await asyncio.wait_for(cancel_seen.wait(), timeout=1.0)
+
+        done, _ = await asyncio.wait({shutdown_task}, timeout=0.5)
+        assert shutdown_task in done, "shutdown exceeded its configured deadline"
+        await shutdown_task
+        assert not child.done(), "the test task must still resist cancellation"
+        assert child in registry._tasks, "pending tasks must remain tracked"
+    finally:
+        release.set()
+        tasks = {child}
+        if shutdown_task is not None:
+            tasks.add(shutdown_task)
+        _, pending = await asyncio.wait(tasks, timeout=1.0)
+        if pending:
+            for task in pending:
+                task.cancel()
+            _, pending = await asyncio.wait(pending, timeout=1.0)
+        assert not pending, "test cleanup left a real task pending"
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.wait_for(callback_finished.wait(), timeout=1.0)
+        assert child not in registry._tasks
