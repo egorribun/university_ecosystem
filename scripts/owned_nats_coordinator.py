@@ -8,7 +8,7 @@ No runtime adapter or command invokes this coordinator yet.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
@@ -190,10 +190,24 @@ class OutageStage(StrEnum):
     COMPLETE = "complete"
 
 
+class OutageCheckpoint(StrEnum):
+    ACQUIRE_LOCK = "acquire_lock"
+    READ_SIGNED_OWNER = "read_signed_owner"
+    OBSERVE_RUNTIME = "observe_runtime"
+    READ_POLICY = "read_policy"
+    READ_ADMISSION = "read_admission"
+    LOGIN_ADMIN = "login_admin"
+    CREATE_DM_ONCE = "create_dm_once"
+    READ_DM = "read_dm"
+    PENDING_COUNT = "pending_count"
+    COORDINATOR_EXCEPTION = "coordinator_exception"
+
+
 @dataclass(frozen=True)
 class OutageResult:
     outcome: OutageOutcome
     stage: OutageStage
+    checkpoint: OutageCheckpoint | None = field(default=None, compare=False)
 
 
 class WaitVerdict(StrEnum):
@@ -503,9 +517,11 @@ class _Coordinator:
         self.sleep = sleep
         self.primary = Deadline.after(180, clock=clock)
         self.stage = OutageStage.PREFLIGHT
+        self.checkpoint: OutageCheckpoint | None = OutageCheckpoint.ACQUIRE_LOCK
 
     def _preflight(self) -> _Context:
         inventory = self.primary.child(45)
+        self.checkpoint = OutageCheckpoint.READ_SIGNED_OWNER
         owner = _call(inventory, self.ports.read_signed_owner)
         _require(
             owner.stack == "core"
@@ -515,6 +531,7 @@ class _Coordinator:
         daemon = owner.daemon_fingerprint
         if daemon is None:
             raise _EvidenceFailure
+        self.checkpoint = OutageCheckpoint.OBSERVE_RUNTIME
         before = _call(inventory, self.ports.observe_runtime, owner, daemon)
         _require(
             before.daemon_fingerprint == daemon
@@ -523,21 +540,26 @@ class _Coordinator:
             is InventoryVerdict.VALID
         )
         services = {row.service: row for row in before.containers}
+        self.checkpoint = OutageCheckpoint.READ_POLICY
         policy = _call(
             self.primary, self.ports.read_policy, owner, services["outbox-worker"]
         )
         _require(validate_worker_policy(policy) is WorkerPolicyVerdict.VALID)
+        self.checkpoint = OutageCheckpoint.READ_ADMISSION
         admin, peer = _actors(
             _call(self.primary, self.ports.read_admission, owner, services["postgres"])
         )
+        self.checkpoint = OutageCheckpoint.LOGIN_ADMIN
         login = _call(self.primary, self.ports.login_admin, owner, admin.id)
         _require(
             type(login.status_code) is int
             and login.status_code == 200
             and login.actor_id == admin.id
         )
+        self.checkpoint = OutageCheckpoint.CREATE_DM_ONCE
         created = _call(self.primary, self.ports.create_dm_once, peer.id)
         chat_id = _chat_id(created, admin, peer)
+        self.checkpoint = OutageCheckpoint.READ_DM
         rows = _call(
             self.primary, self.ports.read_dm, owner, services["postgres"], chat_id
         )
@@ -761,10 +783,12 @@ class _Coordinator:
             _live(acquisition)
             _require(lease is not None)
             context = self._preflight()
+            self.checkpoint = OutageCheckpoint.PENDING_COUNT
             count = _call(
                 self.primary, self.ports.pending_count, context.owner, context.postgres
             )
             _require(type(count) is int and count == 0)
+            self.checkpoint = None
             self.stage = OutageStage.STOP
             stop_attempted = False
             try:
@@ -800,6 +824,7 @@ class _Coordinator:
             except Exception:
                 accepted = False
                 self.stage = OutageStage.CLEANUP
+                self.checkpoint = None
             finally:
                 if lease is not None:
                     try:
@@ -811,9 +836,10 @@ class _Coordinator:
                     except Exception:
                         accepted = False
                         self.stage = OutageStage.CLEANUP
+                        self.checkpoint = None
         if accepted:
             return OutageResult(OutageOutcome.ACCEPTED, OutageStage.COMPLETE)
-        return OutageResult(OutageOutcome.FAILED, self.stage)
+        return OutageResult(OutageOutcome.FAILED, self.stage, self.checkpoint)
 
 
 def run_owned_outage(ports: OutagePorts, *, clock: Clock, sleep: Sleep) -> OutageResult:

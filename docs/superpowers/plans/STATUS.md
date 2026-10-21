@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **164/512 (32,0%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-164-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **165/512 (32,2%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-165-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -133,3 +133,23 @@ Manifest source_sha остаётся null. Actual RC, main/bootstrap activation,
 Actual 931 Owned завершился 38 browser PASS / два SKIP, Caddy verifiedprojects2, затем NATS outcome=failed stage=preflight и штатный stop/receipt. Это ещё не точная причина: facade fallback тоже возвращает preflight при неожиданном исключении coordinator. Добавлены 47 tests-first cases для closed operation checkpoint, cleanup precedence и privacy; production NATS в этом этапе не меняется, RED ещё ожидается.
 
 Следующие existing-fix proofs: пять AUD-195 случаев и 24 actual Compose cases AUD-252 направлены в early cohort. Для Compose нужна именно именованная PASS, не capability SKIP. AUD-467 остаётся до получения именованного focused evidence. Все бюджеты и финальные quality gates сохранены.
+
+
+## Контрольная точка 2026-10-21, 01:00 UTC
+
+Принят AUD-467: семь именованных composed Settings cases в focused job
+118962086178, всего 226 PASS. Ledger — 165/512 (32,2%). AUD-471 повторно
+не считается. Тот же job подтвердил 835 frozen-RC PASS за 119,71 s и
+итоговые 100% валидатора при прежнем пятиминутном лимите.
+
+На 37021397 consumer job 118971887144 дал ровно 47 ожидаемых checkpoint RED,
+855 PASS / один deselected и 239 policy PASS. Добавлена минимальная
+типизированная диагностика preflight операций и coordinator exception,
+без изменения guards, бюджетов и cleanup. Собственные GREEN и actual outage
+ещё требуются. AUD-195/252 имеют именованные PASS, но ждут отдельного ревью.
+
+Устаревшее ожидание certifi в tooling-lock тесте синхронизировано с уже
+одобренным 2026.10.19 и независимым wheel digest. Старый pragma на изменённой
+строке удалён; нового подавления нет. Scanner и contract recheck обязательны,
+новая identity при обнаружении требует отдельного решения. Полный CI пока
+не принят; последний общий checkpoint — e15027a.

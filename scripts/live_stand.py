@@ -9863,6 +9863,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "nats-outage":
             try:
                 from scripts.owned_nats_coordinator import (
+                    OutageCheckpoint,
                     OutageOutcome,
                     OutageResult,
                     OutageStage,
@@ -9881,15 +9882,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                 type(result) is not OutageResult
                 or type(result.outcome) is not OutageOutcome
                 or type(result.stage) is not OutageStage
+                or (
+                    result.checkpoint is not None
+                    and type(result.checkpoint) is not OutageCheckpoint
+                )
             ):
                 raise StandError("owned NATS acceptance failed reason=invalid_result")
             if (
                 result.outcome is not OutageOutcome.ACCEPTED
                 or result.stage is not OutageStage.COMPLETE
             ):
+                checkpoint = (
+                    ""
+                    if result.checkpoint is None
+                    else f" checkpoint={result.checkpoint.value}"
+                )
                 raise StandError(
                     "owned NATS acceptance failed "
                     f"outcome={result.outcome.value} stage={result.stage.value}"
+                    f"{checkpoint}"
                 )
         elif args.command == "up":
             up(args.ref, stack=args.stack)

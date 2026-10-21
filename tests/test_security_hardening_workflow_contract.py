@@ -155,7 +155,7 @@ def test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_lock
         "detect-secrets==1.5.0": "e24e7b9b5a35048c313e983f76c4bd09dad89f045ff059e354f9943bf45aa060",  # pragma: allowlist secret -- wheel checksum
         "PyYAML==6.0.3": "c458b6d084f9b935061bc36216e8a69a7e293a2f1e68bf956dcd9e6cbcd143f5",  # pragma: allowlist secret -- wheel checksum
         "requests==2.34.2": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",  # pragma: allowlist secret -- wheel checksum
-        "certifi==2026.7.22": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775",  # pragma: allowlist secret -- wheel checksum
+        "certifi==2026.10.19": "42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b",
         "charset-normalizer==3.5.2": "34276fd796040bf0993ab33a369aa572e6979c7aab225a88893667ad8eac8f7a",
         "idna==3.20": "a7db850025b95ded1eae8a46181a1a6c56c92c96f0e2b005d9ff8dc0210cab44",  # pragma: allowlist secret -- wheel checksum
         "urllib3==2.8.0": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",  # pragma: allowlist secret -- wheel checksum

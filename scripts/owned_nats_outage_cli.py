@@ -444,4 +444,8 @@ def run_owned_nats_outage(state_dir: str | Path, *, in_place: object) -> OutageR
             sleep=time.sleep,
         )
     except Exception:
-        return OutageResult(OutageOutcome.FAILED, OutageStage.PREFLIGHT)
+        return OutageResult(
+            OutageOutcome.FAILED,
+            OutageStage.PREFLIGHT,
+            coordinator.OutageCheckpoint.COORDINATOR_EXCEPTION,
+        )
