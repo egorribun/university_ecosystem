@@ -85,13 +85,15 @@ def test_nats_auth_token_file_errors_are_validation_errors(monkeypatch):
 
 
 def test_cache_warmup_properties_coerce_and_deduplicate_values():
+    first_group, second_group = uuid.uuid4(), uuid.uuid4()
+    first_user, second_user = uuid.uuid4(), uuid.uuid4()
     settings = CacheSettings(
-        cache_warmup_groups="1, bad, 2, 1",
-        cache_warmup_stats_users="3,invalid,4",
+        cache_warmup_groups=f"{first_group}, bad, {second_group}, {first_group}",
+        cache_warmup_stats_users=f"{first_user},invalid,{second_user}",
         cache_warmup_periods="30D, 90d, , 30d, 7D",
     )
-    assert settings.cache_warmup_group_ids == (1, 2, 1)
-    assert settings.cache_warmup_stats_user_ids == (3, 4)
+    assert settings.cache_warmup_group_ids == (first_group, second_group, first_group)
+    assert settings.cache_warmup_stats_user_ids == (first_user, second_user)
     assert settings.cache_warmup_period_keys == ("30d", "90d", "7d")
 
 

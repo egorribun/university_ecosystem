@@ -1015,3 +1015,22 @@ Catalog parse-once/fresh-next-call и malformed-unlisted tests прошли.
 Ledger не включает AUD-044. Virtualenv 21.14.9 ждёт точное cooldown-разрешение
 владельца; пакеты и политики не меняются. Все finite security/coverage
 границы сохранены, merge/deploy нет.
+
+
+## AUD-044: подтверждённый RED и локальное исправление
+
+На c1acbfc / merge bbfe99bd с одинаковым tree b7feb8f2 получены ровно
+три ожидаемых FAIL, 1382 PASS / 1 deselected за 400,85 s; затем policy:
+241 PASS за 37,35 s. CSV терял UUID при integer coercion, JSON-list
+отклонялся типом list[int]. Lint, security/types и inventory прошли.
+
+Два поля принимают строки или списки строк; локальный UUID parser
+сохраняет порядок/повторы и пропускает invalid tokens. Cached properties
+возвращают UUID tuples. Общий integer parser для image widths не меняется.
+Старый integer-only fixture приведён к реальному UUID-домену с сохранением
+проверок фильтрации и нормализации периодов. Четыре прежних input/fan-out
+теста добавлены в ранний запуск. Реальные данные и миграции не затронуты.
+
+AUD-044 ждёт final-source GREEN и остаётся OPEN; ledger 213/512.
+Virtualenv cooldown-разрешение пока не получено, пакеты и security policy
+не меняются. Global CI/NATS не приняты, merge/deploy отсутствуют.

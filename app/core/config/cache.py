@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from functools import cached_property
+from uuid import UUID
 
 from pydantic import ValidationInfo, field_validator
 
 from .base import (
     BaseAppSettings,
-    _coerce_int_list,
     _coerce_str_list,
     _load_file_secret,
     _validate_non_negative_int,
@@ -14,6 +14,16 @@ from .base import (
 )
 
 DEFAULT_REVOCATION_REDIS_URL = "redis://127.0.0.1:6380/0"
+
+
+def _coerce_uuid_list(values: list[str] | str) -> tuple[UUID, ...]:
+    identifiers: list[UUID] = []
+    for value in _coerce_str_list(values):
+        try:
+            identifiers.append(UUID(value))
+        except ValueError:
+            continue
+    return tuple(identifiers)
 
 
 class CacheSettings(BaseAppSettings):
@@ -30,8 +40,8 @@ class CacheSettings(BaseAppSettings):
     stats_cache_ttl_seconds: int = 180
     cache_l1_ttl_seconds: int = 60
     cache_warmup_enabled: bool = False
-    cache_warmup_groups: list[int] | str = ""
-    cache_warmup_stats_users: list[int] | str = ""
+    cache_warmup_groups: list[str] | str = ""
+    cache_warmup_stats_users: list[str] | str = ""
     cache_warmup_periods: list[str] | str = "30d,90d"
     cache_warmup_max_age_seconds: int = 120
 
@@ -99,12 +109,12 @@ class CacheSettings(BaseAppSettings):
         return self.cache_backend.strip().lower()
 
     @cached_property
-    def cache_warmup_group_ids(self) -> tuple[int, ...]:
-        return tuple(_coerce_int_list(self.cache_warmup_groups))
+    def cache_warmup_group_ids(self) -> tuple[UUID, ...]:
+        return _coerce_uuid_list(self.cache_warmup_groups)
 
     @cached_property
-    def cache_warmup_stats_user_ids(self) -> tuple[int, ...]:
-        return tuple(_coerce_int_list(self.cache_warmup_stats_users))
+    def cache_warmup_stats_user_ids(self) -> tuple[UUID, ...]:
+        return _coerce_uuid_list(self.cache_warmup_stats_users)
 
     @cached_property
     def cache_warmup_period_keys(self) -> tuple[str, ...]:
