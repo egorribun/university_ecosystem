@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **171/512 (33,4%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-171-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **172/512 (33,6%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-172-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -691,3 +691,24 @@ PG119314226606: все 57 AUD-256 PASS; весь shard267 PASS / 9 SKIP,
 Ledger остаётся **171/512** до own-source приёмки AUD-256.
 После её завершения: полный разбор остатка аудита, сначала самые простые
 и быстрые находки, далее по нарастающей сложности с учётом зависимостей.
+
+
+## Приёмка AUD-256 и переход к полной очереди остатка
+
+Принята только AUD-256: **172/512 (33,6%)**, остаются 340 исходных IDs.
+Source `c1aed673` / merge `28a17a87`, одинаковый tree
+`89e9a60c8e7edabc44a372aa8ad479362bbaf97d`.
+Consumer119368407218: 1311 PASS / 1 deselected, 478.58 s; policy240 PASS,
+48.41 s; все 114 event API cases и internal partial-time control прошли.
+PG119369545215: все57 AUD-256 PASS; весь shard267 PASS / 9 SKIP,231.59 s.
+Lint, types/security, inventory, baseline, spelling/Markdown, OpenAPI и
+migration gates зелёные. Это scoped приёмка, не полный global CI/NATS.
+
+Начат полный разбор остатка аудита: сначала простые и быстрые независимые
+находки, затем сложнее с учётом зависимостей. Отдельно появился блокер
+Dependency Review: virtualenv21.14.5 / GHSA-vxj4-q4g9-crj7.
+Исправленная21.14.7 выпущена12 октября и не требует обхода cooldown.
+В текущем tests-first checkpoint добавлена проверка dev-only floor/lock;
+пакет ещё не обновлён. Также в ранний cohort включён существующий
+scanner-bootstrap guard для наблюдения устаревшего ожидания Go1.26.9.
+Timeouts, required78, baseline319, policy284 и finite131 не изменены.

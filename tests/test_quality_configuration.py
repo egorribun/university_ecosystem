@@ -10,6 +10,8 @@ from xml.etree import ElementTree
 
 import pytest
 import yaml
+from packaging.requirements import Requirement
+from packaging.version import Version
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -942,3 +944,28 @@ def test_plain_trivyignore_carries_no_unowned_cve_suppressions() -> None:
     ]
 
     assert cve_entries == []
+
+
+def test_virtualenv_security_floor_is_dev_only_and_locked() -> None:
+    """Keep the patched activator in tooling without adding a runtime dependency."""
+    project = tomllib.loads(_read_text("pyproject.toml"))
+    dev_requirements = [
+        Requirement(item)
+        for item in project["dependency-groups"]["dev"]
+        if isinstance(item, str)
+    ]
+    virtualenv = [item for item in dev_requirements if item.name == "virtualenv"]
+    assert len(virtualenv) == 1
+    patched = Version("21.14.7")
+    assert any(
+        spec.operator == ">=" and Version(spec.version) >= patched
+        for spec in virtualenv[0].specifier
+    )
+    runtime = [Requirement(item) for item in project["project"]["dependencies"]]
+    assert all(item.name != "virtualenv" for item in runtime)
+
+    lock = tomllib.loads(_read_text("uv.lock"))
+    locked = [item for item in lock["package"] if item["name"] == "virtualenv"]
+    assert len(locked) == 1
+    assert Version(locked[0]["version"]) >= patched
+    assert locked[0]["version"] in virtualenv[0].specifier
