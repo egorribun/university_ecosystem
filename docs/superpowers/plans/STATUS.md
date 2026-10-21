@@ -173,3 +173,24 @@ Actual 931 Owned завершился 38 browser PASS / два SKIP, Caddy verif
 и cancellation control; production Spotify не менялся. Полный fallback module
 и исправленный tooling-lock contract включены в early cohort.
 Полный CI пока не принят; последний общий checkpoint — e15027a.
+
+
+## Уточнение проверки 2026-10-21, 01:43 UTC
+
+На a41af3e9 consumer job 118985551935: 9 FAIL / 914 PASS / один deselected,
+затем 239 policy PASS. Все девять новых Spotify cases остановились на
+подготовке пароля без uppercase/symbol, а не на transport fallback.
+Генератор исправлен без отключения password policy; production Spotify
+не менялся, корректный RED ещё нужен.
+
+Certifi tooling-lock contract именованно PASS. Baseline integrity job
+118985830896 SUCCESS; обычному hook требуется только точное обновление шести
+line_number и generated_at из hosted diff, все 319 identities/flags неизменны.
+Ruff continuation diff также применён без изменения проверки Authorization.
+
+Owned 02f59138 локализовал отказ в read_signed_owner callback, включающем
+Docker bootstrap. Подтверждено расхождение process cwd=repository и
+owner.worktree=state root. Добавлены три real-context tests-first сценария,
+но production guard пока не изменён. Частные marker bytes не исследовались;
+дополнительный reader issue не исключён. Ledger остаётся 168/512 (32,8%),
+полный CI и actual NATS не приняты.

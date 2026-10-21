@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import sys
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -15,6 +18,7 @@ from scripts.owned_nats_coordinator import OwnerEvidence
 from scripts.owned_nats_outage import Deadline
 from scripts.owned_nats_process import (
     LocalCleanup,
+    PrivateProcessRequest,
     PrivateProcessResult,
     ProcessOutcome,
 )
@@ -468,3 +472,94 @@ def test_runtime_inspect_template_indexes_optional_docker_map_fields() -> None:
     ):
         assert f'{{{{json (index $m "{field}")}}}}' in template
         assert f"$m.{field}" not in template
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux"
+    or os.name != "posix"
+    or "WSL_DISTRO_NAME" in os.environ
+    or "WSL_INTEROP" in os.environ,
+    reason="Core Docker pin resolution requires native Linux",
+)
+@pytest.mark.parametrize("launch_root", ("repository", "state", "unrelated"))
+def test_real_context_factory_binds_owned_state_from_signed_roots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, launch_root: str
+) -> None:
+    roots = {name: tmp_path / name for name in ("repository", "state", "unrelated")}
+    for root in roots.values():
+        root.mkdir()
+    home = tmp_path / "home"
+    home.mkdir()
+    binary_directory = tmp_path / "bin"
+    binary_directory.mkdir()
+    executable = binary_directory / "docker"
+    executable.write_text("fixture is never executed", encoding="utf-8")
+    executable.chmod(0o700)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("PATH", str(binary_directory))
+    for name in tuple(os.environ):
+        if name.upper().startswith("DOCKER_"):
+            monkeypatch.delenv(name)
+    monkeypatch.chdir(roots[launch_root])
+    original_cwd = Path.cwd()
+    owner = replace(
+        _owner(),
+        repository=str(roots["repository"].resolve()),
+        worktree=str(roots["state"].resolve()),
+    )
+    clock = FakeClock()
+    operation_deadline = Deadline.after(20.0, clock=clock)
+    responses = [
+        _result(b"default\n"),
+        _result(b'"unix:///var/run/docker.sock"\n'),
+        _result(f"{_DAEMON_ID}\n".encode()),
+    ]
+    calls: list[PrivateProcessRequest] = []
+
+    def run(
+        request: PrivateProcessRequest, *, deadline: Deadline
+    ) -> PrivateProcessResult:
+        assert deadline is operation_deadline
+        calls.append(request)
+        assert responses, "unexpected private process call"
+        return responses.pop(0)
+
+    monkeypatch.setattr(docker.process, "run_private_process", run)
+    captured = live_stand._new_live_docker_read_context()
+    assert captured.cwd == str(original_cwd)
+    assert captured.executable == str(executable.resolve())
+
+    resolved = docker.resolve_core_docker_pins(owner, deadline=operation_deadline)
+
+    assert Path.cwd() == original_cwd
+    if launch_root == "unrelated":
+        assert resolved is None
+        assert calls == []
+        assert len(responses) == 3
+        return
+    assert resolved is not None
+    pins, compose = resolved
+    assert pins.cwd == owner.worktree
+    assert pins.executable == str(executable.resolve())
+    assert docker._factory_provenance_valid(pins)
+    assert compose.project_directory == owner.repository
+    assert compose.env_file == f"{owner.worktree}/.env.docker"
+    assert compose.compose_files == (
+        f"{owner.repository}/{live_stand.COMPOSE_FILES[0]}",
+        f"{owner.repository}/{live_stand.OVERLAY}",
+        f"{owner.worktree}/{live_stand.IN_PLACE_OVERLAY}",
+    )
+    assert len(calls) == 3
+    assert responses == []
+    assert all(request.cwd == owner.worktree for request in calls)
+    assert calls[0].argv[-2:] == ("context", "show")
+    assert calls[1].argv[-4:] == (
+        "inspect",
+        "default",
+        "--format",
+        "{{json .Endpoints.docker.Host}}",
+    )
+    assert calls[2].argv[-3:] == ("info", "--format", "{{.ID}}")
+    assert calls[0].env == {"HOME": str(home), "LANG": "C", "LC_ALL": "C"}
+    assert calls[1].env == calls[0].env
+    assert calls[2].env == {"LANG": "C", "LC_ALL": "C"}

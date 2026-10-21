@@ -490,7 +490,7 @@ async def test_ensure_access_token_returns_plaintext(db_session, user_factory) -
 async def _prepare_spotify_transport_user(
     user_factory: Any, db_session: Any, *, has_cached_track: bool
 ) -> tuple[ModelUser, str]:
-    password = uuid.uuid4().hex
+    password = f"Aa1!{uuid.uuid4().hex}"
     user = await user_factory(
         hashed_password=await get_password_hash(password), is_active=True
     )
@@ -582,7 +582,8 @@ async def test_now_playing_falls_back_on_transport_errors(
     assert len(get_calls) == 1
     assert get_calls[0][0] == "https://api.spotify.com/v1/me/player/currently-playing"
     assert (
-        get_calls[0][1]["headers"]["Authorization"] == f"Bearer {before['access_token']}"
+        get_calls[0][1]["headers"]["Authorization"]
+        == f"Bearer {before['access_token']}"
     )
     assert breaker.failure_count == 1
     assert breaker.metrics.failed_calls == 1
