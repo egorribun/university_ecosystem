@@ -185,12 +185,15 @@ reconciliation proof, and an explicit rollout applies the new values.
 
 ### Background task metrics
 
-- `/metrics` now publishes counters and histograms for background cleanup jobs:
-  - `periodic_task_notifications_retention_*` — removal of old notifications and deliveries.
+- `/metrics` publishes counters and histograms for background cleanup jobs:
+  - `periodic_task_email_change_cleanup_*` — cleanup of email-change tokens.
+  - `periodic_task_mfa_challenge_cleanup_*` — deletion of expired or consumed MFA challenges.
   - `periodic_task_password_reset_cleanup_*` — cleanup of password reset tokens.
+  - `periodic_task_privacy_cleanup_*` — cleanup of privacy artifacts.
   - `periodic_task_session_cleanup_*` — removal of expired user sessions.
   - `periodic_task_story_cleanup_*` — cleanup of expired stories.
-  - `periodic_task_mfa_challenge_cleanup_*` — deletion of expired or consumed MFA challenges.
+- The scheduled notification-retention cleanup has no dedicated
+  `periodic_task_*` metrics.
 - Each job exposes:
   - `*_runs_total` — number of successful iterations.
   - `*_errors_total` — number of runs ending with an exception.

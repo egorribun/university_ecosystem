@@ -320,6 +320,11 @@ jobs:
         env:
           CI: "true"
 
+      - name: Run quick audit regressions
+        run: npm exec -- vitest run src/api/__tests__/notifications.test.ts --reporter=verbose
+        env:
+          CI: "true"
+
   unit-tests-shard:
     name: Unit Tests (shard ${{ matrix.shard }}/4)
     needs: wasm-build

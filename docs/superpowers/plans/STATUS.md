@@ -769,3 +769,21 @@ expiry 2027-01-10. Новый точный policy-тест добавляет о
 включён в DB-only exemption. Baseline 319, required 78, Gitleaks 25,
 CodeQL, finite 131, benchmark population/threshold и лимиты времени
 не меняются. Нужны результаты нового HEAD; merge/deploy не выполнялись.
+
+
+## Проверка b531 и следующая точечная коррекция
+
+Accepted set пока **174/512**. На b5313982 consumer 119413064562:
+1347 PASS / 2 ожидаемых UUID FAIL / 1 deselected, 424,68 s.
+Policy: все 241 PASS, 40,80 s. Исправления CLI/mypy, lifecycle-профиль,
+async duplicates, backend GraphQL 404, CDC/config и helper pins прошли.
+Security/types, inventory и baseline также прошли. Последний подтвердил
+319 baseline findings и 242 совпавших reviewed identities из реестра 294.
+
+Остаётся одно замечание Ruff к переносу predicate в новом policy-тесте;
+из-за него документационные и другие downstream gates были skipped,
+не GREEN. Точный formatter diff применён вместе с UUID parser fix.
+Также исправлены обе версии DEPLOY для AUD-318 с контрактом фактических
+metric factory keys. AUD-037 пока tests-first, с быстрым frontend запуском.
+Новые находки не засчитываются до оставшихся проверок; глобальный GREEN,
+merge/deploy и дополнительное ускорение не заявлены.

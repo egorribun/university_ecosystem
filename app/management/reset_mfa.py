@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import json
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,8 +28,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
         "--user-id",
-        type=int,
-        help="Reset MFA for the user with the given numeric ID",
+        type=UUID,
+        help="Reset MFA for the user with the given UUID",
     )
     group.add_argument(
         "--email",

@@ -1965,8 +1965,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
     records = [
         record
         for record in policy["records"]
-        if record["identity"]["path"] in paths
-        and record["reviewed_on"] == "2026-10-21"
+        if record["identity"]["path"] in paths and record["reviewed_on"] == "2026-10-21"
     ]
     expected = {
         (path, "Hex High Entropy String", digest)
