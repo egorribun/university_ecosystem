@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **205/512 (40,0%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-205-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **210/512 (41,0%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-210-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -922,3 +922,28 @@ Shard3 завершился: 5998 PASS / 38 SKIP / 3 FAIL устаревших �
 финального отказа125.001 и всех production timeout/ownership guards.
 Всего13 новых selector entries дают21 case:16 audit и5 CI-регрессий.
 Свежие hosted проверки исправлений ещё требуются.
+
+
+## Подтверждённые существующие исправления: 210/512
+
+Приняты AUD-036/049/196/199/214: **210/512 (41,0%)**, остаток302
+(93 moderate,84 complex,125 uncertain). Source dbb586 / merge0e0a8b52
+имеют одинаковое полное дерево. Подробные границы приёмки в аудите:
+UUID cleanup SQL, DM/group lookup, публичные имена без email, campus-timezone
+отображение и EventsList error/empty/cache/offline states. Это scoped
+unit/test-database/component evidence, не новое live DB/browser acceptance.
+
+Contract119482431331:1376 PASS/1 ожидаемый AUD-050 UUID FAIL/1deselected,
+509,77s. Все пять исправленных CI-контрактов прошли. Policy напечатала
+241 PASS за40,18s, затем step/job cancelled при фиксированном10-minute cap.
+Общий job не GREEN. Durations выявили readiness5,56s и повторные catalog
+cases около3s; GC, cleanup и бюджеты не меняются без отдельных доказательств.
+
+Frontend quick119484393637:154 PASS/2 ожидаемых AUD-220 FAIL;
+полный shard1:2698 PASS/те же2 FAIL. Все9 EventsList cases прошли,
+lint/format и production build тоже. Теперь внесены минимальные исправления:
+новый JSON-compatible wire payload без мутации исходного сообщения и
+настоящие кнопки выбора обложки с отдельными скрытыми inputs.
+AUD-050/220 ждут собственный GREEN и пока не засчитаны. Baseline319,
+policy294,required78,Gitleaks25,CodeQL и finite131 прежние; NATS/global
+CI не приняты, merge/deploy отсутствуют.

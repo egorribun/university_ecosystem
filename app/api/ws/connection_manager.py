@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, cast
 from weakref import WeakValueDictionary
 
 from fastapi import Request, WebSocket
+from fastapi.encoders import jsonable_encoder
 from starlette.websockets import WebSocketDisconnect
 
 from app.core.config import settings
@@ -257,12 +258,13 @@ class ConnectionManager:
         if not connections_snapshot:
             return 0
 
+        wire_message = jsonable_encoder(message)
         sent = 0
         dead_connections: list[WebSocket] = []
 
         for connection in connections_snapshot:
             try:
-                await connection.send_json(message)
+                await connection.send_json(wire_message)
                 sent += 1
             # TD-14-06 (audit Wave 14): Narrow exception types.  The previous
             # bare ``except Exception`` swallowed unexpected errors silently.

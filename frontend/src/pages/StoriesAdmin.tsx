@@ -284,7 +284,8 @@ function StoryAdminItem({ story, nowTick, formatDate, onRefresh }: StoryAdminIte
               <div className="w-full space-y-2">
                 <div className="flex gap-2 w-full">
                   <Button
-                    as="label"
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
                     variant="outline"
                     size="sm"
                     className="flex-1"
@@ -293,15 +294,15 @@ function StoryAdminItem({ story, nowTick, formatDate, onRefresh }: StoryAdminIte
                     {coverFile
                       ? t("common:buttons.changePhoto")
                       : t("stories:list.actions.pickCover")}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      aria-label={t("stories:list.actions.pickCover")}
-                      onChange={handleCoverChange}
-                      ref={fileInputRef}
-                    />
                   </Button>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    aria-label={t("stories:list.actions.pickCover")}
+                    onChange={handleCoverChange}
+                    ref={fileInputRef}
+                  />
                   {coverFile && (
                     <Button
                       variant="outline"
@@ -597,22 +598,23 @@ export default function StoriesAdmin() {
                 <div className="flex flex-col gap-4 py-2">
                   <div className="flex items-center gap-3">
                     <Button
-                      as="label"
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
                       variant="outline"
                       startIcon={<PhotoCamera className="h-4 w-4" />}
                     >
                       {coverFile
                         ? t("common:buttons.changePhoto")
                         : t("common:buttons.uploadPhoto")}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        hidden
-                        aria-label={t("common:buttons.uploadPhoto")}
-                        onChange={handleCoverChange}
-                        ref={fileInputRef}
-                      />
                     </Button>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      aria-label={t("common:buttons.uploadPhoto")}
+                      onChange={handleCoverChange}
+                      ref={fileInputRef}
+                    />
                     {coverFile && (
                       <Button
                         variant="ghost"
