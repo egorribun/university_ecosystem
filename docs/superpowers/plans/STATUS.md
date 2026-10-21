@@ -491,7 +491,7 @@ remains **170/512**; this refresh does not accept AUD-466 or live NATS.
 проходят; API bool, права, 404 и replay сохранены. Lint, security/types,
 inventory и baseline SUCCESS. Принятый ledger теперь **171/512 (33,4%)**.
 
-Оба общих backend shard и PostgreSQL на этом source также SUCCESS:
+Два из четырёх общих backend shard и PostgreSQL на этом source также SUCCESS:
 4178 PASS / 52 SKIP; 843 frozen-RC + 226 focused + 4210 PASS / 42 SKIP;
 210 PASS / 9 SKIP соответственно. Это не общий CI GREEN: Go vulnerability
 gate на 133f87d оставался красным, а опубликованный Go refresh ca6d711
@@ -554,3 +554,19 @@ seconds, although the job's final metadata is cancelled; this is not a
 successful job claim. The two observed source mismatches are corrected in
 this slice. Fresh hosted scans and tests, and the expected five NATS
 stage-regression failures, remain to be observed before production changes.
+
+## Ранний NATS cohort и Go-policy GREEN, 2026-10-21
+
+На a9841d6 consumer 119252013903: 1184 PASS / один прежний deselected,
+затем 240 policy PASS. Lint, security/types, inventory и baseline integrity
+SUCCESS: согласованный singleton и source-binding test проверены на своём source.
+
+В раннем cohort раньше были только две функции coordinator-модуля. Поэтому
+его GREEN не запускал пять новых final-revalidation cases и не заменяет RED.
+Теперь ранний прогон добавляет пять final-drift cases, три invalid-receipt cases
+и valid-path control, сохраняя оба прежних selector. Десятиминутный бюджет
+job и полный backend сбор не меняются; production stage ещё не исправляется. Ledger остаётся 171/512.
+
+Уточнение отчёта: backend matrix содержит четыре legs с max-parallel 2.
+Предыдущие результаты подтверждали два названных unit shard и PostgreSQL,
+не всю backend matrix и не общий CI GREEN.

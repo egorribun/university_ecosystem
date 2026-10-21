@@ -1570,6 +1570,9 @@ jobs:
             tests/test_owned_nats_outage_cli.py \
             tests/test_owned_nats_outage_coordinator.py::test_public_result_and_logs_contain_only_closed_labels \
             tests/test_owned_nats_outage_coordinator.py::test_runtime_checkpoint_distinguishes_callback_and_inventory_rejection \
+            tests/test_owned_nats_outage_coordinator.py::test_broker_receipt_cannot_hide_final_owner_or_inventory_drift \
+            tests/test_owned_nats_outage_coordinator.py::test_coordinator_requires_exact_raw_broker_receipt \
+            tests/test_owned_nats_outage_coordinator.py::test_valid_path_binds_exact_event_and_restores_before_drain \
             tests/test_owned_nats_docker_context_pins.py \
             tests/test_owned_nats_runtime_adapter.py \
             tests/test_owned_nats_transport_port.py \
