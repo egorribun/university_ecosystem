@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import Column, Integer, MetaData, Table, insert, select, text
-from sqlalchemy.exc import DataError
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Event
@@ -150,7 +150,7 @@ async def test_bounded_model_varchar_rejects_excess_non_ascii_space(
 ) -> None:
     _assert_postgresql(db_session)
     table = await _bounded_probe_table(db_session, field, limit)
-    with pytest.raises(DataError) as exc_info:
+    with pytest.raises(DBAPIError) as exc_info:
         async with db_session.begin_nested():
             await db_session.execute(
                 insert(table).values(probe_id=1, value="x" * limit + excess)
