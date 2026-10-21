@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **169/512 (33,0%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-169-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **170/512 (33,2%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-170-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -361,3 +361,34 @@ commit сохранены. Для migrations обоих Compose отключён
 HTTP probe, неприменимый к Alembic; exit-status и остальные health guards
 сохранены. Свежие GREEN и actual стенд ещё требуются. AUD-465 пока не принят,
 ledger 169/512, полный CI и Go cooldown approval остаются открытыми.
+
+
+## Приёмка AUD-465 и следующий tests-first этап, 2026-10-21 05:52 UTC
+
+Принята ровно одна находка: повторный retry завершённой DLQ-задачи.
+На 5eda2282 consumer 119058380490: 1065 PASS / один deselected и
+239 policy PASS. PostgreSQL integration 119059881779: 210 PASS / девять skips;
+реальный worker/admin interleaving именованно PASS. HTTP проверяет localized
+409 и неизменность persisted state, а PostgreSQL доказывает ожидание SELECT,
+обновление stale identity-map и сохранение результата worker. Pre-commit,
+security/types, inventory и baseline SUCCESS; merge 8758cf9 имеет тот же tree.
+
+Нижняя граница теперь 170/512 (33,2%). Это не полный DLQ state-machine,
+не общий CI GREEN и не actual NATS acceptance. Go cooldown approval остаётся
+открытым; последний полностью принятый CI checkpoint — e15027a.
+
+Следующий AUD-466: tests-first запрет утверждать целостность при
+verify_chain=false. Существующие bypass cases сохраняют state assertions,
+но требуют False. HTTP добавляет реальное повреждение payload и настоящий
+verified-corrupt control, затем bypass без вызова verifier. Empty history
+проверяется для обоих значений флага; прежний API 404 сохраняется.
+Bool schema не меняется; False означает, что целостность не установлена,
+а не обязательно доказанное повреждение. Production audit пока не изменён,
+собственный RED ещё ожидается.
+
+
+Actual Owned на 5eda2282/job 119058318655 прошёл прежнюю проверку runtime
+inventory после 38 browser PASS / двух skips и Caddy redaction. Новый отказ
+в 05:55:13 UTC: preflight/read_policy. Cleanup и receipt 12324400981 завершены.
+Это прохождение прежнего health boundary, но не полный NATS outage acceptance;
+теперь отдельно проверяется чтение и валидация policy.

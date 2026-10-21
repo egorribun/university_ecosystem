@@ -534,7 +534,10 @@ async def test_reconstruct_state_covers_verified_creation_updates_and_deletion()
 
 
 @pytest.mark.asyncio
-async def test_reconstruct_state_handles_naive_target_and_empty_events():
+@pytest.mark.parametrize("verify_chain, expected_valid", [(True, True), (False, False)])
+async def test_reconstruct_state_handles_naive_target_and_empty_events(
+    verify_chain, expected_valid
+):
     service = SecureAuditService(signing_key=b"key")
     db = MagicMock()
     db.execute = AsyncMock(return_value=_Result())
@@ -544,9 +547,10 @@ async def test_reconstruct_state_handles_naive_target_and_empty_events():
         aggregate_type="aggregate",
         aggregate_id="aggregate-1",
         target_timestamp=datetime(2026, 1, 1, 12, 0),
+        verify_chain=verify_chain,
     )
 
-    assert result == (None, 0, True)
+    assert result == (None, 0, expected_valid)
 
 
 @pytest.mark.asyncio
@@ -566,7 +570,7 @@ async def test_reconstruct_state_handles_update_without_existing_state():
 
     assert state == {"room": "B-202", "_version": 1}
     assert count == 1
-    assert valid is True
+    assert valid is False
 
 
 @pytest.mark.asyncio
@@ -580,7 +584,7 @@ async def test_reconstruct_state_handles_score_update_without_new_score():
     )
     db.execute = AsyncMock(return_value=_Result([event]))
 
-    state, _, _ = await service.reconstruct_state(
+    state, _, valid = await service.reconstruct_state(
         db,
         aggregate_type="aggregate",
         aggregate_id="aggregate-1",
@@ -588,6 +592,7 @@ async def test_reconstruct_state_handles_score_update_without_new_score():
         verify_chain=False,
     )
 
+    assert valid is False
     assert state == {
         "comment": "kept",
         "_version": 1,
@@ -606,7 +611,7 @@ async def test_reconstruct_state_applies_new_score_update():
     )
     db.execute = AsyncMock(return_value=_Result([event]))
 
-    state, _, _ = await service.reconstruct_state(
+    state, _, valid = await service.reconstruct_state(
         db,
         aggregate_type="aggregate",
         aggregate_id="aggregate-1",
@@ -614,6 +619,7 @@ async def test_reconstruct_state_applies_new_score_update():
         verify_chain=False,
     )
 
+    assert valid is False
     assert state is not None
     assert state["score"] == 95
 
@@ -629,7 +635,7 @@ async def test_reconstruct_state_covers_creation_and_generic_event_folds():
         return_value=_Result([creation, generic_first, generic_second])
     )
 
-    state, count, _ = await service.reconstruct_state(
+    state, count, valid = await service.reconstruct_state(
         db,
         aggregate_type="aggregate",
         aggregate_id="aggregate-1",
@@ -637,6 +643,7 @@ async def test_reconstruct_state_covers_creation_and_generic_event_folds():
         verify_chain=False,
     )
 
+    assert valid is False
     assert state is not None
     assert state["a"] == 1
     assert state["b"] == 2
@@ -650,7 +657,7 @@ async def test_reconstruct_state_starts_with_generic_event():
     event = _event("CUSTOM", {"first": True}, created_at=datetime.now(UTC))
     db.execute = AsyncMock(return_value=_Result([event]))
 
-    state, count, _ = await service.reconstruct_state(
+    state, count, valid = await service.reconstruct_state(
         db,
         aggregate_type="aggregate",
         aggregate_id="aggregate-1",
@@ -658,6 +665,7 @@ async def test_reconstruct_state_starts_with_generic_event():
         verify_chain=False,
     )
 
+    assert valid is False
     assert state is not None
     assert state["first"] is True
     assert count == 1
@@ -671,7 +679,7 @@ async def test_reconstruct_state_creation_without_timestamp():
         return_value=_Result([_event("SCHEDULE_CREATED", {"room": "A-101"})])
     )
 
-    state, _, _ = await service.reconstruct_state(
+    state, _, valid = await service.reconstruct_state(
         db,
         aggregate_type="aggregate",
         aggregate_id="aggregate-1",
@@ -679,6 +687,7 @@ async def test_reconstruct_state_creation_without_timestamp():
         verify_chain=False,
     )
 
+    assert valid is False
     assert state is not None
     assert "_created_at" not in state
 
@@ -783,5 +792,5 @@ async def test_reconstruct_state_never_replays_unchained_outbox_payload():
         verify_chain=False,
     )
 
-    assert result == (None, 0, True)
+    assert result == (None, 0, False)
     db.execute.assert_awaited_once()

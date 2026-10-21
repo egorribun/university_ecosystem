@@ -195,7 +195,7 @@ async def test_time_travel_requires_timestamp():
 @pytest.mark.asyncio
 async def test_time_travel_normalizes_naive_timestamp_and_uses_alias():
     db, secure_audit, admin = _dependencies()
-    secure_audit.reconstruct_state = AsyncMock(return_value=({"_version": 7}, 2, True))
+    secure_audit.reconstruct_state = AsyncMock(return_value=({"_version": 7}, 2, False))
     aggregate_id = uuid4()
 
     response = await call_injected(
@@ -209,6 +209,7 @@ async def test_time_travel_normalizes_naive_timestamp_and_uses_alias():
         provides={"AsyncDatabaseSession": db, "SecureAuditService": secure_audit},
     )
 
+    assert response.chain_integrity_valid is False
     assert response.aggregate_type == "USER"
     assert response.version_at_timestamp == 7
     assert response.target_timestamp.tzinfo is not None

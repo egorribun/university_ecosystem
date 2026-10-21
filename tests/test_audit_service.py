@@ -922,7 +922,7 @@ async def test_reconstruct_state_ignores_unchained_outbox_rows(db_session):
     assert state["teacher"] == "trusted chain value"
     assert "room" not in state
 
-    unchecked_state, unchecked_count, _ = await service.reconstruct_state(
+    unchecked_state, unchecked_count, unchecked_valid = await service.reconstruct_state(
         db_session,
         aggregate_type="schedule",
         aggregate_id=aggregate_id,
@@ -930,6 +930,7 @@ async def test_reconstruct_state_ignores_unchained_outbox_rows(db_session):
         verify_chain=False,
     )
 
+    assert unchecked_valid is False
     assert unchecked_count == 1
     assert unchecked_state is not None
     assert unchecked_state["teacher"] == "trusted chain value"

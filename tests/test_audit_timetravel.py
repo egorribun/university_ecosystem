@@ -365,19 +365,60 @@ async def test_admin_time_travel_api_endpoint(root_client, user_factory, db_sess
     )
     assert resp_404.status_code == 404
 
-    # 6. verify_chain=False flag
-    resp_no_verify = await root_client.get(
+    # 6. Persist a payload change without recomputing its HMAC.
+    from unittest.mock import AsyncMock, patch
+
+    tampered_event = (
+        await db_session.execute(
+            select(StoredEvent).where(
+                StoredEvent.aggregate_type == "grade",
+                StoredEvent.aggregate_id == str(agg_id),
+                StoredEvent.event_type == "GRADE_MODIFIED",
+            )
+        )
+    ).scalar_one()
+    tampered_event.payload = {**tampered_event.payload, "new_score": 100.0}
+    await db_session.commit()
+
+    time_travel_params = {
+        "aggregate_type": "grade",
+        "aggregate_id": str(agg_id),
+        "target_timestamp": target_iso,
+    }
+    admin_headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Query-Budget": "15",
+    }
+
+    # The actual verifier must detect the persisted corruption.
+    resp_corrupt = await root_client.get(
         "/admin/audit/time-travel",
-        params={
-            "aggregate_type": "grade",
-            "aggregate_id": str(agg_id),
-            "target_timestamp": target_iso,
-            "verify_chain": "false",
-        },
-        headers={"Authorization": f"Bearer {token}", "X-Query-Budget": "15"},
+        params={**time_travel_params, "verify_chain": "true"},
+        headers=admin_headers,
     )
+    assert resp_corrupt.status_code == 200
+    assert resp_corrupt.json()["chain_integrity_valid"] is False
+    assert resp_corrupt.json()["events_replayed"] == 2
+
+    # Replace the verifier only for the bypass request, not verified controls.
+    with patch.object(
+        audit_service,
+        "verify_chain_integrity",
+        new=AsyncMock(
+            side_effect=AssertionError("verification must be skipped for this request")
+        ),
+    ) as verifier:
+        resp_no_verify = await root_client.get(
+            "/admin/audit/time-travel",
+            params={**time_travel_params, "verify_chain": "false"},
+            headers=admin_headers,
+        )
+
+    verifier.assert_not_awaited()
     assert resp_no_verify.status_code == 200
-    assert resp_no_verify.json()["chain_integrity_valid"] is True
+    assert resp_no_verify.json()["chain_integrity_valid"] is False
+    assert resp_no_verify.json()["events_replayed"] == 2
+    assert resp_no_verify.json()["state_at_timestamp"]["score"] == 100.0
 
 
 async def test_interleaved_multi_aggregate_events_integrity(db_session):
