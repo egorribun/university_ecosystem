@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **168/512 (32,8%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-168-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **169/512 (33,0%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-169-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -245,3 +245,18 @@ Actual NATS на 8d45a636 прошёл прежний read_signed_owner checkpoi
 но остановился в observe_runtime; точная подфаза пока не установлена.
 Очистка и receipt завершены. Go security gate остаётся блокирующим,
 точечное досрочное обновление ожидает явного разрешения владельца.
+
+
+## Приёмка AUD-342, 2026-10-21 02:56 UTC
+
+Принята ровно одна исходная находка: refresh POST transport fallback.
+На b5fd21d8 consumer job 119008421004: 976 PASS / один deselected и
+239 policy PASS. Все 16 прежних RED и три helper controls теперь PASS;
+pre-commit, security/types, inventory и baseline integrity SUCCESS.
+Merge checkout 01ca2b02 имеет тот же tree a30b662d, что и source.
+
+Новая нижняя граница — 169/512 (33,0%). Проверены cached 200 / empty 204,
+одна refresh попытка, breaker accounting и сохранность состояния Spotify.
+Другие endpoints, non-transport failures и доступность провайдера не заявлены.
+Go security gate и actual NATS observe_runtime остаются открытыми;
+полный CI не принят, последний общий checkpoint — e15027a.
