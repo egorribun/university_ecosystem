@@ -6,7 +6,7 @@ import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import test from "node:test"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import {
   assertNoLiveE2EOutputOverride,
   resolveLiveE2EOutputDirectory,
@@ -422,4 +422,64 @@ test("live Playwright collection has a closed source inventory", async (t) => {
   }
   if (failure) throw failure
   t.diagnostic(summary)
+})
+
+test("ordinary Playwright rejects focused tests in CI during collection", async (t) => {
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), "ue-focused-test-contract-"))
+  t.after(() => rm(temporaryRoot, { recursive: true, force: true }))
+  const fixtureDirectory = path.join(temporaryRoot, "specs")
+  await mkdir(fixtureDirectory)
+
+  const frontendRoot = await realpath(fileURLToPath(new URL("../", import.meta.url)))
+  const require = createRequire(import.meta.url)
+  const cli = path.join(path.dirname(require.resolve("playwright/package.json")), "cli.js")
+  const testEntry = require.resolve("@playwright/test")
+  const ordinaryConfig = pathToFileURL(path.join(frontendRoot, "playwright.config.ts")).href
+  const wrapper = path.join(temporaryRoot, "playwright.config.mjs")
+  const focusCall = ["test", "only"].join(".")
+  await writeFile(
+    path.join(fixtureDirectory, "runtime.spec.cjs"),
+    `const { test } = require(${JSON.stringify(testEntry)});\n` +
+      `${focusCall}("owned focused fixture", () => {});\n`,
+    { flag: "wx" }
+  )
+  await writeFile(
+    wrapper,
+    `import baseConfig from ${JSON.stringify(ordinaryConfig)};\n` +
+      `export default { ...baseConfig, testDir: ${JSON.stringify(fixtureDirectory)} };\n`,
+    { flag: "wx" }
+  )
+
+  for (const ci of [false, true]) {
+    const environment = { SKIP_WEBSERVER: "true", ...(ci ? { CI: "true" } : {}) }
+    if (process.platform === "win32") {
+      assert.equal(typeof process.env.SYSTEMROOT, "string")
+      environment.SYSTEMROOT = process.env.SYSTEMROOT
+    }
+    const collected = spawnSync(
+      process.execPath,
+      [cli, "test", "--config", wrapper, "--list", "--project=chromium"],
+      {
+        cwd: frontendRoot,
+        env: environment,
+        shell: false,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        encoding: "utf8",
+        timeout: 30_000,
+        killSignal: "SIGKILL",
+        maxBuffer: 1024 * 1024,
+      }
+    )
+    assert.equal(collected.error, undefined)
+    assert.equal(collected.signal, null)
+    const output = String(collected.stdout) + String(collected.stderr)
+    if (ci) {
+      assert.notEqual(collected.status, 0, output)
+      assert.match(output, /forbidOnly/u)
+    } else {
+      assert.equal(collected.status, 0, output)
+      assert.match(output, /owned focused fixture/u)
+    }
+  }
 })

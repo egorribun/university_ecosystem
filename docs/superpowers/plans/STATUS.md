@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **186/512 (36,3%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-186-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **188/512 (36,7%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-188-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -814,3 +814,32 @@ failure-only диагностический вывод публичных metada
 остаётся blocking, allowlist и порог не меняются. NATS также остаётся
 отдельным глобальным вопросом. Baseline 319, policy 294, required 78,
 Gitleaks 25, CodeQL и finite 131 сохранены. Merge/deploy не выполнялись.
+
+
+## Два подтверждения и следующие быстрые регрессии: 188/512
+
+Приняты только AUD-037 и AUD-502 сверх прежних 186: **188/512 (36,7%)**,
+остаток 324. На 560adf6e / tested merge 08ad0ab2 trees совпали.
+Граничные 48/49 символов AUD-037 прошли, frontend lint/format тоже.
+AUD-502 закрыт как ложная находка исключительно о названии теста:
+имя уже соответствовало assertions на исходном audit HEAD. Новая
+Windows runtime-проверка не заявлена; код и имя не менялись.
+
+Consumer 119432893457: 1353 PASS / 1 deselected, 492,30 s;
+policy: 241 PASS, 42,78 s. Оба шага завершились до новой публикации.
+В frontend quick cohort ровно четыре ожидаемых AUD-395/396 FAIL и
+91 PASS. Теперь применены переводы OTP label и h2 для дней, со h1
+в Storybook fixture. Их новая приёмка требует GREEN следующего source.
+
+AUD-398 пока tests-first: изолированный временный fixture проверяет
+реальную ordinary Playwright config через collection без браузера/server,
+с контрольным запуском вне CI. Production forbidOnly ещё не добавлен.
+Независимый quick Vitest cohort запускается после Node failure, но не
+после cancellation; общий job сохраняет failure, проверок не убавлено.
+Очередь: 3 quick, 112 moderate, 84 complex, 125 uncertain.
+
+Два npm IDs оказались одним critical GHSA-f2ph-cmg5-wxc8 для Storybook
+и addon-vitest. Исправление 10.6.2 от 12 октября старше cooldown;
+обновление готовится без исключений. Описанный риск касается dev-server,
+открытого в браузере, а не статической Storybook сборки. Global CI/NATS
+не приняты; baseline 319, policy 294, required 78 и прочие границы прежние.
