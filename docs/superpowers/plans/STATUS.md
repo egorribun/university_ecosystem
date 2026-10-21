@@ -227,3 +227,21 @@ AUD-342 ещё требуются. Ledger остаётся 168/512 (32,8%); по
 Go scanner обнаружил GO-2026-6809 в 1.26.9; официальные fixed версии,
 остальные активные Go pins и границы policy проверяются отдельно.
 Полный CI не принят, предупреждение не подавляется.
+
+
+## Refresh fallback после подтверждённого RED, 2026-10-21 02:39 UTC
+
+На 16992ee0 consumer job 119003482007: ровно 16 ожидаемых refresh
+transport FAIL, 960 PASS / один deselected и 239 policy PASS.
+Все три cancellation/unexpected-error controls PASS; pre-commit,
+security/types и baseline integrity SUCCESS.
+
+Добавлен узкий catch httpx.TransportError вне breaker context в refresh
+helper. Состояние Spotify и прежняя обработка HTTP-статусов/прав доступа
+сохранены. Собственный GREEN ещё требуется; AUD-342 остаётся открытым,
+ledger 168/512 (32,8%), последний общий CI checkpoint e15027a.
+
+Actual NATS на 8d45a636 прошёл прежний read_signed_owner checkpoint,
+но остановился в observe_runtime; точная подфаза пока не установлена.
+Очистка и receipt завершены. Go security gate остаётся блокирующим,
+точечное досрочное обновление ожидает явного разрешения владельца.

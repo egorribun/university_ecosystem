@@ -294,6 +294,9 @@ async def _ensure_access_token(
             extra={"remaining_seconds": exc.remaining_seconds},
         )
         return None
+    except httpx.TransportError:
+        # Preserve stored credentials and let the caller use cached playback.
+        return None
     if r.status_code != 200:
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
