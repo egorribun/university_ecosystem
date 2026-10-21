@@ -1578,6 +1578,8 @@ jobs:
             tests/test_owned_nats_transport_port.py \
             tests/test_spotify_fallback.py \
             tests/test_api_dlq.py \
+            tests/test_event_create_api_fix.py \
+            tests/test_event_time_constraints.py::test_internal_partial_time_update_uses_the_stored_time_pair \
             tests/test_audit_timetravel.py tests/test_audit_service_closure.py \
             tests/test_audit_service.py tests/test_admin_audit_closure.py \
             tests/test_docker_startup_contracts.py::test_migrations_disable_inherited_backend_runtime_healthcheck \

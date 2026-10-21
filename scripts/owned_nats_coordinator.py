@@ -186,6 +186,7 @@ class OutageStage(StrEnum):
     RESTORE = "restore"
     DRAIN = "drain"
     BROKER = "broker"
+    FINAL_REVALIDATION = "final_revalidation"
     CLEANUP = "cleanup"
     COMPLETE = "complete"
 
@@ -874,6 +875,7 @@ class _Coordinator:
                     self.stage = previous_stage
             _live(self.primary)
             self._delivery(context, message, event_id, retry_count)
+            self.stage = OutageStage.FINAL_REVALIDATION
             self._complete_inventory(context, self.primary)
             accepted = True
         except Exception:

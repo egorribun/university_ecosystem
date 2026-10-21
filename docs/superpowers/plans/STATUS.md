@@ -570,3 +570,27 @@ job и полный backend сбор не меняются; production stage е�
 Уточнение отчёта: backend matrix содержит четыре legs с max-parallel 2.
 Предыдущие результаты подтверждали два названных unit shard и PostgreSQL,
 не всю backend matrix и не общий CI GREEN.
+
+## NATS stage RED и tests-first AUD-256, 2026-10-21
+
+На adb02d37 consumer 119261108734 даёт ровно пять целевых FAIL /
+1188 PASS / один прежний deselected, затем 240 policy PASS.
+Все пять отказов доходят до сравнения broker с final_revalidation,
+после failure/count/cleanup и owner/runtime assertions. Невалидные
+broker receipt и успешный restored path проходят.
+
+Production меняется ровно в двух местах: новый конечный stage label и его
+назначение после успешного _delivery, перед финальным _complete_inventory.
+Guard, restoration, deadline, polling и cleanup не ослаблены; требуется
+собственный GREEN и actual Owned сигнал. Полный outage ещё не принят.
+
+Следующий AUD-256 пока только tests-first: восемь строковых границ для
+Create/Update после прежней нормализации; Text поля не ограничиваются.
+Смешанные naive/aware даты должны давать 422, а допустимые пары и порядок
+по абсолютному времени сохраняются. HTTP PATCH проверяется на реальной
+сохранённой записи с реальными auth/service/DB и только разрешающим
+permission checker. Проверяются отсутствие изменения данных после 422,
+title-only PATCH без изменения времени и внутренний partial-time merge
+с awareness, прочитанной из БД. Тесты явно включены в ранний cohort;
+бюджет и полный backend сбор неизменны. Production событий не меняется,
+RED ещё требуется. Ledger **171/512**, общий CI и NATS acceptance открыты.

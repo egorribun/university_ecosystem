@@ -348,3 +348,31 @@ async def test_event_detail_returns_qr_code_after_registration(
     grace_end = datetime.fromtimestamp(original_payload.expires_at + ttl, UTC)
     with pytest.raises(attendance_tokens.AttendanceTokenExpired):
         attendance_tokens.verify_token(qr_token, attendance, now=grace_end)
+
+
+async def test_internal_partial_time_update_uses_the_stored_time_pair(
+    db_session, user_factory
+):
+    user = await user_factory()
+    record = models.Event(
+        title="Partial internal update",
+        starts_at=datetime(2035, 1, 1, 10, tzinfo=UTC),
+        ends_at=datetime(2035, 1, 1, 11, tzinfo=UTC),
+        created_by=user.id,
+        is_active=True,
+    )
+    db_session.add(record)
+    await db_session.commit()
+    await db_session.refresh(record)
+    original_end = record.ends_at
+    new_start = record.starts_at + timedelta(minutes=10)
+    service = EventService(uow_from_session(db_session), VectorService(db_session))
+    update = schemas.EventUpdate.model_construct(
+        _fields_set={"starts_at"}, starts_at=new_start
+    )
+
+    await service.update_event(record.id, update)
+
+    await db_session.refresh(record)
+    assert record.starts_at == new_start
+    assert record.ends_at == original_end
