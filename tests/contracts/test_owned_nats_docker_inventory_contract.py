@@ -1230,6 +1230,10 @@ def test_runtime_diagnostic_recorder_is_finite_private_and_resettable():
         "inspect_process",
         "inspect_decode",
         "runtime_binding",
+        "inventory_invalid_selection",
+        "inventory_invalid_identity",
+        "inventory_invalid_runtime",
+        "inventory_unhealthy",
     }
     recorder = RuntimeObservationRecorder()
     assert recorder.phase is None

@@ -731,3 +731,80 @@ def test_broker_receipt_cannot_hide_final_owner_or_inventory_drift(
     receipt_index = trace.index("broker_last_message")
     assert trace.index("start_container") < receipt_index
     assert "read_signed_owner" in trace[receipt_index + 1 :]
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_phase"),
+    [
+        ("callback-error", "runtime_binding"),
+        ("daemon-mismatch", "runtime_binding"),
+        ("resource-mismatch", "runtime_binding"),
+        ("selection", "inventory_invalid_selection"),
+        ("identity", "inventory_invalid_identity"),
+        ("runtime", "inventory_invalid_runtime"),
+        ("health", "inventory_unhealthy"),
+        ("valid", None),
+    ],
+)
+def test_runtime_checkpoint_distinguishes_callback_and_inventory_rejection(
+    capsys, case, expected_phase
+):
+    from scripts.owned_nats_coordinator import (
+        OutageCheckpoint,
+        RuntimeObservationPhase,
+    )
+
+    ports = FakePorts()
+    if case == "callback-error":
+        ports.script["observe_runtime"] = [RuntimeError("private-observation-error")]
+    elif case == "daemon-mismatch":
+        ports.runtime_daemon = "f" * 64
+    elif case == "resource-mismatch":
+        ports.script["observe_runtime"] = [
+            replace(ports.runtime(), resource_fingerprint="f" * 64)
+        ]
+    elif case == "selection":
+        ports.owner = replace(
+            ports.owner,
+            selected_services=tuple(
+                service
+                for service in ports.owner.selected_services
+                if service != "backend"
+            ),
+        )
+    elif case == "identity":
+        ports.records = tuple(
+            replace(row, identity="not-a-digest") if row.service == "backend" else row
+            for row in ports.records
+        )
+    elif case == "runtime":
+        ports.records = tuple(
+            replace(row, exit_code=1) if row.service == "backend" else row
+            for row in ports.records
+        )
+    elif case == "health":
+        ports.records = tuple(
+            replace(row, health="starting") if row.service == "backend" else row
+            for row in ports.records
+        )
+    else:
+        assert case == "valid"
+
+    result = run(ports)
+    trace = names(ports)
+    if expected_phase is None:
+        assert result.outcome is OutageOutcome.ACCEPTED
+        assert result.stage is OutageStage.COMPLETE
+        assert result.runtime_diagnostic is None
+    else:
+        assert result.outcome is OutageOutcome.FAILED
+        assert result.stage is OutageStage.PREFLIGHT
+        assert result.checkpoint is OutageCheckpoint.OBSERVE_RUNTIME
+        assert type(result.runtime_diagnostic) is RuntimeObservationPhase
+        assert result.runtime_diagnostic.value == expected_phase
+        assert "stop_container" not in trace
+        assert "send_message_once" not in trace
+    assert trace[-2:] == ["close_clients", "release_lock"]
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+    assert "private-observation-error" not in repr(result)

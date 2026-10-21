@@ -287,3 +287,16 @@ contract синхронизирован с конечными полями ре�
 приватности и включён в ранний прогон. Собственные GREEN и новая actual
 диагностика ещё требуются; неизвестная причина NATS не считается исправленной.
 Ledger 169/512, полного CI acceptance нет.
+
+
+## Уточнение runtime boundary, 2026-10-21 04:03 UTC
+
+Диагностика на 84052b6d: 1043 consumer PASS / один deselected и 239 policy PASS;
+статические gates и baseline SUCCESS. Actual Owned119024534410 вновь
+останавливается в observe_runtime, но без внутренней метки. Это не доказывает
+ошибку Docker: checkpoint включает последующую проверку inventory координатором.
+
+Добавлены tests-first проверки callback/metadata rejection и четырёх конечных
+inventory verdicts с valid control. Production не изменён, RED ещё ожидается.
+Прежние owner/daemon/health/initializer guards сохраняются. Ledger 169/512;
+NATS и общий CI не приняты.
