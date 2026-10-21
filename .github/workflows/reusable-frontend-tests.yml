@@ -321,7 +321,13 @@ jobs:
           CI: "true"
 
       - name: Run quick audit regressions
-        run: npm exec -- vitest run src/api/__tests__/notifications.test.ts --reporter=verbose
+        run: >-
+          npm exec -- vitest run
+          src/api/__tests__/notifications.test.ts
+          src/components/mfa/__tests__/OtpEntry.test.tsx
+          src/components/mfa/__tests__/OtpEntry.mutation-contract.test.tsx
+          src/components/schedule/__tests__/ScheduleListView.test.tsx
+          --reporter=verbose
         env:
           CI: "true"
 

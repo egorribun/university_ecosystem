@@ -147,7 +147,13 @@ describe("OtpEntry mutation contracts", () => {
 
     expect(fields).toHaveLength(6)
     fields.forEach((field, index) => {
-      expect(field).toHaveAttribute("aria-label", `mfa.otp.methods.totp - digit ${index + 1}`)
+      expect(field).toHaveAttribute(
+        "aria-label",
+        `mfa.otp.digitLabel|${JSON.stringify({
+          method: "mfa.otp.methods.totp",
+          digit: index + 1,
+        })}`
+      )
       expect(field).toHaveAttribute("type", "text")
       expect(field).toHaveAttribute("inputmode", "numeric")
       expect(field).toHaveAttribute("maxlength", "1")

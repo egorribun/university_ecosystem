@@ -308,6 +308,50 @@ jobs:
             --allowlist security/audit-allowlist.yaml `
             --npm frontend
 
+      # The audit above remains blocking. This optional report only identifies
+      # public advisory metadata when its numeric IDs are insufficient to triage.
+      - name: Report npm advisory metadata after failure
+        if: ${{ failure() }}
+        continue-on-error: true
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { spawnSync } from "node:child_process";
+          const result = spawnSync("npm", ["audit", "--audit-level=high", "--json"], {
+            encoding: "utf8",
+            shell: false,
+            timeout: 60_000,
+            maxBuffer: 8 * 1024 * 1024,
+          });
+          if (result.error || result.signal || ![0, 1].includes(result.status)) {
+            throw new Error("npm advisory diagnostic could not complete");
+          }
+          let payload;
+          try {
+            payload = JSON.parse(result.stdout);
+          } catch {
+            throw new Error("npm advisory diagnostic returned invalid JSON");
+          }
+          const scalar = (value, limit = 512) =>
+            typeof value === "string" || typeof value === "number"
+              ? String(value).slice(0, limit) : null;
+          for (const [packageName, finding] of Object.entries(payload.vulnerabilities ?? {})) {
+            if (!finding || !["high", "critical"].includes(finding.severity)) continue;
+            for (const advisory of Array.isArray(finding.via) ? finding.via : []) {
+              if (!advisory || typeof advisory !== "object") continue;
+              console.log("npm advisory metadata: " + JSON.stringify({
+                id: scalar(advisory.source),
+                package: scalar(packageName),
+                name: scalar(advisory.name),
+                severity: scalar(advisory.severity ?? finding.severity, 32),
+                url: scalar(advisory.url, 1024),
+                range: scalar(advisory.range ?? finding.range),
+              }));
+            }
+          }
+          NODE
+
   docker-security:
     name: Container Security Scan
     needs: policy-integrity

@@ -495,3 +495,28 @@ def test_semgrep_is_not_a_blocking_security_audit_job() -> None:
 
     jobs = _workflow(SECURITY_AUDIT)["jobs"]
     assert "semgrep" not in jobs
+
+
+def test_npm_failure_metadata_is_diagnostic_only_and_keeps_audit_blocking() -> None:
+    workflow = _workflow(SECURITY_AUDIT)
+    job = workflow["jobs"]["npm-audit"]
+    gate = _step(job, "Run npm audit with allowlist")
+    diagnostic = _step(job, "Report npm advisory metadata after failure")
+
+    assert workflow["permissions"] == {"contents": "read"}
+    assert job.get("continue-on-error", False) is False
+    assert gate.get("continue-on-error", False) is False
+    assert "scripts/audit_dependencies.py" in gate["run"]
+    assert diagnostic["if"] == "${{ failure() }}"
+    assert diagnostic["continue-on-error"] is True
+    assert diagnostic["timeout-minutes"] == 2
+    assert diagnostic["shell"] == "bash"
+    run = diagnostic["run"]
+    assert '["audit", "--audit-level=high", "--json"]' in run
+    assert "shell: false" in run
+    assert "timeout: 60_000" in run
+    assert 'console.log("npm advisory metadata: " + JSON.stringify({' in run
+    for field in ("id", "package", "name", "severity", "url", "range"):
+        assert f"{field}: scalar(" in run
+    assert "console.log(result.stdout)" not in run
+    assert "--fix" not in run

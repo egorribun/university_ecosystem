@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **174/512 (34,0%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-174-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **186/512 (36,3%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-186-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -787,3 +787,30 @@ Security/types, inventory и baseline также прошли. Последни�
 metric factory keys. AUD-037 пока tests-first, с быстрым frontend запуском.
 Новые находки не засчитываются до оставшихся проверок; глобальный GREEN,
 merge/deploy и дополнительное ускорение не заявлены.
+
+
+## Принятая пачка: 186/512
+
+На ed8ca1e6 приняты AUD-042/148/318/353/355/367/410/421/424/437/448/496:
+**186/512 (36,3%)**, остаток **326**. Consumer 119421189861:
+1352 PASS / 1 deselected; policy: 241 PASS. Линтеры, security/types,
+inventory, baseline и CSpell/Markdown прошли. Три нужных Go lint jobs
+и gateway GraphQL retirement test тоже прошли; source/merge trees совпали.
+Независимая scoped-проверка подтвердила приёмку.
+
+GraphQL-находки закрыты только удалением backend endpoint по ADR-046,
+не исправлением оставшегося внутреннего кода; AUD-368 остаётся отдельно.
+Для CLI проверен SQLAlchemy API, не соединение с реальным PostgreSQL.
+Для AUD-355 реальное состояние пользователей/MFA не менялось.
+
+AUD-037 дал ожидаемый frontend RED (1 FAIL / 49 PASS); total-length guard
+применён и ждёт GREEN. AUD-395/396 теперь tests-first без правки компонентов.
+Для 396 исправляется экспортируемый компонент, не текущий live route.
+Уточнённая очередь: 5 quick, 112 moderate, 84 complex, 125 uncertain.
+
+Глобальный CI не GREEN. npm audit сообщил IDs 1242747/1242753 при
+неизменном lock; точные пакеты ещё устанавливаются. Добавлен только
+failure-only диагностический вывод публичных metadata, исходный audit
+остаётся blocking, allowlist и порог не меняются. NATS также остаётся
+отдельным глобальным вопросом. Baseline 319, policy 294, required 78,
+Gitleaks 25, CodeQL и finite 131 сохранены. Merge/deploy не выполнялись.

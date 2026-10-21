@@ -1587,6 +1587,7 @@ jobs:
             tests/test_quality_configuration.py::test_virtualenv_security_floor_is_dev_only_and_locked \
             tests/test_cli_infra_closure.py tests/test_check_mypy_budget.py \
             tests/test_periodic_task_metrics.py \
+            tests/test_security_hardening_workflow_contract.py::test_npm_failure_metadata_is_diagnostic_only_and_keeps_audit_blocking \
             tests/test_quality_inventory.py::test_python_duplicate_scopes \
             tests/test_quality_inventory.py::test_python_duplicate_checker_scopes_nested_functions_independently \
             tests/test_quality_inventory.py::test_python_duplicate_checker_detects_async_and_mixed_same_scope_duplicates \

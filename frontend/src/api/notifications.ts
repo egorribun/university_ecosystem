@@ -76,6 +76,7 @@ const RELEASE_PRERELEASE = /^[0-9A-Za-z][0-9A-Za-z.-]{0,31}$/u
  * optional pre-release suffix and no build metadata.
  */
 export const isReleaseVersion = (value: string): boolean => {
+  if (value.length > 48) return false
   const separator = value.indexOf("-")
   if (separator === -1) return RELEASE_CORE.test(value)
   return (

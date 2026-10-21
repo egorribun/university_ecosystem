@@ -7,7 +7,10 @@ import { OtpEntry } from "../OtpEntry"
 // Mock translations
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, options?: Record<string, unknown>) =>
+      key === "mfa.otp.digitLabel"
+        ? String(options?.method) + " — цифра " + String(options?.digit)
+        : key,
   }),
   useId: () => "test-id",
 }))
@@ -43,7 +46,7 @@ describe("OtpEntry", () => {
     const inputs = screen.getAllByRole("textbox")
     expect(inputs).toHaveLength(6)
     expect(screen.getByRole("heading")).toHaveTextContent("mfa.otp.methods.totp")
-    expect(inputs[0]).toHaveAttribute("aria-label", "mfa.otp.methods.totp - digit 1")
+    expect(inputs[0]).toHaveAttribute("aria-label", "mfa.otp.methods.totp — цифра 1")
     expect(inputs[0]).toHaveAttribute("inputmode", "numeric")
     expect(inputs[0]).toHaveAttribute("maxlength", "1")
   })
@@ -52,7 +55,7 @@ describe("OtpEntry", () => {
     render(<OtpEntry method="email_otp" onSubmit={vi.fn()} />)
 
     expect(screen.getByRole("heading")).toHaveTextContent("mfa.otp.methods.email_otp")
-    expect(screen.getByLabelText("mfa.otp.methods.email_otp - digit 1")).toBeInTheDocument()
+    expect(screen.getByLabelText("mfa.otp.methods.email_otp — цифра 1")).toBeInTheDocument()
     expect(screen.getByText("mfa.otp.descriptions.email_otp")).toBeInTheDocument()
   })
 
