@@ -529,6 +529,9 @@ services:
       dockerfile: backend.Dockerfile
       target: runtime
     command: alembic upgrade head
+    # One-shot Alembic has no HTTP server; completion is checked by exit status.
+    healthcheck:
+      disable: true
     env_file:
       - path: .env
         required: false

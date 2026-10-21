@@ -344,3 +344,20 @@ worker/admin interleaving через реальный replay worker. Прове�
 completed state/timestamps. Production пока не меняется; собственный RED
 новых проверок ещё ожидается. Validator и gates не ослаблены.
 Ledger 169/512; Go approval, actual NATS и полный CI остаются открытыми.
+
+
+## Минимальные исправления после RED, 2026-10-21 05:32 UTC
+
+На 19c8c885 PostgreSQL job 119053393266: один целевой FAIL / 53 PASS.
+Наблюдатель видит блокировку admin UPDATE, а не SELECT; worker уже завершил
+задачу внутри незакоммиченной транзакции. Consumer 119052983397: три целевых
+FAIL / 1062 PASS / один deselected и 239 policy PASS. Два новых Compose
+контракта падают именно на отсутствующем override. Pre-commit, security/types
+и inventory SUCCESS; checkout afc7223 имеет то же tree, что source.
+
+DLQ теперь блокирует и обновляет identity-map при чтении, затем отклоняет
+COMPLETED до изменения полей. Прежние 404, остальные retry статусы, auth и
+commit сохранены. Для migrations обоих Compose отключён только унаследованный
+HTTP probe, неприменимый к Alembic; exit-status и остальные health guards
+сохранены. Свежие GREEN и actual стенд ещё требуются. AUD-465 пока не принят,
+ledger 169/512, полный CI и Go cooldown approval остаются открытыми.

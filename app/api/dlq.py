@@ -333,7 +333,7 @@ async def list_dlq_jobs(
     "/retry/{job_id}",
     summary="Retry DLQ Job",
     description=(
-        "Manually triggers a retry for a specific failed job by resetting "
+        "Manually triggers a retry for a non-completed DLQ job by resetting "
         "its status to pending."
     ),
 )
@@ -347,15 +347,24 @@ async def retry_dlq_job(
     """
     Manually trigger a retry for a specific DLQ job.
 
-    Resets the job status to pending for immediate retry.
+    Resets non-completed jobs to pending; completed jobs return a conflict.
     """
-    result = await db.execute(select(DeadLetterJob).where(DeadLetterJob.id == job_id))
+    # Serialize against worker completion and refresh any preloaded row.
+    result = await db.execute(
+        select(DeadLetterJob)
+        .where(DeadLetterJob.id == job_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     job = result.scalar_one_or_none()
 
     if not job:
         raise_not_found(
             "dlq_job", locale, resource_id=job_id, exact_key="errors.events.not_found"
         )
+
+    if job.status == JobStatus.COMPLETED.value:
+        raise_conflict("errors.dlq.already_resolved", locale)
 
     # Reset for retry
     job.status = JobStatus.PENDING.value
