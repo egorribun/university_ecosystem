@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **170/512 (33,2%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-170-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **171/512 (33,4%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-171-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -480,3 +480,77 @@ pending. No module dependency, scanner disposition, baseline319, required78,
 blocking CodeQL, hook, or finite131 migration exception is changed.
 No merge or deployment is authorized or performed. Accepted audit progress
 remains **170/512**; this refresh does not accept AUD-466 or live NATS.
+
+## Приёмка AUD-466 и tests-first NATS boundary, 2026-10-21
+
+Принята только AUD-466: пропущенная проверка цепочки больше не возвращает
+подтверждённую целостность. Source 133f87d и merge 6b2c344 имеют одинаковый tree.
+После десяти целевых RED текущие consumer проверки дают 1184 PASS /
+один прежний deselected, затем 239 policy PASS. Настоящее повреждение
+подписанного события, verified-corrupt control и bypass без вызова verifier
+проходят; API bool, права, 404 и replay сохранены. Lint, security/types,
+inventory и baseline SUCCESS. Принятый ledger теперь **171/512 (33,4%)**.
+
+Оба общих backend shard и PostgreSQL на этом source также SUCCESS:
+4178 PASS / 52 SKIP; 843 frozen-RC + 226 focused + 4210 PASS / 42 SKIP;
+210 PASS / 9 SKIP соответственно. Это не общий CI GREEN: Go vulnerability
+gate на 133f87d оставался красным, а опубликованный Go refresh ca6d711
+требует собственных доказательств. Полностью принятый checkpoint остаётся e15027a.
+
+Owned 119225099516 снова даёт 38 browser PASS / 2 прежних SKIP, затем stage=broker;
+cleanup receipt 12347621017 завершён. Эта метка также охватывает финальную
+проверку owner/runtime после валидного broker receipt. Пять существующих
+drift cases теперь требуют отдельную final_revalidation boundary, сохраняя
+failure, точные send/restore counts, cleanup и финальные owner/runtime reads.
+Невалидные receipt остаются на BROKER, успешный путь на COMPLETE.
+Это tests-first этап: production не меняется, собственный RED ещё ожидается.
+
+### Go vulnerability GREEN and generated catalog synchronization
+
+On Go-refresh source `ca6d711`, Matrix 39605507434 Go vulnerability job
+119242311896 succeeds with the actual Go 1.26.10 toolchain and reports no
+reachable vulnerabilities. Some modules retain an uncalled advisory in a
+dependency; this is not a claim that every transitive advisory disappeared.
+Tested merge `bb82b976f151151fef5730161f1f6097b1be1818` has the identical
+tree `14bebdac6f4ae5492b263c2960a35d80b732b9a2`.
+
+Inventory job 119242066552 rejects exactly three stale workflow-call guard
+snapshots in `quality/ci-check-catalog.json`, at workflows 34, 38, and 39.
+Only their serialized `inputs.go-version.default` values are synchronized
+from 1.26.9 to 1.26.10, matching the already-updated reusable cache,
+Go integration, and Go test workflows. Validator logic, events, jobs,
+classifications, timeouts, artifacts, and required context/app pairs are
+unchanged. This is a generated metadata correction after observed RED, not
+a gate relaxation; its own source-bound GREEN remains required.
+
+The SBOM read-only producer contract also retains one old compiler expectation
+in `tests/contracts/test_ci_release_capacity_contract.py`; only that expected
+version becomes 1.26.10. Its credential, permission, scanner, source-ref,
+and signing constraints are retained.
+
+The new source scan separately reports one unmatched public image checksum
+at `tests/test_docker_startup_contracts.py:3028` (Hex High Entropy String).
+The separate exact singleton approval and its bounded policy update are
+recorded below. No baseline change is included.
+
+### Owner-approved singleton public Go image checksum, 2026-10-21
+
+The owner explicitly approved the one pending public-integrity identity
+reported by source `ca6d711`: `tests/test_docker_startup_contracts.py`,
+detector Hex High Entropy String, for the official Go 1.26.10-alpine3.24
+image index checksum. Exactly one record is added under the existing
+`public_integrity_digest` category, reviewed 2026-10-21 and expiring
+2027-01-10. All prior 283 records remain unchanged, for **284** total.
+The independent source-binding test fixes the expected finding identity
+and checks the real source literal, owner, category, approval, and dates.
+No raw checksum is duplicated here. No baseline, validator, suppression,
+hook, required context, or other identity is changed.
+
+This approval is separate from the compiler cooldown exception. On `ca6d711`,
+consumer job 119242066749 logs seven failures (six stale catalog controls
+and one old SBOM Go expectation), 1,177 passes, and one deselection in
+490.18 seconds. Its subsequent policy step logs all 239 passes in 54.03
+seconds, although the job's final metadata is cancelled; this is not a
+successful job claim. The two observed source mismatches are corrected in
+this slice. Fresh hosted scans and tests, and the expected five NATS
+stage-regression failures, remain to be observed before production changes.

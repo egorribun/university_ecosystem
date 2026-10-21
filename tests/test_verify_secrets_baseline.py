@@ -1842,3 +1842,76 @@ def test_public_compose_sentinel_identity_matches_fixed_source_literal() -> None
     assert value.value == "live-stand-inspection-placeholder"
     digest = hashlib.sha1(value.value.encode("utf-8"), usedforsecurity=False).digest()
     assert digest == bytes(record["identity"]["hashed_secret_bytes"])
+
+
+def test_approved_go_image_disposition_binds_exact_source_checksum() -> None:
+    root = Path(__file__).resolve().parents[1]
+    path = "tests/test_docker_startup_contracts.py"
+    expected_digest = bytes(
+        (
+            246,
+            29,
+            95,
+            9,
+            239,
+            28,
+            164,
+            164,
+            87,
+            181,
+            67,
+            85,
+            104,
+            249,
+            102,
+            110,
+            149,
+            79,
+            94,
+            167,
+        )
+    )
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    records = [
+        record
+        for record in policy["records"]
+        if record["identity"]["path"] == path
+        and record["identity"]["type"] == "Hex High Entropy String"
+        and bytes(record["identity"]["hashed_secret_bytes"]) == expected_digest
+    ]
+    assert len(records) == 1
+    record = records[0]
+    assert record["category"] == "public_integrity_digest"
+    assert record["owner"] == "egorribun"
+    assert record["reviewed_on"] == "2026-10-21"
+    assert record["expires_on"] == "2027-01-10"
+    assert record["approval_status"] == "approved"
+
+    source = ast.parse((root / path).read_text(encoding="utf-8"))
+    prefix = "golang:1.26.10-alpine3.24@sha256:"
+    values = {
+        node.value.removeprefix(prefix)
+        for node in ast.walk(source)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and node.value.startswith(prefix)
+        and len(node.value) == len(prefix) + 64
+    }
+    assert len(values) == 1
+    value = values.pop()
+    actual_digest = hashlib.sha1(value.encode("utf-8"), usedforsecurity=False).digest()
+    assert actual_digest == expected_digest
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(record), today=verifier.date(2026, 10, 21)
+    ) == {
+        verifier.FindingIdentity(
+            path,
+            "Hex High Entropy String",
+            expected_digest.hex(),
+            1,
+        )
+    }

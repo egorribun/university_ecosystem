@@ -306,6 +306,17 @@ for the MVP release; the current plan is
      all 78 required context/app pairs, CodeQL, hooks and finite131 remain
      unchanged; fresh source validation and hosted checks are still required.
 
+     On 2026-10-21 UTC, the owner separately approved exactly one additional
+     public official Go 1.26.10-alpine3.24 image-checksum identity in
+     `tests/test_docker_startup_contracts.py`, detector `Hex High Entropy String`,
+     under the existing `public_integrity_digest` category. Its exact
+     path/type/digest record is in the policy, reviewed 2026-10-21 and expiring
+     2027-01-10. All prior 283 records remain unchanged; the scope is now 284.
+     This grants no other identity, baseline edit, inline pragma, broad
+     exclusion, validator relaxation, expiry extension, or gate change.
+     Baseline319, required78, blocking CodeQL, hooks, and finite131 remain
+     unchanged; source-bound scans and tests still apply.
+
    - `gitleaks` (repo secret scanning). On 2026-10-20 the owner approved
      exactly 25 immutable historical commit/path/rule/line fingerprints:
      24 public, synthetic, or prose findings and one separately reviewed

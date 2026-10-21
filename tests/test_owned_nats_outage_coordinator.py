@@ -15,6 +15,7 @@ from scripts.owned_nats_coordinator import (
     LoginEvidence,
     MessagePostEvidence,
     OutageOutcome,
+    OutageResult,
     OutageStage,
     ParticipantEvidence,
     PgRoleRow,
@@ -54,7 +55,7 @@ def names(ports: FakePorts) -> list[str]:
 
 def assert_failed(
     ports: FakePorts, *, sends: int | None = 0, restores: int = 0
-) -> None:
+) -> OutageResult:
     result = run(ports)
     assert result.outcome is OutageOutcome.FAILED
     trace = names(ports)
@@ -64,6 +65,7 @@ def assert_failed(
         assert trace.count("send_message_once") == sends
     assert trace.count("start_container") == restores
     assert trace[-2:] == ["close_clients", "release_lock"]
+    return result
 
 
 def test_valid_path_binds_exact_event_and_restores_before_drain() -> None:
@@ -594,7 +596,8 @@ def test_coordinator_requires_exact_raw_broker_receipt(case: str) -> None:
         ports.broker = replace(ports.broker, sequence=0)
     else:
         ports.broker = replace(ports.broker, envelope={"type": "new_message"})
-    assert_failed(ports, sends=1, restores=1)
+    result = assert_failed(ports, sends=1, restores=1)
+    assert result.stage is OutageStage.BROKER
 
 
 @pytest.mark.parametrize(
@@ -725,12 +728,15 @@ def test_broker_receipt_cannot_hide_final_owner_or_inventory_drift(
         return receipt
 
     monkeypatch.setattr(ports, "broker_last_message", receipt_then_drift)
-    assert_failed(ports, sends=1, restores=1)
+    result = assert_failed(ports, sends=1, restores=1)
     trace = names(ports)
     assert trace.count("broker_last_message") == 1
     receipt_index = trace.index("broker_last_message")
     assert trace.index("start_container") < receipt_index
     assert "read_signed_owner" in trace[receipt_index + 1 :]
+    if drift != "owner":
+        assert "observe_runtime" in trace[receipt_index + 1 :]
+    assert result.stage.value == "final_revalidation"
 
 
 @pytest.mark.parametrize(

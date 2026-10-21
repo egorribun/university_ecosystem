@@ -8075,6 +8075,40 @@
       "reviewed_on": "2026-10-20",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_docker_startup_contracts.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          246,
+          29,
+          95,
+          9,
+          239,
+          28,
+          164,
+          164,
+          87,
+          181,
+          67,
+          85,
+          104,
+          249,
+          102,
+          110,
+          149,
+          79,
+          94,
+          167
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public official Golang 1.26.10-alpine3.24 image index checksum verified at https://github.com/docker-library/repo-info/blob/01a4608bd03cd0733af707340902e3308f7b2e76/repos/golang/remote/1.26.10-alpine3.24.md; exact source reference tests/test_docker_startup_contracts.py:3028. Owner approved exactly this identity on 2026-10-21; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-21",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }
