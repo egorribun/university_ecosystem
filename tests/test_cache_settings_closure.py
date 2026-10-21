@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import uuid
 from pathlib import Path
@@ -103,3 +104,30 @@ def test_cache_warmup_properties_handle_empty_and_iterable_inputs():
     assert settings.cache_warmup_group_ids == ()
     assert settings.cache_warmup_stats_user_ids == ()
     assert settings.cache_warmup_period_keys == ()
+
+
+def test_cache_warmup_properties_preserve_uuid_ids_and_skip_invalid_tokens():
+    group_ids = (uuid.uuid4(), uuid.uuid4())
+    user_id = uuid.uuid4()
+    settings = CacheSettings(
+        cache_warmup_groups=f"{group_ids[0]},not-a-uuid,{group_ids[1]},{group_ids[0]}",
+        cache_warmup_stats_users=f"{user_id},invalid",
+    )
+
+    assert settings.cache_warmup_group_ids == (*group_ids, group_ids[0])
+    assert settings.cache_warmup_stats_user_ids == (user_id,)
+
+
+@pytest.mark.parametrize("as_json", [False, True], ids=["csv", "json-list"])
+def test_cache_warmup_uuid_ids_load_from_environment(monkeypatch, as_json):
+    group_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+    user_ids = [str(uuid.uuid4())]
+    group_value = json.dumps(group_ids) if as_json else ",".join(group_ids)
+    user_value = json.dumps(user_ids) if as_json else ",".join(user_ids)
+    monkeypatch.setenv("CACHE_WARMUP_GROUPS", group_value)
+    monkeypatch.setenv("CACHE_WARMUP_STATS_USERS", user_value)
+
+    settings = CacheSettings(_env_file=None)
+
+    assert settings.cache_warmup_group_ids == tuple(map(uuid.UUID, group_ids))
+    assert settings.cache_warmup_stats_user_ids == tuple(map(uuid.UUID, user_ids))

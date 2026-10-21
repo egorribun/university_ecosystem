@@ -1,10 +1,10 @@
 # Статус выпуска MVP v1.0.0
 
-Обновлено: 2026-10-21 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+Обновлено: 2026-10-22 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **212/512 (41,4%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-212-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **213/512 (41,6%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-213-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -990,3 +990,28 @@ GHSA-c978-59m8-c77v требует21.14.9 от17октября; точное coo
 запрошено, но пока не одобрено. Обычный cooldown заканчивается24октября
 16:09:47UTC. Пакеты, исключения и политики не меняются до решения.
 NATS/global CI остаются открытыми, merge/deploy не выполняются.
+
+
+## AUD-163 и измеренный результат catalog validation
+
+Принята только AUD-163: **213/512 (41,6%)**, остаток 299
+(90 moderate, 84 complex, 125 uncertain). Source 21bfb48 / merge 09c1a2a9
+имеют одинаковый tree c3581713. Contract job 119507854319 — SUCCESS:
+1382 PASS / 1 deselected за 245,64 s, затем 241 policy PASS за 20,27 s
+и штатный cleanup. Три raw-ASGI-header cases подтверждают lowercase имена
+и неизменные значения. Handler уже исправлен, новой правки не требуется.
+
+Catalog parse-once/fresh-next-call и malformed-unlisted tests прошли.
+Предыдущие 548,77 s против наблюдаемых 245,64 s не считаются строгой
+атрибуцией всего ускорения: runners/load различаются. Повторный parse
+устранён прямо проверяемым контрактом; tests/GC/fixtures/security/budget
+сохранены. Lint, security/types и inventory также PASS, но global CI/NATS
+не приняты.
+
+Следующая AUD-044 пока tests-first: три случая UUID group/user settings
+через CSV и JSON-list env, invalid-token filtering и сохранение порядка
+и повторов. Используется настоящий CacheSettings; production parsing
+не меняется до RED. Общий integer parser для image widths не затрагивается.
+Ledger не включает AUD-044. Virtualenv 21.14.9 ждёт точное cooldown-разрешение
+владельца; пакеты и политики не меняются. Все finite security/coverage
+границы сохранены, merge/deploy нет.
