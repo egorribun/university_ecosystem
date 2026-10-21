@@ -321,3 +321,26 @@ callback/metadata boundary и четыре конечных inventory verdicts.
 сохраняют успешный retry; прежний404 test не изменён. Полный test_api_dlq
 включён в ранний прогон. Production пока не изменён, RED ещё не подтверждён.
 Worker/admin race не считается покрытым; ledger остаётся 169/512.
+
+
+## DLQ RED и inventory health, 2026-10-21 04:59 UTC
+
+На ab88b3a consumer 119040647784: один целевой FAIL / 1062 PASS /
+один deselected и 239 policy PASS. Completed retry действительно отвечает 200
+вместо 409; положительные статусы и прежний 404 проходят. Merge 504f8ae и source
+имеют одинаковое tree e5da100e. Статические pre-commit gates SUCCESS.
+
+На 920fb9fb consumer завершил 1051 PASS, но policy step отменился после
+следующей публикации; полный GREEN для него не заявлен. Actual Owned
+119038246185 после 38 browser PASS / двух skips и Caddy redaction выдаёт
+inventory_unhealthy. Конкретный сервис в логах не раскрыт; receipt только
+метаданные. В обоих Compose найден inherited HTTP healthcheck у migrations,
+который запускает Alembic без HTTP-сервера. Это отдельное статическое
+несоответствие, а не доказанная причина actual отказа.
+
+Добавлены tests-first source contracts для обоих Compose и PostgreSQL
+worker/admin interleaving через реальный replay worker. Проверка требует
+ожидания именно SELECT FOR UPDATE, обновления stale identity-map и сохранения
+completed state/timestamps. Production пока не меняется; собственный RED
+новых проверок ещё ожидается. Validator и gates не ослаблены.
+Ledger 169/512; Go approval, actual NATS и полный CI остаются открытыми.

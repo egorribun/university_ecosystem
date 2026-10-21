@@ -3139,3 +3139,20 @@ def test_prometheus_target_expectation_matches_the_configured_jobs() -> None:
     assert "StorageIsSeaweedFS" not in script
     assert "MinIO Console" not in script
     assert "localhost:9001" not in script
+
+
+@pytest.mark.parametrize(
+    "relative_path", ("docker-compose.yml", "docker-compose.full.yml")
+)
+def test_migrations_disable_inherited_backend_runtime_healthcheck(
+    relative_path: str,
+) -> None:
+    migrations = _compose(relative_path)["services"]["migrations"]
+    dockerfile = _read("backend.Dockerfile")
+    runtime = dockerfile[dockerfile.index("AS runtime") :]
+
+    assert migrations["build"]["dockerfile"] == "backend.Dockerfile"
+    assert migrations["build"]["target"] == "runtime"
+    assert migrations["command"] == "alembic upgrade head"
+    assert re.search(r"^HEALTHCHECK\b", runtime, re.MULTILINE)
+    assert migrations.get("healthcheck") == {"disable": True}
