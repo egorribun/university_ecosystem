@@ -6420,7 +6420,7 @@
     },
     "description": "REST API for university life management platform - schedules, news, events, notifications, and more.",
     "title": "University Ecosystem API",
-    "version": "1.1.0"
+    "version": "1.1.1"
   },
   "openapi": "3.1.0",
   "paths": {

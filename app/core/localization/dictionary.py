@@ -877,6 +877,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Время окончания должно быть позже времени начала мероприятия",
         "en": "The end time must be later than the start time",
     },
+    "validation.events.timezone_mismatch": {
+        "ru": "Время начала и окончания должно быть либо с часовым поясом, либо без него",
+        "en": "Start and end times must either both include a timezone or both omit it",
+    },
     "validation.events.times_required": {
         "ru": "Укажите время начала и окончания мероприятия одновременно",
         "en": "Provide both start and end times for the event",

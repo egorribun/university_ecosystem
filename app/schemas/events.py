@@ -54,6 +54,8 @@ class EventCreate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_time_order(self) -> EventCreate:
+        if (self.starts_at.utcoffset() is None) != (self.ends_at.utcoffset() is None):
+            raise ValueError(translate("validation.events.timezone_mismatch"))
         if self.ends_at <= self.starts_at:
             raise ValueError(translate("validation.events.end_after_start"))
         return self
@@ -86,6 +88,10 @@ class EventUpdate(BaseModel):
         if starts_set or ends_set:
             if self.starts_at is None or self.ends_at is None:
                 raise ValueError(translate("validation.events.times_required"))
+            if (self.starts_at.utcoffset() is None) != (
+                self.ends_at.utcoffset() is None
+            ):
+                raise ValueError(translate("validation.events.timezone_mismatch"))
             if self.ends_at <= self.starts_at:
                 raise ValueError(translate("validation.events.end_after_start"))
         return self

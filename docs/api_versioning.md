@@ -2,7 +2,7 @@
 
 ## Current contract
 
-The FastAPI application publishes semantic API version `1.1.0`. This API contract version is separate from the MVP release version `1.0.0`. Its REST
+The FastAPI application publishes semantic API version `1.1.1`. This API contract version is separate from the MVP release version `1.0.0`. Its REST
 surface is mounted under `/api/v1`; health, WebSocket, and well-known
 discovery endpoints intentionally use infrastructure-specific root paths. The
 backend GraphQL endpoint is excluded from the MVP and is not a FastAPI route;
@@ -74,3 +74,14 @@ removed or changed snapshot fields.
 3. Regenerate the snapshot only after reviewing the normalized schema diff.
 4. For a breaking release, add a new versioned router and migration guidance;
    do not silently rewrite the v1 contract.
+
+## Event datetime validation (API 1.1.1)
+
+Event creation and public updates reject mixed timezone-aware and naive
+start/end pairs with a validation error (HTTP 422), rather than leaking a
+comparison TypeError. All-naive and all-aware pairs retain their existing
+ordering semantics. Public updates still require both non-null endpoints
+when either is supplied; title-only and internal partial-time updates remain
+unchanged. This patch does not introduce event string-length limits or change
+stored data. The size-limit portion of AUD-256 remains open pending an explicit
+compatibility decision; ORM size declarations do not prove migrated SQL bounds.
