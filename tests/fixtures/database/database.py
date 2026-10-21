@@ -115,6 +115,99 @@ _PURE_PARSER_TEST_CASES = {
 }
 
 
+# These reviewed policy tests use only temporary files and subprocess fixtures.
+# Skip row cleanup only; task cancellation, GC and session teardown stay active.
+_DATABASE_FREE_POLICY_TEST_NAMES = frozenset(
+    {
+        "test_source_delta_rejects_added_marker_in_quoted_path",
+        "test_source_delta_parses_forced_text_binary_hunk_with_unicode_separators",
+        "test_source_delta_rejects_a_moved_legacy_marker",
+        "test_source_delta_allows_unchanged_and_removed_legacy_markers",
+        "test_source_delta_fails_closed_when_git_is_unavailable",
+        "test_source_delta_fails_closed_on_malformed_git_diff",
+        "test_source_delta_rejects_invalid_or_unavailable_base",
+        "test_source_delta_does_not_surface_git_error_output",
+        "test_source_delta_diagnostic_reports_count_without_untrusted_paths",
+        "test_security_workflow_passes_source_base_for_supported_events",
+        "test_matching_findings_allow_stale_removals",
+        "test_new_finding_in_existing_file_is_rejected",
+        "test_line_number_drift_does_not_create_a_new_finding",
+        "test_trusted_base_rejects_new_baseline_suppression",
+        "test_trusted_base_stale_addition_preserves_removal_semantics",
+        "test_empty_current_results_are_valid_and_mark_baseline_stale",
+        "test_path_separators_are_compared_canonically",
+        "test_malformed_artifacts_fail_closed",
+        "test_missing_artifact_fails_closed",
+        "test_baseline_requires_explicit_false_positive_triage",
+        "test_baseline_rejects_a_committed_secret_decision",
+        "test_invalid_json_fails_closed",
+        "test_malformed_trusted_base_fails_closed",
+        "test_cli_usage_error_is_fail_closed",
+        "test_empty_trusted_base_path_fails_closed",
+        "test_base_baseline_alias_is_supported",
+        "test_reviewed_false_positive_disposition_matches_exact_identity",
+        "test_exact_new_identity_allowlists_remain_finite_and_path_scoped",
+        "test_source_contract_identifier_category_is_finite_and_evidence_bound",
+        "test_c6_source_contract_records_require_explicit_approval",
+        "test_c6_source_contract_records_reject_mutated_identity_or_category",
+        "test_v4_independent_contract_fingerprints_match_exact_identities",
+        "test_external_kubernetes_secret_references_match_exact_identities",
+        "test_trivy_university_secret_reference_is_exact_and_requires_approval",
+        "test_new_exact_disposition_categories_reject_mutated_identities",
+        "test_mfa_helm_secret_reference_is_exact_and_requires_approval",
+        "test_external_secret_reference_requires_semantic_evidence_markers",
+        "test_external_secret_reference_still_requires_unexpired_review",
+        "test_independent_contract_fingerprint_category_remains_exact",
+        "test_non_hex_dispositions_are_scoped_to_reviewed_path_and_type",
+        "test_non_hex_dispositions_reject_wrong_source_or_type",
+        "test_internal_demo_account_requires_both_owner_evidence_markers",
+        "test_internal_demo_account_category_does_not_approve_pending_record",
+        "test_reviewed_disposition_does_not_match_other_path_or_digest",
+        "test_reviewed_disposition_rejects_unapproved_finding_type",
+        "test_reviewed_disposition_requires_approved_owner_and_finite_dates",
+        "test_reviewed_disposition_rejects_non_exact_paths",
+        "test_reviewed_disposition_rejects_duplicate_identities",
+        "test_reviewed_disposition_rejects_unknown_fields_and_bad_digest",
+        "test_reviewed_disposition_rejects_malformed_digest_bytes",
+        "test_reviewed_disposition_does_not_cover_an_unrelated_finding",
+        "test_trusted_disposition_loader_uses_base_tree_not_worktree",
+        "test_trusted_disposition_loader_ignores_candidate_only_artifact",
+        "test_trusted_disposition_loader_rejects_duplicate_json_keys",
+        "test_main_uses_trusted_exact_dispositions",
+        "test_owner_authored_candidate_disposition_is_explicit_opt_in",
+        "test_candidate_disposition_tamper_expiry_fails_closed",
+        "test_push_can_use_accepted_head_policy_while_source_diff_uses_before_sha",
+        "test_trusted_disposition_does_not_allow_new_baseline_suppression",
+        "test_trusted_disposition_does_not_allow_added_inline_pragma",
+        "test_disposition_file_is_protected_by_existing_owner_policy_gates",
+        "test_public_compose_sentinel_matches_only_approved_identity",
+        "test_public_compose_sentinel_refuses_scope_mutation",
+        "test_public_compose_sentinel_expires_after_approved_date",
+        "test_public_compose_sentinel_requires_each_semantic_marker",
+        "test_public_compose_sentinel_identity_matches_fixed_source_literal",
+        "test_approved_go_image_disposition_binds_exact_source_checksum",
+    }
+)
+
+
+def _is_database_free_policy_case(node: object) -> bool:
+    original_name = getattr(node, "originalname", None)
+    node_path = getattr(node, "path", None)
+    root_path = getattr(getattr(node, "config", None), "rootpath", None)
+    if original_name is None or node_path is None or root_path is None:
+        return False
+    try:
+        expected_path = (
+            Path(root_path).absolute() / "tests/test_verify_secrets_baseline.py"
+        )
+        return (
+            Path(node_path).absolute() == expected_path
+            and original_name in _DATABASE_FREE_POLICY_TEST_NAMES
+        )
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+
+
 def _is_pure_parser_profile_case(node: object) -> bool:
     original_name = getattr(node, "originalname", None)
     node_path = getattr(node, "path", None)
@@ -744,7 +837,9 @@ async def clean_database(
 
     yield
 
-    if _is_pure_parser_profile_case(request.node):
+    if _is_pure_parser_profile_case(request.node) or _is_database_free_policy_case(
+        request.node
+    ):
         return
 
     database_url = os.environ.get("DATABASE_URL", "")

@@ -1915,3 +1915,94 @@ def test_approved_go_image_disposition_binds_exact_source_checksum() -> None:
             1,
         )
     }
+
+
+def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> None:
+    root = Path(__file__).resolve().parents[1]
+    paths = (
+        "scripts/quality/benchmark_capture_activation.py",
+        "tests/test_benchmark_capture_activation_workflow.py",
+    )
+    expected_digests = {
+        bytes(
+            (
+                *(189, 150, 35, 69, 216, 63, 138, 226, 98, 138),
+                *(68, 74, 85, 25, 150, 191, 96, 188, 12, 244),
+            )
+        ),
+        bytes(
+            (
+                *(221, 15, 186, 27, 178, 116, 134, 111, 122, 164),
+                *(212, 230, 250, 42, 89, 161, 192, 23, 163, 47),
+            )
+        ),
+        bytes(
+            (
+                *(100, 220, 73, 83, 214, 135, 25, 219, 155, 67),
+                *(136, 52, 53, 47, 201, 166, 188, 247, 162, 64),
+            )
+        ),
+        bytes(
+            (
+                *(170, 211, 241, 2, 217, 140, 162, 48, 192, 237),
+                *(158, 191, 80, 65, 79, 179, 86, 161, 66, 112),
+            )
+        ),
+        bytes(
+            (
+                *(96, 116, 161, 36, 68, 56, 120, 27, 21, 234),
+                *(138, 37, 0, 104, 147, 166, 166, 83, 205, 184),
+            )
+        ),
+    }
+    assert len(expected_digests) == 5
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert len(policy["records"]) == 294
+    records = [
+        record
+        for record in policy["records"]
+        if record["identity"]["path"] in paths
+        and record["reviewed_on"] == "2026-10-21"
+    ]
+    expected = {
+        (path, "Hex High Entropy String", digest)
+        for path in paths
+        for digest in expected_digests
+    }
+    assert len(records) == 10
+    assert {
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            bytes(record["identity"]["hashed_secret_bytes"]),
+        )
+        for record in records
+    } == expected
+
+    for record in records:
+        assert record["category"] == "public_integrity_digest"
+        assert record["owner"] == "egorribun"
+        assert record["reviewed_on"] == "2026-10-21"
+        assert record["expires_on"] == "2027-01-10"
+        assert record["approval_status"] == "approved"
+
+    for path in paths:
+        source = ast.parse((root / path).read_text(encoding="utf-8"))
+        actual = {
+            hashlib.sha1(node.value.encode("utf-8"), usedforsecurity=False).digest()
+            for node in ast.walk(source)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        }
+        assert expected_digests <= actual, path
+
+    assert verifier.validate_false_positive_dispositions(
+        {"schema_version": 1, "records": records},
+        today=verifier.date(2026, 10, 21),
+    ) == {
+        verifier.FindingIdentity(path, finding_type, digest.hex(), 1)
+        for path, finding_type, digest in expected
+    }

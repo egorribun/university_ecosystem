@@ -34,6 +34,14 @@ def main():
             print(f"  {error}")
         sys.exit(1)
 
+    if result.returncode != 0 and (result.returncode != 1 or error_count == 0):
+        print(f"[FAIL] Mypy process failed (exit status: {result.returncode})")
+        if result.stdout:
+            print(result.stdout.rstrip())
+        if result.stderr:
+            print(result.stderr.rstrip())
+        sys.exit(1)
+
     print(
         f"[PASS] Mypy budget check passed (Current: {error_count}, Budget: {ERROR_BUDGET})"
     )

@@ -158,7 +158,7 @@ corresponding plaintext variable.
 | `OUTBOX_POLL_INTERVAL_SECONDS` | Polling interval (seconds) for the active embedded worker | `5.0` |
 | `OUTBOX_MAX_RETRIES` | Dispatch attempts before DLQ | `5` |
 | `EMBEDDED_OUTBOX_WORKER_ENABLED` | Enable the embedded polling outbox worker | `true` |
-| `EMBEDDED_CDC_OUTBOX_WORKER_ENABLED` | Use PostgreSQL logical replication instead of polling. Replaces, never accompanies, the polling worker — both publish the same events. Requires `wal_level=logical`. | `false` |
+| `EMBEDDED_CDC_OUTBOX_WORKER_ENABLED` | Unsupported/deferred. Keep `false`: `true` is rejected before startup resources are opened. Use the polling outbox worker. Standalone CDC is also rejected before connecting or provisioning; production integration remains deferred under [ADR-037](docs/adr/ADR-037-cdc-outbox-transport-ownership.md). | `false` |
 
 ---
 

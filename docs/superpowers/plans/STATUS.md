@@ -742,3 +742,30 @@ DB-only ускорения67 policy-функций. Fixtures/GC/task cleanup п�
 изменены; все240 policy-кейсов,10-minute budget, baseline319, policy284,
 required78 и finite131 сохраняются. Для496 удалён только ложный комментарий,
 приёмка ожидает проверки. NATS/global CI остаются отдельными блокерами.
+
+
+## Следующая небольшая пачка после подтверждённого RED
+
+Принятая нижняя граница остаётся **174/512**. На 011f6ea5 consumer
+119401701428 дал ровно 6 ожидаемых FAIL / 1322 PASS / 1 deselected
+(484,78 s), затем policy: 240 PASS (47,23 s). Source и tested merge
+95347342 имеют одинаковое дерево. Это не общий GREEN.
+
+Исправлены причины AUD-042/410 и добавлен отдельный DB-only профиль
+для 67 ранее проверенных policy-функций. GC, отмена задач, session teardown
+и все проверки сохраняются; ускорение ещё нужно измерить. Применён
+точный Ruff diff двух конструкций CLI-теста. virtualenv 21.14.7 уже прошёл
+lock/hash-install, Dependency Review, Python audit и security/baseline gates.
+
+Подготовлены корректировки документации AUD-421/424/437 с контрактами,
+ранние проверки существующих исправлений AUD-148 и AUD-353/367/448,
+а также tests-first AUD-355 без изменения management-кода. Эти находки
+пока не добавлены в accepted set; AUD-496 также ждёт итоговой проверки.
+
+Владелец отдельно одобрил обновление immutable helper pin на ca6d7117
+и ровно 10 новых публичных provenance identities в двух согласованных
+файлах. Реестр дополнен с 284 до 294, прежние записи неизменны,
+expiry 2027-01-10. Новый точный policy-тест добавляет один кейс и не
+включён в DB-only exemption. Baseline 319, required 78, Gitleaks 25,
+CodeQL, finite 131, benchmark population/threshold и лимиты времени
+не меняются. Нужны результаты нового HEAD; merge/deploy не выполнялись.

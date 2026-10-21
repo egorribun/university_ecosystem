@@ -3,6 +3,7 @@ import asyncio
 import typer
 from rich.console import Console
 from rich.table import Table
+from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import engine
@@ -34,7 +35,7 @@ async def check_infra() -> None:
     # 1. PostgreSQL
     try:
         async with engine.connect() as conn:
-            await conn.execute("SELECT 1")
+            await conn.execute(text("SELECT 1"))
         table.add_row(COMPONENT_POSTGRES, STATUS_ONLINE, "Connected successfully")
     except Exception as e:  # RZ-22-01-JUSTIFIED: health probe — reports status for any DB error (reviewed TD-27-04)
         table.add_row(COMPONENT_POSTGRES, STATUS_OFFLINE, str(e))

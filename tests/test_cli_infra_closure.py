@@ -45,7 +45,9 @@ def test_infra_typer_entrypoint_runs_async_check():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("database_available", [True, False], ids=["healthy", "offline"])
+@pytest.mark.parametrize(
+    "database_available", [True, False], ids=["healthy", "offline"]
+)
 async def test_infra_database_status_uses_a_real_sqlalchemy_connection(
     database_available: bool,
 ) -> None:
@@ -56,7 +58,9 @@ async def test_infra_database_status_uses_a_real_sqlalchemy_connection(
     nats = SimpleNamespace(connect=AsyncMock(), close=AsyncMock())
     try:
         with (
-            patch("app.cli.infra.engine", engine if database_available else unavailable),
+            patch(
+                "app.cli.infra.engine", engine if database_available else unavailable
+            ),
             patch("app.cli.infra.get_cache", return_value=object()),
             patch("app.cli.infra.get_nats_service", return_value=nats),
             patch("app.cli.infra.settings", SimpleNamespace(storage_backend="local")),

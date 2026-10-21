@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
 
 import pytest
 from sqlalchemy import Integer, String
@@ -21,6 +22,7 @@ from app.management.reset_mfa import main as reset_mfa_main
 from app.management.stories_cleanup import main as stories_cleanup_main
 from app.management.weekly_cleanup import main as weekly_cleanup_main
 from app.management.weekly_cleanup import run_weekly_cleanup
+from app.models import User
 from app.scripts.backfill_uuids import main as backfill_uuids_main
 
 # Declarative models for backfill testing to mimic transition phase.  The name
@@ -168,12 +170,48 @@ def test_build_arg_parser() -> None:
     assert isinstance(parser, argparse.ArgumentParser)
 
 
+def test_mfa_reset_parser_preserves_uuid_and_notification_choice() -> None:
+    user_id = UUID(int=1)
+    args = _build_arg_parser().parse_args(["--user-id", str(user_id), "--no-notify"])
+
+    assert args.user_id == user_id
+    assert isinstance(args.user_id, UUID)
+    assert args.email is None
+    assert args.no_notify is True
+    assert "UUID" in _build_arg_parser().format_help()
+
+
+@pytest.mark.parametrize("raw", ["1", "not-a-uuid", ""])
+def test_mfa_reset_parser_rejects_non_uuid_ids(raw: str) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        _build_arg_parser().parse_args(["--user-id", raw])
+
+    assert exc_info.value.code == 2
+
+
+def test_mfa_reset_parser_keeps_email_and_mutual_exclusion() -> None:
+    parser = _build_arg_parser()
+    args = parser.parse_args(["--email", "user@example.com"])
+    assert args.email == "user@example.com"
+    assert args.user_id is None
+    assert args.no_notify is False
+
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(
+            ["--email", "user@example.com", "--user-id", str(UUID(int=1))]
+        )
+
+    assert exc_info.value.code == 2
+
+
 @pytest.mark.asyncio
 async def test_load_user_by_id(mock_db_session) -> None:
     user = MagicMock()
     mock_db_session.get.return_value = user
-    res = await _load_user(mock_db_session, user_id=1, email=None)
+    user_id = UUID(int=1)
+    res = await _load_user(mock_db_session, user_id=user_id, email=None)
     assert res == user
+    mock_db_session.get.assert_awaited_once_with(User, user_id)
 
 
 @pytest.mark.asyncio

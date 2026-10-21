@@ -74,11 +74,15 @@ cd frontend && npm run build
 ```
 
 ### Go Microservices
+
+Run each command from the repository root. The pinned-container alternative is
+in [the Go domain instructions](services/AGENTS.md#11-linux-equivalent-tooling-from-a-windows-host).
+
 ```bash
-# Linting
-cd services/gateway && golangci-lint run
-cd services/ws-hub && golangci-lint run
-cd services/file-processor && golangci-lint run
+# Linting (golangci-lint v2.14.0; explicit root config matches CI)
+(cd services/gateway && golangci-lint run --config ../../.golangci.yml --timeout 5m)
+(cd services/ws-hub && golangci-lint run --config ../../.golangci.yml --timeout 5m)
+(cd services/file-processor && golangci-lint run --config ../../.golangci.yml --timeout 5m)
 
 # Tests
 cd services/gateway && go test -v -race ./...
@@ -316,6 +320,19 @@ for the MVP release; the current plan is
      exclusion, validator relaxation, expiry extension, or gate change.
      Baseline319, required78, blocking CodeQL, hooks, and finite131 remain
      unchanged; source-bound scans and tests still apply.
+
+     On 2026-10-21 UTC, the owner approved exactly ten additional public
+     benchmark-helper provenance identities: commit, parent, tree, blob and
+     SHA-256 bindings in each of `scripts/quality/benchmark_capture_activation.py`
+     and `tests/test_benchmark_capture_activation_workflow.py`. The approved
+     checkpoint contains the already-approved Go toolchain refresh. The exact
+     path/type/finding-digest records use `public_integrity_digest`, are reviewed
+     on 2026-10-21 and expire on 2027-01-10. The prior 284 records are retained
+     unchanged, bringing the scope to 294. This grants no other identity,
+     category-wide matching, baseline edit, pragma, expiry extension or gate
+     change. Independent provenance checks, benchmark population and threshold,
+     baseline 319, required 78, blocking CodeQL and finite 131 stay unchanged.
+     Fresh scans and hosted checks remain required after integration.
 
    - `gitleaks` (repo secret scanning). On 2026-10-20 the owner approved
      exactly 25 immutable historical commit/path/rule/line fingerprints:

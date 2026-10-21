@@ -22,19 +22,19 @@ MAX_CAPTURE_HELPER_BYTES = 256 * 1024
 
 # Public immutable provenance for the reviewed checkpoint containing the helper.
 PINNED_HELPER_COMMIT = (
-    "3fc0ec8ac23b7d6995783343d83d383df72d06c6"  #  -- public helper commit
+    "ca6d7117e3ccf22e42f484c3b9ff032091415f94"  #  -- public helper commit
 )
 PINNED_HELPER_PARENT = (
-    "a744430f4e6fe7cb5ad06642f6450bf36c64a2ae"  #  -- public helper parent
+    "133f87d22575b954b32d8ed7df03c6d1834842ea"  #  -- public helper parent
 )
 PINNED_HELPER_TREE = (
-    "1329e9636c08b17d6c64b8f4d541282ad9bc9c43"  #  -- public helper tree
+    "14bebdac6f4ae5492b263c2960a35d80b732b9a2"  #  -- public helper tree
 )
 PINNED_HELPER_BLOB = (
-    "454074e46ad6dafc4deee963fa450215344d33d9"  #  -- public helper blob
+    "1da31bffb46fb13faa49547d18056c63a64d32bd"  #  -- public helper blob
 )
-PINNED_HELPER_SHA256 = "727133b420f1ad551433e626ca590500f5735bdec0bde7be19a9f8e7ea4568c5"  #  -- public helper SHA-256
-PINNED_HELPER_SIZE = "52218"
+PINNED_HELPER_SHA256 = "d55098c2f52ca5489e7d8469376fbcde6085100bb8425a8e9c3b9d360df8a4bb"  #  -- public helper SHA-256
+PINNED_HELPER_SIZE = "52219"
 
 _SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")

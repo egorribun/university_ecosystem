@@ -17,7 +17,6 @@ PROHIBITED_BYPASSES = (
     "--exclude-newer false",
     "UV_EXCLUDE_NEWER=false",
     "Semgrep suppression",
-    "SKIP=semgrep",
     "--no-verify",
 )
 REQUIRED_AUDIT_FIELDS = (
@@ -300,6 +299,16 @@ def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:
         assert audit_field in runbook
     for prohibited_bypass in PROHIBITED_BYPASSES:
         assert f"Do not use `{prohibited_bypass}`" in runbook
+
+    pre_commit = yaml.safe_load(_read_text(".pre-commit-config.yaml"))
+    semgrep_ids = [
+        hook["id"]
+        for repository in pre_commit["repos"]
+        if repository["repo"] == "https://github.com/semgrep/pre-commit"
+        for hook in repository["hooks"]
+    ]
+    assert len(semgrep_ids) == 1
+    assert f"Do not use `SKIP={semgrep_ids[0]}`" in runbook
 
 
 def test_all_external_production_dependencies_have_upper_bounds() -> None:

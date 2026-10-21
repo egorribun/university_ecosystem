@@ -55,7 +55,7 @@ Do not use `UV_EXCLUDE_NEWER=false`.
 
 Do not use `Semgrep suppression`.
 
-Do not use `SKIP=semgrep`.
+Do not use `SKIP=semgrep-docker`.
 
 Do not use `--no-verify`.
 

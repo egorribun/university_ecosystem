@@ -1586,6 +1586,19 @@ jobs:
             tests/test_security_hardening_workflow_contract.py::test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_locked \
             tests/test_quality_configuration.py::test_virtualenv_security_floor_is_dev_only_and_locked \
             tests/test_cli_infra_closure.py tests/test_check_mypy_budget.py \
+            tests/test_quality_inventory.py::test_python_duplicate_scopes \
+            tests/test_quality_inventory.py::test_python_duplicate_checker_scopes_nested_functions_independently \
+            tests/test_quality_inventory.py::test_python_duplicate_checker_detects_async_and_mixed_same_scope_duplicates \
+            tests/test_graphql.py::test_backend_graphql_paths_return_not_found \
+            tests/test_cdc_safety.py::test_cdc_opt_in_fails_before_lifespan_resources \
+            tests/test_cdc_safety.py::test_cdc_opt_in_fails_before_background_tasks_or_polling_selection \
+            tests/test_cdc_safety.py::test_standalone_cdc_fails_before_connecting_or_provisioning \
+            tests/test_configuration_reference.py \
+            tests/test_benchmark_capture_activation_workflow.py \
+            tests/test_management_scripts.py::test_mfa_reset_parser_preserves_uuid_and_notification_choice \
+            tests/test_management_scripts.py::test_mfa_reset_parser_rejects_non_uuid_ids \
+            tests/test_management_scripts.py::test_mfa_reset_parser_keeps_email_and_mutual_exclusion \
+            tests/test_management_scripts.py::test_load_user_by_id \
             tests/test_security_hardening_workflow_contract.py::test_ci_scanner_bootstraps_are_version_pinned_and_checksum_verified \
             tests/test_live_acceptance_workflow.py::test_live_stand_nats_outage_dispatches_once_and_redacts_failures \
             tests/test_ci_check_catalog.py tests/test_dependency_resolution_policy.py \
