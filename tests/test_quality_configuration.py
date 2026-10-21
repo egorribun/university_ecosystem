@@ -947,7 +947,7 @@ def test_plain_trivyignore_carries_no_unowned_cve_suppressions() -> None:
 
 
 def test_virtualenv_security_floor_is_dev_only_and_locked() -> None:
-    """Keep the patched activator in tooling without adding a runtime dependency."""
+    """Keep patched launchers in tooling without adding a runtime dependency."""
     project = tomllib.loads(_read_text("pyproject.toml"))
     dev_requirements = [
         Requirement(item)
@@ -956,7 +956,7 @@ def test_virtualenv_security_floor_is_dev_only_and_locked() -> None:
     ]
     virtualenv = [item for item in dev_requirements if item.name == "virtualenv"]
     assert len(virtualenv) == 1
-    patched = Version("21.14.7")
+    patched = Version("21.14.9")
     assert any(
         spec.operator == ">=" and Version(spec.version) >= patched
         for spec in virtualenv[0].specifier

@@ -1057,3 +1057,33 @@ Python coroutine или процесса. AUD-039 остаётся OPEN.
 Virtualenv cooldown-решение ещё ожидается; пакеты и политики не меняются.
 Global CI/NATS не приняты; все finite security/coverage границы сохранены,
 merge/deploy не выполняются.
+
+
+## Точное разрешение virtualenv 21.14.9
+
+Владелец разрешил обновление 21.14.7 → 21.14.9 раньше cooldown
+2026-10-21 в 22:44 UTC для GHSA-c978-59m8-c77v. Меняются только dev floor,
+сам пакет и root metadata в lock, точный constraint/cutoff и их контракты.
+Остальные 228 package records, транзитивные версии, certifi/Pillow и общий
+семидневный срок сохранены. Cutoff по двум проверенным артефактам:
+2026-10-17 16:09:43 UTC; пересмотр после 2026-10-24 16:09:43 UTC.
+
+Временный bounded hosted шаг сверяет официальные PyPI metadata и targeted
+uv regeneration с подготовленным lock, требует отсутствия drift и всегда
+восстанавливает исходный lock перед штатным gate. Новая проверка, hash-install
+и vulnerability gates ещё не приняты. Старые созданные environments требуют
+отдельного пересоздания; lock edit не исправляет их автоматически.
+Ledger 214/512, AUD-039 ждёт собственный GREEN реализации. Global CI/NATS не приняты;
+новых scanner dispositions, baseline edits, merge/deploy нет.
+
+
+## AUD-039: реальный RED и ограниченное ожидание
+
+На d35b3b job 119528458081 дал ровно один ожидаемый deadline FAIL,
+1387 PASS / 1 deselected за 461,64 s; finally освободил и дождался задачи.
+Затем все 241 policy cases прошли за 48,66 s. Теперь shutdown отменяет
+snapshot и ожидает через asyncio.wait с прежним timeout, не забывая pending
+задачи. Их прежний callback сохраняет cleanup и error logging. Это не
+принудительное завершение coroutine/процесса. В ранний запуск включён весь
+модуль из шести тестов, без ослабления остальных проверок. AUD-039 остаётся
+OPEN до собственного GREEN; ledger 214/512.

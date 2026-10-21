@@ -201,3 +201,46 @@ The seven-day policy for all other releases remains unchanged. No module or
 dependency requirements, go.mod/go.sum, scanner policy or dispositions,
 suppressions, baseline, hooks, required contexts, merge, or deployment are part
 of this approval. Ordinary security, test, and hosted gates remain required.
+
+
+## Owner-approved Virtualenv exception, 2026-10-21
+
+At 22:44 UTC the owner approved only virtualenv `21.14.9`, replacing
+`21.14.7` in the existing normal PR
+[#1306](https://github.com/egorribun/university_ecosystem/pull/1306), for
+[GHSA-c978-59m8-c77v](https://github.com/github/advisory-database/blob/4661ff0468dac85b4c01cd8f7ae4f1c50858a278/advisories/github-reviewed/2026/10/GHSA-c978-59m8-c77v/GHSA-c978-59m8-c77v.json).
+The owner is the approving security reviewer. The
+[official fix](https://github.com/pypa/virtualenv/pull/3417) shipped in
+[21.14.9](https://github.com/pypa/virtualenv/releases/tag/21.14.9).
+The project keeps this dependency in development tooling, not runtime requirements.
+
+Only virtualenv receives the artifact cutoff `2026-10-17T16:09:43Z`,
+the temporary exact constraint `virtualenv==21.14.9`, and the durable dev
+floor `virtualenv>=21.14.9`. The wheel and source archive were uploaded
+at 16:09:40.584Z and 16:09:42.345Z respectively; the GitHub release was
+published at 16:09:47Z, a distinct timestamp. The cutoff is bounded to the
+verified artifacts, not the later advisory publication date. Review removal
+of the cutoff and temporary exact constraint after 2026-10-24 16:09:43 UTC;
+retain the patched security floor. Certifi/Pillow exceptions and the routine
+seven-day policy remain unchanged. A newer virtualenv release is not authorized.
+
+The candidate package stanza is cross-checked against two immutable public
+lockfiles: [ConfigUpdater](https://github.com/pyscaffold/configupdater/blob/c93003797846da216e2f333d11133200b96b2d91/uv.lock)
+and [starknet-crypto-py](https://github.com/tradeparadex/starknet-crypto-py/blob/df220aac5f532c983bddddbd19c304de10e334f9/poetry.lock).
+Its transitive requirements are unchanged. A temporary bounded existing-job
+verification checks all artifact URLs, digests, sizes, non-yanked status and
+upload times against bounded non-redirected official PyPI metadata. It then
+runs pinned uv 0.12.23 with
+`uv lock --upgrade-package "virtualenv==21.14.9"` and rejects any difference
+from the reviewed lock. The original lock is always restored before the
+ordinary `uv lock --check`; the temporary verification step is removed after
+successful hosted verification. This records the required procedure, not a
+claim that generation, installation or audit has already succeeded.
+
+Normal hash-verified installation, final-source lock consistency, regression
+and vulnerability gates still apply. No GHSA allowance, scanner disposition,
+baseline edit, global cutoff change, merge or deployment is authorized.
+Upgrading virtualenv does not repair previously generated environment scripts;
+affected existing environments require recreation with patched tooling before
+use. The known trigger requires later execution of a generated POSIX launcher
+under an attacker-influenced destination path; this is not a claim of compromise.

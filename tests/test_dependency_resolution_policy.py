@@ -96,9 +96,11 @@ def test_dependency_resolution_policy_enforces_cooldown_and_security_visibility(
     assert uv.get("exclude-newer-package") == {
         "certifi": "2026-10-20T02:24:17Z",
         "pillow": "2026-10-16T22:18:10Z",
+        "virtualenv": "2026-10-17T16:09:43Z",
     }
     assert "certifi==2026.10.19" in uv["constraint-dependencies"]
     assert "pillow==13.0.0" in uv["constraint-dependencies"]
+    assert "virtualenv==21.14.9" in uv["constraint-dependencies"]
     assert "pillow>=13.0.0,<14" in pyproject["project"]["dependencies"]
 
     renovate = _read_renovate()
@@ -272,6 +274,7 @@ def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:
     assert lock_options.get("exclude-newer-package") == {
         "certifi": "2026-10-20T02:24:17Z",
         "pillow": "2026-10-16T22:18:10Z",
+        "virtualenv": "2026-10-17T16:09:43Z",
     }
     lock = _read_toml("uv.lock")
     packages = [package for package in lock["package"] if package["name"] == "certifi"]
@@ -287,6 +290,15 @@ def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:
     assert len(pillow_packages) == 1
     assert pillow_packages[0]["version"] == "13.0.0"
     assert {"name": "pillow", "specifier": "==13.0.0"} in lock["manifest"][
+        "constraints"
+    ]
+
+    virtualenv_packages = [
+        package for package in lock["package"] if package["name"] == "virtualenv"
+    ]
+    assert len(virtualenv_packages) == 1
+    assert virtualenv_packages[0]["version"] == "21.14.9"
+    assert {"name": "virtualenv", "specifier": "==21.14.9"} in lock["manifest"][
         "constraints"
     ]
 
