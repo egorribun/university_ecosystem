@@ -250,7 +250,7 @@ describe("EventEditDialog", () => {
     expect(screen.getByText("events:form.errors.endsBeforeStarts")).toBeInTheDocument()
     expect(screen.getByLabelText("events:form.end")).toHaveClass("border-error-border")
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
-    expect(screen.getByText("common:statuses.uploading").closest("label")).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "common:statuses.uploading" })).toHaveAttribute(
       "aria-disabled",
       "true"
     )

@@ -275,17 +275,23 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <Button as="label" variant="solid" disabled={imageLoading} className="w-full sm:w-auto">
+          <Button
+            type="button"
+            onClick={() => imageInputRef.current?.click()}
+            variant="solid"
+            disabled={imageLoading}
+            className="w-full sm:w-auto"
+          >
             {imageLoading ? t("common:statuses.uploading") : t("common:buttons.changePhoto")}
-            <input
-              type="file"
-              accept="image/*"
-              hidden
-              ref={imageInputRef}
-              onChange={handleImageChange}
-              onClick={(e) => e.stopPropagation()}
-            />
           </Button>
+          <input
+            type="file"
+            accept="image/*"
+            hidden
+            ref={imageInputRef}
+            onChange={handleImageChange}
+            onClick={(e) => e.stopPropagation()}
+          />
           {cardImageUrl && (
             <div className="mt-3">
               <SmartImage

@@ -228,7 +228,7 @@ describe("NewsCardEditDialog mutation contracts", () => {
     const titleEn = screen.getByLabelText("news:form.title_en")
     const contentEn = screen.getByLabelText("news:form.content_en")
     const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
-    const photoButton = screen.getByText("news:form.changePhoto").closest("label")!
+    const photoButton = screen.getByRole("button", { name: "news:form.changePhoto" })
 
     expect(title).not.toHaveClass("border-error-text/50")
     expect(content).not.toHaveClass("border-error-text/50")
@@ -292,7 +292,7 @@ describe("NewsCardEditDialog mutation contracts", () => {
     render(<NewsCardEditDialog {...makeProps()} />)
 
     const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
-    const photoButton = screen.getByText("news:form.changePhoto").closest("label")!
+    const photoButton = screen.getByRole("button", { name: "news:form.changePhoto" })
     const cancelButton = screen.getByRole("button", { name: "common:buttons.cancel" })
     const saveButton = screen.getByRole("button", { name: "common:buttons.save" })
     const file = new File(["image"], "cover.png", { type: "image/png" })
@@ -302,7 +302,7 @@ describe("NewsCardEditDialog mutation contracts", () => {
     await user.click(saveButton)
 
     await waitFor(() => expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument())
-    expect(screen.getByText("common:statuses.uploading").closest("label")).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "common:statuses.uploading" })).toHaveAttribute(
       "aria-disabled",
       "true"
     )
@@ -317,7 +317,7 @@ describe("NewsCardEditDialog mutation contracts", () => {
     expect(uploadCall[0]).toBe("/news/upload_image")
     expect(uploadCall[1]).toBeInstanceOf(FormData)
     expect((uploadCall[1] as FormData).get("file")).toBe(file)
-    expect(screen.getByText("news:form.changePhoto").closest("label")).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "news:form.changePhoto" })).toHaveAttribute(
       "aria-disabled",
       "true"
     )

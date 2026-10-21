@@ -1,4 +1,4 @@
-import { FC, useState, useEffect, type FormEvent, type ReactNode } from "react"
+import { FC, useState, useEffect, useRef, type FormEvent, type ReactNode } from "react"
 import { Camera as PhotoCamera } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useForm, Controller } from "react-hook-form"
@@ -67,6 +67,7 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
   const { t } = useTranslation(["news", "common"])
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageLoading, setImageLoading] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const [submissionError, setSubmissionError] = useState<"upload" | "save" | null>(null)
   const [discardConfirmationOpen, setDiscardConfirmationOpen] = useState(false)
   const [dialogTrapVersion, setDialogTrapVersion] = useState(0)
@@ -330,20 +331,27 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
               control={control}
               name="image"
               render={({ field: { value: _value, onChange, ...field } }) => (
-                <Button
-                  as="label"
-                  variant="outline"
-                  size="sm"
-                  leadingIcon={<PhotoCamera size={20} />}
-                  className={cn(
-                    "w-full sm:w-auto",
-                    errors.image && "border-error-text/50 text-error-text"
-                  )}
-                  disabled={imageLoading || isSubmitting}
-                >
-                  {imageLoading ? t("common:statuses.uploading") : t("news:form.changePhoto")}
+                <>
+                  <Button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    variant="outline"
+                    size="sm"
+                    leadingIcon={<PhotoCamera size={20} />}
+                    className={cn(
+                      "w-full sm:w-auto",
+                      errors.image && "border-error-text/50 text-error-text"
+                    )}
+                    disabled={imageLoading || isSubmitting}
+                  >
+                    {imageLoading ? t("common:statuses.uploading") : t("news:form.changePhoto")}
+                  </Button>
                   <input
                     {...field}
+                    ref={(element) => {
+                      imageInputRef.current = element
+                      field.ref(element)
+                    }}
                     type="file"
                     accept="image/*"
                     hidden
@@ -353,7 +361,7 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
                       if (file) onChange(file)
                     }}
                   />
-                </Button>
+                </>
               )}
             />
 

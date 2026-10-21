@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **162/512 (31,6%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-162-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **164/512 (32,0%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-164-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -125,3 +125,11 @@ Manifest source_sha остаётся null. Actual RC, main/bootstrap activation,
 Для уже интегрированных AUD-468/469 добавлены шесть существующих cases в verbose consumer cohort. AUD-467 остаётся в прежнем focused backend cohort; -q заменён на -v только для именованного evidence. Принятый ledger остаётся 162/512, новые закрытия без runtime не заявлены. Последовательный 2d frozen-RC cohort дал 834 PASS / один ожидаемый NATS FAIL за 255,19 s: прежний timeout не объявляется детерминированным, ускорение нового parallel source ещё проверяется.
 
 На 93172422 consumer job 118957134578/run 39518552065: 820 PASS / один deselected и 239 policy PASS; все 38 прежних NATS diagnostic RED теперь GREEN. Пройдены также routing и parallel-coverage workflow contracts. Pre-commit потребовал только два изменения Ruff оформления нового теста; применён точный hosted diff. Из-за этого format gate runtime двухпроцессного preflight ещё не проверен. Старый 2d Owned снова дал 38 browser PASS / два SKIP, Caddy verifiedprojects2, затем generic NATS FAIL и штатный stop/receipt; это не выполнение нового диагностического source. Полный CI остаётся непринятым.
+
+На 146a0c consumer job 118961355979 подтверждены 826 PASS / один deselected и 239 policy PASS. После независимой сверки приняты AUD-468 (реальный MMDB Reader/lookup) и AUD-469 (scheduler resilience с контролируемыми work/sleep callbacks). Ledger теперь 164/512 (32,0%); actual partition DDL, deployment и полный CI не включаются.
+
+Все пять AUD-335 RED наблюдались в shard-2/3/4: отсутствовала доступная button role. Исправление заменяет label controls на native type=button с ref-вызовом отдельного hidden input; RHF refs, обработчики, styles и прежние disabled expressions сохранены. Старые label-ancestor assertions перенесены на button role, короткий waitFor отформатирован. Свежий GREEN ещё нужен; AUD-335 не закрыт и OS picker не объявляется проверенным.
+
+Actual 931 Owned завершился 38 browser PASS / два SKIP, Caddy verifiedprojects2, затем NATS outcome=failed stage=preflight и штатный stop/receipt. Это ещё не точная причина: facade fallback тоже возвращает preflight при неожиданном исключении coordinator. Добавлены 47 tests-first cases для closed operation checkpoint, cleanup precedence и privacy; production NATS в этом этапе не меняется, RED ещё ожидается.
+
+Следующие existing-fix proofs: пять AUD-195 случаев и 24 actual Compose cases AUD-252 направлены в early cohort. Для Compose нужна именно именованная PASS, не capability SKIP. AUD-467 остаётся до получения именованного focused evidence. Все бюджеты и финальные quality gates сохранены.

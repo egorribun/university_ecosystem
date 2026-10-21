@@ -853,7 +853,10 @@ describe("EventCreateDialog", () => {
       await user.upload(firstInput, firstFile)
       expect(uploadEventImage).toHaveBeenCalledTimes(1)
       expect(uploadEventImage).toHaveBeenNthCalledWith(1, firstFile)
-      expect(firstInput.closest("label")).toHaveAttribute("aria-disabled", "true")
+      expect(screen.getByRole("button", { name: "common:statuses.uploading" })).toHaveAttribute(
+        "aria-disabled",
+        "true"
+      )
 
       // The disabled chooser must not start another request in the same dialog.
       await user.upload(firstInput, secondFile)
@@ -866,7 +869,9 @@ describe("EventCreateDialog", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
       view.rerender(<EventCreateDialog {...baseProps} open />)
       const secondInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
-      expect(secondInput.closest("label")).not.toHaveAttribute("aria-disabled")
+      expect(screen.getByRole("button", { name: "events:form.uploadImage" })).not.toHaveAttribute(
+        "aria-disabled"
+      )
       await user.upload(secondInput, secondFile)
       expect(uploadEventImage).toHaveBeenCalledTimes(2)
       expect(uploadEventImage).toHaveBeenNthCalledWith(2, secondFile)
@@ -878,7 +883,10 @@ describe("EventCreateDialog", () => {
         await firstUpload
       })
       expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument()
-      expect(secondInput.closest("label")).toHaveAttribute("aria-disabled", "true")
+      expect(screen.getByRole("button", { name: "common:statuses.uploading" })).toHaveAttribute(
+        "aria-disabled",
+        "true"
+      )
       expect(screen.getByAltText("events:alt.preview")).toHaveAttribute("src", "blob:second")
 
       await act(async () => {
@@ -887,7 +895,9 @@ describe("EventCreateDialog", () => {
       })
       expect(screen.queryByText("common:statuses.uploading")).not.toBeInTheDocument()
       expect(screen.getByText("events:form.imageSelected")).toBeInTheDocument()
-      expect(secondInput.closest("label")).not.toHaveAttribute("aria-disabled")
+      expect(screen.getByRole("button", { name: "events:form.imageSelected" })).not.toHaveAttribute(
+        "aria-disabled"
+      )
       expect(screen.getByAltText("events:alt.preview")).toHaveAttribute(
         "src",
         "https://cdn.example.com/second.png"

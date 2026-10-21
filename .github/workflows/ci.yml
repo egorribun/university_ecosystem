@@ -1573,6 +1573,13 @@ jobs:
             tests/test_cache_settings_closure.py tests/test_check_no_python2_except.py \
             tests/test_geolocation.py::test_geolocation_service_init_success \
             tests/test_aud469_partition_scheduler_resilience.py \
+            tests/test_chat_query_projection_regressions.py::test_message_history_projects_page_senders_in_one_public_profile_query \
+            tests/test_chat_query_projection_regressions.py::test_message_sender_profiles_empty_batch_skips_database \
+            tests/test_chat_query_service.py::TestGetMessages::test_not_participant \
+            tests/test_chat_query_service.py::TestGetMessages::test_empty_messages \
+            tests/test_chat_query_service.py::test_message_sender_output_filters_legacy_producer_fields \
+            tests/test_aud252_compose_file_secrets.py::test_production_profile_renders_only_file_backed_secret_sources \
+            tests/test_aud252_compose_file_secrets.py::test_production_render_fails_when_required_secret_path_or_key_id_is_missing \
             tests/test_quality_workflow_contract.py::test_aud257_postgres_regression_has_explicit_pg_routing \
             tests/test_quality_workflow_contract.py::test_frozen_rc_preflight_uses_bounded_parallel_merged_coverage \
             tests/test_image_proxy_closure.py::test_process_image_avif_real_codec_round_trip \

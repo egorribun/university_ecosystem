@@ -266,19 +266,25 @@ export function NewsDetailEditDialog({
                   {t("news:form.image")}
                 </label>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <Button as="label" variant="glass" className="w-full sm:w-auto" disabled={saving}>
-                    <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    variant="glass"
+                    className="w-full sm:w-auto"
+                    disabled={saving}
+                  >
+                    <span className="flex items-center gap-2">
                       <PhotoCamera className="h-4 w-4" />
                       {newImage ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
-                    </div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      ref={imageInputRef}
-                      onChange={handleImageChange}
-                    />
+                    </span>
                   </Button>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    ref={imageInputRef}
+                    onChange={handleImageChange}
+                  />
                   {imageUrl && (
                     <div className="overflow-hidden rounded-lg border border-glass-border/(--opacity-soft) shadow-sm">
                       <SmartImage

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from enum import StrEnum
 from pathlib import Path
 from typing import cast
 
@@ -492,4 +494,330 @@ def test_main_outage_rejects_untyped_result_without_emitting_values(
     assert (
         captured.err
         == "live_stand: owned NATS acceptance failed reason=invalid_result\n"
+    )
+
+
+_PREFLIGHT_CHECKPOINT_OPERATIONS = (
+    "acquire_lock",
+    "read_signed_owner",
+    "observe_runtime",
+    "read_policy",
+    "read_admission",
+    "login_admin",
+    "create_dm_once",
+    "read_dm",
+    "pending_count",
+)
+
+
+def _require_checkpoint_contract() -> type[StrEnum]:
+    checkpoint_type = getattr(cli.coordinator, "OutageCheckpoint", None)
+    assert checkpoint_type is not None, "missing finite OutageCheckpoint diagnostic"
+    assert isinstance(checkpoint_type, type) and issubclass(checkpoint_type, StrEnum)
+    result = OutageResult(OutageOutcome.FAILED, OutageStage.PREFLIGHT)
+    assert hasattr(result, "checkpoint"), "missing optional result checkpoint"
+    assert result.checkpoint is None
+    expected = {*_PREFLIGHT_CHECKPOINT_OPERATIONS, "coordinator_exception"}
+    assert {entry.value for entry in checkpoint_type} == expected
+    assert replace(result, checkpoint=checkpoint_type("acquire_lock")) == result
+    return checkpoint_type
+
+
+def _install_checkpoint_fake_ports(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> FakePorts:
+    underlying = FakePorts()
+    safe_pins = pins(tmp_path)
+    monkeypatch.setattr(cli.time, "monotonic", underlying.clock)
+    monkeypatch.setattr(cli.time, "sleep", underlying.sleep)
+    monkeypatch.setattr(
+        cli,
+        "_prepare_owner_file_pins",
+        lambda state_dir, *, in_place, deadline: safe_pins,
+    )
+    monkeypatch.setattr(cli, "_make_transport", lambda owner_pins, *, sleep: underlying)
+    monkeypatch.setattr(cli, "_transport_type", lambda: FakePorts)
+    return underlying
+
+
+def _rejected_preflight_evidence(underlying: FakePorts, operation: str) -> object:
+    if operation == "acquire_lock":
+        return None
+    original = underlying._default(operation)
+    if operation == "read_signed_owner":
+        return replace(original, stack="full")
+    if operation == "observe_runtime":
+        return replace(original, daemon_fingerprint="0" * 64)
+    if operation == "read_policy":
+        return replace(original, poll_interval_seconds=-1)
+    if operation == "read_admission":
+        return replace(original, users=())
+    if operation == "login_admin":
+        return replace(original, status_code=401)
+    if operation == "create_dm_once":
+        return replace(original, status_code=500)
+    if operation == "read_dm":
+        return replace(original, chat=None)
+    assert operation == "pending_count"
+    return 1
+
+
+@pytest.mark.parametrize("operation", _PREFLIGHT_CHECKPOINT_OPERATIONS)
+@pytest.mark.parametrize("failure_kind", ["exception", "rejected-evidence"])
+def test_preflight_checkpoint_identifies_real_facade_operation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    operation: str,
+    failure_kind: str,
+) -> None:
+    checkpoint_type = _require_checkpoint_contract()
+    underlying = _install_checkpoint_fake_ports(monkeypatch, tmp_path)
+
+    class PrivateFailure(RuntimeError):
+        def __str__(self) -> str:
+            raise AssertionError("private exception must not be inspected")
+
+        def __repr__(self) -> str:
+            raise AssertionError("private exception must not be inspected")
+
+    value = (
+        PrivateFailure("private\n::error::injected")
+        if failure_kind == "exception"
+        else _rejected_preflight_evidence(underlying, operation)
+    )
+    underlying.script[operation] = [value]
+    result = cli.run_owned_nats_outage("/", in_place=True)
+    assert result.outcome is OutageOutcome.FAILED
+    assert result.stage is OutageStage.PREFLIGHT
+    assert result.checkpoint is checkpoint_type(operation)
+    names = [call.name for call in underlying.calls]
+    assert names.count(operation) == 1
+    failed_index = _PREFLIGHT_CHECKPOINT_OPERATIONS.index(operation)
+    assert not set(names) & set(_PREFLIGHT_CHECKPOINT_OPERATIONS[failed_index + 1 :])
+    assert [name for name in names if name in _PREFLIGHT_CHECKPOINT_OPERATIONS] == list(
+        _PREFLIGHT_CHECKPOINT_OPERATIONS[: failed_index + 1]
+    )
+    assert "stop_container" not in names
+    assert "start_container" not in names
+    assert names.count("close_clients") == 1
+    assert names.count("release_lock") == (0 if operation == "acquire_lock" else 1)
+    assert underlying.contract_errors == []
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+
+
+@pytest.mark.parametrize(
+    ("operation", "stage"),
+    [
+        ("send_message_once", OutageStage.SEND),
+        ("close_clients", OutageStage.CLEANUP),
+        ("release_lock", OutageStage.CLEANUP),
+    ],
+)
+def test_preflight_checkpoint_does_not_override_later_failure_or_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    operation: str,
+    stage: OutageStage,
+) -> None:
+    _require_checkpoint_contract()
+    underlying = _install_checkpoint_fake_ports(monkeypatch, tmp_path)
+    underlying.script[operation] = [RuntimeError("private transport detail")]
+    result = cli.run_owned_nats_outage("/", in_place=True)
+    assert result.outcome is OutageOutcome.FAILED
+    assert result.stage is stage
+    assert result.checkpoint is None
+    names = [call.name for call in underlying.calls]
+    for name in (
+        "acquire_lock",
+        "stop_container",
+        "send_message_once",
+        "start_container",
+        "close_clients",
+        "release_lock",
+    ):
+        assert names.count(name) == 1
+    assert names.index("stop_container") < names.index("send_message_once")
+    assert names.index("send_message_once") < names.index("start_container")
+    assert names.index("start_container") < names.index("close_clients")
+    assert names.index("close_clients") < names.index("release_lock")
+    assert underlying.restore_started is True
+    assert underlying.stopped is False
+    assert underlying.contract_errors == []
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+
+
+@pytest.mark.parametrize("cleanup", ["close_clients", "release_lock"])
+def test_preflight_checkpoint_is_cleared_when_cleanup_supersedes_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, cleanup: str
+) -> None:
+    _require_checkpoint_contract()
+    underlying = _install_checkpoint_fake_ports(monkeypatch, tmp_path)
+    underlying.script["read_policy"] = [RuntimeError("private preflight detail")]
+    underlying.script[cleanup] = [RuntimeError("private cleanup detail")]
+    result = cli.run_owned_nats_outage("/", in_place=True)
+    assert result.outcome is OutageOutcome.FAILED
+    assert result.stage is OutageStage.CLEANUP
+    assert result.checkpoint is None
+    names = [call.name for call in underlying.calls]
+    assert "stop_container" not in names
+    assert "start_container" not in names
+    assert names.count("close_clients") == names.count("release_lock") == 1
+    assert underlying.contract_errors == []
+
+
+def test_successful_facade_clears_preflight_checkpoint_and_stays_silent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _require_checkpoint_contract()
+    underlying = _install_checkpoint_fake_ports(monkeypatch, tmp_path)
+    result = cli.run_owned_nats_outage("/", in_place=True)
+    assert result.outcome is OutageOutcome.ACCEPTED
+    assert result.stage is OutageStage.COMPLETE
+    assert result.checkpoint is None
+    names = [call.name for call in underlying.calls]
+    assert names.count("stop_container") == names.count("start_container") == 1
+    assert names.count("close_clients") == names.count("release_lock") == 1
+    assert underlying.contract_errors == []
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+
+
+def test_facade_unexpected_coordinator_exception_has_distinct_checkpoint(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    checkpoint_type = _require_checkpoint_contract()
+    calls: list[str] = []
+
+    class PrivateFailure(RuntimeError):
+        def __str__(self) -> str:
+            raise AssertionError("private exception must not be inspected")
+
+        def __repr__(self) -> str:
+            raise AssertionError("private exception must not be inspected")
+
+    def fail(ports: object, *, clock: object, sleep: object) -> OutageResult:
+        calls.append("coordinator")
+        raise PrivateFailure("private\n::error::injected")
+
+    monkeypatch.setattr(cli.coordinator, "run_owned_outage", fail)
+    result = cli.run_owned_nats_outage("/private/state", in_place=True)
+    assert result.outcome is OutageOutcome.FAILED
+    assert result.stage is OutageStage.PREFLIGHT
+    assert result.checkpoint is checkpoint_type("coordinator_exception")
+    assert calls == ["coordinator"]
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+
+
+@pytest.mark.parametrize(
+    "checkpoint_value",
+    (*_PREFLIGHT_CHECKPOINT_OPERATIONS, "coordinator_exception"),
+)
+def test_main_renders_only_typed_preflight_checkpoint(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    checkpoint_value: str,
+) -> None:
+    checkpoint_type = _require_checkpoint_contract()
+    result = replace(
+        OutageResult(OutageOutcome.FAILED, OutageStage.PREFLIGHT),
+        checkpoint=checkpoint_type(checkpoint_value),
+    )
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda args: None)
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *args, **kwargs: result)
+    assert (
+        live_stand.main(["nats-outage", "--in-place", "--state-dir", "/private/state"])
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "live_stand: owned NATS acceptance failed outcome=failed stage=preflight "
+        f"checkpoint={checkpoint_value}\n"
+    )
+
+
+@pytest.mark.parametrize("accepted", [False, True])
+def test_main_default_checkpoint_preserves_legacy_result_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    accepted: bool,
+) -> None:
+    _require_checkpoint_contract()
+    result = (
+        OutageResult(OutageOutcome.ACCEPTED, OutageStage.COMPLETE)
+        if accepted
+        else OutageResult(OutageOutcome.FAILED, OutageStage.PREFLIGHT)
+    )
+    assert result.checkpoint is None
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda args: None)
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *args, **kwargs: result)
+    exit_code = live_stand.main(
+        ["nats-outage", "--in-place", "--state-dir", "/private/state"]
+    )
+    assert exit_code == (0 if accepted else 2)
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        ""
+        if accepted
+        else "live_stand: owned NATS acceptance failed outcome=failed stage=preflight\n"
+    )
+
+
+@pytest.mark.parametrize("accepted", [False, True])
+@pytest.mark.parametrize(
+    "bad_kind", ["matching-string", "private-string", "integer", "boolean", "hostile"]
+)
+def test_main_rejects_malformed_checkpoint_before_success_or_formatting(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    accepted: bool,
+    bad_kind: str,
+) -> None:
+    _require_checkpoint_contract()
+
+    class PrivateValue:
+        def __str__(self) -> str:
+            raise AssertionError("private checkpoint must not be inspected")
+
+        def __repr__(self) -> str:
+            raise AssertionError("private checkpoint must not be inspected")
+
+        def __bool__(self) -> bool:
+            raise AssertionError("private checkpoint must not be inspected")
+
+        def __eq__(self, other: object) -> bool:
+            raise AssertionError("private checkpoint must not be inspected")
+
+    bad_values: dict[str, object] = {
+        "matching-string": "acquire_lock",
+        "private-string": "private\n::error::injected",
+        "integer": 1,
+        "boolean": True,
+        "hostile": PrivateValue(),
+    }
+    result = (
+        OutageResult(OutageOutcome.ACCEPTED, OutageStage.COMPLETE)
+        if accepted
+        else OutageResult(OutageOutcome.FAILED, OutageStage.PREFLIGHT)
+    )
+    object.__setattr__(result, "checkpoint", bad_values[bad_kind])
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda args: None)
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *args, **kwargs: result)
+    assert (
+        live_stand.main(["nats-outage", "--in-place", "--state-dir", "/private/state"])
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "live_stand: owned NATS acceptance failed reason=invalid_result\n"
     )

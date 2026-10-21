@@ -139,7 +139,7 @@ describe("NewsDetailEditDialog mutation contracts", () => {
     expect(contentEn).toHaveAttribute("maxLength", "3000")
     expect(contentEn).toHaveAttribute("rows", "6")
 
-    const uploadButton = screen.getByText("common:buttons.uploadPhoto").closest("label")!
+    const uploadButton = screen.getByRole("button", { name: "common:buttons.uploadPhoto" })
     expect(uploadButton).toHaveClass("w-full", "sm:w-auto")
     expect(uploadButton).not.toHaveAttribute("aria-disabled", "true")
     const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
@@ -270,7 +270,7 @@ describe("NewsDetailEditDialog mutation contracts", () => {
       expect(screen.getByRole("button", { name: "common:buttons.saving" })).toBeInTheDocument()
     )
     expect(screen.getByRole("button", { name: "common:buttons.saving" })).toBeDisabled()
-    expect(screen.getByText("common:buttons.uploadPhoto").closest("label")).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "common:buttons.uploadPhoto" })).toHaveAttribute(
       "aria-disabled",
       "true"
     )

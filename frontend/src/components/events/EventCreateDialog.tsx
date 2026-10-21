@@ -125,6 +125,7 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
   const imageUploadingRef = useRef(false)
   const hasUploadedImageRef = useRef(false)
   const createButtonRef = useRef<HTMLButtonElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (creationFailed) createButtonRef.current?.focus()
@@ -375,7 +376,8 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
                     {t("events:form.image")}
                   </label>
                   <Button
-                    as="label"
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
                     variant="outline"
                     disabled={imageUploading || isCreating}
                     className="w-full justify-start gap-2 bg-(--bg-surface)/(--opacity-dim)"
@@ -390,17 +392,18 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
                           : t("events:form.uploadImage")}
                       </>
                     )}
-                    <input
-                      type="file"
-                      hidden
-                      accept="image/*"
-                      disabled={imageUploading || isCreating}
-                      onChange={(event) => {
-                        const file = firstSelectedFile(event.currentTarget.files)
-                        if (file) void handleImageUpload(file)
-                      }}
-                    />
                   </Button>
+                  <input
+                    type="file"
+                    ref={imageInputRef}
+                    hidden
+                    accept="image/*"
+                    disabled={imageUploading || isCreating}
+                    onChange={(event) => {
+                      const file = firstSelectedFile(event.currentTarget.files)
+                      if (file) void handleImageUpload(file)
+                    }}
+                  />
                   {imageUploadFailed && (
                     <p role="alert" className="mt-2 text-xs text-error-text">
                       {t("events:detail.upload.errors.failed")}

@@ -73,9 +73,7 @@ describe("NewsFormDialog", () => {
     fireEvent.change(screen.getByLabelText(/^News text(?! \()/i), {
       target: { value: "A complete valid news draft." },
     })
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Publish/i })).toBeEnabled()
-    )
+    await waitFor(() => expect(screen.getByRole("button", { name: /Publish/i })).toBeEnabled())
 
     const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
     await expectImagePickerKeyboard(
