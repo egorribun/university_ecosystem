@@ -53,8 +53,6 @@ class AppGeneralSettings(BaseAppSettings):
     partition_retention_days: int = 365
     partition_warmup_months: int = 1
     enable_metrics_endpoint: bool = False
-    # MED-W19: opt-in flag for X-Response-Time header; disabled by default to
-    # avoid leaking internal timing information to external clients in production.
     metrics_basic_auth_username: str = ""
     metrics_basic_auth_password: str = ""
     metrics_allowlist: str | list[str] = ""

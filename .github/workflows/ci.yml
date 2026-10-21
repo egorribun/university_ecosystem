@@ -1585,6 +1585,7 @@ jobs:
             tests/test_docker_startup_contracts.py::test_migrations_disable_inherited_backend_runtime_healthcheck \
             tests/test_security_hardening_workflow_contract.py::test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_locked \
             tests/test_quality_configuration.py::test_virtualenv_security_floor_is_dev_only_and_locked \
+            tests/test_cli_infra_closure.py tests/test_check_mypy_budget.py \
             tests/test_security_hardening_workflow_contract.py::test_ci_scanner_bootstraps_are_version_pinned_and_checksum_verified \
             tests/test_live_acceptance_workflow.py::test_live_stand_nats_outage_dispatches_once_and_redacts_failures \
             tests/test_ci_check_catalog.py tests/test_dependency_resolution_policy.py \

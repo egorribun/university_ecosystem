@@ -72,7 +72,7 @@ def test_ci_scanner_bootstraps_are_version_pinned_and_checksum_verified() -> Non
     assert go_setup["uses"] == (
         "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e"
     )
-    assert go_setup["with"]["go-version"] == "1.26.9"
+    assert go_setup["with"]["go-version"] == "1.26.10"
     assert go_setup["with"]["cache"] is False
 
     assert f'actionlint_source_sha="{ACTIONLINT_SOURCE_SHA}"' in actionlint_run
@@ -85,7 +85,7 @@ def test_ci_scanner_bootstraps_are_version_pinned_and_checksum_verified() -> Non
     )
     assert "sha256sum --check --strict" in actionlint_run
     assert "tar --extract --gzip" in actionlint_run
-    assert 'test "$(go env GOVERSION)" = "go1.26.9"' in actionlint_run
+    assert 'test "$(go env GOVERSION)" = "go1.26.10"' in actionlint_run
     assert "go build -buildvcs=false -trimpath" in actionlint_run
     assert (
         "-X github.com/rhysd/actionlint.version=${actionlint_source_sha}"
