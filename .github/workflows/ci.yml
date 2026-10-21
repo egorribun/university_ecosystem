@@ -1591,6 +1591,9 @@ jobs:
             tests/test_security_hardening_workflow_contract.py::test_npm_failure_metadata_is_diagnostic_only_and_keeps_audit_blocking \
             tests/test_gitleaks_hygiene_contract.py::test_gitleaks_workflow_pins_complete_graph_scanner_and_redacted_artifact \
             tests/test_units.py::test_api_version_constants \
+            tests/test_exception_handlers_and_request_ids.py::test_asgi_json_problem_emits_problem_json \
+            tests/test_exception_handlers.py::TestAsgiJsonProblem::test_with_custom_headers \
+            tests/test_exception_handlers_branch_coverage_test.py::test_asgi_json_problem_detail_text \
             tests/test_live_stand.py::test_live_caddy_probe_deadline_covers_final_container_recheck \
             tests/test_workflow_fail_closed_contracts.py::test_literal_continue_on_error_cases_are_exhaustively_classified \
             tests/test_start_docker_live_stand_core_readiness.py::test_live_readiness_loop_uses_core_and_preserves_full_inventories \

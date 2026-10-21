@@ -971,3 +971,22 @@ workflow. Trigger key on сохранён корректно после PyYAML r
 Validator пока не меняется; global cache, урезание тестов/GC и увеличение
 таймаута не вводятся. Приёмка ускорения требует RED, реализации и измерений.
 Все security/coverage границы сохранены, merge/deploy не выполняются.
+
+
+## Устранение повторного YAML parse после измеренного RED
+
+На1f00f10 consumer119500457771:1378 PASS/1 ожидаемый parse-count FAIL/
+1deselected за548,77s. Все workflow читались минимум дважды, ci.yml шесть
+раз. Malformed unlisted control прошёл. Policy cancelled около37% при
+прежнем10-minute cap; lint потребовал только убрать пустую строку импорта.
+Теперь parsed map живёт ровно один вызов validate_catalog и разделяется
+между timeout inventory, catalog и expansion checks. Следующий вызов
+читает источник заново; все проверки, fixtures, GC и бюджеты сохранены.
+Собственные GREEN и измерение ускорения ещё нужны, не заявлены заранее.
+
+AUD-163 получает три существующих raw-header теста в раннем запуске;
+новой приёмки пока нет, ledger212/512. Новый high advisory virtualenv
+GHSA-c978-59m8-c77v требует21.14.9 от17октября; точное cooldown-исключение
+запрошено, но пока не одобрено. Обычный cooldown заканчивается24октября
+16:09:47UTC. Пакеты, исключения и политики не меняются до решения.
+NATS/global CI остаются открытыми, merge/deploy не выполняются.

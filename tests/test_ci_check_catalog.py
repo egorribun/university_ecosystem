@@ -12,7 +12,6 @@ import pytest
 import yaml
 
 import scripts.quality.validate_ci_check_catalog as catalog_validator
-
 from scripts.quality.validate_ci_check_catalog import (
     DEFAULT_CATALOG,
     DEFAULT_SCHEMA,
