@@ -8,7 +8,6 @@ from pydantic import ValidationError
 from app import models
 from app.api.deps.auth import get_permission_checker
 from app.auth.rbac import PermissionChecker
-
 from app.auth.security import get_password_hash
 from app.main import app
 from app.schemas import schemas
@@ -165,6 +164,39 @@ def test_event_string_limits_count_characters_after_normalization(
 
 
 @pytest.mark.parametrize("model", _EVENT_MODELS, ids=["create", "update"])
+@pytest.mark.parametrize(("field", "limit"), _EVENT_BOUNDED_FIELDS)
+def test_event_bounds_apply_after_inherited_edge_whitespace_stripping(
+    model, field, limit
+):
+    payload = _event_schema_payload(model)
+    payload[field] = " \t" + "Я" * limit + "\n\u00a0"
+    assert getattr(model.model_validate(payload), field) == "Я" * limit
+
+    payload[field] = " \t" + "Я" * (limit + 1) + "\n\u00a0"
+    with pytest.raises(ValidationError):
+        model.model_validate(payload)
+
+
+@pytest.mark.parametrize("model", _EVENT_MODELS, ids=["create", "update"])
+@pytest.mark.parametrize("field", ["title", "location", "speaker"])
+def test_event_clean_bounds_preserve_spaces_exposed_by_control_removal(model, field):
+    payload = _event_schema_payload(model)
+    bounded = "Я" * 511 + " "
+    # The trailing NUL prevents the earlier whitespace strip from seeing spaces.
+    payload[field] = bounded + "\x00"
+    assert getattr(model.model_validate(payload), field) == bounded
+
+    for extra in (" ", "   "):
+        payload[field] = bounded + extra + "\x00"
+        assert getattr(model.model_validate(payload), field) == bounded
+
+    for extra in ("\t", "\n", "\u00a0", "x"):
+        payload[field] = bounded + extra + "\x00"
+        with pytest.raises(ValidationError):
+            model.model_validate(payload)
+
+
+@pytest.mark.parametrize("model", _EVENT_MODELS, ids=["create", "update"])
 @pytest.mark.parametrize("field", ["title", "location", "speaker"])
 def test_event_clean_string_bounds_preserve_control_character_removal(model, field):
     payload = _event_schema_payload(model)
@@ -180,10 +212,10 @@ def test_event_clean_string_bounds_preserve_control_character_removal(model, fie
 @pytest.mark.parametrize("field", ["title", "location", "speaker"])
 def test_event_clean_string_bounds_count_retained_tabs_and_newlines(model, field):
     payload = _event_schema_payload(model)
-    payload[field] = "x" * 510 + "\t\n"
+    payload[field] = "x" * 509 + "\t\nz"
     assert getattr(model.model_validate(payload), field) == payload[field]
 
-    payload[field] = "x" * 511 + "\t\n"
+    payload[field] = "x" * 510 + "\t\nz"
     with pytest.raises(ValidationError):
         model.model_validate(payload)
 
@@ -205,10 +237,10 @@ def test_event_optional_text_preserves_whitespace_normalization(model, field, li
     payload[field] = None
     assert getattr(model.model_validate(payload), field) is None
 
-    payload[field] = " " + "x" * (limit - 2) + " "
-    assert getattr(model.model_validate(payload), field) == payload[field]
+    payload[field] = " " + "x" * limit + " "
+    assert getattr(model.model_validate(payload), field) == "x" * limit
 
-    payload[field] = " " + "x" * (limit - 1) + " "
+    payload[field] = " " + "x" * (limit + 1) + " "
     with pytest.raises(ValidationError):
         model.model_validate(payload)
 
