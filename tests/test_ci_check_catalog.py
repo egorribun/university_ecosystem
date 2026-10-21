@@ -6,9 +6,12 @@ import copy
 import json
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
+
+import scripts.quality.validate_ci_check_catalog as catalog_validator
 
 from scripts.quality.validate_ci_check_catalog import (
     DEFAULT_CATALOG,
@@ -771,3 +774,72 @@ def test_identical_required_policy_and_metadata_overrides_remain_valid() -> None
     job["runbook"] = profile["runbook"]
 
     assert _errors(value) == []
+
+
+def test_catalog_parses_each_source_workflow_once_per_call_and_reloads_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    value = _catalog()
+    workflow_dir = _source_repo(tmp_path, value)
+    source_paths = {path.resolve() for path in workflow_dir.glob("*.y*ml")}
+    load_counts: dict[Path, int] = {}
+    original_loader = catalog_validator._load_workflow
+
+    def counting_loader(path: Path) -> dict[str, Any]:
+        resolved_path = path.resolve()
+        load_counts[resolved_path] = load_counts.get(resolved_path, 0) + 1
+        return original_loader(path)
+
+    monkeypatch.setattr(catalog_validator, "_load_workflow", counting_loader)
+
+    def assert_source_workflows_loaded_once() -> None:
+        assert set(load_counts) == source_paths
+        duplicates = {
+            path.relative_to(tmp_path).as_posix(): count
+            for path, count in load_counts.items()
+            if count != 1
+        }
+        assert not duplicates, f"workflow parse counts were not one: {duplicates}"
+
+    assert _validate_changed_ci(tmp_path, value) == []
+    assert_source_workflows_loaded_once()
+
+    ci_path = workflow_dir / "ci.yml"
+    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    # Preserve the GitHub Actions trigger key after PyYAML YAML 1.1 loading.
+    if True in source:
+        source["on"] = source.pop(True)
+    source["jobs"]["go-fuzz"]["name"] = "Fresh Source Check Name"
+    ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
+
+    load_counts.clear()
+    errors = _validate_changed_ci(tmp_path, value)
+    assert any("check_name_template is stale" in error for error in errors), errors
+    assert_source_workflows_loaded_once()
+
+
+def test_cli_fails_closed_for_unlisted_malformed_workflow(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    value = _catalog()
+    workflow_dir = _source_repo(tmp_path, value)
+    (workflow_dir / "unlisted-malformed.yml").write_text("jobs: [\n", encoding="utf-8")
+    catalog_path = tmp_path / "catalog.json"
+    catalog_path.write_text(json.dumps(value), encoding="utf-8")
+
+    assert (
+        main(
+            [
+                "--catalog",
+                str(catalog_path),
+                "--schema",
+                str(DEFAULT_SCHEMA),
+                "--repository-root",
+                str(tmp_path),
+            ]
+        )
+        == 1
+    )
+    assert "cannot read workflow" in capsys.readouterr().err

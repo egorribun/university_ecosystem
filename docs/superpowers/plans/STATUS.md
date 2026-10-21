@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **210/512 (41,0%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-210-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **212/512 (41,4%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-212-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -947,3 +947,27 @@ lint/format и production build тоже. Теперь внесены миним
 AUD-050/220 ждут собственный GREEN и пока не засчитаны. Baseline319,
 policy294,required78,Gitleaks25,CodeQL и finite131 прежние; NATS/global
 CI не приняты, merge/deploy отсутствуют.
+
+
+## AUD-050 и AUD-220: подтверждённый RED → GREEN
+
+Приняты только AUD-050/220 сверх210: **212/512 (41,4%)**, остаток300
+(91 moderate,84 complex,125 uncertain). Source1684c437 и mergec69f4aa5
+имеют одинаковый treefcb209a9. Contract119492368556 SUCCESS:
+1377 PASS/1deselected за465,46s, затем241 policy PASS за34,28s;
+оба шага и cleanup завершены до следующей публикации.
+
+Реальный Starlette JSON boundary теперь принимает plain и UUID chat/reply
+payload без мутации исходного объекта. Оба story-cover контрола прошли
+Tab/Enter/Space на настоящих DOM-кнопках с отдельными скрытыми inputs.
+Frontend119493833385:658Node/55worker/156quick PASS; lint, build,
+security/types и fast lint также прошли. Full frontend shards1/2 PASS,
+остальные пока выполнялись. Это не global CI/NATS или OS-dialog acceptance.
+
+Следующий шаг ускорения пока tests-first: две проверки реального YAML
+loader запрещают повторный parse в одном вызове, требуют видеть изменение
+valid source в следующем вызове и fail-closed отказ на неучтённом malformed
+workflow. Trigger key on сохранён корректно после PyYAML round-trip.
+Validator пока не меняется; global cache, урезание тестов/GC и увеличение
+таймаута не вводятся. Приёмка ускорения требует RED, реализации и измерений.
+Все security/coverage границы сохранены, merge/deploy не выполняются.
