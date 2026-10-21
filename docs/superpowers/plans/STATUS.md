@@ -392,3 +392,23 @@ inventory после 38 browser PASS / двух skips и Caddy redaction. Нов
 в 05:55:13 UTC: preflight/read_policy. Cleanup и receipt 12324400981 завершены.
 Это прохождение прежнего health boundary, но не полный NATS outage acceptance;
 теперь отдельно проверяется чтение и валидация policy.
+
+
+## AUD-466 после RED и Docker formatter regression, 2026-10-21 06:25 UTC
+
+На 72f358b2 consumer 119070082750: десять целевых FAIL / 1172 PASS /
+один deselected и 239 policy PASS. HTTP дошёл до ошибочного True при bypass;
+настоящий verifier уже обнаружил изменение payload. Положительные controls
+и статические gates проходят. Merge 9079763 имеет то же tree, что source.
+
+Изменены только начальное значение validity и empty-window return:
+при пропуске проверки False, при запрошенной проверке пустого окна сохранено
+прежнее vacuous True. API bool, replay и авторизация неизменны. Собственный
+GREEN ещё требуется, AUD-466 не принят; ledger 170/512.
+
+Для NATS найдено несовпадение шаблона и реального Docker CLI: оба добавляют
+конечный перевод строки. Добавлены два tests-first запуска настоящего CLI
+с изолированным синтетическим API и ограниченными stdout/stderr. Тест не
+выдаётся за проверку реального daemon или API negotiation. Production template
+и строгий decoder пока не менялись; требуется hosted RED. Go approval и
+полный CI по-прежнему открыты.

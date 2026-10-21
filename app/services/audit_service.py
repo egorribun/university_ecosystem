@@ -1059,6 +1059,10 @@ class SecureAuditService:
 
         Returns:
             (reconstructed_state, events_replayed_count, chain_integrity_valid)
+
+        Integrity is false when verification is skipped or fails; false alone
+        does not establish tampering. An empty replay window is vacuously valid
+        only when verification was requested.
         """
         if target_timestamp.tzinfo is None:
             target_timestamp = target_timestamp.replace(tzinfo=UTC)
@@ -1083,10 +1087,10 @@ class SecureAuditService:
         events = result.scalars().all()
 
         if not events:
-            return None, 0, True
+            return None, 0, verify_chain
 
         # 2. Verify chain integrity up to target_timestamp if requested
-        is_valid = True
+        is_valid = False
         if verify_chain:
             is_valid, _failed_id, _err_msg = await self.verify_chain_integrity(
                 db, aggregate_type=aggregate_type, aggregate_id=agg_id_str

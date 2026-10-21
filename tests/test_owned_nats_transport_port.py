@@ -757,3 +757,175 @@ def test_transport_forwards_only_exact_runtime_diagnostic(monkeypatch):
             raising=False,
         )
         assert port.runtime_diagnostic is expected
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected"),
+    (
+        ((), WorkerPolicy(5.0, 20, 5)),
+        (
+            (
+                "OUTBOX_POLL_INTERVAL_SECONDS=2.5",
+                "OUTBOX_BATCH_SIZE=4",
+                "OUTBOX_MAX_RETRIES=5",
+            ),
+            WorkerPolicy(2.5, 4, 5),
+        ),
+    ),
+)
+def test_policy_projection_through_real_docker_cli(
+    tmp_path: Path, overrides: tuple[str, ...], expected: WorkerPolicy
+) -> None:
+    import http.server
+    import os
+    import shutil
+    import sys
+    import threading
+    import time
+    from urllib.parse import urlsplit
+
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        assert sys.platform == "linux", "real Docker CLI regression lane must be Ubuntu"
+        docker_cli = shutil.which("docker")
+        assert docker_cli is not None, "hosted Ubuntu Docker CLI is required"
+    else:
+        if sys.platform != "linux":
+            pytest.skip("real Docker CLI formatter regression is hosted-Linux only")
+        docker_cli = shutil.which("docker")
+        if docker_cli is None:
+            pytest.skip("requires Docker CLI; hosted Ubuntu lane must run this test")
+
+    api_version = "1.44"
+    worker_id = _WORKER.container_id
+    inspect_path = f"/v{api_version}/containers/{worker_id}/json"
+    ping_paths = {"/_ping", f"/v{api_version}/_ping"}
+    version_paths = {"/version", f"/v{api_version}/version"}
+    private_marker = "synthetic-unrelated-environment-value"
+    inspect_json = json.dumps(
+        {
+            "Id": worker_id,
+            "Name": "/synthetic-outbox-worker",
+            "Config": {
+                "Labels": {
+                    "com.docker.compose.project": _OWNER.project_name,
+                    "com.docker.compose.service": "outbox-worker",
+                    "com.docker.compose.oneoff": "False",
+                },
+                "Cmd": ["python", "-m", "app.workers.outbox"],
+                "Entrypoint": ["/usr/bin/tini", "--"],
+                "Env": [
+                    f"DATABASE_URL={private_marker}",
+                    f"NATS_URL={private_marker}",
+                    *overrides,
+                ],
+            },
+            "State": {"Running": True, "Status": "running"},
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    version_json = json.dumps(
+        {"ApiVersion": api_version, "MinAPIVersion": "1.24"},
+        separators=(",", ":"),
+    ).encode("ascii")
+    requests: list[tuple[str, str]] = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def setup(self) -> None:
+            super().setup()
+            self.connection.settimeout(2)
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            return
+
+        def do_GET(self) -> None:
+            self._respond()
+
+        def do_HEAD(self) -> None:
+            self._respond()
+
+        def _respond(self) -> None:
+            path = urlsplit(self.path).path
+            requests.append((self.command, path))
+            if path in ping_paths:
+                status, body, content_type = 200, b"OK", "text/plain"
+            elif path in version_paths:
+                status, body, content_type = 200, version_json, "application/json"
+            elif path == inspect_path and self.command == "GET":
+                status, body, content_type = 200, inspect_json, "application/json"
+            else:
+                status, body, content_type = 404, b"", "text/plain"
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Api-Version", api_version)
+            self.send_header("Connection", "close")
+            self.end_headers()
+            if self.command != "HEAD" and body:
+                self.wfile.write(body)
+            self.close_connection = True
+
+    config_dir = tmp_path / "empty-docker-config"
+    config_dir.mkdir()
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.daemon_threads = False
+    server.block_on_close = True
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    host = f"tcp://127.0.0.1:{server.server_address[1]}"
+    try:
+        result = process.run_private_process(
+            process.PrivateProcessRequest(
+                argv=(
+                    docker_cli,
+                    "--config",
+                    str(config_dir),
+                    "--host",
+                    host,
+                    "inspect",
+                    "--type",
+                    "container",
+                    "--format",
+                    transport_port._POLICY_INSPECT_FORMAT,
+                    worker_id,
+                ),
+                cwd=str(tmp_path),
+                env={
+                    "HOME": str(tmp_path),
+                    "PATH": os.environ.get("PATH", os.defpath),
+                    "DOCKER_CONFIG": str(config_dir),
+                    "DOCKER_HOST": host,
+                    "DOCKER_API_VERSION": api_version,
+                    "NO_PROXY": "127.0.0.1,localhost",
+                    "no_proxy": "127.0.0.1,localhost",
+                },
+                stdin=b"",
+                stdout_limit=4096,
+                stderr_limit=1024,
+                input_limit=0,
+            ),
+            deadline=Deadline.after(15.0, clock=time.monotonic),
+        )
+    finally:
+        server.shutdown()
+        thread.join(timeout=2)
+        server.server_close()
+        assert not thread.is_alive(), "synthetic Docker API thread did not stop"
+
+    assert result.outcome is process.ProcessOutcome.EXITED, result.outcome.value
+    assert result.returncode == 0, f"docker inspect exited {result.returncode}"
+    assert result.local_cleanup is process.LocalCleanup.CONFIRMED
+    assert result.stderr == b""
+    assert ("GET", inspect_path) in requests
+    assert {path for _method, path in requests} <= (
+        ping_paths | version_paths | {inspect_path}
+    )
+    assert private_marker.encode("ascii") not in result.stdout
+    assert b"DATABASE_URL" not in result.stdout
+    assert b"NATS_URL" not in result.stdout
+    assert result.stdout.endswith(b"\n")
+    assert not result.stdout.endswith(b"\n\n"), (
+        "template must leave only Docker CLI's final newline"
+    )
+    assert transport_port._decode_worker_policy_inspect(
+        result.stdout, owner=_OWNER, worker=_WORKER
+    ) == expected
