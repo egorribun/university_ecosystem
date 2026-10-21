@@ -739,3 +739,21 @@ def test_policy_static_defaults_remain_bound_to_effective_worker_sources() -> No
     assert "COPY --chown=app:app .env" not in dockerfile
     assert "ENV_FILE_PATH" in config_base
     assert "case_sensitive=False" in config_base
+
+
+def test_transport_forwards_only_exact_runtime_diagnostic(monkeypatch):
+    from scripts.owned_nats_coordinator import RuntimeObservationPhase
+
+    port = _port()
+    for supplied, expected in (
+        (RuntimeObservationPhase.DAEMON, RuntimeObservationPhase.DAEMON),
+        ("daemon", None),
+        (None, None),
+    ):
+        monkeypatch.setattr(
+            OwnedCoreRuntimePort,
+            "runtime_diagnostic",
+            property(lambda _self, value=supplied: value),
+            raising=False,
+        )
+        assert port.runtime_diagnostic is expected

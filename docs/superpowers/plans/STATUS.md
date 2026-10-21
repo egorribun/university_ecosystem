@@ -260,3 +260,15 @@ Merge checkout 01ca2b02 имеет тот же tree a30b662d, что и source.
 Другие endpoints, non-transport failures и доступность провайдера не заявлены.
 Go security gate и actual NATS observe_runtime остаются открытыми;
 полный CI не принят, последний общий checkpoint — e15027a.
+
+
+## NATS: tests-first диагностика runtime, 2026-10-21 03:08 UTC
+
+Повторный actual прогон b5fd21d8/job 119007865327 подтверждает тот же
+observe_runtime отказ после 38 browser PASS / двух skips и Caddy redaction.
+Очистка завершена, receipt 12317264520 загружен.
+
+Добавлены проверки конечного набора диагностических этапов, сохранения
+порядка daemon/decode guards, отсутствия частных данных, reset и точных
+типов CLI. Production API ещё не изменён; ожидаемый missing-API RED пока
+не наблюдался. Ledger остаётся 169/512; полного CI/NATS acceptance нет.

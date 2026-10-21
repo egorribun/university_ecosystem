@@ -821,3 +821,140 @@ def test_main_rejects_malformed_checkpoint_before_success_or_formatting(
     assert captured.err == (
         "live_stand: owned NATS acceptance failed reason=invalid_result\n"
     )
+
+
+def test_outage_facade_attaches_diagnostic_only_to_runtime_preflight(monkeypatch):
+    from types import SimpleNamespace
+
+    from scripts.owned_nats_coordinator import (
+        OutageCheckpoint,
+        RuntimeObservationPhase,
+    )
+
+    phase = RuntimeObservationPhase.CONTAINER_IDS_PROCESS
+    facade = SimpleNamespace(runtime_diagnostic=phase)
+    monkeypatch.setattr(cli, "_LazyOwnedNatsPorts", lambda *_args, **_kwargs: facade)
+    matching = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.PREFLIGHT,
+        OutageCheckpoint.OBSERVE_RUNTIME,
+    )
+    monkeypatch.setattr(
+        cli.coordinator, "run_owned_outage", lambda *_args, **_kwargs: matching
+    )
+    result = cli.run_owned_nats_outage("/private/state", in_place=True)
+    assert result.runtime_diagnostic is phase
+    assert phase.value not in repr(result)
+
+    unrelated = replace(matching, checkpoint=OutageCheckpoint.READ_POLICY)
+    monkeypatch.setattr(
+        cli.coordinator, "run_owned_outage", lambda *_args, **_kwargs: unrelated
+    )
+    result = cli.run_owned_nats_outage("/private/state", in_place=True)
+    assert result.runtime_diagnostic is None
+
+
+def test_main_formats_only_exact_runtime_diagnostic(monkeypatch, capsys):
+    from scripts.owned_nats_coordinator import (
+        OutageCheckpoint,
+        RuntimeObservationPhase,
+    )
+
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    result = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.PREFLIGHT,
+        OutageCheckpoint.OBSERVE_RUNTIME,
+        runtime_diagnostic=RuntimeObservationPhase.CONTAINER_IDS_DECODE,
+    )
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *_args, **_kwargs: result)
+    arguments = ["nats-outage", "--in-place", "--state-dir", "/private/state"]
+    assert live_stand.main(arguments) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "live_stand: owned NATS acceptance failed outcome=failed stage=preflight "
+        "checkpoint=observe_runtime runtime_diagnostic=container_ids_decode\n"
+    )
+
+    legacy = replace(result, runtime_diagnostic=None)
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *_args, **_kwargs: legacy)
+    assert live_stand.main(arguments) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "live_stand: owned NATS acceptance failed outcome=failed stage=preflight "
+        "checkpoint=observe_runtime\n"
+    )
+
+    class OtherPhase(StrEnum):
+        CONTAINER_IDS_DECODE = "container_ids_decode"
+
+    for invalid in (
+        "container_ids_decode",
+        OtherPhase.CONTAINER_IDS_DECODE,
+        3,
+        True,
+        _PrivateOutageValue(),
+    ):
+        malformed = replace(result, runtime_diagnostic=invalid)
+        monkeypatch.setattr(
+            cli, "run_owned_nats_outage", lambda *_a, _r=malformed, **_k: _r
+        )
+        assert live_stand.main(arguments) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == (
+            "live_stand: owned NATS acceptance failed reason=invalid_result\n"
+        )
+
+
+@pytest.mark.parametrize(
+    ("outcome", "stage", "checkpoint"),
+    [
+        ("failed", "preflight", "read_policy"),
+        ("accepted", "complete", None),
+    ],
+)
+def test_main_refuses_runtime_diagnostic_outside_matching_failure(
+    monkeypatch, capsys, outcome, stage, checkpoint
+):
+    from scripts.owned_nats_coordinator import (
+        OutageCheckpoint,
+        RuntimeObservationPhase,
+    )
+
+    result = OutageResult(
+        OutageOutcome(outcome),
+        OutageStage(stage),
+        OutageCheckpoint(checkpoint) if checkpoint else None,
+        runtime_diagnostic=RuntimeObservationPhase.DAEMON,
+    )
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *_args, **_kwargs: result)
+    arguments = ["nats-outage", "--in-place", "--state-dir", "/private/state"]
+    assert live_stand.main(arguments) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "live_stand: owned NATS acceptance failed reason=invalid_result\n"
+    )
+
+
+def test_real_lazy_facade_forwards_finite_runtime_failure(monkeypatch, tmp_path, capsys):
+    from scripts.owned_nats_coordinator import (
+        OutageCheckpoint,
+        RuntimeObservationPhase,
+    )
+
+    underlying = _install_checkpoint_fake_ports(monkeypatch, tmp_path)
+    underlying.runtime_diagnostic = RuntimeObservationPhase.COMPOSE_DECODE
+    underlying.script["observe_runtime"] = [None]
+    result = cli.run_owned_nats_outage("/", in_place=True)
+    assert result.outcome is OutageOutcome.FAILED
+    assert result.stage is OutageStage.PREFLIGHT
+    assert result.checkpoint is OutageCheckpoint.OBSERVE_RUNTIME
+    assert result.runtime_diagnostic is RuntimeObservationPhase.COMPOSE_DECODE
+    assert underlying.contract_errors == []
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""

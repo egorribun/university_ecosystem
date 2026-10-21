@@ -1569,6 +1569,8 @@ jobs:
           uv run pytest tests/contracts/ tests/test_live_stand_cleanup_profile_contract.py tests/test_live_nats_transport.py \
             tests/test_owned_nats_outage_cli.py \
             tests/test_owned_nats_docker_context_pins.py \
+            tests/test_owned_nats_runtime_adapter.py \
+            tests/test_owned_nats_transport_port.py \
             tests/test_spotify_fallback.py \
             tests/test_security_hardening_workflow_contract.py::test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_locked \
             tests/test_live_acceptance_workflow.py::test_live_stand_nats_outage_dispatches_once_and_redacts_failures \

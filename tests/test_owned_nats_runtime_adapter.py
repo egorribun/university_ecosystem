@@ -719,3 +719,101 @@ def test_release_failure_retains_exact_held_lease_for_retry(signed_state, monkey
     runtime_port.release_lock(lease, deadline=deadline)
     assert runtime_port._lease is None
     assert owner_port._lease is None and lease._released
+
+
+def test_runtime_diagnostic_survives_exception_and_resets_before_early_guard(
+    signed_state, monkeypatch
+):
+    from scripts.owned_nats_coordinator import RuntimeObservationPhase as Phase
+
+    class PrivateFailure(RuntimeError):
+        def __str__(self):
+            raise AssertionError("private exception must not be formatted")
+
+        def __repr__(self):
+            raise AssertionError("private exception must not be represented")
+
+    runtime, _owner_port, lease, reads = _mock_port(monkeypatch, signed_state)
+    deadline = _deadline(FakeClock())
+    assert runtime.acquire_lock(deadline=deadline) is lease
+    calls = []
+
+    def fail_in_collector(owner, pins, compose, *, deadline, diagnostic):
+        calls.append(True)
+        diagnostic.record(Phase.COMPOSE_PROCESS)
+        raise PrivateFailure("private compose diagnostic")
+
+    monkeypatch.setattr(
+        "scripts.owned_nats_runtime_adapter.docker.observe_owned_core_runtime",
+        fail_in_collector,
+    )
+    with pytest.raises(RuntimeReadNotReady):
+        runtime.observe_runtime(signed_state.adapter_owner, "1" * 64, deadline=deadline)
+    assert runtime.runtime_diagnostic is Phase.COMPOSE_PROCESS
+    assert calls == [True]
+    assert len(reads) == 1
+
+    with pytest.raises(RuntimeReadNotReady):
+        runtime.observe_runtime(None, "1" * 64, deadline=deadline)
+    assert runtime.runtime_diagnostic is Phase.RUNTIME_BINDING
+    assert calls == [True]
+    runtime.release_lock(lease, deadline=deadline)
+
+
+def test_runtime_diagnostic_marks_late_adapter_deadline_guard(
+    signed_state, monkeypatch
+):
+    from scripts.owned_nats_coordinator import RuntimeObservationPhase as Phase
+
+    runtime, _owner_port, lease, reads = _mock_port(monkeypatch, signed_state)
+    clock = FakeClock()
+    deadline = _deadline(clock)
+    assert runtime.acquire_lock(deadline=deadline) is lease
+
+    def expire_after_collection(owner, pins, compose, *, deadline, diagnostic):
+        diagnostic.record(Phase.COMPOSE_DECODE)
+        clock.now = 20.0
+        return _runtime_evidence()
+
+    monkeypatch.setattr(
+        "scripts.owned_nats_runtime_adapter.docker.observe_owned_core_runtime",
+        expire_after_collection,
+    )
+    with pytest.raises(RuntimeReadNotReady):
+        runtime.observe_runtime(signed_state.adapter_owner, "1" * 64, deadline=deadline)
+    assert runtime.runtime_diagnostic is Phase.RUNTIME_BINDING
+    assert len(reads) == 1
+    runtime.release_lock(lease, deadline=_deadline(FakeClock()))
+
+
+def test_runtime_diagnostic_clears_after_next_success(signed_state, monkeypatch):
+    from scripts.owned_nats_coordinator import RuntimeObservationPhase as Phase
+
+    owner = signed_state.adapter_owner
+    runtime, _owner_port, lease, reads = _mock_port(
+        monkeypatch, signed_state, [owner, owner, owner, owner]
+    )
+    deadline = _deadline(FakeClock())
+    assert runtime.acquire_lock(deadline=deadline) is lease
+
+    def fail_in_collector(owner, pins, compose, *, deadline, diagnostic):
+        diagnostic.record(Phase.DAEMON)
+        return None
+
+    monkeypatch.setattr(
+        "scripts.owned_nats_runtime_adapter.docker.observe_owned_core_runtime",
+        fail_in_collector,
+    )
+    with pytest.raises(RuntimeReadNotReady):
+        runtime.observe_runtime(owner, "1" * 64, deadline=deadline)
+    assert runtime.runtime_diagnostic is Phase.DAEMON
+    assert len(reads) == 2
+    evidence = _runtime_evidence()
+    monkeypatch.setattr(
+        "scripts.owned_nats_runtime_adapter.docker.observe_owned_core_runtime",
+        lambda *_args, **_kwargs: evidence,
+    )
+    assert runtime.observe_runtime(owner, "1" * 64, deadline=deadline) is evidence
+    assert runtime.runtime_diagnostic is None
+    assert len(reads) == 4
+    runtime.release_lock(lease, deadline=deadline)

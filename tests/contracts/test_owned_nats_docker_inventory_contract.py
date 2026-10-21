@@ -1013,3 +1013,243 @@ def test_owned_core_runtime_inspects_same_project_orphans_before_refusing(
         calls[3][0].argv[-1] == f"label=com.docker.compose.project={owner.project_name}"
     )
     assert calls[6][0].argv[-len(ids) :] == ids
+
+
+@pytest.mark.parametrize(
+    ("phase", "commands", "decoders"),
+    [
+        (
+            "owner_pins",
+            [],
+            [],
+        ),
+        (
+            "daemon",
+            ["info"],
+            ["daemon"],
+        ),
+        (
+            "compose_prepare",
+            ["info"],
+            ["daemon"],
+        ),
+        (
+            "compose_process",
+            ["info", "compose"],
+            ["daemon", "compose"],
+        ),
+        (
+            "compose_decode",
+            ["info", "compose"],
+            ["daemon", "compose"],
+        ),
+        (
+            "compose_binding",
+            ["info", "compose"],
+            ["daemon", "compose"],
+        ),
+        (
+            "container_ids_prepare",
+            ["info", "compose"],
+            ["daemon", "compose"],
+        ),
+        (
+            "container_ids_process",
+            ["info", "compose", "info", "ps", "info"],
+            ["daemon", "compose", "daemon", "daemon", "ids"],
+        ),
+        (
+            "container_ids_decode",
+            ["info", "compose", "info", "ps", "info"],
+            ["daemon", "compose", "daemon", "daemon", "ids"],
+        ),
+        (
+            "inspect_prepare",
+            ["info", "compose", "info", "ps", "info"],
+            ["daemon", "compose", "daemon", "daemon", "ids"],
+        ),
+        (
+            "inspect_process",
+            ["info", "compose", "info", "ps", "info", "info", "inspect", "info"],
+            [
+                "daemon",
+                "compose",
+                "daemon",
+                "daemon",
+                "ids",
+                "daemon",
+                "daemon",
+                "inspect",
+            ],
+        ),
+        (
+            "inspect_decode",
+            ["info", "compose", "info", "ps", "info", "info", "inspect", "info"],
+            [
+                "daemon",
+                "compose",
+                "daemon",
+                "daemon",
+                "ids",
+                "daemon",
+                "daemon",
+                "inspect",
+            ],
+        ),
+        (
+            "runtime_binding",
+            ["info", "compose", "info", "ps", "info", "info", "inspect", "info"],
+            [
+                "daemon",
+                "compose",
+                "daemon",
+                "daemon",
+                "ids",
+                "daemon",
+                "daemon",
+                "inspect",
+            ],
+        ),
+    ],
+)
+def test_owned_core_runtime_records_one_finite_failure_gate(
+    monkeypatch, compose_case, no_direct_docker_execution, phase, commands, decoders
+):
+    from scripts.owned_nats_coordinator import (
+        RuntimeObservationPhase,
+        RuntimeObservationRecorder,
+    )
+
+    phase_by_name = {item.value: item for item in RuntimeObservationPhase}
+    owner, pins, compose, _model, raw_compose, evidence = compose_case
+    ids = tuple(
+        _runtime_container_id(i) for i in range(1, len(owner.selected_services) + 1)
+    )
+    pair = _matched_runtime_metadata(owner, evidence)
+    inspect_output = _runtime_inspect_output(pair, ids)
+    clock = _DaemonClock()
+    deadline = Deadline.after(10, clock=clock)
+    recorder = RuntimeObservationRecorder()
+    process_calls = []
+    decoder_calls = []
+
+    for name, attr in (
+        ("daemon", "decode_daemon_read"),
+        ("compose", "decode_compose_config"),
+        ("ids", "decode_container_id_read"),
+        ("inspect", "decode_container_inspect_reads"),
+    ):
+        real = getattr(docker, attr)
+
+        def tracked(*args, _real=real, _name=name, **kwargs):
+            decoder_calls.append(_name)
+            result = _real(*args, **kwargs)
+            if phase == "runtime_binding" and _name == "inspect":
+                clock.now = 10
+            return result
+
+        monkeypatch.setattr(docker, attr, tracked)
+
+    if phase == "owner_pins":
+        pins = replace(pins, cwd="/not-the-owned-worktree")
+    elif phase == "compose_prepare":
+        monkeypatch.setattr(docker, "prepare_compose_config", lambda *_a, **_k: None)
+    elif phase == "compose_binding":
+        monkeypatch.setattr(docker, "compose_coordinator_metadata", lambda *_a: None)
+    elif phase == "container_ids_prepare":
+        monkeypatch.setattr(docker, "prepare_container_id_read", lambda *_a, **_k: None)
+    elif phase == "inspect_prepare":
+        monkeypatch.setattr(
+            docker, "prepare_container_inspect_reads", lambda *_a, **_k: None
+        )
+
+    def collect(request, *, deadline):
+        command = request.argv[5]
+        process_calls.append(command)
+        if command == "info":
+            if phase == "daemon":
+                return _daemon_result(stdout=b"different-daemon\n")
+            return _daemon_result()
+        if command == "compose":
+            stdout = b"not-json" if phase == "compose_decode" else raw_compose
+            result = _runtime_process_result(stdout)
+            return (
+                replace(result, returncode=1) if phase == "compose_process" else result
+            )
+        if command == "ps":
+            stdout = (
+                b"not-a-container-id\n"
+                if phase == "container_ids_decode"
+                else b"\n".join(value.encode() for value in ids) + b"\n"
+            )
+            result = _runtime_process_result(stdout)
+            return (
+                replace(result, returncode=1)
+                if phase == "container_ids_process"
+                else result
+            )
+        if command == "inspect":
+            stdout = b"{}\n" if phase == "inspect_decode" else inspect_output
+            result = _runtime_process_result(stdout)
+            return (
+                replace(result, returncode=1) if phase == "inspect_process" else result
+            )
+        raise AssertionError("unexpected private command")
+
+    monkeypatch.setattr(process, "run_private_process", collect)
+    result = docker.observe_owned_core_runtime(
+        owner, pins, compose, deadline=deadline, diagnostic=recorder
+    )
+
+    assert result is None
+    assert recorder.phase is phase_by_name[phase]
+    assert process_calls == commands
+    assert decoder_calls == decoders
+
+
+def test_runtime_diagnostic_recorder_is_finite_private_and_resettable():
+    from enum import StrEnum
+
+    from scripts.owned_nats_coordinator import (
+        RuntimeObservationPhase,
+        RuntimeObservationRecorder,
+    )
+
+    assert issubclass(RuntimeObservationPhase, StrEnum)
+    assert {phase.value for phase in RuntimeObservationPhase} == {
+        "owner_pins",
+        "daemon",
+        "compose_prepare",
+        "compose_process",
+        "compose_decode",
+        "compose_binding",
+        "container_ids_prepare",
+        "container_ids_process",
+        "container_ids_decode",
+        "inspect_prepare",
+        "inspect_process",
+        "inspect_decode",
+        "runtime_binding",
+    }
+    recorder = RuntimeObservationRecorder()
+    assert recorder.phase is None
+    recorder.record(RuntimeObservationPhase.INSPECT_DECODE)
+    assert recorder.phase is RuntimeObservationPhase.INSPECT_DECODE
+    assert "inspect_decode" not in repr(recorder)
+    recorder.reset()
+    assert recorder.phase is None
+
+    class OtherPhase(StrEnum):
+        DAEMON = "daemon"
+
+    class Hostile:
+        def __str__(self):
+            raise AssertionError("private value must not be formatted")
+
+        def __repr__(self):
+            raise AssertionError("private value must not be represented")
+
+    for invalid in ("daemon", OtherPhase.DAEMON, 1, True, Hostile()):
+        with pytest.raises(TypeError, match="^invalid runtime observation phase$"):
+            recorder.record(invalid)
+        assert recorder.phase is None
