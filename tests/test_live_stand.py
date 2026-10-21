@@ -11076,7 +11076,8 @@ def test_live_caddy_probe_deadline_covers_final_container_recheck(
         )
 
     assert observed_deadlines == [125.0]
-    assert log_deadlines == [125.0]
+    # The 10-second capture budget is narrower than the 25-second total proof.
+    assert log_deadlines == [110.0]
     assert pin_deadlines == [125.0, 125.0]
     assert len(completed_reads) == 1
     assert completed_reads[0].stdout == completed_reads[0].stderr == b""

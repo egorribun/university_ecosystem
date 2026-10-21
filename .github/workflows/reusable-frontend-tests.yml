@@ -347,6 +347,8 @@ jobs:
           src/components/schedule/__tests__/schedulePrint.contract.test.ts
           src/components/messenger/__tests__/ChatWindow.ime-edit.audit.test.tsx
           src/routes/__tests__/activity.search-validation.test.ts
+          src/features/events/components/__tests__/EventsList.closure.test.tsx
+          src/pages/__tests__/StoriesAdmin.test.tsx
           --reporter=verbose
         env:
           CI: "true"

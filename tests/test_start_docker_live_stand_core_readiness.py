@@ -572,7 +572,7 @@ def test_live_readiness_loop_uses_core_and_preserves_full_inventories(
         "postgres-databases-init",
         "spicedb-migrate",
     ]
-    assert result["mailpitUrl"] == "http://localhost:43123/api/v1/info"
+    assert result["mailpitUrl"] == "http://127.0.0.1:43123/api/v1/info"
 
     full = result["full"]
     assert isinstance(full, dict)

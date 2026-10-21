@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **189/512 (36,9%)**; [ledger](../../audits/AUDIT-2026-10.md#inventory-verification-and-storybook-security-follow-through-189-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **205/512 (40,0%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-205-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -879,3 +879,46 @@ AUD-395/396 пока не засчитаны до чистой повторно�
 для категории добавлены явные «Мастер-класс»/Workshop cases с одинаковыми
 canonical metadata. Production-код этих пяти находок не меняется,
 новая приёмка пока не заявлена.
+
+
+## Проверенная нижняя граница: 205/512
+
+На c6cc7816 / merge04bf9b7f с одинаковым tree приняты ещё16 IDs:
+020/021/074/141/149/152/153/209/210/213/215/217/222/395/396/398.
+Итого **205/512 (40,0%)**, остаток307:98 moderate,84 complex,125 uncertain.
+Исходная quick-очередь исчерпана. Точные ID и границы доказательств в аудите.
+
+Все четыре frontend shard дали9631 PASS; aggregate/differential coverage,
+production build, lint, security/types, inventory и baseline прошли.
+Node658/658, worker/export55/55, quick120/120. Storybook прошёл установку,
+blocking npm audit, Dependency Review и статическую сборку без исключений.
+
+Consumer1356 PASS/1deselected за511,41s, но отдельная policy-проверка
+прервана около91% фиксированным10-minute budget. Это не GREEN; GC,
+лимит и тесты не ослабляются. После terminal всего run один точный retry
+принят в20:45 UTC: job119475683195 завершился успешно, consumer1356 PASS /
+1deselected за463,51s, затем policy241 PASS за52,51s. Первый запрос был
+отклонён как already running; обхода не было. Другие jobs не перезапускались.
+
+Полные backend shards обнаружили две отдельные несогласованности:
+устаревший localhost вместо127.0.0.1 для readiness и лишний continue-on-error
+у npm-диагностики. Исправляются только ожидание URL и ненужный флаг
+с прямым контрактом, без расширения исключений или изменения readiness.
+
+Следующие036/049/196/199 получают проверку существующих исправлений,
+050 и220 остаются tests-first без production-правки до RED. Для214
+добавлены недостающие error-state tests. AUD015 ждёт extraction/render PDF.
+Owned Live прошёл38 browser cases/2SKIP и Caddy redaction, затем отказал
+на NATS stage=broker. Global CI/NATS и релиз не приняты; merge/deploy нет.
+
+Все пять обнаруженных CI-контрактов добавлены в ранний запуск; consumer и policy
+выводят20 slowest durations без смены fixtures, выборки или бюджета.
+Данные нужны до любого предложения менять GC; оптимизация не предполагается.
+
+Shard3 завершился: 5998 PASS / 38 SKIP / 3 FAIL устаревших ожиданий.
+Синхронизируются только test literals Go1.26.10 и API1.1.1; последнее
+подтверждено commit234280b и не равно версии MVP/package. Для Caddy
+меняется только ожидаемый log deadline110 при сохранении общего125,
+финального отказа125.001 и всех production timeout/ownership guards.
+Всего13 новых selector entries дают21 case:16 audit и5 CI-регрессий.
+Свежие hosted проверки исправлений ещё требуются.

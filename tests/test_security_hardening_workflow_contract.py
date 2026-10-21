@@ -508,7 +508,7 @@ def test_npm_failure_metadata_is_diagnostic_only_and_keeps_audit_blocking() -> N
     assert gate.get("continue-on-error", False) is False
     assert "scripts/audit_dependencies.py" in gate["run"]
     assert diagnostic["if"] == "${{ failure() }}"
-    assert diagnostic["continue-on-error"] is True
+    assert "continue-on-error" not in diagnostic
     assert diagnostic["timeout-minutes"] == 2
     assert diagnostic["shell"] == "bash"
     run = diagnostic["run"]

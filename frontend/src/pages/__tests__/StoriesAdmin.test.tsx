@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import StoriesAdmin from "../StoriesAdmin"
 
 const mocks = vi.hoisted(() => ({
@@ -131,6 +132,32 @@ describe("StoriesAdmin", () => {
     mocks.deleteStory.mockResolvedValue(undefined)
     mocks.updateStory.mockResolvedValue(undefined)
   })
+
+  it.each(["common:buttons.uploadPhoto", "stories:list.actions.pickCover"])(
+    "opens the %s file picker from a keyboard-reachable button",
+    async (name) => {
+      mocks.getStories.mockResolvedValue({ data: [story] })
+      const user = userEvent.setup()
+      render(<StoriesAdmin />)
+      await screen.findByText(story.title)
+
+      const picker = screen.getByRole("button", { name })
+      const input = screen.getByLabelText(name) as HTMLInputElement
+      const openPicker = vi.spyOn(input, "click")
+      try {
+        for (let index = 0; index < 64 && document.activeElement !== picker; index += 1) {
+          await user.tab()
+        }
+        expect(picker).toHaveFocus()
+        await user.keyboard("{Enter}")
+        expect(openPicker).toHaveBeenCalledTimes(1)
+        await user.keyboard(" ")
+        expect(openPicker).toHaveBeenCalledTimes(2)
+      } finally {
+        openPicker.mockRestore()
+      }
+    }
+  )
 
   it("blocks non-administrators before fetching private stories", () => {
     mocks.user = { id: "student-1", role: "student" as const }

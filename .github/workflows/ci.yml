@@ -1589,6 +1589,19 @@ jobs:
             tests/test_cli_infra_closure.py tests/test_check_mypy_budget.py \
             tests/test_periodic_task_metrics.py \
             tests/test_security_hardening_workflow_contract.py::test_npm_failure_metadata_is_diagnostic_only_and_keeps_audit_blocking \
+            tests/test_gitleaks_hygiene_contract.py::test_gitleaks_workflow_pins_complete_graph_scanner_and_redacted_artifact \
+            tests/test_units.py::test_api_version_constants \
+            tests/test_live_stand.py::test_live_caddy_probe_deadline_covers_final_container_recheck \
+            tests/test_workflow_fail_closed_contracts.py::test_literal_continue_on_error_cases_are_exhaustively_classified \
+            tests/test_start_docker_live_stand_core_readiness.py::test_live_readiness_loop_uses_core_and_preserves_full_inventories \
+            tests/test_notifications_cleanup_closure.py \
+            tests/test_chat_repository_coverage.py::test_find_existing_dm_returns_chat_for_pair \
+            tests/test_chat_repository_coverage.py::test_find_existing_dm_none_when_no_shared_chat \
+            tests/test_chat_repository_coverage.py::test_find_existing_dm_ignores_two_member_group \
+            tests/test_news_repository_db.py::test_anonymous_interactions_never_use_email_as_comment_name \
+            tests/test_schedule_reminders_closure.py::test_build_schedule_reminder_formats_resolved_occurrence_in_campus_timezone \
+            tests/test_notifications_news_events_closure.py::test_event_notification_times_use_campus_timezone \
+            tests/test_ws_connection_manager_closure.py::test_send_to_user_uses_real_websocket_json_boundary \
             tests/test_quality_inventory.py::test_go_duplicate_checker_ignores_comments_and_literals \
             tests/test_quality_inventory.py::test_go_duplicate_checker_still_rejects_real_duplicate_declarations \
             tests/test_quality_inventory.py::test_python_duplicate_scopes \
@@ -1638,7 +1651,7 @@ jobs:
             tests/test_live_stand.py::test_live_caddy_capture_deadline_cannot_be_rebased_during_reader_admission \
             tests/test_live_stand.py::test_live_caddy_probe_reads_one_union_window_from_reverified_pinned_container \
             tests/test_live_stand.py::test_live_caddy_probe_brackets_one_union_read_within_the_shared_deadline -v \
-            --tb=short \
+            --tb=short --durations=20 \
             -p no:cacheprovider \
             -k "not integration"
         env:
@@ -1648,7 +1661,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           uv run --frozen --no-sync pytest tests/test_verify_secrets_baseline.py -v \
-            --tb=short -p no:cacheprovider
+            --tb=short --durations=20 -p no:cacheprovider
 
   # Compare frontend MSW mocks with the authoritative OpenAPI contract.
   # This hermetic drift check remains a required PR/main-push gate.

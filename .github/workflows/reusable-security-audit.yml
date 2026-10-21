@@ -312,7 +312,6 @@ jobs:
       # public advisory metadata when its numeric IDs are insufficient to triage.
       - name: Report npm advisory metadata after failure
         if: ${{ failure() }}
-        continue-on-error: true
         timeout-minutes: 2
         shell: bash
         run: |

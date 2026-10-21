@@ -256,7 +256,7 @@ def test_gitleaks_workflow_pins_complete_graph_scanner_and_redacted_artifact() -
 
     setup_go = next(step for step in steps if step["name"] == "Set up Go")
     assert setup_go["uses"] == SETUP_GO_ACTION
-    assert setup_go["with"]["go-version"] == "1.26.9"
+    assert setup_go["with"]["go-version"] == "1.26.10"
     assert setup_go["with"]["cache"] is False
 
     install = next(step for step in steps if step["name"] == "Install Gitleaks")
