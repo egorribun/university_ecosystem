@@ -774,7 +774,10 @@ def test_transport_forwards_only_exact_runtime_diagnostic(monkeypatch):
     ),
 )
 def test_policy_projection_through_real_docker_cli(
-    tmp_path: Path, overrides: tuple[str, ...], expected: WorkerPolicy
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: tuple[str, ...],
+    expected: WorkerPolicy,
 ) -> None:
     import http.server
     import os
@@ -784,16 +787,37 @@ def test_policy_projection_through_real_docker_cli(
     import time
     from urllib.parse import urlsplit
 
-    if os.environ.get("GITHUB_ACTIONS") == "true":
-        assert sys.platform == "linux", "real Docker CLI regression lane must be Ubuntu"
-        docker_cli = shutil.which("docker")
-        assert docker_cli is not None, "hosted Ubuntu Docker CLI is required"
-    else:
-        if sys.platform != "linux":
-            pytest.skip("real Docker CLI formatter regression is hosted-Linux only")
-        docker_cli = shutil.which("docker")
-        if docker_cli is None:
-            pytest.skip("requires Docker CLI; hosted Ubuntu lane must run this test")
+    if not process._process_tree_containment_available():
+        assert os.environ.get("GITHUB_ACTIONS") != "true", (
+            "required hosted formatter lane must support process containment"
+        )
+        spawn_attempts: list[bool] = []
+
+        def forbid_spawn(*_args: object, **_kwargs: object) -> None:
+            spawn_attempts.append(True)
+            raise AssertionError("unsupported containment must not spawn a child")
+
+        monkeypatch.setattr(process.subprocess, "Popen", forbid_spawn)
+        refused = process.run_private_process(
+            process.PrivateProcessRequest(
+                argv=(sys.executable, "-c", "pass"),
+                cwd=str(tmp_path),
+                env={},
+                stdin=b"",
+                stdout_limit=4096,
+                stderr_limit=1024,
+                input_limit=0,
+            ),
+            deadline=Deadline.after(15.0, clock=time.monotonic),
+        )
+        assert refused.outcome is process.ProcessOutcome.CONTAINMENT_UNAVAILABLE
+        assert refused.local_cleanup is process.LocalCleanup.NOT_STARTED
+        assert refused.stdout == refused.stderr == b""
+        assert spawn_attempts == []
+        return
+
+    docker_cli = shutil.which("docker")
+    assert docker_cli is not None, "Docker CLI is required for this formatter regression"
 
     api_version = "1.44"
     worker_id = _WORKER.container_id
@@ -926,6 +950,9 @@ def test_policy_projection_through_real_docker_cli(
     assert not result.stdout.endswith(b"\n\n"), (
         "template must leave only Docker CLI's final newline"
     )
-    assert transport_port._decode_worker_policy_inspect(
-        result.stdout, owner=_OWNER, worker=_WORKER
-    ) == expected
+    assert (
+        transport_port._decode_worker_policy_inspect(
+            result.stdout, owner=_OWNER, worker=_WORKER
+        )
+        == expected
+    )

@@ -46,6 +46,7 @@ from scripts.owned_nats_sql_adapter import OwnedNatsSqlAdapter
 
 _POLICY_INSPECT_STDOUT_LIMIT = 4096
 _POLICY_INSPECT_STDERR_LIMIT = 1024
+# Docker inspect appends the final newline; this template emits only separators.
 _POLICY_INSPECT_FORMAT = (
     '{"id":{{json .Id}},'
     '"project":{{json (index .Config.Labels "com.docker.compose.project")}},'
@@ -60,14 +61,14 @@ _POLICY_INSPECT_FORMAT = (
     '"entrypoint_matches":{{if and (eq (len .Config.Entrypoint) 2) '
     '(eq (index .Config.Entrypoint 0) "/usr/bin/tini") '
     '(eq (index .Config.Entrypoint 1) "--")}}true{{else}}false{{end}}}'
-    '{{println}}{{range .Config.Env}}{{ $parts := split . "=" }}'
+    '{{range .Config.Env}}{{ $parts := split . "=" }}'
     "{{ $key := lower (index $parts 0) }}"
     '{{if or (eq $key "outbox_poll_interval_seconds") '
     '(eq $key "outbox_batch_size") (eq $key "outbox_max_retries")}}'
-    "{{println (json .)}}"
+    "{{println}}{{json .}}"
     '{{else if or (eq $key "env_file_path") (eq $key "env_example_path")}}'
-    '{{if eq $key "env_file_path"}}{{println (json "ENV_FILE_PATH")}}'
-    '{{else}}{{println (json "ENV_EXAMPLE_PATH")}}{{end}}'
+    '{{if eq $key "env_file_path"}}{{println}}{{json "ENV_FILE_PATH"}}'
+    '{{else}}{{println}}{{json "ENV_EXAMPLE_PATH"}}{{end}}'
     "{{end}}{{end}}"
 )
 _OUTBOX_ENV_KEYS = frozenset(

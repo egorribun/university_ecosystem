@@ -412,3 +412,22 @@ GREEN ещё требуется, AUD-466 не принят; ledger 170/512.
 выдаётся за проверку реального daemon или API negotiation. Production template
 и строгий decoder пока не менялись; требуется hosted RED. Go approval и
 полный CI по-прежнему открыты.
+
+
+## Реальный Docker CLI: подтверждённый RED, 2026-10-21 06:46 UTC
+
+На 3373104 consumer 119076006979: два целевых formatter FAIL / 1182 PASS /
+один deselected и 239 policy PASS. CLI действительно завершился успешно,
+не вывел лишние env-поля и добавил второй конечный LF. Все десять прежних
+AUD-466 cases теперь PASS, но приёмка пока не расширяется.
+
+Шаблон теперь добавляет только внутренние разделители, а конечный LF оставляет
+Docker CLI. Decoder и все owner/daemon/process/deadline guards неизменны.
+Требуются собственный GREEN и fresh Owned acceptance.
+
+Исправлены два статических замечания: вместо неподтверждённых dynamic skips
+используется существующий supported-or-fail-closed подход, а assertion оформлен
+по hosted Ruff diff. На неподдерживаемом локальном host проверяются реальный
+отказ containment и отсутствие spawn; это не formatter coverage. В обязательном
+GitHub CI такой путь запрещён, Docker CLI обязателен. Ledger остаётся 170/512;
+Go approval и полный CI всё ещё открыты.
