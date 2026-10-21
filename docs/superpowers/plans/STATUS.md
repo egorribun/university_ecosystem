@@ -431,3 +431,27 @@ Docker CLI. Decoder и все owner/daemon/process/deadline guards неизме�
 отказ containment и отсутствие spawn; это не formatter coverage. В обязательном
 GitHub CI такой путь запрещён, Docker CLI обязателен. Ledger остаётся 170/512;
 Go approval и полный CI всё ещё открыты.
+
+
+## Docker CLI GREEN и синхронизация старого контракта, 2026-10-21 07:06 UTC
+
+На 96c4e47 оба настоящих Docker CLI сценария PASS. Consumer 119082105447:
+один FAIL / 1183 PASS / один deselected и 239 policy PASS. Единственный FAIL —
+старый source-shape test, требующий ошибочные println-разделители. Обновлены
+только эти два ожидания и добавлен запрет прежних выражений; privacy assertions
+и реальные CLI-проверки сохранены. Production код в этом follow-up не меняется.
+
+Inventory и security/types SUCCESS. Применён точный оставшийся Ruff wrap
+для assertion наличия Docker CLI, без изменения условия. Нужны собственные
+чистые checks и actual NATS; AUD-466 пока не принят, ledger 170/512.
+
+
+Actual Owned 119082103077 на 96c4e47 уже проходит прежние preflight boundaries,
+но завершается отказом stage=broker в 07:11 UTC. Cleanup и receipt 12327177966
+завершены; полный outage не принят. Причина broker-stage проверяется отдельно.
+
+В 12:28 UTC владелец разрешил точечное досрочное обновление Go 1.26.9 →
+1.26.10, fuzz 1.27.2 → 1.27.3 и соответствующих проверенных образов для
+GO-2026-6809. Это не разрешение на новые scanner dispositions, подавления,
+baseline/gate изменения, merge или deploy. Изменения Go и собственные проверки
+ещё предстоят.

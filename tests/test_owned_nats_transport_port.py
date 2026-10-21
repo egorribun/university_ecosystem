@@ -706,8 +706,10 @@ def test_policy_template_projects_only_public_worker_fields() -> None:
     assert "outbox_batch_size" in template
     assert "outbox_max_retries" in template
     assert ".Config.Env" in template
-    assert "{{println}}{{range .Config.Env}}" in template
-    assert "{{println (json .)}}" in template
+    assert "{{range .Config.Env}}" in template
+    assert "{{println}}{{json .}}" in template
+    assert "{{println}}{{range .Config.Env}}" not in template
+    assert "{{println (json .)}}" not in template
 
 
 def test_policy_static_defaults_remain_bound_to_effective_worker_sources() -> None:
@@ -817,7 +819,9 @@ def test_policy_projection_through_real_docker_cli(
         return
 
     docker_cli = shutil.which("docker")
-    assert docker_cli is not None, "Docker CLI is required for this formatter regression"
+    assert docker_cli is not None, (
+        "Docker CLI is required for this formatter regression"
+    )
 
     api_version = "1.44"
     worker_id = _WORKER.container_id
