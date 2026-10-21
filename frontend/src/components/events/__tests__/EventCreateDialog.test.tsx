@@ -1,3 +1,4 @@
+import { expectImagePickerKeyboard } from "@/tests/helpers/imagePickerKeyboard"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi, beforeEach } from "vitest"
@@ -67,6 +68,38 @@ describe("EventCreateDialog", () => {
     campusTimezone.current = "America/New_York"
     uploadEventImage.mockReset()
     uploadEventImage.mockResolvedValue("https://cdn.example.com/uploaded.png")
+  })
+
+  it("opens the image picker by keyboard and pointer without creating", async () => {
+    const onCreated = vi.fn()
+    const onClose = vi.fn()
+    render(<EventCreateDialog {...baseProps} onCreated={onCreated} onClose={onClose} />)
+
+    fireEvent.change(fieldByLabel("events:form.title"), {
+      target: { value: "Keyboard image" },
+    })
+    fireEvent.change(fieldByLabel("events:form.location"), {
+      target: { value: "Campus hall" },
+    })
+    fireEvent.change(fieldByLabel("events:form.start"), {
+      target: { value: "2030-01-15T10:00" },
+    })
+    fireEvent.change(fieldByLabel("events:form.end"), {
+      target: { value: "2030-01-15T11:00" },
+    })
+    expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeEnabled()
+
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    await expectImagePickerKeyboard(
+      screen.getByRole("button", { name: "events:form.uploadImage" }),
+      input,
+      fieldByLabel("events:form.speaker"),
+      fieldByLabel("events:form.start")
+    )
+
+    expect(uploadEventImage).not.toHaveBeenCalled()
+    expect(onCreated).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it("normalizes localized required values and rejects whitespace-only fallbacks", () => {

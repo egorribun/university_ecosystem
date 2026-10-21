@@ -166,7 +166,7 @@ jobs:
                   set -euo pipefail
                   focused_dir="$(mktemp -d "$RUNNER_TEMP/audit-regressions.XXXXXX")"
                   trap 'rm -rf -- "$focused_dir"' EXIT
-                  uv run --frozen --no-sync pytest -q -p no:cacheprovider --no-cov \
+                  uv run --frozen --no-sync pytest -v -p no:cacheprovider --no-cov \
                     --basetemp="$focused_dir/pytest" \
                     tests/test_user_analytics_window_contracts.py \
                     tests/test_stats_api.py \

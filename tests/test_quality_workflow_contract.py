@@ -6810,8 +6810,7 @@ def test_frozen_rc_preflight_uses_bounded_parallel_merged_coverage() -> None:
     assert step["shell"] == "bash"
     script = str(step["run"])
     assert (
-        'focused_dir="$(mktemp -d "$RUNNER_TEMP/frozen-rc-coverage.XXXXXX")"'
-        in script
+        'focused_dir="$(mktemp -d "$RUNNER_TEMP/frozen-rc-coverage.XXXXXX")"' in script
     )
     assert "trap 'rm -rf -- \"$focused_dir\"' EXIT" in script
     assert 'rcfile="$focused_dir/coverage.ini"' in script
@@ -6821,7 +6820,7 @@ def test_frozen_rc_preflight_uses_bounded_parallel_merged_coverage() -> None:
         in script
     )
     assert (
-        "printf '[run]\\nbranch = True\\ninclude = %s\\n' \"$target\" > \"$rcfile\""
+        'printf \'[run]\\nbranch = True\\ninclude = %s\\n\' "$target" > "$rcfile"'
         in script
     )
     commands = script.replace("\\\n", " ").splitlines()

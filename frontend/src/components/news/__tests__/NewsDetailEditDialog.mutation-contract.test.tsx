@@ -1,3 +1,4 @@
+import { expectImagePickerKeyboard } from "@/tests/helpers/imagePickerKeyboard"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
@@ -86,6 +87,26 @@ describe("NewsDetailEditDialog mutation contracts", () => {
     apiMocks.fetchNewsItem.mockReset()
     apiMocks.updateNews.mockReset().mockResolvedValue({ data: { ...initialData } })
     apiMocks.uploadNewsImage.mockReset().mockResolvedValue("https://example.test/uploaded.png")
+  })
+
+  it("opens the image picker by keyboard and pointer without saving", async () => {
+    const onClose = vi.fn()
+    const onSuccess = vi.fn()
+    renderDialog({ onClose, onSuccess })
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
+
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    await expectImagePickerKeyboard(
+      screen.getByRole("button", { name: "common:buttons.uploadPhoto" }),
+      input,
+      screen.getByLabelText("news:form.content_en"),
+      screen.getByRole("button", { name: "common:buttons.cancel" })
+    )
+
+    expect(apiMocks.uploadNewsImage).not.toHaveBeenCalled()
+    expect(apiMocks.updateNews).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(onSuccess).not.toHaveBeenCalled()
   })
 
   it("preserves namespaces, required markers, field constraints, and preview semantics", () => {

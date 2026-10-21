@@ -1,3 +1,4 @@
+import { expectImagePickerKeyboard } from "@/tests/helpers/imagePickerKeyboard"
 import { collectWindowErrors } from "@/tests/helpers/windowErrors"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -68,6 +69,27 @@ describe("NewsCardEditDialog mutation contracts", () => {
     apiMocks.post.mockReset()
     apiMocks.patch.mockReset().mockResolvedValue({ data: {} })
     apiMocks.logError.mockReset()
+  })
+
+  it("opens the image picker by keyboard and pointer without submitting", async () => {
+    const props = makeProps()
+    render(<NewsCardEditDialog {...props} />)
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
+    )
+
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    await expectImagePickerKeyboard(
+      screen.getByRole("button", { name: "news:form.changePhoto" }),
+      input,
+      screen.getByLabelText("news:form.content_en"),
+      screen.getByRole("button", { name: "common:buttons.cancel" })
+    )
+
+    expect(apiMocks.post).not.toHaveBeenCalled()
+    expect(apiMocks.patch).not.toHaveBeenCalled()
+    expect(props.onClose).not.toHaveBeenCalled()
+    expect(props.onSuccess).not.toHaveBeenCalled()
   })
 
   it("keeps the namespace, accessibility, field, and class contracts exact", async () => {

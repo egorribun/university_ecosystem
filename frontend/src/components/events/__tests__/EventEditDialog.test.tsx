@@ -1,3 +1,4 @@
+import { expectImagePickerKeyboard } from "@/tests/helpers/imagePickerKeyboard"
 import { createEvent, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -102,6 +103,23 @@ describe("EventEditDialog", () => {
     language.current = "en"
     campusTimezone.current = "America/New_York"
     vi.clearAllMocks()
+  })
+
+  it("opens the image picker by keyboard and pointer without saving", async () => {
+    const props = createProps()
+    render(<EventEditDialog {...props} />)
+
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    await expectImagePickerKeyboard(
+      screen.getByRole("button", { name: "common:buttons.changePhoto" }),
+      input,
+      screen.getByLabelText("events:form.speaker"),
+      screen.getByRole("button", { name: "common:buttons.cancel" })
+    )
+
+    expect(props.onSave).not.toHaveBeenCalled()
+    expect(props.onClose).not.toHaveBeenCalled()
+    expect(props.setNewImage).not.toHaveBeenCalled()
   })
 
   it("renders nothing when closed", () => {

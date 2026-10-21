@@ -1571,6 +1571,8 @@ jobs:
             tests/test_live_acceptance_workflow.py::test_live_stand_nats_outage_dispatches_once_and_redacts_failures \
             tests/test_ci_check_catalog.py tests/test_dependency_resolution_policy.py \
             tests/test_cache_settings_closure.py tests/test_check_no_python2_except.py \
+            tests/test_geolocation.py::test_geolocation_service_init_success \
+            tests/test_aud469_partition_scheduler_resilience.py \
             tests/test_quality_workflow_contract.py::test_aud257_postgres_regression_has_explicit_pg_routing \
             tests/test_quality_workflow_contract.py::test_frozen_rc_preflight_uses_bounded_parallel_merged_coverage \
             tests/test_image_proxy_closure.py::test_process_image_avif_real_codec_round_trip \
