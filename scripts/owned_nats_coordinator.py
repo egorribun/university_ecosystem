@@ -219,6 +219,10 @@ class RuntimeObservationPhase(StrEnum):
     INSPECT_PROCESS = "inspect_process"
     INSPECT_DECODE = "inspect_decode"
     RUNTIME_BINDING = "runtime_binding"
+    INVENTORY_INVALID_SELECTION = "inventory_invalid_selection"
+    INVENTORY_INVALID_IDENTITY = "inventory_invalid_identity"
+    INVENTORY_INVALID_RUNTIME = "inventory_invalid_runtime"
+    INVENTORY_UNHEALTHY = "inventory_unhealthy"
 
 
 @dataclass(slots=True)
@@ -559,6 +563,7 @@ class _Coordinator:
         self.primary = Deadline.after(180, clock=clock)
         self.stage = OutageStage.PREFLIGHT
         self.checkpoint: OutageCheckpoint | None = OutageCheckpoint.ACQUIRE_LOCK
+        self.runtime_diagnostic: RuntimeObservationPhase | None = None
 
     def _preflight(self) -> _Context:
         inventory = self.primary.child(45)
@@ -573,13 +578,28 @@ class _Coordinator:
         if daemon is None:
             raise _EvidenceFailure
         self.checkpoint = OutageCheckpoint.OBSERVE_RUNTIME
+        self.runtime_diagnostic = RuntimeObservationPhase.RUNTIME_BINDING
         before = _call(inventory, self.ports.observe_runtime, owner, daemon)
         _require(
             before.daemon_fingerprint == daemon
             and before.resource_fingerprint == owner.compose_resource_fingerprint
-            and validate_inventory(owner.selected_services, before.containers)
-            is InventoryVerdict.VALID
         )
+        verdict = validate_inventory(owner.selected_services, before.containers)
+        if verdict is not InventoryVerdict.VALID:
+            self.runtime_diagnostic = {
+                InventoryVerdict.INVALID_SELECTION: (
+                    RuntimeObservationPhase.INVENTORY_INVALID_SELECTION
+                ),
+                InventoryVerdict.INVALID_IDENTITY: (
+                    RuntimeObservationPhase.INVENTORY_INVALID_IDENTITY
+                ),
+                InventoryVerdict.INVALID_RUNTIME: (
+                    RuntimeObservationPhase.INVENTORY_INVALID_RUNTIME
+                ),
+                InventoryVerdict.UNHEALTHY: RuntimeObservationPhase.INVENTORY_UNHEALTHY,
+            }.get(verdict, RuntimeObservationPhase.RUNTIME_BINDING)
+        _require(verdict is InventoryVerdict.VALID)
+        self.runtime_diagnostic = None
         services = {row.service: row for row in before.containers}
         self.checkpoint = OutageCheckpoint.READ_POLICY
         policy = _call(
@@ -880,7 +900,17 @@ class _Coordinator:
                         self.checkpoint = None
         if accepted:
             return OutageResult(OutageOutcome.ACCEPTED, OutageStage.COMPLETE)
-        return OutageResult(OutageOutcome.FAILED, self.stage, self.checkpoint)
+        return OutageResult(
+            OutageOutcome.FAILED,
+            self.stage,
+            self.checkpoint,
+            runtime_diagnostic=(
+                self.runtime_diagnostic
+                if self.stage is OutageStage.PREFLIGHT
+                and self.checkpoint is OutageCheckpoint.OBSERVE_RUNTIME
+                else None
+            ),
+        )
 
 
 def run_owned_outage(ports: OutagePorts, *, clock: Clock, sleep: Sleep) -> OutageResult:

@@ -300,3 +300,15 @@ Ledger 169/512, полного CI acceptance нет.
 inventory verdicts с valid control. Production не изменён, RED ещё ожидается.
 Прежние owner/daemon/health/initializer guards сохраняются. Ledger 169/512;
 NATS и общий CI не приняты.
+
+
+## Coordinator diagnostic после RED, 2026-10-21 04:20 UTC
+
+На 53b39f9c подтверждены 8 ожидаемых FAIL / 1043 PASS / один deselected,
+затем 239 policy PASS. Valid control проходит. Координатор теперь различает
+callback/metadata boundary и четыре конечных inventory verdicts.
+Проверки и порядок допуска неизменны; после valid inventory метка очищается,
+при cleanup/later-stage failure не переносится.
+
+Собственные GREEN и actual сигнал ещё ожидаются. Причина реального NATS
+отказа не объявлена установленной, ledger остаётся 169/512.
