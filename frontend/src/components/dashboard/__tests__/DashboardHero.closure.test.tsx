@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import { render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { checkA11y } from "@/tests/axeTest"
 import type { User } from "@/types/User"
 
 const greetingState = vi.hoisted(() => ({
@@ -10,7 +11,7 @@ const greetingState = vi.hoisted(() => ({
   emoji: null as string | null,
 }))
 
-const parityMock = vi.hoisted(() => vi.fn(() => "even" as "even" | "odd"))
+const parityMock = vi.hoisted(() => vi.fn((_time?: Date) => "even" as "even" | "odd"))
 const useTranslationMock = vi.hoisted(() =>
   vi.fn((_namespaces: string[]) => ({
     t: (key: string, options?: { week?: number }) =>
@@ -27,11 +28,7 @@ vi.mock("@/hooks/useGreeting", () => ({
 }))
 
 vi.mock("@/utils/scheduleUtils", () => ({
-  nowParity: () => parityMock(),
-}))
-
-vi.mock("@/components/motion/ScrollReveal", () => ({
-  ScrollReveal: ({ children }: { children?: ReactNode }) => <>{children}</>,
+  nowParity: (time?: Date) => parityMock(time),
 }))
 
 vi.mock("@/components/ui/WeatherWidget", () => ({
@@ -78,6 +75,7 @@ describe("DashboardHero closure", () => {
     greetingState.specialKey = null
     greetingState.emoji = null
     parityMock.mockReturnValue("even")
+    parityMock.mockClear()
     useTranslationMock.mockClear()
   })
 
@@ -221,6 +219,58 @@ describe("DashboardHero closure", () => {
     expect(parity.parentElement?.textContent).toBe(
       "dashboard:academicWeek:32 · dashboard:parityEven"
     )
+  })
+
+  it("keeps browser-local greeting, time, date, and week hidden until the clock is ready", () => {
+    render(
+      <DashboardHero
+        {...baseProps}
+        time={new Date(0)}
+        isClockReady={false}
+        user={{ full_name: "Ada Lovelace" } as User}
+      />
+    )
+
+    const heading = screen.getByRole("heading", { level: 1 })
+    expect(screen.getByRole("banner")).toHaveClass("greeting-night")
+    expect(heading).not.toHaveTextContent("Good morning")
+    expect(heading).not.toHaveTextContent("Ada!")
+    expect(screen.getByLabelText("common:aria.loadingTime")).toHaveTextContent("--:--")
+    expect(screen.getByRole("status", { name: "common:aria.loadingGreeting" })).toBeInTheDocument()
+    expect(screen.getByLabelText("common:aria.loadingDate")).toBeInTheDocument()
+    expect(screen.queryByText("dashboard:academicWeek:32")).not.toBeInTheDocument()
+    expect(screen.queryByText("dashboard:parityEven")).not.toBeInTheDocument()
+    expect(parityMock).not.toHaveBeenCalled()
+  })
+
+  it("keeps the greeting loading status outside a phrasing-only heading", async () => {
+    const { container } = render(
+      <DashboardHero
+        {...baseProps}
+        isClockReady={false}
+        user={{ full_name: "Ada Lovelace" } as User}
+      />
+    )
+
+    const heading = screen.getByRole("heading", { level: 1 })
+    const loadingStatus = screen.getByRole("status", { name: "common:aria.loadingGreeting" })
+
+    expect(heading).toHaveAttribute("aria-busy", "true")
+    expect(heading).toHaveAccessibleName("common:aria.loadingGreeting")
+    expect(heading.querySelector("div")).toBeNull()
+    expect(heading.contains(loadingStatus)).toBe(false)
+    expect(loadingStatus).toHaveClass("sr-only")
+    expect(heading.querySelector("span.skeleton")).toHaveAttribute(
+      "style",
+      "width: 14rem; height: 2.5rem;"
+    )
+    await checkA11y(container)
+  })
+
+  it("derives week parity from the same clock snapshot it displays", () => {
+    render(<DashboardHero {...baseProps} user={null} />)
+
+    expect(parityMock).toHaveBeenCalledWith(baseProps.time)
   })
 
   it("does not mount an empty stories wrapper when no slot is provided", () => {

@@ -125,10 +125,14 @@ def _run_powershell_wrapper(
         "exit $LASTEXITCODE"
     )
     _write_attestation(tmp_path, attestation)
+    env = _environment(tmp_path, volumes, inspect_fails, compose_fails)
+    # -NoProfile still shares the .NET startup cache on Unix. Parallel children
+    # can corrupt it (PowerShell/PowerShell#26528); keep it inside this test root.
+    env["XDG_CACHE_HOME"] = str(tmp_path / ".powershell-cache")
     return subprocess.run(  # noqa: S603 - fixed interpreter/script with test-only switches
         [pwsh, "-NoProfile", "-Command", command],
         cwd=ROOT,
-        env=_environment(tmp_path, volumes, inspect_fails, compose_fails),
+        env=env,
         capture_output=True,
         text=True,
         timeout=20,
@@ -186,6 +190,27 @@ WRAPPERS = [
     pytest.param(_run_powershell_wrapper, id="powershell"),
     pytest.param(_run_shell_wrapper, id="shell", marks=POSIX_ONLY),
 ]
+
+
+@POSIX_ONLY
+def test_powershell_wrapper_preserves_the_inherited_startup_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    shared_cache = tmp_path / "shared-cache"
+    profile = shared_cache / "powershell" / "StartupProfileData-NonInteractive"
+    profile.parent.mkdir(parents=True)
+    sentinel = b"parent-process-startup-cache"
+    profile.write_bytes(sentinel)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(shared_cache))
+    project = tmp_path / "project"
+    project.mkdir()
+
+    result = _run_powershell_wrapper(project, "up")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "COMPOSE_CALLED=" in result.stdout
+    assert profile.read_bytes() == sentinel
+    assert os.environ["XDG_CACHE_HOME"] == str(shared_cache)
 
 
 @pytest.mark.parametrize("run", WRAPPERS)

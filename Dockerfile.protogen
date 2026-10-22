@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM golang:1.26.6-alpine3.24@sha256:af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df
+FROM golang:1.26.10-alpine3.24@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca
 
 # Install Protobuf compiler and Python
 RUN apk add --no-cache \
@@ -11,7 +11,7 @@ RUN apk add --no-cache \
 # Build all Go-based generators from checksum-verified modules with the patched
 # repository toolchain. This avoids importing stale Go runtimes from upstream
 # release binaries into the code-generation image.
-ARG BUF_VERSION="v1.72.0"
+ARG BUF_VERSION="v1.73.0"
 ENV GOTOOLCHAIN=local
 
 RUN --mount=type=cache,target=/go/pkg/mod \
@@ -30,7 +30,7 @@ WORKDIR /workspace
 RUN addgroup -S -g 10001 protogen \
     && adduser -S -D -u 10001 -G protogen -h /home/protogen -s /sbin/nologin protogen \
     && chown -R protogen:protogen /workspace
-USER protogen
+USER 10001:10001
 
 # This is a short-lived code-generation tool image, never a deployed service.
 #checkov:skip=CKV_DOCKER_2:the image is not a long-running service.

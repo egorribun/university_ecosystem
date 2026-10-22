@@ -52,7 +52,7 @@
     // Test settings
     "python.testing.pytestEnabled": true,
     "python.testing.pytestArgs": [
-        "root/tests"
+        "tests"
     ],
     // Files to exclude from search
     "search.exclude": {

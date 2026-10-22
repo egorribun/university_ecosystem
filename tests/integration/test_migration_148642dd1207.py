@@ -8,7 +8,7 @@ from pathlib import Path
 import psycopg
 import pytest
 from alembic.config import Config
-from testcontainers.postgres import PostgresContainer
+from testcontainers.community.postgres import PostgresContainer
 
 from alembic import command
 
@@ -26,7 +26,7 @@ def migration_postgres():
     """Provide an isolated PostgreSQL instance with the required extension."""
 
     with PostgresContainer(
-        "pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f"
+        "pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d"
     ) as postgres:
         yield postgres
 

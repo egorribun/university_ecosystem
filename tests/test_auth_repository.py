@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.models as models
 from app.core.config import settings
-from app.repositories.auth_repository import AuthRepository, get_auth_repository
+from app.repositories.auth_repository import AuthRepository
 
 
 @pytest.fixture
@@ -29,9 +29,8 @@ def _h(value: str) -> str:
 
 
 @pytest.mark.asyncio
-async def test_get_auth_repository_factory_returns_instance(db_session):
-    built = get_auth_repository(db_session)
-    assert isinstance(built, AuthRepository)
+async def test_auth_repository_binds_password_reset_token_model(db_session):
+    built = AuthRepository(db_session)
     assert built.model is models.PasswordResetToken
 
 

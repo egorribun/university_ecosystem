@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
-import type { StoryItem } from "@/types/Story"
+import type { DashboardStory } from "@/hooks/useDashboardStories"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { StoryList } from "./StoryList"
 import { StoryViewer } from "./StoryViewer"
@@ -8,10 +8,10 @@ import { StoryViewer } from "./StoryViewer"
 const STORY_AUTO_ADVANCE_MS = 6500
 
 type DashboardStoriesProps = {
-  stories: StoryItem[]
+  stories: DashboardStory[]
   loading?: boolean
   onPrefetch?: () => void
-  onStoryOpen?: (story: StoryItem) => void
+  onStoryOpen?: (story: DashboardStory) => void
   maxVisibleStories?: number
 }
 
@@ -29,8 +29,11 @@ export default function DashboardStories({
     return filtered.slice(0, Math.max(1, maxVisibleStories))
   }, [stories, maxVisibleStories])
 
-  const [openIndex, setOpenIndex] = useState<number | null>(null)
-  const activeStoryId = openIndex === null ? undefined : displayStories[openIndex]?.id
+  const [activeStoryId, setActiveStoryId] = useState<string | null>(null)
+  const activeStoryIndex =
+    activeStoryId === null ? null : displayStories.findIndex((story) => story.id === activeStoryId)
+  const isActiveStoryMissing = activeStoryId !== null && activeStoryIndex === -1
+  const openIndex = isActiveStoryMissing ? null : activeStoryIndex
   const [progress, setProgress] = useState(0)
   const [isInteractionPaused, setIsInteractionPaused] = useState(false)
   const [isDocumentHidden, setIsDocumentHidden] = useState(false)
@@ -42,7 +45,7 @@ export default function DashboardStories({
   const isPaused = isInteractionPaused || isDocumentHidden
 
   const [closeViewer] = useState<() => void>(() => () => {
-    setOpenIndex(null)
+    setActiveStoryId(null)
     setProgress(0)
     setIsInteractionPaused(false)
     pausedElapsedRef.current = 0
@@ -57,7 +60,7 @@ export default function DashboardStories({
         return
       }
       setProgress(0)
-      setOpenIndex(nextIndex)
+      setActiveStoryId(story.id)
       onStoryOpen?.(story)
     },
     [closeViewer, displayStories, onStoryOpen]
@@ -80,10 +83,8 @@ export default function DashboardStories({
   }, [openIndex, goToIndex])
 
   useEffect(() => {
-    if (openIndex === null) {
-      return
-    }
-    if (activeStoryId === undefined) {
+    if (activeStoryId === null) return
+    if (isActiveStoryMissing) {
       closeViewer()
       return
     }
@@ -91,10 +92,10 @@ export default function DashboardStories({
     autoStartRef.current = performance.now()
     pausedElapsedRef.current = 0
     pauseStartedRef.current = document.visibilityState === "hidden"
-  }, [openIndex, activeStoryId, closeViewer])
+  }, [activeStoryId, isActiveStoryMissing, closeViewer])
 
   useEffect(() => {
-    if (activeStoryId === undefined || prefersReducedMotion || isPaused) {
+    if (openIndex === null || activeStoryId === null || prefersReducedMotion || isPaused) {
       return
     }
 
@@ -144,9 +145,9 @@ export default function DashboardStories({
   }, [openIndex, closeViewer, goNext, goPrev])
 
   const openStory = useCallback(
-    (story: StoryItem, index: number) => {
+    (story: DashboardStory) => {
       autoStartRef.current = performance.now()
-      setOpenIndex(index)
+      setActiveStoryId(story.id)
       onStoryOpen?.(story)
     },
     [onStoryOpen]
@@ -197,7 +198,7 @@ export default function DashboardStories({
         loading={loading}
         onPrefetch={onPrefetch}
         onOpenStory={openStory}
-        activeStoryId={activeStoryId}
+        activeStoryId={activeStoryId ?? undefined}
       />
       <StoryViewer
         stories={displayStories}

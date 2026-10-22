@@ -30,4 +30,21 @@ spec:
       name: {{ .Values.keda.natsAuth.secretName | default (printf "%s-nats-credentials" .Release.Name) }}
       key: {{ .Values.keda.natsAuth.secretTokenKey | default "nats-token" }}
 {{- end }}
+{{- if and (or .Values.keda.redisAuth.enabled .Values.keda.natsAuth.enabled) .Values.keda.outboxWorker.enabled .Values.keda.outboxWorker.postgresql.enabled }}
+---
+{{- end }}
+{{- if and .Values.keda.outboxWorker.enabled .Values.keda.outboxWorker.postgresql.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-trigger-auth-postgresql
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+spec:
+  secretTargetRef:
+    - parameter: connection
+      name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
+      key: {{ required "connections.kedaPostgresqlURLKey must be set" .Values.connections.kedaPostgresqlURLKey | quote }}
+{{- end }}
 {{- end }}

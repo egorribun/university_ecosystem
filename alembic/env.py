@@ -19,14 +19,16 @@ from app.core.db.schema_drift import (
     filter_check_backed_nullable_diffs,
 )
 from app.core.config import Settings
+from app.core.config.base import _DEVELOPMENT_ENVIRONMENTS
 import app.models as models
+from app.core.db.retained_table_metadata import build_migration_metadata
 
 _settings = Settings(_allow_missing=True)
 config: Config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
-target_metadata = models.Base.metadata
+target_metadata = build_migration_metadata(models.Base.metadata)
 
 
 class _OfflineInspector:
@@ -86,9 +88,6 @@ def _offline_inspect(subject: Any, *args: Any, **kwargs: Any) -> Any:
         raise
 
 
-sa.inspect = _offline_inspect
-
-
 class _OfflineResult:
     """Mock result object for op.get_bind().execute() in Alembic offline mode."""
 
@@ -134,9 +133,6 @@ def _offline_get_bind(*args: Any, **kwargs: Any) -> Any:
     return bind
 
 
-_alembic_op.get_bind = _offline_get_bind
-
-
 def get_url() -> str:
     env_url = os.getenv("DATABASE_URL", "")
     if env_url:
@@ -147,6 +143,15 @@ def get_url() -> str:
     if url:
         return url
     raise RuntimeError("Database URL is not configured for Alembic")
+
+
+def _development_fallback_skip_allowed() -> bool:
+    """Allow a skip only for the documented local SQLite default in development."""
+    environment_name = (os.getenv("ENVIRONMENT") or "").strip().lower()
+    return (
+        "database_url" in _settings.development_fallback_fields
+        and environment_name in _DEVELOPMENT_ENVIRONMENTS
+    )
 
 
 def run_migrations_offline() -> None:
@@ -162,8 +167,19 @@ def run_migrations_offline() -> None:
         transaction_per_migration=True,
         process_revision_directives=filter_check_backed_nullable_diffs,
     )
-    with context.begin_transaction():
-        context.run_migrations()
+
+    # Keep these offline compatibility shims scoped to the migration run. They
+    # replace process-global APIs and must not affect later Alembic contexts.
+    previous_inspect = sa.inspect
+    previous_get_bind = _alembic_op.get_bind
+    try:
+        sa.inspect = _offline_inspect
+        _alembic_op.get_bind = _offline_get_bind
+        with context.begin_transaction():
+            context.run_migrations()
+    finally:
+        sa.inspect = previous_inspect
+        _alembic_op.get_bind = previous_get_bind
 
 
 def _configure_context(connection: SyncConnection) -> None:
@@ -187,13 +203,23 @@ def run_migrations_online() -> None:
     # RZ-W18-06 (audit 2026-03-23 Wave 18): emit a proper Python warning instead
     # of a bare print(). Previously the silent skip was easily missed in logs,
     # leading developers to unknowingly accumulate schema drift.
+    # AUD-168 (audit 2026-10): only the documented local SQLite default may skip,
+    # and only in a development environment. Every other development fallback
+    # fails closed, because exit 0 without migrating looks like a successful deploy.
     if _settings.has_development_fallbacks:
+        if not _development_fallback_skip_allowed():
+            fallback_fields = ", ".join(_settings.development_fallback_fields)
+            raise RuntimeError(
+                "Refusing to skip Alembic migrations: development fallbacks are "
+                f"active for {fallback_fields}. Set DATABASE_URL and every "
+                "required secret explicitly."
+            )
         import warnings
 
         warnings.warn(
             "Skipping Alembic migrations: has_development_fallbacks is True. "
             "Schema drift may cause runtime errors. "
-            "Set DATABASE_URL explicitly to run migrations.",
+            "Set DATABASE_URL and SECRET_KEY explicitly to run migrations.",
             stacklevel=2,
         )
         return

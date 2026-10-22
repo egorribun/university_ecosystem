@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 import type { ChangeEvent } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next"
 import { RotateCcw, Trash2, Loader2 } from "lucide-react"
 import { cn } from "@/utils/cn"
 import { Alert, Button, TextField, SectionCard, CircularProgress } from "@/components/settings"
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 
 import {
   fetchAdminUserTopics,
@@ -23,6 +24,7 @@ import {
 import PageFadeIn from "@/components/motion/PageFadeIn"
 import { ReleaseAnnouncementCard } from "./components/ReleaseAnnouncementCard"
 import { useLocaleFormatters } from "@/i18n/formatters"
+import { NOTIFICATION_TOPIC_LABEL_KEYS, normalizeNotificationTopic } from "@/notifications/contract"
 
 function getErrorMessage(error: unknown, fallback: string): string {
   if (isAxiosError(error)) {
@@ -47,10 +49,7 @@ const formatJobKind = (kind: string, t: ReturnType<typeof useTranslation>["t"]) 
   }
 }
 
-const normalizeTopicKey = (value: unknown): string => {
-  if (typeof value !== "string") return ""
-  return value.trim().toLowerCase()
-}
+const normalizeTopicKey = (value: string): string => value.trim().toLowerCase()
 
 /**
  * AdminNotificationsFeature — Wave 164 SW2 orchestrator.
@@ -74,6 +73,8 @@ export function AdminNotificationsFeature() {
   const { formatDate } = useLocaleFormatters()
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [purgeConfirmationIds, setPurgeConfirmationIds] = useState<string[] | null>(null)
+  const purgeConfirmationLock = useRef(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [topicsUserIdInput, setTopicsUserIdInput] = useState("")
   const [topicsData, setTopicsData] = useState<Awaited<
@@ -85,12 +86,12 @@ export function AdminNotificationsFeature() {
   const [topicsBusy, setTopicsBusy] = useState(false)
 
   const buildTopicState = useCallback(
-    (allowed: readonly string[], selectedTopics?: readonly string[] | null) => {
+    (allowed: readonly string[], selectedTopics: readonly string[]) => {
       const normalizedAllowed = Array.from(
         new Set(allowed.map((topic) => normalizeTopicKey(topic)).filter(Boolean))
       )
       const selectedSet = new Set(
-        (selectedTopics ?? []).map((topic) => normalizeTopicKey(topic)).filter(Boolean)
+        selectedTopics.map((topic) => normalizeTopicKey(topic)).filter(Boolean)
       )
       const record: Record<string, boolean> = {}
       for (const topic of normalizedAllowed) {
@@ -102,6 +103,9 @@ export function AdminNotificationsFeature() {
   )
 
   const listQuery = useQuery(adminDeadLetterQueueQueryOptions())
+  const jobs = listQuery.data?.items ?? []
+  const currentJobIds = new Set(jobs.map((job) => job.id))
+  const selectedIds = Array.from(selected).filter((id) => currentJobIds.has(id))
 
   const resetSelection = () => setSelected(new Set())
 
@@ -135,6 +139,10 @@ export function AdminNotificationsFeature() {
       void queryClient.invalidateQueries({ queryKey: adminDeadLetterQueueQueryKey })
     },
     onError: onActionError,
+    onSettled: () => {
+      setPurgeConfirmationIds(null)
+      purgeConfirmationLock.current = false
+    },
   })
 
   const toggleSelect = (jobId: string) => {
@@ -153,7 +161,7 @@ export function AdminNotificationsFeature() {
   const handleSelectAll = () => {
     const items = listQuery.data!.items
     setSelected((previous) => {
-      if (previous.size === items.length) {
+      if (items.every((item) => previous.has(item.id))) {
         return new Set()
       }
       return new Set(items.map((item) => item.id))
@@ -222,22 +230,42 @@ export function AdminNotificationsFeature() {
   }, [buildTopicState, t, topicsData, topicsState])
 
   const handleRetrySelected = () => {
-    const ids = Array.from(selected)
-    retryMutation.mutate(ids)
+    retryMutation.mutate(selectedIds)
   }
 
+  const disablePurgeRequest = () =>
+    retryMutation.isPending || purgeMutation.isPending || purgeConfirmationLock.current
+
   const handlePurgeSelected = () => {
-    const ids = Array.from(selected)
-    purgeMutation.mutate(ids)
+    setPurgeConfirmationIds(selectedIds)
+  }
+
+  const handlePurgeRow = (jobId: string) => {
+    setPurgeConfirmationIds([jobId])
+  }
+
+  const handleConfirmPurge = () => {
+    if (!purgeConfirmationIds?.length || disablePurgeRequest()) return
+
+    const idsToPurge = purgeConfirmationIds.filter((id) => currentJobIds.has(id))
+    if (idsToPurge.length === 0) {
+      setPurgeConfirmationIds(null)
+      return
+    }
+
+    purgeConfirmationLock.current = true
+    purgeMutation.mutate(idsToPurge)
   }
 
   const isLoading = listQuery.isLoading
   const hasError = listQuery.isError
-  const jobs = listQuery.data?.items ?? []
   const total = listQuery.data?.total ?? 0
-  const allSelected = jobs.length > 0 && selected.size === jobs.length
 
-  const disableActions = selected.size === 0 || retryMutation.isPending || purgeMutation.isPending
+  const disableActions =
+    selectedIds.length === 0 ||
+    retryMutation.isPending ||
+    purgeMutation.isPending ||
+    purgeConfirmationIds !== null
 
   const renderContent = () => {
     if (isLoading) {
@@ -263,6 +291,8 @@ export function AdminNotificationsFeature() {
         </Alert>
       )
     }
+
+    const allSelected = jobs.every((job) => selected.has(job.id))
 
     return (
       <div className="mt-4 overflow-hidden rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
@@ -377,7 +407,11 @@ export function AdminNotificationsFeature() {
                         <button
                           type="button"
                           onClick={() => retryMutation.mutate([job.id])}
-                          disabled={retryMutation.isPending || purgeMutation.isPending}
+                          disabled={
+                            retryMutation.isPending ||
+                            purgeMutation.isPending ||
+                            purgeConfirmationIds !== null
+                          }
                           className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-brand hover:bg-brand/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
                           title={t("admin:notifications.actions.retry")}
                           aria-label={t("admin:notifications.actions.retry")}
@@ -386,8 +420,12 @@ export function AdminNotificationsFeature() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => purgeMutation.mutate([job.id])}
-                          disabled={retryMutation.isPending || purgeMutation.isPending}
+                          onClick={() => handlePurgeRow(job.id)}
+                          disabled={
+                            retryMutation.isPending ||
+                            purgeMutation.isPending ||
+                            purgeConfirmationIds !== null
+                          }
                           className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-error hover:bg-error/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2"
                           title={t("admin:notifications.actions.purge")}
                           aria-label={t("admin:notifications.actions.purge")}
@@ -482,7 +520,11 @@ export function AdminNotificationsFeature() {
                   ) : (
                     topicsData.allowed_topics.map((topic) => {
                       const normalized = normalizeTopicKey(topic)
-                      const translationKey = `notifications:topics.${normalized}`
+                      const canonicalTopic = normalizeNotificationTopic(normalized)
+                      const labelKey = canonicalTopic
+                        ? NOTIFICATION_TOPIC_LABEL_KEYS[canonicalTopic]
+                        : normalized
+                      const translationKey = `notifications:topics.${labelKey}`
                       const label = t(translationKey)
                       const resolvedLabel = label === translationKey ? topic : (label as string)
                       return (
@@ -573,6 +615,17 @@ export function AdminNotificationsFeature() {
           </SectionCard>
         </div>
       </PageFadeIn>
+      <ConfirmDialog
+        open={purgeConfirmationIds !== null}
+        title={t("admin:notifications.confirmPurge.title")}
+        message={t("admin:notifications.confirmPurge.message")}
+        confirmText={t("admin:notifications.actions.purge")}
+        cancelText={t("common:buttons.cancel")}
+        variant="danger"
+        onConfirm={handleConfirmPurge}
+        onCancel={() => setPurgeConfirmationIds(null)}
+        isLoading={purgeMutation.isPending}
+      />
     </div>
   )
 }

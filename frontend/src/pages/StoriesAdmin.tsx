@@ -14,6 +14,7 @@ import Layout from "@/components/Layout"
 import PageFadeIn from "@/components/motion/PageFadeIn"
 import SmartImage from "@/components/media/SmartImage"
 import { useAuth } from "@/contexts/AuthContext"
+import { useScheduleClock } from "@/hooks/useScheduleClock"
 import type { StoryItem } from "@/types/Story"
 import { createStory, deleteStory, updateStory, uploadStoryCover } from "@/api/stories"
 import apiClient from "@/api/client"
@@ -44,8 +45,8 @@ function toIso(date: string) {
   return d.toISOString()
 }
 
-function formatTimeLeft(expiresAt: string) {
-  return formatRelativeTime(expiresAt, "en-US") // Simplified for now, but following the requirement
+function formatTimeLeft(expiresAt: string, now: Date) {
+  return formatRelativeTime(expiresAt, "en-US", now) // Simplified for now, but following the requirement
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -82,11 +83,12 @@ const createInitialFormState = (): StoryFormState => ({
 
 type StoryAdminItemProps = {
   story: StoryItem
+  nowTick: Date
   formatDate: (value: Date | string | number) => string
   onRefresh: () => void
 }
 
-function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
+function StoryAdminItem({ story, nowTick, formatDate, onRefresh }: StoryAdminItemProps) {
   const { t } = useTranslation(["stories", "common"])
   const [publishedAt, setPublishedAt] = useState(() => formatInputDate(story.published_at))
   const [expiresAt, setExpiresAt] = useState(() => formatInputDate(story.expires_at))
@@ -111,7 +113,10 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
     }
   }, [coverPreview])
 
-  const timeLeft = useMemo(() => formatTimeLeft(story.expires_at), [story.expires_at])
+  const timeLeft = useMemo(
+    () => formatTimeLeft(story.expires_at, nowTick),
+    [story.expires_at, nowTick]
+  )
 
   const handleTimeSave = async () => {
     setActionError(null)
@@ -163,9 +168,7 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
-  const handleCoverUpdate = async () => {
-    if (!coverFile) return
-    const selectedCover = coverFile
+  const handleCoverUpdate = async (selectedCover: File) => {
     const telemetryContext = captureActiveTelemetryContext()
     setActionError(null)
     setUpdatingCover(true)
@@ -281,7 +284,8 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
               <div className="w-full space-y-2">
                 <div className="flex gap-2 w-full">
                   <Button
-                    as="label"
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
                     variant="outline"
                     size="sm"
                     className="flex-1"
@@ -290,20 +294,21 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
                     {coverFile
                       ? t("common:buttons.changePhoto")
                       : t("stories:list.actions.pickCover")}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      aria-label={t("stories:list.actions.pickCover")}
-                      onChange={handleCoverChange}
-                      ref={fileInputRef}
-                    />
                   </Button>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    aria-label={t("stories:list.actions.pickCover")}
+                    onChange={handleCoverChange}
+                    ref={fileInputRef}
+                  />
                   {coverFile && (
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={handleCoverReset}
+                      aria-label={t("stories:list.actions.clearCover")}
                       startIcon={<RestartAltIcon className="h-4 w-4" />}
                       className="text-(--text-secondary)"
                     />
@@ -314,7 +319,7 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
                   size="sm"
                   className="w-full"
                   disabled={!coverFile || updatingCover}
-                  onClick={handleCoverUpdate}
+                  onClick={coverFile ? () => handleCoverUpdate(coverFile) : undefined}
                   loading={updatingCover}
                 >
                   {t("stories:list.actions.updateCover")}
@@ -397,6 +402,7 @@ export default function StoriesAdmin() {
   const { t } = useTranslation(["stories", "common"])
   const { formatDate } = useLocaleFormatters()
   const isAdmin = user?.role === "admin"
+  const nowTick = useScheduleClock(isAdmin)
   const [stories, setStories] = useState<StoryItem[]>([])
   const [loading, setLoading] = useState(false)
   const [formState, setFormState] = useState<StoryFormState>(() => createInitialFormState())
@@ -593,22 +599,23 @@ export default function StoriesAdmin() {
                 <div className="flex flex-col gap-4 py-2">
                   <div className="flex items-center gap-3">
                     <Button
-                      as="label"
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
                       variant="outline"
                       startIcon={<PhotoCamera className="h-4 w-4" />}
                     >
                       {coverFile
                         ? t("common:buttons.changePhoto")
                         : t("common:buttons.uploadPhoto")}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        hidden
-                        aria-label={t("common:buttons.uploadPhoto")}
-                        onChange={handleCoverChange}
-                        ref={fileInputRef}
-                      />
                     </Button>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      aria-label={t("common:buttons.uploadPhoto")}
+                      onChange={handleCoverChange}
+                      ref={fileInputRef}
+                    />
                     {coverFile && (
                       <Button
                         variant="ghost"
@@ -705,6 +712,7 @@ export default function StoriesAdmin() {
                   <StoryAdminItem
                     key={story.id}
                     story={story}
+                    nowTick={nowTick}
                     formatDate={(value) => formatDate(value, { preset: "datetime" })}
                     onRefresh={() => void fetchStories()}
                   />

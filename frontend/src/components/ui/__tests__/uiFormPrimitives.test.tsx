@@ -207,8 +207,11 @@ describe("TextField", () => {
 
     expect(TextField.displayName).toBe("TextField")
     expect(wrapper).toHaveClass("flex", "flex-col", "gap-1.5")
+    expect([...wrapper!.classList].sort()).toEqual(["flex", "flex-col", "gap-1.5"])
     expect(wrapper).not.toHaveClass("w-full")
     expect(input).toHaveAttribute("type", "text")
+    const { container: defaultInputContainer } = render(<Input fullWidth={false} />)
+    expect(input.className).toBe(defaultInputContainer.querySelector("input")?.className)
     expect(input).toBeEnabled()
     expect(input).toHaveClass("w-auto", "min-h-12", "text-base")
 
@@ -335,7 +338,13 @@ describe("RadioGroup", () => {
     )
 
     expect(screen.getByRole("radiogroup", { name: "Delivery method" })).toBeInTheDocument()
-    expect(screen.getByRole("radio").nextElementSibling).toHaveClass("min-h-11", "min-w-11")
+    const radio = screen.getByRole("radio")
+    const hitTarget = radio.parentElement
+    const indicator = radio.nextElementSibling
+    expect(hitTarget).toHaveClass("relative", "inline-flex", "min-h-11", "min-w-11")
+    expect(hitTarget).not.toHaveAttribute("aria-hidden")
+    expect(indicator).toHaveAttribute("aria-hidden", "true")
+    expect(indicator).toHaveClass("h-6", "w-6", "peer-focus-visible:shadow-focus")
   })
 
   it("marks the selected item and fires onChange(null, value) on click", () => {

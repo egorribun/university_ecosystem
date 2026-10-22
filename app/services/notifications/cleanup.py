@@ -66,7 +66,7 @@ async def cleanup_stale_notifications(
             .limit(batch_size)
         )
         delivery_ids = [
-            int(value)
+            value
             for value in (await db.scalars(deliveries_ids_stmt)).all()
             if value is not None
         ]
@@ -94,7 +94,7 @@ async def cleanup_stale_notifications(
             .limit(batch_size)
         )
         notification_ids = [
-            int(value)
+            value
             for value in (await db.scalars(notifications_ids_stmt)).all()
             if value is not None
         ]

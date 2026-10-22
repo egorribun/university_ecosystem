@@ -35,13 +35,18 @@ if ROOT is None:
         allow_module_level=True,
     )
 
-FLAGD_IMAGE = (
-    "ghcr.io/open-feature/flagd:v0.16.1@"
-    "sha256:9525b3c2916183810f93f0a72774c1dfad48d1ae22852c753719c46db80af5e7"
+FLAGD_K8S_IMAGE = (
+    "ghcr.io/open-feature/flagd:v0.17.0@"
+    "sha256:c9f21380dfe51d3ad662a116bc350c7692dead7a8d1e640aa0f6b40cd3d966df"
 )
+FLAGD_COMPOSE_IMAGE = (
+    "ghcr.io/open-feature/flagd:v0.17.0@"
+    "sha256:c9f21380dfe51d3ad662a116bc350c7692dead7a8d1e640aa0f6b40cd3d966df"
+)
+
 CURL_IMAGE = (
-    "curlimages/curl:8.21.0@"
-    "sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13"
+    "curlimages/curl:8.22.0@"
+    "sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777"
 )
 
 
@@ -91,7 +96,7 @@ def test_kubernetes_backend_uses_the_flagd_service_dns() -> None:
         document for document in flagd_documents if document["kind"] == "ServiceMonitor"
     )
     container = deployment["spec"]["template"]["spec"]["containers"][0]
-    assert container["image"] == FLAGD_IMAGE
+    assert container["image"] == FLAGD_K8S_IMAGE
     assert container["args"] == [
         "start",
         "--uri",
@@ -162,7 +167,7 @@ def test_full_compose_runs_flagd_and_waits_for_real_readiness() -> None:
     probe = services["flagd-healthprobe"]
     backend = services["backend"]
 
-    assert flagd["image"] == FLAGD_IMAGE
+    assert flagd["image"] == FLAGD_COMPOSE_IMAGE
     assert flagd["command"] == [
         "start",
         "--uri",

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import assert from "node:assert/strict"
 import test from "node:test"
 
@@ -24,4 +25,21 @@ test("access-log target redacts password-reset bearer tokens", () => {
 test("access-log target preserves ordinary route diagnostics", () => {
   assert.equal(sanitizeRequestTarget("/dashboard"), "/dashboard")
   assert.equal(sanitizeRequestTarget(undefined), "/")
+})
+
+test("access-log redaction fails closed for malformed and separator-variant reset paths", () => {
+  const marker = `synthetic-${randomUUID()}`
+  const cases = [
+    [`/reset-password//${marker}`, "/reset-password/[REDACTED]"],
+    [`/reset-password/%2F/${marker}`, "/reset-password/[REDACTED]"],
+    [`/reset-password%2/${marker}`, "[REDACTED]"],
+  ]
+
+  for (const [target, expected] of cases) {
+    const safe = sanitizeRequestTarget(target)
+    assert.equal(safe, expected)
+    assert.equal(safe.includes(marker), false)
+  }
+
+  assert.equal(sanitizeRequestTarget("/assets/app%20bundle.js"), "/assets/app%20bundle.js")
 })

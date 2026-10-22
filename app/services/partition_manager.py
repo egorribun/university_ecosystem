@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError as SAOperationalError
 from sqlalchemy.exc import ProgrammingError as SAProgrammingError
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import engine
 from app.core.logging import get_logger
@@ -293,6 +294,9 @@ async def start_partition_management_scheduler(
     Simplistic scheduler for partition management.
     In a real production environment, this might be a Celery Beat task or a cron job.
     """
+    if interval_seconds <= 0:
+        raise ValueError("interval_seconds must be greater than zero")
+
     from app.core.task_registry import TaskRegistry
 
     registry = TaskRegistry()
@@ -301,11 +305,16 @@ async def start_partition_management_scheduler(
         while True:
             try:
                 await ensure_partitions_exist()
-            except (OSError, ConnectionError) as e:
-                # RZ-20-04: Narrowed — partition scheduler catches infra errors only.
+            except asyncio.CancelledError:
+                raise
+            except (OSError, SQLAlchemyError, RuntimeError) as exc:
+                # Recoverable database, system, and Rust FFI failures must not
+                # terminate the lifecycle-managed scheduler. Avoid logging error
+                # text, which may contain SQL or connection details.
                 logger.error(
-                    "Error in partition management: %s", e
-                )  # LOW-W19: lazy logging
+                    "Partition management cycle failed (%s)",
+                    type(exc).__name__,
+                )
             await asyncio.sleep(interval_seconds)
 
     registry.create_task(run_periodically(), name="partition_manager")

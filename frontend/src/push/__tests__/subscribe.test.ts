@@ -8,7 +8,8 @@ import {
   getVapidPublicKey,
   saveSubscription,
 } from "@/api/notifications"
-import { withExpectedConsole } from "@/tests/strictConsole"
+import { getStrictConsoleDiagnostics, withExpectedConsole } from "@/tests/strictConsole"
+import { registerServiceWorker } from "../register-sw"
 
 vi.mock("@/api/notifications", () => ({
   deleteSubscription: vi.fn(),
@@ -37,6 +38,9 @@ describe("subscribe", () => {
     vi.resetModules()
     vi.useFakeTimers()
     vi.clearAllMocks()
+    // Module mocks survive resetModules; clearAllMocks only clears their calls.
+    // Each test starts without the fallback registration installed by another test.
+    vi.mocked(registerServiceWorker).mockReset().mockResolvedValue(null)
     vi.mocked(saveSubscription).mockResolvedValue({} as any)
     vi.mocked(deleteSubscription).mockResolvedValue(undefined)
 
@@ -2797,10 +2801,15 @@ describe("subscribe", () => {
         localStorage.setItem("push:last_owner", JSON.stringify("owner-a"))
         vi.mocked(deleteSubscription).mockRejectedValue(new Error("unbind failed"))
 
+        const diagnosticsBefore = getStrictConsoleDiagnostics().length
         await withExpectedConsole("warn", "Failed to release push subscription binding", () =>
           expect(mod.releasePushServerBinding()).resolves.toBeUndefined()
         )
 
+        const warning = getStrictConsoleDiagnostics()
+          .slice(diagnosticsBefore)
+          .find((entry) => entry.args[0] === "Failed to release push subscription binding")
+        expect(warning?.args).toEqual(["Failed to release push subscription binding"])
         expect(subscription.unsubscribe).toHaveBeenCalledOnce()
         expect(storedOwner()).toBeNull()
       })
@@ -2809,10 +2818,15 @@ describe("subscribe", () => {
         mockSWContainer.getRegistration.mockRejectedValue(new Error("registration unavailable"))
         localStorage.setItem("push:last_owner", JSON.stringify("owner-a"))
 
+        const diagnosticsBefore = getStrictConsoleDiagnostics().length
         await withExpectedConsole("warn", "Failed to release push subscription binding", () =>
           expect(mod.releasePushServerBinding()).resolves.toBeUndefined()
         )
 
+        const warning = getStrictConsoleDiagnostics()
+          .slice(diagnosticsBefore)
+          .find((entry) => entry.args[0] === "Failed to release push subscription binding")
+        expect(warning?.args).toEqual(["Failed to release push subscription binding"])
         expect(deleteSubscription).not.toHaveBeenCalled()
         expect(storedOwner()).toBe(JSON.stringify("owner-a"))
       })

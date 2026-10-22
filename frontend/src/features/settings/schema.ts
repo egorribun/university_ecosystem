@@ -40,6 +40,7 @@ const tabField = v.fallback(
       v.number(),
       // Reject NaN (parseInt returns NaN for non-numeric strings).
       v.check((n) => Number.isFinite(n), "tab must be finite"),
+      v.integer(),
       v.minValue(0),
       v.maxValue(5)
     )

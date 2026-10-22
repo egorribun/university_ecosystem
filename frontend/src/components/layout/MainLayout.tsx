@@ -98,7 +98,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       {!isCompactPage && !hideFooter && E2E_MODE && (
         <footer role="contentinfo" data-e2e-stub="footer" />
       )}
-      {!isCompactPage && !E2E_MODE && <BackToTop />}
+      {!isCompactPage && !E2E_MODE && <BackToTop footerVisible={!hideFooter} />}
       {!isCompactPage && !E2E_MODE && <MobileBottomNav />}
       {!isCompactPage && E2E_MODE && (
         <nav data-e2e-stub="mobile-bottom-nav" aria-label={t("navigation:aria.mainNavigation")} />

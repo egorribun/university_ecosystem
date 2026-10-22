@@ -1,3 +1,4 @@
+import { expectImagePickerKeyboard } from "@/tests/helpers/imagePickerKeyboard"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -59,6 +60,33 @@ describe("NewsFormDialog", () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it("opens the image picker by keyboard and pointer without publishing", async () => {
+    const onClose = vi.fn()
+    const onSuccess = vi.fn()
+    renderWithProviders(<NewsFormDialog open onClose={onClose} onSuccess={onSuccess} />)
+
+    fireEvent.change(screen.getByLabelText(/^Title(?! \()/i), {
+      target: { value: "Keyboard image" },
+    })
+    fireEvent.change(screen.getByLabelText(/^News text(?! \()/i), {
+      target: { value: "A complete valid news draft." },
+    })
+    await waitFor(() => expect(screen.getByRole("button", { name: /Publish/i })).toBeEnabled())
+
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    await expectImagePickerKeyboard(
+      screen.getByRole("button", { name: /Upload photo/i }),
+      input,
+      screen.getByLabelText(/News text \(English\)/i),
+      screen.getByRole("button", { name: /Cancel/i })
+    )
+
+    expect(apiMocks.uploadNewsImage).not.toHaveBeenCalled()
+    expect(telemetryMocks.capture).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(onSuccess).not.toHaveBeenCalled()
   })
 
   it("renders correctly when open", () => {

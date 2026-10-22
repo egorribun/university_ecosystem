@@ -37,7 +37,7 @@ describe("trustedTypes util", () => {
     }
     const mockFactory = {
       createPolicy: vi.fn((name: string, _rules: Record<string, (value: string) => string>) => {
-        if (name === "wasm-sanitizer") return mockPolicy
+        if (name === "app") return mockPolicy
         return {}
       }),
     }
@@ -45,7 +45,7 @@ describe("trustedTypes util", () => {
 
     const result = await sanitizeHTML("<b>test</b>")
     expect(result).toBe("<b>test</b> (policy sanitized)")
-    expect(mockFactory.createPolicy).toHaveBeenCalledWith("wasm-sanitizer", expect.anything())
+    expect(mockFactory.createPolicy).toHaveBeenCalledWith("app", expect.anything())
     expect(createHTML).toHaveBeenCalledWith("<b>test</b>")
     const sanitizerRules = mockFactory.createPolicy.mock.calls[0]?.[1] as {
       createHTML: (value: string) => string
@@ -53,7 +53,7 @@ describe("trustedTypes util", () => {
     expect(sanitizerRules.createHTML("<i>rule</i>")).toBe("<i>rule</i> (sanitized)")
   })
 
-  it("creates and then reuses both application policies", async () => {
+  it("reuses the allowed app policy for sanitization and script URLs", async () => {
     const policyRules = new Map<string, Record<string, (value: string) => string>>()
     const mockFactory = {
       createPolicy: vi.fn((name: string, rules: Record<string, (value: string) => string>) => {
@@ -65,10 +65,15 @@ describe("trustedTypes util", () => {
 
     await ensureTrustedTypesPolicies()
     await ensureTrustedTypesPolicies()
+    const sanitized = await sanitizeHTML("<b>sanitized</b>")
+    const scriptUrl = createTrustedScriptURL("/safe.js")
 
-    expect(mockFactory.createPolicy).toHaveBeenCalledTimes(2)
+    expect(mockFactory.createPolicy).toHaveBeenCalledTimes(1)
+    expect(mockFactory.createPolicy).toHaveBeenCalledWith("app", expect.anything())
     expect(policyRules.get("app")?.createHTML?.("<i>app</i>")).toBe("<i>app</i> (sanitized)")
     expect(policyRules.get("app")?.createScriptURL?.("/safe.js")).toContain("/safe.js")
+    expect(sanitized).toBe("<b>sanitized</b> (sanitized)")
+    expect(scriptUrl).toContain("/safe.js")
   })
 
   it("enforces allowed script origins in app policy", () => {
@@ -149,9 +154,10 @@ describe("trustedTypes util", () => {
     }
   })
 
-  it("handles policy creation failure gracefully by falling back to WASM directly", async () => {
+  it("falls back to WASM when the allowed app policy cannot be created", async () => {
     const mockFactory = {
-      createPolicy: vi.fn(() => {
+      createPolicy: vi.fn((name: string) => {
+        expect(name).toBe("app")
         throw new Error("Creation forbidden by CSP or browser extension")
       }),
     }
@@ -164,11 +170,32 @@ describe("trustedTypes util", () => {
     // Result should be from WASM sanitizer directly
     expect(result).toBe("hello (sanitized)")
     expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Failed to create sanitize policy"),
+      expect.stringContaining("Failed to create app policy"),
       expect.anything()
     )
 
+    expect(mockFactory.createPolicy).toHaveBeenCalledTimes(1)
+
     consoleSpy.mockRestore()
+  })
+
+  it("propagates sanitizer errors from the allowed policy", async () => {
+    const policyError = new TypeError("sanitizer rejected markup")
+    const mockFactory = {
+      createPolicy: vi.fn((name: string, rules: Record<string, (value: string) => string>) => {
+        expect(name).toBe("app")
+        return {
+          ...rules,
+          createHTML: vi.fn(() => {
+            throw policyError
+          }),
+        }
+      }),
+    }
+    ;(window as unknown as { trustedTypes: unknown }).trustedTypes = mockFactory
+
+    await expect(sanitizeHTML("<img src=x onerror=alert(1)>")).rejects.toBe(policyError)
+    expect(mockFactory.createPolicy).toHaveBeenCalledTimes(1)
   })
 
   it("records app policy creation failure and degrades script URLs to raw values", async () => {
@@ -226,6 +253,23 @@ describe("trustedTypes util", () => {
     expect(createScriptURL(`${window.location.origin}/assets/app.js`)).toBe(
       `${window.location.origin}/assets/app.js`
     )
+  })
+
+  it("uses the page origin when no backend origin is configured", async () => {
+    vi.resetModules()
+    vi.stubEnv("VITE_BACKEND_ORIGIN", undefined)
+    const { createTrustedScriptURL: createScriptURL } = await import("../trustedTypes")
+    const factory = {
+      createPolicy: vi.fn(
+        (_name: string, rules: Record<string, (value: string) => string>) => rules
+      ),
+    }
+    ;(window as unknown as { trustedTypes: unknown }).trustedTypes = factory
+
+    const sameOriginScript = `${window.location.origin}/assets/app.js`
+    expect(createScriptURL("/assets/app.js")).toBe(sameOriginScript)
+    expect(createScriptURL(sameOriginScript)).toBe(sameOriginScript)
+    expect(() => createScriptURL("https://evil.example/malice.js")).toThrow("Blocked script origin")
   })
 
   it("ignores a malformed backend origin instead of widening the allowlist", async () => {

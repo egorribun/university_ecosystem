@@ -90,12 +90,12 @@
   },
   "media": {
     "validation": {
-      "supportedFormats": "Supported formats: PNG, JPG, WebP, AVIF, GIF",
-      "fileTooLarge": "File is larger than 12 MB"
+      "supportedFormats": "Supported formats: PNG, JPG, WebP",
+      "fileTooLarge": "File is larger than 5 MB"
     },
     "avatar": {
       "title": "Profile photo",
-      "subtitle": "PNG, JPG, WebP, AVIF, or GIF up to 12 MB",
+      "subtitle": "PNG, JPG, or WebP up to 5 MB",
       "change": "Change",
       "delete": "Remove photo",
       "updated": "Avatar updated",

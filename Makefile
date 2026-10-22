@@ -95,16 +95,16 @@ alembic-check:
 		DATABASE_URL=sqlite+aiosqlite:///./ci-migrations.db alembic -c alembic.ini downgrade base
 
 generate-api:
-	python3 - <<'PY'
-	import json
-	import pathlib
-	from app.main import app
+	# Keep the tracked schema and propagate exporter failures before generation.
+	python3 -c "import json; import pathlib; from app.main import app; \
+	schema_path = pathlib.Path('frontend/openapi.json'); \
+	schema_path.write_text( \
+	    json.dumps(app.openapi(), indent=2, sort_keys=True) + '\n', \
+	    encoding='utf-8')"
 
-	schema_path = pathlib.Path("frontend/openapi.json")
-	schema_path.write_text(json.dumps(app.openapi()))
-	PY
-	npm run generate:api --prefix $(FRONTEND_DIR)
-	rm -f frontend/openapi.json
+	# Use installed formatting tools only; do not fetch a missing dependency.
+	cd "$(FRONTEND_DIR)" && npm exec --no -- prettier --write openapi.json
+	npm run generate:api --prefix "$(FRONTEND_DIR)"
 
 # Docker commands
 docker-build:
@@ -136,13 +136,10 @@ security-check:
 mutation-test:
 	uv run mutmut run
 
-# Kubernetes manifest validation
+# Kubernetes manifest validation: every raw manifest must parse as YAML.
 k8s-lint:
 	@echo "Validating Kubernetes manifests..."
-	@for f in $(CURDIR)/k8s/*.yaml $(CURDIR)/k8s/**/*.yaml; do \
-		echo "Checking $$f"; \
-		python -c "import yaml; yaml.safe_load(open('$$f'))" 2>/dev/null || echo "Warning: $$f has issues"; \
-	done
+	@python -c "import pathlib, yaml; [list(yaml.safe_load_all(f.read_text(encoding='utf-8'))) for f in sorted(pathlib.Path('k8s').rglob('*.y*ml'))]"
 	@echo "K8s manifests validated"
 
 # Show test coverage summary
@@ -168,8 +165,9 @@ fast-preflight:
 # that mirror what CI runs, so issues can be caught locally before push.
 
 helm-lint:  ## Lint Helm charts (requires helm)
-	helm lint k8s/backend/ --strict
-	@if [ -d k8s/gateway ]; then helm lint k8s/gateway/ --strict; fi
+	helm dependency build charts/university-ecosystem
+	helm lint charts/university-ecosystem --strict --set-string global.environment=development
+	helm lint charts/revocation-store --strict
 	@echo "Helm lint passed."
 
 docker-lint:  ## Lint Dockerfiles with hadolint (requires hadolint)

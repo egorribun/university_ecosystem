@@ -1,15 +1,7 @@
 # Trivy Ignore File
-# Keep only findings confirmed present by a current unsuppressed image scan.
-# Verified with Trivy 0.73.0 against university_ecosystem-backend:latest
-# (Debian 12.15) on 2026-08-14. Re-review by 2026-09-14.
-
-# Debian currently publishes no fixed package for these findings. Production
-# uses PostgreSQL rather than SQLite, and the normal backend path does not
-# process attacker-controlled zlib archives. CI also uses ignore-unfixed=true;
-# these entries retain an explicit audit trail for stricter ad-hoc scans.
-CVE-2025-7458
-CVE-2023-45853
-CVE-2026-27171
+# Plain-format rules for ad-hoc scanners. Vulnerability suppressions are not kept
+# here: each needs an owner and an expiry in .trivyignore.yaml, and CI reads that
+# file. Unfixed CVEs are excluded in CI by ignore-unfixed=true (trivy.yaml).
 
 # Accepted SPIRE daemonset node-attestation & architectural rules
 # SPIRE agent/server require hostNetwork, hostPID, root filesystem access, privileged container capabilities,

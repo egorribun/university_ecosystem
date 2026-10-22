@@ -1,6 +1,6 @@
 import datetime
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -14,6 +14,15 @@ def mock_uow():
     uow = AsyncMock()
     uow.stories = AsyncMock()
     return uow
+
+
+def _install_storage_delete_spy(monkeypatch):
+    from app.utils import files
+
+    backend = MagicMock()
+    backend.delete_file = AsyncMock()
+    monkeypatch.setattr(files, "_get_storage_backend", lambda: backend)
+    return backend
 
 
 @pytest.mark.asyncio
@@ -124,7 +133,7 @@ async def test_update_story_not_found(mock_uow):
 
 
 @pytest.mark.asyncio
-async def test_update_story_success_with_cover_change(mock_uow):
+async def test_update_story_success_with_cover_change(mock_uow, monkeypatch):
     service = StoryService(mock_uow)
     story_id = uuid.uuid4()
     now = datetime.datetime.now(datetime.UTC)
@@ -147,24 +156,24 @@ async def test_update_story_success_with_cover_change(mock_uow):
         cover_url="new_cover.jpg",
     )
 
-    with patch(
-        "app.services.story_service.delete_static_file", new_callable=AsyncMock
-    ) as mock_delete:
-        res = await service.update_story(story_id, data)
-        assert res == new_story
-        mock_uow.stories.update.assert_awaited_once()
-        mock_uow.commit.assert_awaited_once()
-        mock_delete.assert_awaited_once_with("old_cover.jpg")
+    backend = _install_storage_delete_spy(monkeypatch)
+    res = await service.update_story(story_id, data)
+    assert res == new_story
+    mock_uow.stories.update.assert_awaited_once()
+    mock_uow.commit.assert_awaited_once()
+    backend.delete_file.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_update_story_success_delete_cover_fail_ignored(mock_uow):
+async def test_update_story_retains_legacy_cover_without_storage_call(
+    mock_uow, monkeypatch
+):
     service = StoryService(mock_uow)
     story_id = uuid.uuid4()
 
     old_story = MagicMock()
     old_story.id = story_id
-    old_story.cover_url = "old_cover.jpg"
+    old_story.cover_url = "/static/news_images/legacy-cover.png"
     mock_uow.stories.get.return_value = old_story
 
     new_story = MagicMock()
@@ -173,15 +182,13 @@ async def test_update_story_success_delete_cover_fail_ignored(mock_uow):
     mock_uow.stories.update.return_value = new_story
 
     data = schemas.StoryUpdate(cover_url="new_cover.jpg")
+    backend = _install_storage_delete_spy(monkeypatch)
+    res = await service.update_story(story_id, data)
 
-    with patch(
-        "app.services.story_service.delete_static_file",
-        side_effect=OSError("disk failure"),
-    ) as mock_delete:
-        res = await service.update_story(story_id, data)
-        assert res == new_story
-        # Verify it does not propagate error
-        mock_delete.assert_awaited_once_with("old_cover.jpg")
+    assert res == new_story
+    mock_uow.stories.update.assert_awaited_once()
+    mock_uow.commit.assert_awaited_once()
+    backend.delete_file.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -194,20 +201,142 @@ async def test_delete_story_not_found(mock_uow):
 
 
 @pytest.mark.asyncio
-async def test_delete_story_success_with_cover(mock_uow):
+async def test_delete_story_preserves_row_crud_and_never_deletes_cover(
+    mock_uow, monkeypatch
+):
     service = StoryService(mock_uow)
     story_id = uuid.uuid4()
 
     story = MagicMock()
     story.id = story_id
-    story.cover_url = "cover.jpg"
+    story.cover_url = "/static/avatars/profile-cover.png"
     mock_uow.stories.get.return_value = story
 
-    with patch(
-        "app.services.story_service.delete_static_file", new_callable=AsyncMock
-    ) as mock_delete:
-        res = await service.delete_story(story_id)
-        assert res is True
-        mock_uow.stories.delete.assert_awaited_once_with(story_id)
-        mock_uow.commit.assert_awaited_once()
-        mock_delete.assert_awaited_once_with("cover.jpg")
+    backend = _install_storage_delete_spy(monkeypatch)
+    res = await service.delete_story(story_id)
+
+    assert res is True
+    mock_uow.stories.delete.assert_awaited_once_with(story_id)
+    mock_uow.commit.assert_awaited_once()
+    backend.delete_file.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "cover_url",
+    [
+        "https://images.example.test/external-cover.png",
+        "/static/avatars/user_00000000000000000000000000000000_cover_"
+        "11111111111111111111111111111111.png",
+        "/static/tmp/event_images/event_00000000-0000-0000-0000-000000000000_"
+        "22222222222222222222222222222222.jpg",
+        "/static/news_images/news_33333333333333333333333333333333.webp",
+        "/static/story_covers/legacy-cover.png",
+        "../../avatars/other.png",
+        "http://[invalid",
+    ],
+)
+@pytest.mark.asyncio
+async def test_delete_story_never_deletes_foreign_or_legacy_cover_urls(
+    mock_uow, monkeypatch, cover_url
+):
+    service = StoryService(mock_uow)
+    story_id = uuid.uuid4()
+    mock_uow.stories.get.return_value = MagicMock(id=story_id, cover_url=cover_url)
+    backend = _install_storage_delete_spy(monkeypatch)
+
+    assert await service.delete_story(story_id) is True
+    mock_uow.stories.delete.assert_awaited_once_with(story_id)
+    mock_uow.commit.assert_awaited_once()
+    backend.delete_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_shared_story_cover_retains_file_for_other_story(
+    tmp_path, monkeypatch, db_session, story_factory
+):
+    from app.repositories.unit_of_work import uow_from_session
+    from app.services.storage import StaticFSStorage
+    from app.utils import files
+
+    key = f"story_covers/stories_{uuid.uuid4().hex}.png"
+    cover_url = f"/static/{key}"
+    cover_path = tmp_path.joinpath(*key.split("/"))
+    cover_path.parent.mkdir(parents=True, exist_ok=True)
+    cover_path.write_bytes(b"shared story cover")
+    first = await story_factory(cover_url=cover_url)
+    other = await story_factory(cover_url=cover_url)
+    backend = StaticFSStorage(tmp_path, base_url="/static")
+    monkeypatch.setattr(files, "_get_storage_backend", lambda: backend)
+
+    service = StoryService(uow_from_session(db_session))
+    new_url = "https://images.example.test/replacement.png"
+    updated = await service.update_story(
+        first.id, schemas.StoryUpdate(cover_url=new_url)
+    )
+
+    assert updated.cover_url == new_url
+    await db_session.refresh(other)
+    assert other.cover_url == cover_url
+    assert cover_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_delete_shared_story_cover_retains_file_for_other_story(
+    tmp_path, monkeypatch, db_session, story_factory
+):
+    from app.models import Story
+    from app.repositories.unit_of_work import uow_from_session
+    from app.services.storage import StaticFSStorage
+    from app.utils import files
+
+    key = f"story_covers/stories_{uuid.uuid4().hex}.jpg"
+    cover_url = f"/static/{key}"
+    cover_path = tmp_path.joinpath(*key.split("/"))
+    cover_path.parent.mkdir(parents=True, exist_ok=True)
+    cover_path.write_bytes(b"shared story cover")
+    first = await story_factory(cover_url=cover_url)
+    other = await story_factory(cover_url=cover_url)
+    backend = StaticFSStorage(tmp_path, base_url="/static")
+    monkeypatch.setattr(files, "_get_storage_backend", lambda: backend)
+
+    service = StoryService(uow_from_session(db_session))
+    assert await service.delete_story(first.id) is True
+
+    assert await db_session.get(Story, first.id) is None
+    remaining = await db_session.get(Story, other.id)
+    assert remaining is not None
+    assert remaining.cover_url == cover_url
+    assert cover_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_story_cover_remains_when_update_commit_rolls_back(
+    tmp_path, monkeypatch, db_session, story_factory
+):
+    from app.repositories.unit_of_work import uow_from_session
+    from app.services.storage import StaticFSStorage
+    from app.utils import files
+
+    key = f"story_covers/stories_{uuid.uuid4().hex}.jpg"
+    cover_url = f"/static/{key}"
+    cover_path = tmp_path.joinpath(*key.split("/"))
+    cover_path.parent.mkdir(parents=True, exist_ok=True)
+    cover_path.write_bytes(b"story cover")
+    story = await story_factory(cover_url=cover_url)
+    backend = StaticFSStorage(tmp_path, base_url="/static")
+    monkeypatch.setattr(files, "_get_storage_backend", lambda: backend)
+    uow = uow_from_session(db_session)
+    service = StoryService(uow)
+
+    async def fail_commit():
+        raise RuntimeError("commit failed")
+
+    monkeypatch.setattr(uow, "commit", fail_commit)
+    with pytest.raises(RuntimeError, match="commit failed"):
+        await service.update_story(
+            story.id, schemas.StoryUpdate(cover_url="new-cover.png")
+        )
+
+    await db_session.refresh(story)
+    assert story.cover_url == cover_url
+    assert cover_path.exists()

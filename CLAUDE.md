@@ -13,7 +13,8 @@ In particular:
 - preserve the exception-handling, SQLAlchemy relationship, frontend
   validation, security, Docker, and CI conventions defined in `AGENTS.md`;
 - use `docs/README.md` as the canonical documentation index and
-  `docs/audits/INDEX.md` for historical audit evidence.
+  `docs/audits/INDEX.md` for current MVP closure status, audit inputs, and
+  retention/recovery policy.
 
 Do not append session transcripts, prompts, handoffs, coverage snapshots, or
 wave-by-wave history here. Durable architectural decisions belong in

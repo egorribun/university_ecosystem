@@ -16,6 +16,7 @@ import threading
 import time
 import typing
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 from prometheus_client import Counter, Gauge
@@ -47,6 +48,18 @@ class CircuitState(enum.IntEnum):
     HALF_OPEN = 2
 
 
+@dataclass(slots=True)
+class CircuitAdmission:
+    """One-shot request admission bound to the breaker state that issued it."""
+
+    allowed: bool
+    _owner: object = field(repr=False)
+    _generation: int = field(repr=False)
+    _state: CircuitState = field(repr=False)
+    _force_open: bool = field(default=False, repr=False)
+    _resolved: bool = field(default=False, repr=False)
+
+
 class RedisCircuitBreaker:
     """Circuit breaker for Redis operations with exponential backoff recovery.
 
@@ -72,6 +85,9 @@ class RedisCircuitBreaker:
         self._last_failure_time = 0.0
         self._current_recovery_timeout = recovery_timeout
         self._half_open_probe_sent = False  # RZ-33-11: single-probe gate
+        self._admission_owner = object()
+        self._state_generation = 0
+        self._active_half_open_admission: CircuitAdmission | None = None
         self._lock = threading.RLock()
         self._state_listeners: list[
             Callable[[CircuitState, CircuitState], Awaitable[None] | None]
@@ -97,50 +113,112 @@ class RedisCircuitBreaker:
             return self._state
 
     def allow_request(self) -> bool:
-        """Return True if the request should attempt Redis."""
+        """Return whether Redis should be attempted (legacy compatibility API)."""
+        return self.admit_request().allowed
+
+    def admit_request(self, *, force: bool = False) -> CircuitAdmission:
+        """Admit a request and return a ticket for its eventual outcome.
+
+        Ticketed outcomes are accepted only in the state generation that issued
+        them. This prevents a late CLOSED request from resolving another
+        request's HALF_OPEN probe.
+        """
         with self._lock:
             self._maybe_transition_to_half_open()
             if self._state == CircuitState.CLOSED:
-                return True
-            if self._state == CircuitState.HALF_OPEN:
-                # RZ-33-11: Allow only one probe — subsequent callers wait for
-                # the probe result instead of all proceeding simultaneously.
-                if not self._half_open_probe_sent:
-                    self._half_open_probe_sent = True
-                    return True  # single probe request
-                return False  # another probe already in-flight
-            return False  # OPEN → use fallback
-
-    def record_success(self) -> None:
-        """Record a successful Redis operation."""
-        with self._lock:
-            if self._state in (CircuitState.HALF_OPEN, CircuitState.OPEN):
-                self._transition(self._state, CircuitState.CLOSED)
-                self._failure_count = 0
-                self._half_open_probe_sent = False  # RZ-33-11: reset probe gate
-                self._current_recovery_timeout = self._base_recovery_timeout
-            else:
-                self._failure_count = 0
-
-    def record_failure(self) -> None:
-        """Record a failed Redis operation."""
-        with self._lock:
-            self._failure_count += 1
-            self._last_failure_time = time.monotonic()
-
-            if self._state == CircuitState.HALF_OPEN:
-                # Probe failed — reopen with doubled timeout
-                self._half_open_probe_sent = False  # RZ-33-11: reset probe gate
-                self._current_recovery_timeout = min(
-                    self._current_recovery_timeout * 2,
-                    self._max_recovery_timeout,
+                return CircuitAdmission(
+                    True,
+                    self._admission_owner,
+                    self._state_generation,
+                    CircuitState.CLOSED,
                 )
-                self._transition(self._state, CircuitState.OPEN)
-            elif (
-                self._state == CircuitState.CLOSED
-                and self._failure_count >= self._failure_threshold
-            ):
-                self._transition(self._state, CircuitState.OPEN)
+            if self._state == CircuitState.HALF_OPEN and not self._half_open_probe_sent:
+                admission = CircuitAdmission(
+                    True,
+                    self._admission_owner,
+                    self._state_generation,
+                    CircuitState.HALF_OPEN,
+                )
+                self._half_open_probe_sent = True
+                self._active_half_open_admission = admission
+                return admission
+            if self._state == CircuitState.OPEN and force:
+                return CircuitAdmission(
+                    True,
+                    self._admission_owner,
+                    self._state_generation,
+                    CircuitState.OPEN,
+                    _force_open=True,
+                )
+            return CircuitAdmission(
+                False,
+                self._admission_owner,
+                self._state_generation,
+                self._state,
+            )
+
+    def record_success(self, admission: CircuitAdmission | None = None) -> None:
+        """Record success, optionally limited to the admission that completed.
+
+        Omitting ``admission`` preserves the original public API for existing
+        callers. New asynchronous consumers should pass their ticket.
+        """
+        with self._lock:
+            if admission is not None and not self._claim_admission(admission):
+                return
+            self._record_success_locked()
+
+    def record_failure(self, admission: CircuitAdmission | None = None) -> None:
+        """Record failure, optionally limited to the admission that completed.
+
+        Omitting ``admission`` preserves the original public API for existing
+        callers. New asynchronous consumers should pass their ticket.
+        """
+        with self._lock:
+            if admission is not None and not self._claim_admission(admission):
+                return
+            self._record_failure_locked()
+
+    def abandon_request(self, admission: CircuitAdmission) -> None:
+        """Release an unfinished admission; a HALF_OPEN probe fails closed.
+
+        Cancellation and unexpected exceptions still propagate from their
+        consumers. Their ``finally`` blocks call this method so a probe cannot
+        hold the HALF_OPEN gate forever. Abandoning an ordinary CLOSED request
+        does not change the historical failure accounting.
+        """
+        with self._lock:
+            if not self._claim_admission(admission):
+                return
+            if admission._state == CircuitState.HALF_OPEN:
+                self._record_failure_locked()
+
+    def _record_success_locked(self) -> None:
+        if self._state in (CircuitState.HALF_OPEN, CircuitState.OPEN):
+            self._transition(self._state, CircuitState.CLOSED)
+            self._failure_count = 0
+            self._half_open_probe_sent = False  # RZ-33-11: reset probe gate
+            self._current_recovery_timeout = self._base_recovery_timeout
+        else:
+            self._failure_count = 0
+
+    def _record_failure_locked(self) -> None:
+        self._failure_count += 1
+        self._last_failure_time = time.monotonic()
+
+        if self._state == CircuitState.HALF_OPEN:
+            # Probe failed — reopen with doubled timeout
+            self._half_open_probe_sent = False  # RZ-33-11: reset probe gate
+            self._current_recovery_timeout = min(
+                self._current_recovery_timeout * 2,
+                self._max_recovery_timeout,
+            )
+            self._transition(self._state, CircuitState.OPEN)
+        elif (
+            self._state == CircuitState.CLOSED
+            and self._failure_count >= self._failure_threshold
+        ):
+            self._transition(self._state, CircuitState.OPEN)
 
     def reset_for_testing(self) -> None:
         """Reset to initial state for unit tests."""
@@ -149,9 +227,29 @@ class RedisCircuitBreaker:
             self._failure_count = 0
             self._last_failure_time = 0.0
             self._current_recovery_timeout = self._base_recovery_timeout
+            self._half_open_probe_sent = False
+            self._state_generation += 1
+            self._active_half_open_admission = None
             circuit_state_gauge.set(CircuitState.CLOSED)
 
     # -- Internal ----------------------------------------------------------
+
+    def _claim_admission(self, admission: CircuitAdmission) -> bool:
+        """Consume a same-breaker ticket only while its issued state still holds."""
+        if admission._owner is not self._admission_owner or admission._resolved:
+            return False
+        admission._resolved = True
+        if not admission.allowed or admission._generation != self._state_generation:
+            return False
+        if admission._state == CircuitState.CLOSED:
+            return self._state == CircuitState.CLOSED
+        if admission._state == CircuitState.OPEN:
+            return admission._force_open and self._state == CircuitState.OPEN
+        return (
+            admission._state == CircuitState.HALF_OPEN
+            and self._state == CircuitState.HALF_OPEN
+            and self._active_half_open_admission is admission
+        )
 
     def _maybe_transition_to_half_open(self) -> None:
         """Transition OPEN → HALF_OPEN if recovery timeout has elapsed.
@@ -172,6 +270,10 @@ class RedisCircuitBreaker:
         if old_state == new_state:
             return
         self._state = new_state
+        self._state_generation += 1
+        if old_state == CircuitState.HALF_OPEN or new_state != CircuitState.HALF_OPEN:
+            self._active_half_open_admission = None
+            self._half_open_probe_sent = False
         circuit_state_gauge.set(new_state)
         circuit_transitions_total.labels(
             from_state=old_state.name, to_state=new_state.name

@@ -74,4 +74,10 @@ describe("NewsDetailEditDialog", () => {
     await user.clear(screen.getByDisplayValue(initialData.title))
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
   })
+
+  it("names the edit dialog from its visible title", () => {
+    renderDialog()
+
+    expect(screen.getByRole("dialog", { name: "news:dialogs.edit.title" })).toBeInTheDocument()
+  })
 })

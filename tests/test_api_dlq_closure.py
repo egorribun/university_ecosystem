@@ -39,12 +39,18 @@ async def test_get_dlq_status_combines_memory_database_and_circuit_breaker_state
             ),
         ),
         patch.object(dlq_module, "get_circuit_breaker", return_value=circuit_breaker),
+        patch.object(
+            dlq_module,
+            "_count_unresolved_outbox_failures",
+            new=AsyncMock(return_value=6),
+        ),
     ):
         result = await call_injected(
             get_dlq_status, _=None, provides={"AsyncDatabaseSession": db}
         )
 
     assert result.in_memory_queue_depth == 7
+    assert result.outbox_unresolved == 6
     assert result.db_total_active == 3
     assert result.circuit_breaker_state == "OPEN"
     assert result.circuit_breaker_failures == 5
@@ -58,6 +64,7 @@ async def test_trigger_dlq_replay_covers_all_and_single_targets():
     db_dlq.auto_replay_jobs = AsyncMock(return_value=(3, 0))
     circuit_breaker = object()
     memory_replay = AsyncMock(return_value=(2, 1))
+    broker = MagicMock()
 
     with (
         patch.object(dlq_module.in_memory_dlq, "auto_replay", new=memory_replay),
@@ -69,21 +76,21 @@ async def test_trigger_dlq_replay_covers_all_and_single_targets():
             DLQReplayRequest(batch_size=7, force=True, target="all"),
             locale="en",
             _=None,
-            provides={"AsyncDatabaseSession": db},
+            provides={"AsyncDatabaseSession": db, "NatsTaskBroker": broker},
         )
         memory_result = await call_injected(
             trigger_dlq_replay,
             DLQReplayRequest(target="in_memory"),
             locale="en",
             _=None,
-            provides={"AsyncDatabaseSession": db},
+            provides={"AsyncDatabaseSession": db, "NatsTaskBroker": broker},
         )
         db_result = await call_injected(
             trigger_dlq_replay,
             DLQReplayRequest(target="db"),
             locale="en",
             _=None,
-            provides={"AsyncDatabaseSession": db},
+            provides={"AsyncDatabaseSession": db, "NatsTaskBroker": broker},
         )
 
     assert all_result.success is False
@@ -93,6 +100,9 @@ async def test_trigger_dlq_replay_covers_all_and_single_targets():
     assert db_result.target == "db"
     assert memory_replay.await_count == 2
     assert db_dlq.auto_replay_jobs.await_count == 2
+    # The DB replay re-enqueues through the broker (a missing handler used to make
+    # every replayed job fail with "No DB DLQ replay handler is configured").
+    assert db_dlq.auto_replay_jobs.await_args.args == (broker.replay_dead_letter,)
     assert db.commit.await_count == 2
 
 
@@ -104,7 +114,10 @@ async def test_trigger_dlq_replay_rejects_unknown_target():
             DLQReplayRequest(target="unknown"),
             locale="en",
             _=None,
-            provides={"AsyncDatabaseSession": AsyncMock()},
+            provides={
+                "AsyncDatabaseSession": AsyncMock(),
+                "NatsTaskBroker": MagicMock(),
+            },
         )
 
     assert exc_info.value.status_code == 400

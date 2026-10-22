@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { EventsHeader } from "../EventsHeader"
+import i18n from "@/i18n/config"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { useSlidingIndicator } from "@/hooks/ui/useSlidingIndicator"
 
@@ -200,9 +201,17 @@ describe("EventsHeader", () => {
   it("cycles sort mode on click", () => {
     render(<EventsHeader {...defaultProps} sortMode="newest" />)
     // SORT_CYCLE: ["newest", "popular", "upcoming"]
-    const sortBtn = screen.getByRole("button", { name: /Sort: Newest/i })
+    const sortBtn = screen.getByRole("button", { name: /Sort: Later dates first/i })
     fireEvent.click(sortBtn)
     expect(defaultProps.onSortChange).toHaveBeenCalledWith("popular")
+  })
+
+  it("uses the approved Russian label for the existing newest token", async () => {
+    await act(async () => {
+      await i18n.changeLanguage("ru")
+    })
+    render(<EventsHeader {...defaultProps} sortMode="newest" />)
+    expect(screen.getByRole("button", { name: "Сортировка: Поздние сначала" })).toBeInTheDocument()
   })
 
   it("covers the remaining sort cycle states", () => {

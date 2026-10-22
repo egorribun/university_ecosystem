@@ -299,6 +299,13 @@
             ],
             "title": "Actor User Id"
           },
+          "authenticated_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Authenticated Fields",
+            "type": "array"
+          },
           "context": {
             "anyOf": [
               {
@@ -351,6 +358,17 @@
             "title": "Resource Type",
             "type": "string"
           },
+          "signature_scheme": {
+            "enum": [
+              "canonical_v2",
+              "legacy_json_array_v1",
+              "legacy_pipe_v1",
+              "invalid",
+              "unsigned"
+            ],
+            "title": "Signature Scheme",
+            "type": "string"
+          },
           "subject_name": {
             "anyOf": [
               {
@@ -374,6 +392,13 @@
             ],
             "title": "Subject User Id"
           },
+          "unauthenticated_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unauthenticated Fields",
+            "type": "array"
+          },
           "user_agent": {
             "anyOf": [
               {
@@ -386,7 +411,16 @@
             "title": "User Agent"
           }
         },
-        "required": ["id", "resource_type", "action", "created_at", "is_valid"],
+        "required": [
+          "id",
+          "resource_type",
+          "action",
+          "created_at",
+          "is_valid",
+          "signature_scheme",
+          "authenticated_fields",
+          "unauthenticated_fields"
+        ],
         "title": "AuditLogOut",
         "type": "object"
       },
@@ -1758,6 +1792,117 @@
         "title": "ForwardMessages",
         "type": "object"
       },
+      "GradeCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "assessment_type": {
+            "default": "exam",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Assessment Type",
+            "type": "string"
+          },
+          "score": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          },
+          "subject": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": ["student_id", "subject", "score"],
+        "title": "GradeCreate",
+        "type": "object"
+      },
+      "GradeOut": {
+        "properties": {
+          "assessment_type": {
+            "title": "Assessment Type",
+            "type": "string"
+          },
+          "assigned_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned By"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": ["id", "student_id", "subject", "score", "assessment_type"],
+        "title": "GradeOut",
+        "type": "object"
+      },
+      "GradeUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "score": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": ["score"],
+        "title": "GradeUpdate",
+        "type": "object"
+      },
       "GroupChatCreate": {
         "additionalProperties": false,
         "description": "Wave 209 G1 \u2014 create a named group chat.\n\nparticipant_ids are the *other* members (the creator is added automatically).\nmin_length=1 is necessary-not-sufficient: the service enforces the real\n3..100 total-size bound (creator + distinct members).",
@@ -1971,7 +2116,7 @@
           "sender": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ChatParticipant"
+                "$ref": "#/components/schemas/MessageSenderInfo"
               },
               {
                 "type": "null"
@@ -1996,6 +2141,41 @@
         },
         "required": ["content", "id", "chat_id", "sender_id", "created_at", "read_status"],
         "title": "MessageResponse",
+        "type": "object"
+      },
+      "MessageSenderInfo": {
+        "description": "Public display fields for a sender embedded in a message response.\n\nLegacy message producers may pass a full participant or internal DTO. Ignore\nthose extra fields here so email and account state never enter message output.",
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": ["id"],
+        "title": "MessageSenderInfo",
         "type": "object"
       },
       "MessagesListOut": {
@@ -3145,6 +3325,19 @@
           }
         },
         "title": "PresenceStatus",
+        "type": "object"
+      },
+      "PublicCampusConfig": {
+        "additionalProperties": false,
+        "description": "The intentionally narrow, non-secret public campus configuration.",
+        "properties": {
+          "campus_timezone": {
+            "title": "Campus Timezone",
+            "type": "string"
+          }
+        },
+        "required": ["campus_timezone"],
+        "title": "PublicCampusConfig",
         "type": "object"
       },
       "PushSubscriptionDelete": {
@@ -5032,6 +5225,7 @@
           "course": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -5043,6 +5237,7 @@
           "education_level": {
             "anyOf": [
               {
+                "maxLength": 128,
                 "type": "string"
               },
               {
@@ -5054,6 +5249,7 @@
           "institute": {
             "anyOf": [
               {
+                "maxLength": 512,
                 "type": "string"
               },
               {
@@ -5065,6 +5261,7 @@
           "program": {
             "anyOf": [
               {
+                "maxLength": 512,
                 "type": "string"
               },
               {
@@ -5076,6 +5273,7 @@
           "record_book_number": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -5087,6 +5285,7 @@
           "track": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -5613,6 +5812,7 @@
           "timezone": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -5631,6 +5831,7 @@
           "about": {
             "anyOf": [
               {
+                "maxLength": 4096,
                 "type": "string"
               },
               {
@@ -5642,6 +5843,7 @@
           "achievements": {
             "anyOf": [
               {
+                "maxLength": 2048,
                 "type": "string"
               },
               {
@@ -5653,6 +5855,7 @@
           "department": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -5664,6 +5867,7 @@
           "position": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -5675,6 +5879,7 @@
           "status": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -5686,6 +5891,7 @@
           "telegram": {
             "anyOf": [
               {
+                "maxLength": 128,
                 "type": "string"
               },
               {
@@ -5704,6 +5910,7 @@
           "about": {
             "anyOf": [
               {
+                "maxLength": 4096,
                 "type": "string"
               },
               {
@@ -5715,6 +5922,7 @@
           "achievements": {
             "anyOf": [
               {
+                "maxLength": 2048,
                 "type": "string"
               },
               {
@@ -5726,6 +5934,7 @@
           "course": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -5749,6 +5958,7 @@
           "department": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -5795,6 +6005,7 @@
           "education_level": {
             "anyOf": [
               {
+                "maxLength": 128,
                 "type": "string"
               },
               {
@@ -5816,6 +6027,7 @@
           "full_name": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -5827,6 +6039,7 @@
           "institute": {
             "anyOf": [
               {
+                "maxLength": 512,
                 "type": "string"
               },
               {
@@ -5838,6 +6051,7 @@
           "position": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -5869,6 +6083,7 @@
           "program": {
             "anyOf": [
               {
+                "maxLength": 512,
                 "type": "string"
               },
               {
@@ -5880,6 +6095,7 @@
           "record_book_number": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -5891,6 +6107,7 @@
           "status": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -5902,6 +6119,7 @@
           "telegram": {
             "anyOf": [
               {
+                "maxLength": 128,
                 "type": "string"
               },
               {
@@ -5913,6 +6131,7 @@
           "timezone": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -5924,6 +6143,7 @@
           "track": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -6200,7 +6420,7 @@
     },
     "description": "REST API for university life management platform - schedules, news, events, notifications, and more.",
     "title": "University Ecosystem API",
-    "version": "1.0.0"
+    "version": "1.1.1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -6471,6 +6691,271 @@
                     "$ref": "#/components/schemas/FeatureFlagOut"
                   },
                   "title": "Response List Feature Flags Admin Feature Flags Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Feature Flags",
+        "tags": ["admin", "admin-feature-flags"]
+      }
+    },
+    "/api/v1/admin/audit": {
+      "get": {
+        "description": "List audit logs with filtering and integrity verification.",
+        "operationId": "list_audit_logs_api_v1_admin_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "subject_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subject Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "resource_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resource Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditLogListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Audit Logs",
+        "tags": ["admin", "admin-audit"]
+      }
+    },
+    "/api/v1/admin/audit/time-travel": {
+      "get": {
+        "description": "Reconstruct state of an aggregate entity at a target timestamp in history.",
+        "operationId": "get_time_travel_state_api_v1_admin_audit_time_travel_get",
+        "parameters": [
+          {
+            "description": "Aggregate type: 'schedule', 'grade', 'user', 'assessment'",
+            "in": "query",
+            "name": "aggregate_type",
+            "required": true,
+            "schema": {
+              "description": "Aggregate type: 'schedule', 'grade', 'user', 'assessment'",
+              "title": "Aggregate Type",
+              "type": "string"
+            }
+          },
+          {
+            "description": "UUID of the aggregate entity",
+            "in": "query",
+            "name": "aggregate_id",
+            "required": true,
+            "schema": {
+              "description": "UUID of the aggregate entity",
+              "format": "uuid",
+              "title": "Aggregate Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Target timestamp in ISO format",
+            "in": "query",
+            "name": "target_timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Target timestamp in ISO format",
+              "title": "Target Timestamp"
+            }
+          },
+          {
+            "description": "Target timestamp alias",
+            "in": "query",
+            "name": "timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Target timestamp alias",
+              "title": "Timestamp"
+            }
+          },
+          {
+            "description": "Verify HMAC chain integrity up to target timestamp",
+            "in": "query",
+            "name": "verify_chain",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Verify HMAC chain integrity up to target timestamp",
+              "title": "Verify Chain",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeTravelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Time Travel State",
+        "tags": ["admin", "admin-audit"]
+      }
+    },
+    "/api/v1/admin/feature-flags": {
+      "get": {
+        "description": "List registered flags and their effective read-only evaluations.",
+        "operationId": "list_feature_flags_api_v1_admin_feature_flags_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FeatureFlagOut"
+                  },
+                  "title": "Response List Feature Flags Api V1 Admin Feature Flags Get",
                   "type": "array"
                 }
               }
@@ -7335,6 +7820,26 @@
         "tags": ["auth"]
       }
     },
+    "/api/v1/campus/config": {
+      "get": {
+        "description": "Return the single validated server timezone used by campus features.",
+        "operationId": "get_campus_config_api_v1_campus_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicCampusConfig"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get the campus timezone",
+        "tags": ["public"]
+      }
+    },
     "/api/v1/chats": {
       "get": {
         "description": "Get all chats for the current user with cursor-based pagination.",
@@ -8177,7 +8682,7 @@
         "tags": ["chats"]
       },
       "post": {
-        "description": "Add an emoji reaction to a message (idempotent, any participant).\n\nW174 auto-cookie covers POST CSRF.",
+        "description": "Add one qualified Unicode 18.0 emoji reaction for a participant.\n\nW174 auto-cookie covers POST CSRF. The exact sequence set includes fully- and\nminimally-qualified forms; removal and reactor lookup retain legacy values so\nold rows accepted before validation remain inspectable and removable.",
         "operationId": "add_reaction_api_v1_chats__chat_id__messages__message_id__reactions_post",
         "parameters": [
           {
@@ -8693,6 +9198,23 @@
           },
           {
             "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": ["starts_at_asc", "starts_at_desc"],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Order"
+            }
+          },
+          {
+            "in": "query",
             "name": "cursor",
             "required": false,
             "schema": {
@@ -8734,6 +9256,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "400": {
+            "description": "Invalid or mismatched events cursor"
           },
           "422": {
             "content": {
@@ -9010,6 +9535,176 @@
         "tags": ["events"]
       }
     },
+    "/api/v1/events/my/page": {
+      "get": {
+        "description": "My Events Page",
+        "operationId": "my_events_page_api_v1_events_my_page_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 1024,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "lecture",
+                    "seminar",
+                    "conference",
+                    "workshop",
+                    "social",
+                    "sport",
+                    "other"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_range",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": ["today", "week", "month"],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date Range"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_anchor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date Anchor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "newest",
+              "enum": ["newest", "popular", "upcoming"],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "upcoming_after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Upcoming After"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedEvents"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "My Events Page",
+        "tags": ["events"]
+      }
+    },
     "/api/v1/events/search/semantic": {
       "get": {
         "description": "Semantic search for events using embeddings.",
@@ -9224,6 +9919,24 @@
                 }
               ],
               "title": "Event Id"
+            }
+          },
+          {
+            "description": "Requested event detail locale. en/ru and regional tags such as ru-RU are recognized. Unsupported values are ignored; resolution then checks locale/language query aliases, user preference, Accept-Language, and finally en.",
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Requested event detail locale. en/ru and regional tags such as ru-RU are recognized. Unsupported values are ignored; resolution then checks locale/language query aliases, user preference, Accept-Language, and finally en.",
+              "title": "Lang"
             }
           },
           {
@@ -9517,6 +10230,108 @@
         ],
         "summary": "Upload Event File",
         "tags": ["events"]
+      }
+    },
+    "/api/v1/grades": {
+      "post": {
+        "description": "Assign Grade",
+        "operationId": "assign_grade_api_v1_grades_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GradeCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GradeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Assign Grade",
+        "tags": ["grades"]
+      }
+    },
+    "/api/v1/grades/{grade_id}": {
+      "patch": {
+        "description": "Modify Grade",
+        "operationId": "modify_grade_api_v1_grades__grade_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grade_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Grade Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GradeUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GradeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Modify Grade",
+        "tags": ["grades"]
       }
     },
     "/api/v1/groups": {
@@ -11771,6 +12586,11 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "summary": "Spotify Callback",
         "tags": ["spotify"]
       }
@@ -12069,7 +12889,7 @@
     },
     "/api/v1/stats/summary": {
       "get": {
-        "description": "Return attendance, grades and participation stats in a single request.\n\nPERF-1 (audit 2026-03): replaces three separate client-side round-trips.\nAll three sub-queries run concurrently via asyncio.gather and share the\nsame Redis cache entries as the individual endpoints.",
+        "description": "Return attendance, grades and participation stats in a single request.\n\nPERF-1 (audit 2026-03): replaces three separate client-side round-trips.\nThe queries share one request-scoped AsyncSession, so run sequentially.\nThey reuse the same Redis cache entries as the individual endpoints.",
         "operationId": "stats_summary_api_v1_stats_summary_get",
         "parameters": [
           {
@@ -12395,7 +13215,7 @@
     },
     "/api/v1/users": {
       "get": {
-        "description": "Search for users.\nAdmins see full profiles (UserOut), others see only public info (UserPublicOut).",
+        "description": "Search for users.\nAdmins see full profiles (UserOut), others see only public info (UserPublicOut).\nFull profiles require the SpiceDB admin permission as well as the role column;\nan unreachable authorization service degrades to the public view.",
         "operationId": "get_users_api_v1_users_get",
         "parameters": [
           {
@@ -13349,6 +14169,10 @@
       "name": "field-performance"
     },
     {
+      "description": "Grades API operations.",
+      "name": "grades"
+    },
+    {
       "description": "Groups API operations.",
       "name": "groups"
     },
@@ -13375,6 +14199,10 @@
     {
       "description": "Password API operations.",
       "name": "password"
+    },
+    {
+      "description": "Public API operations.",
+      "name": "public"
     },
     {
       "description": "Push API operations.",

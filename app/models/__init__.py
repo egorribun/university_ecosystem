@@ -77,6 +77,9 @@ from app.models.news import (
 from app.models.news import (
     NewsLike as NewsLike,
 )
+from app.models.news import (
+    NewsMediaAsset as NewsMediaAsset,
+)
 from app.models.notifications import (
     Notification as Notification,
 )
@@ -91,6 +94,12 @@ from app.models.notifications import (
 )
 from app.models.notifications import (
     UserPushTopic as UserPushTopic,
+)
+from app.models.quarantine import (
+    QuarantineReservation as QuarantineReservation,
+)
+from app.models.quarantine import (
+    QuarantineStorageScope as QuarantineStorageScope,
 )
 from app.models.schedule import Group as Group
 from app.models.schedule import Schedule as Schedule
@@ -112,7 +121,6 @@ from app.models.users import (
 from app.models.users import (
     UserProfile as UserProfile,
 )
-from app.models.vector_shard import VectorChunk as VectorChunk
 
 
 # Re-added DeadLetterJob (fixed Alembic schema drift; model moved to app/models/dead_letter.py)

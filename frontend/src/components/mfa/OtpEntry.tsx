@@ -221,7 +221,10 @@ export const OtpEntry = ({
               // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus={index === 0}
               disabled={Boolean(loading)}
-              aria-label={t(`mfa.otp.methods.${method}`) + " - digit " + (index + 1)}
+              aria-label={t("mfa.otp.digitLabel", {
+                method: t(`mfa.otp.methods.${method}`),
+                digit: index + 1,
+              })}
               onChange={(e) => handleChange(index, e.target.value)}
               onKeyDown={(e) => handleKeyDown(index, e)}
               onPaste={index === 0 ? handlePaste : undefined}

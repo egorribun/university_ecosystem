@@ -45,8 +45,8 @@ def test_configuration_reference_tracks_runtime_defaults_and_security_semantics(
         "MFA_CHALLENGE_TTL_SECONDS": "| `600`",
         "RATE_LIMIT_DEFAULT": "| `200/minute`",
         "SPICEDB_PRESHARED_KEY": "| `development-preshared-key`",
-        "RUST_OPTIMIZER_URL": "| `http://rust-optimizer:8080`",
         "OUTBOX_BATCH_SIZE": "| `20`",
+        "EMBEDDED_CDC_OUTBOX_WORKER_ENABLED": "| `false` |",
         "OUTBOX_POLL_INTERVAL_SECONDS": "| `5.0`",
         "SMTP_SECURITY": "| `none`",
         "SMTP_STARTTLS": "| `false`",
@@ -59,6 +59,11 @@ def test_configuration_reference_tracks_runtime_defaults_and_security_semantics(
     for variable, expected in expected_rows.items():
         assert variable in rows
         assert expected in rows[variable]
+
+    cdc_row = rows["EMBEDDED_CDC_OUTBOX_WORKER_ENABLED"].lower()
+    for semantic in ("unsupported", "rejected", "polling", "adr-037"):
+        assert semantic in cdc_row
+    assert "wal_level=logical" not in cdc_row
 
     assert "`HS256`" in document
     assert "development/testing only" in document

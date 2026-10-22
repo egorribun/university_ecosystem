@@ -16,6 +16,7 @@ import { logError } from "@/app/logger"
 import { useStripMaplibreMarkerChrome } from "@/utils/stripMaplibreMarkerChrome"
 import { MAP_INTERACTIVE_TARGET_PX } from "@/constants/campus"
 import type { MapMarkerOffset } from "@/features/map/markerCollisionLayout"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 
 /**
  * Event pin color — uses CSS token var(--map-event-color) in stylesheets.
@@ -38,7 +39,8 @@ interface EventMarkerProps {
  * Format a date-time string with locale-aware short format.
  * Returns e.g. "Apr 14, 18:00" or "14 апр., 18:00".
  */
-function formatEventDate(isoString: string, locale: string): string {
+function formatEventDate(isoString: string, locale: string, timeZone: string | null): string {
+  if (!timeZone) return ""
   try {
     const date = new Date(isoString)
     return new Intl.DateTimeFormat(locale, {
@@ -46,11 +48,11 @@ function formatEventDate(isoString: string, locale: string): string {
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timeZone,
     }).format(date)
   } catch (err) {
     logError(err)
-    return isoString
+    return ""
   }
 }
 
@@ -62,13 +64,14 @@ export function EventMarker({
   offset,
 }: EventMarkerProps) {
   const { t, i18n } = useTranslation("map")
+  const timeZone = useCampusTimezone()
   const markerRef = useRef<MarkerInstance | null>(null)
   // Wave 116 polish — see BuildingMarker + utils/stripMaplibreMarkerChrome.ts.
   useStripMaplibreMarkerChrome(markerRef)
 
   const formattedDate = useMemo(
-    () => formatEventDate(event.startsAt, i18n.language),
-    [event.startsAt, i18n.language]
+    () => formatEventDate(event.startsAt, i18n.language, timeZone),
+    [event.startsAt, i18n.language, timeZone]
   )
 
   const ariaLabel = t("events.markerLabel", {

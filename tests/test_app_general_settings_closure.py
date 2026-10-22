@@ -19,6 +19,39 @@ def test_unknown_environment_is_rejected():
         AppGeneralSettings(_allow_missing=True, environment="prod")
 
 
+def test_environment_is_required_even_when_development_fallbacks_are_allowed(
+    monkeypatch,
+):
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+
+    with pytest.raises(RuntimeError, match="ENVIRONMENT"):
+        AppGeneralSettings(_allow_missing=True, _env_file=None)
+
+
+def test_campus_timezone_defaults_to_utc_and_normalizes_iana_key():
+    assert (
+        AppGeneralSettings(
+            _allow_missing=True, environment="development"
+        ).campus_timezone
+        == "UTC"
+    )
+    settings = AppGeneralSettings(
+        _allow_missing=True,
+        environment="development",
+        campus_timezone=" Europe/Istanbul ",
+    )
+
+    assert settings.campus_timezone == "Europe/Istanbul"
+
+
+@pytest.mark.parametrize("value", ("", "Not/A_Real_Zone"))
+def test_invalid_campus_timezone_is_rejected(value: str):
+    with pytest.raises(ValidationError, match="CAMPUS_TIMEZONE"):
+        AppGeneralSettings(
+            _allow_missing=True, environment="development", campus_timezone=value
+        )
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     (
@@ -30,14 +63,20 @@ def test_unknown_environment_is_rejected():
 def test_app_process_role_is_normalized_against_the_closed_allowlist(
     raw: str, expected: str
 ) -> None:
-    settings = AppGeneralSettings(_allow_missing=True, app_process_role=raw)
+    settings = AppGeneralSettings(
+        _allow_missing=True, environment="development", app_process_role=raw
+    )
 
     assert settings.app_process_role == expected
 
 
 def test_unknown_app_process_role_is_rejected() -> None:
     with pytest.raises(ValidationError, match="APP_PROCESS_ROLE"):
-        AppGeneralSettings(_allow_missing=True, app_process_role="api-worker-typo")
+        AppGeneralSettings(
+            _allow_missing=True,
+            environment="development",
+            app_process_role="api-worker-typo",
+        )
 
 
 @pytest.mark.parametrize(
@@ -90,14 +129,18 @@ def test_auto_create_schema_accepts_boolean_and_uses_environment_default():
 
 def test_metrics_allowlist_entries_coerces_strings_and_iterables():
     assert AppGeneralSettings(
-        _allow_missing=True, metrics_allowlist=" 10, /health, , /ready "
+        _allow_missing=True,
+        environment="development",
+        metrics_allowlist=" 10, /health, , /ready ",
     ).metrics_allowlist_entries == ["10", "/health", "/ready"]
     assert AppGeneralSettings(
-        _allow_missing=True, metrics_allowlist=[" /metrics ", " 42 ", ""]
+        _allow_missing=True,
+        environment="development",
+        metrics_allowlist=[" /metrics ", " 42 ", ""],
     ).metrics_allowlist_entries == ["/metrics", "42"]
     assert (
         AppGeneralSettings(
-            _allow_missing=True, metrics_allowlist=""
+            _allow_missing=True, environment="development", metrics_allowlist=""
         ).metrics_allowlist_entries
         == []
     )

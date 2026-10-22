@@ -18,7 +18,7 @@ import {
   User,
   X,
 } from "lucide-react"
-import { memo, Dispatch, SetStateAction, useEffect, useRef } from "react"
+import { memo, Dispatch, SetStateAction, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router"
 
@@ -83,7 +83,7 @@ interface ChatAreaProps {
   setSearchQuery: Dispatch<SetStateAction<string>>
   showChatMenu: boolean
   setShowChatMenu: Dispatch<SetStateAction<boolean>>
-  handleSendMessage: (text: string, files: File[]) => void
+  handleSendMessage: (text: string, files: File[]) => void | Promise<boolean>
   handleViewProfile: () => void
   handleClearChat: () => void
   handleDeleteChat: () => void
@@ -178,7 +178,7 @@ export const ChatArea = memo(function ChatArea({
     if (openedFromList) router.history.back()
     else navigate({ to: "/messenger", replace: true })
   }
-  const searchInputRef = useRef<HTMLInputElement>(null)
+  const [searchInput, setSearchInput] = useState<HTMLInputElement | null>(null)
   // Wave 181 SW4 — TypingIndicator wired to existing WebSocket presence channel
   // via useMessenger().getTypingUsersForChat (MessengerContext). No backend
   // changes needed; typing events flow through ws-hub presence subscription
@@ -218,17 +218,14 @@ export const ChatArea = memo(function ChatArea({
       : []),
   ]
 
-  // Wave 183 SW3 — cancel rAF on unmount/re-fire to prevent focus attempts
-  // on a detached DOM node (memory leak + console error potential when the
-  // component unmounts mid-focus-frame, e.g., rapid navigation away from
-  // /messenger immediately after toggling chat search).
+  // Wait-mode presence can attach the input after search opens. Track the
+  // mounted node and cancel pending focus when search closes or it detaches.
   useEffect(() => {
-    const input = searchInputRef.current
-    if (!shouldFocusSearchInput(showSearchInChat, input)) return undefined
+    if (!shouldFocusSearchInput(showSearchInChat, searchInput)) return undefined
 
-    const rafId = requestAnimationFrame(() => input.focus())
+    const rafId = requestAnimationFrame(() => searchInput.focus())
     return () => cancelAnimationFrame(rafId)
-  }, [showSearchInChat])
+  }, [showSearchInChat, searchInput])
 
   return (
     <m.div
@@ -426,7 +423,7 @@ export const ChatArea = memo(function ChatArea({
                   type="text"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  ref={searchInputRef}
+                  ref={setSearchInput}
                   autoComplete="off"
                   autoCorrect="off"
                   spellCheck="false"

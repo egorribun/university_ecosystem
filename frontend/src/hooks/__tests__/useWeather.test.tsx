@@ -1,4 +1,4 @@
-import { renderHook, act, waitFor } from "@testing-library/react"
+import { renderHook, act, waitFor, cleanup } from "@testing-library/react"
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest"
 import { useWeather } from "../useWeather"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
@@ -6,10 +6,14 @@ import React from "react"
 
 // Mock fetchWeatherSnapshot
 const mockFetchWeatherSnapshot = vi.fn()
-vi.mock("@/api/weather", () => ({
-  WEATHER_CACHE_TTL_MS: 300000,
-  fetchWeatherSnapshot: (...args: unknown[]) => mockFetchWeatherSnapshot(...args),
-}))
+vi.mock("@/api/weather", async () => {
+  const actual = await vi.importActual<typeof import("@/api/weather")>("@/api/weather")
+  return {
+    ...actual,
+    WEATHER_CACHE_TTL_MS: 300000,
+    fetchWeatherSnapshot: (...args: unknown[]) => mockFetchWeatherSnapshot(...args),
+  }
+})
 
 // Mock weatherQueryOptions
 vi.mock("@/api/hooks/weather", () => ({
@@ -41,7 +45,8 @@ describe("useWeather", () => {
   )
 
   beforeEach(() => {
-    vi.clearAllMocks()
+    mockFetchWeatherSnapshot.mockReset()
+    mockUseMediaQuery.mockReset()
     queryClient = new QueryClient({
       defaultOptions: {
         queries: {
@@ -51,8 +56,17 @@ describe("useWeather", () => {
     })
   })
 
-  afterEach(() => {
-    vi.unstubAllEnvs()
+  afterEach(async () => {
+    try {
+      cleanup()
+    } finally {
+      try {
+        await queryClient.cancelQueries()
+      } finally {
+        queryClient.clear()
+        vi.unstubAllEnvs()
+      }
+    }
   })
 
   it("uses a deterministic local snapshot in Lighthouse mode", async () => {

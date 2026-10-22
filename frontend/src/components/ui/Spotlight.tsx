@@ -1,4 +1,4 @@
-import { m, useMotionValue, MotionValue } from "framer-motion"
+import { m, useMotionTemplate, useMotionValue, MotionValue } from "framer-motion"
 import { MouseEvent, PropsWithChildren, useCallback } from "react"
 import { cn } from "@/utils/cn"
 
@@ -25,6 +25,14 @@ type SpotlightOverlayProps = {
 }
 
 export function SpotlightOverlay({ mouseX, mouseY, className }: SpotlightOverlayProps) {
+  const background = useMotionTemplate`
+    radial-gradient(
+      var(--overlay-blur) circle at ${mouseX}px ${mouseY}px,
+      var(--primary-main) 0%,
+      transparent 80%
+    )
+  `
+
   return (
     <m.div
       className={cn(
@@ -33,13 +41,7 @@ export function SpotlightOverlay({ mouseX, mouseY, className }: SpotlightOverlay
       )}
       style={{
         borderRadius: "inherit",
-        background: `
-            radial-gradient(
-              var(--overlay-blur) circle at ${mouseX}px ${mouseY}px,
-              var(--primary-main) 0%,
-              transparent 80%
-            )
-          `,
+        background,
       }}
     />
   )

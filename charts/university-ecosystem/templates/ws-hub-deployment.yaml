@@ -1,4 +1,15 @@
 {{- if .Values.wsHub.enabled }}
+{{- $applicationSecretName := include "university-ecosystem.applicationSecretName" . -}}
+{{- $connectionsSecretName := required "connections.existingSecret must be set" .Values.connections.existingSecret -}}
+{{- $wsHubSecrets := list
+  (dict "id" "application" "secretName" $applicationSecretName "keys" (list "jwt-secret" "ws-hub-internal-secret"))
+  (dict "id" "connections" "secretName" $connectionsSecretName "keys" (list
+    (required "connections.natsURLKey must be set" .Values.connections.natsURLKey)
+    (required "connections.natsAuthTokenKey must be set" .Values.connections.natsAuthTokenKey)
+    (required "connections.redisBackendURLKey must be set" .Values.connections.redisBackendURLKey)
+    (required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey)
+  ))
+-}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -42,6 +53,8 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       terminationGracePeriodSeconds: 30
+      volumes:
+        {{- include "university-ecosystem.secretVolumes" (dict "secrets" $wsHubSecrets) | nindent 8 }}
       containers:
         - name: ws-hub
           image: {{ include "university-ecosystem.image" (dict "root" . "image" .Values.wsHub.image) | quote }}
@@ -60,45 +73,24 @@ spec:
               value: {{ .Values.wsHub.service.port | quote }}
             - name: VITE_ENVIRONMENT
               value: {{ .Values.global.environment | quote }}
-            - name: JWT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
-                  key: jwt-secret
-            - name: WS_HUB_INTERNAL_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
-                  key: ws-hub-internal-secret
-            - name: INTERNAL_AUTH_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
-                  key: ws-hub-internal-secret
-            - name: NATS_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
-                  key: {{ required "connections.natsURLKey must be set" .Values.connections.natsURLKey | quote }}
-            - name: NATS_AUTH_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.connections.existingSecret | quote }}
-                  key: {{ required "connections.natsAuthTokenKey must be set" .Values.connections.natsAuthTokenKey | quote }}
-            - name: REDIS_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.connections.existingSecret | quote }}
-                  key: {{ required "connections.redisBackendURLKey must be set" .Values.connections.redisBackendURLKey | quote }}
-            - name: REVOCATION_REDIS_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.connections.existingSecret | quote }}
-                  key: {{ required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey | quote }}
+            - name: JWT_SECRET_FILE
+              value: {{ printf "/run/secrets/%s/jwt-secret" $applicationSecretName | quote }}
+            - name: WS_HUB_INTERNAL_SECRET_FILE
+              value: {{ printf "/run/secrets/%s/ws-hub-internal-secret" $applicationSecretName | quote }}
+            - name: INTERNAL_AUTH_TOKEN_FILE
+              value: {{ printf "/run/secrets/%s/ws-hub-internal-secret" $applicationSecretName | quote }}
+            - name: NATS_URL_FILE
+              value: {{ printf "/run/secrets/%s/%s" $connectionsSecretName (required "connections.natsURLKey must be set" .Values.connections.natsURLKey) | quote }}
+            - name: NATS_AUTH_TOKEN_FILE
+              value: {{ printf "/run/secrets/%s/%s" $connectionsSecretName (required "connections.natsAuthTokenKey must be set" .Values.connections.natsAuthTokenKey) | quote }}
+            - name: REDIS_URL_FILE
+              value: {{ printf "/run/secrets/%s/%s" $connectionsSecretName (required "connections.redisBackendURLKey must be set" .Values.connections.redisBackendURLKey) | quote }}
+            - name: REVOCATION_REDIS_URL_FILE
+              value: {{ printf "/run/secrets/%s/%s" $connectionsSecretName (required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey) | quote }}
             - name: BACKEND_INTERNAL_URL
-              value: {{ printf "http://%s-backend:%v" (include "university-ecosystem.fullname" .) .Values.backend.service.port | quote }}
+              value: {{ printf "http://%s:%v" (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port | quote }}
             - name: JWKS_URL
-              value: {{ printf "http://%s-backend:%v/.well-known/jwks.json" (include "university-ecosystem.fullname" .) .Values.backend.service.port | quote }}
+              value: {{ printf "http://%s:%v/.well-known/jwks.json" (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port | quote }}
             - name: ALLOWED_ORIGINS
               value: {{ join "," .Values.wsHub.config.allowedOrigins | quote }}
             - name: WS_ALLOWED_ORIGINS
@@ -157,4 +149,6 @@ spec:
             failureThreshold: 3
           resources:
             {{- toYaml .Values.wsHub.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "university-ecosystem.secretVolumeMounts" (dict "secrets" $wsHubSecrets) | nindent 12 }}
 {{- end }}

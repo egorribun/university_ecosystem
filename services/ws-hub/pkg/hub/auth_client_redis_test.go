@@ -8,9 +8,12 @@ package hub
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -33,7 +36,7 @@ func newMiniredisClient(t *testing.T) (*miniredis.Miniredis, *redis.Client) {
 }
 
 func TestStartEviction_NoOpIsSafe(t *testing.T) {
-	c := NewInternalAPIAuthClient("http://localhost", nil)
+	c := NewInternalAPIAuthClientWithToken("http://localhost", "", nil)
 	c.StartEviction(context.Background()) // no-op since Wave 7; just exercises it
 }
 
@@ -41,7 +44,7 @@ func TestCanJoinRoom_RedisL2Hit(t *testing.T) {
 	mr, rc := newMiniredisClient(t)
 	require.NoError(t, mr.Set("auth:perms:"+rdUser+":"+rdRoom, "1"))
 
-	c := NewInternalAPIAuthClient("http://unused.invalid", rc)
+	c := NewInternalAPIAuthClientWithToken("http://unused.invalid", "", rc)
 	assert.True(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom),
 		"L2 hit of \"1\" must allow without an HTTP call")
 
@@ -58,7 +61,7 @@ func TestCanJoinRoom_SlowPathWritesRedisL2(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewInternalAPIAuthClient(server.URL, rc)
+	c := NewInternalAPIAuthClientWithToken(server.URL, "", rc)
 	assert.True(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom))
 
 	// The slow path must write the decision back to L2.
@@ -72,7 +75,7 @@ func TestInvalidate_SingleRoomDeletesRedisL2(t *testing.T) {
 	key := "auth:perms:" + rdUser + ":" + rdRoom
 	require.NoError(t, mr.Set(key, "1"))
 
-	c := NewInternalAPIAuthClient("http://localhost", rc)
+	c := NewInternalAPIAuthClientWithToken("http://localhost", "", rc)
 	c.Invalidate(rdUser, rdRoom)
 	assert.False(t, mr.Exists(key), "single-room invalidation must delete the L2 key")
 }
@@ -84,9 +87,187 @@ func TestInvalidate_WildcardDeletesAllUserRedisL2(t *testing.T) {
 	require.NoError(t, mr.Set(k1, "1"))
 	require.NoError(t, mr.Set(k2, "0"))
 
-	c := NewInternalAPIAuthClient("http://localhost", rc)
+	c := NewInternalAPIAuthClientWithToken("http://localhost", "", rc)
 	c.Invalidate(rdUser, "") // wildcard: SCAN + DEL every auth:perms:<user>:* key
 
 	assert.False(t, mr.Exists(k1))
 	assert.False(t, mr.Exists(k2))
+}
+
+func TestRefreshRoomAuthorizationBypassesStaleCaches(t *testing.T) {
+	mr, rc := newMiniredisClient(t)
+	key := "auth:perms:" + rdUser + ":" + rdRoom
+	require.NoError(t, mr.Set(key, "1"))
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	c := NewInternalAPIAuthClientWithToken(server.URL, "", rc)
+	c.cache.Add(rdUser+":"+rdRoom, cacheEntry{allowed: true, expiresAt: time.Now().Add(time.Minute)})
+
+	allowed, err := c.RefreshRoomAuthorization(context.Background(), rdUser, rdRoom)
+
+	require.NoError(t, err)
+	assert.False(t, allowed, "refresh must use the current backend authorization")
+	assert.Equal(t, 1, requests, "refresh must bypass both cached allow entries")
+	assert.False(t, mr.Exists(key), "fresh authorization must not leave the stale L2 entry")
+}
+
+func TestRefreshRoomAuthorizationRejectsInvalidIdentifiers(t *testing.T) {
+	backendRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		backendRequests++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewInternalAPIAuthClientWithToken(server.URL, "", nil)
+	for _, testCase := range []struct {
+		name   string
+		userID string
+		roomID string
+	}{
+		{name: "invalid user id", userID: "not-a-uuid", roomID: rdRoom},
+		{name: "invalid room id", userID: rdUser, roomID: "not-a-uuid"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			allowed, err := client.RefreshRoomAuthorization(
+				context.Background(), testCase.userID, testCase.roomID,
+			)
+
+			assert.Error(t, err)
+			assert.False(t, allowed)
+		})
+	}
+	assert.Zero(t, backendRequests, "invalid identifiers must be rejected before contacting the backend")
+}
+
+func TestRefreshRoomAuthorizationDoesNotConfirmFailedRedisInvalidation(t *testing.T) {
+	mr, rc := newMiniredisClient(t)
+	require.NoError(t, mr.Set("auth:perms:"+rdUser+":"+rdRoom, "1"))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("backend must not be queried until stale Redis permission is deleted")
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	c := NewInternalAPIAuthClientWithToken(server.URL, "", rc)
+	mr.Close()
+
+	allowed, err := c.RefreshRoomAuthorization(context.Background(), rdUser, rdRoom)
+
+	assert.Error(t, err, "failed L2 invalidation must leave the revocation unconfirmed")
+	assert.False(t, allowed)
+}
+
+func assertRoomAuthorizationNotCached(
+	t *testing.T,
+	mr *miniredis.Miniredis,
+	c *InternalAPIAuthClient,
+	userID, roomID string,
+) {
+	t.Helper()
+	_, ok := c.cache.Get(userID + ":" + roomID)
+	assert.False(t, ok, "failed authorization must not populate L1")
+	assert.False(t, mr.Exists("auth:perms:"+userID+":"+roomID), "failed authorization must not populate Redis")
+}
+
+func TestCanJoinRoom_TransportFailureDoesNotCacheAndRecovers(t *testing.T) {
+	mr, rc := newMiniredisClient(t)
+	var backendRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		backendRequests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	previous := authHTTPDoFunc
+	t.Cleanup(func() { authHTTPDoFunc = previous })
+	var attempts atomic.Int32
+	authHTTPDoFunc = func(client *http.Client, req *http.Request) (*http.Response, error) {
+		if attempts.Add(1) == 1 {
+			return nil, errors.New("temporary transport failure")
+		}
+		return client.Do(req)
+	}
+
+	c := NewInternalAPIAuthClientWithToken(server.URL, "", rc)
+	assert.False(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom))
+	assertRoomAuthorizationNotCached(t, mr, c, rdUser, rdRoom)
+
+	assert.True(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom), "next request must retry and recover")
+	assert.EqualValues(t, 2, attempts.Load())
+	assert.EqualValues(t, 1, backendRequests.Load())
+	assert.True(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom), "successful result should be cached")
+	assert.EqualValues(t, 1, backendRequests.Load())
+}
+
+func TestCanJoinRoom_HTTP5xxDoesNotCacheAndRecovers(t *testing.T) {
+	mr, rc := newMiniredisClient(t)
+	var backendRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if backendRequests.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	c := NewInternalAPIAuthClientWithToken(server.URL, "", rc)
+	assert.False(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom))
+	assertRoomAuthorizationNotCached(t, mr, c, rdUser, rdRoom)
+
+	assert.True(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom), "next request must retry and recover")
+	assert.EqualValues(t, 2, backendRequests.Load())
+	assert.True(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom), "successful result should be cached")
+	assert.EqualValues(t, 2, backendRequests.Load())
+}
+
+func TestCanJoinRoom_OpenCircuitFailureDoesNotCache(t *testing.T) {
+	mr, rc := newMiniredisClient(t)
+	var backendRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		backendRequests.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	c := NewInternalAPIAuthClientWithToken(server.URL, "", rc)
+	for i := 0; i < 11; i++ {
+		allowed, err := c.doRequestWithBreakerResult(context.Background(), rdUser, rdRoom)
+		require.Error(t, err)
+		assert.False(t, allowed)
+	}
+	require.EqualValues(t, 11, backendRequests.Load())
+
+	assert.False(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom))
+	assert.EqualValues(t, 11, backendRequests.Load(), "open breaker must not contact backend")
+	assertRoomAuthorizationNotCached(t, mr, c, rdUser, rdRoom)
+}
+
+func TestCanJoinRoom_HealthyForbiddenDenialIsCached(t *testing.T) {
+	mr, rc := newMiniredisClient(t)
+	var backendRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		backendRequests.Add(1)
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	c := NewInternalAPIAuthClientWithToken(server.URL, "", rc)
+	assert.False(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom))
+
+	entry, ok := c.cache.Get(rdUser + ":" + rdRoom)
+	require.True(t, ok, "healthy 403 denial should populate L1")
+	assert.False(t, entry.allowed)
+	val, err := mr.Get("auth:perms:" + rdUser + ":" + rdRoom)
+	require.NoError(t, err)
+	assert.Equal(t, "0", val)
+
+	assert.False(t, c.CanJoinRoom(context.Background(), rdUser, rdRoom))
+	assert.EqualValues(t, 1, backendRequests.Load(), "cached denial must not call backend again")
 }

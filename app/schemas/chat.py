@@ -1,13 +1,48 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from hashlib import sha256
+from pathlib import Path
+from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import AfterValidator, ConfigDict, Field, model_validator
 
 from app.core.config.storage import CHAT_MAX_MESSAGE_LENGTH
 from app.schemas.base import SecureBaseModel
+
+_REACTION_EMOJI_DATA_PATH = (
+    Path(__file__).parent.parent
+    / "data"
+    / "emoji"
+    / "emoji_18_0_qualified_sequences.txt"
+)
+_REACTION_EMOJI_DATA_SHA256 = (
+    "56eb5190116bfec86b4bee875731e878599f76641a7217458614fef971cb6f0e"
+)
+
+
+def _load_reaction_emoji_sequences() -> frozenset[str]:
+    """Load the pinned Unicode sequence set and fail closed if it drifted."""
+    raw_data = _REACTION_EMOJI_DATA_PATH.read_bytes()
+    if sha256(raw_data).hexdigest() != _REACTION_EMOJI_DATA_SHA256:
+        raise RuntimeError("Bundled reaction emoji data failed its integrity check")
+    return frozenset(
+        "".join(chr(int(codepoint, 16)) for codepoint in line.split())
+        for line in raw_data.decode("ascii").splitlines()
+    )
+
+
+_SUPPORTED_REACTION_EMOJIS = _load_reaction_emoji_sequences()
+
+
+def _validate_reaction_emoji(value: str) -> str:
+    if value not in _SUPPORTED_REACTION_EMOJIS:
+        raise ValueError("must be one valid Unicode emoji sequence")
+    return value
+
+
+ReactionEmoji = Annotated[str, AfterValidator(_validate_reaction_emoji)]
 
 
 # Simplified User schema for chat participants (avoids lazy-loaded relationships)
@@ -19,6 +54,20 @@ class ChatParticipant(SecureBaseModel):
     full_name: str | None = None
     avatar_url: str | None = None
     is_active: bool
+
+
+class MessageSenderInfo(SecureBaseModel):
+    """Public display fields for a sender embedded in a message response.
+
+    Legacy message producers may pass a full participant or internal DTO. Ignore
+    those extra fields here so email and account state never enter message output.
+    """
+
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    id: UUID
+    full_name: str | None = None
+    avatar_url: str | None = None
 
 
 class PresenceStatus(SecureBaseModel):
@@ -136,7 +185,7 @@ class MessageResponse(MessageBase):
     read_at: datetime | None = None  # Wave 203 SW3 — read-receipt timestamp
     edited_at: datetime | None = None  # Wave 205 SW4 — edit timestamp
     deleted_at: datetime | None = None  # Wave 205 SW4 — soft-delete tombstone
-    sender: ChatParticipant | None = None
+    sender: MessageSenderInfo | None = None
     sender_presence: PresenceStatus | None = None
     attachments: list[AttachmentResponse] = Field(
         default_factory=list, json_schema_extra={"default": []}

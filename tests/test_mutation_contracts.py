@@ -129,6 +129,11 @@ async def test_event_notification_keeps_db_topic_title_and_translations(
     monkeypatch.setattr(
         news_events, "_fetch_active_user_ids", AsyncMock(return_value=users)
     )
+    monkeypatch.setattr(
+        news_events,
+        "_unnotified_user_ids",
+        AsyncMock(side_effect=lambda _db, _key, candidate_ids: candidate_ids),
+    )
     monkeypatch.setattr(news_events, "create_notifications_for_users", create)
     monkeypatch.setattr(
         news_events, "render_notification_template", lambda *a, **k: None
@@ -157,6 +162,11 @@ async def test_news_notification_forwards_rendered_body_to_delivery(
     user_ids = [uuid.uuid4()]
     monkeypatch.setattr(
         news_events, "_fetch_active_user_ids", AsyncMock(return_value=user_ids)
+    )
+    monkeypatch.setattr(
+        news_events,
+        "_unnotified_user_ids",
+        AsyncMock(side_effect=lambda _db, _key, candidate_ids: candidate_ids),
     )
     monkeypatch.setattr(news_events, "create_notifications_for_users", create)
     monkeypatch.setattr(
@@ -353,6 +363,7 @@ def _challenge(*, flow: str = "login", revision: int = 2) -> SimpleNamespace:
         otp_key_id="active",
         token_key_id="active",
         attempt_count=0,
+        payload={"mfa_epoch": 0},
     )
 
 
@@ -362,7 +373,9 @@ async def test_resend_update_rotates_recipient_and_keeps_pending_revision_guard(
 ):
     service = _email_service()
     challenge = _challenge()
-    user = SimpleNamespace(id=challenge.user_id, email="student@example.edu")
+    user = SimpleNamespace(
+        id=challenge.user_id, email="student@example.edu", mfa_epoch=0
+    )
     challenge.recipient_digest = service._recipient_digest(
         key_id="active", email=user.email
     )
@@ -469,7 +482,9 @@ async def test_verify_opaque_forwards_the_presented_code_unchanged() -> None:
 async def test_resend_locks_recipient_and_cancels_only_pending_deliveries() -> None:
     service = _email_service()
     challenge = _challenge()
-    user = SimpleNamespace(id=challenge.user_id, email="student@example.edu")
+    user = SimpleNamespace(
+        id=challenge.user_id, email="student@example.edu", mfa_epoch=0
+    )
     challenge.recipient_digest = service._recipient_digest(
         key_id="active", email=user.email
     )

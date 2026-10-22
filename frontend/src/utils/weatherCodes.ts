@@ -30,6 +30,7 @@ const WMO_MAP: Record<number, WeatherCondition> = {
   86: "snow",
   95: "storm",
   96: "storm",
+  97: "storm",
   99: "storm",
 }
 

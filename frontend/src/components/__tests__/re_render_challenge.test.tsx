@@ -3,7 +3,6 @@ import { render, renderHook, act } from "@testing-library/react"
 import { useState, memo } from "react"
 import { useDebounced } from "../../hooks/useDebounced"
 import { NewsCardList } from "../dashboard/NewsCardList"
-import { ClockWidget } from "../dashboard/ClockWidget"
 import { Card } from "../ui/Card"
 import { ContentCard } from "../ui/ContentCard"
 
@@ -110,7 +109,6 @@ describe("Milestone 2 Component Re-render & Debounce Challenge Suite", () => {
     it("verifies React.memo wrapper presence on target components", () => {
       // React.memo components have $$typeof Symbol(react.memo)
       expect((NewsCardList as any).$$typeof?.toString()).toContain("react.memo")
-      expect((ClockWidget as any).$$typeof?.toString()).toContain("react.memo")
       expect((Card as any).$$typeof?.toString()).toContain("react.memo")
       expect((ContentCard as any).$$typeof?.toString()).toContain("react.memo")
     })

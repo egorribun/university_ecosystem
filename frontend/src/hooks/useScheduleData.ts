@@ -5,26 +5,69 @@
  * Public API is UNCHANGED — all consumers still import `useScheduleData`
  * and destructure the same fields.
  */
-import { useState, useEffect, useMemo, useCallback } from "react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { pageScheduleQueryOptions, scheduleGroupsQueryOptions } from "@/api/hooks/schedule"
-import { useAuth } from "@/contexts/AuthContext"
 import {
-  type Lesson,
-  scheduleQueryKey,
-  getTodayIdx,
-  getTimeStr,
-} from "@/components/schedule/scheduleUtils"
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  type Dispatch,
+  type SetStateAction,
+} from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
+import {
+  anonymousScheduleQueryKey,
+  pageScheduleQueryOptions,
+  scheduleGroupsQueryOptions,
+} from "@/api/hooks/schedule"
+import { useAuth } from "@/contexts/AuthContext"
+import { useAnonymousReadMode } from "@/api/hooks/news"
+import { type Lesson, scheduleQueryKey, getTimeStr } from "@/components/schedule/scheduleUtils"
 import { detectConflicts } from "@/utils/scheduleConflicts"
+import { nowParity } from "@/utils/scheduleUtils"
 import { getDatabaseLazily, type ScheduleDoc } from "@/db/lazy"
 import { useScheduleConfig } from "./useScheduleConfig"
 import { useScheduleTime } from "./useScheduleTime"
+import { useScheduleClock } from "./useScheduleClock"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
+import { getCampusClockParts } from "@/utils/campusTimezone"
+
+export type ScheduleUpdateReceipt = {
+  schedule: Lesson[]
+  isCurrent: () => boolean
+  invalidate: () => Promise<void>
+}
+
+type ScheduleQueryScope = {
+  queryHash: string
+  revision: () => number
+  activate: () => void
+  deactivate: () => void
+  recordAuthoritativeUpdate: () => void
+  isCurrent: (revision: number) => boolean
+}
 
 export function useScheduleData() {
   const { user } = useAuth()
+  const { anonymous } = useAnonymousReadMode()
+  const { i18n: translation } = useTranslation()
   const queryClient = useQueryClient()
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
-  const [currentParity, setCurrentParity] = useState<"odd" | "even">("odd")
+  const nowTick = useScheduleClock()
+  const timeZone = useCampusTimezone()
+  const automaticParity = nowParity(nowTick, timeZone)
+  const [parityOverride, setParityOverride] = useState<"odd" | "even" | null>(null)
+  const currentParity = parityOverride ?? automaticParity
+  // Even choosing the current value is an explicit choice, not automatic mode.
+  const setCurrentParity = useCallback<Dispatch<SetStateAction<"odd" | "even">>>(
+    (next) => {
+      setParityOverride((previous) => {
+        const effectivePrevious = previous ?? automaticParity
+        return typeof next === "function" ? next(effectivePrevious) : next
+      })
+    },
+    [automaticParity]
+  )
 
   // ── Config (i18n weekdays + lesson types) ──────────
   const config = useScheduleConfig()
@@ -34,14 +77,69 @@ export function useScheduleData() {
   // Wave 130 SW1 — factory shared with the /schedule SSR loader
   // (frontend/src/api/hooks/schedule.ts). queryKey shape preserved
   // so cache entries hydrate cleanly across SSR → client.
-  const groupsQuery = useQuery(scheduleGroupsQueryOptions())
+  const groupsQuery = useQuery(scheduleGroupsQueryOptions(anonymous, translation.language))
   const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data])
 
   // ── TanStack Query: Schedule ───────────────────────
   const activeGroupId = selectedGroup
-  const scheduleKey = activeGroupId != null ? scheduleQueryKey(activeGroupId) : null
+  const scheduleKey = useMemo(
+    () =>
+      activeGroupId == null
+        ? null
+        : anonymous
+          ? anonymousScheduleQueryKey(activeGroupId)
+          : scheduleQueryKey(activeGroupId),
+    [activeGroupId, anonymous]
+  )
+  const scheduleQuery = useQuery(
+    pageScheduleQueryOptions(activeGroupId, anonymous, translation.language)
+  )
+  const scheduleQueryScope = useMemo<ScheduleQueryScope | null>(() => {
+    if (!scheduleKey) return null
 
-  const scheduleQuery = useQuery(pageScheduleQueryOptions(activeGroupId))
+    const queryHash = queryClient
+      .getQueryCache()
+      .find({ queryKey: scheduleKey, exact: true })?.queryHash
+    if (!queryHash) return null
+
+    let revision = 0
+    let active = false
+    return {
+      queryHash,
+      revision: () => revision,
+      activate: () => {
+        active = true
+      },
+      deactivate: () => {
+        active = false
+      },
+      recordAuthoritativeUpdate: () => {
+        revision += 1
+      },
+      isCurrent: (expectedRevision: number) => active && revision === expectedRevision,
+    }
+  }, [queryClient, scheduleKey])
+
+  useEffect(() => {
+    if (!scheduleQueryScope) return
+
+    scheduleQueryScope.activate()
+    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+      if (
+        event.type === "updated" &&
+        event.query.queryHash === scheduleQueryScope.queryHash &&
+        event.action.type === "success" &&
+        !event.action.manual
+      ) {
+        scheduleQueryScope.recordAuthoritativeUpdate()
+      }
+    })
+
+    return () => {
+      scheduleQueryScope.deactivate()
+      unsubscribe()
+    }
+  }, [queryClient, scheduleQueryScope])
 
   const groupScheduleRaw = useMemo(() => scheduleQuery.data ?? [], [scheduleQuery.data])
   const groupSchedule = useMemo(
@@ -51,7 +149,7 @@ export function useScheduleData() {
 
   // ── Persist Schedule to RxDB for Offline Access ─────
   useEffect(() => {
-    if (activeGroupId && groupScheduleRaw.length > 0) {
+    if (!anonymous && activeGroupId && groupScheduleRaw.length > 0) {
       getDatabaseLazily()
         .then((db) => {
           const docs: ScheduleDoc[] = groupScheduleRaw.map((lesson: Record<string, unknown>) => ({
@@ -83,7 +181,7 @@ export function useScheduleData() {
         })
         .catch(() => {})
     }
-  }, [activeGroupId, groupScheduleRaw])
+  }, [activeGroupId, anonymous, groupScheduleRaw])
 
   // ── Auto-select group based on user role ───────────
   useEffect(() => {
@@ -110,7 +208,8 @@ export function useScheduleData() {
   )
 
   // ── Today + time calculations ──────────────────────
-  const todayIdx = getTodayIdx()
+  const clock = getCampusClockParts(nowTick, timeZone)
+  const todayIdx = (clock?.weekday ?? nowTick.getDay()) - 1
   const hasToday = todayIdx >= 0 && todayIdx < weekdayBackend.length
 
   const todayLessons = useMemo(() => {
@@ -121,45 +220,57 @@ export function useScheduleData() {
       .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
   }, [filteredSchedule, hasToday, todayIdx, weekdayBackend])
 
-  const time = useScheduleTime(todayLessons, hasToday)
+  const time = useScheduleTime(todayLessons, hasToday, nowTick)
 
   // ── Conflict detection ─────────────────────────────
   const conflictedIds = useMemo(() => detectConflicts(filteredSchedule), [filteredSchedule])
 
   // ── Lesson days for MiniCalendar ───────────────────
-  // PERF-70-07: use year/month primitives — only recalculates on month change, not every 30s tick
-  const calYear = time.nowTick.getFullYear()
-  const calMonth = time.nowTick.getMonth()
-  const lessonDays = useMemo(() => {
-    const days = new Set<number>()
-    const firstDay = new Date(calYear, calMonth, 1).getDay()
-    const weekdayToOffset = new Map<string, number>()
-    for (let i = 0; i < weekdayBackend.length; i++) {
-      weekdayToOffset.set(weekdayBackend[i]!, i)
-    }
-    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
-    for (const lesson of filteredSchedule) {
-      const offset = weekdayToOffset.get(lesson.weekday)
-      if (offset === undefined) continue
-      const jsDay = (offset + 1) % 7
-      const firstOccurrence = 1 + ((jsDay - firstDay + 7) % 7)
-      for (let d = firstOccurrence; d <= daysInMonth; d += 7) {
-        days.add(d)
+  // The mini-calendar can show any month, so the caller passes the month it displays.
+  const lessonDaysForMonth = useCallback(
+    (month: Date) => {
+      const year = month.getFullYear()
+      const monthIdx = month.getMonth()
+      const days = new Set<number>()
+      const firstDay = new Date(year, monthIdx, 1).getDay()
+      const weekdayToOffset = new Map<string, number>()
+      for (let i = 0; i < weekdayBackend.length; i++) {
+        weekdayToOffset.set(weekdayBackend[i]!, i)
       }
-    }
-    return days
-  }, [filteredSchedule, weekdayBackend, calYear, calMonth])
+      const daysInMonth = new Date(year, monthIdx + 1, 0).getDate()
+      for (const lesson of filteredSchedule) {
+        const offset = weekdayToOffset.get(lesson.weekday)
+        if (offset === undefined) continue
+        const jsDay = (offset + 1) % 7
+        const firstOccurrence = 1 + ((jsDay - firstDay + 7) % 7)
+        for (let d = firstOccurrence; d <= daysInMonth; d += 7) {
+          days.add(d)
+        }
+      }
+      return days
+    },
+    [filteredSchedule, weekdayBackend]
+  )
 
   // ── Optimistic updates ─────────────────────────────
   const applyScheduleUpdate = useCallback(
-    (updater: (prev: Lesson[]) => Lesson[]) => {
-      if (!scheduleKey || activeGroupId == null) return
-      queryClient.setQueryData<Lesson[]>(scheduleKey, (prev) => {
+    (updater: (prev: Lesson[]) => Lesson[]): ScheduleUpdateReceipt | undefined => {
+      if (!scheduleKey || activeGroupId == null) return undefined
+      const scope = scheduleQueryScope
+      const revision = scope?.revision()
+      const schedule = queryClient.setQueryData<Lesson[]>(scheduleKey, (prev) => {
         const base = Array.isArray(prev) ? [...prev] : []
         return normalizeLessons(updater(base))
       })
+      if (!schedule) return undefined
+
+      return {
+        schedule,
+        isCurrent: () => Boolean(scope && revision !== undefined && scope.isCurrent(revision)),
+        invalidate: () => queryClient.invalidateQueries({ queryKey: scheduleKey, exact: true }),
+      }
     },
-    [scheduleKey, activeGroupId, queryClient, normalizeLessons]
+    [scheduleKey, activeGroupId, queryClient, normalizeLessons, scheduleQueryScope]
   )
 
   const refresh = useCallback(() => {
@@ -204,7 +315,7 @@ export function useScheduleData() {
     currentLesson: time.currentLesson,
     nextLesson: time.nextLesson,
     conflictedIds,
-    lessonDays,
+    lessonDaysForMonth,
     timeLeftText: time.timeLeftText,
     timeLeftShort: time.timeLeftShort,
     currentProgress: time.currentProgress,

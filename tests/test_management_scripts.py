@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
 
 import pytest
 from sqlalchemy import Integer, String
@@ -21,6 +22,7 @@ from app.management.reset_mfa import main as reset_mfa_main
 from app.management.stories_cleanup import main as stories_cleanup_main
 from app.management.weekly_cleanup import main as weekly_cleanup_main
 from app.management.weekly_cleanup import run_weekly_cleanup
+from app.models import User
 from app.scripts.backfill_uuids import main as backfill_uuids_main
 
 # Declarative models for backfill testing to mimic transition phase.  The name
@@ -168,12 +170,48 @@ def test_build_arg_parser() -> None:
     assert isinstance(parser, argparse.ArgumentParser)
 
 
+def test_mfa_reset_parser_preserves_uuid_and_notification_choice() -> None:
+    user_id = UUID(int=1)
+    args = _build_arg_parser().parse_args(["--user-id", str(user_id), "--no-notify"])
+
+    assert args.user_id == user_id
+    assert isinstance(args.user_id, UUID)
+    assert args.email is None
+    assert args.no_notify is True
+    assert "UUID" in _build_arg_parser().format_help()
+
+
+@pytest.mark.parametrize("raw", ["1", "not-a-uuid", ""])
+def test_mfa_reset_parser_rejects_non_uuid_ids(raw: str) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        _build_arg_parser().parse_args(["--user-id", raw])
+
+    assert exc_info.value.code == 2
+
+
+def test_mfa_reset_parser_keeps_email_and_mutual_exclusion() -> None:
+    parser = _build_arg_parser()
+    args = parser.parse_args(["--email", "user@example.com"])
+    assert args.email == "user@example.com"
+    assert args.user_id is None
+    assert args.no_notify is False
+
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(
+            ["--email", "user@example.com", "--user-id", str(UUID(int=1))]
+        )
+
+    assert exc_info.value.code == 2
+
+
 @pytest.mark.asyncio
 async def test_load_user_by_id(mock_db_session) -> None:
     user = MagicMock()
     mock_db_session.get.return_value = user
-    res = await _load_user(mock_db_session, user_id=1, email=None)
+    user_id = UUID(int=1)
+    res = await _load_user(mock_db_session, user_id=user_id, email=None)
     assert res == user
+    mock_db_session.get.assert_awaited_once_with(User, user_id)
 
 
 @pytest.mark.asyncio
@@ -284,11 +322,11 @@ async def test_reset_user_mfa_success(mock_db_session) -> None:
             "ru",
         ]
         mock_audit.assert_called_once()
-        assert events == ["reset", "notification", "commit", "publish"]
+        assert events == ["reset", "notification", "publish", "commit"]
 
 
 @pytest.mark.asyncio
-async def test_reset_user_mfa_commit_failure_rolls_back_without_redis_publish(
+async def test_reset_user_mfa_commit_failure_rolls_back_retaining_redis_revocation(
     mock_db_session,
 ) -> None:
     user = MagicMock(id=1)
@@ -316,7 +354,7 @@ async def test_reset_user_mfa_commit_failure_rolls_back_without_redis_publish(
 
     notify.assert_awaited_once()
     mock_db_session.rollback.assert_awaited_once()
-    publish.assert_not_awaited()
+    publish.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -370,44 +408,38 @@ def test_stories_cleanup_main() -> None:
 @pytest.mark.asyncio
 async def test_run_weekly_cleanup(mock_db_session) -> None:
     mock_engine = MagicMock()
-    mock_conn = MagicMock()
-    mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
-    mock_conn.__aexit__ = AsyncMock()
-    mock_engine.connect.return_value = mock_conn
+    mock_engine.connect.side_effect = AssertionError(
+        "weekly cleanup must not open an engine connection for REINDEX"
+    )
 
     with (
         patch(
             "app.management.weekly_cleanup.async_session", return_value=mock_db_session
         ),
-        patch("app.management.weekly_cleanup.engine", mock_engine),
-        patch("app.management.weekly_cleanup.settings") as mock_settings,
+        patch("app.management.weekly_cleanup.engine", mock_engine, create=True),
     ):
-        mock_settings.database_url = (
-            "postgresql://user:pass@localhost/mydb"  # pragma: allowlist secret
-        )
-
+        execution_sql: list[str] = []
         orphaned_calls = 0
         stale_calls = 0
 
         async def mock_execute(stmt):
             nonlocal orphaned_calls, stale_calls
-            stmt_str = str(stmt)
-            if "NOT" in stmt_str or "user_id" in stmt_str:
-                orphaned_calls += 1
-                mock_res = MagicMock()
-                if orphaned_calls == 1:
-                    mock_res.scalars.return_value.fetchmany.return_value = [1]
-                else:
-                    mock_res.scalars.return_value.fetchmany.return_value = []
-                return mock_res
-            else:
+            statement_sql = str(stmt).lower()
+            execution_sql.append(statement_sql)
+            mock_res = MagicMock()
+            mock_res.scalars.return_value.fetchmany.return_value = []
+
+            if "last_seen_at" in statement_sql:
                 stale_calls += 1
-                mock_res = MagicMock()
                 if stale_calls == 1:
                     mock_res.scalars.return_value.fetchmany.return_value = [2]
-                else:
-                    mock_res.scalars.return_value.fetchmany.return_value = []
-                return mock_res
+            elif "user_id not in" in statement_sql:
+                orphaned_calls += 1
+                if orphaned_calls == 1:
+                    mock_res.scalars.return_value.fetchmany.return_value = [1]
+            else:
+                pytest.fail(f"unexpected weekly cleanup statement: {statement_sql}")
+            return mock_res
 
         mock_db_session.execute = AsyncMock(side_effect=mock_execute)
 
@@ -416,7 +448,16 @@ async def test_run_weekly_cleanup(mock_db_session) -> None:
         assert stats["subscriptions_orphaned"] == 1
         assert stats["subscriptions_stale"] == 1
 
-        mock_conn.execution_options.assert_called_once()
+        assert len(execution_sql) == 4
+        assert all(
+            sql.startswith("delete from push_subscriptions") for sql in execution_sql
+        )
+        assert all("reindex" not in sql for sql in execution_sql)
+        assert all("user_id not in" in sql for sql in execution_sql[:2])
+        assert all("last_seen_at" in sql for sql in execution_sql[2:])
+        mock_db_session.commit.assert_awaited()
+        assert mock_db_session.commit.await_count == 2
+        mock_engine.connect.assert_not_called()
 
 
 def test_weekly_cleanup_main() -> None:

@@ -4,7 +4,7 @@ logging {
 }
 
 discovery.docker "containers" {
-  host             = "unix:///var/run/docker.sock"
+  host             = "tcp://docker-log-proxy:2375"
   refresh_interval = "5s"
 }
 
@@ -29,7 +29,7 @@ discovery.relabel "docker_logs" {
 }
 
 loki.source.docker "containers" {
-  host          = "unix:///var/run/docker.sock"
+  host          = "tcp://docker-log-proxy:2375"
   targets       = discovery.docker.containers.targets
   labels        = {"platform" = "docker"}
   relabel_rules = discovery.relabel.docker_logs.rules

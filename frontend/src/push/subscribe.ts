@@ -719,16 +719,16 @@ export async function releasePushServerBinding(): Promise<void> {
       if (!subscription) return
       try {
         await deleteSubscription(subscription.endpoint)
-      } catch (error) {
-        logWarning("Failed to release push subscription binding", error)
+      } catch {
+        logWarning("Failed to release push subscription binding")
         // The server may still route this account's notifications here:
         // revoke the endpoint itself and require an explicit re-enable.
         pushOwnerStorage.remove()
         await subscription.unsubscribe()
       }
     })
-    .catch((error: unknown) => {
-      logWarning("Failed to release push subscription binding", error)
+    .catch(() => {
+      logWarning("Failed to release push subscription binding")
     })
   let timer: ReturnType<typeof setTimeout> | undefined
   const guard = new Promise<void>((resolve) => {

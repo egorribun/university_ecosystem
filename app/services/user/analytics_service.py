@@ -1,75 +1,93 @@
 from __future__ import annotations
 
-import json
 import uuid
-from datetime import UTC, datetime, timedelta
-from typing import Any
+from collections.abc import Awaitable, Callable
+from datetime import UTC, date, datetime, timedelta
+from typing import Any, cast
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
-
-import app.models as models
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.deps.cache import BaseCache
+from app.models import Grade
+from app.repositories.user_stats_repository import UserStatsRepository
+from app.schemas.dtos.analytics import ParticipationStatsDTO
 from app.services import stats_cache
 
 logger = get_logger(__name__)
 
+# Grades on a 5-point scale never exceed this value; anything above it means the
+# institution reports on a 100-point scale.
+_FIVE_POINT_SCALE_MAX = 5.0
+_RECENT_LIMIT = 5
+
 
 class UserAnalyticsService:
+    """Per-user attendance, grade and participation statistics.
+
+    Semantics (product decision): *attendance* is event registration — a user
+    "attended" every active event of the window they hold an
+    ``EventAttendance`` row for.  Every metric compares the requested window with
+    the immediately preceding window of the same length to derive ``trend``.
+    Raw SQL lives in :class:`UserStatsRepository`; this class only aggregates and
+    caches.
+    """
+
     def __init__(self, db: AsyncDatabaseSession):
         self.db = db
+        self.stats_repo = UserStatsRepository(db)
+
+    @staticmethod
+    def _as_utc(value: datetime) -> datetime:
+        """Normalize database timestamps; SQLite drops timezone metadata."""
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
     def _dt_to_iso(self, value: datetime | None) -> str:
         if value is None:
             return ""
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=UTC)
-        return value.astimezone(UTC).isoformat()
+        return self._as_utc(value).isoformat()
 
-    def _parse_grade_payload(
-        self, body: str | None, *, fallback_title: str, fallback_date: datetime | None
-    ) -> dict[str, Any] | None:
-        if not body:
-            return None
-        try:
-            payload = json.loads(body)
-        except (TypeError, ValueError):
-            return None
-        if not isinstance(payload, dict):
-            return None
-        score = payload.get("score")
-        if score is None:
-            return None
-        try:
-            score_value = float(score)
-        except (TypeError, ValueError):
-            return None
-        max_score = payload.get("max")
-        max_value = None
-        if max_score is not None:
-            try:
-                max_value = float(max_score)
-            except (TypeError, ValueError):
-                max_value = None
-        course = payload.get("course")
-        if not isinstance(course, str) or not course.strip():
-            course = fallback_title
-        date_raw = payload.get("date")
-        if isinstance(date_raw, str):
-            try:
-                parsed = datetime.fromisoformat(date_raw)
-            except ValueError:
-                parsed = None
-        else:
-            parsed = None
-        date_value = parsed or fallback_date
-        return {
-            "course": course,
-            "score": score_value,
-            "max": max_value,
-            "date": self._dt_to_iso(date_value),
-        }
+    async def _cached(
+        self,
+        *,
+        kind: str,
+        user_id: uuid.UUID | str,
+        period_days: int,
+        period_key: str | None,
+        cache: BaseCache | None,
+        skip_cache: bool,
+        compute: Callable[[str], Awaitable[dict[str, Any]]],
+    ) -> dict[str, Any]:
+        cache_period_key = stats_cache.resolve_period_key(period_key, period_days)
+        cached = await stats_cache.get_cached_stats(
+            cache=cache,
+            kind=kind,
+            user_id=user_id,
+            period_key=cache_period_key,
+            skip_cache=skip_cache,
+        )
+        if cached is not None:
+            return cast(dict[str, Any], cached.payload)
+
+        result = await compute(cache_period_key)
+        await stats_cache.set_cached_stats(
+            cache=cache,
+            kind=kind,
+            user_id=user_id,
+            period_key=cache_period_key,
+            payload=result,
+            skip_cache=skip_cache,
+        )
+        return result
+
+    @staticmethod
+    def _windows(period_days: int) -> tuple[datetime, datetime, datetime]:
+        now = datetime.now(UTC)
+        window_start = now - timedelta(days=period_days)
+        return now, window_start, window_start - timedelta(days=period_days)
 
     async def get_attendance_stats(
         self,
@@ -80,81 +98,103 @@ class UserAnalyticsService:
         cache: BaseCache | None = None,
         skip_cache: bool = False,
     ) -> dict[str, Any]:
-        cache_period_key = stats_cache.resolve_period_key(period_key, period_days)
-        cached = await stats_cache.get_cached_stats(
-            cache=cache,
-            kind="attendance",
-            user_id=user_id,
-            period_key=cache_period_key,
-            skip_cache=skip_cache,
-        )
-        if cached is not None:
-            from typing import cast
-
-            return cast(dict[str, Any], cached.payload)
-
-        now = datetime.now(UTC)
-        window_start = now - timedelta(days=period_days)
-
-        # Fallback values since UserStats model is not yet available
-        percent = 0.0
-        attended_events = 0
-        total_events = 0
-        trend = 0.0
-
-        # 2. Fast OLTP query for recent 5 records only
-        recent_attendance_base = (
-            select(
-                models.EventAttendance.registered_at.label("registered_at"),
-                models.Event.starts_at.label("starts_at"),
-                models.Event.title.label("title"),
+        async def compute(cache_period_key: str) -> dict[str, Any]:
+            now, window_start, previous_start = self._windows(period_days)
+            rows = await self.stats_repo.get_attendance_stats_raw(
+                user_id, window_start, previous_start, now
             )
-            .join(models.Event, models.Event.id == models.EventAttendance.event_id)
-            .where(
-                models.EventAttendance.user_id == user_id,
-                models.Event.is_active.is_(True),
-                models.Event.starts_at >= window_start,
-                models.Event.starts_at < now,
-            )
-            .order_by(models.EventAttendance.registered_at.desc())
-            .limit(5)
-        )
-        rows = await self.db.execute(recent_attendance_base)
 
-        recent: list[dict[str, Any]] = []
-        for row in rows:
-            date_source = row.starts_at or row.registered_at
-            recent.append(
+            campus_zone = ZoneInfo(settings.campus_timezone)
+            total = 0
+            attended = 0
+            previous_total = 0
+            previous_attended = 0
+            daily_counts: dict[date, dict[str, int]] = {}
+            streak_dates: set[date] = set()
+            recent_candidates: list[tuple[datetime, Any]] = []
+
+            # The repository returns only active, past event rows, never an empty head.
+            for row in rows:
+                starts_at = self._as_utc(row.starts_at)
+                registered = bool(row.is_registered)
+
+                if registered:
+                    streak_dates.add(starts_at.astimezone(campus_zone).date())
+
+                if previous_start <= starts_at < window_start:
+                    previous_total += 1
+                    previous_attended += int(registered)
+                elif starts_at >= window_start:
+                    total += 1
+                    attended += int(registered)
+                    campus_date = starts_at.astimezone(campus_zone).date()
+                    counts = daily_counts.setdefault(
+                        campus_date, {"registered": 0, "total": 0}
+                    )
+                    counts["total"] += 1
+                    counts["registered"] += int(registered)
+
+                    if registered:
+                        recent_candidates.append((self._as_utc(row.registered_at), row))
+
+            percent = attended / total * 100 if total else 0.0
+            previous_percent = (
+                previous_attended / previous_total * 100 if previous_total else 0.0
+            )
+
+            recent_candidates.sort(key=lambda item: item[0], reverse=True)
+            recent = [
                 {
-                    "date": self._dt_to_iso(date_source),
+                    "date": self._dt_to_iso(row.starts_at),
                     "status": "present",
                     "course": row.title or None,
                 }
-            )
+                for _, row in recent_candidates[:_RECENT_LIMIT]
+            ]
 
-        # TD-33-02: stub — returns 100% until GradeRecord model exists
-        total_events = len(recent)
-        attended_events = len(recent)
-        if total_events > 0:
-            percent = 100.0
+            today = self._as_utc(now).astimezone(campus_zone).date()
+            yesterday = today - timedelta(days=1)
+            anchor: date | None
+            if today in streak_dates:
+                anchor = today
+            elif yesterday in streak_dates:
+                anchor = yesterday
+            else:
+                anchor = None
 
-        result = {
-            "percent": round(percent, 2),
-            "present": attended_events,
-            "total": total_events,
-            "trend": round(trend, 2),
-            "period_key": cache_period_key,
-            "recent": recent,
-        }
-        await stats_cache.set_cached_stats(
-            cache=cache,
+            streak_days = 0
+            while anchor is not None and anchor in streak_dates:
+                streak_days += 1
+                anchor -= timedelta(days=1)
+
+            daily = [
+                {
+                    "date": day.isoformat(),
+                    "registered": counts["registered"],
+                    "total": counts["total"],
+                }
+                for day, counts in sorted(daily_counts.items())
+            ]
+            return {
+                "percent": round(percent, 2),
+                "present": attended,
+                "total": total,
+                "trend": round(percent - previous_percent, 2),
+                "period_key": cache_period_key,
+                "streak_days": streak_days,
+                "daily": daily,
+                "recent": recent,
+            }
+
+        return await self._cached(
             kind="attendance",
             user_id=user_id,
-            period_key=cache_period_key,
-            payload=result,
+            period_days=period_days,
+            period_key=period_key,
+            cache=cache,
             skip_cache=skip_cache,
+            compute=compute,
         )
-        return result
 
     async def get_grade_stats(
         self,
@@ -165,88 +205,58 @@ class UserAnalyticsService:
         cache: BaseCache | None = None,
         skip_cache: bool = False,
     ) -> dict[str, Any]:
-        cache_period_key = stats_cache.resolve_period_key(period_key, period_days)
-        cached = await stats_cache.get_cached_stats(
-            cache=cache,
+        async def compute(cache_period_key: str) -> dict[str, Any]:
+            now, window_start, previous_start = self._windows(period_days)
+            window_grades = await self.stats_repo.get_grades(
+                user_id, previous_start, now
+            )
+            current: list[Grade] = []
+            previous: list[Grade] = []
+            for grade in window_grades:
+                created_at = self._as_utc(grade.created_at)
+                if created_at >= window_start:
+                    current.append(grade)
+                else:
+                    previous.append(grade)
+
+            def average(grades: Any) -> float:
+                return (
+                    sum(float(g.score) for g in grades) / len(grades) if grades else 0.0
+                )
+
+            current_average = average(current)
+            scale = (
+                "100"
+                if any(float(g.score) > _FIVE_POINT_SCALE_MAX for g in current)
+                else "5"
+            )
+            recent = [
+                {
+                    "course": str(g.subject),
+                    "score": float(g.score),
+                    "max": None,
+                    "date": self._dt_to_iso(g.created_at),
+                }
+                for g in current[:_RECENT_LIMIT]
+            ]
+            return {
+                "average": round(current_average, 2),
+                "total_grades": len(current),
+                "scale": scale,
+                "trend": round(current_average - average(previous), 2),
+                "period_key": cache_period_key,
+                "recent": recent,
+            }
+
+        return await self._cached(
             kind="grades",
             user_id=user_id,
-            period_key=cache_period_key,
-            skip_cache=skip_cache,
-        )
-        if cached is not None:
-            from typing import cast
-
-            return cast(dict[str, Any], cached.payload)
-
-        now = datetime.now(UTC)
-        window_start = now - timedelta(days=period_days)
-
-        average = 0.0
-        trend = 0.0
-
-        # TD-33-02 (LOW-W19): Grade data is sourced from the Notification table
-        # because a dedicated grades/scores domain model does not yet exist.
-        # This is a temporary approach — notification bodies are unstructured
-        # text blobs and parsing them with _parse_grade_payload() is fragile
-        # (format changes to notification bodies will silently break grade
-        # stats).  Once a first-class GradeRecord or CourseScore model is
-        # introduced, replace this query with a direct join against that table.
-        res = await self.db.execute(
-            select(models.Notification)
-            .where(
-                models.Notification.user_id == user_id,
-                models.Notification.type == "grade",
-                models.Notification.created_at >= window_start,
-            )
-            .order_by(models.Notification.created_at.desc())
-            .limit(20)
-        )
-        recent_notifications = res.scalars()
-
-        recent: list[dict[str, Any]] = []
-        total_grades = 0
-        sum_scores = 0.0
-        for notif in recent_notifications:
-            parsed = self._parse_grade_payload(
-                str(notif.body) if notif.body else None,
-                fallback_title=str(notif.title),
-                fallback_date=notif.created_at,
-            )
-            if not parsed:
-                continue
-
-            recent.append(parsed)
-            total_grades += 1
-            if parsed.get("score"):
-                sum_scores += parsed["score"]
-
-        recent = sorted(recent, key=lambda x: str(x.get("date")), reverse=True)[:5]
-
-        max_values = [item["max"] for item in recent if item.get("max")]
-        scale = "5"
-        if any(value and value > 5 for value in max_values):
-            scale = "100"
-
-        if total_grades > 0:
-            average = sum_scores / total_grades
-
-        result = {
-            "average": average,
-            "total_grades": total_grades,
-            "scale": scale,
-            "trend": trend,
-            "period_key": cache_period_key,
-            "recent": recent,
-        }
-        await stats_cache.set_cached_stats(
+            period_days=period_days,
+            period_key=period_key,
             cache=cache,
-            kind="grades",
-            user_id=user_id,
-            period_key=cache_period_key,
-            payload=result,
             skip_cache=skip_cache,
+            compute=compute,
         )
-        return result
 
     async def get_participation_stats(
         self,
@@ -257,73 +267,54 @@ class UserAnalyticsService:
         cache: BaseCache | None = None,
         skip_cache: bool = False,
     ) -> dict[str, Any]:
-        cache_period_key = stats_cache.resolve_period_key(period_key, period_days)
-        cached = await stats_cache.get_cached_stats(
-            cache=cache,
-            kind="participation",
-            user_id=user_id,
-            period_key=cache_period_key,
-            skip_cache=skip_cache,
-        )
-        if cached is not None:
-            from typing import cast
-
-            return cast(dict[str, Any], cached.payload)
-
-        now = datetime.now(UTC)
-        window_start = now - timedelta(days=period_days)
-
-        events = 0
-        hours = 0.0
-        groups = 0
-        trend = 0
-
-        # Fast OLTP query for recent 5
-        recent_rows = await self.db.execute(
-            select(
-                models.EventAttendance.registered_at,
-                models.Event.starts_at,
-                models.Event.title,
-                models.Event.event_type,
+        async def compute(cache_period_key: str) -> dict[str, Any]:
+            now, window_start, previous_start = self._windows(period_days)
+            window_rows = await self.stats_repo.get_participation_stats_raw(
+                user_id=user_id, window_start=previous_start, now=now
             )
-            .join(models.Event, models.Event.id == models.EventAttendance.event_id)
-            .where(
-                models.EventAttendance.user_id == user_id,
-                models.Event.starts_at >= window_start,
-                models.Event.starts_at < now,
-                models.Event.is_active.is_(True),
-            )
-            .order_by(models.Event.starts_at.desc())
-            .limit(5)
-        )
+            rows: list[ParticipationStatsDTO] = []
+            previous_rows: list[ParticipationStatsDTO] = []
+            for row in window_rows:
+                starts_at = self._as_utc(row.starts_at)
+                if starts_at >= window_start:
+                    rows.append(row)
+                else:
+                    previous_rows.append(row)
 
-        recent = []
-        for registered_at, starts_at, title, event_type in recent_rows:
-            recent.append(
+            hours = sum(
+                max(
+                    0.0,
+                    (
+                        self._as_utc(row.ends_at) - self._as_utc(row.starts_at)
+                    ).total_seconds()
+                    / 3600,
+                )
+                for row in rows
+            )
+            groups = {row.event_type for row in rows if row.event_type}
+            recent = [
                 {
-                    "title": title or "",
-                    "date": self._dt_to_iso(starts_at or registered_at),
-                    "role": event_type or None,
+                    "title": row.title or "",
+                    "date": self._dt_to_iso(row.starts_at),
+                    "role": row.event_type or None,
                 }
-            )
+                for row in rows[:_RECENT_LIMIT]
+            ]
+            return {
+                "events": len(rows),
+                "hours": round(hours, 2),
+                "groups": len(groups),
+                "trend": len(rows) - len(previous_rows),
+                "recent": recent,
+                "period_key": cache_period_key,
+            }
 
-        if events == 0 and recent:
-            events = len(recent)
-
-        result = {
-            "events": events,
-            "hours": round(hours, 2),
-            "groups": groups,
-            "trend": trend,
-            "recent": recent,
-            "period_key": cache_period_key,
-        }
-        await stats_cache.set_cached_stats(
-            cache=cache,
+        return await self._cached(
             kind="participation",
             user_id=user_id,
-            period_key=cache_period_key,
-            payload=result,
+            period_days=period_days,
+            period_key=period_key,
+            cache=cache,
             skip_cache=skip_cache,
+            compute=compute,
         )
-        return result

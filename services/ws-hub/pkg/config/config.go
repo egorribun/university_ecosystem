@@ -102,8 +102,49 @@ type Config struct {
 	EnableJetStream          bool
 }
 
-// LoadConfig initializes Config from environment variables.
-func LoadConfig() *Config {
+// LoadConfig initializes Config from env vars and fails closed on any configured secret file error.
+func LoadConfig() (*Config, error) {
+	natsURL, err := secretEnvOrDefault("NATS_URL", "nats://nats:4222")
+	if err != nil {
+		return nil, err
+	}
+	natsUser, _, err := readSecretEnv("NATS_USER")
+	if err != nil {
+		return nil, err
+	}
+	natsPassword, _, err := readSecretEnv("NATS_PASSWORD")
+	if err != nil {
+		return nil, err
+	}
+	natsAuthToken, _, err := readSecretEnv("NATS_AUTH_TOKEN")
+	if err != nil {
+		return nil, err
+	}
+	jwtSecrets, err := loadJWTSecrets()
+	if err != nil {
+		return nil, err
+	}
+	internalSecret, _, err := readSecretEnv("WS_HUB_INTERNAL_SECRET")
+	if err != nil {
+		return nil, err
+	}
+	internalAuthToken, _, err := readSecretEnv("INTERNAL_AUTH_TOKEN")
+	if err != nil {
+		return nil, err
+	}
+	redisURL, err := secretEnvOrDefault("REDIS_URL", "redis:6379")
+	if err != nil {
+		return nil, err
+	}
+	redisPassword, _, err := readSecretEnv("REDIS_PASSWORD")
+	if err != nil {
+		return nil, err
+	}
+	revocationRedisURL, err := secretEnvOrDefault("REVOCATION_REDIS_URL", "redis://revocation-redis:6379/0")
+	if err != nil {
+		return nil, err
+	}
+
 	trustedProxies := getEnvSlice("TRUSTED_PROXIES", []string{"127.0.0.1", "::1"})
 	// P-03 (audit 2026-03-08): Pre-build map for O(1) lookup in RealIP().
 	// PERF-04 (audit Wave 11): also parse CIDR blocks for multi-hop chain traversal.
@@ -120,11 +161,11 @@ func LoadConfig() *Config {
 	}
 	return &Config{
 		Port:          getEnv("WS_HUB_PORT", "8081"),
-		NatsURL:       getEnv("NATS_URL", "nats://nats:4222"),
-		NatsUser:      os.Getenv("NATS_USER"),     // empty means no auth override
-		NatsPassword:  os.Getenv("NATS_PASSWORD"), // empty means no auth override
-		NatsAuthToken: os.Getenv("NATS_AUTH_TOKEN"),
-		JWTSecrets:    loadJWTSecrets(),
+		NatsURL:       natsURL,
+		NatsUser:      natsUser,     // empty means no auth override
+		NatsPassword:  natsPassword, // empty means no auth override
+		NatsAuthToken: natsAuthToken,
+		JWTSecrets:    jwtSecrets,
 		SentryDSN:     getEnv("SENTRY_DSN", ""),
 		Environment:   getEnv("VITE_ENVIRONMENT", "development"),
 		// Include the port-80 Caddy edge origin used by local compose.  Explicit
@@ -139,16 +180,16 @@ func LoadConfig() *Config {
 		SendBufferSize:           getEnvInt("WS_SEND_BUFFER_SIZE", 256),
 		BroadcastBufferSize:      getEnvInt("WS_BROADCAST_BUFFER_SIZE", 4096),
 		BroadcastWorkers:         min(getEnvInt("WS_BROADCAST_WORKERS", runtime.GOMAXPROCS(0)*2), 12),
-		InternalSecret:           os.Getenv("WS_HUB_INTERNAL_SECRET"), // no default — empty secret allows HMAC forgery
-		InternalAuthToken:        os.Getenv("INTERNAL_AUTH_TOKEN"),
+		InternalSecret:           internalSecret, // no default — empty secret allows HMAC forgery
+		InternalAuthToken:        internalAuthToken,
 		MaxClients:               getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
 		ClientMsgRateLimit:       getEnvFloat("WS_CLIENT_MSG_RATE_LIMIT", 10),
 		ClientMsgRateBurst:       getEnvInt("WS_CLIENT_MSG_BURST", 20),
 		TicketTTLSeconds:         getEnvInt("WS_TICKET_TTL_SECONDS", 15),
-		RedisURL:                 getEnv("REDIS_URL", "redis:6379"),
-		RedisPassword:            getEnv("REDIS_PASSWORD", ""),
+		RedisURL:                 redisURL,
+		RedisPassword:            redisPassword,
 		RedisDB:                  getEnvInt("REDIS_DB", 0),
-		RevocationRedisURL:       getEnv("REVOCATION_REDIS_URL", "redis://revocation-redis:6379/0"),
+		RevocationRedisURL:       revocationRedisURL,
 		SpiffeEnabled:            os.Getenv("SPIFFE_ENABLED") == "true",
 		SpiffeEndpointSocket:     getEnv("SPIFFE_ENDPOINT_SOCKET", "unix:///run/spire/sockets/agent.sock"),
 		SpiffeTrustDomain:        getEnv("SPIFFE_TRUST_DOMAIN", "university.ecosystem"),
@@ -162,7 +203,7 @@ func LoadConfig() *Config {
 		NatsDurableChat:          getEnv("NATS_DURABLE_CHAT", "ws-hub-chat"),
 		NatsDurableNotifications: getEnv("NATS_DURABLE_NOTIFICATIONS", "ws-hub-notifications"),
 		EnableJetStream:          getEnvBool("ENABLE_JETSTREAM", true),
-	}
+	}, nil
 }
 
 func getEnvBool(key string, defaultValue bool) bool {
@@ -180,14 +221,18 @@ func getEnvBool(key string, defaultValue bool) bool {
 // loadJWTSecrets reads JWT signing secrets from env vars.
 // Prefers JWT_SECRETS (comma-separated list for rotation support);
 // falls back to the legacy JWT_SECRET single-value env var.
-func loadJWTSecrets() []string {
-	if multi := os.Getenv("JWT_SECRETS"); multi != "" {
-		return getEnvSlice("JWT_SECRETS", nil)
+func loadJWTSecrets() ([]string, error) {
+	if multi, configured, err := readSecretEnv("JWT_SECRETS"); err != nil {
+		return nil, err
+	} else if configured && multi != "" {
+		return splitEnvSlice(multi), nil
 	}
-	if single := os.Getenv("JWT_SECRET"); single != "" {
-		return []string{single}
+	if single, _, err := readSecretEnv("JWT_SECRET"); err != nil {
+		return nil, err
+	} else if single != "" {
+		return []string{single}, nil
 	}
-	return nil
+	return nil, nil
 }
 
 func getEnvSlice(key string, defaultValue []string) []string {
@@ -195,6 +240,14 @@ func getEnvSlice(key string, defaultValue []string) []string {
 	if valStr == "" {
 		return defaultValue
 	}
+	result := splitEnvSlice(valStr)
+	if len(result) == 0 {
+		return defaultValue
+	}
+	return result
+}
+
+func splitEnvSlice(valStr string) []string {
 	parts := strings.Split(valStr, ",")
 	var result []string
 	for _, p := range parts {

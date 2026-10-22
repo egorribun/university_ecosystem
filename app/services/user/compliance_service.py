@@ -1,5 +1,7 @@
 import uuid
-from typing import Any
+from collections.abc import Awaitable, Callable
+from datetime import datetime
+from typing import Any, Protocol
 
 from fastapi import Request
 from sqlalchemy.exc import IntegrityError
@@ -21,8 +23,34 @@ from app.schemas.dtos import UserDTO
 from app.services.audit_service import AuditService, SecurityEvent, auditable
 from app.services.data_access import log_data_access
 from app.services.user.logic import anonymize_user_data
+from app.services.user.media_service import UserMediaService
 
 logger = get_logger(__name__)
+
+
+class _ExportPageItem(Protocol):
+    id: uuid.UUID
+    created_at: datetime
+
+
+async def _collect_export_pages[ExportPageT: _ExportPageItem](
+    fetch_page: Callable[
+        [datetime | None, uuid.UUID | None], Awaitable[list[ExportPageT]]
+    ],
+    page_size: int,
+) -> list[ExportPageT]:
+    """Collect bounded keyset pages without changing repository page limits."""
+    collected: list[ExportPageT] = []
+    before_dt: datetime | None = None
+    after_id: uuid.UUID | None = None
+
+    while True:
+        page = await fetch_page(before_dt, after_id)
+        collected.extend(page)
+        if len(page) < page_size:
+            return collected
+        before_dt = page[-1].created_at
+        after_id = page[-1].id
 
 
 class UserComplianceService:
@@ -75,7 +103,7 @@ class UserComplianceService:
             raise PermissionDenied()
 
         # Fetch ORM user
-        db_user = await self.repo._get_orm(user_id)
+        db_user = await self.repo.get_orm_for_anonymization(user_id)
         if db_user is None:
             raise EntityNotFound("User", user_id)
 
@@ -83,6 +111,8 @@ class UserComplianceService:
             raise BusinessRuleViolation("errors.users.cannot_delete_self")
 
         # Perform anonymization
+        old_avatar_url = db_user.profile.avatar_url if db_user.profile else None
+        old_cover_url = db_user.profile.cover_url if db_user.profile else None
         await anonymize_user_data(db_user)
         # W136 SW2: revoke active sessions through Redis pub/sub BEFORE
         # delete_sensitive_data DROPs the rows so gateway picks up revocation.
@@ -91,6 +121,9 @@ class UserComplianceService:
 
         async with self.uow:
             await self.uow.commit()
+        await UserMediaService(self.uow).cleanup_anonymized_profile_media(
+            db_user.id, avatar_url=old_avatar_url, cover_url=old_cover_url
+        )
         return {"deleted": True, "user_id": user_id}
 
     @auditable("users.data_export", user_id_param="user")
@@ -102,17 +135,34 @@ class UserComplianceService:
         if not db_user:
             raise EntityNotFound("User", user_identity)
 
-        # Export the public DTO only. Authentication challenges are counted
-        # separately and their bindings/digests are never serialized.
+        # Export the public DTO only. Challenge bindings and digests remain
+        # private; the account export includes only a count and safe metadata.
         profile = db_user.model_dump(exclude={"mfa_challenges"})
+        challenge_count, enrollments = await self.repo.get_user_mfa_export_summary(
+            user_identity
+        )
 
-        import asyncio
-
-        # PERF-010 (audit 2026-03-04): Gather independent I/O fetches concurrently
-        sessions_list, notifications_list, access_logs = await asyncio.gather(
-            self.repo.get_user_sessions(user_identity),
-            self.repo.get_user_notifications(user_identity),
-            self.repo.get_user_access_logs(user_identity, limit=2000),
+        # These reads share one AsyncSession, which cannot be used concurrently.
+        sessions_list = await _collect_export_pages(
+            lambda before_dt, after_id: self.repo.get_user_sessions(
+                user_identity, limit=50, before_dt=before_dt, after_id=after_id
+            ),
+            page_size=50,
+        )
+        notifications_list = await _collect_export_pages(
+            lambda before_dt, after_id: self.repo.get_user_notifications(
+                user_identity, limit=100, before_dt=before_dt, after_id=after_id
+            ),
+            page_size=100,
+        )
+        access_logs = await _collect_export_pages(
+            lambda before_dt, after_id: self.repo.get_user_access_logs(
+                user_identity,
+                limit=200,
+                before_dt=before_dt,
+                after_id=after_id,
+            ),
+            page_size=200,
         )
 
         sessions = [
@@ -139,20 +189,6 @@ class UserComplianceService:
                 "read_at": n.read_at,
             }
             for n in notifications_list
-        ]
-
-        challenge_count = len(getattr(db_user, "mfa_challenges", []))
-
-        enrollments = [
-            {
-                "id": e.id,
-                "label": e.label,
-                "is_active": e.is_active,
-                "confirmed_at": e.confirmed_at,
-                "revoked_at": e.revoked_at,
-                "created_at": e.created_at,
-            }
-            for e in getattr(db_user, "totp_enrollments", [])
         ]
 
         access_log_payload = [
@@ -200,10 +236,12 @@ class UserComplianceService:
 
         # Fetch ORM user
         user_identity = extract_user_id(user)
-        db_user = await self.repo._get_orm(user_identity)
+        db_user = await self.repo.get_orm_for_anonymization(user_identity)
         if not db_user:
             raise EntityNotFound("User", user_identity)
 
+        old_avatar_url = db_user.profile.avatar_url if db_user.profile else None
+        old_cover_url = db_user.profile.cover_url if db_user.profile else None
         await anonymize_user_data(db_user)
         # W136 SW2: revoke active sessions through Redis pub/sub BEFORE
         # delete_sensitive_data DROPs the rows so gateway picks up revocation.
@@ -222,6 +260,9 @@ class UserComplianceService:
 
         async with self.uow:
             await self.uow.commit()
+        await UserMediaService(self.uow).cleanup_anonymized_profile_media(
+            db_user.id, avatar_url=old_avatar_url, cover_url=old_cover_url
+        )
         # Refresh to get anonymized email
         updated_user = await self.repo.get(user_identity)
         assert updated_user is not None  # noqa: S101
@@ -257,7 +298,13 @@ class UserComplianceService:
         hashed_password = await get_password_hash(user_in.password)
 
         user_data = user_in.model_dump(
-            exclude={"invite_code", "password", "spotify_connected"}
+            exclude={
+                "invite_code",
+                "password",
+                "spotify_connected",
+                "avatar_url",
+                "cover_url",
+            }
         )
         user_data.update(
             {
@@ -283,13 +330,11 @@ class UserComplianceService:
                 await self.uow.commit()
             return db_user
         except Exception as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps errors into BusinessRuleViolation (reviewed TD-27-04)
-            # Diamond Standard: Use structured logging with exc_info instead of direct traceback print.
-            # Prevents PII leakage to stdout/stderr and enables log aggregation.
+            # Database exceptions can embed password hashes in SQL parameters.
+            # Keep diagnostics stable without rendering parameters or tracebacks.
             logger.error(
-                "User registration failed: %s",
-                str(exc),
-                exc_info=True,
-                extra={"email": normalized_email},
+                "user_registration_failed",
+                exception_type=type(exc).__name__,
             )
             await self.uow.rollback()
             raise BusinessRuleViolation("errors.users.create_failed") from exc
@@ -318,7 +363,13 @@ class UserComplianceService:
         hashed = await get_password_hash(data.password)
 
         user_data = data.model_dump(
-            exclude={"invite_code", "password", "spotify_connected"}
+            exclude={
+                "invite_code",
+                "password",
+                "spotify_connected",
+                "avatar_url",
+                "cover_url",
+            }
         )
         user_data["hashed_password"] = hashed
 

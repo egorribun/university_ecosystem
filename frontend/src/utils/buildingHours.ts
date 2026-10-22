@@ -1,7 +1,6 @@
 import type { BuildingHours } from "@/data/campusBuildings"
 
-export function isOpenNow(hours: BuildingHours): boolean {
-  const now = new Date()
+export function isOpenNow(hours: BuildingHours, now: Date = new Date()): boolean {
   const day = now.getDay()
 
   let todayHours: string

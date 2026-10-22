@@ -1,5 +1,9 @@
 import { render, waitFor } from "@testing-library/react"
+import { QueryClientProvider } from "@tanstack/react-query"
+import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
+
+import { createQueryClient, setQueryCacheIdentity } from "@/app/queryClient"
 
 const mocks = vi.hoisted(() => ({
   registerSigningKeyAccessor: vi.fn(),
@@ -61,6 +65,20 @@ const Probe = ({ onValue }: { onValue: (value: ReturnType<typeof useAuth>) => vo
   return null
 }
 
+const createProvider = () => {
+  // AuthProvider reads the active QueryClient to enforce its profile-owner
+  // render barrier, even when this suite replaces the profile hook.
+  setQueryCacheIdentity(null)
+  const queryClient = createQueryClient()
+  return {
+    tree: (children: ReactNode) => (
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>{children}</AuthProvider>
+      </QueryClientProvider>
+    ),
+  }
+}
+
 afterEach(() => {
   vi.clearAllMocks()
   mocks.signingKeyRef.current = "initial-signing-key"
@@ -76,11 +94,8 @@ afterEach(() => {
 
 describe("AuthProvider signing-key accessor", () => {
   it("registers a live accessor that always reads the current signing-key ref", async () => {
-    render(
-      <AuthProvider>
-        <div>child</div>
-      </AuthProvider>
-    )
+    const provider = createProvider()
+    render(provider.tree(<div>child</div>))
 
     await waitFor(() => expect(mocks.registerSigningKeyAccessor).toHaveBeenCalledOnce())
     const accessor = mocks.registerSigningKeyAccessor.mock.calls[0]![0] as () => string | null
@@ -91,21 +106,14 @@ describe("AuthProvider signing-key accessor", () => {
   })
 
   it("re-registers the accessor when the signing-key ref identity changes", async () => {
-    const { rerender } = render(
-      <AuthProvider>
-        <div>child</div>
-      </AuthProvider>
-    )
+    const provider = createProvider()
+    const { rerender } = render(provider.tree(<div>child</div>))
 
     await waitFor(() => expect(mocks.registerSigningKeyAccessor).toHaveBeenCalledOnce())
     const initialAccessor = mocks.registerSigningKeyAccessor.mock.calls[0]![0]
 
     mocks.signingKeyRef = { current: "replacement-signing-key" }
-    rerender(
-      <AuthProvider>
-        <div>child</div>
-      </AuthProvider>
-    )
+    rerender(provider.tree(<div>child</div>))
 
     await waitFor(() => expect(mocks.registerSigningKeyAccessor).toHaveBeenCalledTimes(2))
     const replacementAccessor = mocks.registerSigningKeyAccessor.mock.calls[1]![0]
@@ -115,11 +123,8 @@ describe("AuthProvider signing-key accessor", () => {
 
   it("refreshes every memoized action when its implementation changes", () => {
     const observed = vi.fn<(value: ReturnType<typeof useAuth>) => void>()
-    const { rerender } = render(
-      <AuthProvider>
-        <Probe onValue={observed} />
-      </AuthProvider>
-    )
+    const provider = createProvider()
+    const { rerender } = render(provider.tree(<Probe onValue={observed} />))
 
     const actionNames = [
       "login",
@@ -137,11 +142,7 @@ describe("AuthProvider signing-key accessor", () => {
       } else {
         mocks.authApi = { ...mocks.authApi, [actionName]: replacement }
       }
-      rerender(
-        <AuthProvider>
-          <Probe onValue={observed} />
-        </AuthProvider>
-      )
+      rerender(provider.tree(<Probe onValue={observed} />))
       expect(observed.mock.lastCall?.[0][actionName]).toBe(replacement)
     }
   })

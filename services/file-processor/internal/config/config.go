@@ -106,6 +106,9 @@ func Load() (*Config, error) {
 	if err := bindConfigEnvironment(); err != nil {
 		return nil, err
 	}
+	if err := applySecretFileOverrides(); err != nil {
+		return nil, err
+	}
 
 	var cfg Config
 	if err := unmarshalConfigFunc(&cfg); err != nil {

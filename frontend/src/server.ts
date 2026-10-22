@@ -25,8 +25,10 @@
 // auth context server-side; until a route enables `ssr: true`, it stays SPA
 // and the auth context is irrelevant for that route.
 import { AsyncLocalStorage } from "node:async_hooks"
+import { randomBytes } from "node:crypto"
 import handler, { createServerEntry } from "@tanstack/react-start/server-entry"
 import type { i18n as I18nInstance } from "i18next"
+import { applyNodeCspToHtmlResponse, CSP_NONCE_PLACEHOLDER } from "../scripts/server-csp.mjs"
 import { createI18nInstance } from "./i18n/config"
 import { extractAuthFromRequest, SSR_AUTH_UNAUTH, type SsrAuthState } from "./ssrAuth"
 import {
@@ -45,7 +47,7 @@ import {
 // node:async_hooks is server-only — Vite's environments build keeps this
 // import in the server chunk only; client bundle never loads it.
 //
-// Six storages (W126 + W127 + W133):
+// Eight storages (W126 + W127 + W133 + W231 + CSP pre-paint URL):
 //   - requestAuthStorage: SSR auth state from access_token_v2 cookie (W126 SW3)
 //   - requestCookieStorage: raw Cookie header for SSR-side authenticated
 //     backend calls via axios interceptor (W133 SW1 — see api/client.ts)
@@ -53,8 +55,10 @@ import {
 //     same SSR backend calls, preserving the session security binding
 //   - requestThemeStorage: resolved theme from ue-mode cookie (W127 SW4)
 //   - requestLangStorage: resolved lang from ue:language cookie (W127 SW4)
+//   - requestNonceStorage: per-response CSP nonce passed to TanStack SSR (W231)
+//   - requestOriginStorage: current request origin for same-origin shell assets
 //
-// Layered as nested .run() calls so all four are visible to the handler.
+// Layered as nested .run() calls so all request stores are visible to the handler.
 const requestAuthStorage = new AsyncLocalStorage<SsrAuthState>()
 const requestCookieStorage = new AsyncLocalStorage<string>()
 type SsrFingerprintHeaders = { userAgent: string; acceptLanguage: string }
@@ -62,8 +66,10 @@ const requestFingerprintHeadersStorage = new AsyncLocalStorage<SsrFingerprintHea
 const requestThemeStorage = new AsyncLocalStorage<ResolvedTheme>()
 const requestLangStorage = new AsyncLocalStorage<ResolvedLang>()
 const requestI18nStorage = new AsyncLocalStorage<I18nInstance>()
+const requestNonceStorage = new AsyncLocalStorage<string>()
+const requestOriginStorage = new AsyncLocalStorage<string>()
 
-// Globally-accessible getters so `src/router.ts` (W126 SW4) and
+// Globally-accessible getters so `src/router.ts` (W126 SW4 / W231) and
 // `src/routes/__root.tsx` RootShell (W127 SW5) can read per-request state
 // without a circular import (router.ts + __root.tsx are also imported by
 // client code, so they cannot import server.ts directly). Getters set ONCE
@@ -78,6 +84,8 @@ declare global {
   var __ssrThemeGetter__: (() => ResolvedTheme | undefined) | undefined
   var __ssrLangGetter__: (() => ResolvedLang | undefined) | undefined
   var __ssrI18nGetter__: (() => I18nInstance | undefined) | undefined
+  var __ssrNonceGetter__: (() => string | undefined) | undefined
+  var __ssrOriginGetter__: (() => string | undefined) | undefined
 }
 globalThis.__ssrAuthGetter__ = () => requestAuthStorage.getStore()
 globalThis.__ssrCookieGetter__ = () => requestCookieStorage.getStore()
@@ -85,6 +93,9 @@ globalThis.__ssrFingerprintHeadersGetter__ = () => requestFingerprintHeadersStor
 globalThis.__ssrThemeGetter__ = () => requestThemeStorage.getStore()
 globalThis.__ssrLangGetter__ = () => requestLangStorage.getStore()
 globalThis.__ssrI18nGetter__ = () => requestI18nStorage.getStore()
+globalThis.__ssrNonceGetter__ = () => requestNonceStorage.getStore()
+globalThis.__ssrOriginGetter__ = () =>
+  process.env.TSS_PRERENDERING === "true" ? undefined : requestOriginStorage.getStore()
 
 // Wave 131 SW2 — Phase 4 deploy infrastructure /healthz endpoint.
 // Caddy `health_uri /healthz` (Caddyfile, W131 SW4) + k8s livenessProbe /
@@ -103,44 +114,20 @@ const HEALTHZ_RESPONSE_INIT: ResponseInit = {
   },
 }
 
-// Wave 180 SW3 — /messenger privacy posture (closes W161 SW2 concern #2).
-// Chat list + presence + counterpart names + last-message-preview is
-// user-private relationship state. SSR-rendered HTML for /messenger* paths
-// MUST NEVER be cached by browsers, intermediary CDNs/proxies, or Caddy —
-// otherwise a different user (or unauth'd request hitting same edge) could
-// see the prior user's chat state. Defensive headers:
-//   - Cache-Control: no-store, private, max-age=0 — browser + CDN must
-//     not persist; `private` blocks shared-cache; `max-age=0` matches
-//     spec for "absolute freshness required".
-//   - Vary: Cookie — explicit caching key variance signal (even with
-//     no-store, this defends against misconfigured upstream proxies).
-//
-// Implementation: inject headers AFTER `handler.fetch(request)` resolves
-// (Web Standard Response headers are immutable, so we rebuild via
-// `new Response(body, { ...init, headers })`). Pattern: only fires for
-// paths matching `/messenger` prefix — all other SSR routes (dashboard,
-// events, news, schedule, profile, settings) keep upstream-default headers.
-//
-// Per W127 SW6 `ssr: 'data-only'` pattern on messenger routes (W180 SW3),
-// the route component SHELL renders server-side (MainLayout + provider
-// tree → HTML stream — LCP win) but NO loader prefetches chat data (no
-// `ensureQueryData(chatsQueryOptions())` call). So the SSR-emitted HTML
-// contains NO user-private state — Cache-Control: no-store is defense-
-// in-depth, not a load-bearing privacy guarantee. The structural privacy
-// guarantee is the 'data-only' annotation + client-side chat data fetch.
-const MESSENGER_CACHE_CONTROL = "no-store, private, max-age=0"
-const MESSENGER_VARY = "Cookie"
-
+// Authenticated SSR responses can contain per-user loader data and query
+// hydration state, so browsers and shared intermediaries must never store
+// them. Keep the existing /messenger protection for unauthenticated requests
+// too, since that route handles private relationship state when logged in.
+// Vary: Cookie also protects deployments with misconfigured intermediary
+// caching, and Cache-Control overrides any upstream public policy.
+const PRIVATE_SSR_CACHE_CONTROL = "no-store, private, max-age=0"
+const PRIVATE_SSR_VARY = "Cookie"
 const MESSENGER_PATH_PREFIX = "/messenger"
 
-/**
- * Wave 180 SW3 helper — augment SSR response headers for /messenger* paths.
- * Returns the original response untouched for non-messenger paths (fast
- * path; no Response clone overhead).
- */
-const augmentResponseForMessenger = (response: Response): Response => {
+/** Mark a potentially user-specific SSR document private without changing its body or status. */
+const augmentResponseForPrivateSsr = (response: Response): Response => {
   const headers = new Headers(response.headers)
-  headers.set("cache-control", MESSENGER_CACHE_CONTROL)
+  headers.set("cache-control", PRIVATE_SSR_CACHE_CONTROL)
   const existingVary = headers.get("vary")
   if (existingVary) {
     // Preserve any existing Vary entries (e.g. Accept-Encoding from
@@ -149,11 +136,13 @@ const augmentResponseForMessenger = (response: Response): Response => {
       .split(",")
       .map((token) => token.trim().toLowerCase())
       .filter(Boolean)
-    if (!varyTokens.includes("cookie")) {
-      headers.set("vary", `${existingVary}, ${MESSENGER_VARY}`)
+    // A wildcard already signals variation by any request header, so keep it
+    // as supplied rather than redundantly appending Cookie.
+    if (!varyTokens.includes("cookie") && !varyTokens.includes("*")) {
+      headers.set("vary", `${existingVary}, ${PRIVATE_SSR_VARY}`)
     }
   } else {
-    headers.set("vary", MESSENGER_VARY)
+    headers.set("vary", PRIVATE_SSR_VARY)
   }
   return new Response(response.body, {
     status: response.status,
@@ -163,7 +152,7 @@ const augmentResponseForMessenger = (response: Response): Response => {
 }
 
 export default createServerEntry({
-  async fetch(request) {
+  async fetch(request, options) {
     // Wave 131 SW2 — Phase 4 healthz fast path. URL parsing is cheap; we
     // explicitly do NOT hit `extractAuthFromRequest` (avoids JWKS network
     // round-trip on cold start) or `extractThemeFromRequest` /
@@ -173,6 +162,14 @@ export default createServerEntry({
     if (url.pathname === "/healthz") {
       return new Response(HEALTHZ_RESPONSE_BODY, HEALTHZ_RESPONSE_INIT)
     }
+
+    // TanStack Start sets TSS_PRERENDERING while it renders the reusable SPA
+    // shell. Preserve a marker there; Node replaces only that controlled
+    // marker when the file is served. Every live request gets a fresh nonce.
+    const nonce =
+      process.env.TSS_PRERENDERING === "true"
+        ? CSP_NONCE_PLACEHOLDER
+        : randomBytes(16).toString("base64")
 
     let auth: SsrAuthState
     try {
@@ -200,20 +197,33 @@ export default createServerEntry({
       userAgent: request.headers.get("user-agent") ?? "",
       acceptLanguage: request.headers.get("accept-language") ?? "",
     }
-    // Wave 180 SW3 — /messenger privacy posture: inject Cache-Control: no-store
-    // + Vary: Cookie after handler.fetch resolves. Branch is path-prefix based;
-    // all other routes return upstream response unchanged (fast path; no
-    // Response clone overhead).
+    // Authenticated SSR may serialize request-specific loader data. Protect it
+    // alongside messenger responses, which remain private even when unauthenticated.
     const isMessengerPath = url.pathname.startsWith(MESSENGER_PATH_PREFIX)
-    return requestAuthStorage.run(auth, () =>
-      requestCookieStorage.run(cookie, () =>
-        requestFingerprintHeadersStorage.run(fingerprintHeaders, () =>
-          requestThemeStorage.run(theme, () =>
-            requestLangStorage.run(lang, () =>
-              requestI18nStorage.run(requestI18n, async () => {
-                const response = await handler.fetch(request)
-                return isMessengerPath ? augmentResponseForMessenger(response) : response
-              })
+    return requestOriginStorage.run(url.origin, () =>
+      requestAuthStorage.run(auth, () =>
+        requestCookieStorage.run(cookie, () =>
+          requestFingerprintHeadersStorage.run(fingerprintHeaders, () =>
+            requestThemeStorage.run(theme, () =>
+              requestLangStorage.run(lang, () =>
+                requestI18nStorage.run(requestI18n, async () => {
+                  return requestNonceStorage.run(nonce, async () => {
+                    const requestOptions = {
+                      ...(options ?? {}),
+                      context: {
+                        ...options?.context,
+                        nonce,
+                      },
+                    }
+                    let response = await handler.fetch(request, requestOptions)
+                    response =
+                      auth.isAuth || isMessengerPath
+                        ? augmentResponseForPrivateSsr(response)
+                        : response
+                    return applyNodeCspToHtmlResponse(response, nonce)
+                  })
+                })
+              )
             )
           )
         )

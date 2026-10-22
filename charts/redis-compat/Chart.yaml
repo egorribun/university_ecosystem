@@ -1,0 +1,6 @@
+apiVersion: v2
+name: redis
+description: First-party official Redis chart preserving the legacy cache StatefulSet and PVC identity
+type: application
+version: 0.1.0
+appVersion: "7.4.11"

@@ -16,11 +16,11 @@ class IntegrationSettings(BaseAppSettings):
     # supplied by the Spotify callback and a confused-deputy attack could allow
     # crafting a valid access token if both use the same key.
     # Default falls back to spotify_token_secret for backward-compat during
-    # rollout.  Set SPOTIFY_OAUTH_STATE_SECRET in production .env.
+    # rollout. Set SPOTIFY_OAUTH_STATE_SECRET (or its explicit *_FILE path) in
+    # production when Spotify is enabled.
     spotify_oauth_state_secret: str = ""
     spotify_redirect_uri: str = "http://localhost:8000/spotify/callback"
     spotify_scopes: str = "user-read-currently-playing user-read-playback-state"
-    rust_optimizer_url: str = "http://rust-optimizer:8080"
     spicedb_endpoint: str = "spicedb:50051"
     spicedb_preshared_key: str = "development-preshared-key"
     flagd_host: str = "localhost"
@@ -32,7 +32,6 @@ class IntegrationSettings(BaseAppSettings):
     elasticsearch_password: str = ""
 
     # ws-hub internal API (TD-NEW-07: cache invalidation on participant removal)
-    ws_hub_internal_url: str = "http://ws-hub:8081"
     ws_hub_internal_secret: str = (
         ""  # Must match WS_HUB_INTERNAL_SECRET in ws-hub config
     )
@@ -73,11 +72,16 @@ class IntegrationSettings(BaseAppSettings):
 
         R-01 (audit 2026-03-08): Guards against operators deploying with empty or
         default-value secrets — services would start silently in an insecure state.
-        Uses os.environ directly (not self.environment) to avoid depending on
-        field ordering in pydantic-settings' multi-inheritance resolution.
-        CI environments are also exempted to avoid breaking CI pipelines.
+        The full Settings model inherits a validated ``environment`` field from
+        AppGeneralSettings; read that composed value after model initialization.
+        Standalone IntegrationSettings callers retain the process-environment
+        fallback because the mixin itself does not declare that field. CI
+        environments are also exempted to avoid breaking CI pipelines.
         """
-        env_name = os.environ.get("ENVIRONMENT", "development").lower()
+        configured_environment = getattr(
+            self, "environment", os.environ.get("ENVIRONMENT", "development")
+        )
+        env_name = str(configured_environment).lower()
         is_ci = (
             os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true"
         )
@@ -115,6 +119,11 @@ class IntegrationSettings(BaseAppSettings):
         # CONFIG-01 corollary: empty oauth state secret falls back to token secret —
         # a confused-deputy attack could allow crafting a valid access token from
         # a state token, since both are externally-supplied and user-controlled.
+        if bool(self.spotify_client_id) != bool(self.spotify_client_secret):
+            errors.append(
+                "SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET must be set together."
+            )
+
         if self.spotify_client_id and not self.spotify_oauth_state_secret:
             errors.append(
                 "SPOTIFY_OAUTH_STATE_SECRET must be set when Spotify is enabled. "

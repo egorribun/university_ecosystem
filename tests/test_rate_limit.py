@@ -1,8 +1,8 @@
-import asyncio
+import threading
 
 import httpx
 import pytest
-from fastapi import Depends, FastAPI, Response, status
+from fastapi import Depends, FastAPI, Request, Response, status
 from hypothesis import HealthCheck, given
 from hypothesis import settings as hypo_settings
 from hypothesis import strategies as st
@@ -112,7 +112,7 @@ async def test_health_check_exempted(root_client):
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_per_token():
+async def test_rotating_bearer_shares_ip_budget_with_distinct_ip_control():
     app = FastAPI()
     app.add_middleware(
         RateLimitMiddleware,
@@ -125,23 +125,35 @@ async def test_rate_limit_per_token():
     async def _news():
         return {"data": []}
 
+    endpoint = "/api/v1/news"
+    same_ip_transport = httpx.ASGITransport(app=app, client=("198.51.100.9", 5000))
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        transport=same_ip_transport, base_url="http://testserver"
     ) as client:
-        headers = {"Authorization": "Bearer token-a"}
-        endpoint = "/api/v1/news"
         for _ in range(5):
-            response = await client.get(endpoint, headers=headers)
+            response = await client.get(
+                endpoint, headers={"Authorization": "Bearer token-a"}
+            )
             assert response.status_code == 200
-        blocked = await client.get(endpoint, headers=headers)
-        assert blocked.status_code == 429
 
-        other = await client.get(endpoint, headers={"Authorization": "Bearer token-b"})
-        assert other.status_code == 200
+        rotated = await client.get(
+            endpoint, headers={"Authorization": "Bearer token-b"}
+        )
+        assert rotated.status_code == 429
+
+    other_ip_transport = httpx.ASGITransport(app=app, client=("203.0.113.9", 5000))
+    async with httpx.AsyncClient(
+        transport=other_ip_transport, base_url="http://testserver"
+    ) as other_client:
+        independent = await other_client.get(
+            endpoint, headers={"Authorization": "Bearer token-b"}
+        )
+
+    assert independent.status_code == 200
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_per_cookie():
+async def test_rotating_cookie_shares_ip_budget_with_distinct_ip_control():
     app = FastAPI()
     app.add_middleware(
         RateLimitMiddleware,
@@ -154,23 +166,28 @@ async def test_rate_limit_per_cookie():
     async def _news():
         return {"data": []}
 
+    endpoint = "/api/v1/news"
+    same_ip_transport = httpx.ASGITransport(app=app, client=("198.51.100.9", 5000))
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        transport=same_ip_transport, base_url="http://testserver"
     ) as client:
-        client.cookies.set("access_token_v2", "cookie-token-a", path="/")
-        endpoint = "/api/v1/news"
-
+        client.cookies.set("access_token_v2", "cookie-token-a")
         for _ in range(5):
             response = await client.get(endpoint)
             assert response.status_code == 200
 
-        blocked = await client.get(endpoint)
-        assert blocked.status_code == 429
+        client.cookies.set("access_token_v2", "cookie-token-b")
+        rotated = await client.get(endpoint)
+        assert rotated.status_code == 429
 
-        client.cookies.set("access_token_v2", "cookie-token-b", path="/")
+    other_ip_transport = httpx.ASGITransport(app=app, client=("203.0.113.9", 5000))
+    async with httpx.AsyncClient(
+        transport=other_ip_transport, base_url="http://testserver"
+    ) as other_client:
+        other_client.cookies.set("access_token_v2", "cookie-token-b")
+        independent = await other_client.get(endpoint)
 
-        other = await client.get(endpoint)
-        assert other.status_code == 200
+    assert independent.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -266,20 +283,59 @@ async def test_sensitive_login_rate_limit(
 
     monkeypatch.setattr("app.tasks.email.send_lockout_alert.kick", AsyncMock())
 
-    # Send 4 failed attempts — the default threshold is 5:30.
-    # On the 5th attempt, the login service registers it (now 5 total),
-    # triggers the lockout (triggered=True), and returns 423 Locked.
-    for _ in range(4):
+    # Lockout is raised above the attempts sent here, so only the login limiter
+    # (5/minute, captured at import) can answer the sixth request (AUD-229).
+    monkeypatch.setattr(settings, "auth_lockout_thresholds", "20:30")
+    for _ in range(5):
         response = await async_client.post("/auth/login", data=data, headers=headers)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    # The 5th attempt triggers lockout (or rate limit) — both 429 and 423 are valid
     blocked = await async_client.post("/auth/login", data=data, headers=headers)
-    # Accept both rate limit (429) and account lockout (423) as valid blocking responses
-    assert blocked.status_code in (
-        status.HTTP_429_TOO_MANY_REQUESTS,
-        status.HTTP_423_LOCKED,
+    assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("route_path", "request_path"),
+    [
+        ("/login", "/api/v1/auth/login"),
+        ("/login/json", "/api/v1/auth/login/json"),
+    ],
+)
+async def test_login_route_limit_is_not_replaced_by_generic_sensitive_limit(
+    monkeypatch, route_path, request_path
+):
+    """Login's configured threshold remains effective when the generic one differs."""
+    from importlib import import_module
+
+    auth_login = import_module("app.api.auth.login")
+    login_route = next(
+        route
+        for route in auth_login.router.routes
+        if getattr(route, "path", None) == route_path
     )
+    login_dependency = login_route.dependant.dependencies[0].call
+
+    monkeypatch.setitem(settings.__dict__, "rate_limit_sensitive_value", "1/minute")
+    monkeypatch.setattr(settings, "rate_limit_storage_backend", "memory")
+    rate_limit.clear_memory_state()
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": request_path,
+            "headers": [],
+            "query_string": b"",
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "client": ("198.51.100.29", 8080),
+            "root_path": "",
+        }
+    )
+
+    await login_dependency(request)
+    await login_dependency(request)
 
 
 @pytest.mark.asyncio
@@ -810,14 +866,11 @@ async def test_check_rate_limit_blocks_after_limit(
     # Clear redis AND in-memory state between hypothesis iterations
     await _rate_limit_redis_client.flushall()
     from app.core.ratelimit import clear_memory_state
+    from app.core.ratelimit.strategies import base as rate_limit_base
 
     clear_memory_state()
-    monkeypatch.setattr("app.core.ratelimit.strategies.base._shared_clients", {})
-    # Reset the single write lock (replaces the removed _shared_client_locks dict).
-    # PERF-3 audit 2026-02-26: per-URL lock dict was replaced by one module-level lock.
-    monkeypatch.setattr(
-        "app.core.ratelimit.strategies.base._shared_clients_write_lock", asyncio.Lock()
-    )
+    monkeypatch.setattr(rate_limit_base, "_shared_clients", {})
+    monkeypatch.setattr(rate_limit_base, "_shared_clients_guard", threading.Lock())
 
     namespace = "prop"
     limit = 2
@@ -1187,3 +1240,114 @@ def test_extract_user_id_for_ratelimit_none_sub():
     with _mock_security_module(lambda token: {"sub": None}):
         result = extract_user_id_for_ratelimit(request)
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_sensitive_login_lockout_alone_answers_423_within_limiter_budget(
+    async_client, user_factory, db_session, monkeypatch
+):
+    """AUD-229 negative control: with the default lockout, the fifth failure is 423."""
+    import uuid
+    from unittest.mock import AsyncMock
+
+    typed_value = "ValidPass123!"
+    user = await user_factory(
+        email=f"login-lockout-{uuid.uuid4().hex[:8]}@example.com",
+        hashed_password=await get_password_hash(typed_value),
+    )
+    wrong_value = "wrong-attempt-value"
+    data = {"username": user.email, "password": wrong_value}
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
+    ratelimit_module.clear_memory_state()
+    ratelimit_module.clear_delay_memory()
+    monkeypatch.setattr(
+        "app.services.audit_service.AuditService.log", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr("app.tasks.email.send_lockout_alert.kick", AsyncMock())
+
+    for _ in range(4):
+        response = await async_client.post("/auth/login", data=data, headers=headers)
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    blocked = await async_client.post("/auth/login", data=data, headers=headers)
+    assert blocked.status_code == status.HTTP_423_LOCKED
+
+
+@pytest.mark.asyncio
+async def test_cancelled_rate_limit_probe_releases_half_open_admission(monkeypatch):
+    import asyncio
+
+    from app.core.ratelimit import logic as rate_limit_logic
+    from app.core.ratelimit.circuit_breaker import (
+        CircuitState,
+        RedisCircuitBreaker,
+    )
+
+    breaker = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    breaker.record_failure()
+    breaker._last_failure_time = -1_000_000.0
+    assert breaker.state is CircuitState.HALF_OPEN
+
+    entered = asyncio.Event()
+
+    class BlockingStrategy:
+        async def check(self, key, limit, window_seconds):
+            entered.set()
+            await asyncio.Event().wait()
+
+    monkeypatch.setattr(rate_limit_logic, "get_circuit_breaker", lambda: breaker)
+    monkeypatch.setattr(
+        rate_limit_logic, "_get_redis_strategy", lambda _redis_url: BlockingStrategy()
+    )
+
+    request = asyncio.create_task(
+        rate_limit_logic.check_rate_limit(
+            identifier="cancelled-probe",
+            limit=10,
+            window_seconds=60,
+            redis_url="redis://test",
+        )
+    )
+    await asyncio.wait_for(entered.wait(), timeout=2)
+    request.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await request
+
+    assert breaker.state is CircuitState.OPEN
+    assert breaker.allow_request() is False
+
+
+@pytest.mark.asyncio
+async def test_unexpected_rate_limit_probe_error_releases_half_open_admission(
+    monkeypatch,
+):
+    from app.core.ratelimit import logic as rate_limit_logic
+    from app.core.ratelimit.circuit_breaker import CircuitState, RedisCircuitBreaker
+    from app.core.ratelimit.exceptions import RateLimitStorageUnavailable
+
+    monkeypatch.setattr(rate_limit_logic.settings, "rate_limit_enabled", True)
+    breaker = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    breaker.record_failure()
+    breaker._last_failure_time = -1_000_000.0
+    assert breaker.state is CircuitState.HALF_OPEN
+
+    class FailingStrategy:
+        async def check(self, key, limit, window_seconds):
+            raise RateLimitStorageUnavailable("storage unavailable")
+
+    monkeypatch.setattr(rate_limit_logic, "get_circuit_breaker", lambda: breaker)
+    monkeypatch.setattr(
+        rate_limit_logic, "_get_redis_strategy", lambda _redis_url: FailingStrategy()
+    )
+
+    with pytest.raises(RateLimitStorageUnavailable, match="storage unavailable"):
+        await rate_limit_logic.check_rate_limit(
+            identifier="unexpected-probe-error",
+            limit=10,
+            window_seconds=60,
+            redis_url="redis://test",
+        )
+
+    assert breaker.state is CircuitState.OPEN

@@ -2,6 +2,7 @@
   "brandName": "GUU Ecosystem",
   "brandAlt": "GUU logo",
   "brandDescription": "Everything you need—profile, schedule, news, and campus events—in one place.",
+  "socialDescription": "Your personal account: profile, schedule, news, and campus events.",
   "menu": {
     "dashboard": "Home",
     "news": "News",

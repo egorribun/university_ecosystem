@@ -23,7 +23,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 BASE_FILES = ("docker-compose.yml", "docker-compose.full.yml")
 SEAWEEDFS_IMAGE = re.compile(
-    r"^ghcr\.io/chrislusf/seaweedfs:4\.47@sha256:[0-9a-f]{64}$"
+    r"^ghcr\.io/chrislusf/seaweedfs:4\.48@sha256:[0-9a-f]{64}$"
 )
 STORAGE_VOLUME = "university_ecosystem_seaweedfs_data"
 LEGACY_VOLUME_KEYS = {"minio_data", "minio-data"}
@@ -39,6 +39,45 @@ def _compose(relative_path: str) -> dict[str, Any]:
 def _root_compose_files() -> list[Path]:
     files = sorted(ROOT.glob("docker-compose*.yml"))
     return [path for path in files if path.name != "docker-compose.override.yml"]
+
+
+_PRODUCTION_SECRET_SOURCE_VARIABLES = (
+    "SECRET_KEY_SOURCE_FILE",
+    "DATABASE_URL_SOURCE_FILE",
+    "NATS_AUTH_TOKEN_SOURCE_FILE",
+    "CACHE_REDIS_URL_SOURCE_FILE",
+    "REVOCATION_REDIS_URL_SOURCE_FILE",
+    "POSTGRES_PASSWORD_SOURCE_FILE",
+    "MFA_TOTP_ENCRYPTION_KEYS_SOURCE_FILE",
+    "VAPID_PRIVATE_KEY_SOURCE_FILE",
+    "SPOTIFY_CLIENT_SECRET_SOURCE_FILE",
+    "SPOTIFY_OAUTH_STATE_SECRET_SOURCE_FILE",
+    "SPOTIFY_TOKEN_SECRET_SOURCE_FILE",
+    "AUDIT_LOG_SECRET_SOURCE_FILE",
+    "ELASTICSEARCH_PASSWORD_SOURCE_FILE",
+    "INTERNAL_AUTH_TOKEN_SOURCE_FILE",
+    "INTERNAL_HMAC_SECRET_SOURCE_FILE",
+    "RATE_LIMIT_STORAGE_URI_SOURCE_FILE",
+    "SPICEDB_PRESHARED_KEY_SOURCE_FILE",
+    "TOKEN_HMAC_SECRET_SOURCE_FILE",
+    "WS_HUB_INTERNAL_SECRET_SOURCE_FILE",
+)
+
+
+def _production_secret_source_overrides(tmp_path: Path) -> dict[str, str]:
+    """Use synthetic files when rendering the explicitly enabled prod profile."""
+    source_dir = tmp_path / "synthetic-prod-secret-sources"
+    source_dir.mkdir(exist_ok=True)
+    overrides: dict[str, str] = {}
+    for index, variable in enumerate(_PRODUCTION_SECRET_SOURCE_VARIABLES):
+        source = source_dir / f"source-{index}.txt"
+        source.write_text("synthetic compose contract fixture\n", encoding="utf-8")
+        overrides[variable] = str(source)
+    overrides["MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID"] = "synthetic-active-key-id"
+    overrides["ELASTICSEARCH_URL"] = "https://search.synthetic.invalid:9243"
+    overrides["SPICEDB_ENDPOINT"] = "grpcs://spicedb.synthetic.invalid:443"
+    overrides["EVENT_FILE_SCANNER_HOST"] = "clamd.synthetic.invalid"
+    return overrides
 
 
 def test_no_root_compose_file_references_a_minio_image() -> None:
@@ -132,20 +171,22 @@ def test_storage_init_waits_for_the_s3_api_without_mc(relative_path: str) -> Non
     assert init["command"] == ["wget -qO- http://minio:9000/status >/dev/null"]
     assert init["depends_on"]["minio"]["condition"] == "service_healthy"
     assert "environment" not in init
-    assert "tmpfs" not in init
+    assert init["tmpfs"] == ["/data"]
     assert init["read_only"] is True
     assert init["cap_drop"] == ["ALL"]
     assert init["security_opt"] == ["no-new-privileges:true"]
     assert init["restart"] == "no"
 
 
-def test_overlays_carry_no_minio_only_settings() -> None:
+def test_storage_overlays_use_expected_loopback_publications() -> None:
     observability = _compose("docker-compose.observability.yml")["services"]
     assert "minio" not in observability
     infra_ports = _compose("docker-compose.infra.yml")["services"]["minio"]["ports"]
     assert infra_ports == ["127.0.0.1:9000:9000"]
     live = _compose("docker-compose.live.yml")["services"]
-    assert "minio" not in live
+    assert live["minio"]["ports"] == [
+        "127.0.0.1:${LIVE_HOST_PORT_MINIO:?set by scripts/live_stand.py}:9000"
+    ]
     assert "minio-init" not in live
 
 
@@ -163,7 +204,9 @@ def test_prometheus_has_no_minio_metrics_job() -> None:
 def _docker_compose() -> str:
     docker = shutil.which("docker")
     if docker is None:
-        pytest.skip("Docker CLI is not installed")
+        pytest.skip(  # QUALITY-123 @egorribun — Docker capability varies by runner
+            "Docker CLI is not installed"
+        )
     probe = subprocess.run(  # noqa: S603 - fixed local CLI
         [docker, "compose", "version"],
         capture_output=True,
@@ -171,12 +214,21 @@ def _docker_compose() -> str:
         check=False,
     )
     if probe.returncode != 0:
-        pytest.skip("Docker Compose plugin is not available")
+        pytest.skip(  # QUALITY-123 @egorribun — Compose plugin capability varies by runner
+            "Docker Compose plugin is not available"
+        )
     return docker
 
 
-def _rendered(tmp_path: Path, project: str | None, *files: str) -> dict[str, Any]:
-    """Render the real model with placeholder secrets in an isolated copy."""
+def _compose_config_result(
+    tmp_path: Path,
+    project: str | None,
+    *files: str,
+    profiles: tuple[str, ...] = (),
+    environment_overrides: dict[str, str] | None = None,
+    unset_environment: tuple[str, ...] = (),
+) -> subprocess.CompletedProcess[str]:
+    """Render Compose in an isolated copy and return its unmodified result."""
 
     docker = _docker_compose()
     for path in _root_compose_files():
@@ -191,18 +243,54 @@ def _rendered(tmp_path: Path, project: str | None, *files: str) -> dict[str, Any
     for path in _root_compose_files():
         for name in _REQUIRED_VARIABLE.findall(path.read_text(encoding="utf-8")):
             env[name] = "placeholder-value"
+    live_port_names = sorted(
+        {
+            name
+            for path in _root_compose_files()
+            for name in re.findall(
+                r"\$\{(LIVE_HOST_PORT_[A-Z_]+|LIVE_MAILPIT_PORT):\?",
+                path.read_text(encoding="utf-8"),
+            )
+        }
+    )
+    for index, name in enumerate(live_port_names):
+        env[name] = str(24000 + index)
+    env.update(environment_overrides or {})
+    for name in unset_environment:
+        env.pop(name, None)
     command = [docker, "compose"]
     if project is not None:
         command += ["-p", project]
+    for profile in profiles:
+        command += ["--profile", profile]
     for name in files:
         command += ["-f", name]
-    result = subprocess.run(  # noqa: S603 - fixed local CLI and repository files
+    return subprocess.run(  # noqa: S603 - fixed local CLI and repository files
         [*command, "config", "--format", "json"],
         cwd=tmp_path,
         env=env,
         capture_output=True,
         text=True,
         check=False,
+    )
+
+
+def _rendered(
+    tmp_path: Path,
+    project: str | None,
+    *files: str,
+    profiles: tuple[str, ...] = (),
+    environment_overrides: dict[str, str] | None = None,
+    unset_environment: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """Render the real model with placeholder secrets in an isolated copy."""
+    result = _compose_config_result(
+        tmp_path,
+        project,
+        *files,
+        profiles=profiles,
+        environment_overrides=environment_overrides,
+        unset_environment=unset_environment,
     )
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
@@ -235,13 +323,15 @@ def test_rendered_stacks_mount_the_named_seaweedfs_volume(
 
 def test_live_stand_storage_volume_is_project_scoped(tmp_path: Path) -> None:
     # Each Compose project owns its storage volume without a global name.
-    plain = _rendered(tmp_path, "ue-live", "docker-compose.full.yml")
+    project_name = "ue-live-0123456789abcdef"
+    plain = _rendered(tmp_path, project_name, "docker-compose.full.yml")
     live = _rendered(
-        tmp_path, "ue-live", "docker-compose.full.yml", "docker-compose.live.yml"
+        tmp_path, project_name, "docker-compose.full.yml", "docker-compose.live.yml"
     )
 
-    assert plain["volumes"]["seaweedfs_data"]["name"] == "ue-live_seaweedfs_data"
-    assert live["volumes"]["seaweedfs_data"]["name"] == "ue-live_seaweedfs_data"
+    expected_volume = f"{project_name}_seaweedfs_data"
+    assert plain["volumes"]["seaweedfs_data"]["name"] == expected_volume
+    assert live["volumes"]["seaweedfs_data"]["name"] == expected_volume
     assert live["services"]["minio"]["image"] == plain["services"]["minio"]["image"]
 
 

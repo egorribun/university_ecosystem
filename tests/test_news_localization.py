@@ -1,11 +1,16 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import app.models as models
 from app.repositories.unit_of_work import uow_from_session
 from app.schemas import schemas
+from app.services.news_media import canonical_news_image_key
 from app.services.news_service import NewsService
+from app.services.storage import S3Storage, StaticFSStorage
+from app.utils.files import _get_storage_backend
 
 
 @pytest.fixture
@@ -18,6 +23,16 @@ def news_service(db_session):
 
     vector.get_embedding.side_effect = _embed
     return NewsService(uow, vector)
+
+
+def _generated_news_image_url() -> str:
+    backend = _get_storage_backend()
+    key = f"news_images/news_{uuid4().hex}.jpg"
+    assert isinstance(backend, (S3Storage, StaticFSStorage))
+    base_url = backend.base_url.rstrip("/")
+    image_url = f"{base_url}/{key}" if base_url else f"/{key}"
+    assert canonical_news_image_key(image_url) == key
+    return image_url
 
 
 def _assert_news_headers(response, expected_language: str) -> None:
@@ -158,8 +173,8 @@ async def test_news_detail_localization_headers_cache(
     [
         ({"title_en": "Updated English"}, {"title_en": "Updated English"}),
         (
-            {"image_url": "/static/news_images/new-image.png"},
-            {"image_url": "/static/news_images/new-image.png"},
+            {"image_url": None},
+            {"image_url": None},
         ),
     ],
 )
@@ -169,8 +184,9 @@ async def test_partial_news_updates_keep_other_fields(
     db_session,
     user_factory,
     news_service,
+    monkeypatch,
 ):
-    await user_factory(role="admin")
+    admin = await user_factory(role="admin")
     record = models.News(
         title="Новость дня",
         content="Русский текст",
@@ -190,11 +206,32 @@ async def test_partial_news_updates_keep_other_fields(
         "image_url": record.image_url,
     }
 
-    payload = schemas.NewsUpdate(**payload_kwargs)
+    update_values = dict(payload_kwargs)
+    expected_changes = dict(expected_changes)
+    update_kwargs = {}
+    replace_asset = None
+    if "image_url" in update_values:
+        image_url = _generated_news_image_url()
+        update_values["image_url"] = image_url
+        expected_changes["image_url"] = image_url
+        replace_asset = AsyncMock(return_value=True)
+        monkeypatch.setattr(
+            news_service.repo, "replace_news_media_asset", replace_asset
+        )
+        update_kwargs["owner_user_id"] = admin.id
+
+    payload = schemas.NewsUpdate(**update_values)
     await news_service.update_news(
         record.id,
         payload,
+        **update_kwargs,
     )
+    if replace_asset is not None:
+        replace_asset.assert_awaited_once_with(
+            image_url,
+            owner_user_id=admin.id,
+            news_id=record.id,
+        )
 
     stored = await db_session.get(models.News, record.id)
     assert stored is not None
@@ -205,3 +242,37 @@ async def test_partial_news_updates_keep_other_fields(
     for field, original in original_values.items():
         if field not in expected_changes:
             assert getattr(stored, field) == original
+
+
+@pytest.mark.asyncio
+async def test_clearing_existing_english_translations_persists_after_reload(
+    db_session, news_service
+):
+    record = models.News(
+        title="Новость дня",
+        content="Русский текст",
+        title_en="Existing English title",
+        content_en="Existing English body",
+    )
+    db_session.add(record)
+    await db_session.commit()
+    news_id = record.id
+    sessions = async_sessionmaker(db_session.bind, expire_on_commit=False)
+
+    async with sessions() as initial_reader:
+        initial = await initial_reader.get(models.News, news_id)
+        assert initial is not None
+        assert initial.title_en == "Existing English title"
+        assert initial.content_en == "Existing English body"
+
+    await news_service.update_news(
+        news_id, schemas.NewsUpdate(title_en=None, content_en=None)
+    )
+
+    async with sessions() as reader:
+        persisted = await reader.get(models.News, news_id)
+        assert persisted is not None
+        assert persisted.title_en is None
+        assert persisted.content_en is None
+        assert persisted.title == "Новость дня"
+        assert persisted.content == "Русский текст"

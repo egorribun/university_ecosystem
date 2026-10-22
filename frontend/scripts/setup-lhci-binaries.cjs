@@ -67,7 +67,12 @@ async function ensureGlobalSymlink(targetPath) {
       return
     }
 
-    if (error.code === "EEXIST" || error.code === "EACCES" || error.code === "EPERM") {
+    if (
+      error.code === "EEXIST" ||
+      error.code === "EACCES" ||
+      error.code === "EPERM" ||
+      error.code === "EROFS"
+    ) {
       return
     }
 

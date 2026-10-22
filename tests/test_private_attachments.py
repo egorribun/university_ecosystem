@@ -256,6 +256,33 @@ def test_static_private_path_selector_and_blocked_response() -> None:
     assert response.headers["x-content-type-options"] == "nosniff"
 
 
+def test_static_path_classifier_handles_empty_path() -> None:
+    assert not is_private_static_path("")
+
+
+def test_static_path_cannot_escape_and_reenter_private_prefix(tmp_path) -> None:
+    static_root = tmp_path / "static"
+    private_file = static_root / "chat_uploads" / "chat_x" / "secret.txt"
+    private_file.parent.mkdir(parents=True)
+    private_file.write_text("secret", encoding="utf-8")
+    static = PublicStaticFiles(directory=str(static_root))
+
+    response = __import__("asyncio").run(
+        static.get_response(
+            "../static/chat_uploads/chat_x/secret.txt",
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/../static/chat_uploads/chat_x/secret.txt",
+                "headers": [],
+            },
+        )
+    )
+
+    assert response.status_code == 404
+    assert response.headers["cache-control"] == "no-store"
+
+
 def test_private_static_response_uses_canonical_security_header_names(
     monkeypatch,
 ) -> None:

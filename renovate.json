@@ -162,6 +162,182 @@
       "automerge": false,
       "minimumReleaseAge": "7 days",
       "labels": ["rust", "dependencies"]
+    },
+    {
+      "description": "Keep custom workflow dependency updates reviewed and subject to a strict seven-day release-age check",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "minimumReleaseAge": "7 days",
+      "minimumReleaseAgeBehaviour": "timestamp-required",
+      "automerge": false,
+      "labels": [
+        "dependencies",
+        "manual-review-required"
+      ]
+    },
+    {
+      "description": "Keep setup-helm CLI updates on the tested Helm 4.2 line for Kubernetes 1.33",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDatasources": [
+        "github-releases"
+      ],
+      "matchPackageNames": [
+        "helm/helm"
+      ],
+      "allowedVersions": "<4.3.0",
+      "minimumReleaseAge": "7 days",
+      "minimumReleaseAgeBehaviour": "timestamp-required",
+      "automerge": false,
+      "labels": [
+        "dependencies",
+        "manual-review-required"
+      ]
+    },
+    {
+      "description": "Keep workflow Docker Hub image version and digest pairs on manual security review",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "pgvector/pgvector",
+        "redis",
+        "nats"
+      ],
+      "minimumReleaseAge": "7 days",
+      "minimumReleaseAgeBehaviour": "timestamp-required",
+      "automerge": false,
+      "labels": [
+        "security",
+        "dependencies",
+        "docker",
+        "manual-review-required"
+      ]
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update the SQLMap workflow exact PyPI version pin",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/sqlmap\\.yml$/"
+      ],
+      "matchStrings": [
+        "(?<prefix>uv pip install \"sqlmap==)(?<currentValue>\\d+\\.\\d+\\.\\d+)(?<suffix>\")"
+      ],
+      "depNameTemplate": "sqlmap",
+      "packageNameTemplate": "sqlmap",
+      "datasourceTemplate": "pypi",
+      "versioningTemplate": "pep440",
+      "autoReplaceStringTemplate": "{{{prefix}}}{{{newValue}}}{{{suffix}}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Update the govulncheck go install release pin",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/(?:reusable-security-audit|sbom)\\.yml$/"
+      ],
+      "matchStrings": [
+        "(?<prefix>(?:^|\\r?\\n)[ \\t]*(?:run:[ \\t]*)?go install golang\\.org/x/vuln/cmd/govulncheck@)(?<currentValue>v?\\d+\\.\\d+\\.\\d+)(?<suffix>[ \\t]*(?:#[^\\r\\n]*)?(?:\\r?\\n|$))"
+      ],
+      "depNameTemplate": "govulncheck",
+      "packageNameTemplate": "golang/vuln",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver",
+      "autoReplaceStringTemplate": "{{{prefix}}}{{{newValue}}}{{{suffix}}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Update the osv-scanner go install release pin",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/sbom\\.yml$/"
+      ],
+      "matchStrings": [
+        "(?<prefix>(?:^|\\r?\\n)[ \\t]*(?:run:[ \\t]*)?go install github\\.com/google/osv-scanner/v2/cmd/osv-scanner@)(?<currentValue>v?\\d+\\.\\d+\\.\\d+)(?<suffix>[ \\t]*(?:#[^\\r\\n]*)?(?:\\r?\\n|$))"
+      ],
+      "depNameTemplate": "osv-scanner",
+      "packageNameTemplate": "google/osv-scanner",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver",
+      "autoReplaceStringTemplate": "{{{prefix}}}{{{newValue}}}{{{suffix}}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Update the cargo-audit standalone Cargo CLI version",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/sbom\\.yml$/"
+      ],
+      "matchStrings": [
+        "(?<prefix>(?:^|\\r?\\n)[ \\t]*(?:run:[ \\t]*)?cargo install cargo-audit --version[ \\t]+)(?<currentValue>\\d+\\.\\d+\\.\\d+)(?<suffix>[ \\t]+--locked[^\\r\\n]*(?:\\r?\\n|$))"
+      ],
+      "depNameTemplate": "cargo-audit",
+      "packageNameTemplate": "cargo-audit",
+      "datasourceTemplate": "crate",
+      "versioningTemplate": "cargo",
+      "autoReplaceStringTemplate": "{{{prefix}}}{{{newValue}}}{{{suffix}}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Update the golangci-lint CLI input to its SHA-pinned action",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/(?:go-lint|reusable-go-tests)\\.yml$/"
+      ],
+      "matchStrings": [
+        "(?<prefix>(?:^|\\r?\\n)[ \\t]*uses:[ \\t]+golangci/golangci-lint-action@[^\\r\\n]*\\r?\\n[ \\t]+with:[ \\t]*\\r?\\n[ \\t]+version:[ \\t]*)(?<currentValue>v?\\d+\\.\\d+\\.\\d+)(?<suffix>[ \\t]*(?:#[^\\r\\n]*)?(?:\\r?\\n|$))"
+      ],
+      "depNameTemplate": "golangci-lint",
+      "packageNameTemplate": "golangci/golangci-lint",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver",
+      "autoReplaceStringTemplate": "{{{prefix}}}{{{newValue}}}{{{suffix}}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Update tested Helm 4.2 CLI inputs to azure/setup-helm",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/(?:ci|reusable-backend-tests|reusable-full-backend-mutation|reusable-helm-dependencies|reusable-security-audit)\\.yml$/"
+      ],
+      "matchStrings": [
+        "(?<prefix>(?:^|\\r?\\n)[ \\t]*uses:[ \\t]+azure/setup-helm@[^\\r\\n]*\\r?\\n[ \\t]+with:[ \\t]*\\r?\\n[ \\t]+version:[ \\t]*[\\\"']?)(?<currentValue>v?\\d+\\.\\d+\\.\\d+)(?<suffix>[\\\"']?[ \\t]*(?:#[^\\r\\n]*)?(?:\\r?\\n|$))"
+      ],
+      "depNameTemplate": "helm",
+      "packageNameTemplate": "helm/helm",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver",
+      "autoReplaceStringTemplate": "{{{prefix}}}{{{newValue}}}{{{suffix}}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Update Nuclei CLI input independently of its SHA-pinned action",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/dast\\.yml$/"
+      ],
+      "matchStrings": [
+        "(?<prefix>(?:^|\\r?\\n)[ \\t]*uses:[ \\t]+projectdiscovery/nuclei-action@[^\\r\\n]*\\r?\\n[ \\t]+with:[ \\t]*\\r?\\n[ \\t]+version:[ \\t]*)(?<currentValue>v?\\d+\\.\\d+\\.\\d+)(?<suffix>[ \\t]*(?:#[^\\r\\n]*)?(?:\\r?\\n|$))"
+      ],
+      "depNameTemplate": "nuclei",
+      "packageNameTemplate": "projectdiscovery/nuclei",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver",
+      "autoReplaceStringTemplate": "{{{prefix}}}{{{newValue}}}{{{suffix}}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Update matched Docker Hub service image references with their tag and digest in workflow and test files",
+      "managerFilePatterns": [
+        "/^(?:\\.github/workflows/.*\\.ya?ml|tests/.*\\.py)$/"
+      ],
+      "matchStrings": [
+        "(?<depName>pgvector/pgvector|redis|nats):(?<currentValue>[^\\s@\\\"']+)@(?<currentDigest>sha256:[0-9a-f]{64})"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker",
+      "autoReplaceStringTemplate": "{{#if newDigest}}{{{depName}}}:{{#if newValue}}{{{newValue}}}{{else}}{{{currentValue}}}{{/if}}@{{{newDigest}}}{{else}}{{{depName}}}:{{{currentValue}}}@{{{currentDigest}}}{{/if}}"
     }
   ]
 }

@@ -17,6 +17,7 @@ import json
 import math
 import re
 import sys
+import time
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -33,9 +34,10 @@ from scripts.mutmut_shard_budget import (
     MUTMUT_WALL_TIMEOUT_MULTIPLIER,
 )
 from scripts.mutmut_universe import (
+    _ValidatedGenerationManifest,
     get_mutmut_config,
     prepare_mutants_directory,
-    prepare_reused_generation,
+    prepare_reused_generation_with_manifest,
     write_universe_manifest,
 )
 
@@ -49,6 +51,28 @@ class MutantEstimate:
 
 
 @dataclass(frozen=True, slots=True)
+class _BudgetTestCost:
+    """Exact and float costs for one test in a shared immutable mapping."""
+
+    name: str
+    exact_seconds: Fraction
+    float_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class _BudgetTestCosts:
+    """Interned cost projection for one canonical test-name tuple."""
+
+    names: tuple[str, ...]
+    membership: frozenset[str]
+    costs: tuple[_BudgetTestCost, ...]
+    exact_seconds: Fraction
+    fsum_seconds: float
+    watchdog_cap_seconds: int
+    forced_fail_cap_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
 class _BudgetMutant:
     """A validated mutant cost used by the budget-aware planner."""
 
@@ -56,6 +80,8 @@ class _BudgetMutant:
     estimate_exact_seconds: Fraction
     estimate_fsum_seconds: float
     test_names: tuple[str, ...]
+    test_membership: frozenset[str]
+    test_costs: tuple[_BudgetTestCost, ...]
     watchdog_cap_seconds: int
     forced_fail_cap_seconds: int
 
@@ -70,9 +96,91 @@ class _BudgetBin:
     union_exact_seconds: Fraction
     union_fsum_seconds: float | None
     forced_fail_cap_seconds: int
+    watchdog_cap_sum_seconds: int
+    max_watchdog_cap_seconds: int
 
 
 ChangedLineRanges = Mapping[str, Sequence[tuple[int, int]]]
+
+_PROGRESS_PREFIX = "MUTMUT_PLANNER_PROGRESS "
+_PROGRESS_SCHEMA = "mutmut-planner-progress-v1"
+_PROGRESS_STAGES = frozenset(
+    {
+        "generation_setup",
+        "mutant_generation",
+        "metadata_scan",
+        "reuse_generation",
+        "universe_manifest",
+        "changed_mutant_scan",
+        "stats_load",
+        "planning",
+        "plan_publish",
+    }
+)
+_PROGRESS_EVENTS = frozenset({"started", "completed"})
+_PROGRESS_COUNTERS = frozenset(
+    {
+        "changed_file_count",
+        "duration_count",
+        "generated_file_count",
+        "ignored_file_count",
+        "metadata_file_count",
+        "mutant_count",
+        "mutated_file_count",
+        "shard_count",
+        "source_file_count",
+        "test_mapping_count",
+        "unmodified_file_count",
+    }
+)
+
+
+def _emit_progress(
+    stage: str,
+    event: str,
+    *,
+    elapsed_ms: int | None = None,
+    counters: Mapping[str, int] | None = None,
+) -> None:
+    """Emit a closed, value-free phase marker for bounded CI diagnosis."""
+
+    if stage not in _PROGRESS_STAGES or event not in _PROGRESS_EVENTS:
+        raise ValueError("invalid mutmut planner progress marker")
+    if event == "started" and elapsed_ms is not None:
+        raise ValueError("started progress markers cannot carry a duration")
+    if elapsed_ms is not None and (type(elapsed_ms) is not int or elapsed_ms < 0):
+        raise ValueError("progress duration must be a non-negative integer")
+    normalized_counters = dict(counters or {})
+    if not set(normalized_counters).issubset(_PROGRESS_COUNTERS):
+        raise ValueError("invalid mutmut planner progress counter")
+    if any(
+        type(value) is not int or value < 0 for value in normalized_counters.values()
+    ):
+        raise ValueError("progress counters must be non-negative integers")
+    payload = {
+        "schema": _PROGRESS_SCHEMA,
+        "stage": stage,
+        "event": event,
+        "elapsed_ms": elapsed_ms,
+        "counters": normalized_counters,
+    }
+    print(
+        _PROGRESS_PREFIX + json.dumps(payload, sort_keys=True, separators=(",", ":")),
+        file=sys.stderr,
+        flush=True,
+    )
+
+
+def _start_progress(stage: str) -> float:
+    _emit_progress(stage, "started")
+    return time.monotonic()
+
+
+def _finish_progress(
+    stage: str, started_at: float, *, counters: Mapping[str, int] | None = None
+) -> None:
+    elapsed_ms = max(0, int((time.monotonic() - started_at) * 1_000))
+    _emit_progress(stage, "completed", elapsed_ms=elapsed_ms, counters=counters)
 
 
 def normalize_source_path(path: str | Path) -> str:
@@ -200,13 +308,6 @@ def plan_mutant_shards(
     return shard_names
 
 
-def _duration_ceil(value: float) -> int:
-    """Return the conservative integer ceiling used by the budget helper."""
-
-    exact = Fraction.from_float(value)
-    return max(math.ceil(exact), math.ceil(value))
-
-
 def _budget_mutants(
     estimates: Sequence[MutantEstimate],
     tests_by_mangled_function_name: Mapping[str, Sequence[str]],
@@ -215,6 +316,8 @@ def _budget_mutants(
     """Normalize planner inputs into the same per-mutant costs as mutmut."""
 
     durations: dict[str, float] = {}
+    exact_durations: dict[str, Fraction] = {}
+    duration_ceilings: dict[str, int] = {}
     for test_name, duration in duration_by_test.items():
         if isinstance(duration, bool) or not isinstance(duration, (int, float)):
             raise ValueError(
@@ -234,6 +337,7 @@ def _budget_mutants(
         raise ValueError("mutant estimates contain duplicate names")
 
     normalized: list[_BudgetMutant] = []
+    costs_by_test_tuple: dict[tuple[str, ...], _BudgetTestCosts] = {}
     for estimate in estimates:
         function_name, separator, _ = estimate.name.partition("__mutmut_")
         if not separator:
@@ -254,41 +358,68 @@ def _budget_mutants(
             )
 
         ordered_tests = tuple(sorted(set(associated_tests)))
-        exact_seconds = sum(
-            (Fraction.from_float(durations[test_name]) for test_name in ordered_tests),
-            start=Fraction(),
-        )
-        try:
-            fsum_seconds = math.fsum(
-                durations[test_name] for test_name in ordered_tests
+        cached_costs = costs_by_test_tuple.get(ordered_tests)
+        if cached_costs is None:
+            for test_name in ordered_tests:
+                if test_name not in exact_durations:
+                    exact = Fraction.from_float(durations[test_name])
+                    exact_durations[test_name] = exact
+                    duration_ceilings[test_name] = max(
+                        math.ceil(exact), math.ceil(durations[test_name])
+                    )
+            costs = tuple(
+                _BudgetTestCost(
+                    name=test_name,
+                    exact_seconds=exact_durations[test_name],
+                    float_seconds=durations[test_name],
+                )
+                for test_name in ordered_tests
             )
-        except OverflowError as error:
-            raise ValueError(
-                f"mutmut estimated duration is not finite: {estimate.name!r}"
-            ) from error
-        if not math.isfinite(fsum_seconds):
-            raise ValueError(
-                f"mutmut estimated duration is not finite: {estimate.name!r}"
+            exact_seconds = sum(
+                (cost.exact_seconds for cost in costs), start=Fraction()
             )
+            try:
+                fsum_seconds = math.fsum(cost.float_seconds for cost in costs)
+            except OverflowError as error:
+                raise ValueError(
+                    f"mutmut estimated duration is not finite: {estimate.name!r}"
+                ) from error
+            if not math.isfinite(fsum_seconds):
+                raise ValueError(
+                    f"mutmut estimated duration is not finite: {estimate.name!r}"
+                )
 
-        watchdog_exact = MUTMUT_WALL_TIMEOUT_MULTIPLIER * (
-            exact_seconds + MUTMUT_WALL_TIMEOUT_GRACE_SECONDS
-        )
-        watchdog_fsum = MUTMUT_WALL_TIMEOUT_MULTIPLIER * (
-            fsum_seconds + MUTMUT_WALL_TIMEOUT_GRACE_SECONDS
-        )
-        watchdog_cap = max(math.ceil(watchdog_exact), math.ceil(watchdog_fsum))
-        forced_fail_cap = max(
-            _duration_ceil(durations[test_name]) for test_name in ordered_tests
-        )
+            watchdog_exact = MUTMUT_WALL_TIMEOUT_MULTIPLIER * (
+                exact_seconds + MUTMUT_WALL_TIMEOUT_GRACE_SECONDS
+            )
+            watchdog_fsum = MUTMUT_WALL_TIMEOUT_MULTIPLIER * (
+                fsum_seconds + MUTMUT_WALL_TIMEOUT_GRACE_SECONDS
+            )
+            cached_costs = _BudgetTestCosts(
+                names=ordered_tests,
+                membership=frozenset(ordered_tests),
+                costs=costs,
+                exact_seconds=exact_seconds,
+                fsum_seconds=fsum_seconds,
+                watchdog_cap_seconds=max(
+                    math.ceil(watchdog_exact), math.ceil(watchdog_fsum)
+                ),
+                forced_fail_cap_seconds=max(
+                    duration_ceilings[test_name] for test_name in ordered_tests
+                ),
+            )
+            costs_by_test_tuple[ordered_tests] = cached_costs
+
         normalized.append(
             _BudgetMutant(
                 name=estimate.name,
-                estimate_exact_seconds=exact_seconds,
-                estimate_fsum_seconds=fsum_seconds,
-                test_names=tuple(sorted(set(associated_tests))),
-                watchdog_cap_seconds=watchdog_cap,
-                forced_fail_cap_seconds=forced_fail_cap,
+                estimate_exact_seconds=cached_costs.exact_seconds,
+                estimate_fsum_seconds=cached_costs.fsum_seconds,
+                test_names=cached_costs.names,
+                test_membership=cached_costs.membership,
+                test_costs=cached_costs.costs,
+                watchdog_cap_seconds=cached_costs.watchdog_cap_seconds,
+                forced_fail_cap_seconds=cached_costs.forced_fail_cap_seconds,
             )
         )
     return normalized
@@ -315,9 +446,12 @@ def _budget_bin_upper_bound(
         )
         worker_loads[worker_index] += mutant.watchdog_cap_seconds
 
-    new_tests = sorted(set(candidate.test_names).difference(bucket.test_names))
+    new_test_names = candidate.test_membership.difference(bucket.test_names)
+    new_costs = tuple(
+        cost for cost in candidate.test_costs if cost.name in new_test_names
+    )
     new_exact = sum(
-        (Fraction.from_float(float(durations[test_name])) for test_name in new_tests),
+        (cost.exact_seconds for cost in new_costs),
         start=Fraction(),
     )
     union_exact = bucket.union_exact_seconds + new_exact
@@ -327,7 +461,7 @@ def _budget_bin_upper_bound(
             union_fsum = math.fsum(
                 [
                     bucket.union_fsum_seconds,
-                    *(float(durations[test_name]) for test_name in new_tests),
+                    *(cost.float_seconds for cost in new_costs),
                 ]
             )
         except OverflowError:
@@ -344,6 +478,46 @@ def _budget_bin_upper_bound(
     )
 
 
+def _budget_bin_lower_bound(
+    bucket: _BudgetBin,
+    candidate: _BudgetMutant,
+    *,
+    durations: Mapping[str, float | int],
+    max_children: int,
+    control_cycle_reserve_seconds: int,
+    metadata_and_startup_reserve_seconds: int,
+) -> int:
+    """Return a cheap mathematical lower bound for an exact bin projection.
+
+    The exact projection includes the same test-union ceiling and failure cap.
+    Its greedy watchdog schedule is at least the largest job and the average
+    load across workers. These terms can reject a candidate without replaying
+    that schedule, but never replace the exact projection for selection.
+    """
+
+    new_test_names = candidate.test_membership.difference(bucket.test_names)
+    new_costs = tuple(
+        cost for cost in candidate.test_costs if cost.name in new_test_names
+    )
+    union_exact = bucket.union_exact_seconds + sum(
+        (cost.exact_seconds for cost in new_costs),
+        start=Fraction(),
+    )
+    watchdog_cap_sum = bucket.watchdog_cap_sum_seconds + candidate.watchdog_cap_seconds
+    worker_floor = max(
+        bucket.max_watchdog_cap_seconds,
+        candidate.watchdog_cap_seconds,
+        (watchdog_cap_sum + max_children - 1) // max_children,
+    )
+    return (
+        metadata_and_startup_reserve_seconds
+        + math.ceil(union_exact)
+        + max(bucket.forced_fail_cap_seconds, candidate.forced_fail_cap_seconds)
+        + worker_floor
+        + control_cycle_reserve_seconds * (len(bucket.mutants) + 1)
+    )
+
+
 def _add_budget_mutant(
     bucket: _BudgetBin,
     mutant: _BudgetMutant,
@@ -351,12 +525,13 @@ def _add_budget_mutant(
 ) -> None:
     """Apply a selected candidate to a budget-bin state."""
 
-    new_tests = sorted(set(mutant.test_names).difference(bucket.test_names))
+    new_test_names = mutant.test_membership.difference(bucket.test_names)
+    new_costs = tuple(cost for cost in mutant.test_costs if cost.name in new_test_names)
     bucket.names.append(mutant.name)
     bucket.mutants.append(mutant)
-    bucket.test_names.update(new_tests)
+    bucket.test_names.update(cost.name for cost in new_costs)
     bucket.union_exact_seconds += sum(
-        (Fraction.from_float(float(durations[test_name])) for test_name in new_tests),
+        (cost.exact_seconds for cost in new_costs),
         start=Fraction(),
     )
     if bucket.union_fsum_seconds is not None:
@@ -364,13 +539,17 @@ def _add_budget_mutant(
             bucket.union_fsum_seconds = math.fsum(
                 [
                     bucket.union_fsum_seconds,
-                    *(float(durations[test_name]) for test_name in new_tests),
+                    *(cost.float_seconds for cost in new_costs),
                 ]
             )
         except OverflowError:
             bucket.union_fsum_seconds = None
     bucket.forced_fail_cap_seconds = max(
         bucket.forced_fail_cap_seconds, mutant.forced_fail_cap_seconds
+    )
+    bucket.watchdog_cap_sum_seconds += mutant.watchdog_cap_seconds
+    bucket.max_watchdog_cap_seconds = max(
+        bucket.max_watchdog_cap_seconds, mutant.watchdog_cap_seconds
     )
 
 
@@ -387,6 +566,8 @@ def _budget_bin_from_mutants(
         union_exact_seconds=Fraction(),
         union_fsum_seconds=0.0,
         forced_fail_cap_seconds=0,
+        watchdog_cap_sum_seconds=0,
+        max_watchdog_cap_seconds=0,
     )
     for mutant in mutants:
         _add_budget_mutant(bucket, mutant, durations)
@@ -676,6 +857,8 @@ def plan_mutant_shards_with_budget(
             union_exact_seconds=Fraction(),
             union_fsum_seconds=0.0,
             forced_fail_cap_seconds=0,
+            watchdog_cap_sum_seconds=0,
+            max_watchdog_cap_seconds=0,
         )
         for _ in range(num_shards)
     ]
@@ -710,8 +893,30 @@ def plan_mutant_shards_with_budget(
         _add_budget_mutant(bucket, mutant, duration_by_test)
 
     for mutant in ordered[seed_count:]:
-        candidates: list[tuple[int, int, int]] = []
-        for index, bucket in enumerate(buckets):
+        candidate_bounds = [
+            (
+                _budget_bin_lower_bound(
+                    bucket,
+                    mutant,
+                    durations=duration_by_test,
+                    max_children=max_children,
+                    control_cycle_reserve_seconds=control_cycle_reserve_seconds,
+                    metadata_and_startup_reserve_seconds=metadata_and_startup_reserve_seconds,
+                ),
+                len(bucket.mutants),
+                index,
+            )
+            for index, bucket in enumerate(buckets)
+        ]
+        candidate_bounds.sort()
+        best_candidate: tuple[int, int, int] | None = None
+        for lower_bound, mutant_count, index in candidate_bounds:
+            lower_key = (lower_bound, mutant_count, index)
+            if lower_bound > max_timeout_seconds or (
+                best_candidate is not None and lower_key >= best_candidate
+            ):
+                break
+            bucket = buckets[index]
             projected = _budget_bin_upper_bound(
                 bucket,
                 mutant,
@@ -721,8 +926,10 @@ def plan_mutant_shards_with_budget(
                 metadata_and_startup_reserve_seconds=metadata_and_startup_reserve_seconds,
             )
             if projected <= max_timeout_seconds:
-                candidates.append((projected, len(bucket.mutants), index))
-        if not candidates:
+                exact_key = (projected, mutant_count, index)
+                if best_candidate is None or exact_key < best_candidate:
+                    best_candidate = exact_key
+        if best_candidate is None:
             repaired = _rebalance_for_budget_candidate(
                 buckets,
                 mutant,
@@ -756,7 +963,7 @@ def plan_mutant_shards_with_budget(
                 for mutants in repaired
             ]
             continue
-        _, _, selected_index = min(candidates)
+        selected_index = best_candidate[2]
         _add_budget_mutant(buckets[selected_index], mutant, duration_by_test)
 
     # The candidate loop uses an inexpensive conservative upper bound.  The
@@ -941,6 +1148,7 @@ def _load_mutmut_cli() -> Any:
 def _generate_mutant_universe(mutmut_cli: Any, *, max_children: int) -> None:
     """Create the same source copy and metadata that ``mutmut run`` uses."""
 
+    setup_started = _start_progress("generation_setup")
     get_mutmut_config(mutmut_cli)
     mutants_dir = Path("mutants")
     mutants_dir.mkdir(parents=True, exist_ok=True)
@@ -957,10 +1165,29 @@ def _generate_mutant_universe(mutmut_cli: Any, *, max_children: int) -> None:
     # mutant universes.
     if get_mutmut_config(mutmut_cli).mutate_only_covered_lines:
         mutmut_cli.store_lines_covered_by_tests()
+    _finish_progress("generation_setup", setup_started)
+
+    generation_started = _start_progress("mutant_generation")
     stats = mutmut_cli.create_mutants(max_children)
+    _finish_progress(
+        "mutant_generation",
+        generation_started,
+        counters={
+            "mutated_file_count": stats.mutated,
+            "ignored_file_count": stats.ignored,
+            "unmodified_file_count": stats.unmodified,
+        },
+    )
+
+    metadata_started = _start_progress("metadata_scan")
     metadata = list(mutants_dir.rglob("*.py.meta"))
     if not metadata:
         raise RuntimeError("mutmut generated no mutation metadata files")
+    _finish_progress(
+        "metadata_scan",
+        metadata_started,
+        counters={"metadata_file_count": len(metadata)},
+    )
     print(
         "Generated mutmut universe: "
         f"{stats.mutated} mutated, {stats.ignored} ignored, "
@@ -1077,29 +1304,74 @@ def main() -> None:
         raise ValueError("Changed-file manifest is empty")
 
     mutmut_cli = _load_mutmut_cli()
+    validated_generation_manifest: _ValidatedGenerationManifest | None = None
     if args.reuse_generated_universe:
-        prepare_reused_generation(mutmut_cli)
+        reuse_started = _start_progress("reuse_generation")
+        stats, validated_generation_manifest = prepare_reused_generation_with_manifest(
+            mutmut_cli
+        )
+        _finish_progress(
+            "reuse_generation",
+            reuse_started,
+            counters={
+                "mutated_file_count": stats.mutated,
+                "ignored_file_count": stats.ignored,
+                "unmodified_file_count": stats.unmodified,
+            },
+        )
     else:
         _generate_mutant_universe(mutmut_cli, max_children=args.max_children)
     # Persist a content-addressed source/metadata/config snapshot so the exact
     # mutation runner can safely reuse this expensive generation phase.
-    write_universe_manifest(mutmut_cli)
+    manifest_started = _start_progress("universe_manifest")
+    manifest = write_universe_manifest(
+        mutmut_cli, validated_generation=validated_generation_manifest
+    )
+    _finish_progress(
+        "universe_manifest",
+        manifest_started,
+        counters={
+            "source_file_count": len(manifest["source_files"]),
+            "generated_file_count": len(manifest["generated_files"]),
+            "metadata_file_count": len(manifest["metadata_files"]),
+            "mutant_count": manifest["mutant_count"],
+        },
+    )
     changed_line_ranges = None
     if args.changed_diff is not None:
         changed_line_ranges = parse_unified_diff_line_ranges(
             args.changed_diff.read_text(encoding="utf-8")
         )
+    collection_started = _start_progress("changed_mutant_scan")
     mutant_names = _collect_changed_mutants(
         mutmut_cli,
         changed_files,
         changed_line_ranges,
+    )
+    _finish_progress(
+        "changed_mutant_scan",
+        collection_started,
+        counters={
+            "changed_file_count": len(changed_files),
+            "mutant_count": len(mutant_names),
+        },
     )
     if not mutant_names:
         raise RuntimeError(
             "Changed Python source produced no mutmut mutants; refusing to skip mutation evidence"
         )
 
+    stats_started = _start_progress("stats_load")
     tests_by_function, durations = _load_stats(Path("mutants/mutmut-stats.json"))
+    _finish_progress(
+        "stats_load",
+        stats_started,
+        counters={
+            "test_mapping_count": len(tests_by_function),
+            "duration_count": len(durations),
+        },
+    )
+    planning_started = _start_progress("planning")
     estimates = estimate_mutant_times(mutant_names, tests_by_function, durations)
     if args.max_timeout_seconds is None:
         shards = plan_mutant_shards(estimates, num_shards=args.num_shards)
@@ -1114,12 +1386,26 @@ def main() -> None:
             metadata_and_startup_reserve_seconds=args.metadata_startup_reserve_seconds,
             max_timeout_seconds=args.max_timeout_seconds,
         )
+    _finish_progress(
+        "planning",
+        planning_started,
+        counters={"mutant_count": len(mutant_names), "shard_count": len(shards)},
+    )
     if args.output_directory is not None:
+        publish_started = _start_progress("plan_publish")
         manifest = write_shard_plan_bundle(
             args.output_directory,
             shards,
             estimates,
             allow_empty_shards=args.allow_empty_shards,
+        )
+        _finish_progress(
+            "plan_publish",
+            publish_started,
+            counters={
+                "mutant_count": manifest["universe_count"],
+                "shard_count": manifest["num_shards"],
+            },
         )
         print(
             f"Planned all {manifest['num_shards']} mutmut shards: "
@@ -1130,9 +1416,15 @@ def main() -> None:
     if args.shard_id is None or args.output is None:
         raise RuntimeError("validated single-shard output target is missing")
     selected = shards[args.shard_id - 1]
+    publish_started = _start_progress("plan_publish")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         "".join(f"{mutant_name}\n" for mutant_name in selected), encoding="utf-8"
+    )
+    _finish_progress(
+        "plan_publish",
+        publish_started,
+        counters={"mutant_count": len(selected), "shard_count": 1},
     )
 
     selected_names = set(selected)

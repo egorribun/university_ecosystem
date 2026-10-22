@@ -90,6 +90,15 @@ def _load_workflow(path: Path) -> dict[str, Any]:
     return loaded
 
 
+def _load_workflow_once(
+    path: Path, parsed_workflows: dict[Path, dict[str, Any]]
+) -> dict[str, Any]:
+    resolved_path = path.resolve()
+    if resolved_path not in parsed_workflows:
+        parsed_workflows[resolved_path] = _load_workflow(path)
+    return parsed_workflows[resolved_path]
+
+
 def workflow_triggers(workflow: dict[str, Any]) -> dict[str, Any]:
     """Return the YAML ``on`` mapping, including PyYAML's YAML 1.1 quirk."""
 
@@ -394,10 +403,12 @@ def _job_timeout(job: dict[str, Any], *, reusable_timeouts: dict[str, int]) -> i
     raise CatalogError("job has neither runs-on timeout-minutes nor uses")
 
 
-def _reusable_timeout_index(workflow_directory: Path) -> dict[str, int]:
+def _reusable_timeout_index(
+    workflow_directory: Path, parsed_workflows: dict[Path, dict[str, Any]]
+) -> dict[str, int]:
     index: dict[str, int] = {}
     for path in workflow_directory.glob("*.y*ml"):
-        workflow = _load_workflow(path)
+        workflow = _load_workflow_once(path, parsed_workflows)
         try:
             triggers = workflow_triggers(workflow)
         except CatalogError:
@@ -546,6 +557,7 @@ def _validate_expansions(
     source_contexts: set[str],
     external_contexts: set[str],
     used_profiles: set[str],
+    parsed_workflows: dict[Path, dict[str, Any]],
 ) -> list[str]:
     """Validate caller-qualified and matrix-expanded protected contexts."""
 
@@ -577,7 +589,7 @@ def _validate_expansions(
             caller_relative = caller_path.relative_to(repository_root).as_posix()
             if caller_relative not in source_paths:
                 errors.append(f"{location}: caller workflow is not in source inventory")
-            caller_workflow = _load_workflow(caller_path)
+            caller_workflow = _load_workflow_once(caller_path, parsed_workflows)
         except CatalogError as exc:
             errors.append(f"{location}: {exc}")
             caller_workflow = None
@@ -620,7 +632,7 @@ def _validate_expansions(
             reusable_path_value = entry.get("reusable_workflow_path")
             try:
                 reusable_path = _workflow_path(reusable_path_value, repository_root)
-                reusable_workflow = _load_workflow(reusable_path)
+                reusable_workflow = _load_workflow_once(reusable_path, parsed_workflows)
                 reusable_triggers = workflow_triggers(reusable_workflow)
                 if "workflow_call" not in reusable_triggers:
                     errors.append(f"{location}: reusable workflow is not workflow_call")
@@ -754,7 +766,9 @@ def validate_catalog(
     catalog_paths: list[str] = []
     used_profiles: set[str] = set()
     source_contexts: set[str] = set()
-    reusable_timeouts = _reusable_timeout_index(workflow_directory)
+    # One validation owns one parsed snapshot; later calls always reload source.
+    parsed_workflows: dict[Path, dict[str, Any]] = {}
+    reusable_timeouts = _reusable_timeout_index(workflow_directory, parsed_workflows)
     for index, entry in enumerate(raw_workflows):
         location = f"workflows[{index}]"
         if not isinstance(entry, dict):
@@ -767,7 +781,7 @@ def validate_catalog(
         catalog_paths.append(path_value)
         try:
             workflow_path = _workflow_path(path_value, repository_root)
-            workflow = _load_workflow(workflow_path)
+            workflow = _load_workflow_once(workflow_path, parsed_workflows)
             triggers = workflow_triggers(workflow)
         except CatalogError as exc:
             errors.append(f"{location}: {exc}")
@@ -841,6 +855,19 @@ def validate_catalog(
                 continue
             used_profiles.add(profile_name)
             effective = _merge_job(profile, job_entry)
+            if profile.get("classification") == "required":
+                if effective.get("classification") != "required":
+                    errors.append(
+                        f"{job_location}: required profile classification "
+                        "cannot be weakened"
+                    )
+                inherited_events = set(profile.get("required_events") or [])
+                if not inherited_events.issubset(
+                    effective.get("required_events") or []
+                ):
+                    errors.append(
+                        f"{job_location}: required profile events cannot be removed"
+                    )
             try:
                 expected_timeout = _job_timeout(
                     source_job, reusable_timeouts=reusable_timeouts
@@ -986,6 +1013,7 @@ def validate_catalog(
             source_contexts=source_contexts,
             external_contexts=external_contexts,
             used_profiles=used_profiles,
+            parsed_workflows=parsed_workflows,
         )
     )
     unused_profiles = set(profiles) - used_profiles

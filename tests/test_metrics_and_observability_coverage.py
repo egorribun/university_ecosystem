@@ -221,7 +221,7 @@ def test_resolve_path_template():
         )
         == "/api/v1/news/{id}"
     )
-    assert m._resolve_path_template(_make_request("/healthz")) == "/healthz"
+    assert m._resolve_path_template(_make_request("/healthz")) == "unmatched"
 
 
 def test_resolve_router_label():

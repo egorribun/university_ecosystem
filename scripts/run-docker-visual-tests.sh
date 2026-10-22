@@ -1,7 +1,8 @@
 #!/bin/bash
 # scripts/run-docker-visual-tests.sh
 # Runs Playwright visual regression tests inside the official Playwright Docker container
-# to update or verify Linux-based screenshots.
+# with Linux browser binaries. The selected suite currently has Windows-only
+# baselines; an all-skipped run does not establish Linux visual acceptance.
 
 set -e
 
@@ -22,11 +23,12 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-echo "Starting Playwright container (v1.58.2-noble) to run visual E2E tests..."
+echo "Warning: the selected snapshot suite currently skips Linux; this command does not complete visual acceptance." >&2
+echo "Starting Playwright container (v1.63.0-noble) to run visual E2E tests..."
 docker run --rm -it \
   -v "$ROOT:/work" \
   -w /work/frontend \
-  mcr.microsoft.com/playwright:v1.58.2-noble@sha256:6446946a1d9fd62d9ae501312a2d76a43ee688542b21622056a372959b65d63d \
+  mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27 \
   npx playwright test tests/e2e/visual.spec.ts --project=chromium $UPDATE_FLAG
 
-echo "Visual tests complete."
+echo "Visual command finished. Review the report for executed and skipped tests."

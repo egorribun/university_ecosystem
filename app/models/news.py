@@ -84,6 +84,35 @@ class News(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         return f"<News(id={self.id}, title='{self.title[:30]}...')>"
 
 
+class NewsMediaAsset(Base, UUID7PrimaryKeyMixin):
+    """A generated news image and its uploader/current news association."""
+
+    __tablename__ = "news_media_assets"
+    __table_args__ = (
+        UniqueConstraint("storage_url", name="uq_news_media_asset_storage_url"),
+        UniqueConstraint("news_id", name="uq_news_media_asset_news_id"),
+        Index("ix_news_media_assets_owner_user_id", "owner_user_id"),
+    )
+
+    storage_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    news_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("news.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
 class NewsLike(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "news_likes"
     __table_args__ = (
@@ -113,7 +142,7 @@ class NewsLike(Base, UUID7PrimaryKeyMixin, UserFK):
         )
 
 
-class NewsComment(Base, UUID7PrimaryKeyMixin, UserFK):
+class NewsComment(Base, EventEmitterMixin, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "news_comments"
     __table_args__ = (Index("ix_news_comments_news_created", "news_id", "created_at"),)
 

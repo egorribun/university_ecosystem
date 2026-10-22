@@ -1,0 +1,12 @@
+{{- include "revocation-store.validate" . -}}
+{{- $name := include "revocation-store.redis.masterName" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-configuration" $name }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "revocation-store.redis.labels" . | nindent 4 }}
+data:
+  master.conf: |-
+{{ include "revocation-store.redis.masterConfig" . | nindent 4 }}

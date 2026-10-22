@@ -7,6 +7,7 @@ from fastapi import Request
 
 import app.models as models
 from app.api.events import all_events, attend, create_event, upload_event_file
+from app.deps.cache import MemoryCache
 from app.schemas import schemas
 from tests.conftest import call_injected
 
@@ -30,12 +31,12 @@ def mock_db():
 @pytest.fixture
 def mock_request():
     request = MagicMock(spec=Request)
-    request.app.state.cache = MagicMock()
+    request.app.state.cache = MemoryCache()
     return request
 
 
 @pytest.mark.asyncio
-async def test_create_event_success(mock_user, mock_db, mock_request):
+async def test_create_event_success(mock_user, mock_request):
     data = schemas.EventCreate(
         title="Test Event",
         description="Test Desc",
@@ -47,27 +48,25 @@ async def test_create_event_success(mock_user, mock_db, mock_request):
 
     mock_events = MagicMock()
     # Explicitly set create_event as AsyncMock since it's awaited in the router
-    mock_events.create_event = AsyncMock(return_value=MagicMock(id=uuid.uuid4()))
+    event_record = MagicMock(id=uuid.uuid4())
+    mock_events.create_event = AsyncMock(return_value=event_record)
     # serialize_event is synchronous
     mock_events.serialize_event.return_value = {"id": "test"}
-
-    mock_notifications = AsyncMock()
 
     with patch("app.api.events.resolve_locale", return_value="en"):
         result = await call_injected(
             create_event,
             data=data,
             request=mock_request,
-            background=MagicMock(),
             user=mock_user,
-            provides={
-                "NotificationService": mock_notifications,
-                "EventService": mock_events,
-            },
+            provides={"EventService": mock_events},
         )
 
     assert result == {"id": "test"}
-    mock_events.create_event.assert_called_once()
+    mock_events.create_event.assert_awaited_once_with(
+        data, user_id=mock_user.id, locale="en"
+    )
+    mock_events.serialize_event.assert_called_once_with(event_record, "en")
 
 
 @pytest.mark.asyncio

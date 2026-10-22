@@ -58,28 +58,6 @@ async def test_properties_and_list_news_current_user_like():
 
 
 @pytest.mark.asyncio
-async def test_published_latest_search_and_count_paths():
-    repo, db = _repo()
-    item = _news_item(uuid.uuid4())
-    result = MagicMock()
-    result.scalars.return_value.all.return_value = [item]
-    db.execute.return_value = result
-    repo._to_dto = MagicMock(return_value="dto")
-
-    with patch(
-        "app.repositories.news_repository.get_current_tenant", return_value=None
-    ):
-        assert await repo.get_published(skip=91, limit=2) == ["dto"]
-    assert await repo.get_latest(limit=3) == ["dto"]
-    assert await repo.search("  News_%  ", skip=1, limit=2) == ["dto"]
-
-    result.scalar.return_value = 4
-    assert await repo.count_total() == 4
-    result.scalar.return_value = 0
-    assert await repo.count_total() == 0
-
-
-@pytest.mark.asyncio
 async def test_list_news_cursor_text_vector_and_empty_paths(monkeypatch):
     repo, db = _repo()
     empty = MagicMock()
@@ -219,3 +197,80 @@ async def test_get_analytics_data_with_date_filters():
 
     await repo.get_analytics_data(start_date=start)
     await repo.get_analytics_data(end_date=end)
+
+
+@pytest.mark.asyncio
+async def test_claim_news_media_asset_preserves_an_existing_other_news_claim():
+    repo, db = _repo()
+    owner_id = uuid.uuid4()
+    target_news_id = uuid.uuid4()
+    asset = SimpleNamespace(
+        owner_user_id=owner_id,
+        news_id=uuid.uuid4(),
+    )
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = asset
+    db.execute.return_value = result
+
+    claimed = await repo.claim_news_media_asset(
+        "/static/news_images/news_0123456789abcdef0123456789abcdef.jpg",
+        owner_user_id=owner_id,
+        news_id=target_news_id,
+    )
+
+    assert claimed is False
+    assert asset.news_id != target_news_id
+    db.flush.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_replace_news_media_asset_without_owner_keeps_current_association():
+    repo, db = _repo()
+    repo.release_news_media_asset = AsyncMock()
+    news_id = uuid.uuid4()
+
+    replaced = await repo.replace_news_media_asset(
+        "/static/news_images/news_0123456789abcdef0123456789abcdef.jpg",
+        owner_user_id=None,
+        news_id=news_id,
+    )
+
+    assert replaced is False
+    db.execute.assert_not_awaited()
+    repo.release_news_media_asset.assert_not_awaited()
+    db.flush.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_replace_news_media_asset_removal_releases_existing_reference():
+    repo, db = _repo()
+    news_id = uuid.uuid4()
+    current_asset = SimpleNamespace(news_id=news_id)
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = current_asset
+    db.execute.return_value = result
+
+    replaced = await repo.replace_news_media_asset(
+        None, owner_user_id=None, news_id=news_id
+    )
+
+    assert replaced is True
+    assert current_asset.news_id is None
+    db.execute.assert_awaited_once()
+    db.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_replace_news_media_asset_removal_without_current_reference_is_idempotent():
+    repo, db = _repo()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    db.execute.return_value = result
+
+    replaced = await repo.replace_news_media_asset(
+        None, owner_user_id=None, news_id=uuid.uuid4()
+    )
+
+    assert replaced is True
+    db.execute.assert_awaited_once()
+    db.flush.assert_not_awaited()

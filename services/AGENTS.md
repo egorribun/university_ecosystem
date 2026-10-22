@@ -6,7 +6,7 @@ This document defines the architectural invariants, concurrency models, error ha
 
 ## 1. Go Runtime & Tooling Standards
 
-- **Go Version**: Standardized on **Go 1.26.4+** (CI pins 1.26.6; fuzz jobs may use 1.27.1).
+- **Go Version**: Standardized on **Go 1.26.4+** (CI pins 1.26.10; fuzz jobs may use 1.27.3).
 - **Static Analysis & Linting**: `.golangci.yml` must enable:
   - `exhaustive` (with `default-signifies-exhaustive: true` to catch unhandled enum switch cases).
   - `govet`, `errcheck`, `staticcheck`, and `gosec` (SAST vulnerability scanner).
@@ -21,13 +21,15 @@ Windows host has no C compiler, run the same checks in pinned containers rather
 than silently replacing `go test -race` with a non-race run:
 
 ```powershell
-docker run --rm -v "${PWD}:/workspace" -w /workspace/services/ws-hub docker.io/library/golang:1.26.6-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36 bash -lc 'CGO_ENABLED=1 go test -race ./...'
-docker run --rm -v "${PWD}:/workspace" -w /workspace/services/ws-hub golangci/golangci-lint:v2.13.2 golangci-lint run --config /workspace/.golangci.yml --timeout 5m
+docker run --rm -v "${PWD}:/workspace" -w /workspace/services/ws-hub docker.io/library/golang:1.26.10-bookworm@sha256:fe3da92a5cb2881e4aa75e625cb0b7c50571632fb4cf340cbe53e6ccdcffdd51 bash -c 'CGO_ENABLED=1 go test -race ./...'
+docker run --rm -v "${PWD}:/workspace" -w /workspace/services/ws-hub golangci/golangci-lint:v2.14.0 golangci-lint run --config /workspace/.golangci.yml --timeout 5m
 ```
 
 Repeat the commands with `services/gateway` and `services/file-processor` as
 the working directory. Container output is local diagnostic evidence; the
 required release gate still comes from the current-SHA Linux CI jobs.
+Use `bash -c` to preserve the image's Go executable path; a login shell can
+replace `PATH` before the checks start.
 
 ---
 
@@ -67,6 +69,9 @@ if exists {
 - Messages exceeding 60 KB (61,440 bytes) must be rejected immediately.
 - The hub sends a `message_too_large` error frame to the sender client and terminates the frame processing pipeline (RZ-31-02).
 
+### 3.2.1. Per-Client Inbound Rate Limit
+- Every inbound frame (including malformed or unknown ones) consumes a token from a per-client bucket (`WS_CLIENT_MSG_RATE_LIMIT`, burst `WS_CLIENT_MSG_BURST`). Frames over budget are dropped and the client receives `{"type":"rate_limit_exceeded"}`. Each accepted frame costs a session-revocation check, so this limit also bounds Redis load.
+
 ### 3.3. Client Limits & Connection Pre-Check
 - `maxClients` limit must be validated in `HandleWebSocket` **before** executing the HTTP-to-WebSocket connection upgrade (TD-31-05).
 
@@ -77,7 +82,7 @@ if exists {
 - **Path**: Frontend clients connect to `/ws/chat`; Caddy rewrites the request path to `/ws`.
 - **Ticket Validation**: WebSocket connections require a one-time ticket (`ott:ws:<ticket>`) issued by the backend and validated against Redis using `REDIS_PASSWORD`.
 - **Allowed Origins**: `ALLOWED_ORIGINS` must include `http://localhost` (port 80 Caddy) in development and local compose configurations.
-- **Message Types**: All incoming payload types must be validated against the whitelist map `allowedMessageTypes`.
+- **Message Types**: Client-to-hub frames are limited to `join` and `leave` and must be validated against `allowedMessageTypes`. Chat mutations are backend-owned REST/outbox operations; never relay an arbitrary client payload into the trusted `chat.*` event stream.
 
 ---
 
@@ -125,7 +130,9 @@ if exists {
 - Keys are restricted to a maximum length of 1024 bytes; metadata options maps must contain $\le$ 10 entries.
 
 ### 5.3. GraphQL Engine Safeguards
-- The embedded GraphQL engine enforces a maximum query depth limit of **10** and a hard **30s** request timeout middleware.
+- The Go file-processor GraphQL engine enforces a maximum query depth limit of
+  **10** and a hard **30s** request timeout middleware; it is independent of
+  the retired FastAPI `/graphql` endpoint.
 - Strict `gql.ID` scalar usage with `graph-gophers/graphql-go v1.9.0+`.
 - Escaped quotes must be handled correctly in `estimateQueryDepth`.
 
@@ -140,7 +147,10 @@ routing tables in lockstep.
 
 ### 6.1. Edge Routing Table
 - Edge liveness: `/healthz` responded locally by Caddy.
-- Dynamic APIs: `/api/*` and `/graphql*` -> `gateway:8080`.
+- Dynamic APIs: `/api/*` -> `gateway:8080`. The retired backend `/graphql`
+  path is not forwarded to the Gateway; on the frontend host it reaches the SSR
+  not-found path, and the Gateway returns a local 404 on its catch-all host. The
+  Go file-processor GraphQL runtime in section 5.3 is separate and unchanged.
 - WS Ticket Issuance: `/ws/ticket` -> `gateway:8080`.
 - WebSocket Tunnel: `/ws/chat*` -> `ws-hub:8081` (rewriting path to `/ws`).
 - Static Assets & JWKS: `/static/*` and `/.well-known/*` -> `backend:8000`.

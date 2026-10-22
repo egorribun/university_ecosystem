@@ -161,6 +161,30 @@ describe("useNextLesson, useRelatedEvents, useRelatedNews, useRouteType hooks", 
       expect(res2.current.length).toBeGreaterThanOrEqual(3)
     })
 
+    it("matches related articles by stable English category fields", () => {
+      const russianScience = {
+        id: "science-russian",
+        title: "ГУУ вошёл в топ-20 лучших университетов страны",
+        content: "Научных публикаций стало больше; гранты и стипендии поддерживают исследования.",
+        title_en: "GUU ranks among the country's top 20 universities",
+        content_en: "Research publications helped raise the result.",
+      }
+      const englishScience = {
+        ...russianScience,
+        id: "science-english",
+        title: russianScience.title_en,
+        content: russianScience.content_en,
+      }
+      mockGetQueriesData.mockReturnValue([
+        ["news-ru", { pages: [{ items: [russianScience] }] }],
+        ["news-en", { pages: [{ items: [englishScience] }] }],
+      ])
+
+      const { result } = renderHook(() => useRelatedNews("current", "science", 2))
+
+      expect(result.current.map((item) => item.id)).toEqual(["science-russian", "science-english"])
+    })
+
     it("skips cache entries without pages and pages without items", () => {
       mockGetQueriesData.mockReturnValue([
         ["missing-data", undefined],

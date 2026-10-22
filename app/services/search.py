@@ -28,7 +28,9 @@ _HIGHLIGHT_OPEN = "\x00MARK_OPEN\x00"
 _HIGHLIGHT_CLOSE = "\x00MARK_CLOSE\x00"
 
 from elasticsearch import (  # noqa: E402
+    ApiError,
     AsyncElasticsearch,
+    TransportError,
 )
 from elasticsearch.helpers import (  # noqa: E402
     async_bulk,
@@ -82,6 +84,46 @@ class SearchService:
                 body["mappings"] = mappings
             await self.client.indices.create(index=index, body=body)
             logger.info("Created index: %s", index)
+
+    async def publish_rebuilt_indices(self, replacements: dict[str, str]) -> None:
+        """Atomically expose complete rebuilds, including legacy concrete names."""
+        actions: list[dict[str, Any]] = []
+        obsolete: list[str] = []
+        for name, replacement in replacements.items():
+            if await self.client.indices.exists_alias(name=name):
+                aliases = await self.client.indices.get_alias(name=name)
+                for previous in aliases:
+                    actions.append(
+                        {
+                            "remove": {
+                                "index": previous,
+                                "alias": name,
+                                "must_exist": True,
+                            }
+                        }
+                    )
+                    if previous.startswith(f"{name}-rebuild-"):
+                        obsolete.append(previous)
+            elif await self.client.indices.exists(index=name):
+                actions.append({"remove_index": {"index": name}})
+            actions.append(
+                {"add": {"index": replacement, "alias": name, "is_write_index": True}}
+            )
+        await self.client.indices.refresh(index=",".join(replacements.values()))
+        result = await self.client.indices.update_aliases(actions=actions)
+        if result.get("errors") or not result.get("acknowledged"):
+            raise RuntimeError("Search alias publication was not confirmed")
+        # Publication has succeeded. Cleanup failure must not make callers delete
+        # the now-live replacement or report that the atomic switch failed.
+        for previous in obsolete:
+            try:
+                await self.delete_index(previous)
+            except (OSError, ConnectionError, TimeoutError, TransportError, ApiError):
+                logger.warning("Unable to clean obsolete search index %s", previous)
+
+    async def delete_index(self, index: str) -> None:
+        """Remove an index owned by a rebuild (not a public read/write alias)."""
+        await self.client.indices.delete(index=index, ignore_unavailable=True)
 
     async def index_document(
         self,
@@ -286,7 +328,9 @@ NEWS_MAPPINGS = {
             "analyzer": "russian",
             "fields": {"suggest": {"type": "completion"}},
         },
+        "title_en": {"type": "text", "analyzer": "english"},
         "content": {"type": "text", "analyzer": "russian"},
+        "content_en": {"type": "text", "analyzer": "english"},
         "summary": {"type": "text", "analyzer": "russian"},
         "author_name": {"type": "keyword"},
         "created_at": {"type": "date"},
@@ -301,7 +345,9 @@ EVENTS_MAPPINGS = {
             "analyzer": "russian",
             "fields": {"suggest": {"type": "completion"}},
         },
+        "title_en": {"type": "text", "analyzer": "english"},
         "description": {"type": "text", "analyzer": "russian"},
+        "description_en": {"type": "text", "analyzer": "english"},
         "location": {"type": "text"},
         "organizer_name": {"type": "keyword"},
         "start_time": {"type": "date"},

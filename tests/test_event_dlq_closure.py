@@ -16,7 +16,9 @@ class _Circuit:
     def __init__(self, state="CLOSED", allow=True):
         self.state = SimpleNamespace(name=state)
         self.allow_request = MagicMock(return_value=allow)
+        self.admit_request = MagicMock(return_value=SimpleNamespace(allowed=allow))
         self.add_state_listener = MagicMock()
+        self.abandon_request = MagicMock()
         self.record_success = MagicMock()
         self.record_failure = MagicMock()
 

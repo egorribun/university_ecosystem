@@ -1,14 +1,16 @@
 """GraphQL token validator — REST-equivalent security for GraphQL requests.
 
 Addresses the auth parity gap (P1, audit 2026-02-26) between the GraphQL path
-and the REST ``get_current_user`` dependency (``app/api/deps.py``).
+and the REST ``get_current_user`` dependency (``app/api/deps/auth.py``).
 
-The REST path enforces five security layers:
-  1. Dedicated Redis JTI revocation pre-check (DB fallback on Redis error)
+The REST path enforces these security layers (the MFA-epoch policy is shared
+through ``app.services.auth.session_policy``):
+  1. Mandatory dedicated Redis JTI revocation check (outage fails closed)
   2. DB session revocation check             (fail-closed on DB error)
   3. Session expiry validation               (fail-closed)
   4. Fingerprint validation                  (revokes session on mismatch)
   5. User existence / is_active check        (fail-closed)
+  6. MFA epoch: sessions older than the last MFA change are rejected
 
 The original GraphQL ``get_context`` only performed steps 1 and a partial step 2
 (no expiry check, no fingerprint validation). This service closes that gap so both
@@ -27,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.revocation import get_revocation_redis_client
 from app.core.logging import get_logger
 from app.models import ActiveSession, User
+from app.services.auth.session_policy import session_epoch_is_current
 
 logger = get_logger(__name__)
 
@@ -49,9 +52,11 @@ class GraphQLTokenValidator:
     async def validate(self, user_id_str: str, jti: str) -> User | None:
         """Validate token claims and return the authenticated User, or None.
 
-        Steps mirror ``deps.py:get_current_user`` exactly.
+        Mirrors ``app/api/deps/auth.py`` (``_resolve_current_user``); the shared
+        session policy lives in ``app.services.auth.session_policy``.
         """
-        # Step 1 — dedicated Redis JTI revocation pre-check (O(1), DB fallback)
+        # Step 1 — mandatory durable revocation check; do not trust a possibly
+        # stale DB row when tombstone verification is unavailable.
         if not await self._redis_jti_check(jti):
             return None
 
@@ -69,6 +74,11 @@ class GraphQLTokenValidator:
         if user is None or not user.is_active:
             return None
 
+        # Step 4b — MFA epoch: sessions minted before the last MFA change are dead
+        # (same policy as REST via app.services.auth.session_policy).
+        if not session_epoch_is_current(active_session.mfa_epoch, user.mfa_epoch):
+            return None
+
         # Step 5 — Fingerprint validation (revokes session on mismatch, fail-closed)
         if not await self._check_fingerprint(user, active_session):
             return None
@@ -78,15 +88,15 @@ class GraphQLTokenValidator:
     # ------------------------------------------------------------------ helpers
 
     async def _redis_jti_check(self, jti: str) -> bool:
-        """Return False if JTI is revoked; otherwise allow the mandatory DB check."""
+        """Reject revoked JTIs and fail closed when durable state is unavailable."""
         try:
             _redis = await get_revocation_redis_client()
             if await _redis.exists(f"revoked:jti:{jti}"):
                 logger.debug("GraphQL: session revoked in Redis")
                 return False
-        except (RedisError, RuntimeError, OSError) as exc:
-            # RZ-20-04: revocation store unavailable → mandatory DB check.
-            logger.debug("GraphQL session check fallback to DB: %s", exc)  # nosec B110
+        except (RedisError, RuntimeError, OSError):
+            logger.warning("GraphQL session revocation verification unavailable")
+            raise RuntimeError("Durable session revocation check unavailable") from None
         return True
 
     async def _load_db_session(self, jti: str) -> ActiveSession | None:

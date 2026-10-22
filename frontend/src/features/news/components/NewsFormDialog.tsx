@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, type FormEvent } from "react"
+import { useState, useCallback, useEffect, useRef, type FormEvent } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
@@ -55,6 +55,7 @@ interface NewsFormDialogProps {
 export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps) => {
   const { t } = useTranslation(["news", "common"])
   const queryClient = useQueryClient()
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   // Form setup
   const {
@@ -244,24 +245,31 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
                   control={control}
                   name="image"
                   render={({ field: { value: _value, onChange, ...field } }) => (
-                    <Button
-                      as="label"
-                      variant="outline"
-                      size="sm"
-                      className={cn(
-                        "w-full sm:w-auto bg-(--bg-surface)/(--opacity-dim) border-glass-border",
-                        errors.image && "border-error-text/50 text-error-text"
-                      )}
-                      disabled={isSubmitting}
-                    >
-                      <div className="flex items-center gap-2">
-                        <PhotoCamera className="h-4 w-4" />
-                        {imageFile
-                          ? t("common:buttons.changePhoto")
-                          : t("common:buttons.uploadPhoto")}
-                      </div>
+                    <>
+                      <Button
+                        type="button"
+                        onClick={() => imageInputRef.current?.click()}
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                          "w-full sm:w-auto bg-(--bg-surface)/(--opacity-dim) border-glass-border",
+                          errors.image && "border-error-text/50 text-error-text"
+                        )}
+                        disabled={isSubmitting}
+                      >
+                        <span className="flex items-center gap-2">
+                          <PhotoCamera className="h-4 w-4" />
+                          {imageFile
+                            ? t("common:buttons.changePhoto")
+                            : t("common:buttons.uploadPhoto")}
+                        </span>
+                      </Button>
                       <input
                         {...field}
+                        ref={(element) => {
+                          imageInputRef.current = element
+                          field.ref(element)
+                        }}
                         type="file"
                         accept="image/*"
                         hidden
@@ -271,7 +279,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
                           if (file) onChange(file)
                         }}
                       />
-                    </Button>
+                    </>
                   )}
                 />
 

@@ -26,7 +26,39 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Run strict Renovate validator
-        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Verify uv.lock is up to date
+        run: uv lock --check
+
+      - name: Restore fast pre-commit environments
+        # Share the isolated hook cache with the read-only CI pre-commit job.
+        # The cache key covers hook revisions, the locked runner closure, and interpreter.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          extra_args: renovate-config-validator --all-files
+          path: ~/.cache/pre-commit
+          key: pre-commit-fast-v2-${{ runner.os }}-${{ env.pythonLocation }}-${{ hashFiles('.pre-commit-config.yaml', 'uv.lock') }}
+
+      - name: Install hash-verified pre-commit runner
+        run: |
+          set -euo pipefail
+          requirements_file="$RUNNER_TEMP/ci-precommit.requirements.txt"
+          uv export --frozen \
+            --only-group ci-precommit-runner \
+            --no-emit-project \
+            --no-emit-workspace \
+            --format requirements-txt \
+            -o "$requirements_file"
+          python -m pip install --disable-pip-version-check \
+            --require-hashes \
+            --only-binary=:all: \
+            --no-deps \
+            --force-reinstall \
+            -r "$requirements_file"
+          test "$(pre-commit --version)" = "pre-commit 4.6.2"
+
+      - name: Run strict Renovate validator
+        run: |
+          set -euo pipefail
+          pre-commit run renovate-config-validator --all-files --show-diff-on-failure

@@ -44,6 +44,7 @@ describe("NewsList", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    intersectionCallback = undefined
 
     disconnectObserver = vi.fn<() => void>()
     class MockIntersectionObserver implements IntersectionObserver {
@@ -81,6 +82,23 @@ describe("NewsList", () => {
     expect(screen.getByText(/no news yet/i)).toBeInTheDocument()
   })
 
+  it("shows a retriable load error instead of the empty state", () => {
+    const refreshNews = vi.fn()
+    render(<NewsList {...defaultProps} newsList={[]} isError refreshNews={refreshNews} />)
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Failed to load the news.")
+    expect(screen.queryByText(/no news yet/i)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }))
+    expect(refreshNews).toHaveBeenCalledOnce()
+  })
+
+  it("keeps cached news visible while reporting a failed refresh", () => {
+    render(<NewsList {...defaultProps} isError />)
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Failed to load the news.")
+    expect(screen.getAllByTestId("news-card")).toHaveLength(2)
+  })
+
   it("continues pagination when the current filtered page has no matches", () => {
     const fetchNextPage = vi.fn()
     render(<NewsList {...defaultProps} newsList={[]} hasNextPage fetchNextPage={fetchNextPage} />)
@@ -93,11 +111,69 @@ describe("NewsList", () => {
     expect(fetchNextPage).toHaveBeenCalledOnce()
   })
 
+  it("does not restart failed pagination when the cached-list sentinel intersects", () => {
+    const fetchNextPage = vi.fn()
+    const refreshNews = vi.fn()
+    const { rerender } = render(
+      <NewsList
+        {...defaultProps}
+        isError
+        hasNextPage
+        fetchNextPage={fetchNextPage}
+        refreshNews={refreshNews}
+      />
+    )
+
+    intersectionCallback?.(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    )
+    expect(fetchNextPage).not.toHaveBeenCalled()
+    expect(screen.getAllByTestId("news-card")).toHaveLength(2)
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }))
+    expect(refreshNews).toHaveBeenCalledOnce()
+
+    rerender(
+      <NewsList
+        {...defaultProps}
+        isError={false}
+        hasNextPage
+        fetchNextPage={fetchNextPage}
+        refreshNews={refreshNews}
+      />
+    )
+    expect(intersectionCallback).toBeDefined()
+    intersectionCallback?.(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    )
+    expect(fetchNextPage).toHaveBeenCalledOnce()
+  })
+
   it("renders offline fallback when list is empty and offline", () => {
     const refreshNews = vi.fn()
     render(<NewsList {...defaultProps} newsList={[]} isOnline={false} refreshNews={refreshNews} />)
     // OfflineFallback renders the offline text/icon
     expect(screen.getByText(/offline/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }))
+    expect(refreshNews).toHaveBeenCalledOnce()
+  })
+
+  it("retries an offline initial-load error through the offline fallback", () => {
+    const refreshNews = vi.fn()
+    render(
+      <NewsList
+        {...defaultProps}
+        newsList={[]}
+        isError
+        isOnline={false}
+        refreshNews={refreshNews}
+      />
+    )
+
+    expect(screen.getByText(/offline/i)).toBeInTheDocument()
+    expect(screen.queryByText("Failed to load the news.")).not.toBeInTheDocument()
+    expect(screen.queryByText(/no news yet/i)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /try again/i }))
     expect(refreshNews).toHaveBeenCalledOnce()
   })

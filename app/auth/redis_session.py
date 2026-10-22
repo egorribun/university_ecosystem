@@ -132,20 +132,24 @@ async def get_session_backend() -> SessionBackend:
             pass
 
         async def is_session_valid(self, jti: str) -> bool:
-            # LOW-W19: NullSessionBackend always returns True, which means
-            # revoked tokens are never rejected.  Warn once so operators know
-            # session validation is effectively disabled in this environment.
+            # With session caching disabled, this answers only the revocation
+            # question; callers must still validate the authoritative DB session.
             if not NullSessionBackend._warned:
                 NullSessionBackend._warned = True
                 logger.warning(
-                    "NullSessionBackend in use — is_session_valid always returns True; "
-                    "session revocation is disabled.  Configure a Redis backend in production."
+                    "Session caching disabled; validating durable Redis revocations. "
+                    "Database session validation remains required."
                 )
-            return True
+            client = await get_revocation_redis_client()
+            return not bool(await client.exists(f"revoked:jti:{jti}"))
 
         async def revoke_session(
             self, jti: str, expires_at: datetime | None = None
         ) -> None:
-            pass
+            # Optional caching must never disable mandatory cross-service
+            # revocation for logout, password reset, or account deletion.
+            from app.services.auth.redis_session import RedisSessionService
+
+            await RedisSessionService().revoke_session(jti, expires_at=expires_at)
 
     return NullSessionBackend()

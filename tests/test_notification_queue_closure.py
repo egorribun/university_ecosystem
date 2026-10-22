@@ -12,38 +12,6 @@ from app.services import notification_queue as queue
 
 
 @pytest.mark.asyncio
-async def test_enqueue_event_and_news_convert_integer_ids():
-    event_id = uuid.uuid4()
-    news_id = uuid.uuid4()
-
-    with patch.object(
-        queue.enqueue_event_notification_task, "kick", new=AsyncMock()
-    ) as event_kick:
-        await queue.enqueue_event_notification(event_id.int, locale="ru")
-    with patch.object(
-        queue.enqueue_news_notification_task, "kick", new=AsyncMock()
-    ) as news_kick:
-        await queue.enqueue_news_notification(news_id.int, locale="en")
-
-    event_kick.assert_awaited_once_with(event_id, locale="ru")
-    news_kick.assert_awaited_once_with(news_id, locale="en")
-
-
-@pytest.mark.asyncio
-async def test_enqueue_comment_converts_all_integer_ids():
-    ids = [uuid.uuid4() for _ in range(3)]
-
-    with patch.object(
-        queue.enqueue_comment_notification_task, "kick", new=AsyncMock()
-    ) as comment_kick:
-        await queue.enqueue_comment_notification(
-            ids[0].int, ids[1].int, ids[2].int, locale="ru"
-        )
-
-    comment_kick.assert_awaited_once_with(*ids, locale="ru")
-
-
-@pytest.mark.asyncio
 async def test_cleanup_dead_lettered_jobs_deletes_expired_rows():
     db = AsyncMock()
     db.execute.return_value = MagicMock(rowcount=2)
@@ -204,56 +172,11 @@ async def test_record_failure_without_optional_queue_metrics():
     )
 
 
-@pytest.mark.asyncio
-async def test_enqueue_helpers_report_transport_failures_and_reraise():
-    ids = [uuid.uuid4() for _ in range(3)]
-    cases = [
-        (
-            queue.enqueue_event_notification,
-            queue.enqueue_event_notification_task,
-            (ids[0],),
-            {"locale": "en"},
-            "event",
-            ids[0],
-            "enqueue_event_notification",
-        ),
-        (
-            queue.enqueue_news_notification,
-            queue.enqueue_news_notification_task,
-            (ids[0],),
-            {"locale": "ru"},
-            "news",
-            ids[0],
-            "enqueue_news_notification",
-        ),
-        (
-            queue.enqueue_comment_notification,
-            queue.enqueue_comment_notification_task,
-            tuple(ids),
-            {"locale": "en"},
-            "comment",
-            ids[1],
-            "enqueue_comment_notification",
-        ),
-    ]
-
-    for (
-        enqueue,
-        task,
-        args,
-        kwargs,
-        expected_kind,
-        expected_id,
-        expected_source,
-    ) in cases:
-        transport_error = OSError("nats")
-        with (
-            patch.object(task, "kick", new=AsyncMock(side_effect=transport_error)),
-            patch.object(queue, "report_enqueue_failure", new=AsyncMock()) as report,
-            pytest.raises(OSError, match="nats"),
-        ):
-            await enqueue(*args, **kwargs)
-        assert report.await_args.kwargs["notification_type"] == expected_kind
-        assert report.await_args.kwargs["record_id"] == expected_id
-        assert report.await_args.kwargs["error"] is transport_error
-        assert report.await_args.kwargs["source"] == expected_source
+def test_enqueue_wrappers_are_removed_from_the_queue_module():
+    """AUD-198: live notifications come from the durable outbox; NATS wrappers that dropped work are gone."""
+    for name in (
+        "enqueue_event_notification",
+        "enqueue_news_notification",
+        "enqueue_comment_notification",
+    ):
+        assert not hasattr(queue, name)

@@ -221,48 +221,6 @@ class TestCleanupPrivacyArtifactsTask:
             mock_cwv_cleanup.assert_awaited_once_with(retention_days=30)
 
 
-class TestManagePartitionsTask:
-    @pytest.mark.asyncio
-    async def test_runs_when_enabled(self):
-        from app.tasks import cleanups
-
-        with (
-            patch("app.tasks.cleanups.settings") as mock_settings,
-            patch(
-                "app.tasks.cleanups.ensure_partitions_exist", new_callable=AsyncMock
-            ) as mock_ensure,
-        ):
-            mock_settings.partition_management_enabled = True
-            inner = getattr(
-                cleanups.manage_partitions_task,
-                "__wrapped__",
-                cleanups.manage_partitions_task,
-            )
-            if callable(inner):
-                await inner()
-            mock_ensure.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_skips_when_disabled(self):
-        from app.tasks import cleanups
-
-        with (
-            patch("app.tasks.cleanups.settings") as mock_settings,
-            patch(
-                "app.tasks.cleanups.ensure_partitions_exist", new_callable=AsyncMock
-            ) as mock_ensure,
-        ):
-            mock_settings.partition_management_enabled = False
-            inner = getattr(
-                cleanups.manage_partitions_task,
-                "__wrapped__",
-                cleanups.manage_partitions_task,
-            )
-            if callable(inner):
-                await inner()
-            mock_ensure.assert_not_called()
-
-
 class TestCleanupDeadLetterJobsTask:
     @pytest.mark.asyncio
     async def test_runs_when_retention_positive(self):
@@ -284,59 +242,58 @@ class TestCleanupDeadLetterJobsTask:
             mock_nq.cleanup_dead_lettered_jobs.assert_called_once_with(retention_days=7)
 
 
-class TestSetupPeriodicCleanups:
-    @pytest.mark.asyncio
-    async def test_logs_initialised(self):
-        """setup_periodic_cleanups should log a message and return."""
-        from app.tasks import cleanups
-
-        with patch("app.tasks.cleanups.get_logger") as mock_get_logger:
-            mock_logger = MagicMock()
-            mock_get_logger.return_value = mock_logger
-            await cleanups.setup_periodic_cleanups()
-            mock_logger.info.assert_called_once()
-
-
 # ---------------------------------------------------------------------------
 # app/tasks/email.py
 # ---------------------------------------------------------------------------
 
 
 class TestSendAuthEmail:
-    def test_calls_send_reset_email(self):
+    @pytest.mark.asyncio
+    async def test_builds_and_delivers_reset_message(self):
         from app.tasks import email as email_tasks
 
-        with patch("app.tasks.email.send_reset_email") as mock_send:
-            inner = getattr(
+        with patch(
+            "app.tasks.email._deliver_email_message", new_callable=AsyncMock
+        ) as mock_send:
+            await getattr(
                 email_tasks.send_auth_email, "__wrapped__", email_tasks.send_auth_email
+            )(
+                "user@example.com",
+                "https://example.com/reset",
+                "John Doe",
+                locale="en",
             )
-            if callable(inner):
-                inner(
-                    "user@example.com",
-                    "https://example.com/reset",
-                    "John Doe",
-                    locale="en",
-                )
-            mock_send.assert_called_once_with(
-                "user@example.com", "https://example.com/reset", "John Doe", locale="en"
-            )
+
+        mock_send.assert_awaited_once()
+        assert mock_send.call_args.kwargs["to_email"] == "user@example.com"
+        assert mock_send.call_args.kwargs["insecure_event"] == (
+            "password.reset_email.insecure_smtp"
+        )
+        message = mock_send.call_args.kwargs["message"]
+        assert message["To"] == "user@example.com"
 
 
 class TestSendLockoutAlert:
-    def test_calls_send_lockout_email(self):
+    @pytest.mark.asyncio
+    async def test_builds_and_delivers_lockout_message(self):
         from app.tasks import email as email_tasks
 
-        with patch("app.utils.email.send_lockout_email") as mock_send:
-            inner = getattr(
+        with patch(
+            "app.tasks.email._deliver_email_message", new_callable=AsyncMock
+        ) as mock_send:
+            await getattr(
                 email_tasks.send_lockout_alert,
                 "__wrapped__",
                 email_tasks.send_lockout_alert,
-            )
-            if callable(inner):
-                inner("user@example.com", "Jane Doe", locale="ru")
-            mock_send.assert_called_once_with(
-                "user@example.com", "Jane Doe", locale="ru"
-            )
+            )("user@example.com", "Jane Doe", locale="ru")
+
+        mock_send.assert_awaited_once()
+        assert mock_send.call_args.kwargs["to_email"] == "user@example.com"
+        assert mock_send.call_args.kwargs["insecure_event"] == (
+            "auth.lockout_email.insecure_smtp"
+        )
+        message = mock_send.call_args.kwargs["message"]
+        assert message["To"] == "user@example.com"
 
 
 # ---------------------------------------------------------------------------

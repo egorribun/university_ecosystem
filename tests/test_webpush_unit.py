@@ -6,7 +6,6 @@ from app.services.webpush import (
     _prepare_actions,
     _resolve_ttl,
     _sanitize_vibrate,
-    build_payload,
 )
 
 
@@ -79,62 +78,6 @@ def test_normalize_payload_with_options():
     payload, _ = _normalize_payload(raw)
     assert payload["options"]["body"] == "Overridden"
     assert payload["data"]["key"] == "val"
-
-
-def test_build_payload_integration():
-    # Tests the high-level build_payload which uses templates
-    data = {"title": "Custom Title", "body": "Custom Body", "urgency": "high"}
-    result = build_payload("test_type", data)
-    assert result["title"] == "Custom Title"
-    assert result["options"]["body"] == "Custom Body"
-    assert result["_meta"]["urgency"] == "high"
-
-
-def test_prepare_delivery_payload_minimal(monkeypatch):
-    import app.services.push_topics as pt
-    from app.services.webpush import _prepare_delivery_payload
-
-    # Mock settings to allow test-topic
-    class MockSettings:
-        notifications_allowed_push_topics_set = frozenset(["test-topic"])
-
-    monkeypatch.setattr(pt, "app_settings", MockSettings())
-
-    payload = {"title": "Test"}
-    prepared = _prepare_delivery_payload(payload, topic="test-topic", user=None)
-    assert prepared["title"] == "Test"
-    assert prepared["_meta"]["topic"] == "test-topic"
-    assert "options" in prepared
-
-
-def test_prepare_delivery_payload_with_user_quiet_hours(monkeypatch):
-    import app.services.webpush as wp
-    from app.services.webpush import _prepare_delivery_payload
-
-    class MockUser:
-        def __init__(self):
-            self.id = "user-123"
-            self.preferences = type(
-                "Prefs",
-                (),
-                {
-                    "dnd_enabled": True,
-                    "dnd_start": None,  # Always in quiet hours if start/end missing but enabled
-                    "dnd_end": None,
-                    "timezone": "UTC",
-                },
-            )
-
-    # Mock quiet hours to always True
-    monkeypatch.setattr(wp, "_is_user_in_quiet_hours", lambda u: True)
-
-    payload = {"title": "Hello", "body": "Secret"}
-    user = MockUser()
-    prepared = _prepare_delivery_payload(payload, topic="t", user=user)
-
-    assert prepared["title"] == "Hello"
-    assert prepared["options"]["silent"] is True
-    assert prepared["data"]["dnd_suppressed"] is True
 
 
 def test_process_push_results_cleanup(monkeypatch):

@@ -6,8 +6,8 @@ Provider: university-backend  (Python backend — publishes to NATS)
 
 Flow
 ----
-1. This test (consumer side) defines the expected message schema and writes
-   ``tests/contracts/pacts/ws-hub-university-backend.json``.
+1. This test (consumer side) defines the expected message schema and merges it
+   into ``ws-hub-university-backend.json`` in the run's fresh output directory.
 2. The Go provider test in ``services/ws-hub/internal/contract/`` reads that
    pact file and verifies that the ws-hub message handler can process any
    message matching the schema.
@@ -42,8 +42,8 @@ if sys.platform != "win32":
         pass
 
 if pact_lib is None:
-    pytestmark = pytest.mark.skip(
-        reason="pact-python is not installed or failed to load DLL (e.g. on Windows)"
+    PACT_UNAVAILABLE_REASON = (
+        "pact-python is not installed or failed to load DLL (e.g. on Windows)"
     )
 
     class DummyPact:
@@ -52,14 +52,13 @@ if pact_lib is None:
     Pact = DummyPact
     match = None
 else:
+    PACT_UNAVAILABLE_REASON = ""
     Pact = pact_lib.Pact
     match = pact_lib.match
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
-PACT_DIR = Path(__file__).parent / "pacts"
 
 CONSUMER_NAME = "ws-hub"
 PROVIDER_NAME = "university-backend"
@@ -81,16 +80,16 @@ _SAMPLE_SIGNATURE = "a" * 64  # 64-char hex string placeholder
 
 
 @pytest.fixture(scope="module")
-def pact() -> Pact:
-    """Session-scoped Pact instance.
+def pact(pact_output_dir: Path) -> Pact:
+    """Module-scoped Pact instance with its own consumer message handlers.
 
     On teardown (after all tests in the module), writes the pact contract file
-    to *PACT_DIR*.  The file is consumed by the Go provider test.
+    to the fresh output directory, merging the other ws-hub module's messages.
+    The combined file is consumed by the Go provider test.
     """
-    PACT_DIR.mkdir(parents=True, exist_ok=True)
     p = Pact(CONSUMER_NAME, PROVIDER_NAME)
     yield p.with_specification("V4")
-    p.write_file(PACT_DIR, overwrite=True)
+    p.write_file(pact_output_dir, overwrite=False)
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +107,8 @@ def _ws_hub_handler(msg: str | bytes | None, context: dict[str, Any]) -> dict[st
 
     Mirrors the checks in ``services/ws-hub/pkg/hub/hub.go`` lines 431-475:
     - JSON must unmarshal to ``struct { Data {...}; Signature string }``
-    - ``data.user_id`` and ``data.room_id`` must be valid UUIDs
+    - ``data.user_id`` must be a valid UUID; ``data.room_id`` may be empty only
+      for a user-wide cache invalidation, and eviction requires a room UUID
     - ``data.timestamp`` must be a non-negative integer
     - ``signature`` must be a 64-char lowercase hex string
 
@@ -135,9 +135,13 @@ def _ws_hub_handler(msg: str | bytes | None, context: dict[str, Any]) -> dict[st
     assert _uuid_re.match(str(data["user_id"])), (
         f"data.user_id is not a valid UUID: {data['user_id']!r}"
     )
-    assert _uuid_re.match(str(data["room_id"])), (
-        f"data.room_id is not a valid UUID: {data['room_id']!r}"
-    )
+    room_id = data["room_id"]
+    evict_room = data.get("evict_room", False)
+    assert isinstance(evict_room, bool), "data.evict_room must be a boolean"
+    if evict_room or room_id != "":
+        assert _uuid_re.match(str(room_id)), (
+            f"data.room_id is not a valid UUID: {room_id!r}"
+        )
 
     # Timestamp must be a non-negative integer ----------------------------
     ts = data["timestamp"]
@@ -251,6 +255,36 @@ def _verify_ws_hub_message(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize(
+    ("room_id", "evict_room", "valid"),
+    [
+        (_SAMPLE_ROOM_ID, False, True),
+        ("", False, True),
+        ("", True, False),
+        ("not-a-uuid", False, False),
+    ],
+)
+def test_cache_invalidation_identifier_scope(
+    room_id: str, evict_room: bool, valid: bool
+) -> None:
+    """User-wide invalidation may omit a room; eviction must name one."""
+    data: dict[str, Any] = {
+        "user_id": _SAMPLE_USER_ID,
+        "room_id": room_id,
+        "timestamp": _SAMPLE_TIMESTAMP,
+    }
+    if evict_room:
+        data["evict_room"] = True
+    payload = {"data": data, "signature": _SAMPLE_SIGNATURE}
+
+    if valid:
+        assert _ws_hub_handler(json.dumps(payload), {}) == payload
+    else:
+        with pytest.raises(AssertionError):
+            _ws_hub_handler(json.dumps(payload), {})
+
+
+@pytest.mark.skipif(pact_lib is None, reason=PACT_UNAVAILABLE_REASON)
 def test_cache_invalidation_event_contract(pact: Pact) -> None:
     """Contract: ws-hub expects cache invalidation messages in this schema.
 
@@ -297,6 +331,28 @@ def test_cache_invalidation_event_contract(pact: Pact) -> None:
     pact.verify(_verify_ws_hub_message, "Async")
 
 
+@pytest.mark.skipif(pact_lib is None, reason=PACT_UNAVAILABLE_REASON)
+def test_user_wide_cache_invalidation_contract(pact: Pact) -> None:
+    """Contract: an empty room ID invalidates every cached room for the user."""
+    (
+        pact.upon_receiving("a user-wide cache invalidation event", "Async")
+        .with_body(
+            {
+                "data": {
+                    "user_id": match.regex(_SAMPLE_USER_ID, regex=_UUID_PATTERN),
+                    "room_id": "",
+                    "timestamp": match.like(_SAMPLE_TIMESTAMP),
+                },
+                "signature": match.regex(_SAMPLE_SIGNATURE, regex=_HMAC_HEX_PATTERN),
+            },
+            "application/json",
+        )
+        .with_metadata({"nats_subject": "cache.invalidate"})
+    )
+    pact.verify(_verify_ws_hub_message, "Async")
+
+
+@pytest.mark.skipif(pact_lib is None, reason=PACT_UNAVAILABLE_REASON)
 def test_broadcast_to_many_contract(pact: Pact) -> None:
     """Contract: ws-hub expects broadcast event payloads in this schema."""
     (
@@ -319,6 +375,7 @@ def test_broadcast_to_many_contract(pact: Pact) -> None:
     pact.verify(_verify_ws_hub_message, "Async")
 
 
+@pytest.mark.skipif(pact_lib is None, reason=PACT_UNAVAILABLE_REASON)
 def test_heartbeat_timeout_contract(pact: Pact) -> None:
     """Contract: Python backend expects heartbeat timeout notifications in this schema."""
     (

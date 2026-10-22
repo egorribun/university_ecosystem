@@ -114,4 +114,10 @@ describe("nowParity", () => {
     vi.setSystemTime(new Date(2024, 4, 15, 12, 0, 0))
     expect(nowParity()).toBe("even")
   })
+
+  it("uses the supplied clock date instead of reading a second wall clock", () => {
+    vi.setSystemTime(new Date("2025-01-01T12:00:00.000Z"))
+
+    expect(nowParity(new Date("2025-01-06T12:00:00.000Z"))).toBe("even")
+  })
 })

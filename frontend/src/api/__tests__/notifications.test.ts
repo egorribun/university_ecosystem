@@ -116,6 +116,7 @@ describe("simple notification passthroughs", () => {
     await markNotificationRead(UUID)
     expect(gen.markReadSingleApiV1NotificationsNotifIdReadPatch).toHaveBeenCalledWith({
       path: { notif_id: UUID },
+      throwOnError: true,
     })
   })
 
@@ -124,6 +125,12 @@ describe("simple notification passthroughs", () => {
     await clearNotifications()
     expect(gen.markAllReadApiV1NotificationsReadAllPost).toHaveBeenCalledOnce()
     expect(gen.clearNotificationsApiV1NotificationsDelete).toHaveBeenCalledOnce()
+    expect(gen.markAllReadApiV1NotificationsReadAllPost).toHaveBeenCalledWith({
+      throwOnError: true,
+    })
+    expect(gen.clearNotificationsApiV1NotificationsDelete).toHaveBeenCalledWith({
+      throwOnError: true,
+    })
   })
 
   it("checkSchedule forwards the lookahead default + override", async () => {
@@ -652,6 +659,15 @@ describe("announcePlatformRelease", () => {
 })
 
 describe("isReleaseVersion pre-release suffix", () => {
+  it("enforces the backend 48-character total limit at the boundary", () => {
+    const atLimit = `1000.1000.99999-${"a".repeat(32)}`
+    const overLimit = `1000.1000.999999-${"a".repeat(32)}`
+    expect(atLimit).toHaveLength(48)
+    expect(overLimit).toHaveLength(49)
+    expect(isReleaseVersion(atLimit)).toBe(true)
+    expect(isReleaseVersion(overLimit)).toBe(false)
+  })
+
   it("accepts a suffix of exactly 32 identifier characters", () => {
     expect(isReleaseVersion(`1.4.0-${"a".repeat(32)}`)).toBe(true)
   })

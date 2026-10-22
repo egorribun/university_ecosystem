@@ -28,7 +28,7 @@ func (d dummySigningMethod) Alg() string {
 }
 
 func TestKeyFunc_UnexpectedSigningMethod(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	tok := &jwt.Token{
 		Method: dummySigningMethod{},
 		Header: map[string]interface{}{"alg": "dummy"},
@@ -39,7 +39,7 @@ func TestKeyFunc_UnexpectedSigningMethod(t *testing.T) {
 }
 
 func TestKeyFunc_RS256NotConfigured(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	tok := &jwt.Token{
 		Method: jwt.SigningMethodRS256,
 		Header: map[string]interface{}{"alg": "RS256"},
@@ -67,7 +67,7 @@ func TestStartJWKSRefresher_RejectsHS256BeforeFirstSuccessfulFetch(t *testing.T)
 	}))
 	defer server.Close()
 
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	m.StartJWKSRefresher(ctx, server.URL, time.Hour, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -170,7 +170,7 @@ func TestStartJWKSRefresher_FailuresAndRetries(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))

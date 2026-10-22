@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from fractions import Fraction
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -421,3 +422,167 @@ def test_plan_cli_rejects_a_shard_id_with_bundle_output(
 
     with pytest.raises(SystemExit, match="2"):
         _parse_args()
+
+
+def test_budget_candidate_lower_bound_never_exceeds_exact_projection() -> None:
+    from scripts import plan_mutmut_shards as planner
+
+    durations = {
+        "tests/shared.py::test_shared": 0.1,
+        "tests/a.py::test_a": 0.125,
+        "tests/b.py::test_b": 1.75,
+    }
+    tests_by_function = {
+        "app.module_0.run": ["tests/shared.py::test_shared", "tests/a.py::test_a"],
+        "app.module_1.run": ["tests/shared.py::test_shared", "tests/b.py::test_b"],
+    }
+    estimates = [
+        MutantEstimate(f"app.module_{index % 2}.run__mutmut_{index}", 0.0)
+        for index in range(1, 7)
+    ]
+    normalized = planner._budget_mutants(estimates, tests_by_function, durations)
+
+    for max_children in (1, 2, 3):
+        for assigned_count in range(4):
+            bucket = planner._budget_bin_from_mutants(
+                normalized[:assigned_count], durations
+            )
+            for candidate in normalized[assigned_count : assigned_count + 2]:
+                lower_bound = planner._budget_bin_lower_bound(
+                    bucket,
+                    candidate,
+                    durations=durations,
+                    max_children=max_children,
+                    control_cycle_reserve_seconds=3,
+                    metadata_and_startup_reserve_seconds=17,
+                )
+                exact_projection = planner._budget_bin_upper_bound(
+                    bucket,
+                    candidate,
+                    durations=durations,
+                    max_children=max_children,
+                    control_cycle_reserve_seconds=3,
+                    metadata_and_startup_reserve_seconds=17,
+                )
+                assert lower_bound <= exact_projection
+
+
+def test_budget_candidate_pruning_preserves_tie_choice_and_reduces_exact_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts import plan_mutmut_shards as planner
+
+    durations = {"tests/shared.py::test_same": 1.0}
+    tests_by_function = {"app.shared.run": ["tests/shared.py::test_same"]}
+    estimates = [
+        MutantEstimate(f"app.shared.run__mutmut_{index}", 1.0)
+        for index in range(1, 257)
+    ]
+    kwargs = {
+        "num_shards": 8,
+        "max_children": 3,
+        "control_cycle_reserve_seconds": 1,
+        "metadata_and_startup_reserve_seconds": 10,
+        "max_timeout_seconds": 100_000,
+    }
+
+    def run(*, disable_pruning: bool) -> tuple[list[list[str]], int]:
+        calls = 0
+        exact_projection = planner._budget_bin_upper_bound
+
+        def counted_projection(*args: object, **options: object) -> int:
+            nonlocal calls
+            calls += 1
+            return exact_projection(*args, **options)
+
+        with monkeypatch.context() as patcher:
+            patcher.setattr(planner, "_budget_bin_upper_bound", counted_projection)
+            if disable_pruning:
+                patcher.setattr(
+                    planner,
+                    "_budget_bin_lower_bound",
+                    lambda *args, **options: 0,
+                )
+            result = planner.plan_mutant_shards_with_budget(
+                estimates, tests_by_function, durations, **kwargs
+            )
+        return result, calls
+
+    exact_plan, exact_calls = run(disable_pruning=True)
+    pruned_plan, pruned_calls = run(disable_pruning=False)
+    assert pruned_plan == exact_plan
+    assert pruned_calls < exact_calls
+
+
+def test_budget_cost_projection_is_interned_and_reused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts import plan_mutmut_shards as planner
+
+    durations = {
+        "tests/shared.py::test_shared": 0.125,
+        "tests/a.py::test_a": 0.25,
+        "tests/b.py::test_b": 0.5,
+        "tests/c.py::test_c": 0.75,
+        "tests/unused.py::test_unused": 9.0,
+    }
+    tests_by_function = {
+        "app.module_a.run": [
+            "tests/shared.py::test_shared",
+            "tests/a.py::test_a",
+        ],
+        "app.module_b.run": [
+            "tests/shared.py::test_shared",
+            "tests/b.py::test_b",
+        ],
+        "app.module_c.run": [
+            "tests/shared.py::test_shared",
+            "tests/c.py::test_c",
+        ],
+    }
+    estimates = [
+        MutantEstimate(f"app.module_{module}.run__mutmut_{index}", 1.0)
+        for index, module in enumerate(("a", "b", "a", "c", "b", "a"), 1)
+    ]
+
+    from_float_calls: list[float] = []
+
+    class CountingFraction(Fraction):
+        @classmethod
+        def from_float(cls, value: float) -> Fraction:
+            from_float_calls.append(value)
+            return super().from_float(value)
+
+    monkeypatch.setattr(planner, "Fraction", CountingFraction)
+    normalized = planner._budget_mutants(estimates, tests_by_function, durations)
+
+    used_test_names = {
+        test_name
+        for test_names in tests_by_function.values()
+        for test_name in test_names
+    }
+    assert len(from_float_calls) == len(used_test_names)
+    bucket = planner._budget_bin_from_mutants(normalized[:2], durations)
+    normalized_conversion_count = len(from_float_calls)
+
+    for candidate in normalized[2:]:
+        lower_bound = planner._budget_bin_lower_bound(
+            bucket,
+            candidate,
+            durations=durations,
+            max_children=2,
+            control_cycle_reserve_seconds=2,
+            metadata_and_startup_reserve_seconds=7,
+        )
+        upper_bound = planner._budget_bin_upper_bound(
+            bucket,
+            candidate,
+            durations=durations,
+            max_children=2,
+            control_cycle_reserve_seconds=2,
+            metadata_and_startup_reserve_seconds=7,
+        )
+        assert lower_bound <= upper_bound
+        planner._add_budget_mutant(bucket, candidate, durations)
+
+    assert len(from_float_calls) == normalized_conversion_count

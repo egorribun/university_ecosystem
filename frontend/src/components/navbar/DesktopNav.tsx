@@ -25,7 +25,7 @@ export const DesktopNav = ({
   return (
     <ul
       className={cn(
-        "navbar-desktop-nav flex flex-row items-center m-0 p-0 min-w-0 list-none",
+        "navbar-desktop-nav flex shrink-0 flex-row items-center m-0 p-0 list-none",
         isCompact ? "ml-(--space-4) gap-0.5" : "ml-(--space-8) gap-1"
       )}
     >
@@ -41,6 +41,16 @@ export const DesktopNav = ({
               data-active={active || undefined}
               onPointerDown={markScrollFromBottom}
               onClick={(e) => {
+                if (
+                  e.defaultPrevented ||
+                  e.button !== 0 ||
+                  e.ctrlKey ||
+                  e.metaKey ||
+                  e.shiftKey ||
+                  e.altKey
+                ) {
+                  return
+                }
                 if (isSameTarget(item.to)) {
                   e.preventDefault()
                   scrollToTop(prefersReducedMotion ? "auto" : "smooth")

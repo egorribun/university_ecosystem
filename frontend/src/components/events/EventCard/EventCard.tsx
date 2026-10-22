@@ -133,7 +133,10 @@ const areEventCardPropsEqual = (prev: EventCardProps, next: EventCardProps) =>
   prev.starts_at === next.starts_at &&
   prev.ends_at === next.ends_at &&
   prev.is_registered === next.is_registered &&
-  prev.participant_count === next.participant_count
+  prev.participant_count === next.participant_count &&
+  prev.speaker === next.speaker &&
+  prev.event_type === next.event_type &&
+  prev.event_type_en === next.event_type_en
 
 // PERF-27-02-KEPT: custom areEqual comparator
 export default memo(EventCardComponent, areEventCardPropsEqual)

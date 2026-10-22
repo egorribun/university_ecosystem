@@ -18,8 +18,6 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	tclog "github.com/testcontainers/testcontainers-go/log"
 	tcnats "github.com/testcontainers/testcontainers-go/modules/nats"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 )
@@ -85,63 +83,70 @@ func TestExternalNATSTestURLRequiresLoopback(t *testing.T) {
 	}
 }
 
-func startJetStreamNATSContainer(t *testing.T) (*nats.Conn, nats.JetStreamContext, func()) {
+func startJetStreamNATSContainer(t *testing.T) (*nats.Conn, nats.JetStreamContext) {
 	t.Helper()
 	ctx := context.Background()
 	if connectionString := os.Getenv("NATS_TEST_URL"); connectionString != "" {
 		require.NoError(t, validateExternalNATSTestURL(connectionString))
 		nc, err := nats.Connect(connectionString)
+		if nc != nil {
+			t.Cleanup(nc.Close)
+		}
 		require.NoError(t, err)
 		js, err := nc.JetStream()
 		require.NoError(t, err)
-		return nc, js, nc.Close
+		return nc, js
 	}
 
 	container, err := tcnats.Run(
 		ctx,
-		"nats:2.12.6-alpine@sha256:1cfc36e2e5e638243d8c722f72c954cd0ec4b15ee82fadbc718ce12e2b3c1652",
-		testcontainers.WithLogger(tclog.TestLogger(t)),
+		"nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4",
+		natsContainerOptions(t, "ws-hub-nats", "ws-hub-jetstream-integration")...,
 	)
+	if container != nil {
+		t.Cleanup(func() {
+			if err := container.Terminate(context.Background()); err != nil {
+				t.Logf("JetStream NATS container cleanup: %v", err)
+			}
+		})
+	}
 	if err != nil {
 		t.Fatalf("JetStream NATS container start: %v", err)
+	}
+	if container == nil {
+		t.Fatal("JetStream NATS container start returned nil container")
 	}
 
 	connectionString, err := container.ConnectionString(ctx)
 	if err != nil {
-		_ = container.Terminate(ctx)
 		t.Fatalf("JetStream NATS connection string: %v", err)
 	}
 
 	nc, err := nats.Connect(connectionString)
+	if nc != nil {
+		t.Cleanup(nc.Close)
+	}
 	if err != nil {
-		_ = container.Terminate(ctx)
 		t.Fatalf("JetStream NATS connect: %v", err)
 	}
 	js, err := nc.JetStream()
 	if err != nil {
-		nc.Close()
-		_ = container.Terminate(ctx)
 		t.Fatalf("JetStream context: %v", err)
 	}
 
-	cleanup := func() {
-		nc.Close()
-		if err := container.Terminate(context.Background()); err != nil {
-			t.Logf("JetStream NATS container cleanup: %v", err)
-		}
-	}
-	return nc, js, cleanup
+	return nc, js
 }
 
 func TestIntegration_SubscribeToNATSJetStreamConsumers(t *testing.T) {
-	nc, js, cleanup := startJetStreamNATSContainer(t)
-	t.Cleanup(cleanup)
+	nc, js := startJetStreamNATSContainer(t)
 	namespace := integrationNamespace(t)
 	chatStream := "CHAT_" + strings.ToUpper(namespace)
 	notificationStream := "NOTIFICATIONS_" + strings.ToUpper(namespace)
+	cacheInvalidationStream := "CACHE_INVALIDATIONS_" + strings.ToUpper(namespace)
 	room := "multi-replica-" + strings.ToLower(namespace)
 	addOwnedMemoryStream(t, js, chatStream, "chat."+room)
 	addOwnedMemoryStream(t, js, notificationStream, "notifications."+strings.ToLower(namespace))
+	addOwnedMemoryStream(t, js, cacheInvalidationStream, "cache.invalidate")
 
 	cfg := &config.Config{
 		MaxClients:               10,
@@ -159,9 +164,10 @@ func TestIntegration_SubscribeToNATSJetStreamConsumers(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
+	cacheAuthClients := []*recordingAuthClient{{}, {}}
 	hubs := []*Hub{
-		trackTestHub(NewHub(nc, logger, &mockAuthClient{allowed: true}, cfg, nil)),
-		trackTestHub(NewHub(nc, logger, &mockAuthClient{allowed: true}, cfg, nil)),
+		trackTestHub(NewHub(nc, logger, cacheAuthClients[0], cfg, nil)),
+		trackTestHub(NewHub(nc, logger, cacheAuthClients[1], cfg, nil)),
 	}
 	for _, h := range hubs {
 		t.Cleanup(h.Stop)
@@ -169,6 +175,14 @@ func TestIntegration_SubscribeToNATSJetStreamConsumers(t *testing.T) {
 		require.Len(t, h.subs, 5, "chat, notifications, cache, control, and JWKS subscriptions")
 		require.True(t, h.chatReplayAvailable.Load())
 	}
+	coreModeCfg := *cfg
+	coreModeCfg.EnableJetStream = false
+	coreModeAuth := &recordingAuthClient{}
+	coreModeHub := trackTestHub(NewHub(nc, logger, coreModeAuth, &coreModeCfg, nil))
+	t.Cleanup(coreModeHub.Stop)
+	require.NoError(t, coreModeHub.SubscribeToNATS(ctx))
+	require.Len(t, coreModeHub.subs, 5)
+	require.False(t, coreModeHub.chatReplayAvailable.Load())
 
 	payload := []byte(fmt.Sprintf(
 		`{"type":"new_message","room":%q,"payload":{"chat_id":%q}}`, room, room,
@@ -180,11 +194,36 @@ func TestIntegration_SubscribeToNATSJetStreamConsumers(t *testing.T) {
 		require.Equal(t, room, delivered.Room,
 			"each replica must own an independent live consumer")
 	}
+
+	const revocationUser = "11111111-1111-1111-1111-111111111111"
+	const revocationRoom = "22222222-2222-2222-2222-222222222222"
+	invalidation := signedInvalidationPayload(t, cfg.InternalSecret, invalidationData{
+		EvictRoom: true,
+		RoomID:    revocationRoom,
+		Timestamp: 5678,
+		UserID:    revocationUser,
+	})
+	_, err = js.Publish("cache.invalidate", invalidation)
+	require.NoError(t, err)
+	for _, auth := range append(cacheAuthClients, coreModeAuth) {
+		require.Eventually(t, func() bool {
+			return len(auth.calls()) == 1
+		}, 2*time.Second, 10*time.Millisecond,
+			"each hub replica must receive the persisted membership revocation")
+	}
+
+	lateAuth := &recordingAuthClient{}
+	lateHub := trackTestHub(NewHub(nc, logger, lateAuth, cfg, nil))
+	t.Cleanup(lateHub.Stop)
+	require.NoError(t, lateHub.SubscribeToNATS(ctx))
+	require.Eventually(t, func() bool {
+		return len(lateAuth.calls()) == 1
+	}, 2*time.Second, 10*time.Millisecond,
+		"a replica that starts after publication must replay the stored revocation")
 }
 
 func TestIntegration_OwnedStreamCleanupPreservesForeignStreams(t *testing.T) {
-	nc, js, cleanup := startJetStreamNATSContainer(t)
-	t.Cleanup(cleanup)
+	nc, js := startJetStreamNATSContainer(t)
 	require.True(t, nc.IsConnected())
 	namespace := integrationNamespace(t)
 	foreignStream := "FOREIGN_" + strings.ToUpper(namespace)
@@ -208,8 +247,7 @@ func TestIntegration_OwnedStreamCleanupPreservesForeignStreams(t *testing.T) {
 }
 
 func TestIntegration_ClientReplayOfflineMessagesFromJetStream(t *testing.T) {
-	nc, js, cleanup := startJetStreamNATSContainer(t)
-	t.Cleanup(cleanup)
+	nc, js := startJetStreamNATSContainer(t)
 	namespace := integrationNamespace(t)
 	chatStream := "CHAT_" + strings.ToUpper(namespace)
 	room := "replay-" + strings.ToLower(namespace)
@@ -252,7 +290,7 @@ func TestIntegration_ClientReplayOfflineMessagesFromJetStream(t *testing.T) {
 		ctx:    context.Background(),
 		Send:   make(chan []byte, 10),
 	}
-	client.replayOfflineMessages(room, 0, "msg-1")
+	client.replayOfflineMessagesContext(client.ctx, room, 0, "msg-1")
 
 	for _, wantIndex := range []float64{1, 2} {
 		select {
@@ -269,7 +307,7 @@ func TestIntegration_ClientReplayOfflineMessagesFromJetStream(t *testing.T) {
 
 	// A numeric stream sequence uses the other resume cursor and must replay
 	// messages after the requested sequence without relying on message IDs.
-	client.replayOfflineMessages(room, 1, "")
+	client.replayOfflineMessagesContext(client.ctx, room, 1, "")
 	select {
 	case raw := <-client.Send:
 		var replayed map[string]any

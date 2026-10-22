@@ -11,6 +11,7 @@ from typing import Any
 
 from defusedxml.ElementTree import fromstring as parse_svg_string
 from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL.Image import Resampling
 
 from app.core.logging import get_logger
 
@@ -79,10 +80,149 @@ def validate_image_dimensions(
         raise ImagePixelLimitError(width_int, height_int, budget)
 
 
-try:  # Pillow >= 9.1 exposes the resampling enum in PIL.Image
-    from PIL.Image import Resampling
-except ImportError:
-    Resampling: Any = int  # type: ignore[no-redef]
+_IMAGE_FORMATS_BY_MIME: dict[str, str] = {
+    "image/jpeg": "JPEG",
+    "image/png": "PNG",
+    "image/webp": "WEBP",
+    "image/gif": "GIF",
+}
+_MAX_METADATA_SANITIZATION_FRAMES = 10_000
+
+
+def strip_image_metadata(
+    data: bytes, *, content_type: str, max_pixels: int = DEFAULT_MAX_IMAGE_PIXELS
+) -> bytes:
+    """Re-encode supported raster images without location-bearing metadata.
+
+    The detected format is retained so the caller can keep its MIME type and
+    extension consistent. Animated formats retain each frame and its timing;
+    EXIF orientation is applied to pixels before metadata is discarded. ICC
+    profiles are retained because they affect color interpretation rather than
+    identifying a user.
+    """
+    expected_format = _IMAGE_FORMATS_BY_MIME.get(content_type)
+    if expected_format is None:
+        raise ValueError("Unsupported image format for metadata sanitization")
+
+    try:
+        with Image.open(BytesIO(data)) as source:
+            if source.format != expected_format:
+                raise ValueError("Detected image format does not match its payload")
+
+            frame_count = int(getattr(source, "n_frames", 1))
+            if frame_count < 1 or frame_count > _MAX_METADATA_SANITIZATION_FRAMES:
+                raise ValueError("Image frame count exceeds the sanitization limit")
+            is_animated = bool(getattr(source, "is_animated", frame_count > 1))
+
+            original_info = dict(source.info)
+            frames: list[Image.Image] = []
+            durations: list[int | float] = []
+            total_pixels = 0
+
+            for frame_index in range(frame_count):
+                source.seek(frame_index)
+                width, height = source.size
+                validate_image_dimensions(width, height, max_pixels=max_pixels)
+                total_pixels += width * height
+                validate_image_dimensions(total_pixels, 1, max_pixels=max_pixels)
+
+                frame = source.copy()
+                # Some decoders, including WebP, finish populating per-frame
+                # metadata only when the frame is loaded by ``copy``.
+                frame_info = dict(source.info)
+                frame = ImageOps.exif_transpose(frame)
+                # Pillow's multi-frame writers copy selected ``info`` keys
+                # into output chunks. Keep only non-identifying frame state.
+                safe_frame_info: dict[str | tuple[int, int], Any] = {}
+                if "transparency" in frame_info:
+                    safe_frame_info["transparency"] = frame_info["transparency"]
+                frame.info = safe_frame_info
+                frames.append(frame)
+
+                durations.append(frame_info.get("duration", 0))
+
+            output = BytesIO()
+            save_options: dict[str, Any] = {
+                "format": expected_format,
+                "icc_profile": original_info.get("icc_profile"),
+            }
+
+            if expected_format == "JPEG":
+                frames[0].save(
+                    output,
+                    **save_options,
+                    quality=95,
+                    subsampling=0,
+                    exif=b"",
+                    xmp=b"",
+                )
+            elif expected_format == "GIF":
+                # GIF transparency and background values are palette indices.
+                # Re-encoding decoded frames can create new or local palettes,
+                # so carrying source indices forward can make an opaque color
+                # transparent (or expose the wrong disposal background).
+                gif_frames = [frame.convert("RGBA") for frame in frames]
+                for frame in gif_frames:
+                    frame.info = {}
+
+                save_options.update(
+                    save_all=frame_count > 1,
+                    append_images=gif_frames[1:],
+                    duration=(durations if frame_count > 1 else durations[0]),
+                    # Pillow decodes each frame as the displayed canvas. Use
+                    # fresh palette transparency and restore to its background
+                    # before each next full-canvas composite.
+                    disposal=2,
+                    optimize=False,
+                )
+                if "loop" in original_info:
+                    save_options["loop"] = original_info["loop"]
+                gif_frames[0].save(output, **save_options)
+            elif expected_format == "WEBP":
+                save_options.update(
+                    save_all=frame_count > 1,
+                    append_images=frames[1:],
+                    duration=durations,
+                    lossless=True,
+                    method=6,
+                    exif=b"",
+                    xmp=b"",
+                )
+                save_options["loop"] = original_info.get("loop", 0)
+                save_options["background"] = original_info.get(
+                    "background", (0, 0, 0, 0)
+                )
+                frames[0].save(output, **save_options)
+            else:
+                # PNG also covers APNG: Pillow's per-frame controls preserve
+                # per-frame durations. Decoded APNG frames are already
+                # composited, so source disposal/blend controls would apply
+                # those operations twice. Re-encode the visible frames with
+                # SOURCE blending and no disposal instead.
+                # With a separate default image, APNG timing and frame controls
+                # apply only to animation frames (append_images), not IDAT.
+                controls_offset = int(bool(original_info.get("default_image")))
+                if is_animated:
+                    animation_durations = durations[controls_offset:]
+                    save_options.update(
+                        save_all=True,
+                        append_images=frames[1:],
+                        duration=animation_durations,
+                        disposal=[0] * len(animation_durations),
+                        blend=[0] * len(animation_durations),
+                    )
+                    save_options["loop"] = original_info.get("loop", 0)
+                    if "default_image" in original_info:
+                        save_options["default_image"] = original_info["default_image"]
+                else:
+                    save_options["save_all"] = False
+                frames[0].save(output, **save_options)
+
+            return output.getvalue()
+    except ImagePixelLimitError:
+        raise
+    except (Image.DecompressionBombError, EOFError, OSError, SyntaxError) as exc:
+        raise ValueError("Invalid image data") from exc
 
 
 def _resolve_resample_filter() -> Resampling:

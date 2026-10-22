@@ -52,9 +52,14 @@ const RadioGroupItem = React.forwardRef<HTMLInputElement, RadioGroupItemProps>(
     const isDisabled = context.disabled || disabled
 
     return (
-      // Keep the item phrasing-only so consumers can wrap it in a
-      // FormControlLabel without producing invalid nested <label> elements.
-      <>
+      // Keep the item phrasing-only for wrapping FormControlLabel consumers.
+      // Each input and its decorative peer share their own accessible target.
+      <span
+        className={cn(
+          "relative inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center",
+          isDisabled && "cursor-not-allowed opacity-medium grayscale"
+        )}
+      >
         <input
           type="radio"
           ref={ref}
@@ -69,34 +74,27 @@ const RadioGroupItem = React.forwardRef<HTMLInputElement, RadioGroupItemProps>(
         <span
           aria-hidden="true"
           className={cn(
-            "relative inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center",
-            isDisabled && "cursor-not-allowed opacity-medium grayscale"
+            "flex h-6 w-6 items-center justify-center rounded-full border-2 transition-all duration-base",
+            "border-glass-border bg-glass-bg backdrop-blur-glass shadow-glass",
+            "hover:border-brand/(--opacity-medium) hover:bg-glass-tint1",
+            "peer-focus-visible:shadow-focus",
+            isSelected && "border-brand bg-brand/(--opacity-subtle) shadow-glow-primary",
+            className
           )}
         >
-          <span
-            className={cn(
-              "flex h-6 w-6 items-center justify-center rounded-full border-2 transition-all duration-base",
-              "border-glass-border bg-glass-bg backdrop-blur-glass shadow-glass",
-              "hover:border-brand/(--opacity-medium) hover:bg-glass-tint1",
-              "peer-focus-visible:ring-4 peer-focus-visible:ring-brand/(--opacity-dim)",
-              isSelected && "border-brand bg-brand/(--opacity-subtle) shadow-glow-primary",
-              className
+          <AnimatePresence>
+            {isSelected && (
+              <m.span
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0 }}
+                transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                className="h-2.5 w-2.5 rounded-full bg-brand"
+              />
             )}
-          >
-            <AnimatePresence>
-              {isSelected && (
-                <m.span
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  exit={{ scale: 0 }}
-                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                  className="h-2.5 w-2.5 rounded-full bg-brand"
-                />
-              )}
-            </AnimatePresence>
-          </span>
+          </AnimatePresence>
         </span>
-      </>
+      </span>
     )
   }
 )

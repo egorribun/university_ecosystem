@@ -21,7 +21,7 @@ spec:
 
         - alert: OutboxStagnant
           # HIGH-W19: increase() is invalid on a gauge; use direct threshold instead
-          expr: outbox_events_pending > 100
+          expr: outbox_pending_events_total > 100
           for: 5m
           labels:
             severity: critical
@@ -52,7 +52,7 @@ spec:
         # alert fires when utilization exceeds 80% for 5 minutes, giving ops
         # time to scale up or investigate before requests start queueing.
         - alert: DatabasePoolSaturation
-          expr: university_db_pool_active / university_db_pool_size > 0.8
+          expr: db_pool_checkedout / db_pool_size > 0.8
           for: 5m
           labels:
             severity: warning
@@ -61,7 +61,7 @@ spec:
             description: "Backend database connection pool is nearing exhaustion. Consider increasing pool_size or investigating slow queries."
 
         - alert: DatabasePoolExhausted
-          expr: university_db_pool_active >= university_db_pool_size
+          expr: db_pool_checkedout >= db_pool_size
           for: 1m
           labels:
             severity: critical

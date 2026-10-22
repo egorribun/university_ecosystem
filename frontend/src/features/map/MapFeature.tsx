@@ -61,9 +61,6 @@ function getIsDark() {
 }
 const SERVER_SNAPSHOT = false
 
-/** Lazy-load MapLibre GL — CSS + JS only loaded after explicit user intent. */
-const MapLibreMapComponent = lazy(loadMapLibre)
-
 /**
  * MapFeature — central orchestrator for the campus map page.
  * Single view mode: MapLibre GL 3D map.
@@ -76,6 +73,8 @@ export function MapFeature() {
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const timePeriod = useTimeOfDay()
   const season = useSeason()
+  // Preserve identity during this mount; reopening can retry a rejected load.
+  const [MapLibreMapComponent] = useState(() => lazy(loadMapLibre))
 
   /* ── Campus data ── */
   const buildings = useMemo(

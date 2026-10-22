@@ -22,10 +22,11 @@ spec:
     {{- if .Values.keda.outboxWorker.postgresql.enabled }}
     - type: postgresql
       metadata:
-        connectionFromEnv: KEDA_POSTGRESQL_CONNECTION
         query: "SELECT COUNT(*) FROM stored_events WHERE processed_at IS NULL"
         targetQueryValue: {{ .Values.keda.outboxWorker.postgresql.targetQueryValue | quote }}
         activationTargetQueryValue: {{ .Values.keda.outboxWorker.postgresql.activationTargetQueryValue | quote }}
+      authenticationRef:
+        name: {{ include "university-ecosystem.fullname" . }}-trigger-auth-postgresql
     {{- end }}
     {{- if and .Values.hibernation.enabled .Values.hibernation.workloads.outboxWorker.enabled }}
     - type: cron
@@ -153,7 +154,9 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: {{ include "university-ecosystem.fullname" . }}-frontend
-  minReplicaCount: {{ .Values.hibernation.workloads.frontend.minReplicasDay }}
+  # AUD-088: the off-peak trigger is the only source of zero. The daytime
+  # complement keeps minReplicasDay whenever the off-peak window is inactive.
+  minReplicaCount: 0
   maxReplicaCount: {{ .Values.hibernation.workloads.frontend.maxReplicasDay }}
   triggers:
     - type: cron
@@ -162,6 +165,12 @@ spec:
         start: {{ .Values.hibernation.schedules.offPeak.start | quote }}
         end: {{ .Values.hibernation.schedules.offPeak.end | quote }}
         desiredReplicas: {{ .Values.hibernation.schedules.offPeak.desiredReplicas | quote }}
+    - type: cron
+      metadata:
+        timezone: {{ .Values.hibernation.schedules.offPeak.timezone | quote }}
+        start: {{ .Values.hibernation.schedules.offPeak.end | quote }}
+        end: {{ .Values.hibernation.schedules.offPeak.start | quote }}
+        desiredReplicas: {{ .Values.hibernation.workloads.frontend.minReplicasDay | quote }}
 {{- end }}
 
 {{- if and .Values.hibernation.enabled .Values.hibernation.workloads.gateway.enabled }}
@@ -179,7 +188,9 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: {{ include "university-ecosystem.fullname" . }}-gateway
-  minReplicaCount: {{ .Values.hibernation.workloads.gateway.minReplicasDay }}
+  # AUD-088: the off-peak trigger is the only source of zero. The daytime
+  # complement keeps minReplicasDay whenever the off-peak window is inactive.
+  minReplicaCount: 0
   maxReplicaCount: {{ .Values.hibernation.workloads.gateway.maxReplicasDay }}
   triggers:
     - type: cron
@@ -188,6 +199,12 @@ spec:
         start: {{ .Values.hibernation.schedules.offPeak.start | quote }}
         end: {{ .Values.hibernation.schedules.offPeak.end | quote }}
         desiredReplicas: {{ .Values.hibernation.schedules.offPeak.desiredReplicas | quote }}
+    - type: cron
+      metadata:
+        timezone: {{ .Values.hibernation.schedules.offPeak.timezone | quote }}
+        start: {{ .Values.hibernation.schedules.offPeak.end | quote }}
+        end: {{ .Values.hibernation.schedules.offPeak.start | quote }}
+        desiredReplicas: {{ .Values.hibernation.workloads.gateway.minReplicasDay | quote }}
 {{- end }}
 
 {{- end }}

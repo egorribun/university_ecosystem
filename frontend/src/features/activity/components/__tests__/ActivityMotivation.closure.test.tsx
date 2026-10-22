@@ -40,23 +40,51 @@ describe("ActivityMotivation closure", () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it("prioritizes excellent attendance and counts the leading streak", () => {
+  it("prioritizes excellent attendance and uses the complete backend streak", () => {
+    const summary = {
+      ...attendance(95, [
+        { date: "2026-09-30", status: "present" },
+        { date: "2026-09-30", status: "present" },
+        { date: "2026-09-28", status: "present" },
+      ]),
+      streakDays: 7,
+    }
     render(
       <ActivityMotivation
         hasInitiallyLoaded
-        attendance={attendance(95, [
-          { date: "1", status: "present" },
-          { date: "2", status: "present" },
-          { date: "3", status: "present" },
-          { date: "4", status: "absent" },
-        ])}
+        attendance={summary}
         grades={grades(10)}
         participation={participation(10)}
       />
     )
     expect(screen.getByText("activity:motivation.excellent")).toBeInTheDocument()
+    expect(screen.getByText("activity:motivation.streakDays:7")).toBeInTheDocument()
+  })
+
+  it("shows the streak badge at exactly three authoritative days", () => {
+    const summary = { ...attendance(50), streakDays: 3 }
+    render(<ActivityMotivation hasInitiallyLoaded attendance={summary} />)
+
     expect(screen.getByText("activity:motivation.streakDays:3")).toBeInTheDocument()
   })
+
+  it.each([undefined, 0, 1, 2])(
+    "does not derive a visible streak from recent rows when authoritative count is %s",
+    (streakDays) => {
+      const summary = {
+        ...attendance(95, [
+          { date: "2026-09-30", status: "present" },
+          { date: "2026-09-30", status: "present" },
+          { date: "2026-09-28", status: "present" },
+        ]),
+        streakDays,
+      }
+      render(<ActivityMotivation hasInitiallyLoaded attendance={summary} />)
+
+      expect(screen.queryByLabelText("activity:a11y.streak")).not.toBeInTheDocument()
+      expect(screen.getByText("activity:motivation.excellent")).toBeInTheDocument()
+    }
+  )
 
   it.each([
     [

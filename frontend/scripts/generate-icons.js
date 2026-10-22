@@ -57,6 +57,7 @@ async function generateIcons() {
       console.log(`Created ${target.name}`)
     } catch (err) {
       console.error("Error creating %s:", target.name, err)
+      process.exitCode = 1
     }
   }
 
@@ -89,6 +90,7 @@ async function generateIcons() {
     console.log(`Created favicon.ico`)
   } catch (err) {
     console.error("Error creating favicon.ico", err)
+    process.exitCode = 1
   }
 }
 

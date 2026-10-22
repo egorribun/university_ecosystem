@@ -13,7 +13,9 @@ from fastapi import HTTPException
 from app.services.session_service import SessionService
 
 
-def _service(locked_row: tuple[Any, Any] | None) -> tuple[SessionService, MagicMock]:
+def _service(
+    locked_row: tuple[Any, Any, Any] | None,
+) -> tuple[SessionService, MagicMock]:
     result = MagicMock()
     result.one_or_none.return_value = locked_row
     db = MagicMock()
@@ -33,31 +35,38 @@ def _service(locked_row: tuple[Any, Any] | None) -> tuple[SessionService, MagicM
 
 async def test_user_row_is_locked_and_its_epoch_is_persisted_on_the_session() -> None:
     user_id = uuid4()
-    service, db = _service((user_id, 6))
+    service, db = _service((user_id, 6, True))
 
     await service.create_access_token(user_id, metadata={"mfa_epoch": 6})
 
     statement = db.execute.await_args.args[0]
     compiled = statement.compile()
     assert str(compiled) == (
-        "SELECT users.id, users.mfa_epoch \nFROM users \n"
+        "SELECT users.id, users.mfa_epoch, users.is_active \nFROM users \n"
         "WHERE users.id = :id_1 FOR UPDATE"
     )
     assert compiled.params == {"id_1": user_id}
     assert service.repo.create.await_args.args[0]["mfa_epoch"] == 6
 
 
-async def test_unknown_user_row_falls_back_to_epoch_zero() -> None:
-    service, _ = _service(None)
+async def test_unknown_user_row_is_rejected_before_token_or_session_creation() -> None:
+    service, db = _service(None)
 
-    await service.create_access_token(uuid4())
+    with pytest.raises(HTTPException) as exc:
+        await service.create_access_token(uuid4())
 
-    assert service.repo.create.await_args.args[0]["mfa_epoch"] == 0
+    assert exc.value.status_code == 401
+    assert exc.value.detail == "credentials_invalid"
+    service._enforce_concurrent_limit.assert_not_awaited()
+    service.repo.create.assert_not_awaited()
+    service._mint_jwt.assert_not_called()
+    service._sync_to_redis.assert_not_awaited()
+    db.commit.assert_not_awaited()
 
 
 async def test_unset_epoch_column_is_persisted_as_zero() -> None:
     user_id = uuid4()
-    service, _ = _service((user_id, None))
+    service, _ = _service((user_id, None, True))
 
     await service.create_access_token(user_id, metadata={"mfa_epoch": 0})
 
@@ -69,7 +78,7 @@ async def test_stale_or_malformed_epoch_is_refused_before_minting(
     requested: object,
 ) -> None:
     user_id = uuid4()
-    service, _ = _service((user_id, 3))
+    service, _ = _service((user_id, 3, True))
 
     with pytest.raises(HTTPException) as exc:
         await service.create_access_token(user_id, metadata={"mfa_epoch": requested})

@@ -74,12 +74,19 @@ export const Route = createFileRoute("/_admin")({
   //  - Branch A (SSR works + Mismatch A closed): SHIP IT
   //  - Branch B (SSR works + Mismatch A persists): revert + theory disproved
   //  - Branch C (SSR crash): revert + W126 polish rationale validated
-  // Wave 174 SW1 — read live Zustand state via useAuthStore.getState()
-  // instead of stale `context.auth.*`. See _auth.tsx for full rationale
-  // (W152 Phase 1.7 removed the App.tsx reactive context bridge).
+  // SSR auth comes from the verified request-scoped RouterContext. Client
+  // navigation uses Zustand because client RouterContext is static.
   // Wave 179 SW8 — beforeLoad extracted to pure `evaluateAdminGuard`
   // (closes W174 §Honesty #4-routeGuards). Behavior preserved exactly:
   // unauth → /login, non-admin → /dashboard, admin → proceed.
-  beforeLoad: () => evaluateAdminGuard(useAuthStore.getState()),
+  beforeLoad: ({ context }) =>
+    evaluateAdminGuard(
+      import.meta.env.SSR
+        ? {
+            user: context.auth.isAuth ? context.auth.user : null,
+            loading: context.auth.loading,
+          }
+        : useAuthStore.getState()
+    ),
   component: AdminLayout,
 })

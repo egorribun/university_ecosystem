@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
-import { readFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import test from "node:test"
@@ -342,6 +343,45 @@ test("backend dynamic translation keys require a finite backend registry", () =>
   assert.ok(report.errors.some((entry) => entry.code === "DYNAMIC_KEY_UNREGISTERED"))
 })
 
+test("business-rule exception messages resolve only the finite translated service errors", async () => {
+  const expectedKeys = [
+    "errors.chat.invalid_participants",
+    "errors.users.cannot_delete_self",
+    "errors.users.confirmation_required",
+    "errors.users.invalid_invite",
+    "errors.users.create_failed",
+    "errors.users.invalid_invite_code",
+    "errors.users.invite_code_required",
+  ]
+  const report = await scanBackendRepository({
+    backendTemplateFiles: ["app/core/exceptions/handlers.py"],
+  })
+
+  assert.equal(report.ok, true, JSON.stringify(report.errors))
+  assert.deepEqual(report.dynamicRegistry["exc.message"], expectedKeys)
+  assert.ok(
+    report.dynamicReferences.some((entry) => entry.pattern === "exc.message" && entry.registered)
+  )
+  for (const key of expectedKeys) {
+    assert.ok(report.references.some((entry) => entry.key === key && entry.dynamic))
+    const catalog = { ...report.catalog }
+    delete catalog[key]
+    const missing = scanBackendSource("translate(exc.message, locale=locale)", {
+      catalog,
+      dynamicRegistry: report.dynamicRegistry,
+    })
+    assert.ok(
+      missing.errors.some((entry) => entry.code === "TRANSLATION_KEY_MISSING" && entry.key === key),
+      `the registered exception key ${key} must still exist in the catalogue`
+    )
+  }
+  const unregistered = scanBackendSource("translate(exc.unregistered_message, locale=locale)", {
+    catalog: report.catalog,
+    dynamicRegistry: report.dynamicRegistry,
+  })
+  assert.ok(unregistered.errors.some((entry) => entry.code === "DYNAMIC_KEY_UNREGISTERED"))
+})
+
 test("repository backend scope has terminal RU/EN evidence", async () => {
   const report = await scanBackendRepository()
   assert.equal(report.ok, true)
@@ -368,4 +408,71 @@ test("repository report retains a stable machine-readable contract", async () =>
     "scope report must enumerate excluded test sources"
   )
   assert.doesNotThrow(() => JSON.stringify(machine))
+})
+
+test("repository scan honors scope exclusions without hiding production errors", async () => {
+  const sourceRoot = await mkdtemp(path.join(tmpdir(), "i18n-scope-"))
+  const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+  const reportPath = (filePath) => path.relative(frontendRoot, filePath).replaceAll(path.sep, "/")
+  const appFile = path.join(sourceRoot, "App.tsx")
+  const excludedFiles = [
+    "__tests__/helper.ts",
+    "generated/client.ts",
+    "vendor/widget.ts",
+    "Button.test.tsx",
+  ].map((filePath) => path.join(sourceRoot, filePath))
+  const options = { sourceRoot, catalogs, dynamicRegistry: {}, includeBackend: false }
+
+  try {
+    await writeFile(appFile, 'export const App = () => t("events:created")\n')
+    for (const filePath of excludedFiles) {
+      await mkdir(path.dirname(filePath), { recursive: true })
+      await writeFile(filePath, 'export const value = t("common:excludedMissing")\n')
+    }
+
+    const report = await scanRepository(options)
+
+    assert.equal(report.ok, true, JSON.stringify(report.errors))
+    assert.deepEqual(report.files, [appFile])
+    assert.deepEqual(report.errors, [])
+    assert.deepEqual(
+      report.references.map(({ filePath, key }) => ({ filePath, key })),
+      [{ filePath: reportPath(appFile), key: "events:created" }]
+    )
+    assert.deepEqual(report.scope.included, [reportPath(appFile)])
+    assert.deepEqual([...report.scope.excluded].sort(), excludedFiles.map(reportPath).sort())
+
+    const productionFile = path.join(sourceRoot, "Production.ts")
+    await writeFile(productionFile, 'export const value = t("common:productionMissing")\n')
+    const invalid = await scanRepository(options)
+
+    assert.equal(invalid.ok, false)
+    assert.deepEqual([...invalid.files].sort(), [appFile, productionFile].sort())
+    assert.equal(invalid.references.length, 2)
+    for (const [file, key] of [
+      [appFile, "events:created"],
+      [productionFile, "common:productionMissing"],
+    ]) {
+      assert.ok(
+        invalid.references.some(
+          (reference) => reference.filePath === reportPath(file) && reference.key === key
+        )
+      )
+    }
+    assert.deepEqual(
+      invalid.errors.map(({ filePath, code, key }) => ({ filePath, code, key })),
+      ["en", "ru"].map(() => ({
+        filePath: reportPath(productionFile),
+        code: "TRANSLATION_KEY_MISSING",
+        key: "common:productionMissing",
+      }))
+    )
+    assert.deepEqual(
+      [...invalid.scope.included].sort(),
+      [appFile, productionFile].map(reportPath).sort()
+    )
+    assert.deepEqual([...invalid.scope.excluded].sort(), excludedFiles.map(reportPath).sort())
+  } finally {
+    await rm(sourceRoot, { recursive: true, force: true })
+  }
 })

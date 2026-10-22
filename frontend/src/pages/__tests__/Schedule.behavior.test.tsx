@@ -1,9 +1,10 @@
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react"
 import { QueryClient } from "@tanstack/react-query"
-import type { ReactNode } from "react"
+import { useEffect, useReducer, type ComponentType, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import Schedule from "@/pages/Schedule"
+import { CampusTimezoneProvider } from "@/contexts/CampusTimezoneContext"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 const {
@@ -56,7 +57,7 @@ const {
       currentLesson: null as any,
       nextLesson: null as any,
       nowTick: new Date("2024-03-25T08:00:00.000Z"),
-      lessonDays: ["Monday"],
+      lessonDaysForMonth: (month: Date) => new Set<number>(month.getMonth() === 8 ? [7] : [1]),
       lessonTypeLabels: new Map([["lecture", "Lecture"]]),
       todayLessons: [],
       currentProgress: 0,
@@ -66,6 +67,7 @@ const {
     uiState: {
       weekOffset: 0,
       showPastLessons: true,
+      hiddenWeekdays: [] as number[],
       resetPreferences: vi.fn(),
     },
     pageState: {
@@ -146,6 +148,7 @@ vi.mock("@/stores/scheduleUIStore", () => ({
   useWeekOffset: () => uiState.weekOffset,
   useScheduleDisplayPreferences: () => ({ showPastLessons: uiState.showPastLessons }),
   useScheduleUIActions: () => ({ resetPreferences: uiState.resetPreferences }),
+  useHiddenWeekdays: () => uiState.hiddenWeekdays,
 }))
 
 vi.mock("@/contexts/SchedulePageContext", () => ({
@@ -210,6 +213,7 @@ vi.mock("@/components/schedule/ScheduleDesktopTable", () => ({
     getLessonTypeLabel: (value?: string | null) => string
   }) => (
     <div data-testid="desktop-view">
+      <span data-testid="visible-lesson-ids">{schedule.map((lesson) => lesson.id).join(",")}</span>
       <span data-testid="desktop-labels">
         {getLessonTypeLabel("lecture")}|{getLessonTypeLabel("missing")}|{getLessonTypeLabel(null)}
       </span>
@@ -252,7 +256,28 @@ vi.mock("@/components/schedule/ScheduleShortcutsOverlay", () => ({
 }))
 
 vi.mock("@/components/schedule/ScheduleMiniCalendar", () => ({
-  ScheduleMiniCalendar: () => <aside data-testid="mini-calendar" />,
+  ScheduleMiniCalendar: ({
+    lessonDays,
+    month,
+    nowTick,
+    onMonthChange,
+  }: {
+    lessonDays: Set<number>
+    month?: Date
+    nowTick?: Date
+    onMonthChange?: (next: Date) => void
+  }) => (
+    <aside
+      data-testid="mini-calendar"
+      data-days={[...lessonDays].join(",")}
+      data-month={month?.getMonth()}
+      data-now={nowTick?.getTime()}
+    >
+      <button type="button" onClick={() => onMonthChange?.(new Date(2026, 8, 1))}>
+        show-september
+      </button>
+    </aside>
+  ),
 }))
 
 vi.mock("@/components/schedule/ScheduleSettingsPanel", () => ({
@@ -307,18 +332,39 @@ vi.mock("framer-motion", () => ({
   },
 }))
 
-async function renderSchedule() {
+async function renderSchedule(timeZone?: string, Page: ComponentType = Schedule) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   const result = await renderWithRouter({
-    ui: Schedule,
+    ui: timeZone
+      ? () => (
+          <CampusTimezoneProvider timeZone={timeZone}>
+            <Page />
+          </CampusTimezoneProvider>
+        )
+      : Page,
     path: "/schedule",
     initialPath: "/schedule",
     queryClient,
     authProvider: false,
   })
   return result
+}
+
+let rerenderMountedSchedule: (() => void) | undefined
+
+function ScheduleRerenderHarness() {
+  const [, forceRender] = useReducer((revision: number) => revision + 1, 0)
+
+  useEffect(() => {
+    rerenderMountedSchedule = () => forceRender()
+    return () => {
+      rerenderMountedSchedule = undefined
+    }
+  }, [forceRender])
+
+  return <Schedule />
 }
 
 describe("Schedule page behavior", () => {
@@ -344,6 +390,7 @@ describe("Schedule page behavior", () => {
     scheduleState.currentParity = "odd"
     uiState.weekOffset = 0
     uiState.showPastLessons = true
+    uiState.hiddenWeekdays = []
     mediaState.mobile = false
     mediaState.reduced = false
     mediaState.online = true
@@ -362,6 +409,14 @@ describe("Schedule page behavior", () => {
 
   afterEach(() => {
     cleanup()
+  })
+
+  it("moves the mini-calendar lesson dots with the month the calendar shows", async () => {
+    await renderSchedule()
+    fireEvent.click(screen.getByRole("button", { name: "show-september" }))
+
+    expect(screen.getByTestId("mini-calendar")).toHaveAttribute("data-month", "8")
+    expect(screen.getByTestId("mini-calendar")).toHaveAttribute("data-days", "7")
   })
 
   it("renders desktop controls and toggles settings and shortcuts", async () => {
@@ -388,6 +443,37 @@ describe("Schedule page behavior", () => {
     expect(screen.queryByTestId("shortcuts-overlay")).not.toBeInTheDocument()
   })
 
+  it("opens the lesson at the active keyboard grid cell with Enter", async () => {
+    await renderSchedule()
+
+    expect(keyboardState.options).toMatchObject({
+      onOpen: expect.any(Function),
+    })
+
+    act(() => keyboardState.options.onOpen(0, 0))
+
+    expect(pageState.openDialog).toHaveBeenCalledWith("details", baseLesson)
+  })
+
+  it("maps keyboard columns to the visible weekdays", async () => {
+    const tuesdayLesson = { ...baseLesson, id: "lesson-tuesday", weekday: "Tuesday" }
+    scheduleState.weekdayBackend = ["Monday", "Tuesday"]
+    scheduleState.weekdayLabels = ["Monday", "Tuesday"]
+    scheduleState.hasToday = true
+    scheduleState.todayIdx = 1
+    scheduleState.schedule = [baseLesson, tuesdayLesson]
+    scheduleState.rawSchedule = [baseLesson, tuesdayLesson]
+    uiState.hiddenWeekdays = [0]
+
+    await renderSchedule()
+
+    expect(keyboardState.options.colCount).toBe(1)
+    expect(keyboardState.options.todayColIdx).toBe(0)
+    act(() => keyboardState.options.onOpen(0, 0))
+
+    expect(pageState.openDialog).toHaveBeenCalledWith("details", tuesdayLesson)
+  })
+
   it("renders mobile view and resets a filter that hides every lesson", async () => {
     mediaState.mobile = true
     uiState.showPastLessons = false
@@ -402,6 +488,35 @@ describe("Schedule page behavior", () => {
     expect(screen.getByRole("button", { name: /reset filters/i })).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /reset filters/i }))
     expect(uiState.resetPreferences).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ["UTC", "21:00", "21:15", "21:45"],
+    ["Europe/Moscow", "00:00", "00:15", "00:45"],
+  ])("filters past lessons against %s campus time", async (zone, pastStart, start, end) => {
+    const current = { ...baseLesson, id: "campus-current", start_time: start, end_time: end }
+    const past = { ...baseLesson, id: "campus-past", start_time: pastStart, end_time: start }
+    uiState.showPastLessons = false
+    scheduleState.hasToday = true
+    scheduleState.nowTick = new Date("2026-10-18T21:30:00Z")
+    scheduleState.schedule = [past, current]
+    scheduleState.rawSchedule = [past, current]
+    scheduleState.currentLesson = current
+
+    await renderSchedule(zone)
+
+    expect(screen.getByTestId("visible-lesson-ids")).toHaveTextContent(/^campus-current$/)
+    expect(screen.queryByRole("button", { name: /reset filters/i })).not.toBeInTheDocument()
+  })
+
+  it("ignores stale keyboard cells and an unavailable current weekday index", async () => {
+    scheduleState.hasToday = true
+    scheduleState.todayIdx = 99
+    await renderSchedule()
+    expect(keyboardState.options.todayColIdx).toBe(-1)
+    act(() => keyboardState.options.onOpen(99, 99))
+    expect(pageState.openDialog).not.toHaveBeenCalled()
+    expect(screen.getByTestId("desktop-view")).toBeInTheDocument()
   })
 
   it("shows a load error and retries the schedule request", async () => {
@@ -528,5 +643,34 @@ describe("Schedule page behavior", () => {
     uiState.weekOffset = -2
     rerender(<Schedule />)
     expect(screen.getByRole("status")).toHaveTextContent("-2")
+  })
+
+  it("shares the current instant without resetting the calendar's chosen month", async () => {
+    scheduleState.nowTick = new Date(2026, 5, 30, 23, 59, 45)
+    await renderSchedule(undefined, ScheduleRerenderHarness)
+
+    expect(screen.getByTestId("mini-calendar")).toHaveAttribute(
+      "data-now",
+      String(scheduleState.nowTick.getTime())
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "show-september" }))
+    expect(screen.getByTestId("mini-calendar")).toHaveAttribute("data-month", "8")
+    expect(screen.getByTestId("mini-calendar")).toHaveAttribute("data-days", "7")
+
+    scheduleState.nowTick = new Date(2026, 6, 1, 0, 0, 15)
+    act(() => {
+      if (!rerenderMountedSchedule) {
+        throw new Error("Schedule rerender harness is not mounted")
+      }
+      rerenderMountedSchedule()
+    })
+
+    expect(screen.getByTestId("mini-calendar")).toHaveAttribute(
+      "data-now",
+      String(scheduleState.nowTick.getTime())
+    )
+    expect(screen.getByTestId("mini-calendar")).toHaveAttribute("data-month", "8")
+    expect(screen.getByTestId("mini-calendar")).toHaveAttribute("data-days", "7")
   })
 })

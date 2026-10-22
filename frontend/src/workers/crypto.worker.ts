@@ -13,7 +13,10 @@ let wasmInitPromise: Promise<unknown> | null = null
 
 async function getWasm() {
   if (!wasmInitPromise) {
-    wasmInitPromise = init()
+    wasmInitPromise = init().catch((error: unknown) => {
+      wasmInitPromise = null
+      throw error
+    })
   }
   return wasmInitPromise
 }

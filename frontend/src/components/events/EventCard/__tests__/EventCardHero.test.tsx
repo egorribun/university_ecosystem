@@ -37,6 +37,9 @@ vi.mock("@/utils/date", () => ({
   formatDate: formatDateMock,
   formatRelativeTime: formatRelativeTimeMock,
 }))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => "Europe/Istanbul",
+}))
 
 import EventCardHero from "@/components/events/EventCard/EventCardHero"
 
@@ -314,7 +317,9 @@ describe("EventCardHero", () => {
         hour: "2-digit",
         minute: "2-digit",
         hour12: false,
-      })
+        timeZone: "Europe/Istanbul",
+      }),
+      "en-US"
     )
   })
 

@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createElement, forwardRef, type ReactNode } from "react"
 import type { Chat } from "@/api/chat"
+import { currentUserQueryKey } from "@/api/hooks/users"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 
 /**
@@ -460,10 +461,10 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
       })
 
       await waitFor(() => {
-        expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&search=Ni")
+        expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&full_name=Ni")
       })
       await waitFor(() => {
-        expect(latestQueryClient?.getQueryData(["users", "Ni"])).toEqual([
+        expect(latestQueryClient?.getQueryData(["users", "search", "Ni"])).toEqual([
           { id: "new-user", full_name: "Nina Newbie", avatar_url: null, is_active: true },
           { id: MEMBER, full_name: "Mike Member", avatar_url: null, is_active: false },
         ])
@@ -494,6 +495,35 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
         expect(mocks.apiGet).toHaveBeenCalled()
       })
       expect(await screen.findByText("messenger:noUsersFound")).toBeTruthy()
+    })
+
+    it("does not overwrite the current-user cache when searching for the text me", async () => {
+      mocks.apiGet.mockResolvedValue({
+        data: [{ id: "new-user", full_name: "Nina Newbie", avatar_url: null, is_active: true }],
+      })
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      })
+      const currentUser = {
+        id: OWNER,
+        full_name: "Olga Owner",
+        email: "owner@example.invalid",
+      }
+      queryClient.setQueryData(currentUserQueryKey, currentUser)
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />
+        </QueryClientProvider>
+      )
+      fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+        target: { value: "me" },
+      })
+
+      expect(await screen.findByRole("button", { name: /Nina Newbie/ })).toBeInTheDocument()
+      expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&full_name=me")
+      expect(queryClient.getQueryData(currentUserQueryKey)).toBe(currentUser)
     })
 
     it("does not show no-results for the one-character minimum search", () => {
@@ -529,6 +559,31 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
       expect(searchRegion?.querySelectorAll("button img")).toHaveLength(0)
       resolveSearch?.({ data: [] })
       expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
+    })
+
+    it("reports user-search failures instead of claiming there are no users", async () => {
+      mocks.apiGet.mockRejectedValueOnce(new Error("network unavailable"))
+      const view = render(
+        <GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />,
+        { wrapper }
+      )
+      const queryClient = latestQueryClient
+
+      try {
+        fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+        fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+          target: { value: "ab" },
+        })
+
+        await waitFor(() => {
+          expect(queryClient?.getQueryState(["users", "search", "ab"])?.status).toBe("error")
+          expect(screen.queryByText("messenger:noUsersFound")).toBeNull()
+          expect(screen.getByText("messenger:error.failedToLoadUsers")).toBeInTheDocument()
+        })
+      } finally {
+        view.unmount()
+        queryClient?.clear()
+      }
     })
 
     it("does not render no-results when the response contains an addable user", async () => {
@@ -575,7 +630,7 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
       fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
         target: { value: "ab" },
       })
-      await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&search=ab"))
+      await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&full_name=ab"))
 
       mocks.apiGet.mockClear()
       rerender(
@@ -876,7 +931,7 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
       target: { value: "A+B&C" },
     })
     await waitFor(() => {
-      expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&search=A%2BB%26C")
+      expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&full_name=A%2BB%26C")
     })
     const add = await screen.findByRole("button", { name: /Nina Newbie/ })
     expect(add.querySelector("img")).toHaveAttribute("src", AVATAR_PLACEHOLDER_URL)
@@ -902,5 +957,80 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
 
     resolveSearch?.({ data: [] })
     expect(await screen.findByText("messenger:noUsersFound")).toBeTruthy()
+  })
+
+  it("retains pending rename drafts and submits once after settling", () => {
+    const onRename = vi.fn()
+    const props = {
+      ...baseProps,
+      chat: groupChat(OWNER),
+      currentUserId: OWNER,
+      onRename,
+    }
+    const { rerender } = render(<GroupInfoPanel {...props} isRenaming />, { wrapper })
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:renameGroup" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:groupName" }), {
+      target: { value: "  Pending draft  " },
+    })
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+
+    for (let press = 0; press < 3; press += 1) {
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "messenger:groupName" }), {
+        key: "Enter",
+      })
+      expect(onRename).not.toHaveBeenCalled()
+      const editor = screen.getByRole("textbox", { name: "messenger:groupName" })
+      expect(editor).toHaveValue("  Pending draft  ")
+    }
+
+    rerender(<GroupInfoPanel {...props} isRenaming={false} />)
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
+    const settledEditor = screen.getByRole("textbox", { name: "messenger:groupName" })
+    expect(settledEditor).toHaveValue("  Pending draft  ")
+
+    fireEvent.keyDown(settledEditor, { key: "Enter" })
+
+    expect(onRename).toHaveBeenCalledTimes(1)
+    expect(onRename).toHaveBeenCalledWith("Pending draft")
+    expect(screen.queryByRole("textbox", { name: "messenger:groupName" })).toBeNull()
+  })
+
+  it("blocks submission after reopening a pending rename", () => {
+    const onRename = vi.fn()
+    const props = {
+      ...baseProps,
+      chat: groupChat(OWNER),
+      currentUserId: OWNER,
+      onRename,
+    }
+    const { rerender } = render(<GroupInfoPanel {...props} />, { wrapper })
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:renameGroup" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:groupName" }), {
+      target: { value: "  First submission  " },
+    })
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "messenger:groupName" }), {
+      key: "Enter",
+    })
+    expect(onRename).toHaveBeenCalledTimes(1)
+    expect(onRename).toHaveBeenCalledWith("First submission")
+    expect(screen.queryByRole("textbox", { name: "messenger:groupName" })).toBeNull()
+
+    rerender(<GroupInfoPanel {...props} isRenaming />)
+    fireEvent.click(screen.getByRole("button", { name: "messenger:renameGroup" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:groupName" }), {
+      target: { value: "  Next draft  " },
+    })
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+
+    for (let press = 0; press < 2; press += 1) {
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "messenger:groupName" }), {
+        key: "Enter",
+      })
+      expect(onRename).toHaveBeenCalledTimes(1)
+      const editor = screen.getByRole("textbox", { name: "messenger:groupName" })
+      expect(editor).toHaveValue("  Next draft  ")
+    }
   })
 })

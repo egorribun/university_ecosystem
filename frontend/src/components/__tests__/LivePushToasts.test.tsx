@@ -1,10 +1,16 @@
 import { act, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import type { UserState } from "@/types/Auth"
+import { useAuthStore } from "@/stores/useAuthStore"
 import LivePushToasts, {
   readBuffer,
   writeBuffer,
+  getBufferStorageKey,
   type ActiveToast,
 } from "../feedback/LivePushToasts"
+
+const TEST_USER_ID = "toast-legacy-test-user"
+const BUFFER_STORAGE_KEY = getBufferStorageKey(TEST_USER_ID)
 
 const translations: Record<string, string> = {
   "notifications:defaultTitle": "University Ecosystem",
@@ -23,6 +29,7 @@ const dispatchToast = (toast: Record<string, unknown>) => {
     const event = new MessageEvent("message", {
       data: {
         type: "PUSH_NOTIFICATION",
+        recipientUserId: TEST_USER_ID,
         toast,
       },
     })
@@ -41,6 +48,7 @@ describe("LivePushToasts", () => {
   beforeEach(() => {
     setVisibilityState("visible")
     localStorage.clear()
+    useAuthStore.setState({ user: { id: TEST_USER_ID } as UserState, loading: false })
     Object.defineProperty(window.navigator, "serviceWorker", {
       configurable: true,
       value: new EventTarget(),
@@ -76,14 +84,14 @@ describe("LivePushToasts", () => {
     dispatchToast(duplicateToast)
     dispatchToast(duplicateToast)
 
-    const bufferAfterDupes = JSON.parse(localStorage.getItem("livePushToastBuffer") ?? "[]")
+    const bufferAfterDupes = JSON.parse(localStorage.getItem(BUFFER_STORAGE_KEY) ?? "[]")
     expect(bufferAfterDupes).toHaveLength(1)
 
     for (let index = 0; index < 30; index += 1) {
       dispatchToast({ id: `toast-${index}`, title: `Toast ${index}`, body: "Buffered" })
     }
 
-    const bufferedToasts = JSON.parse(localStorage.getItem("livePushToastBuffer") ?? "[]")
+    const bufferedToasts = JSON.parse(localStorage.getItem(BUFFER_STORAGE_KEY) ?? "[]")
     expect(bufferedToasts.length).toBeLessThanOrEqual(20)
 
     setVisibilityState("visible")
@@ -91,7 +99,7 @@ describe("LivePushToasts", () => {
       document.dispatchEvent(new Event("visibilitychange"))
     })
 
-    expect(localStorage.getItem("livePushToastBuffer")).toBe("[]")
+    expect(localStorage.getItem(BUFFER_STORAGE_KEY)).toBe("[]")
   })
 
   it("fails closed when storage exposes neither read nor write capability", () => {
@@ -130,7 +138,7 @@ describe("LivePushToasts", () => {
     try {
       expect(readBuffer().map(({ id }) => id)).toEqual(["stored"])
       expect(() => writeBuffer([])).not.toThrow()
-      expect(getOnlyStorage.getItem).toHaveBeenCalledWith("livePushToastBuffer")
+      expect(getOnlyStorage.getItem).toHaveBeenCalledWith(BUFFER_STORAGE_KEY)
     } finally {
       Object.defineProperty(window, "localStorage", {
         configurable: true,
@@ -167,7 +175,7 @@ describe("LivePushToasts", () => {
   it("does not let storage read or write exceptions escape notification delivery", () => {
     const nativeStorage = window.localStorage
     const throwingStorage = {
-      getItem: vi.fn(() => {
+      getItem: vi.fn<Storage["getItem"]>(() => {
         throw new Error("private mode")
       }),
       setItem: vi.fn(() => {
@@ -182,7 +190,10 @@ describe("LivePushToasts", () => {
     try {
       expect(readBuffer()).toEqual([])
       expect(() => writeBuffer([])).not.toThrow()
-      expect(throwingStorage.getItem).toHaveBeenCalledOnce()
+      // Identity snapshots may read the session-generation key; this asserts the single buffer-key read.
+      expect(
+        throwingStorage.getItem.mock.calls.filter(([key]) => key === BUFFER_STORAGE_KEY)
+      ).toHaveLength(1)
       expect(throwingStorage.setItem).toHaveBeenCalledOnce()
     } finally {
       Object.defineProperty(window, "localStorage", {

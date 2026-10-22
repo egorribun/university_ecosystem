@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
+import secrets
 from datetime import UTC, datetime, timedelta, tzinfo
 from types import SimpleNamespace
 from typing import ClassVar
@@ -9,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 
 import jwt
 import pytest
+from cryptography.fernet import Fernet
 from sqlalchemy import UniqueConstraint
 
 import app.services.cwv as cwv_module
@@ -54,6 +57,24 @@ OIDC_TEST_TOKEN = (
     "eyJleHAiOjE4OTM0NTYwMDAsImlhdCI6MTg5MzQ1NTcwMCwic3ViIjoidGVzdCJ9."
     "c2lnbmF0dXJl"
 )
+
+
+def _valid_staging_environment_settings() -> dict[str, object]:
+    spotify_key = Fernet.generate_key().decode("ascii")
+    totp_key = Fernet.generate_key().decode("ascii")
+    return {
+        "smtp_host": "relay.aud471.invalid",
+        "smtp_port": 587,
+        "smtp_security": "starttls",
+        "smtp_user": "",
+        "smtp_password": "",
+        "elasticsearch_password": secrets.token_urlsafe(32),
+        "spicedb_preshared_key": secrets.token_urlsafe(32),
+        "ws_hub_internal_secret": secrets.token_urlsafe(32),
+        "spotify_token_secret": spotify_key,
+        "mfa_totp_encryption_keys": f"cwv-security-test:{totp_key}",
+        "mfa_totp_active_encryption_key_id": "cwv-security-test",
+    }
 
 
 def _binding(**overrides: object) -> CwvRumBinding:
@@ -535,6 +556,35 @@ def test_oidc_verifier_requires_exact_github_main_staging_claims(
     )
 
 
+def test_oidc_verifier_rejects_deeply_nested_jwt_before_jwks_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    header = base64.urlsafe_b64encode(b'{"alg":"RS256","kid":"fixture"}')
+    header_segment = header.rstrip(b"=").decode("ascii")
+    nested_depth = 20_000
+    payload = ("[" * nested_depth + "0" + "]" * nested_depth).encode("ascii")
+    payload_segment = base64.urlsafe_b64encode(payload).rstrip(b"=").decode("ascii")
+    token = f"{header_segment}.{payload_segment}."
+
+    repository = "example/university-ecosystem"
+    workflow_ref = (
+        f"{repository}/.github/workflows/cwv-field-certification.yml@refs/heads/main"
+    )
+    verifier = GithubActionsOidcVerifier(
+        enabled=True,
+        repository=repository,
+        workflow_ref=workflow_ref,
+        subject=f"repo:{repository}:environment:staging",
+    )
+    fetch_jwks = Mock(side_effect=AssertionError("malformed JWT must not fetch JWKS"))
+    monkeypatch.setattr(verifier._jwks, "fetch_data", fetch_jwks)
+
+    with pytest.raises(CwvEnvelopeError, match="CWV exporter identity is invalid"):
+        verifier.verify(token, expected_sha=SHA)
+
+    fetch_jwks.assert_not_called()
+
+
 def test_oidc_verifier_is_disabled_until_exact_policy_is_configured() -> None:
     with pytest.raises(CwvConfigurationError, match="OIDC"):
         GithubActionsOidcVerifier(
@@ -706,6 +756,7 @@ async def test_cwv_retention_keeps_rows_exactly_at_the_cutoff() -> None:
 
 def test_staging_settings_redact_secret_and_reject_partial_oidc_policy() -> None:
     values = {
+        **_valid_staging_environment_settings(),
         "_allow_missing": True,
         "environment": "staging",
         "event_file_scanner_enabled": True,
@@ -743,6 +794,7 @@ def test_staging_settings_redact_secret_and_reject_partial_oidc_policy() -> None
 
 def test_staging_settings_reject_invalid_ttl_origin_and_tester_cohort() -> None:
     base = {
+        **_valid_staging_environment_settings(),
         "_allow_missing": True,
         "environment": "staging",
         "event_file_scanner_enabled": True,

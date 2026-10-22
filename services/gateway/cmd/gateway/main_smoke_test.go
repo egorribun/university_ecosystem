@@ -165,18 +165,34 @@ func TestSetupRouter_WiresRoutesAndProbes(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	})
 
-	t.Run("public and GraphQL optional routes reach the backend proxy", func(t *testing.T) {
-		for _, path := range []string{"/api/public/config", "/graphql"} {
+	t.Run("public optional route reaches the backend proxy", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/public/config", nil))
+		assert.Equal(t, http.StatusBadGateway, rec.Code)
+	})
+
+	t.Run("retired backend GraphQL paths and URL aliases return local 404", func(t *testing.T) {
+		for _, path := range []string{
+			"/graphql",
+			"/graphql/",
+			"/graphql/query",
+			"/GraphQL",
+			"/GRAPHQL/query",
+			"/%47raphql",
+			"/gRaPhQl%2Fquery",
+		} {
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
+			assert.Equal(t, http.StatusNotFound, rec.Code, path)
+		}
+	})
+
+	t.Run("non-API no-route remains proxied", func(t *testing.T) {
+		for _, path := range []string{"/unknown", "/graphqlish"} {
 			rec := httptest.NewRecorder()
 			router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
 			assert.Equal(t, http.StatusBadGateway, rec.Code, path)
 		}
-	})
-
-	t.Run("non-API no-route is proxied", func(t *testing.T) {
-		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/unknown", nil))
-		assert.Equal(t, http.StatusBadGateway, rec.Code)
 	})
 }
 

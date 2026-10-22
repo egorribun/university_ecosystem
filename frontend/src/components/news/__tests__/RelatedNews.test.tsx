@@ -59,6 +59,24 @@ describe("RelatedNews", () => {
     )
   })
 
+  it("uses the stable English category for a mixed-keyword Russian card", async () => {
+    const mixedKeywordItem = {
+      ...ITEMS[0],
+      id: "mixed-keyword",
+      title: "ГУУ вошёл в топ-20 лучших университетов страны",
+      content: "Научных публикаций стало больше; гранты и стипендии поддерживают исследования.",
+      title_en: "GUU ranks among the country's top 20 universities",
+      content_en: "Research publications helped raise the result.",
+    } as unknown as NewsItem
+
+    await renderWithRouter({ ui: () => <RelatedNews items={[mixedKeywordItem]} />, extraRoutes })
+
+    const card = screen.getByRole("link", { name: /GUU ranks among/i })
+    expect(card.querySelector(".news-badge-matte")).toHaveStyle({
+      "--_badge-accent": "var(--cat-purple-text)",
+    })
+  })
+
   it("renders nothing when there are no related items", async () => {
     await renderWithRouter({ ui: () => <RelatedNews items={[]} />, extraRoutes })
     expect(screen.queryByRole("link")).not.toBeInTheDocument()

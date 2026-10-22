@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
+from app.models import User
 from app.models.enums import UserRole
 from app.schemas import schemas
 
@@ -73,6 +74,43 @@ def test_user_out_flattens_dict_and_orm_inputs() -> None:
     assert from_orm.id == USER_ID
     assert from_orm.email == "user@example.com"
     assert from_orm.spotify_is_connected is False
+
+
+def test_user_out_preserves_email_verification_timestamp_from_orm() -> None:
+    orm_user = _orm_user()
+    orm_user.email_verified_at = NOW
+
+    profile = schemas.UserOut.model_validate(orm_user)
+
+    assert profile.email_verified_at == NOW
+
+
+def test_user_out_preserves_email_mfa_timestamp_for_private_user_only() -> None:
+    enabled_user = User(
+        id=USER_ID,
+        email="enabled@example.com",
+        role=UserRole.STUDENT,
+        is_active=True,
+        mfa_required=True,
+        mfa_default_method="email_otp",
+        email_mfa_enabled_at=NOW,
+    )
+    enabled = schemas.UserOut.model_validate(enabled_user)
+    assert enabled.email_mfa_enabled_at == NOW
+
+    disabled_user = User(
+        id=USER_ID,
+        email="disabled@example.com",
+        role=UserRole.STUDENT,
+        is_active=True,
+        mfa_required=False,
+        email_mfa_enabled_at=None,
+    )
+    disabled = schemas.UserOut.model_validate(disabled_user)
+    assert disabled.email_mfa_enabled_at is None
+
+    public = schemas.UserPublicOut.model_validate(enabled_user)
+    assert "email_mfa_enabled_at" not in public.model_dump()
 
 
 def test_public_user_flattens_dict_and_orm_inputs() -> None:

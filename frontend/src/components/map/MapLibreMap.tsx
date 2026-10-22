@@ -492,7 +492,7 @@ export function MapLibreMapComponent({
       {/* Premium map controls — mobile: centered bottom strip, desktop: right column.
           Controls stay at bottom:12px — mobile bottom sheet (fixed z-50) overlays them naturally. */}
       <div className="absolute z-10 map-controls-positioner" style={{ bottom: 12 }}>
-        {mapRef && <MapControls mapRef={mapRef} />}
+        {mapRef && <MapControls mapRef={mapRef} initialPitch={urlInitialViewport?.pitch ?? 45} />}
       </div>
 
       {/* Minimal OSM attribution — replaces built-in widget */}

@@ -13,7 +13,15 @@
  * Wave 38: AI-powered search foundation
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo, type KeyboardEvent } from "react"
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { m, AnimatePresence } from "framer-motion"
 import { Search, X, FileText, Calendar, ArrowRight, Clock } from "lucide-react"
@@ -22,6 +30,7 @@ import { useQuery } from "@tanstack/react-query"
 import api from "@/api/client"
 import { cn } from "@/utils/cn"
 import { useDebounced } from "@/hooks/useDebounced"
+import useFocusTrap from "@/hooks/useFocusTrap"
 
 interface SearchResult {
   id: string
@@ -43,6 +52,25 @@ interface SearchResponse {
 const RECENT_SEARCHES_KEY = "ue:recent-searches"
 const MAX_RECENT = 5
 
+const HIGHLIGHT_OPEN = "\u0000MARK_OPEN\u0000"
+const HIGHLIGHT_CLOSE = "\u0000MARK_CLOSE\u0000"
+
+function renderSearchSummary(summary: string): ReactNode {
+  const [prefix = "", ...segments] = summary.split(HIGHLIGHT_OPEN)
+  if (prefix.includes(HIGHLIGHT_CLOSE)) return summary
+
+  const children: ReactNode[] = [prefix]
+  let offset = prefix.length
+  for (const segment of segments) {
+    const [matched, suffix, extra] = segment.split(HIGHLIGHT_CLOSE)
+    if (suffix === undefined || extra !== undefined) return summary
+    const mark = <mark key={offset}>{matched}</mark>
+    children.push(mark, suffix)
+    offset += HIGHLIGHT_OPEN.length + segment.length
+  }
+  return children
+}
+
 function getRecentSearches(): string[] {
   try {
     const raw = localStorage.getItem(RECENT_SEARCHES_KEY)
@@ -62,7 +90,11 @@ function saveRecentSearch(query: string) {
   }
 }
 
-export function SearchDialog() {
+interface SearchDialogProps {
+  subscribeOpenRequest?: (listener: () => void) => () => void
+}
+
+export function SearchDialog({ subscribeOpenRequest }: SearchDialogProps = {}) {
   const { t } = useTranslation(["common"])
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -70,6 +102,8 @@ export function SearchDialog() {
   const [activeIndex, setActiveIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
+  // Keeps Tab inside the modal while it is open and returns focus to the opener on close.
+  const dialogRef = useFocusTrap<HTMLDivElement>({ active: open, returnFocus: true })
   const isMac = useMemo(
     () => typeof navigator !== "undefined" && /Mac/i.test(navigator.platform),
     []
@@ -91,6 +125,8 @@ export function SearchDialog() {
     document.addEventListener("keydown", handler)
     return () => document.removeEventListener("keydown", handler)
   }, [open])
+
+  useEffect(() => subscribeOpenRequest?.(() => setOpen(true)), [subscribeOpenRequest])
 
   // Focus input when opened
   useEffect(() => {
@@ -119,6 +155,7 @@ export function SearchDialog() {
     ...(data?.results.news ?? []),
     ...(data?.results.events ?? []),
   ].sort((a, b) => b.score - a.score)
+  const showResults = query.length >= 2 && debouncedQuery.length >= 2
 
   const handleSelect = useCallback(
     (result: SearchResult) => {
@@ -131,6 +168,7 @@ export function SearchDialog() {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
+      if (!showResults) return
       if (e.key === "ArrowDown") {
         e.preventDefault()
         setActiveIndex((prev) => Math.min(prev + 1, allResults.length - 1))
@@ -142,7 +180,7 @@ export function SearchDialog() {
         handleSelect(allResults[activeIndex])
       }
     },
-    [activeIndex, allResults, handleSelect]
+    [activeIndex, allResults, handleSelect, showResults]
   )
 
   // Scroll active item into view
@@ -155,7 +193,6 @@ export function SearchDialog() {
 
   const recentSearches = getRecentSearches()
   const showRecent = !query && recentSearches.length > 0
-  const showResults = debouncedQuery.length >= 2
   const TypeIcon = { news: FileText, events: Calendar } as const
 
   if (!open) return null
@@ -171,6 +208,7 @@ export function SearchDialog() {
         role="presentation"
       >
         <m.div
+          ref={dialogRef}
           initial={{ opacity: 0, scale: 0.95, y: -20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: -20 }}
@@ -200,7 +238,10 @@ export function SearchDialog() {
             {query && (
               <button
                 type="button"
-                onClick={() => setQuery("")}
+                onClick={() => {
+                  setQuery("")
+                  setActiveIndex(-1)
+                }}
                 className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-md hover:bg-(--bg-surface-hover) transition-colors"
                 aria-label={t("common:search.clear")}
               >
@@ -273,7 +314,7 @@ export function SearchDialog() {
                         <p className="truncate text-sm font-semibold">{result.title}</p>
                         {result.summary && (
                           <p className="truncate text-xs text-(--text-tertiary)">
-                            {result.summary}
+                            {renderSearchSummary(result.summary)}
                           </p>
                         )}
                       </div>

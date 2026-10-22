@@ -8,7 +8,9 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from "react"
 import SmartImage from "@/components/media/SmartImage"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { cn } from "@/utils/cn"
-import { formatDate, formatRelativeTime } from "@/utils/date"
+import { formatCampusDate } from "@/utils/campusTimezone"
+import { formatRelativeTime } from "@/utils/date"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import { getEventsHeroId, clearEventsHeroId } from "@/utils/eventsTransition"
 import { Calendar, Cloud, CalendarDays } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -38,6 +40,7 @@ const EventCardHero = ({
   priority,
 }: EventCardHeroProps) => {
   const { t, i18n } = useTranslation(["events", "common"])
+  const timeZone = useCampusTimezone()
   const isOnline = useOnlineStatus()
   const [loadedSource, setLoadedSource] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -70,15 +73,21 @@ const EventCardHero = ({
 
   /* ── Date formatting ── */
   const locale = i18n.language === "ru" ? "ru-RU" : "en-US"
-  const dateLabel = startsAt
-    ? formatDate(startsAt, {
-        day: "numeric",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      })
-    : undefined
+  const dateLabel =
+    startsAt && timeZone
+      ? formatCampusDate(
+          startsAt,
+          {
+            day: "numeric",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          },
+          locale,
+          timeZone
+        )
+      : undefined
   const relativeLabel = startsAt ? formatRelativeTime(startsAt, locale) : undefined
   const isoDate = startsAt ? new Date(startsAt).toISOString() : undefined
 

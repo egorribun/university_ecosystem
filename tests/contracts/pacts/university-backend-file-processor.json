@@ -1,0 +1,140 @@
+{
+  "consumer": {
+    "name": "university-backend"
+  },
+  "interactions": [
+    {
+      "description": "a gRPC request for ProcessFile",
+      "pending": false,
+      "request": {
+        "contents": {
+          "content": {
+            "callback_url": "http://backend/callback",
+            "dest_key": "uploads/processed/img.jpg",
+            "id": "uuid",
+            "options": {
+              "width": "800"
+            },
+            "source_key": "uploads/raw/img.jpg",
+            "type": "image_resize"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "matchingRules": {
+          "body": {
+            "$.callback_url": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.dest_key": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.source_key": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "metadata": {
+          "contentType": "application/json"
+        }
+      },
+      "response": [
+        {
+          "contents": {
+            "content": {
+              "dest_key": "",
+              "duration_ms": 0,
+              "job_id": "550e8400-e29b-41d4-a716-446655440002",
+              "success": true
+            },
+            "contentType": "application/json",
+            "encoded": false
+          },
+          "matchingRules": {
+            "body": {
+              "$.dest_key": {
+                "combine": "AND",
+                "matchers": [
+                  {
+                    "match": "type"
+                  }
+                ]
+              },
+              "$.duration_ms": {
+                "combine": "AND",
+                "matchers": [
+                  {
+                    "match": "type"
+                  }
+                ]
+              },
+              "$.job_id": {
+                "combine": "AND",
+                "matchers": [
+                  {
+                    "match": "type"
+                  }
+                ]
+              },
+              "$.success": {
+                "combine": "AND",
+                "matchers": [
+                  {
+                    "match": "type"
+                  }
+                ]
+              }
+            }
+          },
+          "metadata": {
+            "contentType": "application/json"
+          }
+        }
+      ],
+      "type": "Synchronous/Messages"
+    }
+  ],
+  "metadata": {
+    "pactRust": {
+      "ffi": "0.5.8",
+      "models": "1.3.16"
+    },
+    "pactSpecification": {
+      "version": "4.0"
+    }
+  },
+  "provider": {
+    "name": "file-processor"
+  }
+}

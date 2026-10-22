@@ -21,7 +21,11 @@ const GRADE_SCALES = ["5", "100", "gpa"] as const
 export const isGradeScale = (value: unknown): value is GradeStats["scale"] =>
   typeof value === "string" && GRADE_SCALES.includes(value as GradeStats["scale"])
 
+export type AttendanceDaily = { date: string; registered: number; total: number }
+
 export type AttendanceStats = {
+  daily?: AttendanceDaily[]
+  streakDays?: number
   percent: number
   present: number
   total: number
@@ -48,6 +52,8 @@ export type ParticipationStats = {
 }
 
 export type AttendanceSummaryResponse = {
+  daily?: unknown
+  streak_days?: unknown
   percent?: unknown
   present?: unknown
   total?: unknown

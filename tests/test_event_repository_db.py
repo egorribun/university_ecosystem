@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,22 +57,6 @@ async def _add_event(
 
 
 @pytest.mark.asyncio
-async def test_get_for_registration_and_with_details(
-    event_repo_db, db_session, user_factory
-):
-    user = await user_factory()
-    event = await _add_event(db_session, user.id, title="RegEvent")
-
-    locked = await event_repo_db.get_for_registration(event.id)
-    assert locked is not None
-    assert locked.id == event.id
-
-    details = await event_repo_db.get_with_details(event.id)
-    assert details is not None
-    assert details.title == "RegEvent"
-
-
-@pytest.mark.asyncio
 async def test_search_by_title(event_repo_db, db_session, user_factory):
     user = await user_factory()
     await _add_event(db_session, user.id, title="Workshop on Rust")
@@ -95,8 +80,15 @@ async def test_attendance_lifecycle(event_repo_db, db_session, user_factory):
     got = await event_repo_db.get_attendance(event.id, user.id)
     assert got is not None
 
-    attended = await event_repo_db.list_user_attended_events(user.id)
-    assert any(e.id == event.id for e in attended)
+    attended = await event_repo_db.list_user_attended_events(
+        user.id,
+        limit=2,
+        locale="en",
+    )
+    assert any(
+        row.id == event.id and attendance.user_id == user.id and count == 1
+        for row, attendance, count in attended
+    )
 
     deleted = await event_repo_db.delete_attendance(event.id, user.id)
     assert deleted is True
@@ -187,20 +179,140 @@ async def test_search_events_filter_branches(event_repo_db, db_session, user_fac
     assert isinstance(cursored, list)
 
 
+@pytest.mark.parametrize(
+    ("time_filter", "expected_titles"),
+    [
+        (True, {"Upcoming"}),
+        (False, {"Archived"}),
+        (None, {"Upcoming", "Archived"}),
+    ],
+)
 @pytest.mark.asyncio
-async def test_get_by_organizer_cursor_and_count_upcoming(
-    event_repo_db, db_session, user_factory
+async def test_manually_hidden_event_is_excluded_from_listing_and_total(
+    event_repo_db, db_session, user_factory, time_filter, expected_titles
 ):
+    """Manual visibility remains mandatory for every temporal filter mode."""
     user = await user_factory()
-    event = await _add_event(db_session, user.id, created_at=datetime.now(UTC))
-
-    # Cursor branch of get_by_organizer.
-    rows = await event_repo_db.get_by_organizer(
-        user.id,
-        after_created_at=datetime.now(UTC) + timedelta(hours=1),
-        after_id=event.id,
+    now = datetime.now(UTC)
+    db_session.add_all(
+        [
+            Event(
+                title=title,
+                starts_at=now + timedelta(hours=start_offset),
+                ends_at=now + timedelta(hours=end_offset),
+                created_by=user.id,
+                is_active=visible,
+                created_at=now,
+            )
+            for title, start_offset, end_offset, visible in (
+                ("Upcoming", 1, 3, True),
+                ("Archived", -3, -1, True),
+                ("Hidden upcoming", 1, 3, False),
+                ("Hidden archived", -3, -1, False),
+            )
+        ]
     )
-    assert isinstance(rows, list)
+    await db_session.flush()
 
-    # Real-DB count_upcoming (future event counts).
-    assert await event_repo_db.count_upcoming() >= 1
+    listed = await event_repo_db.search_events(is_active=time_filter, now=now)
+    assert {row.event.title for row in listed} == expected_titles
+    count = await event_repo_db.count_search_events(is_active=time_filter, now=now)
+    assert count == len(expected_titles)
+
+
+@pytest.mark.parametrize("limit", [True, 0, 102, "100"])
+@pytest.mark.asyncio
+async def test_user_attended_event_query_rejects_unbounded_limits(
+    event_repo_db, limit: Any
+) -> None:
+    with pytest.raises(ValueError, match="between 1 and 101"):
+        await event_repo_db.list_user_attended_events(
+            uuid.uuid4(), limit=limit, locale="en"
+        )
+
+
+@pytest.mark.parametrize(
+    ("event_type", "location", "time_filter", "expected_indexes"),
+    [
+        pytest.param(None, None, None, {0, 1, 2, 3, 4, 6}, id="all-visible"),
+        pytest.param(None, None, True, {0, 1, 3, 4, 6}, id="active"),
+        pytest.param(None, None, False, {2}, id="archived"),
+        pytest.param("WORK", None, None, {0, 1, 2, 4, 6}, id="type"),
+        pytest.param(None, "HALL A", None, {0, 1, 2, 3, 6}, id="location"),
+        pytest.param("WORK", "HALL A", None, {0, 1, 2, 6}, id="combined"),
+        pytest.param("WORK", "HALL A", True, {0, 1, 6}, id="combined-active"),
+        pytest.param("WORK", "HALL A", False, {2}, id="combined-archived"),
+        pytest.param("missing", None, None, set(), id="no-type-match"),
+        pytest.param(None, "missing", None, set(), id="no-location-match"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_filtered_event_total_matches_exhaustive_listing(
+    event_repo_db,
+    db_session,
+    user_factory,
+    event_type: str | None,
+    location: str | None,
+    time_filter: bool | None,
+    expected_indexes: set[int],
+) -> None:
+    user = await user_factory()
+    now = datetime(2026, 10, 17, 12, tzinfo=UTC)
+    records = [
+        Event(
+            title=f"Parity {index}",
+            event_type=kind,
+            location=place,
+            event_type_en="workshop" if index == 6 else None,
+            location_en="Hall A" if index == 6 else None,
+            starts_at=now + timedelta(hours=end_offset - 2),
+            ends_at=now + timedelta(hours=end_offset),
+            created_at=now,
+            created_by=user.id,
+            is_active=visible,
+        )
+        for index, (kind, place, end_offset, visible) in enumerate(
+            [
+                ("workshop", "Hall A", 2, True),
+                ("workshop", "Hall A", 0, True),
+                ("workshop", "Hall A", -1, True),
+                ("lecture", "Hall A", 2, True),
+                ("workshop", "Remote", 2, True),
+                ("workshop", "Hall A", 2, False),
+                ("Лекция", "Удалённо", 2, True),
+            ]
+        )
+    ]
+    db_session.add_all(records)
+    await db_session.flush()
+
+    # The limit exceeds this entire isolated fixture, making the list exhaustive.
+    listed = await event_repo_db.search_events(
+        event_type=event_type,
+        location=location,
+        is_active=time_filter,
+        now=now,
+        limit=len(records) + 1,
+    )
+    expected_ids = {records[index].id for index in expected_indexes}
+    listed_ids = [row.event.id for row in listed]
+    assert set(listed_ids) == expected_ids
+    assert len(listed_ids) == len(expected_ids)
+
+    total = await event_repo_db.count_search_events(
+        event_type=event_type,
+        location=location,
+        is_active=time_filter,
+        now=now,
+    )
+    assert total == len(listed_ids) == len(expected_ids)
+
+    first_page = await event_repo_db.search_events(
+        event_type=event_type,
+        location=location,
+        is_active=time_filter,
+        now=now,
+        limit=1,
+    )
+    assert len(first_page) == min(total, 1)
+    assert {row.event.id for row in first_page} <= expected_ids

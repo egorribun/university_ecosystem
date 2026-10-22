@@ -6,9 +6,17 @@ import { AxiosError, AxiosHeaders } from "axios"
 
 import { extractSigningKey, useAuthApi } from "./useAuthApi"
 import type { User } from "@/types/User"
-import { ChallengeLockedError } from "@/types/Auth"
+import { ChallengeLockedError, type PendingMfaState } from "@/types/Auth"
+import type { PendingMfaResponse } from "@/types/Mfa"
+import {
+  acceptBrowserSessionGeneration,
+  captureSessionEpoch,
+  invalidateSessionEpoch,
+  rotateBrowserSession,
+} from "@/stores/sessionEpoch"
 import { API_UNAUTHORIZED_EVENT } from "@/api/client"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
+import { useLogoutNoticeStore } from "@/stores/logoutNoticeStore"
 
 // ---------------------------------------------------------------------------
 // Module mocks. The api layer is fully mocked — never hits MSW (a contract
@@ -119,6 +127,7 @@ type Wires = {
   authOperation: boolean
   setAuthOperation: UseAuthApiArgs[6]
   resetEtagCache: UseAuthApiArgs[7]
+  pendingMfa?: PendingMfaState | null
 }
 
 const makeWires = (overrides: Partial<Wires> = {}): Wires => ({
@@ -144,7 +153,8 @@ const renderApi = (w: Wires) =>
         w.updateSessionSigningKey,
         w.authOperation,
         w.setAuthOperation,
-        w.resetEtagCache
+        w.resetEtagCache,
+        w.pendingMfa
       ),
     { wrapper }
   )
@@ -182,6 +192,7 @@ beforeEach(() => {
   mocks.hasPushConsent.mockReturnValue(false)
   mocks.syncPushForConfirmedIdentity.mockResolvedValue(null)
   mocks.releasePushServerBinding.mockResolvedValue(undefined)
+  useLogoutNoticeStore.setState({ notice: null })
 })
 
 afterEach(() => {
@@ -201,6 +212,22 @@ describe("login", () => {
       out = await result.current.login("a@b.dev", "pw")
     })
     expect(out).toBeNull()
+    expect(mocks.apiPost).not.toHaveBeenCalled()
+    expect(w.setAuthOperation).not.toHaveBeenCalled()
+  })
+
+  it("no-ops when authOperation becomes in-flight after login callback creation", async () => {
+    const w = makeWires({ authOperation: false })
+    const { result, rerender } = renderApi(w)
+    w.authOperation = true
+    rerender()
+
+    let output: unknown
+    await act(async () => {
+      output = await result.current.login("a@b.dev", "pw")
+    })
+
+    expect(output).toBeNull()
     expect(mocks.apiPost).not.toHaveBeenCalled()
     expect(w.setAuthOperation).not.toHaveBeenCalled()
   })
@@ -225,6 +252,21 @@ describe("login", () => {
     expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
   })
 
+  it("omits trusted-device enrollment when login uses its default", async () => {
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValueOnce({
+      status: 200,
+      data: { user: fullUser() },
+    })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.login("a@b.dev", "pw")
+    })
+
+    const body = mocks.apiPost.mock.calls[0]![1] as URLSearchParams
+    expect(body.has("trust_device")).toBe(false)
+  })
   it("returns pending state on 202 MFA challenge (lines 151-159)", async () => {
     const w = makeWires()
     mocks.apiPost.mockResolvedValue({
@@ -241,6 +283,7 @@ describe("login", () => {
   })
 
   it("on success sets user, bumps epoch, clears MFA + fires spotify event (lines 161-184)", async () => {
+    useLogoutNoticeStore.setState({ notice: "server-unconfirmed" })
     const w = makeWires()
     const dispatch = vi.spyOn(window, "dispatchEvent")
     mocks.apiPost.mockResolvedValue({
@@ -256,11 +299,32 @@ describe("login", () => {
     expect(w.updateSessionSigningKey).toHaveBeenCalledWith("sk-1")
     expect(mocks.incrementSessionEpoch).toHaveBeenCalled()
     expect(w.setUser).toHaveBeenCalledWith(expect.objectContaining({ id: "u-1" }))
+    expect(useLogoutNoticeStore.getState().notice).toBeNull()
     expect(w.updatePendingMfa).toHaveBeenCalledWith(null)
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: SPOTIFY_REAUTH_EVENT }))
     dispatch.mockRestore()
   })
 
+  it("does not request Spotify reauthorization for an unconnected login profile", async () => {
+    const dispatch = vi.spyOn(window, "dispatchEvent")
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValueOnce({
+      status: 200,
+      data: { user: fullUser({ spotify_connected: false }) },
+    })
+    const { result } = renderApi(w)
+
+    try {
+      await act(async () => {
+        await result.current.login("a@b.dev", "pw")
+      })
+      expect(dispatch).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: SPOTIFY_REAUTH_EVENT })
+      )
+    } finally {
+      dispatch.mockRestore()
+    }
+  })
   it("hands push sync to the identity gate for exactly the logged-in account", async () => {
     const w = makeWires()
     mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser({ id: 42 } as never) } })
@@ -285,17 +349,29 @@ describe("login", () => {
     expect(mocks.syncPushForConfirmedIdentity).not.toHaveBeenCalled()
   })
 
-  it("throws 'Invalid response from server' when payload is not a token-with-profile (line 187)", async () => {
-    const w = makeWires()
-    mocks.apiPost.mockResolvedValue({ status: 200, data: { nope: true } })
-    const { result } = renderApi(w)
-    await expect(
-      act(async () => {
-        await result.current.login("a@b.dev", "pw")
-      })
-    ).rejects.toThrow("Invalid response from server")
-    expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
-  })
+  it.each([
+    ["missing user property", { nope: true }],
+    ["null response payload", null],
+    ["truthy non-object user", { user: "malformed-profile" }],
+  ] as const)(
+    "rejects malformed login response payloads before changing auth state (%s)",
+    async (_caseName, data) => {
+      const w = makeWires()
+      mocks.apiPost.mockResolvedValueOnce({ status: 200, data } as never)
+      const { result } = renderApi(w)
+
+      await expect(
+        act(async () => {
+          await result.current.login("test@example.com", "password")
+        })
+      ).rejects.toThrow("Invalid response from server")
+
+      expect(w.setUser).not.toHaveBeenCalled()
+      expect(w.updateSessionSigningKey).not.toHaveBeenCalled()
+      expect(mocks.incrementSessionEpoch).not.toHaveBeenCalled()
+      expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
+    }
+  )
 
   it("maps 423 lockout WITHOUT retry-after to plain locked message (lines 196-197)", async () => {
     const w = makeWires()
@@ -338,6 +414,53 @@ describe("login", () => {
     ).rejects.toThrow(expected)
   })
 
+  it.each(["not-a-number", "-1"])(
+    "keeps a plain lockout message for unusable Retry-After value %s",
+    async (retryAfter) => {
+      const w = makeWires()
+      const cause = lockedError(retryAfter)
+      mocks.apiPost.mockRejectedValue(cause)
+      const { result } = renderApi(w)
+
+      await expect(
+        act(async () => {
+          await result.current.login("a@b.dev", "pw")
+        })
+      ).rejects.toMatchObject({ message: "login.locked", cause })
+      expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
+    }
+  )
+  describe("lockout Retry-After public behavior", () => {
+    it("keeps zero retry-after as the plain locked error", async () => {
+      const w = makeWires()
+      const cause = lockedError("0")
+      mocks.apiPost.mockRejectedValue(cause)
+      const { result } = renderApi(w)
+
+      await expect(
+        act(async () => {
+          await result.current.login("a@b.dev", "pw")
+        })
+      ).rejects.toMatchObject({ message: "login.locked", cause })
+    })
+
+    it("reports the rounded positive seconds in the login lockout error", async () => {
+      const w = makeWires()
+      const cause = lockedError("30")
+      mocks.apiPost.mockRejectedValue(cause)
+      const { result } = renderApi(w)
+
+      await expect(
+        act(async () => {
+          await result.current.login("a@b.dev", "pw")
+        })
+      ).rejects.toMatchObject({
+        message: "login.locked login.lockedRetry:login.duration.seconds:30",
+        cause,
+      })
+    })
+  })
+
   it("rethrows an Axios transport error when the response is absent", async () => {
     const w = makeWires()
     const error = new AxiosError("transport failure")
@@ -352,6 +475,7 @@ describe("login", () => {
   })
 
   it("re-throws non-423 errors unchanged (line 198)", async () => {
+    useLogoutNoticeStore.setState({ notice: "server-unconfirmed" })
     const w = makeWires()
     const boom = new Error("network down")
     mocks.apiPost.mockRejectedValue(boom)
@@ -361,6 +485,7 @@ describe("login", () => {
         await result.current.login("a@b.dev", "pw")
       })
     ).rejects.toThrow("network down")
+    expect(useLogoutNoticeStore.getState().notice).toBe("server-unconfirmed")
   })
 })
 
@@ -381,10 +506,6 @@ describe("login → prefetchDashboardData branches", () => {
     await act(async () => {
       await result.current.login("a@b.dev", "pw")
       await result.current.submitMfaChallenge({ code: "123456", challengeToken: "ct" })
-      // Allow any already-scheduled dynamic-import continuations to settle;
-      // a LHCI guard must prevent those imports from being scheduled at all.
-      await Promise.resolve()
-      await Promise.resolve()
     })
 
     expect(mocks.prefetchDashboardStories).not.toHaveBeenCalled()
@@ -393,7 +514,7 @@ describe("login → prefetchDashboardData branches", () => {
     expect(mocks.prefetchEventsListQuery).not.toHaveBeenCalled()
   })
 
-  it("prefetches events list when the user has a group_id (lines 110-116)", async () => {
+  it("prefetches dashboard data after login and events when the user has a group_id", async () => {
     const w = makeWires()
     mocks.apiPost.mockResolvedValue({
       status: 200,
@@ -403,9 +524,16 @@ describe("login → prefetchDashboardData branches", () => {
     await act(async () => {
       await result.current.login("a@b.dev", "pw")
     })
-    // The dynamic imports for dashboard prefetch resolve async; just assert
-    // the login resolved cleanly (the group_id branch executes inside the
-    // fire-and-forget prefetch without throwing).
+
+    await waitFor(() => {
+      expect(mocks.prefetchDashboardStories).toHaveBeenCalledWith(expect.anything())
+      expect(mocks.prefetchDashboardNews).toHaveBeenCalledWith(expect.anything(), "en")
+      expect(mocks.prefetchDashboardEvents).toHaveBeenCalledWith(expect.anything())
+      expect(mocks.prefetchEventsListQuery).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ language: "en", is_active: true, limit: 20 })
+      )
+    })
     expect(w.setUser).toHaveBeenCalled()
   })
 
@@ -422,6 +550,22 @@ describe("login → prefetchDashboardData branches", () => {
 
     await waitFor(() =>
       expect(mocks.prefetchDashboardNews).toHaveBeenCalledWith(expect.anything(), "ru")
+    )
+  })
+
+  it("uses English from the configured language when the resolved language is absent", async () => {
+    mocks.i18n.resolvedLanguage = undefined
+    mocks.i18n.language = "en"
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.login("a@b.dev", "pw")
+    })
+
+    await waitFor(() =>
+      expect(mocks.prefetchDashboardNews).toHaveBeenCalledWith(expect.anything(), "en")
     )
   })
 
@@ -466,8 +610,7 @@ describe("login → prefetchDashboardData branches", () => {
 
   it("reports dashboard prefetch failures in development", async () => {
     // The prefetch is deliberately best-effort, but diagnostics remain
-    // visible to developers when a dynamically imported dashboard surface
-    // fails synchronously.
+    // visible to developers when a statically linked prefetch callback throws.
     vi.stubEnv("DEV", true)
     const failure = new Error("prefetch unavailable")
     mocks.prefetchDashboardStories.mockImplementationOnce(() => {
@@ -494,6 +637,17 @@ describe("login → prefetchDashboardData branches", () => {
 // ---------------------------------------------------------------------------
 
 describe("logout", () => {
+  const generationStorageKey = "ecosystem.session.generation.v1"
+  const seedCurrentGeneration = (nonce: string) => {
+    localStorage.setItem(generationStorageKey, JSON.stringify({ nonce, hash: `profile-${nonce}` }))
+    acceptBrowserSessionGeneration()
+  }
+  const restoreGeneration = (previous: string | null) => {
+    if (previous === null) localStorage.removeItem(generationStorageKey)
+    else localStorage.setItem(generationStorageKey, previous)
+    acceptBrowserSessionGeneration()
+  }
+
   it("posts /auth/logout + clears consent when user present (lines 216-223)", async () => {
     const w = makeWires({ user: fullUser() })
     mocks.hasPushConsent.mockReturnValue(true)
@@ -538,10 +692,7 @@ describe("logout", () => {
       await result.current.logout()
     })
 
-    expect(mocks.logWarning).toHaveBeenCalledWith(
-      "Failed to release push binding on logout",
-      failure
-    )
+    expect(mocks.logWarning).toHaveBeenCalledWith("Failed to release push binding on logout")
     expect(mocks.apiPost).toHaveBeenCalledWith("/auth/logout")
     expect(mocks.logError).not.toHaveBeenCalled()
     expect(w.handleUnauthorized).toHaveBeenCalledOnce()
@@ -549,23 +700,295 @@ describe("logout", () => {
 
   it("skips the logout POST when there is no user, still unauthorizes (line 216 false branch)", async () => {
     const w = makeWires({ user: null })
+    useLogoutNoticeStore.setState({ notice: "server-unconfirmed" })
     const { result } = renderApi(w)
     await act(async () => {
       await result.current.logout()
     })
     expect(mocks.apiPost).not.toHaveBeenCalled()
     expect(mocks.releasePushServerBinding).not.toHaveBeenCalled()
+    // A local no-op has no server proof and must not claim that logout was confirmed.
+    expect(useLogoutNoticeStore.getState().notice).toBe("server-unconfirmed")
     expect(w.handleUnauthorized).toHaveBeenCalled()
   })
 
-  it("still unauthorizes even when the logout POST throws (lines 225-228)", async () => {
+  it("continues confirmed current-session cleanup when generation persistence fails", async () => {
+    const previousGeneration = localStorage.getItem(generationStorageKey)
+    seedCurrentGeneration("current-generation")
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem").mockImplementationOnce(() => {
+      throw new DOMException("blocked", "SecurityError")
+    })
     const w = makeWires({ user: fullUser() })
-    mocks.apiPost.mockRejectedValue(new Error("boom"))
+    useLogoutNoticeStore.setState({ notice: "server-unconfirmed" })
+    mocks.apiPost.mockRejectedValueOnce(new Error("follow-up logout failed after DELETE"))
+    const { result } = renderApi(w)
+
+    try {
+      await act(async () => {
+        await result.current.logout({ serverRevocationConfirmed: true })
+      })
+
+      expect(mocks.apiPost).toHaveBeenCalledWith("/auth/logout")
+      expect(localStorage.getItem(generationStorageKey)).toContain("current-generation")
+      expect(useLogoutNoticeStore.getState().notice).toBeNull()
+      expect(w.handleUnauthorized).toHaveBeenCalledOnce()
+      expect(mocks.logWarning).toHaveBeenCalledWith(
+        "Logout request failed after the current session was revoked"
+      )
+    } finally {
+      storageWrite.mockRestore()
+      restoreGeneration(previousGeneration)
+    }
+  })
+
+  it("does not post after failed rotation yields to a successor generation", async () => {
+    let resolveRelease!: () => void
+    let releaseSettled = false
+    const releasePending = new Promise<void>((resolve) => {
+      resolveRelease = () => {
+        releaseSettled = true
+        resolve()
+      }
+    })
+    mocks.releasePushServerBinding.mockReturnValueOnce(releasePending)
+    const previousGeneration = localStorage.getItem(generationStorageKey)
+    seedCurrentGeneration("account-a-generation")
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem").mockImplementationOnce(() => {
+      throw new DOMException("blocked", "SecurityError")
+    })
+    const w = makeWires({ user: fullUser({ id: "account-a" }) })
+    const { result, rerender } = renderApi(w)
+    let pending: Promise<void> | undefined
+
+    try {
+      act(() => {
+        pending = result.current.logout()
+      })
+      await waitFor(() => expect(mocks.releasePushServerBinding).toHaveBeenCalledOnce())
+
+      // Model a successor tab replacing the shared origin generation while A waits.
+      localStorage.setItem(
+        generationStorageKey,
+        JSON.stringify({ nonce: "account-b-generation", hash: "account-b-profile" })
+      )
+      w.user = fullUser({ id: "account-b" })
+      rerender()
+      await act(async () => {
+        resolveRelease()
+        await pending
+      })
+
+      expect(mocks.apiPost).not.toHaveBeenCalled()
+      expect(w.handleUnauthorized).not.toHaveBeenCalled()
+    } finally {
+      storageWrite.mockRestore()
+      if (!releaseSettled) resolveRelease()
+      if (pending) await act(async () => pending?.catch(() => undefined))
+      restoreGeneration(previousGeneration)
+    }
+  })
+
+  it("does not use failed-rotation fallback for a stale pre-binding", async () => {
+    const previousGeneration = localStorage.getItem(generationStorageKey)
+    seedCurrentGeneration("account-a-generation")
+    // The active tab has already moved to B, but A has not accepted that generation.
+    localStorage.setItem(
+      generationStorageKey,
+      JSON.stringify({ nonce: "account-b-generation", hash: "account-b-profile" })
+    )
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem").mockImplementationOnce(() => {
+      throw new DOMException("blocked", "SecurityError")
+    })
+    const w = makeWires({ user: fullUser({ id: "account-a" }) })
+    const { result } = renderApi(w)
+
+    try {
+      await act(async () => {
+        await result.current.logout()
+      })
+
+      expect(mocks.apiPost).not.toHaveBeenCalled()
+      expect(w.handleUnauthorized).not.toHaveBeenCalled()
+    } finally {
+      storageWrite.mockRestore()
+      restoreGeneration(previousGeneration)
+    }
+  })
+
+  it("does not post an old-account logout after push release yields to a successor", async () => {
+    let resolveRelease!: () => void
+    let releaseSettled = false
+    const releasePending = new Promise<void>((resolve) => {
+      resolveRelease = () => {
+        releaseSettled = true
+        resolve()
+      }
+    })
+    mocks.releasePushServerBinding.mockReturnValueOnce(releasePending)
+    useLogoutNoticeStore.setState({ notice: "server-unconfirmed" })
+    const w = makeWires({ user: fullUser({ id: "account-a" }) })
+    const { result, rerender } = renderApi(w)
+    let pending: Promise<void> | undefined
+
+    try {
+      act(() => {
+        pending = result.current.logout()
+      })
+      await waitFor(() => expect(mocks.releasePushServerBinding).toHaveBeenCalledOnce())
+      rotateBrowserSession()
+      w.user = fullUser({ id: "account-b" })
+      rerender()
+      await act(async () => {
+        resolveRelease()
+        await pending
+      })
+
+      expect(mocks.apiPost).not.toHaveBeenCalled()
+      expect(useLogoutNoticeStore.getState().notice).toBe("server-unconfirmed")
+      expect(w.handleUnauthorized).not.toHaveBeenCalled()
+    } finally {
+      if (!releaseSettled) resolveRelease()
+      if (pending) await act(async () => pending?.catch(() => undefined))
+    }
+  })
+
+  it("clears the notice when current-session revocation is confirmed after user state clears", async () => {
+    const w = makeWires({ user: null })
+    useLogoutNoticeStore.setState({ notice: "server-unconfirmed" })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.logout({ serverRevocationConfirmed: true })
+    })
+
+    expect(mocks.apiPost).not.toHaveBeenCalled()
+    expect(mocks.releasePushServerBinding).not.toHaveBeenCalled()
+    expect(useLogoutNoticeStore.getState().notice).toBeNull()
+    expect(w.handleUnauthorized).toHaveBeenCalledOnce()
+  })
+
+  it("keeps B's logout uncertainty when A's delayed successful logout arrives", async () => {
+    let resolveAccountA!: (value: { status: number; data: object }) => void
+    let accountASettled = false
+    const accountAResponse = new Promise<{ status: number; data: object }>((resolve) => {
+      resolveAccountA = (value) => {
+        accountASettled = true
+        resolve(value)
+      }
+    })
+    mocks.apiPost
+      .mockImplementationOnce(() => accountAResponse)
+      .mockRejectedValueOnce(new Error("account B logout unavailable"))
+    const w = makeWires({ user: fullUser({ id: "account-a" }) })
+    const { result, rerender } = renderApi(w)
+    let pendingAccountA: Promise<void> | undefined
+
+    try {
+      act(() => {
+        pendingAccountA = result.current.logout()
+      })
+      await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledTimes(1))
+
+      rotateBrowserSession()
+      w.user = fullUser({ id: "account-b" })
+      rerender()
+      await act(async () => {
+        await result.current.logout()
+      })
+      expect(mocks.apiPost).toHaveBeenCalledTimes(2)
+      expect(useLogoutNoticeStore.getState().notice).toBe("server-unconfirmed")
+      expect(w.handleUnauthorized).toHaveBeenCalledOnce()
+
+      await act(async () => {
+        resolveAccountA({ status: 200, data: {} })
+        await pendingAccountA
+      })
+
+      expect(useLogoutNoticeStore.getState().notice).toBe("server-unconfirmed")
+      expect(w.handleUnauthorized).toHaveBeenCalledOnce()
+      expect(mocks.logWarning).toHaveBeenCalledExactlyOnceWith(
+        "Server logout could not be confirmed; local cleanup will continue"
+      )
+    } finally {
+      if (!accountASettled) resolveAccountA({ status: 200, data: {} })
+      if (pendingAccountA) await act(async () => pendingAccountA?.catch(() => undefined))
+    }
+  })
+
+  it("keeps a fixed in-memory notice when server logout cannot be confirmed", async () => {
+    const w = makeWires({ user: fullUser() })
+    mocks.apiPost.mockRejectedValue(new Error("sensitive transport detail"))
     const { result } = renderApi(w)
     await act(async () => {
       await result.current.logout()
     })
-    expect(w.handleUnauthorized).toHaveBeenCalled()
+    expect(useLogoutNoticeStore.getState().notice).toBe("server-unconfirmed")
+    expect(mocks.logWarning).toHaveBeenCalledWith(
+      "Server logout could not be confirmed; local cleanup will continue"
+    )
+    expect(JSON.stringify(mocks.logWarning.mock.calls)).not.toContain("sensitive transport detail")
+    expect(mocks.logError).not.toHaveBeenCalled()
+    expect(w.handleUnauthorized).toHaveBeenCalledOnce()
+  })
+
+  it("does not show uncertainty after a current-session revoke was confirmed", async () => {
+    const w = makeWires({ user: fullUser() })
+    useLogoutNoticeStore.setState({ notice: "server-unconfirmed" })
+    mocks.apiPost.mockRejectedValue(new Error("follow-up logout failed"))
+    const { result } = renderApi(w)
+    await act(async () => {
+      await result.current.logout({ serverRevocationConfirmed: true })
+    })
+    expect(useLogoutNoticeStore.getState().notice).toBeNull()
+    expect(mocks.logWarning).toHaveBeenCalledWith(
+      "Logout request failed after the current session was revoked"
+    )
+    expect(mocks.logError).not.toHaveBeenCalled()
+    expect(w.handleUnauthorized).toHaveBeenCalledOnce()
+  })
+
+  it("ignores a delayed logout failure after a successor account is confirmed", async () => {
+    let rejectLogout!: (reason: Error) => void
+    mocks.apiPost.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectLogout = reject
+        })
+    )
+    const w = makeWires({ user: fullUser({ id: "account-a" }) })
+    const { result, rerender } = renderApi(w)
+    let pending!: Promise<void>
+    act(() => {
+      pending = result.current.logout()
+    })
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/auth/logout"))
+
+    rotateBrowserSession()
+    w.user = fullUser({ id: "account-b" })
+    rerender()
+    await act(async () => {
+      rejectLogout(new Error("account A response detail"))
+      await pending
+    })
+
+    expect(useLogoutNoticeStore.getState().notice).toBeNull()
+    expect(w.handleUnauthorized).not.toHaveBeenCalled()
+    expect(JSON.stringify(mocks.logWarning.mock.calls)).not.toContain("account A response detail")
+  })
+
+  it("uses the latest signed-in profile when logout follows an auth-state rerender", async () => {
+    const w = makeWires({ user: null })
+    const { result, rerender } = renderApi(w)
+    w.user = fullUser({ id: "current-account" })
+    rerender()
+
+    await act(async () => {
+      await result.current.logout()
+    })
+
+    expect(mocks.apiPost).toHaveBeenCalledTimes(1)
+    expect(mocks.apiPost).toHaveBeenCalledWith("/auth/logout")
+    expect(w.handleUnauthorized).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -583,8 +1006,46 @@ describe("submitMfaChallenge", () => {
     expect(mocks.apiPost).not.toHaveBeenCalled()
   })
 
+  it("does not submit when authOperation becomes in-flight after MFA callback creation", async () => {
+    const storageKey = "ecosystem.session.generation.v1"
+    const previousGeneration = localStorage.getItem(storageKey)
+    const w = makeWires({
+      pendingMfa: { status: "mfa_required", user_id: "u-1", methods: [], reason: "login" },
+    })
+    let unmount = () => {}
+
+    try {
+      acceptBrowserSessionGeneration()
+      const stillOwnsCapturedSession = captureSessionEpoch()
+      const { result, rerender, unmount: unmountHook } = renderApi(w)
+      unmount = unmountHook
+      w.authOperation = true
+      rerender()
+
+      await act(async () => {
+        await result.current.submitMfaChallenge({
+          code: "123456",
+          challengeToken: "ct",
+        })
+      })
+
+      expect(stillOwnsCapturedSession()).toBe(true)
+      expect(localStorage.getItem(storageKey)).toBe(previousGeneration)
+      expect(mocks.apiPost).not.toHaveBeenCalled()
+      expect(w.setAuthOperation).not.toHaveBeenCalled()
+      expect(w.setUser).not.toHaveBeenCalled()
+      expect(w.updatePendingMfa).not.toHaveBeenCalled()
+    } finally {
+      unmount()
+      if (previousGeneration === null) localStorage.removeItem(storageKey)
+      else localStorage.setItem(storageKey, previousGeneration)
+      acceptBrowserSessionGeneration()
+    }
+  })
+
   it("verifies a totp challenge and signs the session in (lines 243-279)", async () => {
-    const w = makeWires()
+    useLogoutNoticeStore.setState({ notice: "server-unconfirmed" })
+    const w = makeWires({ updateSessionSigningKey: vi.fn(() => invalidateSessionEpoch()) })
     mocks.apiPost.mockResolvedValue({
       status: 200,
       data: { user: fullUser({ spotify_connected: true }), session: { signing_key: "sk-2" } },
@@ -608,12 +1069,43 @@ describe("submitMfaChallenge", () => {
       expect.objectContaining({ skipRateLimitQueue: true })
     )
     expect(w.updateSessionSigningKey).toHaveBeenCalledWith("sk-2")
+    expect(w.setAuthOperation).toHaveBeenCalledTimes(2)
+    expect(w.setAuthOperation).toHaveBeenNthCalledWith(1, true)
+    expect(w.setAuthOperation).toHaveBeenNthCalledWith(2, false)
     expect(mocks.incrementSessionEpoch).toHaveBeenCalled()
     expect(w.setUser).toHaveBeenCalled()
+    expect(useLogoutNoticeStore.getState().notice).toBeNull()
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: SPOTIFY_REAUTH_EVENT }))
     dispatch.mockRestore()
+
+    await waitFor(() => {
+      expect(mocks.prefetchDashboardStories).toHaveBeenCalledWith(expect.anything())
+      expect(mocks.prefetchDashboardNews).toHaveBeenCalledWith(expect.anything(), "en")
+      expect(mocks.prefetchDashboardEvents).toHaveBeenCalledWith(expect.anything())
+    })
+    expect(mocks.prefetchEventsListQuery).not.toHaveBeenCalled()
   })
 
+  it("does not request Spotify reauthorization for an unconnected login MFA profile", async () => {
+    const dispatch = vi.spyOn(window, "dispatchEvent")
+    const w = makeWires({ pendingMfa: { reason: "login" } as PendingMfaState })
+    mocks.apiPost.mockResolvedValueOnce({
+      status: 200,
+      data: { user: fullUser({ spotify_connected: false }) },
+    })
+    const { result } = renderApi(w)
+
+    try {
+      await act(async () => {
+        await result.current.submitMfaChallenge({ code: "123456" })
+      })
+      expect(dispatch).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: SPOTIFY_REAUTH_EVENT })
+      )
+    } finally {
+      dispatch.mockRestore()
+    }
+  })
   it("sends an empty challenge token when the optional token is absent", async () => {
     const w = makeWires()
     mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
@@ -634,11 +1126,20 @@ describe("submitMfaChallenge", () => {
     const w = makeWires()
     mocks.apiPost.mockRejectedValue(lockedError("90"))
     const { result } = renderApi(w)
-    await expect(
-      act(async () => {
+    let caught: unknown
+    await act(async () => {
+      try {
         await result.current.submitMfaChallenge({ code: "1", challengeToken: "ct" })
-      })
-    ).rejects.toBeInstanceOf(ChallengeLockedError)
+      } catch (error) {
+        caught = error
+      }
+    })
+    expect(caught).toBeInstanceOf(ChallengeLockedError)
+    expect((caught as ChallengeLockedError).refreshable).toBe(false)
+    expect((caught as ChallengeLockedError).message).toBe(
+      "login.locked login.lockedRetry:login.duration.minutes:2"
+    )
+    expect(mocks.apiPost).toHaveBeenCalledTimes(1)
   })
 
   it("throws ChallengeLockedError (plain message) on 423 with no retry-after", async () => {
@@ -756,6 +1257,31 @@ describe("requireMfa", () => {
     expect(out).toBeNull()
   })
 
+  it("rethrows a non-Axios response-shaped 401 without dispatching unauthorized", async () => {
+    const w = makeWires()
+    const error = Object.assign(new Error("application-level failure"), {
+      response: { status: 401 },
+    })
+    const dispatch = vi.spyOn(window, "dispatchEvent")
+    mocks.apiPost.mockRejectedValueOnce(error)
+    const { result } = renderApi(w)
+
+    try {
+      await expect(
+        act(async () => {
+          await result.current.requireMfa()
+        })
+      ).rejects.toBe(error)
+      expect(
+        dispatch.mock.calls.filter(([event]) => event.type === API_UNAUTHORIZED_EVENT)
+      ).toHaveLength(0)
+      expect(w.updatePendingMfa).not.toHaveBeenCalled()
+      expect(w.setUser).not.toHaveBeenCalled()
+    } finally {
+      dispatch.mockRestore()
+    }
+  })
+
   it("rethrows an Axios error without a response from step-up", async () => {
     const w = makeWires()
     const error = new AxiosError("step-up transport failure")
@@ -800,6 +1326,104 @@ describe("requireMfa", () => {
 // ---------------------------------------------------------------------------
 
 describe("refresh", () => {
+  it("does not restore a profile after logout overtakes refresh", async () => {
+    let finish!: (value: User) => void
+    mocks.fetchCurrentUser.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const w = makeWires({ user: fullUser() })
+    const { result } = renderApi(w)
+    let pending!: Promise<void>
+    act(() => {
+      pending = result.current.refresh()
+    })
+    await act(() => result.current.logout())
+    await act(async () => {
+      finish(fullUser())
+      await pending
+    })
+    expect(w.setUser).not.toHaveBeenCalled()
+    expect(mocks.syncPushForConfirmedIdentity).not.toHaveBeenCalled()
+  })
+
+  it("does not let a stale refresh 401 clear a newly signed-in profile", async () => {
+    const storageKey = "ecosystem.session.generation.v1"
+    const previousGeneration = localStorage.getItem(storageKey)
+    let finishCurrentUser!: (value: User) => void
+    let rejectCurrentUser!: (reason: unknown) => void
+    let refreshSettled = false
+    let refreshPending!: Promise<void>
+    const rerenderHook: { current?: () => void } = {}
+    const replacement = fullUser({ id: "new-account", email: "new@b.dev" })
+    const handleUnauthorized = vi.fn(() => {
+      w.user = null
+      rerenderHook.current?.()
+    })
+    const w: Wires = makeWires({
+      user: fullUser({ id: "old-account", email: "old@b.dev" }),
+      handleUnauthorized,
+    })
+    mocks.fetchCurrentUser.mockImplementationOnce(
+      () =>
+        new Promise<User>((resolve, reject) => {
+          finishCurrentUser = resolve
+          rejectCurrentUser = reject
+        })
+    )
+    const { result, rerender } = renderApi(w)
+    rerenderHook.current = rerender
+
+    try {
+      act(() => {
+        refreshPending = result.current.refresh()
+      })
+      await act(() => result.current.logout())
+      expect(w.user).toBeNull()
+      handleUnauthorized.mockClear()
+
+      mocks.apiPost.mockResolvedValueOnce({
+        status: 200,
+        data: { user: replacement },
+      } as never)
+      await act(async () => {
+        await result.current.login("new@b.dev", "password")
+      })
+      w.user = replacement
+      rerender()
+
+      const unauthorized = new AxiosError("stale unauthorized")
+      unauthorized.response = {
+        status: 401,
+        headers: {},
+        data: {},
+        statusText: "Unauthorized",
+        config: {} as never,
+      }
+      await act(async () => {
+        rejectCurrentUser(unauthorized)
+        refreshSettled = true
+        await refreshPending
+      })
+
+      expect(w.setUser).toHaveBeenCalledWith(replacement)
+      expect(handleUnauthorized).not.toHaveBeenCalled()
+      expect(w.user).toBe(replacement)
+    } finally {
+      if (!refreshSettled && finishCurrentUser) {
+        finishCurrentUser(fullUser({ id: "old-account", email: "old@b.dev" }))
+        await act(async () => {
+          await refreshPending
+        })
+      }
+      if (previousGeneration === null) localStorage.removeItem(storageKey)
+      else localStorage.setItem(storageKey, previousGeneration)
+      acceptBrowserSessionGeneration()
+    }
+  })
+
   it("resets etag cache, fetches profile + sets user (lines 332-346)", async () => {
     const w = makeWires()
     mocks.fetchCurrentUser.mockResolvedValue(fullUser())
@@ -889,12 +1513,45 @@ describe("refresh", () => {
     expect(w.handleUnauthorized).not.toHaveBeenCalled()
     expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
   })
+
+  it("uses the latest unauthorized handler when refresh follows callback rerender", async () => {
+    const previousHandler = vi.fn()
+    const currentHandler = vi.fn()
+    const w = makeWires({ handleUnauthorized: previousHandler })
+    const { result, rerender } = renderApi(w)
+    w.handleUnauthorized = currentHandler
+    rerender()
+
+    const unauthorized = new AxiosError("unauthorized")
+    unauthorized.response = {
+      status: 401,
+      headers: {},
+      data: {},
+      statusText: "Unauthorized",
+      config: {} as never,
+    }
+    mocks.fetchCurrentUser.mockRejectedValueOnce(unauthorized)
+
+    await act(async () => {
+      await result.current.refresh()
+    })
+
+    expect(currentHandler).toHaveBeenCalledTimes(1)
+    expect(previousHandler).not.toHaveBeenCalled()
+  })
 })
 
 describe("useAuthApi — residual defensive branches", () => {
   it("returns no signing key for an absent response value", () => {
     expect(extractSigningKey(null)).toBeNull()
     expect(extractSigningKey(undefined)).toBeNull()
+  })
+
+  it("returns no key when a response has no usable session signing key", () => {
+    expect(extractSigningKey({})).toBeNull()
+    expect(extractSigningKey({ session: null })).toBeNull()
+    expect(extractSigningKey({ session: { signing_key: "" } })).toBeNull()
+    expect(extractSigningKey({ session: { signing_key: "valid-key" } })).toBe("valid-key")
   })
 
   it("rejects a null token response as invalid", async () => {
@@ -911,14 +1568,18 @@ describe("useAuthApi — residual defensive branches", () => {
 
   it("formats lockouts measured in hours", async () => {
     const w = makeWires()
-    mocks.apiPost.mockRejectedValue(lockedError("7200"))
+    const cause = lockedError("7200")
+    mocks.apiPost.mockRejectedValue(cause)
     const { result } = renderApi(w)
 
     await expect(
       act(async () => {
         await result.current.login("a@b.dev", "pw")
       })
-    ).rejects.toThrow(/login\.duration\.hours:2/)
+    ).rejects.toMatchObject({
+      message: "login.locked login.lockedRetry:login.duration.hours:2",
+      cause,
+    })
   })
 
   it("logs a push-sync rejection after login without failing the login", async () => {
@@ -964,22 +1625,276 @@ describe("useAuthApi — residual defensive branches", () => {
     )
     expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
   })
+})
 
-  it("swallows a dashboard prefetch import failure", async () => {
-    vi.doMock("@/hooks/useDashboardStories", () => {
-      throw new Error("dashboard module unavailable")
+describe("late authentication responses", () => {
+  it.each(["login", "mfa"])("ignores a late %s response after logout", async (operation) => {
+    let finish!: (value: {
+      status: number
+      data: { user: User; session: { signing_key: string } }
+    }) => void
+    mocks.apiPost.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const w = makeWires()
+    const { result } = renderApi(w)
+    let pending!: Promise<unknown>
+    act(() => {
+      pending =
+        operation === "login"
+          ? result.current.login("a@b.dev", "pw")
+          : result.current.submitMfaChallenge({
+              method: "totp",
+              code: "123456",
+              challengeToken: "challenge",
+            })
     })
-    try {
-      const w = makeWires()
-      mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
-      const { result } = renderApi(w)
+    await act(() => result.current.logout())
+    await act(async () => {
+      finish({ status: 200, data: { user: fullUser(), session: { signing_key: "old-key" } } })
+      await pending
+    })
+    expect(w.setUser).not.toHaveBeenCalled()
+    expect(w.updateSessionSigningKey).not.toHaveBeenCalled()
+  })
+})
 
-      await act(async () => {
-        await result.current.login("a@b.dev", "pw")
+describe("login MFA browser-session boundary", () => {
+  it("rotates the browser session at the login MFA boundary", async () => {
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValueOnce({
+      status: 202,
+      data: { status: "mfa_required", user_id: "u-1", methods: [] },
+    })
+    const { result, rerender } = renderApi(w)
+    let challenge: PendingMfaState | null = null
+    await act(async () => {
+      challenge = await result.current.login("a@b.dev", "pw")
+    })
+    expect(challenge).toMatchObject({ reason: "login" })
+    if (challenge === null) throw new Error("Expected a login MFA challenge")
+
+    w.pendingMfa = challenge
+    rerender()
+    const challengeSessionWork = captureSessionEpoch()
+    expect(challengeSessionWork()).toBe(true)
+
+    let resolveVerification!: (value: {
+      status: number
+      data: { user: User; session: { signing_key: string } }
+    }) => void
+    mocks.apiPost.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveVerification = resolve
+        })
+    )
+    let verification!: Promise<void>
+    act(() => {
+      verification = result.current.submitMfaChallenge({
+        method: "totp",
+        code: "123456",
+        challengeToken: "ct-login",
       })
-      await waitFor(() => expect(w.setUser).toHaveBeenCalled())
+    })
+
+    try {
+      expect(challengeSessionWork()).toBe(false)
     } finally {
-      vi.doUnmock("@/hooks/useDashboardStories")
+      await act(async () => {
+        resolveVerification({
+          status: 200,
+          data: { user: fullUser(), session: { signing_key: "sk-login" } },
+        })
+        await verification
+      })
     }
+
+    expect(w.updateSessionSigningKey).toHaveBeenCalledWith("sk-login")
+    expect(w.setUser).toHaveBeenCalledWith(expect.objectContaining({ id: "u-1" }))
+  })
+})
+
+describe("authenticated MFA step-up", () => {
+  it("switches accounts after login MFA even when a prior user is still present", async () => {
+    const priorUser = fullUser({ id: "prior-account" })
+    const nextUser = fullUser({ id: "new-account" })
+    const w = makeWires({ user: priorUser })
+    const loginChallengeResponse = {
+      status: "mfa_required",
+      user_id: "new-account",
+      methods: [
+        {
+          method: "totp",
+          challenge_token: "new-account-challenge",
+          challenge_expires_at: new Date(Date.now() + 60_000).toISOString(),
+        },
+      ],
+    } satisfies PendingMfaResponse
+    mocks.apiPost
+      .mockResolvedValueOnce({
+        status: 202,
+        data: loginChallengeResponse,
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { user: nextUser, session: { signing_key: "new-account-key" } },
+      })
+    const { result, rerender } = renderApi(w)
+    const challengeHolder: { current: PendingMfaState | null } = { current: null }
+
+    await act(async () => {
+      challengeHolder.current = await result.current.login("new@example.com", "password")
+    })
+
+    const loginChallenge = challengeHolder.current
+    expect(loginChallenge).toMatchObject({ reason: "login", user_id: "new-account" })
+    expect(w.setUser).not.toHaveBeenCalled()
+    expect(w.updatePendingMfa).toHaveBeenCalledWith(loginChallenge)
+
+    if (loginChallenge === null) throw new Error("Expected a login MFA challenge")
+    const loginTotpMethod = loginChallenge.methods.find(({ method }) => method === "totp")
+    if (!loginTotpMethod) throw new Error("Expected the login challenge to include TOTP")
+    w.pendingMfa = loginChallenge
+    rerender()
+
+    await act(async () => {
+      await result.current.submitMfaChallenge({
+        method: "totp",
+        code: "123456",
+        challengeToken: loginTotpMethod.challenge_token,
+      })
+    })
+
+    expect(w.updateSessionSigningKey).toHaveBeenCalledWith("new-account-key")
+    expect(w.setUser).toHaveBeenCalledWith(nextUser)
+    expect(w.updatePendingMfa).toHaveBeenLastCalledWith(null)
+  })
+
+  it("preserves the same account's captured retry lifetime and signing key", async () => {
+    const currentUser = fullUser()
+    const w = makeWires({ user: currentUser, pendingMfa: { reason: "step-up" } as PendingMfaState })
+    mocks.apiPost.mockResolvedValue({
+      status: 200,
+      data: { user: currentUser, session: { signing_key: "same-session-key" } },
+    } as never)
+    const { result } = renderApi(w)
+    const retryOwnsSession = captureSessionEpoch()
+    await act(() =>
+      result.current.submitMfaChallenge({
+        method: "totp",
+        code: "123456",
+        challengeToken: "step-up",
+      })
+    )
+    expect(retryOwnsSession()).toBe(true)
+    expect(w.setUser).toHaveBeenCalledWith(currentUser)
+    expect(w.updateSessionSigningKey).not.toHaveBeenCalled()
+    expect(mocks.incrementSessionEpoch).not.toHaveBeenCalled()
+    expect(mocks.syncPushForConfirmedIdentity).not.toHaveBeenCalled()
+  })
+
+  it("rejects another account's profile returned to an authenticated step-up", async () => {
+    const w = makeWires({ user: fullUser(), pendingMfa: { reason: "step-up" } as PendingMfaState })
+    mocks.apiPost.mockResolvedValue({
+      status: 200,
+      data: { user: fullUser({ id: "other-account" }) },
+    } as never)
+    const { result } = renderApi(w)
+    await expect(
+      act(() =>
+        result.current.submitMfaChallenge({
+          method: "totp",
+          code: "123456",
+          challengeToken: "step-up",
+        })
+      )
+    ).rejects.toThrow("MFA response does not match")
+    expect(w.setUser).not.toHaveBeenCalled()
+  })
+})
+
+describe("authentication cancellation boundaries", () => {
+  it.each(["login", "mfa", "refresh", "requireMfa"] as const)(
+    "does not apply a late %s failure after unmount",
+    async (operation) => {
+      let reject!: (reason: Error) => void
+      const response = new Promise<never>((_resolve, fail) => {
+        reject = fail
+      })
+      if (operation === "refresh") mocks.fetchCurrentUser.mockReturnValueOnce(response)
+      else mocks.apiPost.mockReturnValueOnce(response)
+      const w = makeWires()
+      const { result, unmount } = renderApi(w)
+      let pending!: Promise<unknown>
+      act(() => {
+        pending =
+          operation === "login"
+            ? result.current.login("a@b.dev", crypto.randomUUID())
+            : operation === "mfa"
+              ? result.current.submitMfaChallenge({ code: "123456" })
+              : result.current[operation]()
+      })
+      unmount()
+      reject(lockedError())
+      await expect(pending).resolves.toBe(
+        operation === "login" || operation === "requireMfa" ? null : undefined
+      )
+      expect(w.setUser).not.toHaveBeenCalled()
+      expect(w.handleUnauthorized).not.toHaveBeenCalled()
+      expect(w.updatePendingMfa).not.toHaveBeenCalled()
+      expect(w.setAuthOperation).not.toHaveBeenCalledWith(false)
+    }
+  )
+
+  it.each(["refresh", "requireMfa", "submitMfaChallenge"] as const)(
+    "does not dispatch retained %s actions after unmount",
+    async (operation) => {
+      const { result, unmount } = renderApi(makeWires({ user: fullUser() }))
+      const actions = result.current
+      unmount()
+      if (operation === "submitMfaChallenge") await actions.submitMfaChallenge({ code: "123456" })
+      else await actions[operation]()
+      expect(mocks.apiPost).not.toHaveBeenCalled()
+      expect(mocks.fetchCurrentUser).not.toHaveBeenCalled()
+    }
+  )
+
+  it("drops a successful step-up challenge after its caller unmounts", async () => {
+    let resolve!: (value: { status: number; data: object }) => void
+    mocks.apiPost.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done
+        })
+    )
+    const w = makeWires()
+    const { result, unmount } = renderApi(w)
+    const pending = result.current.requireMfa()
+    unmount()
+    resolve({ status: 202, data: { methods: [] } })
+    await expect(pending).resolves.toBeNull()
+    expect(w.updatePendingMfa).not.toHaveBeenCalled()
+  })
+
+  it("does not clear a newer session when logout settles after unmount", async () => {
+    let resolve!: (value: { status: number; data: object }) => void
+    mocks.apiPost.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done
+        })
+    )
+    const w = makeWires({ user: fullUser() })
+    const { result, unmount } = renderApi(w)
+    const pending = result.current.logout()
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/auth/logout"))
+    unmount()
+    resolve({ status: 200, data: {} })
+    await pending
+    expect(w.handleUnauthorized).not.toHaveBeenCalled()
   })
 })

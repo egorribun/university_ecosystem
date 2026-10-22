@@ -1,9 +1,13 @@
+import { expectImagePickerKeyboard } from "@/tests/helpers/imagePickerKeyboard"
 import { createEvent, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { ComponentProps, ReactNode } from "react"
 
 const { language } = vi.hoisted(() => ({ language: { current: "en" } }))
+const { campusTimezone } = vi.hoisted(() => ({
+  campusTimezone: { current: "America/New_York" as string | null },
+}))
 const { useTranslationMock, translationMock } = vi.hoisted(() => {
   const translationMock = vi.fn((key: string) => key)
   return {
@@ -21,6 +25,9 @@ const { useTranslationMock, translationMock } = vi.hoisted(() => {
 
 vi.mock("react-i18next", () => ({
   useTranslation: useTranslationMock,
+}))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => campusTimezone.current,
 }))
 
 vi.mock("@/components/ui/Dialog", () => {
@@ -94,7 +101,25 @@ const createProps = (overrides: Partial<ComponentProps<typeof EventEditDialog>> 
 describe("EventEditDialog", () => {
   beforeEach(() => {
     language.current = "en"
+    campusTimezone.current = "America/New_York"
     vi.clearAllMocks()
+  })
+
+  it("opens the image picker by keyboard and pointer without saving", async () => {
+    const props = createProps()
+    render(<EventEditDialog {...props} />)
+
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    await expectImagePickerKeyboard(
+      screen.getByRole("button", { name: "common:buttons.changePhoto" }),
+      input,
+      screen.getByLabelText("events:form.speaker"),
+      screen.getByRole("button", { name: "common:buttons.cancel" })
+    )
+
+    expect(props.onSave).not.toHaveBeenCalled()
+    expect(props.onClose).not.toHaveBeenCalled()
+    expect(props.setNewImage).not.toHaveBeenCalled()
   })
 
   it("renders nothing when closed", () => {
@@ -160,6 +185,19 @@ describe("EventEditDialog", () => {
     expect(props.onClose).toHaveBeenCalledTimes(2)
   })
 
+  it("writes an English edit only to the _en field, leaving the Russian source title as it was", () => {
+    const props = createProps()
+    render(<EventEditDialog {...props} />)
+
+    fireEvent.change(screen.getByLabelText("events:form.title_en"), {
+      target: { value: "Renamed in English" },
+    })
+
+    expect(props.setDraft).toHaveBeenLastCalledWith(
+      expect.objectContaining({ title_en: "Renamed in English", title: draft.title })
+    )
+  })
+
   it("uses Russian fields, updates localized values, and ignores an empty file selection", async () => {
     language.current = "ru"
     const props = createProps({ previewUrl: "blob:preview" })
@@ -212,7 +250,7 @@ describe("EventEditDialog", () => {
     expect(screen.getByText("events:form.errors.endsBeforeStarts")).toBeInTheDocument()
     expect(screen.getByLabelText("events:form.end")).toHaveClass("border-error-border")
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
-    expect(screen.getByText("common:statuses.uploading").closest("label")).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "common:statuses.uploading" })).toHaveAttribute(
       "aria-disabled",
       "true"
     )
@@ -271,7 +309,7 @@ describe("EventEditDialog", () => {
     expect(props.setNewImage).not.toHaveBeenCalled()
   })
 
-  it("normalizes ISO datetimes to datetime-local precision", async () => {
+  it("displays ISO instants at minute precision in the configured campus timezone", async () => {
     render(
       <EventEditDialog
         {...createProps({
@@ -285,8 +323,8 @@ describe("EventEditDialog", () => {
     )
 
     screen.getByRole("dialog")
-    expect(screen.getByLabelText("events:form.start")).toHaveValue("2026-06-15T14:00")
-    expect(screen.getByLabelText("events:form.end")).toHaveValue("2026-06-15T16:00")
+    expect(screen.getByLabelText("events:form.start")).toHaveValue("2026-06-15T10:00")
+    expect(screen.getByLabelText("events:form.end")).toHaveValue("2026-06-15T12:00")
   })
 
   it("returns a stable empty value for missing datetime inputs", () => {

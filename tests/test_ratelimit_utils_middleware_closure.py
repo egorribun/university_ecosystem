@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import ipaddress
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -195,7 +194,9 @@ async def test_middleware_redis_failure_uses_stricter_memory_fallback(monkeypatc
     fallback_check.assert_awaited_once()
     assert fallback_check.await_args.args[1:] == (2, 60)
     assert sent[0]["status"] == 429
-    assert dict(sent[0]["headers"])[b"X-RateLimit-Limit"] == b"4"
+    headers = sent[0]["headers"]
+    assert all(name == name.lower() for name, _value in headers)
+    assert dict(headers)[b"x-ratelimit-limit"] == b"4"
 
 
 @pytest.mark.asyncio
@@ -236,11 +237,13 @@ async def test_middleware_blocked_response_includes_rate_limit_headers():
 
     await middleware(_http_scope(), AsyncMock(), send)
 
-    headers = dict(sent[0]["headers"])
-    assert headers[b"Retry-After"] == b"0"
-    assert headers[b"X-RateLimit-Limit"] == b"3"
-    assert headers[b"X-RateLimit-Remaining"] == b"0"
-    assert b"X-RateLimit-Reset" in headers
+    raw_headers = sent[0]["headers"]
+    assert all(name == name.lower() for name, _value in raw_headers)
+    headers = dict(raw_headers)
+    assert headers[b"retry-after"] == b"0"
+    assert headers[b"x-ratelimit-limit"] == b"3"
+    assert headers[b"x-ratelimit-remaining"] == b"0"
+    assert b"x-ratelimit-reset" in headers
 
 
 @pytest.mark.asyncio
@@ -268,7 +271,7 @@ async def test_middleware_send_wrapper_adds_missing_headers_and_passes_body():
     assert sent[1] == {"type": "http.response.body", "body": b"ok"}
 
 
-def test_middleware_endpoint_limits_and_hashed_identifiers():
+def test_middleware_endpoint_limits_and_ip_identifiers():
     middleware = RateLimitMiddleware(
         AsyncMock(),
         storage_backend="memory",
@@ -279,18 +282,97 @@ def test_middleware_endpoint_limits_and_hashed_identifiers():
     assert middleware._get_limits_for_path("/auth/login") == (2, 30, "/auth")
     assert middleware._get_limits_for_path("/public") == (10, 60, "default")
 
-    token = "secret-token"
-    token_request = Request(
-        _http_scope(headers=[(b"authorization", f"Bearer {token}".encode())])
+    requests = (
+        Request(_http_scope(headers=[(b"authorization", b"Bearer not-a-jwt-one")])),
+        Request(_http_scope(headers=[(b"authorization", b"Bearer not-a-jwt-two")])),
+        Request(
+            _http_scope(headers=[(b"cookie", b"access_token_v2=not-a-jwt-cookie")])
+        ),
+        Request(_http_scope()),
     )
-    token_identifier = middleware._build_identifier(token_request)
-    assert token_identifier == f"token:{hashlib.sha256(token.encode()).hexdigest()}"
-    assert token not in token_identifier
+    assert {middleware._build_identifier(request) for request in requests} == {
+        "ip:127.0.0.1"
+    }
 
-    cookie = "cookie-token"
-    cookie_request = Request(
-        _http_scope(headers=[(b"cookie", f"access_token_v2={cookie}".encode())])
+    other_ip = _http_scope()
+    other_ip["client"] = ("198.51.100.7", 5000)
+    assert middleware._build_identifier(Request(other_ip)) == "ip:198.51.100.7"
+
+
+@pytest.mark.asyncio
+async def test_rotating_unverified_credentials_cannot_bypass_ip_limit():
+    app = AsyncMock()
+    middleware = RateLimitMiddleware(
+        app,
+        storage_backend="memory",
+        limit=1,
+        window_seconds=60,
+        headers_enabled=False,
     )
-    assert middleware._build_identifier(cookie_request) == (
-        f"cookie:{hashlib.sha256(cookie.encode()).hexdigest()}"
+    scopes = (
+        _http_scope(headers=[(b"authorization", b"Bearer not-a-jwt-one")]),
+        _http_scope(headers=[(b"authorization", b"Bearer not-a-jwt-two")]),
+        _http_scope(headers=[(b"cookie", b"access_token_v2=not-a-jwt-cookie")]),
+        _http_scope(),
     )
+    responses: list[list[dict[str, object]]] = []
+    for scope in scopes:
+        messages: list[dict[str, object]] = []
+        await middleware(scope, AsyncMock(), AsyncMock(side_effect=messages.append))
+        responses.append(messages)
+
+    app.assert_awaited_once()
+    assert responses[0] == []
+    assert [messages[0]["status"] for messages in responses[1:]] == [429, 429, 429]
+
+    other_ip = _http_scope()
+    other_ip["client"] = ("198.51.100.7", 5000)
+    await middleware(other_ip, AsyncMock(), AsyncMock())
+    assert app.await_count == 2
+
+
+def test_resolve_client_ip_reads_rfc7239_node_ports_behind_trusted_gateway(
+    monkeypatch,
+):
+    """AUD-164: gateways emit `ip:port` and `[ipv6]:port` node values.
+
+    Dropping those hops made every client behind the gateway share the
+    gateway's own rate-limit bucket.
+    """
+    monkeypatch.setattr(settings, "trusted_proxies_list", ["127.0.0.0/8"])
+
+    with_port = _proxy_request("127.0.0.1", {"X-Forwarded-For": "203.0.113.9:4711"})
+    assert resolve_client_ip(with_port) == "203.0.113.9"
+
+    trusted_hop_with_port = _proxy_request(
+        "127.0.0.1", {"X-Forwarded-For": "203.0.113.9:4711, 127.0.0.2:80"}
+    )
+    assert resolve_client_ip(trusted_hop_with_port) == "203.0.113.9"
+
+    forwarded_v4 = _proxy_request(
+        "127.0.0.1", {"Forwarded": "for=192.0.2.43:47011;proto=https"}
+    )
+    assert resolve_client_ip(forwarded_v4) == "192.0.2.43"
+
+    forwarded_v6 = _proxy_request(
+        "127.0.0.1", {"Forwarded": 'for="[2001:db8::7]:4711";proto=https'}
+    )
+    assert resolve_client_ip(forwarded_v6) == "2001:db8::7"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("203.0.113.9", "203.0.113.9"),
+        ("203.0.113.9:4711", "203.0.113.9"),
+        ('"[2001:db8::7]:4711"', "2001:db8::7"),
+        ("[2001:db8::7]", "2001:db8::7"),
+        ("2001:db8::7", "2001:db8::7"),
+        ("unknown", "unknown"),
+        ("", ""),
+    ],
+)
+def test_forwarded_node_host_strips_quotes_brackets_and_ports(raw, expected):
+    from app.core.ratelimit.utils import _forwarded_node_host
+
+    assert _forwarded_node_host(raw) == expected

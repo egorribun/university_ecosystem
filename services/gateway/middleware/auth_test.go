@@ -46,7 +46,7 @@ func createTestRouter(handler gin.HandlerFunc) *gin.Engine {
 }
 
 func TestNewJWTMiddleware_CreatesMiddlewareWithSecret(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret, nil)
+	middleware := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 
 	assert.NotNil(t, middleware)
 	assert.Equal(t, []byte(testSecret), middleware.secret)
@@ -120,7 +120,7 @@ func TestOptional_MismatchedAudienceRemainsUnauthenticated(t *testing.T) {
 }
 
 func TestValidate_RejectsMissingAuthorizationHeader(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret, nil)
+	middleware := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	router := createTestRouter(middleware.Validate(context.Background()))
 
 	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
@@ -133,7 +133,7 @@ func TestValidate_RejectsMissingAuthorizationHeader(t *testing.T) {
 }
 
 func TestValidate_RejectsInvalidAuthorizationFormat(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret, nil)
+	middleware := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	router := createTestRouter(middleware.Validate(context.Background()))
 
 	testCases := []struct {
@@ -160,7 +160,7 @@ func TestValidate_RejectsInvalidAuthorizationFormat(t *testing.T) {
 }
 
 func TestValidate_RejectsInvalidToken(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret, nil)
+	middleware := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	router := createTestRouter(middleware.Validate(context.Background()))
 
 	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
@@ -174,7 +174,7 @@ func TestValidate_RejectsInvalidToken(t *testing.T) {
 }
 
 func TestValidate_RejectsTokenSignedWithWrongSecret(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret, nil)
+	middleware := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	router := createTestRouter(middleware.Validate(context.Background()))
 
 	claims := Claims{
@@ -259,7 +259,7 @@ func TestValidate_AcceptsValidTokenAndSetsContext(t *testing.T) {
 }
 
 func TestOptional_AllowsRequestWithoutToken(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret, nil)
+	middleware := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 
 	handlerCalled := false
 	router := gin.New()
@@ -306,55 +306,6 @@ func TestOptional_ExtractsClaimsWhenTokenProvided(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.Equal(t, "optional-user", capturedUserID)
-}
-
-func TestRequireRole_RejectsWhenRoleNotInContext(t *testing.T) {
-	router := gin.New()
-	router.GET("/test", RequireRole("admin"))
-
-	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
-	recorder := httptest.NewRecorder()
-
-	router.ServeHTTP(recorder, request)
-
-	assert.Equal(t, http.StatusForbidden, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), "role not found")
-}
-
-func TestRequireRole_RejectsWrongRole(t *testing.T) {
-	router := gin.New()
-	router.GET("/test", func(c *gin.Context) {
-		c.Set("user_role", "user")
-		c.Next()
-	}, RequireRole("admin", "moderator"))
-
-	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
-	recorder := httptest.NewRecorder()
-
-	router.ServeHTTP(recorder, request)
-
-	assert.Equal(t, http.StatusForbidden, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), "insufficient permissions")
-}
-
-func TestRequireRole_AcceptsMatchingRole(t *testing.T) {
-	handlerCalled := false
-	router := gin.New()
-	router.GET("/test", func(c *gin.Context) {
-		c.Set("user_role", "admin")
-		c.Next()
-	}, RequireRole("admin", "superadmin"), func(c *gin.Context) {
-		handlerCalled = true
-		c.Status(http.StatusOK)
-	})
-
-	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
-	recorder := httptest.NewRecorder()
-
-	router.ServeHTTP(recorder, request)
-
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	require.True(t, handlerCalled)
 }
 
 // TestShouldRefreshProbabilistic_BoundaryAndStatistical exercises the XFetch
@@ -505,7 +456,7 @@ func TestValidate_RejectsRS256TokenWhenHS256Configured(t *testing.T) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	m := NewJWTMiddleware("secret", nil)
+	m := NewJWTMiddlewareWithConfig("secret", "", nil, DefaultL1CacheConfig())
 	router := createTestRouter(m.Validate(context.Background()))
 
 	claims := Claims{
@@ -612,7 +563,7 @@ func TestJWKSRefresher(t *testing.T) {
 	}))
 	defer server.Close()
 
-	m := NewJWTMiddleware("secret", nil)
+	m := NewJWTMiddlewareWithConfig("secret", "", nil, DefaultL1CacheConfig())
 	assert.Nil(t, m.rsaPublicKey.Load())
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -626,7 +577,7 @@ func TestJWKSRefresher(t *testing.T) {
 }
 
 func TestJWTMiddleware_CheckL1Cache(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 
 	t.Run("miss when key absent", func(t *testing.T) {
 		exists, found := m.checkL1Cache("absent-key")

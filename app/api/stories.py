@@ -16,11 +16,11 @@ from fastapi import (
 
 import app.models as models
 from app.api.deps import (
-    get_current_user_from_dishka,
+    get_current_admin_user_from_dishka,
 )
 from app.api.deps.etag import cached_endpoint
 from app.api.utils import save_upload
-from app.api.validation import ensure_exists, require_admin
+from app.api.validation import ensure_exists
 from app.core.config import settings
 from app.core.di.read_replica import READ_COMPONENT
 from app.core.localization import (
@@ -47,18 +47,23 @@ _CACHE_LOCALES: tuple[str, ...] = tuple(sorted({DEFAULT_LOCALE, *SUPPORTED_LOCAL
 # Removed obsolete cache key helpers
 
 
-class MockStoriesVersionResolver:
+class StaticStoriesVersionResolver:
+    """Stories use no version token: invalidation is by key pattern instead.
+
+    Every mutation endpoint below calls ``cache.invalidate("ue:stories:list:*")``,
+    so the cached-endpoint decorator only needs a constant version.
+    """
+
     async def get_version(self, cache: Any) -> str:
         return "v1"
 
 
-mock_stories_version = MockStoriesVersionResolver()
+stories_version_resolver = StaticStoriesVersionResolver()
 
 
 @router.get("", response_model=list[schemas.StoryOut])
 @cached_endpoint(
-    # Mocking a trivial version resolver for the decorator since stories don't use cache_version logic here natively
-    version_resolver=mock_stories_version,
+    version_resolver=stories_version_resolver,
     cache_prefix="ue:stories:list",
     cache_control="public, max-age=180",
 )
@@ -88,10 +93,9 @@ async def create_story(
     data: schemas.StoryCreate,
     request: Request,
     service: FromDishka[StoryService],
-    user: models.User = Depends(get_current_user_from_dishka),
+    user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> schemas.StoryOut:
     locale = resolve_locale(request=request, user=user)
-    require_admin(user, locale)
     record = await service.create_story(data, created_by=user.id)
     # Note: Explicitly invalidating wildcard keys because the inline keys generator was removed
     cache = get_cache()
@@ -112,10 +116,9 @@ async def update_story(
     request: Request,
     service: FromDishka[StoryService],
     data: schemas.StoryUpdate | None = Body(default=None),
-    user: models.User = Depends(get_current_user_from_dishka),
+    user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> schemas.StoryOut:
     locale = resolve_locale(request=request, user=user)
-    require_admin(user, locale)
 
     try:
         updated = await service.update_story(story_id, data or schemas.StoryUpdate())
@@ -139,10 +142,9 @@ async def delete_story(
     story_id: uuid.UUID,
     request: Request,
     service: FromDishka[StoryService],
-    user: models.User = Depends(get_current_user_from_dishka),
+    user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
-    require_admin(user, locale)
 
     deleted = await service.delete_story(story_id)
     if not deleted:
@@ -163,10 +165,9 @@ async def upload_story_cover(
     file: UploadFile = File(...),
     *,
     request: Request,
-    user: models.User = Depends(get_current_user_from_dishka),
+    user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> dict[str, str]:
     locale = resolve_locale(request=request, user=user)
-    require_admin(user, locale)
     await scan_for_malware(file, locale=locale, size_bytes=file.size)
     url = await save_upload(file, "story_covers", "stories", locale=locale)
     return {"url": url}

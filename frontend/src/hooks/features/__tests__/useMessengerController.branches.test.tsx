@@ -556,9 +556,36 @@ describe("useMessengerController — branch top-up", () => {
         result.current.handleSendMessage("my reply", [])
       })
 
-      expect(mocks.chatApi.sendMessage).toHaveBeenCalledWith("chat-1", "my reply", [], "msg-target")
+      expect(mocks.chatApi.sendMessage).toHaveBeenCalledWith(
+        "chat-1",
+        "my reply",
+        [],
+        "msg-target",
+        expect.any(String)
+      )
       // Reply context cleared once the send is dispatched.
       expect(result.current.replyingTo).toBeNull()
+    })
+
+    it("resolves the send with its outcome so a failed send leaves the composer draft in place", async () => {
+      seedReplyTarget()
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.messages.find((m) => m.id === "msg-target")).toBeTruthy()
+      )
+
+      mocks.chatApi.sendMessage.mockRejectedValueOnce(new Error("offline"))
+      let failed: Promise<boolean> | undefined
+      await act(async () => {
+        failed = result.current.handleSendMessage("unsent draft", [])
+      })
+      await expect(failed).resolves.toBe(false)
+
+      let delivered: Promise<boolean> | undefined
+      await act(async () => {
+        delivered = result.current.handleSendMessage("delivered", [])
+      })
+      await expect(delivered).resolves.toBe(true)
     })
 
     it("publishes the exact optimistic message and revokes only its owned attachment URLs", async () => {
@@ -589,7 +616,7 @@ describe("useMessengerController — branch top-up", () => {
       )
       act(() => result.current.handleStartReply("msg-target"))
 
-      act(() => result.current.handleSendMessage("optimistic payload", [image, documentFile]))
+      act(() => void result.current.handleSendMessage("optimistic payload", [image, documentFile]))
 
       let optimistic = result.current.messages.find(
         (message) => message.text === "optimistic payload"
@@ -639,7 +666,8 @@ describe("useMessengerController — branch top-up", () => {
         "chat-1",
         "optimistic payload",
         [image, documentFile],
-        "msg-target"
+        "msg-target",
+        expect.any(String)
       )
 
       await act(async () => {
@@ -665,11 +693,36 @@ describe("useMessengerController — branch top-up", () => {
   it("does not construct or dispatch a message without a selected chat", () => {
     const { result } = renderHook(() => useMessengerController(), { wrapper })
 
-    act(() => result.current.handleSendMessage("orphaned message", []))
+    act(() => void result.current.handleSendMessage("orphaned message", []))
 
     expect(mocks.createObjectURL).not.toHaveBeenCalled()
     expect(mocks.chatApi.sendMessage).not.toHaveBeenCalled()
     expect(result.current.messages).toEqual([])
+  })
+
+  it("assigns a distinct idempotency key to each logical message send", async () => {
+    seedChat("chat-1")
+
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+    await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+    await act(async () => {
+      result.current.handleSendMessage("first logical send", [])
+    })
+    await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      result.current.handleSendMessage("second logical send", [])
+    })
+    await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(2))
+
+    const keys = mocks.chatApi.sendMessage.mock.calls.map((call) => call[4])
+    expect(keys).toHaveLength(2)
+    expect(keys[0]).toEqual(expect.any(String))
+    expect(keys[0]).not.toBe("")
+    expect(keys[1]).toEqual(expect.any(String))
+    expect(keys[1]).not.toBe("")
+    expect(keys[1]).not.toBe(keys[0])
   })
 
   describe("forward (842-864, 444-460)", () => {
@@ -1448,10 +1501,11 @@ describe("useMessengerController — branch top-up", () => {
       act(() => result.current.handleToggleReaction("uncached-reaction", "👍"))
       await waitFor(() => expect(mocks.chatApi.addReaction).toHaveBeenCalled())
 
-      act(() =>
-        result.current.handleSendMessage("uncached-send", [
-          new File(["payload"], "note.txt", { type: "text/plain" }),
-        ])
+      act(
+        () =>
+          void result.current.handleSendMessage("uncached-send", [
+            new File(["payload"], "note.txt", { type: "text/plain" }),
+          ])
       )
       await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalled())
     })
@@ -1660,7 +1714,7 @@ describe("useMessengerController — branch top-up", () => {
     const { result } = renderHook(() => useMessengerController(), { wrapper })
     await waitFor(() => expect(result.current.messages).toHaveLength(1))
 
-    act(() => result.current.handleSendMessage("duplicate", []))
+    act(() => void result.current.handleSendMessage("duplicate", []))
     await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalled())
     expect(
       result.current.messages.filter((message) => message.id === "server-msg-id")
@@ -1706,7 +1760,7 @@ describe("useMessengerController — branch top-up", () => {
       const { result } = renderHook(() => useMessengerController(), { wrapper })
       await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
 
-      act(() => result.current.handleSendMessage("fallback identity", []))
+      act(() => void result.current.handleSendMessage("fallback identity", []))
       await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalled())
     } finally {
       Object.assign(mocks.testUser, { full_name: previousName, avatar_url: previousAvatar })

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useSyncExternalStore } from "react"
+import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { OfflineIndicator } from "@/components/feedback/OfflineIndicator"
 import { ensurePushMessageBridge } from "@/push/pushMessageBus"
 
@@ -9,13 +9,17 @@ import { ensurePushMessageBridge } from "@/push/pushMessageBus"
 // primary route to settle, while still making the conveniences available
 // quickly for a normal user. An explicit interaction promotes them sooner.
 export const DEFERRED_OVERLAY_DELAY_MS = 4_000
+export const DEFERRED_GLOBAL_OVERLAYS_READY_EVENT = "ue:deferred-global-overlays-ready" as const
 export const DEFERRED_INTERACTION_EVENTS = [
   "pointerdown",
   "keydown",
   "touchstart",
   "focusin",
 ] as const
-export const DEFERRED_INTERACTION_OPTIONS = { once: true, passive: true } as const
+export const DEFERRED_INTERACTION_OPTIONS = {
+  once: true,
+  passive: true,
+} as const
 
 export function createMountedCommit(isMounted: () => boolean, commit: () => void) {
   return () => {
@@ -61,11 +65,14 @@ type DeferredOverlayStore = {
   subscribe: (listener: () => void) => () => void
   getSnapshot: () => boolean
   getServerSnapshot: () => boolean
+  subscribeOpenRequest: (listener: () => void) => () => void
 }
 
 export function createDeferredOverlayStore(): DeferredOverlayStore {
   let ready = false
   let cleanup: (() => void) | null = null
+  let pendingSearchOpen = false
+  let openRequestListener: (() => void) | null = null
   const listeners = new Set<() => void>()
 
   const notify = () => {
@@ -74,6 +81,7 @@ export function createDeferredOverlayStore(): DeferredOverlayStore {
 
   const start = () => {
     ensurePushMessageBridge()
+    let active = true
     const lifecycle = createDeferredMountLifecycle(() => {
       if (ready) return
       ready = true
@@ -113,7 +121,27 @@ export function createDeferredOverlayStore(): DeferredOverlayStore {
       window.addEventListener(eventName, promoteOnInteraction, DEFERRED_INTERACTION_OPTIONS)
     )
 
+    // Preserve search intent until the lazy dialog installs its own listener.
+    // Once attached, that listener remains the only owner of shortcut toggles.
+    const captureSearchIntent = (event: KeyboardEvent) => {
+      if (!active || openRequestListener !== null || event.defaultPrevented) return
+      if (event.key === "Escape") {
+        pendingSearchOpen = false
+        return
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === "k") {
+        event.preventDefault()
+        pendingSearchOpen = true
+        promoteOnInteraction()
+      }
+    }
+    document.addEventListener("keydown", captureSearchIntent)
+
     cleanup = () => {
+      active = false
+      document.removeEventListener("keydown", captureSearchIntent)
+      pendingSearchOpen = false
+      openRequestListener = null
       lifecycle.unmount()
       clearDeferredTimer(timer, window.clearTimeout)
       const idleWindow = window as Window & {
@@ -143,7 +171,29 @@ export function createDeferredOverlayStore(): DeferredOverlayStore {
     subscribe,
     getSnapshot: () => ready,
     getServerSnapshot: () => false,
+    subscribeOpenRequest: (listener) => {
+      openRequestListener = listener
+      if (pendingSearchOpen) {
+        pendingSearchOpen = false
+        listener()
+      }
+      return () => {
+        if (openRequestListener === listener) openRequestListener = null
+      }
+    },
   }
+}
+
+function DeferredOverlayReadinessSignal() {
+  const didSignal = useRef(false)
+
+  useEffect(() => {
+    if (didSignal.current) return
+    didSignal.current = true
+    window.dispatchEvent(new Event(DEFERRED_GLOBAL_OVERLAYS_READY_EVENT))
+  }, [])
+
+  return null
 }
 
 /**
@@ -170,9 +220,10 @@ export function DeferredGlobalOverlays() {
       <OfflineIndicator />
       {ready ? (
         <Suspense fallback={null}>
-          <SearchDialog />
+          <SearchDialog subscribeOpenRequest={store.subscribeOpenRequest} />
           <LivePushToasts />
           <InstallPrompt />
+          <DeferredOverlayReadinessSignal />
         </Suspense>
       ) : null}
     </>

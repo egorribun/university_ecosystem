@@ -85,14 +85,24 @@ def test_exact_six_images_have_one_canonical_main_only_producer() -> None:
         "${{ matrix.image_name == 'frontend' }}"
     )
     reusable = _workflow(WORKFLOWS / "reusable-build-and-sign.yml")
-    build_args = str(reusable["jobs"]["build"]["steps"])
-    for required in (
-        "VITE_APP_RELEASE={0}",
-        "VITE_ENABLE_WEB_VITALS=true",
-        "VITE_CWV_TRUSTED_RUM=true",
+    build_step = next(
+        step
+        for step in reusable["jobs"]["build"]["steps"]
+        if str(step.get("uses", "")).startswith("docker/build-push-action@")
+    )
+    build_args = str(build_step["with"]["build-args"])
+    assert "VITE_APP_RELEASE={0}" in build_args
+    for release_frontend_arg in (
+        "VITE_ENABLE_WEB_VITALS=false",
+        "VITE_CWV_TRUSTED_RUM=false",
         "VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv",
     ):
-        assert required in build_args
+        assert release_frontend_arg in build_args
+    for field_collection_arg in (
+        "VITE_ENABLE_WEB_VITALS=true",
+        "VITE_CWV_TRUSTED_RUM=true",
+    ):
+        assert field_collection_arg not in build_args
 
     aggregate = producer["jobs"]["aggregate-image-provenance"]
     assert aggregate["needs"] == ["certify", "build"]
@@ -145,6 +155,20 @@ def test_deploy_and_release_only_consume_the_canonical_manifest() -> None:
     release_resolver = release["jobs"]["resolve-images"]
     assert release_resolver["permissions"]["packages"] == "read"
     assert _run_text(release_resolver).count("verify_release_image_manifest.py") == 1
+    release_inputs = _dispatch_inputs(release)
+    assert "cwv-certification-run-id" not in release_inputs
+    assert "cwv-certification-run-attempt" not in release_inputs
+    release_steps = release_resolver["steps"]
+    assert not any(
+        step.get("name")
+        in {
+            "Verify exact staging field certification",
+            "Download exact staging field certification",
+            "Require field-certified canonical image manifest",
+        }
+        for step in release_steps
+    )
+    assert "cwv-field-certification.yml" not in _run_text(release_resolver)
     assert release["jobs"]["publish"]["needs"] == ["resolve-images"]
 
 

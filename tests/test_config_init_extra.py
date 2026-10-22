@@ -1,4 +1,5 @@
 import os
+import secrets
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -393,6 +394,7 @@ def test_integration_settings_production_validation():
             elasticsearch_password="secure-password",  # pragma: allowlist secret
             spicedb_preshared_key="secure-preshared-key",
             spotify_client_id="some-client-id",
+            spotify_client_secret=secrets.token_urlsafe(32),
             spotify_oauth_state_secret="secure-state-secret",  # pragma: allowlist secret
             ws_hub_internal_secret="secure-internal-secret",  # pragma: allowlist secret
         )

@@ -15,12 +15,15 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 from fakeredis.aioredis import FakeRedis
 from redis.exceptions import ResponseError
 
 from app.auth import redis_session as rs
+from app.core.ratelimit.strategies.base import set_rate_limit_client_factory
+from app.services.auth import redis_session as service_rs
 
 
 class _EvalFailRedis:
@@ -177,11 +180,12 @@ async def test_get_session_backend_non_redis_backend_returns_null(monkeypatch):
     monkeypatch.setattr(rs.settings, "session_storage_backend", "memory")
 
     backend = await rs.get_session_backend()
-    # NullSessionBackend: revocation disabled — always valid + warn-once.
+    # Cache-free backend still checks the durable revocation store.
     assert await backend.is_session_valid("a") is True  # first call warns
     assert await backend.is_session_valid("b") is True  # second skips the warn branch
     await backend.register_session("u", "j", datetime.now(UTC))  # no-op
-    await backend.revoke_session("j")  # no-op
+    await backend.revoke_session("j")
+    assert await backend.is_session_valid("j") is False
 
 
 @pytest.mark.asyncio
@@ -234,3 +238,35 @@ async def test_revoke_session_unexpected_error() -> None:
 
     with pytest.raises(ValueError, match="unexpected"):
         await backend.revoke_session("jti")
+
+
+@pytest.mark.asyncio
+async def test_service_cache_invalidation_discards_only_the_requested_session() -> None:
+    cache_url = "redis://session-cache.test/0"
+    configured_client = FakeRedis(decode_responses=True)
+    other_client = FakeRedis(decode_responses=True)
+
+    def fake_client_factory(redis_url: str) -> FakeRedis:
+        return configured_client if redis_url == cache_url else other_client
+
+    set_rate_limit_client_factory(fake_client_factory)
+    service = service_rs.RedisSessionService(redis_url=cache_url)
+    user_id = uuid4()
+    target_jti = "session-to-invalidate"
+    retained_jti = "session-to-retain"
+
+    try:
+        await service.create_session(target_jti, user_id, None, None)
+        await service.create_session(retained_jti, user_id, None, None)
+
+        assert await service.get_session(target_jti) is not None
+        assert await service.get_session(retained_jti) is not None
+
+        await service.invalidate_session_cache(target_jti)
+
+        assert await service.get_session(target_jti) is None
+        retained = await service.get_session(retained_jti)
+        assert retained is not None
+        assert retained["user_id"] == str(user_id)
+    finally:
+        set_rate_limit_client_factory(None)

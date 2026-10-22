@@ -2012,10 +2012,18 @@
   /* FIX-65-12: fixed selector .aurora-mesh → .sched-aurora-hero */
   .schedule-theme.schedule-theme .sched-aurora-hero,
   .schedule-theme.schedule-theme [aria-hidden="true"]:not([role]),
-  .schedule-theme.schedule-theme .sched-current-glow,
   .schedule-theme.schedule-theme .sched-progress-fill::after {
     display: none;
     animation: none;
+  }
+
+  .schedule-theme.schedule-theme .sched-current-glow {
+    animation: none;
+    box-shadow: none;
+  }
+
+  .schedule-theme.schedule-theme .sched-current-glow::after {
+    display: none;
   }
 
   .schedule-theme.schedule-theme .sched-card-matte {

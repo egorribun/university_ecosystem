@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
-import random
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
@@ -27,7 +26,6 @@ from app.deps.cache import (
     get_cache,
     set_cache_backend,
     shutdown_cache,
-    stale_while_revalidate,
 )
 
 
@@ -54,17 +52,6 @@ async def test_memory_cache_expiry_eviction_and_pattern_invalidation():
     await cache.invalidate("missing:*")
     assert await cache.get("user:1") is None
     assert await cache.get("user:2") is None
-
-
-def test_cache_entry_zero_random_factor_is_safe():
-    entry = CacheEntry(
-        etag="etag",
-        payload=None,
-        stored_at=cache_module.time_module.time(),
-        ttl_seconds=60,
-    )
-    with patch.object(random, "random", return_value=0):
-        assert entry.should_refresh_probabilistic() is True
 
 
 @pytest.mark.asyncio
@@ -330,40 +317,6 @@ async def test_cached_decorator_bound_method_and_tiered_l1_ttl():
     assert (await l2.get("l1:")).ttl_seconds == 10
     assert (await tiered.get("l1:")).payload == {"ok": True}
 
-    set_cache_backend(None)
-
-
-@pytest.mark.asyncio
-async def test_stale_while_revalidate_refreshes_in_background():
-    cache = MemoryCache(default_ttl=120)
-    set_cache_backend(cache)
-    await cache.set("swr:", {"version": 1})
-    entry = cache._entries["swr:"][0]
-    entry.stored_at -= 10
-    calls = 0
-
-    @stale_while_revalidate(prefix="swr", ttl=1, stale_ttl=30)
-    async def load() -> dict[str, int]:
-        nonlocal calls
-        calls += 1
-        return {"version": 2}
-
-    assert await load() == {"version": 1}
-    await asyncio.sleep(0)
-    await asyncio.sleep(0)
-    assert calls == 1
-    assert (await cache.get("swr:")).payload == {"version": 2}
-    set_cache_backend(None)
-
-    fresh_cache = MemoryCache(default_ttl=120)
-    set_cache_backend(fresh_cache)
-    await fresh_cache.set("fresh:", {"version": 3})
-
-    @stale_while_revalidate(prefix="fresh", ttl=60, stale_ttl=30)
-    async def load_fresh() -> dict[str, int]:
-        return {"version": 4}
-
-    assert await load_fresh() == {"version": 3}
     set_cache_backend(None)
 
 

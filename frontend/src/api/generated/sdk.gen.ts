@@ -32,6 +32,9 @@ import type {
   AnnouncePlatformReleaseApiV1PushAdminReleasesPostData,
   AnnouncePlatformReleaseApiV1PushAdminReleasesPostErrors,
   AnnouncePlatformReleaseApiV1PushAdminReleasesPostResponses,
+  AssignGradeApiV1GradesPostData,
+  AssignGradeApiV1GradesPostErrors,
+  AssignGradeApiV1GradesPostResponses,
   AttendanceSummaryApiV1StatsAttendanceGetData,
   AttendanceSummaryApiV1StatsAttendanceGetErrors,
   AttendanceSummaryApiV1StatsAttendanceGetResponses,
@@ -159,6 +162,8 @@ import type {
   GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostData,
   GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostErrors,
   GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses,
+  GetCampusConfigApiV1CampusConfigGetData,
+  GetCampusConfigApiV1CampusConfigGetResponses,
   GetChatApiV1ChatsChatIdGetData,
   GetChatApiV1ChatsChatIdGetErrors,
   GetChatApiV1ChatsChatIdGetResponses,
@@ -201,6 +206,9 @@ import type {
   GetTimeTravelStateAdminAuditTimeTravelGetData,
   GetTimeTravelStateAdminAuditTimeTravelGetErrors,
   GetTimeTravelStateAdminAuditTimeTravelGetResponses,
+  GetTimeTravelStateApiV1AdminAuditTimeTravelGetData,
+  GetTimeTravelStateApiV1AdminAuditTimeTravelGetErrors,
+  GetTimeTravelStateApiV1AdminAuditTimeTravelGetResponses,
   GetUsersApiV1UsersGetData,
   GetUsersApiV1UsersGetErrors,
   GetUsersApiV1UsersGetResponses,
@@ -223,8 +231,13 @@ import type {
   ListAuditLogsAdminAuditGetData,
   ListAuditLogsAdminAuditGetErrors,
   ListAuditLogsAdminAuditGetResponses,
+  ListAuditLogsApiV1AdminAuditGetData,
+  ListAuditLogsApiV1AdminAuditGetErrors,
+  ListAuditLogsApiV1AdminAuditGetResponses,
   ListFeatureFlagsAdminFeatureFlagsGetData,
   ListFeatureFlagsAdminFeatureFlagsGetResponses,
+  ListFeatureFlagsApiV1AdminFeatureFlagsGetData,
+  ListFeatureFlagsApiV1AdminFeatureFlagsGetResponses,
   ListNotificationDeadLettersData,
   ListNotificationDeadLettersErrors,
   ListNotificationDeadLettersResponses,
@@ -263,9 +276,15 @@ import type {
   MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses,
   MeApiV1UsersMeGetData,
   MeApiV1UsersMeGetResponses,
+  ModifyGradeApiV1GradesGradeIdPatchData,
+  ModifyGradeApiV1GradesGradeIdPatchErrors,
+  ModifyGradeApiV1GradesGradeIdPatchResponses,
   MyEventsApiV1EventsMyGetData,
   MyEventsApiV1EventsMyGetErrors,
   MyEventsApiV1EventsMyGetResponses,
+  MyEventsPageApiV1EventsMyPageGetData,
+  MyEventsPageApiV1EventsMyPageGetErrors,
+  MyEventsPageApiV1EventsMyPageGetResponses,
   NewsListApiV1NewsGetData,
   NewsListApiV1NewsGetErrors,
   NewsListApiV1NewsGetResponses,
@@ -504,6 +523,73 @@ export const listFeatureFlagsAdminFeatureFlagsGet = <ThrowOnError extends boolea
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
     url: "/admin/feature-flags",
+    ...options,
+  })
+
+/**
+ * List Audit Logs
+ *
+ * List audit logs with filtering and integrity verification.
+ */
+export const listAuditLogsApiV1AdminAuditGet = <ThrowOnError extends boolean = false>(
+  options?: Options<ListAuditLogsApiV1AdminAuditGetData, ThrowOnError>
+): RequestResult<
+  ListAuditLogsApiV1AdminAuditGetResponses,
+  ListAuditLogsApiV1AdminAuditGetErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    ListAuditLogsApiV1AdminAuditGetResponses,
+    ListAuditLogsApiV1AdminAuditGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/admin/audit",
+    ...options,
+  })
+
+/**
+ * Get Time Travel State
+ *
+ * Reconstruct state of an aggregate entity at a target timestamp in history.
+ */
+export const getTimeTravelStateApiV1AdminAuditTimeTravelGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetTimeTravelStateApiV1AdminAuditTimeTravelGetData, ThrowOnError>
+): RequestResult<
+  GetTimeTravelStateApiV1AdminAuditTimeTravelGetResponses,
+  GetTimeTravelStateApiV1AdminAuditTimeTravelGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetTimeTravelStateApiV1AdminAuditTimeTravelGetResponses,
+    GetTimeTravelStateApiV1AdminAuditTimeTravelGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/admin/audit/time-travel",
+    ...options,
+  })
+
+/**
+ * List Feature Flags
+ *
+ * List registered flags and their effective read-only evaluations.
+ */
+export const listFeatureFlagsApiV1AdminFeatureFlagsGet = <ThrowOnError extends boolean = false>(
+  options?: Options<ListFeatureFlagsApiV1AdminFeatureFlagsGetData, ThrowOnError>
+): RequestResult<ListFeatureFlagsApiV1AdminFeatureFlagsGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    ListFeatureFlagsApiV1AdminFeatureFlagsGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/admin/feature-flags",
     ...options,
   })
 
@@ -1037,6 +1123,24 @@ export const revokeSessionApiV1AuthSessionsSessionIdDelete = <ThrowOnError exten
   })
 
 /**
+ * Get the campus timezone
+ *
+ * Return the single validated server timezone used by campus features.
+ */
+export const getCampusConfigApiV1CampusConfigGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetCampusConfigApiV1CampusConfigGetData, ThrowOnError>
+): RequestResult<GetCampusConfigApiV1CampusConfigGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    GetCampusConfigApiV1CampusConfigGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: "json",
+    url: "/api/v1/campus/config",
+    ...options,
+  })
+
+/**
  * Get Chats
  *
  * Get all chats for the current user with cursor-based pagination.
@@ -1413,9 +1517,11 @@ export const getReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGet = <
 /**
  * Add Reaction
  *
- * Add an emoji reaction to a message (idempotent, any participant).
+ * Add one qualified Unicode 18.0 emoji reaction for a participant.
  *
- * W174 auto-cookie covers POST CSRF.
+ * W174 auto-cookie covers POST CSRF. The exact sequence set includes fully- and
+ * minimally-qualified forms; removal and reactor lookup retain legacy values so
+ * old rows accepted before validation remain inspectable and removable.
  */
 export const addReactionApiV1ChatsChatIdMessagesMessageIdReactionsPost = <
   ThrowOnError extends boolean = false,
@@ -1799,6 +1905,29 @@ export const myEventsApiV1EventsMyGet = <ThrowOnError extends boolean = false>(
   })
 
 /**
+ * My Events Page
+ *
+ * My Events Page
+ */
+export const myEventsPageApiV1EventsMyPageGet = <ThrowOnError extends boolean = false>(
+  options?: Options<MyEventsPageApiV1EventsMyPageGetData, ThrowOnError>
+): RequestResult<
+  MyEventsPageApiV1EventsMyPageGetResponses,
+  MyEventsPageApiV1EventsMyPageGetErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    MyEventsPageApiV1EventsMyPageGetResponses,
+    MyEventsPageApiV1EventsMyPageGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/events/my/page",
+    ...options,
+  })
+
+/**
  * Semantic Search
  *
  * Semantic search for events using embeddings.
@@ -1996,6 +2125,60 @@ export const uploadEventFileApiV1EventsEventIdUploadFilePost = <
     ...options,
     headers: {
       "Content-Type": null,
+      ...options.headers,
+    },
+  })
+
+/**
+ * Assign Grade
+ *
+ * Assign Grade
+ */
+export const assignGradeApiV1GradesPost = <ThrowOnError extends boolean = false>(
+  options: Options<AssignGradeApiV1GradesPostData, ThrowOnError>
+): RequestResult<
+  AssignGradeApiV1GradesPostResponses,
+  AssignGradeApiV1GradesPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    AssignGradeApiV1GradesPostResponses,
+    AssignGradeApiV1GradesPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/grades",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Modify Grade
+ *
+ * Modify Grade
+ */
+export const modifyGradeApiV1GradesGradeIdPatch = <ThrowOnError extends boolean = false>(
+  options: Options<ModifyGradeApiV1GradesGradeIdPatchData, ThrowOnError>
+): RequestResult<
+  ModifyGradeApiV1GradesGradeIdPatchResponses,
+  ModifyGradeApiV1GradesGradeIdPatchErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).patch<
+    ModifyGradeApiV1GradesGradeIdPatchResponses,
+    ModifyGradeApiV1GradesGradeIdPatchErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/grades/{grade_id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
       ...options.headers,
     },
   })
@@ -3049,6 +3232,7 @@ export const spotifyCallbackApiV1SpotifyCallbackGet = <ThrowOnError extends bool
     ThrowOnError
   >({
     responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
     url: "/api/v1/spotify/callback",
     ...options,
   })
@@ -3187,8 +3371,8 @@ export const participationSummaryApiV1StatsParticipationGet = <
  * Return attendance, grades and participation stats in a single request.
  *
  * PERF-1 (audit 2026-03): replaces three separate client-side round-trips.
- * All three sub-queries run concurrently via asyncio.gather and share the
- * same Redis cache entries as the individual endpoints.
+ * The queries share one request-scoped AsyncSession, so run sequentially.
+ * They reuse the same Redis cache entries as the individual endpoints.
  */
 export const statsSummaryApiV1StatsSummaryGet = <ThrowOnError extends boolean = false>(
   options?: Options<StatsSummaryApiV1StatsSummaryGetData, ThrowOnError>
@@ -3340,6 +3524,8 @@ export const updateStoryApiV1StoriesStoryIdPatch = <ThrowOnError extends boolean
  *
  * Search for users.
  * Admins see full profiles (UserOut), others see only public info (UserPublicOut).
+ * Full profiles require the SpiceDB admin permission as well as the role column;
+ * an unreachable authorization service degrades to the public view.
  */
 export const getUsersApiV1UsersGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetUsersApiV1UsersGetData, ThrowOnError>

@@ -30,7 +30,7 @@ func init() {
 	image.RegisterFormat("panickingformat", "PANIC", func(r io.Reader) (image.Image, error) {
 		panic("simulated panic in image decoder")
 	}, func(r io.Reader) (image.Config, error) {
-		return image.Config{}, nil
+		return image.Config{Width: 1, Height: 1}, nil
 	})
 }
 

@@ -19,6 +19,18 @@ describe("event category inference fallbacks", () => {
     expect(inferEventCategory(eventType)).toBe(expected)
   })
 
+  it.each(["Мастер-класс", "Workshop"])(
+    "preserves the workshop category and metadata for %s",
+    (eventType) => {
+      const category = inferEventCategory(eventType)
+      expect(category).toBe("workshop")
+      expect(getCategoryMeta(category)).toEqual({
+        labelKey: "events:categories.workshop",
+        color: "emerald",
+      })
+    }
+  )
+
   it("classifies an absent event type as other", () => {
     expect(inferEventCategory(null)).toBe("other")
   })

@@ -1,4 +1,4 @@
-import { createEvent, fireEvent, render, screen } from "@testing-library/react"
+import { act, createEvent, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { StoryList } from "../StoryList"
 import type { StoryItem } from "@/types/Story"
@@ -315,5 +315,33 @@ describe("StoryList branches", () => {
   it("renders empty status when not loading and there are no stories (line 161)", () => {
     render(<StoryList stories={[]} loading={false} onOpenStory={vi.fn()} />)
     expect(screen.getByRole("status")).toBeInTheDocument()
+  })
+
+  it("attaches the resize observer when stories appear after loading", () => {
+    let resizeCallback: ResizeObserverCallback | undefined
+    const observe = vi.fn()
+
+    class ResizeObserverStub {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback
+      }
+      observe = observe
+      unobserve() {}
+      disconnect() {}
+    }
+
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub)
+    const onOpenStory = vi.fn()
+    const { rerender } = render(<StoryList stories={[]} loading onOpenStory={onOpenStory} />)
+    expect(observe).not.toHaveBeenCalled()
+
+    rerender(<StoryList stories={storiesWithCover} loading={false} onOpenStory={onOpenStory} />)
+
+    const ul = getList()
+    expect(observe).toHaveBeenCalledWith(ul)
+    setLayout(ul, 0, 1000, 300)
+    act(() => resizeCallback?.([], {} as ResizeObserver))
+
+    expect(ul.style.maskImage).toContain("to right")
   })
 })

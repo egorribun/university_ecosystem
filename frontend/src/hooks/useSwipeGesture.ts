@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 
 interface SwipeGestureOptions {
   /** Direction that triggers close */
@@ -38,6 +38,15 @@ export function useSwipeGesture({
   const [isDragging, setIsDragging] = useState(false)
   const startX = useRef(0)
 
+  // A drawer may close from Escape or its close button before touchend arrives.
+  // Clear the transient gesture so reopening cannot reuse the old drag offset.
+  useEffect(() => {
+    if (!enabled) {
+      setDragOffset(0)
+      setIsDragging(false)
+    }
+  }, [enabled])
+
   const onTouchStart = useCallback(
     (e: React.TouchEvent) => {
       if (!enabled) return
@@ -60,15 +69,17 @@ export function useSwipeGesture({
         setDragOffset(delta)
       } else if (direction === "left" && delta < 0) {
         setDragOffset(delta)
+      } else {
+        // Returning to the start or reversing direction cancels the swipe.
+        setDragOffset(0)
       }
     },
     [enabled, isDragging, direction]
   )
 
   const onTouchEnd = useCallback(() => {
-    if (!enabled) return
     const absOffset = Math.abs(dragOffset)
-    if (absOffset > threshold) {
+    if (enabled && absOffset > threshold) {
       onSwipeClose()
     }
     setDragOffset(0)

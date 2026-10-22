@@ -3,8 +3,9 @@
 This document describes the operator-facing environment variables used by the
 University Ecosystem backend. Defaults in this document are the runtime
 `Settings` defaults; `.env.example` is an explicit local profile and may set a
-different value intentionally. Values supplied through `*_FILE` secret mounts
-take precedence over the corresponding plaintext variable.
+different value intentionally. Only settings with an implemented `*_FILE`
+variant accept secret-file mounts; the file value takes precedence over the
+corresponding plaintext variable.
 
 ## 🔴 Required Variables
 
@@ -12,7 +13,7 @@ take precedence over the corresponding plaintext variable.
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | - |
 | `SECRET_KEY` | Primary JWT signing secret (min 32 chars) | - |
-| `AUDIT_LOG_SECRET` | Audit log signing secret (min 32 chars) | - |
+| `AUDIT_LOG_SECRET` | Audit log signing secret (min 32 chars; use a random value outside development) | Development placeholder; must be overridden outside development |
 | `INTERNAL_HMAC_SECRET` | Internal gateway signature key (Required in production) | - |
 | `TOKEN_HMAC_SECRET` | Dedicated HMAC key for password-reset and email-change tokens (min 32 bytes; required in staging/production) | - |
 
@@ -46,7 +47,7 @@ take precedence over the corresponding plaintext variable.
 | `AUTH_LOCKOUT_THRESHOLDS` | Lockout rules `attempts:seconds` | `5:30,8:300,10:3600` |
 | `CSRF_HMAC_SECRET` | Independent HMAC key for signed CSRF cookies; unsigned fallback is development/testing only | Empty locally; required outside development |
 | `INTERNAL_HMAC_SECRET` | Verifies the gateway `X-Internal-Signature` identity assertion (minimum 32 bytes) | Required outside development |
-| `AUDIT_LOG_SECRET` | HMAC key for audit log signatures (min 32 chars) | Required |
+| `AUDIT_LOG_SECRET` | HMAC key for audit log signatures (min 32 chars) | Development placeholder; must be overridden outside development |
 | `TOKEN_HMAC_SECRET` | Dedicated HMAC key for password-reset and email-change token digests | Required in staging/prod |
 | `JWT_PRIVATE_KEY_PATH` | RS256 private key path used to mint access tokens | `.secrets/jwt_rs256.pem` |
 | `JWT_AUDIENCE` | Expected JWT audience for zero-trust consumers | `university-ecosystem-api` |
@@ -60,6 +61,8 @@ take precedence over the corresponding plaintext variable.
 |----------|-------------|---------|
 | `MFA_ENABLED` | Enable MFA | `false` |
 | `MFA_TOTP_ISSUER` | TOTP app name | `University Ecosystem` |
+| `MFA_TOTP_ENCRYPTION_KEYS` | Comma-separated `kid:Fernet-key` ring for TOTP enrollment ciphertext; non-active entries are legacy decrypt keys | Empty in development; required for API and migrations in staging/production |
+| `MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` | Non-secret key ID used to encrypt new TOTP enrollments | Empty in development; required for API and migrations in staging/production |
 | `MFA_CHALLENGE_TTL_SECONDS` | Challenge validity | `600` (the local `.env.example` explicitly overrides this to `300`) |
 | `MFA_CHALLENGE_MAX_ATTEMPTS` | Max attempts | `5` |
 | `MFA_STEP_UP_TTL_SECONDS` | Step-up authentication validity | `300` |
@@ -85,6 +88,8 @@ take precedence over the corresponding plaintext variable.
 | `REVOCATION_REDIS_URL` | Dedicated persistent/noeviction Redis URL for session revocation | Required outside development |
 | `NATS_URL` | NATS message bus endpoint | `nats://127.0.0.1:4222` |
 | `NATS_AUTH_TOKEN` | NATS authentication token | Empty locally; required in production |
+| `NATS_TASK_MAX_DELIVERIES` | Delivery attempts of a background task before it is parked in the dead-letter queue (`/admin/dlq`) | `5` |
+| `NATS_TASK_RETRY_BASE_DELAY_SECONDS` | First redelivery delay of a failed task; doubles per attempt up to 300 s | `5` |
 | `RATE_LIMIT_ENABLED` | Enable rate limiting | `true` |
 | `RATE_LIMIT_DEFAULT` | Default rate | `200/minute` |
 | `RATE_LIMIT_STORAGE_BACKEND` | `memory` or `redis` | `memory` |
@@ -112,10 +117,15 @@ take precedence over the corresponding plaintext variable.
 |----------|-------------|---------|
 | `STORAGE_BACKEND` | `static`, `local`, `s3`, `minio` | `static` |
 | `STORAGE_STATIC_BASE_URL` | Public URL for static files | `/static` |
+| `STORAGE_QUARANTINE_QUOTA_BYTES` | Charged rejected-upload payload bytes per shared storage scope | `1073741824` |
+| `STORAGE_QUARANTINE_RETENTION_DAYS` | TTL for acknowledged stored quarantine objects; ambiguous pending writes remain charged | `7` |
+| `STORAGE_QUARANTINE_SWEEP_INTERVAL_SECONDS` | API quarantine cleanup interval | `300` |
+| `STORAGE_QUARANTINE_INVENTORY_PAGE_SIZE` | Maximum objects per bootstrap inventory page | `100` |
+| `STORAGE_QUARANTINE_SCOPE_ID` | Shared scope override for aliases of one physical store; see [quarantine runbook](docs/runbooks/upload-quarantine.md) | Empty |
 | `STORAGE_S3_BUCKET` | S3 bucket name | Empty |
 | `STORAGE_S3_REGION` | AWS Region | Empty |
 | `STORAGE_S3_ENDPOINT_URL` | Custom S3 endpoint (for example the Compose SeaweedFS service `http://minio:9000`) | Empty |
-| `EVENT_FILE_SCANNER_ENABLED` | Enable ClamAV virus scanning | `false` |
+| `EVENT_FILE_SCANNER_ENABLED` | Enable ClamAV scanning (must be true in staging/production) | `false` (runtime default) |
 | `EVENT_FILE_MAX_SIZE_BYTES` | Max upload size (default 10MB) | `10485760` |
 | `CHAT_MAX_MESSAGE_LENGTH` | Max characters per message | `32768` |
 
@@ -132,11 +142,9 @@ take precedence over the corresponding plaintext variable.
 | `SPICEDB_PRESHARED_KEY` | SpiceDB auth key (`_FILE` supported); the development sentinel is rejected outside development | `development-preshared-key` (development only) |
 | `ELASTICSEARCH_URL` | Search engine endpoint; production/staging requires `https://` | `http://localhost:9200` (local only) |
 | `ELASTICSEARCH_PASSWORD` | ES password (`_FILE` supported) | Required |
-| `WS_HUB_INTERNAL_URL` | ws-hub control API | `http://ws-hub:8081` |
 | `WS_HUB_INTERNAL_SECRET` | HMAC for ws-hub cache invalidation | Required |
 | `INTERNAL_AUTH_TOKEN` | Token for ws-hub's exact room-participant callback; managed Compose/Helm/K8s deployments derive it from the existing ws-hub secret | Empty in development |
 | `IDEMPOTENCY_HMAC_SECRET` | signs idempotency keys | Empty |
-| `RUST_OPTIMIZER_URL` | Schedule optimization sidecar | `http://rust-optimizer:8080` |
 
 ---
 
@@ -150,7 +158,7 @@ take precedence over the corresponding plaintext variable.
 | `OUTBOX_POLL_INTERVAL_SECONDS` | Polling interval (seconds) for the active embedded worker | `5.0` |
 | `OUTBOX_MAX_RETRIES` | Dispatch attempts before DLQ | `5` |
 | `EMBEDDED_OUTBOX_WORKER_ENABLED` | Enable the embedded polling outbox worker | `true` |
-| `EMBEDDED_CDC_OUTBOX_WORKER_ENABLED` | Use PostgreSQL logical replication instead of polling. Replaces, never accompanies, the polling worker — both publish the same events. Requires `wal_level=logical`. | `false` |
+| `EMBEDDED_CDC_OUTBOX_WORKER_ENABLED` | Unsupported/deferred. Keep `false`: `true` is rejected before startup resources are opened. Use the polling outbox worker. Standalone CDC is also rejected before connecting or provisioning; production integration remains deferred under [ADR-037](docs/adr/ADR-037-cdc-outbox-transport-ownership.md). | `false` |
 
 ---
 
@@ -181,4 +189,20 @@ take precedence over the corresponding plaintext variable.
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry collector endpoint | `http://localhost:4317` |
 | `LOG_LEVEL` | Logging verbosity | `INFO` |
 
-> **Tip**: Secrets can be provided via files using the `_FILE` suffix (e.g., `DATABASE_URL_FILE=/run/secrets/db_url`) to support Docker/Kubernetes secrets securely.
+> **Tip**: `_FILE` loading is implemented only for `DATABASE_URL`, `SECRET_KEY`,
+> `INTERNAL_HMAC_SECRET`, `TOKEN_HMAC_SECRET`, `NATS_AUTH_TOKEN`, `SMTP_PASSWORD`,
+> `VAPID_PRIVATE_KEY`, `SPOTIFY_CLIENT_SECRET`, `SPICEDB_PRESHARED_KEY`,
+> `ELASTICSEARCH_PASSWORD`, `WS_HUB_INTERNAL_SECRET`, and
+> `MFA_TOTP_ENCRYPTION_KEYS`. For these settings, the file value takes precedence
+> over plaintext. `MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` is a non-secret key name
+> supplied directly through the environment and does not support `_FILE`. Other
+> settings do not automatically accept a `_FILE` suffix.
+
+The active TOTP key must be independent of every configured Spotify key and of
+Spotify's `SECRET_KEY`-derived fallback. During migration, a non-active TOTP ring
+entry may retain the previous Spotify key so existing enrollment ciphertext
+remains readable. New writes always use the active TOTP key. Local development
+with an empty ring derives a domain-separated key from `SECRET_KEY`; this fallback
+is rejected outside development/testing. The explicit non-auth `outbox-worker` and
+`notifications-worker` roles may start without the ring; TOTP crypto calls in those
+roles fail closed.

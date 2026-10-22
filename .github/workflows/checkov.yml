@@ -17,7 +17,7 @@ jobs:
   checkov:
     name: Checkov Scan
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 60
     permissions:
       security-events: write
       contents: read
@@ -50,7 +50,17 @@ jobs:
             ".checkov.yml"
             "native/rust_ext/deny.toml"
             "scripts/quality/filter_checkov_sarif.py"
+            "scripts/quality/resolve_oci_platform_digest.py"
+            "scripts/quality/create_checkov_oci_image_evidence.py"
+            "scripts/quality/prepare_checkov_helm_contexts.py"
+            "scripts/quality/verify_checkov_helm_json.py"
+            "tests/test_checkov_backend_digest_context.py"
+            "tests/test_checkov_helm_coverage_contract.py"
+            "charts/university-ecosystem"
+            "charts/revocation-store"
+            "charts/redis-compat"
             "quality/ci-check-catalog.json"
+            "quality/security-false-positive-dispositions.json"
             "security/audit-allowlist.yaml"
           )
           changed=()
@@ -67,23 +77,426 @@ jobs:
             printf '::notice::owner-authored policy update accepted for review: %s\n' "${changed[*]}"
           fi
 
-      - name: Run Checkov
+      - name: Validate Checkov Helm namespace
+        shell: bash
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$K8S_NAMESPACE" =~ ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$ || \
+                "$K8S_NAMESPACE" == "default" ]]; then
+            echo "::error::Checkov Helm namespace must be a non-default Kubernetes DNS label." >&2
+            exit 1
+          fi
+
+      - name: Verify clean source snapshot for local OCI builds
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          checkout_sha="$(git rev-parse --verify HEAD)"
+          if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ || "$checkout_sha" != "$SOURCE_SHA" ]]; then
+            echo "::error::local OCI builds must use the current immutable GitHub source commit" >&2
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain=v1 --untracked-files=all)" ]]; then
+            echo "::error::local OCI builds require a clean tracked and untracked checkout" >&2
+            exit 1
+          fi
+
+      # Export the five source-built first-party images locally only; no image is pushed.
+      - name: Set up Buildx for local OCI exports
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build the five chart image manifests as unpublished OCI archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          oci_dir="$RUNNER_TEMP/checkov-oci"
+          rm -rf -- "$oci_dir"
+          mkdir -p "$oci_dir"
+
+          build_local_oci() {
+            local image_name="$1"
+            local dockerfile="$2"
+            local archive="$oci_dir/$image_name.oci.tar"
+            local build_args=()
+            if [[ "$image_name" == "frontend" ]]; then
+              build_args+=(
+                --build-arg "VITE_APP_RELEASE=$GITHUB_SHA"
+                --build-arg "VITE_ENABLE_WEB_VITALS=false"
+                --build-arg "VITE_CWV_TRUSTED_RUM=false"
+                --build-arg "VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv"
+              )
+            fi
+            docker buildx build \
+              --platform linux/amd64 \
+              --provenance=false \
+              --sbom=false \
+              --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+              --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+              --cache-from "type=gha,scope=university-$image_name" \
+              --cache-to "type=gha,scope=university-$image_name,mode=max" \
+              --file "$dockerfile" \
+              --tag "ghcr.io/$GITHUB_REPOSITORY/$image_name:$GITHUB_SHA" \
+              "${build_args[@]}" \
+              --output "type=oci,dest=$archive" \
+              .
+          }
+
+          build_local_oci backend backend.Dockerfile
+          build_local_oci frontend frontend.Dockerfile
+          build_local_oci gateway services/gateway/Dockerfile
+          build_local_oci ws-hub services/ws-hub/Dockerfile
+          build_local_oci file-processor services/file-processor/Dockerfile
+
+      - name: Resolve each local OCI platform manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          oci_dir="$RUNNER_TEMP/checkov-oci"
+          for image_name in backend frontend gateway ws-hub file-processor; do
+            python3 scripts/quality/resolve_oci_platform_digest.py \
+              "$oci_dir/$image_name.oci.tar" \
+              > "$oci_dir/$image_name.values.yaml"
+          done
+          cp -- "$oci_dir/backend.values.yaml" \
+            "$GITHUB_WORKSPACE/.checkov-backend-values.yaml"
+
+      - name: Seal the current-source local OCI digest map
+        id: oci_evidence
+        shell: bash
+        env:
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          oci_dir="$RUNNER_TEMP/checkov-oci"
+          evidence_sha256="$(python3 scripts/quality/create_checkov_oci_image_evidence.py \
+            --repository "$SOURCE_REPOSITORY" \
+            --source-sha "$SOURCE_SHA" \
+            --archive "backend=$oci_dir/backend.oci.tar" \
+            --archive "frontend=$oci_dir/frontend.oci.tar" \
+            --archive "gateway=$oci_dir/gateway.oci.tar" \
+            --archive "ws-hub=$oci_dir/ws-hub.oci.tar" \
+            --archive "file-processor=$oci_dir/file-processor.oci.tar" \
+            --output "$oci_dir/image-evidence.json")"
+          [[ "$evidence_sha256" =~ ^[0-9a-f]{64}$ ]]
+          echo "sha256=$evidence_sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare finite Checkov Helm values from actual image evidence
+        shell: bash
+        env:
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_RUN_ID: ${{ github.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          IMAGE_EVIDENCE_SHA256: ${{ steps.oci_evidence.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          oci_dir="$RUNNER_TEMP/checkov-oci"
+          profile_dir="$RUNNER_TEMP/checkov-helm-values"
+          checkov_image='ghcr.io/bridgecrewio/checkov@sha256:c35f76068fd592d07fe8525b4893c7910489496483215e6c838fb3890496a891'
+          rm -rf -- "$profile_dir" "$GITHUB_WORKSPACE/.checkov-helm-values"
+          rm -f -- results.sarif results-helm-*.sarif results-helm-*.json \
+            filtered-results.sarif filtered-helm-*.sarif
+          mkdir -m 700 "$profile_dir"
+          docker run --rm --network none --read-only \
+            --memory 512m --cpus 1 --pids-limit 64 \
+            --user "$(id -u):$(id -g)" \
+            --tmpfs /tmp:rw,nosuid,nodev,size=128m \
+            -e PYTHONDONTWRITEBYTECODE=1 \
+            -v "$GITHUB_WORKSPACE:/workspace:ro" \
+            -v "$oci_dir:/oci:ro" \
+            -v "$profile_dir:/profiles:rw" \
+            --workdir /workspace \
+            --entrypoint python "$checkov_image" \
+            scripts/quality/prepare_checkov_helm_contexts.py \
+            --repository-root /workspace \
+            --backend-values-file /oci/backend.values.yaml \
+            --image-evidence-file /oci/image-evidence.json \
+            --image-evidence-sha256 "$IMAGE_EVIDENCE_SHA256" \
+            --repository "$SOURCE_REPOSITORY" \
+            --source-sha "$SOURCE_SHA" \
+            --run-id "$SOURCE_RUN_ID" \
+            --run-attempt "$SOURCE_RUN_ATTEMPT" \
+            --archive-dir /oci \
+            --output-dir /profiles
+          mkdir -m 700 "$GITHUB_WORKSPACE/.checkov-helm-values"
+          for profile in university-ecosystem revocation-store redis-compat; do
+            source="$profile_dir/$profile.json"
+            if [[ ! -f "$source" || -L "$source" ]]; then
+              echo "::error::generated Checkov profile is missing or unsafe: $profile" >&2
+              exit 1
+            fi
+            install -m 600 -- "$source" "$GITHUB_WORKSPACE/.checkov-helm-values/$profile.json"
+          done
+
+      - name: Render each chart with the finite Checkov Helm values
+        shell: bash
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
+        run: |
+          set -euo pipefail
+          profile_dir="$RUNNER_TEMP/checkov-helm-values"
+          checkov_image='ghcr.io/bridgecrewio/checkov@sha256:c35f76068fd592d07fe8525b4893c7910489496483215e6c838fb3890496a891'
+          render_dir="$(mktemp -d "$RUNNER_TEMP/checkov-helm-render.XXXXXX")"
+          trap 'rm -rf -- "$render_dir"' EXIT
+
+          render_chart() {
+            local chart_key="$1"
+            local release_name="$2"
+            local chart_path="$3"
+            local base_values="$4"
+            local context_values="$5"
+            local output="$render_dir/$chart_key.yaml"
+            local errors="$render_dir/$chart_key.stderr"
+            if ! docker run --rm --network none --read-only \
+              --tmpfs /tmp:rw,nosuid,nodev,size=128m \
+              -e HELM_CACHE_HOME=/tmp/helm-cache \
+              -e HELM_CONFIG_HOME=/tmp/helm-config \
+              -e HELM_DATA_HOME=/tmp/helm-data \
+              -v "$GITHUB_WORKSPACE:/workspace:ro" \
+              -v "$profile_dir:/profiles:ro" \
+              --workdir /workspace \
+              --entrypoint helm "$checkov_image" \
+              template "$release_name" "$chart_path" \
+              --dependency-update=false \
+              --namespace "$K8S_NAMESPACE" \
+              --values "$base_values" \
+              --values "$context_values" \
+              > "$output" 2> "$errors"; then
+              cat "$errors" >&2
+              echo "::error::Helm render failed for $chart_path" >&2
+              return 1
+            fi
+            if [[ ! -s "$output" ]] || ! grep -Eq '^kind:[[:space:]]*[A-Za-z0-9]+' "$output"; then
+              echo "::error::Helm render produced no Kubernetes resources for $chart_path" >&2
+              return 1
+            fi
+            if [[ -s "$errors" ]]; then
+              cat "$errors" >&2
+              echo "::error::Helm render emitted stderr for $chart_path" >&2
+              return 1
+            fi
+          }
+
+          render_chart university-ecosystem checkov-staging \
+            charts/university-ecosystem charts/university-ecosystem/values-staging.yaml \
+            /profiles/university-ecosystem.json
+          render_chart revocation-store checkov-revocation \
+            charts/revocation-store charts/revocation-store/values-staging.yaml \
+            /profiles/revocation-store.json
+          render_chart redis-compat checkov-redis \
+            charts/redis-compat charts/redis-compat/values.yaml \
+            /profiles/redis-compat.json
+
+      - name: Run full-framework Checkov scan
+        id: checkov_all
+        continue-on-error: true
         uses: bridgecrewio/checkov-action@29be5868bfa968f099ae80169f61f42887494b8f # v12.3133.0
+        env:
+          HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
         with:
           directory: .
           config_file: .checkov.yml
           framework: all
+          var_file: .checkov-backend-values.yaml
           output_format: sarif
-          output_file_path: results.sarif
+          output_file_path: results.sarif,
 
+      - name: Run scoped Checkov Helm scan for university chart
+        id: checkov_helm_university
+        continue-on-error: true
+        uses: bridgecrewio/checkov-action@29be5868bfa968f099ae80169f61f42887494b8f # v12.3133.0
+        env:
+          HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
+        with:
+          directory: charts/university-ecosystem
+          config_file: .checkov.yml
+          framework: helm
+          var_file: charts/university-ecosystem/values-staging.yaml,.checkov-helm-values/university-ecosystem.json
+          output_format: sarif,json
+          output_file_path: results-helm-university-ecosystem.sarif,results-helm-university-ecosystem.json
+
+      - name: Run scoped Checkov Helm scan for revocation chart
+        id: checkov_helm_revocation
+        continue-on-error: true
+        uses: bridgecrewio/checkov-action@29be5868bfa968f099ae80169f61f42887494b8f # v12.3133.0
+        env:
+          HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
+        with:
+          directory: charts/revocation-store
+          config_file: .checkov.yml
+          framework: helm
+          var_file: charts/revocation-store/values-staging.yaml,.checkov-helm-values/revocation-store.json
+          output_format: sarif,json
+          output_file_path: results-helm-revocation-store.sarif,results-helm-revocation-store.json
+
+      - name: Run scoped Checkov Helm scan for Redis compatibility chart
+        id: checkov_helm_redis_compat
+        continue-on-error: true
+        uses: bridgecrewio/checkov-action@29be5868bfa968f099ae80169f61f42887494b8f # v12.3133.0
+        env:
+          HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
+        with:
+          directory: charts/redis-compat
+          config_file: .checkov.yml
+          framework: helm
+          var_file: .checkov-helm-values/redis-compat.json
+          output_format: sarif,json
+          output_file_path: results-helm-redis-compat.sarif,results-helm-redis-compat.json
+
+      - name: Verify university Helm JSON coverage
+        id: verify_helm_university
+        if: always()
+        continue-on-error: true
+        run: python3 scripts/quality/verify_checkov_helm_json.py results-helm-university-ecosystem.json
+
+      - name: Verify revocation Helm JSON coverage
+        id: verify_helm_revocation
+        if: always()
+        continue-on-error: true
+        run: python3 scripts/quality/verify_checkov_helm_json.py results-helm-revocation-store.json
+
+      - name: Verify Redis compatibility Helm JSON coverage
+        id: verify_helm_redis_compat
+        if: always()
+        continue-on-error: true
+        run: python3 scripts/quality/verify_checkov_helm_json.py results-helm-redis-compat.json
+
+      - name: Preserve source-bound Checkov evidence before input cleanup
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/checkov-evidence"
+          mkdir "$evidence_dir"
+
+          copy_required() {
+            local source="$1"
+            local name="$2"
+            if [[ ! -f "$source" || -L "$source" ]]; then
+              echo "::error::required Checkov evidence is missing or not a regular file: $name" >&2
+              return 1
+            fi
+            cp -- "$source" "$evidence_dir/$name"
+          }
+
+          copy_required "$RUNNER_TEMP/checkov-oci/image-evidence.json" image-evidence.json
+          copy_required "$RUNNER_TEMP/checkov-oci/image-evidence.json.sha256" image-evidence.json.sha256
+          copy_required "$GITHUB_WORKSPACE/.checkov-helm-values/university-ecosystem.json" university-ecosystem.json
+          copy_required "$GITHUB_WORKSPACE/.checkov-helm-values/revocation-store.json" revocation-store.json
+          copy_required "$GITHUB_WORKSPACE/.checkov-helm-values/redis-compat.json" redis-compat.json
+          copy_required "$GITHUB_WORKSPACE/results.sarif" results.sarif
+          copy_required "$GITHUB_WORKSPACE/results-helm-university-ecosystem.sarif" results-helm-university-ecosystem.sarif
+          copy_required "$GITHUB_WORKSPACE/results-helm-revocation-store.sarif" results-helm-revocation-store.sarif
+          copy_required "$GITHUB_WORKSPACE/results-helm-redis-compat.sarif" results-helm-redis-compat.sarif
+          copy_required "$GITHUB_WORKSPACE/results-helm-university-ecosystem.json" results-helm-university-ecosystem.json
+          copy_required "$GITHUB_WORKSPACE/results-helm-revocation-store.json" results-helm-revocation-store.json
+          copy_required "$GITHUB_WORKSPACE/results-helm-redis-compat.json" results-helm-redis-compat.json
+      - name: Remove local OCI and Helm scan inputs
+        if: always()
+        shell: bash
+        run: |
+          rm -f -- "$GITHUB_WORKSPACE/.checkov-backend-values.yaml"
+          rm -rf -- "$GITHUB_WORKSPACE/.checkov-helm-values" \
+            "$RUNNER_TEMP/checkov-helm-values" "$RUNNER_TEMP/checkov-oci"
+
+      - name: Upload source-bound Checkov evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: checkov-source-bound-image-and-helm-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/checkov-evidence
+          if-no-files-found: error
+          retention-days: 7
+      - name: Require all Checkov scans and Helm coverage guards to pass
+        if: always()
+        shell: bash
+        env:
+          ALL_SCAN_OUTCOME: ${{ steps.checkov_all.outcome }}
+          UNIVERSITY_SCAN_OUTCOME: ${{ steps.checkov_helm_university.outcome }}
+          REVOCATION_SCAN_OUTCOME: ${{ steps.checkov_helm_revocation.outcome }}
+          REDIS_SCAN_OUTCOME: ${{ steps.checkov_helm_redis_compat.outcome }}
+          UNIVERSITY_GUARD_OUTCOME: ${{ steps.verify_helm_university.outcome }}
+          REVOCATION_GUARD_OUTCOME: ${{ steps.verify_helm_revocation.outcome }}
+          REDIS_GUARD_OUTCOME: ${{ steps.verify_helm_redis_compat.outcome }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for outcome in "$ALL_SCAN_OUTCOME" "$UNIVERSITY_SCAN_OUTCOME" \
+            "$REVOCATION_SCAN_OUTCOME" "$REDIS_SCAN_OUTCOME" \
+            "$UNIVERSITY_GUARD_OUTCOME" "$REVOCATION_GUARD_OUTCOME" "$REDIS_GUARD_OUTCOME"; do
+            if [[ "$outcome" != "success" ]]; then
+              failed=1
+            fi
+          done
+          for report in results.sarif \
+            results-helm-university-ecosystem.sarif \
+            results-helm-revocation-store.sarif \
+            results-helm-redis-compat.sarif; do
+            if [[ ! -s "$report" ]]; then
+              echo "::error::required Checkov SARIF output is missing: $report" >&2
+              failed=1
+            fi
+          done
+          if [[ "$failed" -ne 0 ]]; then
+            echo "::error::one or more blocking Checkov scans or Helm coverage guards failed" >&2
+            exit 1
+          fi
       - name: Remove inline-suppressed results from SARIF
         if: always()
         run: >-
           python scripts/quality/filter_checkov_sarif.py results.sarif
           --output-path filtered-results.sarif
 
-      - name: Upload SARIF results
+      - name: Remove inline-suppressed university chart results
+        if: always()
+        run: >-
+          python scripts/quality/filter_checkov_sarif.py
+          results-helm-university-ecosystem.sarif
+          --output-path filtered-helm-university-ecosystem.sarif
+
+      - name: Remove inline-suppressed revocation chart results
+        if: always()
+        run: >-
+          python scripts/quality/filter_checkov_sarif.py
+          results-helm-revocation-store.sarif
+          --output-path filtered-helm-revocation-store.sarif
+
+      - name: Remove inline-suppressed Redis compatibility chart results
+        if: always()
+        run: >-
+          python scripts/quality/filter_checkov_sarif.py
+          results-helm-redis-compat.sarif
+          --output-path filtered-helm-redis-compat.sarif
+
+      - name: Upload all-framework Checkov results
         uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         if: always()
         with:
           sarif_file: filtered-results.sarif
+          category: checkov-all
+
+      - name: Upload university Helm results
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        if: always()
+        with:
+          sarif_file: filtered-helm-university-ecosystem.sarif
+          category: checkov-helm-university-ecosystem
+
+      - name: Upload revocation Helm results
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        if: always()
+        with:
+          sarif_file: filtered-helm-revocation-store.sarif
+          category: checkov-helm-revocation-store
+
+      - name: Upload Redis compatibility Helm results
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        if: always()
+        with:
+          sarif_file: filtered-helm-redis-compat.sarif
+          category: checkov-helm-redis-compat

@@ -68,7 +68,7 @@ spec:
         - name: create-socket-symlink
           # SPIRE images are scratch and contain no shell. A dedicated pinned
           # init image creates the compatibility symlink on the mounted volume.
-          image: busybox:1.37.0-musl@sha256:fc6dddc4c44b1bfe37f41cae8e67d1693828e8f42a91862816d7953e2c9d3f23
+          image: busybox:1.38.0-musl@sha256:ea2b9914a16a4ac1981994af97b318f7c7d4db76b580c56177f08bf76f4a0be8
           command:
             - sh
             - -ec
@@ -91,7 +91,7 @@ spec:
               readOnly: true
       containers:
         - name: spire-agent
-          image: ghcr.io/spiffe/spire-agent:1.15.2@sha256:1d042e4040466686e0ee46f74981ff2167c86adfadca19b3835946f4d6047536
+          image: ghcr.io/spiffe/spire-agent:1.15.3@sha256:41b0dcd8b258a69db9e2768292a060766fb76fd866e4bc925849981ea1b825ff
           args: ["-config", "/run/spire/config/agent.conf"]
           ports:
             - containerPort: 8080

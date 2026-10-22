@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
@@ -36,6 +36,7 @@ vi.mock("@/hooks/useMediaQuery", () => ({
 
 import { NewsTableOfContents } from "@/components/news/NewsTableOfContents"
 import type { TocEntry } from "@/hooks/useArticleHeadings"
+import { collectWindowErrors } from "@/tests/helpers/windowErrors"
 
 const HEADINGS: TocEntry[] = [
   { id: "background", text: "Background", level: 2 },
@@ -189,43 +190,49 @@ describe("NewsTableOfContents", () => {
     document.body.removeChild(target)
   })
 
-  it("tracks intersecting headings and ignores missing scroll targets", async () => {
+  it("tracks intersecting headings and ignores missing scroll targets", () => {
     const firstTarget = document.createElement("h2")
     firstTarget.id = "background"
     document.body.appendChild(firstTarget)
-    const user = userEvent.setup()
-    const { rerender } = render(<NewsTableOfContents headings={HEADINGS} />)
+    const { rerender, unmount } = render(<NewsTableOfContents headings={HEADINGS} />)
 
-    const observer = observerState.callbacks.length
-    expect(observer).toBeGreaterThan(0)
+    try {
+      const observer = observerState.callbacks.length
+      expect(observer).toBeGreaterThan(0)
 
-    act(() => {
-      observerState.callbacks[0]?.(
-        [makeObserverEntry(firstTarget, true)],
-        {} as IntersectionObserver
+      act(() => {
+        observerState.callbacks[0]?.(
+          [makeObserverEntry(firstTarget, true)],
+          {} as IntersectionObserver
+        )
+      })
+      expect(screen.getByRole("button", { name: "Background" })).toHaveClass("font-semibold")
+      expect(screen.getByRole("button", { name: "Methodology" })).not.toHaveClass("font-semibold")
+
+      act(() => {
+        observerState.callbacks[0]?.(
+          [makeObserverEntry(firstTarget, false)],
+          {} as IntersectionObserver
+        )
+      })
+      expect(screen.getByRole("button", { name: "Background" })).toHaveClass("font-semibold")
+
+      const errors = collectWindowErrors(() => {
+        fireEvent.click(screen.getByRole("button", { name: "Methodology" }))
+      })
+      expect(errors).toEqual([])
+      expect(screen.getByRole("button", { name: "Background" })).toHaveClass("font-semibold")
+      expect(screen.getByRole("button", { name: "Methodology" })).toHaveClass(
+        "text-(--text-secondary)",
+        "hover:text-text-primary",
+        "hover:bg-(--bg-surface)/(--opacity-hover)"
       )
-    })
-    expect(screen.getByRole("button", { name: "Background" })).toHaveClass("font-semibold")
-    expect(screen.getByRole("button", { name: "Methodology" })).not.toHaveClass("font-semibold")
-
-    act(() => {
-      observerState.callbacks[0]?.(
-        [makeObserverEntry(firstTarget, false)],
-        {} as IntersectionObserver
-      )
-    })
-    expect(screen.getByRole("button", { name: "Background" })).toHaveClass("font-semibold")
-
-    await user.click(screen.getByRole("button", { name: "Methodology" }))
-    expect(screen.getByRole("button", { name: "Background" })).toHaveClass("font-semibold")
-    expect(screen.getByRole("button", { name: "Methodology" })).toHaveClass(
-      "text-(--text-secondary)",
-      "hover:text-text-primary",
-      "hover:bg-(--bg-surface)/(--opacity-hover)"
-    )
-    rerender(<NewsTableOfContents headings={[...HEADINGS]} />)
-    expect(observerState.disconnects[0]).toHaveBeenCalled()
-    document.body.removeChild(firstTarget)
+      rerender(<NewsTableOfContents headings={[...HEADINGS]} />)
+      expect(observerState.disconnects[0]).toHaveBeenCalled()
+    } finally {
+      unmount()
+      firstTarget.remove()
+    }
   })
 
   it("observes only mounted headings with the exact observer options", () => {

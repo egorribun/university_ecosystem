@@ -218,6 +218,7 @@ describe("ForgotPassword page", () => {
         fireEvent.click(screen.getByRole("button", { name: tAuth("forgot.sendLink") }))
         await Promise.resolve()
         await Promise.resolve()
+        await vi.advanceTimersByTimeAsync(1)
       })
 
       const retryButton = screen.getByRole("button", {
@@ -284,6 +285,7 @@ describe("ForgotPassword behaviour details", () => {
       fireEvent.click(sendButton())
       await Promise.resolve()
       await Promise.resolve()
+      await vi.advanceTimersByTimeAsync(1)
     })
   }
 

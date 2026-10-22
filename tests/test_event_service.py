@@ -13,6 +13,7 @@ from app.schemas.dtos.event import (
     EventSearchResultDTO,
 )
 from app.services.event_service import EventService
+from app.services.vector_service import SemanticSearchUnavailableError
 
 
 @pytest.fixture
@@ -23,6 +24,7 @@ def mock_repo():
     repo.db.commit = AsyncMock()
     repo.db.refresh = AsyncMock()
     repo.db.rollback = AsyncMock()
+    repo.count_search_events.return_value = 0
     repo.db.add = MagicMock()
     return repo
 
@@ -90,6 +92,21 @@ async def test_get_events(event_service, mock_repo, mock_vector_service):
 
 
 @pytest.mark.asyncio
+async def test_get_events_keeps_text_search_when_semantic_search_is_unavailable(
+    event_service, mock_repo, mock_vector_service
+):
+    mock_vector_service.get_embedding.side_effect = SemanticSearchUnavailableError(
+        "provider detail must not escape the text-search path"
+    )
+
+    await event_service.get_events(search="campus policy")
+
+    kwargs = mock_repo.search_events.await_args.kwargs
+    assert kwargs["search_query"] == "campus policy"
+    assert kwargs["query_embedding"] is None
+
+
+@pytest.mark.asyncio
 async def test_get_events_issue_token_fails(
     event_service, mock_repo, mock_vector_service
 ):
@@ -129,7 +146,7 @@ async def test_get_events_issue_token_fails(
             event=mock_dto, participant_count=10, user_attendance=mock_attendance_dto
         )
     ]
-    mock_repo.count_upcoming.return_value = 1
+    mock_repo.count_search_events.return_value = 1
 
     with patch(
         "app.services.event_service.attendance_tokens.issue_token",
@@ -412,23 +429,39 @@ async def test_get_event_detail_not_found(event_service, mock_repo):
 
 
 @pytest.mark.asyncio
-async def test_get_my_events(event_service, mock_repo):
+async def test_get_my_events_page(event_service, mock_repo):
     user_id = uuid4()
     mock_event = create_mock_event()
 
     mock_attendance = MagicMock(spec=models.EventAttendance)
     mock_attendance.user_id = user_id
-    mock_event.attendance = [mock_attendance]
-
-    mock_repo.list_user_attended_events.return_value = [mock_event]
+    mock_repo.list_user_attended_events.return_value = [
+        (mock_event, mock_attendance, 4)
+    ]
 
     with patch(
         "app.services.event_service.attendance_tokens.issue_token",
         return_value="mock_token",
     ):
-        res = await event_service.get_my_events(user_id, locale="ru")
-        assert len(res) == 1
-        assert res[0].title == "RU Title"
+        res = await event_service.get_my_events_page(user_id, locale="ru", limit=10)
+        assert len(res.items) == 1
+        assert res.items[0].title == "RU Title"
+        assert res.items[0].is_registered is True
+        assert res.items[0].my_qr_token == "mock_token"
+        assert res.items[0].participant_count == 4
+        assert res.has_more is False
+        assert res.next_cursor is None
+        mock_repo.list_user_attended_events.assert_awaited_once_with(
+            user_id,
+            limit=11,
+            locale="ru",
+            category=None,
+            starts_at_from=None,
+            starts_at_before=None,
+            upcoming_after=None,
+            sort="newest",
+            cursor_key=None,
+        )
 
 
 @pytest.mark.asyncio
@@ -592,8 +625,8 @@ async def test_get_event_detail_refreshes_secret_material(
 
     with (
         patch(
-            "app.services.event_service.attendance_tokens.ensure_secret_material",
-            return_value=True,
+            "app.services.event_service.attendance_tokens.secret_material_updates",
+            return_value={"qr_secret": "secret", "qr_hmac": "repaired"},
         ),
         patch(
             "app.services.event_service.attendance_tokens.issue_token",
@@ -602,7 +635,7 @@ async def test_get_event_detail_refreshes_secret_material(
     ):
         out = await event_service.get_event_detail(event_id, user_id)
 
-    # ensure_secret_material True -> the repo update + commit branch runs.
+    # Explicit repairs are persisted before token issuance.
     mock_repo.update_attendance.assert_awaited_once()
     mock_uow.commit.assert_awaited_once()
     assert out is not None

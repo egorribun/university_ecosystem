@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useParams, useNavigate } from "@tanstack/react-router"
+import { useParams, useNavigate, useRouter } from "@tanstack/react-router"
 import { Info as InfoIcon, ArrowLeft as ArrowBackIcon } from "lucide-react"
 import "@/styles/tokens/events.css"
 import { useAuth } from "@/contexts/AuthContext"
@@ -24,6 +24,7 @@ import { useRelatedEvents } from "@/hooks/useRelatedEvents"
 import { useEventRegistration } from "@/hooks/useEventRegistration"
 import { inferEventCategory } from "@/features/events/categories"
 import { setEventsHeroId } from "@/utils/eventsTransition"
+import type { ResolvedLang } from "@/ssrTheme"
 import { useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
 import { logError } from "@/app/logger"
@@ -41,15 +42,16 @@ import { EventsBackdrop } from "@/components/events/EventsBackdrop"
 export default function EventDetail() {
   const { id } = useParams({ strict: false }) as { id: string }
   const navigate = useNavigate()
+  const router = useRouter()
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
   const { t, i18n } = useTranslation(["events", "common"])
-  const language: "en" | "ru" = i18n.language?.startsWith("en") ? "en" : "ru"
+  const language: ResolvedLang = i18n.language?.startsWith("en") ? "en" : "ru"
 
   /* ── Data fetching ── */
-  const { data: event, isLoading, error } = useEventDetailQuery(id)
+  const { data: event, isLoading, error } = useEventDetailQuery(id, language)
   const { prevId, nextId, prevTitle, nextTitle } = useEventNavigation(id)
 
   /* ── Swipe gesture for prev/next navigation ── */
@@ -119,11 +121,7 @@ export default function EventDetail() {
 
   /* ── Actions ── */
   const handleBack = () => {
-    const canGoBack =
-      window.history?.state &&
-      typeof window.history.state.idx === "number" &&
-      window.history.state.idx > 0
-    if (canGoBack) window.history.back()
+    if (router.history.canGoBack()) router.history.back()
     else navigate({ to: "/events" })
   }
 
@@ -160,29 +158,37 @@ export default function EventDetail() {
 
   /* ── Loading state ── */
   if (isLoading) {
-    return <EventDetailSkeleton isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+    return (
+      <>
+        <SEO title={t("events:pageTitle")} description={t("events:pageDescription")} />
+        <EventDetailSkeleton isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+      </>
+    )
   }
 
   /* ── Error / not found state ── */
   if (error || !event) {
     return (
-      <div className="events-theme aurora-mesh relative min-h-[60vh] flex items-center justify-center px-4">
-        <EventsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
-        <div className="relative z-[1] glass-layer-surface glass-noise rounded-2xl p-8 sm:p-10 max-w-[28rem] text-center space-y-4">
-          <div
-            className="mb-2 inline-flex h-16 w-16 items-center justify-center rounded-full bg-surface-elevated text-text-secondary"
-            aria-hidden="true"
-          >
-            <InfoIcon size={32} />
+      <>
+        <SEO title={t("events:pageTitle")} description={t("events:pageDescription")} />
+        <div className="events-theme aurora-mesh relative min-h-[60vh] flex items-center justify-center px-4">
+          <EventsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+          <div className="relative z-[1] glass-layer-surface glass-noise rounded-2xl p-8 sm:p-10 max-w-[28rem] text-center space-y-4">
+            <div
+              className="mb-2 inline-flex h-16 w-16 items-center justify-center rounded-full bg-surface-elevated text-text-secondary"
+              aria-hidden="true"
+            >
+              <InfoIcon size={32} />
+            </div>
+            <p className="text-lg font-semibold text-text-primary">
+              {t("events:detail.messages.notFound")}
+            </p>
+            <Button variant="glass" onClick={() => navigate({ to: "/events" })}>
+              {t("common:buttons.back")}
+            </Button>
           </div>
-          <p className="text-lg font-semibold text-text-primary">
-            {t("events:detail.messages.notFound")}
-          </p>
-          <Button variant="glass" onClick={() => navigate({ to: "/events" })}>
-            {t("common:buttons.back")}
-          </Button>
         </div>
-      </div>
+      </>
     )
   }
 

@@ -43,6 +43,34 @@ def upgrade() -> None:
         relkind = value.decode("ascii") if isinstance(value, bytes) else str(value)
         return relkind == "p"
 
+    def reset_serial_sequence(table_name):
+        """Align this sequence with the ids copied into its table."""
+        sequence_name = conn.execute(
+            sa.text("SELECT pg_get_serial_sequence(:table_name, 'id')"),
+            {"table_name": table_name},
+        ).scalar_one()
+        if sequence_name is None:
+            raise RuntimeError(f"Missing SERIAL sequence for {table_name}.id")
+
+        max_id = conn.execute(
+            sa.select(sa.func.max(sa.column("id"))).select_from(sa.table(table_name))
+        ).scalar_one()
+        if max_id is None or max_id < 1:
+            set_value, is_called = 1, False
+        else:
+            set_value, is_called = max_id, True
+        conn.execute(
+            sa.text(
+                "SELECT setval(CAST(:sequence_name AS regclass), "
+                ":set_value, :is_called)"
+            ),
+            {
+                "sequence_name": sequence_name,
+                "set_value": set_value,
+                "is_called": is_called,
+            },
+        )
+
     def safe_rename(old_name, new_name):
         """Drops any relation with new_name before renaming old_name to new_name."""
         op.execute(
@@ -119,10 +147,11 @@ def upgrade() -> None:
             FROM data_access_logs_old;
         """
         )
+        reset_serial_sequence("data_access_logs")
         op.execute("DROP TABLE data_access_logs_old")
 
     # --- 2. Notifications ---
-    if "notifications" in existing_tables and not is_partitioned("notifications"):
+    if not is_partitioned("notifications"):
         safe_rename("notifications", "notifications_old")
         op.execute(
             """
@@ -160,6 +189,7 @@ def upgrade() -> None:
         """
         )
 
+        reset_serial_sequence("notifications")
     # --- 3. Notification Deliveries ---
     if "notification_deliveries" in existing_tables and not is_partitioned(
         "notification_deliveries"
@@ -202,6 +232,7 @@ def upgrade() -> None:
             JOIN notifications_old n ON d.notification_id = n.id;
         """
         )
+        reset_serial_sequence("notification_deliveries")
         op.execute("DROP TABLE notification_deliveries_old")
 
     # Cleanup notifications_old only if it exists and we've successfully partitioned
@@ -232,19 +263,17 @@ def downgrade() -> None:
         op.execute(
             "ALTER TABLE notification_deliveries RENAME TO notification_deliveries_part"
         )
-    if "notifications" in existing_tables:
-        if "notifications_part" in existing_tables:
-            op.execute("DROP TABLE notifications_part")
-        op.execute("ALTER TABLE notifications RENAME TO notifications_part")
+    if "notifications_part" in existing_tables:
+        op.execute("DROP TABLE notifications_part")
+    op.execute("ALTER TABLE notifications RENAME TO notifications_part")
     if "data_access_logs" in existing_tables:
         if "data_access_logs_part" in existing_tables:
             op.execute("DROP TABLE data_access_logs_part")
         op.execute("ALTER TABLE data_access_logs RENAME TO data_access_logs_part")
 
     # Recreate notifications
-    if "notifications" in existing_tables:
-        op.execute(
-            """
+    op.execute(
+        """
             CREATE TABLE notifications (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -260,8 +289,8 @@ def downgrade() -> None:
                 read_at TIMESTAMPTZ
             );
         """
-        )
-        op.execute("INSERT INTO notifications SELECT * FROM notifications_part")
+    )
+    op.execute("INSERT INTO notifications SELECT * FROM notifications_part")
 
     # Recreate deliveries
     if "notification_deliveries" in existing_tables:
@@ -315,7 +344,6 @@ def downgrade() -> None:
 
     if "notification_deliveries" in existing_tables:
         op.execute("DROP TABLE notification_deliveries_part")
-    if "notifications" in existing_tables:
-        op.execute("DROP TABLE notifications_part")
+    op.execute("DROP TABLE notifications_part")
     if "data_access_logs" in existing_tables:
         op.execute("DROP TABLE data_access_logs_part")

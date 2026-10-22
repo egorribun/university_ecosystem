@@ -5,12 +5,20 @@ Accepted (Wave 14, 2026-03-23)
 
 ## Context
 
-The university ecosystem shares a single Redis instance across four services: Python backend, Go gateway, Go ws-hub, and Go file-processor. Over time, each service had independently chosen key patterns with no cross-team documentation. This led to:
+At the time this ADR was written, the university ecosystem shared a single Redis instance across four services: Python backend, Go gateway, Go ws-hub, and Go file-processor. Over time, each service had independently chosen key patterns with no cross-team documentation. This led to:
 
 - Silent key conflicts (two services using the same prefix for different purposes)
 - No contract enforcement — one service changing a key format silently breaks another
 - No TTL policy document — unclear when keys expire, causing memory growth surprises
 - Difficulty auditing the blast radius of a Redis key format change
+
+Current deployments separate revocation state from cache and rate-limit traffic. The backend uses `REVOCATION_REDIS_URL` separately from `CACHE_REDIS_URL`; the gateway and ws-hub use
+`REVOCATION_REDIS_URL` separately from their `REDIS_URL`; and file-processor uses
+`FP_REVOCATION_REDIS_URL`. Compose and the Helm chart bind revocation connections
+to the dedicated revocation store. This updates the deployment context, not the
+contract: Decision 1 still requires every key pattern to be registered, and
+Decision 4 still requires an explicit expiry for every key and architecture review
+for any persistent key.
 
 The gateway's session revocation mechanism depends critically on the exact format `revoked:jti:{jti}` matching what the Python backend writes. A format divergence causes tokens to never be revoked at the gateway layer without any error.
 

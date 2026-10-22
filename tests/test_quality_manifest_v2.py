@@ -11,6 +11,9 @@ from types import ModuleType
 
 import pytest
 
+from tests.quality_normalizer_v2_testkit import (
+    make_all_strict_synthetic_contract,
+)
 from tests.symlink_support import DIRECTORY_SYMLINKS_SUPPORTED
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -73,7 +76,9 @@ def _missing() -> dict[str, object]:
 def _valid_manifest_fixture(
     tmp_path: Path,
 ) -> tuple[dict[str, object], dict[str, object], Path]:
-    contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    contract = make_all_strict_synthetic_contract(
+        json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    )
     assert contract["version"] == 2
     tier0_source = tmp_path / "services" / "pkg" / "spicedb" / "client.go"
     tier0_source.parent.mkdir(parents=True, exist_ok=True)
@@ -261,6 +266,15 @@ def _validate(
     )
 
 
+def test_synthetic_manifest_contract_omits_repository_bound_migration_baseline(
+    git_evidence_root: Path,
+) -> None:
+    contract, _, _ = _valid_manifest_fixture(git_evidence_root)
+    tier0 = contract["tier0"]
+    assert isinstance(tier0, dict)
+    assert "legacy_migration_baselines" not in tier0
+
+
 def test_v2_manifest_accepts_go_tier0_na_only_for_zero_floor(
     git_evidence_root: Path,
 ) -> None:
@@ -324,6 +338,8 @@ def test_v2_manifest_rejects_tier0_source_outside_coverage_scope(
 ) -> None:
     validator = _load_validator()
     contract, manifest, manifest_path = _valid_manifest_fixture(git_evidence_root)
+    contract["coverage_scope"]["python"] = ["app"]
+    manifest["coverage_scope"] = copy.deepcopy(contract["coverage_scope"])
     migration_path = git_evidence_root / "alembic/versions/20260825_example.py"
     migration_path.parent.mkdir(parents=True, exist_ok=True)
     migration_path.write_text("revision = '20260825'\n", encoding="utf-8")
@@ -671,7 +687,7 @@ def test_contract_v2_removes_manifest_self_hash_and_declares_all_native_evidence
     assert contract["manifest_path"] == "artifacts/coverage/quality-manifest.json"
     paths = [report["path"] for report in contract["coverage_reports"]]
     assert contract["manifest_path"] not in paths
-    assert len(paths) == len(set(paths)) == 16
+    assert len(paths) == len(set(paths)) == 14
     assert "artifacts/coverage/python/coverage.json" in paths
     assert "frontend/coverage/coverage-final.json" in paths
     assert (
@@ -679,7 +695,7 @@ def test_contract_v2_removes_manifest_self_hash_and_declares_all_native_evidence
             report["format"] == "llvm-cov-branch-json"
             for report in contract["coverage_reports"]
         )
-        == 4
+        == 3
     )
 
 
@@ -704,12 +720,15 @@ def test_validator_cli_uses_explicit_schema_and_artifact_root(
     git_evidence_root: Path,
 ) -> None:
     validator = _load_validator()
-    _, manifest, manifest_path = _valid_manifest_fixture(git_evidence_root)
+    contract, manifest, manifest_path = _valid_manifest_fixture(git_evidence_root)
+    contract_path = git_evidence_root / "quality" / "quality-contract.json"
+    contract_path.parent.mkdir(parents=True, exist_ok=True)
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
 
     exit_code = validator.main(
         [
             "--contract",
-            str(CONTRACT_PATH),
+            str(contract_path),
             "--manifest",
             str(manifest_path),
             "--schema",

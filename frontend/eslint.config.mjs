@@ -278,9 +278,9 @@ export default tseslint.config(
   {
     files: [
       "src/App.tsx",
-      "src/components/Footer.tsx",
-      "src/components/MobileBottomNav.tsx",
-      "src/components/Navbar.tsx",
+      "src/components/layout/Footer.tsx",
+      "src/components/layout/MobileBottomNav.tsx",
+      "src/components/navbar/Navbar.tsx",
       "src/pages/Dashboard.tsx",
       "src/pages/Login.tsx",
       "src/pages/Register.tsx",

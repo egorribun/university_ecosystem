@@ -22,7 +22,7 @@ from typing import Any
 
 SCHEMA_VERSION = 1
 ARTIFACT_KIND = "helm-dependency-archives"
-ARCHIVE_NAMES = ("redis-20.13.4.tgz", "nats-8.5.4.tgz")
+ARCHIVE_NAMES = ("redis-0.1.0.tgz", "nats-2.15.0.tgz")
 ARCHIVE_PATHS = tuple(f"charts/{name}" for name in ARCHIVE_NAMES)
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")

@@ -61,8 +61,7 @@ function sendMetric(endpoint: string, metric: WebVitalMetric): void {
       // error boundary. Only sendBeacon failures need the fetch fallback.
       const blob = new BlobCtor([payload], { type: "application/json" })
       try {
-        navigator.sendBeacon(endpoint, blob)
-        return
+        if (navigator.sendBeacon(endpoint, blob)) return
       } catch (_error) {
         // Fallback to fetch below; ignore transport errors
       }

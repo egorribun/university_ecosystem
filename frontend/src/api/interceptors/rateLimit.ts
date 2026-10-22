@@ -190,17 +190,12 @@ const waitForClientQueueSlotInternal = async (config: QueueConfig): Promise<void
     return
   }
 
-  // Re-enter after a notification instead of keeping an unbounded loop in
-  // the waiter.  Besides making the state transition explicit, this ensures
-  // a cancelled or repeatedly contended request always yields to the event
-  // loop and remains observable to mutation tests.  The recursive call is
-  // reached only after an awaited queue notification, so it cannot grow the
-  // synchronous stack.
-  await waitForClientQueueWaiter(config)
-  // A signal can abort after the waiter is resolved but before the next
-  // acquire.  Check it before consuming the newly available slot.
-  throwIfAborted(config.signal)
-  return waitForClientQueueSlotInternal(config)
+  // Resume after notification, then recheck cancellation and capacity before
+  // consuming a slot.
+  return waitForClientQueueWaiter(config).then(() => {
+    throwIfAborted(config.signal)
+    return waitForClientQueueSlotInternal(config)
+  })
 }
 
 export const waitForClientQueueSlot = async (config: QueueConfig) => {
@@ -266,12 +261,21 @@ export const waitForRateLimitWindow = async (signal?: AbortSignal) => {
   }
 
   await new Promise<void>((resolve, reject) => {
-    const onAbort = () => reject(new DOMException("Aborted", "AbortError"))
-    if (signal) signal.addEventListener("abort", onAbort, { once: true })
-    rateLimitWaiters.push(() => {
-      if (signal) signal.removeEventListener("abort", onAbort)
+    const cleanup = () => {
+      signal?.removeEventListener("abort", onAbort)
+      const waiterIndex = rateLimitWaiters.indexOf(waiter)
+      if (waiterIndex !== -1) rateLimitWaiters.splice(waiterIndex, 1)
+    }
+    const onAbort = () => {
+      cleanup()
+      reject(new DOMException("Aborted", "AbortError"))
+    }
+    const waiter = () => {
+      cleanup()
       resolve()
-    })
+    }
+    rateLimitWaiters.push(waiter)
+    signal?.addEventListener("abort", onAbort, { once: true })
   })
 }
 

@@ -1,12 +1,11 @@
 import uuid
-from datetime import UTC, datetime
-from typing import Annotated, Any
+from datetime import UTC, date, datetime
+from typing import Annotated, Any, Literal
 
 from dishka import FromComponent
 from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -31,6 +30,7 @@ from app.api.validation import (
     ensure_exists,
     raise_conflict,
     raise_forbidden,
+    raise_http_error,
     raise_not_found,
     require_teacher_or_admin,
 )
@@ -46,15 +46,28 @@ from app.deps.cache import etag_matches, format_etag, get_cache
 from app.repositories.event_repository import EventRepository
 from app.schemas import schemas
 from app.schemas.dtos import EventFileDTO
-from app.services.event_service import EventService
+from app.services.content_media import (
+    delete_unreferenced_owned_event_image,
+    event_image_owned_by,
+)
+from app.services.event_service import (
+    EventService,
+    InvalidEventsCursor,
+    InvalidMyEventsCursor,
+    InvalidMyEventsQuery,
+)
 from app.services.file_scanner import scan_for_malware
-from app.services.notification_service import NotificationService
 from app.services.private_attachments import (
+    _path_segments,
     private_attachment_filename,
     private_attachment_response,
     private_attachment_storage_key,
 )
-from app.services.vector_service import VectorService
+from app.services.vector_service import (
+    SEMANTIC_SEARCH_UNAVAILABLE_DETAIL,
+    SemanticSearchUnavailableError,
+    VectorService,
+)
 from app.utils.files import _get_storage_backend, delete_static_file, save_attachment
 
 logger = get_logger(__name__)
@@ -65,13 +78,51 @@ router = APIRouter(prefix="/events", tags=["events"])
 _EVENTS_CACHE_CONTROL = "private, max-age=180"
 
 
-def _validate_id_type(id_val: uuid.UUID | int) -> None:
+def _document_event_detail_lang(
+    _lang: str | None = Query(
+        default=None,
+        alias="lang",
+        description=(
+            "Requested event detail locale. en/ru and regional tags such as ru-RU "
+            "are recognized. Unsupported values are ignored; resolution then "
+            "checks locale/language query aliases, user preference, Accept-Language, "
+            "and finally en."
+        ),
+    ),
+) -> None:
+    """Expose the existing request locale query in OpenAPI without handler input."""
+    return None
+
+
+def _event_attachment_url_matches_resource(
+    storage_url: str,
+    event_id: uuid.UUID | int,
+    filename: str,
+) -> bool:
+    """Require a private storage key to carry the same event identity as its row."""
+    segments = _path_segments(storage_url)
+    expected_directory = f"event_{event_id}"
+    for index, segment in enumerate(segments):
+        if segment != "event_files":
+            continue
+        tail = segments[index + 1 :]
+        if len(tail) == 1 and tail[0] == filename:
+            # Current flat keys embed the owner in the generated filename.
+            return filename.startswith(f"{expected_directory}_")
+        if len(tail) == 2 and tail[1] == filename:
+            # Historical hierarchical keys carry the owner in the directory.
+            return tail[0] == expected_directory
+    return False
+
+
+def _validate_id_type(id_val: uuid.UUID | int, request: Request) -> None:
     if isinstance(id_val, int):
         # Prevent SQLite/Postgres 64-bit signed integer overflow
         if not (-9223372036854775808 <= id_val <= 9223372036854775807):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="ID out of 64-bit integer range.",
+            raise_http_error(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "errors.events.id_out_of_range",
+                resolve_locale(request=request),
             )
 
 
@@ -82,9 +133,8 @@ async def _get_events_list_version(cache: Any) -> str:
     return await events_cache_version.get_version(cache)
 
 
-async def _increment_events_list_version(cache: Any | None) -> None:
-    if cache is not None:
-        await events_cache_version.increment(cache)
+async def _increment_events_list_version(cache: Any | None = None) -> None:
+    await events_cache_version.increment(cache)
 
 
 # Removed obsolete cache key extraction and serialization helpers (now in deps/etag.py)
@@ -101,29 +151,28 @@ async def _increment_events_list_version(cache: Any | None) -> None:
 async def create_event(
     data: schemas.EventCreate,
     request: Request,
-    background: BackgroundTasks,
-    notifications: FromDishka[NotificationService],
     events: FromDishka[EventService],
     user: models.User = Depends(get_current_user_from_dishka),
 ) -> schemas.EventOut:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
+    if data.image_url:
+        # Images attach after creation, through the upload bound to the event id.
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST, "errors.events.image_not_owned", locale
+        )
     try:
-        record = await events.create_event(data, user_id=user.id)
+        record = await events.create_event(data, user_id=user.id, locale=locale)
     except ValueError as exc:
         # TD-W19-01 (audit 2026-03-24 Wave 19): use localized error key instead of
         # raw exception message. Previously str(exc) leaked internal error details.
         logger.warning("Event creation failed: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="errors.events.creation_failed",
-        ) from exc
-    # ``request`` is a required FastAPI parameter and, since the route moved to
-    # Dishka, also the carrier of the container -- it is never absent.  Whether
-    # a cache exists is the real condition, and _increment_events_list_version
-    # owns it.
-    await _increment_events_list_version(getattr(request.app.state, "cache", None))
-    await notifications.dispatch_event_created(record.id, locale, background)
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST, "errors.events.creation_failed", locale
+        )
+    # Invalidate the canonical cache used by cached_endpoint, not app-state
+    # aliases. The version manager handles disabled caches and shared L2.
+    await _increment_events_list_version()
     return events.serialize_event(record, locale)
 
 
@@ -132,6 +181,7 @@ async def create_event(
     response_model=schemas.PaginatedEvents,
     summary="List Events",
     description="Get a paginated list of events.",
+    responses={400: {"description": "Invalid or mismatched events cursor"}},
 )
 @cached_endpoint(
     version_resolver=events_cache_version,
@@ -154,6 +204,7 @@ async def all_events(
         le=100,
         alias="limit",
     ),
+    order: Literal["starts_at_asc", "starts_at_desc"] | None = Query(None),
     cursor: str | None = Query(None, alias="cursor"),
     if_none_match: str | None = Header(default=None),
 ) -> schemas.PaginatedEvents | Response | dict[str, Any]:
@@ -166,21 +217,26 @@ async def all_events(
     - **type**: Filter by event type
     - **location**: Filter by location
     - **is_active**: Filter by active status
+    - **order**: Explicit start-date ASC or DESC, with an ID tie-break.
 
-    Returns events ordered by start date (newest first).
+    Omitting order preserves legacy ASC dates and rank-first search results.
     """
     locale = resolve_locale(request=request, user=user)
 
-    payload = await events.get_events(
-        user_id=user.id,
-        search=search,
-        type=type,
-        location=location,
-        is_active=is_active,
-        locale=locale,
-        limit=limit,
-        cursor=cursor,
-    )
+    try:
+        payload = await events.get_events(
+            user_id=user.id,
+            search=search,
+            type=type,
+            location=location,
+            is_active=is_active,
+            locale=locale,
+            limit=limit,
+            cursor=cursor,
+            order=order,
+        )
+    except InvalidEventsCursor as exc:
+        raise HTTPException(status_code=400, detail="Invalid events cursor") from exc
 
     # TD-01 & PERF-02 (audit 2026-03): Delegated all ETag formatting, 304 Not Modified
     # logic, Redis version checking, and serialization to `deps.etag.cached_endpoint`.
@@ -245,6 +301,63 @@ async def unregister_event(
     return await events.unregister_attendance(data, user_id=user.id)
 
 
+@router.get("/my/page", response_model=schemas.PaginatedEvents)
+@cached_endpoint(
+    version_resolver=events_cache_version,
+    cache_prefix="ue:events:my:page",
+    cache_control=_EVENTS_CACHE_CONTROL,
+)
+@inject
+async def my_events_page(
+    request: Request,
+    response: Response,
+    events: Annotated[EventService, FromComponent(READ_COMPONENT)],
+    user: models.User = Depends(get_current_user_from_dishka),
+    limit: int = Query(20, ge=1, le=100, alias="limit"),
+    cursor: str | None = Query(None, min_length=1, max_length=1024, alias="cursor"),
+    category: Literal[
+        "lecture", "seminar", "conference", "workshop", "social", "sport", "other"
+    ]
+    | None = Query(None),
+    date_range: Literal["today", "week", "month"] | None = Query(None),
+    date_anchor: date | None = Query(None),
+    sort: Literal["newest", "popular", "upcoming"] = Query("newest"),
+    upcoming_after: datetime | None = Query(None),
+    if_none_match: str | None = Header(default=None),
+) -> schemas.PaginatedEvents | Response | Any:
+    locale = resolve_locale(request=request, user=user)
+    if (date_range is None) != (date_anchor is None):
+        raise HTTPException(
+            status_code=422, detail="date_range requires a campus-local date_anchor"
+        )
+    if sort == "upcoming":
+        if upcoming_after is None or upcoming_after.tzinfo is None:
+            raise HTTPException(
+                status_code=422, detail="upcoming sort requires an aware upcoming_after"
+            )
+    elif upcoming_after is not None:
+        raise HTTPException(
+            status_code=422, detail="upcoming_after only applies to upcoming sort"
+        )
+    try:
+        payload = await events.get_my_events_page(
+            user_id=user.id,
+            locale=locale,
+            limit=limit,
+            cursor=cursor,
+            category=category,
+            date_range=date_range,
+            date_anchor=date_anchor,
+            sort=sort,
+            upcoming_after=upcoming_after,
+        )
+    except InvalidMyEventsQuery as exc:
+        raise HTTPException(status_code=422, detail="Invalid My-events query") from exc
+    except InvalidMyEventsCursor as exc:
+        raise HTTPException(status_code=422, detail="Invalid cursor") from exc
+    return payload
+
+
 @router.get("/my", response_model=list[schemas.EventOut])
 @cached_endpoint(
     version_resolver=events_cache_version,
@@ -260,8 +373,7 @@ async def my_events(
     if_none_match: str | None = Header(default=None),
 ) -> list[schemas.EventOut] | Response | Any:
     locale = resolve_locale(request=request, user=user)
-    payload = await events.get_my_events(user_id=user.id, locale=locale)
-    return payload
+    return await events.get_my_events(user_id=user.id, locale=locale)
 
 
 @router.post(
@@ -281,7 +393,7 @@ async def upload_event_file(
     user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> models.EventFile:
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
     event = await db.get(models.Event, event_id)
     ensure_exists(event, "events", locale)
@@ -323,7 +435,7 @@ async def get_event_files(
     user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> list[models.EventFile]:
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
 
     # Authorize against the parent event before touching its attachments.  The
@@ -367,7 +479,7 @@ async def download_event_file(
 ) -> Response:
     """Download an event file after checking the event's view permission."""
 
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
     try:
         private_attachment_storage_key("event", event_id, filename)
@@ -391,6 +503,9 @@ async def download_event_file(
             item
             for item in files
             if private_attachment_filename(item.file_url, "event") == filename
+            and _event_attachment_url_matches_resource(
+                item.file_url, event_id, filename
+            )
         ),
         None,
     )
@@ -419,7 +534,7 @@ async def upload_event_image(
     db: FromDishka[AsyncDatabaseSession],
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, str]:
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
 
     # RZ-003 Fix: Deny unlinked anonymous file uploads to prevent Storage DoS
@@ -473,11 +588,20 @@ async def update_event(
     ):
         raise_forbidden(locale)
 
+    if (
+        data.image_url
+        and data.image_url != q.image_url
+        and not event_image_owned_by(data.image_url, event_id)
+    ):
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST, "errors.events.image_not_owned", locale
+        )
     old_image_url = q.image_url
     if isinstance(event_id, int):
-        raise HTTPException(
-            status_code=400,
-            detail="Integer event IDs are not supported; use a UUID.",
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST,
+            "errors.events.integer_id_unsupported",
+            locale,
         )
     ev_id = event_id
     try:
@@ -486,7 +610,9 @@ async def update_event(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if old_image_url and event_dto.image_url != old_image_url:
-        await delete_static_file(str(old_image_url))
+        await delete_unreferenced_owned_event_image(
+            str(old_image_url), event_id=event_id, db_session=db
+        )
 
     files_result = await db.execute(
         select(models.EventFile).where(models.EventFile.event_id == event_dto.id)
@@ -500,7 +626,7 @@ async def update_event(
     )
     participant_count = participant_count_res.scalar() or 0
 
-    await _increment_events_list_version(getattr(request.app.state, "cache", None))
+    await _increment_events_list_version()
     return events.serialize_event(
         event_dto,
         locale,
@@ -518,7 +644,7 @@ async def delete_event(
     user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, bool]:
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
 
     # RZ-003 (audit 2026-03-04): Replaced require_owner_or_admin() with
@@ -537,11 +663,15 @@ async def delete_event(
         raise_forbidden(locale)
 
     await events.delete_event(event_id)
-    await _increment_events_list_version(getattr(request.app.state, "cache", None))
+    await _increment_events_list_version()
     return {"ok": True}
 
 
-@router.get("/{event_id}", response_model=schemas.EventOut)
+@router.get(
+    "/{event_id}",
+    response_model=schemas.EventOut,
+    dependencies=[Depends(_document_event_detail_lang)],
+)
 @cached_endpoint(
     version_resolver=events_cache_version,
     cache_prefix="ue:events:detail",
@@ -552,11 +682,12 @@ async def get_event(
     event_id: uuid.UUID | int,
     request: Request,
     response: Response,
-    events: Annotated[EventService, FromComponent(READ_COMPONENT)],
+    # Detail may repair legacy QR material, so it must use the primary UoW.
+    events: FromDishka[EventService],
     user: models.User = Depends(get_current_user_from_dishka),
     if_none_match: str | None = Header(default=None),
 ) -> schemas.EventOut | Response | Any:
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
 
     payload = await events.get_event_detail(event_id, user.id, locale=locale)
@@ -575,7 +706,7 @@ async def delete_event_file(
     user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, bool]:
-    _validate_id_type(file_id)
+    _validate_id_type(file_id, request)
     locale = resolve_locale(request=request, user=user)
     ef = await db.get(models.EventFile, file_id)
     if not ef:
@@ -634,20 +765,32 @@ async def semantic_search(
     locale = resolve_locale(request=request)
     normalized_locale = normalize_locale(locale)
 
+    try:
+        embedding = await vector_service.get_embedding(query)
+    except SemanticSearchUnavailableError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=SEMANTIC_SEARCH_UNAVAILABLE_DETAIL,
+        ) from None
+
     # Use ETag based on events list version
     cache = get_cache()
     version = await _get_events_list_version(cache)
-    etag = format_etag(f"semantic_events:{version}:{query}:{limit}:{min_score}")
-    if etag_matches(etag, if_none_match):
-        return Response(status_code=status.HTTP_304_NOT_MODIFIED)
+    etag_value = (
+        f"semantic_events:{version}:{query}:{limit}:{min_score}:{normalized_locale}"
+    )
+    if etag_matches(etag_value, if_none_match):
+        not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
+        not_modified.headers["ETag"] = format_etag(etag_value)
+        _set_language_headers(not_modified, normalized_locale)
+        return not_modified
 
-    embedding = await vector_service.get_embedding(query)
     results = await vector_service.search_similar(
         models.Event, embedding, limit=limit, min_score=min_score
     )
 
     items = [events.serialize_event(item, locale) for item in results]
-    response.headers["ETag"] = etag
+    response.headers["ETag"] = format_etag(etag_value)
     _set_language_headers(response, normalized_locale)
     return items
 

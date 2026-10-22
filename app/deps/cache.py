@@ -4,10 +4,13 @@ import asyncio
 import fnmatch
 import hashlib
 import inspect
+import math
+import re
+import string
 import threading
 import time as time_module
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import timedelta
 from functools import wraps
 from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, cast
 
@@ -34,11 +37,12 @@ except ImportError:
 
     orjson = OrJsonCompat()  # type: ignore[assignment]
 from fastapi.encoders import jsonable_encoder
+from nats.js.errors import NoKeysError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from app.core.config import settings
-from app.core.metrics import record_redis_command
+from app.core.metrics import record_cache_hit, record_cache_miss, record_redis_command
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -53,44 +57,6 @@ class CacheEntry:
     payload: Any
     stored_at: float
     ttl_seconds: float = 0.0  # TTL for probabilistic refresh calculation
-
-    def should_refresh_probabilistic(
-        self,
-        beta: float = 1.0,
-    ) -> bool:
-        """
-        XFetch algorithm for probabilistic early expiration.
-
-        Prevents cache stampede by having some requests refresh
-        the cache slightly before expiration.
-
-        Args:
-            beta: Scaling factor (higher = earlier refresh probability)
-
-        Returns:
-            True if this request should trigger a cache refresh
-        """
-        import math
-        import random
-
-        if self.ttl_seconds <= 0:
-            return False
-
-        now = time_module.time()
-        age = now - self.stored_at
-        remaining = self.ttl_seconds - age
-
-        if remaining <= 0:
-            return True  # Already expired
-
-        # XFetch formula: refresh if now - (ttl * beta * log(random)) > expiry
-        # Simplified: remaining < -beta * ttl * log(random)
-        random_factor = random.random()  # noqa: S311  # nosec B311
-        if random_factor == 0:
-            random_factor = 1e-10
-
-        threshold = -beta * self.ttl_seconds * math.log(random_factor)
-        return remaining < threshold
 
 
 class BaseCache:
@@ -169,13 +135,36 @@ class MemoryCache(BaseCache):
             ttl_seconds=float(effective_ttl),
         )
 
-        # Evict oldest if full
+        self._store_entry(key, entry, expires_at)
+        return entry
+
+    def _store_entry(self, key: str, entry: CacheEntry, expires_at: float) -> None:
         if key not in self._entries and len(self._entries) >= self._max_size:
             self._entries.popitem(last=False)
-
         self._entries[key] = (entry, expires_at)
         self._entries.move_to_end(key)
-        return entry
+
+    def _promote(
+        self, key: str, entry: CacheEntry, source_expires_at: float | None
+    ) -> None:
+        """Copy an L2 entry while retaining its absolute expiration bound."""
+        normalized_payload, _serialized = _normalize_payload(entry.payload)
+        now = time_module.time()
+        if source_expires_at is not None and source_expires_at - now < 1:
+            return
+
+        expires_at = now + self._default_ttl if self._default_ttl else 0.0
+        if source_expires_at is not None:
+            expires_at = (
+                min(expires_at, source_expires_at) if expires_at else source_expires_at
+            )
+        promoted = CacheEntry(
+            etag=entry.etag,
+            payload=normalized_payload,
+            stored_at=entry.stored_at,
+            ttl_seconds=entry.ttl_seconds,
+        )
+        self._store_entry(key, promoted, expires_at)
 
     async def invalidate(self, *keys: str) -> None:
         if not keys:
@@ -250,6 +239,7 @@ class RedisCache(BaseCache):
             client = await self._get_client()
             raw = await client.get(key)
             if raw is None:
+                record_cache_miss("redis")
                 return None
             parsed = orjson.loads(raw)
             etag = str(parsed.get("etag", ""))
@@ -259,8 +249,10 @@ class RedisCache(BaseCache):
             if not stored_at:
                 stored_at = time_module.time()
             if not etag:
+                record_cache_miss("redis")
                 return None
             success = True
+            record_cache_hit("redis")
             return CacheEntry(
                 etag=etag,
                 payload=payload,
@@ -529,6 +521,41 @@ class RedisClusterCache(BaseCache):
         return ttl if ttl > 0 else 0
 
 
+# NATS KV keys must match ``^[-/_=.a-zA-Z0-9]+$``; cache keys such as
+# ``v1:chat:<id>`` do not. Every other byte is escaped as ``=XX`` (lowercase
+# hex), which keeps the mapping reversible, so glob invalidation can decode
+# listed keys back to their cache names before matching.
+_KV_SAFE_CHARS = frozenset(string.ascii_letters + string.digits + "-_/.")
+_KV_ESCAPED_RE = re.compile(r"^(?:[-_/.a-zA-Z0-9]|=[0-9a-f]{2})*$")
+
+
+def _encode_kv_key(key: str) -> str:
+    return "".join(
+        char
+        if char in _KV_SAFE_CHARS
+        else "".join(f"={byte:02x}" for byte in char.encode())
+        for char in key
+    )
+
+
+def _decode_kv_key(stored: str) -> str:
+    if not _KV_ESCAPED_RE.fullmatch(stored):
+        return stored  # raw name, not one of our encodings
+    raw = bytearray()
+    index = 0
+    while index < len(stored):
+        if stored[index] == "=":
+            raw.append(int(stored[index + 1 : index + 3], 16))
+            index += 3
+        else:
+            raw.append(ord(stored[index]))
+            index += 1
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return stored  # escapes that are not UTF-8: keep the raw name
+
+
 class NatsKVCache(BaseCache):
     """NATS Key-Value store cache backend."""
 
@@ -559,7 +586,7 @@ class NatsKVCache(BaseCache):
     async def get(self, key: str) -> CacheEntry | None:
         try:
             kv = await self._get_kv()
-            entry = await kv.get(key)
+            entry = await kv.get(_encode_kv_key(key))
             if entry is None:
                 return None
             parsed = orjson.loads(entry.value)
@@ -590,7 +617,7 @@ class NatsKVCache(BaseCache):
         )
         try:
             kv = await self._get_kv()
-            await kv.put(key, envelope)
+            await kv.put(_encode_kv_key(key), envelope)
         except (
             OSError,
             ConnectionError,
@@ -611,15 +638,17 @@ class NatsKVCache(BaseCache):
             kv = await self._get_kv()
             for key in filtered:
                 if "*" in key:
-                    # NATS KV doesn't support pattern deletion easily without listing.
-                    # For simplicity in this migration, we only support exact keys.
-                    # If patterns are needed, we'd need to use kv.keys() and filter.
-                    keys_to_del = await kv.keys()
+                    # NATS KV lists keys before applying the glob locally.
+                    try:
+                        keys_to_del = await kv.keys()
+                    except NoKeysError:
+                        # An empty listing has no matches; process later keys too.
+                        continue
                     for k in keys_to_del:
-                        if fnmatch.fnmatch(k, key):
+                        if fnmatch.fnmatch(_decode_kv_key(k), key):
                             await kv.delete(k)
                 else:
-                    await kv.delete(key)
+                    await kv.delete(_encode_kv_key(key))
         except (
             OSError,
             ConnectionError,
@@ -639,17 +668,6 @@ class NatsKVCache(BaseCache):
 _cache_key_version: int = 1
 
 
-def set_cache_key_version(version: int) -> None:
-    """Set global cache key version for safe invalidation."""
-    global _cache_key_version
-    _cache_key_version = version
-
-
-def get_cache_key_version() -> int:
-    """Get current cache key version."""
-    return _cache_key_version
-
-
 def versioned_key(key: str) -> str:
     """Create a versioned cache key for safe invalidation."""
     return f"v{_cache_key_version}:{key}"
@@ -663,19 +681,48 @@ class TieredCache(BaseCache):
         self.l2 = l2
 
     async def get(self, key: str) -> CacheEntry | None:
-        # Check L1 first
         entry = await self.l1.get(key)
         if entry is not None:
             return entry
 
-        # Fallback to L2
         entry = await self.l2.get(key)
-        if entry is not None:
-            # Backfill L1
-            await self.l1.set(key, entry.payload)
-            return entry
+        if entry is None:
+            return None
 
-        return None
+        if (
+            isinstance(entry.stored_at, bool)
+            or not isinstance(entry.stored_at, int | float)
+            or isinstance(entry.ttl_seconds, bool)
+            or not isinstance(entry.ttl_seconds, int | float)
+            or entry.ttl_seconds < 0
+        ):
+            return None
+        try:
+            if not math.isfinite(entry.stored_at) or not math.isfinite(
+                entry.ttl_seconds
+            ):
+                return None
+            source_expires_at = (
+                entry.stored_at + entry.ttl_seconds if entry.ttl_seconds else None
+            )
+            if source_expires_at is not None and not math.isfinite(source_expires_at):
+                return None
+        except OverflowError:
+            return None
+
+        if source_expires_at is not None:
+            remaining = source_expires_at - time_module.time()
+            if remaining <= 0:
+                return None
+            if remaining < 1:
+                return entry
+
+        if type(self.l1) is MemoryCache:
+            self.l1._promote(key, entry, source_expires_at)
+        elif source_expires_at is None:
+            # Other backends cannot express an absolute promotion deadline.
+            await self.l1.set(key, entry.payload)
+        return entry
 
     async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:
         # Set in both layers
@@ -772,86 +819,6 @@ def cached(
     return decorator
 
 
-def stale_while_revalidate(
-    prefix: str | None = None,
-    ttl: int | timedelta | None = None,
-    stale_ttl: int | timedelta | None = None,
-    key_builder: Callable[..., str] | None = None,
-) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
-    """
-    Decorator implementing stale-while-revalidate pattern.
-
-    Returns stale data immediately while revalidating in background.
-    Useful for schedule data and other frequently accessed content.
-
-    Args:
-        prefix: Cache key prefix
-        ttl: Fresh TTL - how long data is considered fresh
-        stale_ttl: Total TTL including stale period (must be > ttl)
-        key_builder: Custom key builder function
-    """
-    fresh_seconds = (
-        int(ttl.total_seconds()) if isinstance(ttl, timedelta) else (ttl or 60)
-    )
-    total_seconds = (
-        int(stale_ttl.total_seconds())
-        if isinstance(stale_ttl, timedelta)
-        else (stale_ttl or fresh_seconds * 2)
-    )
-
-    def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
-        _prefix = prefix or func.__name__
-        _revalidation_lock: dict[str, bool] = {}
-
-        @wraps(func)
-        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            cache = get_cache()
-            if not cache.enabled:
-                return await func(*args, **kwargs)
-
-            if key_builder:
-                key = key_builder(*args, **kwargs)
-            else:
-                key_parts = [str(arg) for arg in args]
-                key_parts.extend(f"{k}:{v}" for k, v in sorted(kwargs.items()))
-                key = ":".join(key_parts)
-
-            full_key = f"{_prefix}:{key}"
-            entry = await cache.get(full_key)
-
-            if entry is not None:
-                age = time_module.time() - entry.stored_at
-                is_stale = age > fresh_seconds
-
-                if is_stale and full_key not in _revalidation_lock:
-                    # Mark as revalidating and refresh in background
-                    _revalidation_lock[full_key] = True
-
-                    async def revalidate() -> None:
-                        try:
-                            result = await func(*args, **kwargs)
-                            await cache.set(full_key, result, ttl=total_seconds)
-                        finally:
-                            _revalidation_lock.pop(full_key, None)
-
-                    # Prevent garbage collection of fire-and-forget task
-                    task = asyncio.create_task(revalidate())
-                    _background_tasks.add(task)
-                    task.add_done_callback(_background_tasks.discard)
-
-                # Return stale data immediately
-                return cast(R, entry.payload)
-
-            # Cache miss - compute and store
-            result = await func(*args, **kwargs)
-            await cache.set(full_key, result, ttl=total_seconds)
-            return result
-
-        return wrapper
-
-    return decorator
-
-
 _cache_backend: BaseCache | None = None
 _cache_backend_lock = threading.Lock()  # RZ-33-29: DCL per RZ-30-01
 _background_tasks: set[asyncio.Task[Any]] = set()
@@ -868,13 +835,6 @@ def _normalize_payload(payload: Any) -> tuple[Any, bytes]:
     )
     normalized = orjson.loads(serialized) if serialized else jsonable
     return normalized, serialized
-
-
-def _json_default(value: Any) -> Any:
-    """Fallback serializer for types not natively supported."""
-    if isinstance(value, datetime | date | time):
-        return value.isoformat()
-    return str(value)
 
 
 def create_cache_backend() -> BaseCache:

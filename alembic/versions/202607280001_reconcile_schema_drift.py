@@ -1,4 +1,4 @@
-"""Reconcile schema drift for grades, tenants, vector_chunks tables and tenant_id column cleanup.
+"""Reconcile schema drift while preserving the parent-owned tenant schema.
 
 Revision ID: 202607280001
 Revises: 202607240001
@@ -20,6 +20,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    op.execute("SET LOCAL lock_timeout = '10s'")
+    op.execute("SET LOCAL statement_timeout = '60s'")
+
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     tables = inspector.get_table_names()
@@ -148,18 +151,13 @@ def upgrade() -> None:
         )
         op.create_index("ix_grades_subject", "grades", ["subject"])
 
-    op.execute("ALTER TABLE chats DROP COLUMN IF EXISTS tenant_id CASCADE")
-    op.execute("ALTER TABLE events DROP COLUMN IF EXISTS tenant_id CASCADE")
-    op.execute("ALTER TABLE groups DROP COLUMN IF EXISTS tenant_id CASCADE")
-    op.execute("ALTER TABLE messages DROP COLUMN IF EXISTS tenant_id CASCADE")
-    op.execute("ALTER TABLE news DROP COLUMN IF EXISTS tenant_id CASCADE")
-    op.execute("ALTER TABLE notifications DROP COLUMN IF EXISTS tenant_id CASCADE")
-    op.execute("ALTER TABLE schedule DROP COLUMN IF EXISTS tenant_id CASCADE")
-    op.execute("ALTER TABLE stories DROP COLUMN IF EXISTS tenant_id CASCADE")
-    op.execute("ALTER TABLE users DROP COLUMN IF EXISTS tenant_id CASCADE")
+    # tenant_id state and its FK/index/RLS dependencies belong to the parent
+    # migration; removing the columns here would cascade-delete that state.
 
 
 def downgrade() -> None:
+    op.execute("SET LOCAL lock_timeout = '10s'")
+    op.execute("SET LOCAL statement_timeout = '60s'")
     op.execute("DROP TABLE IF EXISTS grades CASCADE")
     op.execute("DROP TABLE IF EXISTS vector_chunks CASCADE")
-    op.execute("DROP TABLE IF EXISTS tenants CASCADE")
+    # The tenants table belongs to parent revision 202607230001.

@@ -13,7 +13,7 @@
   },
   "sort": {
     "label": "Sort",
-    "newest": "Newest",
+    "newest": "Later dates first",
     "popular": "Popular",
     "upcoming": "Upcoming"
   },
@@ -54,7 +54,8 @@
   },
   "dialogs": {
     "create": {
-      "title": "Create an event"
+      "title": "Create an event",
+      "description": "Add event details and an image for the university calendar."
     }
   },
   "form": {
@@ -78,7 +79,11 @@
       "titleRequired": "Title is required",
       "startRequired": "Start time is required",
       "endRequired": "End time is required",
-      "endsBeforeStarts": "End time must be after the start time"
+      "endsBeforeStarts": "End time must be after the start time",
+      "invalidDateTime": "Enter a valid date and time",
+      "nonexistentCampusTime": "This time does not exist in the campus timezone because clocks move forward. Choose another time.",
+      "ambiguousCampusTime": "This time occurs twice in the campus timezone because clocks move back. Choose another time.",
+      "campusTimezoneUnavailable": "The campus timezone is unavailable. Event dates cannot be submitted."
     }
   },
   "aria": {

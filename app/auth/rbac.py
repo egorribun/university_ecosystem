@@ -67,26 +67,26 @@ _SPICEDB_CALL_TIMEOUT_SECONDS: float = 2.0
 #
 # The cache stores the last-known result for each (user, resource, permission)
 # tuple.  Results are served stale while SpiceDB is unavailable, but for
-# DIFFERENT durations depending on whether the cached result is ALLOW or DENY:
+# DIFFERENT durations depending on whether the cached result is ALLOW or DENY.
+# The admin permission is the exception: a cached ALLOW is never served during
+# an outage. It requires a live decision; cached DENY remains safe.
 #
 #   DENY  (False) results → up to _GRACE_TTL_SECONDS        (60 s)
-#   ALLOW (True)  results → up to _PERMISSION_POSITIVE_TTL_SECONDS (30 s)
+#   ALLOW (True)  results → up to _PERMISSION_POSITIVE_TTL_SECONDS (45 s)
 #
-# ⚠️  OPERATIONAL SLA NOTE:
-#   The effective "tolerable SpiceDB downtime without impact" is only 30 seconds
-#   (the ALLOW TTL), NOT 60 seconds.  After 30 s of outage:
-#     - New requests for resources where the cached result is ALLOW will fail
-#       CLOSED with SpiceDBUnavailableError → HTTP 503.
-#     - Requests where the cached result is DENY continue to be denied (safe).
-#   If the runbook says "SpiceDB can be down for 60 s without user impact",
-#   that is INCORRECT.  Update runbooks to reflect the 30 s ALLOW TTL.
+# Operational recovery bound:
+#   TTL is measured from the cached live decision, not from outage onset.
+#   Ordinary ALLOW results older than 45 s fail closed with
+#   SpiceDBUnavailableError → HTTP 503. Admin ALLOW always needs a live check.
+#   DENY results may remain cached for 60 s. Runbooks should use the exported
+#   SPICEDB_MAX_TOLERABLE_DOWNTIME_SECONDS for the ordinary ALLOW bound.
 #
 # Security trade-off:
 #   1. DENY stale for 60 s is fail-closed — worst case a user is temporarily
 #      blocked from something they were already denied.
-#   2. ALLOW stale for 30 s is the security-sensitive direction — a revoked
-#      permission could be served for up to 30 s after revocation lands in
-#      SpiceDB. Shorter window limits the exposure window.
+#   2. Ordinary ALLOW stale for 45 s is the security-sensitive direction — a
+#      revoked permission may remain usable until the cached live decision
+#      reaches that age. Admin grants never use stale fallback.
 #   3. The alternative (fail-closed on any outage) causes full service
 #      degradation on transient SpiceDB network hiccups.
 #
@@ -319,7 +319,12 @@ class PermissionChecker:
                     if cached_result is True
                     else _GRACE_TTL_SECONDS
                 )
-                if age <= max_ttl:
+                # Admin operations require a live grant, including direct
+                # check_permission callers and tenant/campus admin checks.
+                # Negative cached results remain safe; ordinary read grace is
+                # unchanged. An open circuit follows this same fail-closed path.
+                allow_stale = permission != "admin" or cached_result is False
+                if allow_stale and age <= max_ttl:
                     logger.warning(
                         "SpiceDB unavailable — serving cached permission result "
                         "(%s:%s#%s for %s, age=%.1fs, result=%s)",

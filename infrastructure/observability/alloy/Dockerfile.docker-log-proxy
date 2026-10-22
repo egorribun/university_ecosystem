@@ -1,0 +1,21 @@
+# syntax=docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
+
+FROM golang:1.26.10-alpine3.24@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS builder
+WORKDIR /src
+COPY go.mod go.sum ./
+COPY gen/go ./gen/go
+COPY services/pkg/logging ./services/pkg/logging
+COPY services/pkg/spiffe ./services/pkg/spiffe
+COPY services/gateway/go.mod services/gateway/go.sum ./services/gateway/
+WORKDIR /src/services/gateway
+COPY services/gateway/cmd/docker-log-proxy ./cmd/docker-log-proxy
+RUN GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local CGO_ENABLED=0 go build \
+    -mod=readonly -trimpath -ldflags="-w -s -buildid=" \
+    -o /docker-log-proxy ./cmd/docker-log-proxy
+
+FROM gcr.io/distroless/static-debian12@sha256:20bc6c0bc4d625a22a8fde3e55f6515709b32055ef8fb9cfbddaa06d1760f838
+COPY --from=builder /docker-log-proxy /docker-log-proxy
+USER 65532:65532
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 CMD ["/docker-log-proxy", "--healthcheck"]
+EXPOSE 2375
+ENTRYPOINT ["/docker-log-proxy"]

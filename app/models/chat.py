@@ -86,9 +86,15 @@ class Chat(Base, UUID7PrimaryKeyMixin):
         nullable=True,
         default=None,
     )
+    # Private idempotency ownership for the synthetic live-demo seeder. This
+    # value is deliberately absent from DTOs and public chat responses.
+    demo_seed_key: Mapped[str | None] = mapped_column(
+        String(96), nullable=True, default=None
+    )
 
     __table_args__ = (
         CheckConstraint("chat_type IN ('dm', 'group')", name="ck_chats_chat_type"),
+        UniqueConstraint("demo_seed_key", name="uq_chats_demo_seed_key"),
     )
 
     # RZ-14-01 (audit 2026-03-23): Changed lazy="selectin" → lazy="noload".

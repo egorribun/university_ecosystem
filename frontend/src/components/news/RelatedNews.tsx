@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { getMoscowDate } from "@/utils/date"
 import { NewsCategoryBadge } from "./NewsCategoryBadge"
-import { inferCategory } from "@/features/news/categories"
+import { inferNewsCategory } from "@/features/news/categories"
 
 interface RelatedNewsProps {
   items: NewsItem[]
@@ -40,7 +40,7 @@ function RelatedCard({ item, language }: { item: NewsItem; language: string }) {
   const { t } = useTranslation(["news", "common"])
 
   const title = localizeField(item.title, item.title_en, language)
-  const category = inferCategory(item.title, item.content)
+  const category = inferNewsCategory(item)
   const dateLabel = item.created_at ? getMoscowDate(item.created_at) : ""
 
   return (

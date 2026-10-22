@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import json
 import uuid
 from collections import OrderedDict
@@ -25,6 +26,8 @@ if TYPE_CHECKING:
     from app.schemas.chat import PresenceStatus
 
 from redis.asyncio import Redis
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.core.config import settings
 from app.core.database import async_session
@@ -143,6 +146,8 @@ class PresencePubSub:
                 ConnectionError,
                 TimeoutError,
                 OSError,
+                RedisConnectionError,
+                RedisTimeoutError,
             ) as exc:  # RZ-22-01: narrowed — Redis connection errors
                 logger.warning(
                     "Failed to share Redis client for presence pub/sub: %s", exc
@@ -178,8 +183,8 @@ class PresencePubSub:
         if not self._redis:
             return
         ps = self._redis.pubsub()
-        await ps.subscribe(settings.presence_pubsub_channel)
         try:
+            await ps.subscribe(settings.presence_pubsub_channel)
             async for message in ps.listen():
                 if message.get("type") != "message":
                     continue
@@ -187,6 +192,9 @@ class PresencePubSub:
                 try:
                     payload = json.loads(raw) if raw else {}
                 except json.JSONDecodeError:
+                    logger.warning("Invalid presence payload received from pubsub")
+                    continue
+                if not isinstance(payload, dict):
                     logger.warning("Invalid presence payload received from pubsub")
                     continue
                 if payload.get("instance_id") == _PRESENCE_INSTANCE_ID:
@@ -200,8 +208,14 @@ class PresencePubSub:
             ConnectionError,
             TimeoutError,
             OSError,
+            RedisConnectionError,
+            RedisTimeoutError,
         ) as exc:  # RZ-22-01: narrowed — Redis pub/sub errors
             logger.error("Presence Pub/Sub listener error: %s", exc)
+            if ps:
+                close_result = ps.close()
+                if inspect.isawaitable(close_result):
+                    await close_result
 
 
 async def _handle_presence_pubsub(payload: dict[str, Any]) -> None:
@@ -233,7 +247,7 @@ async def _handle_presence_pubsub(payload: dict[str, Any]) -> None:
     last_seen_raw = payload.get("last_seen")
     try:
         last_seen = datetime.fromisoformat(last_seen_raw) if last_seen_raw else None
-    except ValueError:
+    except (TypeError, ValueError):
         last_seen = None
 
     await manager.broadcast_presence(

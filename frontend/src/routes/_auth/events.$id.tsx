@@ -3,6 +3,7 @@ import { lazy, Suspense } from "react"
 
 import { eventDetailQueryOptions } from "@/api/hooks/events"
 import { FeatureErrorBoundary } from "@/components/error"
+import { resolveLoaderLang } from "@/utils/loaderLang"
 
 const EventDetail = lazy(() => import("@/pages/EventDetail"))
 
@@ -32,8 +33,9 @@ export const Route = createFileRoute("/_auth/events/$id")({
     // Promise.allSettled — best-effort prefetch; backend-down doesn't
     // crash the loader → no NO_FCP. EventDetail's own useQuery refetches
     // on mount with normal error handling (cached or error UI).
+    const language = resolveLoaderLang()
     await Promise.allSettled([
-      context.queryClient.ensureQueryData(eventDetailQueryOptions(params.id)),
+      context.queryClient.ensureQueryData(eventDetailQueryOptions(params.id, language)),
     ])
   },
   component: EventDetailRoute,

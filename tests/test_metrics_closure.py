@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -435,13 +436,73 @@ def test_metrics_route_and_router_fallbacks() -> None:
     request.scope["route"] = SimpleNamespace(path="/items")
     assert metrics._resolve_path_template(request) == "/items"
     request.scope["route"] = SimpleNamespace(path="", owner=None)
-    assert metrics._resolve_path_template(request) == "/raw"
+    assert metrics._resolve_path_template(request) == "unmatched"
     request.scope["route"] = SimpleNamespace(
         path=None, owner=SimpleNamespace(prefix="/owner")
     )
     assert metrics._resolve_router_label(request) == "/owner"
     request.scope["route"] = SimpleNamespace(path=None, owner=None)
     assert metrics._resolve_router_label(request) == "root"
+
+
+def test_request_metrics_use_route_templates_and_bound_unmatched_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core import metrics
+
+    class MetricSink:
+        def __init__(self) -> None:
+            self.label_sets: list[dict[str, str]] = []
+
+        def labels(self, **labels: str) -> MetricSink:
+            self.label_sets.append(labels)
+            return self
+
+        def inc(self) -> None:
+            pass
+
+        def observe(self, _value: float) -> None:
+            pass
+
+    request_count = MetricSink()
+    request_duration = MetricSink()
+    router_duration = MetricSink()
+    router_errors = MetricSink()
+    monkeypatch.setattr(metrics, "_REQUEST_COUNT", request_count)
+    monkeypatch.setattr(metrics, "_REQUEST_DURATION", request_duration)
+    monkeypatch.setattr(metrics, "_ROUTER_DURATION", router_duration)
+    monkeypatch.setattr(metrics, "_ROUTER_ERRORS", router_errors)
+
+    app = FastAPI()
+    app.add_middleware(metrics.PrometheusRequestMetricsMiddleware)
+
+    @app.get("/items/{item_id}")
+    async def get_item(item_id: str) -> dict[str, str]:
+        return {"item_id": item_id}
+
+    app.routes[-1].owner = SimpleNamespace(prefix="/items")
+
+    with TestClient(app) as client:
+        assert client.get("/items/alpha").status_code == 200
+        assert client.get("/items/beta").status_code == 200
+        assert client.get("/missing/alpha").status_code == 404
+        assert client.get("/missing/beta").status_code == 404
+
+    expected_paths = [
+        "/items/{item_id}",
+        "/items/{item_id}",
+        "unmatched",
+        "unmatched",
+    ]
+    assert [labels["path"] for labels in request_count.label_sets] == expected_paths
+    assert [labels["path"] for labels in request_duration.label_sets] == expected_paths
+    assert [labels["path"] for labels in router_duration.label_sets] == expected_paths
+    assert [labels["router"] for labels in router_duration.label_sets] == [
+        "/items",
+        "/items",
+        "root",
+        "root",
+    ]
 
 
 def test_metric_recorders_swallow_backend_errors() -> None:
@@ -1071,3 +1132,65 @@ def test_configure_metrics_credential_and_otel_branches(monkeypatch) -> None:
     ):
         metrics.configure_metrics(app)
     assert app.state._metrics_configured is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tiered", [False, True], ids=["direct", "tiered"])
+@pytest.mark.parametrize("available", [False, True], ids=["down", "healthy"])
+async def test_cache_metrics_probe_the_actual_redis_layer(tiered, available):
+    from app.core import metrics
+    from app.deps import cache as cache_module
+
+    redis_backend = cache_module.RedisCache(
+        url="redis://redis.invalid:6379/0",
+        default_ttl=60,
+    )
+    backend = (
+        cache_module.TieredCache(
+            cache_module.MemoryCache(default_ttl=60),
+            redis_backend,
+        )
+        if tiered
+        else redis_backend
+    )
+    client = AsyncMock()
+    client.ping.return_value = True
+    client.info.return_value = {"used_memory": 12}
+    client.dbsize.return_value = 4
+    if not available:
+        client.ping.side_effect = OSError("synthetic Redis outage")
+
+    entries = MagicMock()
+    memory = MagicMock()
+    health = MagicMock()
+    with (
+        patch.object(cache_module, "get_cache", return_value=backend),
+        patch.object(
+            redis_backend,
+            "_get_client",
+            new=AsyncMock(return_value=client),
+        ) as get_client,
+        patch.object(metrics, "_CACHE_ENTRIES", entries),
+        patch.object(metrics, "_CACHE_MEMORY_BYTES", memory),
+        patch.object(metrics, "_REDIS_HEALTH", health),
+        patch.object(metrics, "record_redis_command") as record_command,
+    ):
+        await metrics._record_cache_metrics()
+
+    get_client.assert_awaited_once_with()
+    client.ping.assert_awaited_once_with()
+    health.set.assert_called_once_with(1 if available else 0)
+    if available:
+        client.info.assert_awaited_once_with(section="memory")
+        client.dbsize.assert_awaited_once_with()
+        entries.set.assert_called_once_with(4.0)
+        memory.set.assert_called_once_with(12.0)
+        record_command.assert_called_once()
+        assert record_command.call_args.args[0] == "ping"
+        assert record_command.call_args.kwargs == {"success": True}
+    else:
+        client.info.assert_not_awaited()
+        client.dbsize.assert_not_awaited()
+        entries.set.assert_not_called()
+        memory.set.assert_not_called()
+        record_command.assert_called_once_with("ping", 0.0, success=False)

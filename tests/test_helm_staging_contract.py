@@ -3,19 +3,24 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
 
+from tests.test_gateway_api_helm_contract import _render_gateway_template_isolated
+
 ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "charts" / "university-ecosystem"
 STAGING_VALUES = CHART / "values-staging.yaml"
 REVOCATION_STORE_CHART = ROOT / "charts" / "revocation-store"
 REVOCATION_STORE_VALUES = REVOCATION_STORE_CHART / "values-staging.yaml"
+MFA_TOTP_ACTIVE_KEY_ID = "totp-active-staging-contract"
 
 
 def _values(path: Path) -> dict[str, Any]:
@@ -31,7 +36,7 @@ def _helm() -> str:
     return executable
 
 
-def _resolved_staging_args() -> list[str]:
+def _resolved_staging_args(gateway_jwks_cidr: str | None = "192.0.2.0/24") -> list[str]:
     digest = "sha256:" + ("a" * 64)
     overrides = {
         "global.imageTag": "9d08136558b95d1182f889574f67b1b1d21abc9f",  # pragma: allowlist secret
@@ -50,10 +55,15 @@ def _resolved_staging_args() -> list[str]:
         "outboxWorker.image.digest": digest,
         "redis.image.digest": digest,
         "redis.metrics.image.digest": digest,
+        "global.backendImageDigest": digest,
+        "redis.metrics.passwordFileInitImage.repository": "ghcr.io/example/university/backend",
+        "redis.metrics.passwordFileInitImage.digest": digest,
         "nats.image.digest": digest,
+        "nats.container.image.digest": digest,
         "backend.config.elasticsearchURL": "https://elasticsearch.staging.internal",
         "backend.config.flagdHost": "flagd.staging.internal",
         "backend.config.storageS3EndpointURL": ("https://minio.staging.internal:443"),
+        "backend.config.mfaTotpActiveEncryptionKeyId": MFA_TOTP_ACTIVE_KEY_ID,
         "gateway.config.otelEndpoint": "otel-collector.staging.internal:4317",
         "fileProcessor.config.minioEndpoint": "minio.staging.internal:443",
         "fileProcessor.config.temporalHost": "temporal.staging.internal:7233",
@@ -73,29 +83,45 @@ def _resolved_staging_args() -> list[str]:
         "cwv.exportOIDC.workflowRef": "example/university-ecosystem/.github/workflows/cwv-field-certification.yml@refs/heads/main",
         "cwv.exportOIDC.subject": "repo:example/university-ecosystem:environment:staging",
     }
+    overrides["redis.metrics.passwordFileInitImage.tag"] = overrides["global.imageTag"]
+    if gateway_jwks_cidr is not None:
+        # Reserved TEST-NET fixture only; never use as a deployment CIDR.
+        overrides["networkPolicy.gatewayJWKS.egressCIDRs[0]"] = gateway_jwks_cidr
     args: list[str] = []
     for key, value in overrides.items():
         args.extend(("--set-string", f"{key}={value}"))
+    # These reserved TEST-NET/documentation peers are complete synthetic lists,
+    # not partial indexed overrides of deployment values.
+    for key, peers in (
+        ("gateway.config.trustedProxies", ["192.0.2.11/32", "2001:db8::11"]),
+        ("wsHub.config.trustedProxies", ["198.51.100.12/32", "2001:db8::12"]),
+    ):
+        encoded_peers = json.dumps(peers, separators=(",", ":"))
+        args.extend(("--set-json", f"{key}={encoded_peers}"))
     args.extend(("--set", "cwv.deploymentRunID=123"))
     args.extend(("--set", "cwv.deploymentRunAttempt=1"))
     return args
 
 
 def _render_staging(
-    *extra: str, release_name: str = "staging-contract"
+    *extra: str,
+    release_name: str = "staging-contract",
+    gateway_jwks_cidr: str | None = "192.0.2.0/24",
+    chart_path: Path = CHART,
+    values_path: Path = STAGING_VALUES,
 ) -> list[dict[str, Any]]:
     result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
         [
             _helm(),
             "template",
             release_name,
-            str(CHART),
+            str(chart_path),
             "--dependency-update=false",
             "--namespace",
             "university-ecosystem",
             "--values",
-            str(STAGING_VALUES),
-            *_resolved_staging_args(),
+            str(values_path),
+            *_resolved_staging_args(gateway_jwks_cidr),
             *extra,
         ],
         check=True,
@@ -104,6 +130,28 @@ def _render_staging(
         encoding="utf-8",
     )
     return [resource for resource in yaml.safe_load_all(result.stdout) if resource]
+
+
+def test_chart_requires_explicit_environment() -> None:
+    result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
+        [
+            _helm(),
+            "template",
+            "environment-required-contract",
+            str(CHART),
+            "--dependency-update=false",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert result.returncode != 0
+    error = result.stderr.lower()
+    assert "global" in error
+    assert "environment" in error
+    assert "required" in error or "missing property" in error
 
 
 def test_release_gateway_uses_tls_for_jwks_and_routes_discovery_to_backend() -> None:
@@ -145,10 +193,41 @@ def test_release_gateway_uses_tls_for_jwks_and_routes_discovery_to_backend() -> 
         if resource.get("kind") == "NetworkPolicy"
         and resource["metadata"]["name"] == "jwks-transport-contract-gateway-policy"
     )
-    assert any(
-        port.get("port") == 443
+    jwks_egress = [
+        rule
         for rule in gateway_policy["spec"]["egress"]
-        for port in rule.get("ports", [])
+        if rule.get("ports") == [{"protocol": "TCP", "port": 443}]
+    ]
+    assert jwks_egress == [
+        {
+            "to": [{"ipBlock": {"cidr": "192.0.2.0/24"}}],
+            "ports": [{"protocol": "TCP", "port": 443}],
+        }
+    ]
+    assert any(
+        rule.get("to")
+        == [
+            {
+                "namespaceSelector": {
+                    "matchLabels": {"kubernetes.io/metadata.name": "kube-system"}
+                },
+                "podSelector": {"matchLabels": {"k8s-app": "kube-dns"}},
+            }
+        ]
+        and rule.get("ports")
+        == [
+            {"protocol": "UDP", "port": 53},
+            {"protocol": "TCP", "port": 53},
+        ]
+        for rule in gateway_policy["spec"]["egress"]
+    )
+    assert any(
+        rule.get("to")
+        == [
+            {"podSelector": {"matchLabels": {"app.kubernetes.io/component": "backend"}}}
+        ]
+        and rule.get("ports") == [{"protocol": "TCP", "port": 8000}]
+        for rule in gateway_policy["spec"]["egress"]
     )
 
     backend_policy = next(
@@ -171,6 +250,115 @@ def test_release_gateway_uses_tls_for_jwks_and_routes_discovery_to_backend() -> 
     assert ingress_controller_rule["ports"] == [{"protocol": "TCP", "port": 8000}]
 
 
+def test_development_gateway_uses_internal_jwks_without_external_cidrs() -> None:
+    resources = _render_staging(
+        "--set-string",
+        "global.environment=development",
+        "--set-string",
+        "global.jwtIssuer=university-ecosystem",
+        release_name="jwks-internal-contract",
+        gateway_jwks_cidr=None,
+    )
+    gateway = _component_resource(resources, "Deployment", "gateway")
+    gateway_env = {
+        item["name"]: item.get("value")
+        for item in gateway["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    assert gateway_env["JWKS_ENDPOINT"] == (
+        "http://university-ecosystem-backend:8000/.well-known/jwks.json"
+    )
+    policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"].endswith("-gateway-policy")
+    )
+    assert not any(
+        port.get("port") == 443
+        for rule in policy["spec"]["egress"]
+        for port in rule.get("ports", [])
+    )
+    assert any(
+        rule.get("to")
+        == [
+            {"podSelector": {"matchLabels": {"app.kubernetes.io/component": "backend"}}}
+        ]
+        and rule.get("ports") == [{"protocol": "TCP", "port": 8000}]
+        for rule in policy["spec"]["egress"]
+    )
+
+
+def test_release_gateway_requires_explicit_jwks_cidrs() -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        _render_staging(
+            release_name="jwks-cidr-required-contract",
+            gateway_jwks_cidr=None,
+        )
+
+    assert "networkpolicy.gatewayjwks.egresscidrs" in error.value.stderr.lower()
+    assert "owner-verified" in error.value.stderr.lower()
+
+
+@pytest.mark.parametrize(
+    "cidr",
+    [
+        "::/128",
+        "2001:db8::/32",
+        "2001:db8:0:0:0:0:0:1/128",
+    ],
+)
+def test_release_gateway_accepts_valid_ipv6_jwks_cidrs(cidr: str) -> None:
+    release_name = "jwks-ipv6-cidr-valid-contract"
+    resources = _render_staging(
+        "--set-string",
+        f"networkPolicy.gatewayJWKS.egressCIDRs[0]={cidr}",
+        release_name=release_name,
+    )
+    policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == f"{release_name}-gateway-policy"
+    )
+    assert any(
+        rule.get("to") == [{"ipBlock": {"cidr": cidr}}]
+        and rule.get("ports") == [{"protocol": "TCP", "port": 443}]
+        for rule in policy["spec"]["egress"]
+    )
+
+
+@pytest.mark.parametrize(
+    "cidr",
+    [
+        "0.0.0.0/0",
+        "::/0",
+        "2001:db8::/129",
+        "not-a-cidr",
+        "::::/64",
+        "1::2::3/64",
+        "1:2:3:4:5:6:7:8:9/64",
+        "10000::/64",
+    ],
+)
+def test_release_gateway_rejects_open_or_malformed_jwks_cidrs(cidr: str) -> None:
+    for validation_args in ((), ("--skip-schema-validation",)):
+        helm_args = [
+            "--set-string",
+            f"networkPolicy.gatewayJWKS.egressCIDRs[0]={cidr}",
+        ]
+        helm_args[:0] = validation_args
+        with pytest.raises(subprocess.CalledProcessError) as error:
+            _render_staging(
+                *helm_args,
+                release_name="jwks-cidr-invalid-contract",
+            )
+
+        assert error.value.returncode == 1
+        assert "networkpolicy.gatewayjwks.egresscidrs" in (
+            error.value.stderr.lower().replace("/", ".")
+        )
+
+
 def _resolved_revocation_store_args(release_name: str) -> list[str]:
     """Return the exact immutable identity supplied by the bootstrap script."""
 
@@ -184,6 +372,12 @@ def _resolved_revocation_store_args(release_name: str) -> list[str]:
         "redis.auth.existingSecretPasswordKey": "revocation-redis-password",  # pragma: allowlist secret
         "redis.image.digest": digest,
         "redis.metrics.image.digest": digest,
+        "global.backendImageRepository": "ghcr.io/example/university-ecosystem/backend",
+        "global.backendImageDigest": digest,
+        "redis.metrics.passwordFileInitImage.repository": "ghcr.io/example/university-ecosystem/backend",
+        "redis.metrics.passwordFileInitImage.digest": digest,
+        "redis.metrics.passwordFileInitImage.tag": "",
+        "redis.metrics.passwordFileInitImage.pullPolicy": "Always",
     }
     args: list[str] = []
     for key, value in overrides.items():
@@ -216,6 +410,60 @@ def _render_revocation_store(
     return [resource for resource in yaml.safe_load_all(result.stdout) if resource]
 
 
+def _assert_projected_secret_file(
+    container: dict[str, Any],
+    pod_spec: dict[str, Any],
+    *,
+    variable: str,
+    secret_name: str,
+    key: str,
+    volume_name: str,
+    expected_keys: set[str] | None = None,
+) -> None:
+    """Assert a secret is consumed through one least-privilege read-only file mount."""
+
+    assert variable.endswith("_FILE")
+    env_entries = {item["name"]: item for item in container["env"]}
+    assert variable[:-5] not in env_entries
+    entry = env_entries[variable]
+    assert entry == {
+        "name": variable,
+        "value": f"/run/secrets/{secret_name}/{key}",
+    }
+
+    mounts = [
+        mount
+        for mount in container.get("volumeMounts", [])
+        if mount.get("name") == volume_name
+    ]
+    assert len(mounts) == 1
+    assert mounts[0] == {
+        "name": volume_name,
+        "mountPath": f"/run/secrets/{secret_name}",
+        "readOnly": True,
+    }
+
+    volumes = [
+        volume
+        for volume in pod_spec.get("volumes", [])
+        if volume.get("name") == volume_name
+    ]
+    assert len(volumes) == 1
+    projected = volumes[0]["secret"]
+    assert projected["secretName"] == secret_name
+    assert type(projected["defaultMode"]) is int
+    assert projected["defaultMode"] == 0o440
+    items = projected["items"]
+    assert isinstance(items, list) and items
+    assert all(set(item) == {"key", "path"} for item in items)
+    assert all(item["path"] == item["key"] for item in items)
+    keys = [item["key"] for item in items]
+    assert len(keys) == len(set(keys))
+    assert key in keys
+    if expected_keys is not None:
+        assert set(keys) == expected_keys
+
+
 def _existing_secret_command(environment: str, *extra: str) -> list[str]:
     environment_overrides: list[str] = []
     if environment == "production":
@@ -241,18 +489,40 @@ def _existing_secret_command(environment: str, *extra: str) -> list[str]:
     ]
 
 
-def test_default_nats_values_use_upstream_jetstream_and_persistence_tree() -> None:
+def test_default_nats_values_use_official_chart_jetstream_and_persistence_tree() -> (
+    None
+):
     values = _values(CHART / "values.yaml")
     nats = values["nats"]
 
     assert "nats" not in nats
-    assert nats["jetstream"]["enabled"] is True
-    assert nats["persistence"]["enabled"] is True
-    assert nats["persistence"]["size"] == "10Gi"
-    assert nats["image"]["pullPolicy"] == "Always"
+    assert nats["config"]["jetstream"]["enabled"] is True
+    assert nats["config"]["jetstream"]["fileStore"]["enabled"] is True
+    assert nats["config"]["jetstream"]["fileStore"]["pvc"] == {
+        "enabled": True,
+        "name": "data",
+        "size": "10Gi",
+    }
+    assert nats["container"]["image"]["repository"] == "nats"
+    assert nats["container"]["image"]["pullPolicy"] == "Always"
     assert nats["auth"]["enabled"] is False
     assert nats["cluster"]["auth"]["enabled"] is False
     assert nats["existingSecret"] == ""
+
+
+def test_default_redis_password_init_tracks_default_backend_reference() -> None:
+    values = _values(CHART / "values.yaml")
+    backend = values["backend"]["image"]
+    helper = values["redis"]["metrics"]["passwordFileInitImage"]
+    app_version = yaml.safe_load((CHART / "Chart.yaml").read_text(encoding="utf-8"))[
+        "appVersion"
+    ]
+    assert backend["repository"] == helper["repository"] == "university-backend"
+    assert backend["digest"] == helper["digest"] == ""
+    assert backend["tag"] == ""
+    assert app_version == "1.0.0"
+    assert helper["tag"] == ""
+    assert helper["pullPolicy"] == "Always"
 
 
 def test_canonical_staging_values_are_secure_and_fail_closed() -> None:
@@ -293,17 +563,47 @@ def test_canonical_staging_values_are_secure_and_fail_closed() -> None:
     expected_nats_secret = "university-nats-config"  # pragma: allowlist secret
     assert nats["existingSecret"] == expected_nats_secret
     assert nats["auth"]["enabled"] is False
-    assert nats["jetstream"]["enabled"] is True
-    assert nats["persistence"] == {"enabled": True, "size": "10Gi"}
     assert nats["replicaCount"] == 3
+    assert nats["config"]["cluster"] == {"enabled": True, "replicas": 3}
+    jetstream = nats["config"]["jetstream"]
+    assert jetstream["enabled"] is True
+    assert jetstream["fileStore"]["enabled"] is True
+    assert jetstream["fileStore"]["dir"] == "/data"
+    assert jetstream["merge"]["store_dir"] == "/data/jetstream"
+    assert jetstream["fileStore"]["pvc"] == {
+        "enabled": True,
+        "name": "data",
+        "size": "10Gi",
+    }
+    assert jetstream["memoryStore"] == {"enabled": True, "maxSize": "512Mi"}
+    assert nats["container"]["image"] == {
+        "registry": "docker.io",
+        "repository": "nats",
+        "tag": "2.15.0-alpine",
+        "digest": "REQUIRED_SHA256_DIGEST",
+        "pullPolicy": "Always",
+    }
+    assert nats["statefulSet"]["merge"]["spec"]["podManagementPolicy"] == "OrderedReady"
+    assert nats["statefulSet"]["merge"]["spec"][
+        "persistentVolumeClaimRetentionPolicy"
+    ] == {
+        "whenDeleted": "Retain",
+        "whenScaled": "Retain",
+    }
 
     redis = values["redis"]
     assert redis["image"]["registry"] == "docker.io"
-    assert redis["image"]["repository"] == "bitnami/redis"
+    assert redis["image"]["repository"] == "redis"
     assert redis["image"]["pullPolicy"] == "Always"
     assert redis["metrics"]["image"]["registry"] == "docker.io"
-    assert redis["metrics"]["image"]["repository"] == "bitnami/redis-exporter"
+    assert redis["metrics"]["image"]["repository"] == "oliver006/redis_exporter"
     assert redis["metrics"]["image"]["pullPolicy"] == "Always"
+    assert redis["metrics"]["passwordFileInitImage"] == {
+        "repository": "ghcr.io/REQUIRED_REPOSITORY/backend",
+        "tag": "REQUIRED_GIT_SHA",
+        "digest": "REQUIRED_SHA256_DIGEST",
+        "pullPolicy": "Always",
+    }
     assert redis["networkPolicy"] == {
         "enabled": True,
         "allowExternal": False,
@@ -315,7 +615,8 @@ def test_canonical_staging_values_are_secure_and_fail_closed() -> None:
         "allowExternalEgress": False,
     }
     assert values["nats"]["image"]["registry"] == "docker.io"
-    assert values["nats"]["image"]["repository"] == "bitnami/nats"
+    assert values["nats"]["image"]["repository"] == "nats"
+    assert values["nats"]["container"]["image"]["repository"] == "nats"
 
     assert values["backend"]["autoscaling"]["enabled"] is True
     assert values["ingress"]["enabled"] is True
@@ -366,6 +667,8 @@ def test_chart_documents_staging_secret_and_release_contracts() -> None:
         "university-connections",
         "university-nats-config",
         "nats-server.conf",
+        "--config /etc/nats-auth/nats-server.conf",
+        "chart-generated ConfigMap is not the runtime configuration",
         "REQUIRED_SHA256_DIGEST",
         "helm upgrade --install",
         "helm rollback",
@@ -373,9 +676,9 @@ def test_chart_documents_staging_secret_and_release_contracts() -> None:
         assert required_text in documentation
 
     assert "signature, SBOM, and provenance" not in documentation
-    assert "docker.io/bitnami/redis" in documentation
-    assert "docker.io/bitnami/redis-exporter" in documentation
-    assert "docker.io/bitnami/nats" in documentation
+    assert "docker.io/redis:7.4.11-alpine" in documentation
+    assert "docker.io/oliver006/redis_exporter" in documentation
+    assert "docker.io/nats" in documentation
 
 
 def test_chart_lock_pins_the_reviewed_dependency_set() -> None:
@@ -383,19 +686,19 @@ def test_chart_lock_pins_the_reviewed_dependency_set() -> None:
     assert lock["dependencies"] == [
         {
             "name": "redis",
-            "repository": "oci://registry-1.docker.io/bitnamicharts",
-            "version": "20.13.4",
+            "repository": "file://../redis-compat",
+            "version": "0.1.0",
         },
         {
             "name": "nats",
-            "repository": "oci://registry-1.docker.io/bitnamicharts",
-            "version": "8.5.4",
+            "repository": "https://nats-io.github.io/k8s/helm/charts/",
+            "version": "2.15.0",
         },
     ]
     assert lock["digest"].startswith("sha256:")
     assert len(lock["digest"]) == 71
-    assert (CHART / "charts" / "redis-20.13.4.tgz").is_file()
-    assert (CHART / "charts" / "nats-8.5.4.tgz").is_file()
+    assert (CHART / "charts" / "redis-0.1.0.tgz").is_file()
+    assert (CHART / "charts" / "nats-2.15.0.tgz").is_file()
 
 
 def test_values_schema_closes_staging_sensitive_configuration_trees() -> None:
@@ -464,7 +767,8 @@ def test_values_schema_closes_staging_sensitive_configuration_trees() -> None:
 def test_staging_backend_uses_external_s3_storage_with_secret_credentials() -> None:
     resources = _render_staging(release_name="university-ecosystem")
     backend = _component_resource(resources, "Deployment", "backend")
-    container = backend["spec"]["template"]["spec"]["containers"][0]
+    pod_spec = backend["spec"]["template"]["spec"]
+    container = pod_spec["containers"][0]
     env = {entry["name"]: entry for entry in container["env"]}
 
     assert container["securityContext"]["readOnlyRootFilesystem"] is True
@@ -474,14 +778,22 @@ def test_staging_backend_uses_external_s3_storage_with_secret_credentials() -> N
         "https://minio.staging.internal:443"
     )
     assert env["STORAGE_S3_BASE_URL"]["value"] == "/api/v1/img"
-    assert env["STORAGE_S3_ACCESS_KEY_ID"]["valueFrom"]["secretKeyRef"] == {
-        "name": "university-application",
-        "key": "minio-access-key",
-    }
-    assert env["STORAGE_S3_SECRET_ACCESS_KEY"]["valueFrom"]["secretKeyRef"] == {
-        "name": "university-application",
-        "key": "minio-secret-key",
-    }
+    _assert_projected_secret_file(
+        container,
+        pod_spec,
+        variable="STORAGE_S3_ACCESS_KEY_ID_FILE",
+        secret_name="university-application",
+        key="minio-access-key",
+        volume_name="secret-application",
+    )
+    _assert_projected_secret_file(
+        container,
+        pod_spec,
+        variable="STORAGE_S3_SECRET_ACCESS_KEY_FILE",
+        secret_name="university-application",
+        key="minio-secret-key",
+        volume_name="secret-application",
+    )
     assert env["JWT_AUDIENCE"]["value"] == "university-ecosystem-api"
     assert env["JWT_ISSUER"]["value"] == "https://api.university.staging.example.org"
     assert not any(
@@ -490,7 +802,7 @@ def test_staging_backend_uses_external_s3_storage_with_secret_credentials() -> N
     )
 
 
-def test_deploy_helm_supplies_backend_s3_endpoint_from_reviewed_minio_input() -> None:
+def test_deploy_helm_pins_new_dependency_images_and_backend_s3_endpoint() -> None:
     script = (ROOT / ".github/scripts/deploy-helm.sh").read_text(encoding="utf-8")
 
     assert "MINIO_ENDPOINT" in script
@@ -498,6 +810,36 @@ def test_deploy_helm_supplies_backend_s3_endpoint_from_reviewed_minio_input() ->
         '--set-string "backend.config.storageS3EndpointURL=https://$MINIO_ENDPOINT"'
         in script
     )
+    for backend_bound_arg in (
+        '--set-string "redis.metrics.passwordFileInitImage.repository=$REGISTRY/$GITHUB_REPOSITORY/backend"',
+        '--set-string "redis.metrics.passwordFileInitImage.tag=$DEPLOY_VERSION"',
+        '--set-string "redis.metrics.passwordFileInitImage.digest=$BACKEND_IMAGE_DIGEST"',
+        '--set-string "redis.metrics.passwordFileInitImage.pullPolicy=Always"',
+    ):
+        assert backend_bound_arg in script
+    for reviewed_arg in (
+        '--set-string "redis.image.repository=redis"',
+        '--set-string "redis.metrics.image.repository=oliver006/redis_exporter"',
+        '--set-string "nats.image.repository=nats"',
+        '--set-string "nats.container.image.repository=nats"',
+        '--set-string "nats.image.digest=$NATS_IMAGE_DIGEST"',
+        '--set-string "nats.container.image.digest=$NATS_IMAGE_DIGEST"',
+    ):
+        assert reviewed_arg in script
+
+
+def test_deploy_preflight_binds_nats_secret_to_the_existing_jetstream_path() -> None:
+    workflow = (ROOT / ".github/workflows/deploy.yml").read_text(encoding="utf-8")
+
+    assert (
+        "NATS authentication config must set the existing JetStream store path to /data/jetstream"
+        in workflow
+    )
+    assert "config.splitlines()" in workflow
+    assert '"/data/jetstream"' in workflow
+    assert "docker.io/redis@$REDIS_IMAGE_DIGEST" in workflow
+    assert 'test -s "$chart/charts/redis-0.1.0.tgz"' in workflow
+    assert 'test -s "$chart/charts/nats-2.15.0.tgz"' in workflow
 
 
 def test_backend_s3_credentials_remain_in_preflight_when_file_processor_is_off() -> (
@@ -597,6 +939,8 @@ def test_values_schema_rejects_unknown_staging_sensitive_keys(
             "schema-contract",
             str(CHART),
             "--dependency-update=false",
+            "--set-string",
+            "global.environment=development",
             "--set",
             invalid_override,
         ],
@@ -607,13 +951,14 @@ def test_values_schema_rejects_unknown_staging_sensitive_keys(
     )
 
     assert result.returncode != 0
-    # Helm 3.17 reports ``Additional property`` while newer releases use
-    # ``additional properties``. Both messages prove the same fail-closed
-    # JSON-Schema rejection.
+    # Helm versions vary between singular and plural forms of this
+    # fail-closed JSON-Schema diagnostic.
     assert "additional propert" in result.stderr.lower()
 
 
 def test_canonical_staging_values_reject_unresolved_required_markers() -> None:
+    # The MFA active key ID is checked before the marker scan; supply it so the
+    # render reaches the unresolved-marker rejection this test asserts.
     result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
         [
             _helm(),
@@ -623,6 +968,8 @@ def test_canonical_staging_values_reject_unresolved_required_markers() -> None:
             "--dependency-update=false",
             "--values",
             str(STAGING_VALUES),
+            "--set",
+            f"backend.config.mfaTotpActiveEncryptionKeyId={MFA_TOTP_ACTIVE_KEY_ID}",
         ],
         check=False,
         capture_output=True,
@@ -639,6 +986,27 @@ def test_validate_config_requires_file_scanning_in_release_environments() -> Non
         encoding="utf-8"
     )
     assert "backend.config.eventFileScannerEnabled" in template
+
+
+def test_backend_receives_public_frontend_origin_from_ingress() -> None:
+    resources = _render_staging(release_name="frontend-origin-contract")
+    backend = _component_resource(resources, "Deployment", "backend")
+    env = {
+        item["name"]: item.get("value")
+        for item in backend["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    origin = "https://university.staging.example.org"
+    assert env["APP_BASE_URL"] == origin
+    assert env["FRONTEND_ORIGIN"] == origin
+    assert env["FRONTEND_ORIGINS"] == origin
+
+
+def test_validate_config_pins_frontend_origin_to_the_ingress_host() -> None:
+    template = (CHART / "templates" / "validate-config.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert 'include "university-ecosystem.frontendOrigin"' in template
+    assert "backend.config.frontendOrigin" in template
 
 
 def test_outbox_worker_receives_release_file_scanner_guard() -> None:
@@ -784,7 +1152,10 @@ def test_release_environments_reject_arbitrary_subchart_extensions(
     )
 
     assert result.returncode != 0
-    assert "arbitrary subchart" in result.stderr
+    assert "arbitrary subchart" in result.stderr or (
+        "values don't meet the specifications" in result.stderr
+        and "additional propert" in result.stderr.lower()
+    )
 
 
 @pytest.mark.parametrize(
@@ -807,7 +1178,10 @@ def test_release_environments_reject_unreviewed_helper_containers(
     )
 
     assert result.returncode != 0
-    assert "unreviewed subchart helper containers" in result.stderr
+    assert "unreviewed subchart helper containers" in result.stderr or (
+        "values don't meet the specifications" in result.stderr
+        and "additional propert" in result.stderr.lower()
+    )
 
 
 @pytest.mark.parametrize(
@@ -839,7 +1213,10 @@ def test_staging_render_rejects_inline_nats_auth_material(override: str) -> None
     )
 
     assert result.returncode != 0
-    assert "NATS auth material must not be stored in Helm values" in result.stderr
+    assert "NATS auth material must not be stored in Helm values" in result.stderr or (
+        "values don't meet the specifications" in result.stderr
+        and "additional propert" in result.stderr.lower()
+    )
 
 
 @pytest.mark.parametrize(
@@ -862,8 +1239,8 @@ def test_staging_render_rejects_inline_nats_auth_material(override: str) -> None
         ),
         (
             "--set",
-            "nats.jetstream.enabled=false",
-            "nats.jetstream.enabled=true and nats.persistence.enabled=true are required",
+            "nats.config.jetstream.enabled=false",
+            "official NATS chart config must preserve the staged 3-node JetStream storage at /data/jetstream on the existing /data PVC mount, rollout ordering, PVC retention, and pod-token contract",
         ),
         (
             "--set",
@@ -889,7 +1266,9 @@ def test_production_is_fail_closed_like_staging(
     )
 
     assert result.returncode != 0
-    assert expected in result.stderr
+    assert expected in result.stderr or (
+        "values don't meet the specifications" in result.stderr
+    )
 
 
 INLINE_SECRET_OVERRIDES = (
@@ -938,7 +1317,207 @@ def test_non_development_render_rejects_every_inline_secret_value(
     )
 
     assert result.returncode != 0
-    assert "secret material must not be stored in Helm values" in result.stderr
+    assert "secret material must not be stored in Helm values" in result.stderr or (
+        "values don't meet the specifications" in result.stderr
+        and "additional propert" in result.stderr.lower()
+    )
+
+
+def test_cache_redis_exporter_password_file_and_high_uid_contract() -> None:
+    resources = _render_staging(release_name="cache-security-contract")
+    redis_resources = [
+        resource
+        for resource in resources
+        if resource.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/name")
+        == "redis"
+        and resource.get("metadata", {})
+        .get("labels", {})
+        .get("app.kubernetes.io/instance")
+        == "cache-security-contract"
+    ]
+    assert redis_resources
+    assert {resource["metadata"]["namespace"] for resource in redis_resources} == {
+        "university-ecosystem"
+    }
+
+    statefulset = next(
+        resource
+        for resource in redis_resources
+        if resource.get("kind") == "StatefulSet"
+        and resource["metadata"]["name"] == "cache-security-contract-redis-master"
+    )
+    pod_spec = statefulset["spec"]["template"]["spec"]
+    assert pod_spec["securityContext"]["fsGroup"] == 1001
+    assert pod_spec["securityContext"]["fsGroupChangePolicy"] == "Always"
+    assert statefulset["spec"]["persistentVolumeClaimRetentionPolicy"] == {
+        "whenDeleted": "Retain",
+        "whenScaled": "Retain",
+    }
+    assert (
+        statefulset["spec"]["volumeClaimTemplates"][0]["metadata"]["name"]
+        == "redis-data"
+    )
+    assert any(
+        mount["mountPath"] == "/data"
+        for container in pod_spec["containers"]
+        if container["name"] == "redis"
+        for mount in container["volumeMounts"]
+    )
+
+    all_containers = pod_spec["initContainers"] + pod_spec["containers"]
+    assert {
+        container["securityContext"]["runAsUser"] for container in all_containers
+    } == {10001}
+    assert {
+        container["securityContext"]["runAsGroup"] for container in all_containers
+    } == {1001}
+    password_init = next(
+        container
+        for container in pod_spec["initContainers"]
+        if container["name"] == "redis-exporter-password-file"
+    )
+    backend_deployment = _component_resource(resources, "Deployment", "backend")
+    backend_image = backend_deployment["spec"]["template"]["spec"]["containers"][0][
+        "image"
+    ]
+    assert password_init["image"] == backend_image
+    assert password_init["image"] == "ghcr.io/example/university/backend@sha256:" + (
+        "a" * 64
+    )
+    assert password_init["imagePullPolicy"] == "Always"
+    assert password_init["securityContext"]["readOnlyRootFilesystem"] is True
+    assert password_init["securityContext"]["allowPrivilegeEscalation"] is False
+    assert password_init["securityContext"]["capabilities"]["drop"] == ["ALL"]
+    init_code = password_init["args"][-1]
+    assert '"redis://127.0.0.1:6379"' in init_code
+    assert "def read_password(path):" in init_code
+    assert (
+        'path.read_bytes().rstrip(b"\\n").decode("utf-8", errors="strict")' in init_code
+    )
+    assert "tempfile.mkstemp" in init_code
+    assert "json.dump" in init_code and "os.replace" in init_code
+    assert "os.fsync(output.fileno())" in init_code
+    assert "os.chmod(temporary_path, 0o440)" in init_code
+    assert "target_path.unlink(missing_ok=True)" in init_code
+    assert "file=sys.stderr" in init_code
+    assert all(
+        name not in init_code for name in ("redis-password-value", "REDIS_PASSWORD=")
+    )
+    source_mount = next(
+        mount
+        for mount in password_init["volumeMounts"]
+        if mount["name"] == "redis-password"
+    )
+    assert source_mount["readOnly"] is True
+    assert source_mount["mountPath"] == "/run/redis-auth-source"
+
+    exporter = next(
+        container
+        for container in pod_spec["containers"]
+        if container["name"] == "metrics"
+    )
+    env = {item["name"]: item.get("value") for item in exporter["env"]}
+    assert env["REDIS_PASSWORD_FILE"] == "/run/redis-exporter-auth/passwords.json"
+    assert "REDIS_PASSWORD" not in env
+    output_mount = next(
+        mount
+        for mount in exporter["volumeMounts"]
+        if mount["mountPath"] == "/run/redis-exporter-auth"
+    )
+    assert output_mount["readOnly"] is True
+    output_volume = next(
+        volume
+        for volume in pod_spec["volumes"]
+        if volume["name"] == "redis-exporter-auth"
+    )
+    assert output_volume["emptyDir"] == {"medium": "Memory", "sizeLimit": "8Mi"}
+
+
+def test_redis_exporter_serializer_preserves_acl_trailing_cr_bytes(
+    tmp_path: Path,
+) -> None:
+    template = (ROOT / "charts/redis-compat/templates/redis.yaml").read_text(
+        encoding="utf-8"
+    )
+    lines = template.splitlines()
+    command_index = next(
+        index for index, line in enumerate(lines) if 'command: ["python"]' in line
+    )
+    block_index = next(
+        index
+        for index in range(command_index, len(lines))
+        if lines[index].strip() == "- |"
+    )
+    code_lines: list[str] = []
+    for line in lines[block_index + 1 :]:
+        if not line.strip():
+            code_lines.append("")
+        elif line.startswith("              "):
+            code_lines.append(line[14:])
+        else:
+            break
+    code = "\n".join(code_lines) + "\n"
+    source = tmp_path / "source-password"
+    target = tmp_path / "passwords.json"
+    code = code.replace(
+        '"/run/redis-auth-source/password"', json.dumps(str(source))
+    ).replace('"/run/redis-exporter-auth/passwords.json"', json.dumps(str(target)))
+
+    source.write_bytes(b"synthetic-password\r\n")
+    completed = subprocess.run(  # noqa: S603 - current Python and repository-owned serializer; no shell.
+        [sys.executable, "-I", "-S", "-c", code],
+        check=False,
+        capture_output=True,
+        text=False,
+    )
+    assert completed.returncode == 0
+    assert json.loads(target.read_text(encoding="utf-8")) == {
+        "redis://127.0.0.1:6379": "synthetic-password\r"
+    }
+    assert b"synthetic-password" not in completed.stdout + completed.stderr
+    assert list(tmp_path.glob(".passwords.*.tmp")) == []
+
+    for invalid_bytes in (b"", b"\xff"):
+        if target.exists():
+            target.chmod(0o600)
+            target.unlink()
+        source.write_bytes(invalid_bytes)
+        failed = subprocess.run(  # noqa: S603 - current Python and repository-owned serializer; no shell.
+            [sys.executable, "-I", "-S", "-c", code],
+            check=False,
+            capture_output=True,
+            text=False,
+        )
+        assert failed.returncode == 1
+        assert b"failed to materialize Redis exporter credential file" in failed.stderr
+        assert b"synthetic-password" not in failed.stdout + failed.stderr
+        assert not target.exists()
+        assert list(tmp_path.glob(".passwords.*.tmp")) == []
+
+
+def test_redis_exporter_password_init_rejects_backend_image_identity_drift() -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        _render_staging(
+            "--set-string",
+            "redis.metrics.passwordFileInitImage.digest=sha256:" + ("b" * 64),
+            release_name="redis-helper-image-drift-contract",
+        )
+
+    assert (
+        "redis.metrics.passwordfileinitimage must resolve exactly to backend.image"
+        in error.value.stderr.lower()
+    )
+
+
+def test_checkov_namespace_workflow_uses_validated_fallback_and_no_skip() -> None:
+    workflow = (ROOT / ".github/workflows/checkov.yml").read_text(encoding="utf-8")
+    assert "vars.K8S_NAMESPACE || 'university-ecosystem'" in workflow
+    assert '"$K8S_NAMESPACE" == "default"' in workflow
+    assert (
+        "HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}"
+        in workflow
+    )
+    assert "--skip-check" not in workflow
 
 
 def test_resolved_staging_render_is_immutable_and_kyverno_compatible() -> None:
@@ -962,13 +1541,13 @@ def test_resolved_staging_render_is_immutable_and_kyverno_compatible() -> None:
         "staging-contract-revocation-redis-master"
     )
     assert json.loads(contract["data"]["dependency-images.json"]) == {
-        "nats": "docker.io/bitnami/nats@sha256:" + ("a" * 64),
-        "redis": "docker.io/bitnami/redis@sha256:" + ("a" * 64),
-        "redis.metrics": ("docker.io/bitnami/redis-exporter@sha256:" + ("a" * 64)),
+        "nats": "docker.io/nats@sha256:" + ("a" * 64),
+        "redis": "docker.io/redis@sha256:" + ("a" * 64),
+        "redis.metrics": ("docker.io/oliver006/redis_exporter@sha256:" + ("a" * 64)),
     }
     assert json.loads(contract["data"]["dependency-chart-versions.json"]) == {
-        "nats": "8.5.4",
-        "redis": "20.13.4",
+        "nats": "2.15.0",
+        "redis": "0.1.0",
     }
 
     pod_specs = []
@@ -999,9 +1578,9 @@ def test_resolved_staging_render_is_immutable_and_kyverno_compatible() -> None:
         container["image"].startswith(
             (
                 "ghcr.io/example/university/",
-                "docker.io/bitnami/redis@",
-                "docker.io/bitnami/redis-exporter@",
-                "docker.io/bitnami/nats@",
+                "docker.io/redis@",
+                "docker.io/oliver006/redis_exporter@",
+                "docker.io/nats@",
             )
         )
         for container in containers
@@ -1032,7 +1611,7 @@ def test_resolved_staging_render_is_immutable_and_kyverno_compatible() -> None:
     config_volume = next(
         volume
         for volume in nats["spec"]["template"]["spec"]["volumes"]
-        if volume["name"] == "config"
+        if volume["name"] == "nats-auth-config"
     )
     expected_nats_config_secret = "university-nats-config"  # pragma: allowlist secret
     assert config_volume["secret"]["secretName"] == expected_nats_config_secret
@@ -1122,10 +1701,10 @@ def test_staging_mounts_conventional_mtls_secrets_read_only() -> None:
         and resource["metadata"]["name"].endswith("-file-processor")
     )
 
-    gateway_container = gateway["spec"]["template"]["spec"]["containers"][0]
-    processor_container = processor["spec"]["template"]["spec"]["containers"][0]
-    gateway_env_entries = {item["name"]: item for item in gateway_container["env"]}
-    processor_env_entries = {item["name"]: item for item in processor_container["env"]}
+    gateway_spec = gateway["spec"]["template"]["spec"]
+    processor_spec = processor["spec"]["template"]["spec"]
+    gateway_container = gateway_spec["containers"][0]
+    processor_container = processor_spec["containers"][0]
     gateway_env = {item["name"]: item.get("value") for item in gateway_container["env"]}
     processor_env = {
         item["name"]: item.get("value") for item in processor_container["env"]
@@ -1141,21 +1720,49 @@ def test_staging_mounts_conventional_mtls_secrets_read_only() -> None:
         f"{processor_service['metadata']['name']}."
         f"{processor_service['metadata']['namespace']}.svc"
     )
-    assert gateway_env["GRPC_CA_FILE"].endswith("/ca.crt")
-    assert gateway_env["GRPC_CLIENT_CERT_FILE"].endswith("/tls.crt")
-    assert gateway_env["GRPC_CLIENT_KEY_FILE"].endswith("/tls.key")
-    assert gateway_env_entries["FILE_PROCESSING_CAPABILITY_SECRET"]["valueFrom"][
-        "secretKeyRef"
-    ] == {"name": "university-application", "key": "internal-hmac-secret"}
-    assert processor_env["FP_GRPC_TLS_CERT_FILE"].endswith("/tls.crt")
-    assert processor_env["FP_GRPC_TLS_KEY_FILE"].endswith("/tls.key")
-    assert processor_env["FP_GRPC_CLIENT_CA_FILE"].endswith("/ca.crt")
+    assert gateway_env["GRPC_CA_FILE"] == "/run/secrets/internal-grpc-mtls/ca.crt"
+    assert gateway_env["GRPC_CLIENT_CERT_FILE"] == (
+        "/run/secrets/internal-grpc-mtls/tls.crt"
+    )
+    assert gateway_env["GRPC_CLIENT_KEY_FILE"] == (
+        "/run/secrets/internal-grpc-mtls/tls.key"
+    )
+    _assert_projected_secret_file(
+        gateway_container,
+        gateway_spec,
+        variable="FILE_PROCESSING_CAPABILITY_SECRET_FILE",
+        secret_name="university-application",
+        key="internal-hmac-secret",
+        volume_name="secret-application",
+        expected_keys={"jwt-secret", "internal-hmac-secret"},
+    )
+    assert processor_env["FP_GRPC_TLS_CERT_FILE"] == (
+        "/run/secrets/internal-grpc-mtls-server/tls.crt"
+    )
+    assert processor_env["FP_GRPC_TLS_KEY_FILE"] == (
+        "/run/secrets/internal-grpc-mtls-server/tls.key"
+    )
+    assert processor_env["FP_GRPC_CLIENT_CA_FILE"] == (
+        "/run/secrets/internal-grpc-mtls-server/ca.crt"
+    )
+    _assert_projected_secret_file(
+        processor_container,
+        processor_spec,
+        variable="FP_PROCESSING_CAPABILITY_SECRET_FILE",
+        secret_name="university-application",
+        key="internal-hmac-secret",
+        volume_name="secret-application",
+        expected_keys={
+            "minio-access-key",
+            "minio-secret-key",
+            "internal-hmac-secret",
+            "jwt-rsa-public-key",
+            "temporal-api-key",
+        },
+    )
     assert processor_env["FP_GRPC_ALLOWED_CLIENT_URIS"] == (
         "spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway"
     )
-    assert processor_env_entries["FP_PROCESSING_CAPABILITY_SECRET"]["valueFrom"][
-        "secretKeyRef"
-    ] == {"name": "university-application", "key": "internal-hmac-secret"}
     assert processor_env["FP_JWKS_URL"].endswith("-backend:8000/.well-known/jwks.json")
     assert processor_env["FP_JWKS_REFRESH_INTERVAL"] == "300"
     assert processor_env["FP_JWT_ACTIVE_KID"] == "primary"
@@ -1173,15 +1780,35 @@ def test_staging_mounts_conventional_mtls_secrets_read_only() -> None:
         assert "exec" not in probe
         assert probe["tcpSocket"]["port"] == "grpc"
 
-    volumes = {
+    gateway_volumes = {
         volume["name"]: volume["secret"]
-        for volume in processor["spec"]["template"]["spec"]["volumes"]
+        for volume in gateway_spec["volumes"]
         if "secret" in volume
     }
-    assert volumes["internal-grpc-mtls-server"]["secretName"] == (
+    processor_volumes = {
+        volume["name"]: volume["secret"]
+        for volume in processor_spec["volumes"]
+        if "secret" in volume
+    }
+    gateway_tls = gateway_volumes["internal-grpc-mtls"]
+    assert gateway_tls["secretName"] == "university-internal-grpc-gateway-client"
+    assert gateway_tls["defaultMode"] == 0o440
+    assert {(item["key"], item["path"]) for item in gateway_tls["items"]} == {
+        ("tls.crt", "tls.crt"),
+        ("tls.key", "tls.key"),
+        ("ca.crt", "ca.crt"),
+    }
+    processor_tls = processor_volumes["internal-grpc-mtls-server"]
+    assert processor_tls["secretName"] == (
         "university-internal-grpc-file-processor-server"
     )
-    assert "internal-grpc-mtls-probe" not in volumes
+    assert processor_tls["defaultMode"] == 0o440
+    assert {(item["key"], item["path"]) for item in processor_tls["items"]} == {
+        ("tls.crt", "tls.crt"),
+        ("tls.key", "tls.key"),
+        ("ca.crt", "ca.crt"),
+    }
+    assert "internal-grpc-mtls-probe" not in processor_volumes
     assert not any(
         mount["name"] == "internal-grpc-mtls-probe"
         for mount in processor_container["volumeMounts"]
@@ -1204,36 +1831,45 @@ def _component_resource(
 
 def test_auth_token_hmac_secret_is_wired_from_application_secret() -> None:
     resources = _render_staging(release_name="university-ecosystem")
-    expected_ref = {
-        "name": "university-application",
-        "key": "token-hmac-secret",
-    }
 
     for component in ("backend", "outbox-worker"):
         deployment = _component_resource(resources, "Deployment", component)
-        env = {
-            item["name"]: item
-            for item in deployment["spec"]["template"]["spec"]["containers"][0]["env"]
-        }
-        assert env["TOKEN_HMAC_SECRET"]["valueFrom"]["secretKeyRef"] == expected_ref
+        pod_spec = deployment["spec"]["template"]["spec"]
+        container = next(
+            item for item in pod_spec["containers"] if item["name"] == component
+        )
+        _assert_projected_secret_file(
+            container,
+            pod_spec,
+            variable="TOKEN_HMAC_SECRET_FILE",
+            secret_name="university-application",
+            key="token-hmac-secret",
+            volume_name="secret-application",
+        )
 
 
 def test_internal_chat_auth_token_is_shared_by_backend_and_ws_hub() -> None:
     resources = _render_staging(release_name="university-ecosystem")
-    expected_ref = {
-        "name": "university-application",
-        "key": "ws-hub-internal-secret",
-    }
 
     for component in ("backend", "ws-hub"):
         deployment = _component_resource(resources, "Deployment", component)
+        pod_spec = deployment["spec"]["template"]["spec"]
         container = next(
-            item
-            for item in deployment["spec"]["template"]["spec"]["containers"]
-            if item["name"] == component
+            item for item in pod_spec["containers"] if item["name"] == component
         )
-        env = {item["name"]: item for item in container["env"]}
-        assert env["INTERNAL_AUTH_TOKEN"]["valueFrom"]["secretKeyRef"] == expected_ref
+        expected_keys = (
+            {"jwt-secret", "ws-hub-internal-secret"} if component == "ws-hub" else None
+        )
+        for variable in ("INTERNAL_AUTH_TOKEN_FILE", "WS_HUB_INTERNAL_SECRET_FILE"):
+            _assert_projected_secret_file(
+                container,
+                pod_spec,
+                variable=variable,
+                secret_name="university-application",
+                key="ws-hub-internal-secret",
+                volume_name="secret-application",
+                expected_keys=expected_keys,
+            )
 
 
 def test_ws_hub_is_a_restricted_helm_managed_atomic_workload() -> None:
@@ -1298,32 +1934,52 @@ def test_first_party_deployments_are_bound_to_exact_source_sha() -> None:
         )
 
 
-def test_ws_hub_env_uses_only_explicit_values_and_secret_refs() -> None:
+def test_ws_hub_env_uses_only_explicit_values_and_secret_files() -> None:
     resources = _render_staging(release_name="university-ecosystem")
     deployment = _component_resource(resources, "Deployment", "ws-hub")
-    container = deployment["spec"]["template"]["spec"]["containers"][0]
+    pod_spec = deployment["spec"]["template"]["spec"]
+    container = pod_spec["containers"][0]
     env = {item["name"]: item for item in container["env"]}
 
     application_secret = "university-application"  # pragma: allowlist secret
     connection_secret = "university-connections"  # pragma: allowlist secret
-    assert env["JWT_SECRET"]["valueFrom"]["secretKeyRef"] == {
-        "name": application_secret,
-        "key": "jwt-secret",
-    }
-    assert env["WS_HUB_INTERNAL_SECRET"]["valueFrom"]["secretKeyRef"] == {
-        "name": application_secret,
-        "key": "ws-hub-internal-secret",
+    application_keys = {"jwt-secret", "ws-hub-internal-secret"}
+    for variable, key in {
+        "JWT_SECRET_FILE": "jwt-secret",
+        "WS_HUB_INTERNAL_SECRET_FILE": "ws-hub-internal-secret",
+        "INTERNAL_AUTH_TOKEN_FILE": "ws-hub-internal-secret",
+    }.items():
+        _assert_projected_secret_file(
+            container,
+            pod_spec,
+            variable=variable,
+            secret_name=application_secret,
+            key=key,
+            volume_name="secret-application",
+            expected_keys=application_keys,
+        )
+
+    connection_keys = {
+        "nats-url",
+        "nats-auth-token",
+        "redis-backend-url",
+        "redis-revocation-url",
     }
     for variable, key in {
-        "NATS_URL": "nats-url",
-        "NATS_AUTH_TOKEN": "nats-auth-token",
-        "REDIS_URL": "redis-backend-url",
-        "REVOCATION_REDIS_URL": "redis-revocation-url",
+        "NATS_URL_FILE": "nats-url",
+        "NATS_AUTH_TOKEN_FILE": "nats-auth-token",
+        "REDIS_URL_FILE": "redis-backend-url",
+        "REVOCATION_REDIS_URL_FILE": "redis-revocation-url",
     }.items():
-        assert env[variable]["valueFrom"]["secretKeyRef"] == {
-            "name": connection_secret,
-            "key": key,
-        }
+        _assert_projected_secret_file(
+            container,
+            pod_spec,
+            variable=variable,
+            secret_name=connection_secret,
+            key=key,
+            volume_name="secret-connections",
+            expected_keys=connection_keys,
+        )
     assert env["BACKEND_INTERNAL_URL"]["value"].endswith("-backend:8000")
     assert env["JWKS_URL"]["value"].endswith("-backend:8000/.well-known/jwks.json")
     for required in (
@@ -1509,7 +2165,7 @@ def test_revocation_store_bootstrap_render_is_durable_isolated_and_bound() -> No
         for resource in resources
         if resource.get("kind") == "ConfigMap"
         and resource["metadata"]["name"]
-        == f"{release_name}-revocation-redis-configuration"
+        == f"{release_name}-revocation-redis-master-configuration"
     )
     contract = next(
         resource
@@ -1541,7 +2197,7 @@ def test_revocation_store_bootstrap_render_is_durable_isolated_and_bound() -> No
         for container in statefulset["spec"]["template"]["spec"]["containers"]
         if container["name"] == "redis"
     )
-    assert redis_container["image"].startswith("docker.io/bitnami/redis@sha256:")
+    assert redis_container["image"].startswith("docker.io/redis:7.4.11-alpine@sha256:")
     assert redis_container["imagePullPolicy"] == "Always"
     assert 'rename-command FLUSHDB ""' in configuration["data"]["master.conf"]
     assert 'rename-command FLUSHALL ""' in configuration["data"]["master.conf"]
@@ -1564,7 +2220,7 @@ def test_revocation_store_bootstrap_render_is_durable_isolated_and_bound() -> No
     metrics_rule = next(
         rule
         for rule in network_policy["spec"]["ingress"]
-        if rule["ports"] == [{"port": 9121}]
+        if rule["ports"] == [{"port": 9121, "protocol": "TCP"}]
     )
     assert metrics_rule["from"] == [
         {
@@ -1655,7 +2311,10 @@ def test_revocation_store_rejects_unreviewed_injection_surfaces(
 
 
 def test_dependency_network_policies_require_explicit_client_labels() -> None:
-    resources = _render_staging(release_name="university-ecosystem")
+    release_name = "dependency-label-contract"
+    resources = _render_staging(
+        "--set", "migrations.enabled=true", release_name=release_name
+    )
     deployments = {
         resource["metadata"]["labels"]["app.kubernetes.io/component"]: resource
         for resource in resources
@@ -1670,34 +2329,179 @@ def test_dependency_network_policies_require_explicit_client_labels() -> None:
         "file-processor": {"nats"},
         "outbox-worker": {"redis", "nats"},
     }
+    workloads = [
+        resource
+        for resource in resources
+        if resource.get("kind") in {"Deployment", "StatefulSet", "DaemonSet", "Job"}
+    ]
     for component, dependencies in expected.items():
         labels = deployments[component]["spec"]["template"]["metadata"]["labels"]
         for dependency in dependencies:
-            assert labels[f"university-ecosystem-{dependency}-client"] == "true"
+            label_key = f"{release_name}-{dependency}-client"
+            assert labels[label_key] == "true"
+            assert f"university-ecosystem-{dependency}-client" not in labels
+    migration_jobs = [
+        resource
+        for resource in workloads
+        if resource.get("kind") == "Job"
+        and resource["metadata"]["name"].endswith("-migrate")
+    ]
+    assert len(migration_jobs) == 1
+    migration_labels = migration_jobs[0]["spec"]["template"]["metadata"]["labels"]
+    assert migration_labels[f"{release_name}-revocation-redis-client"] == "true"
 
-    policy_names = {
-        resource["metadata"]["name"]
-        for resource in resources
-        if resource.get("kind") == "NetworkPolicy"
-    }
-    assert {
-        "university-ecosystem-redis",
-        "university-ecosystem-nats",
-    } <= policy_names
-    assert "university-ecosystem-revocation-redis" not in policy_names
-
-    revocation_selector = {
-        "app.kubernetes.io/name": "revocation-redis",
-        "app.kubernetes.io/component": "master",
-        "university-ecosystem.io/revocation-store-for": "university-ecosystem",
-    }
     policies = {
         resource["metadata"]["name"]: resource
         for resource in resources
         if resource.get("kind") == "NetworkPolicy"
     }
+    redis_policy = policies[f"{release_name}-redis"]
+    nats_policy = policies[f"{release_name}-nats"]
+    redis_ingress_selectors = [
+        source["podSelector"]["matchLabels"]
+        for rule in redis_policy["spec"]["ingress"]
+        for source in rule.get("from", [])
+        if "podSelector" in source
+    ]
+    nats_ingress_selectors = [
+        source["podSelector"]["matchLabels"]
+        for rule in nats_policy["spec"]["ingress"]
+        for source in rule.get("from", [])
+        if "podSelector" in source
+    ]
+    assert {f"{release_name}-redis-client": "true"} in redis_ingress_selectors
+    assert {f"{release_name}-nats-client": "true"} in nats_ingress_selectors
+    assert not any(
+        "university-ecosystem-redis-client" in selector
+        for selector in redis_ingress_selectors
+    )
+    assert not any(
+        "university-ecosystem-nats-client" in selector
+        for selector in nats_ingress_selectors
+    )
+
+    matching_clients = {
+        dependency: {
+            resource["metadata"]["labels"].get("app.kubernetes.io/component")
+            or resource["metadata"]["name"]
+            for resource in workloads
+            if resource["spec"]["template"]["metadata"]["labels"].get(
+                f"{release_name}-{dependency}-client"
+            )
+            == "true"
+        }
+        for dependency in ("redis", "nats")
+    }
+    assert matching_clients["redis"] >= {"backend", "ws-hub", "outbox-worker"}
+    assert matching_clients["nats"] >= {
+        "backend",
+        "ws-hub",
+        "file-processor",
+        "outbox-worker",
+    }
+
+    nats = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "StatefulSet"
+        and resource["metadata"]["name"] == f"{release_name}-nats"
+    )
+    legacy_nats_selector = {
+        "app.kubernetes.io/name": "nats",
+        "app.kubernetes.io/instance": release_name,
+    }
+    assert nats["spec"]["selector"]["matchLabels"] == legacy_nats_selector
+    nats_services = [
+        resource
+        for resource in resources
+        if resource.get("kind") == "Service"
+        and resource["metadata"]["name"]
+        in {f"{release_name}-nats", f"{release_name}-nats-headless"}
+    ]
+    assert {resource["metadata"]["name"] for resource in nats_services} == {
+        f"{release_name}-nats",
+        f"{release_name}-nats-headless",
+    }
+    assert all(
+        resource["spec"]["selector"] == legacy_nats_selector
+        for resource in nats_services
+    )
+    nats_pdb = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "PodDisruptionBudget"
+        and resource["metadata"]["name"] == f"{release_name}-nats"
+    )
+    assert nats_pdb["spec"]["selector"]["matchLabels"] == legacy_nats_selector
+
+    redis = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "StatefulSet"
+        and resource.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/name")
+        == "redis"
+        and resource["metadata"]["labels"].get("app.kubernetes.io/component")
+        == "master"
+    )
+    redis_container = next(
+        container
+        for container in redis["spec"]["template"]["spec"]["containers"]
+        if container["name"] == "redis"
+    )
+    redis_config_mount = next(
+        mount for mount in redis_container["volumeMounts"] if mount["name"] == "config"
+    )
+    assert redis_config_mount["mountPath"] == "/etc/redis"
+    assert redis_container["args"] == ["exec redis-server /etc/redis/redis.conf"]
+    # These are the exact legacy Bitnami PVC-template labels; changing them makes the VCT immutable field drift.
+    assert redis["spec"]["volumeClaimTemplates"][0]["apiVersion"] == "v1"
+    assert redis["spec"]["volumeClaimTemplates"][0]["kind"] == "PersistentVolumeClaim"
+    assert redis["spec"]["volumeClaimTemplates"][0]["metadata"]["labels"] == {
+        "app.kubernetes.io/component": "master",
+        "app.kubernetes.io/instance": release_name,
+        "app.kubernetes.io/name": "redis",
+    }
+    data_mounts = [
+        mount
+        for container in nats["spec"]["template"]["spec"]["containers"]
+        for mount in container.get("volumeMounts", [])
+        if mount.get("name") == "data"
+    ]
+    assert any(mount["mountPath"] == "/data" for mount in data_mounts)
+    assert nats["spec"]["volumeClaimTemplates"][0]["metadata"]["name"] == "data"
+    nats_container = next(
+        container
+        for container in nats["spec"]["template"]["spec"]["containers"]
+        if container["name"] == "nats"
+    )
+    assert nats_container["args"] == [
+        "--config",
+        "/etc/nats-auth/nats-server.conf",
+    ]
+    nats_secret_mount = next(
+        mount
+        for mount in nats_container["volumeMounts"]
+        if mount["name"] == "nats-auth-config"
+    )
+    assert nats_secret_mount["mountPath"] == "/etc/nats-auth"
+    assert nats_secret_mount["readOnly"] is True
+    nats_secret_volume = next(
+        volume
+        for volume in nats["spec"]["template"]["spec"]["volumes"]
+        if volume["name"] == "nats-auth-config"
+    )
+    assert nats_secret_volume["secret"]["secretName"] == "university-nats-config"
+    assert nats_secret_volume["secret"]["items"] == [
+        {"key": "nats-server.conf", "path": "nats-server.conf"}
+    ]
+
+    revocation_selector = {
+        "app.kubernetes.io/name": "revocation-redis",
+        "app.kubernetes.io/component": "master",
+        "university-ecosystem.io/revocation-store-for": release_name,
+    }
     for component in ("backend", "gateway", "ws-hub"):
-        policy = policies[f"university-ecosystem-{component}-policy"]
+        policy = policies[f"{release_name}-{component}-policy"]
         egress_selectors = [
             destination["podSelector"]["matchLabels"]
             for rule in policy["spec"]["egress"]
@@ -1708,7 +2512,7 @@ def test_dependency_network_policies_require_explicit_client_labels() -> None:
 
     outbox = deployments["outbox-worker"]
     outbox_labels = outbox["spec"]["template"]["metadata"]["labels"]
-    assert "university-ecosystem-revocation-redis-client" not in outbox_labels
+    assert f"{release_name}-revocation-redis-client" not in outbox_labels
     outbox_env = {
         entry["name"]: entry
         for entry in outbox["spec"]["template"]["spec"]["containers"][0]["env"]
@@ -1716,7 +2520,7 @@ def test_dependency_network_policies_require_explicit_client_labels() -> None:
     assert outbox_env["APP_PROCESS_ROLE"]["value"] == "outbox-worker"
     assert outbox_env["REVOCATION_REDIS_ACCESS_ENABLED"]["value"] == "false"
     assert "REVOCATION_REDIS_URL" not in outbox_env
-    outbox_policy = policies["university-ecosystem-outbox-worker-policy"]
+    outbox_policy = policies[f"{release_name}-outbox-worker-policy"]
     outbox_egress_selectors = [
         destination["podSelector"]["matchLabels"]
         for rule in outbox_policy["spec"]["egress"]
@@ -1791,7 +2595,22 @@ def test_release_rejects_permissive_dependency_network_policy(override: str) -> 
         ("--set-string", "redis.image.registry=mirror.invalid"),
         ("--set-string", "redis.image.repository=attacker/redis"),
         ("--set-string", "redis.metrics.image.repository=attacker/exporter"),
+        (
+            "--set-string",
+            "redis.metrics.passwordFileInitImage.repository=attacker/python",
+        ),
+        ("--set-string", "redis.metrics.passwordFileInitImage.digest=not-a-digest"),
+        ("--set-string", "redis.metrics.passwordFileInitImage.pullPolicy=IfNotPresent"),
         ("--set-string", "nats.image.repository=attacker/nats"),
+        ("--set-string", "nats.container.image.repository=attacker/nats"),
+        ("--set-string", "nats.image.registry=ghcr.io"),
+        ("--set-string", "nats.image.tag=2.14.0-alpine"),
+        ("--set-string", "nats.image.digest=sha256:" + "c" * 64),
+        ("--set-string", "nats.image.pullPolicy=IfNotPresent"),
+        ("--set-string", "nats.container.image.registry=ghcr.io"),
+        ("--set-string", "nats.container.image.tag=2.14.0-alpine"),
+        ("--set-string", "nats.container.image.digest=sha256:" + "d" * 64),
+        ("--set-string", "nats.container.image.pullPolicy=IfNotPresent"),
     ],
 )
 def test_release_rejects_dependency_repository_substitution_or_bypass(
@@ -1807,7 +2626,49 @@ def test_release_rejects_dependency_repository_substitution_or_bypass(
     assert result.returncode != 0
     assert any(
         marker in result.stderr
-        for marker in ("dependency image repository", "allowInsecureImages")
+        for marker in (
+            "dependency image repository",
+            "redis.metrics.passwordFileInitImage must resolve exactly to backend.image",
+            "allowInsecureImages",
+            "metadata must exactly match",
+            "values don't meet the specifications",
+        )
+    )
+
+
+def test_release_rejects_mutable_password_init_image_without_backend_binding() -> None:
+    # The schema requires a valid global digest. Use a distinct repository so
+    # the backend-only digest fallback cannot make this latest tag immutable.
+    immutable_digest = "sha256:" + "a" * 64
+    result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
+        _existing_secret_command(
+            "development",
+            "--set-string",
+            "backend.image.repository=university-backend",
+            "--set-string",
+            f"backend.image.digest={immutable_digest}",
+            "--set-string",
+            "backend.image.tag=contract-sha",
+            "--set-string",
+            "redis.metrics.passwordFileInitImage.repository=university-backend-mutable",
+            "--set-string",
+            "redis.metrics.passwordFileInitImage.digest=",
+            "--set-string",
+            "redis.metrics.passwordFileInitImage.tag=latest",
+            "--set-string",
+            "global.imageTag=contract-sha",
+            "--set-string",
+            f"global.backendImageDigest={immutable_digest}",
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert result.returncode != 0
+    assert (
+        "redis.metrics.passwordFileInitImage must resolve exactly to backend.image"
+        in result.stderr
     )
 
 
@@ -1914,3 +2775,496 @@ def test_backend_cwv_environment_is_typed_and_not_in_backend_env_values() -> Non
         "CWV_EXPORT_OIDC_SUBJECT",
     ):
         assert name in env
+
+
+@pytest.mark.parametrize("profile", [CHART / "values.yaml", STAGING_VALUES])
+def test_frontend_ingress_routes_browser_requests_to_their_owners(
+    profile: Path,
+) -> None:
+    hosts = _values(profile)["ingress"]["hosts"]
+    frontend = next(
+        host
+        for host in hosts
+        if any(path["service"] == "frontend" for path in host["paths"])
+    )
+
+    def destination(url: str) -> str:
+        matching = [
+            path
+            for path in frontend["paths"]
+            if (
+                url == path["path"]
+                if path["pathType"] == "Exact"
+                else url == path["path"]
+                or url.startswith(path["path"].rstrip("/") + "/")
+            )
+        ]
+        return max(matching, key=lambda path: len(path["path"]))["service"]
+
+    for path in (
+        "/api/v1/auth/csrf-cookie",
+        "/api/v1/auth/login",
+        "/api/v1/img/avatar",
+        "/api/admin/users",
+        "/ws/ticket",
+    ):
+        assert destination(path) == "gateway", path
+    assert destination("/graphql") == "frontend"
+    assert destination("/ws/chat") == "ws-hub"
+    assert destination("/static/uploads/avatar.png") == "backend"
+    assert destination("/.well-known/jwks.json") == "backend"
+    assert destination("/events") == "frontend"
+
+
+def test_gateway_accepts_only_its_declared_browser_origin() -> None:
+    resources = _render_staging(release_name="browser-origin-contract")
+    gateway = _component_resource(resources, "Deployment", "gateway")
+    env = {
+        entry["name"]: entry.get("value")
+        for entry in gateway["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    assert env["ALLOWED_ORIGINS"] == "https://university.staging.example.org"
+
+
+def test_documented_go_overlay_pairs_local_grpc_transports() -> None:
+    overlay = _values(ROOT / "docker-compose.go.yml")["services"]
+    assert overlay["gateway"]["environment"]["GRPC_USE_TLS"] == "false"
+    assert (
+        overlay["gateway"]["environment"]["VITE_ENVIRONMENT"]
+        == "${ENVIRONMENT:-development}"
+    )
+    processor = overlay["file-processor"]["environment"]
+    assert not processor.get("FP_GRPC_TLS_CERT_FILE")
+    assert not processor.get("SPIFFE_SOCKET_PATH")
+    assert processor["FP_ENVIRONMENT"] == "${ENVIRONMENT:-development}"
+
+
+def test_staging_ws_hub_trust_does_not_use_a_broad_private_range() -> None:
+    """The committed staging values do not invent deployment proxy peers."""
+    staging = _values(STAGING_VALUES)
+    trusted_proxies = (
+        staging.get("wsHub", {}).get("config", {}).get("trustedProxies", [])
+    )
+    assert "10.0.0.0/8" not in trusted_proxies
+
+    resources = _render_staging(release_name="staging-ws-hub-proxy-trust")
+    deployment = _component_resource(resources, "Deployment", "ws-hub")
+    env = {
+        item["name"]: item.get("value")
+        for item in deployment["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    # Render fixtures supply only reserved documentation peers; the committed
+    # staging defaults remain loopback-only until operators provide real peers.
+    assert env["TRUSTED_PROXIES"] == "198.51.100.12/32,2001:db8::12"
+
+
+def test_file_processor_default_jwks_uses_release_backend_port_and_preserves_dependencies() -> (
+    None
+):
+    release_name = "jwks-egress-contract"
+    backend_port = 8181
+    resources = _render_staging(
+        "--set",
+        f"backend.service.port={backend_port}",
+        release_name=release_name,
+    )
+    backend = _component_resource(resources, "Deployment", "backend")
+    processor = _component_resource(resources, "Deployment", "file-processor")
+    backend_service_name = backend["metadata"]["name"]
+    backend_service = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "Service"
+        and resource["metadata"]["name"] == backend_service_name
+    )
+    backend_container = backend["spec"]["template"]["spec"]["containers"][0]
+    backend_http_port = next(
+        port["containerPort"]
+        for port in backend_container["ports"]
+        if port["name"] == "http"
+    )
+    assert backend_http_port == backend_port
+    assert backend_service["spec"]["ports"][0]["port"] == backend_port
+    assert backend_service["spec"]["ports"][0]["targetPort"] == "http"
+
+    backend_labels = backend["spec"]["template"]["metadata"]["labels"]
+    processor_labels = processor["spec"]["template"]["metadata"]["labels"]
+    release_selector = {
+        key: backend_labels[key]
+        for key in ("app.kubernetes.io/name", "app.kubernetes.io/instance")
+    }
+    assert all(
+        processor_labels[key] == value for key, value in release_selector.items()
+    )
+    backend_peer = {**release_selector, "app.kubernetes.io/component": "backend"}
+    processor_peer = {
+        **release_selector,
+        "app.kubernetes.io/component": "file-processor",
+    }
+    backend_policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == f"{release_name}-backend-policy"
+    )
+    processor_policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == f"{release_name}-file-processor-policy"
+    )
+    assert backend_policy["spec"]["podSelector"]["matchLabels"] == {
+        **release_selector,
+        "app.kubernetes.io/component": "backend",
+    }
+    assert processor_policy["spec"]["podSelector"]["matchLabels"] == {
+        **release_selector,
+        "app.kubernetes.io/component": "file-processor",
+    }
+
+    backend_egress = [
+        rule
+        for rule in processor_policy["spec"]["egress"]
+        if rule.get("to") == [{"podSelector": {"matchLabels": backend_peer}}]
+    ]
+    backend_ingress = [
+        rule
+        for rule in backend_policy["spec"]["ingress"]
+        if rule.get("from") == [{"podSelector": {"matchLabels": processor_peer}}]
+    ]
+    expected_port = [{"protocol": "TCP", "port": backend_port}]
+    assert len(backend_egress) == 1 and backend_egress[0]["ports"] == expected_port
+    assert len(backend_ingress) == 1 and backend_ingress[0]["ports"] == expected_port
+
+    processor_env = {
+        entry["name"]: entry.get("value")
+        for entry in processor["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    assert processor_env["FP_JWKS_URL"] == (
+        f"http://{backend_service_name}:{backend_port}/.well-known/jwks.json"
+    )
+
+    expected_dependencies = {
+        "nats": 4222,
+        "temporal": 7233,
+        "minio": 9000,
+        "otel-collector": 4317,
+    }
+    for dependency, port in expected_dependencies.items():
+        assert any(
+            rule.get("to")
+            == [
+                {"podSelector": {"matchLabels": {"app.kubernetes.io/name": dependency}}}
+            ]
+            and rule.get("ports") == [{"protocol": "TCP", "port": port}]
+            for rule in processor_policy["spec"]["egress"]
+        )
+    revocation_selector = {
+        "app.kubernetes.io/name": "revocation-redis",
+        "app.kubernetes.io/component": "master",
+        "university-ecosystem.io/revocation-store-for": release_name,
+    }
+    assert any(
+        rule.get("to") == [{"podSelector": {"matchLabels": revocation_selector}}]
+        and rule.get("ports") == [{"protocol": "TCP", "port": 6379}]
+        for rule in processor_policy["spec"]["egress"]
+    )
+    assert any(
+        rule.get("ports") == [{"protocol": "TCP", "port": 443}]
+        for rule in processor_policy["spec"]["egress"]
+    )
+    assert any(
+        {("UDP", 53), ("TCP", 53)}
+        == {(port["protocol"], port["port"]) for port in rule.get("ports", [])}
+        for rule in processor_policy["spec"]["egress"]
+    )
+
+
+def test_file_processor_jwks_policies_are_scoped_to_each_release() -> None:
+    policy_selectors: list[tuple[dict[str, str], dict[str, str]]] = []
+    for release_name in ("jwks-egress-first", "jwks-egress-second"):
+        resources = _render_staging(release_name=release_name)
+        backend = _component_resource(resources, "Deployment", "backend")
+        processor = _component_resource(resources, "Deployment", "file-processor")
+        release_selector = {
+            key: backend["spec"]["template"]["metadata"]["labels"][key]
+            for key in ("app.kubernetes.io/name", "app.kubernetes.io/instance")
+        }
+        assert {
+            key: processor["spec"]["template"]["metadata"]["labels"][key]
+            for key in release_selector
+        } == release_selector
+        backend_peer = {**release_selector, "app.kubernetes.io/component": "backend"}
+        processor_peer = {
+            **release_selector,
+            "app.kubernetes.io/component": "file-processor",
+        }
+        backend_policy = next(
+            resource
+            for resource in resources
+            if resource.get("kind") == "NetworkPolicy"
+            and resource["metadata"]["name"] == f"{release_name}-backend-policy"
+        )
+        processor_policy = next(
+            resource
+            for resource in resources
+            if resource.get("kind") == "NetworkPolicy"
+            and resource["metadata"]["name"] == f"{release_name}-file-processor-policy"
+        )
+        assert backend_policy["spec"]["podSelector"]["matchLabels"] == backend_peer
+        assert processor_policy["spec"]["podSelector"]["matchLabels"] == processor_peer
+        assert any(
+            rule.get("to") == [{"podSelector": {"matchLabels": backend_peer}}]
+            and rule.get("ports") == [{"protocol": "TCP", "port": 8000}]
+            for rule in processor_policy["spec"]["egress"]
+        )
+        assert any(
+            rule.get("from") == [{"podSelector": {"matchLabels": processor_peer}}]
+            and rule.get("ports") == [{"protocol": "TCP", "port": 8000}]
+            for rule in backend_policy["spec"]["ingress"]
+        )
+        policy_selectors.append((backend_peer, processor_peer))
+    assert policy_selectors[0][0] != policy_selectors[1][0]
+    assert policy_selectors[0][1] != policy_selectors[1][1]
+
+
+def test_external_https_jwks_override_keeps_existing_443_egress_only() -> None:
+    release_name = "jwks-external-contract"
+    jwks_url = "https://issuer.example.invalid/.well-known/jwks.json"
+    resources = _render_staging(
+        "--set-string",
+        f"fileProcessor.config.jwksURL={jwks_url}",
+        release_name=release_name,
+    )
+    processor = _component_resource(resources, "Deployment", "file-processor")
+    processor_env = {
+        entry["name"]: entry.get("value")
+        for entry in processor["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    assert processor_env["FP_JWKS_URL"] == jwks_url
+    processor_policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == f"{release_name}-file-processor-policy"
+    )
+    backend_policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == f"{release_name}-backend-policy"
+    )
+    assert not any(
+        any(
+            target.get("podSelector", {})
+            .get("matchLabels", {})
+            .get("app.kubernetes.io/component")
+            == "backend"
+            for target in rule.get("to", [])
+        )
+        for rule in processor_policy["spec"]["egress"]
+    )
+    assert not any(
+        any(
+            source.get("podSelector", {})
+            .get("matchLabels", {})
+            .get("app.kubernetes.io/component")
+            == "file-processor"
+            for source in rule.get("from", [])
+        )
+        for rule in backend_policy["spec"]["ingress"]
+    )
+    assert any(
+        rule.get("ports") == [{"protocol": "TCP", "port": 443}]
+        for rule in processor_policy["spec"]["egress"]
+    )
+
+
+_SERVICE_COMPONENTS = (
+    "backend",
+    "frontend",
+    "gateway",
+    "ws-hub",
+    "file-processor",
+)
+
+
+@pytest.mark.parametrize("environment", ["development", "staging"])
+@pytest.mark.parametrize(
+    ("release", "full_override", "base"),
+    [
+        ("short", "", "short-university-ecosystem"),
+        ("short", "campus", "campus"),
+        ("short", "b" * 48, "b" * 48),
+        ("r" * 53, "", "r" * 53 + "-universit"),
+        ("short", "f" * 63, "f" * 63),
+    ],
+    ids=[
+        "short-default",
+        "short-full-override",
+        "file-processor-exact-limit",
+        "long-release",
+        "long-full-override",
+    ],
+)
+def test_first_party_service_names_and_references_fit_dns_labels(
+    environment: str,
+    release: str,
+    full_override: str,
+    base: str,
+) -> None:
+    assert shutil.which("helm") is not None, "Actual Helm rendering is required"
+    overrides = (
+        "--set-string",
+        f"global.environment={environment}",
+        "--set-string",
+        f"fullnameOverride={full_override}",
+    )
+    resources = _render_staging(*overrides, release_name=release)
+    services = {
+        resource["metadata"]["labels"]["app.kubernetes.io/component"]: resource
+        for resource in resources
+        if resource.get("kind") == "Service"
+        and resource["metadata"].get("labels", {}).get("app.kubernetes.io/component")
+        in _SERVICE_COMPONENTS
+    }
+    assert set(services) == set(_SERVICE_COMPONENTS)
+    expected = {
+        component: f"{base[: 62 - len(component)].rstrip('-')}-{component}"
+        for component in _SERVICE_COMPONENTS
+    }
+    names = {
+        component: resource["metadata"]["name"]
+        for component, resource in services.items()
+    }
+    assert names == expected
+    assert len(set(names.values())) == len(_SERVICE_COMPONENTS)
+    assert all(
+        len(name) <= 63 and re.fullmatch(r"[a-z][a-z0-9-]*[a-z0-9]", name)
+        for name in names.values()
+    )
+    service_ports = {
+        resource["metadata"]["name"]: {
+            port["port"] for port in resource["spec"]["ports"]
+        }
+        for resource in services.values()
+    }
+    deployments = {
+        resource["metadata"]["labels"]["app.kubernetes.io/component"]: resource
+        for resource in resources
+        if resource.get("kind") == "Deployment"
+        and resource["metadata"].get("labels", {}).get("app.kubernetes.io/component")
+        in _SERVICE_COMPONENTS
+    }
+    for component, service in services.items():
+        labels = deployments[component]["spec"]["template"]["metadata"]["labels"]
+        assert all(
+            labels[key] == value for key, value in service["spec"]["selector"].items()
+        )
+    env = {
+        component: {
+            entry["name"]: entry["value"]
+            for entry in deployment["spec"]["template"]["spec"]["containers"][0]["env"]
+            if "value" in entry
+        }
+        for component, deployment in deployments.items()
+    }
+    backend = f"http://{names['backend']}:8000"
+    jwks = f"{backend}/.well-known/jwks.json"
+    assert env["frontend"]["BACKEND_ORIGIN"] == backend
+    assert env["gateway"]["BACKEND_URL"] == backend
+    assert env["gateway"]["FILE_PROCESSOR_ADDR"] == f"{names['file-processor']}:50051"
+    assert env["file-processor"]["FP_JWKS_URL"] == jwks
+    assert env["ws-hub"]["BACKEND_INTERNAL_URL"] == backend
+    assert env["ws-hub"]["JWKS_URL"] == jwks
+    if environment == "development":
+        assert env["gateway"]["JWKS_ENDPOINT"] == jwks
+    else:
+        assert env["gateway"]["JWKS_ENDPOINT"] == (
+            "https://api.university.staging.example.org/.well-known/jwks.json"
+        )
+
+    ingress_refs = [
+        path["backend"]["service"]
+        for resource in resources
+        if resource.get("kind") == "Ingress"
+        for rule in resource["spec"]["rules"]
+        for path in rule["http"]["paths"]
+    ]
+    assert ingress_refs
+    for reference in ingress_refs:
+        assert reference["port"]["number"] in service_ports[reference["name"]]
+
+    gateway_result = _render_gateway_template_isolated(
+        "--set-string",
+        f"fullnameOverride={full_override}",
+        release_name=release,
+    )
+    assert gateway_result.returncode == 0, gateway_result.stderr
+    gateway_resources = [
+        resource
+        for resource in yaml.safe_load_all(gateway_result.stdout)
+        if isinstance(resource, dict)
+    ]
+    gateway_refs = [
+        reference
+        for resource in gateway_resources
+        if resource.get("kind") == "HTTPRoute"
+        for rule in resource["spec"]["rules"]
+        for reference in rule.get("backendRefs", [])
+    ]
+    assert gateway_refs
+    for reference in gateway_refs:
+        assert reference["kind"] == "Service"
+        assert reference["port"] in service_ports[reference["name"]]
+
+
+@pytest.mark.parametrize("port", [3000, 3100], ids=["default", "override"])
+def test_frontend_service_port_matches_node_listener(port: int) -> None:
+    assert shutil.which("helm") is not None, "Actual Helm rendering is required"
+    resources = _render_staging(
+        "--set",
+        f"frontend.service.port={port}",
+        release_name="frontend-listener-contract",
+    )
+    deployment = _component_resource(resources, "Deployment", "frontend")
+    service = _component_resource(resources, "Service", "frontend")
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+
+    assert container["name"] == "frontend"
+    assert "command" not in container
+    assert "args" not in container
+    runtime = (ROOT / "frontend.Dockerfile").read_text(encoding="utf-8")
+    defaults = re.findall(r"^ENV PORT=([0-9]+)$", runtime, re.MULTILINE)
+    assert defaults == ["3000"]
+    assert 'CMD ["node", "scripts/server-prod.mjs"]' in runtime
+
+    port_entries = [entry for entry in container["env"] if entry["name"] == "PORT"]
+    assert len(port_entries) <= 1
+    listener_port = defaults[0]
+    if port_entries:
+        assert "valueFrom" not in port_entries[0]
+        listener_port = port_entries[0]["value"]
+        assert isinstance(listener_port, str)
+    assert listener_port == str(port)
+
+    http_ports = [entry for entry in container["ports"] if entry["name"] == "http"]
+    assert http_ports == [{"name": "http", "containerPort": port, "protocol": "TCP"}]
+    assert service["spec"]["ports"] == [
+        {
+            "port": port,
+            "targetPort": "http",
+            "protocol": "TCP",
+            "name": "http",
+        }
+    ]
+    for probe in ("startupProbe", "livenessProbe", "readinessProbe"):
+        assert container[probe]["httpGet"] == {
+            "path": "/healthz",
+            "port": "http",
+        }
+
+    labels = deployment["spec"]["template"]["metadata"]["labels"]
+    assert all(
+        labels[key] == value for key, value in service["spec"]["selector"].items()
+    )

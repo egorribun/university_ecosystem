@@ -9,7 +9,7 @@ collected mid-run.
 This module provides ``TaskRegistry`` which:
 1. Tracks all managed tasks.
 2. Logs exceptions immediately via a done-callback (no silent failures).
-3. Cancels and awaits all tasks on shutdown within a configurable timeout.
+3. Cancels tasks and bounds shutdown waiting, retaining pending task ownership.
 """
 
 from __future__ import annotations
@@ -57,28 +57,21 @@ class TaskRegistry:
             )
 
     async def shutdown(self, *, timeout: float = 30.0) -> None:
-        """Cancel all registered tasks and await their completion.
+        """Cancel registered tasks and wait at most the configured timeout.
 
-        Args:
-            timeout: Seconds to wait before giving up on graceful shutdown.
+        Cancellation-resistant tasks remain tracked until their done callback
+        runs. This bounds waiting, not execution or process termination.
         """
-        if not self._tasks:
+        tasks = tuple(self._tasks)
+        if not tasks:
             return
-        for task in list(self._tasks):
+        for task in tasks:
             task.cancel()
-        # LOW-W19: Catch TimeoutError so a slow task cannot prevent the rest of
-        # the shutdown sequence from running.  Any tasks still running after the
-        # timeout have already been cancelled; the gather result is discarded.
-        try:
-            await asyncio.wait_for(
-                asyncio.gather(*self._tasks, return_exceptions=True),
-                timeout=timeout,
-            )
-        except TimeoutError:
+        _, pending = await asyncio.wait(tasks, timeout=timeout)
+        if pending:
             _logger.warning(
                 "TaskRegistry.shutdown: %d task(s) did not finish within %.1fs; "
-                "forcing teardown.",
-                len(self._tasks),
+                "retaining pending tasks until completion.",
+                len(pending),
                 timeout,
             )
-        self._tasks.clear()

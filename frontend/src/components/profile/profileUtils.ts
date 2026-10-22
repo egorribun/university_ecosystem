@@ -24,6 +24,14 @@ export type AchievementItem = {
   url?: string
 }
 
+function escapeVCardComponent(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\r\n|\r|\n/g, "\\n")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;")
+}
+
 export function parseAchievements(achievementsStr: string | null | undefined): AchievementItem[] {
   return String(achievementsStr || "")
     .split(/[,;\n]/)
@@ -46,12 +54,13 @@ export function buildVCardString(user: {
   position?: string | null
   status?: string | null
 }): string {
+  const organization = user.institute || user.department
   const lines = [
     "BEGIN:VCARD",
     "VERSION:4.0",
     `FN:${user.full_name || ""}`,
     user.email ? `EMAIL:${user.email}` : "",
-    user.institute || user.department ? `ORG:${user.institute || user.department}` : "",
+    organization ? `ORG:${escapeVCardComponent(organization)}` : "",
     user.position || user.status ? `TITLE:${user.position || user.status}` : "",
     typeof window !== "undefined" ? `URL:${window.location.href}` : "",
   ].filter(Boolean)

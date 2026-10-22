@@ -2,12 +2,22 @@ import { createElement } from "react"
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
-const { formatDateMock, useTranslationMock, translationMock } = vi.hoisted(() => {
+const { formatDateMock, useTranslationMock, translationMock, language } = vi.hoisted(() => {
   const translationMock = vi.fn((key: string) => key)
+  const language = { current: "en" }
   return {
     formatDateMock: vi.fn((value: string) => `formatted:${value}`),
-    useTranslationMock: vi.fn(() => ({ t: translationMock })),
+    useTranslationMock: vi.fn(() => ({
+      t: translationMock,
+      i18n: {
+        get language() {
+          return language.current
+        },
+        changeLanguage: () => Promise.resolve(),
+      },
+    })),
     translationMock,
+    language,
   }
 })
 
@@ -38,6 +48,9 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/utils/date", () => ({
   formatDate: formatDateMock,
+}))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => "Europe/Istanbul",
 }))
 
 import EventCardContent from "@/components/events/EventCard/EventCardContent"
@@ -93,7 +106,9 @@ describe("EventCardContent closure", () => {
         hour: "2-digit",
         minute: "2-digit",
         hour12: false,
-      })
+        timeZone: "Europe/Istanbul",
+      }),
+      "en-US"
     )
     expect(translationMock).toHaveBeenCalledWith("events:card.statuses.open")
   })
@@ -150,4 +165,16 @@ describe("EventCardContent closure", () => {
       expect(status).toHaveClass(className)
     }
   )
+
+  it("formats campus dates with the Russian locale when selected", () => {
+    const previousLanguage = language.current
+    language.current = "ru"
+    formatDateMock.mockClear()
+    try {
+      render(<EventCardContent {...baseProps} />)
+      expect(formatDateMock).toHaveBeenCalledWith(baseProps.startsAt, expect.any(Object), "ru-RU")
+    } finally {
+      language.current = previousLanguage
+    }
+  })
 })

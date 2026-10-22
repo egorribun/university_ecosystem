@@ -15,7 +15,7 @@ import (
 	"github.com/google/uuid"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/redis/go-redis/v9"
-	"github.com/sony/gobreaker"
+	"github.com/sony/gobreaker/v2"
 	"github.com/university-ecosystem/services/pkg/spiffe"
 )
 
@@ -34,6 +34,14 @@ func authClientMaxConnsPerHost() int {
 type RoomAuthClient interface {
 	CanJoinRoom(ctx context.Context, userID, roomID string) bool
 	Invalidate(userID, roomID string)
+}
+
+// RoomAuthorizationRefresher performs a cache-bypassing authorization check
+// after confirming that stale shared cache entries were removed. It is used
+// for durable membership-revocation events, where an unknown result must be
+// retried instead of being treated as a denial or permission.
+type RoomAuthorizationRefresher interface {
+	RefreshRoomAuthorization(ctx context.Context, userID, roomID string) (bool, error)
 }
 
 // authCacheTTL is the single source of truth for both L1 (in-process LRU)
@@ -71,7 +79,7 @@ type InternalAPIAuthClient struct {
 	// timeout); at 10k clients reconnecting simultaneously this saturates
 	// the thread pool.  gobreaker trips after 10 consecutive failures and
 	// stays open for 10 s before probing with up to 5 half-open requests.
-	cb *gobreaker.CircuitBreaker
+	cb *gobreaker.CircuitBreaker[bool]
 }
 
 // authHTTPDoFunc is a narrow seam around net/http for deterministic transport
@@ -85,15 +93,6 @@ var authClientTLSConfigFunc = func(client *spiffe.Client, backendSpiffeID string
 }
 
 var newAuthLRUFunc = lru.New[string, cacheEntry]
-
-// NewInternalAPIAuthClient creates a client with L1/L2 caching.
-//
-// The token-aware constructor should be used by production startup.  This
-// compatibility constructor intentionally keeps the development/test client
-// usable without an internal callback token.
-func NewInternalAPIAuthClient(baseURL string, redisClient *redis.Client) *InternalAPIAuthClient {
-	return newInternalAPIAuthClient(baseURL, "", redisClient)
-}
 
 // NewInternalAPIAuthClientWithToken creates a client that authenticates the
 // internal participant callback with X-Internal-Token.
@@ -112,7 +111,7 @@ func newInternalAPIAuthClient(baseURL, internalAuthToken string, redisClient *re
 	// ReadyToTrip: open after 10 consecutive HTTP failures (not cache hits).
 	// Timeout: stay open for 10 s before allowing a probe (half-open).
 	// MaxRequests: allow 5 probes in half-open state before deciding.
-	cb := gobreaker.NewCircuitBreaker(gobreaker.Settings{
+	cb := gobreaker.NewCircuitBreaker[bool](gobreaker.Settings{
 		Name:        "backend-auth",
 		MaxRequests: 5,
 		Interval:    30 * time.Second,
@@ -295,10 +294,12 @@ func (c *InternalAPIAuthClient) doRequest(ctx context.Context, userID, roomID st
 	}
 }
 
-// doRequestWithBreaker wraps doRequest with the circuit breaker.
-// Returns false when the circuit is open (fail-closed for auth).
-func (c *InternalAPIAuthClient) doRequestWithBreaker(ctx context.Context, userID, roomID string) bool {
-	result, err := c.cb.Execute(func() (interface{}, error) {
+// doRequestWithBreakerResult distinguishes backend failures from healthy denials.
+func (c *InternalAPIAuthClient) doRequestWithBreakerResult(
+	ctx context.Context,
+	userID, roomID string,
+) (bool, error) {
+	result, err := c.cb.Execute(func() (bool, error) {
 		// WSH-P1-02: propagate reqErr so that network errors and HTTP 5xx trip
 		// the breaker, while healthy 4xx responses (backend up, access denied)
 		// are returned as success to gobreaker — they measure authorization, not
@@ -310,11 +311,32 @@ func (c *InternalAPIAuthClient) doRequestWithBreaker(ctx context.Context, userID
 		return allowed, nil
 	})
 	if err != nil {
-		// gobreaker.ErrOpenState or gobreaker.ErrTooManyRequests (half-open limit)
-		// → fail-closed: deny room join when backend is unreachable.
-		return false
+		return false, err
 	}
-	return result.(bool)
+	return result, nil
+}
+
+// RefreshRoomAuthorization removes the local and Redis permission entries,
+// then asks the backend directly. Unlike CanJoinRoom, this never trusts L1/L2
+// data. Redis deletion errors and backend failures are returned so a durable
+// revocation event can be retried rather than incorrectly acknowledged.
+func (c *InternalAPIAuthClient) RefreshRoomAuthorization(
+	ctx context.Context,
+	userID, roomID string,
+) (bool, error) {
+	if !isValidUUID(userID) || !isValidUUID(roomID) {
+		return false, fmt.Errorf("invalid user or room id for authorization refresh")
+	}
+
+	key := userID + ":" + roomID
+	c.cache.Remove(key)
+	if c.redis != nil {
+		if err := c.redis.Del(ctx, "auth:perms:"+key).Err(); err != nil {
+			return false, fmt.Errorf("delete stale Redis room authorization: %w", err)
+		}
+	}
+
+	return c.doRequestWithBreakerResult(ctx, userID, roomID)
 }
 
 // CanJoinRoom checks local cache, uses single-flight to prevent thundering herd,
@@ -363,30 +385,27 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 	newCall := new(call)
 	newCall.wg.Add(1)
 	// HIGH-W19: defer wg.Done so waiters are always unblocked even if
-	// doRequestWithBreaker panics; explicit call below is removed
+	// doRequestWithBreakerResult panics; explicit call below is removed
 	defer newCall.wg.Done()
 	c.calls[key] = newCall
 	c.callMu.Unlock()
 
-	// Perform actual request with caller's context, guarded by circuit breaker.
-	allowed := c.doRequestWithBreaker(ctx, userID, roomID)
+	// Backend failures deny this request, but are not cacheable decisions.
+	allowed, authErr := c.doRequestWithBreakerResult(ctx, userID, roomID)
+	if authErr == nil {
+		c.cache.Add(key, cacheEntry{
+			allowed:   allowed,
+			expiresAt: time.Now().Add(authCacheTTL),
+		})
 
-	// Update cache
-	c.cache.Add(key, cacheEntry{
-		allowed: allowed,
-		// WSH-P3-02: use shared authCacheTTL constant (L1 = L2 = 1 min)
-		expiresAt: time.Now().Add(authCacheTTL),
-	})
-
-	// Update Redis L2
-	if c.redis != nil {
-		redisKey := "auth:perms:" + key
-		val := "0"
-		if allowed {
-			val = "1"
+		if c.redis != nil {
+			redisKey := "auth:perms:" + key
+			val := "0"
+			if allowed {
+				val = "1"
+			}
+			c.redis.Set(ctx, redisKey, val, authCacheTTL)
 		}
-		// WSH-P3-02: align L2 TTL with L1 using shared authCacheTTL constant
-		c.redis.Set(ctx, redisKey, val, authCacheTTL)
 	}
 
 	// Resolve in-flight call

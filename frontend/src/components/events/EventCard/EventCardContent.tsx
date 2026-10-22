@@ -9,7 +9,8 @@ import { memo } from "react"
 import { Link } from "@tanstack/react-router"
 import { Calendar, MapPin, Users, Mic2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { formatDate } from "@/utils/date"
+import { formatCampusDate } from "@/utils/campusTimezone"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import { cn } from "@/utils/cn"
 
 interface EventCardContentProps {
@@ -27,15 +28,6 @@ interface EventCardContentProps {
   hoveringDisabled?: boolean
 }
 
-const formatShortDate = (s: string) =>
-  formatDate(s, {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  })
-
 const EventCardContent = ({
   id,
   title,
@@ -49,7 +41,21 @@ const EventCardContent = ({
   isEnded,
   hoveringDisabled,
 }: EventCardContentProps) => {
-  const { t } = useTranslation(["events"])
+  const { t, i18n } = useTranslation(["events"])
+  const timeZone = useCampusTimezone()
+  const formatShortDate = (value: string) =>
+    formatCampusDate(
+      value,
+      {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      },
+      i18n.language === "ru" ? "ru-RU" : "en-US",
+      timeZone
+    )
 
   return (
     <div className="flex flex-1 flex-col gap-2.5 p-4 pt-3">
@@ -80,13 +86,15 @@ const EventCardContent = ({
       )}
 
       {/* Date range */}
-      <div className="flex items-center gap-1.5 text-xs text-(--text-secondary)">
-        <Calendar size={12} className="shrink-0" />
-        <span>
-          {formatShortDate(startsAt)}
-          {endsAt ? ` — ${formatShortDate(endsAt)}` : ""}
-        </span>
-      </div>
+      {timeZone && (
+        <div className="flex items-center gap-1.5 text-xs text-(--text-secondary)">
+          <Calendar size={12} className="shrink-0" />
+          <span>
+            {formatShortDate(startsAt)}
+            {endsAt ? ` — ${formatShortDate(endsAt)}` : ""}
+          </span>
+        </div>
+      )}
 
       {/* Location */}
       {location && (

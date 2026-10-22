@@ -7,7 +7,7 @@ This document defines the architectural invariants, framework constraints, secur
 ## 1. Runtime & Environment Standards
 
 - **Python Runtime**: Development and canonical CI are standardized on **Python 3.14** (`target-version = "py314"`). Package metadata and the lock currently advertise `requires-python = ">=3.12,<3.15"`; do not confuse this compatibility range with interpreter selection or claim all supported versions verified without their own evidence.
-- **Type Checking**: Strict `mypy` enforcement (`python_version = "3.14"`, `strict = true`) with plugins for `pydantic.mypy`, `sqlalchemy.ext.mypy.plugin`, and `strawberry.ext.mypy_plugin`. Code must also be compatible with `pyright` standard mode.
+- **Type Checking**: Strict `mypy` enforcement (`python_version = "3.14"`, `strict = true`) with plugins for `pydantic.mypy` and `strawberry.ext.mypy_plugin`. SQLAlchemy 2.0 uses its inline `Mapped` typing; the legacy `sqlalchemy.ext.mypy.plugin` is not configured. Code must also be compatible with `pyright` standard mode.
 - **Linting & Formatting**:
   - `python -m ruff check app/`
   - `python -m ruff format app/`
@@ -176,17 +176,20 @@ except Exception as err:  # RZ-22-01-JUSTIFIED: fail-closed auth fallback with a
 - **Bcrypt Verification Removed**: Legacy bcrypt support has been completely excised (TD-21-04).
 - **Concurrency Limiting**: Argon2 hashing runs in a dedicated executor sized to the cgroup-aware CPU count (at least 2 threads); a semaphore admits at most `workers - 1` (at least 1) concurrent hashes per process (`app/auth/security.py`).
 
-### 6.2. Dual JWKS Architecture (RS256)
+### 6.2. RS256 & JWKS
 - Private RSA signing key: `.secrets/jwt_rs256.pem`.
 - Outbound tokens: Signed using RS256 algorithm.
 - `LoginSessionManager.finalize_login` injects claims: `sub`, `exp`, `aud`, and `role` (`user.role.value`).
-- Dual JWKS Endpoints:
-  - `/.well-known/jwks.json`: Public RSA JWKS (`kty=RSA`, `n`, `e`) for external and edge consumers.
-  - `/api/v1/.well-known/jwks.json`: HMAC stub (`kty=oct`) for backward compatibility.
+- JWKS Endpoint: `/.well-known/jwks.json` publishes the public RSA JWKS (`kty=RSA`, `n`, `e`) for the edge gateway, ws-hub and file-processor. The former HMAC `kty=oct` stub under `/api/v1/.well-known/jwks.json` had no consumer and was removed.
 - Cookies: `access_token_v2` must be issued as an `HttpOnly` cookie with `cookie_samesite="lax"`.
 
 ### 6.3. Storage Path Traversal Prevention
 - `StaticFSStorage._resolve_validated_path()` resolves symlinks and verifies `is_relative_to(base_dir)`.
+
+### 6.4. Authorization Gates & Error Contract
+- Admin-only routes depend on `get_current_admin_user_from_dishka` (or call `ensure_admin(checker, user, request)` for conditional admin paths). Both resolve through SpiceDB and fail closed with 503 when it is unreachable; never gate a privileged operation on the `user.role` column alone. Teacher gating (`require_teacher_or_admin`) stays role-based because SpiceDB models teachers per course.
+- `HTTPException.detail` is rendered as an RFC 7807 string; a structured `{"error": <code>, "message": <text>, ...}` detail surfaces as the `code` extension member plus the extra keys.
+- Every `errors.*` translation key referenced from `app/` must exist in `app/core/localization/dictionary.py` (`tests/test_localization_key_coverage.py`); `translate` falls back to the raw key, which would leak it to clients.
 
 ---
 
@@ -203,14 +206,17 @@ except Exception as err:  # RZ-22-01-JUSTIFIED: fail-closed auth fallback with a
 
 ---
 
-## 8. GraphQL Defense Layers
+## 8. Backend GraphQL MVP Scope
 
-GraphQL queries (via Strawberry GraphQL) pass through 5 protective middleware layers:
-1. **`QueryDepthLimiter`**: Rejects queries exceeding max depth of 10.
-2. **`MaxTokensLimiter`**: Rejects queries with excessive token counts.
-3. **`QueryCostExtension`**: Calculates query complexity and rejects expensive requests.
-4. **`RequestTimeoutExtension`**: Hard 30s timeout per GraphQL request.
-5. **`PersistedQueryExtension`**: Enforces pre-registered queries in production.
+The FastAPI backend does not mount or serve `/graphql` in the MVP. This owner
+decision supersedes the historical public-surface choice in
+[ADR-046](../docs/adr/ADR-046-codebase-consolidation-audit.md) and is recorded
+in the [October audit](../docs/audits/AUDIT-2026-10.md). AUD-353, AUD-367, and
+AUD-448 close for this release by endpoint removal. The `app/graphql`
+implementation and its Python dependencies remain pending a separate source
+inventory; they do not define a supported HTTP contract. The Go file-processor
+GraphQL runtime (AUD-368) is separate and remains governed by
+[`services/AGENTS.md`](../services/AGENTS.md).
 
 ---
 
@@ -237,5 +243,6 @@ GraphQL queries (via Strawberry GraphQL) pass through 5 protective middleware la
 | `except Exception:` without tag | Swallows unexpected bugs and violates exception policy | Use narrowed exceptions or tag `# RZ-22-01-JUSTIFIED: <reason>` |
 | `except A, B:` | Python 2 syntax rejected by `no-python2-except` hook | `except (A, B):` |
 | Storing `revoked:jti:*` in cache Redis | Cache eviction (volatile-lru) can resurrect revoked tokens | Store exclusively in persistent `REVOCATION_REDIS_URL` |
+| Gating an admin operation on `user.role == UserRole.ADMIN` | A stale role column grants access SpiceDB has revoked | `Depends(get_current_admin_user_from_dishka)` / `ensure_admin` |
 | Bcrypt password hashing | Bcrypt removed in TD-21-04; violates security standards | Use Argon2id via `argon2-cffi` |
 | Monolithic DI service wrappers | High coupling, slow tests, violates SRP | Narrow Dishka domain providers (`app/core/di/`) |

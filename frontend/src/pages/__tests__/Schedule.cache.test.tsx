@@ -134,7 +134,7 @@ describe("Schedule cache handling", () => {
           {
             id: "lesson-100",
             weekday: "Monday",
-            parity: "odd",
+            parity: "both",
             start_time: "2024-03-25T08:00:00",
             end_time: "2024-03-25T09:30:00",
             subject: "Stale Subject",
@@ -157,7 +157,7 @@ describe("Schedule cache handling", () => {
             {
               id: "lesson-101",
               weekday: "Monday",
-              parity: "odd",
+              parity: "both",
               start_time: "2024-03-25T08:00:00",
               end_time: "2024-03-25T09:30:00",
               subject: "Fresh Subject",

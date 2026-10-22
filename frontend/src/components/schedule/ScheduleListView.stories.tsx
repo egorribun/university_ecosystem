@@ -75,6 +75,7 @@ const themed = (dark: boolean): Decorator => {
           className="schedule-theme"
           style={{ background: "var(--bg-page)", padding: "1rem", minHeight: 480 }}
         >
+          <h1 className="sr-only">Расписание</h1>
           <Story />
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, type ChangeEvent, type FormEvent } from "react"
+import { useState, useEffect, useId, type ChangeEvent, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import api from "@/api/client"
 import { logError } from "@/app/logger"
@@ -19,6 +19,19 @@ interface AddLessonDialogProps {
   lessonTypeOptions: { value: string; label: string }[]
   lessonTypeConfigs: LessonTypeConfig[]
   refresh: () => void
+}
+
+/** Recurring lessons use the reference week 1970-01-05..11 in campus wall time.
+ * Example accepted by ScheduleCreate: monday -> 1970-01-05T09:00:00.
+ * No UTC conversion: weekday/time, not a dated occurrence, define the lesson.
+ */
+export function recurringLessonDateTime(weekday: string, time: string): string {
+  const weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+  const index = weekdays.indexOf(weekday)
+  if (index < 0 || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+    throw new Error("Invalid recurring lesson time")
+  }
+  return `1970-01-${String(5 + index).padStart(2, "0")}T${time}:00`
 }
 
 export function isAddLessonFormValid(
@@ -83,7 +96,15 @@ export function AddLessonDialog({
   refresh,
 }: AddLessonDialogProps) {
   const { t } = useTranslation(["schedule", "common"])
-  const { activeDialog, closeDialog, showSnackbar, addDay } = useSchedulePage()
+  const dialogTitleId = useId()
+  const {
+    activeDialog,
+    dialogSessionId,
+    isDialogSessionCurrent,
+    closeDialog,
+    showSnackbar,
+    addDay,
+  } = useSchedulePage()
 
   const isOpen = activeDialog === "add"
 
@@ -97,7 +118,8 @@ export function AddLessonDialog({
     parity: "both",
   })
 
-  const [isAdding, setIsAdding] = useState(false)
+  const [addingSessionId, setAddingSessionId] = useState<number | null>(null)
+  const isAdding = addingSessionId === dialogSessionId
 
   const isFormValid = isAddLessonFormValid(addFields)
 
@@ -111,7 +133,7 @@ export function AddLessonDialog({
     })
   }, [defaultLessonType, lessonTypeOptions])
 
-  const handleAddLesson = async () => {
+  const handleAddLesson = async (sessionId: number) => {
     if (!selectedGroupId || !addDay) return
 
     // Resolve backend lesson type
@@ -122,33 +144,36 @@ export function AddLessonDialog({
       teacher: addFields.teacher,
       room: addFields.room,
       lesson_type: backendType,
-      start_time: `${addDay}T${addFields.startTime}:00`,
-      end_time: `${addDay}T${addFields.endTime}:00`,
+      start_time: recurringLessonDateTime(addDay, addFields.startTime),
+      end_time: recurringLessonDateTime(addDay, addFields.endTime),
       weekday: addDay,
       parity: addFields.parity,
       group_id: selectedGroupId,
     }
 
     try {
-      setIsAdding(true)
+      setAddingSessionId(sessionId)
       await api.post("/schedule", payload)
       showSnackbar(t("schedule:snackbar.added"))
-      closeDialog()
       refresh()
-      // Reset fields partially?
-      setAddFields(resetAddLessonTextFields)
+      if (isDialogSessionCurrent(sessionId)) {
+        closeDialog()
+        setAddFields(resetAddLessonTextFields)
+      }
     } catch (e) {
       logError("Failed to add lesson", e)
-      showSnackbar(t("schedule:snackbar.addError"), "error")
+      if (isDialogSessionCurrent(sessionId)) {
+        showSnackbar(t("schedule:snackbar.addError"), "error")
+      }
     } finally {
-      setIsAdding(false)
+      setAddingSessionId((current) => (current === sessionId ? null : current))
     }
   }
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     if (isFormValid && !isAdding) {
-      handleAddLesson()
+      void handleAddLesson(dialogSessionId)
     }
   }
 
@@ -181,8 +206,14 @@ export function AddLessonDialog({
   }
 
   return (
-    <Dialog open={isOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
-      <DialogTitle>{t("schedule:dialog.addTitle")}</DialogTitle>
+    <Dialog
+      open={isOpen}
+      onClose={closeDialog}
+      maxWidth="sm"
+      fullWidth
+      ariaLabelledBy={dialogTitleId}
+    >
+      <DialogTitle id={dialogTitleId}>{t("schedule:dialog.addTitle")}</DialogTitle>
       <form onSubmit={handleSubmit}>
         <DialogContent className="space-y-5 pt-4">
           <div className="space-y-5" role="presentation">
@@ -230,13 +261,15 @@ export function AddLessonDialog({
             </div>
             <div>
               <label
-                htmlFor="add-lesson-type"
+                id="add-lesson-type-label"
+                htmlFor="add-lesson-type-trigger"
                 className="mb-2 block text-sm font-semibold opacity-strong"
               >
                 {t("schedule:form.lessonType")}
               </label>
               <Select
                 id="add-lesson-type"
+                aria-labelledby="add-lesson-type-label"
                 value={addFields.lessonType}
                 onValueChange={handleLessonTypeChange}
                 options={lessonTypeOptions}
@@ -277,13 +310,15 @@ export function AddLessonDialog({
             </div>
             <div>
               <label
-                htmlFor="add-lesson-parity"
+                id="add-lesson-parity-label"
+                htmlFor="add-lesson-parity-trigger"
                 className="mb-2 block text-sm font-semibold opacity-strong"
               >
                 {t("schedule:form.week")}
               </label>
               <Select
                 id="add-lesson-parity"
+                aria-labelledby="add-lesson-parity-label"
                 value={addFields.parity}
                 onValueChange={handleParityChange}
                 options={[

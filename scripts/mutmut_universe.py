@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterable, Mapping
-from dataclasses import fields, is_dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from importlib import metadata as importlib_metadata
 from pathlib import Path, PureWindowsPath
 from stat import S_ISLNK
@@ -31,6 +31,13 @@ GENERATION_MANIFEST_PATH = Path("mutants/mutmut-generation.json")
 # reject it instead of silently accepting an incomplete input inventory.
 MANIFEST_SCHEMA_VERSION = 2
 GENERATION_MANIFEST_SCHEMA_VERSION = 1
+
+
+@dataclass(frozen=True, slots=True)
+class _ValidatedGenerationManifest:
+    """Immutable encoding of generation inputs already compared with files."""
+
+    payload_json: str
 
 
 def get_mutmut_config(mutmut_cli: Any) -> Any:
@@ -713,11 +720,44 @@ def validate_generation_manifest(
     return manifest
 
 
-def _build_manifest(mutmut_cli: Any, *, stats_path: Path) -> dict[str, Any]:
+def _build_manifest(
+    mutmut_cli: Any,
+    *,
+    stats_path: Path,
+    validated_generation: _ValidatedGenerationManifest | None = None,
+) -> dict[str, Any]:
     if not stats_path.is_file():
         raise UniverseValidationError(f"mutmut stats artifact is missing: {stats_path}")
+    if validated_generation is None:
+        generation = _build_generation_manifest(mutmut_cli)
+    else:
+        if not isinstance(validated_generation, _ValidatedGenerationManifest):
+            raise TypeError(
+                "validated_generation must come from reused-generation validation"
+            )
+        try:
+            payload = json.loads(validated_generation.payload_json)
+        except (TypeError, json.JSONDecodeError) as error:
+            raise UniverseValidationError(
+                "validated mutmut generation snapshot is invalid"
+            ) from error
+        if (
+            not isinstance(payload, dict)
+            or type(payload.get("schema_version")) is not int
+            or payload.get("schema_version") != GENERATION_MANIFEST_SCHEMA_VERSION
+            or any(key not in payload for key in _GENERATION_MANIFEST_FIELDS)
+        ):
+            raise UniverseValidationError(
+                "validated mutmut generation snapshot is incomplete"
+            )
+        # Keep the universe manifest schema stable and exclude any unknown
+        # fields tolerated by the generation-manifest reader.
+        generation = {
+            "schema_version": GENERATION_MANIFEST_SCHEMA_VERSION,
+            **{key: payload[key] for key in _GENERATION_MANIFEST_FIELDS},
+        }
     return {
-        **_build_generation_manifest(mutmut_cli),
+        **generation,
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "stats_sha256": _sha256_file(stats_path),
     }
@@ -728,10 +768,15 @@ def write_universe_manifest(
     *,
     stats_path: Path = Path("mutants/mutmut-stats.json"),
     manifest_path: Path = UNIVERSE_MANIFEST_PATH,
+    validated_generation: _ValidatedGenerationManifest | None = None,
 ) -> dict[str, Any]:
     """Write a deterministic manifest for the freshly generated universe."""
 
-    manifest = _build_manifest(mutmut_cli, stats_path=stats_path)
+    manifest = _build_manifest(
+        mutmut_cli,
+        stats_path=stats_path,
+        validated_generation=validated_generation,
+    )
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -858,7 +903,9 @@ def load_reused_generation_stats(mutmut_cli: Any) -> Any:
     return stats
 
 
-def prepare_reused_generation(mutmut_cli: Any) -> Any:
+def _prepare_reused_generation(
+    mutmut_cli: Any,
+) -> tuple[Any, _ValidatedGenerationManifest]:
     """Validate and initialize an extracted generation tree without copying.
 
     Callers must invoke this after the repository checkout and artifact
@@ -869,5 +916,27 @@ def prepare_reused_generation(mutmut_cli: Any) -> Any:
 
     get_mutmut_config(mutmut_cli)
     mutmut_cli.setup_source_paths()
-    validate_generation_manifest(mutmut_cli)
-    return load_reused_generation_stats(mutmut_cli)
+    manifest = validate_generation_manifest(mutmut_cli)
+    stats = load_reused_generation_stats(mutmut_cli)
+    payload_json = json.dumps(
+        manifest,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return stats, _ValidatedGenerationManifest(payload_json)
+
+
+def prepare_reused_generation(mutmut_cli: Any) -> Any:
+    """Validate and initialize a reused tree, returning mutmut's stats."""
+
+    stats, _validated_manifest = _prepare_reused_generation(mutmut_cli)
+    return stats
+
+
+def prepare_reused_generation_with_manifest(
+    mutmut_cli: Any,
+) -> tuple[Any, _ValidatedGenerationManifest]:
+    """Return mutmut stats and the generation snapshot validated in this call."""
+
+    return _prepare_reused_generation(mutmut_cli)

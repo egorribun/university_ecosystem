@@ -27,6 +27,7 @@ import {
 
 interface MapControlsProps {
   mapRef: React.MutableRefObject<MapRef | null>
+  initialPitch?: number
 }
 
 type MapInstance = ReturnType<MapRef["getMap"]>
@@ -59,10 +60,10 @@ function resolveMap(mapRef: React.MutableRefObject<MapRef | null>) {
   return (mapRef.current ?? NOOP_MAP_REF).getMap() ?? NOOP_MAP
 }
 
-export function MapControls({ mapRef }: MapControlsProps) {
+export function MapControls({ mapRef, initialPitch = 45 }: MapControlsProps) {
   const { t } = useTranslation("map")
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [is3D, setIs3D] = useState(true) // starts with pitch 45
+  const [is3D, setIs3D] = useState(initialPitch > 0)
   /** Responsive icon sizing — matches CSS breakpoints in map.css (FIX-111-02) */
   const isMobile = useMediaQuery("(max-width: 640px)")
   const isSmall = useMediaQuery("(max-width: 380px), (max-height: 500px)")

@@ -70,6 +70,19 @@ describe("NewsCardEditDialog", () => {
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeInTheDocument()
   })
 
+  it("provides an accessible description for the edit dialog", async () => {
+    await act(async () => {
+      render(<NewsCardEditDialog {...baseProps} />)
+    })
+
+    const dialog = screen.getByRole("dialog")
+    const descriptionId = dialog.getAttribute("aria-describedby")
+    expect(descriptionId).toBeTruthy()
+    expect(document.getElementById(descriptionId!)).toHaveTextContent(
+      "news:dialogs.edit.description"
+    )
+  })
+
   it("does not render the dialog body when closed", async () => {
     await act(async () => {
       render(<NewsCardEditDialog {...baseProps} open={false} />)
@@ -85,7 +98,7 @@ describe("NewsCardEditDialog", () => {
     expect(screen.queryByRole("img")).not.toBeInTheDocument()
   })
 
-  it("normalizes empty optional translations and supports an omitted success callback", async () => {
+  it("sends cleared English translations as null so the server clears them", async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
     render(
@@ -103,20 +116,87 @@ describe("NewsCardEditDialog", () => {
       expect(apiMocks.patch).toHaveBeenCalledWith("/news/news-1", {
         title: initialData.title,
         content: initialData.content,
-        title_en: undefined,
-        content_en: undefined,
+        title_en: null,
+        content_en: null,
         image_url: "",
       })
     })
     expect(onClose).toHaveBeenCalledOnce()
   })
 
-  it("fires onClose from the cancel button", async () => {
+  it("keeps a filled English translation in the save payload", async () => {
+    const user = userEvent.setup()
+    render(
+      <NewsCardEditDialog
+        {...baseProps}
+        initialData={{ ...initialData, title_en: "English title", content_en: "English body" }}
+      />
+    )
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+
+    await waitFor(() => {
+      expect(apiMocks.patch).toHaveBeenCalledWith(
+        "/news/news-1",
+        expect.objectContaining({ title_en: "English title", content_en: "English body" })
+      )
+    })
+  })
+
+  it("closes a clean edit directly without opening discard confirmation", async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
     render(<NewsCardEditDialog {...baseProps} onClose={onClose} />)
+
     await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+
     expect(onClose).toHaveBeenCalledOnce()
+    expect(screen.queryByText("common:dialogs.unsavedChanges.description")).not.toBeInTheDocument()
+  })
+
+  it("confirms before discarding edited news from Cancel, Escape, or the backdrop", async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<NewsCardEditDialog {...baseProps} onClose={onClose} />)
+    const title = screen.getByLabelText(/^news:form\.title\*/)
+    await user.type(title, " updated")
+
+    await user.keyboard("{Escape}")
+    expect(screen.getByText("common:dialogs.unsavedChanges.description")).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "common:buttons.keepEditing" }))
+    expect(screen.getByLabelText(/^news:form\.title\*/)).toHaveValue(`${initialData.title} updated`)
+
+    const backdrop = document.querySelector('[role="presentation"] > div[aria-hidden="true"]')
+    if (!(backdrop instanceof HTMLElement)) throw new Error("Dialog backdrop not found")
+    fireEvent.click(backdrop)
+    expect(screen.getByText("common:dialogs.unsavedChanges.description")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "common:buttons.keepEditing" }))
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+    expect(screen.getByText("common:dialogs.unsavedChanges.description")).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "common:buttons.discardChanges" }))
+
+    expect(onClose).toHaveBeenCalledOnce()
+    expect(screen.getByDisplayValue(initialData.title)).toBeInTheDocument()
+  })
+
+  it("restores empty optional translations when discarding a dirty edit", async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    const emptyTranslations = { ...initialData, title_en: "", content_en: "" }
+    render(<NewsCardEditDialog {...baseProps} initialData={emptyTranslations} onClose={onClose} />)
+
+    await user.type(screen.getByLabelText(/^news:form\.title\*/), " updated")
+    await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+    expect(screen.getByText("common:dialogs.unsavedChanges.description")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "common:buttons.discardChanges" }))
+
+    expect(onClose).toHaveBeenCalledOnce()
+    expect(screen.getByLabelText("news:form.title_en")).toHaveValue("")
+    expect(screen.getByLabelText("news:form.content_en")).toHaveValue("")
+    expect(screen.getByLabelText(/^news:form\.title\*/)).toHaveValue(emptyTranslations.title)
   })
 
   it("shows validation feedback and keeps save disabled for empty required fields", async () => {
@@ -293,6 +373,7 @@ describe("NewsCardEditDialog", () => {
 
     await waitFor(() => expect(apiMocks.logError).toHaveBeenCalledWith(uploadError))
     expect(apiMocks.patch).not.toHaveBeenCalled()
+    expect(screen.getByRole("alert")).toHaveTextContent("news:form.errors.uploadFailed")
     expect(screen.getByText("news:form.changePhoto")).toBeInTheDocument()
   })
 
@@ -307,8 +388,56 @@ describe("NewsCardEditDialog", () => {
     await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
 
     await waitFor(() => expect(apiMocks.logError).toHaveBeenCalledWith(patchError))
+    expect(screen.getByRole("alert")).toHaveTextContent("news:notifications.savedError")
     expect(onSuccess).not.toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it("logs a post-save callback exception without losing the open editor", async () => {
+    const user = userEvent.setup()
+    const callbackError = new Error("refresh callback failed")
+    const onClose = vi.fn()
+    const onSuccess = vi.fn(() => {
+      throw callbackError
+    })
+    render(<NewsCardEditDialog {...baseProps} onClose={onClose} onSuccess={onSuccess} />)
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+
+    await waitFor(() => {
+      expect(apiMocks.patch).toHaveBeenCalledOnce()
+      expect(apiMocks.logError).toHaveBeenCalledWith(callbackError)
+    })
+    expect(onSuccess).toHaveBeenCalledOnce()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+  })
+
+  it("keeps the dialog and draft while a save is pending", async () => {
+    const user = userEvent.setup()
+    let resolvePatch: (value: { data: Record<string, never> }) => void = () => undefined
+    apiMocks.patch.mockImplementationOnce(
+      () =>
+        new Promise<{ data: Record<string, never> }>((resolve) => {
+          resolvePatch = resolve
+        })
+    )
+    const onClose = vi.fn()
+    render(<NewsCardEditDialog {...baseProps} onClose={onClose} />)
+
+    const title = screen.getByLabelText(/^news:form\.title\*/)
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    await waitFor(() => expect(apiMocks.patch).toHaveBeenCalledOnce())
+    expect(title).toBeDisabled()
+
+    await user.keyboard("{Escape}")
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+
+    await act(async () => {
+      resolvePatch({ data: {} })
+    })
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
   })
 
   it("falls back to empty labels when translations are unavailable", async () => {
@@ -324,5 +453,29 @@ describe("NewsCardEditDialog", () => {
     } finally {
       translationMocks.returnUndefined = false
     }
+  })
+
+  it("sends null after clearing populated English translations", async () => {
+    const user = userEvent.setup()
+    render(<NewsCardEditDialog {...baseProps} />)
+    const titleEn = screen.getByLabelText("news:form.title_en")
+    const contentEn = screen.getByLabelText("news:form.content_en")
+    expect(titleEn).toHaveValue(initialData.title_en)
+    expect(contentEn).toHaveValue(initialData.content_en)
+
+    await user.clear(titleEn)
+    await user.clear(contentEn)
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+
+    await waitFor(() => {
+      expect(apiMocks.patch).toHaveBeenCalledWith("/news/news-1", {
+        title: initialData.title,
+        content: initialData.content,
+        title_en: null,
+        content_en: null,
+        image_url: initialData.image_url,
+      })
+    })
+    expect(apiMocks.patch).toHaveBeenCalledOnce()
   })
 })

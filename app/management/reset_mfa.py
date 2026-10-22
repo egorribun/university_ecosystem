@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import json
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,8 +28,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
         "--user-id",
-        type=int,
-        help="Reset MFA for the user with the given numeric ID",
+        type=UUID,
+        help="Reset MFA for the user with the given UUID",
     )
     group.add_argument(
         "--email",
@@ -94,11 +95,11 @@ async def _reset_user_mfa(
                     type="security",
                     user_ids=[user.id],
                 )
+            await mfa.publish_mfa_session_revocations(stats.session_revocations)
             await session.commit()
         except Exception:  # RZ-22-01-JUSTIFIED: transaction-boundary rollback
             await session.rollback()
             raise
-        await mfa.publish_mfa_session_revocations(stats.session_revocations)
         reason = "admin_reset" if stats.changed else "admin_reset_noop"
         _audit_cli(
             "users.mfa.reset",

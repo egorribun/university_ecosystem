@@ -153,6 +153,57 @@ def test_process_image_returns_avif_when_encoding_succeeds():
     assert image.save.call_args.kwargs == {"format": "AVIF", "quality": 60}
 
 
+@pytest.mark.parametrize("mode", ["RGB", "RGBA"])
+@pytest.mark.parametrize("handler", ["external_plugin", "native_handler"])
+def test_process_image_avif_real_codec_round_trip(
+    monkeypatch: pytest.MonkeyPatch, mode: str, handler: str
+) -> None:
+    """Exercise each real AVIF handler, without claiming startup selection."""
+    Image.init()
+    native_avif = sys.modules["PIL.AvifImagePlugin"]
+    external_avif = sys.modules["pillow_avif.AvifImagePlugin"]
+    codec = external_avif if handler == "external_plugin" else native_avif
+    assert codec.SUPPORTED
+
+    original_save = Image.SAVE["AVIF"]
+    original_open = Image.OPEN["AVIF"]
+    with monkeypatch.context() as registry:
+        registry.setitem(Image.SAVE, "AVIF", codec._save)
+        registry.setitem(Image.OPEN, "AVIF", (codec.AvifImageFile, codec._accept))
+
+        color = (80, 120, 160)
+        fill = color if mode == "RGB" else (*color, 0)
+        with Image.new(mode, (32, 16), fill) as source:
+            if mode == "RGBA":
+                source.paste((*color, 255), (16, 0, 32, 16))
+            with BytesIO() as payload:
+                source.save(payload, format="PNG")
+                source_data = payload.getvalue()
+
+        data, mime = _process_image(source_data, 8, "avif", max_pixels=1024)
+
+        # An encoding failure silently falling back to WebP must fail this test.
+        assert mime == "image/avif"
+        with Image.open(BytesIO(data)) as decoded:
+            assert isinstance(decoded, codec.AvifImageFile)
+            assert decoded.format == "AVIF"
+            assert decoded.size == (8, 4)
+            decoded.load()
+            with decoded.convert("RGBA") as rgba:
+                opaque = rgba.getpixel((7, 2))
+                # AVIF is lossy; inspect opaque pixels away from the alpha edge.
+                assert all(
+                    abs(actual - expected) <= 20
+                    for actual, expected in zip(opaque[:3], color, strict=True)
+                )
+                assert opaque[3] >= 250
+                if mode == "RGBA":
+                    assert rgba.getpixel((0, 2))[3] <= 5
+
+    assert Image.SAVE["AVIF"] is original_save
+    assert Image.OPEN["AVIF"] is original_open
+
+
 def test_process_image_does_not_resize_when_width_matches_source():
     """A matching width must preserve the source image without a no-op resize."""
     image = MagicMock()

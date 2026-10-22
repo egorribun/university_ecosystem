@@ -46,6 +46,7 @@ describe("wmoToCondition", () => {
       [86, "snow"],
       [95, "storm"],
       [96, "storm"],
+      [97, "storm"],
       [99, "storm"],
     ]
     expect(expected.map(([code]) => [code, wmoToCondition(code)])).toEqual(expected)

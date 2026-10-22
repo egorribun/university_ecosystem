@@ -243,7 +243,7 @@ func TestSetupHub_EnabledSpiffeRequiresClient(t *testing.T) {
 		SpiffeEnabled:   true,
 		BackendSpiffeID: "spiffe://university.ecosystem/ns/default/sa/backend",
 	}
-	h, err := setupHub(context.Background(), cfg, discardLogger(), nil, nil)
+	h, err := setupHubWithRevocation(context.Background(), cfg, discardLogger(), nil, nil, nil)
 	assert.Nil(t, h)
 	assert.ErrorIs(t, err, http.ErrServerClosed)
 }

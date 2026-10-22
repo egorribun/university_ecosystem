@@ -66,12 +66,19 @@ def test_spotify_token_helpers_cover_success_and_utc_normalization() -> None:
         patch.object(spotify, "settings", _settings()),
         patch.object(spotify.jwt, "encode", return_value="state-token") as encode,
     ):
-        assert spotify._mint_state_token("user", expires_minutes=10) == "state-token"
+        assert (
+            spotify._mint_state_token(
+                "user", session_id="session", nonce="nonce", expires_minutes=10
+            )
+            == "state-token"
+        )
     encode.assert_called_once()
 
     with patch.object(spotify, "settings", _settings(spotify_oauth_state_secret="")):
         with pytest.raises(ValueError, match="must be set"):
-            spotify._mint_state_token("user", expires_minutes=10)
+            spotify._mint_state_token(
+                "user", session_id="session", nonce="nonce", expires_minutes=10
+            )
 
     naive = datetime(2025, 1, 1, 12, 0)
     aware = datetime(2025, 1, 1, 12, 0, tzinfo=UTC)
@@ -249,11 +256,12 @@ async def test_ensure_access_token_rejects_missing_token_and_scope_downgrade() -
 
 
 @pytest.mark.asyncio
-async def test_spotify_callback_rejects_missing_secret_invalid_state_and_missing_user() -> (
+async def test_spotify_callback_rejects_missing_secret_invalid_state_and_unbound_state() -> (
     None
 ):
     from app.api import spotify
 
+    user = _user()
     request = _request()
     db = AsyncMock()
     with patch.object(spotify, "settings", _settings(spotify_oauth_state_secret="")):
@@ -261,6 +269,7 @@ async def test_spotify_callback_rejects_missing_secret_invalid_state_and_missing
             await call_injected(
                 spotify.spotify_callback,
                 request,
+                user=user,
                 code="code",
                 state="state",
                 provides={"AsyncDatabaseSession": db},
@@ -275,6 +284,7 @@ async def test_spotify_callback_rejects_missing_secret_invalid_state_and_missing
             await call_injected(
                 spotify.spotify_callback,
                 request,
+                user=user,
                 code="code",
                 state="bad",
                 provides={"AsyncDatabaseSession": db},
@@ -285,12 +295,12 @@ async def test_spotify_callback_rejects_missing_secret_invalid_state_and_missing
     with (
         patch.object(spotify, "settings", _settings()),
         patch.object(spotify.jwt, "decode", return_value={"sub": str(uuid.uuid4())}),
-        patch.object(spotify, "ensure_exists"),
     ):
-        with pytest.raises(ValueError, match="Unreachable") as exc:
+        with pytest.raises(HTTPException) as exc:
             await call_injected(
                 spotify.spotify_callback,
                 request,
+                user=user,
                 code="code",
                 state="state",
                 provides={"AsyncDatabaseSession": db},
@@ -306,11 +316,10 @@ async def test_spotify_callback_handles_exchange_and_profile_circuit_branches() 
     db = AsyncMock()
     db.get.return_value = user
     request = _request()
-    state = str(user.id)
     response = MagicMock(status_code=400)
     with (
         patch.object(spotify, "settings", _settings()),
-        patch.object(spotify.jwt, "decode", return_value={"sub": state}),
+        patch.object(spotify, "_consume_oauth_state", new=AsyncMock()),
         patch.object(
             spotify,
             "_spotify_http_client",
@@ -322,6 +331,7 @@ async def test_spotify_callback_handles_exchange_and_profile_circuit_branches() 
             await call_injected(
                 spotify.spotify_callback,
                 request,
+                user=user,
                 code="code",
                 state="state",
                 provides={"AsyncDatabaseSession": db},
@@ -333,13 +343,14 @@ async def test_spotify_callback_handles_exchange_and_profile_circuit_branches() 
     )
     with (
         patch.object(spotify, "settings", _settings()),
-        patch.object(spotify.jwt, "decode", return_value={"sub": state}),
+        patch.object(spotify, "_consume_oauth_state", new=AsyncMock()),
         patch.object(spotify, "_spotify_circuit_breaker", _breaker(open_error)),
     ):
         with pytest.raises(HTTPException) as exc:
             await call_injected(
                 spotify.spotify_callback,
                 request,
+                user=user,
                 code="code",
                 state="state",
                 provides={"AsyncDatabaseSession": db},
@@ -350,7 +361,7 @@ async def test_spotify_callback_handles_exchange_and_profile_circuit_branches() 
     me = MagicMock(status_code=500)
     with (
         patch.object(spotify, "settings", _settings()),
-        patch.object(spotify.jwt, "decode", return_value={"sub": state}),
+        patch.object(spotify, "_consume_oauth_state", new=AsyncMock()),
         patch.object(
             spotify,
             "_spotify_http_client",
@@ -369,6 +380,7 @@ async def test_spotify_callback_handles_exchange_and_profile_circuit_branches() 
         response = await call_injected(
             spotify.spotify_callback,
             request,
+            user=user,
             code="code",
             state="state",
             provides={"AsyncDatabaseSession": db},
@@ -385,7 +397,6 @@ async def test_spotify_callback_profile_circuit_open_redirects_anyway() -> None:
     db = AsyncMock()
     db.get.return_value = user
     request = _request()
-    state = str(user.id)
     post = MagicMock(status_code=200)
     breaker = _breaker(
         None,
@@ -394,7 +405,7 @@ async def test_spotify_callback_profile_circuit_open_redirects_anyway() -> None:
     client = SimpleNamespace(post=AsyncMock(return_value=post), get=AsyncMock())
     with (
         patch.object(spotify, "settings", _settings()),
-        patch.object(spotify.jwt, "decode", return_value={"sub": state}),
+        patch.object(spotify, "_consume_oauth_state", new=AsyncMock()),
         patch.object(spotify, "_spotify_http_client", client),
         patch.object(spotify, "_spotify_circuit_breaker", breaker),
         patch.object(
@@ -407,6 +418,7 @@ async def test_spotify_callback_profile_circuit_open_redirects_anyway() -> None:
         response = await call_injected(
             spotify.spotify_callback,
             request,
+            user=user,
             code="code",
             state="state",
             provides={"AsyncDatabaseSession": db},

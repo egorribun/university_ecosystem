@@ -31,18 +31,16 @@ else:
     Pact = pact_lib.Pact
     match = pact_lib.match
 
-PACT_DIR = Path(__file__).parent / "pacts"
 CONSUMER_NAME = "university-backend"
 PROVIDER_NAME = "file-processor"
 
 
 @pytest.fixture(scope="module")
-def pact() -> Pact:
-    PACT_DIR.mkdir(parents=True, exist_ok=True)
+def pact(pact_output_dir: Path) -> Pact:
     p = Pact(CONSUMER_NAME, PROVIDER_NAME)
     # Use V4 for gRPC / Synchronous Messages
     yield p.with_specification("V4")
-    p.write_file(PACT_DIR, overwrite=True)
+    p.write_file(pact_output_dir, overwrite=False)
 
 
 def test_process_file_grpc_contract(pact: Pact) -> None:

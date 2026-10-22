@@ -17,7 +17,7 @@
  * 2. The orchestrator (parent) sends `{ type: "build-hang-trace-dump" }` via
  *    IPC after artifact-stable detection.
  * 3. The agent dumps handles to stderr (visible via stdio inherit) AND via
- *    IPC reply, then exits the process gracefully.
+ *    IPC reply. It exits only when the request explicitly sets thenExit.
  *
  * ## Output format
  *
@@ -28,7 +28,7 @@
  *   [build-hang-trace] active requests: M
  *     - RequestConstructorName
  *
- * IPC reply payload: `{ type, elapsedMs, handles: string[], requests: string[] }`
+ * IPC reply includes type, elapsedMs, and handles/requests arrays of { name, count }.
  *
  * ## Limitations
  *
@@ -125,6 +125,9 @@ process.on("message", (msg) => {
     }
   }
 })
+
+// Diagnostic IPC must not keep an otherwise completed build alive.
+process.channel?.unref()
 
 // Linux/macOS only — Windows doesn't support SIGUSR2
 if (process.platform !== "win32") {

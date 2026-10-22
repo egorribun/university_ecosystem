@@ -15,6 +15,7 @@ import {
 import { AuthProvider, useAuth } from "@/contexts/AuthContext"
 import { testUser } from "@/tests/mocks/handlers"
 import api from "@/api/client"
+import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 import i18n from "@/i18n/config"
 import { hmac } from "@noble/hashes/hmac.js"
 import { sha256 } from "@noble/hashes/sha2.js"
@@ -112,6 +113,45 @@ describe("AuthProvider caching", () => {
     queryClient.clear()
   })
 
+  it.each(["failed logout", "session expiry"])(
+    "purges worker identity on %s",
+    async (transition) => {
+      const postMessage = vi.fn()
+      Object.defineProperty(navigator, "serviceWorker", {
+        configurable: true,
+        value: { controller: { postMessage } },
+      })
+      const { queryClient, wrapper } = setup()
+      const { result, unmount } = renderHook(() => useAuth(), { wrapper })
+      await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+      postMessage.mockClear()
+      if (transition === "failed logout") {
+        vi.mocked(api.post).mockRejectedValueOnce(new Error("network unavailable"))
+        vi.spyOn(logger, "logError").mockImplementation(() => undefined)
+        const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+        await act(() => result.current.logout())
+        // Logout cleanup separately records its profile-cache clear. This is not
+        // a malformed fixture; keep the complete list exact so extra warnings fail.
+        expect(warningSpy.mock.calls).toEqual([
+          ["Server logout could not be confirmed; local cleanup will continue"],
+          ["profile_cache.cleared", { reason: "parse_error" }],
+        ])
+      } else {
+        vi.mocked(api.get).mockRejectedValueOnce({ isAxiosError: true, response: { status: 401 } })
+        await act(() => result.current.refresh())
+      }
+      await waitFor(() => expect(result.current.user).toBeNull())
+      expect(postMessage).toHaveBeenCalledWith({
+        type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE,
+      })
+      expect(postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ sessionHash: expect.any(String) })
+      )
+      unmount()
+      queryClient.clear()
+    }
+  )
+
   it("removes cached profile information on logout", async () => {
     localStorage.setItem("token", "token-456")
     const { queryClient, wrapper } = setup()
@@ -175,6 +215,10 @@ describe("AuthProvider caching", () => {
 
     // Wait for the initial 401 and stabilization
     await waitFor(() => expect(result.current.loading).toBe(false))
+    // The completed 401 commits an explicit signed-out snapshot. Rejecting
+    // untrusted storage must preserve that marker, never publish its profile.
+    await waitFor(() => expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull())
+    expect(result.current.user).toBeNull()
 
     // 1. Setup a valid cache entry (manually simulate re-entry or valid state)
     // TD-14-07: email and role are no longer cached (PII). Use only allowed fields.

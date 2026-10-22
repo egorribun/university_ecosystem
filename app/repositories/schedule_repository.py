@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select, text
 
 import app.models as models
 from app.core.cache import schedule_cache
@@ -14,7 +14,7 @@ from app.schemas import schemas
 from app.schemas.dtos import GroupDTO, ScheduleDTO
 
 if TYPE_CHECKING:
-    from app.core.protocols import AsyncDatabaseSession
+    pass
 
 
 def _restore_cached[DTOModel: BaseModel](
@@ -84,13 +84,69 @@ class ScheduleRepository(
     # Safety cap: a group cannot realistically have more schedule items than this.
     _MAX_ITEMS_PER_GROUP: int = 500
 
-    async def get_by_group(self, group_id: uuid.UUID) -> Sequence[ScheduleDTO]:
-        """Get schedule for a group with caching."""
-        cache_key = f"schedule:group:{group_id}"
-        cached = await schedule_cache.get(cache_key)
-        if cached is not None:
-            return _restore_cached(ScheduleDTO, cached)
+    async def lock_schedule_mutations(self) -> None:
+        """Serialize schedule conflict checks and writes for the active transaction.
 
+        A PostgreSQL transaction-scoped advisory lock closes the check-then-write
+        race without changing the SQLite test contract. The two-part key has a
+        schedule-specific namespace and is released automatically by the UOW's
+        commit or rollback; it is compatible with PgBouncer transaction pooling.
+        """
+        if self.db.get_bind().dialect.name != "postgresql":
+            return
+
+        await self.db.execute(
+            text(
+                "SELECT pg_advisory_xact_lock("
+                "hashtext(:namespace), hashtext(:operation))"
+            ),
+            {
+                "namespace": "university_ecosystem.schedule",
+                "operation": "mutation",
+            },
+        )
+
+    async def get_conflict_candidates(
+        self, group_id: uuid.UUID, teacher: str | Sequence[str] | None
+    ) -> Sequence[ScheduleDTO]:
+        """Read every row relevant to a conflict check, bypassing the display limit.
+
+        The normal display query is capped at 500 rows. That limit is not safe
+        for a write invariant, especially after waiting on the transaction lock,
+        so conflict checks use a fresh unbounded database query.
+        """
+        criteria = [self.model.group_id == group_id]
+        teachers: tuple[str, ...]
+        if isinstance(teacher, str):
+            teachers = (teacher,) if teacher else ()
+        else:
+            teachers = tuple(name for name in teacher or () if name)
+        if teachers:
+            criteria.append(self.model.teacher.in_(teachers))
+
+        stmt = (
+            select(self.model)
+            .where(or_(*criteria))
+            .order_by(self.model.weekday, self.model.start_time)
+            .execution_options(populate_existing=True)
+        )
+        result = await self.db.execute(stmt)
+        return [self._to_dto(item) for item in result.scalars().all()]
+
+    async def get_for_update_fresh(
+        self, schedule_id: uuid.UUID | str
+    ) -> ScheduleDTO | None:
+        """Lock and refresh the row after a writer waited for the schedule lock."""
+        item = await self.db.get(
+            self.model,
+            self._cast_id(schedule_id),
+            with_for_update=True,
+            populate_existing=True,
+        )
+        return self._to_dto(item) if item is not None else None
+
+    async def get_by_group(self, group_id: uuid.UUID) -> Sequence[ScheduleDTO]:
+        """Read the group's current schedule rows from the database."""
         stmt = (
             select(self.model)
             .where(self.model.group_id == group_id)
@@ -99,10 +155,7 @@ class ScheduleRepository(
         )
         result = await self.db.execute(stmt)
         schedule_items = list(result.scalars().all())
-        dtos = [self._to_dto(s) for s in schedule_items]
-        # Serialize to dicts for orjson compatibility in L2 cache
-        await schedule_cache.set(cache_key, [d.model_dump(mode="json") for d in dtos])
-        return dtos
+        return [self._to_dto(item) for item in schedule_items]
 
     async def get_by_teacher(self, teacher: str) -> Sequence[ScheduleDTO]:
         stmt = (
@@ -128,20 +181,10 @@ class ScheduleRepository(
 
         result = await super().create(data)
 
-        # MED-W19: Invalidate stale cache entries so the next read fetches fresh
-        # data. Without this, list_groups and get_by_group would serve stale
-        # results indefinitely after a write.
+        # Clear legacy per-group keys and refresh the group-list cache.
         group_id = data.get("group_id")
         if group_id is not None:
             await schedule_cache.delete(f"schedule:group:{group_id}")
         await schedule_cache.delete("schedule:groups")
 
         return result
-
-
-def get_group_repository(db: AsyncDatabaseSession) -> GroupRepository:
-    return GroupRepository(db)
-
-
-def get_schedule_repository(db: AsyncDatabaseSession) -> ScheduleRepository:
-    return ScheduleRepository(db)

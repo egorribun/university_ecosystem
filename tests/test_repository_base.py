@@ -111,58 +111,6 @@ async def test_repository_get_not_found(repository, mock_db):
 
 
 @pytest.mark.asyncio
-async def test_repository_get_or_raise_found(repository, mock_db):
-    """Test get_or_raise returns record when found."""
-    mock_user = User(
-        id=1, email="test@example.com", _allow_system_managed_assignment=True
-    )
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.first.return_value = mock_user
-    mock_db.execute.return_value = mock_result
-
-    result = await repository.get_or_raise(1)
-
-    assert result.id == 1
-
-
-@pytest.mark.asyncio
-async def test_repository_get_or_raise_not_found(repository, mock_db):
-    """Test get_or_raise raises ValueError when not found."""
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.first.return_value = None
-    mock_db.execute.return_value = mock_result
-
-    with pytest.raises(ValueError, match="Resource not found"):
-        await repository.get_or_raise(999)
-
-
-@pytest.mark.asyncio
-async def test_repository_get_by_ids_returns_records(repository, mock_db):
-    """Test get_by_ids returns multiple records."""
-    mock_users = [
-        User(id=1, email="u1@e.com", _allow_system_managed_assignment=True),
-        User(id=2, email="u2@e.com", _allow_system_managed_assignment=True),
-    ]
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = mock_users
-    mock_db.execute.return_value = mock_result
-
-    result = await repository.get_by_ids([1, 2])
-
-    assert len(result) == 2
-    assert result[0].id == 1
-
-
-@pytest.mark.asyncio
-async def test_repository_get_by_ids_empty_list(repository, mock_db):
-    """Test get_by_ids returns empty list for empty input."""
-    result = await repository.get_by_ids([])
-
-    assert result == []
-    mock_db.execute.assert_not_called()
-
-
-@pytest.mark.asyncio
 async def test_repository_list_with_pagination(repository, mock_db):
     """Test list with skip and limit."""
     mock_users = [
@@ -435,20 +383,6 @@ async def test_repository_get_orm_for_update(repository, mock_db):
     result = await repository.get_orm_for_update(1)
 
     assert result.id == 1
-    stmt = mock_db.execute.call_args[0][0]
-    assert stmt._for_update_arg is not None
-
-
-@pytest.mark.asyncio
-async def test_repository_get_by_ids_for_update(repository, mock_db):
-    """Test get_by_ids with with_for_update=True locks rows."""
-    mock_users = [User(id=1, email="u1@e.com", _allow_system_managed_assignment=True)]
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = mock_users
-    mock_db.execute.return_value = mock_result
-
-    result = await repository.get_by_ids([1], with_for_update=True)
-    assert len(result) == 1
     stmt = mock_db.execute.call_args[0][0]
     assert stmt._for_update_arg is not None
 

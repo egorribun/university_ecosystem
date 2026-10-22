@@ -135,6 +135,14 @@ class LoginService:
         """Resolve the email OTP service lazily for email-only endpoints."""
         return self.mfa_coord.get_email_otp_service()
 
+    async def build_session_response(
+        self, *, user: User, session: Any
+    ) -> schemas.TokenWithProfile:
+        """Return the current profile without elevating or replacing its session."""
+        return await self.session_manager.build_token_response(
+            user, "", session, self.db, include_token=False
+        )
+
     async def complete_step_up(
         self,
         *,

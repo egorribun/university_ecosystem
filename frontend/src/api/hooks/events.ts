@@ -11,14 +11,29 @@ import {
   type UseQueryResult,
   type UseSuspenseQueryResult,
 } from "@tanstack/react-query"
-import { useMemo } from "react"
+import { useMemo, useSyncExternalStore } from "react"
 
 import { allEventsApiV1EventsGet, myEventsApiV1EventsMyGet } from "@/api/generated/sdk.gen"
+import type { AllEventsApiV1EventsGetData } from "@/api/generated/types.gen"
 import type { Event } from "@/types/Event"
 import type { PaginatedResponse } from "@/types/Pagination"
+import type { ResolvedLang } from "@/ssrTheme"
 import { StorageItem } from "@/utils/storage"
+import { getConfirmedUserId } from "@/stores/authIdentity"
+import {
+  captureSessionEpoch,
+  getSessionEpoch,
+  isCurrentBrowserSession,
+} from "@/stores/sessionEpoch"
+import { useAuthStore } from "@/stores/useAuthStore"
+import { pickPrivateListControls, type PrivateListControls } from "./privateListControls"
 
 export const EVENTS_PAGE_SIZE = 12
+
+const getCurrentConfirmedUserId = () => getConfirmedUserId(useAuthStore.getState())
+
+type EventsApiQuery = NonNullable<AllEventsApiV1EventsGetData["query"]>
+export type EventsListOrder = NonNullable<EventsApiQuery["order"]>
 
 export type EventsListFilters = {
   language: string
@@ -26,6 +41,7 @@ export type EventsListFilters = {
   search?: string
   location?: string
   limit?: number
+  order?: EventsListOrder
 }
 
 type NormalizedEventsListFilters = {
@@ -34,6 +50,7 @@ type NormalizedEventsListFilters = {
   search: string
   location: string
   limit: number
+  order?: EventsListOrder
 }
 
 const normalizeEventsListFilters = (filters: EventsListFilters): NormalizedEventsListFilters => {
@@ -53,6 +70,7 @@ const normalizeEventsListFilters = (filters: EventsListFilters): NormalizedEvent
     search: filters.search?.trim() ?? "",
     location: filters.location?.trim() ?? "",
     limit: normalizeLimit(filters.limit),
+    ...(filters.order ? { order: filters.order } : {}),
   }
 }
 
@@ -67,6 +85,7 @@ const createEventsListEtagKey = (filters: NormalizedEventsListFilters) => {
     "list",
     filters.language,
     activity,
+    ...(filters.order ? [`order=${filters.order}`] : []),
     filters.search,
     filters.location,
     filters.limit,
@@ -82,18 +101,11 @@ const ensurePaginatedResponse = (
   payload: PaginatedResponse<Event> | null | undefined,
   fallbackLimit: number
 ): PaginatedResponse<Event> => {
-  if (!payload) {
-    return {
-      items: [],
-      total: 0,
-      limit: fallbackLimit,
-      cursor: null,
-      next_cursor: null,
-      has_more: false,
-    }
+  if (!payload || typeof payload !== "object" || !Array.isArray(payload.items)) {
+    throw new Error("Invalid events list response")
   }
 
-  const items = Array.isArray(payload.items) ? payload.items : []
+  const items = payload.items
   const total = typeof payload.total === "number" ? payload.total : items.length
   const limit = typeof payload.limit === "number" ? payload.limit : fallbackLimit
 
@@ -107,8 +119,18 @@ const ensurePaginatedResponse = (
   }
 }
 
-const mergeEventPages = (pages: PaginatedResponse<Event>[] | undefined): Event[] => {
-  if (!pages?.length) {
+const ensureNumericResponseStatus = (status: unknown, errorMessage: string): number => {
+  if (typeof status !== "number" || !Number.isFinite(status)) {
+    throw new Error(errorMessage)
+  }
+  return status
+}
+
+const acceptsEventsResponseStatus = (status: number): boolean =>
+  (status >= 200 && status < 300) || status === 304
+
+const mergeEventPages = (pages: unknown): Event[] => {
+  if (!Array.isArray(pages) || pages.length === 0) {
     return []
   }
 
@@ -116,7 +138,23 @@ const mergeEventPages = (pages: PaginatedResponse<Event>[] | undefined): Event[]
   const merged: Event[] = []
 
   for (const page of pages) {
+    if (
+      typeof page !== "object" ||
+      page === null ||
+      Array.isArray(page) ||
+      !Array.isArray(page.items)
+    ) {
+      continue
+    }
     for (const item of page.items) {
+      if (
+        typeof item !== "object" ||
+        item === null ||
+        Array.isArray(item) ||
+        typeof item.id !== "string"
+      ) {
+        continue
+      }
       const existingIndex = positions.get(item.id)
       if (existingIndex != null) {
         merged[existingIndex] = item
@@ -134,14 +172,23 @@ const createEventsListQueryFn =
   (
     queryClient: QueryClient,
     normalized: NormalizedEventsListFilters,
-    queryKey: EventsListQueryKey
+    queryKey: EventsListQueryKey,
+    owner: string | null
   ) =>
   async ({ pageParam, signal }: { pageParam?: string | null; signal?: AbortSignal }) => {
+    const currentEpoch = captureSessionEpoch()
+    const ownsSession = () =>
+      typeof window === "undefined" ||
+      (owner !== null && currentEpoch() && getCurrentConfirmedUserId() === owner)
+    if (!ownsSession()) throw new DOMException("Session changed", "AbortError")
     const etagKey = pageParam == null ? createEventsListEtagKey(normalized) : undefined
-    const params: Record<string, unknown> = {
+    const params: EventsApiQuery = {
       limit: normalized.limit,
       search: normalized.search,
       location: normalized.location,
+    }
+    if (normalized.order) {
+      params.order = normalized.order
     }
     if (normalized.is_active !== null) {
       params.is_active = normalized.is_active
@@ -153,7 +200,7 @@ const createEventsListQueryFn =
     const requestConfig = {
       query: params,
       signal,
-      validateStatus: (status: number) => status >= 200 && status < 400,
+      validateStatus: acceptsEventsResponseStatus,
       ...(etagKey ? { etagCacheKey: etagKey } : {}),
     }
 
@@ -161,24 +208,39 @@ const createEventsListQueryFn =
       requestConfig as Parameters<typeof allEventsApiV1EventsGet>[0]
     )
 
-    if (response.status === 304) {
-      const cached =
-        queryClient.getQueryData<InfiniteData<PaginatedResponse<Event>, string | null>>(queryKey)
-      return ensurePaginatedResponse(cached?.pages?.[0], normalized.limit)
-    }
+    if (!ownsSession()) throw new DOMException("Session changed", "AbortError")
+    const status = ensureNumericResponseStatus(
+      response.status,
+      "Unexpected events list response status"
+    )
 
+    if (status === 304) {
+      const cached = queryClient.getQueryData<unknown>(queryKey)
+      if (
+        typeof cached !== "object" ||
+        cached === null ||
+        !("pages" in cached) ||
+        !Array.isArray(cached.pages) ||
+        cached.pages.length === 0
+      ) {
+        throw new Error("304 response has no cached events page")
+      }
+      return ensurePaginatedResponse(cached.pages[0], normalized.limit)
+    }
+    if (status < 200 || status >= 300) {
+      throw new Error("Unexpected events list response status")
+    }
     return ensurePaginatedResponse(response.data, normalized.limit)
   }
 
-type UseEventsListQueryOptions = Omit<
+type UseEventsListQueryOptions = PrivateListControls<
   UseInfiniteQueryOptions<
     PaginatedResponse<Event>,
     Error,
     InfiniteData<PaginatedResponse<Event>, string | null>,
     EventsListQueryKey,
     string | null
-  >,
-  "queryKey" | "queryFn" | "initialPageParam" | "getNextPageParam"
+  >
 >
 
 export type UseEventsListQueryResult = UseInfiniteQueryResult<
@@ -196,24 +258,32 @@ export const useEventsListQuery = (
 ): UseEventsListQueryResult => {
   const queryClient = useQueryClient()
   const normalized = normalizeEventsListFilters(filters)
-  const queryKey: EventsListQueryKey = useMemo(() => ["events", "list", normalized], [normalized])
-  const { enabled = true, ...rest } = options ?? {}
+  const owner = useAuthStore(getConfirmedUserId)
+  const epoch = getSessionEpoch()
+  const isCurrentSession = useMemo(() => captureSessionEpoch(epoch), [epoch])
+  const queryKey = eventsListQueryKey(filters)
+  const { enabled = true, ...rest } = pickPrivateListControls(options)
 
   const queryFn = useMemo(
-    () => createEventsListQueryFn(queryClient, normalized, queryKey),
-    [queryClient, normalized, queryKey]
+    () => createEventsListQueryFn(queryClient, normalized, queryKey, owner),
+    [queryClient, normalized, queryKey, owner]
   )
 
-  // Read from localStorage as fallback for offline mode
+  // Legacy arrays cannot establish date order or pagination completeness.
+  // Explicit-order feeds use their exact persisted React Query pages instead.
   const placeholderData = useMemo(() => {
-    if (typeof window === "undefined") return undefined
+    if (normalized.order !== undefined) return undefined
+    if (!owner || !isCurrentSession() || getCurrentConfirmedUserId() !== owner) return undefined
     const activity =
       normalized.is_active === null ? "all" : normalized.is_active ? "active" : "archive"
     // StorageItem#get is itself fail-closed (including blocked browser storage
     // getters). Keeping this read path free of a second catch makes the
     // persistence contract single-owner and prevents an unexpected adapter
     // implementation from silently bypassing the typed fallback below.
-    const storage = new StorageItem<Event[]>(`events:list:${normalized.language}:${activity}`)
+    // Reject ownerless legacy snapshots; they cannot establish who may read them.
+    const storage = new StorageItem<Event[]>(
+      `events:list:account:${encodeURIComponent(owner)}:${normalized.language}:${activity}`
+    )
     const items = storage.get()
     if (!Array.isArray(items) || items.length === 0) return undefined
     return {
@@ -229,7 +299,14 @@ export const useEventsListQuery = (
       ],
       pageParams: [null],
     }
-  }, [normalized.language, normalized.is_active, normalized.limit])
+  }, [
+    normalized.language,
+    normalized.is_active,
+    normalized.limit,
+    normalized.order,
+    owner,
+    isCurrentSession,
+  ])
 
   const query = useInfiniteQuery<
     PaginatedResponse<Event>,
@@ -238,13 +315,19 @@ export const useEventsListQuery = (
     EventsListQueryKey,
     string | null
   >({
+    ...rest,
     queryKey,
-    enabled,
+    enabled: (typeof window === "undefined" || owner !== null) && enabled,
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage: PaginatedResponse<Event>) => lastPage?.next_cursor ?? null,
     queryFn,
     placeholderData,
-    ...rest,
+    // A tab can observe a changed origin-wide session before the auth broadcast
+    // arrives. Do not expose its previously warm list through this observer.
+    select: (data) => {
+      if (!isCurrentSession()) return { pages: [], pageParams: [] }
+      return data
+    },
   })
 
   const events = useMemo(() => mergeEventPages(query.data?.pages), [query.data])
@@ -264,8 +347,13 @@ export const lastEventPage = (
 
 export const prefetchEventsListQuery = (queryClient: QueryClient, filters: EventsListFilters) => {
   const normalized = normalizeEventsListFilters(filters)
-  const queryKey: EventsListQueryKey = ["events", "list", normalized]
-  const queryFn = createEventsListQueryFn(queryClient, normalized, queryKey)
+  const queryKey = eventsListQueryKey(filters)
+  const queryFn = createEventsListQueryFn(
+    queryClient,
+    normalized,
+    queryKey,
+    getCurrentConfirmedUserId()
+  )
 
   return queryClient.prefetchInfiniteQuery({
     queryKey,
@@ -341,19 +429,33 @@ export const useMyEventsQuery = (
       const etagKey = createMyEventsEtagKey(normalized)
       const config = {
         signal,
-        validateStatus: (status: number) => status >= 200 && status < 400,
+        validateStatus: acceptsEventsResponseStatus,
         etagCacheKey: etagKey,
       }
 
       const response = await myEventsApiV1EventsMyGet(
         config as Parameters<typeof myEventsApiV1EventsMyGet>[0]
       )
+      const status = ensureNumericResponseStatus(
+        response.status,
+        "Unexpected my-events response status"
+      )
 
-      if (response.status === 304) {
-        return queryClient.getQueryData<Event[]>(queryKey) ?? []
+      if (status === 304) {
+        const cached = queryClient.getQueryData<unknown>(queryKey)
+        if (!Array.isArray(cached)) {
+          throw new Error("304 response has no cached my-events data")
+        }
+        return cached as Event[]
+      }
+      if (status < 200 || status >= 300) {
+        throw new Error("Unexpected my-events response status")
+      }
+      if (!Array.isArray(response.data)) {
+        throw new Error("Invalid my-events response")
       }
 
-      return Array.isArray(response.data) ? (response.data as Event[]) : []
+      return response.data as Event[]
     },
     ...rest,
   })
@@ -397,19 +499,33 @@ export const useSuspenseMyEventsQuery = (
       const etagKey = createMyEventsEtagKey(normalized)
       const config = {
         signal,
-        validateStatus: (status: number) => status >= 200 && status < 400,
+        validateStatus: acceptsEventsResponseStatus,
         etagCacheKey: etagKey,
       }
 
       const response = await myEventsApiV1EventsMyGet(
         config as Parameters<typeof myEventsApiV1EventsMyGet>[0]
       )
+      const status = ensureNumericResponseStatus(
+        response.status,
+        "Unexpected my-events response status"
+      )
 
-      if (response.status === 304) {
-        return queryClient.getQueryData<Event[]>(queryKey) ?? []
+      if (status === 304) {
+        const cached = queryClient.getQueryData<unknown>(queryKey)
+        if (!Array.isArray(cached)) {
+          throw new Error("304 response has no cached my-events data")
+        }
+        return cached as Event[]
+      }
+      if (status < 200 || status >= 300) {
+        throw new Error("Unexpected my-events response status")
+      }
+      if (!Array.isArray(response.data)) {
+        throw new Error("Invalid my-events response")
       }
 
-      return Array.isArray(response.data) ? (response.data as Event[]) : []
+      return response.data as Event[]
     },
   })
 
@@ -423,16 +539,18 @@ export const useSuspenseMyEventsQuery = (
 // EVENT DETAIL QUERY (Wave 76; Wave 129 SW2 factory extraction)
 // ---------------------------------------------------------------------------
 
-type EventDetailQueryKey = readonly ["events", "detail", string]
+type EventDetailQueryKey = readonly ["events", "detail", string, ResolvedLang]
 
 export type UseEventDetailQueryResult = UseQueryResult<Event, Error>
 
 /**
- * Pure query options factory for a single event by id. Used by both:
+ * Pure query options factory for a single event id and normalized language. Used by both:
  *
  *   - `useEventDetailQuery` (component context, with `enabled: !!id` guard)
  *   - `/events/$id` route loader for SSR pre-fetch via
- *     `queryClient.ensureQueryData(eventDetailQueryOptions(params.id))`
+ *     `queryClient.ensureQueryData(eventDetailQueryOptions(params.id, language))`
+ *
+ * The same language is part of the cache key and explicit API query so a saved user preference cannot put another locale's response under this entry.
  *
  * Caller is responsible for passing a defined id. The route loader path
  * always has a defined `params.id` (TanStack Router params validation);
@@ -442,14 +560,15 @@ export type UseEventDetailQueryResult = UseQueryResult<Event, Error>
  * SSR loader latency on network blips. Dynamic-imported SDK keeps the
  * detail-route bundle lean — hot path on /events/$id only.
  */
-export const eventDetailQueryOptions = (id: string) => ({
-  queryKey: ["events", "detail", id] as EventDetailQueryKey,
+export const eventDetailQueryOptions = (id: string, language: ResolvedLang) => ({
+  queryKey: ["events", "detail", id, language] as EventDetailQueryKey,
   queryFn: async ({ signal }: { signal?: AbortSignal }): Promise<Event> => {
     const { getEventApiV1EventsEventIdGet } = await import("@/api/generated/sdk.gen")
     const response = await getEventApiV1EventsEventIdGet({
       path: { event_id: id },
+      query: { lang: language },
       signal,
-    } as Parameters<typeof getEventApiV1EventsEventIdGet>[0])
+    })
     return response.data as Event
   },
   staleTime: 60_000,
@@ -458,9 +577,10 @@ export const eventDetailQueryOptions = (id: string) => ({
 
 export const useEventDetailQuery = (
   id: string | undefined,
+  language: ResolvedLang,
   options?: Omit<UseQueryOptions<Event, Error, Event, EventDetailQueryKey>, "queryKey" | "queryFn">
 ): UseEventDetailQueryResult => {
-  const baseOptions = eventDetailQueryOptions(id ?? "")
+  const baseOptions = eventDetailQueryOptions(id ?? "", language)
   return useQuery<Event, Error, Event, EventDetailQueryKey>({
     ...baseOptions,
     enabled: !!id,
@@ -481,17 +601,57 @@ interface EventNav {
   nextTitle: string | null
 }
 
-export function useEventNavigation(currentId: string): EventNav {
-  const queryClient = useQueryClient()
-
-  return useMemo(() => {
-    const fallback: EventNav = { prevId: null, nextId: null, prevTitle: null, nextTitle: null }
-
-    const queries = queryClient.getQueriesData<{
+function createEventNavigationStore(queryClient: QueryClient, sessionIsCurrent: boolean) {
+  const readQueries = () =>
+    queryClient.getQueriesData<{
       pages?: Array<{ items?: Event[] }>
     }>({
       queryKey: ["events", "list"],
     })
+
+  let snapshot: ReturnType<typeof readQueries> = []
+
+  const getSnapshot = () => {
+    if (!sessionIsCurrent) return snapshot
+
+    const next = readQueries()
+    const unchanged =
+      next.length === snapshot.length &&
+      next.every(([key, data], index) => {
+        const previous = snapshot[index]
+        return previous?.[0] === key && previous?.[1] === data
+      })
+
+    if (!unchanged) snapshot = next
+    return snapshot
+  }
+
+  const subscribe = (listener: () => void) => {
+    if (!sessionIsCurrent) return () => undefined
+
+    return queryClient.getQueryCache().subscribe((event) => {
+      const key = event.query.queryKey
+      if (key[0] === "events" && key[1] === "list") listener()
+    })
+  }
+
+  return { getSnapshot, subscribe }
+}
+
+export function useEventNavigation(currentId: string): EventNav {
+  const queryClient = useQueryClient()
+  const sessionIsCurrent = typeof window === "undefined" || isCurrentBrowserSession()
+
+  const store = useMemo(
+    () => createEventNavigationStore(queryClient, sessionIsCurrent),
+    [queryClient, sessionIsCurrent]
+  )
+
+  const queries = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
+
+  return useMemo(() => {
+    const fallback: EventNav = { prevId: null, nextId: null, prevTitle: null, nextTitle: null }
+    if (!sessionIsCurrent) return fallback
 
     const allItems: Event[] = queries.flatMap(
       ([, data]) =>
@@ -524,5 +684,5 @@ export function useEventNavigation(currentId: string): EventNav {
       prevTitle: prev?.title ?? null,
       nextTitle: next?.title ?? null,
     }
-  }, [queryClient, currentId])
+  }, [queries, currentId, sessionIsCurrent])
 }

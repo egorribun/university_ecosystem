@@ -421,9 +421,16 @@ def test_repository_migrations_have_a_valid_fail_closed_downgrade_plan() -> None
     policy = _load_policy_module()
 
     plan = policy.build_downgrade_plan(MIGRATIONS_DIR)
+    expected_reason = (
+        "Quarantine reservation ledger is irreversible: dropping it would release "
+        "quota charges for objects that may still exist"
+    )
 
-    assert plan.safe_target == "202608250002"
-    assert plan.boundary_parent == "202608250001"
+    assert plan.head_revision == "202610200001"
+    assert plan.safe_target == "202610200001"
+    assert plan.boundary_revision == "202610200001"
+    assert plan.boundary_parent == "202610120002"
+    assert plan.boundary_reason == expected_reason
 
 
 def test_all_postgres_gates_exercise_safe_range_and_declared_boundary() -> None:

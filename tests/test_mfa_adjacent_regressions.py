@@ -472,7 +472,7 @@ async def test_record_success_persists_a_detached_request_session(
 
 
 @pytest.mark.asyncio
-async def test_factor_change_revokes_siblings_then_publishes_after_commit(
+async def test_factor_change_revokes_siblings_and_publishes_before_commit(
     db_session: AsyncSession, test_user: User
 ) -> None:
     current = ActiveSession(
@@ -497,13 +497,13 @@ async def test_factor_change_revokes_siblings_then_publishes_after_commit(
     assert sibling.revoked_at is not None
     assert [item.jti for item in pending] == ["factor-change-sibling"]
 
-    await db_session.commit()
     backend = AsyncMock()
     with patch(
-        "app.auth.redis_session.get_session_backend",
-        AsyncMock(return_value=backend),
+        "app.services.auth.redis_session.RedisSessionService",
+        MagicMock(return_value=backend),
     ):
         await publish_mfa_session_revocations(pending)
+        await db_session.commit()
     backend.revoke_session.assert_awaited_once_with(
         "factor-change-sibling",
         expires_at=sibling.expires_at,

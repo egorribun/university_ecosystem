@@ -17,8 +17,9 @@ import { useScheduleData } from "@/hooks/useScheduleData"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import { getTimeStr, getEndTimeStr, parseMinutes } from "./scheduleUtils"
-import { uniqueBuildings } from "@/utils/buildingIcons"
 import type { Lesson } from "./scheduleUtils"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
+import { getCampusClockParts } from "@/utils/campusTimezone"
 
 type ScheduleHeaderProps = Omit<
   Pick<
@@ -76,22 +77,6 @@ function ProgressRing({
   )
 }
 
-/** Compute day statistics from lessons */
-function useDayStats(lessons: Lesson[]) {
-  return useMemo(() => {
-    const totalLessons = lessons.length
-    const totalMinutes = lessons.reduce((acc, l) => {
-      const s = parseMinutes(l.start_time)
-      const e = parseMinutes(l.end_time)
-      return acc + (s != null && e != null && e > s ? e - s : 90)
-    }, 0)
-    const hours = Math.floor(totalMinutes / 60)
-    const mins = totalMinutes % 60
-    const buildings = uniqueBuildings(lessons)
-    return { totalLessons, hours, mins, buildings }
-  }, [lessons])
-}
-
 export function ScheduleHeader({
   user,
   groups,
@@ -107,12 +92,13 @@ export function ScheduleHeader({
   onOpenSettings,
 }: ScheduleHeaderProps) {
   const { t } = useTranslation(["schedule", "common"])
+  const timeZone = useCampusTimezone()
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.desktop})`)
   const activeGroupName = useMemo(
     () => groups.find((g) => g.id === selectedGroup)?.name || "",
     [groups, selectedGroup]
   )
-  const dayStats = useDayStats(todayLessons ?? [])
+  const totalLessons = todayLessons?.length ?? 0
 
   // Flip countdown: show when next lesson starts in < 30 min
   const nextStartMinutes = useMemo(() => {
@@ -121,7 +107,10 @@ export function ScheduleHeader({
     return parseMinutes(lesson.start_time)
   }, [currentLesson, nextLesson])
 
-  const minutesNow = nowTick.getHours() * 60 + nowTick.getMinutes()
+  const clock = getCampusClockParts(nowTick, timeZone)
+  const minutesNow = clock
+    ? clock.hour * 60 + clock.minute
+    : nowTick.getHours() * 60 + nowTick.getMinutes()
   const showCountdown = useMemo(() => {
     if (nextStartMinutes == null) return false
     const diff = nextStartMinutes - minutesNow
@@ -271,9 +260,7 @@ export function ScheduleHeader({
                   className="mr-1.5 inline-block align-[-0.15em] text-brand"
                   aria-hidden="true"
                 />
-                {dayStats.totalLessons > 0
-                  ? t("schedule:dayComplete")
-                  : t("schedule:summary.noMoreToday")}
+                {totalLessons > 0 ? t("schedule:dayComplete") : t("schedule:summary.noMoreToday")}
               </p>
             </div>
           )}
@@ -283,7 +270,10 @@ export function ScheduleHeader({
       {/* ── Group selector (teacher/admin only) ─────────── */}
       {(user?.role === "teacher" || user?.role === "admin") && (
         <FadeSection delay="var(--motion-duration-base)" className="mt-6 max-w-[24rem]">
-          <label className="mb-2 block text-sm font-semibold" htmlFor="schedule-group-selector">
+          <label
+            className="mb-2 block text-sm font-semibold"
+            htmlFor="schedule-group-selector-trigger"
+          >
             {t("schedule:form.groupLabel")}
           </label>
           <Select

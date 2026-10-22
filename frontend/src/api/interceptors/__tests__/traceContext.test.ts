@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AxiosHeaders } from "axios"
 
 import { updateTraceContext } from "@/api/interceptors/traceContext"
@@ -10,6 +10,10 @@ describe("updateTraceContext", () => {
   beforeEach(() => {
     setTag.mockReset()
     setLoggerClient({ setTag })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it("clears trace state when response headers are absent", () => {

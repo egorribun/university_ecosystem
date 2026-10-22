@@ -12,25 +12,39 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Чтобы передать идентификатор релиза в Sentry, задайте `VITE_APP_RELEASE`. Значение подставляется на этапе сборки.
 - Для включения клиентского мониторинга ошибок задайте `VITE_SENTRY_DSN` и, при необходимости, `VITE_ENVIRONMENT`. В дев-сборке SDK автоматически не активируется.
 - Логгер на фронтенде (`src/app/logger.ts`) автоматически отправляет `logError`/`logWarning` в Sentry и дублирует вывод в консоль. Необработанные `Promise`/`axios` ошибки перехватываются глобальными хендлерами (`initGlobalErrorHandlers()` вызывается в `src/main.tsx`).
-- Чтобы собирать Web Vitals, установите `VITE_ENABLE_WEB_VITALS=true`. При необходимости отправляйте метрики на собственный эндпоинт через `VITE_WEB_VITALS_ENDPOINT` (иначе они пишутся в консоль). Флаг игнорируется в dev/test средах, поэтому CI не упадёт даже при включённой переменной.
-- Release-blocking полевые Core Web Vitals сертифицируются отдельно workflow
-  `cwv-field-certification.yml`. URL exporter выводится только из проверенных,
-  привязанных к SHA staging deployment metadata; отдельный export URL не
-  принимается. Exporter обязан проверять GitHub OIDC audience
-  `university-cwv-exporter`, repository, protected `main` ref и environment
-  `staging`, а затем возвращать только наблюдения точных `release_sha`, frontend
-  image digest и deploy run/attempt. Поддерживаемый collector contract:
-  `web-vitals` 6.1.1 и exporter schema version `1`. Deploy workflow создаёт
-  неизменяемый `staging-deployment-<sha>` artifact только после rollout, smoke и
-  Kyverno-проверок. Сертификация принимает его по точному run ID/attempt,
-  отклоняет старое/частичное/чужое evidence, проверяет p75 LCP/INP/CLS и публикует
-  SHA-bound artifact с build-provenance attestation. Ручная загрузка отчёта не
-  является допустимым источником release evidence.
+- Для отдельной диагностики Web Vitals можно при сборке задать `VITE_ENABLE_WEB_VITALS=true` и, при необходимости, `VITE_WEB_VITALS_ENDPOINT`; без эндпоинта метрики пишутся в консоль. Canonical MVP release image задаёт endpoint `/api/v1/cwv`, но отключает сбор через `VITE_ENABLE_WEB_VITALS=false` и `VITE_CWV_TRUSTED_RUM=false`.
+- Field Core Web Vitals (field CWV) и их сертификация находятся вне MVP: приёмка
+  не использует внешнее staging/production или измерения на реальных устройствах,
+  а canonical release frontend не включает сбор field CWV. Для MVP применяются
+  локальные Lighthouse/CI проверки и текущие Compose/Core-проверки. Полная
+  приёмка опубликованных образов в kind остаётся планом v1.1 и не является
+  текущим сертификатом. Ручная сертификация в `cwv-field-certification.yml` и
+  production-only certificate guard остаются для будущих внешних развёртываний;
+  они не являются предусловием выпуска `v1.0.0`.
 - Backend и фронтенд должны работать по HTTPS, иначе браузер заблокирует загрузку `/static` и `/storage`.
 - Для лимитирования запросов настройте backend с помощью `RATE_LIMIT_STORAGE_BACKEND` и `RATE_LIMIT_STORAGE_URI`. Значение `redis` и URI, полученный из защищённого хранилища через переменные окружения, включает общий сторедж для middleware и чувствительных эндпоинтов; не помещайте учётные данные в URL или историю shell. Установите `memory` или `memory://` для простого однопроцессного режима без внешнего Redis.
 - Хранилище отзыва сессий обязано быть единым и выделенным для всех сервисов: backend, gateway и ws-hub используют только `REVOCATION_REDIS_URL`. В штатных Compose/Helm-конфигурациях это отдельный Redis/Valkey с AOF, персистентным томом и `maxmemory-policy noeviction`; кэш (`CACHE_REDIS_URL`) и rate-limit Redis (`REDIS_URL`, DB 3) не являются источниками security-state. Совместное использование cache/rate-limit процесса запрещено: вытеснение `revoked:jti:*` может повторно сделать отозванный JWT действительным.
-- Для продакшена есть override (`docker-compose.prod.yml`) с обязательными секретами. <!-- pragma: allowlist secret --> Создайте Compose-секреты `secret_key`, `database_url` и `nats_auth_token`, а путь к файлу пароля PostgreSQL передайте через `POSTGRES_PASSWORD_SOURCE_FILE`. Значение `database_url` должно указывать на `postgresql+asyncpg://...@pgbouncer:5432/university`. Затем запускайте `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d`, явно задав `FRONTEND_ORIGIN` и `FRONTEND_ORIGINS`; Go overlay обязателен, потому что Caddy направляет API и WebSocket-трафик через gateway/ws-hub.
-- Helm chart читает подключения из заранее созданного Secret `university-connections` (полный список ключей приведён в `charts/university-ecosystem/values.yaml`). <!-- pragma: allowlist secret --> В production обязательно задайте `applicationSecrets.existingSecret`; этот Secret должен содержать JWT/RSA-ключи, отдельные HMAC/интеграционные секреты, S3 credentials (ключи `minio-access-key`/`minio-secret-key`) и Temporal API key, перечисленные там же. Production-render отклоняет plaintext S3, Temporal, gRPC и OTLP. Так секреты не попадают в Helm release state, а небезопасная конфигурация не доходит до кластера.
+- Для продакшена есть override (`docker-compose.prod.yml`) с обязательными секретами:
+  - Создайте Compose-секреты `secret_key`, `database_url`, `nats_auth_token` и `mfa_totp_encryption_keys`.
+  - Пути к файлам передайте через `SECRET_KEY_SOURCE_FILE`, `DATABASE_URL_SOURCE_FILE`, `NATS_AUTH_TOKEN_SOURCE_FILE`, `CACHE_REDIS_URL_SOURCE_FILE`, `REVOCATION_REDIS_URL_SOURCE_FILE` и `MFA_TOTP_ENCRYPTION_KEYS_SOURCE_FILE`.
+  - Несекретный `MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` задайте напрямую. Кольцо TOTP и ID получает backend и миграция; не-auth workers остаются без них.
+  - Путь к файлу пароля PostgreSQL передайте через `POSTGRES_PASSWORD_SOURCE_FILE`. Значение `database_url` должно указывать на `postgresql+asyncpg://...@pgbouncer:5432/university`.
+  - Затем запускайте `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d`, явно задав `FRONTEND_ORIGIN` и `FRONTEND_ORIGINS`; Go overlay обязателен, потому что Caddy направляет API и WebSocket-трафик через gateway/ws-hub.
+- Helm chart читает подключения из заранее созданного Secret `university-connections` (полный список ключей приведён в `charts/university-ecosystem/values.yaml`). Кольцо TOTP — ключ application Secret для backend и migration Job. Активный key ID является прямым несекретным значением chart. Оба не-auth worker не получают эти настройки. В production обязательно задайте `applicationSecrets.existingSecret`. Этот Secret должен содержать JWT/RSA-ключи, отдельные HMAC/интеграционные секреты, S3 credentials (ключи `minio-access-key`/`minio-secret-key`) и Temporal API key, перечисленные там же. Production-render отклоняет plaintext S3, Temporal, gRPC и OTLP. Так секреты не попадают в Helm release state, а небезопасная конфигурация не доходит до кластера.
+
+В Kubernetes chart передаёт значения Secret backend, outbox worker, migration Job,
+gateway, ws-hub и file-processor как projected files. Каждый workload получает
+только используемые им ключи в `items`; файлы доступны по пути
+`/run/secrets/<secret-name>/<key>` через read-only mount с режимом `0440`.
+Переменные `*_FILE` указывают на эти пути; `JWT_PRIVATE_KEY_PATH` backend также указывает на файл ключа в этом mount. Приложения читают настроенные файлы
+при старте; отсутствующий или некорректный настроенный файл завершает запуск
+ошибкой, без перехода к plain environment fallback. Существующие plain env
+настройки остаются поддержаны в Compose. После обновления Secret используйте
+контролируемый restart/rollout, чтобы процессы загрузили новые значения.
+
+Для PostgreSQL scaler KEDA `TriggerAuthentication` берёт параметр `connection`
+из Secret, заданного `connections.existingSecret`, по ключу
+`connections.kedaPostgresqlURLKey`.
 
 ## Локальный Docker: режимы ресурсов
 
@@ -69,8 +83,8 @@ GitHub Environment `APPLICATION_EXTERNAL_SECRET_NAME`. Указанный
 Наблюдение за Deployment дополнительно требует `get/list/watch/patch`.
 Workflow проверяет эти права до мутаций и принудительно запускает reconciliation,
 ждёт condition `Ready`, новое `status.refreshTime` и изменение
-`resourceVersion` целевого Secret, после чего сверяет каждый фактически
-отрендеренный Helm `secretKeyRef` до upgrade.
+`resourceVersion` целевого Secret. До upgrade он проверяет имена Secret и
+необходимые наборы ключей из отрендеренного `deploymentContract`.
 
 Порядок безопасной ротации:
 
@@ -119,6 +133,7 @@ Workflow проверяет эти права до мутаций и прину�
 Не используйте фиктивную checksum-аннотацию Pod: ExternalSecret не раскрывает
 секретное содержимое Helm, поэтому источником истины служат Ready/refreshTime и
 `resourceVersion`, а применение новых значений обеспечивается явным rollout.
+
 - Healthcheck-и остаются внутри контейнеров (`127.0.0.1`), а единственная запись `extra_hosts` — `host.docker.internal`; удалите её в продакшене, если доступ к хосту не нужен.
 - Prometheus-метрики выключены по умолчанию в `docker-compose.yml`. Чтобы их включить, установите `ENABLE_METRICS_ENDPOINT=true` **и** задайте собственные, стойкие значения `METRICS_BASIC_AUTH_USERNAME` и `METRICS_BASIC_AUTH_PASSWORD` (docker-compose больше не подставляет плейсхолдеры). Backend теперь падает на старте — или возвращает `503` во время запроса — если метрики включены без учётных данных, за исключением случаев, когда allowlist ограничен петлевыми адресами (`127.0.0.1`, `::1`, `localhost`).
 - Для включения заголовка `Cross-Origin-Resource-Policy` установите `ENABLE_CORP=true`. Значение задаётся через `CORP_VALUE` (по умолчанию `same-site`; также поддерживаются `same-origin` и `cross-origin`).
@@ -157,7 +172,7 @@ Workflow проверяет эти права до мутаций и прину�
 
 ### Пул соединений базы данных
 
-- В production средах используйте пул SQLAlchemy: задайте `DATABASE_POOL_SIZE` (основной размер пула), `DATABASE_MAX_OVERFLOW` (дополнительные соединения поверх пула), `DATABASE_POOL_TIMEOUT` (секунды ожидания свободного соединения) и `DATABASE_POOL_RECYCLE` (период принудительного закрытия соединений, секунды). Значения по умолчанию — `5`, `10`, `30` и `1800` соответственно.
+- В production средах используйте пул SQLAlchemy: задайте `DATABASE_POOL_SIZE` (основной размер пула), `DATABASE_MAX_OVERFLOW` (дополнительные соединения поверх пула), `DATABASE_POOL_TIMEOUT` (секунды ожидания свободного соединения) и `DATABASE_POOL_RECYCLE` (период принудительного закрытия соединений, секунды). `_CPU_COUNT` — число CPU, определённое приложением. Значения по умолчанию — `_CPU_COUNT * 2 + 1`, `_CPU_COUNT * 4`, `30` и `540` соответственно. Эти значения относятся к одному процессу; общий бюджет соединений должен учитывать процессы и реплики.
 - Для dev/test окружений приложение автоматически переключается на `NullPool`, чтобы каждое соединение открывалось заново; параметры пула при этом игнорируются. Это избавляет от блокировок SQLite и полезно при локальной разработке.
 - Перед деплоем на PostgreSQL или другой продакшн-базе подберите значения в пределах возможностей СУБД. Например, для сервера с ограничением в 20 подключений можно выставить `DATABASE_POOL_SIZE=5` и `DATABASE_MAX_OVERFLOW=5`, оставив запас для фоновых задач и внешних инструментов.
 
@@ -170,12 +185,15 @@ Workflow проверяет эти права до мутаций и прину�
 
 ### Метрики фоновых задач
 
-- `/metrics` теперь публикует счётчики и гистограммы для фоновых очисток:
-  - `periodic_task_notifications_retention_*` — удаление старых уведомлений и доставок.
+- `/metrics` публикует счётчики и гистограммы для фоновых очисток:
+  - `periodic_task_email_change_cleanup_*` — очистка токенов смены адреса электронной почты.
+  - `periodic_task_mfa_challenge_cleanup_*` — удаление просроченных и потреблённых MFA-челленджей.
   - `periodic_task_password_reset_cleanup_*` — очистка токенов восстановления пароля.
+  - `periodic_task_privacy_cleanup_*` — очистка артефактов приватности.
   - `periodic_task_session_cleanup_*` — удаление протухших пользовательских сессий.
   - `periodic_task_story_cleanup_*` — очистка просроченных историй.
-  - `periodic_task_mfa_challenge_cleanup_*` — удаление просроченных и потреблённых MFA-челленджей.
+- Запланированная очистка уведомлений по сроку хранения не имеет отдельных метрик
+  `periodic_task_*`.
 - Для каждой задачи доступны:
   - `*_runs_total` — количество успешных итераций.
   - `*_errors_total` — количество завершений с исключением.
@@ -199,14 +217,17 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
 
 ### Офлайн-режим PWA
 
-- Service Worker кеширует SPA-shell (`_shell.html`) и выдаёт его для любых SPA-навигаций при
-  отсутствии сети; если shell недоступен, отдаётся `offline.html` из precache.
-- Запросы к API для расписания, новостей и событий (`/api/schedule`, `/api/news`,
-  `/api/events`) работают по стратегии stale-while-revalidate: при сбое сети
-  возвращаются сохранённые ответы, а при их отсутствии — пустые офлайн-плейсхолдеры
-  с заголовками `X-Offline-Fallback`/`X-Offline-Resource`.
-- Эндпоинты медиа/статических файлов остаются в NetworkFirst с ограничением размера кеша
-  (24 часа, до 200 записей).
+- При ошибке сетевой навигации Service Worker возвращает precache SPA-shell
+  (`_shell.html`); если shell недоступен, обработчик возвращает ошибку. Отдельную
+  страницу `offline.html` можно открыть напрямую, но это не навигационный fallback.
+- Кешируемые GET-запросы в `/api/` используют NetworkFirst-кеш в области текущей
+  сессии только после подтверждения её Service Worker. Предел — 100 записей и один
+  час; запросы без подтверждённой идентичности и с `no-store` идут в сеть без этого
+  кеша. Worker не создаёт пустые API-плейсхолдеры и заголовки
+  `X-Offline-Fallback`/`X-Offline-Resource`.
+- Ресурсы `/static/` используют StaleWhileRevalidate (100 записей, семь дней).
+  Для явных `/media/` действуют правила публичного или приватного кеша сессии,
+  а обычные изображения используют CacheFirst (200 записей, 30 дней).
 - Интерактивная карта и её lazy-чанки MapLibre намеренно не входят в install-time precache:
   это удерживает манифест ниже консервативного лимита CacheStorage. Offline-shell и
   общая fallback-страница остаются доступными без сети; маршрут карты (включая
@@ -222,6 +243,65 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
   cd frontend
   npm run test:e2e -- offline.spec.ts
   ```
+
+### Ротация ключа шифрования TOTP-enrollment
+
+В staging и production application Secret должен содержать
+`MFA_TOTP_ENCRYPTION_KEYS` для API и migration Job. Несекретный
+`MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` задаётся напрямую в окружении deployment и не
+передаётся через файл Secret. Явные роли `outbox-worker` и
+`notifications-worker` остаются без TOTP-ключей; вызов TOTP crypto в них
+завершается fail-closed. Активный ключ
+обязан отличаться от `SPOTIFY_TOKEN_SECRET`; неактивные записи кольца нужны
+только для расшифровки старых enrollment. Если существующие строки TOTP были
+зашифрованы ключом Spotify, временно сохраните тот же материал под неактивным
+TOTP key ID и опубликуйте новый независимый активный ключ. Не вставляйте ключи
+в команды, shell history, логи или документацию.
+
+До любого сканирования или ротации остановите все экземпляры backend API со
+старым кодом, который ещё может записывать TOTP ciphertext ключом Spotify или
+fallback от `SECRET_KEY`. Продолжайте только когда все активные процессы,
+записывающие enrollment, используют изолированный релиз, который всегда
+шифрует новые enrollment активным TOTP-ключом. Сохраняйте этот состав
+процессов и версию кода неизменными с первого сканирования до всех партий
+ротации, финального полного dry run без legacy-ключа и его удаления из кольца.
+Не делайте откат, не масштабируйте старый ReplicaSet и не запускайте смешанный
+релиз в это время. Если состав процессов изменился, оставьте legacy-ключ и
+повторите последовательность проверок после восстановления стабильного
+изолированного состава.
+
+После публикации нового кольца и стабилизации изолированного состава сначала
+выполните ограниченное чтение без записи:
+
+```bash
+python scripts/rotate_totp_encryption_keys.py --batch-size 100
+```
+
+Проверьте только сводные счётчики, затем явно запустите ротацию небольшими
+транзакциями:
+
+```bash
+python scripts/rotate_totp_encryption_keys.py --apply --batch-size 100
+```
+
+В PostgreSQL скрипт блокирует выбранные строки и обновляет их через точное
+сравнение ID и старого ciphertext. Нерасшифровываемая строка или изменившаяся
+строка отменяет текущую партию. Ранее подтверждённые партии можно безопасно
+обработать повторно: ротация идемпотентна.
+
+После успешного применения оставьте legacy-запись в обычном кольце расшифровки,
+пока готовите проверочное кольцо без неё. Запустите read-only сканирование на той же БД с тем же активным TOTP-ключом.
+Убедитесь, что команда завершилась успешно, `scanned` соответствует полному
+числу enrollment, а `would_rotate=0`; любая ошибка расшифровки или изменение
+числа строк блокирует удаление ключа. Только после этого удалите legacy-материал
+из TOTP-кольца всех API и процессов миграции. Ключ Spotify остаётся в отдельной
+конфигурации Spotify.
+
+Provisioning production-ключей, dry run и применение на полной таблице,
+постротационная проверка и удаление legacy-ключа требуют действий оператора и
+пока остаются незавершёнными. Изменение исходного кода не означает, что данные
+production уже были перешифрованы.
+
 
 ### Spotify токены
 
@@ -311,12 +391,12 @@ PY
 - `frontend.Dockerfile` использует отдельные stages для сборки Rust/WASM, установки build/runtime-зависимостей и TanStack Start SSR. Финальный образ основан на закреплённом по digest `node:24-alpine`, запускается непривилегированным пользователем `node` и содержит только production-зависимости, WASM-пакеты, `dist/` и SSR launcher.
 - `VITE_BACKEND_ORIGIN` остаётся build-time fallback для фронтенда. Node SSR сначала читает runtime-переменную `BACKEND_ORIGIN`, поэтому один immutable image можно безопасно использовать с разными Compose/Helm service names; chart и Compose уже задают внутренний адрес backend. Браузерные API-запросы остаются same-origin и идут через gateway.
 - Статику и SSR отдаёт `frontend/scripts/server-prod.mjs`: хешированные файлы в `assets/` получают `Cache-Control: public, max-age=31536000, immutable`, HTML — `no-cache`/`no-store`.
-- Контейнер слушает порт `3000`; Compose публикует frontend напрямую на `127.0.0.1:8081`, gateway — на `127.0.0.1:8080`, а Caddy — на портах `80`/`443`. Быстрая readiness/liveness-проверка доступна на `/healthz`.
+- Контейнер слушает порт `3000` во внутренней сети `frontend_net`; поддерживаемая точка входа с хоста — Caddy на портах `80`/`443`, который проксирует запросы на `frontend:3000`. Docker healthcheck проверяет `/healthz` внутри контейнера, а `start-docker.ps1` отдельно проверяет отрисованный `/login` через Caddy.
 
 ```bash
 # пример локальной сборки
 docker compose build frontend
-docker compose up frontend
+docker compose up -d frontend caddy
 ```
 
 ## Edge reverse proxy
@@ -347,6 +427,56 @@ server {
 
 > Для браузера предпочтителен same-origin edge. `BACKEND_ORIGIN` предназначен для runtime SSR, а `VITE_BACKEND_ORIGIN` — только build-time fallback; внутренние service DNS нельзя публиковать в клиентский bundle.
 
+## Часовой пояс кампуса
+
+`CAMPUS_TIMEZONE` задаёт часовой пояс IANA для повторяющихся занятий,
+напоминаний и экспорта календаря; значение по умолчанию — `UTC`.
+В Compose задайте его в `.env.docker`, в Helm — в
+`backend.env.CAMPUS_TIMEZONE`. Сервер рассчитывает даты занятий по часовому
+поясу кампуса, браузер форматирует полученные моменты времени для отображения.
+
+## Настройка доверия к proxy IP для rate limit
+
+Код rate limit использует forwarded-заголовки только при явной настройке
+непосредственного peer и цепочки proxy. В Compose GATEWAY_TRUSTED_PROXIES
+задаёт точные адреса proxy, видимые Gateway, WS_HUB_TRUSTED_PROXIES — адреса,
+видимые ws-hub, а backend получает TRUSTED_PROXIES из .env.docker. Полный
+Compose-стек использует динамические адреса общих сетей, а
+scripts/live_stand.py не обнаруживает адреса proxy. Не доверяйте всей сети
+public или широкой private-сети. Задавайте адреса по фактической топологии и
+обновляйте настройки при их изменении. Если перед Caddy стоит внешний
+балансировщик, настройте доверие Caddy только к его реальным адресам и
+проверьте очищенную forwarded-цепочку.
+
+В Helm задайте gateway.config.trustedProxies и wsHub.config.trustedProxies по
+реальным адресам/CIDR ingress. В backend.env.TRUSTED_PROXIES задайте Gateway и
+только те upstream hops, которые остаются в очищенной цепочке. NetworkPolicy
+ограничивает доступ, но не настраивает доверие приложения к заголовкам.
+Не используйте предполагаемые адреса или CIDR всего кластера/private-сети.
+Staging values намеренно не содержат предположительных внешних адресов. В
+staging/production Helm render проверяет значения `trustedProxies` для каждого
+включённого Ingress-маршрута к Gateway или ws-hub. Перед проверкой длина CIDR
+префикса нормализуется, включая запись с ведущими нулями. Render завершается
+ошибкой, если после нормализации список пуст или содержит только loopback,
+универсальный маршрут `/0`, любую половину IPv6 `/1`, полный RFC1918-блок или
+суперсеть, покрывающую `10.0.0.0/8`, `172.16.0.0/12` или `192.168.0.0/16`,
+полный IPv6 ULA-блок `fc00::/7` или суперсеть, покрывающую его, либо полный блок
+IPv6 Global Unicast `2000::/3` или суперсеть, покрывающую его (см. [реестр
+адресного пространства IPv6 IANA](https://www.iana.org/assignments/ipv6-address-space/)),
+IPv4-mapped диапазон, покрывающий все IPv4 адреса, либо IPv4-mapped peer вне
+loopback. Для mapped non-loopback peer задавайте native IPv4 адрес или CIDR.
+IPv4-mapped `127.0.0.0/8` считается loopback: сам по себе он не удовлетворяет
+требованию non-loopback peer, но может сосуществовать с отдельным допустимым
+non-loopback адресом. Более узкие private IPv4 и IPv6 CIDR остаются допустимыми;
+произвольного минимального размера подсети нет.
+
+Эта fail-closed проверка валидирует входные значения, но не обнаруживает и не
+подтверждает текущую топологию или фактические source IP ingress. Оператор должен
+получить реальные peers из конфигурации развертывания. Адреса TEST-NET и IPv6
+documentation prefixes в contract tests являются только тестовыми фикстурами и
+не предназначены для deployment. Для development и direct-mode render диапазоны
+ingress proxy не требуются.
+
 ## Системные зависимости backend
 
 - Для серверной проверки контента файлов используется `python-magic`, поэтому на хостах с backend нужно установить пакеты `libmagic` (например, `apt install libmagic1 libmagic-dev` для Debian/Ubuntu или `apk add file` в Alpine).
@@ -363,18 +493,20 @@ server {
 ## Notifications worker
 
 - Для корректной отправки push-уведомлений запустите отдельный воркер: `python -m app.workers.notifications`.
-- При запуске API и воркера в разных процессах выключите встроенный планировщик в API, установив `NOTIFICATIONS_SCHEDULER_INLINE_ENABLED=false`.
 - Воркер публикует здоровье и метрики Prometheus на `http://<host>:9101/healthz` и `http://<host>:9101/metrics` (порт можно изменить через `NOTIFICATIONS_WORKER_METRICS_PORT`).
 - В docker-compose уже добавлен сервис `notifications-worker` с политикой перезапуска `unless-stopped`.
-- Задания из dead-letter очереди автоматически удаляются по истечении 30 дней (управляется `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`). Периодичность проверки задаётся `NOTIFICATION_QUEUE_DEAD_LETTER_CLEANUP_INTERVAL_SECONDS` (минимум 300 секунд; значение `0` отключает планировщик).
+- Задания из dead-letter очереди автоматически удаляются по истечении 30 дней (управляется `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`).
 
-## Очистка сессий пользователей
+## Расписание периодической очистки
 
-- API автоматически удаляет устаревшие записи из `active_sessions` при старте и затем каждые 15 минут.
-- Частоту можно изменить переменной `SESSION_CLEANUP_INTERVAL_SECONDS` (минимум 30 секунд). Значение `0` выключает фоновой планировщик; при этом скрипт очистки можно запускать вручную, вызвав `python -m app.services.session_cleanup` внутри контейнера/виртуального окружения.
+API запускает один почасовой планировщик (`app/core/lifespan.py::_periodic_scheduler_loop`; стартовый джиттер 0–60 с разносит нагрузку при rolling deploy). Периодичность задана в коде и не настраивается для отдельных задач:
 
-## Очистка MFA-челленджей
+| Периодичность | Задачи |
+|---|---|
+| каждый час | истёкшие stories, устаревшие токены сброса пароля, токены смены e-mail, MFA-челленджи, продуктовые gauge (активные пользователи, MFA) |
+| каждые 6 часов | истёкшие и отозванные сессии |
+| ежедневно в 02:00 UTC | устаревшие уведомления, задания notification-queue из dead-letter, privacy-артефакты (и CWV-наблюдения) |
 
-- Утилита `cleanup_stale_mfa_challenges` удаляет записи, у которых и срок действия, и отметка `consumed_at` старше `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`.
-- Планировщик запускается каждые 10 минут по умолчанию (`MFA_CHALLENGE_CLEANUP_INTERVAL_SECONDS`, минимум 30 секунд). Значение `0` отключает фоновой цикл, но задачу можно запускать вручную через `python -m app.services.mfa_challenge_cleanup`.
-- Рекомендуется выдерживать интервал 5–10 минут, чтобы база не разрасталась и не блокировала логин-формы. Следите за метриками `periodic_task_mfa_challenge_cleanup_runs_total`, `_errors_total` и `_deleted_total`, чтобы замечать аномальные пики или ошибки очистки.
+Окна хранения настраиваются (`NOTIFICATIONS_RETENTION_DAYS`, `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`, `PASSWORD_RESET_CLEANUP_RETENTION_MINUTES`, `EMAIL_CHANGE_CLEANUP_RETENTION_MINUTES`, `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`, `SESSION_RETENTION_DAYS`, ...). Каждую задачу можно запустить вручную, например `python -m app.services.session_cleanup` или `python -m app.services.mfa_challenge_cleanup`. Следите за метриками `periodic_task_*_runs_total`, `_errors_total` и `_deleted_total`.
+
+Отзыв сессий (logout, `/auth/sessions/*`) удаляет строки в БД сразу; после обновления с релиза, где строки только помечались отозванными, один раз запустите очистку сессий, чтобы `/auth/sessions` и операторские дашборды были согласованы.

@@ -109,6 +109,16 @@ describe("Register page", () => {
     }
   })
 
+  it("uses POST for native registration and names each credential control", async () => {
+    await renderRegister()
+
+    const password = screen.getByLabelText(matchText(tAuth("fields.password")))
+    const confirmation = screen.getByLabelText(matchText(tAuth("fields.confirmPassword")))
+    expect(password.closest("form")).toHaveAttribute("method", "post")
+    expect(password).toHaveAttribute("name", "password")
+    expect(confirmation).toHaveAttribute("name", "confirmPassword")
+  })
+
   it("provides a stable fallback key for missing email validation messages", () => {
     expect(resolveRegistrationEmailErrorKey(undefined)).toBe("auth:messages.invalidFormat")
     expect(resolveRegistrationEmailErrorKey("")).toBe("auth:messages.invalidFormat")
@@ -655,10 +665,9 @@ describe("Register behaviour details", () => {
   })
 
   it("analyses strength in the resolved interface language", async () => {
-    const { resolvedLanguage, language } = i18n
+    const selectedLanguage = window.__UE_SELECTED_LANG__
     passwordAnalysis.mode = "locale"
-    i18n.resolvedLanguage = "ru"
-    i18n.language = "en"
+    window.__UE_SELECTED_LANG__ = "ru"
     try {
       await renderRegister()
       fireEvent.change(field("fields.password"), { target: { value: "password123" } })
@@ -667,8 +676,8 @@ describe("Register behaviour details", () => {
         await screen.findByText(tAuth("register.passwordStrengthLevel.excellent"))
       ).toBeInTheDocument()
     } finally {
-      i18n.resolvedLanguage = resolvedLanguage
-      i18n.language = language
+      if (selectedLanguage === undefined) delete window.__UE_SELECTED_LANG__
+      else window.__UE_SELECTED_LANG__ = selectedLanguage
     }
   })
 })

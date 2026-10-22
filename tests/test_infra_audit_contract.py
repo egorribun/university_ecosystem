@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -78,7 +80,7 @@ def test_observability_override_defines_tempo_healthprobe() -> None:
     probe = source[source.index(marker) :]
     assert 'network_mode: "service:tempo"' in probe
     assert "http://localhost:3200/ready" in probe
-    assert "curlimages/curl:8.10.1@sha256:" in probe
+    assert "curlimages/curl:8.22.0@sha256:" in probe
 
 
 def test_standalone_ingress_requires_explicit_certificate_issuer() -> None:
@@ -128,7 +130,7 @@ def test_raw_manifest_wrapper_is_allowlisted_and_fail_closed() -> None:
 def test_raw_manifest_wrapper_renders_and_rejects_mutable_images(
     tmp_path: Path,
 ) -> None:
-    """Exercise the wrapper with hermetic envsubst/kubectl stand-ins on Linux."""
+    """Exercise the wrapper with hermetic envsubst/kubectl stand-ins through Bash."""
 
     bash = shutil.which("bash")
     if not bash:
@@ -151,26 +153,44 @@ def test_raw_manifest_wrapper_renders_and_rejects_mutable_images(
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     capture = tmp_path / "kubectl-input.yaml"
-    (bin_dir / "envsubst").write_text(
-        "#!/usr/bin/env python3\n"
+
+    def bash_path(path: Path) -> str:
+        resolved = str(path.resolve())
+        if os.name != "nt":
+            return Path(resolved).as_posix()
+        drive, tail = os.path.splitdrive(resolved)
+        if not drive:
+            return Path(resolved).as_posix()
+        return f"/{drive[0].lower()}{tail.replace(chr(92), '/')}"
+
+    def write_python_stub(name: str, source: str) -> None:
+        script = bin_dir / f"{name}.py"
+        script.write_text(source, encoding="utf-8")
+        executable = bin_dir / name
+        executable.write_text(
+            "#!/usr/bin/env bash\n"
+            f"exec {shlex.quote(bash_path(Path(sys.executable)))} "
+            f'{shlex.quote(bash_path(script))} "$@"\n',
+            encoding="utf-8",
+        )
+        executable.chmod(0o755)
+
+    write_python_stub(
+        "envsubst",
         "import os, sys\n"
         "value = sys.stdin.read()\n"
         "for name in ('IMAGE_REGISTRY', 'IMAGE_TAG', 'CERT_MANAGER_ISSUER_NAME', 'FRONTEND_HOST', 'API_HOST', 'TLS_SECRET_NAME', 'VAULT_URL'):\n"
         "    value = value.replace('${' + name + '}', os.environ.get(name, ''))\n"
         "    value = value.replace('$' + name, os.environ.get(name, ''))\n"
         "sys.stdout.write(value)\n",
-        encoding="utf-8",
     )
-    (bin_dir / "kubectl").write_text(
-        "#!/usr/bin/env python3\n"
+    write_python_stub(
+        "kubectl",
         "import os, pathlib, sys\n"
         "if sys.argv[1:] != ['apply', '-f', '-']:\n"
         "    raise SystemExit(2)\n"
         "pathlib.Path(os.environ['KUBECTL_CAPTURE']).write_text(sys.stdin.read(), encoding='utf-8')\n",
-        encoding="utf-8",
     )
-    for executable in (bin_dir / "envsubst", bin_dir / "kubectl"):
-        executable.chmod(0o755)
 
     environment = os.environ.copy()
     environment["PATH"] = os.pathsep.join((str(bin_dir), environment["PATH"]))

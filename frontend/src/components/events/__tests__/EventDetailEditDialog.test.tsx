@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { beforeEach, describe, it, expect, vi } from "vitest"
@@ -7,14 +7,29 @@ import { waitFor } from "@testing-library/react"
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
-const { useTranslationMock } = vi.hoisted(() => ({
-  useTranslationMock: vi.fn(() => ({
-    t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  })),
+const { language, useTranslationMock } = vi.hoisted(() => {
+  const currentLanguage = { current: "en" }
+  return {
+    language: currentLanguage,
+    useTranslationMock: vi.fn(() => ({
+      t: (key: string) => key,
+      i18n: {
+        get language() {
+          return currentLanguage.current
+        },
+        changeLanguage: () => Promise.resolve(),
+      },
+    })),
+  }
+})
+const { campusTimezone } = vi.hoisted(() => ({
+  campusTimezone: { current: "America/New_York" as string | null },
 }))
 vi.mock("react-i18next", () => ({
   useTranslation: useTranslationMock,
+}))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => campusTimezone.current,
 }))
 const mocks = vi.hoisted(() => ({
   patch: vi.fn(),
@@ -33,6 +48,7 @@ import {
   EventDetailEditDialog,
   normalizeLocalizedEditValue,
 } from "@/components/events/EventDetailEditDialog"
+import * as eventDateTime from "@/utils/eventDateTime"
 import type { Event } from "@/types/Event"
 
 const baseEvent: Event = {
@@ -72,6 +88,8 @@ function renderDialog(props = baseProps) {
 describe("EventDetailEditDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    language.current = "en"
+    campusTimezone.current = "America/New_York"
     mocks.patch.mockResolvedValue({ data: {} })
     mocks.uploadEventImage.mockResolvedValue("")
   })
@@ -91,6 +109,8 @@ describe("EventDetailEditDialog", () => {
     expect(screen.getByLabelText("events:form.title_en")).toHaveValue(baseEvent.title_en)
     expect(screen.getByLabelText("events:form.description_en")).toHaveValue("")
     expect(screen.getByLabelText("events:form.location_en")).toHaveValue("")
+    expect(screen.getByLabelText("events:form.start")).toHaveValue("2026-06-15T10:00")
+    expect(screen.getByLabelText("events:form.end")).toHaveValue("2026-06-15T12:00")
   })
 
   it("does not render the dialog when closed", () => {
@@ -141,6 +161,7 @@ describe("EventDetailEditDialog", () => {
   })
 
   it("preserves every localized value from a complete event payload", async () => {
+    language.current = "ru"
     const localizedEvent = {
       ...baseEvent,
       title_en: "English title",
@@ -155,12 +176,12 @@ describe("EventDetailEditDialog", () => {
     }
 
     renderDialog({ ...baseProps, event: localizedEvent })
-    expect(screen.getByLabelText("events:form.title_en")).toHaveValue("English title")
-    expect(screen.getByLabelText("events:form.description_en")).toHaveValue("English description")
-    expect(screen.getByLabelText("events:form.type_en")).toHaveValue("English type")
-    expect(screen.getByLabelText("events:form.location_en")).toHaveValue("English room")
-    expect(screen.getByLabelText("events:form.start")).toHaveValue("2026-07-01T09:00")
-    expect(screen.getByLabelText("events:form.end")).toHaveValue("2026-07-01T10:00")
+    expect(screen.getByLabelText("events:form.title")).toHaveValue(baseEvent.title)
+    expect(screen.getByLabelText("events:form.description")).toHaveValue(baseEvent.description)
+    expect(screen.getByLabelText("events:form.type")).toHaveValue(baseEvent.event_type)
+    expect(screen.getByLabelText("events:form.location")).toHaveValue(baseEvent.location)
+    expect(screen.getByLabelText("events:form.start")).toHaveValue("2026-07-01T05:00")
+    expect(screen.getByLabelText("events:form.end")).toHaveValue("2026-07-01T06:00")
     expect(screen.getByLabelText("events:form.speaker")).toHaveValue("English speaker")
 
     const user = userEvent.setup()
@@ -168,11 +189,99 @@ describe("EventDetailEditDialog", () => {
     await waitFor(() => expect(mocks.patch).toHaveBeenCalled())
     expect(mocks.patch).toHaveBeenCalledWith(
       "/events/evt-1",
-      expect.objectContaining({ about: "Russian about", about_en: "English about" })
+      expect.objectContaining({
+        title: baseEvent.title,
+        title_en: "English title",
+        description: baseEvent.description,
+        description_en: "English description",
+        event_type: baseEvent.event_type,
+        event_type_en: "English type",
+        location: baseEvent.location,
+        location_en: "English room",
+        about: "Russian about",
+        about_en: "English about",
+        starts_at: localizedEvent.starts_at,
+        ends_at: localizedEvent.ends_at,
+      })
     )
   })
 
+  it("omits localized source fields from English saves and excludes response id", async () => {
+    const localizedEvent = {
+      ...baseEvent,
+      title: "Localized English title",
+      title_en: "English source title",
+      description: "Localized English description",
+      description_en: "English source description",
+      event_type: "English display type",
+      event_type_en: "English source type",
+      location: "English display location",
+      location_en: "English source location",
+      about: "Localized English about",
+      about_en: "English source about",
+    }
+    renderDialog({ ...baseProps, event: localizedEvent })
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "common:buttons.save" }))
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledOnce())
+    const payload = mocks.patch.mock.calls[0]?.[1] as Record<string, unknown>
+    expect(payload).toMatchObject({
+      title_en: "English source title",
+      description_en: "English source description",
+      event_type_en: "English source type",
+      location_en: "English source location",
+      about_en: "English source about",
+      starts_at: baseEvent.starts_at,
+      ends_at: baseEvent.ends_at,
+    })
+    for (const field of ["id", "title", "description", "event_type", "location", "about"]) {
+      expect(payload).not.toHaveProperty(field)
+    }
+  })
+
+  it("serializes changed campus wall times to UTC and blocks a DST gap", async () => {
+    const user = userEvent.setup()
+    const editView = renderDialog()
+    expect(screen.getByLabelText("events:form.start")).toHaveValue("2026-06-15T10:00")
+
+    fireEvent.change(screen.getByLabelText("events:form.start"), {
+      target: { value: "2026-06-16T10:30" },
+    })
+    fireEvent.change(screen.getByLabelText("events:form.end"), {
+      target: { value: "2026-06-16T11:30" },
+    })
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledOnce())
+    expect(mocks.patch).toHaveBeenCalledWith(
+      "/events/evt-1",
+      expect.objectContaining({
+        starts_at: "2026-06-16T14:30:00.000Z",
+        ends_at: "2026-06-16T15:30:00.000Z",
+      })
+    )
+
+    editView.unmount()
+    mocks.patch.mockClear()
+    const gapEvent = { ...baseEvent, starts_at: "2026-03-08T06:00:00.000Z" }
+    const gapView = renderDialog({ ...baseProps, event: gapEvent })
+    fireEvent.change(screen.getByLabelText("events:form.start"), {
+      target: { value: "2026-03-08T02:30" },
+    })
+    expect(screen.getByText("events:form.errors.nonexistentCampusTime")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+    expect(mocks.patch).not.toHaveBeenCalled()
+    gapView.unmount()
+  })
+
+  it("blocks edit saves when the server campus timezone is unavailable", () => {
+    campusTimezone.current = null
+    renderDialog()
+    expect(screen.getAllByText("events:form.errors.campusTimezoneUnavailable")).toHaveLength(2)
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+  })
+
   it("preserves non-null optional description and type values while normalizing nulls", async () => {
+    language.current = "ru"
     const localizedEvent = {
       ...baseEvent,
       description: "Russian description",
@@ -182,8 +291,8 @@ describe("EventDetailEditDialog", () => {
     }
     renderDialog({ ...baseProps, event: localizedEvent })
 
-    expect(screen.getByLabelText("events:form.description_en")).toHaveValue("English description")
-    expect(screen.getByLabelText("events:form.type_en")).toHaveValue("Lecture")
+    expect(screen.getByLabelText("events:form.description")).toHaveValue("Russian description")
+    expect(screen.getByLabelText("events:form.type")).toHaveValue("lecture")
 
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
@@ -220,8 +329,10 @@ describe("EventDetailEditDialog", () => {
       )
       expect(mocks.patch).toHaveBeenCalledWith(
         "/events/evt-1",
-        expect.objectContaining({ id: "evt-1", image_url: baseEvent.image_url })
+        expect.objectContaining({ image_url: baseEvent.image_url })
       )
+      const payload = mocks.patch.mock.calls[0]?.[1] as Record<string, unknown>
+      expect(payload).not.toHaveProperty("id")
       expect(onClose).toHaveBeenCalledOnce()
       expect(invalidateQueries).toHaveBeenNthCalledWith(1, {
         queryKey: ["events", "detail", baseEvent.id],
@@ -247,7 +358,7 @@ describe("EventDetailEditDialog", () => {
     expect(screen.getByAltText("events:alt.preview")).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
-    await waitFor(() => expect(mocks.uploadEventImage).toHaveBeenCalledWith(file))
+    await waitFor(() => expect(mocks.uploadEventImage).toHaveBeenCalledWith(file, "evt-1"))
     expect(mocks.patch).toHaveBeenCalledWith(
       "/events/evt-1",
       expect.objectContaining({ image_url: "https://cdn.example/new.png" })
@@ -321,7 +432,7 @@ describe("EventDetailEditDialog", () => {
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
   })
 
-  it("updates localized fields and submits the complete edited draft", async () => {
+  it("updates English fields without sending the path-only id or localized source fields", async () => {
     const user = userEvent.setup()
     renderDialog()
 
@@ -341,6 +452,12 @@ describe("EventDetailEditDialog", () => {
         location_en: "Updated room",
       })
     )
+    const update = mocks.patch.mock.calls.at(-1)?.[1] as Record<string, unknown>
+    expect(update).not.toHaveProperty("id")
+    expect(update).not.toHaveProperty("title")
+    expect(update).not.toHaveProperty("description")
+    expect(update).not.toHaveProperty("location")
+    expect(update).not.toHaveProperty("event_type")
   })
 
   it("resets edited values when cancelled without a parent remount", async () => {
@@ -432,5 +549,35 @@ describe("EventDetailEditDialog", () => {
       createObjectUrl.mockRestore()
       revokeObjectUrl.mockRestore()
     }
+  })
+
+  it("revalidates the campus timezone inside the save handler", () => {
+    const onClose = vi.fn()
+    const onSuccess = vi.fn()
+    const onError = vi.fn()
+    renderDialog({ ...baseProps, onClose, onSuccess, onError })
+
+    const saveButton = screen.getByRole("button", { name: "common:buttons.save" })
+    expect(saveButton).toBeEnabled()
+    const unavailableTimezone = eventDateTime.resolveCampusEventDateRange(
+      "2026-06-15T10:00",
+      "2026-06-15T12:00",
+      null,
+      { startsAt: baseEvent.starts_at, endsAt: baseEvent.ends_at }
+    )
+    const resolveRange = vi
+      .spyOn(eventDateTime, "resolveCampusEventDateRange")
+      .mockReturnValueOnce(unavailableTimezone)
+    try {
+      fireEvent.click(saveButton)
+      expect(resolveRange).toHaveBeenCalledTimes(1)
+    } finally {
+      resolveRange.mockRestore()
+    }
+
+    expect(mocks.patch).not.toHaveBeenCalled()
+    expect(onSuccess).not.toHaveBeenCalled()
+    expect(onError).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
   })
 })

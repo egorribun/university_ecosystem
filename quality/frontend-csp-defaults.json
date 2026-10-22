@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "nonce": "PolicyNonce+/_==",
+  "headers": {
+    "content-security-policy": "default-src 'self'; script-src 'self' 'nonce-PolicyNonce+/_==' 'strict-dynamic' https://accounts.google.com 'report-sample'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:; connect-src 'self' https://*.push.apple.com https://*.push.services.mozilla.com https://api.spotify.com https://fcm.googleapis.com https://fcmregistrations.googleapis.com https://updates.push.services.mozilla.com; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests; frame-ancestors 'self'; trusted-types app dompurify-news goog#html 'allow-duplicates'; require-trusted-types-for 'script'",
+    "content-security-policy-report-only": "default-src 'self'; script-src 'self' 'nonce-PolicyNonce+/_==' 'strict-dynamic' https://accounts.google.com 'report-sample'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:; connect-src 'self' https://*.push.apple.com https://*.push.services.mozilla.com https://api.spotify.com https://fcm.googleapis.com https://fcmregistrations.googleapis.com https://updates.push.services.mozilla.com; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; trusted-types app dompurify-news goog#html 'allow-duplicates'; require-trusted-types-for 'script'; report-uri /api/v1/csp-report"
+  }
+}

@@ -14,6 +14,30 @@ import {
   responseCache,
 } from "../etagCache"
 
+// resetModules creates additional module instances in this suite. Each test
+// owns the visibility listeners it creates; production registers one per page.
+const addDocumentListener = document.addEventListener.bind(document)
+const visibilityListeners: {
+  listener: EventListenerOrEventListenerObject
+  options: boolean | AddEventListenerOptions | undefined
+}[] = []
+
+beforeEach(() => {
+  vi.spyOn(document, "addEventListener").mockImplementation((type, listener, options) => {
+    if (type === "visibilitychange" && listener) {
+      visibilityListeners.push({ listener, options })
+    }
+    addDocumentListener(type, listener, options)
+  })
+})
+
+afterEach(() => {
+  for (const { listener, options } of visibilityListeners.splice(0)) {
+    document.removeEventListener("visibilitychange", listener, options)
+  }
+  vi.restoreAllMocks()
+})
+
 const SIGNING_KEY = "test-signing-key"
 // Independent known-answer vector: this lets the test detect algorithm/encoding
 // drift without passing a hard-coded secret to a second HMAC implementation.
@@ -933,8 +957,7 @@ describe("etagCache — debounced flush + visibilitychange", () => {
     document.dispatchEvent(new Event("visibilitychange"))
 
     // The static module performs two writes: the failing one + the retry after
-    // eviction. Fresh module imports in isolated suites also own listeners,
-    // so unrelated empty snapshots may be present in the shared spy.
+    // eviction. Other tests remove the listeners owned by their isolated imports.
     const cacheWrites = setItemSpy.mock.calls.filter(([k]) => k.startsWith("ue:etag-cache"))
     expect(cacheWrites.length).toBeGreaterThanOrEqual(2)
     expect(cacheWrites.some(([, value]) => value.includes("q:oldest"))).toBe(true)
@@ -976,18 +999,13 @@ describe("etagCache — debounced flush + visibilitychange", () => {
       configurable: true,
       get: () => "hidden",
     })
-    // Three earlier resetModules imports plus the static module each own a
-    // visibility listener, so this event intentionally emits four diagnostics.
-    await withExpectedConsole(
-      "warn",
-      "Failed to flush etag cache to localStorage",
-      () => {
-        expect(() => document.dispatchEvent(new Event("visibilitychange"))).not.toThrow()
-      },
-      4
-    )
+    // Only the static module owns a visibility listener after each isolated
+    // import has cleaned up its listener.
+    await withExpectedConsole("warn", "Failed to flush etag cache to localStorage", () => {
+      expect(() => document.dispatchEvent(new Event("visibilitychange"))).not.toThrow()
+    })
     expect(etagCache.get("flush:error")).toBe('"tag"')
-    expect(setItemSpy).toHaveBeenCalled()
+    expect(setItemSpy).toHaveBeenCalledOnce()
   })
 
   it("does not treat a plain error named QuotaExceededError as a browser quota error", () => {

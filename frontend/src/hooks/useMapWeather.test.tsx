@@ -14,7 +14,9 @@ import { useMapWeather, type MapWeatherData } from "./useMapWeather"
  *  - localStorage write failure (Safari private mode) is swallowed.
  */
 
-const CACHE_KEY = "map.weather.cache"
+const LEGACY_CACHE_KEY = "map.weather.cache"
+const CACHE_KEY = "map.weather.cache.v2"
+const CACHE_VERSION = 2
 const CACHE_TTL = 30 * 60 * 1000
 
 const FIXTURE_API_RESPONSE = {
@@ -44,6 +46,14 @@ const FIXTURE_CACHED_DATA: MapWeatherData = {
   humidity: 50,
   uvIndex: 2,
   hourlyForecast: [],
+}
+
+function serializedCache(
+  data: MapWeatherData,
+  timestamp = Date.now(),
+  windSpeedUnit = "ms"
+): string {
+  return JSON.stringify({ version: CACHE_VERSION, windSpeedUnit, timestamp, data })
 }
 
 let fetchMock: ReturnType<typeof vi.fn>
@@ -102,12 +112,54 @@ describe("useMapWeather — Lighthouse preview", () => {
   })
 })
 
+describe("useMapWeather — unit-aware cache migration", () => {
+  it("evicts the legacy km/h payload without touching unrelated local data", async () => {
+    const unrelatedKey = "profile.preferences"
+    const unrelatedValue = JSON.stringify({ theme: "dark" })
+    localStorage.setItem(
+      LEGACY_CACHE_KEY,
+      JSON.stringify({
+        timestamp: Date.now(),
+        data: { ...FIXTURE_CACHED_DATA, windSpeed: 36 },
+      })
+    )
+    localStorage.setItem(unrelatedKey, unrelatedValue)
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(result.current.data?.windSpeed).toBe(4.2)
+    expect(localStorage.getItem(LEGACY_CACHE_KEY)).toBeNull()
+    expect(localStorage.getItem(unrelatedKey)).toBe(unrelatedValue)
+    expect(JSON.parse(localStorage.getItem(CACHE_KEY) ?? "null")).toMatchObject({
+      version: CACHE_VERSION,
+      windSpeedUnit: "ms",
+      data: { windSpeed: 4.2 },
+    })
+  })
+
+  it("rejects and replaces a versioned entry that declares km/h", async () => {
+    localStorage.setItem(CACHE_KEY, serializedCache(FIXTURE_CACHED_DATA, Date.now(), "kmh"))
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(result.current.data?.windSpeed).toBe(4.2)
+    expect(JSON.parse(localStorage.getItem(CACHE_KEY) ?? "null")).toMatchObject({
+      version: CACHE_VERSION,
+      windSpeedUnit: "ms",
+      data: { windSpeed: 4.2 },
+    })
+  })
+})
+
 describe("useMapWeather — cache hit", () => {
   it("returns cached data without a network call when cache is fresh", async () => {
-    localStorage.setItem(
-      CACHE_KEY,
-      JSON.stringify({ timestamp: Date.now(), data: FIXTURE_CACHED_DATA })
-    )
+    localStorage.setItem(CACHE_KEY, serializedCache(FIXTURE_CACHED_DATA))
 
     const client = newClient()
     const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
@@ -115,6 +167,130 @@ describe("useMapWeather — cache hit", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data).toEqual(FIXTURE_CACHED_DATA)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe("useMapWeather — persisted freshness", () => {
+  it("keeps the original storage timestamp when seeding the Query cache", async () => {
+    const now = new Date("2026-10-20T12:00:00.000Z")
+    const timestamp = now.getTime() - CACHE_TTL + 1_000
+    let currentTime = now.getTime()
+    const dateNowSpy = vi.spyOn(Date, "now").mockImplementation(() => currentTime)
+
+    try {
+      localStorage.setItem(CACHE_KEY, serializedCache(FIXTURE_CACHED_DATA, timestamp))
+
+      const firstMount = renderHook(() => useMapWeather(), { wrapper: wrapper(newClient()) })
+      await waitFor(() => expect(firstMount.result.current.isSuccess).toBe(true))
+      expect(firstMount.result.current.data).toEqual(FIXTURE_CACHED_DATA)
+      expect(firstMount.result.current.dataUpdatedAt).toBe(timestamp)
+      expect(firstMount.result.current.isStale).toBe(false)
+      expect(fetchMock).not.toHaveBeenCalled()
+      firstMount.unmount()
+
+      currentTime = now.getTime() + 1_001
+      const remount = renderHook(() => useMapWeather(), { wrapper: wrapper(newClient()) })
+      await waitFor(() => expect(remount.result.current.isSuccess).toBe(true))
+
+      expect(fetchMock).toHaveBeenCalledOnce()
+      expect(remount.result.current.data?.temperature).toBe(12)
+      expect(JSON.parse(localStorage.getItem(CACHE_KEY) ?? "null").timestamp).toBe(Date.now())
+      remount.unmount()
+    } finally {
+      dateNowSpy.mockRestore()
+    }
+  })
+
+  it("rejects a future-dated cache entry instead of extending its freshness", async () => {
+    const futureTimestamp = Date.now() + 60_000
+    localStorage.setItem(CACHE_KEY, serializedCache(FIXTURE_CACHED_DATA, futureTimestamp))
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(result.current.data?.temperature).toBe(12)
+    expect(JSON.parse(localStorage.getItem(CACHE_KEY) ?? "null").timestamp).not.toBe(
+      futureTimestamp
+    )
+  })
+
+  it("rejects a cache entry with a non-numeric timestamp", async () => {
+    localStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify({
+        version: CACHE_VERSION,
+        windSpeedUnit: "ms",
+        timestamp: "not-a-timestamp",
+        data: FIXTURE_CACHED_DATA,
+      })
+    )
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(result.current.data?.temperature).toBe(12)
+  })
+})
+
+describe("useMapWeather — provider wall-clock forecast hours", () => {
+  it("preserves a valid hour that falls inside the client's DST spring gap", async () => {
+    const previousTimezone = process.env.TZ
+
+    try {
+      process.env.TZ = "America/New_York"
+      expect(new Date("2026-03-08T02:00").getHours()).toBe(3)
+
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ...FIXTURE_API_RESPONSE,
+          hourly: {
+            time: ["2026-03-08T01:00", "2026-03-08T02:00", "2026-03-08T03:00"],
+            temperature_2m: [1, 2, 3],
+            weather_code: [0, 1, 2],
+          },
+        }),
+      } as Response)
+
+      const client = newClient()
+      const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+      expect(result.current.data?.hourlyForecast.map((point) => point.hour)).toEqual([1, 2, 3])
+    } finally {
+      if (previousTimezone === undefined) delete process.env.TZ
+      else process.env.TZ = previousTimezone
+    }
+  })
+
+  it("skips malformed provider wall times without normalizing them through Date", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ...FIXTURE_API_RESPONSE,
+        hourly: {
+          time: ["2026-05-15T24:00", "2026-02-30T12:00", "2026-05-15T12:00Z", "2026-05-15T12:00"],
+          temperature_2m: [1, 2, 3, 4],
+          weather_code: [0, 1, 2, 3],
+        },
+      }),
+    } as Response)
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.hourlyForecast).toEqual([
+      { hour: 12, temperature: 4, condition: "cloudy" },
+    ])
   })
 })
 
@@ -126,6 +302,7 @@ describe("useMapWeather — cache miss → fetch", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     expect(fetchMock).toHaveBeenCalledOnce()
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("&wind_speed_unit=ms"))
     const data = result.current.data!
     expect(data.temperature).toBe(12) // rounded from 12.4
     expect(data.feelsLike).toBe(11)
@@ -139,16 +316,14 @@ describe("useMapWeather — cache miss → fetch", () => {
     // Persistence — next fresh hook would read from cache.
     const cached = JSON.parse(localStorage.getItem(CACHE_KEY) ?? "null")
     expect(cached?.data?.temperature).toBe(12)
+    expect(cached).toMatchObject({ version: CACHE_VERSION, windSpeedUnit: "ms" })
   })
 })
 
 describe("useMapWeather — expired cache", () => {
   it("evicts the entry and re-fetches when older than TTL", async () => {
     const oldTimestamp = Date.now() - (CACHE_TTL + 60_000)
-    localStorage.setItem(
-      CACHE_KEY,
-      JSON.stringify({ timestamp: oldTimestamp, data: FIXTURE_CACHED_DATA })
-    )
+    localStorage.setItem(CACHE_KEY, serializedCache(FIXTURE_CACHED_DATA, oldTimestamp))
 
     const client = newClient()
     const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
@@ -283,5 +458,36 @@ describe("useMapWeather — defensive API handling", () => {
     expect(result.current.data?.temperature).toBe(12)
     expect(setItemSpy).toHaveBeenCalledOnce()
     setItemSpy.mockRestore()
+  })
+})
+
+describe("useMapWeather — provider wall-clock seconds", () => {
+  it("accepts valid second precision and skips malformed second fields", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        current: FIXTURE_API_RESPONSE.current,
+        hourly: {
+          time: [
+            "2026-05-15T13:45:12.5",
+            "2026-05-15T14:45:12",
+            "2026-05-15T15:45:12.a",
+            "2026-05-15T16:45:12.5.1",
+          ],
+          temperature_2m: [15, 16, 17, 18],
+          weather_code: [1, 2, 3, 4],
+        },
+      }),
+    } as Response)
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.hourlyForecast).toEqual([
+      { hour: 13, temperature: 15, condition: "clear" },
+      { hour: 14, temperature: 16, condition: "cloudy" },
+    ])
   })
 })

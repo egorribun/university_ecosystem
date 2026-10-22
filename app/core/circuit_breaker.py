@@ -16,7 +16,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.core.logging import get_logger
 
@@ -91,6 +91,7 @@ class _CircuitState:
     last_failure_time: float = 0.0
     last_state_change_time: float = field(default_factory=time.monotonic)
     active_probe_count: int = 0  # number of concurrent HALF_OPEN probes in flight
+    active_probe_owners: set[asyncio.Task[Any]] = field(default_factory=set)
 
 
 class CircuitBreaker:
@@ -109,7 +110,9 @@ class CircuitBreaker:
     4. Allow limited calls when HALF_OPEN to test recovery
     5. Close again after successful recovery
 
-    Thread-safety is ensured via asyncio.Lock for state mutations.
+    State mutations use a thread lock because a registered breaker may be shared
+    by callers running on different event loops. Lock waits remain cancellable,
+    and the protected mutations never await.
     """
 
     __slots__ = (
@@ -119,6 +122,8 @@ class CircuitBreaker:
         "_metrics",
         "_on_state_change",
         "_service_name",
+        "_state_waiters",
+        "_state_waiters_lock",
     )
 
     def __init__(
@@ -140,7 +145,11 @@ class CircuitBreaker:
         self._service_name = service_name
         self._config = config or CircuitBreakerConfig()
         self._internal_state = _CircuitState()
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
+        self._state_waiters_lock = threading.Lock()
+        self._state_waiters: list[
+            tuple[asyncio.AbstractEventLoop, asyncio.Future[None]]
+        ] = []
         self._metrics = CircuitBreakerMetrics()
         self._on_state_change = on_state_change
         # MED-W19: _in_half_open_probe removed — probe ownership is tracked
@@ -152,6 +161,44 @@ class CircuitBreaker:
     def service_name(self) -> str:
         """Name of the protected service."""
         return self._service_name
+
+    async def _acquire_state_lock(self) -> None:
+        """Wait on cross-loop notifications without blocking or polling this loop."""
+        loop = asyncio.get_running_loop()
+        while True:
+            with self._state_waiters_lock:
+                if self._lock.acquire(blocking=False):
+                    return
+                waiter = loop.create_future()
+                self._state_waiters.append((loop, waiter))
+
+            try:
+                await waiter
+            except asyncio.CancelledError:
+                with self._state_waiters_lock:
+                    self._state_waiters = [
+                        entry for entry in self._state_waiters if entry[1] is not waiter
+                    ]
+                raise
+
+    def _release_state_lock(self) -> None:
+        """Release state and wake queued loops without awaiting under the lock."""
+        with self._state_waiters_lock:
+            self._lock.release()
+            waiters = tuple(self._state_waiters)
+            self._state_waiters.clear()
+
+        for loop, waiter in waiters:
+            try:
+                loop.call_soon_threadsafe(self._wake_state_waiter, waiter)
+            except RuntimeError:
+                # A waiter may belong to a loop that was closed during shutdown.
+                continue
+
+    @staticmethod
+    def _wake_state_waiter(waiter: asyncio.Future[None]) -> None:
+        if not waiter.done():
+            waiter.set_result(None)
 
     @property
     def state(self) -> CircuitBreakerState:
@@ -221,8 +268,8 @@ class CircuitBreaker:
             if elapsed >= self._config.recovery_timeout_seconds:
                 self._transition_to(CircuitBreakerState.HALF_OPEN)
                 state.success_count = 0
-                state.active_probe_count = 0
-                return True
+                state.active_probe_count = len(state.active_probe_owners)
+                return state.active_probe_count == 0
             return False
 
         # HALF_OPEN: allow exactly one concurrent probe; queue the rest as rejected.
@@ -236,13 +283,17 @@ class CircuitBreaker:
         remaining = self._config.recovery_timeout_seconds - elapsed
         return max(0.0, remaining)
 
-    def _record_success(self) -> None:
-        """Record a successful call."""
+    def _record_success(self, *, probe_owner: bool = False) -> None:
+        """Record a successful call and advance HALF_OPEN only for its probe."""
         self._metrics.total_calls += 1
         self._metrics.successful_calls += 1
         state = self._internal_state
 
         if state.state == CircuitBreakerState.HALF_OPEN:
+            # A CLOSED request may still be in flight when another request trips
+            # the breaker. Its late success is a metric, not a recovery probe.
+            if not probe_owner:
+                return
             state.success_count += 1
             if state.success_count >= self._config.success_threshold:
                 self._transition_to(CircuitBreakerState.CLOSED)
@@ -281,7 +332,8 @@ class CircuitBreaker:
 
     async def __aenter__(self) -> CircuitBreaker:
         """Enter the circuit breaker context."""
-        async with self._lock:
+        await self._acquire_state_lock()
+        try:
             if not self._should_allow_request():
                 self._metrics.rejected_calls += 1
                 raise CircuitBreakerOpenError(
@@ -290,11 +342,19 @@ class CircuitBreaker:
                     failure_count=self._internal_state.failure_count,
                 )
             # MED-W19: Claim the single HALF_OPEN probe slot atomically while the
-            # lock is held.  Ownership is recorded in active_probe_count (not a
-            # shared boolean) so concurrent callers cannot observe a stale flag.
+            # lock is held. Track the owning task so a CLOSED request that exits
+            # after a state transition cannot release another request's permit.
             if self._internal_state.state == CircuitBreakerState.HALF_OPEN:
-                self._internal_state.active_probe_count += 1
-        return self
+                current_task = asyncio.current_task()
+                if current_task is None:
+                    raise RuntimeError("circuit breaker probe requires an asyncio task")
+                self._internal_state.active_probe_owners.add(current_task)
+                self._internal_state.active_probe_count = len(
+                    self._internal_state.active_probe_owners
+                )
+            return self
+        finally:
+            self._release_state_lock()
 
     async def __aexit__(
         self,
@@ -303,25 +363,45 @@ class CircuitBreaker:
         exc_tb: object,
     ) -> bool:
         """Exit the circuit breaker context."""
-        async with self._lock:
-            # MED-W19: Release the HALF_OPEN probe slot before recording outcome.
-            # We check active_probe_count > 0 (not the removed _in_half_open_probe
-            # boolean) to determine whether this task owns a probe slot.  Because
-            # only one probe is ever allowed through (_should_allow_request returns
-            # False for count >= 1), decrementing here is always correct when the
-            # count is positive.
-            if self._internal_state.active_probe_count > 0:
-                self._internal_state.active_probe_count -= 1
+        cancelled_during_acquire = False
+        while True:
+            try:
+                await self._acquire_state_lock()
+                break
+            except asyncio.CancelledError:
+                # A repeated cancel must not strand a HALF_OPEN reservation.
+                # _acquire_state_lock removes the cancelled waiter; retry without
+                # polling, then propagate cancellation after state cleanup.
+                cancelled_during_acquire = True
+
+        try:
+            # Release only a HALF_OPEN slot owned by this context's task. Other
+            # CLOSED calls may still be in flight after the breaker transitions.
+            current_task = asyncio.current_task()
+            probe_owner = (
+                current_task is not None
+                and current_task in self._internal_state.active_probe_owners
+            )
+            if current_task is not None and probe_owner:
+                self._internal_state.active_probe_owners.remove(current_task)
+                self._internal_state.active_probe_count = len(
+                    self._internal_state.active_probe_owners
+                )
             if exc_val is None:
-                self._record_success()
+                self._record_success(probe_owner=probe_owner)
             elif isinstance(exc_val, Exception):
                 self._record_failure(exc_val)
+        finally:
+            self._release_state_lock()
+        if cancelled_during_acquire:
+            raise asyncio.CancelledError
         # Don't suppress exceptions
         return False
 
     async def reset(self) -> None:
         """Manually reset the circuit breaker to CLOSED state."""
-        async with self._lock:
+        await self._acquire_state_lock()
+        try:
             self._transition_to(CircuitBreakerState.CLOSED)
             self._internal_state.failure_count = 0
             self._internal_state.success_count = 0
@@ -329,36 +409,30 @@ class CircuitBreaker:
                 "Circuit breaker manually reset",
                 extra={"service": self._service_name},
             )
+        finally:
+            self._release_state_lock()
 
     async def force_open(self) -> None:
         """Manually open the circuit breaker."""
-        async with self._lock:
+        await self._acquire_state_lock()
+        try:
             self._transition_to(CircuitBreakerState.OPEN)
             self._internal_state.last_failure_time = time.monotonic()
             logger.warning(
                 "Circuit breaker manually opened",
                 extra={"service": self._service_name},
             )
+        finally:
+            self._release_state_lock()
 
 
 # Registry for global circuit breaker instances
 _circuit_breakers: dict[str, CircuitBreaker] = {}
-# MED-W19: _registry_lock uses lazy initialisation — do NOT replace with a
-# module-level ``asyncio.Lock()`` literal.  asyncio.Lock() must be created
-# inside a running event loop; constructing it at import time binds it to
-# whichever thread imported the module first, causing "attached to a different
-# loop" errors in tests or multi-loop setups.  The threading.Lock guard makes
-# the double-checked locking pattern thread-safe during the one-time creation.
-_registry_lock: asyncio.Lock | None = None
-_registry_alloc_lock = threading.Lock()
+_registry_lock = threading.Lock()
 
 
-def _get_registry_lock() -> asyncio.Lock:
-    global _registry_lock
-    if _registry_lock is None:
-        with _registry_alloc_lock:
-            if _registry_lock is None:
-                _registry_lock = asyncio.Lock()  # MED-W19: created on first async use
+def _get_registry_lock() -> threading.Lock:
+    """Return the thread lock protecting synchronous registry access."""
     return _registry_lock
 
 
@@ -383,7 +457,7 @@ async def get_circuit_breaker(
     Returns:
         CircuitBreaker instance for the service.
     """
-    async with _get_registry_lock():
+    with _get_registry_lock():
         if service_name not in _circuit_breakers:
             _circuit_breakers[service_name] = CircuitBreaker(
                 service_name,
@@ -395,11 +469,14 @@ async def get_circuit_breaker(
 
 def get_all_circuit_breakers() -> dict[str, CircuitBreaker]:
     """Get all registered circuit breakers for metrics collection."""
-    return dict(_circuit_breakers)
+    with _get_registry_lock():
+        return dict(_circuit_breakers)
 
 
 async def reset_all_circuit_breakers() -> None:
     """Reset all circuit breakers. Useful for testing."""
-    async with _get_registry_lock():
-        for breaker in _circuit_breakers.values():
-            await breaker.reset()
+    with _get_registry_lock():
+        breakers = tuple(_circuit_breakers.values())
+
+    for breaker in breakers:
+        await breaker.reset()

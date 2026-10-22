@@ -21,8 +21,8 @@
  * Cache TTL: 5 minutes — refetch happens in the background; the cached
  * snapshot serves the first paint.
  */
-import { useCallback, useEffect, useRef, useState } from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
+import { CancelledError, isCancelledError, useQueryClient } from "@tanstack/react-query"
 import { isAxiosError, isCancel } from "axios"
 import { hmac } from "@noble/hashes/hmac.js"
 import { sha256 } from "@noble/hashes/sha2.js"
@@ -36,7 +36,15 @@ import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 import { clearLegacyAccessToken } from "./legacyTokenCleanup"
 import { logError, logWarning } from "@/app/logger"
 import { extractApiError } from "@/utils/error"
+import {
+  captureSessionEpoch,
+  invalidateSessionEpoch,
+  getBrowserSessionGeneration,
+  acceptBrowserSessionGeneration,
+} from "@/stores/sessionEpoch"
 import { useAuthStore } from "@/stores/useAuthStore"
+import { getConfirmedUserId } from "@/stores/authIdentity"
+import { getQueryCacheIdentity, setQueryCacheIdentity } from "@/app/queryClient"
 import {
   ENCRYPTED_CACHE_PLACEHOLDER_USER_ID,
   LHCI_USER_ID_PREFIX,
@@ -61,7 +69,22 @@ const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000
 const PROFILE_BROADCAST_CHANNEL = "ecosystem.profile.sync"
 const PROFILE_CACHE_HEADER = "X-Profile-Cache-Envelope"
 
+type ProfileSyncState = {
+  user: UserState
+  revision: number | null
+  persist: boolean
+  cancelCurrentUserQuery: boolean
+}
+
+type ProcessedProfileCommit = {
+  revision: number
+  user: UserState
+  persist: boolean
+  cancelCurrentUserQuery: boolean
+}
+
 export const currentUserQueryKey = ["users", "me"] as const
+const CURRENT_USER_BOOTSTRAP_QUERY_KEY = ["auth", "bootstrap", "current-user"] as const
 
 /** Return whether a storage event can invalidate the profile cache. */
 /** Keep the local unauthorized broadcast policy explicit and directly testable. */
@@ -557,11 +580,15 @@ const verifySignatureSync = (
 }
 
 /** @internal — exported for direct asynchronous cache-boundary contracts. */
-export const readCachedUserAsync = async (signingKey: string | null): Promise<User | undefined> => {
+export const readCachedUserAsync = async (
+  signingKey: string | null,
+  isCurrent: () => boolean = () => true
+): Promise<User | undefined> => {
   if (!signingKey) {
     clearProfileCacheStorage()
     return undefined
   }
+  const generation = getBrowserSessionGeneration()
   const candidate = readCachedEnvelope()
   if (!candidate) return undefined
   if (candidate.version !== PROFILE_CACHE_SCHEMA_VERSION) {
@@ -581,6 +608,19 @@ export const readCachedUserAsync = async (signingKey: string | null): Promise<Us
     return undefined
   }
 
+  const clearCandidate = (reason: "invalid_signature" | "invalid_data") => {
+    // Validation may finish after a fresher profile was applied. Delete only
+    // the exact invalid envelope inspected by this read, never its successor.
+    if (generation !== getBrowserSessionGeneration()) return
+    try {
+      const raw = getCachedEnvelopeHeader()
+      if (raw && JSON.stringify(JSON.parse(raw)) === JSON.stringify(candidate))
+        clearProfileCacheStorage(reason)
+    } catch {
+      /* a newer or unavailable cache belongs to its current owner */
+    }
+  }
+
   // Verify signature — use crypto.subtle.verify for constant-time HMAC comparison.
   const payload: CacheSignaturePayload = {
     version: candidate.version,
@@ -589,7 +629,7 @@ export const readCachedUserAsync = async (signingKey: string | null): Promise<Us
   }
   const signatureValid = await verifyHmacAsync(payload, candidate.signature, signingKey)
   if (!signatureValid) {
-    clearProfileCacheStorage("invalid_signature")
+    clearCandidate("invalid_signature")
     return undefined
   }
 
@@ -602,9 +642,10 @@ export const readCachedUserAsync = async (signingKey: string | null): Promise<Us
   }
 
   if (!snapshotData || typeof snapshotData.id !== "string") {
-    clearProfileCacheStorage("invalid_data")
+    clearCandidate("invalid_data")
     return undefined
   }
+  if (!isCurrent()) return undefined
   return createOptimisticUser(snapshotData)
 }
 
@@ -774,6 +815,8 @@ export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {})
  *   the encrypted-cache verify/decrypt path without re-rendering.
  * @param sessionSigningKeyPromiseRef - Live ref to the in-flight
  *   key fetch promise, cleared on logout so the next call retries.
+ * @param isCurrentSigningSession - Confirms that the live signing key still owns
+ *   the browser generation after asynchronous key acquisition.
  * @param ensureSessionSigningKey - Lazy fetcher; called after
  *   ``/users/me`` succeeds to make sure subsequent signed mutations
  *   have a key to use.
@@ -991,28 +1034,54 @@ export const useProfileSync = (
   sessionSigningKeyRef: React.MutableRefObject<string | null>,
   sessionSigningKeyPromiseRef: React.MutableRefObject<Promise<string | null> | null>,
   ensureSessionSigningKey: () => Promise<string | null>,
-  ssrAuthHint?: SsrAuthHint | undefined
+  ssrAuthHint?: SsrAuthHint | undefined,
+  isCurrentSigningSession?: () => boolean
 ) => {
   const queryClient = useQueryClient()
-  const [userState, setUserState] = useState<UserState>(() => {
+  const bootstrapQueryScope = useId()
+  // Select the synchronous client commit boundary at render time so SSR uses
+  // a passive effect while browser commits publish auth/cache ownership before
+  // the next paint.
+  const useProfileCommitEffect = typeof window === "undefined" ? useEffect : useLayoutEffect
+  const [profileSyncState, setProfileSyncState] = useState<ProfileSyncState>(() => {
+    let initialUser: UserState
     // Keep this guard directly in the React initializer. Vite/Rolldown can
     // then substitute the compile-time flag and remove the LHCI-only mock
     // identity from ordinary E2E/production bundles.
     if (import.meta.env.VITE_LHCI === "true") {
-      return buildLhciMockUser()
+      initialUser = buildLhciMockUser()
+    } else {
+      // Keep all non-LHCI decisions in the pure, directly-tested resolver so
+      // SSR, hydration, signing-key and cache behavior cannot drift between the
+      // hook and its standalone contract surface.
+      initialUser = resolveInitialUserStateWithoutLhci({
+        isServer: typeof window === "undefined",
+        signingKey: sessionSigningKeyRef.current,
+        ssrAuthHint,
+      })
     }
-    // Keep all non-LHCI decisions in the pure, directly-tested resolver so
-    // SSR, hydration, signing-key and cache behavior cannot drift between the
-    // hook and its standalone contract surface.
-    return resolveInitialUserStateWithoutLhci({
-      isServer: typeof window === "undefined",
-      signingKey: sessionSigningKeyRef.current,
-      ssrAuthHint,
-    })
+    return {
+      user: initialUser,
+      revision: null,
+      persist: false,
+      cancelCurrentUserQuery: false,
+    }
   })
+  const [committedUserState, setCommittedUserState] = useState<UserState>(
+    () => profileSyncState.user
+  )
   const [pendingMfaState, setPendingMfaState] = useState<PendingMfaState | null>(null)
-  const cachedUserRef = useRef<UserState>(userState)
-  const userStateRef = useRef<UserState>(userState)
+  const cachedUserRef = useRef<UserState>(profileSyncState.user)
+  const userStateRef = useRef<UserState>(profileSyncState.user)
+  const committedUserRef = useRef<UserState>(profileSyncState.user)
+  const processedProfileCommitRef = useRef<ProcessedProfileCommit | null>(null)
+  // This is the last profile revision that actually committed to React.
+  const profileRevisionRef = useRef(0)
+  // Allocates stable action IDs without treating a suspended update as committed.
+  const profileRevisionSequenceRef = useRef(0)
+  const profileEpochRef = useRef(0)
+  const profileRequestRevisionRef = useRef(0)
+  const userState = profileSyncState.user
   const pendingMfaRef = useRef<PendingMfaState | null>(pendingMfaState)
   // The resolved initial user already captures the SSR hint, LHCI identity
   // and cache state. A null snapshot is the only state that needs the
@@ -1053,6 +1122,50 @@ export const useProfileSync = (
   initializingRef.current = initializing
   const mountedRef = useRef<boolean | undefined>(undefined)
 
+  const applyUserState = useCallback(
+    (
+      value: SetUserArg,
+      {
+        persist,
+        cancelCurrentUserQuery = false,
+        expectedRevision,
+        forceCommit = false,
+      }: {
+        persist: boolean
+        cancelCurrentUserQuery?: boolean
+        expectedRevision?: number
+        forceCommit?: boolean
+      }
+    ) => {
+      // Allocate an action ID, but advance the committed revision only from the
+      // layout effect below. A transition that suspends or is abandoned must not
+      // invalidate cache reads owned by the still-committed profile.
+      const revision = ++profileRevisionSequenceRef.current
+      setProfileSyncState((previous: ProfileSyncState) => {
+        if (expectedRevision !== undefined && (previous.revision ?? 0) !== expectedRevision) {
+          return previous
+        }
+        const next =
+          typeof value === "function"
+            ? (value as (prev: UserState) => UserState)(previous.user)
+            : value
+        const normalized: UserState = next ?? null
+        // Cache restoration can rerun while a profile transition is suspended.
+        // If it resolves to the already committed snapshot, keep it a true no-op
+        // so it cannot advance the revision or retire that pending transition.
+        if (
+          !forceCommit &&
+          expectedRevision !== undefined &&
+          areDeepEqual(normalized, previous.user)
+        ) {
+          return previous
+        }
+        return { user: normalized, revision, persist, cancelCurrentUserQuery }
+      })
+    },
+    []
+  )
+
   useEffect(() => {
     // React StrictMode replays effect setup after its development-only
     // cleanup. Restore the live marker before every setup so the second
@@ -1064,16 +1177,29 @@ export const useProfileSync = (
   })
 
   useEffect(() => {
+    let active = true
     const init = async () => {
       if (!isProfileSyncBrowserRuntime()) return
       migrateProfileCache()
 
       // Read from the ref for initialization
       const signingKey = sessionSigningKeyRef.current
+      const epoch = profileEpochRef.current
+      const generation = getBrowserSessionGeneration()
+      const revision = profileRevisionRef.current
       if (signingKey) {
-        const cached = await readCachedUserAsync(signingKey)
-        if (mountedRef.current && cached) {
-          setUserState(cached)
+        const isCurrent = () =>
+          active &&
+          epoch === profileEpochRef.current &&
+          generation === getBrowserSessionGeneration() &&
+          revision === profileRevisionRef.current &&
+          signingKey === sessionSigningKeyRef.current
+        const cached = await readCachedUserAsync(signingKey, isCurrent)
+        if (isCurrent() && cached) {
+          applyUserState(cached, {
+            persist: false,
+            expectedRevision: revision,
+          })
           // A verified cache snapshot is safe to render immediately.  The
           // auto-fetch effect continues in the background, while this
           // transition prevents route guards from treating the restored
@@ -1083,7 +1209,10 @@ export const useProfileSync = (
       }
     }
     init()
-  }, [sessionSigningKeyRef])
+    return () => {
+      active = false
+    }
+  }, [applyUserState, sessionSigningKeyRef])
 
   // A ref-backed event function keeps the public callback identity stable
   // while reading the latest pending-MFA ref and React setter. Unlike a
@@ -1101,34 +1230,22 @@ export const useProfileSync = (
   }
   const updatePendingMfa = updatePendingMfaRef.current!
 
-  const applyUserState = useCallback(
-    (value: SetUserArg, { persist }: { persist: boolean }) => {
-      setUserState((prev: UserState) => {
-        const next =
-          typeof value === "function" ? (value as (prev: UserState) => UserState)(prev) : value
-        const normalized: UserState = next ?? null
-
-        userStateRef.current = normalized
-        if (persist) {
-          const key = sessionSigningKeyRef.current
-          persistUserToCacheAsync(normalized, key, () => mountedRef.current === true)
-        }
-        queryClient.setQueryData<UserState>(currentUserQueryKey, normalized)
-        return normalized
-      })
-    },
-    [queryClient, sessionSigningKeyRef]
-  )
-
   const setUser = useCallback(
     (value: SetUserArg) => {
-      applyUserState(value, { persist: true })
+      // Cache/network effects are deferred until this state is actually
+      // committed. A transition that suspends or is abandoned must leave the
+      // current owner's request and cache untouched.
+      applyUserState(value, { persist: true, cancelCurrentUserQuery: true })
     },
     [applyUserState]
   )
 
   const clearProfile = useCallback(
     ({ persist }: { persist: boolean }) => {
+      // An authoritative local 401 invalidates the shared browser cache before
+      // cross-tab listeners can enqueue their non-persisting logout updates.
+      if (persist) clearProfileCacheStorage()
+      profileRequestRevisionRef.current += 1
       // Wave 135 SW1 — replace AbortController.abort() with
       // queryClient.cancelQueries. Was: `controller?.abort()` cancelling
       // the activeRequestRef-tracked controller. Now: the bridged
@@ -1136,11 +1253,20 @@ export const useProfileSync = (
       // queryClient + axios interceptor → request rejects with
       // CanceledError, swallowed by the auto-fetch catch block (isCancel
       // guard).
+      invalidateSessionEpoch()
+      profileEpochRef.current += 1
       queryClient.cancelQueries({ queryKey: currentUserQueryKey }).catch(() => undefined)
-      applyUserState(null, { persist })
+      queryClient
+        .cancelQueries({
+          queryKey: [...CURRENT_USER_BOOTSTRAP_QUERY_KEY, bootstrapQueryScope],
+        })
+        .catch(() => undefined)
+      setQueryCacheIdentity(null)
+      queryClient.clear()
+      applyUserState(null, { persist: false })
       cachedUserRef.current = null
     },
-    [applyUserState, queryClient]
+    [applyUserState, bootstrapQueryScope, queryClient]
   )
 
   const handleUnauthorized = useCallback(
@@ -1171,13 +1297,37 @@ export const useProfileSync = (
   )
 
   useEffect(() => {
+    useAuthStore.setState({
+      user: userState,
+      loading: resolveAuthLoading(initializing, authOperation),
+      pendingMfa: pendingMfaState,
+      authOperation,
+      setUser,
+      setLoading: setInitializing,
+      setPendingMfa: setPendingMfaState,
+      setAuthOperation,
+    })
+  }, [
+    userState,
+    initializing,
+    authOperation,
+    pendingMfaState,
+    setUser,
+    setInitializing,
+    setPendingMfaState,
+    setAuthOperation,
+  ])
+
+  useEffect(() => {
     const cachedUser = cachedUserRef.current
     if (cachedUser !== null) {
-      // The encrypted-cache bootstrap uses id "-1" as a render-only
-      // placeholder. It must not become fresh authoritative /users/me data,
-      // otherwise fetchQuery() returns the placeholder and never reaches the
-      // backend for the real profile.
-      if (cachedUser.id !== ENCRYPTED_CACHE_PLACEHOLDER_USER_ID) {
+      // SSR and encrypted-cache identities are render-only placeholders.
+      // Seeding either as fresh /users/me data makes fetchQuery() skip the
+      // backend, so the persister never receives a confirmed real identity.
+      if (
+        cachedUser.id !== ENCRYPTED_CACHE_PLACEHOLDER_USER_ID &&
+        cachedUser.id !== SSR_STUB_USER_ID
+      ) {
         queryClient.setQueryData<UserState>(currentUserQueryKey, cachedUser)
       }
       cachedUserRef.current = null
@@ -1192,33 +1342,49 @@ export const useProfileSync = (
     if (import.meta.env.VITE_LHCI === "true") return
     if (!isProfileSyncBrowserRuntime()) return
 
+    let active = true
     const syncFromCache = async () => {
       const key = sessionSigningKeyRef.current
-      const cached = await readCachedUserAsync(key)
+      const revision = profileRevisionRef.current
+      const ownsSession = captureSessionEpoch()
+      const isCurrent = () =>
+        active &&
+        ownsSession() &&
+        revision === profileRevisionRef.current &&
+        key === sessionSigningKeyRef.current
+      const cached = await readCachedUserAsync(key, isCurrent)
+      if (!isCurrent()) return
       if (!cached) {
-        // Cache was deleted or is invalid - clear user state
-        applyUserState(null, noPersistenceOptions)
-        queryClient.setQueryData<UserState>(currentUserQueryKey, null)
+        // Cache deletion is a profile transition. Let the committed-state
+        // effect publish null and retire the query data at one commit point.
+        applyUserState(null, {
+          ...noPersistenceOptions,
+          expectedRevision: revision,
+          forceCommit: true,
+        })
         return
       }
 
-      applyUserState((prev) => {
-        if (!prev) return cached
-        // If we have a full user object, don't overwrite it with a skeleton from cache
-        // Only update the fields that are actually in the cache snapshot.
-        return {
-          ...prev,
-          id: cached.id,
-          full_name: cached.full_name,
-          avatar_url: cached.avatar_url,
-          mfa_required: cached.mfa_required,
-          mfa_default_method: cached.mfa_default_method,
-          mfa_last_verified_at: cached.mfa_last_verified_at,
-          // `createOptimisticUser` normalizes this field to an array, so the
-          // fallback to the authoritative value was unreachable here.
-          totp_enrollments: cached.totp_enrollments,
-        }
-      }, noPersistenceOptions)
+      applyUserState(
+        (prev) => {
+          if (!prev) return cached
+          // If we have a full user object, don't overwrite it with a skeleton from cache
+          // Only update the fields that are actually in the cache snapshot.
+          return {
+            ...prev,
+            id: cached.id,
+            full_name: cached.full_name,
+            avatar_url: cached.avatar_url,
+            mfa_required: cached.mfa_required,
+            mfa_default_method: cached.mfa_default_method,
+            mfa_last_verified_at: cached.mfa_last_verified_at,
+            // `createOptimisticUser` normalizes this field to an array, so the
+            // fallback to the authoritative value was unreachable here.
+            totp_enrollments: cached.totp_enrollments,
+          }
+        },
+        { ...noPersistenceOptions, expectedRevision: revision }
+      )
     }
 
     const onStorage = (event: StorageEvent) => {
@@ -1261,21 +1427,136 @@ export const useProfileSync = (
         channel.addEventListener("message", onBroadcastMessage as EventListener)
       } catch (_error) {
         if (import.meta.env.DEV) {
-          logWarning("Failed to subscribe to profile broadcast channel", { error: _error })
+          logWarning("Failed to subscribe to profile broadcast channel", {
+            error: _error,
+          })
         }
       }
     }
 
     return () => {
+      active = false
       window.removeEventListener("storage", onStorage)
       channel?.removeEventListener("message", onBroadcastMessage as EventListener)
       channel?.close()
     }
   }, [applyUserState, handleUnauthorized, queryClient, sessionSigningKeyRef, updatePendingMfa])
 
-  useEffect(() => {
+  useProfileCommitEffect(() => {
+    const { revision, persist, cancelCurrentUserQuery } = profileSyncState
+    // Action IDs are allocated when updates are queued, but React may commit a
+    // rebased transition after a later-numbered synchronous update. Allocation
+    // order therefore does not determine the committed profile order.
+    if (revision !== null) profileRevisionRef.current = revision
+
+    const previousUser = committedUserRef.current
     userStateRef.current = userState
-  }, [userState])
+    committedUserRef.current = userState
+    // Context consumers stay on the prior snapshot until this profile commit.
+    // Queue the new snapshot before publishing its cache owner and profile.
+    if (!areDeepEqual(committedUserState, userState)) setCommittedUserState(userState)
+    const publishCommittedCacheOwner = (owner: string | null) => {
+      const profileForCache =
+        owner !== null ||
+        userState === null ||
+        userState.id === SSR_STUB_USER_ID ||
+        userState.id === ENCRYPTED_CACHE_PLACEHOLDER_USER_ID ||
+        userState.id.startsWith(LHCI_USER_ID_PREFIX)
+          ? userState
+          : null
+      const cachedProfile = queryClient.getQueryData<UserState>(currentUserQueryKey)
+      const cachedProfileId = cachedProfile?.id === undefined ? null : String(cachedProfile.id)
+      const cachedPlaceholder =
+        cachedProfileId === SSR_STUB_USER_ID ||
+        cachedProfileId === ENCRYPTED_CACHE_PLACEHOLDER_USER_ID ||
+        cachedProfileId?.startsWith(LHCI_USER_ID_PREFIX) === true
+      const removeStaleProfile =
+        cachedProfile != null && (owner === null ? !cachedPlaceholder : cachedProfileId !== owner)
+      if (removeStaleProfile) {
+        // A current-user query without a matching owner is stale by definition.
+        // Remove only this exact marker query; public/sibling data is untouched.
+        queryClient.removeQueries({
+          queryKey: currentUserQueryKey,
+          exact: true,
+        })
+      }
+      const publishProfileSnapshot =
+        revision !== null ||
+        userState !== null ||
+        (cachedProfile != null && cachedPlaceholder && !removeStaleProfile)
+      return setQueryCacheIdentity(owner, () => {
+        // An empty initial auth state has no profile snapshot to publish. Keeping
+        // the query absent distinguishes it from an explicit committed logout.
+        if (publishProfileSnapshot) {
+          queryClient.setQueryData<UserState>(currentUserQueryKey, profileForCache)
+        }
+      })
+    }
+
+    if (revision === null) {
+      publishCommittedCacheOwner(getConfirmedUserId({ user: userState, loading: false }))
+      return
+    }
+
+    const processed = processedProfileCommitRef.current
+    if (
+      processed !== null &&
+      processed.revision === revision &&
+      processed.persist === persist &&
+      processed.cancelCurrentUserQuery === cancelCurrentUserQuery &&
+      areDeepEqual(processed.user, userState)
+    ) {
+      return
+    }
+    const committedProfile: ProcessedProfileCommit = {
+      revision,
+      user: userState,
+      persist,
+      cancelCurrentUserQuery,
+    }
+    processedProfileCommitRef.current = committedProfile
+
+    if (cancelCurrentUserQuery) {
+      profileRequestRevisionRef.current += 1
+      // Retire only the exact current-profile request after the new profile
+      // revision commits. TanStack cancellation prevents a late queryFn result
+      // from entering the cache even when the underlying transport ignores its
+      // AbortSignal; descendant and sibling queries remain in flight.
+      void queryClient
+        .cancelQueries({ queryKey: currentUserQueryKey, exact: true })
+        .catch(() => undefined)
+      void queryClient
+        .cancelQueries({
+          queryKey: [...CURRENT_USER_BOOTSTRAP_QUERY_KEY, bootstrapQueryScope],
+        })
+        .catch(() => undefined)
+    }
+
+    if (persist && userState !== null) acceptBrowserSessionGeneration()
+    const owner = getConfirmedUserId({ user: userState, loading: false })
+    const cacheOwnerWillChange = getQueryCacheIdentity() !== owner
+    if (previousUser?.id !== userState?.id) {
+      if (previousUser !== null) profileEpochRef.current += 1
+      // When the owner changes, identity publication clears all registered
+      // clients. For placeholder-only changes, clear this client before the
+      // new current-user snapshot is published below.
+      if (!cacheOwnerWillChange) queryClient.clear()
+    }
+    publishCommittedCacheOwner(owner)
+    if (persist) {
+      const key = sessionSigningKeyRef.current
+      const ownsPersistSession = captureSessionEpoch()
+      persistUserToCacheAsync(
+        userState,
+        key,
+        () =>
+          mountedRef.current === true &&
+          processedProfileCommitRef.current === committedProfile &&
+          sessionSigningKeyRef.current === key &&
+          ownsPersistSession()
+      )
+    }
+  }, [bootstrapQueryScope, committedUserState, profileSyncState, queryClient, sessionSigningKeyRef])
 
   useEffect(() => {
     // Wave 116 SW3 — LHCI auth mock. scripts/run-lhci.mjs builds with
@@ -1323,42 +1604,125 @@ export const useProfileSync = (
     // effect re-entry cannot cancel the request it is intentionally skipping;
     // explicit logout still cancels through clearProfile(). Closes W134
     // §Honesty #3.
-    queryClient.cancelQueries({ queryKey: currentUserQueryKey }).catch(() => undefined)
+    queryClient.cancelQueries({ queryKey: currentUserQueryKey, exact: true }).catch(() => undefined)
+    queryClient
+      .cancelQueries({
+        queryKey: [...CURRENT_USER_BOOTSTRAP_QUERY_KEY, bootstrapQueryScope],
+      })
+      .catch(() => undefined)
+    const epoch = profileEpochRef.current
+    const requestRevision = profileRequestRevisionRef.current
+    let bootstrapQueryKey: readonly unknown[] | undefined
+    let generation = getBrowserSessionGeneration()
+    const ownsLocalProfile = () =>
+      mountedRef.current === true &&
+      profileEpochRef.current === epoch &&
+      profileRequestRevisionRef.current === requestRevision
+    const ownsProfile = () => ownsLocalProfile() && generation === getBrowserSessionGeneration()
     ;(async () => {
       try {
-        // Wave 134 SW1 — Bridge: route through queryClient.fetchQuery so the
-        // SSR loader's ensureQueryData(currentUserQueryOptions()) and this
-        // auto-fetch effect share a single cache slot. Returns cached data
-        // if fresh (within factory's staleTime: 60_000), invokes the
-        // factory's queryFn → fetchCurrentUser({signal}) if stale, dedups
-        // concurrent calls. The factory's queryFn preserves
-        // fetchCurrentUser's bespoke retry-on-500-with-cleared-cache logic.
-        // Closes W133 §Honesty #3+#4 — duplicated network calls between SSR
-        // loader and useProfileSync's auto-fetch are eliminated.
-        //
-        // retry: false override — preserves pre-W134 single-attempt semantics
-        // for the auto-fetch path. useProfileSync's outer catch handles 401
-        // directly via handleUnauthorized; React Query's default retry would
-        // delay 401 propagation by retryDelay × 2 (~3 s) and break the
-        // expected loading-flag transition timing for AuthContext consumers.
-        const profile = await queryClient.fetchQuery({
-          ...currentUserQueryOptions(),
-          retry: false,
+        // Confirmed owners share the canonical users/me cache with route loaders.
+        // A cold bootstrap has no committed owner yet, so fetch to an ephemeral,
+        // non-persisted key and publish users/me only from the committed effect.
+        const currentUserOptions = currentUserQueryOptions()
+        const currentIdentity = getConfirmedUserId({
+          user: userStateRef.current,
+          loading: false,
         })
+        const expectedOwner = currentIdentity ?? getQueryCacheIdentity()
+        const cachedProfile = queryClient.getQueryData<UserState>(currentUserQueryKey)
+        if (
+          cachedProfile !== undefined &&
+          cachedProfile !== null &&
+          expectedOwner !== String(cachedProfile.id)
+        ) {
+          queryClient.removeQueries({
+            queryKey: currentUserQueryKey,
+            exact: true,
+          })
+        }
+        const fetchOwnedProfile = async (signal: AbortSignal): Promise<User> => {
+          const fetched = await fetchCurrentUser({ signal })
+          const latestIdentity = getConfirmedUserId({
+            user: userStateRef.current,
+            loading: false,
+          })
+          const latestOwner = latestIdentity ?? getQueryCacheIdentity()
+          if (!ownsProfile() || (latestOwner !== null && latestOwner !== fetched.id)) {
+            throw new CancelledError({ revert: true })
+          }
+          return fetched
+        }
+        let profile: User
+        if (expectedOwner === null) {
+          // A provider remount may reuse its useId at the same tree position;
+          // the request token keeps an old finally from removing a new fetch.
+          const requestBootstrapKey = [
+            ...CURRENT_USER_BOOTSTRAP_QUERY_KEY,
+            bootstrapQueryScope,
+            crypto.randomUUID(),
+            epoch,
+            requestRevision,
+          ] as const
+          bootstrapQueryKey = requestBootstrapKey
+          profile = await queryClient.fetchQuery({
+            ...currentUserOptions,
+            queryKey: requestBootstrapKey,
+            staleTime: 0,
+            retry: false,
+            meta: { persist: false },
+            queryFn: ({ signal }) => fetchOwnedProfile(signal),
+          })
+        } else {
+          profile = await queryClient.fetchQuery({
+            ...currentUserOptions,
+            retry: false,
+            queryFn: ({ signal }) => fetchOwnedProfile(signal),
+          })
+        }
         // An unmounted provider must not start the signing-key request or
         // apply a profile: that work would outlive its owner.
-        if (mountedRef.current !== true) return
+        const resolvedIdentity = getConfirmedUserId({
+          user: userStateRef.current,
+          loading: false,
+        })
+        const resolvedCacheOwner = getQueryCacheIdentity()
+        if (
+          !ownsProfile() ||
+          (resolvedIdentity !== null && resolvedIdentity !== profile.id) ||
+          (resolvedCacheOwner !== null && resolvedCacheOwner !== profile.id)
+        ) {
+          return
+        }
+        let acquiredKey: string | null = null
         try {
-          await ensureSessionSigningKey()
+          acquiredKey = await ensureSessionSigningKey()
         } catch (_error) {
           // Wave 135 SW1 — drop `!controller.signal.aborted` guard (the
           // controller was retired). ensureSessionSigningKey is its own
           // request not bound to the bridged fetchQuery's signal, so a
           // cancellation upstream doesn't propagate here anyway.
           if (import.meta.env.DEV) {
-            logWarning("Failed to obtain session signing key", { error: _error })
+            logWarning("Failed to obtain session signing key", {
+              error: _error,
+            })
           }
         }
+        // Only this owned key acquisition may establish a new browser generation.
+        // A cached key from A must never bless a remote B transition.
+        if (
+          ownsLocalProfile() &&
+          acquiredKey &&
+          acquiredKey === sessionSigningKeyRef.current &&
+          isCurrentSigningSession?.()
+        ) {
+          generation = getBrowserSessionGeneration()
+        }
+        const latestIdentity = getConfirmedUserId({
+          user: userStateRef.current,
+          loading: false,
+        })
+        if (!ownsProfile() || (latestIdentity !== null && latestIdentity !== profile.id)) return
         if (!areDeepEqual(userStateRef.current, profile)) {
           setUser(profile as User)
         }
@@ -1369,7 +1733,7 @@ export const useProfileSync = (
         // isCancel returns true. Silent skip preserves the pre-W135
         // behaviour where a cancelled fetch did not log "Failed to fetch
         // current user" noise on logout / auto-fetch effect re-runs.
-        if (isCancel(error)) return null
+        if (isCancel(error) || isCancelledError(error) || !ownsProfile()) return null
         if (isAxiosError(error) && error.response?.status === 401) {
           handleUnauthorized()
           return
@@ -1387,6 +1751,12 @@ export const useProfileSync = (
         // back-to-back calls idempotent; if a cancellation fired upstream
         // the loading flag was already going to be reset by the next
         // auto-fetch effect run.
+        if (bootstrapQueryKey) {
+          queryClient.removeQueries({
+            queryKey: bootstrapQueryKey,
+            exact: true,
+          })
+        }
         setInitializing(false)
       }
     })()
@@ -1394,32 +1764,19 @@ export const useProfileSync = (
     // auto-fetch now calls queryClient.cancelQueries + queryClient.fetchQuery.
     // The reference is stable via useQueryClient (Provider-level memoised),
     // so adding it does not re-fire the effect on every render.
-  }, [ensureSessionSigningKey, handleUnauthorized, setUser, queryClient])
-
-  useEffect(() => {
-    useAuthStore.setState({
-      user: userState,
-      loading: resolveAuthLoading(initializing, authOperation),
-      pendingMfa: pendingMfaState,
-      authOperation,
-      setUser,
-      setLoading: setInitializing,
-      setPendingMfa: setPendingMfaState,
-      setAuthOperation,
-    })
   }, [
-    userState,
-    initializing,
-    authOperation,
-    pendingMfaState,
+    bootstrapQueryScope,
+    ensureSessionSigningKey,
+    handleUnauthorized,
     setUser,
-    setInitializing,
-    setPendingMfaState,
-    setAuthOperation,
+    queryClient,
+    isCurrentSigningSession,
+    sessionSigningKeyRef,
   ])
 
   return {
     user: userState,
+    committedUser: committedUserState,
     setUser,
     loading: resolveAuthLoading(initializing, authOperation),
     pendingMfa: pendingMfaState,

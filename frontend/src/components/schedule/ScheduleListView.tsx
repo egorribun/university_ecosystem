@@ -134,14 +134,14 @@ export const ScheduleListView = memo(function ScheduleListView({
                 isToday && "sched-today-header"
               )}
             >
-              <h3
+              <h2
                 className={cn(
                   "text-base font-extrabold tracking-tight",
                   isToday ? "text-brand" : "text-text-primary"
                 )}
               >
                 {label}
-              </h3>
+              </h2>
               {isToday && (
                 <Badge
                   size="xs"

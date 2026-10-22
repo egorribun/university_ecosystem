@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import asyncio
 import base64
-import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
@@ -12,14 +12,17 @@ import jwt
 from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
+from redis.exceptions import RedisError
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import get_current_user_from_dishka
 from app.api.validation import (
-    ensure_exists,
     raise_http_error,
     raise_unauthorized,
     raise_validation_error,
 )
+from app.auth.revocation import get_revocation_redis_client
 from app.core.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,
@@ -64,7 +67,9 @@ _spotify_http_client = httpx.AsyncClient(
 )
 
 
-def _mint_state_token(subject: str, *, expires_minutes: int) -> str:
+def _mint_state_token(
+    subject: str, *, session_id: str, nonce: str, expires_minutes: int
+) -> str:
     """Mint a short-lived JWT state token for the Spotify OAuth round-trip.
 
     RZ-002 (audit 2026-03-04): uses a dedicated spotify_oauth_state_secret
@@ -75,10 +80,11 @@ def _mint_state_token(subject: str, *, expires_minutes: int) -> str:
     now = datetime.now(UTC)
     payload = {
         "sub": subject,
+        "sid": session_id,
         "iat": now,
         "nbf": now,
         "exp": now + timedelta(minutes=expires_minutes),
-        "jti": str(uuid4()),
+        "jti": nonce,
     }
     # P2-W5-18: No fallback to spotify_token_secret — using the wrong key would
     # allow a confused-deputy attack.  The model_validator in integrations.py
@@ -90,6 +96,43 @@ def _mint_state_token(subject: str, *, expires_minutes: int) -> str:
             "SPOTIFY_OAUTH_STATE_SECRET must be set before Spotify OAuth flows can be used."
         )
     return jwt.encode(payload, state_secret, algorithm="HS256")
+
+
+async def _consume_oauth_state(
+    state: str, *, request: Request, user: User, locale: str
+) -> None:
+    """Validate the initiating identity and atomically burn its one-time nonce."""
+    state_secret = settings.spotify_oauth_state_secret
+    if not state_secret:
+        raise_http_error(503, "errors.spotify.misconfigured", locale)
+    try:
+        payload = jwt.decode(
+            state,
+            state_secret,
+            algorithms=["HS256"],
+            options={"require": ["sub", "sid", "jti", "exp", "iat", "nbf"]},
+        )
+    except jwt.PyJWTError:
+        raise_validation_error("errors.spotify.invalid_state", locale)
+    session = getattr(request.state, "active_session", None)
+    nonce = payload.get("jti")
+    if (
+        session is None
+        or payload.get("sub") != str(user.id)
+        or payload.get("sid") != str(session.id)
+        or not isinstance(nonce, str)
+        or not nonce
+    ):
+        raise_validation_error("errors.spotify.invalid_state", locale)
+    try:
+        client = await get_revocation_redis_client()
+        bound_identity = await client.getdel(f"oauth:spotify:{nonce}")
+    except (RuntimeError, RedisError, OSError):
+        raise_http_error(503, "errors.spotify.service_unavailable", locale)
+    if isinstance(bound_identity, bytes):
+        bound_identity = bound_identity.decode(errors="replace")
+    if bound_identity != f"{user.id}:{session.id}":
+        raise_validation_error("errors.spotify.invalid_state", locale)
 
 
 def _now_utc() -> datetime:
@@ -178,6 +221,8 @@ async def _save_tokens(
     refresh: str | None,
     scope: str | None,
     expires_in: int | str | None,
+    *,
+    commit: bool = True,
 ) -> None:
     if not user.spotify:
         user.spotify = SpotifyIntegration(user_id=user.id)
@@ -190,7 +235,8 @@ async def _save_tokens(
     user.spotify.token_expires_at = _now_utc() + timedelta(seconds=seconds - 10)
     user.spotify.scope = scope or ""
     user.spotify.is_connected = True
-    await db.commit()
+    if commit:
+        await db.commit()
     # The session factory keeps ``expire_on_commit=False`` and all values above
     # are already assigned to the managed ORM instance. A full User refresh
     # here re-loads the auth relationship graph on every token refresh and can
@@ -248,6 +294,9 @@ async def _ensure_access_token(
             extra={"remaining_seconds": exc.remaining_seconds},
         )
         return None
+    except httpx.TransportError:
+        # Preserve stored credentials and let the caller use cached playback.
+        return None
     if r.status_code != 200:
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
@@ -296,9 +345,26 @@ async def _ensure_access_token(
 
 @router.get("/auth-url", response_model=SpotifyAuthURL)
 async def spotify_auth_url(
+    request: Request,
     user: User = Depends(get_current_user_from_dishka),
 ) -> SpotifyAuthURL | dict[str, str]:
-    state_token = _mint_state_token(str(user.id), expires_minutes=10)
+    locale = resolve_locale(request=request, user=user)
+    session = getattr(request.state, "active_session", None)
+    if session is None:
+        raise_unauthorized(locale)
+    nonce = str(uuid4())
+    state_token = _mint_state_token(
+        str(user.id), session_id=str(session.id), nonce=nonce, expires_minutes=10
+    )
+    try:
+        client = await get_revocation_redis_client()
+        stored = await client.set(
+            f"oauth:spotify:{nonce}", f"{user.id}:{session.id}", ex=600, nx=True
+        )
+    except (RuntimeError, RedisError, OSError):
+        raise_http_error(503, "errors.spotify.service_unavailable", locale)
+    if not stored:
+        raise_http_error(503, "errors.spotify.service_unavailable", locale)
     params = {
         "client_id": settings.spotify_client_id,
         "response_type": "code",
@@ -325,23 +391,11 @@ async def spotify_callback(
     db: FromDishka[AsyncDatabaseSession],
     code: str = Query(...),
     state: str = Query(...),
+    user: User = Depends(get_current_user_from_dishka),
 ) -> RedirectResponse:
-    locale = resolve_locale(request=request)
-    # RZ-W19-07: decode state with the SAME key used to mint it
-    state_secret = settings.spotify_oauth_state_secret
-    if not state_secret:
-        raise_http_error(503, "errors.spotify.misconfigured", locale)
-    try:
-        payload = jwt.decode(state, state_secret, algorithms=["HS256"])
-    except jwt.PyJWTError:
-        payload = {}
-    if not payload.get("sub"):
-        raise_validation_error("errors.spotify.invalid_state", locale)
-    user = await db.get(User, uuid.UUID(payload["sub"]))
-    if not user:
-        ensure_exists(user, "spotify.user_not_found", locale)
-        raise ValueError("Unreachable")
     locale = resolve_locale(request=request, user=user)
+    callback_user_id = user.id
+    await _consume_oauth_state(state, request=request, user=user, locale=locale)
     try:
         async with _spotify_circuit_breaker:
             # TD-W16-07: Reuse module-level HTTP/2 client.
@@ -371,21 +425,55 @@ async def spotify_callback(
         data.get("refresh_token"),
         data.get("scope"),
         int(data.get("expires_in", 3600)),
+        commit=False,
     )
+    me: httpx.Response | None = None
+    spotify_user_id: str | None = None
+    display_name: str | None = None
     try:
-        async with _spotify_circuit_breaker:
-            # TD-W16-07: Reuse module-level HTTP/2 client.
-            me = await _spotify_http_client.get(
-                "https://api.spotify.com/v1/me",
-                headers={"Authorization": f"Bearer {user.spotify.access_token}"},
-            )
-    except CircuitBreakerOpenError:
-        me = None
-    if me is not None and me.status_code == 200:
-        info = me.json()
-        user.spotify.spotify_user_id = info.get("id") or None
-        user.spotify.display_name = info.get("display_name") or None
+        try:
+            async with _spotify_circuit_breaker:
+                # TD-W16-07: Reuse module-level HTTP/2 client.
+                me = await _spotify_http_client.get(
+                    "https://api.spotify.com/v1/me",
+                    headers={"Authorization": f"Bearer {user.spotify.access_token}"},
+                )
+        except CircuitBreakerOpenError:
+            me = None
+        if me is not None and me.status_code == 200:
+            info = me.json()
+            spotify_user_id = info.get("id") or None
+            display_name = info.get("display_name") or None
+    except asyncio.CancelledError:
+        # Tokens were committed before this optional profile lookup in the
+        # previous callback flow; retain that behavior while propagating cancel.
         await db.commit()
+        raise
+    except Exception:  # RZ-22-01-JUSTIFIED: preserve tokens, then re-raise.
+        await db.commit()
+        raise
+
+    if me is not None and me.status_code == 200:
+        user.spotify.spotify_user_id = spotify_user_id
+        user.spotify.display_name = display_name
+    try:
+        # Commit the exchange token and Spotify identity as one unit. The
+        # unique spotify_user_id constraint is the final authority under races.
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        if spotify_user_id:
+            owner_user_id = await db.scalar(
+                select(SpotifyIntegration.user_id).where(
+                    SpotifyIntegration.spotify_user_id == spotify_user_id
+                )
+            )
+            if owner_user_id is not None and owner_user_id != callback_user_id:
+                frontend_base = settings.frontend_origin.rstrip("/")
+                target = f"{frontend_base}/profile?spotify=error"
+                return RedirectResponse(target, status_code=302)
+        raise
+
     # Redirect to the frontend, not the backend
     frontend_base = settings.frontend_origin.rstrip("/")
     target = f"{frontend_base}/profile?spotify=connected"
@@ -415,7 +503,7 @@ async def now_playing(
                     "https://api.spotify.com/v1/me/player/currently-playing",
                     headers={"Authorization": f"Bearer {access_token}"},
                 )
-        except CircuitBreakerOpenError:
+        except (CircuitBreakerOpenError, httpx.TransportError):
             return None
         return response
 
@@ -425,7 +513,7 @@ async def now_playing(
 
     r = await _request(token)
     if r is None:
-        # Circuit breaker is open, return fallback data
+        # An open breaker or transport failure retains the last known track.
         return _as_response(_fallback_now_playing(user))
     if r.status_code == 401:
         # Access tokens occasionally expire slightly earlier than advertised or

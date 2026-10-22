@@ -14,11 +14,6 @@ from app.core import metrics
 from app.core.database import async_session
 from app.core.logging import get_logger
 from app.models import NotificationQueueJob
-from app.tasks.notifications import (
-    enqueue_comment_notification_task,
-    enqueue_event_notification_task,
-    enqueue_news_notification_task,
-)
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
@@ -162,70 +157,6 @@ async def purge_dead_lettered_jobs(
         await db.rollback()
         raise
     return len(jobs)
-
-
-async def enqueue_event_notification(
-    event_id: uuid.UUID | int, *, locale: str | None = None
-) -> None:
-    """Enqueue an event notification job using NATS JetStream."""
-    normalized_id = uuid.UUID(int=event_id) if isinstance(event_id, int) else event_id
-    try:
-        await enqueue_event_notification_task.kick(normalized_id, locale=locale)
-    except (RuntimeError, OSError) as exc:
-        await report_enqueue_failure(
-            notification_type="event",
-            record_id=normalized_id,
-            error=exc,
-            source="enqueue_event_notification",
-        )
-        raise
-
-
-async def enqueue_news_notification(
-    news_id: uuid.UUID | int, *, locale: str | None = None
-) -> None:
-    """Enqueue a news notification job using NATS JetStream."""
-    normalized_id = uuid.UUID(int=news_id) if isinstance(news_id, int) else news_id
-    try:
-        await enqueue_news_notification_task.kick(normalized_id, locale=locale)
-    except (RuntimeError, OSError) as exc:
-        await report_enqueue_failure(
-            notification_type="news",
-            record_id=normalized_id,
-            error=exc,
-            source="enqueue_news_notification",
-        )
-        raise
-
-
-async def enqueue_comment_notification(
-    news_id: uuid.UUID | int,
-    comment_id: uuid.UUID | int,
-    user_id: uuid.UUID | int,
-    *,
-    locale: str | None = None,
-) -> None:
-    """Enqueue a comment notification job using NATS JetStream."""
-    normalized_news_id = uuid.UUID(int=news_id) if isinstance(news_id, int) else news_id
-    normalized_comment_id = (
-        uuid.UUID(int=comment_id) if isinstance(comment_id, int) else comment_id
-    )
-    normalized_user_id = uuid.UUID(int=user_id) if isinstance(user_id, int) else user_id
-    try:
-        await enqueue_comment_notification_task.kick(
-            normalized_news_id,
-            normalized_comment_id,
-            normalized_user_id,
-            locale=locale,
-        )
-    except (RuntimeError, OSError) as exc:
-        await report_enqueue_failure(
-            notification_type="comment",
-            record_id=normalized_comment_id,
-            error=exc,
-            source="enqueue_comment_notification",
-        )
-        raise
 
 
 async def cleanup_dead_lettered_jobs(

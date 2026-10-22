@@ -449,20 +449,21 @@ describe("MobileMenu closure paths", () => {
     removeEventListener.mockRestore()
   })
 
-  it("dispatches a bubbling Cmd+K event with the modifier preserved", async () => {
+  it("dispatches a bubbling Cmd+K event on document, where the search dialog listens", async () => {
     const user = userEvent.setup()
     const events: KeyboardEvent[] = []
     const listener = (event: KeyboardEvent) => {
       if (event.key === "k") events.push(event)
     }
-    window.addEventListener("keydown", listener)
+    document.addEventListener("keydown", listener)
 
     renderMenu({ isAuth: false, user: null })
     await user.click(screen.getByRole("button", { name: "search-action" }))
 
     expect(events).toHaveLength(1)
     expect(events[0]).toMatchObject({ key: "k", metaKey: true, bubbles: true })
-    window.removeEventListener("keydown", listener)
+    expect(events[0]?.target).toBe(document)
+    document.removeEventListener("keydown", listener)
   })
 
   it("exposes the drawer description, backdrop semantics, safe width, and accent", () => {

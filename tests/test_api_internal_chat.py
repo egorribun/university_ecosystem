@@ -35,4 +35,4 @@ async def test_check_participant_endpoint(async_client):
             params={"user_id": user_id, "room_id": room_id},
         )
         assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert response.json()["detail"]["error"] == "not_participant"
+        assert response.json()["code"] == "not_participant"

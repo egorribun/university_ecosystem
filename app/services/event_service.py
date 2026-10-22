@@ -1,22 +1,298 @@
+import base64
+import hashlib
+import json
+import string
 import uuid
 from collections.abc import Sequence
-from datetime import UTC, datetime
-from typing import Any
+from datetime import UTC, date, datetime, time, timedelta
+from typing import Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from app.core.cache_versioning import events_cache_version
+from app.core.config import settings
 from app.core.exceptions.domain import EntityNotFound
 from app.core.localization import normalize_locale, translate
 from app.core.logging import get_logger
+from app.core.metrics import record_event_registration
 from app.models import Event
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
 from app.schemas.dtos import EventAttendanceDTO, EventDTO, EventFileDTO
 from app.services import attendance_tokens, stats_cache
-from app.services.vector_service import VectorService
-from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
+from app.services.content_media import delete_unreferenced_owned_event_image
+from app.services.vector_service import (
+    SemanticSearchUnavailableError,
+    VectorService,
+)
+from app.utils.pagination import (
+    decode_datetime_cursor,
+    decode_ranked_datetime_cursor,
+    encode_datetime_cursor,
+    encode_ranked_datetime_cursor,
+)
 
 logger = get_logger(__name__)
+
+_LEGACY_MY_EVENTS_BATCH_SIZE = 100
+
+
+class InvalidEventsCursor(ValueError):
+    """The main-feed cursor is malformed or belongs to another query."""
+
+
+def _events_cursor_binding(
+    *,
+    user_id: uuid.UUID | None,
+    locale: str | None,
+    limit: int,
+    search: str,
+    event_type: str,
+    location: str,
+    is_active: bool | None,
+    order: Literal["starts_at_asc", "starts_at_desc"],
+) -> str:
+    binding = {
+        "user": str(user_id) if user_id is not None else None,
+        "locale": normalize_locale(locale),
+        "limit": limit,
+        "search": search,
+        "type": event_type,
+        "location": location,
+        "is_active": is_active,
+        "order": order,
+    }
+    raw = json.dumps(binding, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _event_cursor_timestamp(value: datetime) -> str:
+    aware = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    return aware.astimezone(UTC).isoformat()
+
+
+def _encode_events_cursor(
+    *,
+    order: Literal["starts_at_asc", "starts_at_desc"],
+    binding: str,
+    starts_at: datetime,
+    event_id: uuid.UUID,
+) -> str:
+    payload = {
+        "v": 2,
+        "order": order,
+        "filter": binding,
+        "key": {
+            "starts_at": _event_cursor_timestamp(starts_at),
+            "id": str(event_id),
+        },
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    encoded = base64.urlsafe_b64encode(raw).decode().rstrip("=")
+    return f"e2:{encoded}"
+
+
+def _decode_events_cursor(
+    cursor: str | None,
+    *,
+    order: Literal["starts_at_asc", "starts_at_desc"],
+    binding: str,
+) -> tuple[datetime, uuid.UUID] | None:
+    if cursor is None:
+        return None
+    try:
+        if not cursor.startswith("e2:") or len(cursor) > 1024:
+            raise ValueError("Wrong cursor version")
+        encoded = cursor[3:]
+        alphabet = string.ascii_letters + string.digits + "-_"
+        if not encoded or any(char not in alphabet for char in encoded):
+            raise ValueError("Invalid base64url cursor")
+        raw = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+        if base64.urlsafe_b64encode(raw).decode().rstrip("=") != encoded:
+            raise ValueError("Noncanonical base64url cursor")
+        payload = json.loads(raw)
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        if raw != canonical:
+            raise ValueError("Noncanonical cursor JSON")
+        if (
+            not isinstance(payload, dict)
+            or set(payload) != {"v", "order", "filter", "key"}
+            or type(payload["v"]) is not int
+            or payload["v"] != 2
+            or payload["order"] != order
+            or payload["filter"] != binding
+        ):
+            raise ValueError("Cursor query binding mismatch")
+        key = payload["key"]
+        if not isinstance(key, dict) or set(key) != {"starts_at", "id"}:
+            raise ValueError("Invalid cursor key")
+        timestamp_text = key["starts_at"]
+        event_id_text = key["id"]
+        if not isinstance(timestamp_text, str) or not isinstance(event_id_text, str):
+            raise ValueError("Invalid cursor key types")
+        timestamp = datetime.fromisoformat(timestamp_text)
+        if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            raise ValueError("Cursor timestamp must be timezone-aware")
+        timestamp = timestamp.astimezone(UTC)
+        if _event_cursor_timestamp(timestamp) != timestamp_text:
+            raise ValueError("Noncanonical cursor timestamp")
+        event_id = uuid.UUID(event_id_text)
+        if str(event_id) != event_id_text:
+            raise ValueError("Noncanonical cursor UUID")
+        return timestamp, event_id
+    except (ValueError, TypeError, OverflowError, RecursionError) as exc:
+        raise InvalidEventsCursor("Invalid events cursor") from exc
+
+
+class InvalidMyEventsCursor(ValueError):
+    """The cursor is malformed or belongs to a different My-events query."""
+
+
+class InvalidMyEventsQuery(ValueError):
+    """A My-events date/time query value cannot be represented safely."""
+
+
+def _my_events_cursor_binding(
+    *,
+    user_id: uuid.UUID | int,
+    locale: str,
+    limit: int,
+    category: str | None,
+    date_range: str | None,
+    date_anchor: date | None,
+    sort: str,
+    upcoming_after: datetime | None,
+) -> str:
+    binding = {
+        "user": str(user_id),
+        "locale": locale,
+        "limit": limit,
+        "category": category,
+        "date_range": date_range,
+        "date_anchor": date_anchor.isoformat() if date_anchor else None,
+        "sort": sort,
+        "upcoming_after": upcoming_after.isoformat() if upcoming_after else None,
+    }
+    encoded = json.dumps(binding, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _encode_my_events_cursor(
+    *, sort: str, binding: str, event: Event, participant_count: int
+) -> str:
+    def timestamp_text(value: datetime) -> str:
+        aware = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+        return aware.astimezone(UTC).isoformat()
+
+    key: dict[str, str | int]
+    if sort in {"newest", "upcoming"}:
+        key = {"value": timestamp_text(event.starts_at), "id": str(event.id)}
+    else:
+        key = {"value": participant_count, "id": str(event.id)}
+    payload = {"v": 1, "sort": sort, "filter": binding, "key": key}
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _decode_my_events_cursor(
+    cursor: str | None, *, sort: str, binding: str
+) -> tuple[datetime | int, uuid.UUID] | None:
+    if cursor is None:
+        return None
+    try:
+        if not cursor or len(cursor) > 1024:
+            raise ValueError
+        raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+        if base64.urlsafe_b64encode(raw).decode().rstrip("=") != cursor:
+            raise ValueError
+        payload = json.loads(raw)
+        if (
+            not isinstance(payload, dict)
+            or set(payload) != {"v", "sort", "filter", "key"}
+            or isinstance(payload["v"], bool)
+            or not isinstance(payload["v"], int)
+            or payload["v"] != 1
+            or payload["sort"] != sort
+            or payload["filter"] != binding
+        ):
+            raise ValueError
+        key = payload["key"]
+        if not isinstance(key, dict) or set(key) != {"value", "id"}:
+            raise ValueError
+        event_id_text = key["id"]
+        event_id = uuid.UUID(event_id_text)
+        if str(event_id) != event_id_text:
+            raise ValueError
+        value = key["value"]
+        if sort == "popular":
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+                or value > (2**63 - 1)
+            ):
+                raise ValueError
+            return value, event_id
+        if not isinstance(value, str):
+            raise ValueError
+        timestamp = datetime.fromisoformat(value)
+        if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            raise ValueError
+        return timestamp.astimezone(UTC), event_id
+    except (
+        ValueError,
+        TypeError,
+        AttributeError,
+        KeyError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        OverflowError,
+    ) as exc:
+        raise InvalidMyEventsCursor("Invalid My-events cursor") from exc
+
+
+def _my_events_date_bounds(
+    date_range: str | None, date_anchor: date | None
+) -> tuple[datetime | None, datetime | None]:
+    if date_range is None:
+        if date_anchor is not None:
+            raise ValueError("A date anchor requires a date range")
+        return None, None
+    if date_anchor is None:
+        raise ValueError("A date range requires its campus-local anchor date")
+    if date_range not in {"today", "week", "month"}:
+        raise ValueError("Unsupported date range")
+
+    try:
+        if date_range == "today":
+            start_date = date_anchor
+            end_date = start_date + timedelta(days=1)
+        elif date_range == "week":
+            start_date = date_anchor - timedelta(days=date_anchor.weekday())
+            end_date = start_date + timedelta(days=7)
+        else:
+            start_date = date(date_anchor.year, date_anchor.month, 1)
+            end_date = (
+                date(date_anchor.year + 1, 1, 1)
+                if date_anchor.month == 12
+                else date(date_anchor.year, date_anchor.month + 1, 1)
+            )
+    except (OverflowError, ValueError) as exc:
+        raise InvalidMyEventsQuery("Date range is outside supported bounds") from exc
+
+    try:
+        campus_zone = ZoneInfo(settings.campus_timezone)
+    except (ZoneInfoNotFoundError, TypeError, ValueError) as exc:
+        raise RuntimeError("Configured campus timezone is unavailable") from exc
+    try:
+        start = datetime.combine(start_date, time.min, tzinfo=campus_zone).astimezone(
+            UTC
+        )
+        end = datetime.combine(end_date, time.min, tzinfo=campus_zone).astimezone(UTC)
+    except OverflowError as exc:
+        raise InvalidMyEventsQuery("Date range is outside supported bounds") from exc
+    return start, end
 
 
 def _localized_event_field(
@@ -125,12 +401,44 @@ class EventService:
         limit: int = 20,
         cursor: str | None = None,
         locale: str | None = None,
+        order: Literal["starts_at_asc", "starts_at_desc"] | None = None,
     ) -> schemas.PaginatedEvents:
+        decoded_cursor: (
+            tuple[datetime, uuid.UUID | int | str]
+            | tuple[datetime, str, float | None]
+            | None
+        )
+        cursor_binding = ""
+        if order is None:
+            if cursor is not None and cursor.startswith("e2:"):
+                raise InvalidEventsCursor("Explicit-order cursor requires its order")
+            decoded_cursor = decode_ranked_datetime_cursor(
+                cursor
+            ) or decode_datetime_cursor(cursor)
+        else:
+            cursor_binding = _events_cursor_binding(
+                user_id=user_id,
+                locale=locale,
+                limit=limit,
+                search=search,
+                event_type=type,
+                location=location,
+                is_active=is_active,
+                order=order,
+            )
+            decoded_cursor = _decode_events_cursor(
+                cursor, order=order, binding=cursor_binding
+            )
+
         query_embedding = None
         if search:
-            query_embedding = await self.vector_service.get_embedding(search)
+            try:
+                query_embedding = await self.vector_service.get_embedding(search)
+            except SemanticSearchUnavailableError:
+                query_embedding = None
 
-        decoded_cursor = decode_datetime_cursor(cursor)
+        # Keep list and total filters on the same time snapshot.
+        filter_time = datetime.now(UTC)
 
         # Get limit+1 to determine has_more
         results = await self.repo.search_events(
@@ -141,7 +449,9 @@ class EventService:
             is_active=is_active,
             limit=limit + 1,
             cursor=decoded_cursor,
+            order=order,
             query_embedding=query_embedding,
+            now=filter_time,
         )
 
         has_more = len(results) > limit
@@ -150,10 +460,13 @@ class EventService:
         # Calculate total only on first page
         total = None
         if not cursor:
-            total = (
-                await self.repo.count_upcoming()
-                if is_active is True
-                else await self.repo.count()
+            total = await self.repo.count_search_events(
+                search_query=search,
+                event_type=type,
+                location=location,
+                is_active=is_active,
+                query_embedding=query_embedding,
+                now=filter_time,
             )
 
         output: list[schemas.EventOut] = []
@@ -190,10 +503,23 @@ class EventService:
         next_cursor = None
         if has_more and items_to_process:
             last_result = items_to_process[-1]
-            next_cursor = encode_datetime_cursor(
-                last_result.event.starts_at,
-                str(last_result.event.id),
-            )
+            if order is not None:
+                next_cursor = _encode_events_cursor(
+                    order=order,
+                    binding=cursor_binding,
+                    starts_at=last_result.event.starts_at,
+                    event_id=last_result.event.id,
+                )
+            elif last_result.rank is not None:
+                next_cursor = encode_ranked_datetime_cursor(
+                    last_result.event.starts_at,
+                    str(last_result.event.id),
+                    last_result.rank,
+                )
+            else:
+                next_cursor = encode_datetime_cursor(
+                    last_result.event.starts_at, str(last_result.event.id)
+                )
 
         return schemas.PaginatedEvents(
             items=output,
@@ -205,15 +531,21 @@ class EventService:
         )
 
     async def create_event(
-        self, data: schemas.EventCreate, user_id: uuid.UUID
+        self,
+        data: schemas.EventCreate,
+        user_id: uuid.UUID,
+        *,
+        locale: str | None = None,
     ) -> EventDTO:
         if data.starts_at >= data.ends_at:
             raise ValueError(translate("validation.events.end_after_start"))
 
         obj_data = data.model_dump()
         obj_data["created_by"] = user_id
-        event = await self.repo.create(obj_data)
-        # EventCreated(event_id_entity=event.id, title=str(event.title))
+        if locale is None:
+            event = await self.repo.create(obj_data)
+        else:
+            event = await self.repo.create(obj_data, locale=locale)
         async with self.uow:
             await self.uow.commit()
         return event
@@ -256,14 +588,23 @@ class EventService:
         async with self.uow:
             await self.uow.commit()
 
+        from app.services import search_indexer
+
+        await search_indexer.remove_document(search_indexer.EVENTS_INDEX, event_id)
+
         from app.utils.files import delete_static_file
 
         if image_url:
             try:
-                await delete_static_file(str(image_url))
-            except (FileNotFoundError, OSError):
-                # RZ-20-04: Narrowed — file deletion is best-effort.
-                logger.warning("Failed to delete event image: %s", image_url)
+                async with self.uow:
+                    await delete_unreferenced_owned_event_image(
+                        str(image_url),
+                        event_id=event_id,
+                        db_session=self.uow.session,
+                    )
+            except (OSError, SQLAlchemyError):
+                # RZ-20-04: Retain the object if post-commit cleanup cannot proceed.
+                logger.warning("Failed to safely clean event image: %s", image_url)
 
         for url in file_urls:
             try:
@@ -301,9 +642,6 @@ class EventService:
             if exist.registered_at is None:
                 updates["registered_at"] = datetime.now(UTC)
 
-            # ensure_secret_material expects ORM. I need a way to handle this.
-            # I'll assume I can just issue a new secret if needed via repo.
-
             if updates:
                 exist = await self.repo.update_attendance(
                     data.event_id, user_id, updates
@@ -311,6 +649,7 @@ class EventService:
                 assert exist is not None  # noqa: S101
                 async with self.uow:
                     await self.uow.commit()
+                await events_cache_version.increment()
 
             # Helper logic to set token attribute for response
             token = attendance_tokens.issue_token(exist)
@@ -327,6 +666,8 @@ class EventService:
             )
             async with self.uow:
                 await self.uow.commit()
+            await events_cache_version.increment()
+            record_event_registration()
         except IntegrityError as exc:
             await self.uow.rollback()
             # Race condition retry
@@ -344,9 +685,6 @@ class EventService:
             if exist.registered_at is None:
                 retry_updates["registered_at"] = datetime.now(UTC)
 
-            # Note: ensure_secret_material is skipped here as it's legacy
-            # and might need ORM. For now we focus on reachability.
-
             if retry_updates:
                 updated_exist = await self.repo.update_attendance(
                     data.event_id, user_id, retry_updates
@@ -355,6 +693,7 @@ class EventService:
                     exist = updated_exist
                 async with self.uow:
                     await self.uow.commit()
+                await events_cache_version.increment()
 
             enriched_exist = exist.model_copy(
                 update={"qr_token": attendance_tokens.issue_token(exist)}
@@ -382,6 +721,7 @@ class EventService:
         if ok:
             async with self.uow:
                 await self.uow.commit()
+            await events_cache_version.increment()
             await stats_cache.invalidate_user_stats_cache(
                 user_ids=user_id,
                 kinds=("attendance", "participation"),
@@ -391,30 +731,133 @@ class EventService:
     async def get_my_events(
         self, user_id: uuid.UUID | int, *, locale: str | None = None
     ) -> list[schemas.EventOut]:
-        events = await self.repo.list_user_attended_events(user_id)
+        """Return the legacy array response while keeping each database read bounded."""
+        normalized_locale = normalize_locale(locale)
+        result: list[schemas.EventOut] = []
+        cursor_key: tuple[datetime | int, uuid.UUID] | None = None
+
+        while True:
+            rows = await self.repo.list_user_attended_events(
+                user_id,
+                limit=_LEGACY_MY_EVENTS_BATCH_SIZE,
+                locale=normalized_locale,
+                sort="newest",
+                cursor_key=cursor_key,
+                include_participant_count=False,
+            )
+            for event, user_attendance, _participant_count in rows:
+                qr_token = attendance_tokens.issue_token(user_attendance)
+                result.append(
+                    self.serialize_event(
+                        event,
+                        normalized_locale,
+                        participant_count=0,
+                        files=[],
+                        is_registered=True,
+                        my_qr_token=qr_token,
+                    )
+                )
+
+            if len(rows) < _LEGACY_MY_EVENTS_BATCH_SIZE:
+                return result
+
+            last_event = rows[-1][0]
+            next_cursor_key = (last_event.starts_at, last_event.id)
+            if cursor_key is not None and next_cursor_key <= cursor_key:
+                raise RuntimeError("My-events keyset batch did not advance")
+            cursor_key = next_cursor_key
+
+    async def get_my_events_page(
+        self,
+        user_id: uuid.UUID | int,
+        *,
+        locale: str | None = None,
+        limit: int = 20,
+        cursor: str | None = None,
+        category: str | None = None,
+        date_range: str | None = None,
+        date_anchor: date | None = None,
+        sort: str = "newest",
+        upcoming_after: datetime | None = None,
+    ) -> schemas.PaginatedEvents:
+        """Return one bounded filtered page of the authenticated user's registrations."""
+        normalized_locale = normalize_locale(locale)
+        if sort not in {"newest", "popular", "upcoming"}:
+            raise ValueError("Unsupported event sort")
+        if upcoming_after is not None:
+            if upcoming_after.tzinfo is None:
+                raise InvalidMyEventsQuery("upcoming_after must be timezone-aware")
+            try:
+                if upcoming_after.utcoffset() is None:
+                    raise InvalidMyEventsQuery("upcoming_after must be timezone-aware")
+                upcoming_after = upcoming_after.astimezone(UTC)
+            except (OverflowError, TypeError, ValueError) as exc:
+                raise InvalidMyEventsQuery(
+                    "upcoming_after is outside supported bounds"
+                ) from exc
+        if sort == "upcoming" and upcoming_after is None:
+            raise ValueError("upcoming sort requires a time cutoff")
+        if sort != "upcoming" and upcoming_after is not None:
+            raise ValueError("upcoming_after only applies to upcoming sort")
+        starts_at_from, starts_at_before = _my_events_date_bounds(
+            date_range, date_anchor
+        )
+        binding = _my_events_cursor_binding(
+            user_id=user_id,
+            locale=normalized_locale,
+            limit=limit,
+            category=category,
+            date_range=date_range,
+            date_anchor=date_anchor,
+            sort=sort,
+            upcoming_after=upcoming_after,
+        )
+        cursor_key = _decode_my_events_cursor(cursor, sort=sort, binding=binding)
+        rows = await self.repo.list_user_attended_events(
+            user_id,
+            limit=limit + 1,
+            locale=normalized_locale,
+            category=category,
+            starts_at_from=starts_at_from,
+            starts_at_before=starts_at_before,
+            upcoming_after=upcoming_after,
+            sort=sort,
+            cursor_key=cursor_key,
+        )
+        has_more = len(rows) > limit
+        page_rows = rows[:limit]
 
         result: list[schemas.EventOut] = []
-        for event in events:
-            user_attendance = next(
-                (a for a in event.attendance if str(a.user_id) == str(user_id)), None
-            )
-            qr_token = (
-                attendance_tokens.issue_token(user_attendance)
-                if user_attendance
-                else None
-            )
-
+        for event, user_attendance, participant_count in page_rows:
+            qr_token = attendance_tokens.issue_token(user_attendance)
             result.append(
                 self.serialize_event(
                     event,
-                    locale,
-                    participant_count=0,  # Need participant count in list_user_attended_events return
+                    normalized_locale,
+                    participant_count=participant_count,
                     files=[],
                     is_registered=True,
                     my_qr_token=qr_token,
                 )
             )
-        return result
+
+        next_cursor = None
+        if has_more and page_rows:
+            last_event, _, last_participant_count = page_rows[-1]
+            next_cursor = _encode_my_events_cursor(
+                sort=sort,
+                binding=binding,
+                event=last_event,
+                participant_count=last_participant_count,
+            )
+        return schemas.PaginatedEvents(
+            items=result,
+            total=None,
+            limit=limit,
+            cursor=cursor,
+            next_cursor=next_cursor,
+            has_more=has_more,
+        )
 
     async def get_event_detail(
         self, event_id: Any, user_id: Any, *, locale: str | None = None
@@ -430,19 +873,17 @@ class EventService:
 
         qr_token = None
         if attendance:
-            # Ensure QR secret material exists before issuing token
-            if attendance_tokens.ensure_secret_material(attendance):
-                # How to handle session refresh/add for DTO?
-                # We should probably update via repo.
-                updates = {
-                    "qr_secret": attendance.qr_secret,
-                    "qr_hmac": attendance.qr_hmac,
-                }
-                await self.repo.update_attendance(
+            updates = attendance_tokens.secret_material_updates(attendance)
+            if updates:
+                repaired = await self.repo.update_attendance(
                     event_record.id, attendance.user_id, updates
                 )
+                if repaired is None:
+                    raise EntityNotFound("EventAttendance", attendance.id)
                 async with self.uow:
                     await self.uow.commit()
+                await events_cache_version.increment()
+                attendance = repaired
 
             qr_token = attendance_tokens.issue_token(attendance)
 

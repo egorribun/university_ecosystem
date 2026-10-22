@@ -700,6 +700,43 @@ describe("MapSearchBar", () => {
     )
   })
 
+  it("Enter selects the highlighted option when building and room matches are mixed", () => {
+    const mainHall: CampusBuilding = {
+      ...BUILDING,
+      name: "Main Hall",
+      floors: [
+        {
+          floor: 1,
+          rooms: [{ id: "MH-101", number: "101", name: "Lecture room", type: "lecture" }],
+        },
+      ],
+    }
+    const lectureHall: CampusBuilding = { ...BUILDING, name: "Lecture Hall", letter: "ЛК" }
+    const onSelectBuilding = vi.fn()
+    const onSelectRoom = vi.fn()
+    render(
+      <MapSearchBar
+        {...baseProps}
+        buildings={[mainHall, lectureHall]}
+        onSelectBuilding={onSelectBuilding}
+        onSelectRoom={onSelectRoom}
+      />
+    )
+    const input = screen.getByRole("combobox")
+    // Search order is [room in Main Hall, Lecture Hall]; the list renders buildings first.
+    fireEvent.change(input, { target: { value: "lecture" } })
+    const options = screen.getAllByRole("option")
+    expect(options[0]).toHaveTextContent("Lecture Hall")
+
+    fireEvent.keyDown(input, { key: "ArrowDown" })
+    expect(options[0]).toHaveAttribute("aria-selected", "true")
+    fireEvent.keyDown(input, { key: "Enter" })
+
+    expect(onSelectRoom).not.toHaveBeenCalled()
+    expect(onSelectBuilding).toHaveBeenCalledOnce()
+    expect(onSelectBuilding).toHaveBeenCalledWith("ЛК")
+  })
+
   it("applies the active style only to the option under keyboard or pointer focus", () => {
     render(<MapSearchBar {...baseProps} buildings={CAMPUS_BUILDINGS} />)
     const input = screen.getByRole("combobox")

@@ -43,8 +43,9 @@ vulnerability gates, attach the evidence to the normal PR, and obtain the
 security reviewer approval.
 
 For ordinary regeneration, use `uv lock`. Never use the broad `uv lock --upgrade`
-command; the targeted command above is the sole package-specific cooldown
-exception.
+command. The targeted command above is the default package-specific cooldown
+exception; an explicitly approved exact-release timestamp cutoff may be used
+instead when recorded below and preserved in both project and lock metadata.
 
 ## Prohibited bypasses
 
@@ -54,6 +55,192 @@ Do not use `UV_EXCLUDE_NEWER=false`.
 
 Do not use `Semgrep suppression`.
 
-Do not use `SKIP=semgrep`.
+Do not use `SKIP=semgrep-docker`.
 
 Do not use `--no-verify`.
+
+## Owner-approved Rust exception, 2026-10-12
+
+The owner approved only Ammonia `4.2.3` in PR
+[#1306](https://github.com/egorribun/university_ecosystem/pull/1306), addressing
+[RUSTSEC-2021-0157](https://rustsec.org/advisories/RUSTSEC-2021-0157.html).
+The approval covers the seven-day release-age requirement for the Ammonia
+version/checksum entries in `frontend/wasm-sanitizer/Cargo.lock` and
+`frontend/wasm-sanitizer/fuzz/Cargo.lock`. Version `4.2.3` reaches seven days on
+2026-10-18 at 06:27:36 UTC; the exception then expires.
+
+This decision does not change routine cooldown rules, Cargo Deny configuration,
+vulnerability gates, tests, or the ordinary PR flow. Sanitizer tests, the WASM
+rebuild/provenance checks, and required CI must still pass on the updated source.
+The owner is the approving reviewer; approval does not substitute for that
+validation evidence.
+
+## Owner-approved Rclone exception, 2026-10-14
+
+The owner approved only `rclone/rclone:1.75.2` for the backup upload image in
+PR [#1306](https://github.com/egorribun/university_ecosystem/pull/1306). The
+[official changelog](https://rclone.org/changelog/#v1-75-2-2026-10-09) identifies
+Go security fixes including CVE-2026-78660 and CVE-2026-97031. The exception
+covers only the seven-day release-age requirement for this version and its
+verified manifest digest in `charts/university-ecosystem/values.yaml`.
+It expires on 2026-10-16 at 11:03:19 UTC, seven days after the release.
+
+The backup command remains an S3-client `mkdir` followed by `copyto`; the
+reviewed Helm renders differ only in the upload image. No deployment, new
+secret disposition, advisory waiver or merge bypass is authorized by this
+decision. Ordinary hooks, vulnerability and backup compatibility checks,
+78 required contexts and blocking CodeQL remain required on the final source.
+
+## Owner-approved Certifi exception, 2026-10-20
+
+The owner approved only certifi `2026.10.19` in the existing normal PR
+[#1306](https://github.com/egorribun/university_ecosystem/pull/1306), addressing
+[GHSA-6q48-6c7w-9gw2](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2).
+The owner is the approving security reviewer. The fixed release removes the
+affected emSign trust anchor; no TLS verification or advisory gate is disabled.
+
+The exact version constraint and package-specific cutoff
+`2026-10-20T02:24:17Z` admit this release without admitting subsequent uploads.
+The global seven-day maturity policy and every other package remain unchanged.
+The exception covers the matching certifi version and artifact hashes in
+`uv.lock` and `security/detect-secrets-requirements.txt`. It expires on
+2026-10-27 at 02:24:17 UTC, after both release artifacts have matured.
+Remove the cutoff and replace the temporary exact pin with the security floor
+through a reviewed, targeted lock refresh at that point.
+
+For this exact approved release, use pinned uv 0.12.23 and the recorded
+persistent cutoff with `uv lock --upgrade-package "certifi==2026.10.19"`,
+then `uv lock --check`. Review the `uv.lock` diff: only certifi, its exact
+manifest constraint and its package cutoff may change. The temporary hosted
+generation step restores the checked-in lock before the normal lock gate;
+a generated candidate is not a passing checked-in-source validation.
+Final-source lock consistency, scanner integrity, tests and vulnerability
+checks remain required. No baseline edit, new false-positive disposition,
+advisory waiver, merge or deployment is authorized by this exception.
+
+The bounded generation was executed on source `dd27830a` in
+[run 39494503454](https://github.com/egorribun/university_ecosystem/actions/runs/39494503454),
+job 118875905694. The candidate passes `uv lock --check`; all other 229 package
+records remain unchanged. The original lock was restored and the ordinary
+checked-in lock gate correctly refused it. The reviewed generated diff is
+integrated by the follow-up, which removes the temporary generator. This
+records generation provenance, not a passing final-source security gate.
+
+## Owner-approved Pillow exception, 2026-10-20
+
+At 21:57 UTC the owner separately approved Pillow `13.0.0`, the direct major
+range change to `>=13.0.0,<14`, and its exact-release cooldown exception in
+normal PR [#1306](https://github.com/egorribun/university_ecosystem/pull/1306).
+The owner is the approving security reviewer. The current Pillow 12.3.0 gate
+reports CVE-2026-112395, CVE-2026-112397, CVE-2026-112400,
+CVE-2026-112403, CVE-2026-112404, CVE-2026-112895, CVE-2026-112896,
+CVE-2026-112897 and CVE-2026-112899.
+[Upstream 13.0.0 release](https://github.com/python-pillow/Pillow/releases/tag/13.0.0)
+and [release notes](https://github.com/python-pillow/Pillow/blob/13.0.0/docs/releasenotes/13.0.0.rst)
+describe the security and compatibility changes.
+
+Only Pillow receives the additional cutoff `2026-10-16T22:18:10Z` and exact
+constraint `pillow==13.0.0`. The targeted command is
+`uv lock --upgrade-package "pillow==13.0.0"`, with pinned uv 0.12.23.
+The certifi exception, global seven-day policy and all unrelated constraints
+remain unchanged. Remove the Pillow cutoff and review the temporary exact pin
+after 2026-10-23 at 22:18:10 UTC, once the admitted artifacts have matured.
+
+The temporary existing-job generator fetches bounded HTTPS release metadata
+from PyPI without redirects. It validates each generated artifact's URL, digest,
+size, non-yanked status and upload time against that inventory and the cutoff.
+Whole-lock comparison permits only the Pillow package, its cutoff/constraint
+and the root project's direct Pillow requirement metadata. The generated diff
+is limited to 128 KiB. The original lock is restored before the normal
+`uv lock --check`; that checked-in gate must remain failing until the reviewed
+candidate is integrated. Artifact records are not authored manually.
+
+Real AVIF tests exercise both explicitly selected native and external handlers
+with RGB/RGBA inputs; real Pillow-only RGBA/LA thumbnail tests check transparency
+and lossy color fidelity. They do not prove plugin-absent startup, deployment,
+or every image format. Existing privacy, image-budget and upload regressions,
+ordinary hooks, final-source lock consistency and vulnerability gates remain
+required. At this preparation checkpoint the new lock and real-codec results
+are not yet verified. No advisory waiver, scanner disposition, baseline edit,
+merge or deployment is authorized by this exception.
+
+The hosted generator on source `19509334`,
+[run 39505978632](https://github.com/egorribun/university_ecosystem/actions/runs/39505978632),
+job 118914878260, validates the source distribution and 47 wheels against PyPI.
+Merge checkout `fc5b468231e3f9ff8b693679f344cdfae83ad121` has the same tree
+`66babb04edf7b7e1ccb3072306016db51fe64541`. Candidate lock checking and the
+whole-lock scope guard pass; the restored original lock then fails normally.
+The reviewed 131-line diff is integrated and the temporary generator removed.
+Final-source compatibility and vulnerability checks remain required.
+
+The initial metadata guard rejected sub-millisecond precision: authoritative
+PyPI time `22:18:09.718711Z` versus generated `22:18:09.718Z`.
+Pinned [uv 0.12.23 stores milliseconds](https://github.com/astral-sh/uv/blob/0.12.23/crates/uv-distribution-types/src/file.rs#L56).
+The corrected comparison uses exact millisecond truncation, not a tolerance;
+the unmodified raw PyPI timestamp still must meet the original cutoff.
+Both the observed truncation and distinct-millisecond rejection controls pass
+inside the successful generator. No upload-time boundary was relaxed.
+
+## Owner-approved Go exception, 2026-10-21
+
+The owner approved a narrowly scoped exception to the seven-day cooldown for
+Go 1.26.10, the fixed release for GO-2026-6809 (CVE-2026-111943), and fuzz-toolchain
+Go 1.27.3. The exception covers only those compiler pins and their corresponding
+official Go container images. The multi-platform index digests are:
+
+- alpine3.24: `sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca`
+- bookworm: `sha256:fe3da92a5cb2881e4aa75e625cb0b7c50571632fb4cf340cbe53e6ccdcffdd51`
+
+These image indexes were verified against docker-library/repo-info commit
+01a4608bd03cd0733af707340902e3308f7b2e76 (2026-10-21 08:01:24 UTC).
+See the [official advisory](https://github.com/golang/vulndb/blob/e0bad56276e98711a598adbab976de7cd914013a/data/reports/GO-2026-6809.yaml),
+[alpine record](https://github.com/docker-library/repo-info/blob/01a4608bd03cd0733af707340902e3308f7b2e76/repos/golang/remote/1.26.10-alpine3.24.md),
+and [bookworm record](https://github.com/docker-library/repo-info/blob/01a4608bd03cd0733af707340902e3308f7b2e76/repos/golang/remote/1.26.10-bookworm.md).
+
+The seven-day policy for all other releases remains unchanged. No module or
+dependency requirements, go.mod/go.sum, scanner policy or dispositions,
+suppressions, baseline, hooks, required contexts, merge, or deployment are part
+of this approval. Ordinary security, test, and hosted gates remain required.
+
+
+## Owner-approved Virtualenv exception, 2026-10-21
+
+At 22:44 UTC the owner approved only virtualenv `21.14.9`, replacing
+`21.14.7` in the existing normal PR
+[#1306](https://github.com/egorribun/university_ecosystem/pull/1306), for
+[GHSA-c978-59m8-c77v](https://github.com/github/advisory-database/blob/4661ff0468dac85b4c01cd8f7ae4f1c50858a278/advisories/github-reviewed/2026/10/GHSA-c978-59m8-c77v/GHSA-c978-59m8-c77v.json).
+The owner is the approving security reviewer. The
+[official fix](https://github.com/pypa/virtualenv/pull/3417) shipped in
+[21.14.9](https://github.com/pypa/virtualenv/releases/tag/21.14.9).
+The project keeps this dependency in development tooling, not runtime requirements.
+
+Only virtualenv receives the artifact cutoff `2026-10-17T16:09:43Z`,
+the temporary exact constraint `virtualenv==21.14.9`, and the durable dev
+floor `virtualenv>=21.14.9`. The wheel and source archive were uploaded
+at 16:09:40.584Z and 16:09:42.345Z respectively; the GitHub release was
+published at 16:09:47Z, a distinct timestamp. The cutoff is bounded to the
+verified artifacts, not the later advisory publication date. Review removal
+of the cutoff and temporary exact constraint after 2026-10-24 16:09:43 UTC;
+retain the patched security floor. Certifi/Pillow exceptions and the routine
+seven-day policy remain unchanged. A newer virtualenv release is not authorized.
+
+The candidate package stanza is cross-checked against two immutable public
+lockfiles: [ConfigUpdater](https://github.com/pyscaffold/configupdater/blob/c93003797846da216e2f333d11133200b96b2d91/uv.lock)
+and [starknet-crypto-py](https://github.com/tradeparadex/starknet-crypto-py/blob/df220aac5f532c983bddddbd19c304de10e334f9/poetry.lock).
+Its transitive requirements are unchanged. A temporary bounded existing-job
+verification checks all artifact URLs, digests, sizes, non-yanked status and
+upload times against bounded non-redirected official PyPI metadata. It then
+runs pinned uv 0.12.23 with
+`uv lock --upgrade-package "virtualenv==21.14.9"` and rejects any difference
+from the reviewed lock. The original lock is always restored before the
+ordinary `uv lock --check`; the temporary verification step is removed after
+successful hosted verification. This records the required procedure, not a
+claim that generation, installation or audit has already succeeded.
+
+Normal hash-verified installation, final-source lock consistency, regression
+and vulnerability gates still apply. No GHSA allowance, scanner disposition,
+baseline edit, global cutoff change, merge or deployment is authorized.
+Upgrading virtualenv does not repair previously generated environment scripts;
+affected existing environments require recreation with patched tooling before
+use. The known trigger requires later execution of a generated POSIX launcher
+under an attacker-influenced destination path; this is not a claim of compromise.

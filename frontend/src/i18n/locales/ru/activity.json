@@ -1,6 +1,6 @@
 {
   "title": "Активность",
-  "pageDescription": "Отслеживайте посещаемость, оценки и участие",
+  "pageDescription": "Отслеживайте регистрации на мероприятия, оценки и участие",
   "hero": {
     "badge": "Аналитика"
   },
@@ -34,6 +34,17 @@
       "180d_other": "за {{count}} дня"
     }
   },
+  "trendUnits": {
+    "percentagePoints": "п.п.",
+    "points_one": "балл",
+    "points_few": "балла",
+    "points_many": "баллов",
+    "points_other": "балла",
+    "events_one": "событие",
+    "events_few": "события",
+    "events_many": "событий",
+    "events_other": "события"
+  },
   "common": {
     "separator": " \u2022 ",
     "noData": "Нет данных"
@@ -45,16 +56,16 @@
   },
   "sections": {
     "attendance": {
-      "title": "Посещаемость",
+      "title": "Регистрации на мероприятия",
       "summary": "{{present}}/{{total}} {{period}}",
-      "recent": "Недавние посещения",
-      "lessonFallback": "Занятие",
+      "recent": "Недавние регистрации",
+      "lessonFallback": "Мероприятие",
       "status": {
-        "present": "присутствовал",
+        "present": "зарегистрирован",
         "late": "опоздание",
-        "absent": "отсутствовал"
+        "absent": "не зарегистрирован"
       },
-      "dialogTitle": "Посещаемость",
+      "dialogTitle": "Регистрации на мероприятия",
       "dialogTotal": "Всего: {{present}}/{{total}} {{period}}"
     },
     "grades": {
@@ -86,7 +97,7 @@
     "streakDays_few": "{{count}} дня подряд",
     "streakDays_many": "{{count}} дней подряд",
     "streakDays_other": "{{count}} дня подряд",
-    "excellent": "Отличная посещаемость! Так держать!",
+    "excellent": "Отличная активность регистраций! Так держать!",
     "good": "Хороший прогресс! Чуть больше стабильности.",
     "improving": "Ваши оценки растут!",
     "active": "Очень активный участник сообщества!",
@@ -94,20 +105,22 @@
   },
   "charts": {
     "title": "Аналитика",
-    "attendanceTrend": "Тренд посещаемости",
+    "attendanceTrend": "Динамика доли регистраций",
     "gradesBySubject": "Оценки по предметам",
     "noChartData": "Недостаточно данных для построения графика"
   },
   "heatmap": {
     "title": "Календарь активности",
     "cellLabel": "{{date}}: {{count}} активностей",
+    "unknownCellLabel": "{{date}}: нет данных",
+    "unknownValue": "Нет данных",
     "legendLess": "Меньше",
     "legendMore": "Больше",
     "legendLevel": "Уровень активности {{level}}"
   },
   "comparative": {
     "title": "Сравнение периодов",
-    "attendanceLabel": "Посещаемость",
+    "attendanceLabel": "Регистрации",
     "gradesLabel": "Ср. оценка",
     "participationLabel": "События",
     "vsPrevious": "было {{value}}",
@@ -134,22 +147,22 @@
     "participationType": "Участие"
   },
   "a11y": {
-    "attendanceCard": "Статистика посещаемости",
+    "attendanceCard": "Статистика регистраций на мероприятия",
     "gradesCard": "Статистика оценок",
     "participationCard": "Статистика участия",
     "periodSelector": "Выберите период для статистики активности",
     "timeline": "Лента активности",
-    "streak": "Серия посещений",
-    "ringAttendance": "Кольцо посещаемости: {{value}}%",
+    "streak": "Подряд идущие дни мероприятий, на которые вы зарегистрированы",
+    "ringAttendance": "Кольцо регистраций: {{value}}%",
     "ringGrades": "Шкала оценок: {{value}} из {{max}}",
     "ringParticipation": "Счётчик участия: {{value}} событий",
-    "attendanceTrend": "Линейный график тренда посещаемости",
+    "attendanceTrend": "Линейный график доли регистраций на мероприятия",
     "gradesBySubject": "Столбчатая диаграмма оценок по предметам",
     "heatmapCalendar": "Тепловая карта активности по дням"
   },
   "empty": {
     "title": "Активности пока нет",
-    "description": "Ваша активность появится здесь по мере посещения занятий и участия в мероприятиях"
+    "description": "Ваша активность появится здесь по мере получения оценок и регистрации на мероприятия"
   },
   "error": {
     "title": "Активность временно недоступна",

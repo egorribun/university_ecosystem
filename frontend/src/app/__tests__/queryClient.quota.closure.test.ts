@@ -1,3 +1,4 @@
+import { QueryClient } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { withExpectedConsole } from "@/tests/strictConsole"
 
@@ -193,13 +194,38 @@ describe("queryClient quota closure paths", () => {
     )
   })
 
-  it("covers query and mutation dehydration policies", async () => {
+  it("covers query and mutation dehydration policies with real query-cache records", async () => {
     const { persistOptions } = await import("@/app/queryClient")
     const shouldDehydrateQuery = persistOptions.dehydrateOptions?.shouldDehydrateQuery
     const shouldDehydrateMutation = persistOptions.dehydrateOptions?.shouldDehydrateMutation
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
-    expect(shouldDehydrateQuery?.({ state: { status: "success" } } as never)).toBe(true)
-    expect(shouldDehydrateQuery?.({ state: { status: "error" } } as never)).toBe(false)
+    queryClient.setQueryData(["ordinary", "success"], { value: "persistable" })
+    queryClient.setQueryData(["users", "me"], {
+      id: "current-user",
+      email: "private@example.invalid",
+    })
+    queryClient.setQueryDefaults(["ordinary", "excluded"], { meta: { persist: false } })
+    queryClient.setQueryData(["ordinary", "excluded"], { value: "session-only" })
+    await expect(
+      queryClient.fetchQuery({
+        queryKey: ["ordinary", "failure"],
+        queryFn: async () => {
+          throw new Error("expected query failure")
+        },
+      })
+    ).rejects.toThrow("expected query failure")
+
+    const getQuery = (queryKey: readonly unknown[]) => {
+      const query = queryClient.getQueryCache().find({ queryKey, exact: true })
+      expect(query).toBeDefined()
+      return query!
+    }
+
+    expect(shouldDehydrateQuery?.(getQuery(["ordinary", "success"]))).toBe(true)
+    expect(shouldDehydrateQuery?.(getQuery(["ordinary", "failure"]))).toBe(false)
+    expect(shouldDehydrateQuery?.(getQuery(["ordinary", "excluded"]))).toBe(false)
+    expect(shouldDehydrateQuery?.(getQuery(["users", "me"]))).toBe(false)
     expect(shouldDehydrateMutation?.({ state: { isPaused: true, status: "idle" } } as never)).toBe(
       true
     )

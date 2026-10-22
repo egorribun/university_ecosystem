@@ -118,6 +118,36 @@ describe("EventsList closure", () => {
     expect(screen.queryByText("events:states.empty")).not.toBeInTheDocument()
   })
 
+  it("distinguishes an online query error from a successful empty result", () => {
+    const refreshEvents = vi.fn()
+    const view = render(<EventsList {...baseProps} queryError refreshEvents={refreshEvents} />)
+
+    expect(screen.getByRole("alert")).toHaveTextContent("common:statuses.error")
+    expect(screen.queryByText("events:states.empty")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "common:statuses.tryAgain" }))
+    expect(refreshEvents).toHaveBeenCalledOnce()
+
+    view.rerender(<EventsList {...baseProps} queryError={false} />)
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.getByText("events:states.empty")).toBeInTheDocument()
+  })
+
+  it("keeps cached events visible when an online refetch fails", () => {
+    render(<EventsList {...baseProps} eventsList={[event("cached")]} queryError />)
+
+    expect(screen.getByRole("alert")).toBeInTheDocument()
+    expect(screen.getByTestId("event-cached")).toBeInTheDocument()
+    expect(screen.queryByText("events:states.empty")).not.toBeInTheDocument()
+  })
+
+  it("keeps the offline fallback distinct from an online query error", () => {
+    render(<EventsList {...baseProps} queryError isOnline={false} />)
+
+    expect(screen.getByRole("button", { name: "offline-retry" })).toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.queryByText("events:states.empty")).not.toBeInTheDocument()
+  })
+
   it("renders the offline empty state and retries through the stable callback", () => {
     const refreshEvents = vi.fn()
     render(<EventsList {...baseProps} isOnline={false} refreshEvents={refreshEvents} />)

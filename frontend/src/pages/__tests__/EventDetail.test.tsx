@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   id: "event-1",
   user: { id: "admin-1", role: "admin" } as { id: string; role: string } | null,
   language: "en",
+  detailQueryArgs: [] as unknown[],
   media: { reduced: false, narrow: false },
   navigation: {
     prevId: null as string | null,
@@ -37,6 +38,8 @@ const mocks = vi.hoisted(() => ({
   },
   swipeOptions: null as { onSwipeLeft: () => void; onSwipeRight: () => void } | null,
   navigate: vi.fn(),
+  historyCanGoBack: vi.fn(() => false),
+  historyBack: vi.fn(),
   invalidateQueries: vi.fn(),
   delete: vi.fn(),
   setEventsHeroId: vi.fn(),
@@ -46,6 +49,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@tanstack/react-router", () => ({
   useParams: () => ({ id: mocks.id }),
   useNavigate: () => mocks.navigate,
+  useRouter: () => ({
+    history: {
+      canGoBack: mocks.historyCanGoBack,
+      back: mocks.historyBack,
+    },
+  }),
 }))
 
 vi.mock("@tanstack/react-query", () => ({
@@ -61,7 +70,10 @@ vi.mock("@/contexts/AuthContext", () => ({
 }))
 
 vi.mock("@/api/hooks/events", () => ({
-  useEventDetailQuery: () => mocks.detail,
+  useEventDetailQuery: (id: string | undefined, language: string) => {
+    mocks.detailQueryArgs = [id, language]
+    return mocks.detail
+  },
   useEventNavigation: () => mocks.navigation,
 }))
 
@@ -144,7 +156,9 @@ vi.mock("@/components/ui/Snackbar", () => ({
       </div>
     ) : null,
 }))
-vi.mock("@/components/ui/SEO", () => ({ SEO: () => null }))
+vi.mock("@/components/ui/SEO", async () =>
+  vi.importActual<typeof import("@/components/ui/SEO")>("@/components/ui/SEO")
+)
 
 vi.mock("@/components/events/EventsBackdrop", () => ({ EventsBackdrop: () => <div /> }))
 vi.mock("@/components/events/EventDetailSkeleton", () => ({
@@ -155,15 +169,18 @@ vi.mock("@/components/events/EventDetailHero", () => ({
 }))
 vi.mock("@/components/events/EventDetailBody", () => ({
   EventDetailBody: ({
+    language,
     onRefresh,
     onError,
     onSuccess,
   }: {
+    language: string
     onRefresh: () => void
     onError: (message: string) => void
     onSuccess: (message: string) => void
   }) => (
     <div>
+      <span data-testid="event-body-language">{language}</span>
       <span>event-body</span>
       <button type="button" onClick={() => void onRefresh()}>
         refresh body
@@ -249,6 +266,7 @@ describe("EventDetail", () => {
     mocks.detail = { data: event, isLoading: false, error: null }
     mocks.user = { id: "admin-1", role: "admin" }
     mocks.language = "en"
+    mocks.detailQueryArgs = []
     mocks.media.reduced = false
     mocks.media.narrow = false
     mocks.navigation = { prevId: null, nextId: null, prevTitle: null, nextTitle: null }
@@ -260,6 +278,8 @@ describe("EventDetail", () => {
     mocks.registration.unregister.mockReset()
     mocks.swipeOptions = null
     mocks.navigate.mockReset()
+    mocks.historyCanGoBack.mockReset().mockReturnValue(false)
+    mocks.historyBack.mockReset()
     mocks.invalidateQueries.mockReset().mockResolvedValue(undefined)
     mocks.delete.mockReset().mockResolvedValue(undefined)
     mocks.setEventsHeroId.mockReset()
@@ -270,12 +290,29 @@ describe("EventDetail", () => {
     window.history.replaceState(null, "", "/")
   })
 
+  it.each([
+    ["en-US", "en"],
+    ["ru-RU", "ru"],
+  ])("uses its normalized %s locale for detail fetch and body language", (language, expected) => {
+    mocks.language = language
+    render(<EventDetail />)
+
+    expect(mocks.detailQueryArgs).toEqual(["event-1", expected])
+    expect(screen.getByTestId("event-body-language")).toHaveTextContent(expected)
+  })
+
   it("renders the skeleton while the event query is loading", () => {
     mocks.detail = { data: undefined, isLoading: true, error: null }
 
     render(<EventDetail />)
 
     expect(screen.getByTestId("event-detail-skeleton")).toBeInTheDocument()
+    expect(document.title).toBe("events:pageTitle | University Ecosystem")
+    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1)
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      "events:pageDescription"
+    )
   })
 
   it("renders a navigable not-found state for failed or absent data", () => {
@@ -284,6 +321,12 @@ describe("EventDetail", () => {
     render(<EventDetail />)
 
     expect(screen.getByText("events:detail.messages.notFound")).toBeInTheDocument()
+    expect(document.title).toBe("events:pageTitle | University Ecosystem")
+    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1)
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      "events:pageDescription"
+    )
     fireEvent.click(screen.getByRole("button", { name: "common:buttons.back" }))
     expect(mocks.navigate).toHaveBeenCalledWith({ to: "/events" })
   })
@@ -293,6 +336,15 @@ describe("EventDetail", () => {
 
     expect(screen.getByRole("heading", { name: event.title })).toBeInTheDocument()
     expect(screen.getByText(event.description)).toBeInTheDocument()
+    expect(document.title).toBe("Open lecture | University Ecosystem")
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      event.description
+    )
+    expect(document.head.querySelector('meta[property="og:image"]')).toHaveAttribute(
+      "content",
+      event.image_url
+    )
     expect(mocks.setEventsHeroId).toHaveBeenCalledWith(event.id)
 
     fireEvent.click(screen.getByRole("button", { name: "edit" }))
@@ -421,9 +473,13 @@ describe("EventDetail", () => {
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
   })
 
-  it("uses history back when available and renders narrow inactive events for non-admins", () => {
-    const back = vi.spyOn(window.history, "back").mockImplementation(() => {})
-    window.history.replaceState({ idx: 1 }, "", "/events/event-1")
+  it("uses TanStack history back when available and renders narrow inactive events for non-admins", () => {
+    mocks.historyCanGoBack.mockReturnValue(true)
+    window.history.replaceState(
+      { __TSR_index: 1, __TSR_key: "detail-entry" },
+      "",
+      "/events/event-1"
+    )
     mocks.user = { id: "student-1", role: "student" }
     mocks.media.narrow = true
     mocks.language = "ru"
@@ -440,20 +496,40 @@ describe("EventDetail", () => {
     render(<EventDetail />)
 
     fireEvent.click(screen.getByRole("button", { name: "common:buttons.back" }))
-    expect(back).toHaveBeenCalledOnce()
+    expect(mocks.historyBack).toHaveBeenCalledOnce()
+    expect(mocks.navigate).not.toHaveBeenCalledWith({ to: "/events" })
     expect(screen.queryByAltText("event")).not.toBeInTheDocument()
     expect(screen.queryByText("event-edit-dialog")).not.toBeInTheDocument()
   })
 
-  it("falls back to the events route when browser history has no index and user is absent", () => {
+  it("falls back to the events route for a direct TanStack history entry", () => {
     mocks.user = null
-    window.history.replaceState(null, "", "/events/event-1")
+    mocks.historyCanGoBack.mockReturnValue(false)
+    window.history.replaceState(
+      { __TSR_index: 0, __TSR_key: "direct-entry" },
+      "",
+      "/events/event-1"
+    )
     mocks.detail = { data: { id: "event-sparse" }, isLoading: false, error: null }
     render(<EventDetail />)
 
     fireEvent.click(screen.getByRole("button", { name: "common:buttons.back" }))
 
     expect(mocks.navigate).toHaveBeenCalledWith({ to: "/events" })
+    expect(mocks.historyBack).not.toHaveBeenCalled()
+  })
+
+  it("uses router history availability instead of a foreign history index", () => {
+    mocks.historyCanGoBack.mockReturnValue(false)
+    window.history.replaceState({ idx: 1 }, "", "/events/event-1")
+    const nativeBack = vi.spyOn(window.history, "back").mockImplementation(() => {})
+    render(<EventDetail />)
+
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.back" }))
+
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/events" })
+    expect(mocks.historyBack).not.toHaveBeenCalled()
+    expect(nativeBack).not.toHaveBeenCalled()
   })
 
   it("updates the Firefox reading-progress fallback on scroll", () => {

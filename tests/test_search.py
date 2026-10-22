@@ -1,7 +1,12 @@
+import json
+from copy import deepcopy
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import pytest
-from elasticsearch import NotFoundError
+from elastic_transport import ApiResponseMeta, BaseAsyncNode, HttpHeaders
+from elastic_transport._node._base import NodeApiResponse
+from elasticsearch import ApiError, AsyncElasticsearch, NotFoundError
 
 from app.services.search import SearchService
 
@@ -210,3 +215,154 @@ async def test_search_service_suggest():
     mock_client.search.return_value = {}
     res_empty = await service.suggest("test-index", "prefix-q")
     assert res_empty == []
+
+
+class _SearchDeleteNode(BaseAsyncNode):
+    """Concrete-index DELETE routes; the real SDK handles HTTP error responses.
+
+    https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-delete
+    https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-delete
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.documents = {"unrelated": {"keep": {"title": "Keep"}}}
+        self.failure_status = None
+        self.request_count = 0
+
+    def respond(self, status, body):
+        return NodeApiResponse(
+            ApiResponseMeta(
+                status=status,
+                http_version="1.1",
+                headers=HttpHeaders(
+                    {
+                        "content-type": "application/json",
+                        "x-elastic-product": "Elasticsearch",
+                    }
+                ),
+                duration=0,
+                node=self.config,
+            ),
+            json.dumps(body).encode(),
+        )
+
+    async def perform_request(self, method, target, **kwargs):
+        self.request_count += 1
+        if self.failure_status is not None:
+            return self.respond(
+                self.failure_status,
+                {
+                    "error": {"type": "unavailable", "reason": "Deletion failed"},
+                    "status": self.failure_status,
+                },
+            )
+        assert method == "DELETE"
+        url = urlsplit(target)
+        parts = [unquote(part) for part in url.path.strip("/").split("/")]
+        index = parts[0]
+        if len(parts) == 1:
+            ignore_missing = parse_qs(url.query).get("ignore_unavailable") == ["true"]
+            if index in self.documents or ignore_missing:
+                self.documents.pop(index, None)
+                return self.respond(200, {"acknowledged": True})
+        else:
+            assert len(parts) == 3 and parts[1] == "_doc"
+            if index in self.documents:
+                document_id = parts[2]
+                found = self.documents[index].pop(document_id, None) is not None
+                return self.respond(
+                    200 if found else 404,
+                    {
+                        "_index": index,
+                        "_id": document_id,
+                        "_version": 2,
+                        "_shards": {"total": 1, "successful": 1, "failed": 0},
+                        "result": "deleted" if found else "not_found",
+                    },
+                )
+        return self.respond(
+            404,
+            {
+                "error": {
+                    "type": "index_not_found_exception",
+                    "reason": f"no such index [{index}]",
+                },
+                "status": 404,
+            },
+        )
+
+    async def close(self):
+        pass
+
+
+@pytest.fixture
+async def deletion_service():
+    # BaseAsyncNode has no socket implementation: requests stay inside this process.
+    service = SearchService()
+    service._client = AsyncElasticsearch(
+        "http://elasticsearch.invalid:9200", node_class=_SearchDeleteNode
+    )
+    node = service.client.transport.node_pool.all()[0]
+    try:
+        yield service, node
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("initially_present", [False, True], ids=["absent", "present"])
+async def test_delete_index_is_idempotent(deletion_service, initially_present):
+    service, node = deletion_service
+    if initially_present:
+        node.documents["news-rebuild-old"] = {"obsolete": {"title": "Old"}}
+
+    await service.delete_index("news-rebuild-old")
+    await service.delete_index("news-rebuild-old")
+
+    assert node.documents == {"unrelated": {"keep": {"title": "Keep"}}}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "initial_state", ["absent-index", "absent-document", "present"]
+)
+async def test_delete_document_is_idempotent(deletion_service, initial_state):
+    service, node = deletion_service
+    if initial_state != "absent-index":
+        node.documents["news"] = {"keep": {"title": "Keep"}}
+    if initial_state == "present":
+        node.documents["news"]["obsolete"] = {"title": "Old"}
+
+    await service.delete_document("news", "obsolete")
+    await service.delete_document("news", "obsolete")
+
+    expected = {"unrelated": {"keep": {"title": "Keep"}}}
+    if initial_state != "absent-index":
+        expected["news"] = {"keep": {"title": "Keep"}}
+    assert node.documents == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["index", "document"])
+@pytest.mark.parametrize("status", [403, 503])
+async def test_search_deletion_preserves_non404_failures(
+    deletion_service, operation, status
+):
+    service, node = deletion_service
+    node.documents["news-rebuild-old"] = {"obsolete": {"title": "Old"}}
+    before = deepcopy(node.documents)
+    node.failure_status = status
+
+    with pytest.raises(ApiError) as raised:
+        if operation == "index":
+            await service.delete_index("news-rebuild-old")
+        else:
+            await service.delete_document("news-rebuild-old", "obsolete")
+
+    assert raised.value.status_code == status
+    assert node.documents == before
+    if status == 503:
+        assert node.request_count > 1
+    else:
+        assert node.request_count == 1

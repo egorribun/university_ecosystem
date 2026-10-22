@@ -6,7 +6,12 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { useDebounced } from "@/hooks/useDebounced"
 import { useStableListHeight } from "@/hooks/ui/useStableListHeight"
 import { useSearch, useNavigate } from "@tanstack/react-router"
-import { EVENTS_PAGE_SIZE, useEventsListQuery, useMyEventsQuery } from "@/api/hooks/events"
+import {
+  EVENTS_PAGE_SIZE,
+  useEventsListQuery,
+  useMyEventsQuery,
+  type EventsListOrder,
+} from "@/api/hooks/events"
 import { resetEtagCache } from "@/api/client"
 import { EventsHeader } from "./components/EventsHeader"
 import { EventsList } from "./components/EventsList"
@@ -18,50 +23,16 @@ import { useEventsKeyboardNav } from "@/hooks/useEventsKeyboardNav"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import type { EventDateRange, EventSortMode, EventTabKey } from "./types"
-
-/**
- * Returns [start, end) of date range in UTC milliseconds.
- * "today" = start of today → end of today
- * "week"  = start of Monday → end of Sunday
- * "month" = start of 1st → end of last day
- */
-function getDateRangeBounds(range: EventDateRange): [number, number] | null {
-  if (!range) return null
-
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = now.getMonth()
-  const d = now.getDate()
-
-  if (range === "today") {
-    const start = new Date(y, m, d).getTime()
-    const end = new Date(y, m, d + 1).getTime()
-    return [start, end]
-  }
-
-  if (range === "week") {
-    const dayOfWeek = now.getDay()
-    // Monday = 1, Sunday = 0 → shift to Monday-based
-    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
-    const start = new Date(y, m, d + mondayOffset).getTime()
-    const end = new Date(y, m, d + mondayOffset + 7).getTime()
-    return [start, end]
-  }
-
-  if (range === "month") {
-    const start = new Date(y, m, 1).getTime()
-    const end = new Date(y, m + 1, 1).getTime()
-    return [start, end]
-  }
-
-  return null
-}
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
+import { getCampusDateKey, getCampusDateRangeKeys } from "@/utils/campusTimezone"
+import { useMinuteClock } from "@/hooks/useMinuteClock"
 
 export const EventsFeature = () => {
   const { user } = useAuth()
   const { language } = useLanguage()
   const queryClient = useQueryClient()
   const isOnline = useOnlineStatus()
+  const campusTimezone = useCampusTimezone()
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
 
@@ -97,7 +68,10 @@ export const EventsFeature = () => {
     [navigate]
   )
 
-  const setTab = useCallback((v: string) => handleURLChange("tab", v), [handleURLChange])
+  const setTab = useCallback(
+    (v: EventTabKey) => handleURLChange("tab", v === "active" ? "" : v),
+    [handleURLChange]
+  )
   const setSearchQuery = useCallback((v: string) => handleURLChange("q", v), [handleURLChange])
   const setSortMode = useCallback(
     (v: EventSortMode) => handleURLChange("sort", v === "newest" ? "" : v),
@@ -121,14 +95,22 @@ export const EventsFeature = () => {
   /* ── Data fetching ── */
   const eventsListFilters = useMemo(() => {
     const isActiveFilter = tab === "active" ? true : tab === "archive" ? false : null
+    const order: EventsListOrder | undefined =
+      sortMode === "newest"
+        ? "starts_at_desc"
+        : sortMode === "upcoming"
+          ? "starts_at_asc"
+          : undefined
+
     return {
       language,
       is_active: isActiveFilter,
       search: debouncedSearch,
       location: debouncedLocation,
       limit: EVENTS_PAGE_SIZE,
+      ...(order ? { order } : {}),
     }
-  }, [tab, language, debouncedSearch, debouncedLocation])
+  }, [tab, language, debouncedSearch, debouncedLocation, sortMode])
 
   const eventsListQuery = useEventsListQuery(eventsListFilters, {
     enabled: tab !== "my",
@@ -146,13 +128,17 @@ export const EventsFeature = () => {
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
+    isError: eventsListError,
   } = eventsListQuery
 
   const {
     data: myEventsData,
     isLoading: myEventsLoading,
     isFetching: myEventsFetching,
+    isError: myEventsError,
   } = myEventsQuery
+
+  const queryError = tab === "my" ? myEventsError : eventsListError
 
   const rawEvents = useMemo(() => {
     return tab === "my" ? (myEventsData ?? []) : rawEventsList
@@ -162,6 +148,8 @@ export const EventsFeature = () => {
   const isFetching = tab === "my" ? myEventsFetching : listIsFetching
 
   /* ── Client-side filter + sort ── */
+  // Date range and "upcoming" depend on the current time; the minute tick keeps them current.
+  const clock = useMinuteClock()
   const filteredEvents = useMemo(() => {
     let list = rawEvents
 
@@ -173,28 +161,37 @@ export const EventsFeature = () => {
     }
 
     // Date range filter (client-side)
-    const bounds = getDateRangeBounds(dateRange)
-    if (bounds) {
+    const bounds = getCampusDateRangeKeys(dateRange, new Date(clock), campusTimezone)
+    const isSupportedDateRange =
+      dateRange === "today" || dateRange === "week" || dateRange === "month"
+    if (isSupportedDateRange && !bounds) {
+      list = []
+    } else if (bounds) {
       const [rangeStart, rangeEnd] = bounds
       list = list.filter((e) => {
         if (!e.starts_at) return false
-        const ts = new Date(e.starts_at).getTime()
-        return ts >= rangeStart && ts < rangeEnd
+        const eventDay = getCampusDateKey(e.starts_at, campusTimezone)
+        return eventDay !== null && eventDay >= rangeStart && eventDay < rangeEnd
       })
     }
 
     // Sort
-    if (sortMode === "popular") {
+    if (sortMode === "newest" && tab === "my") {
+      // The legacy My endpoint returns its complete array in ASC batch order.
+      // Sort a copy here without changing that API or main-feed pagination.
+      list = [...list].sort(
+        (a, b) => Date.parse(b.starts_at) - Date.parse(a.starts_at) || b.id.localeCompare(a.id)
+      )
+    } else if (sortMode === "popular") {
       list = [...list].sort((a, b) => (b.participant_count ?? 0) - (a.participant_count ?? 0))
     } else if (sortMode === "upcoming") {
-      const now = Date.now()
       list = [...list]
-        .filter((e) => e.starts_at && new Date(e.starts_at).getTime() > now)
+        .filter((e) => e.starts_at && new Date(e.starts_at).getTime() > clock)
         .sort((a, b) => new Date(a.starts_at!).getTime() - new Date(b.starts_at!).getTime())
     }
 
     return list
-  }, [rawEvents, activeCategory, dateRange, sortMode])
+  }, [rawEvents, activeCategory, dateRange, sortMode, tab, campusTimezone, clock])
 
   const requiresCompleteDataset =
     tab !== "my" && (activeCategory !== "all" || Boolean(dateRange) || sortMode !== "newest")
@@ -266,6 +263,7 @@ export const EventsFeature = () => {
           <EventsList
             eventsList={filteredEvents}
             isInitialLoading={isInitialLoading}
+            queryError={queryError}
             isFetching={isFetching}
             isFetchingNextPage={isFetchingNextPage}
             hasNextPage={canFetchMore}

@@ -147,6 +147,65 @@ describe("webVitals", () => {
     expect(JSON.parse(unlabelledBlob!.parts[0]!)).not.toHaveProperty("label")
   })
 
+  it("falls back once with the same payload when sendBeacon rejects the metric", () => {
+    const sendBeacon = vi.fn(() => false)
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })))
+    vi.stubGlobal("navigator", { ...navigator, sendBeacon })
+    vi.stubGlobal("fetch", fetchMock)
+    expect(initWebVitals(enabledEnv({ VITE_WEB_VITALS_ENDPOINT: "https://metrics.test/v" }))).toBe(
+      true
+    )
+
+    const reporter = vi.mocked(onLCP).mock.calls[0]?.[0]
+    if (!reporter) throw new Error("LCP reporter was not registered")
+    const metric = {
+      ...sampleMetric(),
+      name: "LCP" as const,
+      value: 2400,
+      label: "dashboard",
+      navigationId: 0,
+    }
+    reporter(metric)
+
+    expect(sendBeacon).toHaveBeenCalledOnce()
+    expect(sendBeacon).toHaveBeenCalledWith("https://metrics.test/v", expect.any(Blob))
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(fetchMock).toHaveBeenCalledWith("https://metrics.test/v", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "LCP",
+        value: 2400,
+        delta: 0.1,
+        id: "v1-123",
+        rating: "good",
+        navigationType: "navigate",
+        label: "dashboard",
+      }),
+      keepalive: true,
+      credentials: "omit",
+    })
+  })
+
+  it("does not duplicate an accepted beacon through fetch", () => {
+    const sendBeacon = vi.fn(() => true)
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })))
+    vi.stubGlobal("navigator", { ...navigator, sendBeacon })
+    vi.stubGlobal("fetch", fetchMock)
+    expect(initWebVitals(enabledEnv({ VITE_WEB_VITALS_ENDPOINT: "https://metrics.test/v" }))).toBe(
+      true
+    )
+
+    const reporter = vi.mocked(onLCP).mock.calls[0]?.[0]
+    if (!reporter) throw new Error("LCP reporter was not registered")
+    const metric = { ...sampleMetric(), name: "LCP" as const, value: 2400, navigationId: 0 }
+    reporter(metric)
+
+    expect(sendBeacon).toHaveBeenCalledOnce()
+    expect(sendBeacon).toHaveBeenCalledWith("https://metrics.test/v", expect.any(Blob))
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it("falls back to fetch when sendBeacon throws", () => {
     const sendBeacon = vi.fn(() => {
       throw new Error("beacon down")

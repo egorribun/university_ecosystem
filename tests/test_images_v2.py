@@ -169,6 +169,58 @@ def test_optimize_image_pillow_resize_and_bounds():
         img_mod.VIPS_AVAILABLE = old_vips
 
 
+@pytest.mark.parametrize("mode", ["RGBA", "LA"])
+def test_pillow_thumbnail_real_codec_preserves_transparency(
+    monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    """Keep alpha and colors through a substantial Pillow-only downscale."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    if mode == "RGBA":
+        transparent = (80, 120, 160, 0)
+        opaque = (80, 120, 160, 255)
+        expected_rgb = (80, 120, 160)
+    else:
+        transparent = (120, 0)
+        opaque = (120, 255)
+        expected_rgb = (120, 120, 120)
+
+    with Image.new(mode, (64, 32), transparent) as source:
+        source.paste(opaque, (32, 0, 64, 32))
+        with BytesIO() as payload:
+            source.save(payload, format="PNG")
+            source_data = payload.getvalue()
+
+    original_vips_available = img_mod.VIPS_AVAILABLE
+    with monkeypatch.context() as backend:
+        backend.setattr(img_mod, "VIPS_AVAILABLE", False)
+        data, mime = img_mod.optimize_image(
+            source_data,
+            max_width=8,
+            max_height=4,
+            max_pixels=2048,
+            content_type="image/png",
+        )
+
+    assert img_mod.VIPS_AVAILABLE is original_vips_available
+    assert mime == "image/webp"
+    with Image.open(BytesIO(data)) as decoded:
+        assert decoded.format == "WEBP"
+        assert decoded.size == (8, 4)
+        decoded.load()
+        with decoded.convert("RGBA") as rgba:
+            assert rgba.getpixel((0, 2))[3] <= 5
+            right = rgba.getpixel((7, 2))
+            assert right[3] >= 250
+            # WebP is lossy; inspect opaque pixels away from the alpha edge.
+            assert all(
+                abs(actual - expected) <= 20
+                for actual, expected in zip(right[:3], expected_rgb, strict=True)
+            )
+
+
 def test_optimize_image_pillow_uses_selected_resample_filter():
     """Pass the quality filter into Pillow's thumbnail operation."""
     from io import BytesIO

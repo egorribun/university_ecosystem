@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -53,7 +54,7 @@ func TestAuthClientMaxConnsPerHost(t *testing.T) {
 }
 
 func TestInternalAPIAuthClient_Invalidate(t *testing.T) {
-	client := NewInternalAPIAuthClient("http://localhost", nil)
+	client := NewInternalAPIAuthClientWithToken("http://localhost", "", nil)
 	userID := "550e8400-e29b-41d4-a716-446655440000"
 	roomID := "660e8400-e29b-41d4-a716-446655441111"
 
@@ -92,7 +93,7 @@ func TestInternalAPIAuthClient_CanJoinRoom(t *testing.T) {
 	roomID := "660e8400-e29b-41d4-a716-446655441111"
 
 	t.Run("cache hit", func(t *testing.T) {
-		client := NewInternalAPIAuthClient("http://localhost", nil)
+		client := NewInternalAPIAuthClientWithToken("http://localhost", "", nil)
 		key := userID + ":" + roomID
 		client.cache.Add(key, cacheEntry{allowed: true, expiresAt: time.Now().Add(time.Hour)})
 
@@ -108,7 +109,7 @@ func TestInternalAPIAuthClient_CanJoinRoom(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewInternalAPIAuthClient(server.URL, nil)
+		client := NewInternalAPIAuthClientWithToken(server.URL, "", nil)
 		assert.True(t, client.CanJoinRoom(context.Background(), userID, roomID))
 
 		// Check L1 cache population
@@ -138,7 +139,7 @@ func TestInternalAPIAuthClient_CanJoinRoom(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewInternalAPIAuthClient(server.URL, nil)
+		client := NewInternalAPIAuthClientWithToken(server.URL, "", nil)
 		assert.False(t, client.CanJoinRoom(context.Background(), userID, roomID))
 	})
 
@@ -151,7 +152,7 @@ func TestInternalAPIAuthClient_CanJoinRoom(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewInternalAPIAuthClient(server.URL, nil)
+		client := NewInternalAPIAuthClientWithToken(server.URL, "", nil)
 
 		// Trip the breaker (threshold is 10 consecutive failures)
 		for i := 0; i < 11; i++ {
@@ -169,8 +170,34 @@ func TestInternalAPIAuthClient_CanJoinRoom(t *testing.T) {
 	})
 }
 
+// AUD-182: a backend or breaker failure denies the request but is not a cacheable
+// decision, so the next call must reach a recovered backend instead of a stale denial.
+func TestInternalAPIAuthClient_CanJoinRoom_DoesNotCacheBackendFailures(t *testing.T) {
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+	roomID := "660e8400-e29b-41d4-a716-446655441111"
+
+	var status atomic.Int32
+	status.Store(http.StatusInternalServerError)
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(int(status.Load()))
+	}))
+	defer server.Close()
+
+	client := NewInternalAPIAuthClientWithToken(server.URL, "", nil)
+
+	assert.False(t, client.CanJoinRoom(context.Background(), userID, roomID))
+	_, cached := client.cache.Get(userID + ":" + roomID)
+	assert.False(t, cached, "a backend failure must not populate the L1 cache")
+
+	status.Store(http.StatusOK)
+	assert.True(t, client.CanJoinRoom(context.Background(), userID, roomID))
+	assert.Equal(t, int32(2), calls.Load(), "each call must reach the backend")
+}
+
 func TestInternalAPIAuthClient_Invalidate_RejectsInvalidIDs(t *testing.T) {
-	client := NewInternalAPIAuthClient("http://localhost", nil)
+	client := NewInternalAPIAuthClientWithToken("http://localhost", "", nil)
 	validUser := "550e8400-e29b-41d4-a716-446655440000"
 	validRoom := "660e8400-e29b-41d4-a716-446655441111"
 
@@ -187,7 +214,7 @@ func TestInternalAPIAuthClient_Invalidate_RejectsInvalidIDs(t *testing.T) {
 }
 
 func TestInternalAPIAuthClient_CanJoinRoom_RejectsInvalidIDs(t *testing.T) {
-	client := NewInternalAPIAuthClient("http://localhost", nil)
+	client := NewInternalAPIAuthClientWithToken("http://localhost", "", nil)
 	validUser := "550e8400-e29b-41d4-a716-446655440000"
 	validRoom := "660e8400-e29b-41d4-a716-446655441111"
 
@@ -197,12 +224,12 @@ func TestInternalAPIAuthClient_CanJoinRoom_RejectsInvalidIDs(t *testing.T) {
 }
 
 func TestInternalAPIAuthClient_StartEviction(t *testing.T) {
-	client := NewInternalAPIAuthClient("http://localhost", nil)
+	client := NewInternalAPIAuthClientWithToken("http://localhost", "", nil)
 	client.StartEviction(context.Background())
 }
 
 func TestInternalAPIAuthClient_DoRequest_NewRequestError(t *testing.T) {
-	client := NewInternalAPIAuthClient(":%invalid", nil) // invalid URL scheme/format
+	client := NewInternalAPIAuthClientWithToken(":%invalid", "", nil) // invalid URL scheme/format
 	userID := "550e8400-e29b-41d4-a716-446655440000"
 	roomID := "660e8400-e29b-41d4-a716-446655441111"
 	_, err := client.doRequest(context.Background(), userID, roomID)
@@ -212,7 +239,7 @@ func TestInternalAPIAuthClient_DoRequest_NewRequestError(t *testing.T) {
 func TestInternalAPIAuthClient_DoRequest_DoError(t *testing.T) {
 	// Loopback port 1 deterministically refuses the connection without spawning
 	// resolver goroutines that outlive the test under -race + goleak.
-	client := NewInternalAPIAuthClient("http://127.0.0.1:1", nil)
+	client := NewInternalAPIAuthClientWithToken("http://127.0.0.1:1", "", nil)
 	userID := "550e8400-e29b-41d4-a716-446655440000"
 	roomID := "660e8400-e29b-41d4-a716-446655441111"
 	_, err := client.doRequest(context.Background(), userID, roomID)
@@ -230,7 +257,7 @@ func TestInternalAPIAuthClient_CanJoinRoom_SingleFlight(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewInternalAPIAuthClient(server.URL, nil)
+	client := NewInternalAPIAuthClientWithToken(server.URL, "", nil)
 
 	var wg sync.WaitGroup
 	wg.Add(2)

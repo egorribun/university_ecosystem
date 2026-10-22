@@ -1,3 +1,5 @@
+import { expectImagePickerKeyboard } from "@/tests/helpers/imagePickerKeyboard"
+import { collectWindowErrors } from "@/tests/helpers/windowErrors"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ComponentProps } from "react"
@@ -67,6 +69,27 @@ describe("NewsCardEditDialog mutation contracts", () => {
     apiMocks.post.mockReset()
     apiMocks.patch.mockReset().mockResolvedValue({ data: {} })
     apiMocks.logError.mockReset()
+  })
+
+  it("opens the image picker by keyboard and pointer without submitting", async () => {
+    const props = makeProps()
+    render(<NewsCardEditDialog {...props} />)
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
+    )
+
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    await expectImagePickerKeyboard(
+      screen.getByRole("button", { name: "news:form.changePhoto" }),
+      input,
+      screen.getByLabelText("news:form.content_en"),
+      screen.getByRole("button", { name: "common:buttons.cancel" })
+    )
+
+    expect(apiMocks.post).not.toHaveBeenCalled()
+    expect(apiMocks.patch).not.toHaveBeenCalled()
+    expect(props.onClose).not.toHaveBeenCalled()
+    expect(props.onSuccess).not.toHaveBeenCalled()
   })
 
   it("keeps the namespace, accessibility, field, and class contracts exact", async () => {
@@ -158,34 +181,42 @@ describe("NewsCardEditDialog mutation contracts", () => {
       .spyOn(URL, "createObjectURL")
       .mockReturnValue("blob:contract-preview")
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
-    const view = render(<NewsCardEditDialog {...makeProps()} />)
-    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
-    const file = new File(["image"], "cover.png", { type: "image/png" })
+    let view: ReturnType<typeof render> | undefined
+    try {
+      view = render(<NewsCardEditDialog {...makeProps()} />)
+      const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      const file = new File(["image"], "cover.png", { type: "image/png" })
 
-    fireEvent.change(fileInput, { target: { files: [file] } })
-    await waitFor(() => expect(createObjectURL).toHaveBeenCalledWith(file))
-    expect(screen.getByRole("img", { name: "news:alt.preview" })).toHaveAttribute(
-      "src",
-      "blob:contract-preview"
-    )
+      fireEvent.change(fileInput, { target: { files: [file] } })
+      await waitFor(() => expect(createObjectURL).toHaveBeenCalledWith(file))
+      expect(screen.getByRole("img", { name: "news:alt.preview" })).toHaveAttribute(
+        "src",
+        "blob:contract-preview"
+      )
 
-    fireEvent.change(fileInput, { target: { files: [] } })
-    expect(screen.getByRole("img", { name: "news:alt.preview" })).toHaveAttribute(
-      "src",
-      "blob:contract-preview"
-    )
+      fireEvent.change(fileInput, { target: { files: [] } })
+      expect(screen.getByRole("img", { name: "news:alt.preview" })).toHaveAttribute(
+        "src",
+        "blob:contract-preview"
+      )
 
-    Object.defineProperty(fileInput, "files", { configurable: true, value: null })
-    expect(() => fireEvent.change(fileInput)).not.toThrow()
-    expect(screen.getByRole("img", { name: "news:alt.preview" })).toHaveAttribute(
-      "src",
-      "blob:contract-preview"
-    )
+      Object.defineProperty(fileInput, "files", { configurable: true, value: null })
+      expect(collectWindowErrors(() => fireEvent.change(fileInput))).toEqual([])
+      expect(screen.getByRole("img", { name: "news:alt.preview" })).toHaveAttribute(
+        "src",
+        "blob:contract-preview"
+      )
 
-    view.unmount()
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:contract-preview")
-    createObjectURL.mockRestore()
-    revokeObjectURL.mockRestore()
+      view.unmount()
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:contract-preview")
+    } finally {
+      try {
+        view?.unmount()
+      } finally {
+        createObjectURL.mockRestore()
+        revokeObjectURL.mockRestore()
+      }
+    }
   })
 
   it("marks every invalid field and the image control without adding error styles to valid fields", async () => {
@@ -197,7 +228,7 @@ describe("NewsCardEditDialog mutation contracts", () => {
     const titleEn = screen.getByLabelText("news:form.title_en")
     const contentEn = screen.getByLabelText("news:form.content_en")
     const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
-    const photoButton = screen.getByText("news:form.changePhoto").closest("label")!
+    const photoButton = screen.getByRole("button", { name: "news:form.changePhoto" })
 
     expect(title).not.toHaveClass("border-error-text/50")
     expect(content).not.toHaveClass("border-error-text/50")
@@ -261,7 +292,7 @@ describe("NewsCardEditDialog mutation contracts", () => {
     render(<NewsCardEditDialog {...makeProps()} />)
 
     const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
-    const photoButton = screen.getByText("news:form.changePhoto").closest("label")!
+    const photoButton = screen.getByRole("button", { name: "news:form.changePhoto" })
     const cancelButton = screen.getByRole("button", { name: "common:buttons.cancel" })
     const saveButton = screen.getByRole("button", { name: "common:buttons.save" })
     const file = new File(["image"], "cover.png", { type: "image/png" })
@@ -271,7 +302,7 @@ describe("NewsCardEditDialog mutation contracts", () => {
     await user.click(saveButton)
 
     await waitFor(() => expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument())
-    expect(screen.getByText("common:statuses.uploading").closest("label")).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "common:statuses.uploading" })).toHaveAttribute(
       "aria-disabled",
       "true"
     )
@@ -286,7 +317,7 @@ describe("NewsCardEditDialog mutation contracts", () => {
     expect(uploadCall[0]).toBe("/news/upload_image")
     expect(uploadCall[1]).toBeInstanceOf(FormData)
     expect((uploadCall[1] as FormData).get("file")).toBe(file)
-    expect(screen.getByText("news:form.changePhoto").closest("label")).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "news:form.changePhoto" })).toHaveAttribute(
       "aria-disabled",
       "true"
     )

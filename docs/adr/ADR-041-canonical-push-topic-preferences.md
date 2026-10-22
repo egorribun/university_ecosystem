@@ -20,8 +20,8 @@ Push delivery filters by five canonical topics (`news.published`,
 - `push_subscriptions.topics`: a per-device copy. An empty list means
   "unrestricted, gated only by the user row" in `subscription_supports_topic`.
 
-A review of the pending push account-boundary work (safe-pause handoff
-§0.000 D) found that these stores disagreed and leaked across accounts:
+A review of the push account-boundary behavior on 2026-09-29 found that these
+stores disagreed and leaked across accounts:
 
 1. `POST /push/subscribe` looked an endpoint up without an owner filter and
    silently transferred it to the caller. With `topics` omitted it kept

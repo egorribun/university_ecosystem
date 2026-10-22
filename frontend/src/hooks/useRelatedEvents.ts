@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import { useQueryClient } from "@tanstack/react-query"
+import { isCurrentBrowserSession } from "@/stores/sessionEpoch"
 import type { Event } from "@/types/Event"
 import { inferEventCategory, type EventCategory } from "@/features/events/categories"
 
@@ -13,8 +14,10 @@ import { inferEventCategory, type EventCategory } from "@/features/events/catego
  */
 export function useRelatedEvents(currentId: string, category: EventCategory, limit = 3): Event[] {
   const queryClient = useQueryClient()
+  const sessionIsCurrent = typeof window === "undefined" || isCurrentBrowserSession()
 
   return useMemo(() => {
+    if (!sessionIsCurrent) return []
     // Pull from all cached events list queries
     const queries = queryClient.getQueriesData<{ pages?: Array<{ items?: Event[] }> }>({
       queryKey: ["events", "list"],
@@ -52,5 +55,5 @@ export function useRelatedEvents(currentId: string, category: EventCategory, lim
       .slice(0, limit - sameCategory.length)
 
     return [...sameCategory, ...remaining].slice(0, limit)
-  }, [queryClient, currentId, category, limit])
+  }, [queryClient, currentId, category, limit, sessionIsCurrent])
 }

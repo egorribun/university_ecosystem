@@ -10,24 +10,21 @@ export async function warmSsrRuntime(requestHandler, { url, timeoutMs = 60_000 }
   }
 
   const controller = new AbortController()
+  const request = new Request(url, {
+    headers: { accept: "text/html" },
+    signal: controller.signal,
+  })
   let timer
   const timedOut = new Promise((_, reject) => {
     timer = setTimeout(() => {
-      controller.abort()
-      reject(new Error(`SSR readiness warmup exceeded ${timeoutMs}ms`))
+      const timeoutError = new Error(`SSR readiness warmup exceeded ${timeoutMs}ms`)
+      controller.abort(timeoutError)
+      reject(request.signal.reason ?? timeoutError)
     }, timeoutMs)
   })
 
   try {
-    const response = await Promise.race([
-      requestHandler.fetch(
-        new Request(url, {
-          headers: { accept: "text/html" },
-          signal: controller.signal,
-        })
-      ),
-      timedOut,
-    ])
+    const response = await Promise.race([requestHandler.fetch(request), timedOut])
     if (!(response instanceof Response) || response.status !== 200) {
       await response?.body?.cancel()
       throw new Error(`SSR readiness warmup returned HTTP ${response?.status ?? "invalid"}`)

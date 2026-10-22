@@ -1,6 +1,16 @@
-import axios, { AxiosHeaders, type AxiosRequestConfig } from "axios"
+import axios, {
+  AxiosHeaders,
+  type AxiosRequestConfig,
+  type InternalAxiosRequestConfig,
+} from "axios"
 import { client as generatedClient } from "@/api/generated/client.gen"
 import { resolveSsrBackendOrigin } from "./backendOrigin"
+import {
+  getBrowserSessionGeneration,
+  getSessionEpoch,
+  hasFailedBrowserSessionRotation,
+  hasStaleBrowserSessionBinding,
+} from "@/stores/sessionEpoch"
 import { applyLanguageHeader } from "./interceptors/language"
 import { updateTraceContext } from "./interceptors/traceContext"
 import {
@@ -24,6 +34,7 @@ import {
 export const API_UNAUTHORIZED_EVENT = "auth:unauthorized"
 export const SKIP_UNAUTHORIZED_HEADER = "X-Client-Skip-Unauthorized"
 const API_TIMEOUT_MS = 8000
+const SESSION_CHANGED_CANCEL_MESSAGE = "Request canceled because the browser session changed"
 
 /**
  * Endpoints that are allowed to bypass the client-side rate-limit queue.
@@ -54,9 +65,24 @@ export type ApiRequestConfig<D = unknown> = AxiosRequestConfig<D> & {
   __rateLimitRetryCount?: number
   __clientRateLimitAcquired?: boolean
   etagCacheKey?: string
+  /** Internal owner captured before asynchronous request preflight. */
+  __sessionIsCurrent?: () => boolean
 }
 
 export type TypedRequestOptions<_T extends string, _M extends string = "get"> = ApiRequestConfig
+
+const captureRequestSession = (): (() => boolean) => {
+  const epoch = getSessionEpoch()
+  const generation = getBrowserSessionGeneration()
+  return () => epoch === getSessionEpoch() && generation === getBrowserSessionGeneration()
+}
+
+const assertCurrentRequestSession = (config: InternalAxiosRequestConfig): void => {
+  const ownsSession = (config as ApiRequestConfig).__sessionIsCurrent
+  if (typeof ownsSession === "function" && !ownsSession()) {
+    throw new axios.CanceledError(SESSION_CHANGED_CANCEL_MESSAGE, config)
+  }
+}
 
 const api = axios.create({
   baseURL: import.meta.env.DEV ? devBase : prodBase,
@@ -71,16 +97,18 @@ const api = axios.create({
   },
 })
 
-export const resolveRequestPath = (config: AxiosRequestConfig): string => {
+const resolveRequestUrl = (config: AxiosRequestConfig): URL => {
   const rawUrl = config.url ?? ""
   const rawBaseUrl = config.baseURL ?? ""
   const isAbsoluteUrl = rawUrl.includes("://") || (rawUrl.startsWith("//") && rawUrl[2] !== "/")
   const combinedUrl = isAbsoluteUrl
     ? rawUrl
-    : `${rawBaseUrl.replace(/\/+$/u, "")}/${rawUrl.replace(/^\/+/u, "")}`
-  const baseOrigin = window.location.origin
-  return new URL(combinedUrl, baseOrigin).pathname
+    : rawBaseUrl.replace(/\/+$/u, "") + "/" + rawUrl.replace(/^\/+/u, "")
+  return new URL(combinedUrl, window.location.origin)
 }
+
+export const resolveRequestPath = (config: AxiosRequestConfig): string =>
+  resolveRequestUrl(config).pathname
 
 type SsrFingerprintHeaders = {
   userAgent?: string
@@ -105,7 +133,14 @@ if (import.meta.env.VITE_LHCI === "true") {
 
   api.defaults.adapter = async (config) => {
     if (shouldUseE2ENetworkMocks(config)) {
-      return networkAdapter(config)
+      // The allowlist is path-based. Rebase the request onto the jsdom/browser
+      // origin so even protocol-relative or absolute mock URLs cannot escape it.
+      const resolvedUrl = resolveRequestUrl(config)
+      return networkAdapter({
+        ...config,
+        baseURL: window.location.origin,
+        url: resolvedUrl.pathname + resolvedUrl.search + resolvedUrl.hash,
+      })
     }
     return {
       data: { items: [] }, // Provide a safe default object/array combo
@@ -245,6 +280,167 @@ export const ensureCsrfCookie = (): Promise<void> => {
 }
 
 /**
+ * Fetch the public news list without ambient browser credentials.
+ *
+ * This deliberately uses native fetch rather than the shared Axios client:
+ * the Axios instance includes cookies and carries auth-bound preflight state.
+ * Keep the route fixed and same-origin so this escape hatch cannot become a
+ * generic credentialless transport for personalized endpoints.
+ */
+export const fetchAnonymousNewsPage = ({
+  language,
+  limit,
+  cursor,
+  signal,
+}: {
+  language: string
+  limit: number
+  cursor?: string | null
+  signal?: AbortSignal
+}): Promise<Response> => {
+  if (typeof window === "undefined") {
+    return Promise.reject(new Error("Anonymous news requests require a browser origin"))
+  }
+
+  const url = new URL("/api/v1/news", window.location.origin)
+  url.searchParams.set("limit", String(limit))
+  if (cursor != null) url.searchParams.set("cursor", cursor)
+
+  return fetch(url, {
+    method: "GET",
+    mode: "same-origin",
+    credentials: "omit",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Accept-Language": language,
+    },
+    signal,
+  })
+}
+
+const ANONYMOUS_RESOURCE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu
+
+const anonymousApiUrl = (path: string): URL => {
+  if (typeof window === "undefined") {
+    throw new Error("Anonymous API requests require a browser origin")
+  }
+  return new URL(path, window.location.origin)
+}
+
+const fetchAnonymousGet = (url: URL, language: string, signal?: AbortSignal) =>
+  fetch(url, {
+    method: "GET",
+    mode: "same-origin",
+    credentials: "omit",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Accept-Language": language,
+    },
+    signal,
+  })
+
+/** Fetch one public article without cookies or account-bound Axios state. */
+export const fetchAnonymousNewsDetail = ({
+  id,
+  language,
+  signal,
+}: {
+  id: string
+  language: string
+  signal?: AbortSignal
+}): Promise<Response> => {
+  if (!ANONYMOUS_RESOURCE_ID.test(id)) {
+    return Promise.reject(new Error("Anonymous news detail requires a UUID"))
+  }
+  const path = `/api/v1/news/${encodeURIComponent(id)}`
+  let url: URL
+  try {
+    url = anonymousApiUrl(path)
+  } catch (error) {
+    return Promise.reject(error)
+  }
+  return fetchAnonymousGet(url, language, signal)
+}
+
+/** Fetch public article interactions while preserving the comment-page contract. */
+export const fetchAnonymousNewsInteractions = ({
+  id,
+  language,
+  limit,
+  offset,
+  signal,
+}: {
+  id: string
+  language: string
+  limit: number
+  offset: number
+  signal?: AbortSignal
+}): Promise<Response> => {
+  if (!ANONYMOUS_RESOURCE_ID.test(id)) {
+    return Promise.reject(new Error("Anonymous news interactions require a UUID"))
+  }
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    return Promise.reject(new Error("Anonymous news interaction limit is invalid"))
+  }
+  if (!Number.isSafeInteger(offset) || offset < 0) {
+    return Promise.reject(new Error("Anonymous news interaction offset is invalid"))
+  }
+  const path = `/api/v1/news/${encodeURIComponent(id)}/interactions`
+  let url: URL
+  try {
+    url = anonymousApiUrl(path)
+  } catch (error) {
+    return Promise.reject(error)
+  }
+  url.searchParams.set("limit", String(limit))
+  url.searchParams.set("offset", String(offset))
+  return fetchAnonymousGet(url, language, signal)
+}
+
+/** Fetch the public schedule for one validated group UUID without cookies. */
+export const fetchAnonymousGroupSchedule = ({
+  groupId,
+  language,
+  signal,
+}: {
+  groupId: string
+  language: string
+  signal?: AbortSignal
+}): Promise<Response> => {
+  if (!ANONYMOUS_RESOURCE_ID.test(groupId)) {
+    return Promise.reject(new Error("Anonymous schedule requests require a group UUID"))
+  }
+  const path = `/api/v1/schedule/${encodeURIComponent(groupId)}`
+  let url: URL
+  try {
+    url = anonymousApiUrl(path)
+  } catch (error) {
+    return Promise.reject(error)
+  }
+  return fetchAnonymousGet(url, language, signal)
+}
+
+/** Fetch the public schedule-group directory without cookies or Axios state. */
+export const fetchAnonymousScheduleGroups = ({
+  language,
+  signal,
+}: {
+  language: string
+  signal?: AbortSignal
+}): Promise<Response> => {
+  const path = "/api/v1/groups"
+  let url: URL
+  try {
+    url = anonymousApiUrl(path)
+  } catch (error) {
+    return Promise.reject(error)
+  }
+  return fetchAnonymousGet(url, language, signal)
+}
+
+/**
  * Split a request URL into its origin and path. Only an absolute URL parses
  * without a base; relative SDK paths (and a missing URL) throw and are kept
  * unchanged with an empty origin.
@@ -259,8 +455,82 @@ const splitRequestUrl = (url: string | undefined): { origin: string; path?: stri
   }
 }
 
+const SESSION_BOOTSTRAP_PATHS = new Set(["/users/me", "/auth/session/signing-key"])
+
+const resolveSameOriginCanonicalPath = (config: InternalAxiosRequestConfig) => {
+  if (typeof config.url !== "string") return null
+
+  const rawUrl = config.url
+  const rawBaseUrl = config.baseURL ?? api.defaults.baseURL ?? ""
+  const isAbsoluteUrl = rawUrl.startsWith("//") || /^[a-z][a-z\d+.-]*:\/\//iu.test(rawUrl)
+  const hasApiVersionBase = rawBaseUrl.replace(/\/+$/u, "").endsWith("/api/v1")
+  const combinedUrl = isAbsoluteUrl
+    ? rawUrl
+    : rawBaseUrl.replace(/\/+$/u, "") + "/" + rawUrl.replace(/^\/+/, "")
+
+  let parsed: URL
+  try {
+    parsed = new URL(combinedUrl, window.location.origin)
+  } catch {
+    return null
+  }
+
+  if (
+    parsed.origin !== window.location.origin ||
+    parsed.username.length > 0 ||
+    parsed.password.length > 0 ||
+    parsed.search.length > 0 ||
+    parsed.hash.length > 0
+  ) {
+    return null
+  }
+
+  const path = parsed.pathname.startsWith("/api/v1/")
+    ? parsed.pathname.slice("/api/v1".length)
+    : parsed.pathname
+  return { hasApiVersionBase, isAbsoluteUrl, path }
+}
+
+const isSessionBootstrapRequest = (config: InternalAxiosRequestConfig): boolean => {
+  if (config.method?.toLowerCase() !== "get") return false
+
+  const resolved = resolveSameOriginCanonicalPath(config)
+  if (!resolved) return false
+
+  if (
+    resolved.isAbsoluteUrl &&
+    resolved.hasApiVersionBase &&
+    SESSION_BOOTSTRAP_PATHS.has(resolved.path)
+  ) {
+    return false
+  }
+  return SESSION_BOOTSTRAP_PATHS.has(resolved.path)
+}
+
+const FAILED_ROTATION_AUTH_RECOVERY_PATHS = new Set(["/auth/login", "/auth/mfa/verify"])
+
+const isFailedRotationAuthRecoveryRequest = (config: InternalAxiosRequestConfig): boolean => {
+  if (!hasFailedBrowserSessionRotation() || config.method?.toLowerCase() !== "post") {
+    return false
+  }
+
+  const resolved = resolveSameOriginCanonicalPath(config)
+  return (
+    resolved !== null &&
+    !resolved.isAbsoluteUrl &&
+    FAILED_ROTATION_AUTH_RECOVERY_PATHS.has(resolved.path)
+  )
+}
+
 api.interceptors.request.use(async (config) => {
-  const candidate = config as ApiRequestConfig
+  const candidate = config as InternalAxiosRequestConfig & ApiRequestConfig
+
+  // Bind every browser request before its first asynchronous preflight. The
+  // closure reads the shared generation so an old tab cannot dispatch with a
+  // newer tab's browser-wide authentication cookie. Axios retries preserve it.
+  if (!isSsrRuntime) {
+    candidate.__sessionIsCurrent ??= captureRequestSession()
+  }
 
   // FIX-44-01: Normalize doubled /api/v1 prefix.
   // The @hey-api/client-axios `buildUrl()` reads our axios instance's baseURL ("/api/v1")
@@ -276,6 +546,20 @@ api.interceptors.request.use(async (config) => {
   } else if (urlPath?.startsWith("/api/v1/") && config.baseURL?.includes("/api/v1")) {
     urlPath = urlPath.slice("/api/v1".length)
     config.url = urlOrigin + urlPath
+  }
+
+  // A newly-started request from an old tab otherwise captures the remote
+  // generation and can dispatch with that tab's browser-wide authentication
+  // cookie. Keep only the two read-only requests required to identify and
+  // establish the current profile. Missing generation retains live-network
+  // auth behavior when browser storage is unavailable.
+  if (
+    !isSsrRuntime &&
+    hasStaleBrowserSessionBinding() &&
+    !isSessionBootstrapRequest(config) &&
+    !isFailedRotationAuthRecoveryRequest(config)
+  ) {
+    throw new axios.CanceledError(SESSION_CHANGED_CANCEL_MESSAGE, config)
   }
 
   // Mutation dedup: reject duplicate in-flight requests with the same Idempotency-Key.
@@ -313,12 +597,18 @@ api.interceptors.request.use(async (config) => {
   // The queue is process-global. Applying it during SSR combines requests
   // from independent visitors and can delay the HTML response past its timeout.
   if (!isSsrRuntime && !candidate.skipRateLimitQueue) {
-    // @ts-expect-error - axios config bridge
     await waitForClientQueueSlot(candidate)
   }
 
   if (!isSsrRuntime && isRateLimited()) {
-    await waitForRateLimitWindow(config.signal as AbortSignal | undefined)
+    try {
+      await waitForRateLimitWindow(config.signal as AbortSignal | undefined)
+    } catch (error) {
+      // A request-interceptor rejection has no response config for the response
+      // interceptor to release, so give back the slot acquired above here.
+      releaseClientQueueSlot(candidate)
+      throw error
+    }
   }
 
   applyLanguageHeader(config)
@@ -361,6 +651,8 @@ api.interceptors.request.use(async (config) => {
     config.headers = headers
   }
 
+  if (!isSsrRuntime) assertCurrentRequestSession(config)
+
   return config
 })
 
@@ -379,21 +671,19 @@ const _cleanupIdempotencyKey = (config: ApiRequestConfig | undefined) => {
 
 api.interceptors.response.use(
   async (response) => {
-    const config = response.config as ApiRequestConfig | undefined
+    const config = response.config as (InternalAxiosRequestConfig & ApiRequestConfig) | undefined
     _cleanupIdempotencyKey(config)
     if (config?.etagCacheKey) {
       await handleEtagResponse(response, config.etagCacheKey)
     }
     updateTraceContext(response.headers as AxiosHeaders)
-    // @ts-expect-error - axios config bridge
     releaseClientQueueSlot(config)
     return response
   },
   async (error) => {
-    const config = error?.config as ApiRequestConfig | undefined
+    const config = error?.config as (InternalAxiosRequestConfig & ApiRequestConfig) | undefined
     const responseStatus = error?.response?.status
     _cleanupIdempotencyKey(config)
-    // @ts-expect-error - axios config bridge
     releaseClientQueueSlot(config)
 
     if (error?.response?.headers) {
@@ -411,8 +701,12 @@ api.interceptors.response.use(
       const retryCount = config.__rateLimitRetryCount ?? 0
       if (retryCount < RATE_LIMIT_MAX_RETRY && !config.signal?.aborted && !isAbortError(error)) {
         config.__rateLimitRetryCount = retryCount + 1
+        // Do not keep a stale tab in the shared retry wait, and check again
+        // after the asynchronous window before Axios can attach current cookies.
+        assertCurrentRequestSession(config)
         // RZ-31-04: Propagate AbortSignal so navigation cancels the wait.
         await waitForRateLimitWindow(config.signal)
+        assertCurrentRequestSession(config)
         return api.request(config)
       }
     }

@@ -264,3 +264,76 @@ async def test_cleanup_dlq(async_client, user_factory, job_factory, db_session):
     assert response.status_code == 200
     assert response.json()["deleted_count"] == 1
     assert response.json()["older_than_days"] == 7
+
+
+@pytest.mark.asyncio
+async def test_retry_completed_dlq_job_preserves_persisted_state(
+    async_client, user_factory, job_factory, db_session
+):
+    from app.core.localization import translate
+
+    _, token = await _login_admin(async_client, user_factory)
+    job = await job_factory(
+        status=JobStatus.COMPLETED.value,
+        retry_count=2,
+        next_retry_at=datetime.now(UTC) + timedelta(minutes=30),
+        updated_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+    before = (job.status, job.retry_count, job.next_retry_at, job.updated_at)
+
+    response = await async_client.post(
+        f"/admin/dlq/retry/{job.id}",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept-Language": "en",
+            "X-Internal-Token": "secret",
+            "X-Query-Budget": "15",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == translate(
+        "errors.dlq.already_resolved", locale="en"
+    )
+    await db_session.refresh(job)
+    assert (job.status, job.retry_count, job.next_retry_at, job.updated_at) == before
+
+
+@pytest.mark.parametrize(
+    "status",
+    [JobStatus.FAILED.value, JobStatus.PENDING.value, JobStatus.RETRYING.value],
+    ids=["failed", "pending", "stale-retrying"],
+)
+@pytest.mark.asyncio
+async def test_retry_dlq_job_preserves_non_completed_status_controls(
+    async_client, user_factory, job_factory, db_session, status
+):
+    _, token = await _login_admin(async_client, user_factory)
+    stale_at = datetime.now(UTC) - timedelta(hours=1)
+    job = await job_factory(
+        status=status,
+        retry_count=2,
+        next_retry_at=stale_at,
+        updated_at=stale_at,
+    )
+    before_retry = job.next_retry_at
+    before_update = job.updated_at
+
+    response = await async_client.post(
+        f"/admin/dlq/retry/{job.id}",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept-Language": "en",
+            "X-Internal-Token": "secret",
+            "X-Query-Budget": "15",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    await db_session.refresh(job)
+    assert job.status == JobStatus.PENDING.value
+    assert job.retry_count == 0
+    assert job.next_retry_at is not None
+    assert job.next_retry_at != before_retry
+    assert job.updated_at != before_update

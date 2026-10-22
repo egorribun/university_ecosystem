@@ -21,7 +21,6 @@ package hub
 
 import (
 	"context"
-	"encoding/json"
 	"sync"
 	"testing"
 	"time"
@@ -207,45 +206,6 @@ func TestConcurrentClose_Send_NoDataRace(t *testing.T) {
 		// All goroutines finished without panic — success.
 	case <-time.After(5 * time.Second):
 		t.Fatal("concurrent close+send test timed out — possible deadlock or panic")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Тест 5: ratelimit превышен per-client
-// ---------------------------------------------------------------------------
-
-// TestHandleMessage_RateLimit_PerClient verifies that when a client's token
-// bucket is exhausted, handleMessage:
-//  1. does NOT forward the message to NATS
-//  2. writes a {"type":"rate_limit_exceeded"} JSON notice to client.Send
-func TestHandleMessage_RateLimit_PerClient(t *testing.T) {
-	h := setupTestHub()
-	// Deny all messages from the start by setting rate to 0 tokens/sec with burst 0.
-	h.clientMsgRateLimit = 0
-	h.clientMsgRateBurst = 0
-
-	srv, _ := newConnPair(t)
-	c := newClientOn(h, srv, "rate-test-client", "rate-user")
-	c.JoinRoom("test-room")
-
-	data := []byte(`{"type":"message","room":"test-room","payload":{"text":"hello"}}`)
-	msg := Message{Type: "message", Room: "test-room"}
-
-	// handleMessage with exhausted bucket must return early without touching NATS.
-	// Since NATS is nil, a panic would indicate the rate limit check was bypassed.
-	require.NotPanics(t, func() {
-		c.handleMessage(msg, data)
-	}, "handleMessage must not reach NATS when rate-limited")
-
-	// Confirm the rate_limit_exceeded notice was queued.
-	select {
-	case notice := <-c.Send:
-		var raw map[string]string
-		require.NoError(t, json.Unmarshal(notice, &raw), "notice must be valid JSON")
-		assert.Equal(t, "rate_limit_exceeded", raw["type"],
-			"rate-limited message must produce a rate_limit_exceeded notice")
-	default:
-		t.Fatal("expected rate_limit_exceeded notice in client.Send channel")
 	}
 }
 

@@ -9,6 +9,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    UniqueConstraint,
 )
 
 # Removed postgresql UUID import
@@ -21,11 +22,20 @@ from app.models.mixins import UUID7PrimaryKeyMixin
 class Group(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "groups"
 
+    # Private ownership for the synthetic demo cohort; never exposed by group
+    # API schemas.
+    demo_seed_key: Mapped[str | None] = mapped_column(
+        String(96), nullable=True, default=None
+    )
     name: Mapped[str | None] = mapped_column(
         String(512), index=True
     )  # LOW-W19: bounded String
     course: Mapped[int | None] = mapped_column(Integer)
     faculty: Mapped[str | None] = mapped_column(String(256))  # LOW-W19: bounded String
+
+    __table_args__ = (
+        UniqueConstraint("demo_seed_key", name="uq_groups_demo_seed_key"),
+    )
 
     # PERF-W19-OOM: changed from lazy="selectin" to lazy="noload" — eagerly
     # loading all users per group on list endpoints risks OOM for large groups.

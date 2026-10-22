@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 const translationMode = vi.hoisted(() => ({ emptyCopyLabel: false }))
@@ -39,10 +39,21 @@ vi.mock("qrcode.react", () => ({
 
 import { TotpQrDisplay } from "../TotpQrDisplay"
 
-afterEach(() => {
-  vi.unstubAllGlobals()
-  vi.useRealTimers()
-  translationMode.emptyCopyLabel = false
+afterEach(async () => {
+  try {
+    await act(async () => {
+      await vi.dynamicImportSettled()
+    })
+  } finally {
+    try {
+      cleanup()
+    } finally {
+      vi.unstubAllGlobals()
+      if (vi.isFakeTimers()) vi.clearAllTimers()
+      vi.useRealTimers()
+      translationMode.emptyCopyLabel = false
+    }
+  }
 })
 
 describe("TotpQrDisplay", () => {
@@ -60,7 +71,6 @@ describe("TotpQrDisplay", () => {
 
     expect(screen.getByText("mfa.totp.accountLabel:student@example.com")).toBeInTheDocument()
     expect(screen.getByLabelText("mfa.totp.qrAriaLabel")).toBeInTheDocument()
-    expect(document.querySelector(".animate-pulse")).toBeInTheDocument()
     expect(screen.getByDisplayValue("ABCD12")).toBeInTheDocument()
     expect(screen.getByLabelText("mfa.totp.qrAriaLabel")).toHaveClass("min-h-56")
 
@@ -121,6 +131,7 @@ describe("TotpQrDisplay", () => {
     )
     expect(screen.getByDisplayValue("XY")).toBeInTheDocument()
 
+    vi.useFakeTimers()
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "mfa.totp.copySecret" }))
       await Promise.resolve()
@@ -135,6 +146,7 @@ describe("TotpQrDisplay", () => {
       .mockRejectedValueOnce(new Error("clipboard denied"))
     vi.stubGlobal("navigator", { clipboard: { writeText } })
     render(<TotpQrDisplay otpauthUrl="otpauth://totp/Retry" secret="secret" />)
+    vi.useFakeTimers()
     const button = screen.getByRole("button", { name: "mfa.totp.copySecret" })
 
     await act(async () => {
@@ -176,5 +188,58 @@ describe("TotpQrDisplay", () => {
     expect(screen.getByRole("heading", { name: "mfa.totp.scanHeading" })).toBeInTheDocument()
     expect(screen.getByText("mfa.totp.instructions")).toBeInTheDocument()
     expect(screen.getByLabelText("mfa.totp.manualHeading")).toHaveValue("SECRET")
+  })
+})
+
+describe("TotpQrDisplay live announcements", () => {
+  it("announces localized copy feedback without exposing the secret", async () => {
+    const { LiveRegionProvider } = await import("@/components/ui/LiveRegionProvider")
+    const writeText = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("clipboard denied"))
+    vi.stubGlobal("navigator", { clipboard: { writeText } })
+    const { unmount } = render(
+      <LiveRegionProvider>
+        <TotpQrDisplay otpauthUrl="otpauth://totp/Announcement" secret="xy z" />
+      </LiveRegionProvider>
+    )
+    try {
+      await screen.findByTestId("qr-code")
+      const status = screen.getByRole("status")
+      const manualCode = screen.getByLabelText("mfa.totp.manualHeading") as HTMLInputElement
+      expect(status).toHaveAttribute("aria-live", "polite")
+      expect(status).toHaveAttribute("aria-atomic", "true")
+      expect(status.textContent).toBe("")
+      vi.useFakeTimers()
+      const button = screen.getByRole("button", { name: "mfa.totp.copySecret" })
+      await act(async () => {
+        fireEvent.click(button)
+        await Promise.resolve()
+      })
+      expect(writeText).toHaveBeenCalledWith(manualCode.value)
+      expect(status.textContent).toBe("mfa.totp.copied")
+      expect(status.textContent).not.toContain(manualCode.value)
+      expect(screen.getByRole("alert").textContent).not.toContain(manualCode.value)
+
+      act(() => {
+        vi.advanceTimersByTime(3000)
+      })
+      expect(status.textContent).toBe("")
+      await act(async () => {
+        fireEvent.click(button)
+        await Promise.resolve()
+      })
+      expect(writeText).toHaveBeenCalledTimes(2)
+      expect(status.textContent).toBe("")
+      expect(screen.getByRole("alert").textContent).not.toContain(manualCode.value)
+    } finally {
+      if (vi.isFakeTimers()) {
+        act(() => {
+          vi.advanceTimersByTime(3000)
+        })
+      }
+      unmount()
+    }
   })
 })

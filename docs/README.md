@@ -27,27 +27,75 @@ handoffs are intentionally not part of the canonical index.
 - [Deployment guide (English)](DEPLOY.en.md)
 - [Helm chart](../charts/university-ecosystem/README.md)
 - [Kubernetes notes](../k8s/README.md)
+- [Database backup and restore runbook](runbooks/database-backup-restore.md)
 - [S3 storage migration runbook](runbooks/s3-seaweedfs-cutover.md)
+- [Rejected-upload quarantine and capacity](runbooks/upload-quarantine.md)
+- [Observability configuration and reference examples](observability/README.md)
 - [Dependency cooldown emergency procedure](DEPENDENCY_COOLDOWN_EMERGENCY.md)
-- [Legacy MinIO volume migration to SeaweedFS](runbooks/s3-seaweedfs-cutover.md)
 - [Manual MFA verification checklist](manual-mfa-checklist.md)
 
 ## Quality evidence
 
-- [MVP master plan](superpowers/plans/MVP_MASTER_PLAN.md) — the single consolidated
-  plan, progress and continuation guide.
-- [Approved MVP plan (snapshot)](superpowers/plans/MVP_APPROVED_PLAN.md) — phases,
-  acceptance tables and owner decisions of 2026-09-28.
+- [MVP master plan (Russian)](superpowers/plans/MVP_MASTER_PLAN.md) — the single
+  current roadmap, product acceptance for `v1.0.0`, retained work checkpoints
+  and the certification backlog for `v1.1`.
+- [ADR-047: risk-based quality policy](adr/ADR-047-risk-based-quality-policy.md)
+  — Tier 0 keeps 100% coverage, with the owner-approved finite no-decrease
+  baseline for exactly 131 unchanged migrations through 2026-11-13. Mutation
+  testing is a nightly signal after Q1; other coverage floors remain until Q3.
 - [Active MVP closure status](superpowers/plans/STATUS.md) — the single current
-  operational status; earlier handoff and continuation plans live under
-  `superpowers/plans/archive/` as history.
+  operational status. Historical handoffs are not continuation instructions.
 - [Quality dashboard](testing/dashboard.md)
 - [CI check catalog runbook](testing/ci-check-catalog-runbook.md)
 - [i18n gate](testing/i18n-gate.md)
 - [Flaky-test audit runbook](testing/flaky-test-audit-runbook.md)
 - [Performance regression baseline](testing/performance-regression-baseline.md)
-- [Canonical audit index](audits/INDEX.md)
+- [Canonical audit index and retention policy](audits/INDEX.md)
+- [Full platform audit, October 2026](audits/AUDIT-2026-10.md) — current
+  open-finding register; [dependency closure checkpoint (2026-10-15)](audits/AUDIT-2026-10.md#dependency-closure-supplement-2026-10-15)
+  records frozen dependency selection and source-bound local evidence. The
+  [2026-10-16 owner update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16)
+  records the intermediate owner-approved scope of 252 after the 18-, 7-, and
+  2-identity approvals, preserving the prior 250 records. The later nine-identity
+  Go source-contract approval extended the historical scope to 261; see the
+  [nine-identity audit update](audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).
+  The 319-identity baseline and 78 required contexts remain unchanged. The
+  [post-pragma-removal update](audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16)
+  distinguishes the historical 243-policy unfiltered scan from the private
+  conditional 250-overlay result. The policy approvals do not establish passing
+  tests, final-source validation, or hosted-check results. Git and PR #1306 determine published source
+  and hosted status. The current detect-secrets disposition scope is 282;
+  the separate finite Gitleaks approval covers 25 historical fingerprints.
+  See [current status](superpowers/plans/STATUS.md) and the [Gitleaks decision](audits/AUDIT-2026-10.md#exact-historical-gitleaks-owner-decision-and-quarantine-evidence--2026-10-20).
+  See the [two-identity update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16)
+  and the [nine-identity update](audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).
+- [Scoped platform review template](superpowers/plans/AUDIT_PROMPT.md).
 - [Machine-enforced quality contract](../quality/quality-contract.json)
 
-Historical audit reports remain under `audits/archive/`. They are retained as
-an explicit audit trail and are not current implementation guidance.
+Legacy audit and plan archives have been reconciled against the master plan,
+ADRs, tests, and workflow contracts, then removed from the working tree without
+rewriting Git history. The audit index records the private rescue bundle,
+verification evidence, and recovery procedure; archive contents are not current
+implementation guidance.
+
+## Documentation ownership
+
+| Subject                                       | Canonical source                                                                                                                        |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Product requirements                          | [MVP requirements](superpowers/plans/University_Ecosystem_MVP.md)                                                                       |
+| Priorities, acceptance and v1.1 backlog       | [MVP master plan](superpowers/plans/MVP_MASTER_PLAN.md)                                                                                 |
+| Current checkpoint and next actions           | [STATUS](superpowers/plans/STATUS.md)                                                                                                   |
+| Architecture and policy decisions             | [ADRs](adr/README.md)                                                                                                                   |
+| Enforced quality and check inventory          | [Quality contract](../quality/quality-contract.json), [testing guide](../TESTING.md) and [CI catalog](../quality/ci-check-catalog.json) |
+| Operator procedures                           | [Deployment](DEPLOY.en.md) and [runbooks](runbooks/)                                                                                    |
+| Finding traceability and historical retention | [Audit index](audits/INDEX.md)                                                                                                          |
+| Current open findings                         | [Platform audit, October 2026](audits/AUDIT-2026-10.md)                                                                                 |
+
+Update the canonical source before adjusting summaries or translations. Keep
+commands, versions and configuration descriptions aligned with executable
+configuration. Change a generated document through its generator and verify
+the output. Record runtime results with their source revision and scope; a
+historical pass does not certify a later checkout. Retain useful procedures
+and decisions while removing superseded handoffs and duplicate snapshots.
+The vendored skill catalog under `.agents/skills/` retains upstream guidance;
+current task and repository instructions determine how it applies here.

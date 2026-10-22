@@ -120,36 +120,6 @@ def test_reset_mfa_main_value_error_calls_parser_error() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_cache_invalidation_register_connection_error() -> None:
-    """register_key_with_tags must swallow ConnectionError (line 80)."""
-    from app.services.cache_invalidation import register_key_with_tags
-
-    with patch(
-        "app.services.cache_invalidation.get_cache",
-        side_effect=ConnectionError("redis down"),
-    ):
-        # Must not raise
-        await register_key_with_tags("my:key", ttl_seconds=60)
-
-
-@pytest.mark.asyncio
-async def test_cache_invalidation_invalidate_connection_error() -> None:
-    """invalidate_by_tag must return 0 on ConnectionError (line 113)."""
-    from app.services.cache_invalidation import CacheTag, invalidate_by_tag
-
-    fake_redis = AsyncMock()
-    fake_redis.smembers.side_effect = ConnectionError("redis down")
-
-    with patch(
-        "app.services.cache_invalidation.get_cache",
-        return_value=fake_redis,
-    ):
-        result = await invalidate_by_tag(CacheTag.USER)
-
-    assert result == 0
-
-
 # ---------------------------------------------------------------------------
 # app/services/file_scanner.py  lines 59, 132, 144
 # ---------------------------------------------------------------------------
@@ -197,67 +167,9 @@ def test_file_scanner_duration_limit_value_error() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_notifications_retention_loop_os_error() -> None:
-    """The retention loop must log and continue on OSError (line 67)."""
-    from app.services.notifications_retention import (
-        NotificationsRetentionConfig,
-        start_notifications_retention_scheduler,
-    )
-
-    call_count = 0
-
-    async def fake_cleanup(*, retention_days: int) -> tuple[int, int]:
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            raise OSError("DB gone")
-        raise asyncio.CancelledError
-
-    with patch(
-        "app.services.notifications_retention.cleanup_stale_notifications",
-        side_effect=fake_cleanup,
-    ):
-        config = NotificationsRetentionConfig(interval_seconds=0.001, retention_days=7)
-        stop = await start_notifications_retention_scheduler(config=config)
-        await asyncio.sleep(0.05)
-        await stop()
-
-    assert call_count >= 1
-
-
 # ---------------------------------------------------------------------------
 # app/services/privacy_cleanup.py  line 130  — OSError in loop
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_privacy_cleanup_loop_os_error() -> None:
-    """The privacy cleanup loop must log and continue on OSError (line 130)."""
-    from app.services.privacy_cleanup import (
-        PrivacyCleanupConfig,
-        start_privacy_cleanup_scheduler,
-    )
-
-    call_count = 0
-
-    async def fake_cleanup(*, config: object) -> int:
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            raise OSError("network error")
-        raise asyncio.CancelledError
-
-    with patch(
-        "app.services.privacy_cleanup.cleanup_privacy_artifacts",
-        side_effect=fake_cleanup,
-    ):
-        config = PrivacyCleanupConfig(interval_seconds=0.001)
-        stop = await start_privacy_cleanup_scheduler(config=config)
-        await asyncio.sleep(0.05)
-        await stop()
-
-    assert call_count >= 1
 
 
 # ---------------------------------------------------------------------------
@@ -319,35 +231,6 @@ async def test_storage_delete_file_connection_error() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_story_cleanup_loop_os_error() -> None:
-    """The story cleanup loop must log and continue on OSError (line 84)."""
-    from app.services.story_cleanup import (
-        StoryCleanupConfig,
-        start_story_cleanup_scheduler,
-    )
-
-    call_count = 0
-
-    async def fake_cleanup() -> int:
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            raise OSError("DB gone")
-        raise asyncio.CancelledError
-
-    with patch(
-        "app.services.story_cleanup.cleanup_expired_stories",
-        side_effect=fake_cleanup,
-    ):
-        config = StoryCleanupConfig(interval_seconds=0.001)
-        stop = await start_story_cleanup_scheduler(config=config)
-        await asyncio.sleep(0.05)
-        await stop()
-
-    assert call_count >= 1
-
-
 # ---------------------------------------------------------------------------
 # app/services/webpush.py  line 127  — OSError on engine.dispose
 # ---------------------------------------------------------------------------
@@ -400,40 +283,20 @@ def test_utils_files_mime_detector_attribute_error(
 
 
 # ---------------------------------------------------------------------------
-# app/utils/images.py  line 30  — ImportError fallback for PIL.Image.Resampling
+# app/utils/images.py — legacy LANCZOS fallback when Resampling is absent
 # ---------------------------------------------------------------------------
 
 
-def test_utils_images_resampling_import_error_fallback(
+def test_utils_images_resampling_legacy_constant_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When PIL.Image.Resampling is unavailable, the module uses the int fallback."""
-    import builtins
-    import importlib
+    """Use Pillow's legacy LANCZOS constant when the enum is unavailable."""
+    from app.utils import images
 
-    module_name = "app.utils.images"
-    original_module = sys.modules.pop(module_name, None)
-    real_import = builtins.__import__
+    legacy_filter = images.Image.LANCZOS
+    monkeypatch.setattr(images.Image, "Resampling", None)
 
-    def fail_resampling_import(
-        name: str,
-        globals: dict[str, object] | None = None,
-        locals: dict[str, object] | None = None,
-        fromlist: tuple[str, ...] = (),
-        level: int = 0,
-    ):
-        if name == "PIL.Image" and "Resampling" in fromlist:
-            raise ImportError("simulated legacy Pillow without Resampling")
-        return real_import(name, globals, locals, fromlist, level)
-
-    monkeypatch.setattr(builtins, "__import__", fail_resampling_import)
-    try:
-        mod = importlib.import_module(module_name)
-        assert mod.Resampling is int
-    finally:
-        sys.modules.pop(module_name, None)
-        if original_module is not None:
-            sys.modules[module_name] = original_module
+    assert images._resolve_resample_filter() is legacy_filter
 
 
 # ---------------------------------------------------------------------------

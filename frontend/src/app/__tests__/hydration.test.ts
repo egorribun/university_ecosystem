@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { isHydrationDiagnostic } from "../../../tests/e2e/utils/hydrationDiagnostics"
 
 import {
   APP_HYDRATED_EVENT,
@@ -160,3 +161,43 @@ describe("hydration boundary", () => {
     expect(loader).toHaveAttribute("data-state", "active")
   })
 })
+
+describe.each([false, true])(
+  "regular E2E hydration diagnostics with includeMismatch=%s",
+  (includeMismatch) => {
+    it.each([418, 423, 425])("recognizes production React error #%s", (code) => {
+      const diagnostic =
+        `[Page Error] Minified React error #${code}; ` +
+        `visit https://react.dev/errors/${code} for the full message.`
+
+      expect(isHydrationDiagnostic(diagnostic, includeMismatch)).toBe(true)
+    })
+
+    it.each([
+      "[Console error] Hydration failed because the initial UI does not match.",
+      "[Console warning] There was an error during hydration.",
+    ])("retains the existing hydration text match: %s", (diagnostic) => {
+      expect(isHydrationDiagnostic(diagnostic, includeMismatch)).toBe(true)
+    })
+
+    it("preserves the existing phase-specific mismatch behavior before correction", () => {
+      expect(
+        isHydrationDiagnostic(
+          "[Console warning] Text content did not match. Server: A Client: B",
+          includeMismatch
+        )
+      ).toBe(includeMismatch)
+    })
+
+    it.each([
+      "[Page Error] Network request failed",
+      "[Console error] HTTP response status 418",
+      "[Page Error] Minified React error #419;",
+      "[Page Error] Minified React error #4180;",
+      "[Page Error] Minified React error #4230;",
+      "[Page Error] Minified React error #4250;",
+    ])("does not classify unrelated diagnostics: %s", (diagnostic) => {
+      expect(isHydrationDiagnostic(diagnostic, includeMismatch)).toBe(false)
+    })
+  }
+)

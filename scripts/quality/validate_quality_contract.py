@@ -3,12 +3,14 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import hashlib
+import io
 import json
 import math
 import re
 import shutil
 import subprocess
 import sys
+import tarfile
 from collections.abc import Mapping, Sequence
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, localcontext
@@ -102,6 +104,13 @@ WILDCARD_CHARACTERS = "*?[]"
 MAX_JSON_NESTING_DEPTH = 1_024
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 METRICS = ("lines", "statements", "branches", "functions")
+LEGACY_MIGRATION_BASE_SHA = "ac74e915ae539f098f0fa1e7c83b355703069984"
+LEGACY_MIGRATION_BASELINE_COUNT = 131
+LEGACY_MIGRATION_EXPIRY = date(2026, 11, 13)
+LEGACY_MIGRATION_POLICY_SHA256 = (
+    "b66b48835365bac8cf52df8c7925633e12009a0fb7eba33f3c6ac8fedd60d3fe"
+)
+SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 NORMALIZER_VERSION = "3.0.0"
 REPORT_FORMATS = frozenset(
     {
@@ -497,12 +506,278 @@ def _validate_components(
             )
 
 
-def _validate_tier0(value: object, errors: list[str]) -> None:
+def _validate_legacy_migration_baselines(
+    value: object,
+    *,
+    today: date,
+    errors: list[str],
+) -> None:
+    policy = _require_object(value, "tier0.legacy_migration_baselines", errors)
+    if policy is None:
+        return
+    field = "tier0.legacy_migration_baselines"
+    _validate_exact_keys(
+        policy,
+        field,
+        frozenset({"version", "base_sha", "expires_on", "evidence", "files"}),
+        errors,
+    )
+    version = policy.get("version")
+    if not isinstance(version, int) or isinstance(version, bool) or version != 1:
+        errors.append(f"{field}.version must equal 1")
+    if policy.get("base_sha") != LEGACY_MIGRATION_BASE_SHA:
+        errors.append(f"{field}.base_sha does not match the approved main snapshot")
+
+    expiry_value = policy.get("expires_on")
+    expiry: date | None = None
+    if (
+        not isinstance(expiry_value, str)
+        or DATE_PATTERN.fullmatch(expiry_value) is None
+    ):
+        errors.append(f"{field}.expires_on must use YYYY-MM-DD")
+    else:
+        try:
+            expiry = date.fromisoformat(expiry_value)
+        except ValueError:
+            errors.append(f"{field}.expires_on is not a valid calendar date")
+    if expiry is not None:
+        if expiry <= today:
+            errors.append(f"{field}.expires_on must be after validation day")
+        elif (expiry - today).days > 90:
+            errors.append(f"{field}.expires_on must be within 90 days")
+        if expiry != LEGACY_MIGRATION_EXPIRY:
+            errors.append(f"{field}.expires_on differs from the approved expiry")
+
+    evidence = _require_object(policy.get("evidence"), f"{field}.evidence", errors)
+    if evidence is not None:
+        expected_evidence_fields = frozenset(
+            {
+                "workflow_run_id",
+                "coverage_policy_job_id",
+                "tested_commit_sha",
+                "source_head_sha",
+                "unit_shards",
+                "migration",
+                "reconstructed_reports",
+            }
+        )
+        _validate_exact_keys(
+            evidence, f"{field}.evidence", expected_evidence_fields, errors
+        )
+        for key in ("workflow_run_id", "coverage_policy_job_id"):
+            if (
+                not isinstance(evidence.get(key), str)
+                or not cast(str, evidence[key]).isdigit()
+            ):
+                errors.append(f"{field}.evidence.{key} must be numeric")
+        for key in ("tested_commit_sha", "source_head_sha"):
+            revision = evidence.get(key)
+            if not isinstance(revision, str) or SHA_PATTERN.fullmatch(revision) is None:
+                errors.append(f"{field}.evidence.{key} must be a lowercase Git SHA")
+        unit_shards = evidence.get("unit_shards")
+        if not isinstance(unit_shards, list) or len(unit_shards) != 4:
+            errors.append(f"{field}.evidence.unit_shards must contain four records")
+        else:
+            shard_ids: list[str] = []
+            for index, raw_shard in enumerate(unit_shards):
+                shard_field = f"{field}.evidence.unit_shards[{index}]"
+                shard = _require_object(raw_shard, shard_field, errors)
+                if shard is None:
+                    continue
+                _validate_exact_keys(
+                    shard,
+                    shard_field,
+                    frozenset({"shard_id", "coverage_sha256", "provenance_sha256"}),
+                    errors,
+                )
+                shard_id = shard.get("shard_id")
+                if not isinstance(shard_id, str):
+                    errors.append(f"{shard_field}.shard_id must be a string")
+                else:
+                    shard_ids.append(shard_id)
+                for key in ("coverage_sha256", "provenance_sha256"):
+                    digest = shard.get(key)
+                    if (
+                        not isinstance(digest, str)
+                        or SHA256_PATTERN.fullmatch(digest) is None
+                    ):
+                        errors.append(
+                            f"{shard_field}.{key} must be a lowercase SHA-256 digest"
+                        )
+            if shard_ids != ["0", "1", "2", "3"]:
+                errors.append(
+                    f"{field}.evidence.unit_shards must list shard IDs 0 through 3 in order"
+                )
+        migration = _require_object(
+            evidence.get("migration"), f"{field}.evidence.migration", errors
+        )
+        if migration is not None:
+            _validate_exact_keys(
+                migration,
+                f"{field}.evidence.migration",
+                frozenset({"coverage_sha256", "provenance_sha256"}),
+                errors,
+            )
+            for key in ("coverage_sha256", "provenance_sha256"):
+                digest = migration.get(key)
+                if (
+                    not isinstance(digest, str)
+                    or SHA256_PATTERN.fullmatch(digest) is None
+                ):
+                    errors.append(
+                        f"{field}.evidence.migration.{key} must be a lowercase SHA-256 digest"
+                    )
+        reconstructed = _require_object(
+            evidence.get("reconstructed_reports"),
+            f"{field}.evidence.reconstructed_reports",
+            errors,
+        )
+        if reconstructed is not None:
+            _validate_exact_keys(
+                reconstructed,
+                f"{field}.evidence.reconstructed_reports",
+                frozenset({"coverage_py_version", "json_sha256", "xml_sha256"}),
+                errors,
+            )
+            coverage_version = reconstructed.get("coverage_py_version")
+            if (
+                not isinstance(coverage_version, str)
+                or VERSION_PATTERN.fullmatch(coverage_version) is None
+            ):
+                errors.append(
+                    f"{field}.evidence.reconstructed_reports.coverage_py_version must be a concrete version"
+                )
+            for key in ("json_sha256", "xml_sha256"):
+                digest = reconstructed.get(key)
+                if (
+                    not isinstance(digest, str)
+                    or SHA256_PATTERN.fullmatch(digest) is None
+                ):
+                    errors.append(
+                        f"{field}.evidence.reconstructed_reports.{key} must be a lowercase SHA-256 digest"
+                    )
+
+    raw_files = policy.get("files")
+    if not isinstance(raw_files, list):
+        errors.append(f"{field}.files must be an array")
+        return
+    if len(raw_files) != LEGACY_MIGRATION_BASELINE_COUNT:
+        errors.append(
+            f"{field}.files must contain exactly {LEGACY_MIGRATION_BASELINE_COUNT} approved paths"
+        )
+    seen_paths: set[str] = set()
+    ordered_paths: list[str] = []
+    for index, raw_record in enumerate(raw_files):
+        record_field = f"{field}.files[{index}]"
+        record = _require_object(raw_record, record_field, errors)
+        if record is None:
+            continue
+        _validate_exact_keys(
+            record,
+            record_field,
+            frozenset({"path", "metrics"}),
+            errors,
+        )
+        path = record.get("path")
+        if (
+            not isinstance(path, str)
+            or not path.startswith("alembic/versions/")
+            or not path.endswith(".py")
+            or "\\" in path
+            or PurePosixPath(path).as_posix() != path
+            or ".." in PurePosixPath(path).parts
+            or _contains_wildcard(path)
+        ):
+            errors.append(
+                f"{record_field}.path must be a canonical Alembic Python path"
+            )
+        elif path in seen_paths:
+            errors.append(f"{record_field}.path duplicates an earlier baseline")
+        else:
+            seen_paths.add(path)
+            ordered_paths.append(path)
+        raw_metrics = _require_object(
+            record.get("metrics"), f"{record_field}.metrics", errors
+        )
+        if raw_metrics is None:
+            continue
+        _validate_exact_keys(
+            raw_metrics, f"{record_field}.metrics", frozenset(METRICS), errors
+        )
+        for metric_name in METRICS:
+            metric_field = f"{record_field}.metrics.{metric_name}"
+            metric = _require_object(raw_metrics.get(metric_name), metric_field, errors)
+            if metric is None:
+                continue
+            allowed_fields = {"status", "covered", "total"}
+            if metric.get("status") == "derived":
+                allowed_fields.add("derivation")
+            _validate_exact_keys(
+                metric, metric_field, frozenset(allowed_fields), errors
+            )
+            status = metric.get("status")
+            if status not in {"native", "derived"}:
+                errors.append(f"{metric_field}.status must be native or derived")
+            for counter_name in ("covered", "total"):
+                counter = metric.get(counter_name)
+                if (
+                    isinstance(counter, bool)
+                    or not isinstance(counter, int)
+                    or counter < 0
+                ):
+                    errors.append(
+                        f"{metric_field}.{counter_name} must be a non-negative integer"
+                    )
+            covered = metric.get("covered")
+            total = metric.get("total")
+            if (
+                isinstance(covered, int)
+                and not isinstance(covered, bool)
+                and isinstance(total, int)
+                and not isinstance(total, bool)
+            ):
+                if covered > total:
+                    errors.append(f"{metric_field}.covered must not exceed total")
+                if total == 0 and (covered != 0 or status != "derived"):
+                    errors.append(
+                        f"{metric_field} zero-unit evidence must be derived 0/0"
+                    )
+            if (
+                status == "derived"
+                and metric.get("derivation") not in TRUSTED_DERIVATIONS
+            ):
+                errors.append(
+                    f"{metric_field}.derivation is not a trusted coverage derivation"
+                )
+    if ordered_paths != sorted(ordered_paths):
+        errors.append(f"{field}.files must be sorted by canonical path")
+    try:
+        serialized = json.dumps(
+            policy, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        )
+    except (TypeError, ValueError):
+        errors.append(f"{field} is not canonically serializable")
+    else:
+        actual_digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+        if actual_digest != LEGACY_MIGRATION_POLICY_SHA256:
+            errors.append(
+                f"{field} does not match the approved immutable baseline digest"
+            )
+
+
+def _validate_tier0(value: object, errors: list[str], *, today: date) -> None:
     tier0 = _require_object(value, "tier0", errors)
     if tier0 is None:
         return
 
-    _validate_exact_keys(tier0, "tier0", frozenset({"coverage"}), errors)
+    _validate_exact_keys(
+        tier0,
+        "tier0",
+        frozenset({"coverage", "legacy_migration_baselines"})
+        if "legacy_migration_baselines" in tier0
+        else frozenset({"coverage"}),
+        errors,
+    )
     if "coverage" in tier0:
         _validate_coverage_values(
             tier0["coverage"],
@@ -510,6 +785,10 @@ def _validate_tier0(value: object, errors: list[str]) -> None:
             TIER0_FLOORS,
             exact=True,
             errors=errors,
+        )
+    if "legacy_migration_baselines" in tier0:
+        _validate_legacy_migration_baselines(
+            tier0["legacy_migration_baselines"], today=today, errors=errors
         )
 
 
@@ -707,12 +986,10 @@ def _validate_coverage_scope(
 ) -> None:
     """Validate the toolchain-measured subset of each source root.
 
-    ``source_roots`` is the identity boundary for report paths.  A coverage
-    producer may intentionally measure a narrower, independently verified
-    subset: the Python producer uses ``--cov=app`` while Alembic revisions are
-    exercised by the dedicated PostgreSQL migration gate.  Keeping this scope
-    explicit prevents a filesystem walk from silently turning an unmeasured
-    structural source into a false coverage obligation.
+    ``source_roots`` is the identity boundary for report paths. A producer may
+    omit non-Tier-0 structural sources, but Tier-0 files stay in coverage scope.
+    Python coverage combines backend pytest data with the PostgreSQL migration
+    gate artifact, so Alembic revisions participate in the same 100% policy.
     """
     scope = _require_object(value, "coverage_scope", errors)
     if scope is None:
@@ -841,7 +1118,7 @@ def validate_contract(contract: dict[str, object], *, today: date) -> list[str]:
             metric_statuses=contract.get("metric_statuses"),
         )
     if "tier0" in contract:
-        _validate_tier0(contract["tier0"], errors)
+        _validate_tier0(contract["tier0"], errors, today=today)
     if "source_roots" in contract:
         _validate_source_roots(contract["source_roots"], errors)
     if "coverage_scope" in contract:
@@ -1199,6 +1476,123 @@ def _validate_metric_for_floor(
     return metric_errors
 
 
+def _expected_metric_percent(covered: int, total: int) -> float:
+    if total == 0:
+        return 100.0
+    with localcontext() as context:
+        context.prec = max(28, len(str(covered)) + len(str(total)) + 8)
+        return float(
+            (Decimal(covered) * Decimal(100) / Decimal(total)).quantize(
+                Decimal("0.000001"), rounding=ROUND_HALF_UP
+            )
+        )
+
+
+def _validate_measured_metric_integrity(
+    metric: dict[str, object],
+    *,
+    field: str,
+    allowed_statuses: frozenset[str] | None = None,
+) -> list[str]:
+    """Validate counters and provenance without imposing a coverage floor."""
+    errors: list[str] = []
+    status = metric.get("status")
+    if allowed_statuses is not None and status not in allowed_statuses:
+        errors.append(
+            f"{field} status {status!r} is not allowed by the metric contract"
+        )
+    if status not in {"native", "derived"}:
+        errors.append(f"{field} must contain measured native or derived evidence")
+        return errors
+    if status == "derived" and metric.get("derivation") not in TRUSTED_DERIVATIONS:
+        errors.append(f"{field} uses an untrusted derived-metric algorithm")
+    covered = metric.get("covered")
+    total = metric.get("total")
+    if (
+        isinstance(covered, bool)
+        or not isinstance(covered, int)
+        or isinstance(total, bool)
+        or not isinstance(total, int)
+        or covered < 0
+        or total < 0
+        or covered > total
+    ):
+        errors.append(f"{field} has invalid covered/total counters")
+        return errors
+    if total == 0:
+        expected_percent = _expected_metric_percent(covered, total)
+        if status != "derived" or covered != 0:
+            errors.append(f"{field} zero-unit evidence must be a trusted derived 0/0")
+    else:
+        expected_percent = _expected_metric_percent(covered, total)
+    percent = metric.get("percent")
+    if isinstance(percent, bool) or not isinstance(percent, (int, float)):
+        errors.append(f"{field}.percent must be numeric")
+    elif percent != expected_percent:
+        errors.append(
+            f"{field}.percent does not match covered/total counters "
+            f"(expected {expected_percent}, got {percent!r})"
+        )
+    return errors
+
+
+def validate_metric_at_legacy_baseline(
+    metric: dict[str, object],
+    baseline: dict[str, object],
+    *,
+    field: str,
+    allowed_statuses: frozenset[str] | None = None,
+) -> list[str]:
+    """Require exact source-compatible denominators and no metric regression."""
+    errors = _validate_measured_metric_integrity(
+        metric, field=field, allowed_statuses=allowed_statuses
+    )
+    if metric.get("status") != baseline.get("status"):
+        errors.append(f"{field}.status differs from its approved legacy baseline")
+    if metric.get("total") != baseline.get("total"):
+        errors.append(f"{field}.total differs from its approved legacy baseline")
+    if metric.get("derivation") != baseline.get("derivation"):
+        errors.append(f"{field}.derivation differs from its approved legacy baseline")
+    covered = metric.get("covered")
+    baseline_covered = baseline.get("covered")
+    if (
+        isinstance(covered, int)
+        and not isinstance(covered, bool)
+        and isinstance(baseline_covered, int)
+        and not isinstance(baseline_covered, bool)
+        and covered < baseline_covered
+    ):
+        errors.append(f"{field}.covered regressed below its approved legacy baseline")
+    return errors
+
+
+def validate_metric_with_exact_missing(
+    metric: dict[str, object],
+    *,
+    expected_missing: int,
+    field: str,
+    allowed_statuses: frozenset[str] | None = None,
+) -> list[str]:
+    """Require aggregate misses to equal only current approved legacy misses."""
+    errors = _validate_measured_metric_integrity(
+        metric, field=field, allowed_statuses=allowed_statuses
+    )
+    covered = metric.get("covered")
+    total = metric.get("total")
+    if (
+        isinstance(covered, int)
+        and not isinstance(covered, bool)
+        and isinstance(total, int)
+        and not isinstance(total, bool)
+        and total - covered != expected_missing
+    ):
+        errors.append(
+            f"{field} misses must equal the current legacy-migration residual "
+            f"({expected_missing}, got {total - covered})"
+        )
+    return errors
+
+
 def _tier0_rule_matches(path: str, rule: str) -> bool:
     return fnmatch.fnmatchcase(path, rule) or PurePosixPath(path).match(rule)
 
@@ -1262,7 +1656,8 @@ def _tier0_source_requires_coverage(
 
     Applicability is deliberately contract-driven.  ``source_roots`` remains
     the report identity boundary, while ``coverage_scope`` is the exact set of
-    roots instrumented by the producer (Python uses ``--cov=app``).  No
+    roots instrumented by the producer (Python covers ``app`` and
+    ``alembic/versions``).  No
     component-specific filename exception is allowed here: a future toolchain
     change must update the contract and its producer together.
     """
@@ -1389,10 +1784,9 @@ def _expected_tier0_inventory(
     """Return Tier0 files that the active coverage producers can measure.
 
     ``source_roots`` remains the report identity boundary, while
-    ``coverage_scope`` is the explicit producer scope.  In particular, the
-    Python report is produced with ``--cov=app``; Alembic revisions remain
-    structurally validated by the migration job and are not fabricated as
-    Python coverage evidence.
+    ``coverage_scope`` is the explicit producer scope. Python includes
+    ``app`` unit-test data and Alembic migration-gate data in the normalized
+    report; each matched Tier-0 revision must have measured evidence.
     """
     inventory: set[tuple[str, str]] = set()
     frontend_policy = _load_frontend_source_policy(repository_root)
@@ -1481,6 +1875,7 @@ def _validate_components_manifest(
     errors: list[str] = []
     reports = cast(list[object], manifest["reports"])
     components = cast(dict[str, object], manifest["components"])
+    legacy_missing = _legacy_migration_missing_from_tier0(manifest, contract)
     report_components = {
         report["component"] for report in reports if isinstance(report, dict)
     }
@@ -1501,14 +1896,31 @@ def _validate_components_manifest(
         status_contract = _contract_component_metric_statuses(contract, component)
         for metric_name in METRICS:
             metric = cast(dict[str, object], metrics[metric_name])
-            errors.extend(
-                _validate_metric_for_floor(
-                    metric,
-                    floor=floors[metric_name],
-                    field=f"components.{component}.{metric_name}",
-                    allowed_statuses=status_contract[metric_name],
-                )
+            field = f"components.{component}.{metric_name}"
+            allowed_missing = (
+                legacy_missing[metric_name]
+                if component == "python"
+                and metric_name in {"lines", "statements", "branches"}
+                else 0
             )
+            if allowed_missing:
+                errors.extend(
+                    validate_metric_with_exact_missing(
+                        metric,
+                        expected_missing=allowed_missing,
+                        field=field,
+                        allowed_statuses=status_contract[metric_name],
+                    )
+                )
+            else:
+                errors.extend(
+                    _validate_metric_for_floor(
+                        metric,
+                        floor=floors[metric_name],
+                        field=field,
+                        allowed_statuses=status_contract[metric_name],
+                    )
+                )
     return errors
 
 
@@ -1557,6 +1969,180 @@ def _load_canonical_tier0_rules(repository_root: Path, errors: list[str]) -> lis
     return sorted(set(normalized))
 
 
+def _legacy_migration_records(
+    contract: dict[str, object],
+) -> dict[str, dict[str, object]]:
+    tier0 = contract.get("tier0")
+    policy = (
+        tier0.get("legacy_migration_baselines") if isinstance(tier0, dict) else None
+    )
+    records = policy.get("files") if isinstance(policy, dict) else None
+    if not isinstance(records, list):
+        return {}
+    return {
+        cast(str, record["path"]): cast(dict[str, object], record)
+        for record in records
+        if isinstance(record, dict) and isinstance(record.get("path"), str)
+    }
+
+
+def _validate_legacy_migration_source_binding(
+    contract: dict[str, object], repository_root: Path
+) -> list[str]:
+    """Bind the finite exception list to unchanged source blobs from its base."""
+    records = _legacy_migration_records(contract)
+    if not records:
+        return []
+    errors: list[str] = []
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        return ["legacy migration baseline validation requires git"]
+    tier0 = contract.get("tier0")
+    policy = (
+        tier0.get("legacy_migration_baselines") if isinstance(tier0, dict) else None
+    )
+    base_sha = policy.get("base_sha") if isinstance(policy, dict) else None
+    if base_sha != LEGACY_MIGRATION_BASE_SHA:
+        return ["legacy migration baselines do not name the approved base revision"]
+    try:
+        head = _git_head(repository_root)
+        ancestry = subprocess.run(  # noqa: S603
+            [
+                git_executable,
+                "merge-base",
+                "--is-ancestor",
+                LEGACY_MIGRATION_BASE_SHA,
+                head,
+            ],
+            cwd=repository_root,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if ancestry.returncode != 0:
+            return [
+                "approved migration baseline revision is not an ancestor of current HEAD"
+            ]
+        archive_result = subprocess.run(  # noqa: S603
+            [
+                git_executable,
+                "archive",
+                "--format=tar",
+                LEGACY_MIGRATION_BASE_SHA,
+                "--",
+                "alembic/versions",
+            ],
+            cwd=repository_root,
+            check=True,
+            capture_output=True,
+        )
+        with tarfile.open(
+            fileobj=io.BytesIO(archive_result.stdout), mode="r:"
+        ) as archive:
+            base_sources: dict[str, bytes] = {}
+            for member in archive.getmembers():
+                path = PurePosixPath(member.name).as_posix()
+                if (
+                    not member.isfile()
+                    or not path.startswith("alembic/versions/")
+                    or not path.endswith(".py")
+                    or ".." in PurePosixPath(path).parts
+                ):
+                    continue
+                source_stream = archive.extractfile(member)
+                if source_stream is None:
+                    errors.append(f"unable to read approved migration blob {path}")
+                    continue
+                base_sources[path] = source_stream.read()
+    except (
+        OSError,
+        subprocess.CalledProcessError,
+        ValueError,
+        tarfile.TarError,
+    ) as error:
+        return [f"unable to read approved migration source inventory from Git: {error}"]
+
+    base_paths = sorted(base_sources)
+    eligible: dict[str, str] = {}
+    for path in base_paths:
+        base_source = base_sources[path]
+        current_path = repository_root.joinpath(*PurePosixPath(path).parts)
+        if not current_path.exists():
+            continue
+        source_errors: list[str] = []
+        safe_path = _safe_repository_file(
+            repository_root, path, "legacy migration source", source_errors
+        )
+        if safe_path is None:
+            errors.extend(source_errors)
+            continue
+        try:
+            current_source = safe_path.read_bytes()
+        except OSError as error:
+            errors.append(f"unable to read current migration source {path}: {error}")
+            continue
+        base_digest = hashlib.sha256(base_source).hexdigest()
+        if hashlib.sha256(current_source).hexdigest() == base_digest:
+            eligible[path] = base_digest
+
+    declared_paths = set(records)
+    if declared_paths != set(eligible):
+        missing = sorted(set(eligible) - declared_paths)
+        unexpected = sorted(declared_paths - set(eligible))
+        if missing:
+            errors.append(
+                "legacy migration baseline list omits unchanged approved-source paths: "
+                + ", ".join(missing[:3])
+            )
+        if unexpected:
+            errors.append(
+                "legacy migration baseline list contains changed, new, or non-migration paths: "
+                + ", ".join(unexpected[:3])
+            )
+    if len(eligible) != LEGACY_MIGRATION_BASELINE_COUNT:
+        errors.append(
+            "unchanged migration source count differs from the approved finite set "
+            f"({len(eligible)} != {LEGACY_MIGRATION_BASELINE_COUNT})"
+        )
+    return errors
+
+
+def _legacy_migration_missing_from_tier0(
+    manifest: dict[str, object], contract: dict[str, object]
+) -> dict[str, int]:
+    records = _legacy_migration_records(contract)
+    tier0 = manifest.get("tier0")
+    files = tier0.get("files") if isinstance(tier0, dict) else None
+    if not isinstance(files, list):
+        return {metric: 0 for metric in METRICS}
+    metric_totals = {metric: 0 for metric in METRICS}
+    by_path = {
+        cast(str, record["path"]): record
+        for record in files
+        if isinstance(record, dict) and isinstance(record.get("path"), str)
+    }
+    for path in records:
+        file_record = by_path.get(path)
+        metrics = file_record.get("metrics") if isinstance(file_record, dict) else None
+        if not isinstance(metrics, dict):
+            continue
+        for metric_name in METRICS:
+            metric = metrics.get(metric_name)
+            if not isinstance(metric, dict):
+                continue
+            covered = metric.get("covered")
+            total = metric.get("total")
+            if (
+                isinstance(covered, int)
+                and not isinstance(covered, bool)
+                and isinstance(total, int)
+                and not isinstance(total, bool)
+                and total >= covered
+            ):
+                metric_totals[metric_name] += total - covered
+    return metric_totals
+
+
 def _validate_tier0_manifest(
     manifest: dict[str, object],
     contract: dict[str, object],
@@ -1575,6 +2161,9 @@ def _validate_tier0_manifest(
             "tier0.rules must exactly equal canonical ownership-mapping tier0_rules"
         )
     files = cast(list[object], tier0["files"])
+    errors.extend(_validate_legacy_migration_source_binding(contract, repository_root))
+    legacy_records = _legacy_migration_records(contract)
+    legacy_missing = _legacy_migration_missing_from_tier0(manifest, contract)
     source_roots = cast(dict[str, object], manifest["source_roots"])
     manifest_scope_value = manifest.get("coverage_scope")
     contract_scope_value = contract.get("coverage_scope")
@@ -1638,14 +2227,49 @@ def _validate_tier0_manifest(
         metrics = cast(dict[str, object], record["metrics"])
         for metric_name in METRICS:
             metric = cast(dict[str, object], metrics[metric_name])
-            errors.extend(
-                _validate_metric_for_floor(
-                    metric,
-                    floor=floors[metric_name],
-                    field=f"{path}.{metric_name}",
-                    allowed_statuses=status_contract[metric_name],
-                )
+            field = f"{path}.{metric_name}"
+            baseline_record = (
+                legacy_records.get(path) if component == "python" else None
             )
+            baseline_metrics = (
+                baseline_record.get("metrics")
+                if isinstance(baseline_record, dict)
+                else None
+            )
+            baseline_metric = (
+                baseline_metrics.get(metric_name)
+                if isinstance(baseline_metrics, dict)
+                else None
+            )
+            metric_floor = floors[metric_name]
+            if (
+                component == "python"
+                and metric_name == "functions"
+                and path.startswith("alembic/versions/")
+                and path.endswith(".py")
+                and path not in legacy_records
+            ):
+                # Explicit N/A remains valid for general Python, but future
+                # Alembic revisions must carry strict function evidence.
+                metric_floor = 100
+            if isinstance(baseline_metric, dict):
+                errors.extend(
+                    validate_metric_at_legacy_baseline(
+                        metric,
+                        baseline_metric,
+                        field=field,
+                        allowed_statuses=status_contract[metric_name],
+                    )
+                )
+            else:
+                errors.extend(
+                    _validate_metric_for_floor(
+                        metric,
+                        floor=metric_floor,
+                        field=field,
+                        allowed_statuses=status_contract[metric_name],
+                    )
+                )
             if metric["status"] in {"native", "derived"}:
                 measured_by_metric[metric_name].append(metric)
             elif metric["status"] == "unsupported":
@@ -1702,16 +2326,27 @@ def _validate_tier0_manifest(
                     "a reason_code for N/A"
                 )
             continue
-        errors.extend(
-            _validate_metric_for_floor(
-                aggregate_metric,
-                floor=100,
-                field=f"tier0.coverage.{metric_name}",
-                allowed_statuses=aggregate_statuses[metric_name],
+        if legacy_missing[metric_name]:
+            errors.extend(
+                validate_metric_with_exact_missing(
+                    aggregate_metric,
+                    expected_missing=legacy_missing[metric_name],
+                    field=f"tier0.coverage.{metric_name}",
+                    allowed_statuses=aggregate_statuses[metric_name],
+                )
             )
-        )
+        else:
+            errors.extend(
+                _validate_metric_for_floor(
+                    aggregate_metric,
+                    floor=100,
+                    field=f"tier0.coverage.{metric_name}",
+                    allowed_statuses=aggregate_statuses[metric_name],
+                )
+            )
         covered = sum(cast(int, entry["covered"]) for entry in entries)
         total = sum(cast(int, entry["total"]) for entry in entries)
+        expected_percent = _expected_metric_percent(covered, total)
         expected_status = (
             "derived"
             if any(entry["status"] == "derived" for entry in entries)
@@ -1721,7 +2356,7 @@ def _validate_tier0_manifest(
             aggregate_metric["status"] != expected_status
             or aggregate_metric["covered"] != covered
             or aggregate_metric["total"] != total
-            or aggregate_metric["percent"] != 100
+            or aggregate_metric["percent"] != expected_percent
         ):
             errors.append(
                 f"tier0.coverage.{metric_name} does not equal the applicable-file aggregate"

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
@@ -247,7 +250,8 @@ async def test_check_rate_limit_redis_success(monkeypatch):
     )
 
     mock_cb = MagicMock()
-    mock_cb.allow_request.return_value = True
+    admission = SimpleNamespace(allowed=True)
+    mock_cb.admit_request.return_value = admission
 
     with patch(
         "app.core.ratelimit.logic._get_redis_strategy", return_value=mock_strategy
@@ -262,7 +266,8 @@ async def test_check_rate_limit_redis_success(monkeypatch):
                 redis_url="redis://localhost",
             )
             # lines 89-90: cb.record_success() and return result
-            mock_cb.record_success.assert_called_once()
+            mock_cb.record_success.assert_called_once_with(admission)
+            mock_cb.abandon_request.assert_called_once_with(admission)
             assert res.allowed is True
 
 
@@ -272,7 +277,8 @@ async def test_check_rate_limit_redis_error_uses_memory_fallback(monkeypatch):
     mock_strategy = MagicMock()
     mock_strategy.check = AsyncMock(side_effect=OSError("redis unavailable"))
     mock_cb = MagicMock()
-    mock_cb.allow_request.return_value = True
+    admission = SimpleNamespace(allowed=True)
+    mock_cb.admit_request.return_value = admission
 
     with (
         patch(
@@ -289,7 +295,8 @@ async def test_check_rate_limit_redis_error_uses_memory_fallback(monkeypatch):
         )
 
     assert result.allowed is True
-    mock_cb.record_failure.assert_called_once()
+    mock_cb.record_failure.assert_called_once_with(admission)
+    mock_cb.abandon_request.assert_called_once_with(admission)
 
 
 @pytest.mark.asyncio
@@ -297,7 +304,7 @@ async def test_check_rate_limit_circuit_open(monkeypatch):
     monkeypatch.setattr(settings, "rate_limit_enabled", True)
 
     mock_cb = MagicMock()
-    mock_cb.allow_request.return_value = False
+    mock_cb.admit_request.return_value = SimpleNamespace(allowed=False)
     mock_cb.state.name = "OPEN"
 
     with patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=mock_cb):
@@ -309,6 +316,10 @@ async def test_check_rate_limit_circuit_open(monkeypatch):
         )
         # line 98: should log circuit open debug log, and check fallback memory
         assert res.allowed is True  # fallback memory allowed it
+        mock_cb.admit_request.assert_called_once_with()
+        mock_cb.record_success.assert_not_called()
+        mock_cb.record_failure.assert_not_called()
+        mock_cb.abandon_request.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -370,7 +381,8 @@ async def test_enforce_rate_limit_success_records_circuit_success(monkeypatch):
         return_value=RateLimitInfo(allowed=True, remaining=4, retry_after=0)
     )
     circuit = MagicMock()
-    circuit.allow_request.return_value = True
+    admission = SimpleNamespace(allowed=True)
+    circuit.admit_request.return_value = admission
 
     with patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=circuit):
         result = await enforce_rate_limit(
@@ -381,7 +393,8 @@ async def test_enforce_rate_limit_success_records_circuit_success(monkeypatch):
         )
 
     assert result.allowed is True
-    circuit.record_success.assert_called_once()
+    circuit.record_success.assert_called_once_with(admission)
+    circuit.abandon_request.assert_called_once_with(admission)
 
 
 @pytest.mark.asyncio
@@ -390,7 +403,8 @@ async def test_enforce_rate_limit_redis_error_uses_capped_fallback(monkeypatch):
     strategy = MagicMock()
     strategy.check = AsyncMock(side_effect=OSError("redis down"))
     circuit = MagicMock()
-    circuit.allow_request.return_value = True
+    admission = SimpleNamespace(allowed=True)
+    circuit.admit_request.return_value = admission
 
     with patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=circuit):
         result = await enforce_rate_limit(
@@ -401,7 +415,8 @@ async def test_enforce_rate_limit_redis_error_uses_capped_fallback(monkeypatch):
         )
 
     assert result.allowed is True
-    circuit.record_failure.assert_called_once()
+    circuit.record_failure.assert_called_once_with(admission)
+    circuit.abandon_request.assert_called_once_with(admission)
 
 
 @pytest.mark.asyncio
@@ -412,7 +427,8 @@ async def test_enforce_rate_limit_raises_for_denied_result(monkeypatch):
         return_value=RateLimitInfo(allowed=False, remaining=0, retry_after=3)
     )
     circuit = MagicMock()
-    circuit.allow_request.return_value = True
+    admission = SimpleNamespace(allowed=True)
+    circuit.admit_request.return_value = admission
 
     with patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=circuit):
         with pytest.raises(RateLimitExceeded) as caught:
@@ -442,7 +458,7 @@ async def test_enforce_rate_limit_circuit_open(monkeypatch):
     monkeypatch.setattr(settings, "rate_limit_enabled", True)
 
     mock_cb = MagicMock()
-    mock_cb.allow_request.return_value = False
+    mock_cb.admit_request.return_value = SimpleNamespace(allowed=False)
 
     with patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=mock_cb):
         # lines 157-159: circuit open — skip Redis entirely, use fallback
@@ -450,6 +466,10 @@ async def test_enforce_rate_limit_circuit_open(monkeypatch):
             identifier="user_123", limit=5, window_seconds=60, strategy=MagicMock()
         )
         assert info.allowed is True
+        mock_cb.admit_request.assert_called_once_with()
+        mock_cb.record_success.assert_not_called()
+        mock_cb.record_failure.assert_not_called()
+        mock_cb.abandon_request.assert_not_called()
 
 
 # ── 9. RateLimitMiddleware ──────────────────────────────────────────────────
@@ -660,44 +680,34 @@ async def test_middleware_health_path_skipped():
     middleware._app.assert_called_once()
 
 
-@pytest.mark.asyncio
-async def test_get_shared_client_concurrent():
-    import app.core.ratelimit.strategies.base as base_module
+def test_get_shared_client_concurrent():
     from app.core.ratelimit.strategies.base import (
         get_shared_client,
         set_rate_limit_client_factory,
     )
 
-    # Mock redis factory to return mock clients
     mock_factory = MagicMock()
     set_rate_limit_client_factory(mock_factory)
 
+    start = threading.Barrier(3)
+    url = "redis://localhost:9999"
+
+    async def get_client():
+        return await get_shared_client(url)
+
+    def run_client_in_its_own_loop():
+        start.wait(timeout=5)
+        return asyncio.run(get_client())
+
     try:
-        # Force bootstrap of the lock by making one dummy request
-        await get_shared_client("redis://localhost:8888")
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(run_client_in_its_own_loop)
+            second = executor.submit(run_client_in_its_own_loop)
+            start.wait(timeout=5)
+            first_client = first.result(timeout=5)
+            second_client = second.result(timeout=5)
 
-        # Now acquire the lock manually
-        lock = base_module._shared_clients_write_lock
-        assert lock is not None
-        await lock.acquire()
-
-        # Start concurrent client retrievals (both will check line 37, find None, and block on lock)
-        t1 = get_shared_client("redis://localhost:9999")
-        t2 = get_shared_client("redis://localhost:9999")
-
-        # Yield to let them execute up to the locked line 45
-        task1 = asyncio.create_task(t1)
-        task2 = asyncio.create_task(t2)
-        await asyncio.sleep(0.01)
-
-        # Release the lock so they can proceed
-        lock.release()
-
-        # Wait for both to complete
-        c1 = await task1
-        c2 = await task2
-
-        assert c1 is c2
-        assert mock_factory.call_count == 2  # one for 8888, one for 9999
+        assert first_client is second_client
+        mock_factory.assert_called_once_with(url)
     finally:
         set_rate_limit_client_factory(None)

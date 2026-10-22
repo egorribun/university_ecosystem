@@ -41,6 +41,10 @@ const auth = vi.hoisted(() => ({
 }))
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: auth.user }) }))
 vi.mock("@/contexts/LanguageContext", () => ({ useLanguage: () => ({ language: "en" }) }))
+const campusTimezone = vi.hoisted(() => ({ current: "Europe/Istanbul" as string | null }))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => campusTimezone.current,
+}))
 const online = vi.hoisted(() => ({ value: true }))
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => online.value }))
 /* Debounce → identity so client-side filters run synchronously off searchQuery. */
@@ -117,6 +121,9 @@ vi.mock("../components/EventsHeader", () => ({
       <span data-testid="events-count">{String(props.eventsCount)}</span>
       <span data-testid="header-admin">{String(props.isAdmin)}</span>
       <button onClick={() => (props.onTabChange as (v: string) => void)("my")}>tab-my</button>
+      <button onClick={() => (props.onTabChange as (v: string) => void)("active")}>
+        tab-active
+      </button>
       <button onClick={() => (props.onTabChange as (v: string) => void)("archive")}>
         tab-archive
       </button>
@@ -197,6 +204,7 @@ function evt(over: Partial<Record<string, unknown>> = {}) {
 }
 
 beforeEach(() => {
+  campusTimezone.current = "Europe/Istanbul"
   search.params = {}
   navigateSpy.fn = vi.fn((..._a: unknown[]) => undefined)
   listQuery.events = []
@@ -288,6 +296,19 @@ describe("EventsFeature — URL change handlers (set + delete branches)", () => 
     expect(tabCall.search({})).toEqual({ tab: "archive" })
     expect(drCall.search({})).toEqual({ dr: "today" })
   })
+
+  it("removes the default active tab while preserving other search params", () => {
+    render(<EventsFeature />)
+    act(() => fireEvent.click(screen.getByText("tab-active")))
+    const call = navigateSpy.fn.mock.calls[0]![0] as {
+      search: (p: Record<string, unknown>) => unknown
+    }
+
+    expect(call.search({ tab: "archive", q: "keep", sort: "popular" })).toEqual({
+      q: "keep",
+      sort: "popular",
+    })
+  })
 })
 
 describe("EventsFeature — tab-driven data + loading flags", () => {
@@ -302,6 +323,7 @@ describe("EventsFeature — tab-driven data + loading flags", () => {
         search: "",
         location: "",
         limit: 12,
+        order: "starts_at_desc",
       },
       { enabled: true },
     ])
@@ -366,72 +388,61 @@ describe("EventsFeature — client-side category + date filters", () => {
   })
 
   it("filters by the 'today' date range and drops out-of-range / start-less events (175-182)", () => {
-    const now = new Date()
-    const todayIso = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12).toISOString()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-08-09T12:00:00.000Z"))
     search.params = { dr: "today" }
     listQuery.events = [
-      evt({ id: "today", starts_at: todayIso }),
+      evt({ id: "today", starts_at: "2026-08-08T21:00:00.000Z" }),
+      evt({ id: "before-campus-day", starts_at: "2026-08-08T20:59:00.000Z" }),
+      evt({ id: "next-campus-day", starts_at: "2026-08-09T21:00:00.000Z" }),
       evt({ id: "past", starts_at: "2000-01-01T00:00:00.000Z" }),
       evt({ id: "missing-start", starts_at: null }),
     ]
-    render(<EventsFeature />)
-    expect(screen.getByTestId("list-count")).toHaveTextContent("1")
+    try {
+      render(<EventsFeature />)
+      expect(screen.getByTestId("list-count")).toHaveTextContent("1")
+      expect(screen.getByTestId("list-order")).toHaveTextContent("today")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
-  it("filters by the 'week' date range", () => {
-    const now = new Date()
-    const thisWeekIso = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9).toISOString()
-    search.params = { dr: "week" }
-    listQuery.events = [
-      evt({ id: "w", starts_at: thisWeekIso }),
-      evt({ id: "old", starts_at: "1999-01-01T00:00:00.000Z" }),
-    ]
-    render(<EventsFeature />)
-    expect(screen.getByTestId("list-count")).toHaveTextContent("1")
-  })
-
-  it("uses the Monday offset for a Sunday week start", () => {
+  it("filters the half-open Monday week in the configured campus calendar", () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-08-09T12:00:00.000Z"))
-    // Keep the calendar branch deterministic across CI runner time zones.
-    const dayOfWeekSpy = vi.spyOn(Date.prototype, "getDay").mockReturnValue(0)
     search.params = { dr: "week" }
-    listQuery.events = [evt({ id: "sunday-week" })]
-
+    listQuery.events = [
+      evt({ id: "last-week", starts_at: "2026-08-02T20:59:00.000Z" }),
+      evt({ id: "first-campus-day", starts_at: "2026-08-02T21:00:00.000Z" }),
+      evt({ id: "last-campus-day", starts_at: "2026-08-09T20:59:00.000Z" }),
+      evt({ id: "next-week", starts_at: "2026-08-09T21:00:00.000Z" }),
+    ]
     try {
       render(<EventsFeature />)
-      expect(screen.getByTestId("list-count")).toHaveTextContent("0")
+      expect(screen.getByTestId("list-count")).toHaveTextContent("2")
+      expect(screen.getByTestId("list-order")).toHaveTextContent("first-campus-day,last-campus-day")
     } finally {
-      dayOfWeekSpy.mockRestore()
       vi.useRealTimers()
     }
   })
 
-  it("uses the weekday offset for a non-Sunday week start", () => {
+  it("filters the configured campus month using calendar-date boundaries", () => {
     vi.useFakeTimers()
-    const dayOfWeekSpy = vi.spyOn(Date.prototype, "getDay").mockReturnValue(1)
-    search.params = { dr: "week" }
-    listQuery.events = [evt({ id: "weekday-week" })]
-
-    try {
-      render(<EventsFeature />)
-      expect(screen.getByTestId("list-count")).toHaveTextContent("0")
-    } finally {
-      dayOfWeekSpy.mockRestore()
-      vi.useRealTimers()
-    }
-  })
-
-  it("filters by the 'month' date range", () => {
-    const now = new Date()
-    const thisMonthIso = new Date(now.getFullYear(), now.getMonth(), 15, 9).toISOString()
+    vi.setSystemTime(new Date("2026-03-08T12:00:00.000Z"))
     search.params = { dr: "month" }
     listQuery.events = [
-      evt({ id: "m", starts_at: thisMonthIso }),
-      evt({ id: "old", starts_at: "1990-06-15T00:00:00.000Z" }),
+      evt({ id: "campus-month", starts_at: "2026-03-08T07:00:00.000Z" }),
+      evt({ id: "prev-month", starts_at: "2026-02-28T20:59:00.000Z" }),
+      evt({ id: "next-month", starts_at: "2026-03-31T21:00:00.000Z" }),
     ]
-    render(<EventsFeature />)
-    expect(screen.getByTestId("list-count")).toHaveTextContent("1")
+
+    try {
+      render(<EventsFeature />)
+      expect(screen.getByTestId("list-count")).toHaveTextContent("1")
+      expect(screen.getByTestId("list-order")).toHaveTextContent("campus-month")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("ignores an unknown date-range value", () => {
@@ -450,6 +461,33 @@ describe("EventsFeature — client-side category + date filters", () => {
 })
 
 describe("EventsFeature — sort modes", () => {
+  it("sorts the complete My array by descending dates and IDs without mutating it", () => {
+    search.params = { tab: "my", sort: "newest" }
+    const source = [
+      evt({ id: "00000000-0000-0000-0000-000000000001", starts_at: "2027-01-01T00:00:00Z" }),
+      evt({ id: "00000000-0000-0000-0000-000000000002", starts_at: "2027-01-02T00:00:00Z" }),
+      evt({ id: "00000000-0000-0000-0000-000000000003", starts_at: "2027-01-02T00:00:00Z" }),
+      evt({ id: "00000000-0000-0000-0000-000000000004", starts_at: "2027-01-03T00:00:00Z" }),
+    ]
+    const originalIds = source.map((event) => event.id)
+    myQuery.data = source
+    listQuery.events = []
+
+    render(<EventsFeature />)
+
+    expect(screen.getByTestId("list-order").textContent).toBe([...originalIds].reverse().join(","))
+    expect(source.map((event) => event.id)).toEqual(originalIds)
+    expect(queryCalls.mine.at(-1)?.[1]).toMatchObject({ enabled: true })
+    expect(queryCalls.list.at(-1)?.[1]).toMatchObject({ enabled: false })
+    expect(listQuery.fetchNextPage).not.toHaveBeenCalled()
+  })
+
+  it("maps the existing newest token to server-side descending start dates", () => {
+    search.params = { sort: "newest" }
+    render(<EventsFeature />)
+    expect(queryCalls.list.at(-1)?.[0]).toMatchObject({ order: "starts_at_desc" })
+  })
+
   it("sorts by participant_count desc when sort='popular' (185-186)", () => {
     search.params = { sort: "popular" }
     listQuery.events = [
@@ -458,6 +496,7 @@ describe("EventsFeature — sort modes", () => {
     ]
     render(<EventsFeature />)
     expect(screen.getByTestId("list-order")).toHaveTextContent("high,low")
+    expect(queryCalls.list.at(-1)?.[0]).not.toHaveProperty("order")
   })
 
   it("filters to future events + sorts ascending when sort='upcoming' (187-192)", () => {
@@ -472,6 +511,30 @@ describe("EventsFeature — sort modes", () => {
     render(<EventsFeature />)
     expect(screen.getByTestId("list-count")).toHaveTextContent("2")
     expect(screen.getByTestId("list-order")).toHaveTextContent("sooner,later")
+    expect(queryCalls.list.at(-1)?.[0]).toMatchObject({ order: "starts_at_asc" })
+  })
+
+  it("drops an event from the upcoming sort once its start time passes", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-08-09T12:00:00.000Z"))
+    search.params = { sort: "upcoming" }
+    listQuery.events = [
+      evt({ id: "soon", starts_at: "2026-08-09T12:01:00.000Z" }),
+      evt({ id: "later", starts_at: "2026-08-10T12:00:00.000Z" }),
+    ]
+    try {
+      render(<EventsFeature />)
+      expect(screen.getByTestId("list-order").textContent).toBe("soon,later")
+
+      act(() => {
+        vi.advanceTimersByTime(2 * 60_000)
+      })
+
+      expect(screen.getByTestId("list-count").textContent).toBe("1")
+      expect(screen.getByTestId("list-order").textContent).toBe("later")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("handles missing participant_count in popular sort (?? 0 fallback)", () => {
@@ -624,5 +687,16 @@ describe("EventsFeature — list height hold across filter changes", () => {
     stableHeight.value = undefined
     render(<EventsFeature />)
     expect(screen.getByTestId("list").parentElement?.style.minHeight).toBe("")
+  })
+
+  it("clears supported date-filter results when campus timezone is unavailable", () => {
+    campusTimezone.current = null
+    search.params = { dr: "today" }
+    listQuery.events = [evt({ id: "unfiltered" })]
+
+    render(<EventsFeature />)
+
+    expect(screen.getByTestId("list-count")).toHaveTextContent("0")
+    expect(screen.getByTestId("events-count")).toHaveTextContent("0")
   })
 })

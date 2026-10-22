@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+    image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
     command: ["postgres", "-c", "max_connections=500"]
     environment:
       POSTGRES_USER: postgres
@@ -23,7 +23,7 @@ services:
       - test-net
 
   redis:
-    image: redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952
+    image: redis:8.10.2-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
@@ -38,7 +38,7 @@ services:
       - test-net
 
   toxiproxy:
-    image: ghcr.io/shopify/toxiproxy:2.9.0@sha256:b44c283298cea49e2defaba1b3028783798346f2a926684e3a345fd8441af3b8
+    image: ghcr.io/shopify/toxiproxy:2.12.0@sha256:9378ed52a28bc50edc1350f936f518f31fa95f0d15917d6eb40b8e376d1a214e
     ports:
       - "127.0.0.1:8474:8474"   # HTTP API для управления toxics
       - "127.0.0.1:5433:5433"   # PostgreSQL proxy

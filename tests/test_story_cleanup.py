@@ -12,45 +12,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.services.story_cleanup import (
-    StoryCleanupConfig,
     cleanup_expired_stories,
-    start_story_cleanup_scheduler,
 )
 
 # ============================================================
 # StoryCleanupConfig tests
 # ============================================================
-
-
-def test_story_cleanup_config_default():
-    """Test default config values."""
-    config = StoryCleanupConfig()
-    assert config.interval_seconds == 86_400
-    assert config.normalized_interval() == 86_400
-
-
-def test_story_cleanup_config_custom():
-    """Test custom interval."""
-    config = StoryCleanupConfig(interval_seconds=3600)
-    assert config.normalized_interval() == 3600
-
-
-def test_story_cleanup_config_min_interval():
-    """Test interval is clamped to minimum 60 seconds."""
-    config = StoryCleanupConfig(interval_seconds=10)
-    assert config.normalized_interval() == 60
-
-
-def test_story_cleanup_config_zero():
-    """Test zero interval is clamped to 60."""
-    config = StoryCleanupConfig(interval_seconds=0)
-    assert config.normalized_interval() == 60
-
-
-def test_story_cleanup_config_negative():
-    """Test negative interval is clamped to 60."""
-    config = StoryCleanupConfig(interval_seconds=-100)
-    assert config.normalized_interval() == 60
 
 
 # ============================================================
@@ -127,15 +94,3 @@ async def test_cleanup_expired_stories_creates_session():
 # ============================================================
 # start_story_cleanup_scheduler tests
 # ============================================================
-
-
-@pytest.mark.asyncio
-async def test_start_story_cleanup_scheduler_returns_stop():
-    """Test scheduler returns a callable stop function."""
-    with patch("app.services.story_cleanup.cleanup_expired_stories", return_value=0):
-        stop_fn = await start_story_cleanup_scheduler(
-            config=StoryCleanupConfig(interval_seconds=100000)
-        )
-
-    assert callable(stop_fn)
-    await stop_fn()

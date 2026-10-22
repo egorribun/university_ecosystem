@@ -16,7 +16,6 @@ import (
 	"math"
 	"math/big"
 	"net/http"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -39,6 +38,9 @@ var errRevocationStoreUnavailable = errors.New("session revocation store unavail
 const (
 	// DefaultJWTAudience must match app/core/config/mixins/jwt_settings.py.
 	DefaultJWTAudience            = "university-ecosystem-api"
+	defaultJWKSRefreshInterval    = 5 * time.Minute
+	minJWKSRefreshInterval        = time.Second
+	maxJWKSRefreshInterval        = 24 * time.Hour
 	jwtMaxClockSkew               = 5 * time.Minute
 	jwtMaxTokenAge                = 24 * time.Hour
 	revocationHealthCheckInterval = 500 * time.Millisecond
@@ -49,6 +51,39 @@ const (
 // Go gateway and the Python backend. Must match the Python setting
 // `ACCESS_TOKEN_COOKIE_NAME` (currently "access_token_v2").
 const AccessTokenCookieName = "access_token_v2"
+
+// boundedJWKSRefreshInterval matches the file-processor trust boundary so the
+// maximum last-known-good window cannot grow without bound from configuration.
+func boundedJWKSRefreshInterval(interval time.Duration) time.Duration {
+	if interval <= 0 {
+		return defaultJWKSRefreshInterval
+	}
+	if interval < minJWKSRefreshInterval {
+		return minJWKSRefreshInterval
+	}
+	if interval > maxJWKSRefreshInterval {
+		return maxJWKSRefreshInterval
+	}
+	return interval
+}
+
+// scheduledJWKSRefreshInterval bounds the poll cadence to the same maximum
+// used by snapshot freshness while preserving shorter configured intervals.
+func scheduledJWKSRefreshInterval(interval time.Duration) time.Duration {
+	if interval <= 0 {
+		return defaultJWKSRefreshInterval
+	}
+	if interval > maxJWKSRefreshInterval {
+		return maxJWKSRefreshInterval
+	}
+	return interval
+}
+
+// jwksSnapshotMaxAge keeps a retired signing key trusted for at most one
+// bounded refresh interval plus the maximum accepted JWT lifetime and skew.
+func jwksSnapshotMaxAge(refreshInterval time.Duration) time.Duration {
+	return boundedJWKSRefreshInterval(refreshInterval) + jwtMaxTokenAge + jwtMaxClockSkew
+}
 
 // L1CacheConfig holds configuration for the local cache layer.
 type L1CacheConfig struct {
@@ -70,11 +105,17 @@ type cacheEntry struct {
 	storedAt time.Time // PERF-31-02: timestamp for probabilistic early refresh
 }
 
-// rsaKeySet is an immutable snapshot of the keys published by the backend
-// JWKS endpoint. The map is replaced atomically on refresh; readers never
-// mutate it, so tokens signed by either side of a rotation window can be
-// verified concurrently without taking a lock.
+// rsaKeySet is an immutable map of public keys published by the backend JWKS
+// endpoint. It is stored inside rsaKeySnapshot and never mutated after publish.
 type rsaKeySet map[string]*rsa.PublicKey
+
+// rsaKeySnapshot keeps the verification keys and their successful-fetch time in
+// one atomic publication. Readers never combine keys and freshness from
+// different refresh attempts.
+type rsaKeySnapshot struct {
+	keys      rsaKeySet
+	fetchedAt time.Time
+}
 
 // JWTMiddleware validates JWT tokens (HS256 and RS256).
 type JWTMiddleware struct {
@@ -83,13 +124,18 @@ type JWTMiddleware struct {
 	// jwksConfigured records that the deployment selected JWKS-backed RS256
 	// verification, even before the first successful refresh.  It must be set
 	// synchronously when the refresher starts so a transient JWKS outage cannot
-	// make the parser fall back to HS256 while the key cache is empty.
+	// make the parser fall back to HS256. A configured PEM remains a bootstrap
+	// snapshot only while it is fresh; authentication fails closed without a
+	// usable bootstrap snapshot.
 	jwksConfigured atomic.Bool
-	// rsaKeys retains every JWKS key by its JOSE kid for dual-key rotation.
+	// jwksFreshnessLimit bounds last-known-good key trust during endpoint outages.
+	jwksFreshnessLimit atomic.Int64
+	// jwksSnapshot is the authoritative, coherent keys-plus-freshness publication.
+	jwksSnapshot atomic.Pointer[rsaKeySnapshot]
+	// rsaKeys is a compatibility mirror for existing observability/test callers.
 	rsaKeys atomic.Pointer[rsaKeySet]
 	// rsaPublicKey is a compatibility fallback for callers/tests that configure
-	// a single PEM key directly. New JWKS snapshots update it to a representative
-	// key, while verification prefers rsaKeys + kid lookup.
+	// a single PEM key directly. JWKS authentication reads only jwksSnapshot.
 	rsaPublicKey atomic.Pointer[rsa.PublicKey] // RZ-33-19: atomic for JWKS hot-reload safety
 	redis        *redis.Client
 	l1cache      *lru.Cache[string, cacheEntry]
@@ -184,28 +230,29 @@ type Claims struct {
 	TenantID string `json:"tenant_id,omitempty"`
 }
 
-// NewJWTMiddleware creates a new JWT middleware with default L1 cache settings.
-func NewJWTMiddleware(secret string, redisClient *redis.Client) *JWTMiddleware {
-	return NewJWTMiddlewareWithConfig(secret, "", redisClient, DefaultL1CacheConfig())
+// storeRSAKeys publishes a complete key snapshot with its fetch time. The
+// legacy atomic mirrors remain available to existing callers, but JWKS
+// authentication reads only jwksSnapshot.
+func (m *JWTMiddleware) storeRSAKeys(keys rsaKeySet) {
+	m.storeRSAKeysAt(keys, time.Now().UTC())
 }
 
-// storeRSAKeys publishes a complete JWKS snapshot atomically.  The legacy
-// rsaPublicKey pointer is updated as well so older direct-PEM integrations keep
-// their existing observability/test seam; authentication itself uses the map.
-func (m *JWTMiddleware) storeRSAKeys(keys rsaKeySet) {
+func (m *JWTMiddleware) storeRSAKeysAt(keys rsaKeySet, fetchedAt time.Time) {
 	if len(keys) == 0 {
 		return
 	}
-	snapshot := make(rsaKeySet, len(keys))
+	immutableKeys := make(rsaKeySet, len(keys))
 	for kid, key := range keys {
-		snapshot[kid] = key
+		immutableKeys[kid] = key
 	}
-	m.rsaKeys.Store(&snapshot)
-	if key, ok := snapshot[""]; ok {
+	snapshot := &rsaKeySnapshot{keys: immutableKeys, fetchedAt: fetchedAt.UTC()}
+	m.jwksSnapshot.Store(snapshot)
+	m.rsaKeys.Store(&snapshot.keys)
+	if key, ok := snapshot.keys[""]; ok {
 		m.rsaPublicKey.Store(key)
 		return
 	}
-	for _, key := range snapshot {
+	for _, key := range snapshot.keys {
 		m.rsaPublicKey.Store(key)
 		break
 	}
@@ -302,12 +349,16 @@ var (
 )
 
 // StartJWKSRefresher starts a background goroutine that periodically fetches
-// the JWKS from endpoint and atomically swaps the RSA public key.  The caller
-// must cancel ctx to stop the goroutine on shutdown.
+// the JWKS from endpoint and atomically publishes its keys and freshness time.
+// The caller must cancel ctx to stop the goroutine on shutdown.
 func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string, interval time.Duration, logger *slog.Logger) {
+	interval = scheduledJWKSRefreshInterval(interval)
+
 	// Mark RS256 mode before starting any asynchronous work.  If the initial
-	// fetch fails, authentication must remain fail-closed until a valid JWKS
-	// snapshot is available; HS256 is never an outage fallback in JWKS mode.
+	// fetch fails, a configured PEM bootstrap snapshot remains usable only while
+	// fresh; without a usable bootstrap snapshot auth fails closed until a valid
+	// JWKS snapshot arrives. HS256 is never an outage fallback in JWKS mode.
+	m.jwksFreshnessLimit.Store(int64(jwksSnapshotMaxAge(interval)))
 	m.jwksConfigured.Store(true)
 
 	jwksMetricsOnce.Do(func() {
@@ -332,14 +383,13 @@ func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string,
 		var retryCount int
 
 		jwksRefreshes.Inc()
-		newKeys, err := fetchJWKSKeySet(ctx, httpClient, endpoint)
+		_, err := m.refreshJWKSOnce(ctx, httpClient, endpoint)
 		if err != nil {
 			jwksRefreshErrors.Inc()
 			retryCount = 1
 			nextInterval = minRetryInterval
 			logger.WarnContext(ctx, "Initial JWKS fetch failed, retrying soon", "err", err, "next_retry_in", nextInterval)
 		} else {
-			m.storeRSAKeys(newKeys)
 			nextInterval = interval
 			logger.InfoContext(ctx, "Initial JWKS fetch succeeded")
 		}
@@ -353,7 +403,7 @@ func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string,
 				return
 			case <-timer.C:
 				jwksRefreshes.Inc()
-				newKeys, err := fetchJWKSKeySet(ctx, httpClient, endpoint)
+				rotated, err := m.refreshJWKSOnce(ctx, httpClient, endpoint)
 				if err != nil {
 					jwksRefreshErrors.Inc()
 					retryCount++
@@ -372,16 +422,27 @@ func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string,
 				nextInterval = interval
 				timer.Reset(nextInterval)
 
-				// Atomic swap — RZ-33-19: hot path reads via m.rsaPublicKey.Load().
-				old := m.rsaKeys.Load()
-				if old == nil || !rsaKeySetsEqual(*old, newKeys) {
-					m.storeRSAKeys(newKeys)
+				if rotated {
 					jwksKeyRotations.Inc()
 					logger.InfoContext(ctx, "JWKS key rotated successfully")
 				}
 			}
 		}
 	}()
+}
+
+// refreshJWKSOnce publishes keys only after a successful complete fetch. An
+// unchanged key set still receives a new fetchedAt value, while failed fetches
+// leave the complete last-known-good snapshot untouched.
+func (m *JWTMiddleware) refreshJWKSOnce(ctx context.Context, client *http.Client, endpoint string) (bool, error) {
+	newKeys, err := fetchJWKSKeySet(ctx, client, endpoint)
+	if err != nil {
+		return false, err
+	}
+	old := m.jwksSnapshot.Load()
+	rotated := old == nil || !rsaKeySetsEqual(old.keys, newKeys)
+	m.storeRSAKeys(newKeys)
+	return rotated, nil
 }
 
 // fetchJWKSKeySet fetches a JWKS JSON from the given endpoint and returns every
@@ -466,38 +527,6 @@ func parseJWKSKeys(rawKeys []json.RawMessage) (rsaKeySet, error) {
 		return nil, fmt.Errorf("jwks: no RSA key found in JWKS response")
 	}
 	return keys, nil
-}
-
-// fetchJWKSPublicKey is retained for existing single-key callers and tests.
-// Authentication and refresh use fetchJWKSKeySet; this compatibility helper
-// returns the sole key or a deterministic representative when multiple keys
-// are present.
-func fetchJWKSPublicKey(ctx context.Context, client *http.Client, endpoint string) (*rsa.PublicKey, error) {
-	keys, err := fetchJWKSKeySet(ctx, client, endpoint)
-	if err != nil {
-		return nil, err
-	}
-	return selectJWKSRepresentative(keys)
-}
-
-// selectJWKSRepresentative returns the compatibility key used by callers that
-// predate dual-key JWKS support.  A blank kid is the legacy single-key form;
-// otherwise choose the lexicographically first kid so the result is stable
-// across map iterations.  fetchJWKSKeySet normally guarantees a non-empty set,
-// but keeping the invariant check here makes this helper safe for all callers.
-func selectJWKSRepresentative(keys rsaKeySet) (*rsa.PublicKey, error) {
-	if key, ok := keys[""]; ok {
-		return key, nil
-	}
-	if len(keys) == 0 {
-		return nil, fmt.Errorf("jwks: no RSA key found in JWKS response")
-	}
-	kids := make([]string, 0, len(keys))
-	for kid := range keys {
-		kids = append(kids, kid)
-	}
-	sort.Strings(kids)
-	return keys[kids[0]], nil
 }
 
 func jwkToRSAPublicKey(nB64, eB64 string) (*rsa.PublicKey, error) {
@@ -820,6 +849,13 @@ func validateIAT(claims *Claims) error {
 	return nil
 }
 
+func validateSubject(claims *Claims) error {
+	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
+		return fmt.Errorf("token missing sub claim")
+	}
+	return nil
+}
+
 // extractAlgFromHeader decodes the JWT header without validating the signature
 // and returns the "alg" field.  Reading the algorithm BEFORE calling
 // jwt.ParseWithClaims provides a defense-in-depth check against algorithm-
@@ -856,44 +892,88 @@ func extractAlgFromHeader(tokenString string) (string, error) {
 //
 // RZ-W15-01: When rsaPublicKey is configured, HS256 is explicitly rejected here
 // as a second line of defence (the first is extractAlgFromHeader called before
-// ParseWithClaims).  An attacker cannot downgrade to HS256 to forge tokens using
+// ParseWithClaims). An attacker cannot downgrade to HS256 to forge tokens using
 // the RSA public key as an HMAC secret.
 func (m *JWTMiddleware) keyFunc(token *jwt.Token) (interface{}, error) {
+	return m.keyFuncAt(token, time.Now().UTC())
+}
+
+// keyFuncAt is the verification-key decision used by keyFunc. Supplying the
+// decision time keeps freshness boundaries deterministic in tests.
+func (m *JWTMiddleware) keyFuncAt(token *jwt.Token, now time.Time) (interface{}, error) {
 	switch token.Method.(type) {
 	case *jwt.SigningMethodRSA:
-		// RS256 path — resolve the JOSE kid against the complete JWKS snapshot.
-		if keys := m.rsaKeys.Load(); keys != nil {
-			kid, _ := token.Header["kid"].(string)
-			if key, ok := (*keys)[kid]; ok {
-				return key, nil
-			}
-			if kid == "" && len(*keys) == 1 {
-				for _, key := range *keys {
-					return key, nil
-				}
-			}
-			if kid == "" {
-				return nil, fmt.Errorf("RS256 token is missing kid while multiple JWKS keys are configured")
-			}
-			return nil, fmt.Errorf("RS256 token references unknown JWKS key id %q", kid)
-		}
-		// Compatibility path for a directly configured PEM key.
-		if key := m.rsaPublicKey.Load(); key != nil {
-			return key, nil
-		}
-		return nil, fmt.Errorf("RS256 token received but JWKS_PUBLIC_KEY_PEM is not configured")
+		return m.rsaVerificationKeyAt(token, now)
 	case *jwt.SigningMethodHMAC:
-		// HS256 path — only allowed when RS256 is NOT configured.
-		// If rsaPublicKey is set, the deployment intends RS256-only; accepting HS256
-		// alongside RS256 would allow an attacker with knowledge of the HMAC secret
-		// to forge tokens even after the RS256 key is rotated.
-		if m.rsaConfigured() {
-			return nil, fmt.Errorf("HS256 token rejected: RS256 is configured and HS256 is not accepted alongside it")
-		}
-		return m.secret, nil
+		return m.hmacVerificationKey()
 	default:
 		return nil, fmt.Errorf("unexpected signing algorithm: %v", token.Header["alg"])
 	}
+}
+
+func (m *JWTMiddleware) rsaVerificationKeyAt(token *jwt.Token, now time.Time) (interface{}, error) {
+	keys, err := m.jwksKeysAt(now)
+	if err != nil {
+		return nil, err
+	}
+	if keys != nil {
+		return jwksKeyForToken(token, keys)
+	}
+	// Compatibility path for a directly configured PEM key.
+	if key := m.rsaPublicKey.Load(); key != nil {
+		return key, nil
+	}
+	return nil, fmt.Errorf("RS256 token received but JWKS_PUBLIC_KEY_PEM is not configured")
+}
+
+func (m *JWTMiddleware) jwksKeysAt(now time.Time) (rsaKeySet, error) {
+	if m.jwksConfigured.Load() {
+		snapshot := m.jwksSnapshot.Load()
+		if snapshot == nil {
+			return nil, fmt.Errorf("RS256 token received but JWKS snapshot is unavailable")
+		}
+		maxAge := time.Duration(m.jwksFreshnessLimit.Load())
+		if maxAge <= 0 || !now.UTC().Before(snapshot.fetchedAt.Add(maxAge)) {
+			return nil, fmt.Errorf("RS256 token rejected: JWKS key snapshot is stale")
+		}
+		return snapshot.keys, nil
+	}
+	if snapshot := m.jwksSnapshot.Load(); snapshot != nil {
+		return snapshot.keys, nil
+	}
+	return nil, nil
+}
+
+func jwksKeyForToken(token *jwt.Token, keys rsaKeySet) (interface{}, error) {
+	kid, _ := token.Header["kid"].(string)
+	if key, ok := keys[kid]; ok {
+		return key, nil
+	}
+	if len(keys) == 1 {
+		if key, ok := keys[""]; ok && key != nil {
+			return key, nil
+		}
+	}
+	if kid == "" && len(keys) == 1 {
+		for _, key := range keys {
+			return key, nil
+		}
+	}
+	if kid == "" {
+		return nil, fmt.Errorf("RS256 token is missing kid while multiple JWKS keys are configured")
+	}
+	return nil, fmt.Errorf("RS256 token references unknown JWKS key id %q", kid)
+}
+
+func (m *JWTMiddleware) hmacVerificationKey() (interface{}, error) {
+	// HS256 path — only allowed when RS256 is NOT configured.
+	// If rsaPublicKey is set, the deployment intends RS256-only; accepting HS256
+	// alongside RS256 would allow an attacker with knowledge of the HMAC secret
+	// to forge tokens even after the RS256 key is rotated.
+	if m.rsaConfigured() {
+		return nil, fmt.Errorf("HS256 token rejected: RS256 is configured and HS256 is not accepted alongside it")
+	}
+	return m.secret, nil
 }
 
 // Validate returns a Gin middleware that validates JWT tokens.
@@ -961,6 +1041,10 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error": "invalid token claims",
 			})
+			return
+		}
+		if err := validateSubject(claims); err != nil {
+			AbortWithProblem(c, http.StatusUnauthorized, "Unauthorized", "invalid token claims", "https://api.university.edu/probs/invalid-token")
 			return
 		}
 
@@ -1074,6 +1158,12 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint
 			c.Next()
 			return
 		}
+		if validateSubject(claims) != nil || !claims.IsActive {
+			// Optional authentication must not promote incomplete or inactive
+			// claims into a signed downstream identity assertion.
+			c.Next()
+			return
+		}
 
 		// GW-P1-02: enforce iat temporal bounds for optional auth too.
 		if err := validateIAT(claims); err != nil {
@@ -1112,37 +1202,6 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint
 		c.Set("session_id", claims.ID)
 		c.Set("tenant_id", tenantID)
 		c.Set("claims", claims)
-
-		c.Next()
-	}
-}
-
-// RequireRole returns a middleware that requires a specific role.
-func RequireRole(roles ...string) gin.HandlerFunc {
-	roleSet := make(map[string]bool)
-	for _, role := range roles {
-		roleSet[role] = true
-	}
-
-	return func(c *gin.Context) {
-		userRole, exists := c.Get("user_role")
-		if !exists {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error": "role not found in token",
-			})
-			return
-		}
-
-		// TD-10 (audit 2026-03-05): Use ok-guard form of type assertion.
-		// Without it, a non-string value in the Gin context (e.g., nil or int
-		// set by another middleware) causes a goroutine panic → HTTP 500.
-		role, ok := userRole.(string)
-		if !ok || !roleSet[role] {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error": "insufficient permissions",
-			})
-			return
-		}
 
 		c.Next()
 	}

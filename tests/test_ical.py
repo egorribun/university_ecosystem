@@ -2,7 +2,10 @@
 
 from datetime import UTC, date, datetime, time, timedelta, timezone
 from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
+import app.services.ical as ical
+from app.core.config import settings
 from app.services.ical import (
     _ensure_time,
     _escape,
@@ -129,6 +132,13 @@ class TestEnsureTime:
         assert result.hour == 12
         assert result.minute == 30
 
+    def test_ensure_time_from_aware_time_uses_wall_clock(self):
+        result = _ensure_time(time(9, 30, tzinfo=UTC))
+
+        assert result == time(9, 30)
+        assert result is not None
+        assert result.tzinfo is None
+
 
 class TestFormatDt:
     """Tests for _format_dt function."""
@@ -154,7 +164,6 @@ class TestIterLessonDates:
                 parity="both",
                 weeks=4,
                 start_monday=monday,
-                current_week_parity="odd",
             )
         )
         assert len(dates) == 4
@@ -169,10 +178,9 @@ class TestIterLessonDates:
                 parity="odd",
                 weeks=6,
                 start_monday=monday,
-                current_week_parity="odd",
             )
         )
-        # Should generate for weeks 0, 2, 4 (odd weeks when starting at odd)
+        # ISO weeks 1, 3, and 5 are odd.
         assert len(dates) == 3
 
     def test_iter_even_parity_starting_odd(self):
@@ -183,10 +191,9 @@ class TestIterLessonDates:
                 parity="even",
                 weeks=6,
                 start_monday=monday,
-                current_week_parity="odd",
             )
         )
-        # Should generate for weeks 1, 3, 5 (even weeks when starting at odd)
+        # ISO weeks 2, 4, and 6 are even.
         assert len(dates) == 3
 
 
@@ -221,6 +228,29 @@ class TestGenerateScheduleIcs:
         lesson.lesson_type = "lecture"
         return lesson
 
+    def test_generated_description_uses_single_escaped_line_breaks(self, monkeypatch):
+        monkeypatch.setattr(settings, "campus_timezone", "Europe/Istanbul")
+
+        class _FixedDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                value = datetime(2026, 1, 4, 22, 30, tzinfo=UTC)
+                return value if tz is None else value.astimezone(tz)
+
+        monkeypatch.setattr(ical, "datetime", _FixedDateTime)
+        result = generate_schedule_ics(
+            self._make_mock_group(),
+            [self._make_mock_lesson(parity="both")],
+            weeks=1,
+            locale="en",
+        )
+        descriptions = [
+            line for line in result.split("\r\n") if line.startswith("DESCRIPTION:")
+        ]
+        assert descriptions == [
+            r"DESCRIPTION:Lesson type: Lecture\nTeacher: Dr. Smith\nRoom: 101"
+        ]
+
     def test_generate_empty_schedule(self):
         group = self._make_mock_group()
         result = generate_schedule_ics(group, [], weeks=1)
@@ -242,6 +272,85 @@ class TestGenerateScheduleIcs:
         assert "SUMMARY:" in result
         assert "LOCATION:A305" in result
         assert "END:VEVENT" in result
+
+    def test_generate_uses_campus_week_parity_and_wall_time(self, monkeypatch):
+        monkeypatch.setattr(settings, "campus_timezone", "Europe/Istanbul")
+
+        class _FixedDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                value = datetime(2026, 1, 4, 22, 30, tzinfo=UTC)
+                return value if tz is None else value.astimezone(tz)
+
+        monkeypatch.setattr(ical, "datetime", _FixedDateTime)
+        lesson = self._make_mock_lesson(
+            weekday="Monday",
+            parity="even",
+            start_time=_FixedDateTime(1970, 1, 5, 9, 0, tzinfo=UTC),
+            end_time=_FixedDateTime(1970, 1, 5, 10, 0, tzinfo=UTC),
+        )
+
+        result = generate_schedule_ics(self._make_mock_group(), [lesson], weeks=1)
+
+        assert "UID:lesson-1-20260105@university-ecosystem" in result
+        assert "DTSTART:20260105T060000Z" in result
+        assert "DTEND:20260105T070000Z" in result
+
+    def test_generated_parity_tracks_iso_week_53_to_week_1(self, monkeypatch):
+        monkeypatch.setattr(settings, "campus_timezone", "Europe/Istanbul")
+
+        class _FixedDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                value = datetime(2026, 12, 28, 8, 0, tzinfo=UTC)
+                return value if tz is None else value.astimezone(tz)
+
+        monkeypatch.setattr(ical, "datetime", _FixedDateTime)
+        start_time = _FixedDateTime(1970, 1, 5, 9, 0, tzinfo=UTC)
+        end_time = _FixedDateTime(1970, 1, 5, 10, 0, tzinfo=UTC)
+        odd_lesson = self._make_mock_lesson(
+            lesson_id=53,
+            weekday="Monday",
+            parity="odd",
+            start_time=start_time,
+            end_time=end_time,
+        )
+        even_lesson = self._make_mock_lesson(
+            lesson_id=2,
+            weekday="Monday",
+            parity="even",
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+        odd_calendar = generate_schedule_ics(
+            self._make_mock_group(), [odd_lesson], weeks=3
+        )
+        even_calendar = generate_schedule_ics(
+            self._make_mock_group(), [even_lesson], weeks=3
+        )
+
+        assert "UID:lesson-53-20261228@university-ecosystem" in odd_calendar
+        assert "UID:lesson-53-20270104@university-ecosystem" in odd_calendar
+        assert "UID:lesson-53-20270111@university-ecosystem" not in odd_calendar
+        assert "UID:lesson-2-20261228@university-ecosystem" not in even_calendar
+        assert "UID:lesson-2-20270104@university-ecosystem" not in even_calendar
+        assert "UID:lesson-2-20270111@university-ecosystem" in even_calendar
+
+    def test_campus_occurrence_skips_dst_gap_and_uses_first_fold(self):
+        zone = ZoneInfo("Europe/Berlin")
+
+        nonexistent = ical._resolve_campus_occurrence(
+            date(2026, 3, 29), time(2, 30), zone
+        )
+        ambiguous = ical._resolve_campus_occurrence(
+            date(2026, 10, 25), time(2, 30), zone
+        )
+
+        assert nonexistent is None
+        assert ambiguous is not None
+        assert ambiguous.fold == 0
+        assert ambiguous.astimezone(UTC) == datetime(2026, 10, 25, 0, 30, tzinfo=UTC)
 
     def test_generate_multiple_lessons(self):
         group = self._make_mock_group()

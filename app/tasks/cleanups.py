@@ -1,12 +1,11 @@
 from app.core.config import settings
-from app.core.logging import get_logger
 from app.core.nats_broker import broker
 from app.services import notification_queue
+from app.services.business_gauges import refresh_business_gauges
 from app.services.cwv_retention import cleanup_stale_cwv_observations
 from app.services.email_change_cleanup import cleanup_stale_email_change_tokens
 from app.services.mfa_challenge_cleanup import cleanup_stale_mfa_challenges
 from app.services.notifications import cleanup_stale_notifications
-from app.services.partition_manager import ensure_partitions_exist
 from app.services.password_reset_cleanup import cleanup_stale_password_reset_tokens
 from app.services.privacy_cleanup import PrivacyCleanupConfig, cleanup_privacy_artifacts
 from app.services.session_cleanup import cleanup_expired_sessions
@@ -82,17 +81,6 @@ async def cleanup_privacy_artifacts_task() -> None:
 
 
 @broker.task()
-async def manage_partitions_task() -> None:
-    """Task for managing database partitions."""
-    if settings.partition_management_enabled:
-        await ensure_partitions_exist()
-
-
-async def setup_periodic_cleanups() -> None:
-    """Schedule periodic cleanup tasks.
-
-    (MOD-3: Audit 2026-02-24)
-    Periodic tasks are now managed by the application lifespan scheduler.
-    """
-    _logger = get_logger(__name__)
-    _logger.info("NATS periodic cleanups initialised")
+async def refresh_business_gauges_task() -> None:
+    """Task for refreshing the active-user and MFA-adoption gauges."""
+    await refresh_business_gauges()

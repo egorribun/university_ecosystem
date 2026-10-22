@@ -83,6 +83,28 @@ describe("Feedback primitives", () => {
     expect(skeletons[2]).toHaveStyle({ opacity: "0.5" })
   })
 
+  it.each([
+    ["omitted", {}],
+    ["explicitly undefined", { variant: undefined }],
+  ] as const)("renders a rectangular skeleton when variant is %s", (_, variantProps) => {
+    const { container } = render(
+      <Skeleton
+        {...variantProps}
+        width={32}
+        height={16}
+        className="caller-skeleton"
+        style={{ opacity: 0.5 }}
+      />
+    )
+
+    expect(container.children).toHaveLength(1)
+    const skeleton = container.firstElementChild as HTMLElement
+    expect(skeleton).toHaveClass("rounded-none", "caller-skeleton")
+    expect(skeleton.style.width).toBe("2rem")
+    expect(skeleton.style.height).toBe("1rem")
+    expect(skeleton).toHaveStyle({ opacity: "0.5" })
+  })
+
   describe("Snackbar", () => {
     beforeEach(() => {
       vi.useFakeTimers()

@@ -137,6 +137,20 @@ def _is_ip_trusted(
     return False
 
 
+def _forwarded_node_host(value: str) -> str:
+    """Return the address of one forwarded hop without RFC 7239 decoration.
+
+    Gateways emit quoted ``[ipv6]:port`` and ``ip:port`` node values; those must
+    resolve to the same client as the bare address instead of being dropped.
+    """
+    node = value.strip().strip('"').strip()
+    if node.startswith("["):
+        return node[1:].split("]", 1)[0]
+    if node.count(":") == 1:
+        return node.split(":", 1)[0]
+    return node
+
+
 def _extract_ips_from_forwarded(forwarded: str) -> list[str]:
     """Extract 'for' parameters from RFC 7239 Forwarded header."""
     ips: list[str] = []
@@ -144,8 +158,7 @@ def _extract_ips_from_forwarded(forwarded: str) -> list[str]:
         for part in element.split(";"):
             part = part.strip()
             if part.lower().startswith("for="):
-                ip = part[4:].strip('"[]')
-                ips.append(ip)
+                ips.append(_forwarded_node_host(part[4:]))
     return ips
 
 
@@ -177,7 +190,7 @@ def resolve_client_ip(request: Request) -> str:
             tuple[str, ipaddress.IPv4Address | ipaddress.IPv6Address]
         ] = []
         for part in xfwd.split(","):
-            obj = _normalize_ip_obj(part)
+            obj = _normalize_ip_obj(_forwarded_node_host(part))
             if obj is not None:
                 cleaned_ips.append((str(obj), obj))
 

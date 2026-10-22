@@ -23,6 +23,12 @@ const stories: StoryItem[] = ["One", "Two", "Three"].map((title) => ({
   is_active: true,
 }))
 
+function storyAt(index: number): StoryItem {
+  const story = stories[index]
+  if (!story) throw new Error(`Missing story fixture at index ${index}`)
+  return story
+}
+
 let now = 0
 let nextFrameId = 0
 const frames = new Map<number, FrameRequestCallback>()
@@ -51,6 +57,20 @@ function pressKey(key: string) {
   const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })
   act(() => window.dispatchEvent(event))
   return event
+}
+
+function tick(timestamp: number) {
+  now = timestamp
+  expect(frames.size).toBe(1)
+  const [id, callback] = [...frames.entries()][0]!
+  frames.delete(id)
+  act(() => callback(timestamp))
+}
+
+function expectActiveProgress(value: number) {
+  expect(
+    document.querySelector('[role="dialog"] [role="progressbar"][aria-live="polite"]')
+  ).toHaveAttribute("aria-valuenow", String(value))
 }
 
 describe("DashboardStories real-viewer navigation boundaries", () => {
@@ -135,6 +155,49 @@ describe("DashboardStories real-viewer navigation boundaries", () => {
     expect(initialCallback).toHaveBeenCalledTimes(1)
     expect(latestCallback.mock.calls).toEqual([[stories[1]], [stories[0]], [stories[2]]])
     expect(screen.getByRole("dialog", { name: "Three" })).toBeInTheDocument()
+  })
+
+  it("keeps the opened story and elapsed playback when a refresh reorders the collection", () => {
+    const { replaceStories, onStoryOpen, unmount } = renderStories()
+    fireEvent.click(screen.getByRole("button", { name: "Story: Two" }))
+    expect(screen.getByRole("dialog", { name: "Two" })).toBeInTheDocument()
+    tick(1_300)
+    expectActiveProgress(20)
+
+    const refreshed = [storyAt(1), storyAt(2), storyAt(0)]
+    replaceStories(refreshed)
+    expect(screen.getByRole("dialog", { name: "Two" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Story: Two" })).toHaveAttribute(
+      "data-active",
+      "true"
+    )
+    tick(1_950)
+    expectActiveProgress(30)
+
+    fireEvent.click(screen.getByRole("button", { name: "stories.viewer.aria.next" }))
+    expect(screen.getByRole("dialog", { name: "Three" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "stories.viewer.aria.prev" }))
+    expect(screen.getByRole("dialog", { name: "Two" })).toBeInTheDocument()
+    expect(onStoryOpen.mock.calls).toEqual([[storyAt(1)], [storyAt(2)], [storyAt(1)]])
+
+    unmount()
+    expect(frames.size).toBe(0)
+    expect(pressKey("ArrowRight").defaultPrevented).toBe(false)
+  })
+
+  it("closes when a refresh removes the opened story instead of switching to its neighbor", () => {
+    const { replaceStories, onStoryOpen } = renderStories()
+    fireEvent.click(screen.getByRole("button", { name: "Story: Two" }))
+    expect(screen.getByRole("dialog", { name: "Two" })).toBeInTheDocument()
+    expect(frames.size).toBe(1)
+
+    replaceStories([storyAt(0), storyAt(2)])
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Story: Three" })).not.toHaveAttribute("data-active")
+    expect(pressKey("ArrowRight").defaultPrevented).toBe(false)
+    expect(onStoryOpen.mock.calls).toEqual([[storyAt(1)]])
+    expect(frames.size).toBe(0)
   })
 
   it("closes after Next on the final real viewer without reopening another story", () => {

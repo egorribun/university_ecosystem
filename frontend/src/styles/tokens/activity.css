@@ -351,6 +351,12 @@
   transition: opacity 0.15s ease;
 }
 
+/* Days the backend did not report: an outlined cell, not an empty (zero-activity) one. */
+.activity-heatmap-cell--unknown {
+  background-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--text-tertiary);
+}
+
 @container activity-heatmap (max-width: 480px) {
   .activity-heatmap-cell {
     width: 10px;

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import NewsDetail from "../NewsDetail"
 
 const article = {
@@ -25,18 +25,24 @@ const mocks = vi.hoisted(() => ({
   toggleLike: vi.fn(),
   toggleBookmark: vi.fn(),
   interactions: {} as Record<string, unknown> | undefined,
+  hasMoreComments: false,
+  loadMoreComments: vi.fn(),
   setNewsHeroId: vi.fn(),
   articleNavigation: {} as Record<string, unknown>,
   swipe: {} as Record<string, unknown>,
   share: {} as Record<string, unknown>,
   shareNotify: (_message: string): void => undefined,
+  shareUrl: undefined as string | undefined,
+  routeId: "news-1",
   relatedArticles: [] as unknown[],
+  relatedCategory: "general",
+  language: "en",
   t: (key: string) => key,
 }))
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mocks.navigate,
-  useParams: () => ({ id: "news-1" }),
+  useParams: () => ({ id: mocks.routeId }),
 }))
 
 vi.mock("@tanstack/react-query", () => ({
@@ -56,7 +62,7 @@ vi.mock("@/contexts/AuthContext", () => ({
 }))
 
 vi.mock("@/contexts/LanguageContext", () => ({
-  useLanguage: () => ({ language: "en" }),
+  useLanguage: () => ({ language: mocks.language }),
 }))
 
 vi.mock("@/api/news", () => ({
@@ -65,6 +71,7 @@ vi.mock("@/api/news", () => ({
 
 vi.mock("@/api/hooks/news", () => ({
   newsDetailQueryOptions: vi.fn(() => ({ queryKey: ["news", "news-1"] })),
+  useAnonymousReadMode: () => ({ owner: "news-detail-test-user", anonymous: false }),
 }))
 
 vi.mock("@/hooks/useNewsInteraction", () => ({
@@ -75,12 +82,17 @@ vi.mock("@/hooks/useNewsInteraction", () => ({
     isCommenting: false,
     updateComment: vi.fn(),
     deleteComment: vi.fn(),
+    hasMoreComments: mocks.hasMoreComments,
+    isLoadingMoreComments: false,
+    loadMoreComments: mocks.loadMoreComments,
   }),
 }))
 
-vi.mock("@/hooks/useShare", () => ({
-  useShare: (options: { onNotify: (message: string) => void }) => {
+vi.mock("@/hooks/useShare", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useShare")>()),
+  useShare: (options: { onNotify: (message: string) => void; url?: string }) => {
     mocks.shareNotify = options.onNotify
+    mocks.shareUrl = options.url
     return mocks.share
   },
 }))
@@ -92,7 +104,12 @@ vi.mock("@/hooks/useBookmarks", () => ({
   }),
 }))
 
-vi.mock("@/hooks/useRelatedNews", () => ({ useRelatedNews: () => mocks.relatedArticles }))
+vi.mock("@/hooks/useRelatedNews", () => ({
+  useRelatedNews: (_id: string, category: string) => {
+    mocks.relatedCategory = category
+    return mocks.relatedArticles
+  },
+}))
 vi.mock("@/hooks/useArticleNavigation", () => ({
   useArticleNavigation: () => mocks.articleNavigation,
 }))
@@ -145,7 +162,9 @@ vi.mock("@/components/ui/ConfirmDialog", () => ({
     ) : null,
 }))
 
-vi.mock("@/components/ui/SEO", () => ({ SEO: () => null }))
+vi.mock("@/components/ui/SEO", async () =>
+  vi.importActual<typeof import("@/components/ui/SEO")>("@/components/ui/SEO")
+)
 
 vi.mock("@/components/settings", () => ({
   Alert: ({ children, onClose }: { children: ReactNode; onClose?: () => void }) => (
@@ -249,6 +268,8 @@ vi.mock("@/components/news/NewsDetailHeader", () => ({
 
 describe("NewsDetail", () => {
   beforeEach(() => {
+    // History entries created by another case must not choose this case's route.
+    vi.spyOn(window.history, "length", "get").mockReturnValue(1)
     mocks.query = { isLoading: false, isError: false, data: article }
     mocks.navigate.mockReset()
     mocks.removeQueries.mockReset()
@@ -265,6 +286,8 @@ describe("NewsDetail", () => {
       nextTitle: null,
     }
     mocks.relatedArticles = []
+    mocks.relatedCategory = "general"
+    mocks.language = "en"
     mocks.swipe = {}
     mocks.share = {
       sharing: false,
@@ -276,6 +299,45 @@ describe("NewsDetail", () => {
       handleShare: vi.fn(),
       handleCopyLink: vi.fn(),
     }
+  })
+
+  afterEach(() => {
+    try {
+      cleanup()
+    } finally {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it.each([
+    [
+      "ru",
+      "ГУУ вошёл в топ-20 лучших университетов страны",
+      "Научных публикаций стало больше; гранты и стипендии поддерживают исследования.",
+    ],
+    [
+      "en",
+      "GUU ranks among the country's top 20 universities",
+      "Research publications helped raise the result.",
+    ],
+  ] as const)("uses the stable Science category for %s detail data", (language, title, content) => {
+    mocks.language = language
+    mocks.query = {
+      isLoading: false,
+      isError: false,
+      data: {
+        ...article,
+        title,
+        content,
+        title_en: "GUU ranks among the country's top 20 universities",
+        content_en: "Research publications helped raise the result.",
+      },
+    }
+
+    render(<NewsDetail />)
+
+    expect(mocks.relatedCategory).toBe("science")
   })
 
   it("renders the loading skeleton without attempting the article layout", () => {
@@ -291,6 +353,12 @@ describe("NewsDetail", () => {
     render(<NewsDetail />)
 
     expect(screen.getByTestId("news-detail-skeleton")).toBeInTheDocument()
+    expect(document.title).toBe("news:pageTitle | University Ecosystem")
+    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1)
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      "news:pageDescription"
+    )
     expect(screen.queryByRole("heading")).not.toBeInTheDocument()
     window.dispatchEvent(new Event("scroll"))
     expect(() => frame?.(0)).not.toThrow()
@@ -303,13 +371,19 @@ describe("NewsDetail", () => {
     render(<NewsDetail />)
 
     expect(screen.getByText("news:states.loadError")).toBeInTheDocument()
+    expect(document.title).toBe("news:pageTitle | University Ecosystem")
+    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1)
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      "news:pageDescription"
+    )
     fireEvent.click(screen.getByRole("button", { name: "common:buttons.back" }))
     expect(mocks.navigate).toHaveBeenCalledWith({ to: "/news" })
   })
 
   it("uses browser history when a previous page exists", () => {
     const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined)
-    window.history.pushState({}, "", "/news/news-1")
+    vi.spyOn(window.history, "length", "get").mockReturnValue(2)
     mocks.query = { isLoading: false, isError: true, data: undefined }
 
     render(<NewsDetail />)
@@ -430,6 +504,15 @@ describe("NewsDetail", () => {
 
     expect(screen.getByRole("heading", { name: "English title" })).toBeInTheDocument()
     expect(screen.getByText("body:English content")).toBeInTheDocument()
+    expect(document.title).toBe("English title | University Ecosystem")
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      "English content"
+    )
+    expect(document.head.querySelector('meta[property="og:image"]')).toHaveAttribute(
+      "content",
+      article.image_url
+    )
     expect(mocks.setNewsHeroId).toHaveBeenCalledWith("news-1")
 
     fireEvent.click(screen.getByRole("button", { name: "like" }))
@@ -459,6 +542,37 @@ describe("NewsDetail", () => {
       expect(mocks.navigate).toHaveBeenCalledWith({ to: "/news" })
     })
     historyLength.mockRestore()
+  })
+
+  it("offers a load-more control for comments only while later comment pages remain", () => {
+    mocks.hasMoreComments = true
+    try {
+      const { rerender } = render(<NewsDetail />)
+      fireEvent.click(screen.getByRole("button", { name: "news:actions.loadMoreComments" }))
+      expect(mocks.loadMoreComments).toHaveBeenCalledOnce()
+
+      mocks.hasMoreComments = false
+      rerender(<NewsDetail />)
+      expect(
+        screen.queryByRole("button", { name: "news:actions.loadMoreComments" })
+      ).not.toBeInTheDocument()
+    } finally {
+      mocks.hasMoreComments = false
+      mocks.loadMoreComments.mockReset()
+    }
+  })
+
+  it("shares the URL of the article on screen after navigating to another article", () => {
+    const { rerender } = render(<NewsDetail />)
+    expect(mocks.shareUrl).toBe(`${window.location.origin}/news/news-1`)
+
+    mocks.routeId = "news-2"
+    try {
+      rerender(<NewsDetail />)
+    } finally {
+      mocks.routeId = "news-1"
+    }
+    expect(mocks.shareUrl).toBe(`${window.location.origin}/news/news-2`)
   })
 
   it("renders share options and invokes copy/link-close actions", async () => {

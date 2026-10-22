@@ -21,6 +21,7 @@ from app.auth.constants import (
     MFA_METHOD_TOTP,
 )
 from app.auth.mfa.challenge import (
+    _enforce_totp_attempt_budget,
     _ensure_challenge_not_locked,
     _extract_attempt_limit,
     _register_failed_attempt,
@@ -238,6 +239,11 @@ async def complete_totp_enrollment(
         )
         if locked_enrollment is None:
             raise_validation_error("errors.mfa.no_enrollment", "en")
+        if locked_enrollment.revoked_at is not None:
+            # Confirmation may only complete an enrollment that is still valid;
+            # never clear a durable revocation and reactivate its old secret.
+            raise_validation_error("errors.mfa.no_enrollment", "en")
+
         if getattr(locked_enrollment, "secret", None) is None:
             logger.warning(
                 "Cannot complete TOTP enrollment: decryption failed",
@@ -253,9 +259,27 @@ async def complete_totp_enrollment(
             span.set_attribute("mfa.result", "invalid_code")
             span.set_status(Status(StatusCode.ERROR))
             raise_validation_error("errors.mfa.invalid_code", "en")
+
+        # The User row is locked above before counting. This serializes two
+        # distinct pending enrollment confirmations, so only one can consume the
+        # last active-factor slot even when both requests start concurrently.
+        active_count = await db.scalar(
+            select(func.count())
+            .select_from(MfaTotpEnrollment)
+            .where(MfaTotpEnrollment.user_id == locked_user.id)
+            .where(MfaTotpEnrollment.id != locked_enrollment.id)
+            .where(MfaTotpEnrollment.revoked_at.is_(None))
+            .where(MfaTotpEnrollment.confirmed_at.is_not(None))
+        )
+        if active_count and active_count >= _MAX_ACTIVE_TOTP_ENROLLMENTS:
+            raise_http_error(
+                status.HTTP_400_BAD_REQUEST,
+                "errors.mfa.totp_limit_reached",
+                "en",
+            )
+
         now = _utcnow()
         locked_enrollment.confirmed_at = now
-        locked_enrollment.revoked_at = None
         locked_enrollment.is_active = True
         locked_user.mfa_epoch = int(locked_user.mfa_epoch or 0) + 1
         await db.execute(
@@ -436,6 +460,10 @@ async def verify_totp_for_user(
                 limit=limit,
                 locale=locale,
             )
+            if loaded_challenge is not None:
+                # Charge before testing the supplied code so successes and failures
+                # both consume one slot; challenge rotation cannot reset the budget.
+                await _enforce_totp_attempt_budget(user_id=user.id, locale=locale)
 
             # P0-W5-02: Iterate ALL enrollments unconditionally — no early return on match.
             # This eliminates the timing oracle where returning on the first match leaks

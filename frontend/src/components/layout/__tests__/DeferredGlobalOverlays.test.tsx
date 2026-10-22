@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react"
 import { renderToString } from "react-dom/server"
-import { useEffect, useState } from "react"
+import { StrictMode, useEffect, useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   cancelDeferredIdle,
@@ -10,9 +10,46 @@ import {
   createDeferredMountLifecycle,
   DEFERRED_INTERACTION_EVENTS,
   DEFERRED_INTERACTION_OPTIONS,
+  DEFERRED_GLOBAL_OVERLAYS_READY_EVENT,
   DEFERRED_OVERLAY_DELAY_MS,
   DeferredGlobalOverlays,
 } from "../DeferredGlobalOverlays"
+
+const deferredOverlayEffects = {
+  search: false,
+  livePush: false,
+  install: false,
+}
+
+function MockSearchDialog() {
+  useEffect(() => {
+    deferredOverlayEffects.search = true
+    return () => {
+      deferredOverlayEffects.search = false
+    }
+  }, [])
+  return <div data-testid="deferred-search" />
+}
+
+function MockLivePushToasts() {
+  useEffect(() => {
+    deferredOverlayEffects.livePush = true
+    return () => {
+      deferredOverlayEffects.livePush = false
+    }
+  }, [])
+  return <div data-testid="deferred-live-push" />
+}
+
+function MockInstallPrompt() {
+  useEffect(() => {
+    deferredOverlayEffects.install = true
+    return () => {
+      deferredOverlayEffects.install = false
+    }
+  }, [])
+  return <div data-testid="deferred-install" />
+}
 
 function MockOfflineIndicator() {
   const [mounted, setMounted] = useState(false)
@@ -24,16 +61,16 @@ const pushBridge = vi.hoisted(() => ({ ensure: vi.fn() }))
 vi.mock("@/push/pushMessageBus", () => ({ ensurePushMessageBridge: pushBridge.ensure }))
 
 vi.mock("@/components/search/SearchDialog", () => ({
-  SearchDialog: () => <div data-testid="deferred-search" />,
+  SearchDialog: MockSearchDialog,
 }))
 vi.mock("@/components/feedback/LivePushToasts", () => ({
-  default: () => <div data-testid="deferred-live-push" />,
+  default: MockLivePushToasts,
 }))
 vi.mock("@/components/feedback/OfflineIndicator", () => ({
   OfflineIndicator: MockOfflineIndicator,
 }))
 vi.mock("@/components/pwa/InstallPrompt", () => ({
-  default: () => <div data-testid="deferred-install" />,
+  default: MockInstallPrompt,
 }))
 
 describe("DeferredGlobalOverlays", () => {
@@ -77,7 +114,10 @@ describe("DeferredGlobalOverlays", () => {
       "touchstart",
       "focusin",
     ])
-    expect(DEFERRED_INTERACTION_OPTIONS).toStrictEqual({ once: true, passive: true })
+    expect(DEFERRED_INTERACTION_OPTIONS).toStrictEqual({
+      once: true,
+      passive: true,
+    })
   })
 
   it("shares one deferred lifecycle until the final subscriber leaves and can restart", () => {
@@ -121,22 +161,55 @@ describe("DeferredGlobalOverlays", () => {
     }
   })
 
-  it("keeps the server and first client render empty, then mounts every overlay", async () => {
-    expect(renderToString(<DeferredGlobalOverlays />)).toBe("")
-
+  it("signals after deferred overlay effects commit while SSR stays silent", async () => {
     vi.useFakeTimers()
-    render(<DeferredGlobalOverlays />)
-    expect(screen.queryByTestId("deferred-search")).not.toBeInTheDocument()
+    deferredOverlayEffects.search = false
+    deferredOverlayEffects.livePush = false
+    deferredOverlayEffects.install = false
+    const readinessAtDispatch: boolean[][] = []
+    const onReady = () => {
+      readinessAtDispatch.push([
+        deferredOverlayEffects.search,
+        deferredOverlayEffects.livePush,
+        deferredOverlayEffects.install,
+      ])
+    }
+    window.addEventListener(DEFERRED_GLOBAL_OVERLAYS_READY_EVENT, onReady)
+    const overlays = (
+      <StrictMode>
+        <DeferredGlobalOverlays />
+      </StrictMode>
+    )
+    let rendered: ReturnType<typeof render> | null = null
 
-    await act(async () => {
-      vi.advanceTimersByTime(DEFERRED_OVERLAY_DELAY_MS)
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-    expect(screen.getByTestId("deferred-search")).toBeInTheDocument()
-    expect(screen.getByTestId("deferred-live-push")).toBeInTheDocument()
-    expect(screen.getByTestId("deferred-offline")).toBeInTheDocument()
-    expect(screen.getByTestId("deferred-install")).toBeInTheDocument()
+    try {
+      expect(renderToString(overlays)).toBe("")
+      expect(readinessAtDispatch).toEqual([])
+
+      rendered = render(overlays)
+      expect(screen.queryByTestId("deferred-search")).not.toBeInTheDocument()
+      expect(readinessAtDispatch).toEqual([])
+
+      await act(async () => {
+        vi.advanceTimersByTime(DEFERRED_OVERLAY_DELAY_MS)
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      expect(screen.getByTestId("deferred-search")).toBeInTheDocument()
+      expect(screen.getByTestId("deferred-live-push")).toBeInTheDocument()
+      expect(screen.getByTestId("deferred-offline")).toBeInTheDocument()
+      expect(screen.getByTestId("deferred-install")).toBeInTheDocument()
+      expect(readinessAtDispatch).toEqual([[true, true, true]])
+
+      rendered.rerender(overlays)
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(readinessAtDispatch).toEqual([[true, true, true]])
+    } finally {
+      rendered?.unmount()
+      window.removeEventListener(DEFERRED_GLOBAL_OVERLAYS_READY_EVENT, onReady)
+    }
   })
 
   it("promotes optional overlays immediately after an explicit interaction", async () => {
@@ -221,17 +294,24 @@ describe("DeferredGlobalOverlays", () => {
     expect(screen.queryByTestId("deferred-search")).not.toBeInTheDocument()
   })
 
-  it("cancels the deferred task when the tree unmounts", () => {
+  it("cancels the deferred task without signaling readiness after unmount", () => {
     vi.useFakeTimers()
     const clearTimeout = vi.spyOn(window, "clearTimeout")
-    const { unmount } = render(<DeferredGlobalOverlays />)
+    const readiness = vi.fn()
+    window.addEventListener(DEFERRED_GLOBAL_OVERLAYS_READY_EVENT, readiness)
 
-    unmount()
-    vi.runOnlyPendingTimers()
+    try {
+      const { unmount } = render(<DeferredGlobalOverlays />)
+      unmount()
+      vi.runOnlyPendingTimers()
 
-    expect(clearTimeout).toHaveBeenCalled()
-    expect(screen.queryByTestId("deferred-search")).not.toBeInTheDocument()
-    clearTimeout.mockRestore()
+      expect(clearTimeout).toHaveBeenCalled()
+      expect(readiness).not.toHaveBeenCalled()
+      expect(screen.queryByTestId("deferred-search")).not.toBeInTheDocument()
+    } finally {
+      window.removeEventListener(DEFERRED_GLOBAL_OVERLAYS_READY_EVENT, readiness)
+      clearTimeout.mockRestore()
+    }
   })
 
   it("uses requestIdleCallback when the browser provides it", async () => {
@@ -455,6 +535,187 @@ describe("DeferredGlobalOverlays", () => {
       expect(store.getSnapshot()).toBe(false)
     } finally {
       setTimeoutSpy.mockRestore()
+    }
+  })
+})
+
+describe("deferred search intent ownership", () => {
+  const keydown = (key: string, options: KeyboardEventInit = {}) =>
+    new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key,
+      ...options,
+    })
+
+  it("retains a shortcut after an ordinary interaction already promoted the store", () => {
+    const store = createDeferredOverlayStore()
+    const notify = vi.fn()
+    const unsubscribe = store.subscribe(notify)
+    let unsubscribeOpen: (() => void) | undefined
+
+    try {
+      document.dispatchEvent(keydown("a"))
+      expect(store.getSnapshot()).toBe(true)
+      expect(notify).toHaveBeenCalledOnce()
+
+      const shortcut = keydown("k", { ctrlKey: true })
+      document.dispatchEvent(shortcut)
+      expect(shortcut.defaultPrevented).toBe(true)
+
+      const open = vi.fn()
+      unsubscribeOpen = store.subscribeOpenRequest(open)
+
+      expect(open).toHaveBeenCalledOnce()
+      expect(notify).toHaveBeenCalledOnce()
+    } finally {
+      unsubscribeOpen?.()
+      unsubscribe()
+    }
+  })
+
+  it("cancels a pending search request when Escape arrives before attachment", () => {
+    const store = createDeferredOverlayStore()
+    const unsubscribe = store.subscribe(vi.fn())
+    let unsubscribeOpen: (() => void) | undefined
+
+    try {
+      document.dispatchEvent(keydown("k", { metaKey: true }))
+      const escape = keydown("Escape")
+      document.dispatchEvent(escape)
+
+      const open = vi.fn()
+      unsubscribeOpen = store.subscribeOpenRequest(open)
+
+      expect(store.getSnapshot()).toBe(true)
+      expect(escape.defaultPrevented).toBe(false)
+      expect(open).not.toHaveBeenCalled()
+    } finally {
+      unsubscribeOpen?.()
+      unsubscribe()
+    }
+  })
+
+  it("consumes pending intent once and leaves mounted shortcuts to the dialog", () => {
+    const store = createDeferredOverlayStore()
+    const unsubscribe = store.subscribe(vi.fn())
+    let unsubscribeOpen: (() => void) | undefined
+
+    try {
+      document.dispatchEvent(keydown("k", { ctrlKey: true }))
+      document.dispatchEvent(keydown("k", { metaKey: true }))
+
+      const firstOpen = vi.fn()
+      unsubscribeOpen = store.subscribeOpenRequest(firstOpen)
+      expect(firstOpen).toHaveBeenCalledOnce()
+
+      unsubscribeOpen()
+      const mountedOpen = vi.fn()
+      unsubscribeOpen = store.subscribeOpenRequest(mountedOpen)
+      expect(mountedOpen).not.toHaveBeenCalled()
+
+      const shortcut = keydown("k", { ctrlKey: true })
+      document.dispatchEvent(shortcut)
+
+      expect(shortcut.defaultPrevented).toBe(false)
+      expect(firstOpen).toHaveBeenCalledOnce()
+      expect(mountedOpen).not.toHaveBeenCalled()
+    } finally {
+      unsubscribeOpen?.()
+      unsubscribe()
+    }
+  })
+
+  it("ignores an old capture callback after cleanup and restart", () => {
+    const addEventListener = vi.spyOn(document, "addEventListener")
+    const removeEventListener = vi.spyOn(document, "removeEventListener")
+    const store = createDeferredOverlayStore()
+    const unsubscribe = store.subscribe(vi.fn())
+    let unsubscribeRestarted: (() => void) | undefined
+    let unsubscribeOpen: (() => void) | undefined
+
+    try {
+      const registration = addEventListener.mock.calls.find(
+        ([eventName]) => eventName === "keydown"
+      )
+      expect(registration).toBeDefined()
+      const capture = registration?.[1] as EventListener
+
+      document.dispatchEvent(keydown("k", { ctrlKey: true }))
+      unsubscribe()
+      expect(removeEventListener).toHaveBeenCalledWith("keydown", capture)
+
+      unsubscribeRestarted = store.subscribe(vi.fn())
+      const staleShortcut = keydown("k", { metaKey: true })
+      capture(staleShortcut)
+
+      const open = vi.fn()
+      unsubscribeOpen = store.subscribeOpenRequest(open)
+
+      expect(staleShortcut.defaultPrevented).toBe(false)
+      expect(store.getSnapshot()).toBe(false)
+      expect(open).not.toHaveBeenCalled()
+    } finally {
+      unsubscribeOpen?.()
+      unsubscribeRestarted?.()
+      unsubscribe()
+      addEventListener.mockRestore()
+      removeEventListener.mockRestore()
+    }
+  })
+
+  it("preserves an owner reattached before the lifecycle subscription restarts", () => {
+    const store = createDeferredOverlayStore()
+    const unsubscribe = store.subscribe(vi.fn())
+    const unsubscribeFirstOpen = store.subscribeOpenRequest(vi.fn())
+    let unsubscribeRestarted: (() => void) | undefined
+    let unsubscribeOpen: (() => void) | undefined
+
+    try {
+      unsubscribe()
+      unsubscribeFirstOpen()
+
+      const open = vi.fn()
+      unsubscribeOpen = store.subscribeOpenRequest(open)
+      unsubscribeRestarted = store.subscribe(vi.fn())
+
+      const mountedShortcut = keydown("k", { ctrlKey: true })
+      document.dispatchEvent(mountedShortcut)
+
+      expect(mountedShortcut.defaultPrevented).toBe(false)
+      expect(open).not.toHaveBeenCalled()
+
+      unsubscribeOpen()
+      document.dispatchEvent(keydown("k", { metaKey: true }))
+      const replacementOpen = vi.fn()
+      unsubscribeOpen = store.subscribeOpenRequest(replacementOpen)
+
+      expect(replacementOpen).toHaveBeenCalledOnce()
+    } finally {
+      unsubscribeOpen?.()
+      unsubscribeRestarted?.()
+      unsubscribeFirstOpen()
+      unsubscribe()
+    }
+  })
+
+  it("does not queue an opening request for a shortcut already handled elsewhere", () => {
+    const store = createDeferredOverlayStore()
+    const unsubscribe = store.subscribe(vi.fn())
+    let unsubscribeOpen: (() => void) | undefined
+
+    try {
+      const shortcut = keydown("k", { ctrlKey: true })
+      shortcut.preventDefault()
+      document.dispatchEvent(shortcut)
+      const open = vi.fn()
+      unsubscribeOpen = store.subscribeOpenRequest(open)
+
+      expect(shortcut.defaultPrevented).toBe(true)
+      expect(open).not.toHaveBeenCalled()
+    } finally {
+      unsubscribeOpen?.()
+      unsubscribe()
     }
   })
 })

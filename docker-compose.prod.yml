@@ -1,33 +1,106 @@
-# RZ-05 (audit Wave 12): Docker secrets — mounted at /run/secrets/<name> as tmpfs
-# files, invisible to `docker inspect` and not stored in image layers.
+# Production uses file-backed Docker Compose secrets (not Swarm `external`
+# secrets). Keep source files outside the repository. Compose file secrets are
+# host bind mounts; Compose does not remap uid/gid/mode for them.
 #
-# Setup (Docker Swarm):
-#   echo "min-32-char-secret-key" | docker secret create secret_key -
-#   echo "postgresql://user:pass@host/db" | docker secret create database_url -
-#   echo "nats-auth-token" | docker secret create nats_auth_token -
-#
-# Setup (Docker Compose without Swarm) — use file: secrets (keep outside repo):
-#   secrets:
-#     secret_key:
-#       file: /etc/university/secrets/secret_key   # chmod 0400, owned by deploy user
+# Required source paths before rendering or starting the `prod` profile:
+#   SECRET_KEY_SOURCE_FILE=/etc/university/secrets/secret_key
+#   DATABASE_URL_SOURCE_FILE=/etc/university/secrets/database_url
+#   NATS_AUTH_TOKEN_SOURCE_FILE=/etc/university/secrets/nats_auth_token
+#   CACHE_REDIS_URL_SOURCE_FILE=/etc/university/secrets/cache_redis_url
+#   RATE_LIMIT_STORAGE_URI_SOURCE_FILE=/etc/university/secrets/rate_limit_storage_uri
+#   REVOCATION_REDIS_URL_SOURCE_FILE=/etc/university/secrets/revocation_redis_url
 #   POSTGRES_PASSWORD_SOURCE_FILE=/etc/university/secrets/postgres_password
+#   MFA_TOTP_ENCRYPTION_KEYS_SOURCE_FILE=/etc/university/secrets/mfa_totp_encryption_keys
+#   VAPID_PRIVATE_KEY_SOURCE_FILE=/etc/university/secrets/vapid_private_key
+#   SPOTIFY_CLIENT_SECRET_SOURCE_FILE=/etc/university/secrets/spotify_client_secret
+#   SPOTIFY_OAUTH_STATE_SECRET_SOURCE_FILE=/etc/university/secrets/spotify_oauth_state_secret
+#   SPOTIFY_TOKEN_SECRET_SOURCE_FILE=/etc/university/secrets/spotify_token_secret
+#   AUDIT_LOG_SECRET_SOURCE_FILE=/etc/university/secrets/audit_log_secret
+#   ELASTICSEARCH_PASSWORD_SOURCE_FILE=/etc/university/secrets/elasticsearch_password
+#   INTERNAL_AUTH_TOKEN_SOURCE_FILE=/etc/university/secrets/internal_auth_token
+#   INTERNAL_HMAC_SECRET_SOURCE_FILE=/etc/university/secrets/internal_hmac_secret
+#   SPICEDB_PRESHARED_KEY_SOURCE_FILE=/etc/university/secrets/spicedb_preshared_key
+#   TOKEN_HMAC_SECRET_SOURCE_FILE=/etc/university/secrets/token_hmac_secret
+#   WS_HUB_INTERNAL_SECRET_SOURCE_FILE=/etc/university/secrets/ws_hub_internal_secret
+# Every path above is required. Only VAPID private, Spotify client, and Spotify
+# OAuth-state sources may be empty regular files, and only while their respective
+# integrations are disabled. Spotify requires a client ID, client secret, and
+# OAuth-state secret together. The token-encryption secret is always non-empty
+# for every production Python service. Never generate placeholder credentials.
+# The operator also supplies ELASTICSEARCH_URL (HTTPS), a TLS-capable
+# SPICEDB_ENDPOINT, and EVENT_FILE_SCANNER_HOST; Compose fails rendering when any
+# is absent. The bundled SpiceDB service is configured without TLS, so production
+# API calls must target a separately managed TLS endpoint while retaining the
+# forced-TLS client guard. EVENT_FILE_SCANNER_PORT defaults to clamd's existing
+# 3310 setting. The scanner host must be reachable from the backend container;
+# 127.0.0.1 refers to that container. No scanner is provisioned here, and render
+# checks do not prove search, SpiceDB, or scanner connectivity or production readiness.
 #
-# Python config reads SECRET_KEY_FILE, DATABASE_URL_FILE, NATS_AUTH_TOKEN_FILE
-# via _load_file_secret() in app/core/config/base.py.
-
+# The backend image runs as UID:GID 10001:10001. Backend, notification, outbox,
+# and migration containers must be able to read every mounted application secret
+# as UID 10001, with execute permission on every parent directory. A source mode
+# of 0400 suffices only when the exact host-mapped UID 10001 owns it; otherwise
+# grant a read ACL to that mapped UID (and traverse ACLs on parent directories).
+# PgBouncer's pinned image runs as Alpine postgres UID:GID 70:70; pgvector uses
+# Debian postgres UID:GID 999:999. This overlay mounts the same postgres_password
+# source into both, so grant read ACLs to both mapped identities. A service-specific
+# Compose override can use separate source files if distinct ACLs are required. With
+# rootless Docker or user namespace remapping, grant access to the corresponding
+# host-mapped numeric IDs; deployment-owner 0400 alone is not sufficient.
+#
+# Before startup, run content-silent readability checks inside each pinned service
+# identity (for example, `test -r /run/secrets/secret_key` in a Python container,
+# and checks as `--user 999:999` for postgres and `--user 70:70` for pgbouncer).
+# Check exit status only; never print or read secret contents in diagnostics.
+# Source values for NATS, Redis, PostgreSQL, and SpiceDB must match the credentials
+# configured for those existing services. The TOTP active key ID is nonsecret and
+# must be supplied directly as MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID. File-backed
+# Python values use the explicitly supported base loader or their field validators.
 secrets:
   secret_key:
-    external: true
+    file: ${SECRET_KEY_SOURCE_FILE:?Set SECRET_KEY_SOURCE_FILE for production}
   database_url:
-    external: true
+    file: ${DATABASE_URL_SOURCE_FILE:?Set DATABASE_URL_SOURCE_FILE for production}
   nats_auth_token:
-    external: true
+    file: ${NATS_AUTH_TOKEN_SOURCE_FILE:?Set NATS_AUTH_TOKEN_SOURCE_FILE for production}
+  # AUD-191: both Redis URLs embed the Redis password, so they are file-backed.
+  cache_redis_url:
+    file: ${CACHE_REDIS_URL_SOURCE_FILE:?Set CACHE_REDIS_URL_SOURCE_FILE for production}
+  revocation_redis_url:
+    file: ${REVOCATION_REDIS_URL_SOURCE_FILE:?Set REVOCATION_REDIS_URL_SOURCE_FILE for production}
   postgres_password:
     file: ${POSTGRES_PASSWORD_SOURCE_FILE:?Set POSTGRES_PASSWORD_SOURCE_FILE for production}
+  mfa_totp_encryption_keys:
+    file: ${MFA_TOTP_ENCRYPTION_KEYS_SOURCE_FILE:?Set MFA_TOTP_ENCRYPTION_KEYS_SOURCE_FILE for production}
+  vapid_private_key:
+    file: ${VAPID_PRIVATE_KEY_SOURCE_FILE:?Set VAPID_PRIVATE_KEY_SOURCE_FILE for production}
+  spotify_client_secret:
+    file: ${SPOTIFY_CLIENT_SECRET_SOURCE_FILE:?Set SPOTIFY_CLIENT_SECRET_SOURCE_FILE for production}
+  spotify_oauth_state_secret:
+    file: ${SPOTIFY_OAUTH_STATE_SECRET_SOURCE_FILE:?Set SPOTIFY_OAUTH_STATE_SECRET_SOURCE_FILE for production}
+  spotify_token_secret:
+    file: ${SPOTIFY_TOKEN_SECRET_SOURCE_FILE:?Set SPOTIFY_TOKEN_SECRET_SOURCE_FILE for production}
+  audit_log_secret:
+    file: ${AUDIT_LOG_SECRET_SOURCE_FILE:?Set AUDIT_LOG_SECRET_SOURCE_FILE for production}
+  elasticsearch_password:
+    file: ${ELASTICSEARCH_PASSWORD_SOURCE_FILE:?Set ELASTICSEARCH_PASSWORD_SOURCE_FILE for production}
+  internal_auth_token:
+    file: ${INTERNAL_AUTH_TOKEN_SOURCE_FILE:?Set INTERNAL_AUTH_TOKEN_SOURCE_FILE for production}
+  internal_hmac_secret:
+    file: ${INTERNAL_HMAC_SECRET_SOURCE_FILE:?Set INTERNAL_HMAC_SECRET_SOURCE_FILE for production}
+  rate_limit_storage_uri:
+    file: ${RATE_LIMIT_STORAGE_URI_SOURCE_FILE:?Set RATE_LIMIT_STORAGE_URI_SOURCE_FILE for production}
+  spicedb_preshared_key:
+    file: ${SPICEDB_PRESHARED_KEY_SOURCE_FILE:?Set SPICEDB_PRESHARED_KEY_SOURCE_FILE for production}
+  token_hmac_secret:
+    file: ${TOKEN_HMAC_SECRET_SOURCE_FILE:?Set TOKEN_HMAC_SECRET_SOURCE_FILE for production}
+  ws_hub_internal_secret:
+    file: ${WS_HUB_INTERNAL_SECRET_SOURCE_FILE:?Set WS_HUB_INTERNAL_SECRET_SOURCE_FILE for production}
 
 services:
   backend:
     profiles: ["prod"]
+    env_file: !reset []
     # RZ-05: secret files replace plain env vars so sensitive values never appear
     # in `docker inspect` or the process environment.
     # MOD-14-06: DATABASE_URL_FILE must contain a URL with host=pgbouncer (not
@@ -37,12 +110,70 @@ services:
       - secret_key
       - database_url
       - nats_auth_token
+      - cache_redis_url
+      - rate_limit_storage_uri
+      - revocation_redis_url
+      - mfa_totp_encryption_keys
+      - vapid_private_key
+      - spotify_client_secret
+      - spotify_oauth_state_secret
+      - spotify_token_secret
+      - audit_log_secret
+      - elasticsearch_password
+      - internal_auth_token
+      - internal_hmac_secret
+      - spicedb_preshared_key
+      - token_hmac_secret
+      - ws_hub_internal_secret
     environment:
+      ENVIRONMENT: production
+      DATABASE_URL: !reset null
+      SECRET_KEY: !reset null
+      NATS_AUTH_TOKEN: !reset null
+      VAPID_PRIVATE_KEY: !reset null
+      SPOTIFY_CLIENT_SECRET: !reset null
+      SPOTIFY_OAUTH_STATE_SECRET: !reset null
+      SPOTIFY_TOKEN_SECRET: !reset null
+      MFA_TOTP_ENCRYPTION_KEYS: !reset null
+      MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID: ${MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID:?Set MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID for production}
+      MFA_TOTP_ENCRYPTION_KEYS_FILE: /run/secrets/mfa_totp_encryption_keys
+      MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID_FILE: !reset null
+      SPICEDB_INSECURE: !reset null
+      CACHE_REDIS_URL: !reset null
+      REVOCATION_REDIS_URL: !reset null
+      CACHE_REDIS_URL_FILE: /run/secrets/cache_redis_url
+      REVOCATION_REDIS_URL_FILE: /run/secrets/revocation_redis_url
       SECRET_KEY_FILE: /run/secrets/secret_key
       DATABASE_URL_FILE: /run/secrets/database_url
       NATS_AUTH_TOKEN_FILE: /run/secrets/nats_auth_token
+      VAPID_PRIVATE_KEY_FILE: /run/secrets/vapid_private_key
+      SPOTIFY_CLIENT_SECRET_FILE: /run/secrets/spotify_client_secret
+      SPOTIFY_OAUTH_STATE_SECRET_FILE: /run/secrets/spotify_oauth_state_secret
+      SPOTIFY_TOKEN_SECRET_FILE: /run/secrets/spotify_token_secret
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?Set FRONTEND_ORIGIN for production}
       FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:?Set FRONTEND_ORIGINS for production}
+      MINIO_SECURE: "true"
+      ELASTICSEARCH_URL: ${ELASTICSEARCH_URL:?Set HTTPS ELASTICSEARCH_URL for production}
+      SPICEDB_ENDPOINT: ${SPICEDB_ENDPOINT:?Set TLS SPICEDB_ENDPOINT for production}
+      EVENT_FILE_SCANNER_ENABLED: "true"
+      EVENT_FILE_SCANNER_HOST: ${EVENT_FILE_SCANNER_HOST:?Set reachable clamd EVENT_FILE_SCANNER_HOST for production}
+      EVENT_FILE_SCANNER_PORT: ${EVENT_FILE_SCANNER_PORT:-3310}
+      INTERNAL_HMAC_SECRET: !reset null
+      WS_HUB_INTERNAL_SECRET: !reset null
+      SPICEDB_PRESHARED_KEY: !reset null
+      TOKEN_HMAC_SECRET: !reset null
+      INTERNAL_AUTH_TOKEN: !reset null
+      RATE_LIMIT_STORAGE_URI: !reset null
+      AUDIT_LOG_SECRET: !reset null
+      ELASTICSEARCH_PASSWORD: !reset null
+      RATE_LIMIT_STORAGE_URI_FILE: /run/secrets/rate_limit_storage_uri
+      AUDIT_LOG_SECRET_FILE: /run/secrets/audit_log_secret
+      ELASTICSEARCH_PASSWORD_FILE: /run/secrets/elasticsearch_password
+      INTERNAL_AUTH_TOKEN_FILE: /run/secrets/internal_auth_token
+      INTERNAL_HMAC_SECRET_FILE: /run/secrets/internal_hmac_secret
+      SPICEDB_PRESHARED_KEY_FILE: /run/secrets/spicedb_preshared_key
+      TOKEN_HMAC_SECRET_FILE: /run/secrets/token_hmac_secret
+      WS_HUB_INTERNAL_SECRET_FILE: /run/secrets/ws_hub_internal_secret
     # RZ-W13-05: container hardening — defence-in-depth on top of K8s securityContext.
     security_opt:
       - no-new-privileges:true
@@ -74,14 +205,70 @@ services:
 
   notifications-worker:
     profiles: ["prod"]
+    env_file: !reset []
     secrets:
       - secret_key
       - database_url
       - nats_auth_token
+      - cache_redis_url
+      - rate_limit_storage_uri
+      - vapid_private_key
+      - spotify_token_secret
+      - audit_log_secret
+      - elasticsearch_password
+      - internal_auth_token
+      - internal_hmac_secret
+      - spicedb_preshared_key
+      - token_hmac_secret
+      - ws_hub_internal_secret
     environment:
+      ENVIRONMENT: production
+      DATABASE_URL: !reset null
+      SECRET_KEY: !reset null
+      NATS_AUTH_TOKEN: !reset null
+      SPOTIFY_TOKEN_SECRET: !reset null
+      SPOTIFY_CLIENT_ID: !reset null
+      VAPID_PRIVATE_KEY: !reset null
+      SPOTIFY_CLIENT_SECRET: !reset null
+      MFA_TOTP_ENCRYPTION_KEYS: !reset null
+      MFA_TOTP_ENCRYPTION_KEYS_FILE: !reset null
+      MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID: !reset null
+      MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID_FILE: !reset null
+      SPICEDB_INSECURE: !reset null
       SECRET_KEY_FILE: /run/secrets/secret_key
       DATABASE_URL_FILE: /run/secrets/database_url
       NATS_AUTH_TOKEN_FILE: /run/secrets/nats_auth_token
+      VAPID_PRIVATE_KEY_FILE: /run/secrets/vapid_private_key
+      SPOTIFY_TOKEN_SECRET_FILE: /run/secrets/spotify_token_secret
+      MINIO_SECURE: "true"
+      ELASTICSEARCH_URL: ${ELASTICSEARCH_URL:?Set HTTPS ELASTICSEARCH_URL for production}
+      SPICEDB_ENDPOINT: ${SPICEDB_ENDPOINT:?Set TLS SPICEDB_ENDPOINT for production}
+      EVENT_FILE_SCANNER_ENABLED: "true"
+      EVENT_FILE_SCANNER_HOST: ${EVENT_FILE_SCANNER_HOST:?Set reachable clamd EVENT_FILE_SCANNER_HOST for production}
+      EVENT_FILE_SCANNER_PORT: ${EVENT_FILE_SCANNER_PORT:-3310}
+      REVOCATION_REDIS_URL: !reset null
+      INTERNAL_HMAC_SECRET: !reset null
+      WS_HUB_INTERNAL_SECRET: !reset null
+      CACHE_REDIS_URL: !reset null
+      SPICEDB_PRESHARED_KEY: !reset null
+      TOKEN_HMAC_SECRET: !reset null
+      INTERNAL_AUTH_TOKEN: !reset null
+      SPOTIFY_OAUTH_STATE_SECRET: !reset null
+      RATE_LIMIT_STORAGE_URI: !reset null
+      AUDIT_LOG_SECRET: !reset null
+      ELASTICSEARCH_PASSWORD: !reset null
+      CACHE_REDIS_URL_FILE: /run/secrets/cache_redis_url
+      RATE_LIMIT_STORAGE_URI_FILE: /run/secrets/rate_limit_storage_uri
+      AUDIT_LOG_SECRET_FILE: /run/secrets/audit_log_secret
+      ELASTICSEARCH_PASSWORD_FILE: /run/secrets/elasticsearch_password
+      INTERNAL_AUTH_TOKEN_FILE: /run/secrets/internal_auth_token
+      INTERNAL_HMAC_SECRET_FILE: /run/secrets/internal_hmac_secret
+      SPICEDB_PRESHARED_KEY_FILE: /run/secrets/spicedb_preshared_key
+      TOKEN_HMAC_SECRET_FILE: /run/secrets/token_hmac_secret
+      WS_HUB_INTERNAL_SECRET_FILE: /run/secrets/ws_hub_internal_secret
+      REVOCATION_REDIS_URL_FILE: !reset null
+      SPOTIFY_CLIENT_SECRET_FILE: !reset null
+      SPOTIFY_OAUTH_STATE_SECRET_FILE: !reset null
     security_opt:
       - no-new-privileges:true
     read_only: true
@@ -105,14 +292,67 @@ services:
 
   outbox-worker:
     profiles: ["prod"]
+    env_file: !reset []
     secrets:
       - secret_key
       - database_url
       - nats_auth_token
+      - cache_redis_url
+      - spotify_token_secret
+      - audit_log_secret
+      - elasticsearch_password
+      - internal_auth_token
+      - internal_hmac_secret
+      - spicedb_preshared_key
+      - token_hmac_secret
+      - ws_hub_internal_secret
     environment:
+      ENVIRONMENT: production
+      DATABASE_URL: !reset null
+      SECRET_KEY: !reset null
+      NATS_AUTH_TOKEN: !reset null
+      SPOTIFY_TOKEN_SECRET: !reset null
+      MFA_TOTP_ENCRYPTION_KEYS: !reset null
+      MFA_TOTP_ENCRYPTION_KEYS_FILE: !reset null
+      MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID: !reset null
+      MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID_FILE: !reset null
       SECRET_KEY_FILE: /run/secrets/secret_key
       DATABASE_URL_FILE: /run/secrets/database_url
       NATS_AUTH_TOKEN_FILE: /run/secrets/nats_auth_token
+      SPOTIFY_TOKEN_SECRET_FILE: /run/secrets/spotify_token_secret
+      MINIO_SECURE: "true"
+      ELASTICSEARCH_URL: ${ELASTICSEARCH_URL:?Set HTTPS ELASTICSEARCH_URL for production}
+      SPICEDB_ENDPOINT: ${SPICEDB_ENDPOINT:?Set TLS SPICEDB_ENDPOINT for production}
+      EVENT_FILE_SCANNER_ENABLED: "true"
+      EVENT_FILE_SCANNER_HOST: ${EVENT_FILE_SCANNER_HOST:?Set reachable clamd EVENT_FILE_SCANNER_HOST for production}
+      EVENT_FILE_SCANNER_PORT: ${EVENT_FILE_SCANNER_PORT:-3310}
+      REVOCATION_REDIS_URL: !reset null
+      VAPID_PRIVATE_KEY: !reset null
+      INTERNAL_HMAC_SECRET: !reset null
+      SPOTIFY_CLIENT_SECRET: !reset null
+      WS_HUB_INTERNAL_SECRET: !reset null
+      CACHE_REDIS_URL: !reset null
+      SPICEDB_PRESHARED_KEY: !reset null
+      TOKEN_HMAC_SECRET: !reset null
+      INTERNAL_AUTH_TOKEN: !reset null
+      SPOTIFY_OAUTH_STATE_SECRET: !reset null
+      RATE_LIMIT_STORAGE_URI: !reset null
+      AUDIT_LOG_SECRET: !reset null
+      ELASTICSEARCH_PASSWORD: !reset null
+      CACHE_REDIS_URL_FILE: /run/secrets/cache_redis_url
+      AUDIT_LOG_SECRET_FILE: /run/secrets/audit_log_secret
+      ELASTICSEARCH_PASSWORD_FILE: /run/secrets/elasticsearch_password
+      INTERNAL_AUTH_TOKEN_FILE: /run/secrets/internal_auth_token
+      INTERNAL_HMAC_SECRET_FILE: /run/secrets/internal_hmac_secret
+      SPICEDB_PRESHARED_KEY_FILE: /run/secrets/spicedb_preshared_key
+      TOKEN_HMAC_SECRET_FILE: /run/secrets/token_hmac_secret
+      WS_HUB_INTERNAL_SECRET_FILE: /run/secrets/ws_hub_internal_secret
+      RATE_LIMIT_STORAGE_URI_FILE: !reset null
+      REVOCATION_REDIS_URL_FILE: !reset null
+      VAPID_PRIVATE_KEY_FILE: !reset null
+      SPOTIFY_CLIENT_SECRET_FILE: !reset null
+      SPOTIFY_OAUTH_STATE_SECRET_FILE: !reset null
+      SPOTIFY_CLIENT_ID: !reset null
     security_opt:
       - no-new-privileges:true
     read_only: true
@@ -136,12 +376,69 @@ services:
 
   migrations:
     profiles: ["prod"]
+    env_file: !reset []
     secrets:
       - secret_key
       - database_url
+      - nats_auth_token
+      - cache_redis_url
+      - revocation_redis_url
+      - mfa_totp_encryption_keys
+      - spotify_token_secret
+      - audit_log_secret
+      - elasticsearch_password
+      - internal_auth_token
+      - internal_hmac_secret
+      - spicedb_preshared_key
+      - token_hmac_secret
+      - ws_hub_internal_secret
     environment:
+      ENVIRONMENT: production
+      DATABASE_URL: !reset null
+      SECRET_KEY: !reset null
+      SPOTIFY_TOKEN_SECRET: !reset null
+      MFA_TOTP_ENCRYPTION_KEYS: !reset null
+      MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID: ${MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID:?Set MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID for production}
+      MFA_TOTP_ENCRYPTION_KEYS_FILE: /run/secrets/mfa_totp_encryption_keys
+      MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID_FILE: !reset null
       SECRET_KEY_FILE: /run/secrets/secret_key
       DATABASE_URL_FILE: /run/secrets/database_url
+      SPOTIFY_TOKEN_SECRET_FILE: /run/secrets/spotify_token_secret
+      MINIO_SECURE: "true"
+      ELASTICSEARCH_URL: ${ELASTICSEARCH_URL:?Set HTTPS ELASTICSEARCH_URL for production}
+      SPICEDB_ENDPOINT: ${SPICEDB_ENDPOINT:?Set TLS SPICEDB_ENDPOINT for production}
+      EVENT_FILE_SCANNER_ENABLED: "true"
+      EVENT_FILE_SCANNER_HOST: ${EVENT_FILE_SCANNER_HOST:?Set reachable clamd EVENT_FILE_SCANNER_HOST for production}
+      EVENT_FILE_SCANNER_PORT: ${EVENT_FILE_SCANNER_PORT:-3310}
+      REVOCATION_REDIS_URL: !reset null
+      VAPID_PRIVATE_KEY: !reset null
+      INTERNAL_HMAC_SECRET: !reset null
+      SPOTIFY_CLIENT_SECRET: !reset null
+      WS_HUB_INTERNAL_SECRET: !reset null
+      CACHE_REDIS_URL: !reset null
+      SPICEDB_PRESHARED_KEY: !reset null
+      TOKEN_HMAC_SECRET: !reset null
+      INTERNAL_AUTH_TOKEN: !reset null
+      SPOTIFY_OAUTH_STATE_SECRET: !reset null
+      NATS_AUTH_TOKEN: !reset null
+      RATE_LIMIT_STORAGE_URI: !reset null
+      AUDIT_LOG_SECRET: !reset null
+      ELASTICSEARCH_PASSWORD: !reset null
+      NATS_AUTH_TOKEN_FILE: /run/secrets/nats_auth_token
+      CACHE_REDIS_URL_FILE: /run/secrets/cache_redis_url
+      REVOCATION_REDIS_URL_FILE: /run/secrets/revocation_redis_url
+      AUDIT_LOG_SECRET_FILE: /run/secrets/audit_log_secret
+      ELASTICSEARCH_PASSWORD_FILE: /run/secrets/elasticsearch_password
+      INTERNAL_AUTH_TOKEN_FILE: /run/secrets/internal_auth_token
+      INTERNAL_HMAC_SECRET_FILE: /run/secrets/internal_hmac_secret
+      SPICEDB_PRESHARED_KEY_FILE: /run/secrets/spicedb_preshared_key
+      TOKEN_HMAC_SECRET_FILE: /run/secrets/token_hmac_secret
+      WS_HUB_INTERNAL_SECRET_FILE: /run/secrets/ws_hub_internal_secret
+      RATE_LIMIT_STORAGE_URI_FILE: !reset null
+      VAPID_PRIVATE_KEY_FILE: !reset null
+      SPOTIFY_CLIENT_SECRET_FILE: !reset null
+      SPOTIFY_OAUTH_STATE_SECRET_FILE: !reset null
+      SPOTIFY_CLIENT_ID: !reset null
     depends_on:
       pgbouncer:
         condition: service_healthy
@@ -157,7 +454,7 @@ services:
           memory: 512M
 
   postgres:
-    image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+    image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
     profiles: ["prod"]
     deploy:
       resources:
@@ -179,7 +476,7 @@ services:
   # startup. The wrapper reads the database password from the mounted secret so
   # it never appears in Compose environment metadata.
   pgbouncer:
-    image: edoburu/pgbouncer:v1.25.2-p0@sha256:7d7a27d9e90985cab5cf42256f5c13a3120baa4b055b69df37beb272b89b2340
+    image: edoburu/pgbouncer:v1.26.0-p0@sha256:b17551c776ef7e5769ef80b956d20f85e2fd25dd8912d31d58f782aad495b711
     profiles: ["prod"]
     restart: unless-stopped
     secrets:

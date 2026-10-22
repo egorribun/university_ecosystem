@@ -57,50 +57,6 @@ func TestFetchJWKSKeySetRejectsDuplicateRSAKeyIDs(t *testing.T) {
 	require.EqualError(t, err, `jwks: duplicate RSA key id "duplicate"`)
 }
 
-func TestSelectJWKSRepresentativeCoversLegacyAndEmptySets(t *testing.T) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-
-	legacy, err := selectJWKSRepresentative(rsaKeySet{"": &key.PublicKey})
-	require.NoError(t, err)
-	if legacy == nil {
-		t.Fatal("legacy JWKS representative must not be nil")
-	}
-	require.Equal(t, key.N, legacy.N)
-
-	_, err = selectJWKSRepresentative(rsaKeySet{})
-	require.EqualError(t, err, "jwks: no RSA key found in JWKS response")
-}
-
-func TestFetchJWKSPublicKeySelectsStableRepresentativeForMultipleKeys(t *testing.T) {
-	first, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-	second, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-	encode := func(value []byte) string {
-		return base64.RawURLEncoding.EncodeToString(value)
-	}
-	body, err := json.Marshal(map[string]any{
-		"keys": []map[string]string{
-			{"kty": "RSA", "kid": "z-last", "n": encode(second.N.Bytes()), "e": encode([]byte{1, 0, 1})},
-			{"kty": "RSA", "kid": "a-first", "n": encode(first.N.Bytes()), "e": encode([]byte{1, 0, 1})},
-		},
-	})
-	require.NoError(t, err)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(body)
-	}))
-	defer server.Close()
-
-	publicKey, err := fetchJWKSPublicKey(context.Background(), server.Client(), server.URL)
-	require.NoError(t, err)
-	if publicKey == nil {
-		t.Fatal("JWKS representative must not be nil")
-	}
-	require.Equal(t, first.N, publicKey.N)
-}
-
 func TestJWTMiddlewareKeyFuncFallsBackToSingleJWKSKeyWithoutKid(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)

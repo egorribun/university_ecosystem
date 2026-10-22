@@ -4,6 +4,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query"
+import { useEffect, useMemo } from "react"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
 import { wmoToCondition, type WeatherCondition } from "@/utils/weatherCodes"
 
@@ -33,24 +34,41 @@ export interface MapWeatherData {
   hourlyForecast: HourlyPoint[]
 }
 
-const CACHE_KEY = "map.weather.cache"
+const LEGACY_CACHE_KEY = "map.weather.cache"
+const CACHE_KEY = "map.weather.cache.v2"
+const CACHE_VERSION = 2
+const CACHE_WIND_SPEED_UNIT = "ms" as const
 const CACHE_TTL = 30 * 60 * 1000
 
 interface CachedWeather {
+  version: number
+  windSpeedUnit: typeof CACHE_WIND_SPEED_UNIT
   timestamp: number
   data: MapWeatherData
 }
 
-function readCache(): MapWeatherData | null {
+function readCache(): CachedWeather | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY)
     if (!raw) return null
-    const cached = JSON.parse(raw) as CachedWeather
-    if (Date.now() - cached.timestamp > CACHE_TTL) {
-      localStorage.removeItem(CACHE_KEY)
+    const cached = JSON.parse(raw) as Partial<CachedWeather>
+    const timestamp = cached?.timestamp
+    const now = Date.now()
+    if (
+      !cached ||
+      cached.version !== CACHE_VERSION ||
+      cached.windSpeedUnit !== CACHE_WIND_SPEED_UNIT ||
+      typeof timestamp !== "number" ||
+      !Number.isFinite(timestamp) ||
+      timestamp > now ||
+      !cached.data
+    ) {
       return null
     }
-    return cached.data
+    if (now - timestamp >= CACHE_TTL) {
+      return null
+    }
+    return cached as CachedWeather
   } catch {
     return null
   }
@@ -58,7 +76,15 @@ function readCache(): MapWeatherData | null {
 
 function writeCache(data: MapWeatherData): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }))
+    localStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify({
+        version: CACHE_VERSION,
+        windSpeedUnit: CACHE_WIND_SPEED_UNIT,
+        timestamp: Date.now(),
+        data,
+      })
+    )
   } catch {
     // Safari private browsing — localStorage may throw (RZ-31-03)
   }
@@ -71,6 +97,7 @@ const API_URL = [
   `&current=temperature_2m,weather_code,is_day,apparent_temperature,wind_speed_10m,relative_humidity_2m,uv_index`,
   `&hourly=temperature_2m,weather_code`,
   `&forecast_hours=12`,
+  `&wind_speed_unit=ms`,
   `&timezone=Europe/Moscow`,
 ].join("")
 
@@ -97,9 +124,6 @@ const LHCI_MAP_WEATHER_DATA: MapWeatherData = {
 async function fetchWeather(): Promise<MapWeatherData> {
   if (import.meta.env.VITE_LHCI === "true") return LHCI_MAP_WEATHER_DATA
 
-  const cached = readCache()
-  if (cached) return cached
-
   const res = await fetch(API_URL)
   if (!res.ok) throw new Error(`Weather API ${res.status}`)
 
@@ -113,11 +137,10 @@ async function fetchWeather(): Promise<MapWeatherData> {
   const hourlyCodes: number[] = json.hourly?.weather_code ?? []
 
   for (let i = 0; i < Math.min(hourlyTimes.length, 12); i++) {
-    const timeStr = hourlyTimes[i]
-    if (!timeStr) continue
-    const dt = new Date(timeStr)
+    const hour = parseProviderWallHour(hourlyTimes[i])
+    if (hour === null) continue
     hourlyForecast.push({
-      hour: dt.getHours(),
+      hour,
       temperature: Math.round(hourlyTemps[i] ?? 0),
       condition: wmoToCondition(hourlyCodes[i] ?? 0),
     })
@@ -139,10 +162,100 @@ async function fetchWeather(): Promise<MapWeatherData> {
   return data
 }
 
+/**
+ * Open-Meteo returns local wall-clock timestamps for the requested timezone
+ * without an offset. Read the provider hour directly rather than letting the
+ * browser's local timezone normalize gaps or folds around DST transitions.
+ */
+function parseProviderWallHour(value: unknown): number | null {
+  if (typeof value !== "string") return null
+
+  const dateTime = value.split("T")
+  if (dateTime.length !== 2) return null
+  const dateParts = dateTime[0]?.split("-") ?? []
+  const timeParts = dateTime[1]?.split(":") ?? []
+  if (dateParts.length !== 3 || timeParts.length < 2 || timeParts.length > 3) return null
+
+  const yearText = dateParts[0]
+  const monthText = dateParts[1]
+  const dayText = dateParts[2]
+  const hourText = timeParts[0]
+  const minuteText = timeParts[1]
+  const secondText = timeParts[2]
+  if (
+    yearText === undefined ||
+    monthText === undefined ||
+    dayText === undefined ||
+    hourText === undefined ||
+    minuteText === undefined ||
+    !/^\d{4}$/u.test(yearText) ||
+    !/^\d{2}$/u.test(monthText) ||
+    !/^\d{2}$/u.test(dayText) ||
+    !/^\d{2}$/u.test(hourText) ||
+    !/^\d{2}$/u.test(minuteText)
+  ) {
+    return null
+  }
+
+  const year = Number(yearText)
+  const month = Number(monthText)
+  const day = Number(dayText)
+  const hour = Number(hourText)
+  const minute = Number(minuteText)
+  let second = 0
+  if (secondText !== undefined) {
+    const secondParts = secondText.split(".")
+    const secondValue = secondParts[0]
+    const fractionalSeconds = secondParts[1]
+    if (
+      secondParts.length > 2 ||
+      secondValue === undefined ||
+      !/^\d{2}$/u.test(secondValue) ||
+      (fractionalSeconds !== undefined && !/^\d+$/u.test(fractionalSeconds))
+    ) {
+      return null
+    }
+    second = Number(secondValue)
+  }
+
+  const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const daysInMonth = [31, isLeapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  const maxDay = daysInMonth[month - 1]
+
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    maxDay === undefined ||
+    day > maxDay ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
+  ) {
+    return null
+  }
+
+  return hour
+}
+
 export function useMapWeather() {
+  const cached = useMemo(() => (import.meta.env.VITE_LHCI === "true" ? null : readCache()), [])
+
+  useEffect(() => {
+    if (import.meta.env.VITE_LHCI === "true") return
+    try {
+      localStorage.removeItem(LEGACY_CACHE_KEY)
+      if (!readCache()) localStorage.removeItem(CACHE_KEY)
+    } catch {
+      // Storage can be unavailable in private browsing or during SSR.
+    }
+  }, [])
+
   return useQuery<MapWeatherData>({
     queryKey: ["campus-weather"],
     queryFn: fetchWeather,
+    initialData: cached?.data,
+    initialDataUpdatedAt: cached?.timestamp,
     staleTime: CACHE_TTL,
     gcTime: 2 * CACHE_TTL,
     retry: 1,

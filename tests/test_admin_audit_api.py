@@ -1,9 +1,15 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 
 import app.models as models
+from app.api.admin.audit import list_audit_logs
 from app.auth.security import get_password_hash
+from app.services.audit_service import SecureAuditService
+from app.services.data_access import batch_log_data_access, log_data_access
+from tests.conftest import call_injected
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -54,12 +60,12 @@ async def test_list_audit_logs_as_admin(root_client, user_factory, db_session):
     assert any(item["actor_user_id"] == str(admin.id) for item in data["items"])
 
 
-async def test_list_audit_logs_forbidden_for_student(root_client, user_factory):
-    # Create a student user
+@pytest.mark.parametrize("role", ["student", "teacher"])
+async def test_list_audit_logs_forbidden_for_non_admin(root_client, user_factory, role):
     password = "StudentPass123!"
     hashed = await get_password_hash(password)
     student = await user_factory(
-        role="student", email="student-audit@example.com", hashed_password=hashed
+        role=role, email=f"{role}-audit@example.com", hashed_password=hashed
     )
 
     login_response = await root_client.post(
@@ -74,6 +80,18 @@ async def test_list_audit_logs_forbidden_for_student(root_client, user_factory):
     )
 
     assert response.status_code == 403
+
+    time_travel_response = await root_client.get(
+        "/admin/audit/time-travel",
+        params={
+            "aggregate_type": "user",
+            "aggregate_id": str(uuid4()),
+            "target_timestamp": datetime.now(UTC).isoformat(),
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert time_travel_response.status_code == 403
 
 
 async def test_list_audit_logs_filtering(root_client, user_factory, db_session):
@@ -223,3 +241,76 @@ async def test_list_audit_logs_actor_filtering(root_client, user_factory, db_ses
     assert all(item["actor_user_id"] == str(actor_user.id) for item in data["items"])
     # This also covers the verify_integrity call in the loop
     assert "is_valid" in data["items"][0]
+
+
+@pytest.mark.parametrize("writer", ["single", "batch"])
+async def test_admin_audit_verifies_active_access_writer_output(
+    writer: str, db_session, user_factory, monkeypatch
+):
+    secure_audit = SecureAuditService(signing_key=b"synthetic-admin-runtime-audit-key")
+    monkeypatch.setattr(
+        "app.services.audit_service.get_secure_audit_service",
+        lambda: secure_audit,
+    )
+    admin = await user_factory(role="admin")
+    actor = await user_factory(role="student")
+    subject = await user_factory(role="student")
+    resource_id = f"sec03-admin-{writer}-{uuid4()}"
+    request = SimpleNamespace(
+        client=SimpleNamespace(host="192.0.2.10"),
+        headers={"user-agent": "synthetic-admin-audit-agent"},
+    )
+    context = {"field": "synthetic"}
+
+    if writer == "single":
+        await log_data_access(
+            db_session,
+            actor_user_id=actor.id,
+            subject_user_id=subject.id,
+            resource_type="profile",
+            resource_id=resource_id,
+            action="read",
+            context=context,
+            request=request,
+            commit=False,
+        )
+    else:
+        await batch_log_data_access(
+            db_session,
+            entries=[
+                {
+                    "actor_user_id": actor.id,
+                    "subject_user_id": subject.id,
+                    "resource_type": "profile",
+                    "resource_id": resource_id,
+                    "action": "read",
+                    "context": context,
+                }
+            ],
+            request=request,
+            commit=False,
+        )
+    await db_session.flush()
+
+    response = await call_injected(
+        list_audit_logs,
+        limit=50,
+        offset=0,
+        actor_id=actor.id,
+        subject_id=None,
+        resource_type="profile",
+        action="read",
+        _=admin,
+        provides={
+            "AsyncDatabaseSession": db_session,
+            "SecureAuditService": secure_audit,
+        },
+    )
+
+    item = next(item for item in response.items if item.resource_id == resource_id)
+    assert item.is_valid is True
+    assert item.signature_scheme == "canonical_v2"
+    assert {"id", "context", "user_agent"}.issubset(item.authenticated_fields)
+    assert {"actor_name", "subject_name"}.issubset(item.unauthenticated_fields)
+    assert item.context == context
+    assert item.user_agent == "synthetic-admin-audit-agent"

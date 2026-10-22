@@ -57,6 +57,31 @@ describe("ActivityHeatmap", () => {
     expect(screen.getAllByRole("img").length).toBeGreaterThanOrEqual(5)
   })
 
+  it("marks days before the covered range as unknown instead of zero", async () => {
+    const { container } = await renderWithRouter({
+      ui: () => (
+        <ActivityHeatmap
+          ariaLabel="Activity heatmap"
+          period="30d"
+          data={new Map([[todayIso(), 2]])}
+          coveredFrom={dateOffset(-10)}
+        />
+      ),
+      authProvider: false,
+    })
+
+    // The 30-day window holds 19 days older than the covered range (offsets -29..-11).
+    expect(container.querySelectorAll(".activity-heatmap-cell--unknown")).toHaveLength(19)
+    const table = screen.getByRole("table", { name: "Activity Calendar" })
+    const valueFor = (date: string) =>
+      within(table)
+        .getAllByRole("row")
+        .find((row) => row.textContent?.startsWith(date))
+        ?.querySelector("td")?.textContent
+    expect(valueFor(dateOffset(-29))).toBe("No data")
+    expect(valueFor(dateOffset(-5))).toBe("0")
+  })
+
   it("renders without throwing when the data map is empty", async () => {
     await renderWithRouter({
       ui: () => <ActivityHeatmap ariaLabel="Empty heatmap" period="30d" data={new Map()} />,

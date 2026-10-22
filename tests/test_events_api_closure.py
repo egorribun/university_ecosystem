@@ -7,9 +7,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException, Response
+from fastapi.openapi.utils import get_openapi
 
 from app.api import events as api
 from app.schemas import schemas
+from app.services.event_service import InvalidMyEventsCursor
+from app.services.vector_service import (
+    SEMANTIC_SEARCH_UNAVAILABLE_DETAIL,
+    SemanticSearchUnavailableError,
+)
 from tests.conftest import call_injected
 
 
@@ -46,6 +52,32 @@ def _event_create() -> schemas.EventCreate:
     )
 
 
+def test_get_event_openapi_documents_optional_lang_query_once() -> None:
+    schema = get_openapi(
+        title="Events API",
+        version="1.0.0",
+        routes=api.router.routes,
+    )
+    parameters = schema["paths"]["/events/{event_id}"]["get"]["parameters"]
+    lang_parameters = [
+        parameter
+        for parameter in parameters
+        if parameter.get("in") == "query" and parameter.get("name") == "lang"
+    ]
+
+    assert len(lang_parameters) == 1
+    lang_parameter = lang_parameters[0]
+    assert lang_parameter["required"] is False
+    lang_schema = lang_parameter["schema"]
+    schema_types = (
+        {option.get("type") for option in lang_schema["anyOf"]}
+        if "anyOf" in lang_schema
+        else {lang_schema.get("type")}
+    )
+    assert schema_types == {"string", "null"} or schema_types == {"string"}
+    assert not {"enum", "pattern", "minLength", "maxLength"}.intersection(lang_schema)
+
+
 def _attendance_dto(user_id: uuid.UUID, event_id: uuid.UUID) -> SimpleNamespace:
     return SimpleNamespace(
         id=uuid.uuid4(),
@@ -64,11 +96,23 @@ def _result(*, rows: list[object] | None = None, scalar: object = 0) -> MagicMoc
 
 
 def test_id_and_cache_helpers_cover_boundaries() -> None:
-    api._validate_id_type(-(2**63))
-    api._validate_id_type(2**63 - 1)
+    request = SimpleNamespace(query_params={})
+    api._validate_id_type(-(2**63), request)
+    api._validate_id_type(2**63 - 1, request)
     with pytest.raises(HTTPException) as exc:
-        api._validate_id_type(2**63)
+        api._validate_id_type(2**63, request)
     assert exc.value.status_code == 422
+
+
+def test_event_attachment_storage_key_rejects_unrecognized_nested_layout() -> None:
+    event_id = uuid.uuid4()
+    storage_url = f"/static/event_files/event_{event_id}/nested/agenda.pdf"
+
+    assert not api._event_attachment_url_matches_resource(
+        storage_url,
+        event_id,
+        "agenda.pdf",
+    )
 
 
 @pytest.mark.asyncio
@@ -85,7 +129,11 @@ async def test_event_cache_version_helpers() -> None:
         "app.core.cache_versioning.CacheVersionManager.increment", AsyncMock()
     ) as increment:
         await api._increment_events_list_version(None)
-        increment.assert_not_awaited()
+        increment.assert_awaited_once_with(None)
+        increment.reset_mock()
+        await api._increment_events_list_version()
+        increment.assert_awaited_once_with(None)
+        increment.reset_mock()
         await api._increment_events_list_version(cache)
         increment.assert_awaited_once_with(cache)
 
@@ -97,27 +145,24 @@ async def test_create_event_success_and_role_guard() -> None:
     service = MagicMock()
     service.create_event = AsyncMock(return_value=record)
     service.serialize_event.return_value = {"id": str(record.id)}
-    notifications = MagicMock()
-    notifications.dispatch_event_created = AsyncMock()
     request = _request()
+    data = _event_create()
     with (
         patch.object(api, "resolve_locale", return_value="en"),
         patch.object(api, "_increment_events_list_version", AsyncMock()) as bump,
     ):
         result = await call_injected(
             api.create_event,
-            data=_event_create(),
+            data=data,
             request=request,
-            background=MagicMock(),
             user=user,
-            provides={"NotificationService": notifications, "EventService": service},
+            provides={"EventService": service},
         )
     assert result == {"id": str(record.id)}
-    bump.assert_awaited_once()
-    notifications.dispatch_event_created.assert_awaited_once()
+    service.create_event.assert_awaited_once_with(data, user_id=user.id, locale="en")
+    bump.assert_awaited_once_with()
 
-    # An app that carries no cache still creates the event; the version bump is
-    # simply a no-op.  This is the branch ``if request:`` used to stand in for.
+    # Missing application state must not suppress canonical cache invalidation.
     cacheless = SimpleNamespace(
         method="GET", headers={}, app=SimpleNamespace(state=SimpleNamespace())
     )
@@ -129,17 +174,14 @@ async def test_create_event_success_and_role_guard() -> None:
     ):
         result = await call_injected(
             api.create_event,
-            data=_event_create(),
+            data=data,
             request=cacheless,
-            background=MagicMock(),
             user=user,
-            provides={"NotificationService": notifications, "EventService": service},
+            provides={"EventService": service},
         )
     assert result == {"id": str(record.id)}
-    cacheless_bump.assert_awaited_once_with(None)
-
-    # ...and the helper itself is the no-op in that case.
-    await api._increment_events_list_version(None)
+    assert service.create_event.await_args.kwargs["locale"] == "en"
+    cacheless_bump.assert_awaited_once_with()
 
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
@@ -147,12 +189,8 @@ async def test_create_event_success_and_role_guard() -> None:
                 api.create_event,
                 data=_event_create(),
                 request=None,
-                background=MagicMock(),
                 user=_user(),
-                provides={
-                    "NotificationService": notifications,
-                    "EventService": service,
-                },
+                provides={"EventService": service},
             )
     assert exc.value.status_code == 403
 
@@ -174,6 +212,7 @@ async def test_all_events_and_my_events_call_services() -> None:
             is_active=False,
             limit=7,
             cursor="cursor",
+            order="starts_at_desc",
             if_none_match=None,
             provides={"EventService": service},
         )
@@ -187,20 +226,63 @@ async def test_all_events_and_my_events_call_services() -> None:
         locale="en",
         limit=7,
         cursor="cursor",
+        order="starts_at_desc",
     )
 
-    service.get_my_events = AsyncMock(return_value=["mine"])
+    cursor = "opaque-cursor"
+    page = schemas.PaginatedEvents(
+        items=[], limit=7, cursor=cursor, next_cursor=None, has_more=False
+    )
+    service.get_my_events_page = AsyncMock(return_value=page)
     with patch.object(api, "resolve_locale", return_value="ru"):
         result = await call_injected(
-            api.my_events.__wrapped__,
+            api.my_events_page.__wrapped__,
             request=_request(),
             response=Response(),
             user=user,
+            limit=7,
+            cursor=cursor,
+            category="lecture",
+            date_range=None,
+            date_anchor=None,
+            sort="newest",
+            upcoming_after=None,
             if_none_match=None,
             provides={"EventService": service},
         )
-    assert result == ["mine"]
-    service.get_my_events.assert_awaited_once_with(user_id=user.id, locale="ru")
+    assert result == page
+    service.get_my_events_page.assert_awaited_once_with(
+        user_id=user.id,
+        locale="ru",
+        limit=7,
+        cursor=cursor,
+        category="lecture",
+        date_range=None,
+        date_anchor=None,
+        sort="newest",
+        upcoming_after=None,
+    )
+
+    service.get_my_events_page.reset_mock()
+    service.get_my_events_page.side_effect = InvalidMyEventsCursor("invalid")
+    with pytest.raises(HTTPException) as exc_info:
+        await call_injected(
+            api.my_events_page.__wrapped__,
+            request=_request(),
+            response=Response(),
+            user=user,
+            limit=7,
+            cursor="not-a-valid-event-cursor",
+            category=None,
+            date_range=None,
+            date_anchor=None,
+            sort="newest",
+            upcoming_after=None,
+            if_none_match=None,
+            provides={"EventService": service},
+        )
+    assert exc_info.value.status_code == 422
+    service.get_my_events_page.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -474,7 +556,10 @@ async def test_update_event_success_permissions_and_errors() -> None:
     db.execute.side_effect = [_result(rows=[]), _result(scalar=3)]
     with (
         patch.object(api, "resolve_locale", return_value="en"),
-        patch.object(api, "delete_static_file", AsyncMock()) as delete,
+        patch.object(
+            api, "delete_unreferenced_owned_event_image", AsyncMock()
+        ) as delete_owned,
+        patch.object(api, "delete_static_file", AsyncMock()) as delete_generic,
     ):
         result = await call_injected(
             api.update_event,
@@ -486,7 +571,8 @@ async def test_update_event_success_permissions_and_errors() -> None:
             provides={"AsyncDatabaseSession": db, "EventService": service},
         )
     assert result == {"id": str(event_id)}
-    delete.assert_awaited_once_with("/old.png")
+    delete_owned.assert_awaited_once_with("/old.png", event_id=event_id, db_session=db)
+    delete_generic.assert_not_awaited()
     assert service.serialize_event.call_args.kwargs["participant_count"] == 3
 
     existing.image_url = "/same.png"
@@ -498,6 +584,10 @@ async def test_update_event_success_permissions_and_errors() -> None:
     with (
         patch.object(api, "resolve_locale", return_value="en"),
         patch.object(api, "_increment_events_list_version", AsyncMock()) as bump,
+        patch.object(
+            api, "delete_unreferenced_owned_event_image", AsyncMock()
+        ) as delete_owned,
+        patch.object(api, "delete_static_file", AsyncMock()) as delete_generic,
     ):
         result = await call_injected(
             api.update_event,
@@ -509,7 +599,9 @@ async def test_update_event_success_permissions_and_errors() -> None:
             provides={"AsyncDatabaseSession": db, "EventService": service},
         )
     assert result == {"id": str(event_id)}
-    bump.assert_awaited_once()
+    bump.assert_awaited_once_with()
+    delete_owned.assert_not_awaited()
+    delete_generic.assert_not_awaited()
 
     checker.check_permission = AsyncMock(return_value=False)
     with patch.object(api, "resolve_locale", return_value="en"):
@@ -591,7 +683,7 @@ async def test_delete_and_get_event_paths() -> None:
             checker=checker,
             provides={"EventService": service},
         ) == {"ok": True}
-    bump.assert_awaited_once()
+    bump.assert_awaited_once_with()
 
     checker.check_permission = AsyncMock(return_value=False)
     with patch.object(api, "resolve_locale", return_value="en"):
@@ -740,3 +832,252 @@ async def test_semantic_search_full_and_event_etag() -> None:
     assert response.headers["ETag"] == '"etag"'
     assert response.headers["Content-Language"] == "ru"
     vector.get_embedding.assert_awaited_once_with("term")
+
+
+@pytest.mark.asyncio
+async def test_semantic_search_unavailability_precedes_matching_etag() -> None:
+    vector = MagicMock()
+    vector.get_embedding = AsyncMock(
+        side_effect=SemanticSearchUnavailableError(
+            "provider credentials and error details must remain private"
+        )
+    )
+    service = MagicMock()
+    response = Response()
+    cache = MagicMock()
+    get_version = AsyncMock(return_value="v1")
+    etag_matches = MagicMock(return_value=True)
+    with (
+        patch.object(api, "resolve_locale", return_value="en"),
+        patch.object(api, "normalize_locale", return_value="en"),
+        patch.object(api, "get_cache", return_value=cache),
+        patch.object(api, "_get_events_list_version", get_version),
+        patch.object(api, "etag_matches", etag_matches),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await call_injected(
+                api.semantic_search,
+                _request(),
+                response,
+                query="term",
+                limit=5,
+                min_score=0.7,
+                if_none_match='"match"',
+                _user=_user(),
+                provides={
+                    "AsyncDatabaseSession": AsyncMock(),
+                    "VectorService": vector,
+                    "EventService": service,
+                },
+            )
+
+    assert exc.value.status_code == 503
+    assert exc.value.detail == SEMANTIC_SEARCH_UNAVAILABLE_DETAIL
+    vector.get_embedding.assert_awaited_once_with("term")
+    get_version.assert_not_awaited()
+    etag_matches.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_semantic_search_etag_is_locale_specific_and_reuses_same_locale() -> None:
+    query_event = SimpleNamespace(id=uuid.uuid4())
+    vector = MagicMock()
+    vector.get_embedding = AsyncMock(return_value=[0.1, 0.2])
+    vector.search_similar = AsyncMock(return_value=[query_event])
+    service = MagicMock()
+    service.serialize_event.side_effect = lambda _item, locale: {"locale": locale}
+    ru_response = Response()
+    en_response = Response()
+    repeated_en_response = Response()
+    cache = MagicMock()
+    dependencies = {
+        "AsyncDatabaseSession": AsyncMock(),
+        "VectorService": vector,
+        "EventService": service,
+    }
+    ru_request = _request()
+    ru_request.headers["Accept-Language"] = "ru-RU"
+    en_request = _request()
+    en_request.headers["Accept-Language"] = "en-US"
+    repeated_en_request = _request()
+    repeated_en_request.headers["Accept-Language"] = "en-US"
+
+    with (
+        patch.object(api, "get_cache", return_value=cache),
+        patch.object(api, "_get_events_list_version", AsyncMock(return_value="v1")),
+    ):
+        ru_result = await call_injected(
+            api.semantic_search,
+            ru_request,
+            ru_response,
+            query="term",
+            limit=5,
+            min_score=0.7,
+            if_none_match=None,
+            _user=_user(),
+            provides=dependencies,
+        )
+        en_result = await call_injected(
+            api.semantic_search,
+            en_request,
+            en_response,
+            query="term",
+            limit=5,
+            min_score=0.7,
+            if_none_match=ru_response.headers["ETag"],
+            _user=_user(),
+            provides=dependencies,
+        )
+        repeated_en_result = await call_injected(
+            api.semantic_search,
+            repeated_en_request,
+            repeated_en_response,
+            query="term",
+            limit=5,
+            min_score=0.7,
+            if_none_match=en_response.headers["ETag"],
+            _user=_user(),
+            provides=dependencies,
+        )
+
+    assert ru_result == [{"locale": "ru"}]
+    assert en_result == [{"locale": "en"}]
+    assert ru_response.headers["Content-Language"] == "ru"
+    assert en_response.headers["Content-Language"] == "en"
+    assert "Accept-Language" in en_response.headers["Vary"]
+    assert ru_response.headers["ETag"] != en_response.headers["ETag"]
+    assert isinstance(repeated_en_result, Response)
+    assert repeated_en_result.status_code == 304
+    assert repeated_en_result.headers["ETag"] == en_response.headers["ETag"]
+    assert repeated_en_result.headers["Content-Language"] == "en"
+    assert "Accept-Language" in repeated_en_result.headers["Vary"]
+
+
+@pytest.mark.asyncio
+async def test_update_event_rejects_image_not_uploaded_for_this_event() -> None:
+    """AUD-180: an event may attach only an image uploaded for that event."""
+    event_id = uuid.uuid4()
+    user = _user(role="teacher")
+    existing = _event()
+    existing.id = event_id
+    existing.image_url = None
+    updated = _event()
+    updated.id = event_id
+    checker = MagicMock()
+    checker.check_permission = AsyncMock(return_value=True)
+    service = MagicMock()
+    service.update_event = AsyncMock(return_value=updated)
+    db = AsyncMock()
+    db.get.return_value = existing
+    db.execute.side_effect = [_result(rows=[]), _result(scalar=0)]
+    with (
+        patch.object(api, "resolve_locale", return_value="en"),
+        patch.object(api, "_increment_events_list_version", AsyncMock()),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await call_injected(
+                api.update_event,
+                event_id=event_id,
+                data=schemas.EventUpdate(image_url="/static/news_images/shared.png"),
+                request=_request(),
+                user=user,
+                checker=checker,
+                provides={"AsyncDatabaseSession": db, "EventService": service},
+            )
+    assert exc.value.status_code == 400
+    service.update_event.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_event_accepts_image_uploaded_for_this_event(
+    tmp_path, monkeypatch
+) -> None:
+    """AUD-180 neighbour: the event-bound upload key is still accepted."""
+    from app.services import content_media
+    from app.services.storage import StaticFSStorage
+
+    event_id = uuid.uuid4()
+    filename = f"event_{event_id}_{'c' * 32}.webp"
+    monkeypatch.setattr(
+        content_media,
+        "_get_storage_backend",
+        lambda: StaticFSStorage(tmp_path, base_url="/static"),
+    )
+    user = _user(role="teacher")
+    existing = _event()
+    existing.id = event_id
+    existing.image_url = None
+    updated = _event()
+    updated.id = event_id
+    updated.image_url = f"/static/tmp/event_images/{filename}"
+    checker = MagicMock()
+    checker.check_permission = AsyncMock(return_value=True)
+    service = MagicMock()
+    service.update_event = AsyncMock(return_value=updated)
+    service.serialize_event.return_value = {"id": str(event_id)}
+    db = AsyncMock()
+    db.get.return_value = existing
+    db.execute.side_effect = [_result(rows=[]), _result(scalar=0)]
+    with (
+        patch.object(api, "resolve_locale", return_value="en"),
+        patch.object(api, "_increment_events_list_version", AsyncMock()),
+    ):
+        await call_injected(
+            api.update_event,
+            event_id=event_id,
+            data=schemas.EventUpdate(image_url=f"/static/tmp/event_images/{filename}"),
+            request=_request(),
+            user=user,
+            checker=checker,
+            provides={"AsyncDatabaseSession": db, "EventService": service},
+        )
+    service.update_event.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_event_rejects_image_before_the_event_exists() -> None:
+    """AUD-180: images attach after creation, through the upload bound to the event."""
+    user = _user(role="teacher")
+    data = _event_create().model_copy(
+        update={"image_url": "/static/news_images/shared.png"}
+    )
+    service = MagicMock()
+    service.create_event = AsyncMock()
+    with (
+        patch.object(api, "resolve_locale", return_value="en"),
+        patch.object(api, "_increment_events_list_version", AsyncMock()),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await call_injected(
+                api.create_event,
+                data=data,
+                request=_request(),
+                user=user,
+                provides={"EventService": service},
+            )
+    assert exc.value.status_code == 400
+    service.create_event.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_legacy_my_events_route_keeps_array_contract() -> None:
+    user = _user()
+    service = MagicMock()
+    service.get_my_events = AsyncMock(return_value=[])
+
+    with patch.object(api, "resolve_locale", return_value="ru"):
+        result = await call_injected(
+            api.my_events.__wrapped__,
+            request=_request(),
+            response=Response(),
+            user=user,
+            if_none_match=None,
+            provides={"EventService": service},
+        )
+
+    assert result == []
+    service.get_my_events.assert_awaited_once_with(user_id=user.id, locale="ru")
+
+    routes = {route.path: route for route in api.router.routes}
+    assert routes["/events/my"].response_model == list[schemas.EventOut]
+    assert routes["/events/my/page"].response_model is schemas.PaginatedEvents

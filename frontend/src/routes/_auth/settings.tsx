@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, stripSearchParams } from "@tanstack/react-router"
 import { lazy } from "react"
 import * as v from "valibot"
 import { currentUserQueryOptions } from "@/api/hooks/users"
@@ -16,21 +16,29 @@ export const Route = createFileRoute("/_auth/settings")({
   //
   // Wave 134 SW2 — added validateSearch (Valibot tab + spotify) so the
   // tab index becomes a deep-linkable URL param (?tab=2 lands on
-  // Security; ?tab=4 lands on Sessions). loaderDeps surfaces the
-  // tab value to the loader for conditional prefetch decisions. The
-  // dedicated Sessions tab is the only one that also prefetches the
-  // sessions endpoint; all other tabs need only /users/me.
+  // Security; ?tab=4 lands on Sessions). The tab value is view state;
+  // the page handles it without replacing the focused tablist. On a
+  // direct Sessions deep link, the loader still prefetches its query.
   //
   // Browser path uses withCredentials. Node SSR uses W133 SW1
   // requestCookieStorage via the axios interceptor.
+  search: {
+    middlewares: [stripSearchParams({ tab: SETTINGS_TAB.GENERAL })],
+  },
   validateSearch: (search: Record<string, unknown>) => v.parse(settingsSearchSchema, search),
-  loaderDeps: ({ search }) => ({ tab: search.tab }),
-  loader: async ({ context, deps }) => {
+  // Keep in-page tab search changes in the same route match. A changed
+  // loader dependency would show the zero-delay router pending UI and
+  // unmount the keyboard-focused tablist during activation.
+  loaderDeps: () => ({}),
+  shouldReload: false,
+  loader: async ({ context, location }) => {
     const userResult = await context.queryClient
       .ensureQueryData(currentUserQueryOptions())
       .catch(() => null)
 
-    if (deps.tab === SETTINGS_TAB.SESSIONS && userResult?.id) {
+    const routeSearch = v.parse(settingsSearchSchema, location.search)
+
+    if (routeSearch.tab === SETTINGS_TAB.SESSIONS && userResult?.id) {
       // Sessions tab — prefetch sessions list. Best-effort: any
       // failure (backend down, expired session) does not block the
       // loader, the sessions tab will fall back to its client-side

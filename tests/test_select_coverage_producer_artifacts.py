@@ -101,6 +101,7 @@ def test_selects_latest_valid_candidate_for_every_producer_from_one_snapshot() -
     assert selected["backend_shard_0"]["producer_attempt"] == 2
     assert selected["go_gateway"]["producer_attempt"] == 2
     assert selected["backend_shard_1"]["producer_attempt"] == 1
+    assert selected["python_migration"]["producer_job"] == "db-migration-gate"
     assert selected["rust_coverage"]["producer_attempt"] == 1
     assert selected["rust_codecov"]["producer_attempt"] == 1
     assert len(network.requests) == 2

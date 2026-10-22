@@ -9,6 +9,9 @@ import { useEventRegistration } from "@/hooks/useEventRegistration"
 import { useSpotlight } from "@/components/ui/Spotlight"
 import type { Event, EventEditDraft } from "@/types/Event"
 import { captureActiveTelemetryContext } from "@/utils/telemetryContext"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
+import { eventDateErrorTranslationKey, resolveCampusEventDateRange } from "@/utils/eventDateTime"
+import { useMinuteClock } from "@/hooks/useMinuteClock"
 
 // dayjs extensions removed
 
@@ -43,8 +46,9 @@ export function useEventCardLogic({
   onChange,
 }: UseEventCardLogicProps) {
   const { user } = useAuth()
+  const campusTimezone = useCampusTimezone()
   const navigate = useNavigate()
-  const { t } = useTranslation(["events", "common"])
+  const { t, i18n } = useTranslation(["events", "common"])
   const spotlight = useSpotlight()
 
   // -- UI State --
@@ -61,20 +65,45 @@ export function useEventCardLogic({
   const [cardImageReady, setCardImageReady] = useState(() => !image_url)
 
   // -- Edit Form State --
-  const [editData, setEditData] = useState<EventEditDraft>({
-    title: title || "",
-    title_en: title_en || "",
-    description: description || "",
-    description_en: description_en || "",
-    event_type: event_type || "",
-    event_type_en: event_type_en || "",
-    location: location || "",
-    location_en: location_en || "",
-    starts_at: starts_at || "",
-    ends_at: ends_at || "",
-    speaker: speaker || "",
-    image_url: image_url || "",
-  })
+  // The draft stays null until the user edits it, so the form always reflects the
+  // card's current props. Opening the dialog clears it (see setEditOpenFresh).
+  const [editDraft, setEditDraft] = useState<EventEditDraft | null>(null)
+  const propsDraft = useMemo<EventEditDraft>(
+    () => ({
+      title: title || "",
+      title_en: title_en || "",
+      description: description || "",
+      description_en: description_en || "",
+      event_type: event_type || "",
+      event_type_en: event_type_en || "",
+      location: location || "",
+      location_en: location_en || "",
+      starts_at: starts_at || "",
+      ends_at: ends_at || "",
+      speaker: speaker || "",
+      image_url: image_url || "",
+    }),
+    [
+      title,
+      title_en,
+      description,
+      description_en,
+      event_type,
+      event_type_en,
+      location,
+      location_en,
+      starts_at,
+      ends_at,
+      speaker,
+      image_url,
+    ]
+  )
+  const editData = editDraft ?? propsDraft
+  const setEditData = useCallback((next: EventEditDraft) => setEditDraft(next), [])
+  const setEditOpenFresh = useCallback((open: boolean) => {
+    if (open) setEditDraft(null)
+    setEditOpen(open)
+  }, [])
 
   const menuId = useMemo(() => `event-card-menu-${id}`, [id])
 
@@ -89,8 +118,11 @@ export function useEventCardLogic({
   })
 
   // -- Computed Properties --
+  // Live/soon/ended depend on the current time, so the memos re-run on a minute tick.
+  const clock = useMinuteClock()
+
   const timeStatus = useMemo(() => {
-    const now = new Date()
+    const now = new Date(clock)
     const start = parseDate(starts_at)
     const end = parseDate(ends_at)
 
@@ -101,12 +133,12 @@ export function useEventCardLogic({
       return { status: "soon" as const, timeText: formatRelativeTime(start, "en-US") }
     }
     return { status: "none" as const }
-  }, [starts_at, ends_at])
+  }, [starts_at, ends_at, clock])
 
   const eventEnded = useMemo(() => {
     const end = parseDate(ends_at)
-    return !isNaN(end.getTime()) && end < new Date()
-  }, [ends_at])
+    return !isNaN(end.getTime()) && end < new Date(clock)
+  }, [ends_at, clock])
 
   const cardImageUrl = useMemo(() => previewUrl || image_url || undefined, [image_url, previewUrl])
 
@@ -122,6 +154,19 @@ export function useEventCardLogic({
 
   // -- Handlers --
   const handleEdit = async () => {
+    const dateRange = resolveCampusEventDateRange(
+      editData.starts_at ?? "",
+      editData.ends_at ?? "",
+      campusTimezone,
+      { startsAt: starts_at, endsAt: ends_at }
+    )
+    if (!dateRange.valid || !dateRange.startsAt || !dateRange.endsAt) {
+      const field = dateRange.startError ? "start" : "end"
+      const error = dateRange.startError ?? dateRange.endError ?? "invalid"
+      setSnackbar(t(eventDateErrorTranslationKey(error, field)))
+      return
+    }
+
     const telemetryContext = captureActiveTelemetryContext()
     setLoading(true)
     try {
@@ -131,6 +176,7 @@ export function useEventCardLogic({
         setImageLoading(true)
         const data = new FormData()
         data.append("file", image)
+        data.append("event_id", id)
         const uploadRes = await telemetryContext.run(() =>
           api.post<{ url: string }>(`/events/upload_image`, data)
         )
@@ -139,9 +185,18 @@ export function useEventCardLogic({
       }
       const payload = {
         ...editData,
-        starts_at: parseDate(editData.starts_at).toISOString(),
-        ends_at: parseDate(editData.ends_at).toISOString(),
+        starts_at: dateRange.startsAt,
+        ends_at: dateRange.endsAt,
         image_url: imgUrl,
+      }
+      if (i18n.language === "en") {
+        // Event API responses localize the source fields for the active
+        // language. The card editor only exposes the active locale, so an
+        // English save must leave the persisted Russian fields untouched.
+        delete payload.title
+        delete payload.description
+        delete payload.event_type
+        delete payload.location
       }
       await telemetryContext.run(() => api.patch(`/events/${id}`, payload))
       setEditOpen(false)
@@ -200,7 +255,7 @@ export function useEventCardLogic({
     menuAnchor,
     setMenuAnchor,
     editOpen,
-    setEditOpen,
+    setEditOpen: setEditOpenFresh,
     confirmDeleteOpen,
     setConfirmDeleteOpen,
     editData,

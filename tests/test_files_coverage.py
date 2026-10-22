@@ -67,7 +67,7 @@ def test_looks_like_polyglot_scenarios() -> None:
 
 
 @pytest.mark.asyncio
-async def test_save_attachment_invalid_limit() -> None:
+async def test_save_attachment_invalid_limit(tmp_path: Path) -> None:
     headers = {"content-type": "image/png"}
     # Using 1-byte file to not trigger too large limit block
     upload = UploadFile(filename="test.png", file=io.BytesIO(b"d"), headers=headers)
@@ -77,7 +77,7 @@ async def test_save_attachment_invalid_limit() -> None:
         mock_settings.event_file_allowed_mime_types_set = {"image/png"}
         mock_settings.event_file_allowed_extensions_set = {"png"}
         mock_settings.storage_backend = "local"
-        mock_settings.static_dir_path = Path("C:\\dummy_static_dir")
+        mock_settings.static_dir_path = tmp_path
         mock_settings.storage_static_base_url = "http://localhost/"
 
         # Will raise 415 because detected mime is empty, which triggers quarantine
@@ -191,11 +191,11 @@ async def test_save_attachment_blocked_extension() -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_static_file_scenarios() -> None:
+async def test_delete_static_file_scenarios(tmp_path: Path) -> None:
     # 1. Invalid URL scheme or missing path
     with patch("app.utils.files.settings") as mock_settings:
         mock_settings.storage_backend = "local"
-        mock_settings.static_dir_path = Path("C:\\dummy_static_dir")
+        mock_settings.static_dir_path = tmp_path
         mock_settings.storage_static_base_url = "http://localhost/"
 
         # Non-matching URL

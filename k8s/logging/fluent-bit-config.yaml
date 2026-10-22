@@ -58,7 +58,7 @@ data:
         Match         kube.*
         Host          loki.monitoring.svc.cluster.local
         Port          3100
-        Labels        namespace=$k8s_namespace_name, app=$k8s_labels_app.kubernetes.io/name, component=$k8s_labels_app.kubernetes.io/component
+        Labels        namespace=$k8s_namespace_name, app=$k8s_labels['app.kubernetes.io/name'], component=$k8s_labels['app.kubernetes.io/component']
         Remove_Keys   k8s_pod_id,k8s_docker_id,k8s_container_hash
         Auto_Kubernetes_Labels Off
         Line_Format   json

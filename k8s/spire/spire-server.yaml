@@ -102,7 +102,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: spire-server
-          image: ghcr.io/spiffe/spire-server:1.15.2@sha256:aa74ef1be86bc8e0684007d84a4d9859d294384d842c30425048d73429f3216e
+          image: ghcr.io/spiffe/spire-server:1.15.3@sha256:4082f30d3e0ddc4000a171392c4ea174345ee44d161ee917c70b97b2ecfba141
           args: ["-config", "/run/spire/config/server.conf"]
           securityContext:
             allowPrivilegeEscalation: false

@@ -12,26 +12,42 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Set `VITE_APP_RELEASE` to forward the release identifier to Sentry. Values are embedded at build time.
 - To enable client-side error monitoring, set `VITE_SENTRY_DSN` and, if needed, `VITE_ENVIRONMENT`. The SDK does not activate automatically in dev builds.
 - The frontend logger (`src/app/logger.ts`) automatically sends `logError`/`logWarning` to Sentry and mirrors the output in the console. Unhandled `Promise`/`axios` errors are captured by global handlers (`initGlobalErrorHandlers()` is invoked in `src/main.tsx`).
-- To collect Web Vitals, set `VITE_ENABLE_WEB_VITALS=true`. Optionally send metrics to your own endpoint through `VITE_WEB_VITALS_ENDPOINT` (otherwise they are printed to the console). The flag is ignored in dev/test environments, so CI will not fail even when the variable is enabled.
-- Release-blocking field Core Web Vitals are certified separately by
-  `cwv-field-certification.yml`. The workflow derives the exporter URL from the
-  signed, SHA-bound staging deployment metadata; an independent export URL is
-  not accepted. The exporter must validate the GitHub OIDC audience
-  `university-cwv-exporter`, repository, protected `main` ref, and `staging`
-  environment, then return observations only for the exact `release_sha`,
-  frontend image digest, and deploy run/attempt. The supported collector contract
-  is `web-vitals` 6.1.1 with exporter schema version `1`. The deploy workflow
-  emits the immutable `staging-deployment-<sha>` artifact only after rollout,
-  smoke, and Kyverno verification. Certification downloads it from the exact run
-  and attempt, rejects stale, partial, or foreign evidence, evaluates p75
-  LCP/INP/CLS, and publishes a SHA-bound artifact with a build-provenance
-  attestation. A manually uploaded report is not valid release evidence.
+- For separate Web Vitals diagnostics, set `VITE_ENABLE_WEB_VITALS=true` at build time and optionally provide `VITE_WEB_VITALS_ENDPOINT`; metrics go to the console when no endpoint is set. The canonical MVP release image sets the `/api/v1/cwv` endpoint but disables collection with `VITE_ENABLE_WEB_VITALS=false` and `VITE_CWV_TRUSTED_RUM=false`.
+- Field Core Web Vitals (field CWV) collection and certification are outside the
+  MVP: acceptance does not use external staging/production or measurements from
+  physical devices, and the canonical release frontend does not enable field
+  collection. MVP performance acceptance uses local Lighthouse/CI checks and
+  current Compose/Core checks. Full published-image kind acceptance remains
+  planned for v1.1 and is not current certification evidence. The manual
+  `cwv-field-certification.yml` workflow and production-only certificate guard
+  remain for future external deployments; they are not prerequisites for the
+  `v1.0.0` release.
 - Backend and frontend must run over HTTPS, otherwise the browser blocks `/static` and `/storage` assets.
 - To limit requests, configure the backend with `RATE_LIMIT_STORAGE_BACKEND` and `RATE_LIMIT_STORAGE_URI`. The `redis` backend and a URI supplied from a protected store through environment variables enable shared storage for middleware and sensitive endpoints; keep credentials out of URLs and shell history. Use `memory` or `memory://` for a simple single-process mode without external Redis.
 - Session revocation must use one shared, dedicated store across services: the backend, gateway, and ws-hub use only `REVOCATION_REDIS_URL`. The supported Compose and Helm topology provisions a separate Redis/Valkey process with AOF, persistent storage, and `maxmemory-policy noeviction`; neither the cache (`CACHE_REDIS_URL`) nor the rate-limit Redis (`REDIS_URL`, DB 3) is authoritative security state. Reusing a cache/rate-limit process is unsupported because evicting `revoked:jti:*` could make a revoked JWT valid again.
 - Control the object-storage health probe with `HEALTH_STORAGE_PROBE_ENABLED` (run a write/delete check when set to `true`) and `HEALTH_STORAGE_PROBE_MIN_INTERVAL_SECONDS` (cache probe results between intervals). When disabled, the probe uses cheap bucket/list calls when available, which is friendlier to external providers.
-- Docker Compose has a production override (`docker-compose.prod.yml`) that marks secrets as mandatory. Create the Compose secrets `secret_key`, `database_url`, and `nats_auth_token`, and provide the PostgreSQL password file through `POSTGRES_PASSWORD_SOURCE_FILE`. The `database_url` secret must point to `postgresql+asyncpg://...@pgbouncer:5432/university`. Then run `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d` with `FRONTEND_ORIGIN` and `FRONTEND_ORIGINS` set explicitly; the Go overlay is required because Caddy routes API and WebSocket traffic through gateway/ws-hub.
-- The Helm chart reads connections from the pre-created `university-connections` Secret (all required keys are documented in `charts/university-ecosystem/values.yaml`). In production, set `applicationSecrets.existingSecret`; it must contain the listed JWT/RSA keys, independent HMAC/integration secrets, S3 credentials (the `minio-access-key`/`minio-secret-key` keys), and Temporal API key. Production rendering rejects plaintext S3, Temporal, gRPC, and OTLP so unsafe configuration never reaches the cluster or Helm release state.
+- Docker Compose has a production override (`docker-compose.prod.yml`) that marks secrets as mandatory:
+  - Create the Compose secrets `secret_key`, `database_url`, `nats_auth_token`, and `mfa_totp_encryption_keys`.
+  - Provide their source paths through `SECRET_KEY_SOURCE_FILE`, `DATABASE_URL_SOURCE_FILE`, `NATS_AUTH_TOKEN_SOURCE_FILE`, `CACHE_REDIS_URL_SOURCE_FILE`, `REVOCATION_REDIS_URL_SOURCE_FILE`, and `MFA_TOTP_ENCRYPTION_KEYS_SOURCE_FILE`.
+  - Set the non-secret `MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` directly. The TOTP ring and active ID are delivered to backend and migrations; non-auth workers stay keyless.
+  - Provide the PostgreSQL password file through `POSTGRES_PASSWORD_SOURCE_FILE`. The `database_url` secret must point to `postgresql+asyncpg://...@pgbouncer:5432/university`.
+  - Then run `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d` with `FRONTEND_ORIGIN` and `FRONTEND_ORIGINS` set explicitly; the Go overlay is required because Caddy routes API and WebSocket traffic through gateway/ws-hub.
+- The Helm chart reads connections from the pre-created `university-connections` Secret (all required keys are documented in `charts/university-ecosystem/values.yaml`). The TOTP ring is an application Secret key used by backend and migration; its active key ID is a direct non-secret chart value. The two non-auth workers receive neither TOTP setting. In production, set `applicationSecrets.existingSecret`; it must contain the listed JWT/RSA keys, independent HMAC/integration secrets, S3 credentials (the `minio-access-key`/`minio-secret-key` keys), and Temporal API key. Production rendering rejects plaintext S3, Temporal, gRPC, and OTLP so unsafe configuration never reaches the cluster or Helm release state.
+
+In Kubernetes, the chart delivers Secret values to the backend, outbox worker,
+migration Job, gateway, ws-hub, and file-processor as projected files. Each
+workload's `items` list exposes only the keys it consumes under
+`/run/secrets/<secret-name>/<key>`; mounts are read-only and files use mode
+`0440`. The workloads' `*_FILE` settings point to those paths. The backend's
+`JWT_PRIVATE_KEY_PATH` also points to its key file under the same mount.
+Applications load configured files at startup; a missing or invalid configured file causes
+startup failure without falling back to a plain environment value. Existing
+plain environment settings remain supported by Compose. After a Secret changes,
+use the controlled restart/rollout so processes load the new contents.
+
+For the KEDA PostgreSQL scaler, `TriggerAuthentication` reads parameter
+`connection` from the Secret named by `connections.existingSecret`, using the
+key configured by `connections.kedaPostgresqlURLKey`.
 
 ## Local Docker resource modes
 
@@ -69,8 +85,8 @@ selected values needs `get/list/watch/create/update/patch/delete`. Deployment ob
 also needs `get/list/watch/patch`. The workflow checks these permissions before
 mutation, forces reconciliation, waits for `Ready`, a new
 `status.refreshTime`, and a changed target Secret
-`resourceVersion`, then validates every effective Helm-rendered `secretKeyRef`
-before upgrade.
+`resourceVersion`. Before upgrade, it validates the Secret names and required
+key sets from the rendered `deploymentContract` against the existing Secrets.
 
 Use this rotation order:
 
@@ -117,6 +133,7 @@ Use this rotation order:
 Do not add a synthetic Pod checksum annotation. ExternalSecret content is not
 available to Helm; Ready/refreshTime plus Secret `resourceVersion` are the
 reconciliation proof, and an explicit rollout applies the new values.
+
 - Healthchecks stay inside the containers (`127.0.0.1`), and the only `extra_hosts` entry is `host.docker.internal`; remove it for production clusters that do not need host access.
 - Prometheus metrics are disabled by default in `docker-compose.yml`. To expose them, set `ENABLE_METRICS_ENDPOINT=true` **and** configure durable values for `METRICS_BASIC_AUTH_USERNAME` and `METRICS_BASIC_AUTH_PASSWORD` (Compose no longer injects placeholders). The backend now fails startup — or returns `503` at runtime — when metrics are enabled without credentials unless the allowlist is strictly loopback-only (`127.0.0.1`, `::1`, `localhost`).
 - To attach the `Cross-Origin-Resource-Policy` header, set `ENABLE_CORP=true`. Customize the value via `CORP_VALUE` (defaults to `same-site`; `same-origin` and `cross-origin` are also accepted).
@@ -155,7 +172,7 @@ reconciliation proof, and an explicit rollout applies the new values.
 
 ### Database connection pool
 
-- In production environments use the SQLAlchemy pool: set `DATABASE_POOL_SIZE` (base pool size), `DATABASE_MAX_OVERFLOW` (additional connections above the pool), `DATABASE_POOL_TIMEOUT` (seconds to wait for a free connection), and `DATABASE_POOL_RECYCLE` (seconds before a forced connection close). Default values are `5`, `10`, `30`, and `1800` respectively.
+- In production environments use the SQLAlchemy pool: set `DATABASE_POOL_SIZE` (base pool size), `DATABASE_MAX_OVERFLOW` (additional connections above the pool), `DATABASE_POOL_TIMEOUT` (seconds to wait for a free connection), and `DATABASE_POOL_RECYCLE` (seconds before a forced connection close). `_CPU_COUNT` is the CPU count detected by the application. Default values are `_CPU_COUNT * 2 + 1`, `_CPU_COUNT * 4`, `30`, and `540` respectively. These values apply per process; the overall connection budget must account for processes and replicas.
 - For dev/test environments the application automatically switches to `NullPool` so each connection opens anew; pool parameters are ignored. This avoids SQLite locks and helps with local development.
 - Before deploying to PostgreSQL or another production database, choose values within the database limits. For example, on a server limited to 20 connections you could set `DATABASE_POOL_SIZE=5` and `DATABASE_MAX_OVERFLOW=5`, leaving room for background jobs and external tools.
 
@@ -168,12 +185,15 @@ reconciliation proof, and an explicit rollout applies the new values.
 
 ### Background task metrics
 
-- `/metrics` now publishes counters and histograms for background cleanup jobs:
-  - `periodic_task_notifications_retention_*` — removal of old notifications and deliveries.
+- `/metrics` publishes counters and histograms for background cleanup jobs:
+  - `periodic_task_email_change_cleanup_*` — cleanup of email-change tokens.
+  - `periodic_task_mfa_challenge_cleanup_*` — deletion of expired or consumed MFA challenges.
   - `periodic_task_password_reset_cleanup_*` — cleanup of password reset tokens.
+  - `periodic_task_privacy_cleanup_*` — cleanup of privacy artifacts.
   - `periodic_task_session_cleanup_*` — removal of expired user sessions.
   - `periodic_task_story_cleanup_*` — cleanup of expired stories.
-  - `periodic_task_mfa_challenge_cleanup_*` — deletion of expired or consumed MFA challenges.
+- The scheduled notification-retention cleanup has no dedicated
+  `periodic_task_*` metrics.
 - Each job exposes:
   - `*_runs_total` — number of successful iterations.
   - `*_errors_total` — number of runs ending with an exception.
@@ -196,15 +216,17 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
 
 ### Offline PWA behaviour
 
-- The Service Worker caches the SPA shell (`_shell.html`) and serves it for navigation
-  requests while offline; when the shell is unavailable it falls back to `offline.html`
-  from the precache.
-- API calls for schedules, news, and events (`/api/schedule`, `/api/news`, `/api/events`)
-  use a stale-while-revalidate strategy. Cached responses are reused during outages and
-  empty offline placeholders are returned with `X-Offline-Fallback`/`X-Offline-Resource`
-  headers when nothing is cached yet.
-- Media and backend static assets keep the NetworkFirst strategy with a bounded cache
-  (24 hours, up to 200 entries).
+- When a navigation request fails, the Service Worker returns the precached SPA shell
+  (`_shell.html`); if that shell is unavailable, the handler returns an error. The
+  separately precached `offline.html` can be opened directly but is not this fallback.
+- Cacheable GET requests under `/api/` use a session-scoped NetworkFirst cache only
+  after the worker confirms the current session. The cache is limited to 100 entries
+  for one hour; requests without confirmed identity and `no-store` requests go to the
+  network without this cache. The worker does not synthesize empty API placeholders or
+  `X-Offline-Fallback`/`X-Offline-Resource` headers.
+- `/static/` assets use StaleWhileRevalidate (100 entries, seven days). Explicit
+  `/media/` requests use public or session-private cache rules, and generic image
+  requests use CacheFirst (200 entries, 30 days).
 - The interactive map and its lazy MapLibre chunks are intentionally excluded from the
   install-time precache so the manifest stays below a conservative CacheStorage budget.
   The offline shell and generic fallback page remain usable without a network; the map
@@ -220,6 +242,62 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
   cd frontend
   npm run test:e2e -- offline.spec.ts
   ```
+
+### TOTP enrollment encryption key migration
+
+Staging and production require `MFA_TOTP_ENCRYPTION_KEYS` in the application
+Secret for the API and migration Job. Set the non-secret
+`MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` directly in the deployment environment; it is
+not a file-backed secret. The explicit `outbox-worker` and
+`notifications-worker` roles remain keyless for TOTP, and any TOTP crypto call
+there fails closed. The active key
+must be independent of `SPOTIFY_TOKEN_SECRET`; non-active ring entries exist only
+to decrypt legacy enrollments. If existing TOTP rows were encrypted with the
+Spotify key, keep that same key material under a non-active TOTP key ID while
+publishing a newly generated active TOTP key. Never copy key material into a
+command, shell history, log, or documentation.
+
+Before any scan or rotation, drain every API/backend instance running
+pre-isolation code that can still write TOTP ciphertext with a Spotify key or
+`SECRET_KEY` fallback. Proceed only when the active enrollment writers are the
+isolated release, which always encrypts new TOTP enrollments with the active
+TOTP key. Keep this writer set and code version stable from the initial scan
+through every rotation batch, the final no-legacy full-table dry run, and legacy
+ring retirement. Do not roll back, scale an older ReplicaSet, or introduce a
+mixed writer release during this window. If the writer set changes, retain the
+legacy key and restart the verification sequence after restoring the stable
+isolated writer set.
+
+With the new ring provisioned and the isolated writer set stable, first run the
+read-only bounded scan:
+
+```bash
+python scripts/rotate_totp_encryption_keys.py --batch-size 100
+```
+
+Review its counts, then explicitly rotate rows in bounded transactions:
+
+```bash
+python scripts/rotate_totp_encryption_keys.py --apply --batch-size 100
+```
+
+The script locks selected rows on PostgreSQL and uses an exact-row
+compare-and-swap update. An unreadable ciphertext or changed row aborts its
+current batch. Earlier committed batches remain safe to rerun because rotation
+is idempotent.
+
+After a successful apply, keep the legacy entry in the normal decrypt ring while
+staging a verification ring without it. Run the read-only scan against the same
+database and with the same active TOTP key. Confirm the command succeeds,
+`scanned` matches the complete enrollment count, and `would_rotate=0`; any
+decryption failure or changed count blocks retirement. Only then remove the
+legacy material from the TOTP ring used by every API and migration process. The
+Spotify key remains in its separate Spotify configuration for Spotify ciphertext.
+
+Production key provisioning, a full-table dry run and apply, post-rotation
+validation, and legacy-key retirement are operator actions and remain pending;
+the source change does not claim that existing production data has been rotated.
+
 
 ### Spotify tokens
 
@@ -309,12 +387,12 @@ PY
 - `frontend.Dockerfile` uses separate stages for Rust/WASM compilation, build/runtime dependency installation, and the TanStack Start SSR build. The final image is based on digest-pinned `node:24-alpine`, runs as the unprivileged `node` user, and contains only production dependencies, WASM packages, `dist/`, and the SSR launcher.
 - `VITE_BACKEND_ORIGIN` remains the frontend build-time fallback. Node SSR first reads the runtime `BACKEND_ORIGIN`, so one immutable image works with different Compose/Helm service names; the chart and Compose already provide the internal backend address. Browser API requests stay same-origin and flow through the gateway.
 - Static files and SSR are served by `frontend/scripts/server-prod.mjs`: hashed files in `assets/` receive `Cache-Control: public, max-age=31536000, immutable`, while HTML receives `no-cache`/`no-store`.
-- The container listens on port `3000`; Compose publishes the frontend directly on `127.0.0.1:8081`, the gateway on `127.0.0.1:8080`, and Caddy on ports `80`/`443`. The fast readiness/liveness endpoint is `/healthz`.
+- The container listens on port `3000` on the internal `frontend_net`; Caddy on ports `80`/`443` is the supported host entry and proxies requests to `frontend:3000`. Docker health checks `/healthz` inside the container, while `start-docker.ps1` separately verifies the rendered `/login` route through Caddy.
 
 ```bash
 # example local build
 docker compose build frontend
-docker compose up frontend
+docker compose up -d frontend caddy
 ```
 
 ## Edge reverse proxy
@@ -345,6 +423,54 @@ server {
 
 > A same-origin edge is preferred for browsers. `BACKEND_ORIGIN` is the runtime SSR setting, while `VITE_BACKEND_ORIGIN` is only a build-time fallback; never expose internal service DNS in the client bundle.
 
+## Campus timezone
+
+`CAMPUS_TIMEZONE` sets the IANA timezone used for recurring lessons,
+reminders, and calendar exports; the default is `UTC`. Set it in `.env.docker`
+for Compose or `backend.env.CAMPUS_TIMEZONE` for Helm. The server calculates
+lesson dates in the campus timezone, and the browser formats the resulting
+instants for display.
+
+## Client-IP rate-limit configuration
+
+Rate-limit code trusts forwarding headers only when the immediate peer and
+chain are configured. In Compose, GATEWAY_TRUSTED_PROXIES names the exact proxy
+addresses seen by Gateway, WS_HUB_TRUSTED_PROXIES names those seen by ws-hub,
+and backend TRUSTED_PROXIES comes from .env.docker. The full Compose stack has
+dynamically addressed shared networks, and scripts/live_stand.py does not
+discover proxy addresses. Do not trust the whole public bridge or another
+broad private range. Supply values from the actual network layout and refresh
+them when addresses change. If an external load balancer sits before Caddy,
+configure Caddy to trust only that real upstream and verify the sanitized
+forwarded chain.
+
+For Helm, set gateway.config.trustedProxies and wsHub.config.trustedProxies to
+the real ingress source IPs/CIDRs. Set backend.env.TRUSTED_PROXIES to the
+Gateway and any upstream hops remaining in the sanitized chain. NetworkPolicy
+selectors restrict reachability but do not configure application header trust.
+Never use guessed addresses or a cluster-wide/private CIDR. Staging values
+intentionally omit external peer guesses. For each enabled Ingress route to
+Gateway or ws-hub, staging/production Helm rendering validates that service's
+`trustedProxies` values. CIDR prefix lengths are normalized before validation,
+including leading-zero spellings. Rendering fails if the normalized list is empty
+or loopback-only, contains a universal `/0` route, either IPv6 `/1` half-space,
+a complete RFC1918 block or supernet covering `10.0.0.0/8`, `172.16.0.0/12`, or
+`192.168.0.0/16`, the complete IPv6 Unique-Local block `fc00::/7` or a supernet
+covering it, the complete IPv6 Global-Unicast block `2000::/3` or a supernet
+covering it (see the [IANA IPv6 Address Space Registry](https://www.iana.org/assignments/ipv6-address-space/)),
+an IPv4-mapped range covering all IPv4 addresses, or a non-loopback IPv4-mapped
+IPv6 peer. For mapped non-loopback peers, configure
+native IPv4 addresses or CIDRs. IPv4-mapped `127.0.0.0/8` is treated as loopback:
+by itself it does not satisfy the non-loopback-peer requirement, but it can
+coexist with a separate valid non-loopback address. Narrower private IPv4 and
+IPv6 CIDRs remain valid; there is no arbitrary minimum subnet size.
+
+This fail-closed check validates input values; it does not discover or attest the
+current topology or actual ingress source IPs. Operators must obtain the real
+peers from deployment configuration. TEST-NET addresses and IPv6 documentation
+prefixes in contract tests are fixtures only and are not deployment values.
+Development and direct-mode renders do not require ingress proxy ranges.
+
 ## Backend system dependencies
 
 - The backend uses `python-magic` to inspect file contents, so install the `libmagic` packages on hosts running the backend (for example, `apt install libmagic1 libmagic-dev` on Debian/Ubuntu or `apk add file` on Alpine).
@@ -361,19 +487,20 @@ server {
 ## Notifications worker
 
 - Start a dedicated worker to send push notifications: `python -m app.workers.notifications`.
-- When running the API and worker in separate processes, disable the built-in scheduler in the API by setting `NOTIFICATIONS_SCHEDULER_INLINE_ENABLED=false`.
 - The worker publishes health and Prometheus metrics at `http://<host>:9101/healthz` and `http://<host>:9101/metrics` (change the port via `NOTIFICATIONS_WORKER_METRICS_PORT`).
 - docker-compose already includes a `notifications-worker` service with the `unless-stopped` restart policy.
-- Jobs in the dead-letter queue are automatically removed after 30 days (`NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`). The check interval is controlled by `NOTIFICATION_QUEUE_DEAD_LETTER_CLEANUP_INTERVAL_SECONDS` (minimum 300 seconds; set `0` to disable the scheduler).
+- Jobs in the dead-letter queue are automatically removed after 30 days (`NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`).
 
-## User session cleanup
+## Periodic cleanup schedule
 
-- The API automatically removes stale records from `active_sessions` at startup and then every 15 minutes.
-- Adjust the frequency via `SESSION_CLEANUP_INTERVAL_SECONDS` (minimum 30 seconds). Setting the value to `0` disables the background scheduler; you can run the cleanup manually with `python -m app.services.session_cleanup` inside the container/virtual environment.
-- Session revocations (logout, `/auth/sessions/*`) now delete database rows immediately. Run the cleanup script once after upgrading to purge any previously revoked-but-not-deleted rows so that operator dashboards and the `/auth/sessions` UI stay in sync.
+The API runs one hourly scheduler (`app/core/lifespan.py::_periodic_scheduler_loop`; an initial 0–60 s jitter spreads rolling deploys). The cadence is fixed in code, not configurable per job:
 
-## MFA challenge cleanup
+| Cadence | Jobs |
+|---|---|
+| every hour | expired stories, stale password-reset tokens, stale e-mail-change tokens, stale MFA challenges, product gauges (active users, MFA adoption) |
+| every 6 hours | expired and revoked sessions |
+| daily at 02:00 UTC | stale notifications, dead-lettered notification-queue jobs, privacy artifacts (and CWV observations) |
 
-- The `cleanup_stale_mfa_challenges` utility removes rows where both `expires_at` and `consumed_at` are older than `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`.
-- The scheduler runs every 10 minutes by default (`MFA_CHALLENGE_CLEANUP_INTERVAL_SECONDS`, minimum 30 seconds). Set the value to `0` to disable the background loop; you can still run the job manually via `python -m app.services.mfa_challenge_cleanup`.
-- We recommend triggering the cleanup every 5–10 minutes so the table does not grow indefinitely and login flows stay responsive. Monitor `periodic_task_mfa_challenge_cleanup_runs_total`, `_errors_total`, and `_deleted_total` to spot anomalies or repeated failures.
+Retention windows are configurable (`NOTIFICATIONS_RETENTION_DAYS`, `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`, `PASSWORD_RESET_CLEANUP_RETENTION_MINUTES`, `EMAIL_CHANGE_CLEANUP_RETENTION_MINUTES`, `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`, `SESSION_RETENTION_DAYS`, ...). Each job can also be run manually, e.g. `python -m app.services.session_cleanup` or `python -m app.services.mfa_challenge_cleanup`. Monitor `periodic_task_*_runs_total`, `_errors_total` and `_deleted_total`.
+
+Session revocations (logout, `/auth/sessions/*`) delete database rows immediately; after upgrading from a release that only marked rows revoked, run the session cleanup once so `/auth/sessions` and operator dashboards stay in sync.

@@ -9,11 +9,13 @@ from __future__ import annotations
 import datetime as dt
 from collections import defaultdict
 from collections.abc import Mapping
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, select
+from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.localization import SUPPORTED_LOCALES, translate, translate_lesson_type
 from app.models import Notification, Schedule, User
 from app.services.notification_templates import render_notification_template
@@ -32,8 +34,74 @@ if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
 
+def _resolve_schedule_occurrence(
+    schedule: Schedule,
+    occurrence_date: dt.date,
+    campus_timezone: ZoneInfo,
+) -> dt.datetime | None:
+    """Resolve a stored weekly wall time to one valid campus-time occurrence.
+
+    The schedule API stores a reference-week datetime, so its calendar date and
+    timezone are intentionally ignored here. For an ambiguous fall-back time we
+    choose the first occurrence; a nonexistent spring-forward time is skipped.
+    """
+    stored_start = getattr(schedule, "start_time", None)
+    if isinstance(stored_start, datetime):
+        wall_time = stored_start.timetz().replace(tzinfo=None, fold=0)
+    else:
+        return None
+
+    local_naive = datetime.combine(occurrence_date, wall_time)
+    occurrence = local_naive.replace(tzinfo=campus_timezone, fold=0)
+    round_trip = (
+        occurrence.astimezone(UTC).astimezone(campus_timezone).replace(tzinfo=None)
+    )
+    if round_trip != local_naive:
+        return None
+    return occurrence
+
+
+def _schedule_occurrence_in_window(
+    schedule: Schedule,
+    *,
+    now_utc: dt.datetime,
+    window_end_utc: dt.datetime,
+    campus_timezone: ZoneInfo,
+) -> dt.datetime | None:
+    """Return the next matching weekly occurrence in the UTC reminder window."""
+    local_start = now_utc.astimezone(campus_timezone)
+    local_end = window_end_utc.astimezone(campus_timezone)
+    stored_weekday = str(getattr(schedule, "weekday", "")).strip().lower()
+    stored_parity = str(getattr(schedule, "parity", None) or "both").strip().lower()
+
+    day_count = (local_end.date() - local_start.date()).days
+    for day_offset in range(day_count + 1):
+        occurrence_date = local_start.date() + dt.timedelta(days=day_offset)
+        weekday_name = occurrence_date.strftime("%A").lower()
+        if stored_weekday not in {weekday_name, str(occurrence_date.weekday())}:
+            continue
+
+        week_number = occurrence_date.isocalendar().week
+        occurrence_parity = "odd" if week_number % 2 else "even"
+        if stored_parity not in {"", "both", occurrence_parity}:
+            continue
+
+        occurrence = _resolve_schedule_occurrence(
+            schedule, occurrence_date, campus_timezone
+        )
+        if occurrence is None:
+            continue
+        occurrence_utc = occurrence.astimezone(UTC)
+        if now_utc <= occurrence_utc <= window_end_utc:
+            return occurrence
+    return None
+
+
 def build_schedule_reminder_message(
-    lesson: Schedule, *, locale: str | None = None
+    lesson: Schedule,
+    *,
+    locale: str | None = None,
+    occurrence_at: dt.datetime | None = None,
 ) -> tuple[
     str,
     str,
@@ -54,8 +122,12 @@ def build_schedule_reminder_message(
     - body translations
     - dedupe key
     """
-    start_dt = _ensure_aware(getattr(lesson, "start_time", None))
-    start_local = start_dt.astimezone()
+    start_dt = _ensure_aware(
+        occurrence_at
+        if occurrence_at is not None
+        else getattr(lesson, "start_time", None)
+    )
+    start_local = start_dt.astimezone(ZoneInfo(settings.campus_timezone))
     lesson_type_raw = getattr(lesson, "lesson_type", None)
     when_line = f"{start_local.strftime('%d.%m')} · {start_local.strftime('%H:%M')}"
 
@@ -210,36 +282,37 @@ async def generate_schedule_reminders(
     db: AsyncSession, *, window_minutes: int = 6
 ) -> int:
     """Generate schedule reminder notifications for upcoming lessons."""
-    now = dt.datetime.now(UTC)
-    soon = now + dt.timedelta(minutes=window_minutes)
-    # HIGH-W19: add weekday and week-parity filters so reminders are only sent for
-    # lessons that actually occur today; without this every stored schedule row
-    # whose start_time falls in the window triggers a notification regardless of
-    # whether the lesson recurs on the current day-of-week or week parity.
-    current_weekday_name = now.strftime("%A").lower()  # e.g. "monday"
-    current_weekday_int = now.weekday()  # 0=Monday … 6=Sunday
-    # ISO week number: odd → "odd" / "нечет", even → "even" / "чет"
-    current_week_number = now.isocalendar()[1]
-    current_parity = "odd" if current_week_number % 2 != 0 else "even"
+    now_utc = dt.datetime.now(UTC)
+    window_end_utc = now_utc + dt.timedelta(minutes=window_minutes)
+    campus_timezone = ZoneInfo(settings.campus_timezone)
+    local_start = now_utc.astimezone(campus_timezone)
+    local_end = window_end_utc.astimezone(campus_timezone)
+    day_count = (local_end.date() - local_start.date()).days
+    weekday_values: set[str] = set()
+    for day_offset in range(day_count + 1):
+        occurrence_date = local_start.date() + dt.timedelta(days=day_offset)
+        weekday_values.add(occurrence_date.strftime("%A").lower())
+        weekday_values.add(str(occurrence_date.weekday()))
 
-    weekday_filter = (Schedule.weekday == current_weekday_name) | (
-        Schedule.weekday == str(current_weekday_int)
-    )
-    parity_filter = (
-        Schedule.parity.is_(None)
-        | (Schedule.parity == "")
-        | (Schedule.parity == current_parity)
-        | (Schedule.parity == "both")
-    )
-    q = select(Schedule).where(
-        and_(
-            Schedule.start_time >= now,
-            Schedule.start_time <= soon,
-            weekday_filter,
-            parity_filter,
-        )
-    )
+    # Schedule rows store one reference-week wall time, not a dated occurrence.
+    # Filter by relevant campus weekdays in SQL, then resolve recurrence and
+    # parity against each concrete local date below.
+    q = select(Schedule).where(Schedule.weekday.in_(weekday_values))
     schedules = (await db.execute(q)).scalars().all()
+    occurrences_by_id: dict[uuid.UUID, dt.datetime] = {}
+    matching_schedules: list[Schedule] = []
+    for schedule in schedules:
+        occurrence = _schedule_occurrence_in_window(
+            schedule,
+            now_utc=now_utc,
+            window_end_utc=window_end_utc,
+            campus_timezone=campus_timezone,
+        )
+        if occurrence is None:
+            continue
+        matching_schedules.append(schedule)
+        occurrences_by_id[schedule.id] = occurrence
+    schedules = matching_schedules
     if not schedules:
         return 0
 
@@ -258,7 +331,9 @@ async def generate_schedule_reminders(
     ] = {}
     for schedule in schedules:
         schedules_by_group[schedule.group_id].append(schedule)
-        payload = build_schedule_reminder_message(schedule)
+        payload = build_schedule_reminder_message(
+            schedule, occurrence_at=occurrences_by_id[schedule.id]
+        )
         message_payloads[schedule.id] = payload
     dedupe_keys: set[str] = {
         str(key)
@@ -288,7 +363,7 @@ async def generate_schedule_reminders(
     if not any(group_users.values()):
         return 0
 
-    dup_since = now - dt.timedelta(minutes=30)
+    dup_since = now_utc - dt.timedelta(minutes=30)
     all_user_ids = {uid for users in group_users.values() for uid in users}
     existing_by_dedupe: dict[str, set[uuid.UUID]] = defaultdict(set)
     if dedupe_keys and all_user_ids:

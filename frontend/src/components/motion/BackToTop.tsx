@@ -19,7 +19,7 @@ export const disconnectBackToTopObserver = (observer: IntersectionObserver | nul
   observer?.disconnect()
 }
 
-export default function BackToTop() {
+export default function BackToTop({ footerVisible = true }: { footerVisible?: boolean }) {
   const { t } = useTranslation(["common"])
 
   const [show, setShow] = useState(false)
@@ -34,15 +34,20 @@ export default function BackToTop() {
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
 
-  // Observe footer to shift FAB above it
+  // Observe the synchronous layout footer after each visibility transition.
   useEffect(() => {
+    setFooterOffset(0)
+    if (!footerVisible) return
+
     const footer = document.querySelector<HTMLElement>('[role="contentinfo"]')
     if (!footer) return
 
     const thresholds = Array.from({ length: 21 }, (_, i) => i / 20)
+    let active = true
 
     observerRef.current = new IntersectionObserver(
       ([entry]) => {
+        if (!active) return
         if (!entry || !entry.isIntersecting) {
           setFooterOffset(0)
           return
@@ -55,8 +60,12 @@ export default function BackToTop() {
     )
 
     observerRef.current.observe(footer)
-    return () => disconnectBackToTopObserver(observerRef.current)
-  }, [])
+    return () => {
+      active = false
+      disconnectBackToTopObserver(observerRef.current)
+      observerRef.current = null
+    }
+  }, [footerVisible])
 
   const onClick = scrollToTop
 

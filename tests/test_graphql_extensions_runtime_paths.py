@@ -165,3 +165,43 @@ async def test_persisted_query_extension_prod_no_query():
         await gen.__anext__()
         with pytest.raises(GraphQLError, match="allowlist"):
             await gen.asend(None)
+
+
+@pytest.mark.asyncio
+async def test_increment_user_cost_uses_atomic_redis_pipeline_and_returns_total(
+    monkeypatch,
+):
+    calls: list[tuple[object, ...]] = []
+
+    class Pipeline:
+        def incrby(self, key, amount):
+            calls.append(("incrby", key, amount))
+            return self
+
+        def expire(self, key, seconds):
+            calls.append(("expire", key, seconds))
+            return self
+
+        async def execute(self):
+            calls.append(("execute",))
+            return [17, True]
+
+    class Redis:
+        def pipeline(self, *, transaction):
+            calls.append(("pipeline", transaction))
+            return Pipeline()
+
+    monkeypatch.setattr(
+        "app.deps.cache.get_cache_client",
+        AsyncMock(return_value=Redis()),
+    )
+
+    total = await _increment_user_cost("user-7", 5, 1234)
+
+    assert total == 17
+    assert calls == [
+        ("pipeline", True),
+        ("incrby", "gql:cost:user-7:1234", 5),
+        ("expire", "gql:cost:user-7:1234", 120),
+        ("execute",),
+    ]

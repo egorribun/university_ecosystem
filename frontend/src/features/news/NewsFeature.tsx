@@ -14,7 +14,7 @@ import { NewsHeader } from "./components/NewsHeader"
 import { NewsList } from "./components/NewsList"
 import { NewsFormDialog } from "./components/NewsFormDialog"
 import { NewsShortcutsOverlay } from "./components/NewsShortcutsOverlay"
-import { inferCategory, type NewsCategory } from "./categories"
+import { inferNewsCategory, type NewsCategory } from "./categories"
 
 export type SortMode = "newest" | "popular"
 
@@ -34,10 +34,12 @@ export const NewsFeature = () => {
   const {
     news: rawNewsList,
     isLoading: isInitialLoading,
+    isError: isNewsQueryError = false,
     isFetching,
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
+    queryKey,
   } = useNewsListQuery({ language })
 
   const [addOpen, setAddOpen] = useState(false)
@@ -65,8 +67,8 @@ export const NewsFeature = () => {
 
   const refreshNews = useCallback(() => {
     resetEtagCache()
-    void queryClient.invalidateQueries({ queryKey: ["news", "list"] })
-  }, [queryClient])
+    void queryClient.invalidateQueries({ queryKey, exact: true })
+  }, [queryClient, queryKey])
 
   /* ── Filter + sort + search ── */
   const filteredNews = useMemo(() => {
@@ -86,7 +88,7 @@ export const NewsFeature = () => {
     if (activeCategory === "saved") {
       list = list.filter((n) => bookmarks.has(n.id))
     } else if (activeCategory !== "all") {
-      list = list.filter((n) => inferCategory(n.title, n.content) === activeCategory)
+      list = list.filter((n) => inferNewsCategory(n) === activeCategory)
     }
 
     if (sortMode === "popular") {
@@ -103,6 +105,7 @@ export const NewsFeature = () => {
       requiresCompleteDataset &&
       hasNextPage &&
       !isInitialLoading &&
+      !isNewsQueryError &&
       !isFetchingNextPage &&
       isOnline
     ) {
@@ -113,6 +116,7 @@ export const NewsFeature = () => {
     hasNextPage,
     isFetchingNextPage,
     isInitialLoading,
+    isNewsQueryError,
     isOnline,
     requiresCompleteDataset,
   ])
@@ -149,6 +153,7 @@ export const NewsFeature = () => {
         <NewsList
           newsList={filteredNews}
           isInitialLoading={isInitialLoading}
+          isError={isNewsQueryError}
           isFetching={isFetching}
           isFetchingNextPage={isFetchingNextPage}
           hasNextPage={Boolean(hasNextPage)}

@@ -88,6 +88,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     } catch {
       // Persistence is best-effort; DOM and cookie state must still update.
     }
+    window.__UE_SELECTED_LANG__ = language
     document.documentElement.setAttribute("lang", language)
     document.documentElement.setAttribute("dir", locale.dir)
     const body = document.body

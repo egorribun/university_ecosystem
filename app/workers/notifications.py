@@ -55,6 +55,7 @@ class NotificationsScheduler:
             created = await generate_schedule_reminders(
                 db, window_minutes=self.window_minutes
             )
+            await db.commit()
         return created
 
     async def run_forever(self) -> None:

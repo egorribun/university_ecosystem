@@ -11,7 +11,8 @@ import { useLanguage } from "@/contexts/LanguageContext"
 import { EventCategoryBadge } from "./EventCategoryBadge"
 import { inferEventCategory } from "@/features/events/categories"
 import { localizeField } from "@/utils/localize"
-import { formatDate } from "@/utils/date"
+import { formatCampusDate } from "@/utils/campusTimezone"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import type { Event } from "@/types/Event"
 
 interface RelatedEventsProps {
@@ -47,7 +48,8 @@ export function RelatedEvents({ items }: RelatedEventsProps) {
 }
 
 function RelatedEventCard({ event, language }: { event: Event; language: "en" | "ru" }) {
-  const { t } = useTranslation(RELATED_EVENT_CARD_TRANSLATION_NAMESPACES)
+  const { t, i18n } = useTranslation(RELATED_EVENT_CARD_TRANSLATION_NAMESPACES)
+  const timeZone = useCampusTimezone()
 
   // These values are deliberately computed inline: each is a small, pure
   // presentation transform and keeping them as ordinary expressions makes
@@ -59,9 +61,15 @@ function RelatedEventCard({ event, language }: { event: Event; language: "en" | 
       : event.event_type
   const localizedTitle = localizeField(title, event.title_en, language)
   const category = inferEventCategory(eventType)
-  const dateLabel = event.starts_at
-    ? formatDate(event.starts_at, { day: "numeric", month: "short" })
-    : ""
+  const dateLabel =
+    event.starts_at && timeZone
+      ? formatCampusDate(
+          event.starts_at,
+          { day: "numeric", month: "short" },
+          i18n.language === "ru" ? "ru-RU" : "en-US",
+          timeZone
+        )
+      : ""
 
   return (
     <Link

@@ -93,3 +93,36 @@ async def test_get_chats_list(async_client, user_factory):
     assert data["items"][0]["id"] == create_resp.json()["id"]
     # Verify last_message is None for new chat
     assert data["items"][0]["last_message"] is None
+
+
+@pytest.mark.asyncio
+async def test_chat_list_reads_do_not_consume_chat_creation_budget(
+    async_client, user_factory, monkeypatch
+):
+    from app.core.config import settings
+    from app.core.ratelimit import clear_memory_state
+
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    monkeypatch.setattr(settings, "rate_limit_storage_backend", "memory")
+    monkeypatch.setitem(settings.__dict__, "rate_limit_sensitive_value", "1/minute")
+    clear_memory_state()
+
+    password = "Lifecycle123!"
+    user = await user_factory(hashed_password=await get_password_hash(password))
+    other = await user_factory()
+    headers = await _login(async_client, user.email, password)
+
+    for _ in range(5):
+        response = await async_client.get("/chats", headers=headers)
+        assert response.status_code == 200
+
+    create_response = await async_client.post(
+        "/chats", json={"participant_id": str(other.id)}, headers=headers
+    )
+
+    assert create_response.status_code == 200
+
+    second_create_response = await async_client.post(
+        "/chats", json={"participant_id": str(other.id)}, headers=headers
+    )
+    assert second_create_response.status_code == 429

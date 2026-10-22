@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import uuid
 from collections.abc import Callable
-from functools import wraps
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from app.core.config import settings
@@ -121,69 +120,3 @@ async def invalidate_user_stats_cache(
 
 
 F = TypeVar("F", bound=Callable[..., Any])
-
-
-def cache_stats(kind: str, ttl: int | None = None) -> Callable[[F], F]:
-    """Decorator to automatically handle caching for statistics methods.
-
-    Expects the first argument to be 'self' (a service instance with a 'cache' attribute/property)
-    or just uses the global cache.
-    Expects 'user_id' and 'period_key' or 'period_days' as arguments.
-    """
-
-    def decorator(func: F) -> F:
-        @wraps(func)
-        async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
-            import inspect
-
-            # Resolve arguments
-            sig = inspect.signature(func)
-            bound_args = sig.bind(self, *args, **kwargs)
-            arguments = bound_args.arguments
-
-            user_id = arguments.get("user_id")
-            if user_id and hasattr(user_id, "id"):
-                user_id = user_id.id
-
-            if user_id is None:
-                return await func(self, *args, **kwargs)
-
-            period_key = arguments.get("period_key")
-            period_days = arguments.get("period_days")
-            skip_cache = kwargs.get("skip_cache", False)
-
-            resolved_p_key = resolve_period_key(period_key, period_days)
-
-            # Access cache from self or global
-            cache = getattr(self, "cache", None)
-
-            # 1. Try Cache
-            if not skip_cache:
-                entry = await get_cached_stats(
-                    cache=cache,
-                    kind=kind,
-                    user_id=user_id,
-                    period_key=resolved_p_key,
-                )
-                if entry is not None:
-                    return entry.payload
-
-            # 2. Call Method
-            result = await func(self, *args, **kwargs)
-
-            # 3. Store Cache
-            if result is not None:
-                await set_cached_stats(
-                    cache=cache,
-                    kind=kind,
-                    user_id=user_id,
-                    period_key=resolved_p_key,
-                    payload=result,
-                    ttl=ttl,
-                )
-
-            return result
-
-        return wrapper  # type: ignore[return-value]
-
-    return decorator

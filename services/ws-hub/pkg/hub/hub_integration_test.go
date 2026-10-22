@@ -18,6 +18,7 @@ package hub
 import (
 	"context"
 	"crypto/hmac"
+	cryptorand "crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -33,6 +34,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/moby/moby/api/types/container"
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/redis/go-redis/v9"
@@ -44,29 +46,55 @@ import (
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 )
 
-// startNATSContainer spins up a real NATS server in a Docker container and
-// returns a connected nats.Conn plus a cleanup function. The cleanup
-// terminates the container and closes the connection — call it via t.Cleanup
-// so failures don't leak resources.
-func startNATSContainer(t *testing.T) (*nats.Conn, func()) {
+func natsContainerOptions(t *testing.T, ownerPrefix, purpose string) []testcontainers.ContainerCustomizer {
+	t.Helper()
+	var uniqueID [16]byte
+	if _, err := cryptorand.Read(uniqueID[:]); err != nil {
+		t.Fatalf("generate unique NATS test-container owner: %v", err)
+	}
+
+	return []testcontainers.ContainerCustomizer{
+		testcontainers.WithLabels(map[string]string{
+			"university-ecosystem.dev/test-owner":   ownerPrefix + "-" + hex.EncodeToString(uniqueID[:]),
+			"university-ecosystem.dev/test-purpose": purpose,
+		}),
+		testcontainers.WithHostConfigModifier(func(hostConfig *container.HostConfig) {
+			hostConfig.Memory = 1 << 30
+			hostConfig.MemorySwap = 1 << 30
+			hostConfig.NanoCPUs = 2_000_000_000
+		}),
+		testcontainers.WithLogger(tclog.TestLogger(t)),
+	}
+}
+
+// startNATSContainer starts a bounded, individually labeled NATS fixture.
+// Container and connection cleanup are registered as each resource is created,
+// so every later setup failure (including AddStream) releases both resources.
+func startNATSContainer(t *testing.T) *nats.Conn {
 	t.Helper()
 	ctx := context.Background()
 
-	natsContainer, err := tcnats.Run(ctx,
-		"nats:2.12.6-alpine@sha256:1cfc36e2e5e638243d8c722f72c954cd0ec4b15ee82fadbc718ce12e2b3c1652",
-		// JetStream not required for the cache.invalidate / chat.* / notifications.*
-		// subjects this test suite covers — they run on core NATS pub/sub.
-		// The testcontainers NATS module enables JetStream by default; this suite
-		// intentionally uses only core pub/sub subjects.
-		testcontainers.WithLogger(tclog.TestLogger(t)),
+	natsContainer, err := tcnats.Run(
+		ctx,
+		"nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4",
+		natsContainerOptions(t, "ws-hub-nats", "ws-hub-core-nats-integration")...,
 	)
+	if natsContainer != nil {
+		t.Cleanup(func() {
+			if err := natsContainer.Terminate(context.Background()); err != nil {
+				t.Logf("NATS container cleanup: %v", err)
+			}
+		})
+	}
 	if err != nil {
 		t.Fatalf("nats container start: %v", err)
+	}
+	if natsContainer == nil {
+		t.Fatal("nats container start returned nil container")
 	}
 
 	connStr, err := natsContainer.ConnectionString(ctx)
 	if err != nil {
-		_ = natsContainer.Terminate(ctx) //nolint:errcheck // best-effort cleanup on test setup error
 		t.Fatalf("nats connection string: %v", err)
 	}
 
@@ -75,16 +103,27 @@ func startNATSContainer(t *testing.T) (*nats.Conn, func()) {
 		nats.MaxReconnects(5),
 		nats.ReconnectWait(500*time.Millisecond),
 	)
+	if nc != nil {
+		t.Cleanup(nc.Close)
+	}
 	if err != nil {
-		_ = natsContainer.Terminate(ctx) //nolint:errcheck // best-effort cleanup on test setup error
 		t.Fatalf("nats connect: %v", err)
 	}
-
-	cleanup := func() {
-		nc.Close()
-		_ = natsContainer.Terminate(context.Background()) //nolint:errcheck // best-effort cleanup
+	js, err := nc.JetStream()
+	if err != nil {
+		t.Fatalf("NATS JetStream context: %v", err)
 	}
-	return nc, cleanup
+	_, err = js.AddStream(&nats.StreamConfig{
+		Name:      "CACHE_INVALIDATIONS",
+		Subjects:  []string{"cache.invalidate"},
+		Storage:   nats.MemoryStorage,
+		Retention: nats.LimitsPolicy,
+	})
+	if err != nil {
+		t.Fatalf("create cache invalidation stream: %v", err)
+	}
+
+	return nc
 }
 
 // newIntegrationHub builds a Hub wired to a real NATS connection using the
@@ -104,7 +143,7 @@ func newIntegrationHub(t *testing.T, nc *nats.Conn, broadcastBuf int, maxClients
 	return trackTestHub(NewHub(nc, logger, &mockAuthClient{allowed: true}, cfg, nil))
 }
 
-// startRedisContainer spins up a real Redis 7 container and returns a connected
+// startRedisContainer spins up pinned Redis 7.4.11-alpine and returns a connected
 // *redis.Client + cleanup. Mirrors startNATSContainer pattern. Used by tests
 // that exercise HandleWebSocket (which validates upgrade tickets via Redis
 // GETDEL on ott:ws:{token}).
@@ -112,7 +151,7 @@ func startRedisContainer(t *testing.T) (*redis.Client, func()) {
 	t.Helper()
 	ctx := context.Background()
 
-	rc, err := tcredis.Run(ctx, "redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952",
+	rc, err := tcredis.Run(ctx, "redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	if err != nil {
@@ -169,8 +208,7 @@ func newIntegrationHubWithRedis(t *testing.T, nc *nats.Conn, rdb *redis.Client, 
 // `chat.*` subject behave as expected. All in-process unit tests use a nil
 // nats.Conn, so this is the first place real broker behaviour is exercised.
 func TestIntegration_NATSChatMessageDelivery(t *testing.T) {
-	nc, cleanup := startNATSContainer(t)
-	t.Cleanup(cleanup)
+	nc := startNATSContainer(t)
 
 	h := newIntegrationHub(t, nc, 16, 0)
 
@@ -231,8 +269,7 @@ func TestIntegration_NATSChatMessageDelivery(t *testing.T) {
 // during broadcastMessage). The handler validates at the parse boundary
 // (hub.go:444 json.Unmarshal returns; channel push is skipped).
 func TestIntegration_NATSMalformedMessageDropped(t *testing.T) {
-	nc, cleanup := startNATSContainer(t)
-	t.Cleanup(cleanup)
+	nc := startNATSContainer(t)
 
 	h := newIntegrationHub(t, nc, 4, 0)
 
@@ -293,8 +330,7 @@ func TestIntegration_NATSMalformedMessageDropped(t *testing.T) {
 // and assert exactly delta == 1 on the oversized publish + delta == 0 on the
 // follow-up small message.
 func TestIntegration_BroadcastOversizedMessageDropped(t *testing.T) {
-	nc, cleanup := startNATSContainer(t)
-	t.Cleanup(cleanup)
+	nc := startNATSContainer(t)
 
 	// broadcastBuf=16 ensures inner broadcastCh has headroom; without it
 	// hub.go:205 (worker pool full) could fire instead of hub.go:340 (oversized).
@@ -483,8 +519,7 @@ func TestIntegration_HandleRegisterMaxClients(t *testing.T) {
 // channel — blocks until Run consumes). Use require.Eventually to wait for
 // the Run loop to populate h.Clients before attempting connection 3.
 func TestIntegration_HandleWebSocketPrecheckMaxClients(t *testing.T) {
-	nc, ncCleanup := startNATSContainer(t)
-	t.Cleanup(ncCleanup)
+	nc := startNATSContainer(t)
 	rdb, rdbCleanup := startRedisContainer(t)
 	t.Cleanup(rdbCleanup)
 
@@ -512,7 +547,7 @@ func TestIntegration_HandleWebSocketPrecheckMaxClients(t *testing.T) {
 	}
 	setTicket := func(t *testing.T, token, userID string) {
 		t.Helper()
-		require.NoError(t, rdb.Set(ctx, "ott:ws:"+token, userID+":"+validSessionJTI, 30*time.Second).Err())
+		require.NoError(t, rdb.Set(ctx, "ott:ws:"+token, userID+":"+validSessionJTI+":9999999999", 30*time.Second).Err())
 	}
 	tok1, uid1 := mkTicket(0xa1)
 	tok2, uid2 := mkTicket(0xa2)
@@ -628,8 +663,7 @@ func (r *integrationRecordingAuthClient) calls() [][2]string {
 }
 
 func TestIntegration_NATSCacheInvalidation(t *testing.T) {
-	nc, cleanup := startNATSContainer(t)
-	t.Cleanup(cleanup)
+	nc := startNATSContainer(t)
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	internalSecret := "integration-test-secret" // pragma: allowlist secret

@@ -102,4 +102,56 @@ describe("useEventCardLogic", () => {
     expect(result.current.editOpen).toBe(true)
     expect(result.current.editData.title).toBe("New Title")
   })
+
+  it("reopens the edit form from the card's current props, not the mount-time snapshot", () => {
+    const { result, rerender } = renderHook(
+      (props: typeof eventProps) => useEventCardLogic(props),
+      { initialProps: eventProps }
+    )
+    act(() => {
+      result.current.setEditOpen(true)
+      result.current.setEditData({ ...result.current.editData, title: "Unsaved draft" })
+    })
+    act(() => result.current.setEditOpen(false))
+
+    rerender({ ...eventProps, title: "Title saved elsewhere" })
+    act(() => result.current.setEditOpen(true))
+
+    expect(result.current.editData.title).toBe("Title saved elsewhere")
+  })
+
+  it("keeps an in-progress draft while the card's props change under an open form", () => {
+    const { result, rerender } = renderHook(
+      (props: typeof eventProps) => useEventCardLogic(props),
+      { initialProps: eventProps }
+    )
+    act(() => {
+      result.current.setEditOpen(true)
+      result.current.setEditData({ ...result.current.editData, title: "Typed draft" })
+    })
+
+    rerender({ ...eventProps, title: "Title saved elsewhere" })
+
+    expect(result.current.editData.title).toBe("Typed draft")
+  })
+
+  it("re-evaluates live and ended status when the clock passes the event boundaries", () => {
+    vi.setSystemTime(new Date("2026-12-01T11:59:30Z"))
+    const { result } = renderHook(() =>
+      useEventCardLogic({
+        ...eventProps,
+        starts_at: "2026-12-01T11:00:00Z",
+        ends_at: "2026-12-01T12:00:00Z",
+      })
+    )
+    expect(result.current.timeStatus.status).toBe("live")
+    expect(result.current.eventEnded).toBe(false)
+
+    act(() => {
+      vi.advanceTimersByTime(60_000)
+    })
+
+    expect(result.current.timeStatus.status).toBe("none")
+    expect(result.current.eventEnded).toBe(true)
+  })
 })

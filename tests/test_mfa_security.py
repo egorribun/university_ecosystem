@@ -1,6 +1,6 @@
 """TD-W8-07 — TOTP secret encryption-at-rest regression tests.
 
-These tests guard against accidental removal of EncryptedString() from
+These tests guard against accidental removal of TOTP-specific encryption from
 MfaTotpEnrollment.secret and against recovery codes being stored as plaintext.
 
 If either test fails it means:
@@ -22,10 +22,10 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 async def test_totp_secret_is_encrypted_in_db(db_session, user_factory):
     """The raw 'secret' column value stored in the DB must differ from the
-    plaintext secret returned to the caller (EncryptedString transparently
-    encrypts on write and decrypts on read).
+    plaintext secret returned to the caller. TotpEncryptedString transparently
+    encrypts on write and decrypts on read.
 
-    TD-W8-07: If EncryptedString() is removed, the ORM column becomes a plain
+    TD-W8-07: If TotpEncryptedString() is removed, the ORM column becomes a plain
     String and this assertion fails — alerting us to the regression before it
     reaches production.
     """
@@ -51,7 +51,7 @@ async def test_totp_secret_is_encrypted_in_db(db_session, user_factory):
     assert raw_value != plaintext_secret, (
         "Raw DB value equals the plaintext TOTP secret — "
         "EncryptedString encryption-at-rest is not working. "
-        "Check that MfaTotpEnrollment.secret still uses EncryptedString()."
+        "Check that MfaTotpEnrollment.secret still uses TotpEncryptedString()."
     )
 
 

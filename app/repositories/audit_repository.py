@@ -7,7 +7,6 @@ from typing import Any
 
 from sqlalchemy import delete, select
 
-from app.core.protocols import AsyncDatabaseSession
 from app.models.logs import DataAccessLog
 from app.repositories.base import BaseRepository
 from app.schemas.dtos.audit import DataAccessLogDTO
@@ -25,22 +24,6 @@ class AuditRepository(
     @property
     def dto_class(self) -> type[DataAccessLogDTO]:
         return DataAccessLogDTO
-
-    async def get_logs_by_user(
-        self, user_id: uuid.UUID | int, limit: int = 100
-    ) -> Sequence[DataAccessLogDTO]:
-        """Fetch audit logs involving a user."""
-        stmt = (
-            select(DataAccessLog)
-            .where(
-                (DataAccessLog.actor_user_id == user_id)
-                | (DataAccessLog.subject_user_id == user_id)
-            )
-            .order_by(DataAccessLog.created_at.desc())
-            .limit(limit)
-        )
-        result = await self.db.execute(stmt)
-        return [self._to_dto(row) for row in result.scalars().all()]
 
     async def prune_logs(self, cutoff: datetime) -> int:
         """Delete logs older than cutoff."""
@@ -80,7 +63,3 @@ class AuditRepository(
         self.db.add_all(logs)
         # HIGH-W19: flush so rows are visible within the current transaction
         await self.db.flush()
-
-
-def get_audit_repository(db: AsyncDatabaseSession) -> AuditRepository:
-    return AuditRepository(db)

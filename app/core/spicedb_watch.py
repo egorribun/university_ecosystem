@@ -1,27 +1,18 @@
-"""SpiceDB streaming Watch API integration.
+"""SpiceDB Watch stream for permission-cache invalidation and session control.
 
-MOD-W5-04 (audit 2026-03-13): Replace per-request CheckPermission gRPC calls
-with a long-lived Watch stream that pushes relationship/permission changes to
-the application.  The Watch listener invalidates entries in the grace-period
-cache (``app.auth.rbac._permission_cache``) so that subsequent checks are
-re-evaluated against SpiceDB rather than served from a stale entry.
+``PermissionChecker.check_permission`` normally attempts a live
+``CheckPermission`` call and caches successful responses. It uses a cached result
+only when the call fails or the circuit breaker is open, within permission-specific
+stale-age limits; an ``admin`` ALLOW result requires a live grant.
 
-Architecture
-------------
-The Watch stream is started as a background asyncio task during application
-lifespan (``start_permission_watch``).  It streams *all* relationship changes
-from SpiceDB and invalidates matching permission cache entries.  This is safe
-even when the cache contains partial state because ``rbac.check_permission``
-always falls back to a live gRPC call on cache miss.
+Each configured API process runs its own listener. Relationship updates evict
+matching entries from that process-local cache, attempt Redis ``auth:perms``
+invalidation for the affected user, and attempt a signed ``ws_hub.control``
+disconnect. Redis invalidation and WebSocket-hub publication are best-effort.
 
-Fault tolerance
----------------
-- The watcher reconnects with exponential back-off (1 s → 60 s) on any error.
-- During reconnect, the grace-period cache (TTL = 60 s) continues to serve
-  the last-known result, preventing a thundering herd on SpiceDB.
-- On reconnect the cache is **fully cleared** so that the first request after
-  reconnect always hits SpiceDB — this avoids serving permanently stale data
-  if permissions changed during the outage window.
+If a Watch stream ends or errors, the listener clears its local cache before
+reconnecting with exponential back-off. Live permission checks remain the
+normal authorization path.
 """
 
 from __future__ import annotations
@@ -32,7 +23,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.core.spicedb import _parse_endpoint
+from app.core.spicedb import _parse_endpoint, create_async_spicedb_channel
 
 logger = get_logger(__name__)
 
@@ -43,7 +34,6 @@ _MAX_BACKOFF_S: float = 60.0
 
 async def _watch_once(token: str, host: str, port: int, use_ssl: bool) -> None:
     """Open a single Watch stream and process updates until it closes/errors."""
-    import grpc
     from authzed.api.v1 import (  # type: ignore[attr-defined]
         WatchRequest,
         WatchServiceStub,
@@ -52,13 +42,7 @@ async def _watch_once(token: str, host: str, port: int, use_ssl: bool) -> None:
     from app.auth.rbac import _permission_cache
 
     target = f"{host}:{port}"
-    if use_ssl:
-        from grpcutil import bearer_token_credentials
-
-        credentials = bearer_token_credentials(token)
-        channel = grpc.aio.secure_channel(target, credentials)
-    else:
-        channel = grpc.aio.insecure_channel(target)
+    channel = create_async_spicedb_channel(target, token, use_ssl=use_ssl)
 
     try:
         stub = WatchServiceStub(channel)
@@ -162,12 +146,9 @@ async def _invalidate_for_update(
 async def start_permission_watch() -> None:
     """Background task: maintain a SpiceDB Watch stream with exponential back-off.
 
-    Call from application lifespan::
-
-        from app.core.task_registry import TaskRegistry
-        from app.core.spicedb_watch import start_permission_watch
-
-        task_registry.create_task(start_permission_watch(), name="spicedb-watch")
+    Started from ``app.core.lifespan._startup_background_workers`` (API
+    processes outside the testing environment) and cancelled with the other
+    background tasks on shutdown.
 
     The task runs indefinitely, reconnecting after errors with back-off.
     """
@@ -184,8 +165,11 @@ async def start_permission_watch() -> None:
     while True:
         try:
             await _watch_once(token, host, port, use_ssl)
-            # Stream ended cleanly (server closed it) — reconnect quickly.
+            # Stream ended cleanly (server closed it) — reconnect quickly.  Events
+            # may have been missed while no stream was open, so drop cached
+            # decisions here as well.
             backoff = _MIN_BACKOFF_S
+            _permission_cache.clear()
         except asyncio.CancelledError:
             logger.info("SpiceDB Watch: task cancelled, stopping")
             return

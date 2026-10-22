@@ -185,14 +185,22 @@ async def test_finalize_login_embeds_is_active_for_active_user(
 
 
 @pytest.mark.asyncio
-async def test_finalize_login_embeds_is_active_false_for_deactivated_user(
-    db_session, user_factory
+async def test_finalize_login_rejects_deactivated_user_without_issuing_session(
+    db_session, user_factory, monkeypatch
 ):
-    """End-to-end: deactivated user → JWT carries is_active=False (gateway 403s)."""
+    """An inactive DB account cannot receive a login session or token."""
+    from fastapi import HTTPException
+    from sqlalchemy import func, select
+
+    from app.models import ActiveSession
     from app.services.auth.login_session_manager import LoginSessionManager
 
     user = await user_factory(is_active=False)
     real_session_service = _make_session_service(db_session)
+    redis_registration = AsyncMock()
+    monkeypatch.setattr(
+        "app.services.session_service.register_session_bg", redis_registration
+    )
 
     mock_redis = AsyncMock()
     mock_redis.create_session = AsyncMock()
@@ -215,15 +223,27 @@ async def test_finalize_login_embeds_is_active_false_for_deactivated_user(
     response = Response()
     bg_tasks = BackgroundTasks()
 
-    await manager.finalize_login(
-        user=user,
-        request=request,
-        response=response,
-        bg_tasks=bg_tasks,
-        db_session=db_session,
+    with pytest.raises(HTTPException) as exc_info:
+        await manager.finalize_login(
+            user=user,
+            request=request,
+            response=response,
+            bg_tasks=bg_tasks,
+            db_session=db_session,
+        )
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "credentials_invalid"
+    assert not any(
+        name.lower() == b"set-cookie" and value.startswith(b"access_token_v2=")
+        for name, value in response.raw_headers
     )
-
-    token = _extract_access_token_from_response(response)
-    decoded = _decode_jwt(token)
-
-    assert decoded["is_active"] is False
+    mock_redis.create_session.assert_not_awaited()
+    redis_registration.assert_not_awaited()
+    assert bg_tasks.tasks == []
+    session_count = await db_session.scalar(
+        select(func.count())
+        .select_from(ActiveSession)
+        .where(ActiveSession.user_id == user.id)
+    )
+    assert session_count == 0

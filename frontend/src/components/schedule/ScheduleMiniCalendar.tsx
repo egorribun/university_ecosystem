@@ -1,13 +1,16 @@
-import { useMemo, useState, useCallback } from "react"
+import { useMemo, useState, useCallback, useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { cn } from "@/utils/cn"
+import { useScheduleClock } from "@/hooks/useScheduleClock"
 
 interface ScheduleMiniCalendarProps {
   /** Days that have lessons (0-based day-of-month) */
   lessonDays?: Set<number>
   /** Current month to display (default: now) */
   month?: Date
+  /** Shared instant; standalone calendars own their clock. */
+  nowTick?: Date
   onMonthChange?: (date: Date) => void
   /** Called when a day is clicked */
   onDayClick?: (date: Date) => void
@@ -19,18 +22,31 @@ interface ScheduleMiniCalendarProps {
 export function ScheduleMiniCalendar({
   lessonDays = new Set(),
   month,
+  nowTick,
   onMonthChange,
   onDayClick,
   isLoading = false,
   className,
 }: ScheduleMiniCalendarProps) {
   const { t, i18n } = useTranslation(["common"])
-  // CQ-71-04: stable reference — avoid new Date() on every render
-  const [now] = useState(() => new Date())
+  const localNow = useScheduleClock(nowTick === undefined)
+  const now = nowTick ?? localNow
 
   // Controlled + uncontrolled month support
   const [internalMonth, setInternalMonth] = useState(() => month ?? now)
   const displayMonth = month ?? internalMonth
+  const [focusedDate, setFocusedDate] = useState(() => {
+    const initialMonth = month ?? now
+    const isCurrentMonth =
+      initialMonth.getFullYear() === now.getFullYear() && initialMonth.getMonth() === now.getMonth()
+    return new Date(
+      initialMonth.getFullYear(),
+      initialMonth.getMonth(),
+      isCurrentMonth ? now.getDate() : 1
+    )
+  })
+  const gridRef = useRef<HTMLDivElement | null>(null)
+  const pendingKeyboardFocusRef = useRef<{ target: Date; origin: Date } | null>(null)
 
   const year = displayMonth.getFullYear()
   const monthIdx = displayMonth.getMonth()
@@ -55,6 +71,27 @@ export function ScheduleMiniCalendar({
 
   const todayDate = now.getDate()
   const isCurrentMonth = now.getFullYear() === year && now.getMonth() === monthIdx
+  const rovingDay =
+    focusedDate.getFullYear() === year && focusedDate.getMonth() === monthIdx
+      ? focusedDate.getDate()
+      : isCurrentMonth
+        ? todayDate
+        : 1
+
+  useEffect(() => {
+    const pendingFocus = pendingKeyboardFocusRef.current
+    if (!pendingFocus) return
+
+    pendingKeyboardFocusRef.current = null
+    const { target, origin } = pendingFocus
+    const targetMonthIsDisplayed = target.getFullYear() === year && target.getMonth() === monthIdx
+    const focusDate = targetMonthIsDisplayed ? target : origin
+    if (!targetMonthIsDisplayed) setFocusedDate(origin)
+
+    gridRef.current
+      ?.querySelector<HTMLButtonElement>(`[data-calendar-day="${focusDate.getDate()}"]`)
+      ?.focus()
+  }, [year, monthIdx, focusedDate])
 
   // Locale-aware month label
   const monthLabel = displayMonth.toLocaleDateString(i18n.language, {
@@ -73,9 +110,54 @@ export function ScheduleMiniCalendar({
 
   const handleDayClick = useCallback(
     (day: number) => {
+      setFocusedDate(new Date(year, monthIdx, day))
       onDayClick?.(new Date(year, monthIdx, day))
     },
     [year, monthIdx, onDayClick]
+  )
+
+  const handleDayKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>, day: number) => {
+      const column = (firstDayOffset + day - 1) % 7
+      let nextDay: number
+
+      switch (event.key) {
+        case "ArrowLeft":
+          nextDay = day - 1
+          break
+        case "ArrowRight":
+          nextDay = day + 1
+          break
+        case "ArrowUp":
+          nextDay = day - 7
+          break
+        case "ArrowDown":
+          nextDay = day + 7
+          break
+        case "Home":
+          nextDay = Math.max(1, day - column)
+          break
+        case "End":
+          nextDay = Math.min(days.length, day + 6 - column)
+          break
+        default:
+          return
+      }
+
+      event.preventDefault()
+      const nextDate = new Date(year, monthIdx, nextDay)
+      pendingKeyboardFocusRef.current = {
+        target: nextDate,
+        origin: new Date(year, monthIdx, day),
+      }
+      if (nextDate.getFullYear() !== year || nextDate.getMonth() !== monthIdx) {
+        const nextMonth = new Date(nextDate.getFullYear(), nextDate.getMonth(), 1)
+        setInternalMonth(nextMonth)
+        onMonthChange?.(nextMonth)
+      }
+      setFocusedDate(nextDate)
+    },
+    [days.length, firstDayOffset, monthIdx, onMonthChange, year]
   )
 
   // Date formatter for day aria-labels
@@ -142,6 +224,7 @@ export function ScheduleMiniCalendar({
           Closes axe `aria-required-children` on monthLabel grid.
       */}
       <div
+        ref={gridRef}
         className="grid grid-cols-7 gap-0.5"
         role="grid"
         aria-label={monthLabel}
@@ -200,10 +283,13 @@ export function ScheduleMiniCalendar({
                         <button
                           type="button"
                           className="sched-cal-day text-text-primary"
+                          data-calendar-day={day}
+                          tabIndex={day === rovingDay ? 0 : -1}
                           data-today={isToday ? "true" : undefined}
                           data-has-lessons={lessonDays.has(day) ? "true" : undefined}
                           aria-label={dayFormatter.format(fullDate)}
                           aria-current={isToday ? "date" : undefined}
+                          onKeyDown={(event) => handleDayKeyDown(event, day)}
                           onClick={() => handleDayClick(day)}
                         >
                           {day}

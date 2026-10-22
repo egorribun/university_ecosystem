@@ -1,6 +1,6 @@
-# syntax=docker/dockerfile:1.12
+# syntax=docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 #checkov:skip=CKV_DOCKER_2:this disposable test runner is health-checked by the CI job, not deployed as a service.
-FROM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9
+FROM python:3.14.8-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -12,23 +12,29 @@ WORKDIR /app
 RUN --mount=type=cache,id=apt-lists-test,target=/var/lib/apt/lists \
     --mount=type=cache,id=apt-cache-test,target=/var/cache/apt \
     apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl clang libclang-rt-14-dev \
+    build-essential curl clang libclang-rt-14-dev git \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /home/app --shell /bin/bash --create-home app
 # MOD-30-05: Install Rust toolchain from official Docker image instead of
 # curl|sh (supply chain risk — executing unversioned script from internet).
 # Pin to a specific Rust version for reproducible builds.
-COPY --from=rust:1.94.1-slim-bookworm@sha256:5ae2d2ef9875c9c2407bf9b5678e6375304f7ecf8ea46b23e403a5690ec357ec /usr/local/rustup /usr/local/rustup
-COPY --from=rust:1.94.1-slim-bookworm@sha256:5ae2d2ef9875c9c2407bf9b5678e6375304f7ecf8ea46b23e403a5690ec357ec /usr/local/cargo /usr/local/cargo
+COPY --from=rust:1.99.0-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa /usr/local/rustup /usr/local/rustup
+COPY --from=rust:1.99.0-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa /usr/local/cargo /usr/local/cargo
 ENV RUSTUP_HOME="/usr/local/rustup" \
     CARGO_HOME="/usr/local/cargo" \
     PATH="/usr/local/cargo/bin:$PATH"
 
+# Python quality contracts execute real Go benchmarks in this full test runner.
+# Match the isolated benchmark compiler and prevent implicit toolchain downloads.
+COPY --from=docker.io/library/golang:1.26.10-bookworm@sha256:fe3da92a5cb2881e4aa75e625cb0b7c50571632fb4cf340cbe53e6ccdcffdd51 /usr/local/go /usr/local/go
+ENV GOTOOLCHAIN="local" \
+    PATH="/usr/local/go/bin:$PATH"
+
 # Install uv
 # Pin to the exact version required by pyproject.toml so ``uv sync --frozen``
 # cannot fail before the disposable test image has installed its dependencies.
-COPY --from=ghcr.io/astral-sh/uv:0.11.28@sha256:5c3ab83183a73c5d319a77009eb425b60d5bb937f339fb7876788ebf567baf48 /uv /uv/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.12.23@sha256:61d393e44e249f2e4b526b6c7ddcecce245946826e608e11c93ad4f5bba55b21 /uv /uv/bin/uv
 ENV PATH="/uv/bin:$PATH"
 
 # Copy workspace member manifests + sources so uv can resolve the workspace before sync
@@ -47,6 +53,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY . .
 RUN chown -R app:app /app
 
-USER app
+USER 10001:10001
 
 CMD ["pytest", "tests/", "-v", "--tb=short", "-x", "--ignore=tests/performance"]

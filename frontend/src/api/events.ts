@@ -12,7 +12,7 @@ export type CreateEventPayload = EventCreate
 const uploadResponseSchema = v.object({ url: v.pipe(v.string(), v.trim(), v.minLength(1)) })
 
 export const createEvent = async (payload: CreateEventPayload) => {
-  const { data } = await createEventApiV1EventsPost({ body: payload })
+  const { data } = await createEventApiV1EventsPost({ body: payload, throwOnError: true })
   return data
 }
 

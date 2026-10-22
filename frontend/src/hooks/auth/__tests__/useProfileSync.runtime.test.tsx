@@ -5,6 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import api from "@/api/client"
+import { acceptBrowserSessionGeneration } from "@/stores/sessionEpoch"
 import { createQueryClient } from "@/app/queryClient"
 import { testUser } from "@/tests/mocks/handlers"
 import {
@@ -51,6 +52,52 @@ afterEach(() => {
 })
 
 describe("useProfileSync runtime defensive paths", () => {
+  it("does not rebind an old HTTP profile after another tab changes the browser session", async () => {
+    const key = "ecosystem.session.generation.v1"
+    localStorage.setItem(key, JSON.stringify({ nonce: "A-generation", hash: "A-hash" }))
+    acceptBrowserSessionGeneration()
+    let finish!: (value: { data: typeof testUser }) => void
+    vi.spyOn(api, "get").mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const ensure = vi.fn(async () => signingKey)
+    const view = renderRuntime(ensure)
+    await waitFor(() => expect(api.get).toHaveBeenCalled())
+    localStorage.setItem(key, JSON.stringify({ nonce: "B-generation", hash: "B-hash" }))
+    await act(async () => {
+      finish({ data: testUser })
+      await Promise.resolve()
+    })
+    expect(view.result.current.user).toBeNull()
+    expect(ensure).not.toHaveBeenCalled()
+    view.unmount()
+    localStorage.removeItem(key)
+    acceptBrowserSessionGeneration()
+  })
+
+  it("does not restore a profile when session expiry overtakes signing-key retrieval", async () => {
+    let finishKey!: (value: string | null) => void
+    const ensure = vi.fn(
+      () =>
+        new Promise<string | null>((resolve) => {
+          finishKey = resolve
+        })
+    )
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser })
+    const view = renderRuntime(ensure)
+    await waitFor(() => expect(ensure).toHaveBeenCalledOnce())
+    act(() => view.result.current.handleUnauthorized({ broadcast: false }))
+    await act(async () => {
+      finishKey(null)
+      await Promise.resolve()
+    })
+    expect(view.result.current.user).toBeNull()
+    view.unmount()
+  })
+
   it("uses the role-only SSR hint during browser hydration", () => {
     const queryClient = createQueryClient()
     vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)

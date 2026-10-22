@@ -50,6 +50,11 @@ function gridRefWithEl() {
 
 const trigger = () => screen.getByRole("button", { name: /schedule:toolbar.export/ })
 
+const calendarUrl =
+  "https://calendar.google.com/calendar/r/eventedit?action=TEMPLATE" +
+  "&text=Algebra&dates=20261027T091500%2F20261027T104500" +
+  "&location=B-202&details=Lecture&ctz=Europe%2FIstanbul"
+
 describe("ExportDropdown — branches", () => {
   beforeEach(() => {
     exportMocks.png.mockClear()
@@ -221,15 +226,12 @@ describe("ExportDropdown — branches", () => {
   it("opens Google Calendar in a new tab and closes the menu", async () => {
     const user = userEvent.setup()
     const openSpy = vi.spyOn(window, "open").mockReturnValue(null)
-    render(<ExportDropdown gridRef={gridRefWithEl()} />)
+    render(<ExportDropdown gridRef={gridRefWithEl()} googleCalendarUrl={calendarUrl} />)
     await user.click(trigger())
     await user.click(screen.getByRole("menuitem", { name: "schedule:export.googleCalendar" }))
 
-    expect(openSpy).toHaveBeenCalledWith(
-      "https://calendar.google.com/calendar/r/week",
-      "_blank",
-      "noopener"
-    )
+    expect(openSpy).toHaveBeenCalledTimes(1)
+    expect(openSpy).toHaveBeenCalledWith(calendarUrl, "_blank", "noopener")
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument())
     openSpy.mockRestore()
   })
@@ -312,7 +314,7 @@ describe("ExportDropdown — branches", () => {
 
   it("navigates menu items with ArrowDown / ArrowUp (keydown effect arrow branch)", async () => {
     const user = userEvent.setup()
-    render(<ExportDropdown gridRef={gridRefWithEl()} />)
+    render(<ExportDropdown gridRef={gridRefWithEl()} googleCalendarUrl={calendarUrl} />)
     await user.click(trigger())
 
     const pdfItem = screen.getByRole("menuitem", { name: "schedule:export.pdf" })
@@ -371,5 +373,58 @@ describe("ExportDropdown — branches", () => {
 
     fireEvent.mouseDown(screen.getByTestId("outside"))
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument())
+  })
+
+  it("skips unavailable Google Calendar during keyboard navigation", async () => {
+    const user = userEvent.setup()
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null)
+    try {
+      render(<ExportDropdown gridRef={gridRefWithEl()} />)
+      await user.click(trigger())
+
+      const pdf = screen.getByRole("menuitem", { name: "schedule:export.pdf" })
+      const png = screen.getByRole("menuitem", { name: "schedule:export.png" })
+      const calendar = screen.getByRole("menuitem", {
+        name: "schedule:export.googleCalendar",
+      })
+      const reason = "schedule:export.googleCalendarUnavailable"
+
+      expect(calendar).toBeDisabled()
+      expect(calendar).toHaveAccessibleDescription(reason)
+      expect(calendar).toHaveAttribute("title", reason)
+      expect(screen.getByRole("menu")).not.toContainElement(screen.getByText(reason))
+      pdf.focus()
+      fireEvent.keyDown(document, { key: "ArrowUp" })
+      expect(document.activeElement).toBe(png)
+      fireEvent.keyDown(document, { key: "ArrowDown" })
+      expect(document.activeElement).toBe(pdf)
+      fireEvent.click(calendar)
+      expect(openSpy).not.toHaveBeenCalled()
+    } finally {
+      openSpy.mockRestore()
+    }
+  })
+
+  it("handles arrow keys safely when every export item is disabled", async () => {
+    const user = userEvent.setup()
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null)
+    try {
+      render(<ExportDropdown />)
+      await user.click(trigger())
+      for (const item of screen.getAllByRole("menuitem")) {
+        expect(item).toBeDisabled()
+      }
+
+      trigger().focus()
+      expect(() => {
+        fireEvent.keyDown(document, { key: "ArrowDown" })
+        fireEvent.keyDown(document, { key: "ArrowUp" })
+      }).not.toThrow()
+      expect(document.activeElement).toBe(trigger())
+      expect(screen.getByRole("menu")).toBeInTheDocument()
+      expect(openSpy).not.toHaveBeenCalled()
+    } finally {
+      openSpy.mockRestore()
+    }
   })
 })

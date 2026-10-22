@@ -1,3 +1,4 @@
+import { useId } from "react"
 import { useTranslation } from "react-i18next"
 import { Clock as AccessTimeIcon, MapPin as RoomIcon, User as TeacherIcon } from "lucide-react"
 import { Badge } from "@/components/ui/Badge"
@@ -18,6 +19,7 @@ export function LessonDetailsDialog({
   getLessonTypeLabel,
 }: LessonDetailsDialogProps) {
   const { t } = useTranslation(["schedule", "common"])
+  const dialogTitleId = useId()
   const { activeDialog, closeDialog, selectedLesson, openDialog } = useSchedulePage()
 
   const isOpen = activeDialog === "details"
@@ -26,8 +28,16 @@ export function LessonDetailsDialog({
   if (!lesson) return null
 
   return (
-    <Dialog open={isOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
-      <DialogTitle>{lesson.subject || t("schedule:dialog.detailsFallback")}</DialogTitle>
+    <Dialog
+      open={isOpen}
+      onClose={closeDialog}
+      maxWidth="sm"
+      fullWidth
+      ariaLabelledBy={dialogTitleId}
+    >
+      <DialogTitle id={dialogTitleId}>
+        {lesson.subject || t("schedule:dialog.detailsFallback")}
+      </DialogTitle>
       <DialogContent className="space-y-4 pt-2">
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">

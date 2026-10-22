@@ -24,7 +24,7 @@ class EventDTO(DTOModel):
     event_type_en: str | None
     starts_at: datetime
     ends_at: datetime
-    created_by: uuid.UUID
+    created_by: uuid.UUID | None
     created_at: datetime
     is_active: bool
     speaker: str | None
@@ -51,6 +51,7 @@ class EventFileDTO(DTOModel):
 
 
 class EventSearchResultDTO(DTOModel):
+    rank: float | None = None
     event: EventDTO
     participant_count: int
     user_attendance: EventAttendanceDTO | None

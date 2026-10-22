@@ -10,6 +10,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.4
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/minio/minio-go/v7 v7.4.1
+	github.com/moby/moby/api v1.55.0
 	github.com/nats-io/nats.go v1.54.0
 	github.com/pact-foundation/pact-go/v2 v2.8.0
 	github.com/prometheus/client_golang v1.25.0
@@ -20,7 +21,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/nats v0.44.0
 	github.com/university-ecosystem/core/gen/go v0.0.0-00010101000000-000000000000
 	github.com/university-ecosystem/services/pkg/logging v0.0.0
-	github.com/university-ecosystem/services/pkg/spiffe v0.0.0
+	github.com/university-ecosystem/services/pkg/spiffe v0.0.0-00010101000000-000000000000
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.72.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.72.0
 	go.opentelemetry.io/otel v1.47.0
@@ -30,6 +31,7 @@ require (
 	go.temporal.io/sdk v1.49.0
 	go.uber.org/goleak v1.3.0
 	golang.org/x/image v0.47.0
+	golang.org/x/sys v0.49.0
 	google.golang.org/grpc v1.84.0
 )
 
@@ -47,7 +49,7 @@ require (
 	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/ebitengine/purego v0.10.1 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.5 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/hashicorp/go-version v1.9.0 // indirect
 	github.com/hashicorp/logutils v1.0.0 // indirect
@@ -56,7 +58,6 @@ require (
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.3.3 // indirect
-	github.com/moby/moby/api v1.55.0 // indirect
 	github.com/moby/moby/client v0.5.0 // indirect
 	github.com/moby/patternmatcher v0.6.1 // indirect
 	github.com/moby/sys/sequential v0.7.0 // indirect
@@ -70,7 +71,7 @@ require (
 	github.com/shirou/gopsutil/v4 v4.26.6 // indirect
 	github.com/sirupsen/logrus v1.10.2 // indirect
 	github.com/spf13/cobra v1.10.2 // indirect
-	github.com/spiffe/go-spiffe/v2 v2.8.1 // indirect
+	github.com/spiffe/go-spiffe/v2 v2.9.0 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
@@ -84,10 +85,10 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
@@ -127,9 +128,8 @@ require (
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
-	golang.org/x/time v0.15.0 // indirect
+	golang.org/x/time v0.16.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/protobuf v1.36.12
@@ -141,3 +141,6 @@ replace github.com/university-ecosystem/core/gen/go => ../../gen/go
 replace github.com/university-ecosystem/services/pkg/spiffe => ../pkg/spiffe
 
 replace github.com/university-ecosystem/services/pkg/logging => ../pkg/logging
+
+// GO-2026-5320: remove when transitive tooling requires a patched Goldmark version.
+replace github.com/yuin/goldmark => github.com/yuin/goldmark v1.8.6

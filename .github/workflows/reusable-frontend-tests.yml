@@ -187,22 +187,22 @@ jobs:
         # validation rather than silently replacing the release artifact.
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # pinned action
         with:
-          toolchain: 1.97.1
+          toolchain: 1.99.0
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-pack
         if: ${{ inputs.wasm-artifact-id == '' && inputs.wasm-artifact-name == '' && inputs.wasm-artifact-digest == '' }}
-        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
+        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
-          tool: wasm-pack@0.13.1
+          tool: wasm-pack@0.15.0
 
       - name: Install pinned wasm-opt
         if: ${{ inputs.wasm-artifact-id == '' && inputs.wasm-artifact-name == '' && inputs.wasm-artifact-digest == '' }}
         shell: bash
         run: |
           set -euo pipefail
-          binaryen_version="version_117"
-          binaryen_sha256="3dc677006555b355ea2da5e82602065a161d5e83eaefd3f759afa00b96e83212" # public Binaryen release checksum
+          binaryen_version="version_133"
+          binaryen_sha256="2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489" # public Binaryen release checksum
           binaryen_root="$RUNNER_TEMP/binaryen-$binaryen_version"
           binaryen_archive="$RUNNER_TEMP/binaryen-$binaryen_version-x86_64-linux.tar.gz"
           binaryen_url="https://github.com/WebAssembly/binaryen/releases/download/$binaryen_version/binaryen-$binaryen_version-x86_64-linux.tar.gz"
@@ -215,7 +215,7 @@ jobs:
             | sha256sum --check --strict
           tar --extract --file "$binaryen_archive" --strip-components=1 --directory "$binaryen_root"
           test -x "$binaryen_root/bin/wasm-opt"
-          "$binaryen_root/bin/wasm-opt" --version | grep -Fq "version 117"
+          "$binaryen_root/bin/wasm-opt" --version | grep -Fq "version 133"
           echo "$binaryen_root/bin" >> "$GITHUB_PATH"
 
       - name: Build immutable WASM modules
@@ -300,10 +300,66 @@ jobs:
           cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
 
       - name: Install dependencies
+        id: install-contract-dependencies
         run: npm ci --no-audit --no-fund
+
+      - name: Build Storybook static compatibility fixture
+        timeout-minutes: 5
+        shell: bash
+        env:
+          CI: "true"
+        run: |
+          set -euo pipefail
+          output="$(mktemp -d "$RUNNER_TEMP/storybook-static.XXXXXX")"
+          trap 'rm -rf -- "$output"' EXIT
+          npm run build-storybook -- --output-dir "$output" --disable-telemetry
+          test -s "$output/index.html"
+          test -s "$output/iframe.html"
 
       - name: Run frontend WASM and quality contracts
         run: npm run test:wasm
+        env:
+          CI: "true"
+
+      - name: Run worker and export regression contracts
+        run: >-
+          npm exec -- vitest run
+          src/workers/__tests__/crypto.worker.closure.test.ts
+          src/workers/__tests__/crypto.worker.parity.test.ts
+          src/utils/__tests__/cryptoWorker.test.ts
+          src/utils/__tests__/activityExport.test.ts
+          src/utils/__tests__/activityExport.closure.test.ts
+          src/utils/__tests__/activityExport.pdf.test.ts
+          --reporter=verbose
+        env:
+          CI: "true"
+
+      - name: Run quick audit regressions
+        if: ${{ !cancelled() && steps.install-contract-dependencies.outcome == 'success' }}
+        run: >-
+          npm exec -- vitest run
+          src/api/__tests__/notifications.test.ts
+          src/components/mfa/__tests__/OtpEntry.test.tsx
+          src/components/mfa/__tests__/OtpEntry.mutation-contract.test.tsx
+          src/components/schedule/__tests__/ScheduleListView.test.tsx
+          src/features/events/__tests__/categories.closure.test.ts
+          src/components/events/EventCard/__tests__/EventCardContent.closure.test.tsx
+          src/components/schedule/__tests__/schedulePrint.contract.test.ts
+          src/components/messenger/__tests__/ChatWindow.ime-edit.audit.test.tsx
+          src/routes/__tests__/activity.search-validation.test.ts
+          src/features/events/components/__tests__/EventsList.closure.test.tsx
+          src/pages/__tests__/StoriesAdmin.test.tsx
+          src/components/map/__tests__/MapSidebar.branches.test.tsx
+          src/hooks/features/__tests__/useMessengerController.test.tsx
+          src/hooks/__tests__/useChatWebSocket.test.tsx
+          src/components/ui/__tests__/SpotifyConnect.accessible-name.test.tsx
+          src/components/mfa/__tests__/TotpQrDisplay.closure.test.tsx
+          src/features/admin/__tests__/AdminNotificationsFeature.behavior.test.tsx
+          src/features/admin/__tests__/AdminNotificationsFeature.destructive-race.test.tsx
+          src/components/messenger/GroupInfoPanel.branches.test.tsx
+          src/components/messenger/GroupInfoPanel.escape.integration.test.tsx
+          src/components/pwa/__tests__/InstallPrompt.behavior.test.tsx
+          --reporter=verbose
         env:
           CI: "true"
 
@@ -519,6 +575,57 @@ jobs:
       - name: Merge frontend coverage shards
         run: node scripts/merge-vitest-coverage.mjs --input=.coverage-shards --output=coverage --expected-shards=4
 
+      - name: Report merged frontend zero-hit branch arms
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          import path from "node:path";
+
+          const root = process.cwd();
+          if (!process.env.GITHUB_WORKSPACE) throw new Error("Missing coverage workspace");
+          const directory = path.relative(process.env.GITHUB_WORKSPACE, root);
+          if (!directory || path.isAbsolute(directory) || directory.split(path.sep).includes("..")) {
+            throw new Error("Coverage working directory is outside the repository");
+          }
+          const report = JSON.parse(readFileSync("coverage/coverage-final.json", "utf8"));
+          if (!report || typeof report !== "object" || Array.isArray(report)) {
+            throw new Error("Invalid merged frontend coverage object");
+          }
+          const rows = [];
+          let total = 0;
+          let unlocated = 0;
+          for (const [file, entry] of Object.entries(report).sort()) {
+            const relative = path.relative(root, path.resolve(file));
+            if (!relative || path.isAbsolute(relative) || relative.split(path.sep).includes("..")) {
+              throw new Error("Coverage source is outside the frontend directory");
+            }
+            if (!entry?.b || typeof entry.b !== "object" || Array.isArray(entry.b)) {
+              throw new Error("Invalid frontend branch counters");
+            }
+            for (const [id, counts] of Object.entries(entry.b)) {
+              if (!/^\d+$/.test(id) || !Number.isSafeInteger(Number(id)) || !Array.isArray(counts)) {
+                throw new Error("Invalid frontend branch metadata");
+              }
+              for (const [arm, hits] of counts.entries()) {
+                if (!Number.isSafeInteger(hits) || hits < 0) {
+                  throw new Error("Invalid frontend branch hit count");
+                }
+                total += 1;
+                if (hits !== 0) continue;
+                const location = entry.branchMap?.[id]?.locations?.[arm]?.start;
+                const line = Number.isSafeInteger(location?.line) && location.line > 0 ? location.line : null;
+                const column = Number.isSafeInteger(location?.column) && location.column >= 0 ? location.column : null;
+                if (line === null) unlocated += 1;
+                rows.push({ path: directory.split(path.sep).join("/") + "/" + relative.split(path.sep).join("/"), branch: Number(id), arm, line, column, hits: 0 });
+              }
+            }
+          }
+          rows.sort((a, b) => a.path.localeCompare(b.path) || a.branch - b.branch || a.arm - b.arm);
+          for (const row of rows.slice(0, 200)) console.log(JSON.stringify(row));
+          console.log(JSON.stringify({ diagnostic: "frontend_branch_arms", total, zero: rows.length, unlocated, emitted: Math.min(rows.length, 200), truncated: Math.max(rows.length - 200, 0) }));
+          NODE
+
       - name: Download Vitest shard reports
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -547,10 +654,21 @@ jobs:
           COMPARE_BRANCH: ${{ github.base_ref }}
         run: |
           uv sync --frozen
+          if ($LASTEXITCODE -ne 0) { throw "Frontend diff coverage dependency sync failed." }
+          node --test tests/verify_frontend_diff_coverage.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Frontend diff coverage contract tests failed." }
           git fetch origin $env:COMPARE_BRANCH
-          # The current authored frontend diff is fully covered; keep the
-          # ratchet strict so newly changed source cannot reintroduce debt.
-          uv run diff-cover frontend/coverage/lcov.info --compare-branch=origin/$env:COMPARE_BRANCH --fail-under=100
+          if ($LASTEXITCODE -ne 0) { throw "Failed to fetch frontend diff coverage comparison branch." }
+          $normalizedLcov = Join-Path $env:RUNNER_TEMP ("frontend-diff-lcov-{0}-{1}-{2}.info" -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT, ([guid]::NewGuid().ToString("N")))
+          if (Test-Path -LiteralPath $normalizedLcov) { throw "Refusing to overwrite a pre-existing normalized LCOV path." }
+          try {
+            node scripts/quality/verify_frontend_diff_coverage.mjs --repo-root "$env:GITHUB_WORKSPACE" --base-ref "origin/$env:COMPARE_BRANCH" --output "$normalizedLcov"
+            if ($LASTEXITCODE -ne 0) { throw "Frontend diff coverage preflight failed." }
+            uv run diff-cover "$normalizedLcov" --compare-branch=origin/$env:COMPARE_BRANCH --fail-under=100
+            if ($LASTEXITCODE -ne 0) { throw "Frontend differential coverage is below 100%." }
+          } finally {
+            if (Test-Path -LiteralPath $normalizedLcov) { Remove-Item -LiteralPath $normalizedLcov -Force }
+          }
 
       - name: Write frontend coverage provenance
         working-directory: ${{ github.workspace }}
@@ -675,6 +793,30 @@ jobs:
             shift
             local status=0
             "$@" >"$STATIC_GATE_LOG_DIR/$gate.log" 2>&1 || status=$?
+            if [[ "$gate" == "formatting" && "$status" -ne 0 ]]; then
+              # Read-only, bounded diffs make remote formatting failures actionable.
+              # The original gate status remains authoritative, including errors.
+              local shown=0
+              # Match package.json's format:check scope; never scan build outputs.
+              local -a format_targets=(
+                'src/**/*.{ts,tsx,js,jsx,json,css,scss,md}'
+                'tests/**/*.{ts,tsx,js,jsx}'
+                vite.config.mts playwright.config.ts vitest.config.ts
+                tsconfig.json pwa-maskable-icons.ts 'scripts/**/*.mjs'
+              )
+              while IFS= read -r file; do
+                if [[ "$shown" -ge 10 ]]; then
+                  echo "Further formatting diffs omitted." >>"$STATIC_GATE_LOG_DIR/$gate.log"
+                  break
+                fi
+                [[ -f "$file" ]] || continue
+                shown=$((shown + 1))
+                printf '\nFormatting diff: %s (first 200 lines)\n' "$file" >>"$STATIC_GATE_LOG_DIR/$gate.log"
+                ./node_modules/.bin/prettier "$file" 2>>"$STATIC_GATE_LOG_DIR/$gate.log" |
+                  diff -u -- "$file" - |
+                  sed -n '1,200p' >>"$STATIC_GATE_LOG_DIR/$gate.log" || true
+              done < <(./node_modules/.bin/prettier --list-different "${format_targets[@]}")
+            fi
             printf '%s\n' "$status" >"$STATIC_GATE_LOG_DIR/$gate.status"
           }
 

@@ -8,6 +8,11 @@ type ActivityHeatmapProps = {
   data: Map<string, number>
   period: PeriodKey
   ariaLabel: string
+  /**
+   * First ISO date (YYYY-MM-DD) the data covers. Earlier days are unknown, not
+   * zero: the backend returns only the newest items per section.
+   */
+  coveredFrom?: string | null
 }
 
 const HEAT_LEVELS = [
@@ -85,8 +90,14 @@ function getMonthLabels(cells: readonly HeatmapCell[], locale: string) {
   return [...labels.values()]
 }
 
-export function ActivityHeatmap({ data, period, ariaLabel }: ActivityHeatmapProps) {
+export function ActivityHeatmap({
+  data,
+  period,
+  ariaLabel,
+  coveredFrom = null,
+}: ActivityHeatmapProps) {
   const { t } = useTranslation("activity")
+  const isUnknownDate = (date: string) => coveredFrom !== null && date < coveredFrom
   const { language } = useLanguage()
   const locale = getLocaleForLanguage(language)
 
@@ -148,6 +159,17 @@ export function ActivityHeatmap({ data, period, ariaLabel }: ActivityHeatmapProp
                 if (!cell || !cell.isInRange) {
                   return <div key={`e-${dow}-${wi}`} />
                 }
+                if (isUnknownDate(cell.date)) {
+                  return (
+                    <div
+                      key={cell.date}
+                      className="activity-heatmap-cell activity-heatmap-cell--unknown"
+                      role="img"
+                      title={t("heatmap.unknownCellLabel", { date: cell.date })}
+                      aria-label={t("heatmap.unknownCellLabel", { date: cell.date })}
+                    />
+                  )
+                }
                 const count = data.get(cell.date) ?? 0
                 const level = getHeatLevel(count, maxCount)
                 return (
@@ -194,7 +216,11 @@ export function ActivityHeatmap({ data, period, ariaLabel }: ActivityHeatmapProp
             .map((cell) => (
               <tr key={cell.date}>
                 <th scope="row">{cell.date}</th>
-                <td>{data.get(cell.date) ?? 0}</td>
+                <td>
+                  {isUnknownDate(cell.date)
+                    ? t("heatmap.unknownValue")
+                    : (data.get(cell.date) ?? 0)}
+                </td>
               </tr>
             ))}
         </tbody>

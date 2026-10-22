@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import HTTPException
 
 import app.models as models
 from app.api import news
@@ -11,7 +12,7 @@ from tests.conftest import call_injected
 
 
 @pytest.mark.asyncio
-async def test_update_news_removes_replaced_image(
+async def test_update_news_rejects_unowned_replacement_and_retains_legacy_file(
     tmp_path, monkeypatch, db_session, user_factory
 ):
     admin = await user_factory(role="admin")
@@ -39,21 +40,24 @@ async def test_update_news_removes_replaced_image(
 
     payload = schemas.NewsUpdate(image_url="/static/news_images/new.png")
 
-    updated = await call_injected(
-        news.update_news,
-        record.id,
-        request=None,
-        data=payload,
-        user=admin,
-        provides={"NewsService": service},
-    )
+    with pytest.raises(HTTPException) as error:
+        await call_injected(
+            news.update_news,
+            record.id,
+            request=None,
+            data=payload,
+            user=admin,
+            provides={"NewsService": service},
+        )
 
-    assert updated.image_url == "/static/news_images/new.png"
-    assert not old_path.exists()
+    assert error.value.status_code == 403
+    await db_session.refresh(record)
+    assert record.image_url == "/static/news_images/old.png"
+    assert old_path.exists()
 
 
 @pytest.mark.asyncio
-async def test_delete_news_removes_image_file(
+async def test_delete_news_retains_legacy_image_without_owner_key(
     tmp_path, monkeypatch, db_session, user_factory
 ):
     admin = await user_factory(role="admin")
@@ -87,4 +91,4 @@ async def test_delete_news_removes_image_file(
 
     assert result == {"ok": True}
     assert await db_session.get(models.News, record.id) is None
-    assert not image_path.exists()
+    assert image_path.exists()

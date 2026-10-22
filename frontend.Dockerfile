@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.12
+# syntax=docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
 # Keep BuildKit's automatic target architecture available to stages that scope
 # cache mounts.  Redeclaring this ARG inside the WASM stage below inherits the
@@ -7,12 +7,12 @@ ARG TARGETARCH
 ARG WASM_BUILDPLATFORM=linux/amd64
 
 # Stage 1: Base
-FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS base
+FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS base
 WORKDIR /app
 
 # Stage 2: WASM — build the same bytes as the canonical Linux producer.
 # WASM is architecture-independent; use its x86_64 toolchain on every target.
-FROM --platform=$WASM_BUILDPLATFORM rust:1.97.1-slim-bookworm@sha256:2775a09d208ff0d7c1f50490c45b62db929e87ba1dcbc3f2132ac71a704bcdd3 AS wasm-builder
+FROM --platform=$WASM_BUILDPLATFORM rust:1.99.0-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa AS wasm-builder
 ARG TARGETARCH
 # Keep the Rust registry/git caches in BuildKit rather than rebuilding the
 # wasm-pack dependency graph for every image build.  The cache IDs are scoped
@@ -20,7 +20,7 @@ ARG TARGETARCH
 # runtime image.
 RUN --mount=type=cache,id=university-frontend-wasm-cargo-registry-${TARGETARCH},target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=university-frontend-wasm-cargo-git-${TARGETARCH},target=/usr/local/cargo/git,sharing=locked \
-    cargo install wasm-pack --version 0.13.1 --locked
+    cargo install wasm-pack --version 0.15.0 --locked
 # Keep the fetch tool in the builder only. A remote ADD fails CKV_DOCKER_4;
 # download over TLS and verify the pinned bytes before extraction or execution.
 RUN apt-get update \
@@ -28,11 +28,11 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 RUN curl --fail --silent --show-error --location \
       --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 \
-      --output /tmp/binaryen.tar.gz "https://github.com/WebAssembly/binaryen/releases/download/version_117/binaryen-version_117-x86_64-linux.tar.gz" \
- && printf '%s  %s\n' '3dc677006555b355ea2da5e82602065a161d5e83eaefd3f759afa00b96e83212' /tmp/binaryen.tar.gz | sha256sum --check --strict # pragma: allowlist secret -- public Binaryen release checksum
+      --output /tmp/binaryen.tar.gz "https://github.com/WebAssembly/binaryen/releases/download/version_133/binaryen-version_133-x86_64-linux.tar.gz" \
+ && printf '%s  %s\n' '2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489' /tmp/binaryen.tar.gz | sha256sum --check --strict
 RUN mkdir -p /opt/binaryen \
  && tar -xzf /tmp/binaryen.tar.gz --strip-components=1 -C /opt/binaryen \
- && /opt/binaryen/bin/wasm-opt --version | grep -Fq "version 117" \
+ && /opt/binaryen/bin/wasm-opt --version | grep -Fq "version 133" \
  && rustup target add wasm32-unknown-unknown
 ENV PATH="/opt/binaryen/bin:${PATH}"
 WORKDIR /wasm
@@ -75,6 +75,11 @@ RUN --mount=type=cache,target=/root/.npm \
 # Stage 4: Builder
 FROM base AS builder
 ENV SKIP_WASM_BUILD=1
+# Keep the production image build on the same finite memory envelope as the
+# Linux CI frontend builds: Vite's Rust worker pool uses native RSS outside
+# the 1536 MiB V8 heap, and the measured Docker build peaked near 1981 MiB.
+ENV FRONTEND_BUILD_MAX_RSS_MB=2048 FRONTEND_BUILD_MAX_OLD_SPACE_MB=1536
+ENV ROLLDOWN_WORKER_THREADS=2
 ARG VITE_BACKEND_ORIGIN=""
 ENV VITE_BACKEND_ORIGIN=$VITE_BACKEND_ORIGIN
 ARG VITE_APP_RELEASE=""
@@ -106,6 +111,8 @@ ENV FRONTEND_BUILD_UNMINIFIED=$FRONTEND_BUILD_UNMINIFIED
 ARG FRONTEND_REACT_DEV_MODE=""
 ENV FRONTEND_REACT_DEV_MODE=$FRONTEND_REACT_DEV_MODE
 COPY --from=deps /app/node_modules ./node_modules
+# Preserve the local lint adapter's pinned engine outside root node_modules.
+COPY --from=deps /app/scripts/boundary-micromatch-compat ./scripts/boundary-micromatch-compat
 COPY frontend ./
 # Copy pre-built WASM packages (FIX-44-02: prevents silent WASM build failure)
 COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg
@@ -165,22 +172,24 @@ RUN --mount=type=cache,target=/root/.npm \
 #
 # The obsolete nginx runtime and `frontend/nginx.conf` were removed after the
 # SSR rollout. Edge routing is owned by `services/caddy/Caddyfile`.
-FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS runtime
+FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS runtime
 
 WORKDIR /app
+RUN addgroup -S -g 10001 app \
+ && adduser -S -D -u 10001 -G app -h /home/app app
 
 # package.json is needed at runtime so Node resolves "type": "module"
 # correctly and so the wasm-sanitizer / rust-crypto file:// references
 # (declared as runtime dependencies) match the node_modules layout.
-COPY --from=prod-deps --chown=node:node /app/package.json ./package.json
+COPY --from=prod-deps --chown=10001:10001 /app/package.json ./package.json
 
 # Production-only node_modules — no devDependencies. ~150 MB → ~80 MB
 # vs full deps (saves Storybook/Playwright/Vitest/etc.).
-COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=prod-deps --chown=10001:10001 /app/node_modules ./node_modules
 
 # Copy built WASM packages to runtime so Node resolves the file: dependencies at runtime
-COPY --from=wasm-builder --chown=node:node /wasm/rust-crypto/pkg ./rust-crypto/pkg
-COPY --from=wasm-builder --chown=node:node /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
+COPY --from=wasm-builder --chown=10001:10001 /wasm/rust-crypto/pkg ./rust-crypto/pkg
+COPY --from=wasm-builder --chown=10001:10001 /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
 
 # server-prod.mjs Node wrapper (W131 SW1) — imports dist/server/server.js
 # default export, adapts Web Standards Request <-> Node IncomingMessage,
@@ -195,24 +204,25 @@ COPY --from=wasm-builder --chown=node:node /wasm/wasm-sanitizer/pkg ./wasm-sanit
 # available" 503 cascade (caught via user Docker rebuild test).
 # The `.d.mts` TypeScript declarations are NOT copied — runtime-only Node
 # doesn't need them.
-COPY --chown=node:node frontend/scripts/server-prod.mjs ./scripts/server-prod.mjs
-COPY --chown=node:node frontend/scripts/contentTypes.mjs ./scripts/contentTypes.mjs
-COPY --chown=node:node frontend/scripts/not-found-response.mjs ./scripts/not-found-response.mjs
-COPY --chown=node:node frontend/scripts/lhci-ssr-response.mjs ./scripts/lhci-ssr-response.mjs
-COPY --chown=node:node frontend/scripts/lhci-preview-mode.mjs ./scripts/lhci-preview-mode.mjs
-COPY --chown=node:node frontend/scripts/server-response-stream.mjs ./scripts/server-response-stream.mjs
-COPY --chown=node:node frontend/scripts/server-readiness.mjs ./scripts/server-readiness.mjs
-COPY --chown=node:node frontend/scripts/server-request-log.mjs ./scripts/server-request-log.mjs
-COPY --chown=node:node frontend/scripts/server-static.mjs ./scripts/server-static.mjs
+COPY --chown=10001:10001 frontend/scripts/server-prod.mjs ./scripts/server-prod.mjs
+COPY --chown=10001:10001 frontend/scripts/server-csp.mjs ./scripts/server-csp.mjs
+COPY --chown=10001:10001 frontend/scripts/contentTypes.mjs ./scripts/contentTypes.mjs
+COPY --chown=10001:10001 frontend/scripts/not-found-response.mjs ./scripts/not-found-response.mjs
+COPY --chown=10001:10001 frontend/scripts/lhci-ssr-response.mjs ./scripts/lhci-ssr-response.mjs
+COPY --chown=10001:10001 frontend/scripts/lhci-preview-mode.mjs ./scripts/lhci-preview-mode.mjs
+COPY --chown=10001:10001 frontend/scripts/server-response-stream.mjs ./scripts/server-response-stream.mjs
+COPY --chown=10001:10001 frontend/scripts/server-readiness.mjs ./scripts/server-readiness.mjs
+COPY --chown=10001:10001 frontend/scripts/server-request-log.mjs ./scripts/server-request-log.mjs
+COPY --chown=10001:10001 frontend/scripts/server-static.mjs ./scripts/server-static.mjs
 
 # Build artifacts:
 #   dist/client/_shell.html + dist/client/index.html (mirror) + dist/client/assets/
 #   dist/server/server.js (tanstackStart server entry — what wrapper imports)
 #   dist/sw.js + dist/sw.js.map (PWA service worker)
-COPY --from=builder --chown=node:node /app/dist ./dist
+COPY --from=builder --chown=10001:10001 /app/dist ./dist
 
-# Drop to non-root `node` user (UID/GID 1000, built into node:alpine images).
-USER node
+# Drop to the dedicated non-root app account (UID/GID 10001).
+USER 10001:10001
 
 ENV NODE_ENV=production
 ENV PORT=3000
@@ -225,6 +235,6 @@ EXPOSE 3000
 # start-period 15s gives Node enough time to import server.js + bind port
 # on cold start; subsequent intervals are 30s.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3000/healthz || exit 1
+  CMD ["wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/healthz"]
 
 CMD ["node", "scripts/server-prod.mjs"]

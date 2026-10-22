@@ -67,11 +67,19 @@ class DeadLetterQueue:
         """
         job_hash = compute_job_hash(job_type, payload)
 
-        # Check for duplicate
-        existing = await self.session.execute(
-            select(DeadLetterJob).where(DeadLetterJob.job_hash == job_hash)
-        )
-        if existing.scalar_one_or_none():
+        # Calculate next retry time with exponential backoff
+        next_retry = datetime.now(UTC) + timedelta(seconds=self.BASE_BACKOFF_SECONDS)
+
+        # Duplicate check: skip only while a retry for this payload is queued.
+        existing = (
+            await self.session.execute(
+                select(DeadLetterJob).where(DeadLetterJob.job_hash == job_hash)
+            )
+        ).scalar_one_or_none()
+        if existing is not None and existing.status in (
+            JobStatus.PENDING.value,
+            JobStatus.RETRYING.value,
+        ):
             logger.debug(
                 "Duplicate job detected, skipping: type=%s, hash=%s",
                 job_type,
@@ -79,19 +87,26 @@ class DeadLetterQueue:
             )
             return None
 
-        # Calculate next retry time with exponential backoff
-        next_retry = datetime.now(UTC) + timedelta(seconds=self.BASE_BACKOFF_SECONDS)
-
-        job = DeadLetterJob(
-            job_type=job_type,
-            job_hash=job_hash,
-            payload=json.dumps(payload),
-            error_message=error_message,
-            max_retries=max_retries,
-            next_retry_at=next_retry,
-        )
-
-        self.session.add(job)
+        if existing is not None:
+            # job_hash is unique, so a finished row (completed or exhausted)
+            # describes an earlier run; a new failure reopens it instead.
+            job = existing
+            job.status = JobStatus.PENDING.value
+            job.retry_count = 0
+            job.max_retries = max_retries
+            job.payload = json.dumps(payload)
+            job.error_message = error_message
+            job.next_retry_at = next_retry
+        else:
+            job = DeadLetterJob(
+                job_type=job_type,
+                job_hash=job_hash,
+                payload=json.dumps(payload),
+                error_message=error_message,
+                max_retries=max_retries,
+                next_retry_at=next_retry,
+            )
+            self.session.add(job)
         # TD-012 (audit 2026-03-04): commit removed — callers own the Unit of Work
         # boundary. Committing inside repository methods prevents batching multiple
         # operations atomically and violates the UoW pattern.
@@ -145,46 +160,6 @@ class DeadLetterQueue:
             job.job_hash[:8],
             job.retry_count,
         )
-
-    async def mark_job_failed(
-        self,
-        job: DeadLetterJob,
-        error_message: str,
-    ) -> None:
-        """Mark a job as failed after a retry attempt."""
-        job.error_message = error_message
-        job.updated_at = datetime.now(UTC)
-
-        retry_count = int(getattr(job, "retry_count", 0))
-        max_retries = int(getattr(job, "max_retries", 3))
-
-        if retry_count >= max_retries:
-            job.status = JobStatus.FAILED.value
-            job.next_retry_at = None
-            logger.error(
-                "DLQ job permanently failed: type=%s, hash=%s, retries=%d, error=%s",
-                job.job_type,
-                job.job_hash[:8],
-                retry_count,
-                error_message[:200],
-            )
-        else:
-            job.status = JobStatus.PENDING.value
-            backoff = min(
-                self.BASE_BACKOFF_SECONDS * (2**retry_count),
-                self.MAX_BACKOFF_SECONDS,
-            )
-            job.next_retry_at = datetime.now(UTC) + timedelta(seconds=backoff)
-            logger.warning(
-                "DLQ job failed, will retry: type=%s, hash=%s, retry=%d/%d, next=%s",
-                job.job_type,
-                job.job_hash[:8],
-                retry_count,
-                max_retries,
-                job.next_retry_at.isoformat(),
-            )
-
-        await self.session.flush()
 
     async def get_queue_stats(self) -> dict[str, int]:
         """Get statistics about the dead letter queue."""
@@ -277,64 +252,70 @@ class DeadLetterQueue:
                         break
 
                     for job in jobs:
-                        if circuit_breaker and not force:
-                            if not circuit_breaker.allow_request():
+                        admission = None
+                        if circuit_breaker:
+                            admission = circuit_breaker.admit_request(force=force)
+                            if not admission.allowed and not force:
                                 break
 
-                        await self.mark_job_retrying(job)
                         try:
-                            payload = json.loads(job.payload)
-                            if handler is None:
-                                raise RuntimeError(
-                                    "No DB DLQ replay handler is configured for "
-                                    f"job type {job.job_type!r}"
-                                )
-                            await handler(job.job_type, payload)
-                            await self.mark_job_completed(job)
-                            success_count += 1
-                            if circuit_breaker:
-                                circuit_breaker.record_success()
-                        except Exception as exc:  # RZ-22-01-JUSTIFIED: DB DLQ worker job execution error must be handled during automated replay
-                            failed_count += 1
-                            if circuit_breaker:
-                                circuit_breaker.record_failure()
+                            await self.mark_job_retrying(job)
+                            try:
+                                payload = json.loads(job.payload)
+                                if handler is None:
+                                    raise RuntimeError(
+                                        "No DB DLQ replay handler is configured for "
+                                        f"job type {job.job_type!r}"
+                                    )
+                                await handler(job.job_type, payload)
+                                await self.mark_job_completed(job)
+                                success_count += 1
+                                if circuit_breaker:
+                                    circuit_breaker.record_success(admission)
+                            except Exception as exc:  # RZ-22-01-JUSTIFIED: DB DLQ worker job execution error must be handled during automated replay
+                                failed_count += 1
+                                if circuit_breaker:
+                                    circuit_breaker.record_failure(admission)
 
-                            error_msg = str(exc)
-                            retry_count = int(getattr(job, "retry_count", 0))
-                            max_retries = int(getattr(job, "max_retries", 3))
+                                error_msg = str(exc)
+                                retry_count = int(getattr(job, "retry_count", 0))
+                                max_retries = int(getattr(job, "max_retries", 3))
 
-                            if retry_count >= max_retries:
-                                job.status = JobStatus.FAILED.value
-                                job.next_retry_at = None
-                                logger.error(
-                                    "DB DLQ job %d permanently failed after %d retries: %s",
-                                    job.id,
-                                    retry_count,
-                                    error_msg[:200],
-                                )
-                            else:
-                                job.status = JobStatus.PENDING.value
-                                backoff = min(
-                                    base_backoff_seconds * (2**retry_count)
-                                    + random.uniform(0, jitter),  # noqa: S311 # nosec B311
-                                    max_backoff_seconds,
-                                )
-                                job.next_retry_at = datetime.now(UTC) + timedelta(
-                                    seconds=backoff
-                                )
-                                logger.warning(
-                                    "DB DLQ job %d failed, scheduled retry #%d at %s",
-                                    job.id,
-                                    retry_count,
-                                    job.next_retry_at.isoformat(),
-                                )
+                                if retry_count >= max_retries:
+                                    job.status = JobStatus.FAILED.value
+                                    job.next_retry_at = None
+                                    logger.error(
+                                        "DB DLQ job %d permanently failed after %d retries: %s",
+                                        job.id,
+                                        retry_count,
+                                        error_msg[:200],
+                                    )
+                                else:
+                                    job.status = JobStatus.PENDING.value
+                                    backoff = min(
+                                        base_backoff_seconds * (2**retry_count)
+                                        + random.uniform(0, jitter),  # noqa: S311 # nosec B311
+                                        max_backoff_seconds,
+                                    )
+                                    job.next_retry_at = datetime.now(UTC) + timedelta(
+                                        seconds=backoff
+                                    )
+                                    logger.warning(
+                                        "DB DLQ job %d failed, scheduled retry #%d at %s",
+                                        job.id,
+                                        retry_count,
+                                        job.next_retry_at.isoformat(),
+                                    )
 
-                            job.error_message = error_msg
-                            job.updated_at = datetime.now(UTC)
-                            await self.session.flush()
+                                job.error_message = error_msg
+                                job.updated_at = datetime.now(UTC)
+                                await self.session.flush()
 
-                        if rate_limit_delay > 0:
-                            await asyncio.sleep(rate_limit_delay)
+                            if rate_limit_delay > 0:
+                                await asyncio.sleep(rate_limit_delay)
+                        finally:
+                            if circuit_breaker and admission is not None:
+                                circuit_breaker.abandon_request(admission)
                     else:
                         # A normal loop completion means the whole batch was
                         # processed; circuit-breaker denial uses ``break`` and
@@ -346,71 +327,3 @@ class DeadLetterQueue:
                 DeadLetterQueue._is_replaying = False
 
             return (success_count, failed_count)
-
-
-async def check_duplicate_job(
-    session: AsyncSession,
-    job_type: str,
-    payload: dict[str, Any],
-) -> bool:
-    """
-    Check if a job with the same type and payload already exists.
-
-    Returns True if a duplicate exists (job should be skipped).
-    """
-    job_hash = compute_job_hash(job_type, payload)
-
-    result = await session.execute(
-        select(DeadLetterJob.id).where(
-            DeadLetterJob.job_hash == job_hash,
-            DeadLetterJob.status.in_(
-                [
-                    JobStatus.PENDING.value,
-                    JobStatus.RETRYING.value,
-                ]
-            ),
-        )
-    )
-
-    return result.scalar_one_or_none() is not None
-
-
-def register_circuit_breaker_db_dlq_listener(
-    circuit_breaker: Any,
-    session_factory: Callable[[], Any],
-    handler: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None,
-) -> None:
-    """Register a listener on circuit_breaker to trigger DB DLQ auto-replay on recovery."""
-
-    def _on_circuit_change(old_state: Any, new_state: Any) -> None:
-        state_name = getattr(new_state, "name", str(new_state))
-        if state_name in ("HALF_OPEN", "CLOSED"):
-
-            async def _do_replay() -> None:
-                try:
-                    async with session_factory() as session:
-                        dlq = DeadLetterQueue(session)
-                        await dlq.auto_replay_jobs(
-                            handler=handler,
-                            circuit_breaker=circuit_breaker,
-                        )
-                        await session.commit()
-                except Exception as exc:  # RZ-22-01-JUSTIFIED: DB DLQ circuit recovery trigger error must not break listener execution
-                    logger.error(
-                        "Error during DB DLQ recovery replay trigger: %s",
-                        exc,
-                        exc_info=True,
-                    )
-
-            try:
-                loop = asyncio.get_running_loop()
-                task = loop.create_task(_do_replay())
-                _worker_dlq_tasks.add(task)
-                task.add_done_callback(_worker_dlq_tasks.discard)
-            except RuntimeError:
-                pass
-
-    circuit_breaker.add_state_listener(_on_circuit_change)
-    logger.info(
-        "Registered circuit breaker listener for DB DeadLetterQueue auto-replay"
-    )

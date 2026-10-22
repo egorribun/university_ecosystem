@@ -491,3 +491,106 @@ def test_circuit_breaker_transition_no_op() -> None:
     cb = RedisCircuitBreaker(failure_threshold=2)
     cb._transition(cb._state, cb._state)
     assert cb.state == CircuitState.CLOSED
+
+
+def test_late_closed_admission_cannot_resolve_half_open_probe() -> None:
+    breaker = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    closed_admission = breaker.admit_request()
+    assert closed_admission.allowed is True
+
+    breaker.record_failure()
+    assert breaker.state is CircuitState.OPEN
+    breaker._last_failure_time = -1_000_000.0
+    assert breaker.state is CircuitState.HALF_OPEN
+
+    probe_admission = breaker.admit_request()
+    assert probe_admission.allowed is True
+
+    breaker.record_success(closed_admission)
+
+    assert breaker.state is CircuitState.HALF_OPEN
+    assert breaker.admit_request().allowed is False
+    breaker.record_failure(probe_admission)
+    assert breaker.state is CircuitState.OPEN
+
+
+def test_abandoned_half_open_admission_reopens_with_backoff() -> None:
+    breaker = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=10.0)
+    breaker.record_failure()
+    breaker._last_failure_time = -1_000_000.0
+    assert breaker.state is CircuitState.HALF_OPEN
+
+    probe_admission = breaker.admit_request()
+    assert probe_admission.allowed is True
+    breaker.abandon_request(probe_admission)
+
+    assert breaker.state is CircuitState.OPEN
+    assert breaker._current_recovery_timeout == 20.0  # type: ignore[attr-defined]
+    denied_admission = breaker.admit_request()
+    assert denied_admission.allowed is False
+    breaker.record_failure(denied_admission)
+    breaker.abandon_request(denied_admission)
+    assert breaker.state is CircuitState.OPEN
+    assert breaker._current_recovery_timeout == 20.0  # type: ignore[attr-defined]
+
+    breaker.abandon_request(probe_admission)
+    assert breaker._current_recovery_timeout == 20.0  # type: ignore[attr-defined]
+
+
+def test_closed_admission_can_be_abandoned_without_counting_a_failure() -> None:
+    breaker = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    admission = breaker.admit_request()
+    assert admission.allowed is True
+
+    breaker.abandon_request(admission)
+
+    assert breaker.state is CircuitState.CLOSED
+    assert breaker._failure_count == 0  # type: ignore[attr-defined]
+
+
+def test_foreign_admission_cannot_resolve_another_breakers_probe() -> None:
+    owner = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    foreign_admission = owner.admit_request()
+
+    breaker = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    breaker.record_failure()
+    breaker._last_failure_time = -1_000_000.0
+    assert breaker.state is CircuitState.HALF_OPEN
+    probe_admission = breaker.admit_request()
+    assert probe_admission.allowed is True
+
+    breaker.record_success(foreign_admission)
+
+    assert breaker.state is CircuitState.HALF_OPEN
+    assert breaker.admit_request().allowed is False
+    breaker.record_success(probe_admission)
+    assert breaker.state is CircuitState.CLOSED
+
+
+def test_forced_open_success_remains_owner_bound() -> None:
+    breaker = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    breaker.record_failure()
+    forced_admission = breaker.admit_request(force=True)
+    assert forced_admission.allowed is True
+
+    breaker.record_success(forced_admission)
+
+    assert breaker.state is CircuitState.CLOSED
+
+
+def test_late_forced_open_admission_cannot_resolve_half_open_probe() -> None:
+    breaker = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    breaker.record_failure()
+    forced_admission = breaker.admit_request(force=True)
+    assert forced_admission.allowed is True
+
+    breaker._last_failure_time = -1_000_000.0
+    assert breaker.state is CircuitState.HALF_OPEN
+    probe_admission = breaker.admit_request()
+    assert probe_admission.allowed is True
+
+    breaker.record_success(forced_admission)
+
+    assert breaker.state is CircuitState.HALF_OPEN
+    breaker.record_success(probe_admission)
+    assert breaker.state is CircuitState.CLOSED

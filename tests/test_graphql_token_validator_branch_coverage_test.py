@@ -23,12 +23,13 @@ def validator():
 )
 async def test_redis_jti_check_connection_error(mock_get_revocation, validator):
     redis_mock = AsyncMock()
-    redis_mock.exists.side_effect = ConnectionError("Redis down")
+    redis_mock.exists.side_effect = ConnectionError("provider-diagnostic-marker")
     mock_get_revocation.return_value = redis_mock
 
-    # Should fall through and return True
-    result = await validator._redis_jti_check("jti_123")
-    assert result is True
+    with pytest.raises(
+        RuntimeError, match=r"^Durable session revocation check unavailable$"
+    ):
+        await validator._redis_jti_check("jti_123")
 
 
 @pytest.mark.asyncio

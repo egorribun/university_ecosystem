@@ -2,6 +2,7 @@ import logging
 import smtplib
 import ssl
 from email.message import EmailMessage
+from html import escape
 from typing import Any
 
 from app.core.config import settings
@@ -60,7 +61,7 @@ def build_reset_email_content(
     link: str, full_name: str = "", *, locale: str | None = None
 ) -> tuple[str, str, str]:
     resolved_locale = resolve_locale(locale=locale)
-    name_suffix = f", {full_name}" if full_name else ""
+    name_suffix = f", {escape(full_name)}" if full_name else ""
     subject = translate("email.reset.subject", locale=resolved_locale)
     heading = translate("email.reset.heading", locale=resolved_locale)
     greeting = translate(
@@ -109,7 +110,16 @@ def _redact_sensitive_query(url: str) -> str:
         else:
             redacted_items.append((key, value))
     sanitized_query = urlencode(redacted_items, doseq=True)
-    sanitized = parts._replace(query=sanitized_query)
+    # Reset links carry credentials in the fragment; preserve harmless anchors.
+    fragment_items = parse_qsl(parts.fragment, keep_blank_values=True)
+    redacted_fragment_items = [
+        (key, "***redacted***" if key.lower() in {"token", "code"} else value)
+        for key, value in fragment_items
+    ]
+    sanitized_fragment = parts.fragment
+    if redacted_fragment_items != fragment_items:
+        sanitized_fragment = urlencode(redacted_fragment_items, doseq=True)
+    sanitized = parts._replace(query=sanitized_query, fragment=sanitized_fragment)
     result = urlunsplit(sanitized)
     return result or "[redacted]"
 
@@ -191,7 +201,7 @@ def build_lockout_email_content(
     full_name: str = "", *, locale: str | None = None
 ) -> tuple[str, str, str]:
     resolved_locale = resolve_locale(locale=locale)
-    name_suffix = f", {full_name}" if full_name else ""
+    name_suffix = f", {escape(full_name)}" if full_name else ""
     subject = translate("email.lockout.subject", locale=resolved_locale)
     heading = translate("email.lockout.heading", locale=resolved_locale)
     greeting = translate(

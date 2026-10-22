@@ -91,6 +91,7 @@ test("the production frontend image copies every server runtime module", async (
 
   for (const runtimeModule of [
     "frontend/scripts/server-prod.mjs",
+    "frontend/scripts/server-csp.mjs",
     "frontend/scripts/contentTypes.mjs",
     "frontend/scripts/not-found-response.mjs",
     "frontend/scripts/lhci-ssr-response.mjs",
@@ -117,7 +118,9 @@ test("every Docker npm ci stage enforces the reviewed lifecycle-script policy", 
 test("the production frontend image uses one immutable Node runtime across stages", async () => {
   const dockerfile = await readFile(new URL("../../frontend.Dockerfile", import.meta.url), "utf8")
   const nodeStages = [
-    ...dockerfile.matchAll(/^FROM (node:24-alpine@sha256:[a-f0-9]{64}) AS (base|runtime)$/gmu),
+    ...dockerfile.matchAll(
+      /^FROM (node:24\.21\.0-alpine@sha256:[a-f0-9]{64}) AS (base|runtime)$/gmu
+    ),
   ]
 
   assert.equal(

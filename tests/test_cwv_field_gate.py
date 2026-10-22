@@ -91,7 +91,7 @@ def _report() -> dict[str, Any]:
         "collector": {
             "kind": "web-vitals-rum",
             "library": "web-vitals",
-            "library_version": "6.1.1",
+            "library_version": "6.2.3",
             "exporter_version": "1",
             "eligibility": "operator-curated-manual-testers",
             "sampling": "one-final-metric-per-collector-route-hour",

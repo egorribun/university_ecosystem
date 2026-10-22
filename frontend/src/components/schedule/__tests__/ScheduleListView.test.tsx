@@ -75,6 +75,7 @@ function ContextProbe() {
 function renderView(props: Props = baseProps, includeProbe = false) {
   return render(
     <SchedulePageProvider>
+      <h1>Schedule</h1>
       <ScheduleListView {...props} />
       {includeProbe && <ContextProbe />}
     </SchedulePageProvider>
@@ -88,8 +89,9 @@ beforeEach(() => {
 describe("ScheduleListView", () => {
   it("renders day headings and lesson subjects grouped by day", () => {
     renderView()
-    expect(screen.getByRole("heading", { name: "Monday" })).toBeInTheDocument()
-    expect(screen.getByRole("heading", { name: "Tuesday" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Schedule", level: 1 })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Monday", level: 2 })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Tuesday", level: 2 })).toBeInTheDocument()
     expect(screen.getByText("Linear Algebra")).toBeInTheDocument()
     expect(screen.getByText("Discrete Mathematics")).toBeInTheDocument()
   })

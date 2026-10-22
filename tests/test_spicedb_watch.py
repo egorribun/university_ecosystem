@@ -1,6 +1,6 @@
 import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -131,7 +131,9 @@ async def test_watch_once_insecure():
                     token="key", host="localhost", port=50051, use_ssl=False
                 )
 
-                mock_insecure.assert_called_once_with("localhost:50051")
+                mock_insecure.assert_called_once_with(
+                    "localhost:50051", options=None, interceptors=ANY
+                )
                 assert ("user-abc", "document", "doc-789", "read") not in cache
                 mock_channel.close.assert_called_once()
 

@@ -10,8 +10,6 @@ from app.models import (
     DataAccessLog,
     EducationPath,
     InviteCode,
-    MfaChallenge,
-    MfaTotpEnrollment,
     Notification,
     User,
     UserPreferences,
@@ -19,7 +17,11 @@ from app.models import (
 )
 from app.models.enums import UserRole
 from app.repositories.user_repository import UserRepository
-from app.schemas import schemas
+
+
+def _repository_test_uuid(value: int) -> uuid.UUID:
+    """Keep UUID hex nonnumeric so SQLite stores it as text."""
+    return uuid.UUID(int=0xA0000 + value)
 
 
 class _Result:
@@ -143,23 +145,6 @@ async def test_get_variants_and_auth_queries():
 
 
 @pytest.mark.asyncio
-async def test_profile_and_locking_getters_and_not_found():
-    user = _user()
-    db = _DB([_Result(obj=user), _Result(obj=user), _Result(obj=user), _Result()])
-    repo = UserRepository(db)
-    assert (await repo.get_by_email_only(user.email)).id == user.id
-    assert (await repo.get_with_full_profile(str(user.id))).id == user.id
-    db.results.append(_Result(obj=user))
-    assert (await repo.get_with_full_profile(user.id)).id == user.id
-    assert await repo.get_with_full_profile("bad") is None
-    db.results = [_Result(obj=user), _Result(obj=user), _Result()]
-    assert (await repo.get_orm_for_update_with_relations(user.id)).id == user.id
-    assert (await repo.get_by_email_or_raise(user.email)).id == user.id
-    with pytest.raises(ValueError, match="User not found"):
-        await repo.get_by_email_or_raise("missing@example.com")
-
-
-@pytest.mark.asyncio
 async def test_get_users_by_ids_handles_empty_and_bulk_lookup():
     user = _user()
     db = _DB([_Result(objects=[user])])
@@ -171,95 +156,6 @@ async def test_get_users_by_ids_handles_empty_and_bulk_lookup():
     result = await repo.get_users_by_ids([user.id])
     assert result == [user]
     assert len(db.executed) == 1
-
-
-@pytest.mark.asyncio
-async def test_listing_counts_and_name_search():
-    user = _user()
-    rows = _Result(objects=[user])
-    db = _DB(
-        [
-            rows,
-            _Result(objects=[user]),
-            _Result(scalar_value=2),
-            _Result(scalar_value=1),
-            rows,
-        ]
-    )
-    repo = UserRepository(db)
-    assert (
-        len(
-            await repo.list_users(
-                schemas.UserSearchFilter(full_name="Repo%", role=UserRole.STUDENT)
-            )
-        )
-        == 1
-    )
-    db.results = [
-        rows,
-        rows,
-        rows,
-        _Result(scalar_value=2),
-        _Result(scalar_value=1),
-        rows,
-    ]
-    assert (
-        len(await repo.list_users(schemas.UserSearchFilter(group_id=uuid.uuid4()))) == 1
-    )
-    assert len(await repo.list_users()) == 1
-    assert len(await repo.get_active_users(skip=1, limit=999)) == 1
-    assert await repo.count_active() == 2
-    assert await repo.count_with_mfa() == 1
-    assert len(await repo.search_by_name("Repo_")) == 1
-
-
-@pytest.mark.asyncio
-async def test_user_related_getters_and_email_checks():
-    user = _user()
-    session = ActiveSession(user_id=user.id, jti="jti")
-    notification = Notification(
-        user_id=user.id, title="Title", body="Body", type="info"
-    )
-    challenge = MfaChallenge(
-        user_id=user.id,
-        challenge_type="totp",
-        flow="login",
-        session_identifier="repository-test",
-        client_fingerprint="f" * 64,
-        method="totp",
-        token_digest="d" * 64,
-        token_key_id="test-key",
-        expires_at=datetime.now(UTC) + timedelta(minutes=5),
-    )
-    enrollment = MfaTotpEnrollment(user_id=user.id, secret="secret")
-    db = _DB(
-        [
-            _Result(objects=[session]),
-            _Result(objects=[session]),
-            _Result(objects=[notification]),
-            _Result(objects=[challenge]),
-            _Result(objects=[enrollment]),
-            _Result(scalar_value=True),
-            _Result(scalar_value=False),
-            _Result(scalar_value=False),
-        ]
-    )
-    repo = UserRepository(db)
-    assert await repo.get_user_sessions(str(user.id)) == [session]
-    assert await repo.get_user_sessions(user.id) == [session]
-    assert await repo.get_user_notifications(user.id, limit=999) == [notification]
-    assert await repo.get_user_mfa_challenges(user.id, limit=999) == [challenge]
-    assert await repo.get_user_totp_enrollments(user.id) == [enrollment]
-    assert await repo.get_user_sessions("bad") == []
-    assert await repo.get_user_notifications("bad") == []
-    assert await repo.get_user_mfa_challenges("bad") == []
-    assert await repo.get_user_totp_enrollments("bad") == []
-    assert await repo.check_email_exists(user.email) is True
-    assert (
-        await repo.check_email_exists(user.email, exclude_user_id=str(user.id)) is False
-    )
-    assert await repo.check_email_exists(user.email, exclude_user_id=user.id) is False
-    assert await repo.check_email_exists(user.email, exclude_user_id="bad") is False
 
 
 @pytest.mark.asyncio
@@ -401,3 +297,111 @@ async def test_create_with_invite_and_sensitive_delete():
         ).get_user_repository(db),
         UserRepository,
     )
+
+
+@pytest.mark.asyncio
+async def test_get_user_sessions_before_dt_boundaries_and_keyset_order(
+    db_session, user_factory
+):
+    owner = await user_factory()
+    other = await user_factory()
+    cutoff = datetime(2026, 10, 17, 12, 0, tzinfo=UTC)
+
+    def session(session_id, created_at, *, user_id=owner.id, revoked_at=None):
+        return ActiveSession(
+            id=_repository_test_uuid(session_id),
+            user_id=user_id,
+            jti=f"repo-session-{session_id}",
+            created_at=created_at,
+            expires_at=cutoff + timedelta(days=1),
+            revoked_at=revoked_at,
+            last_seen_at=created_at,
+            ip_address="127.0.0.1",
+            user_agent="pytest",
+        )
+
+    rows = [
+        session(1, cutoff - timedelta(minutes=2)),
+        session(2, cutoff - timedelta(minutes=1)),
+        session(3, cutoff - timedelta(minutes=1)),
+        session(4, cutoff - timedelta(minutes=1), revoked_at=cutoff),
+        session(10, cutoff),
+        session(20, cutoff),
+        session(30, cutoff),
+        session(40, cutoff + timedelta(minutes=1)),
+        session(50, cutoff - timedelta(minutes=1), user_id=other.id),
+    ]
+    db_session.add_all(rows)
+    await db_session.flush()
+    repo = UserRepository(db_session)
+
+    before_page = await repo.get_user_sessions(owner.id, before_dt=cutoff)
+    assert [row.id for row in before_page] == [
+        _repository_test_uuid(3),
+        _repository_test_uuid(2),
+        _repository_test_uuid(1),
+    ]
+    assert all(
+        row.user_id == owner.id and row.revoked_at is None for row in before_page
+    )
+
+    tied_page = await repo.get_user_sessions(
+        owner.id, before_dt=cutoff, after_id=_repository_test_uuid(20)
+    )
+    assert [row.id for row in tied_page] == [
+        _repository_test_uuid(10),
+        _repository_test_uuid(3),
+        _repository_test_uuid(2),
+        _repository_test_uuid(1),
+    ]
+    assert all(row.user_id == owner.id and row.revoked_at is None for row in tied_page)
+
+
+@pytest.mark.asyncio
+async def test_get_user_notifications_before_dt_boundaries_and_keyset_order(
+    db_session, user_factory
+):
+    owner = await user_factory()
+    other = await user_factory()
+    cutoff = datetime(2026, 10, 17, 12, 0, tzinfo=UTC)
+
+    def notification(notification_id, created_at, *, user_id=owner.id):
+        return Notification(
+            id=_repository_test_uuid(notification_id),
+            user_id=user_id,
+            title=f"Repository notice {notification_id}",
+            created_at=created_at,
+        )
+
+    rows = [
+        notification(101, cutoff - timedelta(minutes=2)),
+        notification(102, cutoff - timedelta(minutes=1)),
+        notification(103, cutoff - timedelta(minutes=1)),
+        notification(110, cutoff),
+        notification(120, cutoff),
+        notification(130, cutoff),
+        notification(140, cutoff + timedelta(minutes=1)),
+        notification(150, cutoff - timedelta(minutes=1), user_id=other.id),
+    ]
+    db_session.add_all(rows)
+    await db_session.flush()
+    repo = UserRepository(db_session)
+
+    before_page = await repo.get_user_notifications(owner.id, before_dt=cutoff)
+    assert [row.id for row in before_page] == [
+        _repository_test_uuid(103),
+        _repository_test_uuid(102),
+        _repository_test_uuid(101),
+    ]
+    assert all(row.user_id == owner.id for row in before_page)
+
+    tied_page = await repo.get_user_notifications(
+        owner.id, before_dt=cutoff, after_id=_repository_test_uuid(120)
+    )
+    assert [row.id for row in tied_page] == [
+        _repository_test_uuid(110),
+        _repository_test_uuid(103),
+        _repository_test_uuid(102),
+        _repository_test_uuid(101),
+    ]
+    assert all(row.user_id == owner.id for row in tied_page)

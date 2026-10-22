@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from cryptography.fernet import Fernet
 from typer.testing import CliRunner
 
 from app.core.config.security import SecuritySettings
@@ -68,6 +69,10 @@ def test_token_hmac_secret_blank_is_allowed_only_in_development(monkeypatch):
 
 
 def test_token_hmac_secret_accepts_random_production_value(monkeypatch):
+    monkeypatch.setenv(
+        "MFA_TOTP_ENCRYPTION_KEYS", f"test-key:{Fernet.generate_key().decode('ascii')}"
+    )
+    monkeypatch.setenv("MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID", "test-key")
     monkeypatch.setenv("ENVIRONMENT", "production")
     secret = (  # pragma: allowlist secret
         "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/" + "qX8!"

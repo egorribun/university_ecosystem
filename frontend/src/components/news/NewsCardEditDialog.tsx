@@ -1,4 +1,4 @@
-import { FC, useState, useEffect, type FormEvent, type ReactNode } from "react"
+import { FC, useState, useEffect, useRef, type FormEvent, type ReactNode } from "react"
 import { Camera as PhotoCamera } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useForm, Controller } from "react-hook-form"
@@ -67,6 +67,10 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
   const { t } = useTranslation(["news", "common"])
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageLoading, setImageLoading] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const [submissionError, setSubmissionError] = useState<"upload" | "save" | null>(null)
+  const [discardConfirmationOpen, setDiscardConfirmationOpen] = useState(false)
+  const [dialogTrapVersion, setDialogTrapVersion] = useState(0)
 
   const {
     register,
@@ -74,10 +78,11 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
     control,
     reset,
     watch,
-    formState: { errors, isSubmitting, isValid },
+    formState: { errors, isSubmitting, isValid, isDirty },
   } = useForm<NewsFormValues>({
     resolver: valibotResolver(newsFormSchema),
     mode: "onChange",
+    shouldUnregister: false,
     defaultValues: {
       title: initialData.title,
       content: initialData.content,
@@ -113,7 +118,38 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
     }
   }, [imageFile])
 
+  const discardAndClose = () => {
+    reset({
+      title: initialData.title,
+      content: initialData.content,
+      title_en: initialData.title_en || "",
+      content_en: initialData.content_en || "",
+      image: null,
+    })
+    setImagePreview(null)
+    setSubmissionError(null)
+    setDiscardConfirmationOpen(false)
+    onClose()
+  }
+
+  const keepEditing = () => setDiscardConfirmationOpen(false)
+
+  const requestClose = () => {
+    if (isSubmitting || imageLoading) {
+      // Escape deactivates the focus trap. Remounting the same dialog keeps the
+      // pending request visible and restores keyboard containment.
+      setDialogTrapVersion((current) => current + 1)
+      return
+    }
+    if (isDirty) {
+      setDiscardConfirmationOpen(true)
+      return
+    }
+    onClose()
+  }
+
   const onSubmit = async (data: NewsFormValues, telemetryContext: CapturedTelemetryContext) => {
+    setSubmissionError(null)
     try {
       let imgUrl = initialData.image_url
 
@@ -129,20 +165,32 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
             })
           )
           imgUrl = res.data.url
+        } catch (error) {
+          setSubmissionError("upload")
+          logError(error)
+          return
         } finally {
           setImageLoading(false)
         }
       }
 
+      // Cleared translations must be sent as explicit null: the backend uses
+      // exclude_unset, so an omitted key would keep the stored English text.
       const payload = {
         title: data.title,
         content: data.content,
-        title_en: data.title_en || undefined,
-        content_en: data.content_en || undefined,
+        title_en: data.title_en || null,
+        content_en: data.content_en || null,
         image_url: imgUrl,
       }
 
-      await telemetryContext.run(() => api.patch(`/news/${id}`, payload))
+      try {
+        await telemetryContext.run(() => api.patch(`/news/${id}`, payload))
+      } catch (error) {
+        setSubmissionError("save")
+        logError(error)
+        return
+      }
       telemetryContext.run(() => onSuccess?.())
       onClose()
     } catch (e) {
@@ -160,133 +208,174 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
 
   return (
     <Dialog
+      key={`${discardConfirmationOpen ? "discard" : "edit"}-${dialogTrapVersion}`}
       open={open}
-      onClose={onClose}
-      title={t("news:dialogs.edit.title")}
+      onClose={discardConfirmationOpen ? keepEditing : requestClose}
+      title={
+        discardConfirmationOpen
+          ? t("common:dialogs.unsavedChanges.title")
+          : t("news:dialogs.edit.title")
+      }
+      subtitle={
+        discardConfirmationOpen
+          ? t("common:dialogs.unsavedChanges.description")
+          : t("news:dialogs.edit.description")
+      }
       size="md"
       fullScreenOnMobile
       closeLabel={t("common:buttons.close")}
       bodyClassName="space-y-4"
       footerClassName="flex-col-reverse gap-3 sm:flex-row"
       footer={
-        <>
-          <Button
-            variant="outline"
-            onClick={onClose}
-            disabled={isSubmitting || imageLoading}
-            className="w-full sm:w-auto"
-          >
-            {t("common:buttons.cancel")}
-          </Button>
-          <Button
-            form={`news-edit-form-${id}`}
-            type="submit"
-            disabled={!isValid || isSubmitting || imageLoading}
-            loading={isSubmitting || imageLoading}
-            className="w-full sm:w-auto"
-          >
-            {t("common:buttons.save")}
-          </Button>
-        </>
+        discardConfirmationOpen ? (
+          <>
+            <Button variant="outline" onClick={keepEditing} className="w-full sm:w-auto">
+              {t("common:buttons.keepEditing")}
+            </Button>
+            <Button variant="solid" onClick={discardAndClose} className="w-full sm:w-auto">
+              {t("common:buttons.discardChanges")}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              variant="outline"
+              onClick={requestClose}
+              disabled={isSubmitting || imageLoading}
+              className="w-full sm:w-auto"
+            >
+              {t("common:buttons.cancel")}
+            </Button>
+            <Button
+              form={`news-edit-form-${id}`}
+              type="submit"
+              disabled={!isValid || isSubmitting || imageLoading}
+              loading={isSubmitting || imageLoading}
+              className="w-full sm:w-auto"
+            >
+              {t("common:buttons.save")}
+            </Button>
+          </>
+        )
       }
     >
-      <form id={`news-edit-form-${id}`} className="space-y-4" onSubmit={handleTelemetrySubmit}>
-        <Field
-          label={t("news:form.title") ?? ""}
-          htmlFor={`news-edit-title-${id}`}
-          required
-          error={errors.title?.message}
-        >
-          <input
-            id={`news-edit-title-${id}`}
-            type="text"
-            className={cn(inputClass, errors.title && "border-error-text/50")}
-            {...register("title")}
-          />
-        </Field>
-
-        <Field
-          label={t("news:form.text") ?? ""}
-          htmlFor={`news-edit-content-${id}`}
-          required
-          error={errors.content?.message}
-        >
-          <textarea
-            id={`news-edit-content-${id}`}
-            className={cn(textareaClass, errors.content && "border-error-text/50")}
-            rows={4}
-            {...register("content")}
-          />
-        </Field>
-
-        <Field
-          label={t("news:form.title_en") ?? ""}
-          htmlFor={`news-edit-title-en-${id}`}
-          error={errors.title_en?.message}
-        >
-          <input
-            id={`news-edit-title-en-${id}`}
-            type="text"
-            className={cn(inputClass, errors.title_en && "border-error-text/50")}
-            {...register("title_en")}
-          />
-        </Field>
-
-        <Field
-          label={t("news:form.content_en") ?? ""}
-          htmlFor={`news-edit-content-en-${id}`}
-          error={errors.content_en?.message}
-        >
-          <textarea
-            id={`news-edit-content-en-${id}`}
-            className={cn(textareaClass, errors.content_en && "border-error-text/50")}
-            rows={4}
-            {...register("content_en")}
-          />
-        </Field>
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <Controller
-            control={control}
-            name="image"
-            render={({ field: { value: _value, onChange, ...field } }) => (
-              <Button
-                as="label"
-                variant="outline"
-                size="sm"
-                leadingIcon={<PhotoCamera size={20} />}
-                className={cn(
-                  "w-full sm:w-auto",
-                  errors.image && "border-error-text/50 text-error-text"
-                )}
-                disabled={imageLoading || isSubmitting}
-              >
-                {imageLoading ? t("common:statuses.uploading") : t("news:form.changePhoto")}
-                <input
-                  {...field}
-                  type="file"
-                  accept="image/*"
-                  hidden
-                  value=""
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) onChange(file)
-                  }}
-                />
-              </Button>
-            )}
-          />
-
-          {displayImage ? (
-            <SmartImage
-              srcRaw={displayImage}
-              alt={t("news:alt.preview")}
-              className="h-20 w-full max-w-44 rounded-lg border border-white/(--opacity-subtle) object-cover shadow-surface"
-            />
+      {discardConfirmationOpen ? null : (
+        <form id={`news-edit-form-${id}`} className="space-y-4" onSubmit={handleTelemetrySubmit}>
+          {submissionError ? (
+            <p role="alert" className={errorClass}>
+              {submissionError === "upload"
+                ? t("news:form.errors.uploadFailed")
+                : t("news:notifications.savedError")}
+            </p>
           ) : null}
-        </div>
-        {errors.image?.message ? <p className={errorClass}>{errors.image.message}</p> : null}
-      </form>
+          <Field
+            label={t("news:form.title") ?? ""}
+            htmlFor={`news-edit-title-${id}`}
+            required
+            error={errors.title?.message}
+          >
+            <input
+              id={`news-edit-title-${id}`}
+              type="text"
+              className={cn(inputClass, errors.title && "border-error-text/50")}
+              disabled={isSubmitting || imageLoading}
+              {...register("title")}
+            />
+          </Field>
+
+          <Field
+            label={t("news:form.text") ?? ""}
+            htmlFor={`news-edit-content-${id}`}
+            required
+            error={errors.content?.message}
+          >
+            <textarea
+              id={`news-edit-content-${id}`}
+              className={cn(textareaClass, errors.content && "border-error-text/50")}
+              rows={4}
+              disabled={isSubmitting || imageLoading}
+              {...register("content")}
+            />
+          </Field>
+
+          <Field
+            label={t("news:form.title_en") ?? ""}
+            htmlFor={`news-edit-title-en-${id}`}
+            error={errors.title_en?.message}
+          >
+            <input
+              id={`news-edit-title-en-${id}`}
+              type="text"
+              className={cn(inputClass, errors.title_en && "border-error-text/50")}
+              disabled={isSubmitting || imageLoading}
+              {...register("title_en")}
+            />
+          </Field>
+
+          <Field
+            label={t("news:form.content_en") ?? ""}
+            htmlFor={`news-edit-content-en-${id}`}
+            error={errors.content_en?.message}
+          >
+            <textarea
+              id={`news-edit-content-en-${id}`}
+              className={cn(textareaClass, errors.content_en && "border-error-text/50")}
+              rows={4}
+              disabled={isSubmitting || imageLoading}
+              {...register("content_en")}
+            />
+          </Field>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Controller
+              control={control}
+              name="image"
+              render={({ field: { value: _value, onChange, ...field } }) => (
+                <>
+                  <Button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    variant="outline"
+                    size="sm"
+                    leadingIcon={<PhotoCamera size={20} />}
+                    className={cn(
+                      "w-full sm:w-auto",
+                      errors.image && "border-error-text/50 text-error-text"
+                    )}
+                    disabled={imageLoading || isSubmitting}
+                  >
+                    {imageLoading ? t("common:statuses.uploading") : t("news:form.changePhoto")}
+                  </Button>
+                  <input
+                    {...field}
+                    ref={(element) => {
+                      imageInputRef.current = element
+                      field.ref(element)
+                    }}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    value=""
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) onChange(file)
+                    }}
+                  />
+                </>
+              )}
+            />
+
+            {displayImage ? (
+              <SmartImage
+                srcRaw={displayImage}
+                alt={t("news:alt.preview")}
+                className="h-20 w-full max-w-44 rounded-lg border border-white/(--opacity-subtle) object-cover shadow-surface"
+              />
+            ) : null}
+          </div>
+          {errors.image?.message ? <p className={errorClass}>{errors.image.message}</p> : null}
+        </form>
+      )}
     </Dialog>
   )
 }

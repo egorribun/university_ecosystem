@@ -141,3 +141,12 @@ def test_allowed_origins_includes_vite_dev_ports(ws_hub_env: dict[str, str]) -> 
         f"ALLOWED_ORIGINS must preserve Vite dev port (http://localhost:5173) per "
         f"W173 polish-v3, got {origin_list!r}"
     )
+
+
+def test_trusted_proxies_are_operator_supplied_and_default_loopback_only(
+    ws_hub_env: dict[str, str],
+) -> None:
+    """Do not infer trust from a private network; accept an explicit peer list."""
+    assert ws_hub_env["TRUSTED_PROXIES"] == (
+        "$" + "{WS_HUB_TRUSTED_PROXIES:-127.0.0.1,::1}"
+    )

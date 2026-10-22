@@ -1,12 +1,18 @@
 import { Newspaper, Plus, Search, X, ArrowUpDown, Bookmark as BookmarkIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { useRef, useEffect, useState } from "react"
+import { useRef, useEffect, useState, type MouseEvent } from "react"
 import FadeSection from "@/components/motion/FadeSection"
 import { Button } from "@/components/ui/Button"
 import { ALL_CATEGORIES, type NewsCategory } from "@/features/news/categories"
 import { cn } from "@/utils/cn"
 import type { SortMode } from "@/features/news/NewsFeature"
 import { useVisualViewportStickyOffset } from "@/hooks/ui/useVisualViewportStickyOffset"
+
+const focusCategoryWithoutScrolling = (event: MouseEvent<HTMLButtonElement>) => {
+  if (event.button !== 0) return
+  event.preventDefault()
+  event.currentTarget.focus({ preventScroll: true })
+}
 
 interface NewsHeaderProps {
   onAddClick: () => void
@@ -41,6 +47,24 @@ export const NewsHeader = ({
   useVisualViewportStickyOffset(stickyRef)
 
   useEffect(() => {
+    const toolbar = stickyRef.current?.querySelector<HTMLElement>('[role="toolbar"]')
+    const activeCategoryButton = toolbar?.querySelector<HTMLElement>('[aria-current="page"]')
+    if (!toolbar || !activeCategoryButton || toolbar.scrollWidth <= toolbar.clientWidth) return
+
+    const toolbarRect = toolbar.getBoundingClientRect()
+    const activeButtonRect = activeCategoryButton.getBoundingClientRect()
+    const centerOffset =
+      activeButtonRect.left +
+      activeButtonRect.width / 2 -
+      (toolbarRect.left + toolbar.clientWidth / 2)
+    const maxScrollLeft = toolbar.scrollWidth - toolbar.clientWidth
+    const nextScrollLeft = Math.min(maxScrollLeft, Math.max(0, toolbar.scrollLeft + centerOffset))
+
+    if (Math.abs(nextScrollLeft - toolbar.scrollLeft) < 1) return
+    toolbar.scrollTo({ left: nextScrollLeft, top: toolbar.scrollTop, behavior: "instant" })
+  }, [activeCategory])
+
+  useEffect(() => {
     const sentinel = sentinelRef.current!
 
     const observer = new IntersectionObserver(
@@ -61,21 +85,23 @@ export const NewsHeader = ({
       <header className="space-y-4">
         {/* Row 1: Title + search + admin button */}
         <FadeSection delay="60ms" className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 text-fluid-h1">
             <div className="news-badge-matte hidden sm:flex h-11 w-11 items-center justify-center rounded-xl text-text-primary shrink-0">
               <Newspaper size={20} strokeWidth={2.2} />
             </div>
-            <h1 className="text-fluid-h1 font-extrabold tracking-tight text-text-primary whitespace-nowrap">
+            <h1 className="font-extrabold tracking-tight text-text-primary whitespace-nowrap">
               {t("news:pageTitle")}
-              {newsCount != null && (
-                <span
-                  className="news-badge-matte ml-2 inline-flex items-center justify-center rounded-full px-2 py-0.5 align-middle font-bold tabular-nums leading-none"
-                  style={{ fontSize: "0.45em" }}
-                >
-                  {newsCount}
-                </span>
-              )}
             </h1>
+            {newsCount != null && (
+              <span
+                role="status"
+                aria-label={t("news:pageTitle") + ": " + newsCount}
+                className="news-badge-matte ml-2 inline-flex items-center justify-center rounded-full px-2 py-0.5 align-middle font-bold tabular-nums leading-none"
+                style={{ fontSize: "0.45em" }}
+              >
+                {newsCount}
+              </span>
+            )}
           </div>
 
           {/* Search */}
@@ -149,6 +175,7 @@ export const NewsHeader = ({
           {/* "All" pill */}
           <button
             type="button"
+            onMouseDown={focusCategoryWithoutScrolling}
             onClick={() => onCategoryChange("all")}
             aria-current={activeCategory === "all" ? "page" : undefined}
             className={cn(
@@ -166,6 +193,7 @@ export const NewsHeader = ({
             <button
               key={cat.id}
               type="button"
+              onMouseDown={focusCategoryWithoutScrolling}
               onClick={() => onCategoryChange(cat.id)}
               aria-current={activeCategory === cat.id ? "page" : undefined}
               className={cn(
@@ -189,6 +217,7 @@ export const NewsHeader = ({
           {bookmarkCount > 0 && (
             <button
               type="button"
+              onMouseDown={focusCategoryWithoutScrolling}
               onClick={() => onCategoryChange("saved")}
               aria-current={activeCategory === "saved" ? "page" : undefined}
               className={cn(

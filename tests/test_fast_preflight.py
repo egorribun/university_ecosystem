@@ -11,6 +11,47 @@ import pytest
 from scripts import fast_preflight
 
 
+def test_start_process_keeps_inherited_environment_when_env_is_omitted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAST_PREFLIGHT_INHERITED_SENTINEL", "inherited")
+    check = fast_preflight.CheckSpec(
+        "inherited-environment",
+        (
+            sys.executable,
+            "-c",
+            "import os; print(os.environ['FAST_PREFLIGHT_INHERITED_SENTINEL'])",
+        ),
+    )
+
+    process = fast_preflight._start_process(check, repo_root=tmp_path)
+    stdout, stderr = process.communicate(timeout=5)
+
+    assert process.returncode == 0
+    assert stdout.decode().strip() == "inherited"
+    assert stderr == b""
+
+
+def test_start_process_uses_a_copied_optional_environment(tmp_path: Path) -> None:
+    supplied = {"FAST_PREFLIGHT_EXPLICIT_SENTINEL": "explicit"}
+    check = fast_preflight.CheckSpec(
+        "explicit-environment",
+        (
+            sys.executable,
+            "-c",
+            "import json, os; print(json.dumps([os.getcwd(), os.environ.get('FAST_PREFLIGHT_EXPLICIT_SENTINEL'), 'PATH' in os.environ]))",
+        ),
+    )
+
+    process = fast_preflight._start_process(check, repo_root=tmp_path, env=supplied)
+    stdout, stderr = process.communicate(timeout=5)
+
+    assert process.returncode == 0
+    assert json.loads(stdout.decode()) == [str(tmp_path), "explicit", False]
+    assert stderr == b""
+    assert supplied == {"FAST_PREFLIGHT_EXPLICIT_SENTINEL": "explicit"}
+
+
 def test_makefile_exposes_the_local_fast_preflight_command() -> None:
     makefile = Path(__file__).resolve().parents[1] / "Makefile"
     content = makefile.read_text(encoding="utf-8")
@@ -35,6 +76,7 @@ def test_default_checks_cover_frontend_backend_harness_and_focused_contracts() -
         "backend-typecheck",
         "backend-lint",
         "verify-harness",
+        "ci-check-catalog",
         "focused-contract-tests",
     ]
     by_name = {check.name: check for check in checks}
@@ -65,6 +107,10 @@ def test_default_checks_cover_frontend_backend_harness_and_focused_contracts() -
         sys.executable,
         "verify_harness.py",
     )
+    assert by_name["ci-check-catalog"].command == (
+        sys.executable,
+        "scripts/quality/validate_ci_check_catalog.py",
+    )
     assert by_name["focused-contract-tests"].command[:3] == (
         sys.executable,
         "-m",
@@ -87,6 +133,8 @@ def test_default_checks_cover_frontend_backend_harness_and_focused_contracts() -
         "test_route_dependency_inventory.py",
         "test_quality_configuration.py",
         "test_quality_workflow_contract.py",
+        "test_nightly_helm_reuse_contract.py",
+        "test_scheduled_workflow_regressions.py",
         "test_domain_event_registry_contract.py",
         "test_mfa_openapi_artifacts_contract.py",
     ):

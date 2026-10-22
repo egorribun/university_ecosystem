@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -21,57 +22,77 @@ if str(current_dir) not in sys.path:
     sys.path.insert(0, str(current_dir))
 
 try:
-    from .common import find_executable, find_repo_root, get_field, run_process
+    from .common import (
+        find_executable,
+        find_repo_root,
+        gate_state_lock,
+        get_field,
+        get_gate_state_path,
+        load_gate_state,
+        run_process,
+    )
 except (ImportError, ValueError):
-    from common import find_executable, find_repo_root, get_field, run_process
+    from common import (
+        find_executable,
+        find_repo_root,
+        gate_state_lock,
+        get_field,
+        get_gate_state_path,
+        load_gate_state,
+        run_process,
+    )
 
-STATE_FILE_NAME = ".gate_state.json"
+GATE_STATE_HISTORY_LIMIT = 50
 
 
-def get_gate_state_path() -> Path:
-    """Return path to .gate_state.json in .agents/hooks directory."""
-    return Path(__file__).resolve().parent / STATE_FILE_NAME
+def _write_gate_state_atomically(state_path: Path, state: dict[str, Any]) -> None:
+    """Write a complete JSON snapshot and replace the old file atomically."""
+    temporary_path: Path | None = None
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{state_path.name}.", suffix=".tmp", dir=state_path.parent
+        )
+        temporary_path = Path(temporary_name)
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as state_file:
+            json.dump(state, state_file, ensure_ascii=False, indent=2)
+            state_file.write("\n")
+            state_file.flush()
+            os.fsync(state_file.fileno())
+        os.replace(temporary_path, state_path)
+        temporary_path = None
+    except (OSError, TypeError, ValueError) as exc:
+        raise RuntimeError("Could not persist hook gate state.") from exc
+    finally:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def update_gate_state(file_path: str, linter: str, passed: bool, output: str) -> None:
     """Record linter and syntax audit results to persistent gate state."""
     state_path = get_gate_state_path()
-    state: dict[str, Any] = {"history": []}
-
-    if state_path.exists():
-        try:
-            with open(state_path, encoding="utf-8") as f:
-                loaded = json.load(f)
-                if isinstance(loaded, dict):
-                    state = loaded
-        except Exception:
-            state = {"history": []}
-
-    history = state.get("history", [])
-    history.append(
-        {
-            "file": file_path,
-            "linter": linter,
-            "passed": passed,
-            "output": output.strip()[:1000],
-        }
-    )
-    # Keep last 50 entries
-    state["history"] = history[-50:]
-    state["last_status"] = {
-        "file": file_path,
-        "linter": linter,
-        "passed": passed,
-        "output": output.strip()[:1000],
-    }
-
     try:
-        with open(state_path, "w", encoding="utf-8") as f:
-            json.dump(state, f, indent=2)
-    except Exception as exc:
-        sys.stderr.write(
-            f"[hooks.post_tool_linter] Warning: Failed to write state: {exc}\n"
-        )
+        with gate_state_lock(state_path):
+            state = load_gate_state(state_path, acquire_lock=False)
+            result = {
+                "file": file_path,
+                "linter": linter,
+                "passed": passed,
+                "output": output.strip()[:1000],
+            }
+            state["history"] = [
+                *state["history"],
+                result,
+            ][-GATE_STATE_HISTORY_LIMIT:]
+            state["latest_by_file"][file_path] = result
+            state["last_status"] = result
+            _write_gate_state_atomically(state_path, state)
+    except RuntimeError:
+        raise
+    except OSError as exc:
+        raise RuntimeError("Could not update hook gate state.") from exc
 
 
 def format_and_lint_python(file_path: Path, repo_root: Path) -> tuple[bool, str]:
@@ -166,7 +187,7 @@ def format_and_check_go(file_path: Path, repo_root: Path) -> tuple[bool, str]:
         cwd=pkg_dir,
         timeout=90,
     )
-    if vet_code != 0 and vet_code != -1:
+    if vet_code != 0:
         diagnostics.append(f"go vet failed: {vet_err.strip() or vet_out.strip()}")
         all_passed = False
 
@@ -191,12 +212,13 @@ def evaluate_post_tool(payload: dict[str, Any]) -> dict[str, Any]:
         return {}
 
     repo_root = find_repo_root()
-    target_path = Path(target_file)
-    if not target_path.is_absolute():
-        target_path = (repo_root / target_path).resolve()
-
     try:
-        target_path.resolve().relative_to(repo_root.resolve())
+        repo_root = repo_root.resolve()
+        target_path = Path(target_file)
+        if not target_path.is_absolute():
+            target_path = repo_root / target_path
+        target_path = target_path.resolve()
+        target_path.relative_to(repo_root)
     except (ValueError, OSError):
         return {
             "decision": "deny",

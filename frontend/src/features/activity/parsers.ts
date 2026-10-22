@@ -1,4 +1,5 @@
-import type { AttendanceStats, GradeStats, ParticipationStats } from "./types"
+import * as v from "valibot"
+import type { AttendanceDaily, AttendanceStats, GradeStats, ParticipationStats } from "./types"
 
 export const toNumber = (value: unknown, fallback = 0): number => {
   const num = Number(value)
@@ -69,4 +70,40 @@ export const parseParticipationRecent = (value: unknown): ParticipationStats["re
       }
     })
     .filter((item): item is ParticipationStats["recent"][number] => item != null)
+}
+
+const registrationCountSchema = v.pipe(
+  v.number(),
+  v.check((value) => Number.isSafeInteger(value) && value >= 0)
+)
+
+const attendanceDailySchema = v.pipe(
+  v.object({
+    date: v.pipe(
+      v.string(),
+      v.check(
+        (value) =>
+          /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+          Number.isFinite(Date.parse(value)) &&
+          new Date(value).toISOString().slice(0, 10) === value
+      )
+    ),
+    registered: registrationCountSchema,
+    total: registrationCountSchema,
+  }),
+  v.check(({ registered, total }) => total > 0 && registered <= total)
+)
+
+/** Reject malformed counters instead of inventing a registration percentage. */
+export const parseAttendanceDaily = (value: unknown): AttendanceDaily[] => {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    const parsed = v.safeParse(attendanceDailySchema, item)
+    return parsed.success ? [parsed.output] : []
+  })
+}
+
+export const parseStreakDays = (value: unknown): number | undefined => {
+  const parsed = v.safeParse(registrationCountSchema, value)
+  return parsed.success ? parsed.output : undefined
 }

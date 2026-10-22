@@ -29,13 +29,19 @@ import {
   useWeekOffset,
   useScheduleDisplayPreferences,
   useScheduleUIActions,
+  useHiddenWeekdays,
 } from "@/stores/scheduleUIStore"
 import { useLessonNotesMap } from "@/hooks/useLessonNotes"
 import api from "@/api/client"
+import { buildTable } from "@/components/schedule/scheduleUtils"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
+import { getCampusClockParts } from "@/utils/campusTimezone"
+import { generateGoogleCalendarUrl, selectGoogleCalendarLesson } from "@/utils/scheduleExport"
 
 function ScheduleContent() {
   const { t } = useTranslation(["schedule", "common"])
   const isOnline = useOnlineStatus()
+  const timeZone = useCampusTimezone()
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.desktop})`)
   // Wave 112 SW3b — keep URL `?w=` in sync with Zustand `weekOffset` so
   // refresh/share both preserve the selected week (mirror of Events/News).
@@ -43,12 +49,15 @@ function ScheduleContent() {
   const weekOffset = useWeekOffset()
   const { showPastLessons } = useScheduleDisplayPreferences()
   const { resetPreferences } = useScheduleUIActions()
+  const hiddenWeekdays = useHiddenWeekdays()
 
   const scheduleData = useScheduleData()
   const {
     isLoading,
     error: scheduleError,
     schedule,
+    selectedGroup,
+    weekdayConfigs,
     weekdayBackend,
     weekdayLabels,
     weekdayShort,
@@ -64,10 +73,17 @@ function ScheduleContent() {
     currentLesson,
     nextLesson,
     nowTick,
-    lessonDays,
+    lessonDaysForMonth,
     lessonTypeLabels,
     todayLessons,
   } = scheduleData
+
+  // The mini-calendar navigates months on its own; its lesson dots follow the month it shows.
+  const [miniCalendarMonth, setMiniCalendarMonth] = useState(() => new Date())
+  const miniCalendarLessonDays = useMemo(
+    () => lessonDaysForMonth(miniCalendarMonth),
+    [lessonDaysForMonth, miniCalendarMonth]
+  )
 
   /* ── Day complete flag for confetti (FIX-68-23) ── */
   const todayComplete = hasToday && !currentLesson && !nextLesson && todayLessons.length > 0
@@ -93,7 +109,10 @@ function ScheduleContent() {
 
   /* ── Past lessons filter ──────────────────────────────── */
   // PERF-70-04: use primitive minutesNow instead of Date object to stabilize dependency
-  const minutesNow = nowTick.getHours() * 60 + nowTick.getMinutes()
+  const clock = getCampusClockParts(nowTick, timeZone)
+  const minutesNow = clock
+    ? clock.hour * 60 + clock.minute
+    : nowTick.getHours() * 60 + nowTick.getMinutes()
   const displaySchedule = useMemo(() => {
     if (showPastLessons) {
       return schedule
@@ -115,16 +134,62 @@ function ScheduleContent() {
     }
   }, [schedule, showPastLessons, hasToday, todayIdx, weekdayBackend, minutesNow])
 
+  const visibleWeekdayBackend = useMemo(
+    () => weekdayBackend.filter((_, index) => !hiddenWeekdays.includes(index)),
+    [weekdayBackend, hiddenWeekdays]
+  )
+
+  const googleCalendarSelection = useMemo(
+    () =>
+      selectGoogleCalendarLesson({
+        schedule: displaySchedule,
+        selectedGroup,
+        weekdayConfigs,
+        visibleWeekdays: visibleWeekdayBackend,
+        now: nowTick,
+        weekOffset,
+        timeZone,
+        available: !isLoading && !scheduleError,
+      }),
+    [
+      displaySchedule,
+      selectedGroup,
+      weekdayConfigs,
+      visibleWeekdayBackend,
+      nowTick,
+      weekOffset,
+      timeZone,
+      isLoading,
+      scheduleError,
+    ]
+  )
+  const googleCalendarDisabledReason =
+    googleCalendarSelection.status === "ready"
+      ? undefined
+      : googleCalendarSelection.status === "empty"
+        ? t("schedule:export.googleCalendarEmpty")
+        : googleCalendarSelection.status === "invalid-time"
+          ? t("schedule:export.googleCalendarInvalidTime")
+          : t("schedule:export.googleCalendarUnavailable")
+
   /* ── Keyboard navigation ──────────────────────────────── */
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
-  // PERF-70-05: compute rowCount inline — avoids duplicate buildTable() call (also in DesktopTable)
-  const rowCount = useMemo(() => {
-    const counts = weekdayBackend.map(
-      (day) => displaySchedule.filter((l) => l.weekday === day).length
-    )
-    return Math.max(...counts, 0)
-  }, [displaySchedule, weekdayBackend])
+  const keyboardRows = useMemo(
+    () => buildTable(displaySchedule, visibleWeekdayBackend),
+    [displaySchedule, visibleWeekdayBackend]
+  )
+  const todayVisibleColIdx = hasToday
+    ? visibleWeekdayBackend.indexOf(weekdayBackend[todayIdx] ?? "")
+    : -1
+
+  const handleKbOpen = useCallback(
+    (row: number, col: number) => {
+      const lesson = keyboardRows[row]?.[col]
+      if (lesson) openDialog("details", lesson)
+    },
+    [keyboardRows, openDialog]
+  )
 
   const handleKbEdit = useCallback(() => {
     if (selectedLesson && (user?.role === "admin" || user?.role === "teacher")) {
@@ -146,9 +211,9 @@ function ScheduleContent() {
   }, [selectedLesson, user?.role, requestDeleteLesson])
 
   useScheduleKeyboardNav({
-    colCount: weekdayBackend.length,
-    rowCount,
-    todayColIdx: todayIdx,
+    colCount: visibleWeekdayBackend.length,
+    rowCount: keyboardRows.length,
+    todayColIdx: todayVisibleColIdx,
     enabled:
       !isMobile &&
       !shortcutsOpen &&
@@ -157,12 +222,29 @@ function ScheduleContent() {
       pendingDeleteId === null,
     onEdit: handleKbEdit,
     onDelete: handleKbDelete,
+    onOpen: handleKbOpen,
     onToggleShortcuts: handleToggleShortcuts,
   })
 
   const getLessonTypeLabel = useCallback(
     (val?: string | null) => lessonTypeLabels.get(val ?? "") ?? val ?? "",
     [lessonTypeLabels]
+  )
+  const googleCalendarUrl = useMemo(
+    () =>
+      googleCalendarSelection.status === "ready"
+        ? generateGoogleCalendarUrl(
+            googleCalendarSelection.lesson,
+            googleCalendarSelection.occurrence,
+            {
+              lessonFallback: t("schedule:export.lessonFallback"),
+              typePrefix: t("schedule:export.typePrefix", {
+                type: getLessonTypeLabel(googleCalendarSelection.lesson.lesson_type),
+              }),
+            }
+          )
+        : null,
+    [googleCalendarSelection, getLessonTypeLabel, t]
   )
   const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
 
@@ -312,7 +394,10 @@ function ScheduleContent() {
               <FadeSection delay="var(--motion-duration-slow)">
                 <ScheduleMiniCalendar
                   className="sticky top-20"
-                  lessonDays={lessonDays}
+                  lessonDays={miniCalendarLessonDays}
+                  month={miniCalendarMonth}
+                  nowTick={nowTick}
+                  onMonthChange={setMiniCalendarMonth}
                   isLoading={isLoading}
                 />
               </FadeSection>
@@ -331,6 +416,8 @@ function ScheduleContent() {
           currentParity={scheduleData.currentParity}
           setCurrentParity={scheduleData.setCurrentParity}
           gridRef={gridRef}
+          googleCalendarUrl={googleCalendarUrl}
+          googleCalendarDisabledReason={googleCalendarDisabledReason}
         />
 
         {/* ── Confirm deletion dialog ────────────────────── */}

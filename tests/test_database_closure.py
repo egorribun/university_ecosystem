@@ -44,13 +44,13 @@ def test_pool_metrics_snapshot_and_peak_property():
     metrics.record_invalidation()
     metrics.record_failed_checkout()
 
-    assert metrics.active_connections == 0
+    assert metrics.active_connections == 1
     assert metrics.peak_active_connections == 2
     assert metrics.get_snapshot() == {
         "total_checkouts": 2,
         "total_checkins": 1,
         "total_invalidations": 1,
-        "active_connections": 0,
+        "active_connections": 1,
         "peak_active_connections": 2,
         "failed_checkouts": 1,
     }

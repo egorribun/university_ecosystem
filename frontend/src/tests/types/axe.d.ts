@@ -1,7 +1,7 @@
-import type { AxeMatchers } from "jest-axe"
+import "vitest"
 
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 declare module "vitest" {
-  export interface Assertion extends AxeMatchers {}
-  export interface AsymmetricMatchersContaining extends AxeMatchers {}
+  export interface Assertion<R extends void | Promise<void> = void, T = unknown> {
+    toHaveNoViolations(this: Assertion<R, T>): R
+  }
 }

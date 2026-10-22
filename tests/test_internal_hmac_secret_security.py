@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from cryptography.fernet import Fernet
 from pydantic import ValidationError
 
 from app.core.config.security import (
@@ -16,6 +17,8 @@ def _production_settings(**overrides: str) -> SecuritySettings:
 
     values = {
         "algorithm": "RS256",
+        "mfa_totp_encryption_keys": f"test-key:{Fernet.generate_key().decode('ascii')}",
+        "mfa_totp_active_encryption_key_id": "test-key",
         "secret_key": "application-signing-material-0123456789abcdef",  # pragma: allowlist secret
         "audit_log_secret": "audit-log-material-0123456789abcdef",  # pragma: allowlist secret
         "token_hmac_secret": "token-recovery-material-0123456789abcdef",  # pragma: allowlist secret

@@ -8,20 +8,17 @@ invalidation via SCAN.
 from __future__ import annotations
 
 import time as time_module
-from datetime import UTC, date, datetime, time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fakeredis.aioredis
 import pytest
 
 from app.deps.cache import (
-    CacheEntry,
     MemoryCache,
     NullCache,
     RedisCache,
     RedisClusterCache,
     TieredCache,
-    _json_default,
     _normalize_payload,
     cached,
     create_cache_backend,
@@ -29,12 +26,8 @@ from app.deps.cache import (
     format_etag,
     get_cache,
     get_cache_client,
-    get_cache_key_version,
     set_cache_backend,
-    set_cache_key_version,
     shutdown_cache,
-    stale_while_revalidate,
-    versioned_key,
 )
 
 # ---------------------------------------------------------------------------
@@ -633,57 +626,6 @@ class TestCachedDecorator:
         set_cache_backend(None)
 
 
-class TestSWRDecorator:
-    @pytest.mark.asyncio
-    async def test_swr_cache_miss(self):
-        """On cache miss, computes and stores."""
-        mem = MemoryCache(default_ttl=300)
-        set_cache_backend(mem)
-
-        @stale_while_revalidate(prefix="swr", ttl=60, stale_ttl=120)
-        async def my_func(x: int) -> int:
-            return x + 1
-
-        result = await my_func(10)
-        assert result == 11
-
-        set_cache_backend(None)
-
-    @pytest.mark.asyncio
-    async def test_swr_disabled_cache(self):
-        set_cache_backend(NullCache())
-
-        call_count = 0
-
-        @stale_while_revalidate(prefix="swr", ttl=10)
-        async def my_func() -> str:
-            nonlocal call_count
-            call_count += 1
-            return "fresh"
-
-        await my_func()
-        await my_func()
-        assert call_count == 2  # No caching
-
-        set_cache_backend(None)
-
-    @pytest.mark.asyncio
-    async def test_swr_with_key_builder(self):
-        mem = MemoryCache(default_ttl=300)
-        set_cache_backend(mem)
-
-        @stale_while_revalidate(
-            prefix="swr-kb", ttl=60, key_builder=lambda n: f"user:{n}"
-        )
-        async def get_user(name: str) -> dict:
-            return {"name": name}
-
-        result = await get_user("alice")
-        assert result == {"name": "alice"}
-
-        set_cache_backend(None)
-
-
 # ---------------------------------------------------------------------------
 # Utility functions
 # ---------------------------------------------------------------------------
@@ -721,36 +663,6 @@ class TestCacheUtilities:
 
     def test_etag_matches_empty_parts(self):
         assert etag_matches("abc", '"abc", , ') is True
-
-    def test_versioned_key(self):
-        set_cache_key_version(5)
-        assert versioned_key("test") == "v5:test"
-        set_cache_key_version(1)  # Reset
-
-    def test_get_set_key_version(self):
-        original = get_cache_key_version()
-        set_cache_key_version(42)
-        assert get_cache_key_version() == 42
-        set_cache_key_version(original)
-
-    def test_json_default_datetime(self):
-        dt = datetime(2024, 1, 15, 12, 30, 0, tzinfo=UTC)
-        result = _json_default(dt)
-        assert "2024-01-15" in result
-
-    def test_json_default_date(self):
-        d = date(2024, 1, 15)
-        result = _json_default(d)
-        assert result == "2024-01-15"
-
-    def test_json_default_time(self):
-        t = time(12, 30)
-        result = _json_default(t)
-        assert "12:30" in result
-
-    def test_json_default_other(self):
-        result = _json_default(42)
-        assert result == "42"
 
     def test_normalize_payload(self):
         normalized, serialized = _normalize_payload({"key": "value"})
@@ -816,32 +728,3 @@ class TestCacheUtilities:
         backend = get_cache()
         assert isinstance(backend, NullCache)
         cache_mod._cache_backend = None
-
-
-# ---------------------------------------------------------------------------
-# CacheEntry probabilistic refresh
-# ---------------------------------------------------------------------------
-
-
-class TestCacheEntryRefresh:
-    def test_expired_always_refreshes(self):
-        entry = CacheEntry(
-            etag="x", payload={}, stored_at=time_module.time() - 200, ttl_seconds=100
-        )
-        assert entry.should_refresh_probabilistic() is True
-
-    def test_zero_ttl_no_refresh(self):
-        entry = CacheEntry(
-            etag="x", payload={}, stored_at=time_module.time(), ttl_seconds=0
-        )
-        assert entry.should_refresh_probabilistic() is False
-
-    def test_fresh_entry_usually_no_refresh(self):
-        entry = CacheEntry(
-            etag="x", payload={}, stored_at=time_module.time(), ttl_seconds=3600
-        )
-        # With 1 hour TTL and just created, refresh should be unlikely
-        # XFetch algorithm uses log(random), so ~37% probability per call
-        # We just verify it doesn't ALWAYS refresh (which would indicate a bug)
-        refreshes = sum(entry.should_refresh_probabilistic() for _ in range(100))
-        assert refreshes < 100  # Not ALL refreshes

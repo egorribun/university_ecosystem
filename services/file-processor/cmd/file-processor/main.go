@@ -103,6 +103,7 @@ var (
 	newOTelResourceFunc = func(ctx context.Context, options ...resource.Option) (*resource.Resource, error) {
 		return resource.New(ctx, options...)
 	}
+	newOTelBatchSpanProcessorFunc = sdktrace.NewBatchSpanProcessor
 )
 
 // legacyNatsJetStream keeps the legacy subscriber seam narrow enough to test
@@ -269,7 +270,9 @@ func initializeTracerShutdown(ctx context.Context, cfg *config.Config, logger *s
 		return func() {}
 	}
 	return func() {
-		if shutErr := tp.Shutdown(ctx); shutErr != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if shutErr := tp.Shutdown(shutdownCtx); shutErr != nil {
 			logger.WarnContext(ctx, "Failed to shutdown tracer provider", "err", shutErr)
 		}
 	}
@@ -610,11 +613,12 @@ func handleFileProcessDelivery(ctx context.Context, msg processDeliveryMessage, 
 		}
 		capabilityClaims = claims
 		capabilityVerified = true
-		// Verify the bearer proof at the NATS boundary but never persist it in
-		// Temporal history. The workflow only needs the already-validated job
-		// fields; retaining the short-lived secret would widen its exposure.
-		job.Capability = ""
 	}
+	// Capability is transport-only metadata. Verify the original proof first
+	// when verification is configured, then always strip the field before any
+	// Temporal call so optional development-mode verification cannot persist an
+	// untrusted bearer value in workflow history.
+	job.Capability = ""
 	if c == nil {
 		logger.ErrorContext(ctx, "Failed to execute workflow from NATS",
 			"reason", "temporal_client_unavailable", "consumer", fileProcessConsumer)
@@ -1111,6 +1115,31 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Pub
 
 func denyGraphQLIntrospection(context.Context) bool { return false }
 
+// grpcStopTimeout bounds how long shutdown waits for in-flight gRPC calls.
+// Health.Watch streams stay open until their client disconnects, so an
+// unbounded GracefulStop can block the process indefinitely (AUD-095).
+const grpcStopTimeout = 10 * time.Second
+
+// stopGRPCServer drains gRPC calls gracefully for at most timeout, then forces
+// the remaining streams closed with Stop so shutdown always completes.
+func stopGRPCServer(grpcSrv *grpc.Server, timeout time.Duration, logger *slog.Logger) {
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		grpcSrv.GracefulStop()
+	}()
+
+	select {
+	case <-drained:
+		return
+	case <-time.After(timeout):
+	}
+
+	logger.Warn("gRPC graceful stop timed out; forcing stop", "timeout", timeout)
+	grpcSrv.Stop()
+	<-drained
+}
+
 func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Server, cfg *config.Config, logger *slog.Logger) error {
 	lc := net.ListenConfig{}
 	lis, err := lc.Listen(ctx, "tcp", ":"+cfg.GRPCPort)
@@ -1151,7 +1180,7 @@ func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Serv
 
 	logger.InfoContext(ctx, "Shutting down servers...")
 
-	grpcSrv.GracefulStop()
+	stopGRPCServer(grpcSrv, grpcStopTimeout, logger)
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second) // RZ-33-21: parent ctx is already cancelled
 	defer cancel()
@@ -1245,12 +1274,6 @@ func checkJWTAlgHeader(tokenStr string, rsaPub *rsa.PublicKey, log *slog.Logger,
 	return true
 }
 
-func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, next http.Handler) http.Handler {
-	return httpJWTMiddlewareWithOptions(secret, rsaPub, log, jwtAuthOptions{
-		RequireRS256: rsaPub != nil,
-	}, next)
-}
-
 func httpJWTMiddlewareWithOptions(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, options jwtAuthOptions, next http.Handler) http.Handler {
 	if log == nil {
 		log = slog.Default()
@@ -1305,12 +1328,6 @@ func httpJWTMiddlewareWithOptions(secret string, rsaPub *rsa.PublicKey, log *slo
 		r = r.WithContext(ctx)
 
 		next.ServeHTTP(w, r)
-	})
-}
-
-func authFunc(secret string, rsaPub *rsa.PublicKey, logger *slog.Logger) auth.AuthFunc {
-	return authFuncWithOptions(secret, rsaPub, logger, jwtAuthOptions{
-		RequireRS256: rsaPub != nil,
 	})
 }
 
@@ -1390,7 +1407,7 @@ func initTracer(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*
 	}
 
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter),
+		sdktrace.WithSpanProcessor(newOTelBatchSpanProcessorFunc(exporter)),
 		sdktrace.WithResource(res),
 	)
 	otel.SetTracerProvider(tp)

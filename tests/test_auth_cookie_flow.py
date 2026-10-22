@@ -2,7 +2,9 @@ import base64
 import hashlib
 import hmac
 import json
+import secrets
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from fastapi import status
@@ -12,7 +14,7 @@ from app.auth.security import decode_token, get_password_hash
 from app.core.config import settings
 from app.core.csrf import _ANON_NONCE_COOKIE_NAME
 from app.core.localization import translate
-from app.models import ActiveSession
+from app.models import ActiveSession, DataAccessLog
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -243,6 +245,72 @@ async def test_token_reuse_after_logout_rejected(
     assert rejected.status_code == 401
 
 
+@pytest.mark.parametrize("cache_state", ["missing", "expired"])
+async def test_users_me_cache_miss_uses_authenticated_cookie_profile(
+    async_client, user_factory, db_session, monkeypatch, cache_state: str
+):
+    password = f"Aa1!{secrets.token_urlsafe(24)}"
+    user = await _create_active_user(user_factory, password, db_session)
+
+    login_response = await _login(async_client, user.email, password)
+    assert login_response.status_code == 200
+    token = async_client.cookies.get("access_token_v2")
+    assert token is not None
+
+    headers = {"X-Query-Budget": "15"}
+    if cache_state == "expired":
+        claims = decode_token(token)
+        assert claims is not None
+        jti = claims.get("jti")
+        assert jti
+        session = (
+            (
+                await db_session.execute(
+                    select(ActiveSession).where(ActiveSession.jti == jti)
+                )
+            )
+            .scalars()
+            .first()
+        )
+        assert session is not None
+        assert session.signing_key
+        payload = {
+            "version": 2,
+            "expiresAt": 0,
+            "data": {
+                "id": "not-the-authenticated-user",
+                "email": "cache@example.invalid",
+                "full_name": "Untrusted Cache Profile",
+            },
+        }
+        payload_json = json.dumps(payload, separators=(",", ":"))
+        signature = base64.b64encode(
+            hmac.new(
+                session.signing_key.encode("utf-8"),
+                payload_json.encode("utf-8"),
+                hashlib.sha256,
+            ).digest()
+        ).decode("ascii")
+        headers["X-Profile-Cache-Envelope"] = json.dumps(
+            {**payload, "signature": signature}
+        )
+
+    # Exercise the production cache-envelope policy without changing the
+    # environment used by the login/session dependency graph in this test.
+    monkeypatch.setattr(
+        "app.api.users.settings", SimpleNamespace(environment="production")
+    )
+    response = await async_client.get("/users/me", headers=headers)
+
+    assert response.status_code == 200
+    profile = response.json()
+    assert profile["id"] == str(user.id)
+    assert profile["email"] == user.email
+    assert profile["full_name"] == user.profile.full_name
+    if cache_state == "expired":
+        assert profile["full_name"] != "Untrusted Cache Profile"
+
+
 async def test_profile_cache_envelope_validation(
     async_client, user_factory, db_session
 ):
@@ -363,3 +431,101 @@ async def test_register_rate_limit(async_client, monkeypatch):
 
     assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
     assert blocked.json()["detail"] == translate("errors.rate_limit.generic")
+
+
+async def test_profile_audit_writes_use_default_session_when_read_component_is_read_only(
+    app, async_client, user_factory, db_session, monkeypatch
+):
+    password = f"Aa1!{secrets.token_urlsafe(24)}"
+    user = await user_factory(
+        hashed_password=await get_password_hash(password),
+        is_active=True,
+        role="admin",
+    )
+    login = await _login(async_client, user.email, password)
+    assert login.status_code == 200
+
+    from app.core.database import get_read_db
+
+    class ReadOnlyReplicaSession:
+        def __init__(self, writable_session):
+            self._writable_session = writable_session
+            self.write_attempts = []
+
+        def __getattr__(self, name):
+            return getattr(self._writable_session, name)
+
+        def _reject_write(self, operation):
+            self.write_attempts.append(operation)
+            raise AssertionError("read replica rejected an audit write")
+
+        def add(self, _instance):
+            self._reject_write("add")
+
+        def add_all(self, _instances):
+            self._reject_write("add_all")
+
+        def delete(self, _instance):
+            self._reject_write("delete")
+
+        async def flush(self, *_args, **_kwargs):
+            self._reject_write("flush")
+
+        async def commit(self):
+            self._reject_write("commit")
+
+        async def execute(self, statement, *args, **kwargs):
+            if any(
+                getattr(statement, flag, False)
+                for flag in ("is_insert", "is_update", "is_delete")
+            ):
+                self._reject_write("execute")
+            return await self._writable_session.execute(statement, *args, **kwargs)
+
+    read_only_replica = ReadOnlyReplicaSession(db_session)
+
+    async def get_read_only_db():
+        yield read_only_replica
+
+    monkeypatch.setitem(app.dependency_overrides, get_read_db, get_read_only_db)
+
+    profile_response = await async_client.get("/users/me")
+    assert profile_response.status_code == 200
+    assert profile_response.json()["id"] == str(user.id)
+    assert read_only_replica.write_attempts == []
+
+    profile_logs = (
+        (
+            await db_session.execute(
+                select(DataAccessLog).where(
+                    DataAccessLog.actor_user_id == user.id,
+                    DataAccessLog.subject_user_id == user.id,
+                    DataAccessLog.resource_type == "profile",
+                    DataAccessLog.action == "read",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(profile_logs) == 1
+
+    listing_response = await async_client.get("/users")
+    assert listing_response.status_code == 200
+    assert read_only_replica.write_attempts == []
+
+    listed_profile_logs = (
+        (
+            await db_session.execute(
+                select(DataAccessLog).where(
+                    DataAccessLog.actor_user_id == user.id,
+                    DataAccessLog.subject_user_id == user.id,
+                    DataAccessLog.resource_type == "profile",
+                    DataAccessLog.action == "read",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(listed_profile_logs) == 2

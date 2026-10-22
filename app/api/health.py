@@ -12,7 +12,7 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.core.database import engine, get_pool_health_metrics, wait_db
 from app.core.metrics import record_health_probe
-from app.deps.cache import get_cache
+from app.deps.cache import BaseCache, get_cache
 from app.services.file_scanner import (
     check_file_scanner_health,
     scan_for_malware,  # noqa: F401 - imported for test mocking
@@ -56,6 +56,16 @@ _storage_probe_cache: dict[str, Any] = {
     "latency": 0.0,
 }
 
+# Keep storage observations fresh while honoring shorter configured intervals.
+# Failed probes retry quickly; per-loop locking prevents concurrent requests from
+# multiplying even this bounded probe load.
+_STORAGE_PROBE_SUCCESS_TTL_MAX_SECONDS = 60.0
+_STORAGE_PROBE_FAILURE_TTL_SECONDS = 5.0
+_storage_probe_lock_loop: asyncio.AbstractEventLoop | None = None
+_storage_probe_lock: asyncio.Lock | None = None
+_storage_probe_generation = 0
+_storage_probe_last_result: tuple[int, str, float] | None = None
+
 
 _health_cache: dict[str, Any] = {
     "expires_at": 0.0,
@@ -63,11 +73,48 @@ _health_cache: dict[str, Any] = {
     "status_code": 200,
 }
 
+_BRIEF_OMIT_KEYS = frozenset(
+    {
+        "db_migrations_current",
+        "db_migrations_expected",
+        "pool",
+    }
+)
+
+
+def _brief_health_payload(full_payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in full_payload.items()
+        if key not in _BRIEF_OMIT_KEYS and not key.endswith("_latency_ms")
+    }
+
 
 def reset_storage_probe_cache() -> None:
+    global _storage_probe_generation, _storage_probe_last_result
     _storage_probe_cache.update(
         {"expires_at": 0.0, "status": "unknown", "latency": 0.0}
     )
+    _storage_probe_generation = 0
+    _storage_probe_last_result = None
+
+
+def _get_storage_probe_lock() -> asyncio.Lock:
+    global _storage_probe_lock, _storage_probe_lock_loop
+    loop = asyncio.get_running_loop()
+    if _storage_probe_lock is None or _storage_probe_lock_loop is not loop:
+        _storage_probe_lock = asyncio.Lock()
+        _storage_probe_lock_loop = loop
+    return _storage_probe_lock
+
+
+def _read_cached_storage_probe(now: float) -> tuple[str, float] | None:
+    cached_expires_at = float(_storage_probe_cache.get("expires_at", 0.0) or 0.0)
+    if cached_expires_at > now:
+        cached_status = str(_storage_probe_cache.get("status", "unknown"))
+        cached_latency = float(_storage_probe_cache.get("latency", 0.0) or 0.0)
+        return cached_status, cached_latency
+    return None
 
 
 def reset_health_cache() -> None:
@@ -113,38 +160,68 @@ async def _check_queue(conn: AsyncConnection) -> None:
 
 
 async def _probe_storage() -> tuple[str, float]:
-    now = time.monotonic()
-    cached_expires_at = float(_storage_probe_cache.get("expires_at", 0.0) or 0.0)
-    if cached_expires_at > now:
-        status = str(_storage_probe_cache.get("status", "unknown"))
-        latency_seconds = float(_storage_probe_cache.get("latency", 0.0) or 0.0)
-        return status, latency_seconds
+    global _storage_probe_generation, _storage_probe_last_result
+    cached = _read_cached_storage_probe(time.monotonic())
+    if cached is not None:
+        return cached
 
-    start = time.perf_counter()
-    _status: str | None = None
-    try:
-        backend = _get_storage_backend()
-        if settings.health_storage_probe_enabled:
-            _status = await _write_delete_storage_probe(backend)
-        if _status is None:
-            lightweight_status = await _lightweight_storage_probe(backend)
-            if lightweight_status is not None:
-                _status = lightweight_status
-            else:
-                _status = "disabled"
-    except Exception:  # RZ-22-01-JUSTIFIED: health probe — storage probe returns "error" on any failure (reviewed TD-27-04)
-        _status = "error"
-    elapsed = time.perf_counter() - start
-    latency_seconds = max(elapsed, 0.0)
-    _storage_probe_cache.update(
-        {
-            "expires_at": now
-            + max(settings.health_storage_probe_min_interval_seconds, 0.0),
-            "status": _status,
-            "latency": latency_seconds,
-        }
-    )
-    return _status or "unknown", latency_seconds
+    # Remember which probe generation this caller observed before contending on
+    # the lock. This also coalesces in-flight calls when the configured cache TTL
+    # is zero, without sharing the result with later sequential requests.
+    observed_generation = _storage_probe_generation
+    async with _get_storage_probe_lock():
+        # Another request may have completed the probe while this one waited.
+        cached = _read_cached_storage_probe(time.monotonic())
+        if cached is not None:
+            return cached
+        last_result = _storage_probe_last_result
+        if last_result is not None and last_result[0] > observed_generation:
+            return last_result[1], last_result[2]
+
+        start = time.perf_counter()
+        _status: str | None = None
+        try:
+            backend = _get_storage_backend()
+            if settings.health_storage_probe_enabled:
+                _status = await _write_delete_storage_probe(backend)
+            if _status is None:
+                lightweight_status = await _lightweight_storage_probe(backend)
+                if lightweight_status is not None:
+                    _status = lightweight_status
+                else:
+                    _status = "disabled"
+        except Exception:  # RZ-22-01-JUSTIFIED: health probe — storage probe returns "error" on any failure (reviewed TD-27-04)
+            _status = "error"
+
+        elapsed = time.perf_counter() - start
+        latency_seconds = max(elapsed, 0.0)
+        status_value = _status or "unknown"
+        configured_interval = max(
+            float(
+                getattr(settings, "health_storage_probe_min_interval_seconds", 0.0)
+                or 0.0
+            ),
+            0.0,
+        )
+        cache_ttl = (
+            _STORAGE_PROBE_FAILURE_TTL_SECONDS
+            if status_value == "error"
+            else min(configured_interval, _STORAGE_PROBE_SUCCESS_TTL_MAX_SECONDS)
+        )
+        _storage_probe_cache.update(
+            {
+                "expires_at": time.monotonic() + cache_ttl,
+                "status": status_value,
+                "latency": latency_seconds,
+            }
+        )
+        _storage_probe_generation += 1
+        _storage_probe_last_result = (
+            _storage_probe_generation,
+            status_value,
+            latency_seconds,
+        )
+        return status_value, latency_seconds
 
 
 @router.get("/health/live", summary="Liveness Probe")
@@ -166,9 +243,12 @@ async def healthz(
 ) -> JSONResponse:
     now = time.monotonic()
     if _health_cache["expires_at"] > now:
+        cached_payload = _health_cache["payload"]
+        if brief:
+            cached_payload = _brief_health_payload(cached_payload)
         return JSONResponse(
             status_code=_health_cache["status_code"],
-            content=_health_cache["payload"],
+            content=cached_payload,
         )
 
     # PERF-22-02 (audit 2026-03-25 Wave 22): Per-subsystem timeout (5 s) so a
@@ -244,15 +324,28 @@ async def healthz(
         async with asyncio.timeout(_PROBE_TIMEOUT_SECONDS):  # PERF-22-02
             cache_backend = get_cache()
             if getattr(cache_backend, "enabled", False):
+                # Probe the authoritative layer when a cache exposes one (for
+                # example TieredCache.l2); an L1 hit cannot prove Redis is up.
+                cache_probe_backend: Any = cache_backend
+                shared_layer = getattr(cache_backend, "l2", None)
+                if isinstance(shared_layer, BaseCache):
+                    cache_probe_backend = shared_layer
+
                 probe_key = f"healthz:{uuid.uuid4().hex}"
+                probe_payload = {"status": "ok", "nonce": uuid.uuid4().hex}
                 try:
-                    await cache_backend.set(probe_key, {"status": "ok"}, ttl=5)
-                    cache_status = "ok"
-                except Exception:  # RZ-22-01-JUSTIFIED: health probe — cache set probe returns "error" (reviewed TD-27-04)
+                    await cache_probe_backend.set(probe_key, probe_payload, ttl=5)
+                    readback = await cache_probe_backend.get(probe_key)
+                    cache_status = (
+                        "ok"
+                        if readback is not None and readback.payload == probe_payload
+                        else "error"
+                    )
+                except Exception:  # RZ-22-01-JUSTIFIED: health probe — cache write/readback returns "error" (reviewed TD-27-04)
                     cache_status = "error"
                 finally:
                     try:
-                        await cache_backend.invalidate(probe_key)
+                        await cache_probe_backend.invalidate(probe_key)
                     except Exception:  # RZ-22-01-JUSTIFIED: health probe — cache invalidate probe returns "error" (reviewed TD-27-04)
                         cache_status = "error"
             else:
@@ -332,22 +425,10 @@ async def healthz(
     )
 
     if brief:
-        # LOW-W19: brief mode omits migration version sets, latency details, and
-        # pool internals to avoid exposing infrastructure information to external
-        # callers.  Only the top-level component statuses and overall status are
-        # returned.
-        _BRIEF_OMIT_KEYS = frozenset(
-            {
-                "db_migrations_current",
-                "db_migrations_expected",
-                "pool",
-            }
-            | {k for k in full_payload if k.endswith("_latency_ms")}
+        return JSONResponse(
+            status_code=http_status,
+            content=_brief_health_payload(full_payload),
         )
-        brief_payload = {
-            k: v for k, v in full_payload.items() if k not in _BRIEF_OMIT_KEYS
-        }
-        return JSONResponse(status_code=http_status, content=brief_payload)
 
     return JSONResponse(status_code=http_status, content=full_payload)
 

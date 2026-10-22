@@ -9,6 +9,14 @@ describe("TrendChip", () => {
     expect(container).toBeEmptyDOMElement()
   })
 
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "does not display a non-finite trend %s",
+    (value) => {
+      const { container } = render(<TrendChip value={value} />)
+      expect(container).toBeEmptyDOMElement()
+    }
+  )
+
   it.each([
     [2.5, "+2.5%"],
     [0, "0.0%"],

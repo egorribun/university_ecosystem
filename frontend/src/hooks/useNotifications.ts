@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useRef } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query"
 
 import { logWarning } from "@/app/logger"
 import { resolveNotificationAppPath } from "@/notifications/contract"
+import { getCurrentPushUserId } from "@/push/pushMessageBus"
 import {
   clearNotifications as clearNotificationsRequest,
   fetchNotificationsList,
@@ -26,6 +32,30 @@ type NormalizedNotificationsResponse = {
 
 const NOTIFICATIONS_QUERY_KEY = ["notifications", "list"] as const
 
+type NotificationPages = InfiniteData<NormalizedNotificationsResponse, string | undefined>
+
+// Keeps the first occurrence: a later page can repeat an item after new arrivals shift the pages.
+const uniqueById = (items: NotificationItem[]) => {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false
+    seen.add(item.id)
+    return true
+  })
+}
+
+// One list for the bell: the unread count and paging state come from the last loaded page,
+// which is the freshest response.
+function flattenNotificationPages(data: NotificationPages): NormalizedNotificationsResponse {
+  const last = data.pages.at(-1)
+  return {
+    items: uniqueById(data.pages.flatMap((page) => page.items)),
+    unread: last?.unread ?? 0,
+    hasMore: last?.hasMore ?? false,
+    nextCursor: last?.nextCursor ?? null,
+  }
+}
+
 export function useNotifications() {
   const qc = useQueryClient()
   const seenLiveNotificationIds = useRef(new Set<string>())
@@ -38,12 +68,20 @@ export function useNotifications() {
     hasMore: data.has_more,
     nextCursor: data.next_cursor ?? null,
   })
-  const list = useQuery<NormalizedNotificationsResponse>({
+  // Paged list: every refetch (mutation, interval) replays the loaded pages, so
+  // history that was paged in stays visible and its read state stays current.
+  const list = useInfiniteQuery({
     queryKey: NOTIFICATIONS_QUERY_KEY,
-    queryFn: async () => {
-      const data = await fetchNotificationsList()
+    queryFn: async ({ pageParam }) => {
+      const data = pageParam
+        ? await fetchNotificationsList({ cursor: pageParam })
+        : await fetchNotificationsList()
       return normalize(data)
     },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
+    select: flattenNotificationPages,
     refetchInterval: 60000,
     refetchIntervalInBackground: false,
     staleTime: 30000,
@@ -61,8 +99,18 @@ export function useNotifications() {
     if (typeof navigator === "undefined" || !navigator.serviceWorker) return
     const handlePushMessage = (event: MessageEvent<unknown>) => {
       if (!event.data || typeof event.data !== "object") return
-      const message = event.data as { type?: unknown; notificationId?: unknown }
-      if (message.type !== "PUSH_NOTIFICATION" || typeof message.notificationId !== "string") {
+      const message = event.data as {
+        type?: unknown
+        notificationId?: unknown
+        recipientUserId?: unknown
+      }
+      if (
+        message.type !== "PUSH_NOTIFICATION" ||
+        typeof message.notificationId !== "string" ||
+        typeof message.recipientUserId !== "string" ||
+        message.recipientUserId.length === 0 ||
+        message.recipientUserId !== getCurrentPushUserId()
+      ) {
         return
       }
       const notificationId = message.notificationId.trim()
@@ -95,50 +143,15 @@ export function useNotifications() {
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   })
-  const {
-    mutateAsync: fetchMoreMutateAsync,
-    isPending: isFetchingMore,
-    isError: isFetchMoreError,
-    error: fetchMoreError,
-  } = useMutation<NormalizedNotificationsResponse, unknown, string>({
-    mutationFn: async (cursor: string) => {
-      const data = await fetchNotificationsList({ cursor })
-      return normalize(data)
-    },
-    onSuccess: (nextPage) => {
-      qc.setQueryData<NormalizedNotificationsResponse | undefined>(
-        NOTIFICATIONS_QUERY_KEY,
-        (current) => {
-          if (!current) {
-            return nextPage
-          }
-
-          const existingIds = new Set(current.items.map((item) => item.id))
-          const mergedItems = [...current.items]
-          for (const item of nextPage.items) {
-            if (!existingIds.has(item.id)) {
-              mergedItems.push(item)
-            }
-          }
-
-          return {
-            items: mergedItems,
-            unread: nextPage.unread,
-            hasMore: nextPage.hasMore,
-            nextCursor: nextPage.nextCursor,
-          }
-        }
-      )
-    },
-  })
+  const fetchNextPage = list.fetchNextPage
   const fetchMore = useCallback(
     async (cursor?: string | null) => {
       if (!cursor) {
         return
       }
-      await fetchMoreMutateAsync(cursor)
+      await fetchNextPage()
     },
-    [fetchMoreMutateAsync]
+    [fetchNextPage]
   )
   return {
     data: list.data?.items ?? [],
@@ -156,8 +169,8 @@ export function useNotifications() {
     isMarkingAll: markAll.isPending,
     isClearing: clearAll.isPending,
     fetchMore,
-    isFetchingMore,
-    isFetchMoreError,
-    fetchMoreError,
+    isFetchingMore: list.isFetchingNextPage,
+    isFetchMoreError: list.isFetchNextPageError,
+    fetchMoreError: list.isFetchNextPageError ? list.error : null,
   }
 }

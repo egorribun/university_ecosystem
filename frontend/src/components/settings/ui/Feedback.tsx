@@ -112,7 +112,7 @@ export function Avatar({
 }
 
 export function Skeleton({
-  variant = "rectangular",
+  variant,
   width,
   height,
   className = "",
@@ -195,7 +195,7 @@ export function Snackbar({
   return (
     <div
       className={cn(
-        "fixed pointer-events-none z-toast",
+        "fixed pointer-events-none [&>*]:pointer-events-auto z-toast",
         positionClasses,
         horizontalClasses,
         className

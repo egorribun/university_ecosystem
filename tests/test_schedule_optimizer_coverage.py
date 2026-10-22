@@ -370,3 +370,49 @@ async def test_to_rust_item_other_id_type(optimizer_service) -> None:
     )
     rust_item = optimizer_service._to_rust_item(item)
     assert rust_item.id is None
+
+
+def test_optimizer_matches_repository_utc_normalization(optimizer_service):
+    from datetime import timedelta, timezone
+
+    item = ScheduleItemInternal(
+        weekday="Monday",
+        start_time=datetime(2026, 9, 28, 9, tzinfo=timezone(timedelta(hours=3))),
+        end_time=datetime(2026, 9, 28, 10, tzinfo=timezone(timedelta(hours=3))),
+        parity="both",
+    )
+    native = optimizer_service._to_rust_item(item)
+    assert native.start_time % 86400 == 6 * 3600
+    assert native.end_time % 86400 == 7 * 3600
+
+
+@pytest.mark.asyncio
+async def test_offset_schedule_persistence_cannot_hide_duplicate_conflicts(
+    db_session, optimizer_service
+):
+    from datetime import timedelta, timezone
+
+    from app import models
+    from app.repositories.schedule_repository import ScheduleRepository
+    from app.schemas.schedule import ScheduleCreate
+
+    group = models.Group(name="Offset normalization regression")
+    db_session.add(group)
+    await db_session.flush()
+    submitted = ScheduleCreate(
+        group_id=group.id,
+        subject="Time boundaries",
+        weekday="monday",
+        start_time=datetime(2026, 9, 28, 9, tzinfo=timezone(timedelta(hours=3))),
+        end_time=datetime(2026, 9, 28, 10, tzinfo=timezone(timedelta(hours=3))),
+    )
+    repository = ScheduleRepository(db_session)
+    created = await repository.create(submitted)
+    await db_session.commit()
+    stored = await repository.get(created.id)
+    assert stored is not None
+    target = ScheduleItemInternal.model_validate(submitted.model_dump())
+    existing = ScheduleItemInternal.model_validate(stored.model_dump())
+    conflicts = await optimizer_service.detect_conflicts(target, [existing])
+    assert len(conflicts) == 1
+    assert conflicts[0].id == created.id

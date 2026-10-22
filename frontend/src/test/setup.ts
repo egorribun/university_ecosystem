@@ -1,6 +1,8 @@
-import { afterEach, beforeAll, vi } from "vitest"
+import { afterEach, beforeAll, expect, vi } from "vitest"
+import * as jestDomMatchers from "@testing-library/jest-dom/matchers"
 import { cleanup } from "@testing-library/react"
-import "@testing-library/jest-dom/vitest"
+
+expect.extend(jestDomMatchers)
 
 const mockPlainText = vi.hoisted(() => (html: string | null | undefined): string => {
   let output = ""

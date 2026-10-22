@@ -35,7 +35,7 @@ on:
         required: false
         type: string
       canonical_frontend:
-        description: "Build the one staging-certified promotable frontend variant"
+        description: "Build the canonical frontend image for the release source"
         required: false
         default: false
         type: boolean
@@ -116,10 +116,10 @@ jobs:
 
       - name: Install checksum-pinned Trivy
         env:
-          TRIVY_VERSION: 0.73.0
+          TRIVY_VERSION: 0.75.0
           # Official immutable GitHub release asset digest for
-          # trivy_0.73.0_Linux-64bit.tar.gz.
-          TRIVY_ARCHIVE_SHA256: 2edd39da482bb4e9831962487b68f68e3928ec3137794757f54d00383d79547b # pragma: allowlist secret -- official public release checksum
+          # trivy_0.75.0_Linux-64bit.tar.gz.
+          TRIVY_ARCHIVE_SHA256: c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f
         run: |
           set -euo pipefail
           [[ "$TRIVY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
@@ -157,8 +157,8 @@ jobs:
           build-args: |
             ${{ inputs.build_args }}
             ${{ inputs.canonical_frontend && format('VITE_APP_RELEASE={0}', inputs.source-sha) || '' }}
-            ${{ inputs.canonical_frontend && 'VITE_ENABLE_WEB_VITALS=true' || '' }}
-            ${{ inputs.canonical_frontend && 'VITE_CWV_TRUSTED_RUM=true' || '' }}
+            ${{ inputs.canonical_frontend && 'VITE_ENABLE_WEB_VITALS=false' || '' }}
+            ${{ inputs.canonical_frontend && 'VITE_CWV_TRUSTED_RUM=false' || '' }}
             ${{ inputs.canonical_frontend && 'VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv' || '' }}
           target: ${{ inputs.target }}
           # Keep each image's BuildKit cache isolated while allowing repeat
@@ -173,6 +173,7 @@ jobs:
       - name: Scan local image before registry access (Trivy)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.75.0
           image-ref: ${{ steps.references.outputs.local_ref }}
           format: sarif
           output: trivy.sarif
@@ -333,7 +334,7 @@ jobs:
                   "artifact_name": artifact_name,
               },
               "verification": {
-                  "trivy_version": "0.73.0",
+                  "trivy_version": "0.75.0",
                   "sbom_format": "cyclonedx-json",
                   "signature": "cosign-keyless",
                   "attestation": "github-build-provenance",

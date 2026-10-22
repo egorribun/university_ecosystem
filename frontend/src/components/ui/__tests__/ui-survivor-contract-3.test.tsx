@@ -270,7 +270,7 @@ describe("table primitive mutation contracts", () => {
 })
 
 describe("SEO and news boundary contracts", () => {
-  it("renders complete metadata when optional values exist and omits it otherwise", () => {
+  it("renders complete metadata and replaces optional values with localized defaults", () => {
     const { rerender } = render(
       <SEO
         title="Article"
@@ -320,11 +320,36 @@ describe("SEO and news boundary contracts", () => {
 
     rerender(<SEO title="Home" />)
     expect(document.title).toBe("Home | University Ecosystem")
-    expect(document.querySelector('meta[name="description"]')).not.toBeInTheDocument()
-    expect(document.querySelector('meta[property="og:description"]')).not.toBeInTheDocument()
-    expect(document.querySelector('meta[property="og:image"]')).not.toBeInTheDocument()
-    expect(document.querySelector('meta[name="twitter:description"]')).not.toBeInTheDocument()
-    expect(document.querySelector('meta[name="twitter:image"]')).not.toBeInTheDocument()
+    expect(document.querySelectorAll('meta[name="title"]')).toHaveLength(1)
+    expect(document.querySelector('meta[name="title"]')).toHaveAttribute(
+      "content",
+      "Home | University Ecosystem"
+    )
+    expect(document.querySelectorAll('meta[name="description"]')).toHaveLength(1)
+    expect(document.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      "Everything you need—profile, schedule, news, and campus events—in one place."
+    )
+    expect(document.querySelectorAll('meta[property="og:description"]')).toHaveLength(1)
+    expect(document.querySelector('meta[property="og:description"]')).toHaveAttribute(
+      "content",
+      "Your personal account: profile, schedule, news, and campus events."
+    )
+    expect(document.querySelectorAll('meta[property="og:image"]')).toHaveLength(1)
+    expect(document.querySelector('meta[property="og:image"]')).toHaveAttribute(
+      "content",
+      "/og-image.png"
+    )
+    expect(document.querySelectorAll('meta[name="twitter:description"]')).toHaveLength(1)
+    expect(document.querySelector('meta[name="twitter:description"]')).toHaveAttribute(
+      "content",
+      "Your personal account: profile, schedule, news, and campus events."
+    )
+    expect(document.querySelectorAll('meta[name="twitter:image"]')).toHaveLength(1)
+    expect(document.querySelector('meta[name="twitter:image"]')).toHaveAttribute(
+      "content",
+      "/og-image.png"
+    )
     expect(document.querySelector('meta[property="og:type"]')).toHaveAttribute("content", "website")
   })
 

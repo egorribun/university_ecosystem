@@ -4,7 +4,7 @@ import re
 from typing import Final
 
 # Central API semantic version. Update intentionally following semver.
-API_VERSION: Final[str] = "1.0.0"
+API_VERSION: Final[str] = "1.1.1"
 # Default versioned prefix for HTTP routes.
 API_V1_PREFIX: Final[str] = "/api/v1"
 

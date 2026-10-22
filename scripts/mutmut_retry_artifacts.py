@@ -39,8 +39,8 @@ STATS_ARTIFACT = "mutmut-stats"
 UNIVERSE_ARTIFACT = "mutmut-universe"
 GENERATION_ARTIFACT = "mutmut-generation"
 HELM_DEPENDENCY_ARCHIVES = (
-    "redis-20.13.4.tgz",
-    "nats-8.5.4.tgz",
+    "redis-0.1.0.tgz",
+    "nats-2.15.0.tgz",
 )
 HELM_DEPENDENCY_PATHS = tuple(
     f"charts/university-ecosystem/charts/{archive}"

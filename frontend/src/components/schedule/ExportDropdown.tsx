@@ -2,7 +2,7 @@
  * ExportDropdown — Multi-format export menu for schedule.
  * Wave 66 (Idea #9). Supports PDF, PNG, Google Calendar.
  */
-import { useState, useCallback, useRef, useEffect } from "react"
+import { useState, useCallback, useRef, useEffect, useId } from "react"
 import { useTranslation } from "react-i18next"
 import { AnimatePresence, m } from "framer-motion"
 import { Download, ChevronDown, FileText, Image, FileDown } from "lucide-react"
@@ -14,6 +14,8 @@ interface ExportDropdownProps {
   /** Ref to the grid element for canvas-based export */
   gridRef?: React.RefObject<HTMLElement | null>
   className?: string
+  googleCalendarUrl?: string | null
+  googleCalendarDisabledReason?: string
 }
 
 export function getExportMenuNextIndex(
@@ -61,11 +63,20 @@ export function getExportMenuMotion() {
   }
 }
 
-export function ExportDropdown({ isExporting, gridRef, className }: ExportDropdownProps) {
+export function ExportDropdown({
+  isExporting,
+  gridRef,
+  className,
+  googleCalendarUrl,
+  googleCalendarDisabledReason,
+}: ExportDropdownProps) {
   const { t } = useTranslation(["schedule"])
   const [open, setOpen] = useState(false)
   const [exporting, setExporting] = useState<string | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const googleCalendarReasonId = useId()
+  const googleCalendarReason =
+    googleCalendarDisabledReason ?? t("schedule:export.googleCalendarUnavailable")
 
   // Close on outside click
   useEffect(() => {
@@ -164,10 +175,12 @@ export function ExportDropdown({ isExporting, gridRef, className }: ExportDropdo
       icon: FileDown,
       label: t("schedule:export.googleCalendar"),
       onClick: () => {
-        // Opens Google Calendar with first lesson — user can adjust
-        window.open("https://calendar.google.com/calendar/r/week", "_blank", "noopener")
+        if (!googleCalendarUrl) return
+        // Prepare a draft for the first eligible lesson of the filtered selected week.
+        window.open(googleCalendarUrl, "_blank", "noopener")
         setOpen(false)
       },
+      disabled: !googleCalendarUrl,
     },
   ]
 
@@ -202,6 +215,10 @@ export function ExportDropdown({ isExporting, gridRef, className }: ExportDropdo
                 type="button"
                 role="menuitem"
                 data-export-format={id}
+                aria-describedby={
+                  id === "gcal" && !googleCalendarUrl ? googleCalendarReasonId : undefined
+                }
+                title={id === "gcal" && !googleCalendarUrl ? googleCalendarReason : undefined}
                 disabled={disabled || exporting === id}
                 onClick={onClick}
                 className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-text-primary transition-colors hover:bg-surface-elevated/(--opacity-dim) disabled:opacity-40 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-brand"
@@ -217,6 +234,11 @@ export function ExportDropdown({ isExporting, gridRef, className }: ExportDropdo
           </m.div>
         )}
       </AnimatePresence>
+      {open && !googleCalendarUrl && (
+        <p id={googleCalendarReasonId} className="sr-only">
+          {googleCalendarReason}
+        </p>
+      )}
     </div>
   )
 }

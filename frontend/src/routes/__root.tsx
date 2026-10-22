@@ -3,10 +3,13 @@ import {
   HeadContent,
   Outlet,
   Scripts,
+  useHydrated,
+  useRouterState,
   useRouteContext,
 } from "@tanstack/react-router"
 import type { RouterContext } from "@/router"
 import { MainLayout } from "@/components/layout/MainLayout"
+import { SeoReadinessProvider, usePageSeoReady } from "@/components/ui/SEO"
 import { DeferredGlobalOverlays } from "@/components/layout/DeferredGlobalOverlays"
 import { BrandBootLoader } from "@/components/feedback/BrandBootLoader"
 import { BRAND_BOOT_LOADER_CSS } from "@/components/feedback/brandBootLoaderCss"
@@ -21,55 +24,33 @@ import { QueryClientProvider } from "@tanstack/react-query"
 // browser-only, so server CANNOT use PersistQueryClientProvider regardless.
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client"
 import { queryClient, persistOptions } from "@/app/queryClient"
+import { fetchCampusTimezone } from "@/api/hooks/campusConfig"
+import { CampusTimezoneProvider } from "@/contexts/CampusTimezoneContext"
+import { createTrustedScriptURL } from "@/utils/trustedTypes"
+import i18n from "@/i18n/config"
 
-// Wave 125 Phase 2 — pre-paint inline scripts. These run in the document
-// scaffold BEFORE any React code or bundle JS evaluates, so they avoid
-// FOUC: theme is set as `<html class="dark">` synchronously, language
-// is read from localStorage and applied to `<html lang>` + a global
-// hint, and the static-shell-i18n module applies meta translations
-// without waiting for the React tree.
-//
-// Pre-W125 these lived inline in `frontend/index.html`. With TanStack
-// Start v1 SPA mode the React tree generates the HTML scaffold via
-// `shellComponent` (see RootShell below), so we move the bodies here
-// as `dangerouslySetInnerHTML` strings on `head: { scripts }` route
-// metadata. Browser executes them at parse time exactly like before.
-const THEME_INIT_SCRIPT = `;(function () {
-  // 1. Theme Initialization
-  var s = null
-  try { s = localStorage.getItem("ue-mode") } catch (e) {}
-  var m = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
-  var dark = s ? s === "dark" : m
-  var html = document.documentElement
-  if (dark) html.classList.add("dark")
-
-  // 2. Language Detection — MUST match SSR's extractLangFromRequest (ssrTheme.ts:resolveLang)
-  // which reads the "ue:language" cookie and defaults to "ru". Prefer that
-  // cookie before the localStorage mirror so the pre-paint and SSR languages
-  // remain identical even when one browser storage was manually cleared.
-  var lang = "ru"
-  try {
-    var cookieMatch = document.cookie.match(/(?:^|;\\s*)ue:language=(ru|en)(?:;|$)/)
-    if (cookieMatch) {
-      lang = cookieMatch[1]
-    } else {
-      var storedLang = localStorage.getItem("ue:language")
-      if (storedLang === "en" || storedLang === "ru") {
-      lang = storedLang
-      }
-    }
-  } catch (error) {}
-  html.setAttribute("lang", lang)
-  window.__UE_SELECTED_LANG__ = lang
-
-  // 3. Static Shell Hooks
-  import("/static-shell-i18n.js")
-    .then(function (mod) {
-      mod.applyDocumentLanguage(document, lang)
-      mod.applyMetaTranslations(document, lang)
-    })
-    .catch(function () {})
-})()`
+// React's TypeScript DOM props accept only strings for `src`, while the
+// installed React DOM runtime forwards this value unchanged to setAttribute.
+// Keep the TrustedScriptURL brand produced by the existing origin-restricted
+// app policy at that sink. During hydration, reuse the exact server URL so the
+// document markup remains stable; static shells are mounted with createRoot
+// and may resolve their relative build-time URL against the current origin.
+const getThemeInitScriptSrc = (): string => {
+  const existingSrc =
+    typeof document === "undefined"
+      ? undefined
+      : (document.getElementById("theme-init-script")?.getAttribute("src") ?? undefined)
+  const baseUrl =
+    typeof window === "undefined" ? globalThis.__ssrOriginGetter__?.() : window.location.href
+  const src = existingSrc
+    ? baseUrl
+      ? new URL(existingSrc, baseUrl).toString()
+      : existingSrc
+    : baseUrl
+      ? new URL("/theme-init.js", baseUrl).toString()
+      : "/theme-init.js"
+  return createTrustedScriptURL(src) as unknown as string
+}
 
 // Inline CSS that ran in <head> via index.html — preserved verbatim so
 // the initial paint background + visibility behavior matches pre-W125.
@@ -202,74 +183,149 @@ const LHCI_STATIC_EFFECTS_CSS = `/* data-lhci-static-effects */
   animation: none !important;
 }`
 
+function getRootLanguage(): string {
+  const ssrLang = globalThis.__ssrLangGetter__?.()
+  const browserLang = typeof window === "undefined" ? undefined : window.__UE_SELECTED_LANG__
+  const selectedBrowserLang = browserLang === "ru" || browserLang === "en" ? browserLang : undefined
+  const documentLang =
+    typeof document !== "undefined" &&
+    (document.documentElement.lang === "ru" || document.documentElement.lang === "en")
+      ? document.documentElement.lang
+      : undefined
+  return ssrLang ?? selectedBrowserLang ?? documentLang ?? "ru"
+}
+
+function getRootMetadataText(
+  rootMetadataKey:
+    "navigation:brandName" | "navigation:brandDescription" | "navigation:socialDescription"
+): string {
+  const language = getRootLanguage()
+  const requestI18n = globalThis.__ssrI18nGetter__?.()
+  return (requestI18n ?? i18n).t(rootMetadataKey, { lng: language })
+}
+
+const PAGE_SEO_ROUTE_IDS: ReadonlySet<string> = new Set([
+  "/_auth/activity",
+  "/_auth/dashboard",
+  "/_auth/events/",
+  "/_auth/events/$id",
+  "/_auth/news/",
+  "/_auth/news/$id",
+  "/_auth/profile",
+  "/_auth/schedule",
+])
+const ACTIVITY_ROUTE_ID = "/_auth/activity"
+
 export const Route = createRootRouteWithContext<RouterContext>()({
   // Keep SSR enabled at the root so public and data routes receive a complete
   // TanStack Start manifest. Child auth/admin layouts may opt down to client
   // rendering, but disabling SSR here can leave <StartClient /> in an empty
   // pending state and reintroduce hydration failures.
   ssr: true,
-  // <HeadContent /> injects this metadata during SSR and on the client.
+  // <HeadContent /> injects route-managed metadata during SSR and on the
+  // client. Page SEO is React-hoisted from the rendered page component, so the
+  // root's overlapping defaults are emitted only when no page SEO is present.
+  // Activity is data-only on the server, so ActivityRootSeoFallback owns its
+  // localized first-render metadata until the Activity page hydrates.
   // Critical font preload remains a post-build responsibility of the
   // withFontPreload() Vite plugin.
-  head: () => ({
-    meta: [
-      { charSet: "UTF-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
-      { name: "color-scheme", content: "light dark" },
-      { name: "theme-color", media: "(prefers-color-scheme: light)", content: "#f8fafc" },
-      { name: "theme-color", media: "(prefers-color-scheme: dark)", content: "#020617" },
-      {
-        name: "description",
-        content:
-          "Всё необходимое — профиль, расписание, новости и события кампуса — в одном месте.",
-      },
-      { property: "og:type", content: "website" },
-      { property: "og:title", content: "Экосистема ГУУ" },
-      {
-        property: "og:description",
-        content: "Личный кабинет: профиль, расписание, новости и события кампуса.",
-      },
-      { property: "og:url", content: "/" },
-      { property: "og:image", content: "/og-image.png" },
-      { property: "og:locale", content: "ru_RU" },
-      { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "Экосистема ГУУ" },
-      {
-        name: "twitter:description",
-        content: "Личный кабинет: профиль, расписание, новости и события кампуса.",
-      },
-      { name: "twitter:image", content: "/og-image.png" },
-      { name: "google-site-verification", content: "not-applicable" },
-      { name: "mobile-web-app-capable", content: "yes" },
-      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
-      { title: "Экосистема ГУУ" },
-    ],
-    links: [
-      { rel: "icon", href: "/favicon.ico", sizes: "any" },
-      { rel: "icon", type: "image/png", sizes: "32x32", href: "/favicon-32x32.png" },
-      { rel: "icon", type: "image/png", sizes: "16x16", href: "/favicon-16x16.png" },
-      { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
-      {
-        rel: "manifest",
-        href: "/manifest.webmanifest",
-        crossOrigin: "use-credentials",
-      },
-      // Wave 117 SW5 — preconnect + dns-prefetch to picsum.photos
-      // (placeholder image CDN used by NewsCard + EventCard heroes).
-      // Saves ~150-300ms on mobile 3G LCP.
-      { rel: "preconnect", href: "https://picsum.photos", crossOrigin: "" },
-      { rel: "dns-prefetch", href: "https://picsum.photos" },
-    ],
-    scripts: [
-      // Pre-paint theme + language detection — runs synchronously
-      // before bundle parses so users never see light-flash before
-      // dark theme kicks in (or vice versa).
-      { children: THEME_INIT_SCRIPT },
-    ],
-  }),
+  head: ({ matches = [] }) => {
+    const hasPageSeo = matches.some(
+      (match) => PAGE_SEO_ROUTE_IDS.has(match.routeId.toString()) && match.status === "success"
+    )
+    const includeRootSeo = !hasPageSeo
+
+    return {
+      meta: [
+        { charSet: "UTF-8" },
+        { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
+        { name: "color-scheme", content: "light dark" },
+        { name: "theme-color", media: "(prefers-color-scheme: light)", content: "#f8fafc" },
+        { name: "theme-color", media: "(prefers-color-scheme: dark)", content: "#020617" },
+        ...(includeRootSeo
+          ? [
+              { name: "description", content: getRootMetadataText("navigation:brandDescription") },
+              { property: "og:type", content: "website" },
+              { property: "og:title", content: getRootMetadataText("navigation:brandName") },
+              {
+                property: "og:description",
+                content: getRootMetadataText("navigation:socialDescription"),
+              },
+            ]
+          : []),
+        { property: "og:url", content: "/" },
+        ...(includeRootSeo ? [{ property: "og:image", content: "/og-image.png" }] : []),
+        { property: "og:locale", content: getRootLanguage() === "en" ? "en_US" : "ru_RU" },
+        ...(includeRootSeo
+          ? [
+              { name: "twitter:card", content: "summary_large_image" },
+              { name: "twitter:title", content: getRootMetadataText("navigation:brandName") },
+              {
+                name: "twitter:description",
+                content: getRootMetadataText("navigation:socialDescription"),
+              },
+              { name: "twitter:image", content: "/og-image.png" },
+            ]
+          : []),
+        { name: "google-site-verification", content: "not-applicable" },
+        { name: "mobile-web-app-capable", content: "yes" },
+        { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+        ...(includeRootSeo ? [{ title: getRootMetadataText("navigation:brandName") }] : []),
+      ],
+      links: [
+        { rel: "icon", href: "/favicon.ico", sizes: "any" },
+        { rel: "icon", type: "image/png", sizes: "32x32", href: "/favicon-32x32.png" },
+        { rel: "icon", type: "image/png", sizes: "16x16", href: "/favicon-16x16.png" },
+        { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
+        {
+          rel: "manifest",
+          href: "/manifest.webmanifest",
+          crossOrigin: "use-credentials",
+        },
+        // Wave 117 SW5 — preconnect + dns-prefetch to picsum.photos
+        // (placeholder image CDN used by NewsCard + EventCard heroes).
+        // Saves ~150-300ms on mobile 3G LCP.
+        { rel: "preconnect", href: "https://picsum.photos", crossOrigin: "" },
+        { rel: "dns-prefetch", href: "https://picsum.photos" },
+      ],
+    }
+  },
   shellComponent: RootShell,
+  loader: async () => ({ campusTimezone: await fetchCampusTimezone() }),
   component: RootComponent,
 })
+
+export function ActivityRootSeoFallback() {
+  const isHydrated = useHydrated()
+  const hasPageSeo = usePageSeoReady()
+  const isSuccessfulActivityRoute = useRouterState({
+    select: (state) =>
+      state.matches.some(
+        (match) => match.routeId.toString() === ACTIVITY_ROUTE_ID && match.status === "success"
+      ),
+  })
+
+  if (!isSuccessfulActivityRoute || (isHydrated && hasPageSeo)) return null
+
+  const brandName = getRootMetadataText("navigation:brandName")
+  const brandDescription = getRootMetadataText("navigation:brandDescription")
+  const socialDescription = getRootMetadataText("navigation:socialDescription")
+
+  return (
+    <>
+      <title>{brandName}</title>
+      <meta name="description" content={brandDescription} />
+      <meta property="og:type" content="website" />
+      <meta property="og:title" content={brandName} />
+      <meta property="og:description" content={socialDescription} />
+      <meta property="og:image" content="/og-image.png" />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content={brandName} />
+      <meta name="twitter:description" content={socialDescription} />
+      <meta name="twitter:image" content="/og-image.png" />
+    </>
+  )
+}
 
 function RootShell({ children }: { children: React.ReactNode }) {
   // Wave 125 Phase 2 — minimal SSR-rendered HTML scaffold.
@@ -279,13 +335,14 @@ function RootShell({ children }: { children: React.ReactNode }) {
   // returning users see SSR-rendered HTML matching their pre-paint state —
   // no more hardcoded `<html lang="ru">` mismatch on dark-mode + English.
   //
-  // On the client, RootShell only runs during SSR — client hydration reuses
-  // the server-emitted `<html>` and never re-executes RootShell, so the
-  // getters being undefined client-side is irrelevant.
+  // Static SPA fallbacks already executed their parser-loaded theme and
+  // bundle scripts before createRoot(document). React 19 creates script nodes
+  // through an HTML parsing sink, which strict Trusted Types rejects. Keep those
+  // tags in SSR/hydration, but omit their recreation in the static document mount.
   //
   // `suppressHydrationWarning` on `<html>` is defense-in-depth for edge
   // cases the server cannot detect:
-  //   - New users with no cookie but system-pref dark: THEME_INIT_SCRIPT
+  //   - New users with no cookie but system-pref dark: theme-init.js
   //     mutates `<html class="dark">` after parse, before React hydrates
   //   - Browsers that block cookies but allow localStorage
   // React 19 skips the hydration comparison on `<html>` only (not children).
@@ -296,10 +353,22 @@ function RootShell({ children }: { children: React.ReactNode }) {
   // links produced by Vite + tanstackStart.
   const ssrTheme = globalThis.__ssrThemeGetter__?.()
   const ssrAuth = globalThis.__ssrAuthGetter__?.()
-  const ssrLang = globalThis.__ssrLangGetter__?.()
-  const isDark = ssrTheme === "dark"
+  const ssrNonce =
+    globalThis.__ssrNonceGetter__?.() ??
+    (typeof document !== "undefined"
+      ? document.querySelector<HTMLMetaElement>('meta[property="csp-nonce"]')?.content
+      : undefined)
+  const isStaticSpaDocumentMount =
+    typeof window !== "undefined" &&
+    Reflect.get(window, "__UE_STATIC_SPA_DOCUMENT_MOUNT__") === true
+  const themeInitScriptSrc = isStaticSpaDocumentMount ? undefined : getThemeInitScriptSrc()
+  // On a client document mount, keep the attributes already selected by the
+  // parser-run pre-paint asset. Hydration continues to prefer the request locale.
+  const browserIsDark =
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+  const isDark = ssrTheme === undefined ? browserIsDark : ssrTheme === "dark"
   const isLhci = import.meta.env.VITE_LHCI === "true"
-  const lang = ssrLang ?? "ru"
+  const lang = getRootLanguage()
   // The server-rendered tree uses a role-only auth stub so authenticated
   // routes can paint immediately. Preserve that same fact in the document
   // shell for the first browser render; the client consumes this marker and
@@ -319,19 +388,27 @@ function RootShell({ children }: { children: React.ReactNode }) {
     [isDark && "dark", isLhci && "lhci-mode"].filter(Boolean).join(" ") || undefined
 
   return (
-    <html lang={lang} className={htmlClassName} suppressHydrationWarning>
-      <head>
-        <HeadContent />
-        {isLhci ? (
-          <style
-            id="lhci-static-effects"
-            data-lhci-static-effects=""
-            dangerouslySetInnerHTML={{ __html: LHCI_STATIC_EFFECTS_CSS }}
-          />
-        ) : null}
-        <style dangerouslySetInnerHTML={{ __html: CRITICAL_SHELL_CSS }} />
-      </head>
-      {/*
+    <SeoReadinessProvider>
+      <html lang={lang} className={htmlClassName} suppressHydrationWarning>
+        <head>
+          <HeadContent />
+          <ActivityRootSeoFallback />
+          {themeInitScriptSrc === undefined ? null : (
+            <script
+              id="theme-init-script"
+              src={themeInitScriptSrc}
+              nonce={ssrNonce}
+              suppressHydrationWarning
+            />
+          )}
+          {isLhci ? (
+            <style id="lhci-static-effects" data-lhci-static-effects="">
+              {LHCI_STATIC_EFFECTS_CSS}
+            </style>
+          ) : null}
+          <style>{CRITICAL_SHELL_CSS}</style>
+        </head>
+        {/*
         W156 SW3 polish — `suppressHydrationWarning` on <body> because browser
         extensions (LastPass / 1Password / Microsoft Bing Copilot / Grammarly /
         etc.) inject attributes like `__processed_<uuid>__="true"` and
@@ -346,27 +423,27 @@ function RootShell({ children }: { children: React.ReactNode }) {
         hydration checks); it's the canonical React 19 fix for extension-
         injected attributes.
       */}
-      <body suppressHydrationWarning>
-        <div
-          id="lhci-marker"
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
-            background: "white",
-            color: "black",
-            display: "none",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "1.5rem",
-            zIndex: "var(--z-debug)" as unknown as number,
-          }}
-        >
-          LHCI RENDER START
-        </div>
-        {/*
+        <body suppressHydrationWarning>
+          <div
+            id="lhci-marker"
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100%",
+              background: "white",
+              color: "black",
+              display: "none",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "1.5rem",
+              zIndex: "var(--z-debug)" as unknown as number,
+            }}
+          >
+            LHCI RENDER START
+          </div>
+          {/*
           W156 SW3 polish — `className="ready"` rendered server-side via JSX
           so the opacity-1 state is in the SSR HTML from the start. Pre-W156
           SW3 main.tsx imperatively added `.ready` via classList.add post-
@@ -382,19 +459,21 @@ function RootShell({ children }: { children: React.ReactNode }) {
           fallback below preserves visibility independently.
           main.tsx still hides the lhci-marker on LHCI builds (separate concern).
         */}
-        <div id="root" className="ready" data-ssr-auth={ssrAuthMarker}>
-          {children}
-        </div>
-        <noscript>
-          <style>{`#root { display: block !important; }`}</style>
-        </noscript>
-        <Scripts />
-      </body>
-    </html>
+          <div id="root" className="ready" data-ssr-auth={ssrAuthMarker}>
+            {children}
+          </div>
+          <noscript>
+            <style>{`#root { display: block !important; }`}</style>
+          </noscript>
+          {isStaticSpaDocumentMount ? null : <Scripts />}
+        </body>
+      </html>
+    </SeoReadinessProvider>
   )
 }
 
 function RootComponent() {
+  const { campusTimezone } = Route.useLoaderData()
   // Wave 127 SW1 — provider hoisting. Both SSR and client paths now mount
   // the full provider chain via __root.tsx instead of via main.tsx → App.tsx
   // → AppProviders. AppShellProvider, AuthProvider, LanguageProvider,
@@ -413,7 +492,11 @@ function RootComponent() {
   // stub User on SSR so Navbar renders without crashing on useAuth()
   // returning null.
   if (import.meta.env.SSR) {
-    return <SsrRoot />
+    return (
+      <CampusTimezoneProvider timeZone={campusTimezone}>
+        <SsrRoot />
+      </CampusTimezoneProvider>
+    )
   }
   // W149 SW2 — PersistQueryClientProvider wraps RootComponent so the client
   // tree matches SsrRoot's structure (QueryClientProvider wraps everything)
@@ -430,26 +513,28 @@ function RootComponent() {
   // profile synchronization and provider initialization before changing this
   // SSR/client-cache invariant.
   return (
-    <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
-      <ThemeProvider>
-        <AppProviders>
-          {/*
-            Keep the boot loader in the route tree, rather than only in the
-            document shell.  Both the server and client trees then own the
-            same node, so static-SPA mounting and hydrateRoot can complete the
-            loader lifecycle without leaving an orphaned hit target behind.
-          */}
-          <BrandBootLoader />
-          <MainLayout>
-            <PageErrorBoundary>
-              <Outlet />
-            </PageErrorBoundary>
+    <CampusTimezoneProvider timeZone={campusTimezone}>
+      <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
+        <ThemeProvider>
+          <AppProviders>
+            {/*
+              Keep the boot loader in the route tree, rather than only in the
+              document shell. Both the server and client trees then own the
+              same node, so static-SPA mounting and hydrateRoot can complete
+              the loader lifecycle without leaving an orphaned hit target behind.
+            */}
+            <BrandBootLoader />
+            <MainLayout>
+              <PageErrorBoundary>
+                <Outlet />
+              </PageErrorBoundary>
 
-            <DeferredGlobalOverlays />
-          </MainLayout>
-        </AppProviders>
-      </ThemeProvider>
-    </PersistQueryClientProvider>
+              <DeferredGlobalOverlays />
+            </MainLayout>
+          </AppProviders>
+        </ThemeProvider>
+      </PersistQueryClientProvider>
+    </CampusTimezoneProvider>
   )
 }
 

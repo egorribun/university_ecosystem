@@ -1,7 +1,7 @@
-# syntax=docker/dockerfile:1.12
+# syntax=docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
 # Build stage
-FROM golang:1.26.6-alpine3.24@sha256:af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df AS builder
+FROM golang:1.26.10-alpine3.24@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS builder
 
 WORKDIR /app
 
@@ -48,6 +48,6 @@ EXPOSE 8081
 
 # Note: Docker HEALTHCHECK removed in favor of Kubernetes liveness/readiness probes (TD-EXP-02)
 #checkov:skip=CKV_DOCKER_2:health is enforced by the Kubernetes probes.
-USER nonroot:nonroot
+USER 65532:65532
 
 CMD ["/app/ws-hub"]

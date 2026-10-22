@@ -135,17 +135,59 @@ jobs:
                   uv lock --check
                   uv sync --frozen
 
+            # Fail release-safety regressions early; the complete unit shard still
+            # runs below, with its existing coverage and provenance gates unchanged.
+            - name: Verify frozen-RC contracts and complete validator coverage
+              if: ${{ inputs.shard-id == 0 }}
+              timeout-minutes: 5
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  focused_dir="$(mktemp -d "$RUNNER_TEMP/frozen-rc-coverage.XXXXXX")"
+                  trap 'rm -rf -- "$focused_dir"' EXIT
+                  rcfile="$focused_dir/coverage.ini"
+                  datafile="$focused_dir/.coverage"
+                  target="$GITHUB_WORKSPACE/scripts/quality/resolve_frozen_rc_manifest.py"
+                  printf '[run]\nbranch = True\ninclude = %s\n' "$target" > "$rcfile"
+                  COVERAGE_FILE="$datafile" uv run --frozen --no-sync pytest \
+                    --cov --cov-branch --cov-config="$rcfile" --cov-report= -n 2 \
+                    tests/test_frozen_rc_manifest.py \
+                    tests/test_cli_tests.py::test_smoke_targets_the_existing_endpoint_smoke_suite tests/test_metrics_closure.py::test_cache_metrics_probe_the_actual_redis_layer tests/test_search_api.py::test_unified_search_sdk_failures_fall_back_to_empty_results tests/test_live_stand.py::test_live_playwright_full_count_matches_collected_inventory tests/test_live_stand.py::test_live_playwright_skip_index_matches_collected_inventory tests/test_live_stand.py::test_live_playwright_skip_map_matches_current_project_guard_declarations tests/test_helm_staging_contract.py::test_frontend_service_port_matches_node_listener tests/test_observability_closure.py::test_worker_status_tracks_last_outcome_not_wall_clock tests/test_cache_closure.py::test_tiered_backfill_does_not_extend_source_or_l1_expiry tests/test_cache_closure.py::test_tiered_redis_envelope_promotion_preserves_expiry tests/test_cache_closure.py::test_tiered_non_memory_promotion_requires_unbounded_source tests/test_cache_closure.py::test_tiered_rechecks_expiry_after_awaiting_l2 tests/test_cache_closure.py::test_tiered_cache_l1_hit_l2_backfill_and_miss tests/test_cache_closure.py::test_tiered_refuses_malformed_source_metadata tests/test_cache_closure.py::test_tiered_promotion_rechecks_after_normalization tests/test_cache_closure.py::test_tiered_promotion_preserves_lru_and_payload_ownership tests/test_cache_closure.py::test_tiered_does_not_bypass_memory_subclass_set tests/test_live_acceptance_workflow.py tests/test_live_stand.py::test_nats_outage_cli_exposes_owned_state_options tests/test_live_stand.py::test_nats_outage_requires_owned_state_before_state_side_effects tests/test_owned_nats_outage.py tests/test_owned_nats_correlation.py tests/test_owned_nats_restoration.py tests/test_owned_nats_worker_policy.py tests/test_owned_nats_outbox_state.py tests/test_owned_nats_broker.py tests/test_owned_nats_deadlines.py -v tests/test_compliance_service_coverage.py::test_register_user_failure_log_omits_exception_data tests/test_user_profile_service_closure.py::test_get_users_denies_one_character_non_admin_queries tests/test_user_profile_service_closure.py::test_get_users_allows_two_character_query_and_preserves_cursor tests/test_user_profile_service_closure.py::test_get_users_validates_effective_name_before_legacy_alias tests/test_user_profile_service_closure.py::test_get_users_preserves_name_precedence_and_legacy_fallback tests/test_user_profile_service_closure.py::test_get_users_preserves_one_character_admin_search tests/test_user_profile_service_closure.py::test_get_users_preserves_internal_one_character_search tests/test_nats_kv_cache.py tests/test_notification_task_nats_roundtrip.py::test_uuid_notification_ids_round_trip_through_nats_task_payload tests/test_auth_endpoints_coverage.py::test_register_endpoint tests/test_profile_media_ownership.py::test_s3_preserves_a_parsed_foreign_owner_key tests/test_profile_media_ownership.py::test_s3_deletes_a_parsed_current_owner_key_without_network tests/test_owned_nats_outage_coordinator.py tests/test_user_relationship_updates.py::test_update_attributes_creates_all_nested_children tests/test_user_relationship_updates.py::test_nested_updates_ignore_fields_outside_child_allowlists tests/test_user_relationship_updates.py::test_nested_profile_update_creates_missing_profile tests/test_duration_sharding_contract.py::test_duration_merge_omits_new_all_skipped_files_and_preserves_history tests/test_duration_sharding_contract.py::test_duration_merge_keeps_executed_and_mixed_file_estimates tests/services/test_chat_helpers.py::test_handle_message_sent_refreshes_preloaded_sender_profile tests/services/test_chat_helpers.py::test_notify_new_message_creates_push_for_other_participants tests/test_compare_paired_benchmarks.py::test_cli_applies_the_strict_regression_boundary tests/test_backend_api_runtime_contracts.py::test_notify_new_message_bounds_metrics_and_preserves_broadcast_ids tests/test_ical.py::TestGenerateScheduleIcs::test_generated_parity_tracks_iso_week_53_to_week_1 tests/test_owned_nats_process.py tests/test_schedule_repository_closure.py::test_schedule_repository_ignores_stale_process_cache tests/test_cqrs_schedule_handlers.py::test_create_invokes_service_and_invalidates_cache tests/test_cqrs_schedule_handlers.py::test_update_owner_succeeds_and_invalidates_both_groups tests/test_cqrs_schedule_handlers.py::test_delete_owner_success_invalidates_cache tests/test_event_repository_db.py::test_filtered_event_total_matches_exhaustive_listing tests/test_event_service_closure.py::test_get_events_non_active_first_page_uses_total_count tests/test_event_service_closure.py::test_get_events_cursor_page_builds_next_cursor_without_total tests/test_news_localization.py::test_clearing_existing_english_translations_persists_after_reload tests/test_live_stand.py::test_live_e2e_mode_maps_to_fixed_playwright_selection tests/test_live_stand.py::test_live_playwright_emits_only_validated_failure_locations tests/test_live_stand.py::test_live_playwright_failure_source_allowlist_matches_tracked_full_suite  tests/test_live_nats_owner_file_reader.py tests/test_event_date_order_http.py tests/test_events_cursor.py tests/test_events_api_closure.py::test_all_events_and_my_events_call_services tests/test_live_nats_lifecycle_lock.py tests/test_live_stand.py::test_compose_resource_projection_full_matches_existing_wrapper tests/test_live_stand.py::test_compose_resource_projection_core_preserves_closure_and_filtering tests/test_live_stand.py::test_compose_resource_projection_legacy_preserves_schema tests/test_live_stand.py::test_compose_resource_projection_preserves_malformed_model_errors tests/test_live_stand.py::test_compose_resource_projection_preserves_core_selection_errors tests/test_live_stand.py::test_compose_resource_wrapper_preserves_preprojection_failures tests/test_fast_preflight.py tests/test_fast_preflight_descendant_pipe_timeout.py tests/test_helm_keda_hibernation.py tests/test_lifespan.py::test_aud091_shutdown_attempts_independent_finalizers_in_order tests/test_lifespan_restart_contract.py tests/test_ci_critical_path_analysis.py::test_aud093_diagnostic_bound_excludes_independent_scheduling_gap tests/test_ci_critical_path_analysis.py::test_aud093_cli_serializes_execution_bound_separately_from_wall_span tests/test_lifespan.py::test_shutdown_subsystems tests/test_lifespan.py::test_shutdown_stops_the_cdc_worker_before_cancelling_tasks tests/test_lifespan.py::test_shutdown_is_unaffected_when_no_cdc_worker_was_started tests/test_helm_staging_contract.py::test_first_party_service_names_and_references_fit_dns_labels tests/test_outbox_worker.py::test_aud096_listener_reconnects_only_for_connection_loss tests/test_outbox_worker.py::test_outbox_worker_listen_loop_exceptions tests/test_gateway_api_helm_contract.py::test_gateway_api_template_preserves_tls_redirect_and_route_dispatch tests/test_outbox_worker.py::test_outbox_worker_listen_loop tests/test_metrics_endpoint.py::test_aud103_alert_inputs_are_real_exported_gauges tests/test_database_settings_closure.py::test_deployment_pool_defaults_match_database_settings tests/test_database_settings_closure.py::test_deployment_pool_override_example_remains_explicit tests/test_observability_closure.py::test_bounded_shutdown_joins_only_started_threads_with_shared_budget --durations=30 --durations-min=0.1
+                  uv run --frozen --no-sync coverage report --rcfile="$rcfile" \
+                    --data-file="$datafile" --include="$target" --fail-under=100
+
+            # Surface audit regressions before the long shard; the full suite,
+            # coverage collection and provenance below remain mandatory on success.
+            - name: Verify focused audit regression contracts
+              if: ${{ inputs.shard-id == 0 }}
+              timeout-minutes: 5
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  focused_dir="$(mktemp -d "$RUNNER_TEMP/audit-regressions.XXXXXX")"
+                  trap 'rm -rf -- "$focused_dir"' EXIT
+                  uv run --frozen --no-sync pytest -v -p no:cacheprovider --no-cov \
+                    --basetemp="$focused_dir/pytest" \
+                    tests/test_user_analytics_window_contracts.py \
+                    tests/test_stats_api.py \
+                    tests/test_email_reset_fragment_redaction.py \
+                    tests/test_ci_critical_path_analysis.py \
+                    tests/test_quality_workflow_contract.py::test_ci_success_publishes_current_run_health_artifact \
+                    tests/test_aud467_settings_integration_environment.py \
+                    tests/test_core_config.py::test_auto_create_schema_default_false_in_production \
+                    tests/test_core_config.py::test_auto_create_schema_warns_when_enabled_in_production
+
             - name: Build pinned Helm dependencies
               uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
               with:
-                  version: v3.17.0
+                  version: v4.2.4
 
             - name: Resolve Helm chart dependencies
               shell: bash
               run: |
                 python3 scripts/ci/helm_dependency_build.py \
                   charts/university-ecosystem \
-                  redis-20.13.4.tgz nats-8.5.4.tgz
+                  redis-0.1.0.tgz nats-2.15.0.tgz
 
             - name: Run pytest
               shell: pwsh
@@ -215,7 +257,9 @@ jobs:
                   
                   $pytestArgs += @(
                     "--ignore=tests/test_schemathesis_api.py",
+                    "--ignore=tests/integration/test_quarantine_reservations_postgres.py",
                     "--cov=app",
+                    "--cov=alembic/versions",
                     "--cov-report=xml:$coverageXmlName",
                     "--cov-report=json:artifacts/coverage/python/$coverageJsonName",
                     "--cov-report=term-missing",
@@ -236,9 +280,10 @@ jobs:
               # A sharded runner only owns a subset of the test universe.  Running
               # diff-cover here would either reference the old, non-existent
               # coverage-full.xml name or incorrectly fail a shard because another
-              # shard owns the changed file.  The aggregate coverage-policy-gate
-              # combines all four raw data files before enforcing repository-wide
-              # coverage; retain this fast check for non-sharded callers.
+              # shard owns the changed file. The aggregate coverage-policy-gate
+              # combines the four shard files with DB Migration Gate coverage
+              # before enforcing repository-wide coverage; keep this fast check
+              # for non-sharded callers.
               if: ${{ github.event_name == 'pull_request' && inputs.coverage-threshold > 0 && inputs.num-shards <= 1 }}
               shell: pwsh
               env:
@@ -319,6 +364,7 @@ jobs:
                   if-no-files-found: error
 
             - name: Upload pytest report
+              if: ${{ always() && hashFiles('pytest-report.xml') != '' }}
               uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: backend-pytest-report-${{ inputs.test-group-name }}
@@ -356,7 +402,7 @@ jobs:
             RUN_INTEGRATION_TESTS: "1"
         services:
             postgres:
-                image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+                image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
                 env:
                     POSTGRES_USER: test
                     POSTGRES_PASSWORD: test
@@ -389,7 +435,7 @@ jobs:
             mailpit:
                 # Official GHCR mirror, immutable v1.31.1 manifest-list digest.
                 # Both unauthenticated endpoints stay bound to the runner loopback.
-                image: ghcr.io/axllent/mailpit:v1.31.1@sha256:98b916bd3c8d61f7633a52d3ea2f58d00620cb01ca57ab59edde68c347a95365
+                image: ghcr.io/axllent/mailpit:v1.31.4@sha256:b68349e3a014b90c5610bfb26b2ae36f3892d7b8cf25ee140c6c71c98d2fcf48
                 ports:
                     - "127.0.0.1:8025:8025"
                     - "127.0.0.1:1025:1025"
@@ -501,10 +547,10 @@ jobs:
                   # Docker Hub token/registry timeout must not turn a healthy
                   # integration suite into a false-negative CI failure.
                   $images = @(
-                    "nats:2.10.25-alpine@sha256:3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228",
+                    "nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4",
                     "postgres:15-alpine@sha256:fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b",
                     "redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2",
-                    "pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f"
+                    "pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d"
                   )
                   $maxAttempts = 5
 
@@ -559,8 +605,11 @@ jobs:
                   $pytestArgs = @(
                     $env:INTEGRATION_TEST_PATTERN,
                     "tests/test_events_localization.py",
+                    "tests/test_user_analytics_window_contracts.py",
                     "tests/test_migrations_runtime.py",
                     "tests/test_query_plans.py",
+                    "tests/test_news_repository_db.py::test_comment_service_commits_create_and_edit_across_sessions",
+                    "tests/test_news_repository_db.py::test_comment_delete_commits_across_sessions_and_preserves_creation_outbox",
                     "-v",
                     "--tb=short",
                     "-x"

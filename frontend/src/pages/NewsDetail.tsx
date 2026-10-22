@@ -12,11 +12,11 @@ import {
   Snackbar,
 } from "@/components/settings"
 import { useNewsInteraction } from "@/hooks/useNewsInteraction"
-import { useShare } from "@/hooks/useShare"
+import { resolveSiteShareUrl, useShare } from "@/hooks/useShare"
 import { toDate, getMoscowDate } from "@/utils/date"
 import { localizeField } from "@/utils/localize"
 import { deleteNews, type NewsItem } from "@/api/news"
-import { newsDetailQueryOptions } from "@/api/hooks/news"
+import { newsDetailQueryOptions, useAnonymousReadMode } from "@/api/hooks/news"
 import { SEO } from "@/components/ui/SEO"
 import { Button } from "@/components/ui/Button"
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
@@ -34,7 +34,7 @@ import { useRelatedNews } from "@/hooks/useRelatedNews"
 import { useArticleNavigation } from "@/hooks/useArticleNavigation"
 import { captureActiveTelemetryContext } from "@/utils/telemetryContext"
 import { useSwipe } from "@/hooks/useSwipe"
-import { inferCategory } from "@/features/news/categories"
+import { inferNewsCategory } from "@/features/news/categories"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
@@ -51,6 +51,7 @@ export default function NewsDetail() {
   const { id = "" } = useParams({ strict: false })
   const navigate = useNavigate()
   const { user } = useAuth()
+  const { anonymous } = useAnonymousReadMode()
   const { t } = useTranslation(["news", "common"])
   const { language } = useLanguage()
   const queryClient = useQueryClient()
@@ -93,9 +94,13 @@ export default function NewsDetail() {
   // SSR loader at `/news/$id` and this client component pull from the same
   // queryKey identity (per-request QueryClient via SsrRoot W128 SW3).
   const query = useQuery<NewsItem, Error>({
-    ...newsDetailQueryOptions(id, language),
+    ...newsDetailQueryOptions(id, language, anonymous),
     enabled: !!id,
   })
+
+  // useShare memoises the link by url; without a per-article url it keeps the
+  // first article's location after navigation.
+  const articleUrl = useMemo(() => resolveSiteShareUrl(`/news/${encodeURIComponent(id)}`), [id])
 
   const {
     sharing,
@@ -108,6 +113,7 @@ export default function NewsDetail() {
     handleCopyLink,
   } = useShare({
     title: query.data?.title || "",
+    url: articleUrl,
     onNotify: (msg) => setSnackbar(msg),
     translations: {
       shareSuccess: t("news:notifications.shareSuccess"),
@@ -120,16 +126,27 @@ export default function NewsDetail() {
     },
   })
 
-  const { interactions, toggleLike, addComment, isCommenting, updateComment, deleteComment } =
-    useNewsInteraction(id, {
-      initialData: query.data
-        ? {
-            likes_count: query.data.likes_count,
-            comments_count: query.data.comments_count,
-            is_liked: query.data.is_liked,
-          }
-        : undefined,
-    })
+  const {
+    interactions,
+    toggleLike,
+    addComment,
+    isCommenting,
+    updateComment,
+    deleteComment,
+    hasMoreComments,
+    isLoadingMoreComments,
+    loadMoreComments,
+  } = useNewsInteraction(id, {
+    anonymousRead: anonymous,
+    language,
+    initialData: query.data
+      ? {
+          likes_count: query.data.likes_count,
+          comments_count: query.data.comments_count,
+          is_liked: query.data.is_liked,
+        }
+      : undefined,
+  })
   const isLiked = interactions?.is_liked ?? false
   const likesCount = interactions?.likes_count ?? 0
   const comments = interactions?.comments ?? []
@@ -219,7 +236,7 @@ export default function NewsDetail() {
   const createdAtLabel = useMemo(() => (createdAt ? getMoscowDate(createdAt) : ""), [createdAt])
 
   const category = useMemo(
-    () => (query.data ? inferCategory(query.data.title, query.data.content) : ("general" as const)),
+    () => (query.data ? inferNewsCategory(query.data) : ("general" as const)),
     [query.data]
   )
   const relatedArticles = useRelatedNews(id, category, 3)
@@ -239,21 +256,31 @@ export default function NewsDetail() {
 
   /* ══════════════ LOADING ══════════════ */
   if (query.isLoading) {
-    return <NewsDetailSkeleton isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+    return (
+      <>
+        <SEO title={t("news:pageTitle")} description={t("news:pageDescription")} />
+        <NewsDetailSkeleton isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+      </>
+    )
   }
 
   /* ══════════════ ERROR ══════════════ */
   if (query.isError || !query.data) {
     return (
-      <div className="news-theme aurora-mesh relative min-h-[60vh] flex items-center justify-center px-4">
-        <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
-        <div className="relative z-[1] glass-layer-surface glass-noise rounded-2xl p-8 sm:p-10 max-w-[28rem] text-center space-y-4">
-          <p className="text-lg font-semibold text-(--error-text)">{t("news:states.loadError")}</p>
-          <Button variant="glass" onClick={handleBack}>
-            {t("common:buttons.back")}
-          </Button>
+      <>
+        <SEO title={t("news:pageTitle")} description={t("news:pageDescription")} />
+        <div className="news-theme aurora-mesh relative min-h-[60vh] flex items-center justify-center px-4">
+          <NewsBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+          <div className="relative z-[1] glass-layer-surface glass-noise rounded-2xl p-8 sm:p-10 max-w-[28rem] text-center space-y-4">
+            <p className="text-lg font-semibold text-(--error-text)">
+              {t("news:states.loadError")}
+            </p>
+            <Button variant="glass" onClick={handleBack}>
+              {t("common:buttons.back")}
+            </Button>
+          </div>
         </div>
-      </div>
+      </>
     )
   }
 
@@ -325,6 +352,19 @@ export default function NewsDetail() {
               t={t}
               getMoscowDate={getMoscowDate}
             />
+
+            {hasMoreComments && (
+              <div className="flex justify-center">
+                <Button
+                  variant="glass"
+                  onClick={loadMoreComments}
+                  disabled={isLoadingMoreComments}
+                  aria-busy={isLoadingMoreComments}
+                >
+                  {t("news:actions.loadMoreComments")}
+                </Button>
+              </div>
+            )}
 
             {relatedArticles.length > 0 && <RelatedNews items={relatedArticles} />}
 

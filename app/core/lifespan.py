@@ -1,13 +1,14 @@
 import asyncio
 import random
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import FastAPI
 
 from app.core.config import settings
+from app.core.config.notifications import validate_api_smtp_configuration
 from app.core.database import Base, engine, init_database, wait_db
 from app.core.events import register_event_listeners
 from app.core.logging import get_logger
@@ -19,7 +20,6 @@ from app.services.partition_manager import (
     ensure_partitions_exist,
     start_partition_management_scheduler,
 )
-from app.tasks.cleanups import setup_periodic_cleanups
 from app.workers.cdc_outbox import CdcOutboxWorker, require_supported_cdc_transport
 from app.workers.outbox import OutboxWorker
 
@@ -230,14 +230,51 @@ async def _validate_di_container(app: FastAPI) -> None:
         )
 
 
+async def _quarantine_retention_loop(service: Any, *, interval_seconds: float) -> None:
+    """Run bounded quarantine expiry work until lifespan cancellation."""
+    while True:
+        try:
+            await service.sweep_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: keep the managed cleanup worker alive across storage or ledger outages
+            _logger.warning(
+                "Quarantine retention sweep failed",
+                error_type=type(exc).__name__,
+            )
+        await asyncio.sleep(interval_seconds)
+
+
+def _start_quarantine_retention_worker(
+    app: FastAPI,
+    *,
+    service: Any | None = None,
+    interval_seconds: float | None = None,
+) -> asyncio.Task[None]:
+    """Register the quarantine sweeper in the lifespan-owned task set."""
+    if service is None:
+        from app.services.quarantine import QuarantineService
+        from app.utils.files import _get_storage_backend
+
+        service = QuarantineService(_get_storage_backend())
+    if interval_seconds is None:
+        interval_seconds = settings.storage_quarantine_sweep_interval_seconds
+    if not hasattr(app.state, "background_tasks"):
+        app.state.background_tasks = set()
+    task = asyncio.create_task(
+        _quarantine_retention_loop(service, interval_seconds=interval_seconds),
+        name="quarantine_retention_worker",
+    )
+    app.state.background_tasks.add(task)
+    return task
+
+
 async def _startup_background_workers(app: FastAPI) -> None:
     """Stage 5: Pub/Sub workers, Outbox, and NATS task processors."""
     if settings.embedded_cdc_outbox_worker_enabled:
         require_supported_cdc_transport()
 
     from app.core.nats_broker import NatsTaskBroker
-
-    await setup_periodic_cleanups()
 
     if not hasattr(app.state, "background_tasks"):
         app.state.background_tasks = set()
@@ -287,14 +324,35 @@ async def _startup_background_workers(app: FastAPI) -> None:
             )
 
         nats_broker = await app.state.dishka_container.get(NatsTaskBroker)
-        if nats_broker.is_connected:
+        # The worker owns bounded connection retries so an outage during startup
+        # does not permanently suppress task consumption until the pod restarts.
+        app.state.background_tasks.add(
+            asyncio.create_task(nats_broker.run_worker(), name="nats_worker")
+        )
+
+        # Handler failures of non-durable events were logged and dropped because
+        # the bus had no dead-letter sink; record them so /admin/dlq can replay.
+        from app.core.event_dlq import dead_letter_queue
+        from app.core.events import event_bus
+
+        event_bus.set_dlq(dead_letter_queue)
+
+        # ADR-020: push SpiceDB relationship changes into the local permission
+        # cache so revocations apply immediately instead of after the grace TTL.
+        # Only request-serving processes hold that cache.
+        if settings.app_process_role == "api":
+            from app.core.spicedb_watch import start_permission_watch
+
             app.state.background_tasks.add(
-                asyncio.create_task(nats_broker.run_worker(), name="nats_worker")
+                asyncio.create_task(start_permission_watch(), name="spicedb_watch")
             )
     else:
         _logger.info(
             "Background workers (Outbox, NATS) disabled in testing environment"
         )
+
+    if settings.environment != "testing" and settings.app_process_role == "api":
+        _start_quarantine_retention_worker(app)
 
     if settings.partition_management_enabled:
         try:
@@ -333,7 +391,7 @@ async def _periodic_scheduler_loop() -> None:
         cleanup_privacy_artifacts_task,
         cleanup_sessions_task,
         cleanup_stories_task,
-        manage_partitions_task,
+        refresh_business_gauges_task,
     )
 
     async def _kick(task: Any) -> None:
@@ -379,6 +437,7 @@ async def _periodic_scheduler_loop() -> None:
                 cleanup_password_reset_tokens_task,
                 cleanup_email_change_tokens_task,
                 cleanup_mfa_challenges_task,
+                refresh_business_gauges_task,
             ]
 
             if now_utc.hour % 6 == 0:
@@ -389,7 +448,6 @@ async def _periodic_scheduler_loop() -> None:
                         cleanup_notifications_task,
                         cleanup_dead_letter_jobs_task,
                         cleanup_privacy_artifacts_task,
-                        manage_partitions_task,
                     ]
                 )
 
@@ -475,6 +533,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     if settings.embedded_cdc_outbox_worker_enabled:
         require_supported_cdc_transport()
 
+    # API startup owns this requirement; shared Settings also serve migrations.
+    # A worker role label must not bypass validation of an actual API process.
+    validate_api_smtp_configuration(
+        environment=settings.environment,
+        smtp_host=settings.smtp_host,
+        smtp_port=settings.smtp_port,
+    )
+
     # RZ-33-14: Clear the stop event so the scheduler works after hot-reload.
     _SCHEDULER_STOP.clear()
     _reset_closed_dishka_container(app)
@@ -539,6 +605,7 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
     from app.auth.security import close_hibp_client
     from app.core.feature_flags import shutdown_feature_flags
     from app.core.ratelimit import stop_memory_cleanup_task
+    from app.core.spicedb import close_global_spicedb_channel
     from app.services.geolocation import shutdown_geolocation_service
 
     # MOD-06 (audit 2026-03-15 Wave 7): Signal K8s readiness probe to return
@@ -564,25 +631,24 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
     if _bg_tasks:
         await asyncio.gather(*_bg_tasks, return_exceptions=True)
 
-    # Orderly pool and client teardown.  Set the marker before closing so it is
-    # still reliable if a provider finalizer raises during shutdown.
-    app.state._state.update(_DISHKA_CONTAINER_CLOSED_STATE)
-    await app.state.dishka_container.close()
-    await stop_presence_pubsub()
-    webpush.cleanup()
-    await shutdown_cache()
+    # Register independent finalizers in reverse execution order. Callback
+    # failures remain observable while later cleanup is still attempted.
+    async with AsyncExitStack() as cleanup:
+        cleanup.push_async_callback(close_hibp_client)
+        cleanup.callback(shutdown_geolocation_service)
+        cleanup.callback(shutdown_observability)
+        cleanup.push_async_callback(close_global_spicedb_channel)
+        cleanup.push_async_callback(stop_memory_cleanup_task)
+        cleanup.push_async_callback(shutdown_feature_flags)
 
-    partition_stopper = getattr(app.state, "partition_stopper", None)
-    if partition_stopper is not None:
-        await partition_stopper()
+        partition_stopper = getattr(app.state, "partition_stopper", None)
+        if partition_stopper is not None:
+            cleanup.push_async_callback(partition_stopper)
 
-    await shutdown_feature_flags()
-    await stop_memory_cleanup_task()
+        cleanup.push_async_callback(shutdown_cache)
+        cleanup.callback(webpush.cleanup)
+        cleanup.push_async_callback(stop_presence_pubsub)
 
-    from app.core.spicedb import close_global_spicedb_channel
-
-    await close_global_spicedb_channel()
-
-    shutdown_observability()
-    shutdown_geolocation_service()
-    await close_hibp_client()
+        # Preserve restart detection even if a provider finalizer raises.
+        app.state._state.update(_DISHKA_CONTAINER_CLOSED_STATE)
+        await app.state.dishka_container.close()

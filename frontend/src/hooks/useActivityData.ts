@@ -16,6 +16,8 @@ import {
 import {
   toNumber,
   parseAttendanceRecent,
+  parseAttendanceDaily,
+  parseStreakDays,
   parseGradeRecent,
   parseParticipationRecent,
 } from "@/features/activity/parsers"
@@ -23,10 +25,9 @@ import {
 /**
  * useActivityData — Wave 112 SW2.
  *
- * Public API is byte-equivalent to the previous bare-axios implementation:
- * consumers (ActivityFeature) get the same `attendance/grades/participation`
- * objects with fallback defaults, the same loading/hasInitiallyLoaded flags,
- * and the same derived chart/heatmap data.
+ * ActivityFeature receives normalized summaries and loading state. Registration
+ * trends use complete backend daily aggregates; optional streakDays is an
+ * authoritative backend count, never an inference from the capped recent feed.
  *
  * What changed: data fetching + cancellation now flows through TanStack Query
  * (`useActivitySummaryQuery`). Benefits:
@@ -39,6 +40,27 @@ import {
  * The translation/parsing layer (toNumber, parseAttendanceRecent, etc.)
  * stays here as `useMemo` derivations — they're UI concerns, not fetch concerns.
  */
+/** Items per section the backend returns in `recent` (mirrors analytics_service `_RECENT_LIMIT`). */
+const HEATMAP_SECTION_LIMIT = 5
+
+/** First complete day after a capped boundary, or null for an uncapped section. */
+const sectionCoverage = (items: readonly { date: string }[] | undefined): string | null => {
+  if (!items || items.length < HEATMAP_SECTION_LIMIT) return null
+  const oldest = items
+    .map((item) => item.date.slice(0, 10))
+    .reduce((day, candidate) => (candidate < day ? candidate : day))
+  const boundary = new Date(`${oldest}T00:00:00Z`)
+  // Preserve the existing malformed-date behavior without introducing a render error.
+  if (!Number.isFinite(boundary.getTime())) return oldest
+  if (boundary.toISOString().slice(0, 10) !== oldest) return oldest
+  boundary.setUTCDate(boundary.getUTCDate() + 1)
+  return boundary.toISOString().slice(0, 10)
+}
+
+/** Maximum grade of a scale: 100-point, GPA (4.0) or the five-point default. */
+const gradeScaleMax = (scale: GradeStats["scale"]) =>
+  scale === "100" ? 100 : scale === "gpa" ? 4 : 5
+
 export default function useActivityData() {
   const { t } = useTranslation(["activity", "common"])
   const { language } = useLanguage()
@@ -86,6 +108,8 @@ export default function useActivityData() {
         day: "numeric",
         month: "long",
         year: "numeric",
+        // Calendar keys already describe a campus day, not a browser-local instant.
+        ...(/^\d{4}-\d{2}-\d{2}$/.test(value) ? { timeZone: "UTC" } : {}),
       })
     },
     [locale]
@@ -112,6 +136,8 @@ export default function useActivityData() {
           ? d.period_label
           : labelByPeriod(resolvedPeriodKey)
       return {
+        daily: parseAttendanceDaily(d.daily),
+        streakDays: parseStreakDays(d.streak_days),
         percent: toNumber(d.percent),
         present: toNumber(d.present),
         total: toNumber(d.total),
@@ -128,9 +154,9 @@ export default function useActivityData() {
     const d = envelope?.grades
     if (d) {
       return {
-        average: toNumber(d.average, 4.4),
+        average: toNumber(d.average),
         scale: isGradeScale(d.scale) ? d.scale : "5",
-        trend: toNumber(d.trend, 0.3),
+        trend: toNumber(d.trend),
         recent: parseGradeRecent(d.recent),
       }
     }
@@ -151,44 +177,45 @@ export default function useActivityData() {
     return null
   }, [envelope?.participation])
 
-  const hasAnyData = Boolean(attendance || grades || participation)
   const availability = {
     attendance: Boolean(envelope?.attendance),
     grades: Boolean(envelope?.grades),
     participation: Boolean(envelope?.participation),
   }
+  const hasAnyData = Boolean(
+    (attendance &&
+      (attendance.present > 0 || attendance.total > 0 || attendance.recent.length > 0)) ||
+    (grades && grades.recent.length > 0) ||
+    (participation &&
+      (participation.events > 0 ||
+        (participation.hours ?? 0) > 0 ||
+        (participation.groups ?? 0) > 0 ||
+        participation.recent.length > 0))
+  )
   const isPartial =
     hasInitiallyLoaded &&
-    hasAnyData &&
     (!availability.attendance || !availability.grades || !availability.participation)
 
   // ── Chart data derivation (Phase B) ───────────────
-  const attendanceTrendData = useMemo(() => {
-    const recent = attendance?.recent
-    if (!recent?.length) return []
-    const byDate = new Map<string, { present: number; total: number }>()
-    for (const item of recent) {
-      const key = item.date.slice(0, 10)
-      const prev = byDate.get(key) ?? { present: 0, total: 0 }
-      byDate.set(key, {
-        present: prev.present + (item.status === "present" ? 1 : 0),
-        total: prev.total + 1,
-      })
-    }
-    return [...byDate.entries()]
-      .map(([date, { present, total }]) => ({
-        date,
-        value: Math.round((present / total) * 100),
-      }))
-      .sort((a, b) => a.date.localeCompare(b.date))
-  }, [attendance?.recent])
+  const attendanceTrendData = useMemo(
+    () =>
+      (attendance?.daily ?? [])
+        .map(({ date, registered, total }) => ({
+          date,
+          value: Math.round((registered / total) * 100),
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    [attendance?.daily]
+  )
 
   const gradesBySubject = useMemo(() => {
     const recent = grades?.recent
-    if (!recent?.length) return []
+    if (!grades || !recent?.length) return []
+    // One grade scale per sample (AUDIT-2026-10 §5): items without their own max use its maximum.
+    const scaleMax = gradeScaleMax(grades.scale)
     const bySubject = new Map<string, { sum: number; count: number; max: number }>()
     for (const item of recent) {
-      const prev = bySubject.get(item.course) ?? { sum: 0, count: 0, max: item.max ?? 5 }
+      const prev = bySubject.get(item.course) ?? { sum: 0, count: 0, max: item.max ?? scaleMax }
       bySubject.set(item.course, {
         sum: prev.sum + item.score,
         count: prev.count + 1,
@@ -200,7 +227,7 @@ export default function useActivityData() {
       value: sum / count,
       max,
     }))
-  }, [grades?.recent])
+  }, [grades])
 
   // Heatmap data — merge all recent arrays into date→count map
   const heatmapData = useMemo(() => {
@@ -213,6 +240,17 @@ export default function useActivityData() {
     for (const item of grades?.recent ?? []) inc(item.date)
     for (const item of participation?.recent ?? []) inc(item.date)
     return map
+  }, [attendance?.recent, grades?.recent, participation?.recent])
+
+  // A row cap can truncate the oldest sampled day itself. Only subsequent days
+  // are complete; the boundary day and all earlier days must remain unknown.
+  const heatmapCoveredFrom = useMemo(() => {
+    const coverage = [attendance?.recent, grades?.recent, participation?.recent]
+      .map(sectionCoverage)
+      .filter((day): day is string => day !== null)
+    return coverage.length > 0
+      ? coverage.reduce((latest, day) => (day > latest ? day : latest))
+      : null
   }, [attendance?.recent, grades?.recent, participation?.recent])
 
   return {
@@ -237,5 +275,6 @@ export default function useActivityData() {
     attendanceTrendData,
     gradesBySubject,
     heatmapData,
+    heatmapCoveredFrom,
   }
 }

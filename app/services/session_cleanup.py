@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import secrets
-from contextlib import suppress
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -18,8 +16,6 @@ from app.core.observability import get_periodic_task_metrics
 from app.models import ActiveSession, MfaChallenge
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from sqlalchemy.sql.elements import ClauseElement
 
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
@@ -145,54 +141,6 @@ async def cleanup_expired_sessions(
     if deleted:
         logger.info("Removed %s expired sessions", deleted)
     return deleted
-
-
-@dataclass(slots=True)
-class SessionCleanupConfig:
-    interval_seconds: int = 900
-
-    def normalized_interval(self) -> int:
-        return max(30, int(self.interval_seconds))
-
-
-async def start_session_cleanup_scheduler(
-    *, config: SessionCleanupConfig | None = None
-) -> Callable[[], Awaitable[None]]:
-    """Start background cleanup task for expired sessions."""
-
-    cfg = config or SessionCleanupConfig()
-    interval = cfg.normalized_interval()
-
-    async def _loop() -> None:
-        try:
-            while True:
-                try:
-                    async with _METRICS.track_execution() as run:
-                        deleted = await cleanup_expired_sessions()
-                        run.observe_deleted(deleted)
-                except asyncio.CancelledError:
-                    raise
-                except (OSError, ConnectionError):
-                    # RZ-20-04: Narrowed — DB/network errors only.
-                    logger.exception("Failed to cleanup expired sessions")
-                await asyncio.sleep(interval)
-        except asyncio.CancelledError:
-            logger.info("Session cleanup loop cancelled")
-            raise
-
-    loop = asyncio.get_running_loop()
-    task = loop.create_task(_loop())
-
-    async def _stop() -> None:
-        if task.done():
-            with suppress(Exception, asyncio.CancelledError):
-                task.result()
-            return
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
-
-    return _stop
 
 
 if __name__ == "__main__":

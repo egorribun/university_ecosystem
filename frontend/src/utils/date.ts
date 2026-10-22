@@ -68,9 +68,8 @@ export const presets = {
 /**
  * Relative time formatting (e.g., "5 minutes ago", "in 2 days").
  */
-export function formatRelativeTime(input: DateInput, locale = "en-US"): string {
+export function formatRelativeTime(input: DateInput, locale = "en-US", now = new Date()): string {
   const date = toDate(input)
-  const now = new Date()
   const diffInSeconds = Math.floor((date.getTime() - now.getTime()) / 1000)
 
   const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" })

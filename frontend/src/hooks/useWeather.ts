@@ -1,15 +1,18 @@
-import { useCallback, useMemo, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 
 import { weatherQueryOptions } from "@/api/hooks/weather"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
-import { WEATHER_CACHE_TTL_MS, fetchWeatherSnapshot } from "@/api/weather"
+import { WEATHER_CACHE_TTL_MS, WeatherFetchError, fetchWeatherSnapshot } from "@/api/weather"
 import type { WeatherCoordinates, WeatherSnapshot } from "@/api/weather"
 import { getWeatherIconMeta } from "@/utils/weatherIcons"
 import type { WeatherAnimationVariant } from "@/utils/weatherIcons"
 import useMediaQuery from "./useMediaQuery"
 
 const WEATHER_TRANSLATION_BASE = "dashboard:weather.conditions"
+
+const getWeatherFallback = (error: Error | null): WeatherSnapshot | null =>
+  error instanceof WeatherFetchError ? error.fallback : null
 
 // Lighthouse audits run without the transactional backend and must not make
 // an external Open-Meteo request in the critical navigation window. Keep a
@@ -73,6 +76,7 @@ export interface UseWeatherResult {
  */
 export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult => {
   const { coordinates: overrideCoordinates, cacheTtlMs = WEATHER_CACHE_TTL_MS } = options
+  const [hasHydrated, setHasHydrated] = useState(false)
   const coordinates = useMemo<WeatherCoordinates>(
     () =>
       overrideCoordinates
@@ -84,7 +88,9 @@ export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult =>
   const forceRefreshRef = useRef(false)
 
   const query = useQuery({
-    ...weatherQueryOptions(coordinates, cacheTtlMs),
+    ...weatherQueryOptions(coordinates, cacheTtlMs, {
+      allowSessionCachePlaceholder: hasHydrated,
+    }),
     queryFn: async ({ signal }: { signal?: AbortSignal }): Promise<WeatherSnapshot> => {
       if (import.meta.env.VITE_LHCI === "true") return LHCI_WEATHER_SNAPSHOT
       const force = forceRefreshRef.current
@@ -93,8 +99,12 @@ export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult =>
     },
   })
 
+  useEffect(() => {
+    setHasHydrated(true)
+  }, [])
+
   const data = useMemo<WeatherData | null>(() => {
-    const snapshot = query.data
+    const snapshot = query.data ?? getWeatherFallback(query.error)
     if (!snapshot) return null
     const meta = getWeatherIconMeta(snapshot.conditionCode)
     const animation: WeatherAnimationVariant = prefersReducedMotion ? "none" : meta.animation
@@ -105,7 +115,7 @@ export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult =>
       translationKey: `${WEATHER_TRANSLATION_BASE}.${meta.translationKeySuffix}`,
       animation,
     }
-  }, [query.data, prefersReducedMotion])
+  }, [query.data, query.error, prefersReducedMotion])
 
   const refresh = useCallback(async () => {
     forceRefreshRef.current = true

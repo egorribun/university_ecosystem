@@ -48,10 +48,8 @@ async def test_create_event_value_error(request_mock):
                 create_event,
                 data=data,
                 request=request_mock,
-                background=MagicMock(),
                 user=user,
                 provides={
-                    "NotificationService": MagicMock(),
                     "EventService": events_service,
                 },
             )
@@ -175,6 +173,8 @@ async def test_delete_event_file_not_found(request_mock):
 @pytest.mark.asyncio
 async def test_semantic_search_etag_match(request_mock):
     # Patch the class method to avoid TypeError with slotted dataclass instances
+    vector_service = MagicMock()
+    vector_service.get_embedding = AsyncMock(return_value=[0.1, 0.2])
     with patch("app.api.events.get_cache", return_value=MagicMock()):
         with patch(
             "app.core.cache_versioning.CacheVersionManager.get_version",
@@ -191,8 +191,9 @@ async def test_semantic_search_etag_match(request_mock):
                         _user=MagicMock(),
                         provides={
                             "AsyncDatabaseSession": MagicMock(),
-                            "VectorService": MagicMock(),
+                            "VectorService": vector_service,
                             "EventService": MagicMock(),
                         },
                     )
                     assert res.status_code == 304
+    vector_service.get_embedding.assert_awaited_once_with("test")

@@ -1,5 +1,20 @@
 export const PWA_REFRESH_EVENT = "pwa:need-refresh" as const
 export const PUSH_EDUCATION_REQUEST_EVENT = "ecosystem:push-education-requested" as const
+export const SERVICE_WORKER_BOOTSTRAP_EVENT = "ecosystem:service-worker-bootstrap" as const
+
+export type ServiceWorkerBootstrapStatus = "ready" | "unsupported" | "failed" | "disabled"
+export type ServiceWorkerBootstrapEventDetail = {
+  status: ServiceWorkerBootstrapStatus
+}
+
+export function dispatchServiceWorkerBootstrap(status: ServiceWorkerBootstrapStatus): void {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(
+    new CustomEvent<ServiceWorkerBootstrapEventDetail>(SERVICE_WORKER_BOOTSTRAP_EVENT, {
+      detail: { status },
+    })
+  )
+}
 
 const PENDING_EDUCATION_TTL_MS = 30_000
 let pendingEducation: { userId: string; requestedAt: number } | null = null

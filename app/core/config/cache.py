@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from functools import cached_property
+from uuid import UUID
 
-from pydantic import field_validator
+from pydantic import ValidationInfo, field_validator
 
 from .base import (
     BaseAppSettings,
-    _coerce_int_list,
     _coerce_str_list,
     _load_file_secret,
     _validate_non_negative_int,
@@ -14,6 +14,16 @@ from .base import (
 )
 
 DEFAULT_REVOCATION_REDIS_URL = "redis://127.0.0.1:6380/0"
+
+
+def _coerce_uuid_list(values: list[str] | str) -> tuple[UUID, ...]:
+    identifiers: list[UUID] = []
+    for value in _coerce_str_list(values):
+        try:
+            identifiers.append(UUID(value))
+        except ValueError:
+            continue
+    return tuple(identifiers)
 
 
 class CacheSettings(BaseAppSettings):
@@ -25,14 +35,13 @@ class CacheSettings(BaseAppSettings):
     nats_url: str = "nats://127.0.0.1:4222"
     nats_auth_token: str | None = None
     cache_nats_bucket: str = "ue_cache"
-    cache_nats_ttl_seconds: int = 3600
     session_storage_backend: str = "redis"
     cache_default_ttl_seconds: int = 300
     stats_cache_ttl_seconds: int = 180
     cache_l1_ttl_seconds: int = 60
     cache_warmup_enabled: bool = False
-    cache_warmup_groups: list[int] | str = ""
-    cache_warmup_stats_users: list[int] | str = ""
+    cache_warmup_groups: list[str] | str = ""
+    cache_warmup_stats_users: list[str] | str = ""
     cache_warmup_periods: list[str] | str = "30d,90d"
     cache_warmup_max_age_seconds: int = 120
 
@@ -49,6 +58,17 @@ class CacheSettings(BaseAppSettings):
     cache_schedule_l1_max_size: int = 100
     cache_schedule_l1_ttl_s: float = 120.0
     cache_schedule_l2_ttl_s: float = 7200.0
+
+    @field_validator(
+        "cache_user_max_size",
+        "cache_config_max_size",
+        "cache_news_l1_max_size",
+        "cache_schedule_l1_max_size",
+    )
+    @classmethod
+    def _validate_cache_l1_max_size(cls, value: int, info: ValidationInfo) -> int:
+        label = (info.field_name or "cache_l1_max_size").upper()
+        return _validate_positive_int(value, label=label)
 
     @field_validator("nats_auth_token", mode="before")
     @classmethod
@@ -89,12 +109,12 @@ class CacheSettings(BaseAppSettings):
         return self.cache_backend.strip().lower()
 
     @cached_property
-    def cache_warmup_group_ids(self) -> tuple[int, ...]:
-        return tuple(_coerce_int_list(self.cache_warmup_groups))
+    def cache_warmup_group_ids(self) -> tuple[UUID, ...]:
+        return _coerce_uuid_list(self.cache_warmup_groups)
 
     @cached_property
-    def cache_warmup_stats_user_ids(self) -> tuple[int, ...]:
-        return tuple(_coerce_int_list(self.cache_warmup_stats_users))
+    def cache_warmup_stats_user_ids(self) -> tuple[UUID, ...]:
+        return _coerce_uuid_list(self.cache_warmup_stats_users)
 
     @cached_property
     def cache_warmup_period_keys(self) -> tuple[str, ...]:

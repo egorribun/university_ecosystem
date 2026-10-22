@@ -29,7 +29,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.mixins import UserFK, UUID7PrimaryKeyMixin
-from app.utils.encryption import EncryptedString
+from app.utils.encryption import TotpEncryptedString
 
 
 class ChallengeState(StrEnum):
@@ -123,7 +123,7 @@ class ActiveSession(Base, UUID7PrimaryKeyMixin, UserFK):
 class MfaTotpEnrollment(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "mfa_totp_enrollments"
 
-    secret: Mapped[str] = mapped_column(EncryptedString(), nullable=False)
+    secret: Mapped[str] = mapped_column(TotpEncryptedString(), nullable=False)
     label: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(
         Boolean,

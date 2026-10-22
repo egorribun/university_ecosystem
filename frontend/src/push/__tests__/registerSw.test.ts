@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { registerServiceWorker } from "../register-sw"
-import { PWA_REFRESH_EVENT } from "@/app/pwaEvents"
+import {
+  PWA_REFRESH_EVENT,
+  SERVICE_WORKER_BOOTSTRAP_EVENT,
+  type ServiceWorkerBootstrapEventDetail,
+} from "@/app/pwaEvents"
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 import { withExpectedConsole } from "@/tests/strictConsole"
 
@@ -56,10 +60,19 @@ describe("registerServiceWorker", () => {
     }
   })
 
-  it("returns null if serviceWorker is not supported by browser", async () => {
+  it("returns null and reports unsupported when serviceWorker is not available", async () => {
     vi.stubGlobal("navigator", {})
+    let bootstrapStatus: ServiceWorkerBootstrapEventDetail["status"] | undefined
+    window.addEventListener(
+      SERVICE_WORKER_BOOTSTRAP_EVENT,
+      (event) => {
+        bootstrapStatus = (event as CustomEvent<ServiceWorkerBootstrapEventDetail>).detail.status
+      },
+      { once: true }
+    )
     const reg = await registerServiceWorker()
     expect(reg).toBeNull()
+    expect(bootstrapStatus).toBe("unsupported")
   })
 
   it("registers service worker successfully and sets up listeners", async () => {
@@ -101,9 +114,24 @@ describe("registerServiceWorker", () => {
       onLine: true,
     })
 
-    // 1. Success run
+    let bootstrapDetail: ServiceWorkerBootstrapEventDetail | undefined
+    let queueListenersReadyAtSignal = false
+    window.addEventListener(
+      SERVICE_WORKER_BOOTSTRAP_EVENT,
+      (event) => {
+        bootstrapDetail = (event as CustomEvent<ServiceWorkerBootstrapEventDetail>).detail
+        queueListenersReadyAtSignal =
+          addEventListenerSpy.mock.calls.some((call: unknown[]) => call[0] === "online") &&
+          documentAddEventListenerSpy.mock.calls.some(
+            (call: unknown[]) => call[0] === "visibilitychange"
+          )
+      },
+      { once: true }
+    )
     const reg = await registerServiceWorker("/custom-sw.js")
     expect(reg).toBe(mockRegistration)
+    expect(bootstrapDetail).toEqual({ status: "ready" })
+    expect(queueListenersReadyAtSignal).toBe(true)
     expect(mockServiceWorkerContainer.register).toHaveBeenCalledWith("/custom-sw.js", {
       scope: "/",
       updateViaCache: "none",
@@ -188,6 +216,7 @@ describe("registerServiceWorker", () => {
 
     // Verify controllerchange listener reloads window
     expect(swListeners["controllerchange"]).toBeDefined()
+    mockServiceWorkerContainer.controller = { postMessage: vi.fn() }
     swListeners["controllerchange"]()
     expect(window.location.reload).toHaveBeenCalledTimes(1)
     swListeners["controllerchange"]()
@@ -238,6 +267,23 @@ describe("registerServiceWorker", () => {
 
     await expect(registerServiceWorker()).resolves.toBe(mockRegistration)
   })
+
+  it.each([null, {}])(
+    "waits safely when no controller or message-capable active worker exists (%s)",
+    async (active) => {
+      const registration = { active, addEventListener: vi.fn() }
+      vi.stubGlobal("navigator", {
+        serviceWorker: {
+          controller: null,
+          ready: Promise.resolve(registration),
+          register: vi.fn().mockResolvedValue(registration),
+          addEventListener: vi.fn(),
+        },
+        onLine: true,
+      })
+      await expect(registerServiceWorker()).resolves.toBe(registration)
+    }
+  )
 
   it("does not request queue processing when offline", async () => {
     const mockActive = {
@@ -292,12 +338,13 @@ describe("registerServiceWorker", () => {
     expect(registerSync).toHaveBeenCalledWith("sync-offline-mutations")
   })
 
-  it("does not reload page on controllerchange if window.name matches mock api initializer", async () => {
+  it("reloads after a controller replacement even if window.name matches the mock API sentinel", async () => {
     const swListeners: Record<string, any> = {}
     const mockRegistration: any = {
       ready: Promise.resolve(),
     }
     const mockServiceWorkerContainer = {
+      controller: { postMessage: vi.fn() },
       ready: Promise.resolve(mockRegistration),
       register: vi.fn().mockResolvedValue(mockRegistration),
       addEventListener: vi.fn().mockImplementation((event, listener) => {
@@ -311,8 +358,121 @@ describe("registerServiceWorker", () => {
     window.name = "__mock_api_initialized__"
     await registerServiceWorker()
 
+    mockServiceWorkerContainer.controller = { postMessage: vi.fn() }
     swListeners["controllerchange"]()
+    expect(window.location.reload).toHaveBeenCalledTimes(1)
+  })
+
+  it("ignores the first controller claim but reloads after a later worker update", async () => {
+    const swListeners: Record<string, any> = {}
+    const mockRegistration: any = {
+      active: { postMessage: vi.fn() },
+      ready: Promise.resolve(),
+    }
+    const mockServiceWorkerContainer = {
+      controller: null as ServiceWorker | null,
+      ready: Promise.resolve(mockRegistration),
+      register: vi.fn().mockResolvedValue(mockRegistration),
+      addEventListener: vi.fn().mockImplementation((event, listener) => {
+        swListeners[event] = listener
+      }),
+    }
+    vi.stubGlobal("navigator", {
+      serviceWorker: mockServiceWorkerContainer,
+      onLine: true,
+    })
+
+    await registerServiceWorker()
+    mockServiceWorkerContainer.controller = { postMessage: vi.fn() } as unknown as ServiceWorker
+    swListeners["controllerchange"]()
+
     expect(window.location.reload).not.toHaveBeenCalled()
+
+    mockServiceWorkerContainer.controller = { postMessage: vi.fn() } as unknown as ServiceWorker
+    swListeners["controllerchange"]()
+
+    expect(window.location.reload).toHaveBeenCalledOnce()
+  })
+
+  it("reloads after an update when the first claim event was missed while waiting for ready", async () => {
+    let resolveReady!: (registration: any) => void
+    const ready = new Promise<any>((resolve) => {
+      resolveReady = resolve
+    })
+    const mockRegistration: any = {
+      active: { postMessage: vi.fn() },
+      ready,
+    }
+    let controller: ServiceWorker | null = null
+    const mockServiceWorkerContainer = new EventTarget() as EventTarget & {
+      controller: ServiceWorker | null
+      ready: Promise<any>
+      register: ReturnType<typeof vi.fn>
+    }
+    Object.defineProperty(mockServiceWorkerContainer, "controller", {
+      get: () => controller,
+    })
+    mockServiceWorkerContainer.ready = ready
+    mockServiceWorkerContainer.register = vi.fn().mockResolvedValue(mockRegistration)
+    vi.stubGlobal("navigator", {
+      serviceWorker: mockServiceWorkerContainer,
+      onLine: true,
+    })
+
+    const registrationPromise = registerServiceWorker()
+    controller = { postMessage: vi.fn() } as unknown as ServiceWorker
+    // The first-claim event fires before registration reaches `ready`, so this
+    // native EventTarget correctly has no listener to receive it.
+    mockServiceWorkerContainer.dispatchEvent(new Event("controllerchange"))
+    expect(window.location.reload).not.toHaveBeenCalled()
+
+    resolveReady(mockRegistration)
+    await registrationPromise
+
+    controller = { postMessage: vi.fn() } as unknown as ServiceWorker
+    mockServiceWorkerContainer.dispatchEvent(new Event("controllerchange"))
+
+    expect(window.location.reload).toHaveBeenCalledOnce()
+  })
+
+  it("ignores a queued initial claim delivered after the listener is attached", async () => {
+    let resolveReady!: (registration: any) => void
+    const ready = new Promise<any>((resolve) => {
+      resolveReady = resolve
+    })
+    const mockRegistration: any = {
+      active: { postMessage: vi.fn() },
+      ready,
+    }
+    let controller: ServiceWorker | null = null
+    const mockServiceWorkerContainer = new EventTarget() as EventTarget & {
+      controller: ServiceWorker | null
+      ready: Promise<any>
+      register: ReturnType<typeof vi.fn>
+    }
+    Object.defineProperty(mockServiceWorkerContainer, "controller", {
+      get: () => controller,
+    })
+    mockServiceWorkerContainer.ready = ready
+    mockServiceWorkerContainer.register = vi.fn().mockResolvedValue(mockRegistration)
+    vi.stubGlobal("navigator", {
+      serviceWorker: mockServiceWorkerContainer,
+      onLine: true,
+    })
+
+    const registrationPromise = registerServiceWorker()
+    controller = { postMessage: vi.fn() } as unknown as ServiceWorker
+    resolveReady(mockRegistration)
+    await registrationPromise
+
+    // The initial controller is already assigned when the listener is added;
+    // delivering its still-queued event must not look like an update.
+    mockServiceWorkerContainer.dispatchEvent(new Event("controllerchange"))
+    expect(window.location.reload).not.toHaveBeenCalled()
+
+    controller = { postMessage: vi.fn() } as unknown as ServiceWorker
+    mockServiceWorkerContainer.dispatchEvent(new Event("controllerchange"))
+    expect(window.location.reload).toHaveBeenCalledOnce()
   })
 
   it("returns null and logs when register throws an error", async () => {
@@ -323,9 +483,18 @@ describe("registerServiceWorker", () => {
       serviceWorker: mockServiceWorkerContainer,
     })
 
+    let bootstrapStatus: ServiceWorkerBootstrapEventDetail["status"] | undefined
+    window.addEventListener(
+      SERVICE_WORKER_BOOTSTRAP_EVENT,
+      (event) => {
+        bootstrapStatus = (event as CustomEvent<ServiceWorkerBootstrapEventDetail>).detail.status
+      },
+      { once: true }
+    )
     const result = await withExpectedConsole("error", "Service worker registration failed", () =>
       registerServiceWorker()
     )
     expect(result).toBeNull()
+    expect(bootstrapStatus).toBe("failed")
   })
 })

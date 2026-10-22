@@ -1,7 +1,7 @@
 import { createElement } from "react"
-import { fireEvent, render, screen, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const {
@@ -12,9 +12,23 @@ const {
   mockUseMediaQuery,
   mockUseTranslation,
   reducedMotion,
+  campusZone,
 } = vi.hoisted(() => ({
+  campusZone: { current: undefined as string | null | undefined },
   eventsState: {
-    current: { data: [] as unknown[] | undefined, isLoading: false, isFetching: false },
+    current: {
+      data: [] as unknown[] | undefined,
+      isPending: false,
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+    } as {
+      data: unknown[] | undefined
+      isPending: boolean
+      isLoading: boolean
+      isFetching: boolean
+      isError?: boolean
+    },
   },
   mockNavigate: vi.fn(),
   mockPrefetchDashboardEvents: vi.fn(),
@@ -80,6 +94,12 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@/contexts/LanguageContext", () => ({
   useLanguage: () => ({ language: "en", setLanguage: vi.fn() }),
 }))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () =>
+    campusZone.current === undefined
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+      : campusZone.current,
+}))
 vi.mock("@/hooks/useDashboardEvents", () => ({
   useDashboardEvents: () => eventsState.current,
   prefetchDashboardEvents: mockPrefetchDashboardEvents,
@@ -106,9 +126,24 @@ function renderCard() {
   )
 }
 
+function EventsCardWithProvidedQueryResult() {
+  const queryResult = useQuery({
+    queryKey: ["events-card-provided-query-result"],
+    queryFn: async () => EVENTS,
+    initialData: EVENTS,
+  })
+
+  return <EventsCard queryResult={queryResult} />
+}
+
 describe("EventsCard", () => {
   beforeEach(() => {
-    eventsState.current = { data: EVENTS, isLoading: false, isFetching: false }
+    eventsState.current = {
+      data: EVENTS,
+      isPending: false,
+      isLoading: false,
+      isFetching: false,
+    }
     mockNavigate.mockReset()
     mockPrefetchDashboardEvents.mockReset()
     mockPrefetchEventsListQuery.mockReset()
@@ -116,6 +151,7 @@ describe("EventsCard", () => {
     mockUseMediaQuery.mockImplementation(() => reducedMotion.value)
     mockUseTranslation.mockClear()
     reducedMotion.value = true
+    campusZone.current = undefined
   })
 
   it("does not mount perpetual decorative animations", () => {
@@ -158,14 +194,77 @@ describe("EventsCard", () => {
   })
 
   it("shows the empty state when no events match the scope", () => {
-    eventsState.current = { data: [], isLoading: false, isFetching: false }
+    eventsState.current = {
+      data: [],
+      isPending: false,
+      isLoading: false,
+      isFetching: false,
+    }
     renderCard()
     expect(screen.getByText("dashboard:events.empty")).toBeInTheDocument()
     expect(screen.queryByRole("list")).not.toBeInTheDocument()
   })
 
+  it("announces a failed events fetch instead of the empty state", () => {
+    eventsState.current = {
+      data: undefined,
+      isPending: false,
+      isLoading: false,
+      isFetching: false,
+      isError: true,
+    }
+    renderCard()
+    expect(screen.getByRole("alert")).toHaveTextContent("common:statuses.error")
+    expect(screen.queryByText("dashboard:events.empty")).not.toBeInTheDocument()
+  })
+
+  it("shows no events until the campus timezone is known", () => {
+    campusZone.current = null
+    renderCard()
+    expect(screen.getByText("dashboard:events.empty")).toBeInTheDocument()
+    expect(screen.queryByRole("list")).not.toBeInTheDocument()
+  })
+
+  it("keeps the empty state when the events fetch succeeds with no matches", () => {
+    eventsState.current = {
+      data: [],
+      isPending: false,
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+    }
+    renderCard()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.getByText("dashboard:events.empty")).toBeInTheDocument()
+  })
+
+  it("renders the supplied query result independently of the dashboard hook", async () => {
+    const user = userEvent.setup()
+    eventsState.current = {
+      data: [],
+      isPending: false,
+      isLoading: false,
+      isFetching: false,
+    }
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    render(
+      <QueryClientProvider client={qc}>
+        <EventsCardWithProvidedQueryResult />
+      </QueryClientProvider>
+    )
+    await user.click(screen.getByRole("button", { name: "dashboard:scope.week" }))
+
+    expect(screen.getByText("Hackathon 2026")).toBeInTheDocument()
+  })
+
   it("marks the card aria-busy while events load", () => {
-    eventsState.current = { data: undefined, isLoading: true, isFetching: false }
+    eventsState.current = {
+      data: undefined,
+      isPending: true,
+      isLoading: true,
+      isFetching: false,
+    }
     renderCard()
     expect(screen.getByText("dashboard:events.heading").closest("[aria-busy]")).toHaveAttribute(
       "aria-busy",
@@ -186,7 +285,12 @@ describe("EventsCard", () => {
   })
 
   it("keeps stale events visible while the query is still loading", () => {
-    eventsState.current = { data: EVENTS, isLoading: true, isFetching: true }
+    eventsState.current = {
+      data: EVENTS,
+      isPending: true,
+      isLoading: true,
+      isFetching: true,
+    }
     renderCard()
     fireEvent.click(screen.getByRole("button", { name: "dashboard:scope.week" }))
     const card = screen.getByText("dashboard:events.heading").closest("[aria-busy]")
@@ -249,6 +353,7 @@ describe("EventsCard", () => {
             location: "",
           },
         ],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }
@@ -340,6 +445,7 @@ describe("EventsCard", () => {
         { id: 3, title: "Invalid event", starts_at: "not-a-date", location: "Room" },
         { id: 4, title: "No date", starts_at: null, location: "Room" },
       ],
+      isPending: false,
       isLoading: false,
       isFetching: true,
     }
@@ -376,7 +482,12 @@ describe("EventsCard", () => {
           location: "",
         }
       )
-      eventsState.current = { data: events, isLoading: false, isFetching: false }
+      eventsState.current = {
+        data: events,
+        isPending: false,
+        isLoading: false,
+        isFetching: false,
+      }
 
       renderCard()
       const todayList = screen.getByRole("list", { name: "dashboard:aria.eventsToday" })
@@ -416,6 +527,7 @@ describe("EventsCard", () => {
           { id: 30, title: "Week end", starts_at: weekEnd, location: "" },
           { id: 31, title: "Outside week", starts_at: outsideWeek, location: "" },
         ],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }
@@ -433,6 +545,7 @@ describe("EventsCard", () => {
 
       eventsState.current = {
         data: [{ id: 32, title: "Updated week event", starts_at: weekEnd, location: "" }],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }
@@ -468,6 +581,7 @@ describe("EventsCard", () => {
             location: "",
           },
         ],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }
@@ -496,6 +610,7 @@ describe("EventsCard", () => {
             location: "",
           },
         ],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }
@@ -512,6 +627,7 @@ describe("EventsCard", () => {
             location: "",
           },
         ],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }
@@ -553,6 +669,7 @@ describe("EventsCard", () => {
             location: "",
           },
         ],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }
@@ -638,6 +755,7 @@ describe("EventsCard", () => {
             location: "",
           },
         ],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }
@@ -682,6 +800,7 @@ describe("EventsCard", () => {
             location: "",
           },
         ],
+        isPending: false,
         isLoading: false,
         isFetching: false,
       }
@@ -711,4 +830,87 @@ describe("EventsCard", () => {
     prepareOnKey({ key: "Spacebar" }, callback)
     expect(callback).toHaveBeenCalledOnce()
   })
+
+  it.each(["today", "week"] as const)(
+    "refreshes the %s scope on the next minute tick after campus midnight",
+    (scope) => {
+      vi.useFakeTimers()
+      let rendered: ReturnType<typeof renderCard> | undefined
+
+      try {
+        vi.setSystemTime(new Date("2026-10-19T20:59:30.000Z"))
+        campusZone.current = "Europe/Istanbul"
+        const events = [
+          {
+            id: "old-campus-day",
+            title: "Old campus day",
+            starts_at: "2026-10-19T10:00:00.000Z",
+            location: "",
+          },
+          {
+            id: "new-campus-day",
+            title: "New campus day",
+            starts_at: "2026-10-20T06:00:00.000Z",
+            location: "",
+          },
+          {
+            id: "entering-week-edge",
+            title: "Entering week edge",
+            starts_at: "2026-10-27T06:00:00.000Z",
+            location: "",
+          },
+        ]
+        const queryResult = {
+          data: events,
+          isPending: false,
+          isLoading: false,
+          isFetching: false,
+          isError: false,
+        }
+        eventsState.current = queryResult
+
+        rendered = renderCard()
+        if (scope === "week") {
+          fireEvent.click(screen.getByRole("button", { name: "dashboard:scope.week" }))
+        }
+        const listName =
+          scope === "today" ? "dashboard:aria.eventsToday" : "dashboard:aria.eventsWeek"
+        const eventLabels = () => {
+          const list = screen.getByRole("list", { name: listName })
+          const buttons = within(list).getAllByRole("button")
+          return buttons.map((button) => button.getAttribute("aria-label"))
+        }
+
+        expect(eventLabels()).toEqual(
+          scope === "today"
+            ? ["dashboard:aria.eventItem:Old campus day"]
+            : ["dashboard:aria.eventItem:Old campus day", "dashboard:aria.eventItem:New campus day"]
+        )
+
+        act(() => {
+          vi.advanceTimersByTime(60_000)
+        })
+
+        expect(eventsState.current).toBe(queryResult)
+        expect(eventsState.current.data).toBe(events)
+        expect(campusZone.current).toBe("Europe/Istanbul")
+        expect(eventLabels()).toEqual(
+          scope === "today"
+            ? ["dashboard:aria.eventItem:New campus day"]
+            : [
+                "dashboard:aria.eventItem:New campus day",
+                "dashboard:aria.eventItem:Entering week edge",
+              ]
+        )
+        expect(mockPrefetchDashboardEvents).not.toHaveBeenCalled()
+        expect(mockPrefetchEventsListQuery).not.toHaveBeenCalled()
+      } finally {
+        try {
+          rendered?.unmount()
+        } finally {
+          vi.useRealTimers()
+        }
+      }
+    }
+  )
 })

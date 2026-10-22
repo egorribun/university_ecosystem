@@ -24,17 +24,20 @@ if TYPE_CHECKING:
         ChatResponse,
         ChatsListOut,
         MessageResponse,
+        MessageSenderInfo,
         MessagesListOut,
     )
-    from app.schemas.dtos.chat import MessageReactionDTO
+    from app.schemas.dtos.chat import MessageDTO, MessageReactionDTO
 
 from app.api.validation import ensure_exists, raise_forbidden, raise_not_found
 from app.api.ws.presence import build_presence_map
 from app.repositories.chat_repository import ChatRepository
 from app.schemas.chat import (
+    ChatParticipant,
     ChatResponse,
     ChatsListOut,
     MessageResponse,
+    MessageSenderInfo,
     MessagesListOut,
     PresenceStatus,
     ReactionAggregate,
@@ -68,6 +71,13 @@ def _aggregate_reactions(
         ReactionAggregate(emoji=e, count=counts[e], reacted_by_me=(e in mine))
         for e in order
     ]
+
+
+def _without_deleted_attachments(message: MessageDTO) -> MessageDTO:
+    """Keep tombstones visible without exposing their attachment references."""
+    if message.deleted_at is None or not message.attachments:
+        return message
+    return message.model_copy(update={"attachments": []})
 
 
 class ChatQueryService:
@@ -107,7 +117,19 @@ class ChatQueryService:
         last_message_ids = [
             d["last_message_id"] for d in chat_data_map.values() if d["last_message_id"]
         ]
-        last_messages_map = await self.repository.get_last_messages(last_message_ids)
+        last_messages_map = {
+            message_id: _without_deleted_attachments(message)
+            for message_id, message in (
+                await self.repository.get_last_messages(
+                    last_message_ids, user_id=user.id
+                )
+            ).items()
+        }
+        participant_names = (
+            await self.repository.get_user_display_names(list(participant_ids))
+            if participant_ids
+            else {}
+        )
 
         pre_responses: list[ChatResponse] = []
         for chat_id, data in chat_data_map.items():
@@ -123,7 +145,16 @@ class ChatQueryService:
                     chat_type=chat.chat_type,
                     name=chat.name,
                     created_by=chat.created_by,
-                    participants=cast("list[ChatParticipant]", chat.participants),
+                    participants=[
+                        ChatParticipant(
+                            id=participant.id,
+                            email=participant.email or "",
+                            full_name=participant_names.get(participant.id),
+                            avatar_url=participant.avatar_url,
+                            is_active=participant.is_active,
+                        )
+                        for participant in chat.participants
+                    ],
                     last_message=cast("MessageResponse | None", last_message),
                     unread_count=data["unread_count"],
                     created_at=chat.created_at,
@@ -197,7 +228,9 @@ class ChatQueryService:
         unread_count = await self.repository.get_unread_count(
             chat_id, user.id, chat.chat_type
         )
-        last_message = await self.repository.get_last_message(chat_id)
+        last_message = await self.repository.get_last_message(chat_id, user_id=user.id)
+        if last_message is not None:
+            last_message = _without_deleted_attachments(last_message)
 
         presence_map = await build_presence_map(
             [p.id for p in chat.participants], db=self.session
@@ -251,10 +284,19 @@ class ChatQueryService:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         messages, has_more, next_cursor = await self.repository.get_messages(
-            chat_id, cursor, limit
+            chat_id, cursor, limit, user_id=user.id
         )
 
-        messages = list(reversed(messages))
+        messages = [
+            _without_deleted_attachments(message) for message in reversed(messages)
+        ]
+
+        sender_ids = list(dict.fromkeys(message.sender_id for message in messages))
+        sender_profiles = (
+            await self.repository.get_message_sender_profiles(sender_ids)
+            if sender_ids
+            else {}
+        )
 
         presence_map = await build_presence_map(
             {msg.sender_id for msg in messages}, db=self.session
@@ -272,13 +314,11 @@ class ChatQueryService:
                 edited_at=msg.edited_at,  # Wave 205 SW4 — W203 SW8 gotcha
                 deleted_at=msg.deleted_at,  # Wave 205 SW4 — W203 SW8 gotcha
                 forwarded_from_name=msg.forwarded_from_name,  # Wave 211 — W203 SW8
-                # LOW-W19: sender is intentionally omitted here.  The message
-                # list query uses a lightweight projection that does not eagerly
-                # load the full sender relationship in order to avoid N+1 queries.
-                # Caller receives sender_id and can resolve the profile separately
-                # if needed.  If full sender data is required, add a joined-load
-                # to ChatRepository.get_messages() and remove this comment.
-                sender=None,
+                sender=MessageSenderInfo(
+                    id=msg.sender_id,
+                    full_name=sender_profiles.get(msg.sender_id, (None, None))[0],
+                    avatar_url=sender_profiles.get(msg.sender_id, (None, None))[1],
+                ),
                 attachments=cast("list[AttachmentResponse]", msg.attachments),
                 sender_presence=presence_map.get(msg.sender_id),
                 # Wave 206 — aggregate the selectinload'd reaction rows; reacted_by_me
@@ -326,10 +366,14 @@ class ChatQueryService:
         if user.id not in participant_ids:
             raise_forbidden(locale, "errors.chat.not_participant")
 
-        if not await self.repository.message_exists_in_chat(message_id, chat_id):
+        if not await self.repository.message_exists_in_chat(
+            message_id, chat_id, user_id=user.id
+        ):
             raise_not_found("message", locale)
 
-        reactors = await self.repository.get_reactors(message_id, emoji)
+        reactors = await self.repository.get_reactors(
+            message_id, emoji, user_id=user.id
+        )
         return [
             ReactorOut(
                 user_id=u.id,

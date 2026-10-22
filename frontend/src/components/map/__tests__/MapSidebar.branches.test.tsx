@@ -17,6 +17,9 @@ const hooks = vi.hoisted(() => ({
 vi.mock("@/contexts/AppShellContext", () => ({
   useAppShell: () => ({ setOverlayState: hooks.setOverlayState }),
 }))
+vi.mock("@/contexts/CampusTimezoneContext", () => ({
+  useCampusTimezone: () => "Europe/Istanbul",
+}))
 
 vi.mock("@/utils/buildingHours", () => ({
   isOpenNow: () => hooks.open,
@@ -231,6 +234,16 @@ describe("MapSidebar branches", () => {
     expect(screen.getByRole("radio", { name: "2" })).toHaveAttribute("aria-checked", "true")
   })
 
+  it("reports the chosen floor when a floor radio is clicked", () => {
+    const onFloorChange = vi.fn()
+    render(<MapSidebar {...baseProps} onFloorChange={onFloorChange} />)
+
+    fireEvent.click(screen.getByRole("radio", { name: "2" }))
+
+    expect(onFloorChange).toHaveBeenCalledOnce()
+    expect(onFloorChange).toHaveBeenCalledWith(2)
+  })
+
   it("does not render a floor selector for a single-floor building", () => {
     render(
       <MapSidebar {...baseProps} building={{ ...BUILDING, floors: [FLOOR_1], floorCount: 1 }} />
@@ -302,5 +315,88 @@ describe("MapSidebar branches", () => {
     const firstSidebar = container.querySelector(".map-sidebar-container")
     rerender(<MapSidebar {...baseProps} building={{ ...BUILDING, letter: "Б" }} />)
     expect(container.querySelector(".map-sidebar-container")).not.toBe(firstSidebar)
+  })
+
+  it("preserves selected snaps and scales a custom height across viewport resize", () => {
+    const originalHeight = window.innerHeight
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 1000 })
+    const addEventListener = vi.spyOn(window, "addEventListener")
+    const removeEventListener = vi.spyOn(window, "removeEventListener")
+    const { unmount } = render(<MapSidebar {...baseProps} isMobile />)
+    const dialog = screen.getByRole("dialog")
+    const handle = screen.getByRole("slider", { name: "sidebar.dragToResize" })
+    const resizeListener = addEventListener.mock.calls.find(
+      ([eventName]) => String(eventName) === "resize"
+    )?.[1]
+
+    try {
+      expect(dialog).toHaveStyle({ height: "500px" })
+      expect(resizeListener).toBeDefined()
+
+      fireEvent.keyDown(handle, { key: "End" })
+      expect(handle).toHaveAttribute("aria-valuenow", "850")
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 })
+      fireEvent(window, new Event("resize"))
+      expect(dialog).toHaveStyle({ height: "510px" })
+      expect(handle).toHaveAttribute("aria-valuenow", "510")
+      expect(handle).toHaveAttribute("aria-valuemax", "540")
+
+      fireEvent.keyDown(handle, { key: "Home" })
+      expect(handle).toHaveAttribute("aria-valuenow", "160")
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: 1000 })
+      fireEvent(window, new Event("resize"))
+      expect(handle).toHaveAttribute("aria-valuenow", "160")
+
+      Object.defineProperty(handle, "setPointerCapture", { value: vi.fn() })
+      fireEvent.pointerDown(handle, { pointerId: 23, clientY: 0 })
+      fireEvent.pointerMove(handle, { pointerId: 23, clientY: -240 })
+      expect(handle).toHaveAttribute("aria-valuenow", "400")
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 })
+      fireEvent(window, new Event("resize"))
+      expect(dialog).toHaveStyle({ height: "240px" })
+      expect(handle).toHaveAttribute("aria-valuenow", "240")
+    } finally {
+      unmount()
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: originalHeight })
+    }
+
+    expect(removeEventListener).toHaveBeenCalledWith("resize", resizeListener)
+  })
+
+  it("keeps short-viewport keyboard snaps ordered and sheet geometry within ARIA bounds", () => {
+    const originalHeight = window.innerHeight
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 300 })
+    const { unmount } = render(<MapSidebar {...baseProps} isMobile />)
+    const dialog = screen.getByRole("dialog")
+    const handle = screen.getByRole("slider", { name: "sidebar.dragToResize" })
+
+    try {
+      expect(handle).toHaveAttribute("aria-valuenow", "150")
+      fireEvent.keyDown(handle, { key: "ArrowDown" })
+      expect(handle).toHaveAttribute("aria-valuenow", "150")
+
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: 150 })
+      fireEvent(window, new Event("resize"))
+      expect(handle).toHaveAttribute("aria-valuemin", "100")
+      expect(handle).toHaveAttribute("aria-valuemax", "135")
+      expect(handle).toHaveAttribute("aria-valuenow", "100")
+      expect(dialog).toHaveStyle({ height: "100px" })
+
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: 0 })
+      fireEvent(window, new Event("resize"))
+      expect(handle).toHaveAttribute("aria-valuemin", "0")
+      expect(handle).toHaveAttribute("aria-valuemax", "0")
+      expect(handle).toHaveAttribute("aria-valuenow", "0")
+      expect(dialog).toHaveStyle({ height: "0px" })
+
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: 150 })
+      fireEvent(window, new Event("resize"))
+      expect(handle).toHaveAttribute("aria-valuemin", "100")
+      expect(handle).toHaveAttribute("aria-valuemax", "135")
+      expect(handle).toHaveAttribute("aria-valuenow", "100")
+    } finally {
+      unmount()
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: originalHeight })
+    }
   })
 })

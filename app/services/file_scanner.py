@@ -299,6 +299,12 @@ async def scan_for_malware(
             locale or "en",
         )
 
+    # The streaming ClamAV scan reads the upload to EOF. Upload handlers save
+    # from the same UploadFile immediately after a clean scan, so restore the
+    # cursor before returning to ensure the stored bytes match the scanned ones.
+    if stream_upload is not None:
+        await stream_upload.seek(0)
+
     _log_scan_result(result, backend)
 
     if result.signature:
@@ -425,12 +431,12 @@ async def _scan_upload_with_clamd(
     # Response is typically 'stream: OK\0' or 'stream: EICAR-Test-Signature FOUND\0'
     resp_text = response.decode("utf-8", errors="replace").strip("\0 ")
 
-    if resp_text.endswith("OK"):
+    if resp_text in {"stream: OK", "stream:OK"}:
         signature = None
-    elif resp_text.endswith("FOUND"):
-        # Extract signature name
-        parts = resp_text.split(" ")
-        signature = parts[1] if len(parts) >= 2 else "unknown"
+    elif resp_text.startswith("stream:") and resp_text.endswith("FOUND"):
+        # Treat any FOUND result as infected, even when the daemon omits the
+        # optional separator or signature name.
+        signature = resp_text[len("stream:") : -len("FOUND")].strip() or "unknown"
     else:
         raise FileScannerUnavailableError(f"clamd error: {resp_text}")
 

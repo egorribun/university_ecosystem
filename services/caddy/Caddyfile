@@ -19,6 +19,21 @@
 	# Auto-HTTPS certificate management email (required for ACME production).
 	# In dev environments without a real domain, Caddy falls back to self-signed.
 	email {$ACME_EMAIL}
+
+	# Runtime errors can include the original URI. Redact password and bearer values
+	# while retaining useful request details; access logs have their own filter.
+	log default {
+		format filter {
+			request>uri multi_regexp {
+				regexp (?i)^[^?]*(?:^|/|%2f|\x5c|%5c)(?:r|%72)(?:e|%65)(?:s|%73)(?:e|%65)(?:t|%74)(?:-|%2d)(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)(?:$|/|%2f|\x5c|%5c|\?|%3f|%).*$ [REDACTED]
+				regexp (?i)([?&])(?:t|%74)(?:o|%6f)(?:k|%6b)(?:e|%65)(?:n|%6e)=[^&]* ${1}token=REDACTED
+				regexp (?i)([?&])(?:t|%74)(?:i|%69)(?:c|%63)(?:k|%6b)(?:e|%65)(?:t|%74)=[^&]* ${1}ticket=REDACTED
+				regexp (?i)([?&])(?:c|%63)(?:o|%6f)(?:d|%64)(?:e|%65)=[^&]* ${1}code=REDACTED
+				regexp (?i)([?&])(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)=[^&]* ${1}password=REDACTED
+			}
+		}
+		exclude http.log.access
+	}
 }
 
 # Main HTTPS site — matches the public hostname or falls back to :443.
@@ -50,7 +65,7 @@
 	# Pre-W131: a single root-level reverse_proxy sent ALL traffic to backend
 	# — internal-only configuration that never had a frontend service. Phase
 	# 4 introduces a Node SSR frontend runtime, so prefixes now route
-	# explicitly: /api/*, /graphql*, /ws/* go to backend services; /sw.js
+	# explicitly: /api/* and /ws/* go to backend services; /sw.js
 	# plus the default handle go to frontend:3000.
 	# Public key discovery bypasses the gateway so edge and service clients can
 	# refresh the backend's RS256 key without an authentication dependency.
@@ -68,12 +83,6 @@
 		}
 	}
 
-	handle /graphql* {
-		reverse_proxy gateway:8080 {
-			header_up X-Real-IP {http.request.remote}
-			header_up X-Forwarded-Proto https
-		}
-	}
 
 	# Ticket issuance is an ordinary authenticated HTTP request handled by the
 	# gateway. It must not fall through to the WebSocket server.
@@ -164,6 +173,11 @@
 	# --- Security hardening -----------------------------------------------
 	# HSTS: tell browsers to always use HTTPS for this domain (1 year).
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+	# Apply the shared browser security policy at the TLS edge, including Node SSR.
+	header X-Content-Type-Options nosniff
+	header X-Frame-Options DENY
+	header X-XSS-Protection "0"
+	header Referrer-Policy no-referrer
 
 	# Prevent Caddy from leaking its version in the Server header.
 	header -Server
@@ -171,12 +185,15 @@
 	# --- Logging -----------------------------------------------------------
 	log {
 		output stderr
-		# The WebSocket one-time ticket is intentionally carried in the browser
-		# query string for the upgrade, but it is a bearer credential. Keep the
-		# request shape for diagnostics while never persisting the token value.
+		# WebSocket upgrades carry a one-time ticket in the query string. Redact it,
+		# reset tokens, and password query values before persisting URI diagnostics.
 		format filter {
-			request>uri query {
-				replace ticket REDACTED
+			request>uri multi_regexp {
+				regexp (?i)^[^?]*(?:^|/|%2f|\x5c|%5c)(?:r|%72)(?:e|%65)(?:s|%73)(?:e|%65)(?:t|%74)(?:-|%2d)(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)(?:$|/|%2f|\x5c|%5c|\?|%3f|%).*$ [REDACTED]
+				regexp (?i)([?&])(?:t|%74)(?:o|%6f)(?:k|%6b)(?:e|%65)(?:n|%6e)=[^&]* ${1}token=REDACTED
+				regexp (?i)([?&])(?:t|%74)(?:i|%69)(?:c|%63)(?:k|%6b)(?:e|%65)(?:t|%74)=[^&]* ${1}ticket=REDACTED
+				regexp (?i)([?&])(?:c|%63)(?:o|%6f)(?:d|%64)(?:e|%65)=[^&]* ${1}code=REDACTED
+				regexp (?i)([?&])(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)=[^&]* ${1}password=REDACTED
 			}
 		}
 		level INFO

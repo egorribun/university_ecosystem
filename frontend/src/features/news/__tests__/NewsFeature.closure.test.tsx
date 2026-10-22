@@ -14,7 +14,9 @@ const { state, mockResetEtagCache } = vi.hoisted(() => ({
     query: {
       current: {
         news: [] as NewsItem[],
+        queryKey: ["news", "list", { language: "en", limit: 12 }],
         isLoading: false,
+        isError: false,
         isFetching: false,
         isFetchingNextPage: false,
         hasNextPage: true,
@@ -101,6 +103,7 @@ vi.mock("@/features/news/components/NewsHeader", () => ({
 vi.mock("@/features/news/components/NewsList", () => ({
   NewsList: (props: {
     newsList: Array<{ id: string; title: string }>
+    isError?: boolean
     hasNextPage: boolean
     fetchNextPage: () => void
     refreshNews: () => void
@@ -109,6 +112,7 @@ vi.mock("@/features/news/components/NewsList", () => ({
     <div
       data-testid="news-list"
       data-count={String(props.newsList.length)}
+      data-error={String(Boolean(props.isError))}
       data-next={String(props.hasNextPage)}
     >
       {props.newsList.map((item) => (
@@ -160,8 +164,9 @@ const NEWS = [
   },
 ] satisfies NewsItem[]
 
-function renderFeature() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function renderFeature(
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+) {
   return render(
     <QueryClientProvider client={client}>
       <NewsFeature />
@@ -179,7 +184,9 @@ describe("NewsFeature closure", () => {
     state.url.current = { params: { q: "", cat: "all", sort: "newest" } }
     state.query.current = {
       news: NEWS,
+      queryKey: ["news", "list", { language: "en", limit: 12 }],
       isLoading: false,
+      isError: false,
       isFetching: false,
       isFetchingNextPage: false,
       hasNextPage: true,
@@ -193,7 +200,9 @@ describe("NewsFeature closure", () => {
   })
 
   it("filters, exposes controls, refreshes, paginates, and opens the form", () => {
-    renderFeature()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidate = vi.spyOn(client, "invalidateQueries")
+    renderFeature(client)
 
     expect(screen.getByTestId("news-header")).toHaveAttribute("data-admin", "true")
     expect(screen.getByTestId("news-header")).toHaveAttribute("data-count", "2")
@@ -214,6 +223,8 @@ describe("NewsFeature closure", () => {
     fireEvent.click(screen.getByTestId("news-next"))
     expect(state.query.current.fetchNextPage).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByTestId("news-refresh"))
+    expect(invalidate).toHaveBeenCalledTimes(1)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: state.query.current.queryKey, exact: true })
     fireEvent.click(screen.getByTestId("news-add"))
     expect(screen.getByTestId("news-form")).toHaveAttribute("data-open", "true")
     fireEvent.click(screen.getByTestId("news-form-close"))
@@ -221,6 +232,14 @@ describe("NewsFeature closure", () => {
     expect(screen.getByTestId("news-form")).toHaveAttribute("data-parent-refresh", "false")
     expect(mockResetEtagCache).toHaveBeenCalledTimes(1)
     expect(screen.getByTestId("news-shortcuts")).toBeInTheDocument()
+  })
+
+  it("forwards query failure state to the news list", () => {
+    state.query.current = { ...state.query.current, isError: true }
+
+    renderFeature()
+
+    expect(screen.getByTestId("news-list")).toHaveAttribute("data-error", "true")
   })
 
   it("applies saved/popular filters, translated search fields, and offline state", () => {
@@ -240,6 +259,43 @@ describe("NewsFeature closure", () => {
     expect(state.query.current.fetchNextPage).not.toHaveBeenCalled()
     expect(screen.getByText("Campus update")).toBeInTheDocument()
     expect(screen.queryByText("Lecture schedule")).not.toBeInTheDocument()
+  })
+
+  it("filters a mixed-keyword science article consistently across localized responses", () => {
+    const russianTitle = "ГУУ вошёл в топ-20 лучших университетов страны"
+    const englishTitle = "GUU ranks among the country's top 20 universities"
+    const russianContent =
+      "Научных публикаций стало больше; гранты и стипендии поддерживают исследования."
+    const englishContent = "Research publications helped raise the result."
+    const article: NewsItem = {
+      ...NEWS[0]!,
+      id: "bilingual-science",
+      title: russianTitle,
+      content: russianContent,
+      title_en: englishTitle,
+      content_en: englishContent,
+    }
+
+    state.debounced.current = ""
+    state.url.current = { params: { q: "", cat: "science", sort: "newest" } }
+
+    for (const localized of [
+      { language: "ru", title: russianTitle, content: russianContent },
+      { language: "en", title: englishTitle, content: englishContent },
+    ]) {
+      state.language.current = localized.language
+      state.query.current = {
+        ...state.query.current,
+        news: [{ ...article, title: localized.title, content: localized.content }],
+      }
+      const view = renderFeature()
+
+      expect(screen.getByTestId("news-list")).toHaveAttribute("data-count", "1")
+      expect(screen.getByText(localized.title)).toBeInTheDocument()
+      view.unmount()
+    }
+
+    expect(state.query.current.fetchNextPage).toHaveBeenCalled()
   })
 
   it("filters by an inferred non-saved category", () => {

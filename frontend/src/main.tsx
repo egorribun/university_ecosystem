@@ -6,6 +6,8 @@ import App from "./App"
 import { ErrorBoundary } from "@/components/feedback/ErrorBoundary"
 import { initGlobalErrorHandlers } from "./app/globalErrorHandlers"
 import { logError } from "./app/logger"
+import { APP_HYDRATED_EVENT } from "./app/hydration"
+import { dispatchServiceWorkerBootstrap } from "./app/pwaEvents"
 // W149 SW2 — PersistQueryClientProvider + queryClient + idbPersister moved to
 // __root.tsx RootComponent (client branch) to match SsrRoot's provider tree
 // for hydrateRoot reconciliation. createRoot → hydrateRoot reuses the
@@ -50,7 +52,7 @@ const idle = getIdleScheduler()
 // busy (or do not implement requestIdleCallback).
 const DEFERRED_OBSERVABILITY_IDLE_TIMEOUT_MS = 10_000
 
-function deferObservability(bootstrapStart: number): void {
+function deferObservability(): void {
   // Lighthouse runs a synthetic, authenticated build with no telemetry
   // endpoint. Loading OTEL + Web Vitals during that audit only adds long
   // tasks after the page has rendered and can keep Lighthouse from finding
@@ -66,13 +68,19 @@ function deferObservability(bootstrapStart: number): void {
         import("./app/observability").then((m) => {
           m.initObservability()
         }),
-        import("./app/webVitals").then((m) => {
-          const enabled = m.initWebVitals()
-          if (enabled) {
-            const bootstrapEnd = performance.now()
-            m.reportBootstrapTTI(bootstrapEnd - bootstrapStart)
-          }
-        }),
+        import("./app/webVitals")
+          .then((m) => {
+            if (m.initWebVitals()) {
+              bootstrapReporter = m.reportBootstrapTTI
+              reportObservedBootstrap()
+            } else {
+              stopBootstrapObservation()
+            }
+          })
+          .catch((error) => {
+            stopBootstrapObservation()
+            throw error
+          }),
       ]).catch((error) => {
         logError("Deferred observability init failed", error)
       })
@@ -82,8 +90,15 @@ function deferObservability(bootstrapStart: number): void {
 }
 
 async function setupServiceWorker() {
-  if (!import.meta.env.PROD) return
-  if (!("serviceWorker" in navigator)) return
+  if (!import.meta.env.PROD) {
+    dispatchServiceWorkerBootstrap("disabled")
+    return
+  }
+  if (!("serviceWorker" in navigator)) {
+    dispatchServiceWorkerBootstrap("unsupported")
+    return
+  }
+  let registrationResolved = false
   try {
     const [SWMod, PushMod] = await Promise.all([
       import("./push/register-sw"),
@@ -92,6 +107,7 @@ async function setupServiceWorker() {
     const { registerServiceWorker } = SWMod
     const registration = await registerServiceWorker("/sw.js")
     if (!registration) return
+    registrationResolved = true
 
     // Push persistence must wait for auth hydration to confirm a real
     // account; SSR stubs and cached placeholders must never own an endpoint.
@@ -99,6 +115,7 @@ async function setupServiceWorker() {
       logError("Failed to sync push subscription", error)
     })
   } catch (error) {
+    if (!registrationResolved) dispatchServiceWorkerBootstrap("failed")
     logError("Service worker registration failed", error)
   }
 }
@@ -108,6 +125,33 @@ if (!rootElement) throw new Error("Root element not found")
 
 const bootstrapStart = performance.now()
 const isLHCI = import.meta.env.VITE_LHCI === "true"
+
+let bootstrapDuration: number | undefined
+let bootstrapReporter: ((duration: number) => void) | undefined
+let bootstrapReported = false
+
+function reportObservedBootstrap(): void {
+  if (bootstrapReported || bootstrapDuration === undefined || !bootstrapReporter) return
+  bootstrapReported = true
+  bootstrapReporter(bootstrapDuration)
+}
+
+function stopBootstrapObservation(): void {
+  window.removeEventListener(APP_HYDRATED_EVENT, captureBootstrapCommit)
+}
+
+function captureBootstrapCommit(): void {
+  // APP_TTI retains its wire name, but measures bootstrap to provider-tree commit.
+  // It does not mean browser TTI, complete route data or all Suspense descendants.
+  bootstrapDuration = performance.now() - bootstrapStart
+  stopBootstrapObservation()
+  reportObservedBootstrap()
+}
+
+// Observe before either render call. A pre-existing boolean carries no timestamp.
+if (!isLHCI && !window.__APP_HYDRATED) {
+  window.addEventListener(APP_HYDRATED_EVENT, captureBootstrapCommit, { once: true })
+}
 
 const treeApp = (
   <StrictMode>
@@ -141,6 +185,9 @@ function deferLhciHydration(): void {
 // React's document root is required because RootShell renders <html> directly.
 const isStaticSpaShell = document.documentElement.dataset.renderMode === "static-spa"
 if (isStaticSpaShell) {
+  // Keep this per-document marker for later RootShell renders. The parser has
+  // already executed the bootstrap scripts; RootShell preserves them in place.
+  Reflect.set(window, "__UE_STATIC_SPA_DOCUMENT_MOUNT__", true)
   delete document.documentElement.dataset.renderMode
   // The static shell is deliberately a route-agnostic snapshot. It may
   // contain a different pending/loader subtree than the current client
@@ -175,6 +222,7 @@ if (isLHCI) {
 
 if (isLHCI) {
   // Skip Service Worker setup
+  dispatchServiceWorkerBootstrap("disabled")
 } else if (document.readyState === "complete") {
   void setupServiceWorker()
 } else {
@@ -190,4 +238,4 @@ if (isLHCI) {
 // Wave 117 SW3 — schedule the deferred observability init AFTER React
 // render + SW setup is kicked off so the main-thread idle window is more
 // likely to actually be idle when OTEL / Sentry dynamic chunks resolve.
-deferObservability(bootstrapStart)
+deferObservability()

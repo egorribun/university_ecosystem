@@ -98,8 +98,9 @@ export function MobileMenu({
 
   const handleSearch = () => {
     onClose()
-    // Trigger Cmd+K search dialog
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }))
+    // Trigger Cmd+K search dialog. SearchDialog listens on document; an event
+    // dispatched on window never reaches document listeners.
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }))
   }
 
   if (!isOpen) return null

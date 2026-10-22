@@ -85,6 +85,31 @@ def test_rust_fuzz_does_not_persist_pr_credentials() -> None:
         assert checkout["with"]["persist-credentials"] is False
 
 
+def test_cargo_fuzz_is_pinned_and_installed_with_stable_for_both_jobs() -> None:
+    workflow = yaml.safe_load(FUZZ_WORKFLOW.read_text(encoding="utf-8"))
+    expected_install = "cargo +stable install cargo-fuzz --version 0.13.2 --locked"
+
+    for job_name in ("fuzz", "fuzz-additional-rust-crates"):
+        steps = workflow["jobs"][job_name]["steps"]
+        install_steps = [
+            step for step in steps if step.get("name") == "Install cargo-fuzz"
+        ]
+        assert len(install_steps) == 1
+        assert install_steps[0]["run"] == expected_install
+
+        run_step = next(
+            step for step in steps if step.get("name") == "Run fuzz targets"
+        )
+        assert 'cargo +nightly fuzz run "$target"' in run_step["run"]
+
+    native_run = next(
+        step
+        for step in workflow["jobs"]["fuzz"]["steps"]
+        if step.get("name") == "Run fuzz targets"
+    )
+    assert "cargo +nightly fuzz list" in native_run["run"]
+
+
 def test_native_fuzz_uses_stable_pyo3_abi_for_standalone_binaries() -> None:
     """Fuzz binaries must not link private symbols from a runner libpython."""
 

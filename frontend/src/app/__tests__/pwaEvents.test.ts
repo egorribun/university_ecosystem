@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   consumePendingPushEducation,
+  dispatchServiceWorkerBootstrap,
   PUSH_EDUCATION_REQUEST_EVENT,
   requestPushEducation,
+  SERVICE_WORKER_BOOTSTRAP_EVENT,
+  type ServiceWorkerBootstrapEventDetail,
 } from "../pwaEvents"
 
 describe("requestPushEducation", () => {
@@ -46,5 +49,45 @@ describe("requestPushEducation", () => {
     requestPushEducation("student-1")
     vi.setSystemTime(1_060_001)
     expect(consumePendingPushEducation("student-1")).toBe(false)
+  })
+})
+
+describe("dispatchServiceWorkerBootstrap", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("is safe when no browser window exists", () => {
+    vi.stubGlobal("window", undefined)
+
+    expect(() => dispatchServiceWorkerBootstrap("ready")).not.toThrow()
+  })
+
+  it("dispatches only bootstrap status to the current window", () => {
+    const events: Event[] = []
+    const listener = (event: Event) => events.push(event)
+    window.addEventListener(SERVICE_WORKER_BOOTSTRAP_EVENT, listener)
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent")
+
+    try {
+      dispatchServiceWorkerBootstrap("ready")
+
+      expect(events).toHaveLength(1)
+      const [event] = events
+      if (event === undefined) throw new Error("Bootstrap event was not dispatched")
+      expect(event).toBeInstanceOf(CustomEvent)
+      expect(event.type).toBe(SERVICE_WORKER_BOOTSTRAP_EVENT)
+      expect(dispatchSpy).toHaveBeenCalledTimes(1)
+      expect(dispatchSpy).toHaveBeenCalledWith(event)
+      expect((event as CustomEvent<ServiceWorkerBootstrapEventDetail>).detail).toStrictEqual({
+        status: "ready",
+      })
+    } finally {
+      try {
+        window.removeEventListener(SERVICE_WORKER_BOOTSTRAP_EVENT, listener)
+      } finally {
+        dispatchSpy.mockRestore()
+      }
+    }
   })
 })

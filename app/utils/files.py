@@ -12,7 +12,13 @@ from app.core.localization import translate
 from app.core.logging import get_logger
 from app.core.static import PRIVATE_STATIC_PREFIXES
 from app.services.file_scanner import scan_for_malware
-from app.services.storage import StaticFSStorage, StorageBackend, get_storage_backend
+from app.services.quarantine import QuarantineError, QuarantineService
+from app.services.storage import (
+    QuarantineStorageBackend,
+    StaticFSStorage,
+    StorageBackend,
+    get_storage_backend,
+)
 
 logger = get_logger(__name__)
 
@@ -53,7 +59,7 @@ def _storage_backend_signature() -> tuple[object, ...]:
 _storage_backend_snapshot = _storage_backend_signature()
 
 
-def _get_storage_backend() -> StorageBackend:
+def _get_storage_backend() -> QuarantineStorageBackend:
     """Return the configured storage backend, refreshing when settings change."""
 
     global storage_backend, _default_storage_backend, _storage_backend_snapshot
@@ -130,6 +136,8 @@ def _detect_image_mime(data: bytes) -> str | None:
         return "image/png"
     if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "image/webp"
+    if len(data) >= 6 and data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
     # Basic SVG detection
     if data.lstrip().startswith(b"<svg") or b"<svg" in data[:1024].lower():
         return "image/svg+xml"
@@ -268,27 +276,20 @@ async def _quarantine_payload(
     metadata: dict[str, Any] | None = None,
 ) -> None:
     metadata = metadata or {}
-    backend = _get_storage_backend()
     cleaned = subdir.strip("/ ")
     quarantine_subdir = f"quarantine/{cleaned}" if cleaned else "quarantine"
-    await _prepare_local_storage(backend, quarantine_subdir)
     name = _gen_name(f"{prefix}_{reason}", ".bin")
     relative_path = f"{quarantine_subdir}/{name}" if quarantine_subdir else name
     try:
-        await backend.save_file(
-            relative_path,
-            data,
-            content_type="application/octet-stream",
-        )
-    except (
-        OSError,
-        ConnectionError,
-    ) as exc:  # RZ-22-01: narrowed — file/network storage errors
+        backend = _get_storage_backend()
+        await QuarantineService(backend).store(relative_path, data)
+    except (QuarantineError, OSError, TypeError, ValueError) as exc:
+        # Do not log rejected bytes, file names, or backend exception details.
+        # The caller still raises its original rejection after this capture fails.
         logger.warning(
-            "Failed to store quarantined payload: %s",
-            exc,
-            exc_info=True,
-            extra=metadata,
+            "Failed to durably store rejected upload",
+            error_type=type(exc).__name__,
+            metadata=metadata,
         )
 
 
@@ -404,6 +405,7 @@ async def save_attachment(
     allowed_extensions: set[str] | None = None,
     max_size_bytes: int | None = None,
     return_meta: bool = False,
+    sanitize_image_metadata: bool = False,
 ) -> str | dict[str, object]:
     declared_raw = (upload.content_type or "").strip()
     declared_type = _normalize_mime_type(declared_raw)
@@ -541,6 +543,33 @@ async def save_attachment(
             metadata={**metadata, "signature": signature},
         ),
     )
+    if sanitize_image_metadata and detected_type.startswith("image/"):
+        from app.utils.images import ImagePixelLimitError, strip_image_metadata
+
+        try:
+            data = await asyncio.to_thread(
+                strip_image_metadata,
+                data,
+                content_type=detected_type,
+                max_pixels=int(settings.image_max_pixels),
+            )
+        except ImagePixelLimitError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=translate("errors.files.too_large", locale=locale),
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail=translate("errors.files.unsupported_type", locale=locale),
+            ) from exc
+
+        if len(data) > limit:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=translate("errors.files.too_large", locale=locale),
+            )
+
     sanitized_subdir = subdir.strip("/ ")
     backend = _get_storage_backend()
     await _prepare_local_storage(backend, sanitized_subdir)

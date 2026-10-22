@@ -29,6 +29,11 @@ async def test_notify_about_news_logic():
             return_value=[uuid4()],
         ),
         patch(
+            "app.services.notifications.news_events._unnotified_user_ids",
+            new_callable=AsyncMock,
+            side_effect=lambda _db, _key, candidate_ids: candidate_ids,
+        ),
+        patch(
             "app.services.notifications.news_events.create_notifications_for_users",
             new_callable=AsyncMock,
             return_value=1,
@@ -59,6 +64,11 @@ async def test_notify_about_event_logic():
             "app.services.notifications.news_events._fetch_active_user_ids",
             new_callable=AsyncMock,
             return_value=[uuid4()],
+        ),
+        patch(
+            "app.services.notifications.news_events._unnotified_user_ids",
+            new_callable=AsyncMock,
+            side_effect=lambda _db, _key, candidate_ids: candidate_ids,
         ),
         patch(
             "app.services.notifications.news_events.create_notifications_for_users",

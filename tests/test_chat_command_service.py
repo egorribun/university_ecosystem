@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+from fastapi import HTTPException
 
 from app.services.chat.command_service import (
     ChatMaintenanceService,
@@ -30,6 +31,7 @@ def _mock_uow():
     uow.session = AsyncMock()
     uow.commit = AsyncMock()
     uow.rollback = AsyncMock()
+    uow.flush = AsyncMock()
     # context manager support
     uow.__aenter__ = AsyncMock(return_value=uow)
     uow.__aexit__ = AsyncMock(return_value=False)
@@ -91,6 +93,14 @@ def _mock_chat(
     return chat
 
 
+def _mock_maintenance_repository(uow, chat) -> None:
+    uow.chats.get_orm_for_update = AsyncMock(return_value=object())
+    uow.chats.lock_participant_ids_for_maintenance = AsyncMock(
+        return_value=[participant.id for participant in chat.participants]
+    )
+    uow.chats.get_messages = AsyncMock(return_value=(list(chat.messages), False, None))
+
+
 # ---------------------------------------------------------------------------
 # _make_idempotency_key
 # ---------------------------------------------------------------------------
@@ -140,17 +150,30 @@ class TestMakeIdempotencyKey:
 
 class TestSendMessageValidation:
     @pytest.mark.asyncio
-    async def test_chat_not_found(self):
+    @pytest.mark.parametrize(
+        ("locale", "expected_detail"),
+        [("en", "Chat not found"), ("ru", "Чат не найден")],
+    )
+    async def test_chat_not_found(self, locale: str, expected_detail: str) -> None:
         uow = _mock_uow()
         uow.chats.get_by_id = AsyncMock(return_value=None)
+        chat_id = uuid.uuid4()
 
         dispatcher = ChatMessageDispatcher(
             uow, _mock_attachment_service(), _mock_notification_service()
         )
         user = _mock_user()
 
-        with pytest.raises(Exception):  # noqa: B017  # noqa: B017
-            await dispatcher.send_message(uuid.uuid4(), user, "Hello", [], "en")
+        with pytest.raises(HTTPException) as exc_info:
+            await dispatcher.send_message(chat_id, user, "Hello", [], locale)
+
+        if exc_info.value.status_code != 404:
+            raise AssertionError("chat_not_found_status_contract")
+        if exc_info.value.detail != expected_detail:
+            raise AssertionError("chat_not_found_localized_detail_contract")
+        uow.chats.get_by_id.assert_awaited_once_with(chat_id)
+        uow.chats.check_participant.assert_not_called()
+        uow.commit.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_not_participant(self):
@@ -253,7 +276,7 @@ class TestSendMessageSuccess:
         uow.chats.create_message = AsyncMock(side_effect=_capture_message)
 
         # get_last_messages returns by message id — we need to match dynamically
-        async def _get_last(ids):
+        async def _get_last(ids, **_kwargs):
             if not created_msgs:
                 return {}
             m = created_msgs[0]
@@ -302,6 +325,8 @@ class TestSendMessageSuccess:
         user = _mock_user()
         msg_id = uuid.uuid4()
         chat_id = uuid.uuid4()
+        uow.chats.get_by_id = AsyncMock(return_value=_mock_chat(user.id))
+        uow.chats.check_participant = AsyncMock(return_value=True)
 
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(
@@ -344,6 +369,9 @@ class TestSendMessageSuccess:
 
         assert result is not None
         uow.chats.create_message.assert_not_called()
+        uow.chats.get_message_by_id.assert_awaited_once_with(
+            msg_id, user_id=user.id, chat_id=chat_id
+        )
 
     @pytest.mark.asyncio
     async def test_with_file_upload(self, monkeypatch):
@@ -372,7 +400,7 @@ class TestSendMessageSuccess:
 
         uow.chats.create_message = AsyncMock(side_effect=_capture)
 
-        async def _get_last(ids):
+        async def _get_last(ids, **_kwargs):
             if not created_msgs:
                 return {}
             m = created_msgs[0]
@@ -527,10 +555,18 @@ class TestClearHistory:
         uow = _mock_uow()
         admin = _mock_user(role="admin")
         chat = _mock_chat(admin.id)
-        chat.messages = [MagicMock(id=uuid.uuid4()), MagicMock(id=uuid.uuid4())]
+        chat.messages = [
+            MagicMock(id=uuid.uuid4(), attachments=[]),
+            MagicMock(id=uuid.uuid4(), attachments=[]),
+        ]
 
         uow.chats.get_by_id = AsyncMock(return_value=chat)
-        uow.chats.delete_messages = AsyncMock()
+        _mock_maintenance_repository(uow, chat)
+        uow.chats.delete_messages = AsyncMock(side_effect=[1, 1])
+        uow.chats.get_messages.side_effect = [
+            ([chat.messages[0]], True, "cursor-page-2"),
+            ([chat.messages[1]], False, None),
+        ]
         uow.chats.update_timestamp_by_id = AsyncMock()
         uow.chats.add = MagicMock()
 
@@ -542,7 +578,128 @@ class TestClearHistory:
 
         assert result.status == "cleared"
         assert result.deleted_messages == 2
-        uow.commit.assert_called_once()
+        uow.chats.get_orm_for_update.assert_awaited_once_with(chat.id)
+        uow.chats.lock_participant_ids_for_maintenance.assert_awaited_once_with(chat.id)
+        assert uow.chats.get_messages.await_args_list == [
+            call(chat.id, None, 512, user_id=admin.id, for_update=True),
+            call(chat.id, "cursor-page-2", 512, user_id=admin.id, for_update=True),
+        ]
+        assert uow.chats.delete_messages.await_args_list == [
+            call([chat.messages[0].id], chat_id=chat.id, user_id=admin.id),
+            call([chat.messages[1].id], chat_id=chat.id, user_id=admin.id),
+        ]
+        assert uow.flush.await_count == 2
+        uow.chats.add.assert_not_called()
+        uow.commit.assert_awaited_once()
+        uow.rollback.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("locale", "expected_detail"),
+        (("ru", "Чат не найден"), ("en", "Chat not found")),
+    )
+    async def test_scoped_reload_race_returns_localized_not_found(
+        self, locale: str, expected_detail: str
+    ) -> None:
+        from fastapi import HTTPException
+
+        uow = _mock_uow()
+        admin = _mock_user(role="admin")
+        chat = _mock_chat(admin.id)
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        _mock_maintenance_repository(uow, chat)
+        uow.chats.get_orm_for_update.return_value = None
+        uow.chats.delete_messages = AsyncMock()
+        attachment_svc = _mock_attachment_service()
+        service = ChatMaintenanceService(uow, attachment_svc)
+
+        with pytest.raises(HTTPException) as raised:
+            await service.clear_history(chat.id, admin, locale)
+
+        assert raised.value.status_code == 404
+        assert raised.value.detail == expected_detail
+        uow.chats.get_by_id.assert_awaited_once_with(chat.id)
+        uow.chats.get_orm_for_update.assert_awaited_once_with(chat.id)
+        uow.chats.lock_participant_ids_for_maintenance.assert_not_awaited()
+        uow.chats.get_messages.assert_not_awaited()
+        uow.flush.assert_not_awaited()
+        uow.rollback.assert_awaited_once()
+        uow.chats.delete_messages.assert_not_awaited()
+        uow.commit.assert_not_awaited()
+        attachment_svc.collect_urls.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("locale", "expected_detail"),
+        (
+            ("en", "You are not a participant of this chat"),
+            ("ru", "Вы не участник этого чата"),
+        ),
+    )
+    async def test_empty_chat_admin_is_forbidden_without_mutation(
+        self, locale: str, expected_detail: str
+    ) -> None:
+        uow = _mock_uow()
+        admin = _mock_user(role="admin")
+        chat = _mock_chat(admin.id)
+        chat.participants = []
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        _mock_maintenance_repository(uow, chat)
+        uow.chats.delete_messages = AsyncMock()
+        uow.chats.update_timestamp_by_id = AsyncMock()
+        uow.chats.add = MagicMock()
+
+        attachment_svc = _mock_attachment_service()
+        service = ChatMaintenanceService(uow, attachment_svc)
+
+        with pytest.raises(HTTPException) as raised:
+            await service.clear_history(chat.id, admin, locale)
+
+        assert raised.value.status_code == 403
+        assert raised.value.detail == expected_detail
+        assert uow.chats.get_by_id.await_count == 1
+        uow.chats.delete_messages.assert_not_awaited()
+        uow.chats.update_timestamp_by_id.assert_not_awaited()
+        uow.chats.add.assert_not_called()
+        attachment_svc.collect_urls.assert_not_awaited()
+        uow.chats.get_orm_for_update.assert_awaited_once_with(chat.id)
+        uow.chats.lock_participant_ids_for_maintenance.assert_awaited_once_with(chat.id)
+        uow.chats.get_messages.assert_not_awaited()
+        uow.flush.assert_not_awaited()
+        uow.rollback.assert_awaited_once()
+        uow.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_participant_admin_uses_own_identity_for_history_clear(self) -> None:
+        uow = _mock_uow()
+        first_participant = _mock_user()
+        admin = _mock_user(role="admin")
+        chat = _mock_chat(first_participant.id, admin.id)
+        message = MagicMock(id=uuid.uuid4(), attachments=[])
+        chat.messages = [message]
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        _mock_maintenance_repository(uow, chat)
+        uow.chats.delete_messages = AsyncMock(return_value=1)
+        uow.chats.update_timestamp_by_id = AsyncMock()
+
+        service = ChatMaintenanceService(uow, _mock_attachment_service())
+        result = await service.clear_history(chat.id, admin, "en")
+
+        assert result.status == "cleared"
+        assert result.deleted_messages == 1
+        uow.chats.get_by_id.assert_awaited_once_with(chat.id)
+        uow.chats.get_orm_for_update.assert_awaited_once_with(chat.id)
+        uow.chats.lock_participant_ids_for_maintenance.assert_awaited_once_with(chat.id)
+        uow.chats.get_messages.assert_awaited_once_with(
+            chat.id, None, 512, user_id=admin.id, for_update=True
+        )
+        uow.chats.delete_messages.assert_awaited_once_with(
+            [message.id], chat_id=chat.id, user_id=admin.id
+        )
+        uow.chats.update_timestamp_by_id.assert_awaited_once()
+        uow.flush.assert_awaited_once()
+        uow.commit.assert_awaited_once()
+        uow.rollback.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_non_admin_forbidden(self):
@@ -561,22 +718,38 @@ class TestClearHistory:
         uow = _mock_uow()
         admin = _mock_user(role="admin")
         chat = _mock_chat(admin.id)
-        chat.messages = [MagicMock(id=uuid.uuid4())]
+        attachment_url = "https://s3.example.com/file1.pdf"
+        chat.messages = [
+            MagicMock(id=uuid.uuid4(), attachments=[MagicMock(url=attachment_url)])
+        ]
 
         uow.chats.get_by_id = AsyncMock(return_value=chat)
-        uow.chats.delete_messages = AsyncMock()
+        _mock_maintenance_repository(uow, chat)
+        uow.chats.delete_messages = AsyncMock(return_value=1)
         uow.chats.update_timestamp_by_id = AsyncMock()
         uow.chats.add = MagicMock()
 
         attachment_svc = _mock_attachment_service()
-        attachment_svc.collect_urls.return_value = ["https://s3.example.com/file1.pdf"]
 
         svc = ChatMaintenanceService(uow, attachment_svc)
         result = await svc.clear_history(chat.id, admin, "en")
 
         assert result.deleted_attachments == 1
         # StoredEvent should be added for attachment cleanup
-        uow.chats.add.assert_called()
+        uow.chats.get_orm_for_update.assert_awaited_once_with(chat.id)
+        uow.chats.lock_participant_ids_for_maintenance.assert_awaited_once_with(chat.id)
+        uow.chats.get_messages.assert_awaited_once_with(
+            chat.id, None, 512, user_id=admin.id, for_update=True
+        )
+        assert result.deleted_messages == 1
+        uow.flush.assert_awaited_once()
+        uow.chats.add.assert_called_once()
+        assert uow.chats.add.call_args.args[0].payload == {
+            "chat_id": str(chat.id),
+            "attachment_urls": [attachment_url],
+        }
+        uow.commit.assert_awaited_once()
+        uow.rollback.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -594,6 +767,7 @@ class TestDeleteChat:
         chat.messages = []
 
         uow.chats.get_by_id = AsyncMock(return_value=chat)
+        _mock_maintenance_repository(uow, chat)
         uow.chats.delete_chat = AsyncMock()
         uow.chats.add = MagicMock()
 
@@ -619,8 +793,23 @@ class TestDeleteChat:
             result = await svc.delete_chat(chat.id, admin, "en")
 
         assert result.status == "deleted"
-        uow.chats.delete_chat.assert_called_once_with(chat.id)
-        uow.commit.assert_called_once()
+        uow.chats.get_orm_for_update.assert_awaited_once_with(chat.id)
+        uow.chats.lock_participant_ids_for_maintenance.assert_awaited_once_with(chat.id)
+        uow.chats.get_messages.assert_awaited_once_with(
+            chat.id, None, 512, user_id=admin.id, for_update=True
+        )
+        assert result.deleted_messages == 0
+        uow.chats.delete_chat.assert_awaited_once_with(chat.id)
+        uow.flush.assert_not_awaited()
+        events = [item.args[0] for item in uow.chats.add.call_args_list]
+        assert len(events) == 2
+        assert {event.payload["participant_id"] for event in events} == {
+            str(admin.id),
+            str(other.id),
+        }
+        assert all(event.payload["chat_id"] == str(chat.id) for event in events)
+        uow.commit.assert_awaited_once()
+        uow.rollback.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_non_admin_forbidden(self):
@@ -639,17 +828,17 @@ class TestDeleteChat:
         uow = _mock_uow()
         admin = _mock_user(role="admin")
         chat = _mock_chat(admin.id)
-        chat.messages = [MagicMock(id=uuid.uuid4())]
+        urls = ["https://s3.example.com/a.pdf", "https://s3.example.com/b.png"]
+        chat.messages = [
+            MagicMock(id=uuid.uuid4(), attachments=[MagicMock(url=url) for url in urls])
+        ]
 
         uow.chats.get_by_id = AsyncMock(return_value=chat)
+        _mock_maintenance_repository(uow, chat)
         uow.chats.delete_chat = AsyncMock()
         uow.chats.add = MagicMock()
 
         attachment_svc = _mock_attachment_service()
-        attachment_svc.collect_urls.return_value = [
-            "https://s3.example.com/a.pdf",
-            "https://s3.example.com/b.png",
-        ]
 
         svc = ChatMaintenanceService(uow, attachment_svc)
 
@@ -671,7 +860,23 @@ class TestDeleteChat:
 
         assert result.deleted_attachments == 2
         # Both ChatDeleted + AttachmentCleanupRequested StoredEvents
-        assert uow.chats.add.call_count >= 2
+        uow.chats.get_orm_for_update.assert_awaited_once_with(chat.id)
+        uow.chats.lock_participant_ids_for_maintenance.assert_awaited_once_with(chat.id)
+        uow.chats.get_messages.assert_awaited_once_with(
+            chat.id, None, 512, user_id=admin.id, for_update=True
+        )
+        assert result.deleted_messages == 1
+        uow.chats.delete_chat.assert_awaited_once_with(chat.id)
+        uow.flush.assert_awaited_once()
+        events = [item.args[0] for item in uow.chats.add.call_args_list]
+        assert len(events) == 2
+        cleanup_events = [
+            event for event in events if "attachment_urls" in event.payload
+        ]
+        assert len(cleanup_events) == 1
+        assert cleanup_events[0].payload["attachment_urls"] == urls
+        uow.commit.assert_awaited_once()
+        uow.rollback.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_delete_chat_not_found(self):
@@ -683,6 +888,45 @@ class TestDeleteChat:
 
         with pytest.raises(Exception):  # noqa: B017
             await svc.delete_chat(uuid.uuid4(), admin, "en")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("locale", "expected_detail"),
+        [
+            ("en", "You are not a participant of this chat"),
+            ("ru", "Вы не участник этого чата"),
+        ],
+    )
+    async def test_admin_deleting_empty_chat_returns_localized_forbidden_detail(
+        self, locale: str, expected_detail: str
+    ) -> None:
+        uow = _mock_uow()
+        admin = _mock_user(role="admin")
+        chat = _mock_chat(admin.id)
+        chat.participants = []
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        _mock_maintenance_repository(uow, chat)
+
+        svc = ChatMaintenanceService(uow, _mock_attachment_service())
+
+        with pytest.raises(HTTPException) as exc_info:
+            await svc.delete_chat(chat.id, admin, locale)
+
+        assert exc_info.value.status_code == 403
+        uow.chats.get_by_id.assert_awaited_once_with(chat.id)
+        uow.chats.delete_chat.assert_not_called()
+        uow.chats.add.assert_not_called()
+        svc.attachment_service.collect_urls.assert_not_awaited()
+        uow.chats.get_orm_for_update.assert_awaited_once_with(chat.id)
+        uow.chats.lock_participant_ids_for_maintenance.assert_awaited_once_with(chat.id)
+        uow.chats.get_messages.assert_not_awaited()
+        uow.flush.assert_not_awaited()
+        uow.rollback.assert_awaited_once()
+        uow.commit.assert_not_awaited()
+        if exc_info.value.detail == "errors.chat.not_participant":
+            raise AssertionError("raw_forbidden_key_not_translated")
+        if exc_info.value.detail != expected_detail:
+            raise AssertionError("localized_forbidden_detail_mismatch")
 
     @pytest.mark.asyncio
     async def test_non_participant_non_admin(self):
@@ -714,6 +958,10 @@ def _patch_member_caches():
         patch(
             f"{_CACHE_MOD}.invalidate_presence_audience_cache", new_callable=AsyncMock
         ),
+        patch(
+            "app.services.ws_hub_client.invalidate_ws_hub_cache",
+            new_callable=AsyncMock,
+        ),
     )
 
 
@@ -730,8 +978,8 @@ class TestGroupMemberManagement:
         uow.chats.add_participant = AsyncMock(return_value=True)
         svc = ChatMaintenanceService(uow, _mock_attachment_service())
 
-        p1, p2 = _patch_member_caches()
-        with p1, p2:
+        p1, p2, p3 = _patch_member_caches()
+        with p1, p2, p3:
             await svc.add_participant(chat.id, owner, uuid.uuid4(), "en")
 
         uow.chats.add_participant.assert_awaited_once()
@@ -774,12 +1022,153 @@ class TestGroupMemberManagement:
         uow.chats.remove_participant = AsyncMock(return_value=1)
         svc = ChatMaintenanceService(uow, _mock_attachment_service())
 
-        p1, p2 = _patch_member_caches()
-        with p1, p2:
+        p1, p2, p3 = _patch_member_caches()
+        with p1, p2, p3:
             await svc.remove_participant(chat.id, member, member.id, "en")
 
         uow.chats.remove_participant.assert_awaited_once()
         uow.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_remove_participant_stages_outbox_and_best_effort_eviction_after_commit(
+        self,
+    ):
+        from app.models.domain_events import StoredEvent
+
+        owner = _mock_user()
+        member = _mock_user()
+        chat = _mock_chat(owner.id, member.id, chat_type="group", created_by=owner.id)
+        uow = _mock_uow()
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.remove_participant = AsyncMock(return_value=1)
+        operations = []
+        uow.chats.add.side_effect = lambda item: operations.append(("add", item))
+        uow.commit.side_effect = lambda: operations.append(("commit", None))
+        invalidate_chat = AsyncMock(
+            side_effect=lambda chat_id: operations.append(("chat-cache", chat_id))
+        )
+        invalidate_presence = AsyncMock(
+            side_effect=lambda *user_ids: operations.append(
+                ("presence-cache", user_ids)
+            )
+        )
+
+        def record_immediate_eviction(*args, **kwargs):
+            operations.append(("ws-hub", args, kwargs))
+            raise ConnectionError("ws-hub unavailable")
+
+        invalidate_ws = AsyncMock(side_effect=record_immediate_eviction)
+        svc = ChatMaintenanceService(uow, _mock_attachment_service())
+
+        with (
+            patch(
+                "app.services.chat.command_service.invalidate_chat_participants_cache",
+                new=invalidate_chat,
+            ),
+            patch(
+                "app.services.chat.command_service.invalidate_presence_audience_cache",
+                new=invalidate_presence,
+            ),
+            patch(
+                "app.services.ws_hub_client.invalidate_ws_hub_cache",
+                new=invalidate_ws,
+            ),
+        ):
+            await svc.remove_participant(chat.id, owner, member.id, "en")
+
+        assert [operation[0] for operation in operations] == [
+            "add",
+            "commit",
+            "chat-cache",
+            "presence-cache",
+            "ws-hub",
+        ]
+        stored_event = operations[0][1]
+        assert isinstance(stored_event, StoredEvent)
+        assert stored_event.event_type == "chat.participant_removed"
+        assert stored_event.aggregate_type == "Chat"
+        assert stored_event.aggregate_id == str(chat.id)
+        assert stored_event.payload == {
+            "chat_id": str(chat.id),
+            "user_id": str(member.id),
+        }
+        assert operations[-1][1:] == (
+            (str(member.id), str(chat.id)),
+            {"evict_room": True, "event_id": str(stored_event.id)},
+        )
+
+        # The outbox retries the same eviction with the same JetStream message ID.
+        # That makes a fast-path publish followed by durable delivery safe to repeat.
+        from app.core.events import ChatParticipantRemoved
+        from app.services.event_handlers import handle_chat_participant_removed
+
+        invalidate_ws.side_effect = None
+        with patch(
+            "app.services.ws_hub_client.invalidate_ws_hub_cache", new=invalidate_ws
+        ):
+            await handle_chat_participant_removed(
+                ChatParticipantRemoved(
+                    chat_id=chat.id,
+                    user_id=member.id,
+                    event_id=str(stored_event.id),
+                )
+            )
+
+        assert invalidate_ws.await_args_list == [
+            call(
+                str(member.id),
+                str(chat.id),
+                evict_room=True,
+                event_id=str(stored_event.id),
+            ),
+            call(
+                str(member.id),
+                str(chat.id),
+                evict_room=True,
+                event_id=str(stored_event.id),
+                raise_on_failure=True,
+            ),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_remove_participant_attempts_eviction_when_cache_invalidation_fails(
+        self,
+    ):
+        owner = _mock_user()
+        member = _mock_user()
+        chat = _mock_chat(owner.id, member.id, chat_type="group", created_by=owner.id)
+        uow = _mock_uow()
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.remove_participant = AsyncMock(return_value=1)
+        invalidate_chat = AsyncMock(side_effect=ConnectionError("cache unavailable"))
+        invalidate_presence = AsyncMock()
+        invalidate_ws = AsyncMock()
+        svc = ChatMaintenanceService(uow, _mock_attachment_service())
+
+        with (
+            patch(
+                "app.services.chat.command_service.invalidate_chat_participants_cache",
+                new=invalidate_chat,
+            ),
+            patch(
+                "app.services.chat.command_service.invalidate_presence_audience_cache",
+                new=invalidate_presence,
+            ),
+            patch(
+                "app.services.ws_hub_client.invalidate_ws_hub_cache",
+                new=invalidate_ws,
+            ),
+            pytest.raises(ConnectionError, match="cache unavailable"),
+        ):
+            await svc.remove_participant(chat.id, owner, member.id, "en")
+
+        invalidate_presence.assert_awaited_once()
+        invalidate_ws.assert_awaited_once_with(
+            str(member.id),
+            str(chat.id),
+            evict_room=True,
+            event_id=str(uow.chats.add.call_args.args[0].id),
+        )
 
     @pytest.mark.asyncio
     async def test_remove_other_by_non_owner_forbidden(self):
@@ -808,8 +1197,8 @@ class TestGroupMemberManagement:
         uow.chats.remove_participant = AsyncMock(return_value=1)
         svc = ChatMaintenanceService(uow, _mock_attachment_service())
 
-        p1, p2 = _patch_member_caches()
-        with p1, p2:
+        p1, p2, p3 = _patch_member_caches()
+        with p1, p2, p3:
             await svc.remove_participant(chat.id, owner, member_id, "en")
 
         uow.chats.remove_participant.assert_awaited_once()
@@ -830,3 +1219,81 @@ class TestGroupMemberManagement:
 
         uow.chats.rename_chat.assert_awaited_once_with(chat.id, "Renamed Group")
         uow.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_remove_participant_refreshes_other_members_cached_presence_audience(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from collections import OrderedDict
+    from collections.abc import AsyncIterator
+    from contextlib import asynccontextmanager
+
+    from app.api.ws import presence
+    from app.deps.cache import MemoryCache
+
+    owner = _mock_user()
+    removed = _mock_user()
+    observer = _mock_user()
+    chat = _mock_chat(
+        owner.id, removed.id, observer.id, chat_type="group", created_by=owner.id
+    )
+    cache = MemoryCache(default_ttl=120)
+    monkeypatch.setattr(presence, "get_cache", lambda: cache)
+    # A second API worker shares the cache backend but has an independent local L1.
+    monkeypatch.setattr(presence, "_PRESENCE_DB_CACHE", OrderedDict())
+
+    current_audiences = {
+        owner.id: {removed.id, observer.id},
+        removed.id: {owner.id, observer.id},
+        observer.id: {owner.id, removed.id},
+    }
+
+    class AudienceRepository:
+        def __init__(self, _session: object) -> None:
+            pass
+
+        async def get_presence_audience(self, user_id: uuid.UUID) -> set[uuid.UUID]:
+            return current_audiences[user_id]
+
+    @asynccontextmanager
+    async def open_session() -> AsyncIterator[object]:
+        yield object()
+
+    monkeypatch.setattr(presence, "ChatRepository", AudienceRepository)
+    monkeypatch.setattr(presence, "async_session", open_session)
+
+    for user_id, audience in current_audiences.items():
+        assert await presence._get_presence_audience(user_id) == audience
+
+    uow = MagicMock()
+    uow.chats = MagicMock()
+    uow.session = AsyncMock()
+    uow.commit = AsyncMock()
+    uow.rollback = AsyncMock()
+    uow.__aenter__ = AsyncMock(return_value=uow)
+    uow.__aexit__ = AsyncMock(return_value=False)
+    uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.remove_participant = AsyncMock(return_value=1)
+    service = ChatMaintenanceService(uow, MagicMock())
+    monkeypatch.setattr(
+        "app.services.ws_hub_client.invalidate_ws_hub_cache", AsyncMock()
+    )
+
+    await service.remove_participant(chat.id, owner, removed.id, "en")
+
+    # Removing a member changes the audience cached for every pre-change member.
+    # Drop only this worker's L1 entries to observe the shared-cache contract as
+    # another worker would after the database commit.
+    current_audiences = {
+        owner.id: {observer.id},
+        removed.id: {owner.id, observer.id},
+        observer.id: {owner.id},
+    }
+    presence._PRESENCE_DB_CACHE.clear()
+    owner_audience = await presence._get_presence_audience(owner.id)
+    if owner_audience != {observer.id}:
+        raise AssertionError("remaining_member_audience_refresh_contract")
+    observer_audience = await presence._get_presence_audience(observer.id)
+    if observer_audience != {owner.id}:
+        raise AssertionError("remaining_member_audience_refresh_contract")

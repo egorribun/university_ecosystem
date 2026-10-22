@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@sentry/react", () => ({
   captureException: vi.fn(),
@@ -29,6 +29,10 @@ function resetLoggerMocks() {
 }
 
 describe("logger closure paths", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it("normalizes errors and forwards trace-aware exception context", () => {
     resetLoggerMocks()
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
@@ -168,9 +172,11 @@ describe("logger closure paths", () => {
 
   it("supports a client without setTag and clears trace context", () => {
     resetLoggerMocks()
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
     setLoggerClient({ setTag: undefined })
     expect(() => setTraceContext(undefined)).not.toThrow()
     expect(() => logError("still logged")).not.toThrow()
+    expect(consoleError).toHaveBeenCalledExactlyOnceWith("still logged")
   })
 
   it("normalizes non-string trace ids and keeps message fallback guards strict", () => {

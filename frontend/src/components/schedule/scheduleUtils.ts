@@ -149,11 +149,11 @@ function extractHHMM(raw: string | null | undefined): string {
   return match ? `${match[1]}:${match[2]}` : ""
 }
 
-export function getTimeStr(lesson: Lesson): string {
+export function getTimeStr(lesson: Pick<Lesson, "start_time">): string {
   return extractHHMM(lesson?.start_time)
 }
 
-export function getEndTimeStr(lesson: Lesson): string {
+export function getEndTimeStr(lesson: Pick<Lesson, "end_time">): string {
   return extractHHMM(lesson?.end_time)
 }
 

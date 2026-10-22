@@ -35,6 +35,7 @@ async def _create_mfa_delivery(
     issued = await service.issue(
         db,
         user_id=user.id,
+        expected_mfa_epoch=int(user.mfa_epoch or 0),
         flow="login",
         session_identifier="preauth-session",
         client_fingerprint="f" * 64,

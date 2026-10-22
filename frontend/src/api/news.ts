@@ -1,4 +1,5 @@
 import * as v from "valibot"
+import { fetchAnonymousNewsDetail } from "@/api/client"
 
 import {
   createNewsApiV1NewsPost,
@@ -21,6 +22,7 @@ type FetchNewsOptions = {
 type FetchNewsItemOptions = {
   ifNoneMatch?: string | null
   signal?: AbortSignal
+  language?: string
 }
 
 export type CreateNewsPayload = NewsCreate
@@ -65,11 +67,17 @@ export const fetchNews = ({ ifNoneMatch, signal }: FetchNewsOptions = {}) =>
 
 export const fetchNewsItem = async (
   id: string,
-  { ifNoneMatch, signal }: FetchNewsItemOptions = {}
+  { ifNoneMatch, signal, language }: FetchNewsItemOptions = {}
 ) => {
   const response = await getNewsApiV1NewsIdGet({
     path: { id },
-    headers: ifNoneMatch ? { "if-none-match": ifNoneMatch } : undefined,
+    headers:
+      ifNoneMatch || language
+        ? {
+            ...(ifNoneMatch ? { "if-none-match": ifNoneMatch } : {}),
+            ...(language ? { "accept-language": language } : {}),
+          }
+        : undefined,
     signal,
     throwOnError: true,
     validateStatus: (status: number) => status === 304 || (status >= 200 && status < 300),
@@ -78,6 +86,15 @@ export const fetchNewsItem = async (
     applyParsedData(response, newsItemSchema, "GET /api/v1/news/{id}")
   }
   return response
+}
+
+export const fetchAnonymousNewsItem = async (
+  id: string,
+  { language, signal }: { language: string; signal?: AbortSignal }
+): Promise<NewsItem> => {
+  const response = await fetchAnonymousNewsDetail({ id, language, signal })
+  if (!response.ok) throw new Error(`News request failed with status ${response.status}`)
+  return ensureValidResponse(newsItemSchema, await response.json(), "GET /api/v1/news/{id}")
 }
 
 export const createNews = async (payload: CreateNewsPayload) => {
@@ -102,6 +119,7 @@ export const updateNews = async (id: string, payload: UpdateNewsPayload) => {
 export const deleteNews = (id: string) =>
   deleteNewsApiV1NewsIdDelete({
     path: { id },
+    throwOnError: true,
   })
 
 export const uploadNewsImage = async (file: File) => {

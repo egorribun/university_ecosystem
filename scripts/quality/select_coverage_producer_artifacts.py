@@ -86,6 +86,11 @@ COVERAGE_PRODUCER_SPECS: tuple[CoverageProducerSpec, ...] = (
     CoverageProducerSpec(
         "go_spicedb", "go-coverage-services-pkg-spicedb-attempt-", "test"
     ),
+    CoverageProducerSpec(
+        "python_migration",
+        "python-migration-coverage-attempt-",
+        "db-migration-gate",
+    ),
     CoverageProducerSpec("rust_coverage", "rust-coverage-attempt-", "rust-tests"),
     CoverageProducerSpec("rust_codecov", "rust-codecov-reports-attempt-", "rust-tests"),
 )

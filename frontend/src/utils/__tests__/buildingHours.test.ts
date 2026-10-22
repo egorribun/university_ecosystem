@@ -38,6 +38,12 @@ describe("buildingHours utils", () => {
   })
 
   describe("isOpenNow", () => {
+    it("uses the supplied current time when checking opening hours", () => {
+      expect(isOpenNow(sampleHours, new Date(2026, 6, 6, 7, 59))).toBe(false)
+      expect(isOpenNow(sampleHours, new Date(2026, 6, 6, 8, 0))).toBe(true)
+      expect(isOpenNow(sampleHours, new Date(2026, 6, 6, 22, 0))).toBe(false)
+    })
+
     it("returns false if todayHours is falsy", () => {
       const emptyHours: BuildingHours = {
         weekday: "",

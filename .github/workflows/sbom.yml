@@ -106,14 +106,14 @@ jobs:
           # 1.26.4 can resolve to a runner image that still carries vulnerable
           # standard-library symbols; govulncheck must analyze the same fixed
           # toolchain used by the build jobs.
-          go-version: "1.26.6"
+          go-version: "1.26.10"
           cache: true
 
       - name: Install osv-scanner
-        # Pin to a specific version; Renovate (Cargo/Go group) will update.
-        # @v1.9.2 is content-addressed by the Go module sum DB (equivalent to commit pinning).  # nosec
+        # Renovate's custom workflow manager updates this exact GitHub release pin.
+        # @v2.6.0 is content-addressed by the Go module sum DB (equivalent to commit pinning).
         run: |
-          go install github.com/google/osv-scanner/cmd/osv-scanner@v1.9.2
+          go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0
 
       - name: Scan Go modules for vulnerabilities + generate SBOM
         id: osv_scan
@@ -122,7 +122,7 @@ jobs:
           set +e
           # osv-scanner checks go.sum files against the OSV vulnerability database.
           # --recursive discovers all go.mod files under services/.
-          osv-scanner scan --recursive --format sarif \
+          osv-scanner scan source --recursive --format sarif \
             --output go-vuln.sarif \
             ./services/
           scanner_status=$?
@@ -193,7 +193,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust toolchain (stable)
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # stable
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # pinned action
         with:
           toolchain: stable
 
@@ -266,7 +266,7 @@ jobs:
   #     are never silently ignored by this workflow.
   vuln-gate:
     # Keep the externally visible main-CI check context stable for run history.
-    name: Vulnerability gate (CRITICAL/HIGH)
+    name: Vulnerability gate (CRITICAL/HIGH, main)
     if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     # Cold runs compile cargo-audit and execute three ecosystems sequentially.
@@ -312,13 +312,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.10"
           cache: true
 
       - name: Install govulncheck
         # Pinned official Go vulnerability analyzer; the module sum DB verifies
         # the downloaded source before installation.  # nosec
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 
       - name: Go — govulncheck reachable vulnerability gate
         # Source analysis blocks every vulnerability reachable from authored
@@ -428,11 +428,11 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.10"
           cache: true
 
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 
       - name: Go — govulncheck reachable vulnerability gate
         run: |

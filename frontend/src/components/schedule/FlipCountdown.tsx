@@ -6,6 +6,8 @@
 import { useState, useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
+import { getCampusClockParts } from "@/utils/campusTimezone"
 
 interface FlipCountdownProps {
   /** Target time in minutes since midnight */
@@ -23,8 +25,15 @@ export function shouldFlipDigit(value: string, current: string): boolean {
   return value !== current
 }
 
-export function getSecondsUntilTarget(targetMinutes: number, now: Date): number {
-  const nowSecs = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
+export function getSecondsUntilTarget(
+  targetMinutes: number,
+  now: Date,
+  timeZone: string | null = null
+): number {
+  const clock = getCampusClockParts(now, timeZone)
+  const nowSecs = clock
+    ? clock.hour * 3600 + clock.minute * 60 + clock.second
+    : now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
   return Math.max(0, targetMinutes * 60 - nowSecs)
 }
 
@@ -101,8 +110,9 @@ function FlipDigit({ value, label }: { value: string; label: string }) {
 
 export function FlipCountdown({ targetMinutes, onComplete, className }: FlipCountdownProps) {
   const { t } = useTranslation(["schedule"])
+  const timeZone = useCampusTimezone()
   const [secondsLeft, setSecondsLeft] = useState(() =>
-    getSecondsUntilTarget(targetMinutes, new Date())
+    getSecondsUntilTarget(targetMinutes, new Date(), timeZone)
   )
   const onCompleteRef = useRef(onComplete)
   useEffect(() => {
@@ -112,16 +122,15 @@ export function FlipCountdown({ targetMinutes, onComplete, className }: FlipCoun
   /* FIX-67-06: setInterval(1000) replaces rAF — countdown only needs 1fps.
      Pauses when tab hidden (Page Visibility API) to save battery. */
   useEffect(() => {
+    setSecondsLeft(getSecondsUntilTarget(targetMinutes, new Date(), timeZone))
     const id = setInterval(() => {
       if (!shouldTickCountdown(document.visibilityState)) return
-      setSecondsLeft((prev) => {
-        const next = Math.max(0, prev - 1)
-        if (shouldCompleteCountdown(next)) invokeCountdownCompletion(onCompleteRef.current)
-        return next
-      })
+      const next = getSecondsUntilTarget(targetMinutes, new Date(), timeZone)
+      if (shouldCompleteCountdown(next)) invokeCountdownCompletion(onCompleteRef.current)
+      setSecondsLeft(next)
     }, 1000)
     return () => clearInterval(id)
-  }, [targetMinutes])
+  }, [targetMinutes, timeZone])
 
   const mins = Math.floor(secondsLeft / 60)
   const secs = secondsLeft % 60

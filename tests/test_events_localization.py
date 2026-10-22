@@ -3,13 +3,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import status
-from prometheus_client import CollectorRegistry
+from sqlalchemy import select
 
 import app.models as models
 from app.api import events
 from app.auth.security import get_password_hash
-from app.core import observability
-from app.services import attendance_tokens, notification_queue
+from app.models.domain_events import StoredEvent
+from app.services import attendance_tokens
 
 # Skip marker for tests that require PostgreSQL full-text search
 _database_url = os.environ.get("DATABASE_URL", "")
@@ -74,12 +74,28 @@ async def test_events_localization(async_client, db_session, user_factory):
 
     headers = await _login(async_client, student.email, password)
 
+    detail_en = await async_client.get(
+        f"/events/{primary.id}?lang=EN-us",
+        headers={**headers, "Accept-Language": "ru"},
+    )
+    assert detail_en.status_code == status.HTTP_200_OK
+    assert detail_en.headers.get("Content-Language") == "en"
+    assert detail_en.json()["title"] == "English Event"
+
+    detail_invalid_lang = await async_client.get(
+        f"/events/{primary.id}?lang=de",
+        headers={**headers, "Accept-Language": "ru"},
+    )
+    assert detail_invalid_lang.status_code == status.HTTP_200_OK
+    assert detail_invalid_lang.headers.get("Content-Language") == "ru"
+    assert detail_invalid_lang.json()["title"] == "Русское событие"
+
     response_en = await async_client.get(
         "/events",
         headers={**headers, "Accept-Language": "en"},
     )
     assert response_en.status_code == 200
-    assert response_en.headers.get("Cache-Control") == "private, max-age=180"
+    assert response_en.headers.get("Cache-Control") == "private, no-store"
     assert response_en.headers.get("Content-Language") == "en"
     vary_en = response_en.headers.get("Vary", "")
     assert any(
@@ -114,7 +130,7 @@ async def test_events_localization(async_client, db_session, user_factory):
         headers={**headers, "Accept-Language": "ru"},
     )
     assert response_ru.status_code == 200
-    assert response_ru.headers.get("Cache-Control") == "private, max-age=180"
+    assert response_ru.headers.get("Cache-Control") == "private, no-store"
     assert response_ru.headers.get("Content-Language") == "ru"
     vary_ru = response_ru.headers.get("Vary", "")
     assert any(
@@ -138,48 +154,37 @@ async def test_events_localization(async_client, db_session, user_factory):
 
 
 @pytest.mark.asyncio
-async def test_create_event_records_enqueue_failure(
-    async_client, db_session, user_factory, monkeypatch
+async def test_create_event_persists_notification_source_outbox_event(
+    async_client, db_session, user_factory
 ):
-    registry = CollectorRegistry()
-    metrics = observability.reinitialize_notification_queue_metrics(registry=registry)
-    notification_queue._queue_metrics = metrics
-
     password = "TeacherPass123!"
     teacher = await user_factory(
         role="teacher",
         hashed_password=await get_password_hash(password),
         is_active=True,
     )
-
     headers = await _login(async_client, teacher.email, password)
-
-    def _failing_add_task(self, func, *args, **kwargs):
-        raise RuntimeError("notification queue unavailable")
-
-    monkeypatch.setattr(events.BackgroundTasks, "add_task", _failing_add_task)
 
     now = datetime.now(UTC)
     payload = {
-        "title": "Queue Failure",
-        "description": "Test enqueue failure handling",
+        "title": "Durable notification source",
+        "description": "Notification delivery follows the committed source event",
         "starts_at": (now + timedelta(days=1)).isoformat(),
         "ends_at": (now + timedelta(days=1, hours=1)).isoformat(),
     }
 
     response = await async_client.post("/events", headers=headers, json=payload)
     assert response.status_code == status.HTTP_200_OK
-
     body = response.json()
-    assert body["title"] == "Queue Failure"
 
-    counter_value = metrics.enqueue_failures_total.labels(kind="event")._value.get()
-    assert counter_value == pytest.approx(1.0)
-
-    import uuid
-
-    stored = await db_session.get(models.Event, uuid.UUID(body["id"]))
+    stored = await db_session.scalar(
+        select(StoredEvent).where(
+            StoredEvent.event_type == "event.created",
+            StoredEvent.aggregate_id == body["id"],
+        )
+    )
     assert stored is not None
+    assert stored.payload["event_id_entity"] == body["id"]
 
 
 @pytest.mark.asyncio
@@ -223,11 +228,32 @@ async def test_events_etag_and_not_modified(
     headers = await _login(async_client, student.email, password)
     base_headers = {**headers, "Accept-Language": "en"}
 
+    detail_pattern = "ue:events:detail:*"
+    await fake_cache.invalidate(detail_pattern)
+    detail_cache_client = await fake_cache._get_client()
+    detail_ru = await async_client.get(
+        f"/events/{event.id}?lang=RU",
+        headers=base_headers,
+    )
+    assert detail_ru.status_code == status.HTTP_200_OK
+    assert detail_ru.headers.get("Content-Language") == "ru"
+    assert detail_ru.json()["title"] == "Test event"
+    assert len(await detail_cache_client.keys(detail_pattern)) == 1
+
+    detail_ru_alias = await async_client.get(
+        f"/events/{event.id}?locale=ru-ru",
+        headers=base_headers,
+    )
+    assert detail_ru_alias.status_code == status.HTTP_200_OK
+    assert detail_ru_alias.headers.get("Content-Language") == "ru"
+    assert detail_ru_alias.headers.get("ETag") == detail_ru.headers.get("ETag")
+    assert len(await detail_cache_client.keys(detail_pattern)) == 1
+
     list_response = await async_client.get("/events", headers=base_headers)
     assert list_response.status_code == status.HTTP_200_OK
     list_etag = list_response.headers.get("ETag")
     assert list_etag
-    assert list_response.headers.get("Cache-Control") == "private, max-age=180"
+    assert list_response.headers.get("Cache-Control") == "private, no-store"
 
     list_not_modified = await async_client.get(
         "/events",
@@ -235,7 +261,7 @@ async def test_events_etag_and_not_modified(
     )
     assert list_not_modified.status_code == status.HTTP_304_NOT_MODIFIED
     assert list_not_modified.headers.get("Content-Language") == "en"
-    assert list_not_modified.headers.get("Cache-Control") == "private, max-age=180"
+    assert list_not_modified.headers.get("Cache-Control") == "private, no-store"
     vary_list = list_not_modified.headers.get("Vary", "")
     assert any(
         value.strip().lower() == "accept-language"
@@ -248,7 +274,7 @@ async def test_events_etag_and_not_modified(
     assert my_response.status_code == status.HTTP_200_OK
     my_etag = my_response.headers.get("ETag")
     assert my_etag
-    assert my_response.headers.get("Cache-Control") == "private, max-age=180"
+    assert my_response.headers.get("Cache-Control") == "private, no-store"
 
     my_not_modified = await async_client.get(
         "/events/my",
@@ -257,7 +283,7 @@ async def test_events_etag_and_not_modified(
     assert my_not_modified.status_code == status.HTTP_304_NOT_MODIFIED
     assert my_not_modified.headers.get("Content-Language") == "en"
     assert my_not_modified.headers.get("ETag") == my_etag
-    assert my_not_modified.headers.get("Cache-Control") == "private, max-age=180"
+    assert my_not_modified.headers.get("Cache-Control") == "private, no-store"
 
 
 @requires_postgresql
@@ -361,11 +387,11 @@ async def test_get_all_events_search_deterministic_order(db_session, user_factor
     result_items = await e_service.get_events(
         search=shared_phrase, limit=10, is_active=None
     )
-
     assert len(result_items.items) == 3
     ordered_ids = [item.id for item in result_items.items]
     # First 3 events contain "Symposium", unrelated does not
     assert ordered_ids == event_ids[:3]
+    await _assert_search_count_parity(db_session, now, shared_phrase, event_ids)
 
 
 @pytest.mark.asyncio
@@ -449,3 +475,123 @@ async def test_events_pagination_semantics(async_client, db_session, user_factor
     assert capped.status_code == status.HTTP_200_OK
     # MAX_EVENTS_LIMIT was 100 in crud
     assert capped.json()["limit"] == 100
+
+
+async def _assert_search_count_parity(db_session, now, phrase, event_ids):
+    from app.repositories.event_repository import EventRepository
+
+    repo = EventRepository(db_session)
+    parity_cases = [
+        ("all-search", phrase, None, None, None, {0, 1, 2}),
+        ("active-search", phrase, None, None, True, {0, 1, 2}),
+        ("archived-search", phrase, None, None, False, set()),
+        ("main-location", phrase, None, "MAIN", None, {0, 1}),
+        ("translated-title", phrase, None, "Satellite", True, {2}),
+        ("excluded-type", phrase, "workshop", None, None, set()),
+        ("combined-no-match", phrase, "workshop", "Main", True, set()),
+        ("missing-search", "unmatchedparitytoken", None, None, None, set()),
+    ]
+    for case, search_query, event_type, location, active, indexes in parity_cases:
+        listed = await repo.search_events(
+            search_query=search_query,
+            event_type=event_type,
+            location=location,
+            is_active=active,
+            query_embedding=None,
+            now=now,
+            limit=len(event_ids) + 1,
+        )
+        expected_ids = {event_ids[index] for index in indexes}
+        listed_ids = [row.event.id for row in listed]
+        assert set(listed_ids) == expected_ids, case
+        assert len(listed_ids) == len(expected_ids), case
+        total = await repo.count_search_events(
+            search_query=search_query,
+            event_type=event_type,
+            location=location,
+            is_active=active,
+            query_embedding=None,
+            now=now,
+        )
+        assert total == len(listed_ids) == len(expected_ids), case
+
+
+@requires_postgresql
+@pytest.mark.asyncio
+async def test_main_feed_explicit_date_order_overrides_search_rank(
+    async_client, db_session, user_factory
+):
+    import secrets
+    import uuid
+
+    from sqlalchemy import text
+
+    password = secrets.token_urlsafe(24) + "!Aa1"
+    admin = await user_factory(role="admin")
+    viewer = await user_factory(
+        role="student",
+        hashed_password=await get_password_hash(password),
+        is_active=True,
+    )
+    headers = await _login(async_client, viewer.email, password)
+    term = f"rankprobe{uuid.uuid4().hex}"
+    now = datetime.now(UTC)
+    early_id, late_id = uuid.uuid4(), uuid.uuid4()
+    early_start = now + timedelta(days=2)
+    late_start = now + timedelta(days=3)
+    insert_sql = text("""
+        INSERT INTO events (
+            id, title, title_en, description, location, event_type,
+            starts_at, ends_at, created_by, is_active
+        ) VALUES (
+            :id, :title, NULL, 'rank/date fixture', 'Main campus', 'conference',
+            :starts_at, :ends_at, :created_by, TRUE
+        )
+    """)
+    for event_id, title, starts_at in (
+        (early_id, f"{term} kickoff", early_start),
+        (late_id, " ".join([term] * 4), late_start),
+    ):
+        await db_session.execute(
+            insert_sql,
+            {
+                "id": event_id,
+                "title": title,
+                "starts_at": starts_at,
+                "ends_at": starts_at + timedelta(hours=1),
+                "created_by": admin.id,
+            },
+        )
+    await db_session.commit()
+
+    rank_result = await db_session.execute(
+        text("""
+            SELECT id,
+                ts_rank(search_vector, plainto_tsquery('simple', :term)) AS score
+            FROM events WHERE id IN (:early_id, :late_id)
+        """),
+        {"term": term, "early_id": early_id, "late_id": late_id},
+    )
+    ranks = rank_result.mappings().all()
+    score_by_id = {row["id"]: row["score"] for row in ranks}
+    assert score_by_id[late_id] > score_by_id[early_id]
+
+    legacy_ranked = await async_client.get(
+        "/events", params={"search": term, "limit": 10}, headers=headers
+    )
+    assert legacy_ranked.status_code == 200
+    assert [row["id"] for row in legacy_ranked.json()["items"]] == [
+        str(late_id),
+        str(early_id),
+    ]
+
+    explicit_ascending = await async_client.get(
+        "/events",
+        params={"search": term, "limit": 10, "order": "starts_at_asc"},
+        headers=headers,
+    )
+    assert explicit_ascending.status_code == 200
+    assert [row["id"] for row in explicit_ascending.json()["items"]] == [
+        str(early_id),
+        str(late_id),
+    ]

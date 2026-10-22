@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -117,8 +118,9 @@ async def test_ws_ticket_replay_is_rejected_after_atomic_consumption(
 
     ticket = "a" * 64
     user_id = str(uuid4())
+    expires_at = int((datetime.now(UTC) + timedelta(minutes=1)).timestamp())
     redis = SimpleNamespace(
-        getdel=AsyncMock(side_effect=[f"{user_id}:session-jti", None])
+        getdel=AsyncMock(side_effect=[f"{user_id}:session-jti:{expires_at}", None])
     )
     get_cache_client = AsyncMock(return_value=redis)
     resolve_user = AsyncMock(return_value=(object(), "session-jti"))

@@ -30,6 +30,7 @@ vi.mock("react-i18next", () => ({
 
 import {
   AddLessonDialog,
+  recurringLessonDateTime,
   createAddLessonChoiceUpdater,
   createAddLessonFieldUpdater,
   isAddLessonFormValid,
@@ -48,7 +49,12 @@ const LESSON_TYPE_OPTIONS = [
 ]
 
 const LESSON_TYPE_CONFIGS: LessonTypeConfig[] = [
-  { id: "lecture", backend: ["LECTURE", "lec"], label: "Лекция", color: "#111" },
+  {
+    id: "lecture",
+    backend: ["LECTURE", "lec"],
+    label: "Лекция",
+    color: "#111",
+  },
   { id: "practice", backend: ["PRACTICE"], label: "Практика", color: "#222" },
   // Config with an empty backend array — exercises the `?? addFields.lessonType`
   // fallback in the backend-type resolver.
@@ -98,6 +104,45 @@ function renderDialog(
   )
 }
 
+function AddSessionControls() {
+  const { closeDialog, openDialog, setAddDay, snackbarMessage, snackbarSeverity } =
+    useSchedulePage()
+  return (
+    <>
+      <button type="button" onClick={closeDialog}>
+        close-add-session
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setAddDay("monday")
+          openDialog("add")
+        }}
+      >
+        open-new-add-session
+      </button>
+      <output data-testid="schedule-feedback">
+        {snackbarMessage ? `${snackbarMessage}|${snackbarSeverity}` : ""}
+      </output>
+    </>
+  )
+}
+
+function renderDialogWithSessionControls(
+  props: ReturnType<typeof makeBaseProps> = makeBaseProps()
+) {
+  return render(
+    <SchedulePageProvider>
+      <OpenAddHarness>
+        <>
+          <AddSessionControls />
+          <AddLessonDialog {...props} />
+        </>
+      </OpenAddHarness>
+    </SchedulePageProvider>
+  )
+}
+
 /** Fills the 3 required fields so `isFormValid` becomes true. */
 function fillRequiredFields() {
   fireEvent.change(screen.getByLabelText("schedule:form.subject"), {
@@ -120,7 +165,11 @@ describe("AddLessonDialog", () => {
   })
 
   it("validates every required field independently", () => {
-    const valid = { subject: " Algebra ", startTime: "09:00", endTime: "10:30" }
+    const valid = {
+      subject: " Algebra ",
+      startTime: "09:00",
+      endTime: "10:30",
+    }
     expect(isAddLessonFormValid(valid)).toBe(true)
     expect(isAddLessonFormValid({ ...valid, subject: "   " })).toBe(false)
     expect(isAddLessonFormValid({ ...valid, startTime: "" })).toBe(false)
@@ -204,8 +253,8 @@ describe("AddLessonDialog", () => {
         room: "",
         // lecture config -> backend[0] = "LECTURE"
         lesson_type: "LECTURE",
-        start_time: "mondayT09:00:00",
-        end_time: "mondayT10:30:00",
+        start_time: "1970-01-05T09:00:00",
+        end_time: "1970-01-05T10:30:00",
         weekday: "monday",
         parity: "both",
         group_id: "g1",
@@ -329,6 +378,115 @@ describe("AddLessonDialog", () => {
     await waitFor(() => expect(props.refresh).toHaveBeenCalledTimes(1))
   })
 
+  it("allows a reopened add session to submit while the previous request is pending", async () => {
+    const user = userEvent.setup()
+    let resolvePreviousRequest!: () => void
+    apiMocks.post.mockImplementationOnce(
+      () => new Promise((resolve) => (resolvePreviousRequest = () => resolve({ data: {} })))
+    )
+    const props = makeBaseProps()
+    renderDialogWithSessionControls(props)
+
+    fillRequiredFields()
+    await user.click(screen.getByRole("button", { name: "schedule:buttons.add" }))
+    await waitFor(() => expect(apiMocks.post).toHaveBeenCalledTimes(1))
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+    await user.click(screen.getByRole("button", { name: "open-new-add-session" }))
+    fillRequiredFields()
+    expect(screen.getByRole("button", { name: "schedule:buttons.add" })).toBeEnabled()
+
+    await user.click(screen.getByRole("button", { name: "schedule:buttons.add" }))
+    await waitFor(() => expect(apiMocks.post).toHaveBeenCalledTimes(2))
+    resolvePreviousRequest()
+    await waitFor(() => expect(props.refresh).toHaveBeenCalledTimes(2))
+  })
+
+  it("keeps a newer add draft open when an earlier request succeeds late", async () => {
+    const user = userEvent.setup()
+    let resolveRequest!: () => void
+    apiMocks.post.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveRequest = () => resolve({ data: {} })))
+    )
+    const props = makeBaseProps()
+    renderDialogWithSessionControls(props)
+
+    fillRequiredFields()
+    await user.click(screen.getByRole("button", { name: "schedule:buttons.add" }))
+    await waitFor(() => expect(apiMocks.post).toHaveBeenCalledTimes(1))
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+    await user.click(screen.getByRole("button", { name: "open-new-add-session" }))
+    fillRequiredFields()
+    fireEvent.change(screen.getByLabelText("schedule:form.subject"), {
+      target: { value: "New editor draft" },
+    })
+    resolveRequest()
+    await waitFor(() => expect(props.refresh).toHaveBeenCalledTimes(1))
+
+    expect(screen.getByRole("dialog", { name: "schedule:dialog.addTitle" })).toBeInTheDocument()
+    expect(screen.getByLabelText("schedule:form.subject")).toHaveValue("New editor draft")
+    expect(screen.getByTestId("schedule-feedback")).toHaveTextContent("schedule:snackbar.added")
+  })
+
+  it("does not surface an earlier request failure in a reopened add session", async () => {
+    const user = userEvent.setup()
+    let rejectRequest!: (error: Error) => void
+    apiMocks.post.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectRequest = reject
+        })
+    )
+    const props = makeBaseProps()
+    renderDialogWithSessionControls(props)
+
+    fillRequiredFields()
+    await user.click(screen.getByRole("button", { name: "schedule:buttons.add" }))
+    await waitFor(() => expect(apiMocks.post).toHaveBeenCalledTimes(1))
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+    await user.click(screen.getByRole("button", { name: "open-new-add-session" }))
+    fillRequiredFields()
+    fireEvent.change(screen.getByLabelText("schedule:form.subject"), {
+      target: { value: "New editor draft" },
+    })
+    rejectRequest(new Error("offline"))
+    await waitFor(() =>
+      expect(logError).toHaveBeenCalledWith("Failed to add lesson", expect.any(Error))
+    )
+
+    expect(screen.getByRole("dialog", { name: "schedule:dialog.addTitle" })).toBeInTheDocument()
+    expect(screen.getByLabelText("schedule:form.subject")).toHaveValue("New editor draft")
+    expect(screen.getByTestId("schedule-feedback")).toBeEmptyDOMElement()
+    expect(props.refresh).not.toHaveBeenCalled()
+  })
+
+  it("keeps normal success closure and partial text reset for its own session", async () => {
+    const user = userEvent.setup()
+    renderDialogWithSessionControls()
+
+    fillRequiredFields()
+    fireEvent.change(screen.getByLabelText("schedule:form.teacher"), {
+      target: { value: "Иванова Е.А." },
+    })
+    fireEvent.change(screen.getByLabelText("schedule:form.room"), {
+      target: { value: "ГУК-305" },
+    })
+    await user.click(screen.getByRole("button", { name: "schedule:buttons.add" }))
+
+    await waitFor(() =>
+      expect(screen.queryByText("schedule:dialog.addTitle")).not.toBeInTheDocument()
+    )
+    await user.click(screen.getByRole("button", { name: "open-new-add-session" }))
+
+    expect(screen.getByLabelText("schedule:form.subject")).toHaveValue("")
+    expect(screen.getByLabelText("schedule:form.teacher")).toHaveValue("")
+    expect(screen.getByLabelText("schedule:form.room")).toHaveValue("")
+    expect(screen.getByLabelText("schedule:form.startTime")).toHaveValue("09:00")
+    expect(screen.getByLabelText("schedule:form.endTime")).toHaveValue("10:30")
+  })
+
   it("does not submit when selectedGroupId is null (early-return guard)", async () => {
     const user = userEvent.setup()
     const props = makeBaseProps({ selectedGroupId: null })
@@ -438,5 +596,45 @@ describe("AddLessonDialog", () => {
     expect(screen.getByText("schedule:dialog.addTitle")).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
     expect(screen.queryByText("schedule:dialog.addTitle")).not.toBeInTheDocument()
+  })
+
+  it("names the add dialog from its visible title", () => {
+    renderDialog()
+
+    expect(screen.getByRole("dialog", { name: "schedule:dialog.addTitle" })).toBeInTheDocument()
+  })
+
+  it("exposes the visible lesson type and week labels as Select accessible names", () => {
+    renderDialog()
+
+    expect(screen.getByRole("combobox", { name: "schedule:form.lessonType" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "schedule:form.week" })).toBeInTheDocument()
+  })
+})
+
+describe("recurring lesson datetime contract", () => {
+  it.each(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"])(
+    "uses a valid reference date for %s",
+    (weekday) => {
+      const index = [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+      ].indexOf(weekday)
+      const value = recurringLessonDateTime(weekday, "09:15")
+      expect(value).toBe(`1970-01-${String(5 + index).padStart(2, "0")}T09:15:00`)
+      expect(new Date(`${value}Z`).getUTCDay()).toBe((index + 1) % 7)
+    }
+  )
+  it.each([
+    ["unknown", "09:00"],
+    ["monday", "24:00"],
+    ["tuesday", "09:60"],
+  ])("rejects invalid weekday/time %s %s", (day, time) => {
+    expect(() => recurringLessonDateTime(day, time)).toThrow("Invalid recurring lesson time")
   })
 })

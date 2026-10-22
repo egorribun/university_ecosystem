@@ -37,10 +37,19 @@ class NatsDlqIntegrationTestEvent(DomainEvent):
 
 @pytest.fixture(scope="module")
 def nats_server():
+    run_id = uuid.uuid4().hex
     # Enforce JetStream enabled via the "-js" container command
     with (
         DockerContainer(
-            "nats:2.10.25-alpine@sha256:3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228"
+            "nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4",
+            name=f"ue-nats-dlq-{run_id}",
+            labels={
+                "university-ecosystem.dev/test-owner": f"nats-dlq-{run_id}",
+                "university-ecosystem.dev/test-purpose": "nats-dlq-outbox-integration",
+            },
+            mem_limit=1024**3,
+            memswap_limit=1024**3,
+            nano_cpus=2_000_000_000,
         )
         .with_exposed_ports(4222)
         .with_command("-js") as nats
@@ -68,6 +77,8 @@ async def test_nats_dlq_integration_flow(nats_server, db_session) -> None:
         await next_handler(event)
 
     event_bus.add_middleware(failing_middleware)
+    broker = None
+    subscribed_handlers = []
 
     try:
         from app.core.nats_broker import NatsTaskBroker
@@ -83,6 +94,7 @@ async def test_nats_dlq_integration_flow(nats_server, db_session) -> None:
             happy_called.set()
 
         event_bus.subscribe("nats_dlq_integration.test_event", happy_handler)
+        subscribed_handlers.append(happy_handler)
 
         happy_se = StoredEvent(
             id=uuid.uuid4(),
@@ -114,13 +126,12 @@ async def test_nats_dlq_integration_flow(nats_server, db_session) -> None:
             assert happy_db_event.processed_at is not None
             assert happy_db_event.error_count == 0
 
-        event_bus.unsubscribe("nats_dlq_integration.test_event", happy_handler)
-
         # 2. Case B: DLQ failover path
         async def dummy_handler(event: NatsDlqIntegrationTestEvent) -> None:
             pass
 
         event_bus.subscribe("nats_dlq_integration.test_event", dummy_handler)
+        subscribed_handlers.append(dummy_handler)
 
         failing_se = StoredEvent(
             id=uuid.uuid4(),
@@ -184,10 +195,11 @@ async def test_nats_dlq_integration_flow(nats_server, db_session) -> None:
             assert "RuntimeError" in dlq_event.error_message
             assert "simulated middleware failure" in dlq_event.error_message
 
-        event_bus.unsubscribe("nats_dlq_integration.test_event", dummy_handler)
-        await broker._nc.close()
-
     finally:
         settings.nats_url = original_nats_url
+        for handler in subscribed_handlers:
+            event_bus.unsubscribe("nats_dlq_integration.test_event", handler)
         if failing_middleware in event_bus._middleware:
             event_bus._middleware.remove(failing_middleware)
+        if broker is not None:
+            await broker.close()

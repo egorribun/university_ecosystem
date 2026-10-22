@@ -179,6 +179,10 @@ export type AuditLogOut = {
    */
   actor_user_id?: string | null
   /**
+   * Authenticated Fields
+   */
+  authenticated_fields: Array<string>
+  /**
    * Context
    */
   context?: {
@@ -209,6 +213,11 @@ export type AuditLogOut = {
    */
   resource_type: string
   /**
+   * Signature Scheme
+   */
+  signature_scheme:
+    "canonical_v2" | "legacy_json_array_v1" | "legacy_pipe_v1" | "invalid" | "unsigned"
+  /**
    * Subject Name
    */
   subject_name?: string | null
@@ -216,6 +225,10 @@ export type AuditLogOut = {
    * Subject User Id
    */
   subject_user_id?: string | null
+  /**
+   * Unauthenticated Fields
+   */
+  unauthenticated_fields: Array<string>
   /**
    * User Agent
    */
@@ -1006,6 +1019,76 @@ export type ForwardMessages = {
 }
 
 /**
+ * GradeCreate
+ */
+export type GradeCreate = {
+  /**
+   * Assessment Type
+   */
+  assessment_type?: string
+  /**
+   * Score
+   */
+  score: number
+  /**
+   * Student Id
+   */
+  student_id: string
+  /**
+   * Subject
+   */
+  subject: string
+}
+
+/**
+ * GradeOut
+ */
+export type GradeOut = {
+  /**
+   * Assessment Type
+   */
+  assessment_type: string
+  /**
+   * Assigned By
+   */
+  assigned_by?: string | null
+  /**
+   * Created At
+   */
+  created_at?: string | null
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Score
+   */
+  score: number
+  /**
+   * Student Id
+   */
+  student_id: string
+  /**
+   * Subject
+   */
+  subject: string
+}
+
+/**
+ * GradeUpdate
+ */
+export type GradeUpdate = {
+  /**
+   * Reason
+   */
+  reason?: string | null
+  /**
+   * Score
+   */
+  score: number
+}
+
+/**
  * GroupChatCreate
  *
  * Wave 209 G1 — create a named group chat.
@@ -1128,12 +1211,35 @@ export type MessageResponse = {
    */
   read_status: boolean
   reply_to?: ReplyPreview | null
-  sender?: ChatParticipant | null
+  sender?: MessageSenderInfo | null
   /**
    * Sender Id
    */
   sender_id: string
   sender_presence?: PresenceStatus | null
+}
+
+/**
+ * MessageSenderInfo
+ *
+ * Public display fields for a sender embedded in a message response.
+ *
+ * Legacy message producers may pass a full participant or internal DTO. Ignore
+ * those extra fields here so email and account state never enter message output.
+ */
+export type MessageSenderInfo = {
+  /**
+   * Avatar Url
+   */
+  avatar_url?: string | null
+  /**
+   * Full Name
+   */
+  full_name?: string | null
+  /**
+   * Id
+   */
+  id: string
 }
 
 /**
@@ -1786,6 +1892,18 @@ export type PresenceStatus = {
    * Last Seen At
    */
   last_seen_at?: string | null
+}
+
+/**
+ * PublicCampusConfig
+ *
+ * The intentionally narrow, non-secret public campus configuration.
+ */
+export type PublicCampusConfig = {
+  /**
+   * Campus Timezone
+   */
+  campus_timezone: string
 }
 
 /**
@@ -3404,6 +3522,135 @@ export type ListFeatureFlagsAdminFeatureFlagsGetResponses = {
 export type ListFeatureFlagsAdminFeatureFlagsGetResponse =
   ListFeatureFlagsAdminFeatureFlagsGetResponses[keyof ListFeatureFlagsAdminFeatureFlagsGetResponses]
 
+export type ListAuditLogsApiV1AdminAuditGetData = {
+  body?: never
+  path?: never
+  query?: {
+    /**
+     * Limit
+     */
+    limit?: number
+    /**
+     * Offset
+     */
+    offset?: number
+    /**
+     * Actor Id
+     */
+    actor_id?: string | null
+    /**
+     * Subject Id
+     */
+    subject_id?: string | null
+    /**
+     * Resource Type
+     */
+    resource_type?: string | null
+    /**
+     * Action
+     */
+    action?: string | null
+  }
+  url: "/api/v1/admin/audit"
+}
+
+export type ListAuditLogsApiV1AdminAuditGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ListAuditLogsApiV1AdminAuditGetError =
+  ListAuditLogsApiV1AdminAuditGetErrors[keyof ListAuditLogsApiV1AdminAuditGetErrors]
+
+export type ListAuditLogsApiV1AdminAuditGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: AuditLogListOut
+}
+
+export type ListAuditLogsApiV1AdminAuditGetResponse =
+  ListAuditLogsApiV1AdminAuditGetResponses[keyof ListAuditLogsApiV1AdminAuditGetResponses]
+
+export type GetTimeTravelStateApiV1AdminAuditTimeTravelGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Aggregate Type
+     *
+     * Aggregate type: 'schedule', 'grade', 'user', 'assessment'
+     */
+    aggregate_type: string
+    /**
+     * Aggregate Id
+     *
+     * UUID of the aggregate entity
+     */
+    aggregate_id: string
+    /**
+     * Target Timestamp
+     *
+     * Target timestamp in ISO format
+     */
+    target_timestamp?: string | null
+    /**
+     * Timestamp
+     *
+     * Target timestamp alias
+     */
+    timestamp?: string | null
+    /**
+     * Verify Chain
+     *
+     * Verify HMAC chain integrity up to target timestamp
+     */
+    verify_chain?: boolean
+  }
+  url: "/api/v1/admin/audit/time-travel"
+}
+
+export type GetTimeTravelStateApiV1AdminAuditTimeTravelGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetTimeTravelStateApiV1AdminAuditTimeTravelGetError =
+  GetTimeTravelStateApiV1AdminAuditTimeTravelGetErrors[keyof GetTimeTravelStateApiV1AdminAuditTimeTravelGetErrors]
+
+export type GetTimeTravelStateApiV1AdminAuditTimeTravelGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: TimeTravelResponse
+}
+
+export type GetTimeTravelStateApiV1AdminAuditTimeTravelGetResponse =
+  GetTimeTravelStateApiV1AdminAuditTimeTravelGetResponses[keyof GetTimeTravelStateApiV1AdminAuditTimeTravelGetResponses]
+
+export type ListFeatureFlagsApiV1AdminFeatureFlagsGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/admin/feature-flags"
+}
+
+export type ListFeatureFlagsApiV1AdminFeatureFlagsGetResponses = {
+  /**
+   * Response List Feature Flags Api V1 Admin Feature Flags Get
+   *
+   * Successful Response
+   */
+  200: Array<FeatureFlagOut>
+}
+
+export type ListFeatureFlagsApiV1AdminFeatureFlagsGetResponse =
+  ListFeatureFlagsApiV1AdminFeatureFlagsGetResponses[keyof ListFeatureFlagsApiV1AdminFeatureFlagsGetResponses]
+
 export type GetCsrfCookieApiV1AuthCsrfCookieGetData = {
   body?: never
   path?: never
@@ -4027,6 +4274,23 @@ export type RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses = {
 
 export type RevokeSessionApiV1AuthSessionsSessionIdDeleteResponse =
   RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses[keyof RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses]
+
+export type GetCampusConfigApiV1CampusConfigGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/campus/config"
+}
+
+export type GetCampusConfigApiV1CampusConfigGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: PublicCampusConfig
+}
+
+export type GetCampusConfigApiV1CampusConfigGetResponse =
+  GetCampusConfigApiV1CampusConfigGetResponses[keyof GetCampusConfigApiV1CampusConfigGetResponses]
 
 export type GetChatsApiV1ChatsGetData = {
   body?: never
@@ -4864,6 +5128,10 @@ export type AllEventsApiV1EventsGetData = {
      */
     limit?: number
     /**
+     * Order
+     */
+    order?: "starts_at_asc" | "starts_at_desc" | null
+    /**
      * Cursor
      */
     cursor?: string | null
@@ -4872,6 +5140,10 @@ export type AllEventsApiV1EventsGetData = {
 }
 
 export type AllEventsApiV1EventsGetErrors = {
+  /**
+   * Invalid or mismatched events cursor
+   */
+  400: unknown
   /**
    * Validation Error
    */
@@ -5047,6 +5319,69 @@ export type MyEventsApiV1EventsMyGetResponses = {
 export type MyEventsApiV1EventsMyGetResponse =
   MyEventsApiV1EventsMyGetResponses[keyof MyEventsApiV1EventsMyGetResponses]
 
+export type MyEventsPageApiV1EventsMyPageGetData = {
+  body?: never
+  headers?: {
+    /**
+     * If-None-Match
+     */
+    "if-none-match"?: string | null
+  }
+  path?: never
+  query?: {
+    /**
+     * Limit
+     */
+    limit?: number
+    /**
+     * Cursor
+     */
+    cursor?: string | null
+    /**
+     * Category
+     */
+    category?:
+      "lecture" | "seminar" | "conference" | "workshop" | "social" | "sport" | "other" | null
+    /**
+     * Date Range
+     */
+    date_range?: "today" | "week" | "month" | null
+    /**
+     * Date Anchor
+     */
+    date_anchor?: string | null
+    /**
+     * Sort
+     */
+    sort?: "newest" | "popular" | "upcoming"
+    /**
+     * Upcoming After
+     */
+    upcoming_after?: string | null
+  }
+  url: "/api/v1/events/my/page"
+}
+
+export type MyEventsPageApiV1EventsMyPageGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type MyEventsPageApiV1EventsMyPageGetError =
+  MyEventsPageApiV1EventsMyPageGetErrors[keyof MyEventsPageApiV1EventsMyPageGetErrors]
+
+export type MyEventsPageApiV1EventsMyPageGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: PaginatedEvents
+}
+
+export type MyEventsPageApiV1EventsMyPageGetResponse =
+  MyEventsPageApiV1EventsMyPageGetResponses[keyof MyEventsPageApiV1EventsMyPageGetResponses]
+
 export type SemanticSearchApiV1EventsSearchSemanticGetData = {
   body?: never
   headers?: {
@@ -5176,7 +5511,14 @@ export type GetEventApiV1EventsEventIdGetData = {
      */
     event_id: string | number
   }
-  query?: never
+  query?: {
+    /**
+     * Lang
+     *
+     * Requested event detail locale. en/ru and regional tags such as ru-RU are recognized. Unsupported values are ignored; resolution then checks locale/language query aliases, user preference, Accept-Language, and finally en.
+     */
+    lang?: string | null
+  }
   url: "/api/v1/events/{event_id}"
 }
 
@@ -5330,6 +5672,65 @@ export type UploadEventFileApiV1EventsEventIdUploadFilePostResponses = {
 
 export type UploadEventFileApiV1EventsEventIdUploadFilePostResponse =
   UploadEventFileApiV1EventsEventIdUploadFilePostResponses[keyof UploadEventFileApiV1EventsEventIdUploadFilePostResponses]
+
+export type AssignGradeApiV1GradesPostData = {
+  body: GradeCreate
+  path?: never
+  query?: never
+  url: "/api/v1/grades"
+}
+
+export type AssignGradeApiV1GradesPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type AssignGradeApiV1GradesPostError =
+  AssignGradeApiV1GradesPostErrors[keyof AssignGradeApiV1GradesPostErrors]
+
+export type AssignGradeApiV1GradesPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: GradeOut
+}
+
+export type AssignGradeApiV1GradesPostResponse =
+  AssignGradeApiV1GradesPostResponses[keyof AssignGradeApiV1GradesPostResponses]
+
+export type ModifyGradeApiV1GradesGradeIdPatchData = {
+  body: GradeUpdate
+  path: {
+    /**
+     * Grade Id
+     */
+    grade_id: string
+  }
+  query?: never
+  url: "/api/v1/grades/{grade_id}"
+}
+
+export type ModifyGradeApiV1GradesGradeIdPatchErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ModifyGradeApiV1GradesGradeIdPatchError =
+  ModifyGradeApiV1GradesGradeIdPatchErrors[keyof ModifyGradeApiV1GradesGradeIdPatchErrors]
+
+export type ModifyGradeApiV1GradesGradeIdPatchResponses = {
+  /**
+   * Successful Response
+   */
+  200: GradeOut
+}
+
+export type ModifyGradeApiV1GradesGradeIdPatchResponse =
+  ModifyGradeApiV1GradesGradeIdPatchResponses[keyof ModifyGradeApiV1GradesGradeIdPatchResponses]
 
 export type GetGroupsApiV1GroupsGetData = {
   body?: never

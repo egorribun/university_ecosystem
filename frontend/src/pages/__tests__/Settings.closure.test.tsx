@@ -1,6 +1,8 @@
-import { act, render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import * as v from "valibot"
+import { settingsSearchSchema } from "@/features/settings/schema"
 
 const mocks = vi.hoisted(() => ({
   initialSearch: { tab: 0 as number | undefined, spotify: undefined as string | undefined },
@@ -321,5 +323,19 @@ describe("Settings container closure", () => {
         }
       }
     }
+  })
+
+  it("selects only General after validating a numeric fractional tab", () => {
+    const search = v.parse(settingsSearchSchema, { tab: 1.5 })
+    mocks.initialSearch = { tab: search.tab, spotify: search.spotify }
+
+    render(<Settings />)
+
+    const selectedTab = screen.getByRole("tab", { selected: true })
+    expect(selectedTab).toHaveAccessibleName("settings:tabs.general")
+    const panel = screen.getByRole("tabpanel")
+    expect(within(panel).getAllByRole("heading", { level: 2 })).toHaveLength(1)
+    const heading = within(panel).getByRole("heading", { level: 2, name: "general panel" })
+    expect(heading).toBeInTheDocument()
   })
 })

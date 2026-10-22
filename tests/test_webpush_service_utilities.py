@@ -6,6 +6,7 @@ real VAPID credentials.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import time
 from unittest.mock import MagicMock, patch
 
@@ -60,6 +61,18 @@ def test_mask_endpoint_valid_url():
     assert result is not None
     assert "https://fcm.googleapis.com" in result
     assert "#" in result  # includes digest
+
+
+def test_mask_endpoint_redacts_url_userinfo():
+    userinfo = "fixture-user" + ":" + "fixture-pass" + "@"
+    endpoint = "https://" + userinfo + "push.example.test/push-token"
+
+    result = _mask_endpoint(endpoint)
+
+    assert result is not None
+    assert "fixture-user" not in result
+    assert "fixture-pass" not in result
+    assert "https://push.example.test" in result
 
 
 def test_mask_endpoint_no_scheme():
@@ -376,13 +389,19 @@ def test_cleanup_branches():
         mock_logger.exception.assert_called_once()
 
 
-def test_get_push_semaphore_cached():
-    """Test that _get_push_semaphore returns cached semaphore when not None."""
+def test_get_push_semaphore_is_cached_per_event_loop():
+    """Reuse a limiter within one loop without sharing it across loops."""
     from app.services.webpush import _get_push_semaphore
 
-    mock_sem = MagicMock()
-    with patch("app.services.webpush._push_semaphore", mock_sem):
-        assert _get_push_semaphore() is mock_sem
+    async def get_semaphore_twice():
+        semaphore = _get_push_semaphore()
+        assert _get_push_semaphore() is semaphore
+        return semaphore
+
+    first_loop_semaphore = asyncio.run(get_semaphore_twice())
+    second_loop_semaphore = asyncio.run(get_semaphore_twice())
+
+    assert second_loop_semaphore is not first_loop_semaphore
 
 
 def test_log_event_branches():

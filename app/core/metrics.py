@@ -620,8 +620,6 @@ class PrometheusRequestMetricsMiddleware(BaseHTTPMiddleware):
 
         start = time.perf_counter()
         status_code = "500"
-        router_label = _resolve_router_label(request)
-        path_template = _resolve_path_template(request)
         method = request.method.upper()
         try:
             response = await call_next(request)
@@ -630,6 +628,10 @@ class PrometheusRequestMetricsMiddleware(BaseHTTPMiddleware):
         except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — ensures metrics are recorded in finally block (reviewed TD-27-04)
             raise
         finally:
+            # Starlette sets the matched route inside call_next. Resolve both
+            # labels after routing so dynamic path values never become series.
+            router_label = _resolve_router_label(request)
+            path_template = _resolve_path_template(request)
             _REQUEST_COUNT.labels(
                 method=method, path=path_template, status=status_code
             ).inc()
@@ -654,8 +656,7 @@ def _resolve_path_template(request: Request) -> str:
         path = getattr(route, "path", None)
         if path:
             return str(path)
-    raw_path = request.scope.get("path") or request.url.path
-    return str(raw_path) if raw_path else "unknown"
+    return "unmatched"
 
 
 def _resolve_router_label(request: Request) -> str:
@@ -825,9 +826,11 @@ async def _record_cache_metrics() -> None:
     ]
     if all(checks):
         return
-    from app.deps.cache import RedisCache, get_cache
+    from app.deps.cache import RedisCache, TieredCache, get_cache
 
     backend = get_cache()
+    if isinstance(backend, TieredCache):
+        backend = backend.l2
     if isinstance(backend, RedisCache):
         try:
             client: Any = await backend._get_client()

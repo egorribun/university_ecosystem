@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import StoriesAdmin from "../StoriesAdmin"
 
 const mocks = vi.hoisted(() => ({
@@ -47,29 +48,22 @@ vi.mock("@/components/media/SmartImage", () => ({
   default: ({ alt, srcRaw }: { alt: string; srcRaw: string }) => <img alt={alt} src={srcRaw} />,
 }))
 
-vi.mock("@/components/settings", () => ({
-  Alert: ({ children }: { children: React.ReactNode }) => <div role="alert">{children}</div>,
-  Button: ({
-    as: Component = "button",
-    children,
-    leadingIcon: _leadingIcon,
-    startIcon: _startIcon,
-    loading: _loading,
-    size: _size,
-    variant: _variant,
-    disabled: _disabled,
-    ...props
-  }: any) => <Component {...props}>{children}</Component>,
-  CircularProgress: () => <div aria-label="loading" />,
-  Divider: () => <hr />,
-  SectionCard: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
-  TextField: ({ label, multiline, ...props }: any) => (
-    <label>
-      {label}
-      {multiline ? <textarea {...props} /> : <input {...props} />}
-    </label>
-  ),
-}))
+vi.mock("@/components/settings", async () => {
+  const { Button } = await import("@/components/settings/ui/Form")
+  return {
+    Alert: ({ children }: { children: React.ReactNode }) => <div role="alert">{children}</div>,
+    Button,
+    CircularProgress: () => <div aria-label="loading" />,
+    Divider: () => <hr />,
+    SectionCard: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
+    TextField: ({ label, multiline, ...props }: any) => (
+      <label>
+        {label}
+        {multiline ? <textarea {...props} /> : <input {...props} />}
+      </label>
+    ),
+  }
+})
 
 vi.mock("@/components/ui/Badge", () => ({
   Badge: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
@@ -117,10 +111,12 @@ const localDateTimeToIso = (value: string) => new Date(value).toISOString()
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((settle) => {
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((settle, fail) => {
     resolve = settle
+    reject = fail
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
 
 describe("StoriesAdmin", () => {
@@ -136,6 +132,32 @@ describe("StoriesAdmin", () => {
     mocks.deleteStory.mockResolvedValue(undefined)
     mocks.updateStory.mockResolvedValue(undefined)
   })
+
+  it.each(["common:buttons.uploadPhoto", "stories:list.actions.pickCover"])(
+    "opens the %s file picker from a keyboard-reachable button",
+    async (name) => {
+      mocks.getStories.mockResolvedValue({ data: [story] })
+      const user = userEvent.setup()
+      render(<StoriesAdmin />)
+      await screen.findByText(story.title)
+
+      const picker = screen.getByRole("button", { name })
+      const input = screen.getByLabelText(name) as HTMLInputElement
+      const openPicker = vi.spyOn(input, "click")
+      try {
+        for (let index = 0; index < 64 && document.activeElement !== picker; index += 1) {
+          await user.tab()
+        }
+        expect(picker).toHaveFocus()
+        await user.keyboard("{Enter}")
+        expect(openPicker).toHaveBeenCalledTimes(1)
+        await user.keyboard(" ")
+        expect(openPicker).toHaveBeenCalledTimes(2)
+      } finally {
+        openPicker.mockRestore()
+      }
+    }
+  )
 
   it("blocks non-administrators before fetching private stories", () => {
     mocks.user = { id: "student-1", role: "student" as const }
@@ -166,6 +188,64 @@ describe("StoriesAdmin", () => {
     await waitFor(() => {
       expect(mocks.deleteStory).toHaveBeenCalledWith(story.id)
     })
+  })
+
+  it("advances story expiry on one shared clock without changing item order or edits", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-10-20T10:00:00.000Z"))
+    const firstStory = {
+      ...story,
+      id: "story-first",
+      title: "First story",
+      expires_at: "2026-10-20T10:01:00.000Z",
+    }
+    const secondStory = {
+      ...story,
+      id: "story-second",
+      title: "Second story",
+      expires_at: "2026-10-20T10:02:00.000Z",
+    }
+    mocks.getStories.mockResolvedValueOnce({ data: [firstStory, secondStory] })
+    const timersBefore = vi.getTimerCount()
+    const view = render(<StoriesAdmin />)
+    let unmounted = false
+
+    try {
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      expect(screen.getByText(firstStory.title)).toBeInTheDocument()
+      expect(screen.getByText("in 1 minute")).toBeInTheDocument()
+      expect(screen.getByText("in 2 minutes")).toBeInTheDocument()
+
+      const firstExpiryInput = screen.getAllByLabelText("stories:form.expiresAt")[1]!
+      fireEvent.change(firstExpiryInput, { target: { value: "2026-10-20T10:05" } })
+      expect(firstExpiryInput).toHaveValue("2026-10-20T10:05")
+
+      act(() => vi.advanceTimersByTime(60_000))
+      expect(screen.getByText("now")).toBeInTheDocument()
+      expect(screen.getByText("in 1 minute")).toBeInTheDocument()
+      expect(firstExpiryInput).toHaveValue("2026-10-20T10:05")
+      expect(vi.getTimerCount()).toBe(timersBefore + 1)
+      expect(
+        screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)
+      ).toEqual([firstStory.title, secondStory.title])
+
+      act(() => vi.advanceTimersByTime(60_000))
+      expect(screen.getByText("1 minute ago")).toBeInTheDocument()
+      expect(screen.getByText("now")).toBeInTheDocument()
+      expect(
+        screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)
+      ).toEqual([firstStory.title, secondStory.title])
+
+      view.unmount()
+      unmounted = true
+      expect(vi.getTimerCount()).toBe(timersBefore)
+    } finally {
+      if (!unmounted) view.unmount()
+      vi.useRealTimers()
+    }
   })
 
   it("validates required fields before creating a story", async () => {
@@ -379,6 +459,131 @@ describe("StoriesAdmin", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("cover rejected")
     expect(mocks.createStory).not.toHaveBeenCalled()
   })
+
+  it("allows one cover update at a time and requires a new selection after saving", async () => {
+    const pendingUpload = deferred<{ url: string }>()
+    const pendingSave = deferred<void>()
+    const file = new File(["image"], "cover.png", { type: "image/png" })
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:item-cover")
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    mocks.getStories.mockResolvedValue({ data: [story] })
+    mocks.uploadStoryCover.mockReturnValueOnce(pendingUpload.promise)
+    mocks.updateStory.mockReturnValueOnce(pendingSave.promise)
+
+    const { unmount } = render(<StoriesAdmin />)
+    await screen.findByText(story.title)
+    const updateCover = screen.getByRole("button", { name: "stories:list.actions.updateCover" })
+    const coverInput = screen.getByLabelText("stories:list.actions.pickCover")
+
+    expect(updateCover).toBeDisabled()
+    fireEvent.click(updateCover)
+    expect(mocks.uploadStoryCover).not.toHaveBeenCalled()
+
+    fireEvent.change(coverInput, { target: { files: [file] } })
+    expect(updateCover).toBeEnabled()
+    fireEvent.click(updateCover)
+
+    expect(updateCover).toBeDisabled()
+    expect(updateCover).toHaveAttribute("aria-busy", "true")
+    expect(mocks.uploadStoryCover).toHaveBeenCalledExactlyOnceWith(file)
+    expect(mocks.updateStory).not.toHaveBeenCalled()
+    fireEvent.click(updateCover)
+    expect(mocks.uploadStoryCover).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      pendingUpload.resolve({ url: "https://cdn.example/new.png" })
+      await pendingUpload.promise
+    })
+    expect(mocks.updateStory).toHaveBeenCalledExactlyOnceWith(story.id, {
+      cover_url: "https://cdn.example/new.png",
+    })
+    expect(updateCover).toBeDisabled()
+    expect(updateCover).toHaveAttribute("aria-busy", "true")
+    fireEvent.click(updateCover)
+    expect(mocks.uploadStoryCover).toHaveBeenCalledTimes(1)
+    expect(mocks.updateStory).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      pendingSave.resolve()
+      await pendingSave.promise
+    })
+    expect(mocks.getStories).toHaveBeenCalledTimes(2)
+    expect(updateCover).toBeDisabled()
+    expect(updateCover).not.toHaveAttribute("aria-busy")
+    expect(screen.queryByAltText("stories:list.coverAlt")).not.toBeInTheDocument()
+
+    fireEvent.change(coverInput, {
+      target: { files: [new File(["next"], "next.png", { type: "image/png" })] },
+    })
+    expect(updateCover).toBeEnabled()
+    unmount()
+    createObjectUrl.mockRestore()
+    revokeObjectUrl.mockRestore()
+  })
+
+  it.each(["upload", "save"])(
+    "keeps the selected cover available to retry after a failed %s",
+    async (failedStage) => {
+      const pendingUpload = deferred<{ url: string }>()
+      const pendingSave = deferred<void>()
+      const file = new File(["image"], "retry.png", { type: "image/png" })
+      const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:retry-cover")
+      const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+      mocks.getStories.mockResolvedValue({ data: [story] })
+      mocks.uploadStoryCover.mockReturnValueOnce(pendingUpload.promise)
+      if (failedStage === "save") mocks.updateStory.mockReturnValueOnce(pendingSave.promise)
+
+      const { unmount } = render(<StoriesAdmin />)
+      await screen.findByText(story.title)
+      const updateCover = screen.getByRole("button", {
+        name: "stories:list.actions.updateCover",
+      })
+      fireEvent.change(screen.getByLabelText("stories:list.actions.pickCover"), {
+        target: { files: [file] },
+      })
+      fireEvent.click(updateCover)
+      expect(updateCover).toBeDisabled()
+
+      await act(async () => {
+        if (failedStage === "upload") {
+          pendingUpload.reject(new Error("cover update failed"))
+        } else {
+          pendingUpload.resolve({ url: "https://cdn.example/retry.png" })
+          await pendingUpload.promise
+          pendingSave.reject(new Error("cover update failed"))
+        }
+      })
+
+      expect(screen.getByRole("alert")).toHaveTextContent("cover update failed")
+      expect(updateCover).toBeEnabled()
+      expect(updateCover).not.toHaveAttribute("aria-busy")
+      expect(screen.getByAltText("stories:list.coverAlt")).toHaveAttribute(
+        "src",
+        "blob:retry-cover"
+      )
+      expect(mocks.uploadStoryCover).toHaveBeenCalledExactlyOnceWith(file)
+      expect(mocks.updateStory).toHaveBeenCalledTimes(failedStage === "upload" ? 0 : 1)
+      expect(mocks.getStories).toHaveBeenCalledTimes(1)
+
+      mocks.uploadStoryCover.mockResolvedValueOnce({ url: "https://cdn.example/retried.png" })
+      mocks.updateStory.mockResolvedValueOnce(undefined)
+      fireEvent.click(updateCover)
+      await waitFor(() => {
+        expect(mocks.getStories).toHaveBeenCalledTimes(2)
+      })
+      expect(mocks.uploadStoryCover).toHaveBeenNthCalledWith(2, file)
+      expect(mocks.updateStory).toHaveBeenLastCalledWith(story.id, {
+        cover_url: "https://cdn.example/retried.png",
+      })
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+      expect(screen.queryByAltText("stories:list.coverAlt")).not.toBeInTheDocument()
+      expect(updateCover).toBeDisabled()
+      expect(updateCover).not.toHaveAttribute("aria-busy")
+      unmount()
+      createObjectUrl.mockRestore()
+      revokeObjectUrl.mockRestore()
+    }
+  )
 
   it("handles timer validation, cover update, and delete cancellation", async () => {
     const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:item-cover")
@@ -664,5 +869,40 @@ describe("StoriesAdmin", () => {
       await pendingCreate.promise
     })
     expect(mocks.createStory).toHaveBeenCalledTimes(1)
+  })
+
+  it("names the item cover reset and restores the saved cover", async () => {
+    const existingCoverUrl = "https://cdn.example/existing.png"
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:item-cover")
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    mocks.getStories.mockResolvedValueOnce({ data: [{ ...story, cover_url: existingCoverUrl }] })
+    let unmount: (() => void) | undefined
+    try {
+      const view = render(<StoriesAdmin />)
+      unmount = view.unmount
+      expect(await screen.findByText(story.title)).toBeInTheDocument()
+      const coverInput = screen.getAllByLabelText("stories:list.actions.pickCover").at(-1)!
+      fireEvent.change(coverInput, {
+        target: { files: [new File(["image"], "pending.png", { type: "image/png" })] },
+      })
+      expect(screen.getByAltText("stories:list.coverAlt")).toHaveAttribute("src", "blob:item-cover")
+
+      fireEvent.click(screen.getByRole("button", { name: "stories:list.actions.clearCover" }))
+
+      expect(screen.getByAltText(story.title)).toHaveAttribute("src", existingCoverUrl)
+      expect(
+        screen.queryByRole("button", { name: "stories:list.actions.clearCover" })
+      ).not.toBeInTheDocument()
+      expect(
+        screen.getByRole("button", { name: "stories:list.actions.updateCover" })
+      ).toBeDisabled()
+      expect(mocks.uploadStoryCover).not.toHaveBeenCalled()
+      expect(mocks.updateStory).not.toHaveBeenCalled()
+      expect(revokeObjectUrl).toHaveBeenCalledWith("blob:item-cover")
+    } finally {
+      unmount?.()
+      createObjectUrl.mockRestore()
+      revokeObjectUrl.mockRestore()
+    }
   })
 })

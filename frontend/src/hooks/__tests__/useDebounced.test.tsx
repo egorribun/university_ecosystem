@@ -1,4 +1,4 @@
-import { renderHook, act } from "@testing-library/react"
+import { renderHook, act, cleanup } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { useDebounced } from "../useDebounced"
 
@@ -7,8 +7,24 @@ describe("useDebounced", () => {
     vi.useFakeTimers()
   })
 
-  afterEach(() => {
-    vi.useRealTimers()
+  afterEach(async () => {
+    const errors: unknown[] = []
+    const steps = [
+      cleanup,
+      () =>
+        act(async () => {
+          await vi.runOnlyPendingTimersAsync()
+        }),
+      () => vi.useRealTimers(),
+    ]
+    for (const step of steps) {
+      try {
+        await step()
+      } catch (error) {
+        errors.push(error)
+      }
+    }
+    if (errors.length) throw new AggregateError(errors, "useDebounced fixture cleanup failed")
   })
 
   // ---------------------------------------------------------------------------
@@ -63,6 +79,42 @@ describe("useDebounced", () => {
     // Timer resets each rerender — only fires after 300ms from the last update
     act(() => vi.advanceTimersByTime(300))
     expect(result.current).toBe("d")
+  })
+
+  it.each([
+    { name: "omitted", useValue: (value: string) => useDebounced(value) },
+    { name: "explicit undefined", useValue: (value: string) => useDebounced(value, undefined) },
+  ])("uses the 300ms default deadline when delay is $name", ({ useValue }) => {
+    const { result, rerender } = renderHook(({ value }) => useValue(value), {
+      initialProps: { value: "initial" },
+    })
+    expect(result.current).toBe("initial")
+
+    rerender({ value: "updated" })
+    act(() => vi.advanceTimersByTime(299))
+    expect(result.current).toBe("initial")
+    act(() => vi.advanceTimersByTime(1))
+    expect(result.current).toBe("updated")
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("restarts the default deadline and never publishes a superseded value", () => {
+    const { result, rerender } = renderHook(({ value }) => useDebounced(value), {
+      initialProps: { value: "initial" },
+    })
+    rerender({ value: "superseded" })
+    act(() => vi.advanceTimersByTime(200))
+    rerender({ value: "latest" })
+    expect(vi.getTimerCount()).toBe(1)
+
+    // The first update would have fired here if its timeout were not cancelled.
+    act(() => vi.advanceTimersByTime(100))
+    expect(result.current).toBe("initial")
+    act(() => vi.advanceTimersByTime(199))
+    expect(result.current).toBe("initial")
+    act(() => vi.advanceTimersByTime(1))
+    expect(result.current).toBe("latest")
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   // ---------------------------------------------------------------------------
@@ -126,12 +178,15 @@ describe("useDebounced", () => {
   // Cleanup and edge cases
   // ---------------------------------------------------------------------------
   it("clears the timeout on unmount", () => {
-    const { rerender, unmount } = renderHook(({ value }) => useDebounced(value, 300), {
+    const { rerender, unmount } = renderHook(({ value }) => useDebounced(value), {
       initialProps: { value: "initial" },
     })
     rerender({ value: "updated" })
+    expect(vi.getTimerCount()).toBe(1)
     unmount()
-    expect(() => act(() => vi.advanceTimersByTime(300))).not.toThrow()
+    expect(vi.getTimerCount()).toBe(0)
+    act(() => vi.advanceTimersByTime(300))
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it("works correctly with a delay of 0", () => {

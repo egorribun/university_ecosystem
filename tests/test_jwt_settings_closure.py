@@ -3,6 +3,7 @@ from __future__ import annotations
 import warnings
 
 import pytest
+from cryptography.fernet import Fernet
 
 from app.core.config.mixins.jwt_settings import JwtSettingsMixin
 from app.core.config.security import SecuritySettings
@@ -17,6 +18,10 @@ def _development_env(monkeypatch):
 
 
 def _production_env(monkeypatch):
+    monkeypatch.setenv(
+        "MFA_TOTP_ENCRYPTION_KEYS", f"test-key:{Fernet.generate_key().decode('ascii')}"
+    )
+    monkeypatch.setenv("MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID", "test-key")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("SECRET_KEY", "s" * 48)  # pragma: allowlist secret
     monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "internal-route-token-for-test")

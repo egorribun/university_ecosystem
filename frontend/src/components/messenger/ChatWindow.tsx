@@ -700,6 +700,9 @@ export const ChatWindow = memo(function ChatWindow({
                           onChange={(event) => handleEditingContentChange(event.target.value)}
                           onKeyDown={(event) => {
                             if (event.key === "Enter" && !event.shiftKey) {
+                              const isComposing =
+                                event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229
+                              if (isComposing) return
                               event.preventDefault()
                               handleSaveEdit(message.id)
                             } else if (event.key === "Escape") {

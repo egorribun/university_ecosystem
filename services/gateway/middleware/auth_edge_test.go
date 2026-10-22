@@ -172,7 +172,7 @@ func TestOptional_RS256Configured_ValidTokenSetsContext(t *testing.T) {
 }
 
 func TestOptional_NoTokenContinues(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	probe, captured := captureContextHandler()
 	router := gin.New()
 	router.GET("/test", m.Optional(context.Background()), probe)
@@ -223,7 +223,7 @@ func TestOptional_ValidSessionSetsContextHS256(t *testing.T) {
 }
 
 func TestOptional_RejectsOverageIssuedToken(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	claims := freshClaims("jti-too-old")
 	claims.IssuedAt = jwt.NewNumericDate(time.Now().Add(-jwtMaxTokenAge - time.Hour))
 	token := createValidToken(testSecret, claims)
@@ -246,7 +246,7 @@ func TestValidate_RejectsNonClaimsParserResult(t *testing.T) {
 		return &jwt.Token{Claims: &jwt.RegisteredClaims{}, Valid: true}, nil
 	}
 
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	router := gin.New()
 	router.GET("/test", m.Validate(context.Background()), func(c *gin.Context) { c.Status(http.StatusOK) })
 	rec := httptest.NewRecorder()
@@ -262,7 +262,7 @@ func TestOptional_RejectsNonClaimsParserResult(t *testing.T) {
 		return &jwt.Token{Claims: &jwt.RegisteredClaims{}, Valid: true}, nil
 	}
 
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	probe, captured := captureContextHandler()
 	router := gin.New()
 	router.GET("/test", m.Optional(context.Background()), probe)
@@ -296,7 +296,7 @@ func TestOptional_VerifySessionDecisionBranches(t *testing.T) {
 			verifySessionFunc = func(*JWTMiddleware, context.Context, string, bool) (bool, bool, error) {
 				return tc.valid, tc.deny, tc.err
 			}
-			m := NewJWTMiddleware(testSecret, nil)
+			m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 			probe, captured := captureContextHandler()
 			router := gin.New()
 			router.GET("/test", m.Optional(context.Background()), probe)
@@ -335,7 +335,7 @@ func TestShouldRefreshProbabilistic_ZeroRandomFactorIsSafe(t *testing.T) {
 }
 
 func TestValidate_RejectsTokenWithExpiredIssuedAt(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	router := createTestRouter(m.Validate(context.Background()))
 	claims := revocableClaims("jti-expired-iat")
 	claims.IssuedAt = jwt.NewNumericDate(time.Now().Add(-jwtMaxTokenAge - time.Minute))
@@ -357,7 +357,7 @@ func TestWarmL1CacheStopsAtMaximumKeyLimit(t *testing.T) {
 		require.NoError(t, mr.Set("revoked:jti:warm-"+strconv.Itoa(i), "1"))
 	}
 
-	m := NewJWTMiddleware(testSecret, client)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", client, DefaultL1CacheConfig())
 	m.WarmL1Cache(context.Background())
 	assert.Equal(t, 10000, m.l1cache.Len())
 }

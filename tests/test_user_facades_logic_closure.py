@@ -8,11 +8,9 @@ from uuid import uuid4
 
 import pytest
 
-from app.core.exceptions.domain import EntityAlreadyExists
 from app.services.user.logic import (
     anonymize_user_data,
     update_user_attributes,
-    validate_user_email,
 )
 from app.services.user_service import UserService
 
@@ -168,9 +166,10 @@ def test_update_user_attributes_reuses_existing_nested_relations():
 
 
 @pytest.mark.asyncio
-async def test_anonymize_user_data_cleans_existing_relations_and_files():
+async def test_anonymize_user_data_clears_relations_without_storage_io():
+    user_id = uuid4()
     user = SimpleNamespace(
-        id=uuid4(),
+        id=user_id,
         email="user@example.com",
         hashed_password="hash",  # pragma: allowlist secret
         is_active=True,
@@ -178,8 +177,8 @@ async def test_anonymize_user_data_cleans_existing_relations_and_files():
         mfa_default_method="totp",
         mfa_last_verified_at=object(),
         profile=SimpleNamespace(
-            avatar_url="/avatar.jpg",
-            cover_url="/cover.jpg",
+            avatar_url=f"/static/avatars/user_{user_id}_avatar_{'a' * 32}.png",
+            cover_url=f"/static/covers/user_{user_id}_cover_{'b' * 32}.png",
             full_name="User",
             about="About",
             telegram="@user",
@@ -204,7 +203,7 @@ async def test_anonymize_user_data_cleans_existing_relations_and_files():
         anonymized = await anonymize_user_data(user)
 
     assert anonymized == f"deleted+{user.id}@deleted.example.com"
-    assert delete.await_count == 2
+    delete.assert_not_awaited()
     assert user.profile.status == "deleted"
     assert user.education_path is None
     assert user.preferences.dnd_enabled is False
@@ -248,22 +247,6 @@ async def test_anonymize_user_data_skips_falsy_placeholder_profile():
 
     assert result.startswith("deleted+")
     assert user.profile.status == "deleted"
-
-
-@pytest.mark.asyncio
-async def test_validate_user_email_normalizes_and_checks_uniqueness():
-    repo = MagicMock()
-    repo.check_email_exists = AsyncMock(return_value=False)
-
-    assert await validate_user_email(repo, "  USER@Example.COM ") == "user@example.com"
-    repo.check_email_exists.assert_awaited_once_with(
-        "user@example.com", exclude_user_id=None
-    )
-
-    repo.check_email_exists.reset_mock()
-    repo.check_email_exists.return_value = True
-    with pytest.raises(EntityAlreadyExists):
-        await validate_user_email(repo, "duplicate@example.com", exclude_user_id="user")
 
 
 @pytest.mark.asyncio

@@ -61,11 +61,11 @@ describe("profileUtils closure paths", () => {
     const partial = buildVCardString({
       full_name: "Server User",
       institute: "",
-      department: "Mathematics",
+      department: "Mathematics; Physics, Lab\\Wing\r\nCampus",
       position: "",
       status: "Student",
     })
-    expect(partial).toContain("ORG:Mathematics")
+    expect(partial.split("\r\n")).toContain("ORG:Mathematics\\; Physics\\, Lab\\\\Wing\\nCampus")
     expect(partial).toContain("TITLE:Student")
 
     vi.stubGlobal("window", undefined)
@@ -76,6 +76,21 @@ describe("profileUtils closure paths", () => {
     } finally {
       vi.unstubAllGlobals()
     }
+  })
+
+  it("escapes structured-text delimiters and line breaks only in the organization component", () => {
+    const vCard = buildVCardString({
+      full_name: "Ada Lovelace",
+      email: "ada@example.test",
+      institute: "Faculty; Institute, North\\South\r\nCampus",
+      position: "Researcher",
+    })
+
+    const lines = vCard.split("\r\n")
+    expect(lines).toContain("FN:Ada Lovelace")
+    expect(lines).toContain("EMAIL:ada@example.test")
+    expect(lines).toContain("ORG:Faculty\\; Institute\\, North\\\\South\\nCampus")
+    expect(lines).toContain("TITLE:Researcher")
   })
 
   it("formats duration and layout values at lower and responsive bounds", () => {

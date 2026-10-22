@@ -1,13 +1,18 @@
 import { act, render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-type PushMessageSubscriber = (event: MessageEvent<unknown>) => void
+type PushMessageSubscriber = (event: MessageEvent<unknown>, ownerId: string) => void
 
 const busState = vi.hoisted(() => ({
   subscriber: null as PushMessageSubscriber | null,
+  identity: { userId: "unknown-test-user", revision: 1 },
 }))
 
 vi.mock("@/push/pushMessageBus", () => ({
+  getCurrentPushIdentitySnapshot: () => busState.identity,
+  getCurrentPushUserId: () => busState.identity.userId,
+  subscribeToPushIdentity: (_subscriber: () => void) => () => {},
+  getPushBufferStorageKey: (userId: string) => "livePushToastBuffer:" + encodeURIComponent(userId),
   subscribeToPushMessages: (subscriber: PushMessageSubscriber) => {
     busState.subscriber = subscriber
     return () => {
@@ -40,7 +45,10 @@ describe("LivePushToasts unsupported messages", () => {
 
     expect(busState.subscriber).toBeTypeOf("function")
     act(() => {
-      busState.subscriber?.({ data: { type: "UNRELATED" } } as MessageEvent<unknown>)
+      busState.subscriber?.(
+        { data: { type: "UNRELATED" } } as MessageEvent<unknown>,
+        "unknown-test-user"
+      )
     })
 
     expect(screen.queryByRole("heading", { level: 4 })).not.toBeInTheDocument()

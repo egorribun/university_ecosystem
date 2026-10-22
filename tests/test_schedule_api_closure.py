@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import sys
 import uuid
+from collections import UserDict
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from types import ModuleType, SimpleNamespace
+from types import MappingProxyType, ModuleType, SimpleNamespace
 from typing import ClassVar
 from unittest.mock import AsyncMock
 
@@ -115,7 +116,7 @@ class _Request:
     client = _Client()
 
 
-def _user(role=UserRole.ADMIN):
+def _user(role=UserRole.TEACHER):
     return SimpleNamespace(id=uuid.uuid4(), role=role)
 
 
@@ -278,6 +279,78 @@ async def test_update_schedule_success_permission_and_missing(monkeypatch):
             uuid.uuid4(), data, _Request(), missing_bus, _user()
         )
     assert exc_info.value.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "field",
+    ("group_id", "subject", "weekday", "start_time", "end_time", "parity"),
+)
+def test_schedule_update_treats_explicit_null_required_fields_as_omitted(field):
+    data = schemas.ScheduleUpdate.model_validate({field: None})
+
+    assert field not in data.model_fields_set
+    assert data.model_dump(exclude_unset=True) == {}
+
+
+def test_schedule_update_direct_model_input_keeps_nulls_omitted():
+    direct = schemas.ScheduleUpdate(group_id=None, subject=None, teacher=None)
+
+    assert direct.model_dump(exclude_unset=True) == {"teacher": None}
+    assert schemas.ScheduleUpdate.model_validate(direct) is direct
+    assert direct.model_dump(exclude_unset=True) == {"teacher": None}
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (UserDict({"subject": None}), MappingProxyType({"subject": None})),
+    ids=("user-dict", "mapping-proxy"),
+)
+def test_schedule_update_omits_null_storage_fields_from_mapping_inputs(payload):
+    data = schemas.ScheduleUpdate.model_validate(payload)
+
+    assert "subject" not in data.model_fields_set
+    assert data.model_dump(exclude_unset=True) == {}
+    assert payload["subject"] is None
+
+
+def test_schedule_update_keeps_omitted_fields_partial_and_nullable_fields_clearable():
+    partial = schemas.ScheduleUpdate(subject="Updated")
+    assert partial.model_dump(exclude_unset=True) == {"subject": "Updated"}
+
+    clearable = schemas.ScheduleUpdate.model_validate(
+        {"teacher": None, "room": None, "lesson_type": None}
+    )
+    assert clearable.model_dump(exclude_unset=True) == {
+        "teacher": None,
+        "room": None,
+        "lesson_type": None,
+    }
+
+
+def test_schedule_update_json_schema_preserves_nullable_optional_storage_fields():
+    schema = schemas.ScheduleUpdate.model_json_schema()
+    properties = schema["properties"]
+    required_fields = (
+        "group_id",
+        "subject",
+        "weekday",
+        "start_time",
+        "end_time",
+        "parity",
+    )
+
+    assert not set(required_fields).intersection(schema.get("required", []))
+    for field in required_fields:
+        field_schema = properties[field]
+        assert any(
+            branch.get("type") == "null" for branch in field_schema.get("anyOf", [])
+        )
+
+    for field in ("teacher", "room", "lesson_type"):
+        assert any(
+            branch.get("type") == "null"
+            for branch in properties[field].get("anyOf", [])
+        )
 
 
 @pytest.mark.asyncio

@@ -21,6 +21,10 @@ vi.mock("@/components/ui/Tooltip", () => ({
 }))
 
 import { DateBullet } from "@/components/dashboard/DateBullet"
+import { CampusTimezoneProvider } from "@/contexts/CampusTimezoneContext"
+
+const renderInCampusTimezone = (element: ReactNode) =>
+  render(<CampusTimezoneProvider timeZone="Europe/Istanbul">{element}</CampusTimezoneProvider>)
 
 describe("DateBullet closure branches", () => {
   beforeEach(() => {
@@ -32,7 +36,7 @@ describe("DateBullet closure branches", () => {
   })
 
   it("renders a formatted default bullet", () => {
-    render(<DateBullet date="2026-06-15T14:30:00Z" locale="en-US" />)
+    renderInCampusTimezone(<DateBullet date="2026-06-15T14:30:00Z" locale="en-US" />)
 
     const bullet = screen.getByLabelText(/ariaDatePublished/)
     expect(bullet).toBeInTheDocument()
@@ -78,7 +82,7 @@ describe("DateBullet closure branches", () => {
   })
 
   it("uses the unknown-date fallback and compact sizing", () => {
-    const { container } = render(<DateBullet locale="en-US" size="compact" />)
+    const { container } = renderInCampusTimezone(<DateBullet locale="en-US" size="compact" />)
 
     expect(screen.getByText("—")).toBeInTheDocument()
     expect(screen.getByText("--")).toBeInTheDocument()
@@ -90,23 +94,24 @@ describe("DateBullet closure branches", () => {
     expect(screen.getByText("--")).toHaveClass("text-[0.5rem]")
   })
 
-  it("passes locale and complete date formatting options to the platform", () => {
-    const format = vi.spyOn(Date.prototype, "toLocaleString").mockReturnValue("FORMATTED DATE")
+  it("does not substitute the browser timezone when campus configuration is absent", () => {
+    render(<DateBullet date="2026-06-15T14:30:00Z" locale="en-US" />)
 
-    render(<DateBullet date="2026-06-15T14:30:00Z" locale="ru-RU" />)
+    expect(screen.getByText("—")).toBeInTheDocument()
+    expect(screen.getByText("--")).toBeInTheDocument()
+    expect(screen.getByLabelText("ariaDatePublished:dateUnknown")).toBeInTheDocument()
+  })
 
-    expect(format).toHaveBeenCalledWith("ru-RU", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-    expect(screen.getByLabelText("ariaDatePublished:FORMATTED DATE")).toBeInTheDocument()
+  it("formats the accessible full date in the configured campus timezone", () => {
+    renderInCampusTimezone(<DateBullet date="2026-06-15T14:30:00Z" locale="ru-RU" />)
+
+    expect(screen.getByLabelText(/ariaDatePublished:.*17:30/)).toBeInTheDocument()
   })
 
   it("keeps the default size when size is omitted", () => {
-    const { container } = render(<DateBullet date="2026-06-15T14:30:00Z" locale="en-US" />)
+    const { container } = renderInCampusTimezone(
+      <DateBullet date="2026-06-15T14:30:00Z" locale="en-US" />
+    )
 
     expect(container.querySelector(".h-12.w-12.min-h-12.min-w-12")).toBeInTheDocument()
     expect(container.querySelector(".h-10.w-10")).not.toBeInTheDocument()

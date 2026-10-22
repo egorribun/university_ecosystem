@@ -1,6 +1,6 @@
-import { screen, waitFor } from "@testing-library/react"
+import { cleanup, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { HttpResponse, http } from "msw"
 import type { ContextType } from "react"
 import { QueryClient } from "@tanstack/react-query"
@@ -8,6 +8,9 @@ import { QueryClient } from "@tanstack/react-query"
 import Events from "@/pages/Events"
 import { AuthContext } from "@/contexts/AuthContext"
 import type { Event } from "@/types/Event"
+import { useAuthStore } from "@/stores/useAuthStore"
+import { acceptBrowserSessionGeneration } from "@/stores/sessionEpoch"
+import { testUser } from "../mocks/handlers"
 import { server } from "../mocks/server"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
@@ -55,11 +58,22 @@ const authValue: AuthContextValue = {
 }
 
 describe("Events caching", () => {
+  beforeEach(() => {
+    acceptBrowserSessionGeneration()
+    useAuthStore.setState({ user: testUser, loading: false })
+  })
+
+  afterEach(() => {
+    cleanup()
+    useAuthStore.setState({ user: null, loading: true })
+  })
+
   it("restores cached data when a 304 response is received after switching tabs", async () => {
     const user = userEvent.setup()
     const activeEvents = [buildEvent("event-1", "Active event 1", true)]
     const archiveEvents = [buildEvent("event-2", "Archived event 1", false)]
     let activeRequestCount = 0
+    let notModifiedResponseCount = 0
 
     const queryClient = new QueryClient({
       defaultOptions: {
@@ -77,6 +91,7 @@ describe("Events caching", () => {
           const ifNoneMatch = request.headers.get("if-none-match")
           if (ifNoneMatch === '"active-tag"') {
             activeRequestCount += 1
+            notModifiedResponseCount += 1
             return new HttpResponse(null, {
               status: 304,
               headers: { ETag: '"active-tag"' },
@@ -144,6 +159,7 @@ describe("Events caching", () => {
     await user.click(activeTab)
 
     await waitFor(() => expect(activeRequestCount).toBe(2))
+    expect(notModifiedResponseCount).toBe(1)
     expect(await screen.findByText("Active event 1")).toBeInTheDocument()
     expect(screen.queryByText("Archived event 1")).not.toBeInTheDocument()
 

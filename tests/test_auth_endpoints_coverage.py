@@ -13,6 +13,8 @@ async def test_register_endpoint(async_client: AsyncClient, db_session):
         "email": "newuser@example.com",
         "password": "StrongPassword123!",
         "full_name": "New User",
+        "avatar_url": "/static/avatars/another-users-file.png",
+        "cover_url": "/static/covers/another-users-file.png",
     }
     response = await async_client.post("/auth/register", json=payload)
     assert response.status_code == 200
@@ -29,6 +31,8 @@ async def test_register_endpoint(async_client: AsyncClient, db_session):
     )
     user = (await db_session.execute(stmt)).scalar_one()
     assert user.profile.full_name == "New User"
+    assert user.profile.avatar_url is None
+    assert user.profile.cover_url is None
 
     # Duplicate email
     response = await async_client.post("/auth/register", json=payload)

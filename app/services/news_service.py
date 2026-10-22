@@ -1,5 +1,6 @@
 import contextlib
 import uuid
+from datetime import datetime
 
 from app.core.logging import get_logger
 from app.repositories.unit_of_work import UnitOfWork
@@ -10,9 +11,17 @@ from app.schemas.dtos import (
     NewsInteractionsDTO,
     NewsListingDTO,
 )
-from app.services.vector_service import VectorService
+from app.services.news_media import canonical_news_image_key
+from app.services.vector_service import (
+    SemanticSearchUnavailableError,
+    VectorService,
+)
 
 logger = get_logger(__name__)
+
+
+class NewsImageOwnershipError(PermissionError):
+    """The requested image is not a canonical upload owned by this actor."""
 
 
 class NewsService:
@@ -32,12 +41,21 @@ class NewsService:
     ) -> schemas.PaginatedNews:
         query_embedding = None
         if search:
-            query_embedding = await self.vector_service.get_embedding(search)
+            try:
+                query_embedding = await self.vector_service.get_embedding(search)
+            except SemanticSearchUnavailableError:
+                query_embedding = None
 
-        from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
+        from app.utils.pagination import (
+            decode_datetime_cursor,
+            decode_ranked_datetime_cursor,
+            encode_datetime_cursor,
+            encode_ranked_datetime_cursor,
+        )
 
-        decoded_cursor = None
-        if cursor:
+        decoded_cursor: tuple[datetime, str] | tuple[datetime, str, float | None] | None
+        decoded_cursor = decode_ranked_datetime_cursor(cursor)
+        if decoded_cursor is None:
             decoded = decode_datetime_cursor(cursor)
             if decoded:
                 with contextlib.suppress(ValueError, TypeError):
@@ -64,10 +82,16 @@ class NewsService:
         next_cursor = None
         if has_more and items_to_process:
             last_item = items_to_process[-1]
-            next_cursor = encode_datetime_cursor(
-                last_item.news.created_at,
-                str(last_item.news.id),
-            )
+            if last_item.ranked:
+                next_cursor = encode_ranked_datetime_cursor(
+                    last_item.news.created_at,
+                    str(last_item.news.id),
+                    last_item.distance,
+                )
+            else:
+                next_cursor = encode_datetime_cursor(
+                    last_item.news.created_at, str(last_item.news.id)
+                )
 
         return schemas.PaginatedNews(
             items=output,
@@ -75,24 +99,43 @@ class NewsService:
             next_cursor=next_cursor,
         )
 
-    async def create_news(self, data: schemas.NewsCreate) -> NewsDTO:
-        news = await self.repo.create(data.model_dump())
-        # BaseRepository.create returns DTO.
-        # But DTO doesn't have 'record_event'.
-        # We need a way to record events without using the ORM model if we want strict isolation.
-        # Alternatively, the repo can record the event, or we can use a separate event bus.
-        # Project uses models.record_event.
-        # If I want isolation, I must move event recording to the repository or service using an event bus.
-        # For now, I'll use the repo to record event or just keep it simple.
+    async def register_uploaded_image(
+        self, storage_url: str, *, owner_user_id: uuid.UUID
+    ) -> None:
+        """Persist actor ownership for the URL returned by the upload helper."""
+        if canonical_news_image_key(storage_url) is None:
+            raise NewsImageOwnershipError("news_image_not_owned")
+        async with self.uow:
+            await self.repo.register_news_media_asset(storage_url, owner_user_id)
+            await self.uow.commit()
 
-        # NewsCreated(news_id=news.id, title=str(news.title))
-        # Wait, the repo created the record.
-
-        # I'll add record_event support to BaseRepository or just do it manually if possible.
-        # Actually models.record_event adds to a list on the object.
-        # Since I have a DTO, I can't.
+    async def create_news(
+        self,
+        data: schemas.NewsCreate,
+        *,
+        locale: str | None = None,
+        owner_user_id: uuid.UUID | None = None,
+    ) -> NewsDTO:
+        values = data.model_dump()
+        image_url = values.get("image_url")
+        if image_url is not None:
+            if owner_user_id is None or canonical_news_image_key(image_url) is None:
+                raise NewsImageOwnershipError("news_image_not_owned")
 
         async with self.uow:
+            if locale is None:
+                news = await self.repo.create(values)
+            else:
+                news = await self.repo.create(values, locale=locale)
+            if image_url is not None:
+                assert owner_user_id is not None  # noqa: S101
+                claimed = await self.repo.claim_news_media_asset(
+                    image_url,
+                    owner_user_id=owner_user_id,
+                    news_id=news.id,
+                )
+                if not claimed:
+                    raise NewsImageOwnershipError("news_image_not_owned")
             await self.uow.commit()
         return news
 
@@ -121,47 +164,50 @@ class NewsService:
             pass
         return news
 
-    async def get_news_with_details(
-        self, news_id: uuid.UUID, user_id: uuid.UUID | None = None
-    ) -> NewsDTO | None:
-        # HIGH-W19: implement instead of returning None (implicit from bare `pass`);
-        # delegate to get_with_interactions to populate like/comment metadata.
-        news = await self.repo.get(news_id)
-        if news is None:
-            return None
-        likes_count, is_liked = await self.repo.get_with_interactions(news_id, user_id)
-        news.likes_count = likes_count  # type: ignore[attr-defined]
-        news.is_liked = is_liked  # type: ignore[attr-defined]
-        return news
-
     async def get_news_item(
         self, news_id: uuid.UUID, user_id: uuid.UUID | None = None
     ) -> NewsDTO | None:
         return await self.repo.get(news_id)
 
     async def update_news(
-        self, news_id: uuid.UUID, data: schemas.NewsUpdate
+        self,
+        news_id: uuid.UUID,
+        data: schemas.NewsUpdate,
+        *,
+        owner_user_id: uuid.UUID | None = None,
     ) -> NewsDTO:
-        news = await self.repo.get(news_id)
-        if not news:
-            raise ValueError("news_not_found")
-
-        updates = data.model_dump(exclude_unset=True)
-        # RZ-33-12: removed no-op self-assignments (updates[k] = updates.get(k))
-
-        old_image_url = news.image_url
-
-        updated_news = await self.repo.update(news_id, updates)
-        assert updated_news is not None  # noqa: S101
-
         async with self.uow:
+            news = await self.repo.get_orm_for_update(news_id)
+            if not news:
+                raise ValueError("news_not_found")
+
+            updates = data.model_dump(exclude_unset=True)
+            requested_image_url = updates.get("image_url")
+            image_changed = (
+                "image_url" in updates and requested_image_url != news.image_url
+            )
+            if image_changed:
+                if requested_image_url is not None:
+                    if (
+                        owner_user_id is None
+                        or canonical_news_image_key(requested_image_url) is None
+                    ):
+                        raise NewsImageOwnershipError("news_image_not_owned")
+
+                claimed = await self.repo.replace_news_media_asset(
+                    requested_image_url,
+                    owner_user_id=owner_user_id,
+                    news_id=news_id,
+                )
+                if not claimed:
+                    raise NewsImageOwnershipError("news_image_not_owned")
+
+            updated_news = await self.repo.update(news_id, updates)
+            assert updated_news is not None  # noqa: S101
             await self.uow.commit()
 
-        if old_image_url and updated_news.image_url != old_image_url:
-            from app.utils.files import delete_static_file
-
-            with contextlib.suppress(FileNotFoundError, OSError):  # RZ-33-15: narrowed
-                await delete_static_file(str(old_image_url))
+        # News image keys are shared and contain no verifiable news owner.
+        # Retain replaced/legacy objects instead of unlinking an arbitrary URL.
 
         return updated_news
 
@@ -170,26 +216,36 @@ class NewsService:
         if not news:
             return False
 
-        image_url = news.image_url
         await self.repo.delete(news_id)
         async with self.uow:
             await self.uow.commit()
+
+        from app.services import search_indexer
+
+        await search_indexer.remove_document(search_indexer.NEWS_INDEX, news_id)
         # Repository delete does execute/rowcount but usually not commit?
         # BaseRepository delete: execute delete stmt. Does NOT commit.
         # So we need to commit.
 
-        if image_url:
-            from app.utils.files import delete_static_file
-
-            with contextlib.suppress(FileNotFoundError, OSError):  # RZ-33-15: narrowed
-                await delete_static_file(str(image_url))
+        # The legacy news_images key has no news-specific ownership proof.
+        # Retain the object until uploads carry a verifiable owner key.
         return True
 
     async def create_comment(
-        self, news_id: uuid.UUID, user_id: uuid.UUID, content: str
+        self,
+        news_id: uuid.UUID,
+        user_id: uuid.UUID,
+        content: str,
+        *,
+        locale: str | None = None,
     ) -> NewsCommentDTO:
-        comment = await self.repo.create_comment(news_id, user_id, content)
-        return NewsCommentDTO.model_validate(comment)
+        comment = await self.repo.create_comment(
+            news_id, user_id, content, locale=locale
+        )
+        result = NewsCommentDTO.model_validate(comment)
+        async with self.uow:
+            await self.uow.commit()
+        return result
 
     async def update_comment(
         self, comment_id: uuid.UUID, user_id: uuid.UUID, content: str
@@ -200,7 +256,10 @@ class NewsService:
         if comment_obj.user_id != user_id:
             raise PermissionError("forbidden")
         updated = await self.repo.update_comment(comment_obj, content)
-        return NewsCommentDTO.model_validate(updated)
+        result = NewsCommentDTO.model_validate(updated)
+        async with self.uow:
+            await self.uow.commit()
+        return result
 
     async def delete_comment(
         self, comment_id: uuid.UUID, user_id: uuid.UUID, is_admin: bool = False

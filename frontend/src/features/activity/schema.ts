@@ -9,5 +9,5 @@ import { PERIOD_VALUES } from "./types"
  * Events' `tab/q/dr/loc/sort/cat` convention (short, URL-friendly).
  */
 export const activitySearchSchema = v.object({
-  p: v.optional(v.picklist(PERIOD_VALUES)),
+  p: v.fallback(v.optional(v.picklist(PERIOD_VALUES)), undefined),
 })

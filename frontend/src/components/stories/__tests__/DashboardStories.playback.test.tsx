@@ -150,7 +150,7 @@ describe("DashboardStories playback ownership", () => {
     expect(frames.size).toBe(0)
   })
 
-  it("restarts elapsed playback when the story at the active index is replaced", () => {
+  it("restarts playback when a replacement story is opened after the active story disappears", () => {
     const { rerender } = render(<DashboardStories stories={stories} />)
     click("Open One")
     tick(3_250)
@@ -158,8 +158,13 @@ describe("DashboardStories playback ownership", () => {
     rerender(
       <DashboardStories stories={[{ ...stories[0]!, id: "new", title: "New" }, stories[1]!]} />
     )
+    expect(screen.queryByRole("region", { name: "Playback" })).not.toBeInTheDocument()
+    expect(frames.size).toBe(0)
+
+    click("Open New")
     expect(screen.getByRole("heading", { name: "New" })).toBeInTheDocument()
     expect(Number(screen.getByLabelText("Playback progress").textContent)).toBe(0)
+    expect(frames.size).toBe(1)
     tick(4_550)
     expect(Number(screen.getByLabelText("Playback progress").textContent)).toBeCloseTo(20)
   })
@@ -220,7 +225,7 @@ describe("DashboardStories playback ownership", () => {
     expect(Number(screen.getByLabelText("Playback progress").textContent)).toBeCloseTo(10)
   })
 
-  it("ignores a queued frame owned by a story replaced in the collection", () => {
+  it("ignores a queued frame from the closed story after a replacement is opened", () => {
     const { rerender } = render(<DashboardStories stories={stories} />)
     click("Open One")
     tick(3_250)
@@ -228,6 +233,13 @@ describe("DashboardStories playback ownership", () => {
     rerender(
       <DashboardStories stories={[{ ...stories[0]!, id: "new", title: "New" }, stories[1]!]} />
     )
+    expect(screen.queryByRole("region", { name: "Playback" })).not.toBeInTheDocument()
+    expect(frames.size).toBe(0)
+
+    click("Open New")
+    expect(screen.getByRole("heading", { name: "New" })).toBeInTheDocument()
+    expect(Number(screen.getByLabelText("Playback progress").textContent)).toBe(0)
+    expect(frames.size).toBe(1)
     act(() => staleFrame(now))
     expect(screen.getByRole("heading", { name: "New" })).toBeInTheDocument()
     expect(Number(screen.getByLabelText("Playback progress").textContent)).toBe(0)

@@ -14,6 +14,7 @@ vi.mock("react-i18next", () => ({
 }))
 
 import { EditLessonDialog } from "@/components/schedule/dialogs/EditLessonDialog"
+import { LessonDetailsDialog } from "@/components/schedule/dialogs/LessonDetailsDialog"
 import { SchedulePageProvider, useSchedulePage } from "@/contexts/SchedulePageContext"
 import type { Lesson } from "@/components/schedule/scheduleUtils"
 
@@ -49,6 +50,14 @@ function OpenEditHarness({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
+function OpenDetailsHarness({ lesson, children }: { lesson: Lesson; children: ReactNode }) {
+  const { openDialog } = useSchedulePage()
+  useEffect(() => {
+    openDialog("details", lesson)
+  }, [openDialog, lesson])
+  return <>{children}</>
+}
+
 function renderDialog(props = baseProps) {
   return render(
     <SchedulePageProvider>
@@ -74,5 +83,31 @@ describe("EditLessonDialog", () => {
     expect(screen.getByText("schedule:dialog.editTitle")).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
     expect(screen.queryByText("schedule:dialog.editTitle")).not.toBeInTheDocument()
+  })
+
+  it("names the edit dialog from its visible title", () => {
+    renderDialog()
+
+    expect(screen.getByRole("dialog", { name: "schedule:dialog.editTitle" })).toBeInTheDocument()
+  })
+
+  it.each([
+    ["Линейная алгебра", "Линейная алгебра"],
+    ["", "schedule:dialog.detailsFallback"],
+  ])("names lesson details for subject %j", (subject, name) => {
+    const lesson = { ...SAMPLE, subject }
+    render(
+      <SchedulePageProvider>
+        <OpenDetailsHarness lesson={lesson}>
+          <LessonDetailsDialog
+            userRole="student"
+            getLessonTypeColor={() => "#123456"}
+            getLessonTypeLabel={(value) => value ?? ""}
+          />
+        </OpenDetailsHarness>
+      </SchedulePageProvider>
+    )
+
+    expect(screen.getByRole("dialog", { name })).toBeInTheDocument()
   })
 })

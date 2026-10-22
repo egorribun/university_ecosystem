@@ -1,16 +1,45 @@
 import assert from "node:assert/strict"
-import { readFile } from "node:fs/promises"
+import { randomUUID } from "node:crypto"
+import { spawnSync } from "node:child_process"
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
+import { tmpdir } from "node:os"
 import test from "node:test"
+import { fileURLToPath, pathToFileURL } from "node:url"
+import { join, resolve } from "node:path"
 
 import strykerConfig, { mutationRunnerReuse, mutationThresholds } from "../stryker.config.mjs"
 
 const frontendRoot = new URL("../", import.meta.url)
 const repositoryRoot = new URL("../../", import.meta.url)
+const liveSetupUrl = new URL("./playwright-live-global-setup.mjs", import.meta.url).href
 const require = createRequire(import.meta.url)
+const { parseConfigFileTextToJson } = require("typescript")
 
 async function readJson(url) {
   return JSON.parse(await readFile(url, "utf8"))
+}
+
+function runLiveStandSetup(environmentOverrides = {}) {
+  const environment = { ...process.env }
+  delete environment.LIVE_BASE_URL
+  delete environment.LIVE_MAILPIT_URL
+  Object.assign(environment, environmentOverrides)
+
+  return spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `const { default: setup } = await import(${JSON.stringify(liveSetupUrl)}); await setup()`,
+    ],
+    {
+      cwd: fileURLToPath(frontendRoot),
+      encoding: "utf8",
+      env: environment,
+      timeout: 30_000,
+    }
+  )
 }
 
 test("frontend is explicitly a private application package", async () => {
@@ -124,6 +153,10 @@ test("canonical test:ci executes the frontend quality contract tests", async () 
   )
   const command = packageJson.scripts["test:wasm"]
   assert.match(command, /scripts\/frontend-quality-contract\.test\.mjs/u)
+  assert.equal(
+    command.split(/\s+/u).filter((arg) => arg === "scripts/eslint-architecture.test.mjs").length,
+    1
+  )
   assert.match(command, /scripts\/stryker-inventory\.test\.mjs/u)
   assert.match(command, /scripts\/run-stryker\.test\.mjs/u)
   assert.match(command, /scripts\/verify-stryker-evidence\.test\.mjs/u)
@@ -172,7 +205,7 @@ test("profile bootstrap keeps the LHCI branch compile-time tree-shakeable", asyn
   )
   const hookStart = profileSyncSource.indexOf("export const useProfileSync")
   assert.ok(hookStart >= 0, "useProfileSync export must remain discoverable")
-  const initializerStart = profileSyncSource.indexOf("useState<UserState>", hookStart)
+  const initializerStart = profileSyncSource.indexOf("useState<ProfileSyncState>", hookStart)
   const initializerEnd = profileSyncSource.indexOf("const [pendingMfaState", initializerStart)
   assert.ok(initializerStart >= 0 && initializerEnd > initializerStart)
   const initializer = profileSyncSource.slice(initializerStart, initializerEnd)
@@ -243,8 +276,100 @@ test("LHCI binary setup skips Unix symlink operations on Windows only", async ()
   assert.deepEqual(invoked, ["linux"])
 })
 
+async function runLhciSetupWithFilesystemFailure(code, targetKind) {
+  const temporary = await mkdtemp(join(tmpdir(), "lhci-setup-contract-"))
+  try {
+    const preload = join(temporary, "filesystem-fixture.cjs")
+    // Exercise the real CLI entry point while replacing every filesystem write
+    // in its child process. This never attempts to change system wrapper paths.
+    await writeFile(
+      preload,
+      `const fs = require("node:fs/promises")
+const calls = []
+const failure = (code) => Object.assign(new Error(code), { code })
+Object.defineProperty(process, "platform", { value: "linux" })
+fs.chmod = async () => {}
+fs.mkdir = async () => {}
+fs.access = async () => {}
+fs.readlink = async () => { throw failure("ENOENT") }
+fs.lstat = async () => { throw failure("ENOENT") }
+fs.symlink = async (source, destination) => {
+  calls.push({ source, destination })
+  const global = destination.startsWith("/usr/bin/")
+  if (global === ${JSON.stringify(targetKind === "global")}) {
+    throw failure(${JSON.stringify(code)})
+  }
+}
+process.on("exit", () => process.stdout.write(JSON.stringify(calls)))
+`,
+      "utf8"
+    )
+    const result = spawnSync(
+      process.execPath,
+      ["--require", preload, fileURLToPath(new URL("./setup-lhci-binaries.cjs", import.meta.url))],
+      { encoding: "utf8", timeout: 10_000 }
+    )
+    assert.equal(result.error, undefined)
+    assert.equal(result.signal, null)
+    return { ...result, calls: JSON.parse(result.stdout) }
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
+}
+
+for (const code of ["EEXIST", "EACCES", "EPERM", "EROFS"]) {
+  test(`LHCI setup continues after optional global wrapper failure ${code}`, async () => {
+    const result = await runLhciSetupWithFilesystemFailure(code, "global")
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(result.stderr, "")
+    assert.deepEqual(
+      result.calls
+        .filter(({ destination }) => destination.startsWith("/usr/bin/"))
+        .map(({ destination }) => destination),
+      [
+        "/usr/bin/google-chrome-stable",
+        "/usr/bin/google-chrome",
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+      ]
+    )
+    for (const name of ["google-chrome-stable", "google-chrome", "chromium", "chromium-browser"]) {
+      assert.ok(
+        result.calls.some(
+          ({ destination }) =>
+            destination === resolve(fileURLToPath(frontendRoot), "node_modules", ".bin", name)
+        )
+      )
+    }
+    assert.ok(
+      result.calls.some(
+        ({ destination }) =>
+          destination ===
+          resolve(fileURLToPath(frontendRoot), "node_modules", "@lhci", "utils", ".lighthouserc.js")
+      )
+    )
+  })
+}
+
+test("LHCI setup still fails for an unexpected global filesystem error", async () => {
+  const result = await runLhciSetupWithFilesystemFailure("EIO", "global")
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /EIO/u)
+})
+
+test("LHCI setup still requires writable local wrapper links", async () => {
+  const result = await runLhciSetupWithFilesystemFailure("EROFS", "local")
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /EROFS/u)
+  assert.equal(
+    result.calls.some(({ destination }) => destination.startsWith("/usr/bin/")),
+    false
+  )
+})
+
 test("Knip analyzes frontend tests as export consumers", async () => {
   const knipConfig = await readJson(new URL("knip.json", frontendRoot))
+  const rootWorkspace = knipConfig.workspaces["."]
 
   assert.equal(
     knipConfig.treatConfigHintsAsErrors,
@@ -255,7 +380,323 @@ test("Knip analyzes frontend tests as export consumers", async () => {
   // Only patterns that match real files: Knip reports unmatched entries as
   // configuration hints, which this gate treats as errors.
   for (const pattern of ["src/**/*.test.ts", "src/**/*.test.tsx"]) {
-    assert.ok(knipConfig.entry.includes(pattern), `Missing Knip test entry: ${pattern}`)
+    assert.ok(rootWorkspace.entry.includes(pattern), `Missing Knip test entry: ${pattern}`)
+  }
+})
+
+test("live Playwright config can be imported without a running stand", () => {
+  const configUrl = new URL("../playwright.live.config.ts", import.meta.url).href
+  const setupPath = "./scripts/playwright-live-global-setup.mjs"
+  const environment = { ...process.env }
+  delete environment.LIVE_BASE_URL
+  delete environment.LIVE_MAILPIT_URL
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `const { default: config } = await import(${JSON.stringify(configUrl)}); ` +
+        `if (config.globalSetup !== ${JSON.stringify(setupPath)}) { ` +
+        "throw new Error('Live stand validation must run in Playwright global setup') }",
+    ],
+    {
+      cwd: fileURLToPath(frontendRoot),
+      encoding: "utf8",
+      env: environment,
+      timeout: 30_000,
+    }
+  )
+
+  assert.equal(
+    result.status,
+    0,
+    `Config import unexpectedly required the live stand:\n${result.stderr}`
+  )
+})
+
+test("live Playwright global setup requires the owned stand endpoints", () => {
+  const missingBaseUrl = runLiveStandSetup()
+  assert.notEqual(missingBaseUrl.status, 0)
+  assert.match(missingBaseUrl.stderr, /LIVE_BASE_URL must be set/u)
+
+  const missingMailpitUrl = runLiveStandSetup({ LIVE_BASE_URL: "http://localhost:32494" })
+  assert.notEqual(missingMailpitUrl.status, 0)
+  assert.match(missingMailpitUrl.stderr, /LIVE_MAILPIT_URL must be set/u)
+})
+
+test("live Playwright global setup verifies endpoints against the signed owner marker", async () => {
+  const { createLiveStandSetup } = await import(liveSetupUrl)
+  const calls = []
+  const runtimeEnvironment = {
+    PATH: process.env.PATH,
+    HOME: "C:/test/live-setup-home",
+    LIVE_PRIMARY_REPOSITORY_ROOT: "C:/caller-controlled-checkout",
+    TEST_PASSWORD: "do-not-forward-this-password",
+    CHROMATIC_PROJECT_TOKEN: "must-not-reach-the-verifier",
+  }
+  const primaryRepositoryPath = resolve(fileURLToPath(repositoryRoot), "..", "primary-checkout")
+  const setup = createLiveStandSetup({
+    environment: {
+      LIVE_BASE_URL: "http://localhost:24123",
+      LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+      LIVE_PRIMARY_REPOSITORY_ROOT: primaryRepositoryPath,
+      CHROMATIC_PROJECT_TOKEN: "never-an-argument",
+    },
+    runtimeEnvironment,
+    runner: (...args) => {
+      calls.push(args)
+      return { error: null, status: 0 }
+    },
+  })
+
+  await setup()
+
+  assert.equal(calls.length, 1)
+  const [command, args, options] = calls[0]
+  assert.equal(command, "uv")
+  assert.deepEqual(args, [
+    "run",
+    "--frozen",
+    "--no-sync",
+    "python",
+    "-m",
+    "scripts.live_stand",
+    "verify-endpoints",
+    "--base-url",
+    "http://localhost:24123",
+    "--mailpit-url",
+    "http://127.0.0.1:24124",
+  ])
+  assert.equal(options.shell, false)
+  assert.equal(options.stdio, "ignore")
+  assert.equal(options.cwd, primaryRepositoryPath)
+  assert.deepEqual(options.env, {
+    PATH: process.env.PATH,
+    HOME: "C:/test/live-setup-home",
+  })
+  assert.equal(Object.hasOwn(options.env, "PYTHONPATH"), false)
+  assert.doesNotMatch(
+    JSON.stringify(args),
+    /TEST_PASSWORD|do-not-forward-this-password|CHROMATIC_PROJECT_TOKEN|never-an-argument/u
+  )
+  assert.equal(Object.hasOwn(options.env, "LIVE_PRIMARY_REPOSITORY_ROOT"), false)
+  assert.equal(Object.hasOwn(options.env, "TEST_PASSWORD"), false)
+})
+
+test("live Playwright setup verifies an in-place stand from the primary checkout", async () => {
+  const { createLiveStandSetup } = await import(liveSetupUrl)
+  const calls = []
+  const baseUrl = "http://localhost:24123"
+  const mailpitUrl = "http://127.0.0.1:24124"
+  const primaryRepositoryPath = resolve(fileURLToPath(repositoryRoot))
+  const stateRoot = resolve(tmpdir(), "ue-live-stand-contract-state")
+  const envValueA = randomUUID()
+  const envValueB = randomUUID()
+  const setup = createLiveStandSetup({
+    environment: {
+      LIVE_BASE_URL: baseUrl,
+      LIVE_MAILPIT_URL: mailpitUrl,
+      LIVE_PRIMARY_REPOSITORY_ROOT: primaryRepositoryPath,
+      LIVE_STAND_STATE_ROOT: stateRoot,
+    },
+    runtimeEnvironment: {
+      PATH: process.env.PATH,
+      HOME: "C:/test/live-setup-home",
+      LIVE_PRIMARY_REPOSITORY_ROOT: primaryRepositoryPath,
+      LIVE_STAND_STATE_ROOT: stateRoot,
+      TEST_PASSWORD: envValueA,
+      CHROMATIC_PROJECT_TOKEN: envValueB,
+    },
+    runner: (...args) => {
+      calls.push(args)
+      return { error: null, status: 0 }
+    },
+  })
+
+  await setup()
+
+  assert.equal(calls.length, 1)
+  const [command, args, options] = calls[0]
+  assert.equal(command, "uv")
+  assert.deepEqual(args, [
+    "run",
+    "--frozen",
+    "--no-sync",
+    "python",
+    "-m",
+    "scripts.live_stand",
+    "verify-endpoints",
+    "--base-url",
+    baseUrl,
+    "--mailpit-url",
+    mailpitUrl,
+    "--in-place",
+    "--state-dir",
+    stateRoot,
+  ])
+  assert.equal(options.cwd, primaryRepositoryPath)
+  assert.equal(options.shell, false)
+  assert.equal(options.stdio, "ignore")
+  assert.deepEqual(options.env, {
+    PATH: process.env.PATH,
+    HOME: "C:/test/live-setup-home",
+  })
+  assert.equal(Object.hasOwn(options.env, "PYTHONPATH"), false)
+  const serializedCall = JSON.stringify(calls[0])
+  assert.doesNotMatch(
+    serializedCall,
+    /TEST_PASSWORD|CHROMATIC_PROJECT_TOKEN|LIVE_PRIMARY_REPOSITORY_ROOT|LIVE_STAND_STATE_ROOT/u
+  )
+  assert.equal(serializedCall.includes(envValueA), false)
+  assert.equal(serializedCall.includes(envValueB), false)
+  assert.equal(Object.hasOwn(options.env, "LIVE_PRIMARY_REPOSITORY_ROOT"), false)
+  assert.equal(Object.hasOwn(options.env, "LIVE_STAND_STATE_ROOT"), false)
+  assert.equal(Object.hasOwn(options.env, "TEST_PASSWORD"), false)
+  assert.equal(Object.hasOwn(options.env, "CHROMATIC_PROJECT_TOKEN"), false)
+})
+
+test("live Playwright setup rejects blank or relative in-place state roots before spawning", async () => {
+  const { createLiveStandSetup } = await import(liveSetupUrl)
+  const spawned = []
+  const primaryRepositoryPath = resolve(fileURLToPath(repositoryRoot))
+  const common = {
+    LIVE_BASE_URL: "http://localhost:24123",
+    LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+    LIVE_PRIMARY_REPOSITORY_ROOT: primaryRepositoryPath,
+  }
+
+  for (const stateRoot of ["", "   ", "relative/state-root"]) {
+    const setup = createLiveStandSetup({
+      environment: { ...common, LIVE_STAND_STATE_ROOT: stateRoot },
+      runtimeEnvironment: { PATH: process.env.PATH },
+      runner: (...args) => {
+        spawned.push(args)
+        return { error: null, status: 0 }
+      },
+    })
+
+    await assert.rejects(setup(), /LIVE_STAND_STATE_ROOT/u)
+  }
+
+  assert.deepEqual(spawned, [])
+})
+
+test("live Playwright setup rejects an in-place state root with a different primary checkout", async () => {
+  const { createLiveStandSetup } = await import(liveSetupUrl)
+  const spawned = []
+  const setup = createLiveStandSetup({
+    environment: {
+      LIVE_BASE_URL: "http://localhost:24123",
+      LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+      LIVE_PRIMARY_REPOSITORY_ROOT: resolve(
+        fileURLToPath(repositoryRoot),
+        "..",
+        "other-primary-checkout"
+      ),
+      LIVE_STAND_STATE_ROOT: resolve(tmpdir(), "ue-live-stand-contract-state"),
+    },
+    runtimeEnvironment: { PATH: process.env.PATH },
+    runner: (...args) => {
+      spawned.push(args)
+      return { error: null, status: 0 }
+    },
+  })
+
+  await assert.rejects(setup(), /LIVE_(?:PRIMARY_REPOSITORY_ROOT|STAND_STATE_ROOT)/u)
+  assert.deepEqual(spawned, [])
+})
+
+test("live Playwright setup requires an absolute primary repository path before spawning", async () => {
+  const { createLiveStandSetup } = await import(liveSetupUrl)
+  const spawned = []
+  const common = {
+    LIVE_BASE_URL: "http://localhost:24123",
+    LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+  }
+
+  for (const repositoryRootValue of [
+    undefined,
+    "relative/checkout",
+    fileURLToPath(new URL("../../", import.meta.url)),
+  ]) {
+    const environment = { ...common }
+    if (repositoryRootValue !== undefined) {
+      environment.LIVE_PRIMARY_REPOSITORY_ROOT = repositoryRootValue
+    }
+    const setup = createLiveStandSetup({
+      environment,
+      runtimeEnvironment: { PATH: process.env.PATH },
+      runner: (...args) => {
+        spawned.push(args)
+        return { error: null, status: 0 }
+      },
+    })
+    await assert.rejects(setup(), /LIVE_PRIMARY_REPOSITORY_ROOT/u)
+  }
+
+  assert.deepEqual(spawned, [])
+})
+
+test("live Playwright setup reports only a generic verifier failure", async () => {
+  const { createLiveStandSetup } = await import(liveSetupUrl)
+  const setup = createLiveStandSetup({
+    environment: {
+      LIVE_BASE_URL: "http://localhost:24123",
+      LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+      LIVE_PRIMARY_REPOSITORY_ROOT: resolve(
+        fileURLToPath(repositoryRoot),
+        "..",
+        "primary-checkout"
+      ),
+    },
+    runtimeEnvironment: { PATH: process.env.PATH },
+    runner: () => ({ error: null, status: 2 }),
+  })
+
+  await assert.rejects(setup(), {
+    message: "live stand endpoint ownership verification failed",
+  })
+})
+
+test("live Playwright setup rejects unsafe URL components before spawning the verifier", async () => {
+  const { createLiveStandSetup } = await import(liveSetupUrl)
+  const invalidEndpoints = [
+    {
+      LIVE_BASE_URL: "https://localhost:24123",
+      LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+    },
+    {
+      LIVE_BASE_URL: "http://example.com:24123",
+      LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+    },
+    {
+      LIVE_BASE_URL: "http://localhost:24123",
+      LIVE_MAILPIT_URL: "http://localhost:24124",
+    },
+    {
+      LIVE_BASE_URL: "http://localhost:24123",
+      LIVE_MAILPIT_URL: "https://127.0.0.1:24124",
+    },
+    {
+      LIVE_BASE_URL: "http://userinfo@localhost:24123",
+      LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+    },
+  ]
+
+  for (const environment of invalidEndpoints) {
+    let spawned = false
+    const setup = createLiveStandSetup({
+      environment,
+      runtimeEnvironment: { PATH: process.env.PATH },
+      runner: () => {
+        spawned = true
+        return { error: null, status: 0 }
+      },
+    })
+
+    await assert.rejects(setup(), /must be a valid live-stand loopback URL/u)
+    assert.equal(spawned, false)
   }
 })
 
@@ -264,7 +705,7 @@ test("dependency install scripts use a reviewed fail-closed allow-list", async (
   const npmConfig = await readFile(new URL(".npmrc", frontendRoot), "utf8")
 
   assert.deepEqual(packageJson.allowScripts, {
-    "esbuild@0.28.1": true,
+    "esbuild@0.28.2": true,
     "core-js": false,
     "fsevents@2.3.2": false,
     "fsevents@2.3.3": false,
@@ -290,4 +731,136 @@ test("the transitive glob override is the supported non-deprecated release", asy
     false,
     "LHCI must not retain rimraf@3, whose callback-era glob contract is incompatible with glob@13"
   )
+})
+
+test("VS Code pytest discovery points to tracked repository tests", async () => {
+  const settingsUrl = new URL(".vscode/settings.json", repositoryRoot)
+  const source = await readFile(settingsUrl, "utf8")
+  const parsed = parseConfigFileTextToJson(fileURLToPath(settingsUrl), source)
+
+  assert.equal(parsed.error, undefined, "VS Code settings must parse as JSONC")
+  assert.equal(parsed.config["python.testing.pytestEnabled"], true)
+  assert.deepEqual(parsed.config["python.testing.pytestArgs"], ["tests"])
+
+  const path = parsed.config["python.testing.pytestArgs"][0]
+  const testsUrl = new URL(`${path}/`, repositoryRoot)
+  const knownTestUrl = new URL("test_quality_configuration.py", testsUrl)
+  assert.equal((await stat(testsUrl)).isDirectory(), true)
+  assert.equal((await stat(knownTestUrl)).isFile(), true)
+})
+
+const iconOutputNames = [
+  "favicon-16x16.png",
+  "favicon-32x32.png",
+  "apple-touch-icon.png",
+  "icon-192.png",
+  "icon-512.png",
+  "favicon.ico",
+]
+
+async function runIconGenerator({ blockedOutputs = [], missingInput = false } = {}) {
+  const temporary = await mkdtemp(join(tmpdir(), "icon-generator-contract-"))
+  try {
+    const scriptsDirectory = join(temporary, "scripts")
+    const publicDirectory = join(temporary, "public")
+    await mkdir(scriptsDirectory)
+    await mkdir(publicDirectory)
+    const source = await readFile(new URL("./generate-icons.js", import.meta.url), "utf8")
+    const sharpImport = 'import sharp from "sharp"'
+    assert.equal(source.split(sharpImport).length, 2)
+    const sharpUrl = pathToFileURL(require.resolve("sharp")).href
+    const scriptPath = join(scriptsDirectory, "generate-icons.mjs")
+    // Preserve the CLI body and relative public/ layout, resolving only sharp
+    // from the real installation rather than from the temporary directory.
+    await writeFile(
+      scriptPath,
+      source.replace(sharpImport, `import sharp from ${JSON.stringify(sharpUrl)}`),
+      "utf8"
+    )
+    if (!missingInput) {
+      const sharp = require("sharp")
+      const pixels = Buffer.alloc(64 * 64 * 4)
+      for (let y = 16; y < 48; y += 1) {
+        for (let x = 16; x < 48; x += 1) {
+          const offset = (y * 64 + x) * 4
+          pixels.set([51, 102, 153, 255], offset)
+        }
+      }
+      await sharp(pixels, { raw: { width: 64, height: 64, channels: 4 } })
+        .png()
+        .toFile(join(publicDirectory, "guu_logo.png"))
+    }
+    // Directory collisions reject writes even when tests run as root.
+    for (const name of blockedOutputs) {
+      assert.ok(iconOutputNames.includes(name))
+      await mkdir(join(publicDirectory, name))
+    }
+    const result = spawnSync(process.execPath, [scriptPath], {
+      cwd: temporary,
+      env: {},
+      encoding: "utf8",
+      timeout: 30_000,
+      maxBuffer: 64 * 1024,
+    })
+    assert.equal(result.error, undefined)
+    assert.equal(result.signal, null)
+    const generatedOutputs = []
+    for (const entry of await readdir(publicDirectory, { withFileTypes: true })) {
+      if (entry.isFile() && iconOutputNames.includes(entry.name)) {
+        const contents = await readFile(join(publicDirectory, entry.name))
+        assert.ok(contents.length > 0, `${entry.name} must not be empty`)
+        generatedOutputs.push(entry.name)
+      }
+    }
+    return { ...result, generatedOutputs: generatedOutputs.sort() }
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
+}
+
+test("icon generation exits successfully only after producing every output", async () => {
+  const result = await runIconGenerator()
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stderr, "")
+  assert.deepEqual(result.generatedOutputs, [...iconOutputNames].sort())
+  for (const name of iconOutputNames) {
+    assert.ok(result.stdout.includes(`Created ${name}`), result.stdout)
+  }
+})
+
+for (const [label, blockedOutputs] of [
+  ["first PNG", ["favicon-16x16.png"]],
+  ["favicon", ["favicon.ico"]],
+  ["all outputs", iconOutputNames],
+]) {
+  test(`icon generation reports failure and continues after blocked ${label}`, async () => {
+    const result = await runIconGenerator({ blockedOutputs })
+    assert.equal(result.status, 1, result.stderr)
+    const expectedOutputs = iconOutputNames.filter((name) => !blockedOutputs.includes(name))
+    assert.deepEqual(result.generatedOutputs, [...expectedOutputs].sort())
+    for (const name of blockedOutputs) {
+      assert.ok(result.stderr.includes(`Error creating ${name}`), result.stderr)
+    }
+    for (const name of expectedOutputs) {
+      assert.ok(result.stdout.includes(`Created ${name}`), result.stdout)
+    }
+  })
+}
+
+test("icon generation retains a failing exit status for a missing source image", async () => {
+  const result = await runIconGenerator({ missingInput: true })
+  assert.equal(result.status, 1, result.stderr)
+  assert.match(result.stderr, /Source image guu_logo\.png not found/u)
+  assert.deepEqual(result.generatedOutputs, [])
+  assert.doesNotMatch(result.stdout, /Created /u)
+})
+
+test("the PR Node suite executes release-version regressions exactly once", async () => {
+  const packageJson = await readJson(new URL("package.json", frontendRoot))
+  const argumentsList = packageJson.scripts["test:wasm"].split(/\s+/u)
+  const matching = argumentsList.filter(
+    (argument) => argument === "../scripts/tests/prepare-release-version.test.mjs"
+  )
+
+  assert.deepEqual(matching, ["../scripts/tests/prepare-release-version.test.mjs"])
 })

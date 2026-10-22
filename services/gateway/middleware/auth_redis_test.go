@@ -141,7 +141,7 @@ func newRedisMiddleware(t *testing.T, url string) *JWTMiddleware {
 	client := redis.NewClient(opt)
 	_ = client.Ping(context.Background()).Err() //nolint:errcheck // warm the pool; HELLO -ERR RESP2 fallback is expected mock noise
 	t.Cleanup(func() { _ = client.Close() })    //nolint:errcheck // cleanup
-	return NewJWTMiddleware(testSecret, client)
+	return NewJWTMiddlewareWithConfig(testSecret, "", client, DefaultL1CacheConfig())
 }
 
 func newUnrevokedRedisClient(t *testing.T) *redis.Client {
@@ -158,7 +158,7 @@ func newUnrevokedRedisClient(t *testing.T) *redis.Client {
 
 func newUnrevokedJWTMiddleware(t *testing.T) *JWTMiddleware {
 	t.Helper()
-	return NewJWTMiddleware(testSecret, newUnrevokedRedisClient(t))
+	return NewJWTMiddlewareWithConfig(testSecret, "", newUnrevokedRedisClient(t), DefaultL1CacheConfig())
 }
 
 func revocableClaims(jti string) Claims {
@@ -349,17 +349,17 @@ func TestWarmL1Cache_ScanErrorSkips(t *testing.T) {
 }
 
 func TestWarmL1Cache_NilRedisNoop(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	assert.NotPanics(t, func() { m.WarmL1Cache(context.Background()) })
 }
 
 func TestListenForRevocations_NilRedisNoop(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 	assert.NotPanics(t, func() { m.ListenForRevocations(context.Background()) })
 }
 
 func TestVerifySession_NilRedisNeverAuthenticates(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
 
 	valid, deny, err := m.verifySession(t.Context(), "live-looking-jti", true)
 	assert.False(t, valid)

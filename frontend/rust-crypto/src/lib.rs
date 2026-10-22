@@ -1,5 +1,5 @@
 use base64ct::{Base64, Encoding};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use pbkdf2::pbkdf2_hmac;
 use scrypt::{scrypt, Params as ScryptParams};
 use sha2::Sha256;
@@ -28,6 +28,25 @@ const MIN_PBKDF2_ITERATIONS: u32 = 1;
 const MAX_PBKDF2_ITERATIONS: u32 = 1_000_000;
 const MIN_PBKDF2_KEY_SIZE: usize = 1;
 const MAX_PBKDF2_KEY_SIZE: usize = 1_024;
+const MIN_SCRYPT_OUTPUT_LEN: usize = 10;
+const MAX_SCRYPT_OUTPUT_LEN: usize = 64;
+
+fn validate_scrypt_output_len(dk_len: usize) -> Result<(), ErrorType> {
+    if !(MIN_SCRYPT_OUTPUT_LEN..=MAX_SCRYPT_OUTPUT_LEN).contains(&dk_len) {
+        return Err(make_err("Invalid scrypt params: InvalidParams"));
+    }
+    Ok(())
+}
+
+fn validate_scrypt_log_n(log_n: u32, r: u32) -> Result<(), ErrorType> {
+    // scrypt 0.11 enforced log_n < r * 16. scrypt 0.12 removed this
+    // historical bound, so retain it here for compatibility and to reject
+    // excessive costs before constructing parameters or invoking the KDF.
+    if u64::from(log_n) >= u64::from(r) * 16 {
+        return Err(make_err("Invalid scrypt params: InvalidParams"));
+    }
+    Ok(())
+}
 
 #[wasm_bindgen]
 pub fn pbkdf2_derive(
@@ -117,6 +136,11 @@ fn derive_scrypt_output(
     dk_len: usize,
     fill: ScryptOutputFn,
 ) -> Result<Vec<u8>, ErrorType> {
+    // scrypt 0.11 validated this PHC-compatible output range in Params::new
+    // before callers allocated the derived-key buffer. The 0.12 low-level
+    // Params constructor no longer carries an output length, so preserve that
+    // boundary here before allocating memory or invoking the KDF.
+    validate_scrypt_output_len(dk_len)?;
     let mut result = Zeroizing::new(vec![0_u8; dk_len]);
     match fill(password, salt, params, result.as_mut_slice()) {
         Ok(()) => {}
@@ -138,7 +162,11 @@ pub fn scrypt_derive(
         .checked_ilog2()
         .filter(|_| n.is_power_of_two())
         .ok_or_else(|| make_err("Invalid scrypt params: N must be a non-zero power of two"))?;
-    let params = ScryptParams::new(log_n as u8, r, p, dk_len)
+    // Keep the old scrypt::Params::new(..., dk_len) validation order and
+    // reject attacker-controlled lengths before any output allocation.
+    validate_scrypt_output_len(dk_len)?;
+    validate_scrypt_log_n(log_n, r)?;
+    let params = ScryptParams::new(log_n as u8, r, p)
         .map_err(|e| make_err(&format!("Invalid scrypt params: {:?}", e)))?;
     let password_bytes = Zeroizing::new(password.to_vec());
     let salt_bytes = Zeroizing::new(salt.to_vec());

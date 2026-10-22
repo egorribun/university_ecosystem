@@ -7,7 +7,6 @@ import type {
 
 import { sanitize_rich_text } from "wasm-sanitizer"
 
-const SANITIZE_POLICY_NAME = "wasm-sanitizer"
 const APP_POLICY_NAME = "app"
 
 // Wasm handles everything internally. No dompurify RETURN_TRUSTED_TYPE flag required.
@@ -39,22 +38,12 @@ const ensureSanitizePolicy = async (win: TrustedTypesWindow): Promise<TrustedTyp
   if (win.__ttSanitizePolicy === false) return null
   if (win.__ttSanitizePolicy) return win.__ttSanitizePolicy
 
-  try {
-    const policy = win.trustedTypes.createPolicy(SANITIZE_POLICY_NAME, {
-      createHTML: (input: string) => sanitize_rich_text(input),
-    }) as TrustedTypePolicy
-    win.__ttSanitizePolicy = policy
-  } catch (err) {
-    // RED-01 (audit Wave 11): Log security-critical failure — propagates to Sentry
-    // via the global window.onerror / unhandledrejection handler if configured.
-    // Previously silent, making WASM policy failures undetectable in production.
-    console.error(
-      "[TrustedTypes] Failed to create sanitize policy — HTML sanitization may be degraded:",
-      err
-    )
-    win.__ttSanitizePolicy = false
-  }
-  return win.__ttSanitizePolicy || null
+  // The CSP-approved app policy already uses the same WASM sanitizer for
+  // createHTML. Reuse it instead of requesting a second Trusted Types name
+  // that is intentionally absent from the finite production policy.
+  const policy = ensureAppPolicy(win)
+  win.__ttSanitizePolicy = policy || false
+  return policy
 }
 
 const ensureAppPolicy = (win: TrustedTypesWindow): TrustedTypePolicy | null => {
@@ -81,7 +70,7 @@ const ensureAppPolicy = (win: TrustedTypesWindow): TrustedTypePolicy | null => {
     // MOD-14-01 (audit 2026-03-23): Log to console.error so Sentry captures it.
     // A browser extension or CSP misconfiguration that blocks policy creation
     // would silently degrade script URL enforcement without any visibility.
-    // Mirrors the existing pattern in ensureSanitizePolicy (lines above).
+    // Sanitization and script URL creation share this CSP-approved policy.
     console.error(
       "[TrustedTypes] Failed to create app policy — script URL enforcement may be degraded:",
       err
@@ -94,7 +83,8 @@ const ensureAppPolicy = (win: TrustedTypesWindow): TrustedTypePolicy | null => {
 export const ensureTrustedTypesPolicies = async (): Promise<void> => {
   if (typeof window === "undefined") return
   const win = window as TrustedTypesWindow
-  // Both helpers return early without Trusted Types support.
+  // Sanitization reuses the app policy; call the app helper separately so a
+  // cached sanitizer failure does not prevent script URL policy setup.
   await ensureSanitizePolicy(win)
   ensureAppPolicy(win)
 }

@@ -57,7 +57,7 @@ export function AttendanceCard({ attendance, hasInitiallyLoaded, ringSize }: Att
               <span className="text-(--fs-activity-card-title) font-black tracking-tighter tabular-nums lining-nums">
                 {attendancePctAnimated}%
               </span>
-              <TrendChip value={attendance?.trend} />
+              <TrendChip value={attendance?.trend} unit="percentagePoints" />
             </div>
             <ProgressBar
               value={progressAttendance}

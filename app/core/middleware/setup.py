@@ -104,7 +104,6 @@ def _configure_rate_limiting(app: FastAPI, settings: Settings) -> None:
         "/api/v1/auth/register": settings.rate_limit_auth_register,
         "/api/v1/password/forgot": settings.rate_limit_auth_password_reset,
         "/api/v1/users/me": settings.rate_limit_users_me,
-        "/graphql": settings.rate_limit_graphql,
         "/ws": settings.rate_limit_websocket,
     }
 

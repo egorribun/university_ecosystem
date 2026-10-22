@@ -4,6 +4,7 @@ import test from "node:test"
 
 import { JSDOM, VirtualConsole } from "jsdom"
 import { createServer } from "vite"
+import postcss from "postcss"
 
 const frontendRoot = fileURLToPath(new URL("../", import.meta.url))
 
@@ -29,6 +30,28 @@ test("the test CSS pipeline compiles Tailwind into a stylesheet JSDOM can parse"
     assert.ok(payload, "Vite must expose the compiled stylesheet, not an empty CSS mock")
     const css = JSON.parse(payload[1])
     assert.doesNotMatch(css, /@(?:theme|apply)\b/u, "Tailwind directives must be compiled")
+
+    // Compilation retention is a control, not computed custom-property validity.
+    const tokenNames = new Set([
+      "--bg-panel",
+      "--raw-shadow-glass",
+      "--shadow-glow-primary",
+      "--opacity-dim",
+      "--raw-shadow-focus",
+    ])
+    const declarations = new Map([...tokenNames].map((name) => [name, []]))
+    postcss.parse(css).walkDecls((declaration) => {
+      if (tokenNames.has(declaration.prop)) {
+        declarations.get(declaration.prop).push(declaration.value)
+      }
+    })
+    for (const [name, values] of declarations) {
+      assert.ok(values.length > 0, `Compiled production CSS must retain ${name}`)
+    }
+    assert.ok(
+      declarations.get("--bg-panel").length >= 2,
+      "Compiled CSS must retain both light and dark panel declarations"
+    )
 
     const diagnostics = []
     const virtualConsole = new VirtualConsole()

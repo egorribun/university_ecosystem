@@ -6,14 +6,14 @@ Eliminates JWT exposure in Sec-WebSocket-Protocol proxy-visible headers and logs
 Flow
 ----
 1. Client calls POST /ws/ticket (authenticated via HttpOnly cookie / Bearer token)
-2. Backend stores ticket → "{user_id}:{jti}" in Redis: "ott:ws:{ticket}" (TTL=15s)
+2. Backend stores ticket → "{user_id}:{jti}:{expires_at_unix_seconds}" in Redis: "ott:ws:{ticket}" (TTL=15s)
 3. Client opens: wss://host/ws/chat?ticket=<ticket>
 4. WS handler calls GETDEL (atomic, single-use) and authenticates from the stored payload
 
 Redis key schema (see contracts/redis-keys.md)
 ----------------------------------------------
 Key  : ott:ws:{ticket}   — 64-char lowercase hex (32 random bytes via secrets.token_hex)
-Value: {user_id}:{jti}   — exactly two non-empty colon-delimited fields
+Value: {user_id}:{jti}:{expires_at_unix_seconds} — exactly three non-empty fields
 TTL  : WS_TICKET_TTL_SECONDS (default 15)
 """
 
@@ -108,7 +108,12 @@ async def issue_ws_upgrade_ticket(
     # Tenant selection is deliberately excluded from the OTT contract. A raw
     # request header proves neither membership nor authorization, so promoting
     # it into ws-hub ClientIdentity would enable cross-tenant spoofing.
-    redis_value = f"{user_id}:{jti}"
+    # The 15-second ticket lifetime authorizes an upgrade only; it must never
+    # become the socket's credential lifetime or inherit a sliding cache TTL.
+    expires_at_seconds = int(expires_at.timestamp())
+    if expires_at_seconds <= datetime.now(UTC).timestamp():
+        raise_unauthorized(locale, "errors.auth.credentials_invalid")
+    redis_value = f"{user_id}:{jti}:{expires_at_seconds}"
     ttl = _get_ticket_ttl()
 
     try:

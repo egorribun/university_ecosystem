@@ -96,6 +96,46 @@ def _existing_partition_names(conn, parent_table: str) -> set[str]:
     return {r[0] for r in rows}
 
 
+def _range_predicate(
+    partition_key: str,
+    ranges: list[tuple[datetime, datetime]],
+) -> tuple[sa.sql.elements.ColumnElement[bool], dict[str, datetime]]:
+    """Build a SQLAlchemy predicate for the internally generated month ranges."""
+    predicates: list[sa.sql.elements.ColumnElement[bool]] = []
+    parameters: dict[str, datetime] = {}
+    column = sa.column(partition_key)
+    for index, (start, end) in enumerate(ranges):
+        lower = f"range_start_{index}"
+        upper = f"range_end_{index}"
+        predicates.append(
+            sa.and_(
+                column >= sa.bindparam(lower),
+                column < sa.bindparam(upper),
+            )
+        )
+        parameters[lower] = start
+        parameters[upper] = end
+    return sa.or_(*predicates), parameters
+
+
+def _count_rows_for_ranges(
+    conn,
+    table_name: str,
+    partition_key: str,
+    ranges: list[tuple[datetime, datetime]],
+) -> int:
+    """Count rows inside the requested ranges using PostgreSQL-bound datetimes."""
+    if not ranges:
+        return 0
+    predicate, parameters = _range_predicate(partition_key, ranges)
+    table = sa.table(table_name, schema="public")
+    row = conn.execute(
+        sa.select(sa.func.count()).select_from(table).where(predicate),
+        parameters,
+    ).scalar()
+    return int(row or 0)
+
+
 def _get_column_definitions(conn, table_name: str) -> str:
     """Build a parenthesised column-definition list from pg_catalog.
 
@@ -145,49 +185,305 @@ def _get_column_definitions(conn, table_name: str) -> str:
 
 
 def _convert_to_partitioned(conn, table_name: str, partition_key: str) -> None:
-    """Convert a regular heap table to a RANGE-partitioned table in-place.
+    """Convert a regular heap while preserving compatible inbound foreign keys.
 
-    Strategy (safe for tables with or without data):
-      1. Rename the existing table to <table>_prepart_old.
-      2. Create a new RANGE-partitioned table with identical columns.
-      3. Create a DEFAULT partition to absorb all existing rows.
-      4. Copy all rows from the old table into the new partitioned one.
-      5. Drop the old table.
-
-    Constraints (FK, PK, indexes) are not reproduced — they are managed by
-    other migrations.  The DEFAULT partition ensures no INSERT fails while
-    the monthly-partition loop runs immediately after.
+    A stale staging relation is treated as operator-owned data and is never
+    overwritten. Inbound keys must reference the partition-compatible key
+    ``(id, partition_key)`` because a partitioned parent cannot provide a
+    global unique constraint on an id-only target.
     """
     old_name = f"{table_name}_prepart_old"
+    preparer = conn.dialect.identifier_preparer
 
-    # Guard: if a previous interrupted run left the old table, drop it.
-    conn.execute(sa.text(f"DROP TABLE IF EXISTS {old_name} CASCADE"))
+    def qualified(name: str) -> str:
+        return f"{preparer.quote_schema('public')}.{preparer.quote(name)}"
+
+    if _get_relkind(conn, old_name) is not None:
+        raise RuntimeError(
+            f"Cannot convert {table_name}: staging relation {old_name} already exists"
+        )
+
+    parent_relation = qualified(table_name)
+    conn.execute(sa.text(f"LOCK TABLE {parent_relation} IN ACCESS EXCLUSIVE MODE"))
+    if _get_relkind(conn, old_name) is not None:
+        raise RuntimeError(
+            f"Cannot convert {table_name}: staging relation {old_name} already exists"
+        )
+
+    incoming_foreign_keys = _incoming_foreign_keys(conn, table_name)
+    expected_referenced_columns = ("id", partition_key)
+    for foreign_key in incoming_foreign_keys:
+        if tuple(foreign_key["referenced_columns"]) != expected_referenced_columns:
+            raise RuntimeError(
+                f"Cannot convert {table_name}: inbound foreign key "
+                f"{foreign_key['constraint_name']} references unsupported target columns"
+            )
+
+    _lock_foreign_key_relations(conn, incoming_foreign_keys)
+    locked_foreign_keys = _incoming_foreign_keys(conn, table_name)
+    if locked_foreign_keys != incoming_foreign_keys:
+        raise RuntimeError(
+            f"Inbound foreign keys changed while preparing to convert {table_name}"
+        )
 
     logger.info("Converting %s from relkind='r' to partitioned", table_name)
-
     col_defs = _get_column_definitions(conn, table_name)
 
-    conn.execute(sa.text(f"ALTER TABLE {table_name} RENAME TO {old_name}"))
+    _drop_incoming_foreign_keys(conn, incoming_foreign_keys)
     conn.execute(
         sa.text(
-            f"CREATE TABLE {table_name} (\n    {col_defs}\n) "
-            f"PARTITION BY RANGE ({partition_key})"
+            "-- The original heap stays ACCESS EXCLUSIVE locked while its name is "
+            "moved aside so the populated partitioned replacement can take the "
+            "public name in this same transaction.\n"
+            "-- squawk-ignore renaming-table\n"
+            f"ALTER TABLE {parent_relation} RENAME TO {preparer.quote(old_name)}"
+        )
+    )
+    conn.execute(
+        sa.text(
+            f"CREATE TABLE {parent_relation} (\n    {col_defs}\n) "
+            f"PARTITION BY RANGE ({preparer.quote(partition_key)})"
         )
     )
 
     default_partition = f"{table_name}_default"
+    qualified_default = qualified(default_partition)
     conn.execute(
         sa.text(
-            f"CREATE TABLE IF NOT EXISTS {default_partition} "
-            f"PARTITION OF {table_name} DEFAULT"
+            f"CREATE TABLE IF NOT EXISTS {qualified_default} "
+            f"PARTITION OF {parent_relation} DEFAULT"
         )
     )
 
-    # Copy existing data (typically empty on CI; minimal on production).
-    conn.execute(sa.text(f"INSERT INTO {table_name} SELECT * FROM {old_name}"))  # noqa: S608
-    conn.execute(sa.text(f"DROP TABLE {old_name}"))
+    # Copy rows while FK owners are locked and their root constraints are absent.
+    qualified_old = qualified(old_name)
+    conn.execute(
+        sa.text(f"INSERT INTO {parent_relation} SELECT * FROM {qualified_old}")  # noqa: S608 -- identifiers are quoted by the dialect preparer
+    )
+    # RESTRICT is intentional: untracked dependencies must abort and roll back.
+    conn.execute(
+        sa.text(
+            "-- The replacement has received the heap rows; keep default RESTRICT "
+            "so any dependency not represented by the captured FK set aborts and "
+            "rolls back the rename, copy, and FK changes.\n"
+            "-- squawk-ignore ban-drop-table\n"
+            f"DROP TABLE {qualified_old}"
+        )
+    )
+
+    if incoming_foreign_keys:
+        primary_key_name = preparer.quote(f"{table_name}_pkey")
+        id_column = preparer.quote("id")
+        partition_column = preparer.quote(partition_key)
+        conn.execute(
+            sa.text(
+                f"ALTER TABLE {parent_relation} ADD CONSTRAINT {primary_key_name} "
+                f"PRIMARY KEY ({id_column}, {partition_column})"
+            )
+        )
+        _restore_incoming_foreign_keys(conn, incoming_foreign_keys)
 
     logger.info("Conversion of %s complete", table_name)
+
+
+def _incoming_foreign_keys(conn, referenced_table: str) -> list[dict[str, object]]:
+    """Snapshot validated top-level FKs that reference this table or a partition."""
+    rows = (
+        conn.execute(
+            sa.text(
+                """
+            WITH RECURSIVE referenced_relations(oid) AS (
+                SELECT relation.oid
+                FROM pg_class AS relation
+                JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+                WHERE relation.relname = :table AND namespace.nspname = 'public'
+                UNION
+                SELECT inheritance.inhrelid
+                FROM pg_inherits AS inheritance
+                JOIN referenced_relations AS referenced
+                  ON referenced.oid = inheritance.inhparent
+            ),
+            matching_constraints(oid) AS (
+                SELECT constraint_row.oid
+                FROM pg_constraint AS constraint_row
+                JOIN referenced_relations AS referenced
+                  ON referenced.oid = constraint_row.confrelid
+                WHERE constraint_row.contype = 'f'
+            ),
+            constraint_ancestry(matched_oid, ancestor_oid) AS (
+                SELECT oid, oid FROM matching_constraints
+                UNION
+                SELECT ancestry.matched_oid, parent_constraint.oid
+                FROM constraint_ancestry AS ancestry
+                JOIN pg_constraint AS current_constraint
+                  ON current_constraint.oid = ancestry.ancestor_oid
+                JOIN pg_constraint AS parent_constraint
+                  ON parent_constraint.oid = current_constraint.conparentid
+            ),
+            root_constraints(oid) AS (
+                SELECT DISTINCT ancestry.ancestor_oid
+                FROM constraint_ancestry AS ancestry
+                JOIN pg_constraint AS root_constraint
+                  ON root_constraint.oid = ancestry.ancestor_oid
+                WHERE root_constraint.conparentid = 0
+            )
+            SELECT constraint_row.oid AS constraint_oid,
+                   constraint_row.conrelid AS relation_oid,
+                   constraint_row.conname AS constraint_name,
+                   constraint_row.convalidated AS validated,
+                   constraint_row.coninhcount AS inheritance_count,
+                   relation.relkind AS relation_kind,
+                   namespace.nspname AS schema_name,
+                   relation.relname AS relation_name,
+                   pg_get_constraintdef(constraint_row.oid, false) AS definition,
+                   ARRAY(
+                       SELECT referenced_attribute.attname
+                       FROM unnest(constraint_row.confkey) WITH ORDINALITY
+                            AS referenced_column(attnum, ordinal)
+                       JOIN pg_attribute AS referenced_attribute
+                         ON referenced_attribute.attrelid = constraint_row.confrelid
+                        AND referenced_attribute.attnum = referenced_column.attnum
+                       ORDER BY referenced_column.ordinal
+                   ) AS referenced_columns
+            FROM root_constraints AS root
+            JOIN pg_constraint AS constraint_row ON constraint_row.oid = root.oid
+            JOIN pg_class AS relation ON relation.oid = constraint_row.conrelid
+            JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+            ORDER BY constraint_row.conrelid, constraint_row.oid
+            """
+            ),
+            {"table": referenced_table},
+        )
+        .mappings()
+        .all()
+    )
+
+    foreign_keys: list[dict[str, object]] = []
+    for row in rows:
+        if not row["validated"]:
+            raise RuntimeError(
+                f"Cannot redistribute {referenced_table}: inbound foreign key "
+                f"{row['constraint_name']} is not validated"
+            )
+        if int(row["inheritance_count"] or 0) != 0:
+            raise RuntimeError(
+                f"Cannot redistribute {referenced_table}: inbound foreign key "
+                f"{row['constraint_name']} uses unsupported table inheritance"
+            )
+        relation_kind = row["relation_kind"]
+        if isinstance(relation_kind, bytes):
+            relation_kind = relation_kind.decode("ascii")
+        else:
+            relation_kind = str(relation_kind)
+        if relation_kind not in {"r", "p"}:
+            raise RuntimeError(
+                f"Cannot redistribute {referenced_table}: inbound foreign key "
+                f"{row['constraint_name']} has unsupported relation kind"
+            )
+        foreign_keys.append(
+            {
+                "constraint_oid": int(row["constraint_oid"]),
+                "relation_oid": int(row["relation_oid"]),
+                "constraint_name": str(row["constraint_name"]),
+                "relation_kind": relation_kind,
+                "schema_name": str(row["schema_name"]),
+                "relation_name": str(row["relation_name"]),
+                "definition": str(row["definition"]),
+                "referenced_columns": tuple(
+                    str(column) for column in row["referenced_columns"] or ()
+                ),
+            }
+        )
+    return foreign_keys
+
+
+def _lock_foreign_key_relations(conn, foreign_keys: list[dict[str, object]]) -> None:
+    """Lock FK owners in stable order without waiting into a lock cycle."""
+    preparer = conn.dialect.identifier_preparer
+    relations = {
+        (
+            int(foreign_key["relation_oid"]),
+            str(foreign_key["schema_name"]),
+            str(foreign_key["relation_name"]),
+        )
+        for foreign_key in foreign_keys
+    }
+    for _oid, schema_name, relation_name in sorted(relations):
+        qualified_name = (
+            f"{preparer.quote_schema(schema_name)}.{preparer.quote(relation_name)}"
+        )
+        conn.execute(
+            sa.text(f"LOCK TABLE {qualified_name} IN ACCESS EXCLUSIVE MODE NOWAIT")
+        )
+
+
+def _drop_incoming_foreign_keys(conn, foreign_keys: list[dict[str, object]]) -> None:
+    """Drop captured FK roots; PostgreSQL removes their internal partition clones."""
+    preparer = conn.dialect.identifier_preparer
+    for foreign_key in foreign_keys:
+        qualified_name = (
+            f"{preparer.quote_schema(str(foreign_key['schema_name']))}."
+            f"{preparer.quote(str(foreign_key['relation_name']))}"
+        )
+        constraint_name = preparer.quote(str(foreign_key["constraint_name"]))
+        conn.execute(
+            sa.text(f"ALTER TABLE {qualified_name} DROP CONSTRAINT {constraint_name}")
+        )
+
+
+def _restore_incoming_foreign_keys(conn, foreign_keys: list[dict[str, object]]) -> None:
+    """Restore captured FK definitions and require validation before commit."""
+    preparer = conn.dialect.identifier_preparer
+    for foreign_key in foreign_keys:
+        qualified_name = (
+            f"{preparer.quote_schema(str(foreign_key['schema_name']))}."
+            f"{preparer.quote(str(foreign_key['relation_name']))}"
+        )
+        constraint_name = preparer.quote(str(foreign_key["constraint_name"]))
+        definition = str(foreign_key["definition"])
+        add_constraint = (
+            f"ALTER TABLE {qualified_name} ADD CONSTRAINT "
+            f"{constraint_name} {definition}"
+        )
+        if foreign_key["relation_kind"] == "p":
+            # PostgreSQL 17 does not permit NOT VALID FKs on partitioned tables.
+            conn.execute(sa.text(add_constraint))
+        else:
+            conn.execute(sa.text(f"{add_constraint} NOT VALID"))
+            conn.execute(
+                sa.text(
+                    f"ALTER TABLE {qualified_name} VALIDATE CONSTRAINT "
+                    f"{constraint_name}"
+                )
+            )
+
+        restored = (
+            conn.execute(
+                sa.text(
+                    "SELECT convalidated, conparentid, "
+                    "pg_get_constraintdef(oid, false) AS definition "
+                    "FROM pg_constraint "
+                    "WHERE conrelid = :relation_oid AND conname = :constraint_name "
+                    "AND contype = 'f'"
+                ),
+                {
+                    "relation_oid": foreign_key["relation_oid"],
+                    "constraint_name": foreign_key["constraint_name"],
+                },
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if (
+            restored is None
+            or not restored["convalidated"]
+            or int(restored["conparentid"] or 0) != 0
+            or restored["definition"] != definition
+        ):
+            raise RuntimeError(
+                f"Could not restore validated inbound foreign key "
+                f"{foreign_key['constraint_name']}"
+            )
 
 
 def upgrade() -> None:
@@ -195,6 +491,11 @@ def upgrade() -> None:
     if conn.dialect.name != "postgresql":
         # SQLite and other dialects have no RANGE partitioning support.
         return
+
+    # Keep catalog inspection, ACCESS EXCLUSIVE locks, and DDL within the
+    # transaction-local migration budgets used by the other schema revisions.
+    conn.execute(sa.text("SET LOCAL lock_timeout = '10s'"))
+    conn.execute(sa.text("SET LOCAL statement_timeout = '60s'"))
 
     anchor = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
@@ -221,41 +522,132 @@ def upgrade() -> None:
             )
             continue
 
+        # Partition DDL must serialize with writers before inspecting DEFAULT.
+        # The lock is retained through detach, redistribution, and reattachment.
+        conn.execute(sa.text(f'LOCK TABLE "public"."{table}" IN ACCESS EXCLUSIVE MODE'))
         existing = _existing_partition_names(conn, table)
         logger.info("Table %s existing partitions: %s", table, sorted(existing))
 
-        # DEFAULT partition — absorbs any row that misses a range partition.
+        # DEFAULT partition — absorbs rows outside the monthly coverage window.
         default_partition = f"{table}_default"
         if default_partition not in existing:
             logger.info("Creating DEFAULT partition %s", default_partition)
             conn.execute(
                 sa.text(
-                    f"CREATE TABLE IF NOT EXISTS {default_partition} "
-                    f"PARTITION OF {table} DEFAULT"
+                    f'CREATE TABLE IF NOT EXISTS "public"."{default_partition}" '
+                    f'PARTITION OF "public"."{table}" DEFAULT'
                 )
             )
+            existing.add(default_partition)
 
-        # Monthly range partitions: MONTHS_BACK ago … MONTHS_FORWARD ahead.
+        # Build only missing ranges first. PostgreSQL rejects adding a range
+        # partition while matching rows remain in DEFAULT.
+        monthly_partitions: list[tuple[str, datetime, datetime]] = []
         for offset in range(-_MONTHS_BACK, _MONTHS_FORWARD + 1):
             start = _add_months(anchor, offset)
             end = _add_months(anchor, offset + 1)
             suffix = start.strftime("%Y_%m")
             partition_name = f"{table}_{suffix}"
-
             if partition_name not in existing:
-                start_iso = start.strftime("%Y-%m-%d %H:%M:%S+00")
-                end_iso = end.strftime("%Y-%m-%d %H:%M:%S+00")
-                logger.info(
-                    "Creating partition %s [%s, %s)", partition_name, start_iso, end_iso
+                monthly_partitions.append((partition_name, start, end))
+
+        if not monthly_partitions:
+            continue
+
+        ranges = [(start, end) for _name, start, end in monthly_partitions]
+        rows_to_redistribute = _count_rows_for_ranges(
+            conn, default_partition, partition_key, ranges
+        )
+        redistribute_default = rows_to_redistribute > 0
+        if redistribute_default:
+            # Pausing inbound checks is safe only while every FK owner is locked
+            # and the exact validated definitions are restored before commit.
+            incoming_foreign_keys = _incoming_foreign_keys(conn, table)
+            _lock_foreign_key_relations(conn, incoming_foreign_keys)
+            locked_foreign_keys = _incoming_foreign_keys(conn, table)
+            if locked_foreign_keys != incoming_foreign_keys:
+                raise RuntimeError(
+                    "Inbound foreign keys changed while preparing to redistribute "
+                    f"{table}"
                 )
-                conn.execute(
-                    sa.text(
-                        f"CREATE TABLE IF NOT EXISTS {partition_name} "
-                        f"PARTITION OF {table} "
-                        f"FOR VALUES FROM ('{start_iso}') "
-                        f"TO ('{end_iso}')"
-                    )
+            _drop_incoming_foreign_keys(conn, incoming_foreign_keys)
+
+            # Detach the same DEFAULT relation so its rows can be redistributed
+            # without deleting referenced rows visible to inbound foreign keys.
+            conn.execute(
+                sa.text(
+                    f'ALTER TABLE "public"."{table}" '
+                    f'DETACH PARTITION "public"."{default_partition}"'
                 )
+            )
+
+        for partition_name, start, end in monthly_partitions:
+            start_iso = start.strftime("%Y-%m-%d %H:%M:%S+00")
+            end_iso = end.strftime("%Y-%m-%d %H:%M:%S+00")
+            logger.info(
+                "Creating partition %s [%s, %s)", partition_name, start_iso, end_iso
+            )
+            conn.execute(
+                sa.text(
+                    f'CREATE TABLE IF NOT EXISTS "public"."{partition_name}" '
+                    f'PARTITION OF "public"."{table}" '
+                    f"FOR VALUES FROM ('{start_iso}') TO ('{end_iso}')"
+                )
+            )
+
+        if redistribute_default:
+            predicate, parameters = _range_predicate(partition_key, ranges)
+            metadata = sa.MetaData()
+            parent_relation = sa.Table(
+                table,
+                metadata,
+                schema="public",
+                autoload_with=conn,
+            )
+            default_relation = sa.Table(
+                default_partition,
+                metadata,
+                schema="public",
+                autoload_with=conn,
+            )
+            column_names = [column.name for column in parent_relation.columns]
+            conn.execute(
+                sa.insert(parent_relation).from_select(
+                    column_names,
+                    sa.select(
+                        *(
+                            default_relation.c[column_name]
+                            for column_name in column_names
+                        )
+                    ).where(predicate),
+                ),
+                parameters,
+            )
+            conn.execute(
+                sa.delete(default_relation).where(predicate),
+                parameters,
+            )
+            remaining = _count_rows_for_ranges(
+                conn, default_partition, partition_key, ranges
+            )
+            if remaining:
+                raise RuntimeError(
+                    f"Could not redistribute all matching rows from {default_partition}"
+                )
+
+            conn.execute(
+                sa.text(
+                    f'ALTER TABLE "public"."{table}" '
+                    f'ATTACH PARTITION "public"."{default_partition}" DEFAULT'
+                )
+            )
+            redistributed = _count_rows_for_ranges(conn, table, partition_key, ranges)
+            if redistributed != rows_to_redistribute:
+                raise RuntimeError(
+                    f"Redistribution row count changed for {table}: "
+                    f"expected {rows_to_redistribute}, found {redistributed}"
+                )
+            _restore_incoming_foreign_keys(conn, incoming_foreign_keys)
 
 
 def downgrade() -> None:

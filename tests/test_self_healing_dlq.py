@@ -24,9 +24,6 @@ from app.models.dead_letter import DeadLetterJob, JobStatus
 from app.workers.dead_letter_queue import (
     DeadLetterQueue as DBDeadLetterQueue,
 )
-from app.workers.dead_letter_queue import (
-    register_circuit_breaker_db_dlq_listener,
-)
 
 
 @dataclass
@@ -307,36 +304,6 @@ async def test_db_dlq_auto_replay_jobs_failure_and_backoff() -> None:
     assert "Downstream service unreachable" in (job.error_message or "")
 
 
-@pytest.mark.asyncio
-async def test_db_dlq_circuit_breaker_listener_registration() -> None:
-    """Test register_circuit_breaker_db_dlq_listener helper."""
-    cb = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=0.05)
-    mock_session = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = []
-    mock_session.execute.return_value = mock_result
-
-    mock_session_factory = MagicMock()
-    mock_session_factory.return_value.__aenter__.return_value = mock_session
-
-    handler_mock = AsyncMock()
-    register_circuit_breaker_db_dlq_listener(
-        cb,
-        session_factory=mock_session_factory,
-        handler=handler_mock,
-    )
-
-    # Trip and recover circuit breaker
-    cb.record_failure()
-    await asyncio.sleep(0.08)
-    _ = cb.state  # Triggers transition to HALF_OPEN
-
-    await asyncio.sleep(0.05)  # Allow background task to execute
-    assert mock_session_factory.called
-    mock_session.execute.assert_awaited_once()
-    mock_session.commit.assert_awaited_once()
-
-
 # ---------------------------------------------------------------------------
 # 4. Admin API Endpoint Tests
 # ---------------------------------------------------------------------------
@@ -400,3 +367,81 @@ def test_admin_dlq_status_and_replay_api_routes() -> None:
             assert "db_replayed" in data_replay
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_in_memory_dlq_probe_reopens_breaker() -> None:
+    breaker = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    breaker.record_failure()
+    breaker._last_failure_time = -1_000_000.0
+    assert breaker.state is CircuitState.HALF_OPEN
+
+    bus = AsyncMock()
+    entered = asyncio.Event()
+
+    async def block_publish(_event: DomainEvent) -> None:
+        entered.set()
+        await asyncio.Event().wait()
+
+    bus.publish.side_effect = block_publish
+    dlq = InMemoryDLQ(event_bus=bus, circuit_breaker=breaker)
+    await dlq.add(DummyDomainEvent(data="cancelled"), RuntimeError("initial"))
+
+    replay = asyncio.create_task(
+        dlq.auto_replay(rate_limit_delay=0, base_backoff=0, max_backoff=0)
+    )
+    await asyncio.wait_for(entered.wait(), timeout=2)
+    replay.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await replay
+
+    assert breaker.state is CircuitState.OPEN
+    assert dlq.is_replaying is False
+
+
+@pytest.mark.asyncio
+async def test_cancelled_db_dlq_probe_reopens_breaker_before_handler() -> None:
+    breaker = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    breaker.record_failure()
+    breaker._last_failure_time = -1_000_000.0
+    assert breaker.state is CircuitState.HALF_OPEN
+
+    job = DeadLetterJob(
+        id=999,
+        job_type="test",
+        job_hash="cancelled-probe",
+        payload=json.dumps({}),
+        status=JobStatus.PENDING.value,
+        retry_count=0,
+        max_retries=3,
+        next_retry_at=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    dlq = DBDeadLetterQueue(AsyncMock())
+    entered = asyncio.Event()
+
+    async def ready_jobs(*, limit: int):
+        return [job]
+
+    async def block_retrying(_job: DeadLetterJob) -> None:
+        entered.set()
+        await asyncio.Event().wait()
+
+    dlq.get_jobs_ready_for_retry = ready_jobs
+    dlq.mark_job_retrying = block_retrying
+
+    replay = asyncio.create_task(
+        dlq.auto_replay_jobs(
+            handler=None,
+            circuit_breaker=breaker,
+            rate_limit_delay=0,
+        )
+    )
+    await asyncio.wait_for(entered.wait(), timeout=2)
+    replay.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await replay
+
+    assert breaker.state is CircuitState.OPEN
+    assert DBDeadLetterQueue._is_replaying is False

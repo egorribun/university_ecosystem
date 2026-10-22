@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -133,14 +134,6 @@ def test_testcontainer_images_are_digest_pinned(
 @pytest.mark.parametrize(
     "path,image_prefix",
     [
-        (
-            ROOT / "scripts" / "run-docker-visual-tests.sh",
-            "mcr.microsoft.com/playwright:v1.58.2-noble",
-        ),
-        (
-            ROOT / "scripts" / "run-docker-visual-tests.ps1",
-            "mcr.microsoft.com/playwright:v1.58.2-noble",
-        ),
         (ROOT / "start-docker.ps1", "alpine:3.20"),
     ],
 )
@@ -152,6 +145,46 @@ def test_scripted_external_images_are_digest_pinned(
     assert match is not None, (
         f"{path.relative_to(ROOT)} does not pin {image_prefix} by digest"
     )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ROOT / "scripts" / "run-docker-visual-tests.sh",
+        ROOT / "scripts" / "run-docker-visual-tests.ps1",
+    ],
+    ids=lambda path: path.name,
+)
+def test_visual_runner_images_match_locked_playwright_versions(path: Path) -> None:
+    package = json.loads((ROOT / "frontend" / "package.json").read_text())
+    locked = json.loads((ROOT / "frontend" / "package-lock.json").read_text())[
+        "packages"
+    ]
+    versions = (
+        {
+            package["devDependencies"][name]
+            for name in ("playwright", "@playwright/test")
+        }
+        | {
+            locked[""]["devDependencies"][name]
+            for name in ("playwright", "@playwright/test")
+        }
+        | {
+            locked[f"node_modules/{name}"]["version"]
+            for name in ("playwright", "@playwright/test", "playwright-core")
+        }
+    )
+    assert len(versions) == 1, "Playwright manifest and lock versions must agree"
+    (version,) = versions
+    references = re.findall(
+        r"mcr\.microsoft\.com/playwright:[^\s\\`]+",
+        path.read_text(encoding="utf-8"),
+    )
+    assert len(references) == 1
+    _assert_digest_pinned([(path, references[0])])
+    assert references[0].split("@", 1)[0] == (
+        f"mcr.microsoft.com/playwright:v{version}-noble"
+    ), "The container's bundled browsers must match the locked Playwright driver"
 
 
 def test_helm_backup_images_are_digest_pinned() -> None:

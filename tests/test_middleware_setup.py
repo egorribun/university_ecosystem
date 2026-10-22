@@ -9,7 +9,9 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
-from fastapi import FastAPI
+import httpx
+import pytest
+from fastapi import FastAPI, status
 
 from app.core.middleware.setup import (
     _configure_cors_middleware,
@@ -171,6 +173,36 @@ class TestConfigureRateLimiting:
             for m in app.user_middleware
         ]
         assert "RateLimitMiddleware" in middleware_classes
+
+    @pytest.mark.asyncio
+    async def test_auth_login_endpoint_limit_returns_429(self):
+        """A low configured login limit blocks the next request with HTTP 429."""
+        app = FastAPI()
+        settings = _make_settings(
+            rate_limit_enabled=True,
+            rate_limit_default_list=["100/minute"],
+            rate_limit_auth_login="2/minute",
+            rate_limit_storage_backend="memory",
+        )
+
+        @app.post("/api/v1/auth/login")
+        async def _login():
+            return {"ok": True}
+
+        _configure_rate_limiting(app, settings)
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            first = await client.post("/api/v1/auth/login")
+            second = await client.post("/api/v1/auth/login")
+            blocked = await client.post("/api/v1/auth/login")
+
+        assert first.status_code == status.HTTP_200_OK
+        assert second.status_code == status.HTTP_200_OK
+        assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+        assert blocked.headers["X-RateLimit-Limit"] == "2"
+        assert blocked.headers.get("Retry-After") is not None
 
 
 # ---------------------------------------------------------------------------

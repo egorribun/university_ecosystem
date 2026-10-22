@@ -97,9 +97,11 @@ def _get_client_ip(request: Request) -> str:
     bypass IP-based rate limiting and fingerprinting.
     (RZ-1b: audit 2026-02-24)
     """
-    if request.client is not None:
-        return str(request.client.host)
-    return "unknown"
+    # Resolved by the central trusted-proxy resolver, so forwarded headers
+    # count only when the direct peer is a configured proxy.
+    from app.core.ratelimit import resolve_client_ip
+
+    return resolve_client_ip(request)
 
 
 def _compute_fingerprint_hash(

@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { expectImagePickerKeyboard } from "@/tests/helpers/imagePickerKeyboard"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ComponentProps } from "react"
@@ -11,6 +12,7 @@ const translationMocks = vi.hoisted(() => ({
 }))
 
 const apiMocks = vi.hoisted(() => ({
+  fetchNewsItem: vi.fn(),
   updateNews: vi.fn(),
   uploadNewsImage: vi.fn(),
 }))
@@ -31,6 +33,7 @@ vi.mock("react-i18next", () => ({
   },
 }))
 vi.mock("@/api/news", () => ({
+  fetchNewsItem: apiMocks.fetchNewsItem,
   updateNews: apiMocks.updateNews,
   uploadNewsImage: apiMocks.uploadNewsImage,
 }))
@@ -81,8 +84,29 @@ describe("NewsDetailEditDialog mutation contracts", () => {
     translationMocks.returnUndefined = false
     translationMocks.namespaceCalls = []
     translationMocks.tCalls = []
+    apiMocks.fetchNewsItem.mockReset()
     apiMocks.updateNews.mockReset().mockResolvedValue({ data: { ...initialData } })
     apiMocks.uploadNewsImage.mockReset().mockResolvedValue("https://example.test/uploaded.png")
+  })
+
+  it("opens the image picker by keyboard and pointer without saving", async () => {
+    const onClose = vi.fn()
+    const onSuccess = vi.fn()
+    renderDialog({ onClose, onSuccess })
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
+
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    await expectImagePickerKeyboard(
+      screen.getByRole("button", { name: "common:buttons.uploadPhoto" }),
+      input,
+      screen.getByLabelText("news:form.content_en"),
+      screen.getByRole("button", { name: "common:buttons.cancel" })
+    )
+
+    expect(apiMocks.uploadNewsImage).not.toHaveBeenCalled()
+    expect(apiMocks.updateNews).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(onSuccess).not.toHaveBeenCalled()
   })
 
   it("preserves namespaces, required markers, field constraints, and preview semantics", () => {
@@ -115,7 +139,7 @@ describe("NewsDetailEditDialog mutation contracts", () => {
     expect(contentEn).toHaveAttribute("maxLength", "3000")
     expect(contentEn).toHaveAttribute("rows", "6")
 
-    const uploadButton = screen.getByText("common:buttons.uploadPhoto").closest("label")!
+    const uploadButton = screen.getByRole("button", { name: "common:buttons.uploadPhoto" })
     expect(uploadButton).toHaveClass("w-full", "sm:w-auto")
     expect(uploadButton).not.toHaveAttribute("aria-disabled", "true")
     const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
@@ -246,7 +270,7 @@ describe("NewsDetailEditDialog mutation contracts", () => {
       expect(screen.getByRole("button", { name: "common:buttons.saving" })).toBeInTheDocument()
     )
     expect(screen.getByRole("button", { name: "common:buttons.saving" })).toBeDisabled()
-    expect(screen.getByText("common:buttons.uploadPhoto").closest("label")).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "common:buttons.uploadPhoto" })).toHaveAttribute(
       "aria-disabled",
       "true"
     )
@@ -266,6 +290,144 @@ describe("NewsDetailEditDialog mutation contracts", () => {
     )
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["news", "list"] })
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it("loads Russian source fields before saving from the English editor", async () => {
+    const user = userEvent.setup()
+    const russianSource = {
+      id: "news-contract",
+      title: "Русский оригинал",
+      content: "Текст на русском языке.",
+      title_en: "English original",
+      content_en: "English source body.",
+      image_url: "https://example.test/source.png",
+    }
+    apiMocks.fetchNewsItem.mockResolvedValue({ status: 200, data: russianSource })
+    renderDialog({
+      language: "en",
+      initialData: {
+        ...initialData,
+        title: "Localized English title",
+        content: "Localized English body.",
+      },
+    })
+
+    await waitFor(() => expect(screen.getByDisplayValue(russianSource.title)).toBeInTheDocument())
+    expect(screen.getByDisplayValue(russianSource.content)).toBeInTheDocument()
+    expect(screen.getByDisplayValue(russianSource.title_en)).toBeInTheDocument()
+    expect(screen.getByDisplayValue(russianSource.content_en)).toBeInTheDocument()
+    expect(apiMocks.fetchNewsItem).toHaveBeenCalledWith(
+      "news-contract",
+      expect.objectContaining({ language: "ru", signal: expect.any(AbortSignal) })
+    )
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+    expect(apiMocks.updateNews).toHaveBeenCalledWith("news-contract", {
+      title: russianSource.title,
+      content: russianSource.content,
+      title_en: russianSource.title_en,
+      content_en: russianSource.content_en,
+      image_url: russianSource.image_url,
+    })
+  })
+
+  it("keeps saving disabled while the Russian source request is pending", async () => {
+    let resolveSource!: (value: { status: number; data: Record<string, string> }) => void
+    apiMocks.fetchNewsItem.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveSource = resolve
+      })
+    )
+    renderDialog({ language: "en" })
+
+    expect(screen.getByRole("status")).toHaveTextContent("common:statuses.loading")
+    const save = screen.getByRole("button", { name: "common:buttons.save" })
+    expect(save).toBeDisabled()
+    fireEvent.click(save)
+    expect(apiMocks.updateNews).not.toHaveBeenCalled()
+
+    await act(async () => {
+      resolveSource({ status: 200, data: { ...initialData } })
+    })
+    await waitFor(() => expect(save).toBeEnabled())
+  })
+
+  it("fails closed when the Russian source request rejects", async () => {
+    apiMocks.fetchNewsItem.mockRejectedValueOnce(new Error("source unavailable"))
+    renderDialog({ language: "en" })
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("common:errors.generic")
+    const save = screen.getByRole("button", { name: "common:buttons.save" })
+    expect(save).toBeDisabled()
+    fireEvent.click(save)
+    expect(apiMocks.updateNews).not.toHaveBeenCalled()
+  })
+
+  it("fails closed when the Russian source request returns not-modified", async () => {
+    apiMocks.fetchNewsItem.mockResolvedValueOnce({ status: 304, data: undefined })
+    renderDialog({ language: "en" })
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("common:errors.generic")
+    const save = screen.getByRole("button", { name: "common:buttons.save" })
+    expect(save).toBeDisabled()
+    fireEvent.click(save)
+    expect(apiMocks.updateNews).not.toHaveBeenCalled()
+  })
+
+  it("ignores an aborted Russian source response after the news ID changes", async () => {
+    const requests: Array<{
+      newsId: string
+      signal: AbortSignal
+      resolve: (value: { status: number; data: Record<string, string> }) => void
+    }> = []
+    apiMocks.fetchNewsItem.mockImplementation(
+      (newsId: string, options: { signal: AbortSignal }) =>
+        new Promise<{ status: number; data: Record<string, string> }>((resolve) => {
+          requests.push({ newsId, signal: options.signal, resolve })
+        })
+    )
+    const { rerender, client } = renderDialog({ language: "en", newsId: "news-old" })
+
+    expect(requests).toHaveLength(1)
+    rerender(
+      <QueryClientProvider client={client}>
+        <NewsDetailEditDialog {...makeProps({ language: "en", newsId: "news-new" })} />
+      </QueryClientProvider>
+    )
+    expect(requests).toHaveLength(2)
+    expect(requests[0]?.newsId).toBe("news-old")
+    expect(requests[0]?.signal.aborted).toBe(true)
+    expect(requests[1]?.newsId).toBe("news-new")
+
+    await act(async () => {
+      requests[0]?.resolve({
+        status: 200,
+        data: { ...initialData, title: "Stale Russian title", content: "Stale Russian body" },
+      })
+    })
+    expect(screen.queryByDisplayValue("Stale Russian title")).not.toBeInTheDocument()
+
+    await act(async () => {
+      requests[1]?.resolve({
+        status: 200,
+        data: { ...initialData, title: "Current Russian title", content: "Current Russian body" },
+      })
+    })
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("Current Russian title")).toBeInTheDocument()
+    )
+    expect(screen.queryByDisplayValue("Stale Russian title")).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+    expect(apiMocks.updateNews).toHaveBeenCalledWith(
+      "news-new",
+      expect.objectContaining({
+        title: "Current Russian title",
+        content: "Current Russian body",
+      })
+    )
   })
 
   it("renders no image block without an image and preserves exact fallback labels", () => {
@@ -390,5 +552,371 @@ describe("NewsDetailEditDialog mutation contracts", () => {
     expect(screen.getByTestId("edit-preview")).toHaveAttribute("src", initialData.image_url)
     expect(screen.queryByRole("button", { name: "common:buttons.reset" })).not.toBeInTheDocument()
     vi.restoreAllMocks()
+  })
+
+  it("preserves dirty text through a same-item refresh and saves the draft", async () => {
+    const user = userEvent.setup()
+    const view = renderDialog()
+
+    try {
+      const draft = {
+        ...initialData,
+        title: "Unsaved draft title",
+        content: "Unsaved draft content",
+      }
+      fireEvent.change(screen.getByDisplayValue(initialData.title), {
+        target: { value: draft.title },
+      })
+      fireEvent.change(screen.getByDisplayValue(initialData.content), {
+        target: { value: draft.content },
+      })
+      expect(screen.getByDisplayValue(draft.title)).toHaveValue(draft.title)
+      expect(screen.getByDisplayValue(draft.content)).toHaveValue(draft.content)
+
+      const refreshed = {
+        ...initialData,
+        title: "Refreshed server title",
+        content: "Refreshed server content",
+      }
+      view.rerender(
+        <QueryClientProvider client={view.client}>
+          <NewsDetailEditDialog {...makeProps({ initialData: refreshed })} />
+        </QueryClientProvider>
+      )
+
+      expect(screen.getByDisplayValue(draft.title)).toHaveValue(draft.title)
+      expect(screen.getByDisplayValue(draft.content)).toHaveValue(draft.content)
+      expect(screen.queryByDisplayValue(refreshed.title)).not.toBeInTheDocument()
+      expect(screen.queryByDisplayValue(refreshed.content)).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+      await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+      expect(apiMocks.updateNews).toHaveBeenCalledWith("news-contract", draft)
+      expect(apiMocks.fetchNewsItem).not.toHaveBeenCalled()
+      expect(apiMocks.uploadNewsImage).not.toHaveBeenCalled()
+    } finally {
+      view.unmount()
+      view.client.clear()
+    }
+  })
+
+  it("discards dirty text on cancel and reloads current data on reopen", async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    const view = renderDialog({ onClose })
+
+    try {
+      fireEvent.change(screen.getByDisplayValue(initialData.title), {
+        target: { value: "Cancelled draft title" },
+      })
+      fireEvent.change(screen.getByDisplayValue(initialData.content), {
+        target: { value: "Cancelled draft content" },
+      })
+
+      await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+      expect(onClose).toHaveBeenCalledOnce()
+      expect(apiMocks.updateNews).not.toHaveBeenCalled()
+      view.rerender(
+        <QueryClientProvider client={view.client}>
+          <NewsDetailEditDialog {...makeProps({ open: false, onClose })} />
+        </QueryClientProvider>
+      )
+
+      const replacement = {
+        ...initialData,
+        title: "Current title on reopen",
+        content: "Current content on reopen",
+      }
+      view.rerender(
+        <QueryClientProvider client={view.client}>
+          <NewsDetailEditDialog {...makeProps({ open: true, onClose, initialData: replacement })} />
+        </QueryClientProvider>
+      )
+
+      expect(await screen.findByDisplayValue(replacement.title)).toHaveValue(replacement.title)
+      expect(screen.getByDisplayValue(replacement.content)).toHaveValue(replacement.content)
+      expect(screen.queryByDisplayValue("Cancelled draft title")).not.toBeInTheDocument()
+      expect(screen.queryByDisplayValue("Cancelled draft content")).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+      await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+      expect(apiMocks.updateNews).toHaveBeenCalledWith("news-contract", replacement)
+    } finally {
+      view.unmount()
+      view.client.clear()
+    }
+  })
+
+  it("resets a dirty open form when switching to a different news item", async () => {
+    const user = userEvent.setup()
+    const view = renderDialog()
+
+    try {
+      fireEvent.change(screen.getByDisplayValue(initialData.title), {
+        target: { value: "Previous item draft title" },
+      })
+      fireEvent.change(screen.getByDisplayValue(initialData.content), {
+        target: { value: "Previous item draft content" },
+      })
+
+      const replacement = {
+        ...initialData,
+        title: "Different item title",
+        content: "Different item content",
+      }
+      view.rerender(
+        <QueryClientProvider client={view.client}>
+          <NewsDetailEditDialog {...makeProps({ newsId: "news-next", initialData: replacement })} />
+        </QueryClientProvider>
+      )
+
+      expect(await screen.findByDisplayValue(replacement.title)).toHaveValue(replacement.title)
+      expect(screen.getByDisplayValue(replacement.content)).toHaveValue(replacement.content)
+      expect(screen.queryByDisplayValue("Previous item draft title")).not.toBeInTheDocument()
+      expect(screen.queryByDisplayValue("Previous item draft content")).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+      await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+      expect(apiMocks.updateNews).toHaveBeenCalledWith("news-next", replacement)
+    } finally {
+      view.unmount()
+      view.client.clear()
+    }
+  })
+
+  it("preserves a dirty English draft through a same-item refresh", async () => {
+    const source = {
+      ...initialData,
+      title: "Russian source title",
+      content: "Russian source content",
+    }
+    apiMocks.fetchNewsItem.mockResolvedValue({ status: 200, data: source })
+    const view = renderDialog({ language: "en" })
+
+    try {
+      await screen.findByDisplayValue(source.title)
+      fireEvent.change(screen.getByDisplayValue(source.title_en), {
+        target: { value: "Unsaved English translation" },
+      })
+      view.rerender(
+        <QueryClientProvider client={view.client}>
+          <NewsDetailEditDialog
+            {...makeProps({
+              language: "en",
+              initialData: {
+                ...initialData,
+                title: "Refreshed localized title",
+                title_en: "Refreshed translation",
+              },
+            })}
+          />
+        </QueryClientProvider>
+      )
+
+      expect(screen.getByDisplayValue("Unsaved English translation")).toBeInTheDocument()
+      expect(screen.getByDisplayValue(source.title)).toBeInTheDocument()
+      expect(screen.queryByRole("status")).not.toBeInTheDocument()
+      expect(apiMocks.fetchNewsItem).toHaveBeenCalledOnce()
+
+      fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
+      await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+      expect(apiMocks.updateNews).toHaveBeenCalledWith("news-contract", {
+        ...source,
+        title_en: "Unsaved English translation",
+      })
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
+      )
+    } finally {
+      view.unmount()
+      view.client.clear()
+    }
+  })
+
+  it("preserves an image-only draft through a same-item refresh", async () => {
+    const create = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:image-only-draft")
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    const view = renderDialog()
+
+    try {
+      const file = new File(["draft"], "draft.png", { type: "image/png" })
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      fireEvent.change(input, { target: { files: [file] } })
+      expect(create).toHaveBeenCalledWith(file)
+      view.rerender(
+        <QueryClientProvider client={view.client}>
+          <NewsDetailEditDialog
+            {...makeProps({
+              initialData: {
+                ...initialData,
+                title: "Refreshed image-only title",
+                image_url: "https://example.test/refreshed.png",
+              },
+            })}
+          />
+        </QueryClientProvider>
+      )
+
+      expect(screen.getByTestId("edit-preview")).toHaveAttribute("src", "blob:image-only-draft")
+      expect(screen.getByDisplayValue(initialData.title)).toBeInTheDocument()
+      expect(revoke).not.toHaveBeenCalled()
+
+      fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
+      await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+      expect(apiMocks.uploadNewsImage).toHaveBeenCalledExactlyOnceWith(file)
+      expect(apiMocks.updateNews).toHaveBeenCalledWith("news-contract", {
+        ...initialData,
+        image_url: "https://example.test/uploaded.png",
+      })
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
+      )
+    } finally {
+      view.unmount()
+      view.client.clear()
+      create.mockRestore()
+      revoke.mockRestore()
+    }
+  })
+
+  it.each(["new-item", "language", "close-reopen"] as const)(
+    "clears a selected image across the %s session boundary",
+    async (boundary) => {
+      const create = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:previous-session")
+      const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+      const view = renderDialog()
+      const replacement = {
+        ...initialData,
+        title: "Replacement session title",
+        content: "Replacement session content",
+        image_url: "https://example.test/replacement-session.png",
+      }
+
+      try {
+        const file = new File(["previous"], "previous.png", { type: "image/png" })
+        const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+        fireEvent.change(input, { target: { files: [file] } })
+        expect(screen.getByTestId("edit-preview")).toHaveAttribute("src", "blob:previous-session")
+
+        const newsId = boundary === "new-item" ? "news-next" : "news-contract"
+        const language = boundary === "language" ? "en" : "ru"
+        apiMocks.fetchNewsItem.mockResolvedValue({ status: 200, data: replacement })
+
+        if (boundary === "close-reopen") {
+          // Exercise an external close, not handleClose's existing cleanup.
+          view.rerender(
+            <QueryClientProvider client={view.client}>
+              <NewsDetailEditDialog {...makeProps({ open: false })} />
+            </QueryClientProvider>
+          )
+        }
+
+        view.rerender(
+          <QueryClientProvider client={view.client}>
+            <NewsDetailEditDialog {...makeProps({ newsId, language, initialData: replacement })} />
+          </QueryClientProvider>
+        )
+
+        await screen.findByDisplayValue(replacement.title)
+        expect(screen.getByTestId("edit-preview")).toHaveAttribute("src", replacement.image_url)
+        expect(screen.getByText("common:buttons.uploadPhoto")).toBeInTheDocument()
+        expect(
+          screen.queryByRole("button", { name: "common:buttons.reset" })
+        ).not.toBeInTheDocument()
+        expect(revoke).toHaveBeenCalledExactlyOnceWith("blob:previous-session")
+        expect(document.querySelector<HTMLInputElement>('input[type="file"]')).toHaveValue("")
+
+        if (boundary === "language") {
+          expect(apiMocks.fetchNewsItem).toHaveBeenCalledExactlyOnceWith(
+            newsId,
+            expect.objectContaining({ language: "ru", signal: expect.any(AbortSignal) })
+          )
+        } else {
+          expect(apiMocks.fetchNewsItem).not.toHaveBeenCalled()
+        }
+
+        fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
+        await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+        expect(apiMocks.updateNews).toHaveBeenCalledWith(newsId, replacement)
+        expect(apiMocks.uploadNewsImage).not.toHaveBeenCalled()
+        await waitFor(() =>
+          expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
+        )
+      } finally {
+        view.unmount()
+        view.client.clear()
+        create.mockRestore()
+        revoke.mockRestore()
+      }
+    }
+  )
+
+  it("aborts a pristine English source request when same-item data refreshes", async () => {
+    const requests: Array<{
+      signal: AbortSignal
+      resolve: (value: { status: number; data: typeof initialData }) => void
+    }> = []
+    apiMocks.fetchNewsItem.mockImplementation(
+      (_newsId: string, options: { signal: AbortSignal }) =>
+        new Promise<{ status: number; data: typeof initialData }>((resolve) => {
+          requests.push({ signal: options.signal, resolve })
+        })
+    )
+    const view = renderDialog({ language: "en" })
+
+    try {
+      expect(requests).toHaveLength(1)
+      view.rerender(
+        <QueryClientProvider client={view.client}>
+          <NewsDetailEditDialog
+            {...makeProps({
+              language: "en",
+              initialData: { ...initialData, title: "Refreshed localized display" },
+            })}
+          />
+        </QueryClientProvider>
+      )
+
+      expect(requests).toHaveLength(2)
+      expect(requests[0]!.signal.aborted).toBe(true)
+      expect(requests[1]!.signal.aborted).toBe(false)
+      expect(apiMocks.fetchNewsItem).toHaveBeenNthCalledWith(
+        2,
+        "news-contract",
+        expect.objectContaining({ language: "ru", signal: requests[1]!.signal })
+      )
+
+      await act(async () => {
+        requests[0]!.resolve({
+          status: 200,
+          data: { ...initialData, title: "Stale pending source" },
+        })
+      })
+      expect(screen.queryByDisplayValue("Stale pending source")).not.toBeInTheDocument()
+      expect(screen.getByRole("status")).toHaveTextContent("common:statuses.loading")
+      expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+
+      const current = {
+        ...initialData,
+        title: "Current refreshed source",
+        content: "Current refreshed source content",
+      }
+      await act(async () => {
+        requests[1]!.resolve({ status: 200, data: current })
+      })
+      await screen.findByDisplayValue(current.title)
+      expect(screen.queryByDisplayValue("Stale pending source")).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
+      await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+      expect(apiMocks.updateNews).toHaveBeenCalledWith("news-contract", current)
+      expect(apiMocks.fetchNewsItem).toHaveBeenCalledTimes(2)
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
+      )
+    } finally {
+      view.unmount()
+      view.client.clear()
+    }
   })
 })

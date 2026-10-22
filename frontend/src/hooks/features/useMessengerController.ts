@@ -11,6 +11,7 @@ import { useNavigate, useParams } from "@tanstack/react-router"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { formatDate, presets } from "@/utils/date"
+import { compareMessageOrder } from "@/utils/messageOrder"
 import { useAuth } from "@/contexts/AuthContext"
 import { useMessenger } from "@/contexts/MessengerContext"
 import {
@@ -42,6 +43,26 @@ const formatMessageTime = (dateString: string) => {
 // sender, or a new calendar day starts a fresh group.
 const GROUP_GAP_MS = 5 * 60 * 1000
 
+const mergeMessageVersions = (live: ApiMessage, fetched: ApiMessage): ApiMessage => {
+  const merged = { ...fetched, ...live }
+  const deletedAt = live.deleted_at ?? fetched.deleted_at
+  if (deletedAt) {
+    // Deletion is terminal, even if a stale REST/cache snapshot still contains
+    // the old text or attachments.
+    return { ...merged, deleted_at: deletedAt, content: "", attachments: [] }
+  }
+
+  const liveEditTime = live.edited_at ? Date.parse(live.edited_at) : Number.NaN
+  const fetchedEditTime = fetched.edited_at ? Date.parse(fetched.edited_at) : Number.NaN
+  const fetchedHasNewerEdit =
+    Number.isFinite(fetchedEditTime) &&
+    (!live.edited_at || !Number.isFinite(liveEditTime) || fetchedEditTime > liveEditTime)
+
+  return fetchedHasNewerEdit
+    ? { ...merged, content: fetched.content, edited_at: fetched.edited_at }
+    : merged
+}
+
 // Wave 208 SW5 — same-calendar-day check (local time) for date dividers + group
 // boundaries. Pure (no locale / t) so it stays a module-level helper.
 const isSameCalendarDay = (a: Date, b: Date): boolean =>
@@ -57,7 +78,10 @@ const mergeOlderMessagePage = (
   olderPage.items.forEach((message) => byId.set(message.id, message))
   // The live cache wins at an overlapping cursor boundary: it may already
   // contain a newer edit/delete/read or WebSocket update than the REST page.
-  current?.items.forEach((message) => byId.set(message.id, message))
+  current?.items.forEach((message) => {
+    const fetched = byId.get(message.id)
+    byId.set(message.id, fetched ? mergeMessageVersions(message, fetched) : message)
+  })
   const items = [...byId.values()].sort((left, right) => {
     const chronological = new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
     return chronological || left.id.localeCompare(right.id)
@@ -76,10 +100,13 @@ const mergeHydratedMessagePage = (
   const byId = new Map<string, ApiMessage>()
   fetched.items.forEach((message) => byId.set(message.id, message))
   // The cache is sampled only after this request resolves, so it may contain a
-  // newer WebSocket edit/delete/read/reaction than the REST snapshot. Without a
-  // comparable server version on Message, the live record must win same-id
-  // conflicts; live-only ids are retained as well.
-  current?.items.forEach((message) => byId.set(message.id, message))
+  // newer WebSocket edit/delete/read/reaction than the REST snapshot. Compare
+  // edit timestamps when available, preserve either deletion tombstone, and
+  // otherwise retain the live record plus live-only ids.
+  current?.items.forEach((message) => {
+    const server = byId.get(message.id)
+    byId.set(message.id, server ? mergeMessageVersions(message, server) : message)
+  })
   const items = [...byId.values()].sort((left, right) => {
     const chronological = new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
     return chronological || left.id.localeCompare(right.id)
@@ -455,24 +482,37 @@ export const useMessengerController = () => {
       content,
       files,
       replyToMessageId,
+      idempotencyKey,
       optimisticBlobUrls: _optimisticBlobUrls,
     }: {
       chatId: string
       content: string
       files?: File[]
       replyToMessageId?: string
+      idempotencyKey: string
       optimisticBlobUrls: string[]
-    }) => chatApi.sendMessage(chatId, content, files, replyToMessageId),
+    }) => chatApi.sendMessage(chatId, content, files, replyToMessageId, idempotencyKey),
     onSuccess: (newMessage, variables) => {
       queryClient.setQueryData<MessagesListResponse | undefined>(
         ["messages", variables.chatId],
         (old) => {
           const items = old?.items ?? []
           if (items.some((m) => m.id === newMessage.id)) return old
+          // Keep HTTP completions in backend (created_at, id) order without
+          // applying the live WebSocket cache cap to previously loaded history.
+          // Invalid timestamps retain arrival order rather than guessing an edge.
+          const insertionIndex = items.some(
+            (message) => compareMessageOrder(newMessage, message) === null
+          )
+            ? -1
+            : items.findIndex((message) => compareMessageOrder(newMessage, message)! < 0)
           return {
             has_more: old?.has_more ?? false,
             next_cursor: old?.next_cursor ?? null,
-            items: [...items, newMessage],
+            items:
+              insertionIndex < 0
+                ? [...items, newMessage]
+                : [...items.slice(0, insertionIndex), newMessage, ...items.slice(insertionIndex)],
           }
         }
       )
@@ -867,8 +907,8 @@ export const useMessengerController = () => {
     return () => sendLeave(selectedChatId)
   }, [selectedChatId, isConnected, sendJoin, sendLeave])
 
-  const handleSendMessage = (text: string, files: File[]) => {
-    if (!selectedChatId) return
+  const handleSendMessage = (text: string, files: File[]): Promise<boolean> => {
+    if (!selectedChatId) return Promise.resolve(false)
 
     const tempId = crypto.randomUUID()
     const now = new Date()
@@ -913,25 +953,31 @@ export const useMessengerController = () => {
       }),
     }
 
-    startTransition(async () => {
-      addOptimisticMessage(optimisticMsg)
-      try {
-        await sendMessageMutation.mutateAsync({
-          chatId: selectedChatId,
-          content: text,
-          files,
-          replyToMessageId: replyingTo?.id,
-          optimisticBlobUrls,
-        })
-      } catch {
-        // React Query's onError owns cleanup. Consuming the rejection keeps the
-        // transition action from surfacing an already-handled send failure.
-        return
-      }
+    const delivered = new Promise<boolean>((resolve) => {
+      startTransition(async () => {
+        addOptimisticMessage(optimisticMsg)
+        try {
+          await sendMessageMutation.mutateAsync({
+            chatId: selectedChatId,
+            content: text,
+            files,
+            replyToMessageId: replyingTo?.id,
+            idempotencyKey: tempId,
+            optimisticBlobUrls,
+          })
+          resolve(true)
+        } catch {
+          // React Query's onError owns cleanup. Consuming the rejection keeps the
+          // transition action from surfacing an already-handled send failure; the
+          // false outcome tells the composer to keep its draft.
+          resolve(false)
+        }
+      })
     })
     // Wave 207 — clear the reply context once the send is dispatched (the chip
     // disappears; the optimistic bubble already carries its own replyTo copy).
     setReplyingTo(null)
+    return delivered
   }
 
   // Wave 207 — start replying to a message. Resolves from transformedMessages

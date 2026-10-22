@@ -69,6 +69,15 @@ describe("api/client — LHCI safe adapter", () => {
     expect(response.data).toEqual({ items: [] })
   })
 
+  it("skips the real CSRF fetch when the LHCI adapter is active", async () => {
+    document.cookie = "csrf_token=; Max-Age=0; path=/"
+    const fetchSpy = vi.fn()
+    vi.stubGlobal("fetch", fetchSpy)
+    const { ensureCsrfCookie } = await import("@/api/client")
+
+    await expect(ensureCsrfCookie()).resolves.toBeUndefined()
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
   it("delegates explicitly mocked chat routes to the real adapter", async () => {
     server.use(
       http.get("*/chats", () =>
@@ -618,6 +627,38 @@ describe("api/client — SSR request branches", () => {
     expect(AxiosHeaders.from(seen[0]!.headers).get("Cookie")).toBeUndefined()
   })
 
+  it("omits absent fingerprint fields when forwarding SSR request metadata", async () => {
+    const fingerprintGetter = vi.fn(() => ({}))
+    vi.stubGlobal(
+      "__ssrCookieGetter__",
+      vi.fn(() => undefined)
+    )
+    vi.stubGlobal("__ssrFingerprintHeadersGetter__", fingerprintGetter)
+    const { default: ssrApi } = await import("@/api/client")
+    const seen: InternalAxiosRequestConfig[] = []
+    ssrApi.defaults.adapter = async (config): Promise<AxiosResponse> => {
+      seen.push(config)
+      return {
+        config,
+        data: { ok: true },
+        status: 200,
+        statusText: "OK",
+        headers: new AxiosHeaders(),
+        request: {},
+      }
+    }
+
+    await ssrApi.get("/news", {
+      headers: { "Accept-Language": "en", "X-Test-Header": "preserved" },
+    })
+
+    const headers = AxiosHeaders.from(seen[0]!.headers)
+    expect(headers.get("User-Agent")).toBeUndefined()
+    expect(headers.get("Cookie")).toBeUndefined()
+    expect(headers.get("Accept-Language")).toBe("en")
+    expect(headers.get("X-Test-Header")).toBe("preserved")
+    expect(fingerprintGetter).toHaveBeenCalledOnce()
+  })
   it("preserves the request headers object when SSR metadata is absent", async () => {
     vi.doMock("@/api/interceptors/language", () => ({
       applyLanguageHeader: (config: InternalAxiosRequestConfig) => config,

@@ -1,4 +1,14 @@
 {{- if .Values.fileProcessor.enabled }}
+{{- $applicationSecretName := include "university-ecosystem.applicationSecretName" . -}}
+{{- $connectionsSecretName := required "connections.existingSecret must be set" .Values.connections.existingSecret -}}
+{{- $fileProcessorConnectionKeys := list (required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey) -}}
+{{- if not .Values.fileProcessor.config.natsURL -}}
+{{- $fileProcessorConnectionKeys = append $fileProcessorConnectionKeys (required "connections.natsURLKey must be set" .Values.connections.natsURLKey) -}}
+{{- end -}}
+{{- $fileProcessorSecrets := list
+  (dict "id" "application" "secretName" $applicationSecretName "keys" (list "minio-access-key" "minio-secret-key" "internal-hmac-secret" "jwt-rsa-public-key" "temporal-api-key"))
+  (dict "id" "connections" "secretName" $connectionsSecretName "keys" $fileProcessorConnectionKeys)
+-}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -21,6 +31,7 @@ spec:
         {{- include "university-ecosystem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: file-processor
         {{ printf "%s-nats-client" .Release.Name }}: "true"
+        {{ printf "%s-revocation-redis-client" .Release.Name }}: "true"
       annotations:
         university-ecosystem.io/source-sha: {{ .Values.global.imageTag | quote }}
         prometheus.io/scrape: "true"
@@ -57,53 +68,39 @@ spec:
               containerPort: 8080
               protocol: TCP
           env:
+            {{ if .Values.fileProcessor.config.natsURL }}
             - name: FP_NATS_URL
-              {{- if .Values.fileProcessor.config.natsURL }}
               value: {{ default (printf "nats://%s-nats:4222" .Release.Name) .Values.fileProcessor.config.natsURL | quote }}
-              {{- else }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
-                  key: {{ required "connections.natsURLKey must be set" .Values.connections.natsURLKey | quote }}
-              {{- end }}
+            {{ else }}
+            - name: FP_NATS_URL_FILE
+              value: {{ printf "/run/secrets/%s/%s" $connectionsSecretName (required "connections.natsURLKey must be set" .Values.connections.natsURLKey) | quote }}
+            {{ end }}
             - name: FP_MINIO_ENDPOINT
               value: {{ .Values.fileProcessor.config.minioEndpoint | quote }}
-            - name: FP_MINIO_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
-                  key: minio-access-key
-            - name: FP_MINIO_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
-                  key: minio-secret-key
+            - name: FP_MINIO_ACCESS_KEY_FILE
+              value: {{ printf "/run/secrets/%s/minio-access-key" $applicationSecretName | quote }}
+            - name: FP_MINIO_SECRET_KEY_FILE
+              value: {{ printf "/run/secrets/%s/minio-secret-key" $applicationSecretName | quote }}
             - name: FP_TEMPORAL_HOST
               value: {{ .Values.fileProcessor.config.temporalHost | quote }}
             - name: FP_TEMPORAL_TLS_DISABLED
               value: {{ .Values.fileProcessor.config.temporalTLSDisabled | quote }}
             - name: FP_MINIO_SECURE
               value: {{ .Values.fileProcessor.config.minioSecure | quote }}
-            - name: FP_PROCESSING_CAPABILITY_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
-                  key: internal-hmac-secret
+            - name: FP_PROCESSING_CAPABILITY_SECRET_FILE
+              value: {{ printf "/run/secrets/%s/internal-hmac-secret" $applicationSecretName | quote }}
             - name: FP_JWT_AUDIENCE
               value: {{ required "gateway.config.jwtAudience must be set" .Values.gateway.config.jwtAudience | quote }}
             - name: FP_JWT_ISSUER
               value: {{ required "global.jwtIssuer must be set" .Values.global.jwtIssuer | quote }}
             - name: FP_JWKS_URL
-              value: {{ default (printf "http://%s-backend:%v/.well-known/jwks.json" (include "university-ecosystem.fullname" .) .Values.backend.service.port) .Values.fileProcessor.config.jwksURL | quote }}
+              value: {{ default (printf "http://%s:%v/.well-known/jwks.json" (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port) .Values.fileProcessor.config.jwksURL | quote }}
             - name: FP_JWKS_REFRESH_INTERVAL
               value: {{ .Values.fileProcessor.config.jwksRefreshInterval | quote }}
             - name: FP_JWT_ACTIVE_KID
               value: {{ .Values.fileProcessor.config.jwtActiveKID | quote }}
-            - name: FP_REVOCATION_REDIS_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
-                  key: {{ required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey | quote }}
+            - name: FP_REVOCATION_REDIS_URL_FILE
+              value: {{ printf "/run/secrets/%s/%s" $connectionsSecretName (required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey) | quote }}
             - name: FP_ENVIRONMENT
               value: {{ .Values.global.environment | quote }}
             - name: FP_OTLP_ENDPOINT
@@ -111,9 +108,9 @@ spec:
             - name: FP_OTLP_INSECURE
               value: {{ .Values.fileProcessor.config.otlpInsecure | quote }}
             - name: FP_TEMPORAL_API_KEY_FILE
-              value: /run/secrets/temporal-api-key
+              value: {{ printf "/run/secrets/%s/temporal-api-key" $applicationSecretName | quote }}
             - name: FP_RSA_PUBLIC_KEY_FILE
-              value: /run/secrets/jwt-rsa-public-key.pem
+              value: {{ printf "/run/secrets/%s/jwt-rsa-public-key" $applicationSecretName | quote }}
             {{- if .Values.internalGrpcMTLS.enabled }}
             - name: FP_GRPC_TLS_CERT_FILE
               value: /run/secrets/internal-grpc-mtls-server/tls.crt
@@ -159,24 +156,14 @@ spec:
           resources:
             {{- toYaml .Values.fileProcessor.resources | nindent 12 }}
           volumeMounts:
-            - name: credentials
-              mountPath: /run/secrets
-              readOnly: true
+            {{- include "university-ecosystem.secretVolumeMounts" (dict "secrets" $fileProcessorSecrets) | nindent 12 }}
             {{- if .Values.internalGrpcMTLS.enabled }}
             - name: internal-grpc-mtls-server
               mountPath: /run/secrets/internal-grpc-mtls-server
               readOnly: true
             {{- end }}
       volumes:
-        - name: credentials
-          secret:
-            secretName: {{ include "university-ecosystem.applicationSecretName" . | quote }}
-            defaultMode: 0440
-            items:
-              - key: jwt-rsa-public-key
-                path: jwt-rsa-public-key.pem
-              - key: temporal-api-key
-                path: temporal-api-key
+        {{- include "university-ecosystem.secretVolumes" (dict "secrets" $fileProcessorSecrets) | nindent 8 }}
         {{- if .Values.internalGrpcMTLS.enabled }}
         - name: internal-grpc-mtls-server
           secret:

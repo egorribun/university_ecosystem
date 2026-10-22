@@ -315,11 +315,13 @@ async def test_verify_wrong_code_update_retains_revision_and_pending_guards() ->
         expires_at=NOW + timedelta(minutes=5),
         attempt_count=0,
         revision=7,
+        payload={"mfa_epoch": 0},
     )
     user = SimpleNamespace(
         id=user_id,
         email="student@example.edu",
         email_mfa_enabled_at=NOW,
+        mfa_epoch=0,
     )
     service._rate_limit = AsyncMock()  # type: ignore[method-assign]
     service._resolve_recipient = AsyncMock(  # type: ignore[method-assign]
@@ -369,6 +371,7 @@ async def test_resend_returns_masked_delivery_hint() -> None:
         id=challenge.user_id,
         email="student@example.edu",
         email_mfa_enabled_at=NOW,
+        mfa_epoch=0,
     )
     service._rate_limit = AsyncMock()  # type: ignore[method-assign]
     service._resolve_recipient = AsyncMock(  # type: ignore[method-assign]
@@ -437,6 +440,7 @@ def _challenge_for_survivor_resend() -> SimpleNamespace:
         expires_at=NOW + timedelta(minutes=5),
         resend_available_at=NOW,
         attempt_count=0,
+        payload={"mfa_epoch": 0},
     )
 
 
@@ -456,6 +460,7 @@ async def test_email_mfa_enablement_increments_zero_epoch_once() -> None:
         expires_at=NOW + timedelta(minutes=5),
         attempt_count=0,
         revision=1,
+        payload={"mfa_epoch": 0},
     )
     user = SimpleNamespace(
         id=user_id,

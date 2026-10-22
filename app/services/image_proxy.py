@@ -155,7 +155,7 @@ async def get_transformed_image(
 
             redis_client = await get_cache_client()
             payload = _cache_encode(transformed_data, mime)
-            await redis_client.setex(redis_key, _CACHE_TTL, payload)
+            await redis_client.set(redis_key, payload, ex=_CACHE_TTL)
         except (ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
             # RZ-20-04: Narrowed — Redis write failure is non-fatal.
             logger.warning("Redis cache write failed for %s: %s", path, exc)

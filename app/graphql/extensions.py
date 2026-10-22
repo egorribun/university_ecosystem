@@ -24,6 +24,7 @@ from graphql.language.visitor import Visitor, visit
 from strawberry.extensions import SchemaExtension
 
 from app.core.logging import get_logger
+from app.core.ratelimit.utils import resolve_client_ip
 
 if TYPE_CHECKING:
     from graphql.language.ast import DocumentNode
@@ -320,18 +321,11 @@ class QueryCostExtension(SchemaExtension):
                     "cost/min. Reduce query frequency or complexity and try again."
                 )
         else:
+            # Client identity comes only from the trusted-proxy resolver: forwarded
+            # headers count only when the direct peer is a configured proxy.
             ip = None
-            if request is not None:
-                client = getattr(request, "client", None)
-                if client is not None and getattr(client, "host", None):
-                    ip = client.host
-                if not ip:
-                    headers = getattr(request, "headers", {})
-                    forwarded = headers.get("x-forwarded-for") or headers.get(
-                        "X-Forwarded-For"
-                    )
-                    if forwarded:
-                        ip = forwarded.split(",")[0].strip()
+            if request is not None and getattr(request, "client", None) is not None:
+                ip = resolve_client_ip(request)
             if not ip:
                 ip = "127.0.0.1"
             bucket_key = f"gql:token_bucket:ip:{ip}"
@@ -537,9 +531,14 @@ class PersistedQueryExtension(SchemaExtension):
             computed_hash = _hash_query(current_query)
             query_stripped = current_query.strip()
 
+            # A known hash must never authorize a different submitted body.
+            # Keep hash-only resolution above and legacy query-key manifests,
+            # but bind any supplied APQ hash to this normalized operation.
+            if client_hash and client_hash != computed_hash:
+                raise GraphQLError("Query not found in persisted query allowlist")
+
             is_in_allowlist = (
-                (client_hash and client_hash in manifest)
-                or (computed_hash in manifest)
+                (computed_hash in manifest)
                 or (current_query in manifest)
                 or (query_stripped in manifest)
             )

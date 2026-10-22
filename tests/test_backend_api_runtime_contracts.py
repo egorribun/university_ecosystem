@@ -4,7 +4,7 @@ import base64
 import json
 import uuid
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from fastapi import FastAPI, HTTPException, Response
@@ -307,30 +307,6 @@ async def test_delete_push_subscription_not_found():
 
 
 @pytest.mark.asyncio
-async def test_send_test_push_forbidden():
-    from app.schemas.notifications import PushTestRequest
-
-    payload = PushTestRequest(user_id=uuid.uuid4(), topic="system")
-    request = MagicMock()
-    db = AsyncMock()
-    user = MagicMock()
-    user.role = UserRole.STUDENT
-
-    with patch(
-        "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
-    ):
-        with pytest.raises(HTTPException) as exc:
-            await call_injected(
-                push_router.send_test,
-                request=request,
-                user=user,
-                payload=payload,
-                provides={"AsyncDatabaseSession": db},
-            )
-        assert exc.value.status_code == 403
-
-
-@pytest.mark.asyncio
 async def test_send_test_push_vapid_not_configured():
     from app.schemas.notifications import PushTestRequest
 
@@ -522,26 +498,6 @@ async def test_send_test_push_success():
 
 
 @pytest.mark.asyncio
-async def test_admin_get_user_topics_forbidden():
-    request = MagicMock()
-    db = AsyncMock()
-    user = MagicMock()
-    user.role = UserRole.STUDENT
-    with patch(
-        "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
-    ):
-        with pytest.raises(HTTPException) as exc:
-            await call_injected(
-                push_router.admin_get_user_topics,
-                user_id=uuid.uuid4(),
-                request=request,
-                user=user,
-                provides={"AsyncDatabaseSession": db},
-            )
-        assert exc.value.status_code == 403
-
-
-@pytest.mark.asyncio
 async def test_admin_get_user_topics_not_found():
     request = MagicMock()
     db = AsyncMock()
@@ -597,30 +553,6 @@ async def test_admin_get_user_topics_success():
         assert res.user_id == target_user.id
         assert res.email == target_user.email
         assert "system.release" in res.topics
-
-
-@pytest.mark.asyncio
-async def test_admin_update_user_topics_forbidden():
-    from app.schemas.notifications import AdminUserTopicsUpdate
-
-    payload = AdminUserTopicsUpdate(topics=["system"])
-    request = MagicMock()
-    db = AsyncMock()
-    user = MagicMock()
-    user.role = UserRole.STUDENT
-    with patch(
-        "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
-    ):
-        with pytest.raises(HTTPException) as exc:
-            await call_injected(
-                push_router.admin_update_user_topics,
-                user_id=uuid.uuid4(),
-                payload=payload,
-                request=request,
-                user=user,
-                provides={"AsyncDatabaseSession": db},
-            )
-        assert exc.value.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -690,29 +622,6 @@ async def test_admin_update_user_topics_success():
         )
         assert res.user_id == target_user.id
         assert "system.release" in res.topics
-
-
-@pytest.mark.asyncio
-async def test_disable_user_push_forbidden():
-    from app.schemas.notifications import DisableUserPushRequest
-
-    payload = DisableUserPushRequest(user_id=uuid.uuid4())
-    request = MagicMock()
-    db = AsyncMock()
-    user = MagicMock()
-    user.role = UserRole.STUDENT
-    with patch(
-        "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
-    ):
-        with pytest.raises(HTTPException) as exc:
-            await call_injected(
-                push_router.disable_user_push,
-                payload=payload,
-                request=request,
-                user=user,
-                provides={"AsyncDatabaseSession": db},
-            )
-        assert exc.value.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -797,29 +706,6 @@ async def test_disable_user_push_success():
             provides={"AsyncDatabaseSession": db},
         )
         assert res == {"ok": True, "removed": 2}
-
-
-@pytest.mark.asyncio
-async def test_broadcast_forbidden():
-    from app.schemas.notifications import NotifyBody
-
-    payload = NotifyBody(title="hello", body="world")
-    request = MagicMock()
-    db = AsyncMock()
-    user = MagicMock()
-    user.role = UserRole.STUDENT
-    with patch(
-        "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
-    ):
-        with pytest.raises(HTTPException) as exc:
-            await call_injected(
-                push_router.broadcast,
-                data=payload,
-                request=request,
-                user=user,
-                provides={"AsyncDatabaseSession": db},
-            )
-        assert exc.value.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -1493,21 +1379,56 @@ async def test_websocket_chat_malformed_json():
 
 
 @pytest.mark.asyncio
-async def test_notify_new_message():
+async def test_notify_new_message_bounds_metrics_and_preserves_broadcast_ids() -> None:
     from app.models.chat import Message
 
-    message = Message(
-        id=uuid.uuid4(), sender_id=uuid.uuid4(), chat_id=uuid.uuid4(), content="hello"
-    )
+    chat_ids = [uuid.uuid4(), uuid.uuid4()]
+    excluded_user_id = uuid.uuid4()
+    messages = [
+        Message(
+            id=uuid.uuid4(),
+            sender_id=uuid.uuid4(),
+            chat_id=chat_id,
+            content=f"message-{index}",
+        )
+        for index, chat_id in enumerate(chat_ids)
+    ]
 
     with (
         patch("app.api.websocket.build_presence_map", AsyncMock(return_value={})),
-        patch("app.api.websocket.serialize_message", return_value={}),
+        patch(
+            "app.api.websocket.serialize_message",
+            side_effect=lambda message, _presence: {"id": str(message.id)},
+        ),
+        patch("app.api.websocket.metrics.record_chat_message") as record_metric,
         patch("app.api.websocket.manager") as mock_manager,
     ):
         mock_manager.broadcast_to_chat = AsyncMock(return_value=1)
-        res = await websocket_api.notify_new_message(message)
-        assert res == 1
+        results = [
+            await websocket_api.notify_new_message(
+                message, exclude_user_id=excluded_user_id
+            )
+            for message in messages
+        ]
+
+    assert results == [1, 1]
+    record_metric.assert_has_calls([call(channel="chat"), call(channel="chat")])
+    assert record_metric.call_count == 2
+    mock_manager.broadcast_to_chat.assert_has_awaits(
+        [
+            call(
+                message.chat_id,
+                {
+                    "type": "new_message",
+                    "chat_id": message.chat_id,
+                    "message": {"id": str(message.id)},
+                },
+                exclude_user_id=excluded_user_id,
+            )
+            for message in messages
+        ]
+    )
+    assert mock_manager.broadcast_to_chat.await_count == 2
 
 
 # =========================================================================

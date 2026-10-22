@@ -115,6 +115,25 @@ describe("useMediaQuery", () => {
     expect(result.current).toBe(true)
   })
 
+  it("applies a match that changes before the initial subscription finishes", () => {
+    const query = "(changes-before-subscription)"
+    let matches = false
+    const mediaQueryList = createMediaQueryList(query, false)
+    Object.defineProperty(mediaQueryList, "matches", {
+      configurable: true,
+      get: () => matches,
+    })
+    vi.spyOn(mediaQueryList, "addEventListener").mockImplementation((_type, listener) => {
+      matches = true
+      listeners.set(query, listener as (event: MediaQueryListEvent) => void)
+    })
+    vi.mocked(window.matchMedia).mockReturnValue(mediaQueryList)
+
+    const { result } = renderHook(() => useMediaQuery(query))
+
+    expect(result.current).toBe(true)
+  })
+
   it("rebinds subscriptions when the query changes", () => {
     const { result, rerender, unmount } = renderHook(({ query }) => useMediaQuery(query), {
       initialProps: { query: "(prefers-reduced-motion: reduce)" },

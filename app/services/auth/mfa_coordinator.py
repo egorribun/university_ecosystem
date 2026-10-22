@@ -146,6 +146,7 @@ class MfaCoordinator:
         session_identifier: str | None = None,
     ) -> list[auth_schemas.MfaMethodChallengeOut]:
         methods: list[auth_schemas.MfaMethodChallengeOut] = []
+        expected_mfa_epoch = int(getattr(user, "mfa_epoch", 0) or 0)
         from app.core.fingerprint import extract_request_fingerprint
         from app.core.ratelimit import resolve_client_ip
 
@@ -160,7 +161,7 @@ class MfaCoordinator:
             # A password reset or MFA lifecycle change advances the account
             # epoch; issuing a new challenge from the stale session would
             # recreate a trust path that the mutation intentionally revoked.
-            current_epoch = int(getattr(user, "mfa_epoch", 0) or 0)
+            current_epoch = expected_mfa_epoch
             session_epoch = int(getattr(session, "mfa_epoch", current_epoch) or 0)
             if session_epoch != current_epoch:
                 from app.api.validation import raise_http_error
@@ -205,6 +206,7 @@ class MfaCoordinator:
             issued = await email_otp_service.issue(
                 self.repo.db,
                 user_id=user.id,
+                expected_mfa_epoch=expected_mfa_epoch,
                 flow=flow,
                 session_identifier=bound_session_identifier,
                 client_fingerprint=fingerprint,

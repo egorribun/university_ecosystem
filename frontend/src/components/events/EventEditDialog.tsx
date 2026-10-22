@@ -5,6 +5,13 @@ import { Button } from "@/components/ui/Button"
 import { Dialog } from "@/components/ui/Dialog"
 import SmartImage from "@/components/media/SmartImage"
 import { cn } from "@/utils/cn"
+import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
+import {
+  eventDateErrorTranslationKey,
+  formatEventDateInput,
+  resolveCampusEventDateRange,
+  type EventDateFieldError,
+} from "@/utils/eventDateTime"
 
 import type { EventEditDraft } from "@/types/Event"
 
@@ -17,6 +24,8 @@ type EventEditDialogProps = {
   loading: boolean
   imageLoading: boolean
   dateError: boolean
+  startDateError?: EventDateFieldError | null
+  endDateError?: EventDateFieldError | null
   normalizedTitle: string
   normalizedLocation: string
   newImage: File | null
@@ -38,12 +47,23 @@ export function EventEditDialog({
   loading,
   imageLoading,
   dateError,
+  startDateError = null,
+  endDateError = null,
   normalizedTitle,
   normalizedLocation,
   setNewImage,
   previewUrl,
 }: EventEditDialogProps) {
   const { t, i18n } = useTranslation(["events", "common"])
+  const campusTimezone = useCampusTimezone()
+  const dateRange = resolveCampusEventDateRange(
+    draft.starts_at ?? "",
+    draft.ends_at ?? "",
+    campusTimezone
+  )
+  const resolvedStartDateError = startDateError ?? dateRange.startError
+  const resolvedEndDateError = endDateError ?? dateRange.endError
+  const resolvedDateError = dateError || !dateRange.valid
   const language = i18n.language
   const imageInputRef = useRef<HTMLInputElement>(null)
   const baseId = useId()
@@ -80,6 +100,17 @@ export function EventEditDialog({
     () => (previewUrl ? previewUrl : draft.image_url || undefined),
     [draft.image_url, previewUrl]
   )
+  const startDateErrorText = resolvedStartDateError
+    ? t(eventDateErrorTranslationKey(resolvedStartDateError, "start"))
+    : undefined
+  const endDateErrorText = resolvedEndDateError
+    ? t(eventDateErrorTranslationKey(resolvedEndDateError, "end"))
+    : undefined
+  const endDateOrderErrorText =
+    resolvedDateError && !resolvedEndDateError && !resolvedStartDateError
+      ? t("events:form.errors.endsBeforeStarts")
+      : undefined
+  const endDateErrorMessage = endDateErrorText ?? endDateOrderErrorText
 
   return (
     <Dialog
@@ -106,7 +137,11 @@ export function EventEditDialog({
             variant="solid"
             onClick={onSave}
             disabled={
-              loading || imageLoading || dateError || !normalizedTitle || !normalizedLocation
+              loading ||
+              imageLoading ||
+              resolvedDateError ||
+              !normalizedTitle ||
+              !normalizedLocation
             }
             className="w-full sm:w-auto"
           >
@@ -187,10 +222,17 @@ export function EventEditDialog({
           <input
             id={`${baseId}-start`}
             type="datetime-local"
-            value={normalizeDatetimeLocal(draft.starts_at)}
+            value={formatEventDateInput(draft.starts_at, campusTimezone)}
             onChange={(e) => setDraft({ ...draft, starts_at: e.target.value })}
-            className={inputClass}
+            className={cn(inputClass, startDateErrorText && "border-error-border")}
+            aria-invalid={Boolean(startDateErrorText) || undefined}
+            aria-describedby={startDateErrorText ? `${baseId}-start-error` : undefined}
           />
+          {startDateErrorText && (
+            <p id={`${baseId}-start-error`} role="alert" className="mt-1 text-sm text-error-text">
+              {startDateErrorText}
+            </p>
+          )}
         </div>
         <div>
           <label
@@ -202,13 +244,18 @@ export function EventEditDialog({
           <input
             id={`${baseId}-end`}
             type="datetime-local"
-            value={normalizeDatetimeLocal(draft.ends_at)}
+            value={formatEventDateInput(draft.ends_at, campusTimezone)}
             onChange={(e) => setDraft({ ...draft, ends_at: e.target.value })}
-            className={cn(inputClass, dateError && "border-error-border")}
+            className={cn(
+              inputClass,
+              (resolvedDateError || endDateErrorMessage) && "border-error-border"
+            )}
+            aria-invalid={Boolean(endDateErrorMessage) || undefined}
+            aria-describedby={endDateErrorMessage ? `${baseId}-end-error` : undefined}
           />
-          {dateError && (
-            <p className="mt-1 text-sm text-error-text">
-              {t("events:form.errors.endsBeforeStarts")}
+          {endDateErrorMessage && (
+            <p id={`${baseId}-end-error`} role="alert" className="mt-1 text-sm text-error-text">
+              {endDateErrorMessage}
             </p>
           )}
         </div>
@@ -228,17 +275,23 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <Button as="label" variant="solid" disabled={imageLoading} className="w-full sm:w-auto">
+          <Button
+            type="button"
+            onClick={() => imageInputRef.current?.click()}
+            variant="solid"
+            disabled={imageLoading}
+            className="w-full sm:w-auto"
+          >
             {imageLoading ? t("common:statuses.uploading") : t("common:buttons.changePhoto")}
-            <input
-              type="file"
-              accept="image/*"
-              hidden
-              ref={imageInputRef}
-              onChange={handleImageChange}
-              onClick={(e) => e.stopPropagation()}
-            />
           </Button>
+          <input
+            type="file"
+            accept="image/*"
+            hidden
+            ref={imageInputRef}
+            onChange={handleImageChange}
+            onClick={(e) => e.stopPropagation()}
+          />
           {cardImageUrl && (
             <div className="mt-3">
               <SmartImage

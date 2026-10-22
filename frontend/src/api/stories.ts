@@ -11,24 +11,29 @@ export type StoryCreatePayload = StoryCreate
 export type StoryUpdatePayload = StoryUpdate
 
 export function fetchStories() {
-  return listStoriesApiV1StoriesGet({
+  const options = {
     etagCacheKey: "dashboard:stories",
-  } as unknown as Parameters<typeof listStoriesApiV1StoriesGet>[0])
+    throwOnError: true as const,
+    validateStatus: (status: number) => (status >= 200 && status < 300) || status === 304,
+  }
+  return listStoriesApiV1StoriesGet(options)
 }
 
 export function createStory(payload: StoryCreatePayload) {
-  return createStoryApiV1StoriesPost({ body: payload })
+  return createStoryApiV1StoriesPost({ body: payload, throwOnError: true })
 }
 
 export const updateStory = (id: string, data: StoryUpdatePayload) =>
   updateStoryApiV1StoriesStoryIdPatch({
     path: { story_id: id },
     body: data,
+    throwOnError: true,
   })
 
 export const deleteStory = (id: string) =>
   deleteStoryApiV1StoriesStoryIdDelete({
     path: { story_id: id },
+    throwOnError: true,
   })
 
 export async function uploadStoryCover(file: File) {
