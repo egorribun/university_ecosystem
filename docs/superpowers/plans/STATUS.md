@@ -4,9 +4,11 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **223/512 (43,6%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-223-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **228/512 (44,5%)** по [последней source-bound контрольной точке](#group-pwa-auth-and-achievement-link-closure-checkpoint-2026-10-22); полный список принятых ID и evidence приведён в [аудите](../../audits/AUDIT-2026-10.md#group-pwa-auth-and-achievement-link-closure-checkpoint-2026-10-22). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
-Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
+Текущая работа идёт только на `egorribun`, в одном checkout, через открытый [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343); [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306) был owner-merged и является историческим. Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
+
+Датированные checkpoint-разделы ниже сохраняют значения и статусы на указанных source. Их прежние acceptance counts, включая 223/512, и тогдашние pending states — исторические; актуальная нижняя граница указана выше и раскрыта в последней closure section.
 
 **Работа возобновлена по поручению владельца 2026-10-20, 20:28 UTC.** Начальная сверка GitHub подтверждает опубликованную контрольную точку [8c202a75](https://github.com/egorribun/university_ecosystem/commit/8c202a7570b8cdbece3fda11b6097493e40966a8), tree 94ff3ce66f90998f02886790e74e763f1a3d79c3: 24 пути уже опубликованы, а не остаются локальным набором. Приватные кандидаты не импортируются и не считаются частью этого source. Продолжение выполняется через GitHub plugin; сведения о локальных прогонах ниже сохранены как исторические доказательства, а не новые проверки. На момент возобновления принятый ledger составлял 156/512; новая приёмка приведена ниже.
 
@@ -1881,3 +1883,43 @@ be observed before implementation, not waived. The two backend proof
 candidates must pass on their own source before either ID is accepted.
 The DOMPurify patch included in the preceding commit remains pending fresh
 dependency/PDF checks. Global release holds remain open.
+
+## AUD-292/293/295 regression and implementation follow-up (2026-10-22)
+
+The tests-first RED was observed on source
+[55b573bc](https://github.com/egorribun/university_ecosystem/commit/55b573bcbdc5f8e0e2870f39913a528664a1c2ef):
+[quick job 120028837010](https://github.com/egorribun/university_ecosystem/actions/runs/39836723405/job/120028837010)
+recorded 507 passes and six expected failures. Node quality contracts
+passed all 658 cases; the 55 worker/export cases, including actual
+multilingual jsPDF generation, passed. [Node audit job
+120028130950](https://github.com/egorribun/university_ecosystem/actions/runs/39836723405/job/120028130950)
+succeeded with no unapproved advisories or missing overrides.
+
+This follow-up implements translated fallback handling for unknown detail
+shapes in the Reset Password and Register forms. Clipboard handling writes
+the displayed contact value and shows success feedback only after
+`clipboard.writeText` resolves, preserving the existing session-race guard.
+Original regression assertions remain; only Prettier line wrapping in two
+tests changed. Fresh hosted GREEN for the implementation remains pending.
+
+The consumer phase of [Contract job
+120027735677](https://github.com/egorribun/university_ecosystem/actions/runs/39836723405/job/120027735677)
+completed 1,428 passes / one deselected in 504.94 seconds. The policy phase
+logged 263 of 270 passes before the 10-minute cancellation; seven outcomes
+are unestablished. The overall contract is incomplete, not GREEN. Timeouts,
+fixtures and workflow are unchanged; rerun the complete contract on the
+implementation source. [Owned Live job
+120026869110](https://github.com/egorribun/university_ecosystem/actions/runs/39836723017/job/120026869110)
+passed 38 Core cases with two existing skips, then failed at the separate
+NATS broker stage; cleanup and receipt upload succeeded (artifact
+12452861095).
+
+No new audit IDs are accepted by this follow-up. All 22 named tests for
+AUD-255 (14) and AUD-264 (8) passed, but both findings remain unaccepted
+pending complete source-bound Contract evidence. Fresh implementation-source
+GREEN and remaining gates are pending. Rust job
+[120026868744](https://github.com/egorribun/university_ecosystem/actions/runs/39836723002/job/120026868744)
+and the Go gates in [performance run
+39836723002](https://github.com/egorribun/university_ecosystem/actions/runs/39836723002)
+passed on source 55b573bc; global NATS and release acceptance remain
+separate. No merge, deployment or release is performed.

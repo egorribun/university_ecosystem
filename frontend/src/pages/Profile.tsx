@@ -235,6 +235,22 @@ export default function Profile() {
     }
   }
 
+  const handleCopyContact = async (value: string | null | undefined) => {
+    const isCurrent = captureOperation()
+    if (!isCurrent()) return
+    setSnackbar(null)
+    try {
+      if (!value || typeof navigator.clipboard?.writeText !== "function") {
+        setSnackbar({ key: "error", severity: "error" })
+        return
+      }
+      await navigator.clipboard.writeText(value)
+      if (isCurrent()) setSnackbar({ key: "copied", severity: "success" })
+    } catch {
+      if (isCurrent()) setSnackbar({ key: "error", severity: "error" })
+    }
+  }
+
   const handleCancel = () => {
     setEdit(false)
     navigate({ to: "/profile", replace: true })
@@ -302,8 +318,8 @@ export default function Profile() {
                       isOnline={isOnline}
                       statusOffset={statusOffset}
                       statusSize={statusSize}
-                      onEmailClick={() => setSnackbar({ key: "copied", severity: "success" })}
-                      onTelegramClick={() => setSnackbar({ key: "copied", severity: "success" })}
+                      onEmailClick={() => void handleCopyContact(user?.email)}
+                      onTelegramClick={() => void handleCopyContact(user?.profile_detail?.telegram)}
                       onQrClick={() => setQrOpen(true)}
                       vCardData={vCardData}
                       reduceMotion={reduceMotion}

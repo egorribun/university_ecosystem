@@ -491,9 +491,7 @@ describe("Register page", () => {
         ctx: { min_length: 8 },
       },
     ]
-    server.use(
-      http.post("*/auth/register", () => HttpResponse.json({ detail }, { status: 422 }))
-    )
+    server.use(http.post("*/auth/register", () => HttpResponse.json({ detail }, { status: 422 })))
 
     const user = userEvent.setup()
     await renderRegister()

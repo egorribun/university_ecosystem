@@ -138,9 +138,7 @@ describe("ResetPassword token error lifecycle", () => {
         ctx: { min_length: 8 },
       },
     ]
-    server.use(
-      http.post("*/password/reset", () => HttpResponse.json({ detail }, { status: 422 }))
-    )
+    server.use(http.post("*/password/reset", () => HttpResponse.json({ detail }, { status: 422 })))
     mockBreachRange()
     const user = userEvent.setup()
     await renderWithRouter({

@@ -569,9 +569,12 @@ export default function ResetPassword() {
         })
       }
     } catch (error: unknown) {
-      const detail = (error as { response?: { data?: { detail?: string } } } | null | undefined)
+      const detail = (error as { response?: { data?: { detail?: unknown } } } | null | undefined)
         ?.response?.data?.detail
-      setError("root", { type: "server", message: detail || t("auth:reset.errorGeneric") })
+      setError("root", {
+        type: "server",
+        message: typeof detail === "string" && detail ? detail : t("auth:reset.errorGeneric"),
+      })
     }
   }
 

@@ -112,10 +112,12 @@ const Register = () => {
     } catch (error: unknown) {
       let errorMessage = t("auth:register.error")
       if (typeof error === "object" && error !== null && "response" in error) {
-        const axiosError = error as { response?: { data?: { detail?: string | string[] } } }
+        const axiosError = error as { response?: { data?: { detail?: unknown } } }
         const detail = axiosError.response?.data?.detail
         if (typeof detail === "string") errorMessage = detail
-        else if (Array.isArray(detail)) errorMessage = detail.join("; ")
+        else if (Array.isArray(detail) && detail.every((item) => typeof item === "string")) {
+          errorMessage = detail.join("; ")
+        }
       }
       setError("root", { message: errorMessage })
     }
