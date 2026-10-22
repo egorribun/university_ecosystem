@@ -2,6 +2,7 @@ import { renderHook, waitFor, act } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
+import type { Message, MessagesListResponse } from "@/api/chat"
 
 /**
  * Wave 183 SW8 — useMessengerController unit tests.
@@ -1721,5 +1722,222 @@ describe("useMessengerController", () => {
       expect(old?.dateLabel).not.toBe("messenger:dateDivider.today")
       expect(old?.dateLabel).not.toBe("messenger:dateDivider.yesterday")
     })
+  })
+})
+
+describe("concurrent HTTP send ordering", () => {
+  const apiMessage = (
+    id: string,
+    content: string,
+    createdAt: string,
+    overrides: Partial<Message> = {}
+  ): Message => ({
+    id,
+    chat_id: "chat-1",
+    sender_id: "current-user-id",
+    content,
+    created_at: createdAt,
+    read_status: false,
+    attachments: [],
+    ...overrides,
+  })
+
+  it.each([
+    {
+      name: "reverse completion",
+      firstId: "server-first",
+      secondId: "server-second",
+      firstAt: "2026-08-25T12:00:00Z",
+      secondAt: "2026-08-25T12:00:01Z",
+    },
+    {
+      name: "microsecond precision",
+      firstId: "z-earlier",
+      secondId: "a-later",
+      firstAt: "2026-08-25T12:00:00.123001Z",
+      secondAt: "2026-08-25T12:00:00.123999Z",
+    },
+    {
+      name: "equal-instant ID tie",
+      firstId: "a-tie",
+      secondId: "b-tie",
+      firstAt: "2026-08-25T12:00:00.123002Z",
+      secondAt: "2026-08-25T12:00:00.123002Z",
+    },
+  ])("orders messages for $name", async ({ firstId, secondId, firstAt, secondAt }) => {
+    mocks.paramsRef.current = { chatId: "chat-1" }
+    mocks.chatApi.getChats.mockResolvedValue({
+      items: [
+        {
+          id: "chat-1",
+          participants: [{ id: "current-user-id" }, { id: "peer" }],
+          unread_count: 0,
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+    const existing = apiMessage("history", "history", "2026-08-25T11:59:00Z", {
+      sender_id: "peer",
+    })
+    const firstResponse = apiMessage(firstId, "first", firstAt)
+    const secondResponse = apiMessage(secondId, "second", secondAt, {
+      read_status: true,
+      read_at: "2026-08-25T12:01:00Z",
+      edited_at: "2026-08-25T12:01:01Z",
+      deleted_at: null,
+      attachments: [
+        {
+          id: "attachment-second",
+          url: "/files/second.png",
+          file_type: "image",
+          filename: "second.png",
+          size: 12,
+        },
+      ],
+      reactions: [{ emoji: "👍", count: 1, reacted_by_me: true }],
+      reply_to: {
+        id: "quoted-message",
+        sender_id: "peer",
+        sender_name: "Peer",
+        content: "quoted text",
+        deleted_at: null,
+      },
+      forwarded_from_name: "Forwarded Peer",
+    })
+    let resolveFirst!: (value: Message) => void
+    let resolveSecond!: (value: Message) => void
+    const firstSend = new Promise<Message>((resolve) => {
+      resolveFirst = resolve
+    })
+    const secondSend = new Promise<Message>((resolve) => {
+      resolveSecond = resolve
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, gcTime: 0 },
+        mutations: { retry: false },
+      },
+    })
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+    const deliveries: Promise<boolean>[] = []
+    let unmount: (() => void) | undefined
+
+    try {
+      mocks.chatApi.sendMessage
+        .mockReset()
+        .mockReturnValueOnce(firstSend)
+        .mockReturnValueOnce(secondSend)
+      const hook = renderHook(() => useMessengerController(), { wrapper: localWrapper })
+      unmount = hook.unmount
+      const { result } = hook
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+      await waitFor(() =>
+        expect(queryClient.getQueryData(["messages", "chat-1"])).toBeDefined()
+      )
+      act(() => {
+        queryClient.setQueryData<MessagesListResponse>(["messages", "chat-1"], {
+          items: [existing],
+          has_more: true,
+          next_cursor: "history-cursor",
+        })
+      })
+      await waitFor(() =>
+        expect(result.current.messages.map(({ id }) => id)).toEqual(["history"])
+      )
+      const seed = queryClient.getQueryData<MessagesListResponse>(["messages", "chat-1"])?.items[0]
+      expect(seed?.id).toBe("history")
+
+      act(() => {
+        deliveries.push(result.current.handleSendMessage("first", []))
+        deliveries.push(result.current.handleSendMessage("second", []))
+      })
+      await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(2))
+      const optimisticIds = mocks.chatApi.sendMessage.mock.calls.map((call) => String(call[4]))
+      await waitFor(() =>
+        expect(result.current.messages.map(({ id }) => id)).toEqual(
+          expect.arrayContaining(optimisticIds)
+        )
+      )
+      await act(async () => {
+        resolveSecond(secondResponse)
+        await deliveries[1]
+      })
+      await waitFor(() =>
+        expect(
+          queryClient
+            .getQueryData<MessagesListResponse>(["messages", "chat-1"])
+            ?.items.map(({ id }) => id)
+        ).toEqual(["history", secondId])
+      )
+      await act(async () => {
+        resolveFirst(firstResponse)
+        await deliveries[0]
+      })
+      await waitFor(() =>
+        expect(result.current.messages.map(({ id }) => id)).toEqual([
+          "history",
+          firstId,
+          secondId,
+        ])
+      )
+      const cached = queryClient.getQueryData<MessagesListResponse>(["messages", "chat-1"])
+      expect(cached?.items.map(({ id }) => id)).toEqual(["history", firstId, secondId])
+      expect(cached?.items.map(({ created_at }) => created_at)).toEqual([
+        existing.created_at,
+        firstAt,
+        secondAt,
+      ])
+      expect(cached).toMatchObject({ has_more: true, next_cursor: "history-cursor" })
+      expect(cached?.items[0]).toBe(seed)
+      expect(cached?.items[1]).toMatchObject(firstResponse)
+      expect(cached?.items[2]).toMatchObject(secondResponse)
+      for (const id of optimisticIds) {
+        expect(result.current.messages.map((message) => message.id)).not.toContain(id)
+      }
+      expect(result.current.messages.map(({ id, text }) => ({ id, text }))).toEqual([
+        { id: "history", text: "history" },
+        { id: firstId, text: "first" },
+        { id: secondId, text: "second" },
+      ])
+      expect(result.current.messages.find(({ id }) => id === secondId)).toMatchObject({
+        status: "read",
+        readAt: "2026-08-25T12:01:00Z",
+        editedAt: "2026-08-25T12:01:01Z",
+        deletedAt: null,
+        attachments: [
+          {
+            id: "attachment-second",
+            url: "/files/second.png",
+            type: "image",
+            name: "second.png",
+            size: 12,
+          },
+        ],
+        reactions: [{ emoji: "👍", count: 1, reactedByMe: true }],
+        replyTo: {
+          id: "quoted-message",
+          senderName: "Peer",
+          isMe: false,
+          text: "quoted text",
+          deletedAt: null,
+        },
+        forwardedFromName: "Forwarded Peer",
+      })
+    } finally {
+      try {
+        await act(async () => {
+          resolveFirst(firstResponse)
+          resolveSecond(secondResponse)
+          await Promise.allSettled(deliveries)
+        })
+      } finally {
+        unmount?.()
+        queryClient.clear()
+        mocks.chatApi.sendMessage.mockReset()
+      }
+    }
   })
 })

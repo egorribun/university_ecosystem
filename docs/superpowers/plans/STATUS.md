@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **217/512 (42,4%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-217-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **218/512 (42,6%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-218-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -1176,3 +1176,28 @@ Component/tests неизменны; window resize/snap/custom height/cleanup ж�
 hosted-подтверждения. VisualViewport-only keyboard/browser-chrome поведение
 этими тестами не доказывается. AUD-057 пока OPEN. Все finite security/
 coverage границы сохранены, merge/deploy нет.
+
+
+## AUD-057 принята; AUD-157 получает tests-first проверку
+
+Добавлена только AUD-057: **218/512 (42,6%)**, остаток 294.
+Source 80b7fc98 / merge d27d8e4a имеют одинаковый tree f69ba7a9.
+Frontend contract 119574090693: 658 Node / 55 worker / 181 quick PASS.
+Все 25 MapSidebar cases прошли, включая изменение window height,
+snap/custom-height behavior, short-viewport ARIA/geometry и cleanup.
+Компонент уже был исправлен, лишней production/test правки нет.
+Приёмка ограничена window.innerHeight/window.resize, не VisualViewport-only
+keyboard/browser-chrome и не real-device/browser geometry.
+
+Lint 119573686186, security/types 119573686277 и inventory 119573686355 PASS.
+Contract 119573685930 SUCCESS: 1406 PASS / 1 deselected за 470,98 s,
+затем 241 policy PASS за 44,67 s. Оба шага и cleanup завершены.
+
+AUD-157 получает три регрессии реального controller/QueryClient:
+обратное завершение HTTP sends, microsecond precision и equal-time ID tie.
+Проверяются cache/UI order, pagination и response metadata, identity
+прежнего элемента и исчезновение optimistic IDs. Finally завершает оба
+owned sends, дожидается delivery promises, unmount и очищает client.
+Новых sleeps/retries нет. Прежний WebSocket ordering/self-echo suite
+также добавлен в ранний cohort. Production append ещё не меняется до RED;
+AUD-157 OPEN. Global CI/NATS не приняты; все finite границы сохранены.

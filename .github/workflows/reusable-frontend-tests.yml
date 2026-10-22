@@ -350,6 +350,8 @@ jobs:
           src/features/events/components/__tests__/EventsList.closure.test.tsx
           src/pages/__tests__/StoriesAdmin.test.tsx
           src/components/map/__tests__/MapSidebar.branches.test.tsx
+          src/hooks/features/__tests__/useMessengerController.test.tsx
+          src/hooks/__tests__/useChatWebSocket.test.tsx
           --reporter=verbose
         env:
           CI: "true"
