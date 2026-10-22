@@ -791,6 +791,13 @@ jobs:
               # Read-only, bounded diffs make remote formatting failures actionable.
               # The original gate status remains authoritative, including errors.
               local shown=0
+              # Match package.json's format:check scope; never scan build outputs.
+              local -a format_targets=(
+                'src/**/*.{ts,tsx,js,jsx,json,css,scss,md}'
+                'tests/**/*.{ts,tsx,js,jsx}'
+                vite.config.mts playwright.config.ts vitest.config.ts
+                tsconfig.json pwa-maskable-icons.ts 'scripts/**/*.mjs'
+              )
               while IFS= read -r file; do
                 if [[ "$shown" -ge 10 ]]; then
                   echo "Further formatting diffs omitted." >>"$STATIC_GATE_LOG_DIR/$gate.log"
@@ -802,7 +809,7 @@ jobs:
                 ./node_modules/.bin/prettier "$file" 2>>"$STATIC_GATE_LOG_DIR/$gate.log" |
                   diff -u -- "$file" - |
                   sed -n '1,200p' >>"$STATIC_GATE_LOG_DIR/$gate.log" || true
-              done < <(./node_modules/.bin/prettier --list-different .)
+              done < <(./node_modules/.bin/prettier --list-different "${format_targets[@]}")
             fi
             printf '%s\n' "$status" >"$STATIC_GATE_LOG_DIR/$gate.status"
           }

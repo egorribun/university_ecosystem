@@ -1966,11 +1966,7 @@ describe("concurrent HTTP send ordering", () => {
         await deliveries[0]
       })
       await waitFor(() =>
-        expect(result.current.messages.map(({ id }) => id)).toEqual([
-          "history",
-          firstId,
-          secondId,
-        ])
+        expect(result.current.messages.map(({ id }) => id)).toEqual(["history", firstId, secondId])
       )
       const cached = queryClient.getQueryData<MessagesListResponse>(["messages", "chat-1"])
       expect(cached?.items.map(({ id }) => id)).toEqual(["history", firstId, secondId])
