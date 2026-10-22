@@ -1523,3 +1523,31 @@ required; earlier evidence does not certify this reconciliation. Baseline
 319, dispositions 294, required contexts 78, Gitleaks 25 and finite migration
 exception 131 are unchanged. The owner will merge PR #1306; further audit
 implementation waits for the next PR and a new instruction.
+
+## Audit continuation after PR #1306 (2026-10-22)
+
+The owner merged PR #1306 into main as
+[4a2fe84c](https://github.com/egorribun/university_ecosystem/commit/4a2fe84c2704bd32ed492942b8853484772abaa0).
+Its tree is identical to the reviewed conflict-resolution checkpoint.
+The audit branch joins that squash-merge history without rewriting either
+history, then resumes bounded audit work in a new PR. The previously
+deferred npm reconciliation remains outstanding.
+
+AUD-290 implementation now routes notification feedback through the shared
+live-region announcer: errors use the assertive channel, other feedback the
+polite channel. Service-worker update availability uses the existing
+translated message on the polite channel. Visible toast markup is retained,
+without duplicate live regions. Existing EN/RU regression tests are unchanged.
+
+RED evidence precedes this implementation: source c128cd3e, Matrix run
+39781830088, quick job 119836634659, recorded 416 passing and two failing
+behavior cases (the new EN/RU announcements), alongside 658 Node contracts
+and 55 worker tests. Full frontend shards recorded 9,648 passing and the
+same two failing cases. This source change still needs hosted GREEN and
+current-source gate evidence; it is not yet accepted as closed.
+
+The accepted ledger remains 223/512 (289 remaining). AUD-282/283 await
+terminal contract acceptance; AUD-290 awaits new GREEN. No baseline,
+disposition, required-check, coverage-floor, timeout, shard or exception
+changes are included. No automatic PR merge, release or deployment is
+authorized by this continuation.

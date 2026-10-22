@@ -13,6 +13,7 @@ import { cn } from "@/utils/cn"
 import { Button } from "@/components/settings/SettingsUI"
 import { GlassCard } from "@/components/ui/GlassCard"
 import { useAuthUser } from "@/stores/useAuthStore"
+import { useAnnouncer } from "@/components/ui/LiveRegionProvider"
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms?: string[]
@@ -97,6 +98,7 @@ const clearDismissed = (key: string) => {
 
 export default function InstallPrompt() {
   const { t } = useTranslation(["system", "navigation", "notifications", "common"])
+  const { announce } = useAnnouncer()
   const user = useAuthUser()
   const userId = user?.id
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
@@ -116,6 +118,14 @@ export default function InstallPrompt() {
   const isEligible = useMemo(() => !isInstallPromptStandalone(), [])
   const appName = t("navigation:brandName")
 
+  const handleFeedback = useCallback(
+    (toast: NotificationToast) => {
+      setFeedback(toast)
+      announce(toast.text, toast.severity === "error" ? "assertive" : "polite")
+    },
+    [announce]
+  )
+
   const {
     pushSupported,
     notificationPermission,
@@ -123,13 +133,14 @@ export default function InstallPrompt() {
     pushInitializing,
     permissionText,
     enableNotifications,
-  } = usePushPreferences({ onNotify: setFeedback })
+  } = usePushPreferences({ onNotify: handleFeedback })
 
   useEffect(() => {
     const handleServiceWorkerUpdate = (event: Event) => {
       const customEvent = event as CustomEvent<ServiceWorkerUpdateEventDetail>
       pendingUpdateRef.current = customEvent.detail.update
       setUpdateToastOpen(true)
+      announce(t("system:installPrompt.updateAvailable"))
     }
 
     window.addEventListener(PWA_REFRESH_EVENT, handleServiceWorkerUpdate)
@@ -137,7 +148,7 @@ export default function InstallPrompt() {
     return () => {
       window.removeEventListener(PWA_REFRESH_EVENT, handleServiceWorkerUpdate)
     }
-  }, [])
+  }, [announce, t])
 
   useEffect(() => {
     if (!isEligible) return
