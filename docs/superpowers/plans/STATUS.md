@@ -1765,3 +1765,32 @@ hosted Knip and contract results remain required. This patch removes an
 exception rather than weakening the gate; no dependency version, lockfile,
 timeout, shard or security policy changes. Accepted audit progress stays
 223/512 (289 remaining), with no merge, deployment or release.
+
+## DOMPurify security patch (2026-10-22)
+
+The e508 Node dependency audit job 120016386056 reported newly published
+DOMPurify advisories GHSA-cg2g-xh64-v4q7 (critical),
+GHSA-mrv2-3pqr-j5jr (high), and GHSA-c6gr-qvv4-5v3f (low).
+The existing lock resolved one optional DOMPurify 3.4.16 entry through
+jsPDF 4.2.1's compatible ^3.3.1 range. This remains a blocking security
+finding; no advisory allowlist or severity threshold is changed.
+
+The patch advances the existing DOMPurify minimum override to >=3.4.17 and
+changes only that lock entry's version, registry tarball and SHA-512
+integrity. Its license, optional flag, trusted-types dependency and every
+other lock entry remain unchanged. Exact
+[registry metadata](https://registry.npmjs.org/dompurify/3.4.17) and
+[NPMScan](https://npmscan.com/package/dompurify) checks confirm the package
+exists and resolves all three reported advisories, with no reported target
+vulnerability or new install-time lifecycle script. Publication on
+2026-10-12 is older than the existing seven-day minimum; npm age and script
+policies remain unchanged. No new override is introduced.
+
+The reviewed app exporters rasterize via html-to-image and use jsPDF
+image/text/save methods; no jsPDF html() call was found in those paths.
+The app's own HTML sanitizer uses WASM. This narrows the observed call
+path but is not an exemption for the installed vulnerable package.
+The package has no npm provenance attestation; the metadata/source review
+does not claim cryptographic attestation verification. Fresh npm ci,
+blocking dependency audit, PDF regressions and current-source gates remain
+required before declaring the dependency repair verified.
