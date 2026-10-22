@@ -353,6 +353,7 @@ jobs:
           src/hooks/features/__tests__/useMessengerController.test.tsx
           src/hooks/__tests__/useChatWebSocket.test.tsx
           src/components/ui/__tests__/SpotifyConnect.accessible-name.test.tsx
+          src/components/mfa/__tests__/TotpQrDisplay.closure.test.tsx
           --reporter=verbose
         env:
           CI: "true"

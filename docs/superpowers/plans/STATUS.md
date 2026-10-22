@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **218/512 (42,6%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-218-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **220/512 (43,0%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-220-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -1272,3 +1272,55 @@ terminal cleanup. Lint, security/types and inventory passed. Global
 CI/NATS remain unaccepted. Baseline 319, policy 294, required 78, Gitleaks 25,
 blocking CodeQL, migration exception 131, all shard counts and budgets
 remain unchanged. No merge, deployment or release is performed.
+
+## Evidence checkpoint: 220 verified original AUD IDs
+
+Verified lower bound: **220/512 (43.0%)**; **292 original IDs remain**.
+This checkpoint accepts **AUD-157** and **AUD-289**, preserving the previous
+218 verified IDs.
+
+[Source c6620a89](https://github.com/egorribun/university_ecosystem/commit/c6620a89e3958cb97d8675cd33b135fb80f36636)
+and PR merge `40001e6b` share tree `8928248a`.
+[Matrix 39708376692](https://github.com/egorribun/university_ecosystem/actions/runs/39708376692)
+frontend job 119594936038 passed **658 Node checks, 55 worker/export tests
+and all 318 quick cases**. Static job 119594935984 passed typecheck, ESLint,
+Prettier, i18n, message-contract and knip; Prettier explicitly confirmed all
+matched files use its code style. Lint 119594257158, security/types
+119594256996 and inventory 119594257092 passed. Contract 119594257016
+completed **1,406 passes / one deselected in 426.81 seconds**, followed by
+**241 policy passes in 37.78 seconds**; both steps and cleanup were terminal.
+
+AUD-157 has isolated hosted RED at fdfe52e and GREEN at c6620a89 for the
+same three reverse-completion, microsecond and equal-instant ID oracles.
+Five additional passing cases preserve history beyond 200 messages,
+invalid-date arrival fallback and same-ID live/HTTP race behavior. The
+existing WebSocket suite also passed. Acceptance covers the HTTP insertion
+ordering defect, not a redesign of history-page merging, delivery ACKs,
+retry idempotency or optimistic state. The earlier lingering optimistic
+IDs were eliminated by settling test-owned Actions, not by a production
+workaround.
+
+AUD-289 was already corrected in source. Its unchanged dedicated eight-case
+suite now has hosted GREEN for exact accessible link names and hrefs in
+EN/RU, including populated, blank, missing and whitespace-only track names.
+Acceptance is the audited DOM accessible-name contract, not a claim of
+manual screen-reader or real-device certification. Independent read-only
+review corroborated both scopes and the RED/GREEN evidence.
+
+Next are tests-first regressions for **AUD-286** and **AUD-298**. TOTP copy
+feedback is checked through the application's existing persistent polite
+live region, with only localized feedback allowed and no secret in that
+region; clipboard rejection and owned fake timers remain controlled.
+The test is appended without moving existing baseline-sensitive lines.
+The cover-reset case requires a named button and verifies that cancelling
+a pending file restores the saved cover without uploading it; URL spies
+are restored after unmount even on failure. The existing TOTP suite is
+additively routed early. These are unexecuted candidate regressions, not
+closure evidence, and neither component is changed at this checkpoint.
+
+Baseline 319, policy 294, required 78, Gitleaks 25, blocking CodeQL and the
+finite migration exception 131 are unchanged. No budget, shard count,
+test oracle or gate is relaxed. Global CI/NATS remain unaccepted; no merge,
+deployment or release is performed.
+
+Current verified IDs: AUD-002, AUD-003, AUD-004, AUD-005, AUD-006, AUD-007, AUD-008, AUD-009, AUD-010, AUD-011, AUD-012, AUD-013, AUD-014, AUD-016, AUD-017, AUD-018, AUD-019, AUD-020, AUD-021, AUD-022, AUD-023, AUD-024, AUD-025, AUD-026, AUD-027, AUD-028, AUD-029, AUD-031, AUD-032, AUD-033, AUD-034, AUD-035, AUD-036, AUD-037, AUD-038, AUD-039, AUD-041, AUD-042, AUD-044, AUD-046, AUD-047, AUD-048, AUD-049, AUD-050, AUD-052, AUD-053, AUD-054, AUD-055, AUD-056, AUD-057, AUD-058, AUD-059, AUD-060, AUD-061, AUD-062, AUD-063, AUD-064, AUD-065, AUD-066, AUD-067, AUD-068, AUD-069, AUD-070, AUD-071, AUD-074, AUD-075, AUD-076, AUD-077, AUD-078, AUD-079, AUD-080, AUD-081, AUD-082, AUD-083, AUD-084, AUD-085, AUD-086, AUD-087, AUD-088, AUD-089, AUD-090, AUD-091, AUD-092, AUD-093, AUD-094, AUD-095, AUD-096, AUD-097, AUD-098, AUD-099, AUD-100, AUD-101, AUD-102, AUD-103, AUD-104, AUD-105, AUD-106, AUD-107, AUD-108, AUD-109, AUD-110, AUD-111, AUD-112, AUD-113, AUD-114, AUD-115, AUD-116, AUD-117, AUD-118, AUD-119, AUD-120, AUD-121, AUD-122, AUD-123, AUD-124, AUD-125, AUD-126, AUD-127, AUD-128, AUD-129, AUD-130, AUD-131, AUD-132, AUD-133, AUD-134, AUD-135, AUD-136, AUD-138, AUD-139, AUD-140, AUD-141, AUD-142, AUD-143, AUD-144, AUD-145, AUD-146, AUD-148, AUD-149, AUD-150, AUD-152, AUD-153, AUD-157, AUD-158, AUD-159, AUD-160, AUD-163, AUD-165, AUD-166, AUD-168, AUD-170, AUD-171, AUD-172, AUD-173, AUD-174, AUD-179, AUD-181, AUD-182, AUD-185, AUD-186, AUD-194, AUD-195, AUD-196, AUD-199, AUD-201, AUD-206, AUD-209, AUD-210, AUD-211, AUD-212, AUD-213, AUD-214, AUD-215, AUD-216, AUD-217, AUD-219, AUD-220, AUD-222, AUD-233, AUD-234, AUD-235, AUD-237, AUD-238, AUD-239, AUD-240, AUD-241, AUD-242, AUD-243, AUD-252, AUD-256, AUD-257, AUD-289, AUD-318, AUD-328, AUD-335, AUD-338, AUD-342, AUD-353, AUD-355, AUD-367, AUD-395, AUD-396, AUD-398, AUD-410, AUD-421, AUD-424, AUD-437, AUD-448, AUD-458, AUD-465, AUD-466, AUD-467, AUD-468, AUD-469, AUD-470, AUD-471, AUD-473, AUD-475, AUD-491, AUD-496, AUD-502.

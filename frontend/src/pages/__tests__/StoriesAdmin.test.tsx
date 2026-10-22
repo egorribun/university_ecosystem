@@ -870,4 +870,38 @@ describe("StoriesAdmin", () => {
     })
     expect(mocks.createStory).toHaveBeenCalledTimes(1)
   })
+
+  it("names the item cover reset and restores the saved cover", async () => {
+    const existingCoverUrl = "https://cdn.example/existing.png"
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:item-cover")
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    mocks.getStories.mockResolvedValueOnce({ data: [{ ...story, cover_url: existingCoverUrl }] })
+    let unmount: (() => void) | undefined
+    try {
+      const view = render(<StoriesAdmin />)
+      unmount = view.unmount
+      expect(await screen.findByText(story.title)).toBeInTheDocument()
+      const coverInput = screen.getAllByLabelText("stories:list.actions.pickCover").at(-1)!
+      fireEvent.change(coverInput, {
+        target: { files: [new File(["image"], "pending.png", { type: "image/png" })] },
+      })
+      expect(screen.getByAltText("stories:list.coverAlt")).toHaveAttribute("src", "blob:item-cover")
+
+      fireEvent.click(screen.getByRole("button", { name: "stories:list.actions.clearCover" }))
+
+      expect(screen.getByAltText(story.title)).toHaveAttribute("src", existingCoverUrl)
+      expect(
+        screen.queryByRole("button", { name: "stories:list.actions.clearCover" })
+      ).not.toBeInTheDocument()
+      expect(
+        screen.getByRole("button", { name: "stories:list.actions.updateCover" })
+      ).toBeDisabled()
+      expect(mocks.uploadStoryCover).not.toHaveBeenCalled()
+      expect(revokeObjectUrl).toHaveBeenCalledWith("blob:item-cover")
+    } finally {
+      unmount?.()
+      createObjectUrl.mockRestore()
+      revokeObjectUrl.mockRestore()
+    }
+  })
 })

@@ -190,3 +190,54 @@ describe("TotpQrDisplay", () => {
     expect(screen.getByLabelText("mfa.totp.manualHeading")).toHaveValue("SECRET")
   })
 })
+
+describe("TotpQrDisplay live announcements", () => {
+  it("announces localized copy feedback without exposing the secret", async () => {
+    const { LiveRegionProvider } = await import("@/components/ui/LiveRegionProvider")
+    const writeText = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("clipboard denied"))
+    vi.stubGlobal("navigator", { clipboard: { writeText } })
+    const { unmount } = render(
+      <LiveRegionProvider>
+        <TotpQrDisplay otpauthUrl="otpauth://totp/Announcement" secret="xy z" />
+      </LiveRegionProvider>
+    )
+    try {
+      await screen.findByTestId("qr-code")
+      const status = screen.getByRole("status")
+      const manualCode = screen.getByLabelText("mfa.totp.manualHeading") as HTMLInputElement
+      expect(status).toHaveAttribute("aria-live", "polite")
+      expect(status).toHaveAttribute("aria-atomic", "true")
+      expect(status.textContent).toBe("")
+      vi.useFakeTimers()
+      const button = screen.getByRole("button", { name: "mfa.totp.copySecret" })
+      await act(async () => {
+        fireEvent.click(button)
+        await Promise.resolve()
+      })
+      expect(writeText).toHaveBeenCalledWith(manualCode.value)
+      expect(status.textContent).toBe("mfa.totp.copied")
+      expect(status.textContent).not.toContain(manualCode.value)
+
+      act(() => {
+        vi.advanceTimersByTime(3000)
+      })
+      expect(status.textContent).toBe("")
+      await act(async () => {
+        fireEvent.click(button)
+        await Promise.resolve()
+      })
+      expect(writeText).toHaveBeenCalledTimes(2)
+      expect(status.textContent).toBe("")
+    } finally {
+      if (vi.isFakeTimers()) {
+        act(() => {
+          vi.advanceTimersByTime(3000)
+        })
+      }
+      unmount()
+    }
+  })
+})
