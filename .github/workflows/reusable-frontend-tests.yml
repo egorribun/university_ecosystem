@@ -361,6 +361,9 @@ jobs:
           src/components/pwa/__tests__/InstallPrompt.behavior.test.tsx
           src/components/layout/__tests__/AuthPageLandmarks.test.tsx
           src/components/profile/__tests__/profileUtils.closure.test.ts
+          src/pages/__tests__/ResetPassword.token-error.test.tsx
+          src/pages/__tests__/Register.test.tsx
+          src/pages/__tests__/Profile.behavior.test.tsx
           --reporter=verbose
         env:
           CI: "true"

@@ -127,6 +127,37 @@ describe("ResetPassword token error lifecycle", () => {
     expect(payloads).toHaveLength(1)
   })
 
+  it("uses a translated fallback for Pydantic validation error objects", async () => {
+    const token = "pydantic-" + randomUUID()
+    const detail = [
+      {
+        type: "string_too_short",
+        loc: ["body", "password"],
+        msg: "String should have at least 8 characters",
+        input: "short",
+        ctx: { min_length: 8 },
+      },
+    ]
+    server.use(
+      http.post("*/password/reset", () => HttpResponse.json({ detail }, { status: 422 }))
+    )
+    mockBreachRange()
+    const user = userEvent.setup()
+    await renderWithRouter({
+      ui: ResetPassword,
+      path: "/reset-password",
+      initialPath: "/reset-password#" + tokenFragment(token),
+      authProvider: false,
+    })
+
+    await user.type(passwordInput(), "Password123!")
+    await user.type(confirmPasswordInput(), "Password123!")
+    await user.click(screen.getByRole("button", { name: tAuthMessage("reset.saveButton") }))
+
+    const alert = await screen.findByRole("alert")
+    expect(alert.textContent).toBe(tAuthMessage("reset.errorGeneric"))
+  })
+
   it("keeps the submit-time expired-token error and never posts after the captured token deadline", async () => {
     const token = "ttl-" + randomUUID()
     const payloads: unknown[] = []

@@ -1619,6 +1619,8 @@ jobs:
             tests/test_chat_repository_coverage.py::test_find_existing_dm_none_when_no_shared_chat \
             tests/test_chat_repository_coverage.py::test_find_existing_dm_ignores_two_member_group \
             tests/test_news_repository_db.py::test_anonymous_interactions_never_use_email_as_comment_name \
+            tests/test_notifications_news_events_db.py::test_comment_notification_uses_real_profile_name_without_email \
+            tests/test_localization_core_closure.py::test_missing_resource_not_found_keys_return_localized_404_details \
             tests/test_schedule_reminders_closure.py::test_build_schedule_reminder_formats_resolved_occurrence_in_campus_timezone \
             tests/test_notifications_news_events_closure.py::test_event_notification_times_use_campus_timezone \
             tests/test_ws_connection_manager_closure.py::test_send_to_user_uses_real_websocket_json_boundary \

@@ -481,6 +481,35 @@ describe("Register page", () => {
     expect(await screen.findByText("Name is invalid; Email is invalid")).toBeInTheDocument()
   })
 
+  it("uses a translated fallback for Pydantic validation error objects", async () => {
+    const detail = [
+      {
+        type: "string_too_short",
+        loc: ["body", "password"],
+        msg: "String should have at least 8 characters",
+        input: "short",
+        ctx: { min_length: 8 },
+      },
+    ]
+    server.use(
+      http.post("*/auth/register", () => HttpResponse.json({ detail }, { status: 422 }))
+    )
+
+    const user = userEvent.setup()
+    await renderRegister()
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.name"))), "Test User")
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.email"))), "user@example.com")
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.password"))), "password123")
+    await user.type(
+      screen.getByLabelText(matchText(tAuth("fields.confirmPassword"))),
+      "password123"
+    )
+    await user.click(screen.getByRole("button", { name: tAuth("actions.signUp") }))
+
+    const alert = await screen.findByRole("alert")
+    expect(alert.textContent).toBe(tAuth("register.error"))
+  })
+
   it("uses the generic translated error when an object has no response detail", async () => {
     const post = vi.spyOn(api, "post").mockRejectedValueOnce({ response: {} })
     const user = userEvent.setup()
