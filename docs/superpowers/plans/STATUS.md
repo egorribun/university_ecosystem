@@ -1087,3 +1087,22 @@ snapshot и ожидает через asyncio.wait с прежним timeout, н
 принудительное завершение coroutine/процесса. В ранний запуск включён весь
 модуль из шести тестов, без ослабления остальных проверок. AUD-039 остаётся
 OPEN до собственного GREEN; ledger 214/512.
+
+
+## Проверка AUD-039 и очистка временного CI-шага
+
+На a91cbd8a / merge 67e217c6 с одинаковым tree 5b33a252 Contract
+119542344789 завершился SUCCESS: 1393 PASS / 1 deselected за 427,51 s,
+затем 241 policy PASS за 37,28 s. Все шесть TaskRegistry cases прошли.
+Это scoped-доказательство deadline/ownership, не гарантия остановки процесса.
+
+В job 119542345095 прошли официальные PyPI metadata, byte-identical targeted
+uv regeneration, обычный lock check, hash-install и lint. Python/npm audit
+и Dependency Review также PASS. Отработавший временный шаг из 64 строк
+удаляется; точный pin/cutoff и штатные проверки сохраняются.
+
+Security/types 119542345187: mypy PASS, detect-secrets FAIL только из-за
+сдвига двух прежних ci.yml baseline line numbers на 64. Удаление шага
+возвращает строки 910/920 без изменения baseline identities или настроек.
+Свежий чистый scanner ещё нужен; AUD-039 пока не засчитана, ledger 214/512.
+Global CI/NATS не приняты. Все finite security/coverage границы сохранены.
