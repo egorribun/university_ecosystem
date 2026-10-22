@@ -1551,3 +1551,34 @@ terminal contract acceptance; AUD-290 awaits new GREEN. No baseline,
 disposition, required-check, coverage-floor, timeout, shard or exception
 changes are included. No automatic PR merge, release or deployment is
 authorized by this continuation.
+
+## Next audit regression batch (2026-10-22)
+
+Owner-merged Dependabot PR #1344 added 32 npm updates on top of the AUD-290
+fix (58e033c3), followed by PRs #1345/#1346 updating moby/api in ws-hub and
+file-processor. This batch starts from 257a7432 and preserves those changes.
+The earlier deferred npm list is therefore historical, not the current
+manifest: the coordinated Vitest packages are now 5.0.5, React is 19.3.1,
+and Vite is 8.3.4; the local boundaries package and scoped js-yaml overrides
+remain. These source updates do not establish compatibility or GREEN.
+The earlier fdb3 and 58e targeted runs were superseded/cancelled without
+usable frontend results. The owner asked to continue audit work while
+GitHub runs settle; no manual workflow cancellation is performed here.
+
+Tests-first additions:
+- AUD-296 mounts the actual Login and Register pages within MainLayout and
+  requires one main-content landmark plus a named auth region containing
+  its form. Query clients and the full auth-store snapshot are cleaned up.
+  Production page markup is unchanged; two nested-main failures are expected.
+- AUD-305 adds seven safe-URL and thirteen unsafe-URL parser cases.
+  HTTP(S) and relative link spelling must be preserved. Dangerous schemes,
+  credentials, embedded controls and malformed URLs must lose only their
+  link, not the achievement record. The demonstrated sink is a user-activated
+  anchor on the authenticated user's own profile, not established cross-user
+  stored XSS. Production parsing is unchanged; unsafe-URL cases are expected RED.
+
+Both suites join the existing quick regression selector. Expected failures
+must be observed and diagnosed, not waived. AUD-290 remains pending GREEN;
+AUD-282/283 still require terminal contract acceptance. The ledger remains
+223/512 (289 remaining). No security baseline, disposition, required-check,
+coverage-floor, timeout, concurrency or exception changes are included.
