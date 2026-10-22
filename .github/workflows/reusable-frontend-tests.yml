@@ -349,6 +349,7 @@ jobs:
           src/routes/__tests__/activity.search-validation.test.ts
           src/features/events/components/__tests__/EventsList.closure.test.tsx
           src/pages/__tests__/StoriesAdmin.test.tsx
+          src/components/map/__tests__/MapSidebar.branches.test.tsx
           --reporter=verbose
         env:
           CI: "true"

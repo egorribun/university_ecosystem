@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **215/512 (42,0%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-215-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **217/512 (42,4%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-217-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -1150,3 +1150,29 @@ AUD-181 получает три существующих route-теста saniti
 Исправление в source уже есть, production news код не меняется.
 AUD-041 и AUD-181 пока OPEN; ledger 215/512 до собственного GREEN.
 Global CI/NATS не приняты; все finite security/coverage границы сохранены.
+
+
+## AUD-041 и AUD-181 приняты: 217/512
+
+Добавлены только AUD-041 и AUD-181: **217/512 (42,4%)**, остаток 295.
+Source a8851ce5 / merge 1c1d1f9a имеют одинаковый tree 4f813695.
+Contract 119568381119 SUCCESS: 1406 PASS / 1 deselected за 437,86 s,
+затем 241 policy PASS за 37,93 s. Оба шага и cleanup завершены.
+
+Два реальных lifecycle RED для AUD-041 теперь GREEN без изменения тестов;
+обычный возврат, повторное использование записи и metric/log controls тоже
+прошли. Это SQLAlchemy/aioSQLite evidence, не live PostgreSQL failover.
+AUD-181 подтверждена тремя route-bound cases: sanitization перед записью,
+overlong rejection без записи и sanitized-empty rejection. Исправление
+уже существовало; production news код не менялся. Это не новая live
+HTTP/browser или authorization-проверка.
+
+Lint 119568380799, security/types 119568380942 и inventory 119568381065 PASS.
+Frontend contract 119569005088 также PASS; все shards ещё не завершились.
+Global CI/NATS не приняты, общий GREEN не заявлен.
+
+Для AUD-057 существующий MapSidebar branch suite добавлен в ранний cohort.
+Component/tests неизменны; window resize/snap/custom height/cleanup ждут
+hosted-подтверждения. VisualViewport-only keyboard/browser-chrome поведение
+этими тестами не доказывается. AUD-057 пока OPEN. Все finite security/
+coverage границы сохранены, merge/deploy нет.
