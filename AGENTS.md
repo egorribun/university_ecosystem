@@ -428,3 +428,31 @@ the explicit runner and are not automatically registered as Codex hooks.
 ## 9. Audit Trail & Documentation Index
 
 The current documentation and audit-retention policy are indexed in [`docs/README.md`](docs/README.md) and [`docs/audits/INDEX.md`](docs/audits/INDEX.md). Legacy archives have been reconciled against the active MVP plan and removed from the working tree after transferring applicable requirements. Preserve Git history; keep the verified rescue bundle private and isolated because it contains credential-shaped history. Do not add session logs or superseded snapshots to the current indexes.
+
+## Owner-approved achievement URL test identity (2026-10-22)
+
+The owner approved exactly one synthetic Basic Auth Credentials identity in
+frontend/src/components/profile/__tests__/profileUtils.closure.test.ts,
+for the embedded-auth rejection regression. The exact path/type/digest tuple
+is recorded under the singleton synthetic_achievement_url_test_fixture
+category. Its semantic evidence identifies the reserved example.test host
+and test-only rejection coverage; it is not operational credential material.
+
+This extends the prior 294 records to 295 without modifying any prior record.
+The record is reviewed on 2026-10-22 and expires on 2027-01-10. Validator
+support accepts only the fixed identity and category, requires every evidence
+marker, and refuses expiry extension or reclassification. Tests bind the
+record to the actual TypeScript fixture and reject changed paths, types,
+digests, incomplete evidence, pending/missing approval and expired records.
+
+RED source evidence: ed31fe5a, Matrix 39807552009, security/types job
+119927046781 failed detect-secrets on this fixture; mypy passed. This
+decision permits no inline pragma, scanner exclusion, baseline edit,
+credential use, new identity, category-wide matching or required-gate change.
+Baseline 319, required contexts 78, Gitleaks 25, blocking CodeQL, migration
+exception 131 and all existing test budgets remain unchanged. Source-bound
+scanner and validator GREEN are still required after integration.
+
+This approval does not close AUD-305 or any other audit finding. The accepted
+ledger remains 223/512 (289 remaining); AUD-290 awaits hosted GREEN and
+AUD-296/AUD-305 remain tests-first candidates pending observed regressions.

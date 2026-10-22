@@ -8449,6 +8449,40 @@
       "reviewed_on": "2026-10-21",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/src/components/profile/__tests__/profileUtils.closure.test.ts",
+        "type": "Basic Auth Credentials",
+        "hashed_secret_bytes": [
+          157,
+          78,
+          30,
+          35,
+          189,
+          91,
+          114,
+          112,
+          70,
+          169,
+          227,
+          180,
+          183,
+          219,
+          87,
+          189,
+          141,
+          110,
+          230,
+          132
+        ]
+      },
+      "category": "synthetic_achievement_url_test_fixture",
+      "evidence": "Synthetic profile achievement URL test fixture on reserved example.test host; embedded-auth rejection coverage; not credential material. Owner approved this exact path, detector type and digest on 2026-10-22; no network request or operational login is performed.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-22",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

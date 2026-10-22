@@ -161,6 +161,12 @@ _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES = {
     ),
 }
 _FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS = {
+    "synthetic_achievement_url_test_fixture": (
+        "synthetic profile achievement URL test fixture",
+        "reserved example.test host",
+        "embedded-auth rejection coverage",
+        "not credential material",
+    ),
     "public_compose_inspection_test_sentinel": (
         "public Compose inspection test sentinel",
         "live-stand-inspection-placeholder",
@@ -186,6 +192,7 @@ _FALSE_POSITIVE_EXACT_IDENTITY_CATEGORIES = frozenset(
         "external_kubernetes_secret_reference",
         "source_contract_identifier",
         "public_compose_inspection_test_sentinel",
+        "synthetic_achievement_url_test_fixture",
     }
 )
 _FALSE_POSITIVE_CATEGORIES = (
@@ -781,7 +788,23 @@ _PUBLIC_COMPOSE_INSPECTION_TEST_SENTINEL_IDENTITIES = frozenset(
     }
 )
 
+_SYNTHETIC_ACHIEVEMENT_URL_TEST_FIXTURE_IDENTITIES = frozenset(
+    {
+        (
+            "frontend/src/components/profile/__tests__/profileUtils.closure.test.ts",
+            "Basic Auth Credentials",
+            (
+                *(157, 78, 30, 35, 189, 91, 114, 112, 70, 169),
+                *(227, 180, 183, 219, 87, 189, 141, 110, 230, 132),
+            ),
+        ),
+    }
+)
+
 _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
+    "synthetic_achievement_url_test_fixture": (
+        _SYNTHETIC_ACHIEVEMENT_URL_TEST_FIXTURE_IDENTITIES
+    ),
     "public_compose_inspection_test_sentinel": (
         _PUBLIC_COMPOSE_INSPECTION_TEST_SENTINEL_IDENTITIES
     ),
@@ -1294,6 +1317,13 @@ def validate_false_positive_dispositions(
             raise BaselineArtifactError(
                 f"{artifact}: exact source-contract identity changed category"
             )
+        if (
+            exact_source_identity in _SYNTHETIC_ACHIEVEMENT_URL_TEST_FIXTURE_IDENTITIES
+            and category != "synthetic_achievement_url_test_fixture"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: synthetic achievement URL fixture changed category"
+            )
         if category in _FALSE_POSITIVE_HEX_CATEGORIES:
             category_matches = finding_type == _FALSE_POSITIVE_ALLOWED_TYPE
             if category == "independent_contract_fingerprint":
@@ -1381,6 +1411,13 @@ def validate_false_positive_dispositions(
         ):
             raise BaselineArtifactError(
                 f"{artifact}: public Compose sentinel exceeds approved expiry"
+            )
+
+        if category == "synthetic_achievement_url_test_fixture" and expires_on > date(
+            2027, 1, 10
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: synthetic achievement URL fixture exceeds approved expiry"
             )
 
         finding = FindingIdentity(path, finding_type, hashed_secret, 1)

@@ -9,6 +9,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -1961,7 +1962,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 294
+    assert len(policy["records"]) == 295
     records = [
         record
         for record in policy["records"]
@@ -2005,3 +2006,156 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
         verifier.FindingIdentity(path, finding_type, digest.hex(), 1)
         for path, finding_type, digest in expected
     }
+
+def _achievement_url_fixture_record() -> dict[str, Any]:
+    record = _reviewed_exact_disposition(
+        "frontend/src/components/profile/__tests__/profileUtils.closure.test.ts",
+        "Basic Auth Credentials",
+        (
+            *(157, 78, 30, 35, 189, 91, 114, 112, 70, 169),
+            *(227, 180, 183, 219, 87, 189, 141, 110, 230, 132),
+        ),
+        "synthetic_achievement_url_test_fixture",
+    )
+    record["owner"] = "egorribun"
+    record["reviewed_on"] = "2026-10-22"
+    record["evidence"] = (
+        "Synthetic profile achievement URL test fixture on reserved example.test host; "
+        "embedded-auth rejection coverage; not credential material. "
+        "Owner approved this exact path, detector type and digest on 2026-10-22; "
+        "no network request or operational login is performed."
+    )
+    return record
+
+
+@pytest.mark.parametrize(
+    "today",
+    [verifier.date(2026, 10, 22), verifier.date(2027, 1, 10)],
+)
+def test_achievement_url_fixture_is_one_exact_approved_identity(
+    today: verifier.date,
+) -> None:
+    record = _achievement_url_fixture_record()
+    identity = record["identity"]
+    expected = (
+        identity["path"],
+        identity["type"],
+        tuple(identity["hashed_secret_bytes"]),
+    )
+    assert verifier._SYNTHETIC_ACHIEVEMENT_URL_TEST_FIXTURE_IDENTITIES == {expected}
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(record), today=today
+    ) == {
+        verifier.FindingIdentity(
+            identity["path"],
+            identity["type"],
+            bytes(identity["hashed_secret_bytes"]).hex(),
+            1,
+        )
+    }
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["path", "type", "value", "evidence", "approval", "missing-approval", "expiry"],
+)
+def test_achievement_url_fixture_refuses_scope_mutation(change: str) -> None:
+    record = _achievement_url_fixture_record()
+    if change == "path":
+        record["identity"]["path"] = "frontend/src/other.test.ts"
+    elif change == "type":
+        record["identity"]["type"] = "Secret Keyword"
+    elif change == "value":
+        record["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif change == "evidence":
+        record["evidence"] = "Reviewed fixture."
+    elif change == "approval":
+        record["approval_status"] = "pending"
+    elif change == "missing-approval":
+        del record["approval_status"]
+    else:
+        record["expires_on"] = "2027-01-11"
+
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 10, 22)
+        )
+
+
+@pytest.mark.parametrize(
+    "category",
+    sorted(
+        verifier._FALSE_POSITIVE_CATEGORIES
+        - {"synthetic_achievement_url_test_fixture"}
+    ),
+)
+def test_achievement_url_fixture_cannot_be_reclassified(category: str) -> None:
+    record = _achievement_url_fixture_record()
+    record["category"] = category
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 10, 22)
+        )
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        "synthetic profile achievement URL test fixture",
+        "reserved example.test host",
+        "embedded-auth rejection coverage",
+        "not credential material",
+    ],
+)
+def test_achievement_url_fixture_requires_each_semantic_marker(marker: str) -> None:
+    record = _achievement_url_fixture_record()
+    evidence = record["evidence"]
+    start = evidence.casefold().index(marker.casefold())
+    record["evidence"] = evidence[:start] + evidence[start + len(marker) :]
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 10, 22)
+        )
+
+
+def test_achievement_url_fixture_expires_after_owner_approved_date() -> None:
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(_achievement_url_fixture_record()),
+            today=verifier.date(2027, 1, 11),
+        )
+
+
+def test_achievement_url_fixture_binds_the_actual_source_and_policy() -> None:
+    root = Path(__file__).resolve().parents[1]
+    record = _achievement_url_fixture_record()
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    matching = [
+        entry
+        for entry in policy["records"]
+        if entry["category"] == "synthetic_achievement_url_test_fixture"
+    ]
+    assert matching == [record]
+
+    source = (root / record["identity"]["path"]).read_text(encoding="utf-8")
+    urls = [
+        urlsplit(json.loads(line.strip().removesuffix(",")))
+        for line in source.splitlines()
+        if line.strip().startswith('"https://') and "@" in line
+    ]
+    credentialed = [url for url in urls if url.password is not None]
+    assert len(credentialed) == 1
+    parsed = credentialed[0]
+    assert parsed.scheme == "https"
+    assert parsed.hostname == "example.test"
+    assert parsed.path == "/award"
+    assert parsed.username == "user"
+    assert parsed.password == "pass"
+    digest = hashlib.sha1(
+        parsed.password.encode("utf-8"), usedforsecurity=False
+    ).digest()
+    assert digest == bytes(record["identity"]["hashed_secret_bytes"])

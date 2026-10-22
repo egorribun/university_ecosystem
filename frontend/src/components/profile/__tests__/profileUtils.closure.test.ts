@@ -64,8 +64,12 @@ describe("profileUtils closure paths", () => {
     "https://[::1",
   ])("omits an unsafe achievement URL without dropping its record: %s", (url) => {
     const [achievement] = parseAchievements(`Award | Faculty | 2026 | ${url}`)
-    expect(achievement).toMatchObject({ name: "Award", issuer: "Faculty", date: "2026" })
-    expect(achievement.url).toBeUndefined()
+    expect(achievement).toMatchObject({
+      name: "Award",
+      issuer: "Faculty",
+      date: "2026",
+      url: undefined,
+    })
   })
 
   it("builds vCards with optional contact fields", () => {
