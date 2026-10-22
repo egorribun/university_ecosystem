@@ -1694,3 +1694,46 @@ audit ledger stays 223/512 (289 remaining). Baseline 319, dispositions 295,
 required contexts 78, Gitleaks 25, blocking CodeQL, finite migration
 exception 131, dependency manifests/lock versions, budgets and shard counts
 remain unchanged. No merge, deployment or release is performed.
+
+## Hosted compatibility results and lint corrections (2026-10-22)
+
+Source 17e61128 / merge 4e685a6f, Matrix 39827163188, completed all four
+frontend unit shards successfully: 2,702 + 2,316 + 2,327 + 2,332 =
+9,677 passes, zero failures. Jobs 119995616736, 119995616549,
+119995616186 and 119995616232 include all previously failing background
+contracts and the five new inline-helper cases. Quick job 119995616115
+passed all 445 Vitest cases. Consumer Contract job 119994607200 passed
+1,406 cases / one deselected in 445.96 seconds and all 270 disposition
+checks in 47.99 seconds.
+
+Two lint corrections remain source changes, not waived gates. Ruff's exact
+diff wraps the final real-runner invocation contract assertion without
+changing its expression. The runtime Playwright test replaces its empty
+fixture destructuring with the unused baseURL option alias permitted by the
+existing lint rules. Playwright 1.64.1 supports aliased option fixtures; this
+does not request a browser or page and preserves the deadline assertions.
+The title is shortened only to retain ordinary line formatting.
+
+Static job 119995616107 also reported Knip exit 1 with no diagnostic text.
+That result is unresolved; neither the empty-pattern correction nor passing
+unit tests establish a Knip fix. Fresh current-source checks must pass
+without exclusions, suppression, budgets or gate changes.
+
+The accepted ledger remains 223/512 (289 remaining). These scoped results
+do not establish aggregate coverage, global CI, live acceptance or release
+readiness. Baseline 319, dispositions 295, required contexts 78, Gitleaks 25,
+blocking CodeQL and finite migration exception 131 remain unchanged.
+
+Before this correction, the owner merged Dependabot PR #1347 into egorribun
+as 93a575c7, updating ten GitHub Actions dependencies across 21 workflows.
+This correction is based on that commit and preserves every updated pin.
+Earlier 17e test evidence is historical, not certification of the new action
+versions. No PR was merged by this audit correction.
+
+The completed 17e Owned Live job 119993375759 separately confirms the new
+pre-Docker command: 254 Node contract passes, followed by one real Playwright
+adapter pass in 697 ms with one worker. The later live UI run had 36 passes,
+two password-reset failures (desktop and mobile), and two existing skips.
+NATS outage acceptance was skipped. Owned cleanup and the metadata-only
+Core receipt upload succeeded. The password-reset live failures remain
+open; this lint correction does not claim to resolve them.

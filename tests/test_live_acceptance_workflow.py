@@ -611,4 +611,6 @@ def test_live_contract_command_runs_real_playwright_deadline_adapter() -> None:
         "tests/e2e/playwright-deadline-adapter.runtime.spec.ts "
         "--project=chromium --workers=1 --retries=0"
     )
-    assert (frontend / "tests/e2e/playwright-deadline-adapter.runtime.spec.ts").is_file()
+    assert (
+        frontend / "tests/e2e/playwright-deadline-adapter.runtime.spec.ts"
+    ).is_file()
