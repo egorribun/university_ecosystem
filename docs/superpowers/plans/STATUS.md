@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **214/512 (41,8%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-214-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **215/512 (42,0%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-215-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -1106,3 +1106,24 @@ Security/types 119542345187: mypy PASS, detect-secrets FAIL только из-з
 возвращает строки 910/920 без изменения baseline identities или настроек.
 Свежий чистый scanner ещё нужен; AUD-039 пока не засчитана, ledger 214/512.
 Global CI/NATS не приняты. Все finite security/coverage границы сохранены.
+
+
+## AUD-039 принята; AUD-041 получает реальные lifecycle-тесты
+
+Принята только AUD-039: **215/512 (42,0%)**, остаток 297
+(88 moderate, 84 complex, 125 uncertain). Source 951c8435 / merge db17a927
+имеют одинаковый tree d030fdc9. Contract 119558096029 SUCCESS:
+1393 PASS / 1 deselected за 395,92 s, затем 241 policy PASS за 48,25 s.
+Все шесть TaskRegistry случаев прошли после ранее подтверждённого RED.
+Гарантия ограничивает ожидание и сохраняет ownership, но не принуждает
+Python coroutine или процесс к завершению. Lint 119558095217,
+security/types 119558095588 и inventory 119558095354 также PASS.
+
+Три tests-first случая AUD-041 используют настоящий двухместный async
+SQLite pool и production listeners: обычный возврат, hard invalidation
+с немедленным checkin и повторным использованием записи, idle invalidation
+при другом активном соединении. AsyncExitStack освобождает соединения
+до dispose. Отдельный файл сохраняет прежние tests и baseline metadata.
+Production accounting не меняется до hosted RED; AUD-041 остаётся OPEN.
+Это не live PostgreSQL acceptance. Global CI/NATS не приняты; все finite
+security/coverage границы сохранены, merge/deploy нет.
