@@ -1737,3 +1737,31 @@ two password-reset failures (desktop and mobile), and two existing skips.
 NATS outage acceptance was skipped. Owned cleanup and the metadata-only
 Core receipt upload succeeded. The password-reset live failures remain
 open; this lint correction does not claim to resolve them.
+
+## Knip configuration-hint visibility (2026-10-22)
+
+Current source 1cac4135 / merge 2d862cf5 passed TypeScript, ESLint,
+Prettier, i18n and message contracts in static job 120007931597, but Knip
+again exited 1 without diagnostic output. The installed lock resolves
+Knip 6.41.0 and cross-env 10.1.0.
+
+Inspection of the exact [Knip 6.41.0 release source](https://github.com/webpro-nl/knip/commit/13d7f21e8ec5b30d8fe6d8377c9012b9db96f871)
+confirms that its compact reporter does not print configuration hints.
+With progress disabled, a hint-only failure can therefore be silent.
+The symbols reporter prints those hints; the command now uses it while
+retaining no-progress and treatConfigHintsAsErrors.
+
+The real-runner smoke introduced direct cross-env usage in the package
+script. Knip's script parser recognizes that binary, so its former opaque
+config-string ignore is now redundant by the release's unused-ignore
+mechanism. Only that ignore is removed. The remaining four dependency
+exceptions, file globs, path-scoped export exception and binary exceptions
+are unchanged. The exact contract is updated to require direct cross-env
+usage, the hint-capable reporter and blocking configuration hints.
+
+The observed CI output did not name the redundant entry; this is a
+source-supported diagnosis, not an invented diagnostic message. Fresh
+hosted Knip and contract results remain required. This patch removes an
+exception rather than weakening the gate; no dependency version, lockfile,
+timeout, shard or security policy changes. Accepted audit progress stays
+223/512 (289 remaining), with no merge, deployment or release.

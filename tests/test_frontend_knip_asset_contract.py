@@ -119,7 +119,6 @@ def test_dependency_ignores_are_limited_to_known_required_dependencies() -> None
         "@lhci/cli",
         "^@stryker-mutator/\\*$",
         "axe-core",
-        "cross-env",
         "openapi-types",
     ]
     asset_users = {
@@ -168,9 +167,9 @@ def test_dependency_ignores_are_limited_to_known_required_dependencies() -> None
     }
     assert actual_asset_users == asset_users
 
-    # These uses need explicit package accounting: the LHCI CLI and cross-env
-    # appear in command strings. Tailwind (a CSS @import) and the trusted-types
-    # declarations (DefinitelyTyped's @types package) are found by Knip itself.
+    # The LHCI CLI still needs accounting for its opaque command strings.
+    # cross-env is now directly invoked by a package script, so Knip discovers
+    # it without an ignore. Tailwind and trusted-types also need no exception.
     assert (
         'process.platform === "win32" ? ["exec", "--yes", "lhci", "--"] : ["lhci"]'
         in (_read_frontend("scripts/run-lhci.mjs"))
@@ -178,6 +177,8 @@ def test_dependency_ignores_are_limited_to_known_required_dependencies() -> None
     assert 'from "trusted-types/lib"' in _read_frontend("src/utils/trustedTypes.ts")
     assert 'from "trusted-types/lib"' in _read_frontend("src/utils/sanitize.ts")
     assert "npx cross-env" in _read_frontend("playwright.config.ts")
+    live_contract_command = package["scripts"]["test:e2e:live:contract"]
+    assert "cross-env SKIP_WEBSERVER=true" in live_contract_command
     assert '@import "tailwindcss";' in _read_frontend("src/styles/tailwind.css")
 
 
@@ -189,3 +190,12 @@ def test_ignored_binaries_are_exact_and_have_authored_call_sites() -> None:
     assert 'execFileSync("mkfifo"' in _read_frontend(
         "scripts/stryker-progress-monitor.test.mjs"
     )
+
+
+def test_knip_reports_configuration_hints_and_keeps_them_blocking() -> None:
+    package = json.loads(_read_frontend("package.json"))
+    knip = json.loads(_read_frontend("knip.json"))
+
+    command = package["scripts"]["lint:knip"]
+    assert command == "knip --reporter symbols --no-progress"
+    assert knip["treatConfigHintsAsErrors"] is True

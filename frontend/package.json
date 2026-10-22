@@ -17,7 +17,7 @@
     "start": "node ./scripts/server-prod.mjs",
     "lint": "eslint --max-warnings=0 --ext .ts,.tsx,.js,.mjs,.cjs \"src\" \"tests\" \"scripts\"",
     "lint:architecture": "node --test scripts/eslint-architecture.test.mjs scripts/ui-barrel-boundary.test.mjs scripts/boundary-micromatch-compat.test.mjs",
-    "lint:knip": "knip --reporter compact --no-progress",
+    "lint:knip": "knip --reporter symbols --no-progress",
     "lint:all": "npm run lint && npm run lint:architecture && npm run manifests:check && npm run tokens:check && npm run tokens:sync && npm run lint:knip",
     "lint:fix": "npm run lint -- --fix",
     "tokens:sync": "node ./scripts/sync-tokens.mjs",

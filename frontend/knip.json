@@ -5,7 +5,6 @@
     "@lhci/cli",
     "^@stryker-mutator/\\*$",
     "axe-core",
-    "cross-env",
     "openapi-types"
   ],
   "ignore": ["src/api/generated/**", "src/tests/mocks/generated/**"],
