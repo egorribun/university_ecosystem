@@ -140,7 +140,7 @@ jobs:
           fi
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
           cache: npm
@@ -162,7 +162,7 @@ jobs:
 
       - name: Setup Rust toolchain
         # Pin the compiler used for tracked WASM package generation.
-        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # pinned action
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # pinned action
         with:
           toolchain: 1.97.1
           targets: wasm32-unknown-unknown
@@ -188,7 +188,7 @@ jobs:
 
       - name: Publish to Chromatic
         # SHA-pinned per RZ-22-03 convention (no mutable @v tags).
-        uses: chromaui/action@db3ceb5efb0cd7447d63c2d8cce7da732ce89322 # v18.10.1
+        uses: chromaui/action@38afd264ef2241136f12d039093c2724748bec08 # v18.11.0
         with:
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
           workingDir: frontend
