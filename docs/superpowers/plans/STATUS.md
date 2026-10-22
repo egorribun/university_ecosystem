@@ -1450,3 +1450,76 @@ coverage test still needs aggregate coverage proof. Global NATS,
 coverage and Rust performance holds remain open. Baseline 319, policy 294,
 required 78, Gitleaks 25, blocking CodeQL, migration exception 131, budgets
 and shard counts are unchanged. No merge, deployment or release occurs.
+
+## PR #1306 main reconciliation checkpoint (2026-10-22)
+
+The owner requested resolving PR #1306 conflicts before merging it personally.
+This reconciliation merges main commit
+[be7c8507](https://github.com/egorribun/university_ecosystem/commit/be7c8507b88aa5a939fee1982c16627f7c13f528)
+into the audit branch at
+[c128cd3e](https://github.com/egorribun/university_ecosystem/commit/c128cd3ef15fa6986110d4be40c911dbf544aab1).
+Both parent histories are retained; no force push, PR merge or deployment is
+performed by this checkpoint.
+
+Resolution policy, explicitly approved by the owner: retain the coherent
+audit npm manifest/lockfile pair rather than splice incompatible dependency
+graphs. This preserves the local boundaries/micromatch compatibility package,
+the coordinated Vitest 5.0.3 set and browser-package removal, React's
+^19.2.4 manifest range with its existing 19.3.0 lock resolution, the direct router-core pin, Stryker support, and scoped js-yaml overrides.
+Handlebars 4.7.10 and follow-redirects 1.16.1 already match main. The audit's
+idb 8.0.4 runtime dependency is retained rather than moved back to dev-only.
+
+Main's newer npm manifest targets below are deferred, not claimed integrated.
+Reconcile them with a regenerated lockfile and fresh compatibility checks in
+the next PR; the complete original Dependabot changes remain in main history.
+
+- @sentry/react: retained ^11.5.0; main target ^11.8.0.
+- @tanstack/react-query: retained ^5.104.1; main target ^5.104.3.
+- @tanstack/react-query-persist-client: retained ^5.104.1; main target ^5.104.3.
+- @tanstack/react-router: retained ^1.170.41; main target ^1.170.44.
+- @tanstack/react-start: retained ^1.168.60; main target ^1.169.2.
+- @tanstack/react-table: retained ^9.2.6; main target ^9.3.1.
+- @tanstack/react-virtual: retained ^3.14.13; main target ^3.14.20.
+- framer-motion: retained ^14.0.0; main target ^14.2.0.
+- i18next: retained ^26.3.6; main target ^26.4.5.
+- lucide-react: retained ^1.52.0; main target ^1.57.0.
+- maplibre-gl: retained ^6.13.0; main target ^6.14.0.
+- marked: retained ^18.1.0; main target ^18.1.1.
+- react: retained ^19.2.4; main target ^19.3.1.
+- react-dom: retained ^19.2.4; main target ^19.3.1.
+- react-hook-form: retained ^7.89.0; main target ^7.90.0.
+- @axe-core/playwright: retained ^4.11.2; main target ^4.14.0.
+- @playwright/test: retained 1.63.0; main target 1.64.1.
+- @testing-library/user-event: retained ^14.5.2; main target ^14.6.8.
+- @types/node: retained ^26.6.4; main target ^26.6.5.
+- @vitest/browser: retained (removed/moved); main target 5.0.4.
+- @vitest/coverage-v8: retained 5.0.3; main target 5.0.4.
+- eslint-plugin-boundaries: retained 7.2.0; main target ^7.2.1.
+- knip: retained 6.40.0; main target 6.41.0.
+- jsdom: retained ^30.1.2; main target ^30.1.3.
+- msw: retained ^3.0.2; main target ^3.0.3.
+- playwright: retained 1.63.0; main target 1.64.1.
+- prettier: retained ^3.9.9; main target ^3.9.10.
+- typescript-eslint: retained ^8.71.1; main target ^8.71.2.
+- vite: retained ^8.3.3; main target ^8.3.5.
+- vitest: retained 5.0.3; main target 5.0.4.
+
+Workflow logic, test selectors, permissions, budgets and audit hardening are
+retained; applicable action pins are refreshed to main's revisions, including
+Checkov and TruffleHog. Go modules retain audit migrations, removals and
+security replacements, including JWX v3, gobreaker v2 and x/net 0.60.0.
+Nonconflicting main bumps are layered on top with their existing upstream
+checksums: Sentry and Prometheus across the three services, miniredis in
+gateway/ws-hub, and MinIO plus x/image, x/sync and x/text in file-processor.
+The deleted gateway x/sync requirement is not resurrected. Detect-secrets
+runtime versions and hashes already agree; audit ordering is retained.
+
+This is conflict resolution, not a green release checkpoint. The accepted
+audit ledger remains 223/512 (289 remaining). At the preceding c128 source,
+AUD-282/283 targeted tests passed but the contract job was cancelled; the two
+AUD-290 live-region tests remained intentionally RED. Global coverage, NATS
+and Rust performance acceptance remain open. Fresh merged-source CI is
+required; earlier evidence does not certify this reconciliation. Baseline
+319, dispositions 294, required contexts 78, Gitleaks 25 and finite migration
+exception 131 are unchanged. The owner will merge PR #1306; further audit
+implementation waits for the next PR and a new instruction.

@@ -295,7 +295,7 @@ jobs:
       - name: Run full-framework Checkov scan
         id: checkov_all
         continue-on-error: true
-        uses: bridgecrewio/checkov-action@c13aafd679d3814a25067d10fcaf98c4f7594931 # v12.3131.0
+        uses: bridgecrewio/checkov-action@29be5868bfa968f099ae80169f61f42887494b8f # v12.3133.0
         env:
           HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
         with:
@@ -309,7 +309,7 @@ jobs:
       - name: Run scoped Checkov Helm scan for university chart
         id: checkov_helm_university
         continue-on-error: true
-        uses: bridgecrewio/checkov-action@c13aafd679d3814a25067d10fcaf98c4f7594931 # v12.3131.0
+        uses: bridgecrewio/checkov-action@29be5868bfa968f099ae80169f61f42887494b8f # v12.3133.0
         env:
           HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
         with:
@@ -323,7 +323,7 @@ jobs:
       - name: Run scoped Checkov Helm scan for revocation chart
         id: checkov_helm_revocation
         continue-on-error: true
-        uses: bridgecrewio/checkov-action@c13aafd679d3814a25067d10fcaf98c4f7594931 # v12.3131.0
+        uses: bridgecrewio/checkov-action@29be5868bfa968f099ae80169f61f42887494b8f # v12.3133.0
         env:
           HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
         with:
@@ -337,7 +337,7 @@ jobs:
       - name: Run scoped Checkov Helm scan for Redis compatibility chart
         id: checkov_helm_redis_compat
         continue-on-error: true
-        uses: bridgecrewio/checkov-action@c13aafd679d3814a25067d10fcaf98c4f7594931 # v12.3131.0
+        uses: bridgecrewio/checkov-action@29be5868bfa968f099ae80169f61f42887494b8f # v12.3133.0
         env:
           HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
         with:
@@ -474,28 +474,28 @@ jobs:
           --output-path filtered-helm-redis-compat.sarif
 
       - name: Upload all-framework Checkov results
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         if: always()
         with:
           sarif_file: filtered-results.sarif
           category: checkov-all
 
       - name: Upload university Helm results
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         if: always()
         with:
           sarif_file: filtered-helm-university-ecosystem.sarif
           category: checkov-helm-university-ecosystem
 
       - name: Upload revocation Helm results
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         if: always()
         with:
           sarif_file: filtered-helm-revocation-store.sarif
           category: checkov-helm-revocation-store
 
       - name: Upload Redis compatibility Helm results
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         if: always()
         with:
           sarif_file: filtered-helm-redis-compat.sarif

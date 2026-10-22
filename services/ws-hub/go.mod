@@ -3,7 +3,7 @@ module github.com/university-ecosystem/ws-hub
 go 1.26.4
 
 require (
-	github.com/getsentry/sentry-go v0.49.0
+	github.com/getsentry/sentry-go v0.50.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/hashicorp/golang-lru/v2 v2.0.7
@@ -14,7 +14,7 @@ require (
 	// Pact Rust FFI library; requires CGO and the pact_ffi shared library.
 	// Install the FFI once: go run github.com/pact-foundation/pact-go/v2/install
 	github.com/pact-foundation/pact-go/v2 v2.8.0
-	github.com/prometheus/client_golang v1.24.1
+	github.com/prometheus/client_golang v1.25.0
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/spiffe/go-spiffe/v2 v2.9.0 // indirect
 	github.com/university-ecosystem/services/pkg/logging v0.0.0
@@ -29,7 +29,7 @@ require (
 )
 
 require (
-	github.com/alicebob/miniredis/v2 v2.39.0
+	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/lestrrat-go/httprc/v3 v3.0.6
 	github.com/moby/moby/api v1.55.0
 	github.com/quic-go/quic-go v0.63.0
