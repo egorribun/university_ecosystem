@@ -358,6 +358,7 @@ jobs:
           src/features/admin/__tests__/AdminNotificationsFeature.destructive-race.test.tsx
           src/components/messenger/GroupInfoPanel.branches.test.tsx
           src/components/messenger/GroupInfoPanel.escape.integration.test.tsx
+          src/components/pwa/__tests__/InstallPrompt.behavior.test.tsx
           --reporter=verbose
         env:
           CI: "true"

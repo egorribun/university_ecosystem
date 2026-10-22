@@ -4,6 +4,7 @@ import { createInstance } from "i18next"
 import { I18nextProvider } from "react-i18next"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import InstallPrompt from "@/components/pwa/InstallPrompt"
+import { LiveRegionProvider } from "@/components/ui/LiveRegionProvider"
 import {
   consumePendingPushEducation,
   PWA_REFRESH_EVENT,
@@ -58,7 +59,7 @@ const originalClientWidth = Object.getOwnPropertyDescriptor(document.documentEle
 let previousAuth: Pick<ReturnType<typeof useAuthStore.getState>, "user" | "loading">
 let previousHistory: { url: string; state: unknown }
 
-async function renderPrompt(language: "en" | "ru" = "en") {
+async function renderPrompt(language: "en" | "ru" = "en", withLiveRegion = false) {
   const i18n = createInstance()
   await i18n.init({
     lng: language,
@@ -81,7 +82,13 @@ async function renderPrompt(language: "en" | "ru" = "en") {
   push.permissionText = i18n.t("notifications:permission.default")
   const element = () => (
     <I18nextProvider i18n={i18n}>
-      <InstallPrompt />
+      {withLiveRegion ? (
+        <LiveRegionProvider>
+          <InstallPrompt />
+        </LiveRegionProvider>
+      ) : (
+        <InstallPrompt />
+      )}
     </I18nextProvider>
   )
   const view = render(element())
@@ -371,4 +378,64 @@ describe("InstallPrompt user behavior", () => {
       })
     }
   )
+
+  it.each([
+    {
+      language: "en" as const,
+      success: "Notifications enabled",
+      error: "Couldn't enable notifications",
+      update: "Update available",
+    },
+    {
+      language: "ru" as const,
+      success: "Уведомления включены",
+      error: "Не удалось включить уведомления",
+      update: "Доступно обновление",
+    },
+  ])("announces notification results and PWA updates in $language", async (copy) => {
+    vi.useFakeTimers()
+    try {
+      await renderPrompt(copy.language, true)
+      const status = screen.getByRole("status")
+      const alert = screen.getByRole("alert")
+      expect(status).toBeEmptyDOMElement()
+      expect(alert).toBeEmptyDOMElement()
+
+      act(() => push.notify?.({ text: copy.success, severity: "success" }))
+      expect(status).toHaveTextContent(copy.success)
+      expect(screen.getAllByRole("status")).toHaveLength(1)
+
+      act(() => {
+        vi.advanceTimersByTime(2500)
+      })
+      const update = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+      act(() => window.dispatchEvent(new CustomEvent(PWA_REFRESH_EVENT, { detail: { update } })))
+      expect(status).toHaveTextContent(copy.update)
+      expect(screen.getByText(copy.update, { selector: "p" })).toBeVisible()
+      expect(screen.getAllByRole("status")).toHaveLength(1)
+
+      act(() => {
+        vi.advanceTimersByTime(500)
+      })
+      expect(status).toHaveTextContent(copy.update)
+      act(() => push.notify?.({ text: copy.error, severity: "error" }))
+      expect(alert).toHaveTextContent(copy.error)
+      expect(status).toHaveTextContent(copy.update)
+      expect(screen.getAllByRole("alert")).toHaveLength(1)
+
+      act(() => {
+        vi.advanceTimersByTime(2500)
+      })
+      expect(status).toBeEmptyDOMElement()
+      expect(alert).toHaveTextContent(copy.error)
+      act(() => {
+        vi.advanceTimersByTime(500)
+      })
+      expect(alert).toBeEmptyDOMElement()
+    } finally {
+      cleanup()
+      vi.clearAllTimers()
+      vi.useRealTimers()
+    }
+  })
 })

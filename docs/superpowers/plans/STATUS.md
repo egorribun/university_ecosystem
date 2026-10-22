@@ -1412,3 +1412,41 @@ migration exception 131, budgets and shard counts remain unchanged.
 No merge, deployment or release is performed.
 
 Current verified IDs: AUD-002, AUD-003, AUD-004, AUD-005, AUD-006, AUD-007, AUD-008, AUD-009, AUD-010, AUD-011, AUD-012, AUD-013, AUD-014, AUD-016, AUD-017, AUD-018, AUD-019, AUD-020, AUD-021, AUD-022, AUD-023, AUD-024, AUD-025, AUD-026, AUD-027, AUD-028, AUD-029, AUD-031, AUD-032, AUD-033, AUD-034, AUD-035, AUD-036, AUD-037, AUD-038, AUD-039, AUD-041, AUD-042, AUD-044, AUD-046, AUD-047, AUD-048, AUD-049, AUD-050, AUD-052, AUD-053, AUD-054, AUD-055, AUD-056, AUD-057, AUD-058, AUD-059, AUD-060, AUD-061, AUD-062, AUD-063, AUD-064, AUD-065, AUD-066, AUD-067, AUD-068, AUD-069, AUD-070, AUD-071, AUD-074, AUD-075, AUD-076, AUD-077, AUD-078, AUD-079, AUD-080, AUD-081, AUD-082, AUD-083, AUD-084, AUD-085, AUD-086, AUD-087, AUD-088, AUD-089, AUD-090, AUD-091, AUD-092, AUD-093, AUD-094, AUD-095, AUD-096, AUD-097, AUD-098, AUD-099, AUD-100, AUD-101, AUD-102, AUD-103, AUD-104, AUD-105, AUD-106, AUD-107, AUD-108, AUD-109, AUD-110, AUD-111, AUD-112, AUD-113, AUD-114, AUD-115, AUD-116, AUD-117, AUD-118, AUD-119, AUD-120, AUD-121, AUD-122, AUD-123, AUD-124, AUD-125, AUD-126, AUD-127, AUD-128, AUD-129, AUD-130, AUD-131, AUD-132, AUD-133, AUD-134, AUD-135, AUD-136, AUD-138, AUD-139, AUD-140, AUD-141, AUD-142, AUD-143, AUD-144, AUD-145, AUD-146, AUD-148, AUD-149, AUD-150, AUD-152, AUD-153, AUD-157, AUD-158, AUD-159, AUD-160, AUD-163, AUD-165, AUD-166, AUD-168, AUD-170, AUD-171, AUD-172, AUD-173, AUD-174, AUD-179, AUD-181, AUD-182, AUD-185, AUD-186, AUD-194, AUD-195, AUD-196, AUD-199, AUD-201, AUD-206, AUD-209, AUD-210, AUD-211, AUD-212, AUD-213, AUD-214, AUD-215, AUD-216, AUD-217, AUD-218, AUD-219, AUD-220, AUD-222, AUD-233, AUD-234, AUD-235, AUD-237, AUD-238, AUD-239, AUD-240, AUD-241, AUD-242, AUD-243, AUD-252, AUD-256, AUD-257, AUD-286, AUD-289, AUD-298, AUD-318, AUD-328, AUD-335, AUD-338, AUD-342, AUD-353, AUD-355, AUD-367, AUD-395, AUD-396, AUD-398, AUD-410, AUD-421, AUD-424, AUD-437, AUD-448, AUD-458, AUD-465, AUD-466, AUD-467, AUD-468, AUD-469, AUD-470, AUD-471, AUD-473, AUD-475, AUD-491, AUD-496, AUD-502.
+
+## Group-panel RED checkpoint and minimal corrections
+
+[Source 5ce585e](https://github.com/egorribun/university_ecosystem/commit/5ce585e0eeb52e90962b1c92fa33861a3df51306)
+and [Matrix 39779231466](https://github.com/egorribun/university_ecosystem/actions/runs/39779231466)
+quick job 119827143749 reproduced exactly two expected failures with
+**396 passing quick cases**, plus **658 Node contracts and 55 worker tests**.
+AUD-282 displayed the no-users message after React Query reached its error
+state. AUD-283 called the close callback twice when Escape was pressed in
+the rename editor, with the real focus-trap hook mounted.
+
+The group panel now renders the existing translated search-error message
+as an alert and suppresses the misleading empty state on error. Escape
+ownership stays with the panel: the focus trap remains active but does not
+independently deactivate on Escape, while the rename editor stops the
+handled Escape from reaching the panel close listener. Focus containment,
+return-focus configuration and the outer close behavior are retained.
+The original RED tests are unchanged; hosted GREEN is still required.
+
+Static job 119827143963, security/types 119825897034, lint 119825897166 and
+inventory 119825896646 passed. Contract 119825897363 completed **1,406
+passes / one deselected in 422.63 seconds**, then **241 policy passes in
+35.49 seconds**, with terminal cleanup before the next branch update.
+
+The next tests-first candidate is AUD-290. The existing InstallPrompt
+behavior suite gains two EN/RU cases through the real shared live-region
+provider: notification feedback and service-worker update announcements,
+independent polite/assertive lifetimes and no duplicate live regions.
+Existing cases keep their original rendering configuration. Timers and
+rendered trees are cleaned up explicitly. InstallPrompt production code
+is unchanged here; these tests have not run and do not establish closure.
+
+The accepted ledger stays **223/512 (43.6%)** with **289 IDs remaining**.
+AUD-282, AUD-283 and AUD-290 remain unaccepted. The quarantine-worker
+coverage test still needs aggregate coverage proof. Global NATS,
+coverage and Rust performance holds remain open. Baseline 319, policy 294,
+required 78, Gitleaks 25, blocking CodeQL, migration exception 131, budgets
+and shard counts are unchanged. No merge, deployment or release occurs.

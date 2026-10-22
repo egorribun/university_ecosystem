@@ -74,6 +74,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
     onDeactivate: onClose,
     initialFocus: false,
     returnFocus: true,
+    escapeDeactivates: false,
   })
 
   useEffect(() => {
@@ -104,7 +105,11 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
   const memberIds = new Set(members.map((m) => String(m.id)))
 
   // Add-member search — exclude existing members from the results.
-  const { data: searchResults = [], isLoading: searchLoading } = useQuery({
+  const {
+    data: searchResults = [],
+    isLoading: searchLoading,
+    isError: searchError,
+  } = useQuery({
     queryKey: ["users", "search", debouncedSearch],
     queryFn: async () => {
       const response = await client.get<User[]>(
@@ -187,7 +192,10 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                       onChange={(e) => setNameDraft(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") saveRename()
-                        if (e.key === "Escape") setIsEditingName(false)
+                        if (e.key === "Escape") {
+                          e.stopPropagation()
+                          setIsEditingName(false)
+                        }
                       }}
                       maxLength={128}
                       aria-label={t("messenger:groupName")}
@@ -250,7 +258,16 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                         <X className="size-5" aria-hidden="true" />
                       </button>
                     </div>
-                    {!searchLoading &&
+                    {searchError && (
+                      <p
+                        role="alert"
+                        className="px-2 py-3 text-center text-xs font-medium text-(--error-text)"
+                      >
+                        {t("messenger:error.failedToLoadUsers")}
+                      </p>
+                    )}
+                    {!searchError &&
+                      !searchLoading &&
                       addableResults.length === 0 &&
                       Array.from(search.trim()).length >= MIN_SEARCH_LENGTH && (
                         <p className="px-2 py-3 text-center text-xs font-medium text-(--text-secondary) opacity-medium">
