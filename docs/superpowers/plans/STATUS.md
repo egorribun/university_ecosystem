@@ -1201,3 +1201,29 @@ owned sends, дожидается delivery promises, unmount и очищает c
 Новых sleeps/retries нет. Прежний WebSocket ordering/self-echo suite
 также добавлен в ранний cohort. Production append ещё не меняется до RED;
 AUD-157 OPEN. Global CI/NATS не приняты; все finite границы сохранены.
+
+## AUD-157 tests-first isolation checkpoint — 2026-10-22
+
+[Source 346d92e](https://github.com/egorribun/university_ecosystem/commit/346d92e1a1a64fc580dab4ccb9002c8ffd9c4679)
+produced actual hosted RED in [Matrix 39703534001](https://github.com/egorribun/university_ecosystem/actions/runs/39703534001).
+Frontend job 119579113639 passed 55 worker/export tests and 302 quick cases,
+but all three new HTTP ordering cases failed. Their visible lists had
+server responses in completion order plus two optimistic IDs. The ordering
+assertions are retained, not relaxed.
+
+Inspection found two earlier Blob URL lifecycle tests leaving mocked sends
+permanently unresolved after unmount. They now own and settle those deferred
+requests and await every delivery promise in finally, after the original
+unmount/revocation assertions. This removes a plausible React async-Action
+test-isolation problem; a hosted rerun must establish its effect before
+attributing the lingering optimistic IDs to production. Production code is
+unchanged. Two short waitFor expressions are normalized following the
+frontend formatting failure; hosted Prettier remains authoritative.
+
+Backend contract job 119578515815 was terminal with **1,406 passes / one
+deselected in 449.84 seconds**, followed by **241 policy passes in 39.62
+seconds**. Lint, security/types and inventory also passed. Frontend typecheck,
+ESLint and i18n passed, but formatting did not. This is neither a globally
+green checkpoint nor AUD-157 acceptance. The verified ledger remains
+**218/512 (42.6%)**. Baseline 319, policy 294, required 78, Gitleaks 25,
+blocking CodeQL and finite migration exception 131 remain unchanged.

@@ -863,22 +863,43 @@ describe("useMessengerController", () => {
         has_more: false,
         next_cursor: null,
       })
-      mocks.chatApi.sendMessage.mockReturnValue(new Promise(() => {}))
+      const response: Message = {
+        id: "server-unmounted",
+        chat_id: "chat-1",
+        sender_id: "current-user-id",
+        content: "hi",
+        created_at: "2026-08-25T12:00:00Z",
+        read_status: false,
+        attachments: [],
+      }
+      let resolveSend!: (value: Message) => void
+      mocks.chatApi.sendMessage.mockReturnValue(
+        new Promise<Message>((resolve) => {
+          resolveSend = resolve
+        })
+      )
 
       const { result, unmount } = renderHook(() => useMessengerController(), { wrapper })
-      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
-
-      const file = new File(["a"], "a.png", { type: "image/png" })
-
-      await act(async () => {
-        result.current.handleSendMessage("hi", [file])
-      })
-
-      mocks.revokeObjectURL.mockClear()
-
-      unmount()
-
-      expect(mocks.revokeObjectURL).toHaveBeenCalledWith("blob:mock-url")
+      const deliveries: Promise<boolean>[] = []
+      let unmounted = false
+      try {
+        await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+        const file = new File(["a"], "a.png", { type: "image/png" })
+        act(() => {
+          deliveries.push(result.current.handleSendMessage("hi", [file]))
+        })
+        await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(1))
+        mocks.revokeObjectURL.mockClear()
+        unmount()
+        unmounted = true
+        expect(mocks.revokeObjectURL).toHaveBeenCalledWith("blob:mock-url")
+      } finally {
+        if (!unmounted) unmount()
+        await act(async () => {
+          resolveSend(response)
+          await Promise.allSettled(deliveries)
+        })
+      }
     })
 
     it("keeps concurrent sends' Blob URLs isolated until their own settlement or unmount", async () => {
@@ -895,34 +916,7 @@ describe("useMessengerController", () => {
         next_cursor: null,
       })
       mocks.createObjectURL.mockReturnValueOnce("blob:first").mockReturnValueOnce("blob:second")
-      let resolveFirst:
-        | ((value: {
-            id: string
-            chat_id: string
-            sender_id: string
-            content: string
-            created_at: string
-            read_status: boolean
-            attachments: never[]
-          }) => void)
-        | undefined
-      const firstSend = new Promise((resolve) => {
-        resolveFirst = resolve
-      })
-      const secondSend = new Promise(() => {})
-      mocks.chatApi.sendMessage.mockReturnValueOnce(firstSend).mockReturnValueOnce(secondSend)
-
-      const { result, unmount } = renderHook(() => useMessengerController(), { wrapper })
-      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
-
-      act(() => {
-        result.current.handleSendMessage("first", [new File(["a"], "a.png", { type: "image/png" })])
-        result.current.handleSendMessage("second", [
-          new File(["b"], "b.png", { type: "image/png" }),
-        ])
-      })
-
-      resolveFirst?.({
+      const firstResponse: Message = {
         id: "server-first",
         chat_id: "chat-1",
         sender_id: "current-user-id",
@@ -930,14 +924,60 @@ describe("useMessengerController", () => {
         created_at: "2026-08-25T12:00:00Z",
         read_status: false,
         attachments: [],
+      }
+      const secondResponse: Message = {
+        ...firstResponse,
+        id: "server-second",
+        content: "second",
+      }
+      let resolveFirst!: (value: Message) => void
+      let resolveSecond!: (value: Message) => void
+      const firstSend = new Promise<Message>((resolve) => {
+        resolveFirst = resolve
       })
-      await waitFor(() => expect(mocks.revokeObjectURL).toHaveBeenCalledWith("blob:first"))
-      expect(mocks.revokeObjectURL).not.toHaveBeenCalledWith("blob:second")
+      const secondSend = new Promise<Message>((resolve) => {
+        resolveSecond = resolve
+      })
+      mocks.chatApi.sendMessage.mockReturnValueOnce(firstSend).mockReturnValueOnce(secondSend)
 
-      mocks.revokeObjectURL.mockClear()
-      unmount()
-      expect(mocks.revokeObjectURL).toHaveBeenCalledTimes(1)
-      expect(mocks.revokeObjectURL).toHaveBeenCalledWith("blob:second")
+      const { result, unmount } = renderHook(() => useMessengerController(), { wrapper })
+      const deliveries: Promise<boolean>[] = []
+      let unmounted = false
+      try {
+        await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+        act(() => {
+          deliveries.push(
+            result.current.handleSendMessage("first", [
+              new File(["a"], "a.png", { type: "image/png" }),
+            ])
+          )
+          deliveries.push(
+            result.current.handleSendMessage("second", [
+              new File(["b"], "b.png", { type: "image/png" }),
+            ])
+          )
+        })
+        await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(2))
+        await act(async () => {
+          resolveFirst(firstResponse)
+          await deliveries[0]
+        })
+        await waitFor(() => expect(mocks.revokeObjectURL).toHaveBeenCalledWith("blob:first"))
+        expect(mocks.revokeObjectURL).not.toHaveBeenCalledWith("blob:second")
+
+        mocks.revokeObjectURL.mockClear()
+        unmount()
+        unmounted = true
+        expect(mocks.revokeObjectURL).toHaveBeenCalledTimes(1)
+        expect(mocks.revokeObjectURL).toHaveBeenCalledWith("blob:second")
+      } finally {
+        if (!unmounted) unmount()
+        await act(async () => {
+          resolveFirst(firstResponse)
+          resolveSecond(secondResponse)
+          await Promise.allSettled(deliveries)
+        })
+      }
     })
   })
 
@@ -1834,9 +1874,7 @@ describe("concurrent HTTP send ordering", () => {
       unmount = hook.unmount
       const { result } = hook
       await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
-      await waitFor(() =>
-        expect(queryClient.getQueryData(["messages", "chat-1"])).toBeDefined()
-      )
+      await waitFor(() => expect(queryClient.getQueryData(["messages", "chat-1"])).toBeDefined())
       act(() => {
         queryClient.setQueryData<MessagesListResponse>(["messages", "chat-1"], {
           items: [existing],
@@ -1844,9 +1882,7 @@ describe("concurrent HTTP send ordering", () => {
           next_cursor: "history-cursor",
         })
       })
-      await waitFor(() =>
-        expect(result.current.messages.map(({ id }) => id)).toEqual(["history"])
-      )
+      await waitFor(() => expect(result.current.messages.map(({ id }) => id)).toEqual(["history"]))
       const seed = queryClient.getQueryData<MessagesListResponse>(["messages", "chat-1"])?.items[0]
       expect(seed?.id).toBe("history")
 
