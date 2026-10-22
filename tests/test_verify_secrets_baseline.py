@@ -1962,7 +1962,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 295
+    assert len(policy["records"]) == 298
     records = [
         record
         for record in policy["records"]

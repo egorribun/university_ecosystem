@@ -460,3 +460,17 @@ AUD-282, AUD-283, AUD-290, AUD-296 and AUD-305 on source
 bringing the lower bound to **228/512 (284 remaining)**. The earlier
 223/512 count and pending candidate states in this approval-era note are
 historical, not current; see the [e508 STATUS closure section](docs/superpowers/plans/STATUS.md#group-pwa-auth-and-achievement-link-closure-checkpoint-2026-10-22).
+
+## Owner-approved workflow-source integrity identities (2026-10-22)
+
+The owner approved exactly three additional `public_integrity_digest` records for
+`Hex High Entropy String` findings in
+`tests/fixtures/full-backend-reusable-baseline.v4.yaml`: the `source_files` entries
+for nightly, manual and reusable full-backend mutation workflows. These bind the
+reviewed immutable Actions pin updates only and expire on 2027-01-10. Preserve all
+295 prior records; the resulting inventory is 298, with the exact count assertion
+updated accordingly. Do not change `.secrets.baseline`, scanner behavior, category
+scope, historical `origin_*` values or independent frozen contract fingerprints.
+Parsed-job normalization must first assert the exact reviewed current action refs
+and affected job/step counts, then restore only the corresponding frozen refs in
+a private copy. This approval covers no other finding identities or suppressions.

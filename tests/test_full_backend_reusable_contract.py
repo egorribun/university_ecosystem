@@ -100,9 +100,126 @@ def _step(job: dict[str, object], name: str) -> dict[str, object]:
     return next(step for step in _steps(job) if step.get("name") == name)
 
 
-def _assert_frontend_typecheck_is_only_job_delta(
-    job: dict[str, object], expected_digest: str
+_APPROVED_ACTION_PIN_REFRESHES: dict[tuple[str, str], dict[str, tuple[str, int]]] = {
+    ("nightly", "frontend-mutation-preflight"): {
+        "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1": (
+            "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+            1,
+        )
+    },
+    ("nightly", "frontend-mutation-shards"): {
+        "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1": (
+            "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+            1,
+        )
+    },
+    ("nightly", "frontend-mutation-tests-full"): {
+        "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1": (
+            "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+            1,
+        )
+    },
+    ("nightly", "frontend-mutation-roundtrip"): {
+        "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1": (
+            "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+            1,
+        )
+    },
+    ("nightly", "container-integration-cells"): {
+        "astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884": (
+            "astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7",
+            1,
+        )
+    },
+    ("nightly", "load-and-chaos"): {
+        "astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884": (
+            "astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7",
+            1,
+        )
+    },
+    ("manual", "manual-frontend-mutation-preflight"): {
+        "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1": (
+            "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+            1,
+        )
+    },
+    ("manual", "manual-frontend-mutation-shards"): {
+        "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1": (
+            "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+            1,
+        )
+    },
+    ("manual", "manual-frontend-mutation-aggregate"): {
+        "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1": (
+            "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+            1,
+        )
+    },
+    ("manual", "manual-frontend-mutation-roundtrip"): {
+        "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1": (
+            "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+            1,
+        )
+    },
+}
+
+
+def _normalize_approved_action_pin_updates(
+    job: dict[str, object], *, workflow_id: str, job_id: str
+) -> dict[str, object]:
+    expected_updates = _APPROVED_ACTION_PIN_REFRESHES.get((workflow_id, job_id))
+    assert expected_updates is not None, (workflow_id, job_id)
+
+    normalized_job = dict(job)
+    normalized_steps = [dict(step) for step in _steps(job)]
+    for current_ref, (frozen_ref, expected_count) in expected_updates.items():
+        action_prefix = current_ref.split("@", maxsplit=1)[0] + "@"
+        observed_refs = [
+            step.get("uses")
+            for step in normalized_steps
+            if isinstance(step.get("uses"), str)
+            and step["uses"].startswith(action_prefix)
+        ]
+        assert observed_refs == [current_ref] * expected_count, (
+            workflow_id,
+            job_id,
+            current_ref,
+            observed_refs,
+        )
+        assert not any(step.get("uses") == frozen_ref for step in normalized_steps)
+        for step in normalized_steps:
+            if step.get("uses") == current_ref:
+                step["uses"] = frozen_ref
+
+    normalized_job["steps"] = normalized_steps
+    return normalized_job
+
+
+def _assert_preserved_job_digest(
+    job: dict[str, object],
+    expected_digest: str,
+    *,
+    workflow_id: str,
+    job_id: str,
 ) -> None:
+    key = (workflow_id, job_id)
+    if key in _APPROVED_ACTION_PIN_REFRESHES:
+        normalized_job = _normalize_approved_action_pin_updates(
+            job, workflow_id=workflow_id, job_id=job_id
+        )
+    else:
+        normalized_job = job
+    assert _digest(normalized_job) == expected_digest
+
+
+def _assert_frontend_typecheck_is_only_job_delta(
+    job: dict[str, object],
+    expected_digest: str,
+    *,
+    workflow_id: str,
+    job_id: str,
+) -> None:
+    assert (workflow_id, job_id) in _APPROVED_ACTION_PIN_REFRESHES
     steps = _steps(job)
     typecheck_steps = [
         step
@@ -132,7 +249,10 @@ def _assert_frontend_typecheck_is_only_job_delta(
 
     preserved_job = dict(job)
     preserved_job["steps"] = [step for step in steps if step is not typecheck_steps[0]]
-    assert _digest(preserved_job) == expected_digest
+    normalized_job = _normalize_approved_action_pin_updates(
+        preserved_job, workflow_id=workflow_id, job_id=job_id
+    )
+    assert _digest(normalized_job) == expected_digest
 
 
 def _assert_nightly_miri_is_only_toolchain_pin_update(
@@ -845,7 +965,9 @@ def test_nightly_calls_full_backend_only_from_main_nightly_events() -> None:
     for job_id, expected_digest in expected_jobs.items():
         assert job_id in jobs
         if job_id == "frontend-mutation-preflight":
-            _assert_frontend_typecheck_is_only_job_delta(jobs[job_id], expected_digest)
+            _assert_frontend_typecheck_is_only_job_delta(
+                jobs[job_id], expected_digest, workflow_id="nightly", job_id=job_id
+            )
         elif job_id == "browser-matrix":
             _assert_nightly_browser_matrix_is_preserved(jobs[job_id])
         elif job_id == "miri":
@@ -853,7 +975,12 @@ def test_nightly_calls_full_backend_only_from_main_nightly_events() -> None:
                 jobs[job_id], expected_digest
             )
         else:
-            assert _digest(jobs[job_id]) == expected_digest
+            _assert_preserved_job_digest(
+                jobs[job_id],
+                expected_digest,
+                workflow_id="nightly",
+                job_id=job_id,
+            )
 
 
 def test_manual_full_backend_is_opt_in_branch_bound_and_non_required() -> None:
@@ -916,10 +1043,18 @@ def test_manual_full_backend_is_opt_in_branch_bound_and_non_required() -> None:
     for job_id in _manual_frontend_job_ids():
         if job_id == "manual-frontend-mutation-preflight":
             _assert_frontend_typecheck_is_only_job_delta(
-                jobs[job_id], expected_jobs[job_id]
+                jobs[job_id],
+                expected_jobs[job_id],
+                workflow_id="manual",
+                job_id=job_id,
             )
         else:
-            assert _digest(jobs[job_id]) == expected_jobs[job_id]
+            _assert_preserved_job_digest(
+                jobs[job_id],
+                expected_jobs[job_id],
+                workflow_id="manual",
+                job_id=job_id,
+            )
 
 
 def test_helm_dependency_reusable_has_fixed_callers_and_exact_run_attempt_artifact() -> (
@@ -968,7 +1103,10 @@ def test_extraction_preserves_nightly_nonmutation_quality_lanes_and_manual_front
         assert job_id in nightly
         if job_id == "frontend-mutation-preflight":
             _assert_frontend_typecheck_is_only_job_delta(
-                nightly[job_id], expected_digest
+                nightly[job_id],
+                expected_digest,
+                workflow_id="nightly",
+                job_id=job_id,
             )
         elif job_id == "browser-matrix":
             _assert_nightly_browser_matrix_is_preserved(nightly[job_id])
@@ -977,7 +1115,12 @@ def test_extraction_preserves_nightly_nonmutation_quality_lanes_and_manual_front
                 nightly[job_id], expected_digest
             )
         else:
-            assert _digest(nightly[job_id]) == expected_digest
+            _assert_preserved_job_digest(
+                nightly[job_id],
+                expected_digest,
+                workflow_id="nightly",
+                job_id=job_id,
+            )
 
     manual = _jobs(_load(MANUAL))
     expected_manual = baseline["manual_preserved_jobs"]
@@ -995,10 +1138,18 @@ def test_extraction_preserves_nightly_nonmutation_quality_lanes_and_manual_front
     for job_id in _manual_frontend_job_ids():
         if job_id == "manual-frontend-mutation-preflight":
             _assert_frontend_typecheck_is_only_job_delta(
-                manual[job_id], expected_manual[job_id]
+                manual[job_id],
+                expected_manual[job_id],
+                workflow_id="manual",
+                job_id=job_id,
             )
         else:
-            assert _digest(manual[job_id]) == expected_manual[job_id]
+            _assert_preserved_job_digest(
+                manual[job_id],
+                expected_manual[job_id],
+                workflow_id="manual",
+                job_id=job_id,
+            )
 
 
 def test_full_backend_execution_steps_match_original_except_reusable_boundaries() -> (

@@ -2003,3 +2003,27 @@ final-source scanner checks remain pending.
   the expected RED must be observed before the separate localized-suffix implementation.
 - Existing gates and timeouts remain unchanged. None of these pending items is represented as
   passed or accepted here.
+
+## Bounded workflow-integrity checkpoint (2026-10-22)
+
+This repair is limited to the three raw workflow-source fingerprints in the
+v4 full-backend fixture, strict normalization of reviewed immutable Actions pin
+updates, and the owner's three exact public-integrity dispositions. All historical
+`origin_*` values and independent frozen trigger/job/step fingerprints remain
+unchanged. The 295 prior disposition records are preserved; the exact inventory
+assertion becomes 298. The scanner baseline and detection behavior are unchanged.
+This is not a blanket approval for later source or dependency changes.
+
+At source `7e5b4db013bdd858376ce51a6b5f17a828a8a719`, gateway Go test job
+120123568714 and lint job 120123568621 passed, including the fresh unchanged-graph
+gate for the `go.work.sum` repair. Pre-commit 120122124790, security/types
+120122125059, inventory 120122124894 and detect-secrets 120122268099 also passed in
+[Matrix 39864188802](https://github.com/egorribun/university_ecosystem/actions/runs/39864188802).
+Quick job 120123302524 produced the intended tests-first AUD-299 RED: 642 tests
+passed and only the Russian cooldown suffix case failed; the English case passed.
+The localized production fix is not included in this bounded integrity repair.
+
+The accepted ledger remains **234/512**. This checkpoint does not close another
+audit finding or claim globally green CI, visual acceptance, a merge or a release.
+The repaired contracts and exact policy additions require source-bound validation;
+further audit implementation is outside this checkpoint.

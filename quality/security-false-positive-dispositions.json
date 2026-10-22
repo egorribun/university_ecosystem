@@ -8483,6 +8483,54 @@
       "reviewed_on": "2026-10-22",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          60, 242, 219, 98, 214, 242, 227, 149, 224, 164, 63, 253, 49, 155, 126,
+          56, 252, 82, 229, 121
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable GitHub source: https://github.com/egorribun/university_ecosystem/blob/7e5b4db013bdd858376ce51a6b5f17a828a8a719/.github/workflows/nightly-full-gate.yml. Its raw SHA-256 is recorded in tests/fixtures/full-backend-reusable-baseline.v4.yaml:8. The reviewed workflow diff is limited to immutable action pin references and their version comments; the source-binding contract remains enforced by tests/test_full_backend_reusable_contract.py. Not credential material. Owner approved exactly this identity on 2026-10-22.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-22",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          47, 171, 225, 48, 217, 12, 60, 214, 146, 152, 144, 11, 1, 144, 26, 16,
+          28, 85, 108, 230
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable GitHub source: https://github.com/egorribun/university_ecosystem/blob/7e5b4db013bdd858376ce51a6b5f17a828a8a719/.github/workflows/manual-mutation-evidence.yml. Its raw SHA-256 is recorded in tests/fixtures/full-backend-reusable-baseline.v4.yaml:9. The reviewed workflow diff is limited to immutable action pin references and their version comments; the source-binding contract remains enforced by tests/test_full_backend_reusable_contract.py. Not credential material. Owner approved exactly this identity on 2026-10-22.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-22",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          165, 3, 175, 175, 20, 107, 98, 94, 126, 52, 50, 1, 174, 172, 90, 92,
+          196, 166, 22, 165
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable GitHub source: https://github.com/egorribun/university_ecosystem/blob/7e5b4db013bdd858376ce51a6b5f17a828a8a719/.github/workflows/reusable-full-backend-mutation.yml. Its raw SHA-256 is recorded in tests/fixtures/full-backend-reusable-baseline.v4.yaml:10. The reviewed workflow diff is limited to immutable action pin references and their version comments; the source-binding contract remains enforced by tests/test_full_backend_reusable_contract.py. Not credential material. Owner approved exactly this identity on 2026-10-22.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-22",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }
