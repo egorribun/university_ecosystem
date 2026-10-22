@@ -11,6 +11,7 @@ from app.core.lifespan import (
     _periodic_scheduler_loop,
     _prewarm_jwt_public_key_cache,
     _shutdown_subsystems,
+    _start_quarantine_retention_worker,
     _startup_background_workers,
     _startup_database_and_di,
     _startup_websocket_and_flags,
@@ -2060,3 +2061,25 @@ async def test_aud091_shutdown_attempts_independent_finalizers_in_order(
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_start_quarantine_retention_worker_initializes_background_tasks() -> None:
+    app = FastAPI()
+    started = asyncio.Event()
+    service = MagicMock(sweep_once=AsyncMock(side_effect=started.set))
+    assert not hasattr(app.state, "background_tasks")
+
+    task = _start_quarantine_retention_worker(
+        app, service=service, interval_seconds=3600
+    )
+    try:
+        assert app.state.background_tasks == {task}
+        assert task.get_name() == "quarantine_retention_worker"
+        async with asyncio.timeout(5):
+            await started.wait()
+        service.sweep_once.assert_awaited_once_with()
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    assert task.cancelled()

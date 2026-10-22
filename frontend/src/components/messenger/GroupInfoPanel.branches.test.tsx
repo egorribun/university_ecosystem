@@ -561,6 +561,31 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
       expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
     })
 
+    it("reports user-search failures instead of claiming there are no users", async () => {
+      mocks.apiGet.mockRejectedValueOnce(new Error("network unavailable"))
+      const view = render(
+        <GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />,
+        { wrapper }
+      )
+      const queryClient = latestQueryClient
+
+      try {
+        fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+        fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+          target: { value: "ab" },
+        })
+
+        await waitFor(() => {
+          expect(queryClient?.getQueryState(["users", "search", "ab"])?.status).toBe("error")
+          expect(screen.queryByText("messenger:noUsersFound")).toBeNull()
+          expect(screen.getByText("messenger:error.failedToLoadUsers")).toBeInTheDocument()
+        })
+      } finally {
+        view.unmount()
+        queryClient?.clear()
+      }
+    })
+
     it("does not render no-results when the response contains an addable user", async () => {
       mocks.apiGet.mockResolvedValue({
         data: [{ id: "new-user", full_name: "Nina Newbie", avatar_url: null, is_active: true }],

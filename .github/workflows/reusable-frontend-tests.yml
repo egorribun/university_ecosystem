@@ -356,6 +356,8 @@ jobs:
           src/components/mfa/__tests__/TotpQrDisplay.closure.test.tsx
           src/features/admin/__tests__/AdminNotificationsFeature.behavior.test.tsx
           src/features/admin/__tests__/AdminNotificationsFeature.destructive-race.test.tsx
+          src/components/messenger/GroupInfoPanel.branches.test.tsx
+          src/components/messenger/GroupInfoPanel.escape.integration.test.tsx
           --reporter=verbose
         env:
           CI: "true"
