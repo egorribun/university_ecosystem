@@ -308,6 +308,7 @@ function StoryAdminItem({ story, nowTick, formatDate, onRefresh }: StoryAdminIte
                       variant="outline"
                       size="sm"
                       onClick={handleCoverReset}
+                      aria-label={t("stories:list.actions.clearCover")}
                       startIcon={<RestartAltIcon className="h-4 w-4" />}
                       className="text-(--text-secondary)"
                     />

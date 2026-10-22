@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState, lazy, Suspense } from "react"
 import { Copy, Check } from "lucide-react"
 import { useTranslation } from "react-i18next"
+import { useAnnouncer } from "@/components/ui/LiveRegionProvider"
 
 const QRCodeSVG = lazy(() => import("qrcode.react").then((m) => ({ default: m.QRCodeSVG })))
 
@@ -15,6 +16,7 @@ const COPY_FEEDBACK_MS = 2500
 
 export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps) => {
   const { t } = useTranslation("auth")
+  const { announce } = useAnnouncer()
   const [copied, setCopied] = useState(false)
   const [showTooltip, setShowTooltip] = useState(false)
 
@@ -31,12 +33,13 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
     try {
       await navigator.clipboard.writeText(normalizedSecret)
       setCopied(true)
+      announce(t("mfa.totp.copied"))
       setTimeout(() => setCopied(false), COPY_FEEDBACK_MS)
     } catch {
       // Ignored
       setCopied(false)
     }
-  }, [normalizedSecret])
+  }, [announce, normalizedSecret, t])
 
   return (
     <div className="flex flex-col gap-4 items-center text-center">

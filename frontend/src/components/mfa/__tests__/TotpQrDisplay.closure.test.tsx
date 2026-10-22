@@ -220,6 +220,7 @@ describe("TotpQrDisplay live announcements", () => {
       expect(writeText).toHaveBeenCalledWith(manualCode.value)
       expect(status.textContent).toBe("mfa.totp.copied")
       expect(status.textContent).not.toContain(manualCode.value)
+      expect(screen.getByRole("alert").textContent).not.toContain(manualCode.value)
 
       act(() => {
         vi.advanceTimersByTime(3000)
@@ -231,6 +232,7 @@ describe("TotpQrDisplay live announcements", () => {
       })
       expect(writeText).toHaveBeenCalledTimes(2)
       expect(status.textContent).toBe("")
+      expect(screen.getByRole("alert").textContent).not.toContain(manualCode.value)
     } finally {
       if (vi.isFakeTimers()) {
         act(() => {

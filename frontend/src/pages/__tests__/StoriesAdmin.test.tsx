@@ -897,6 +897,7 @@ describe("StoriesAdmin", () => {
         screen.getByRole("button", { name: "stories:list.actions.updateCover" })
       ).toBeDisabled()
       expect(mocks.uploadStoryCover).not.toHaveBeenCalled()
+      expect(mocks.updateStory).not.toHaveBeenCalled()
       expect(revokeObjectUrl).toHaveBeenCalledWith("blob:item-cover")
     } finally {
       unmount?.()

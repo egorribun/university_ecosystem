@@ -354,6 +354,8 @@ jobs:
           src/hooks/__tests__/useChatWebSocket.test.tsx
           src/components/ui/__tests__/SpotifyConnect.accessible-name.test.tsx
           src/components/mfa/__tests__/TotpQrDisplay.closure.test.tsx
+          src/features/admin/__tests__/AdminNotificationsFeature.behavior.test.tsx
+          src/features/admin/__tests__/AdminNotificationsFeature.destructive-race.test.tsx
           --reporter=verbose
         env:
           CI: "true"
