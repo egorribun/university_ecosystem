@@ -1649,3 +1649,48 @@ remains 223/512 (289 remaining); no new finding is accepted by this commit.
 Baseline 319, dispositions 295, required contexts 78, Gitleaks 25, blocking
 CodeQL, finite migration exception 131, budgets and shards are unchanged.
 No PR merge, deployment or release is performed.
+
+## Dependency-compatible test contracts (2026-10-22)
+
+On source 2c0c0b0e / merge 6ec2ed7d, the quick Vitest regression step
+passed all 445 cases in 23 files, including the unchanged AUD-296 and
+AUD-305 RED tests, the 20 PWA behavior cases and the group-panel cases.
+Its job 119982368493 still failed because the Node closed live-inventory
+guard retained Playwright 1.63.0 after the owner's 1.64.1 dependency update.
+The four frontend unit shards completed with 9,652 passing and 20 failing
+cases: nineteen inline-background assertions and one stale version pin.
+These are not a globally passing frontend checkpoint or new audit closures.
+
+Contract job 119981283674 completed with 1,406 passes / one deselected in
+444.37 seconds and 270 policy passes in 52.62 seconds. Current-source
+security/types, pre-commit lint, inventory, frontend static checks and
+production build passed. The Python fixture repair passed detect-secrets
+without a new disposition, baseline entry or scanner suppression.
+
+Both explicit Playwright version guards now pin the installed 1.64.1
+package set. The private deadline adapter is not changed. Reviewed upstream
+[1.64.1 TestInfo](https://github.com/microsoft/playwright/blob/v1.64.1/packages/playwright/src/worker/testInfo.ts#L157-L166)
+and [monotonic clock](https://github.com/microsoft/playwright/blob/v1.64.1/packages/isomorphic/time.ts#L35-L37)
+retain the interfaces used by the adapter, but these remain unsupported
+private APIs. A real-runner regression now calls the adapter with actual
+TestInfo and requires a finite future deadline within the active timeout.
+The existing live-contract command runs it before Docker/browser startup,
+with no page fixture or web server. A Python contract binds that invocation.
+The live-spec inventory, collection count, retries and timeout policy remain
+unchanged; the new smoke itself has no retry. Historical visual-only
+container pins are not refreshed or certified by this change.
+
+Inline background token contracts now compare exact CSSOM-normalized
+declarations through a narrow helper, rather than asking computed style to
+resolve missing theme variables. Missing elements, missing or changed
+declarations and invalid expectations still fail. Five helper regressions
+cover these failure modes, color normalization and SVG support. Mixed style
+assertions retain their non-background checks, and production CSS is
+unchanged. This verifies inline token wiring, not rendered theme colors;
+browser visual acceptance remains separate.
+
+All new test-contract changes require fresh hosted results. The accepted
+audit ledger stays 223/512 (289 remaining). Baseline 319, dispositions 295,
+required contexts 78, Gitleaks 25, blocking CodeQL, finite migration
+exception 131, dependency manifests/lock versions, budgets and shard counts
+remain unchanged. No merge, deployment or release is performed.

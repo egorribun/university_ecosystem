@@ -1,3 +1,4 @@
+import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import { render } from "@testing-library/react"
 import { describe, it, expect } from "vitest"
 
@@ -54,27 +55,36 @@ describe("MessengerBackdrop", () => {
     const { container } = render(<MessengerBackdrop />)
     const orbs = container.querySelectorAll<HTMLElement>(".rounded-full")
     expect(orbs).toHaveLength(3)
+    expectInlineBackground(
+      orbs[0],
+      "radial-gradient(ellipse at center, var(--messenger-orb-1), transparent 70%)"
+    )
     expect(orbs[0]).toHaveStyle({
       left: "50%",
       transform: "translateX(-50%)",
-      background: "radial-gradient(ellipse at center, var(--messenger-orb-1), transparent 70%)",
       opacity: "0.6",
       top: "-160px",
     })
+    expectInlineBackground(
+      orbs[1],
+      "radial-gradient(ellipse at center, var(--messenger-orb-2), transparent 70%)"
+    )
     expect(orbs[1]).toHaveStyle({
       width: "42%",
       height: "320px",
       top: "100px",
       right: "-6%",
-      background: "radial-gradient(ellipse at center, var(--messenger-orb-2), transparent 70%)",
       opacity: "0.5",
     })
+    expectInlineBackground(
+      orbs[2],
+      "radial-gradient(ellipse at center, var(--messenger-orb-3), transparent 70%)"
+    )
     expect(orbs[2]).toHaveStyle({
       width: "38%",
       height: "300px",
       top: "400px",
       left: "5%",
-      background: "radial-gradient(ellipse at center, var(--messenger-orb-3), transparent 70%)",
       opacity: "0.4",
     })
   })

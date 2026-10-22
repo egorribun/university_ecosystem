@@ -1,3 +1,4 @@
+import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import type { ReactNode } from "react"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -172,7 +173,7 @@ describe("ChatWindow motion and layout mutation contract", () => {
     expect(animated).toHaveClass("flex", "w-full", "max-w-[24rem]", "flex-col", "items-center")
 
     const iconWrap = container.querySelector(".messenger-card-matte")!
-    expect(iconWrap).toHaveStyle({ background: "var(--messenger-card-bg)" })
+    expectInlineBackground(iconWrap, "var(--messenger-card-bg)")
     expect(screen.getByText("messenger:error.failedToLoadMessages")).toBeInTheDocument()
     expect(screen.getByText("messenger:error.failedToLoadMessagesHint")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "messenger:error.retry" }))
@@ -264,9 +265,10 @@ describe("ChatWindow motion and layout mutation contract", () => {
     expect(motionAttr(emptyAnimated, "data-motion-transition")).toBe(
       JSON.stringify({ duration: 0.45, ease: [0.22, 1, 0.36, 1] })
     )
-    expect(empty.container.querySelector(".messenger-card-matte")).toHaveStyle({
-      background: "var(--messenger-card-bg)",
-    })
+    expectInlineBackground(
+      empty.container.querySelector(".messenger-card-matte"),
+      "var(--messenger-card-bg)"
+    )
     expect(screen.getByText("messenger:noMessages.title")).toBeInTheDocument()
     empty.unmount()
 
@@ -309,7 +311,7 @@ describe("ChatWindow motion and layout mutation contract", () => {
     expect(emptyAnimated.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
     expect(emptyAnimated.querySelector("svg")).toHaveAttribute("aria-hidden", "true")
     expect(emptyCard).toHaveClass("mb-5", "flex", "size-16", "items-center", "justify-center")
-    expect(emptyCard).toHaveStyle({ background: "var(--messenger-card-bg)" })
+    expectInlineBackground(emptyCard, "var(--messenger-card-bg)")
     expect(motionAttr(emptyAnimated, "data-motion-animate")).toBe(
       JSON.stringify({ scale: 1, opacity: 1, y: 0 })
     )
@@ -1111,9 +1113,10 @@ describe("ChatWindow motion and layout mutation contract", () => {
     expect(motionAttr(emptyAnimated, "data-motion-transition")).toBe(
       JSON.stringify({ duration: 0 })
     )
-    expect(emptyAnimated.parentElement?.querySelector(".messenger-card-matte")).toHaveStyle({
-      background: "var(--messenger-card-bg)",
-    })
+    expectInlineBackground(
+      emptyAnimated.parentElement?.querySelector(".messenger-card-matte"),
+      "var(--messenger-card-bg)"
+    )
     empty.unmount()
 
     const search = render(
@@ -1130,9 +1133,10 @@ describe("ChatWindow motion and layout mutation contract", () => {
     expect(motionAttr(searchAnimated, "data-motion-transition")).toBe(
       JSON.stringify({ duration: 0 })
     )
-    expect(searchAnimated.parentElement?.querySelector(".messenger-card-matte")).toHaveStyle({
-      background: "var(--messenger-card-bg)",
-    })
+    expectInlineBackground(
+      searchAnimated.parentElement?.querySelector(".messenger-card-matte"),
+      "var(--messenger-card-bg)"
+    )
     search.unmount()
   })
 

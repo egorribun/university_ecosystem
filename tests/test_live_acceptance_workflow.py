@@ -600,3 +600,15 @@ def test_live_contract_command_includes_every_live_contract_file() -> None:
     assert contracts, "the live acceptance suite must have static contracts"
     missing = sorted(path for path in contracts if path not in command)
     assert not missing, f"live contract command omits: {missing}"
+
+
+def test_live_contract_command_runs_real_playwright_deadline_adapter() -> None:
+    frontend = ROOT / "frontend"
+    package = json.loads((frontend / "package.json").read_text(encoding="utf-8"))
+    command = package["scripts"]["test:e2e:live:contract"]
+    assert command.endswith(
+        " && cross-env SKIP_WEBSERVER=true playwright test "
+        "tests/e2e/playwright-deadline-adapter.runtime.spec.ts "
+        "--project=chromium --workers=1 --retries=0"
+    )
+    assert (frontend / "tests/e2e/playwright-deadline-adapter.runtime.spec.ts").is_file()
