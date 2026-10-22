@@ -1593,6 +1593,15 @@ jobs:
             tests/test_units.py::test_api_version_constants \
             tests/test_task_registry_closure.py \
             tests/test_database_pool_lifecycle.py \
+            tests/test_database_metrics.py \
+            tests/test_database_closure.py::test_pool_metrics_snapshot_and_peak_property \
+            tests/test_database_runtime_paths.py::test_pool_health_metrics_properties \
+            tests/test_database_runtime_paths.py::test_pool_health_monitoring_callbacks \
+            tests/test_mutation_regressions.py::test_database_invalidation_keeps_structured_log_message \
+            tests/test_mutation_regressions.py::test_database_invalidation_without_exception_uses_none_type_marker \
+            tests/test_news_api_closure.py::test_comment_news_sanitizes_content_like_patch_update \
+            tests/test_news_api_closure.py::test_comment_news_rejects_overlong_content_before_write \
+            tests/test_news_api_closure.py::test_comment_news_rejects_content_sanitized_to_empty \
             tests/test_cache_settings_closure.py::test_cache_warmup_properties_preserve_uuid_ids_and_skip_invalid_tokens \
             tests/test_cache_settings_closure.py::test_cache_warmup_uuid_ids_load_from_environment \
             tests/test_cache_settings_closure.py::test_cache_warmup_properties_coerce_and_deduplicate_values \

@@ -1127,3 +1127,26 @@ SQLite pool и production listeners: обычный возврат, hard invalid
 Production accounting не меняется до hosted RED; AUD-041 остаётся OPEN.
 Это не live PostgreSQL acceptance. Global CI/NATS не приняты; все finite
 security/coverage границы сохранены, merge/deploy нет.
+
+
+## AUD-041: реальный RED и минимальное исправление учёта
+
+На ccda0777 / merge f699bb55 с одинаковым tree abd2ccd5 получены ровно
+два ожидаемых active-count FAIL: hard invalidation/checkin и idle invalidation
+показывают 0 вместо 1 при другом выданном соединении. Обычный возврат PASS.
+Contract 119562921244: 1394 PASS / 2 FAIL / 1 deselected за 405,50 s;
+затем 241 policy PASS за 34,35 s. Lint 119562921454, security/types
+119562921525 и inventory 119562921474 прошли.
+
+Теперь invalidation увеличивает только свой счётчик событий. Active меняют
+только checkout/checkin под прежним lock; hard invalidation сам вызывает
+checkin, а idle invalidation не освобождает чужой checkout. Состояние,
+markers и callback signatures не добавляются. Два прежних unit-ожидания
+приведены к этой семантике с сохранением snapshot/peak/total проверок
+и проверкой последующего checkin до нуля. Три реальных теста неизменны.
+Прежние metric и structured-log controls добавлены в ранний запуск.
+
+AUD-181 получает три существующих route-теста sanitization/overlong/empty.
+Исправление в source уже есть, production news код не меняется.
+AUD-041 и AUD-181 пока OPEN; ledger 215/512 до собственного GREEN.
+Global CI/NATS не приняты; все finite security/coverage границы сохранены.

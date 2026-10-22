@@ -47,5 +47,8 @@ async def test_pool_metrics_logic():
     assert metrics.active_connections == 1
 
     metrics.record_invalidation()
-    assert metrics.active_connections == 0
+    assert metrics.active_connections == 1
     assert metrics.total_invalidations == 1
+
+    metrics.record_checkin()
+    assert metrics.active_connections == 0

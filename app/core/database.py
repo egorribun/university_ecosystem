@@ -148,9 +148,9 @@ class PoolHealthMetrics:
             self._active_connections = max(0, self._active_connections - 1)
 
     def record_invalidation(self) -> None:
+        # Only checkin releases a checkout; invalidation may target an idle record.
         with self._lock:
             self._total_invalidations += 1
-            self._active_connections = max(0, self._active_connections - 1)
 
     def record_failed_checkout(self) -> None:
         with self._lock:
