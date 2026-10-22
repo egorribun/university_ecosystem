@@ -119,10 +119,10 @@ describe("Login page", () => {
   it("presents one centered, distraction-free sign-in form", async () => {
     await renderLogin()
 
-    const main = screen.getByRole("main", { name: tAuth("login.title") })
-    expect(main).toHaveClass("auth-shell")
-    expect(main.querySelectorAll("form")).toHaveLength(1)
-    expect(main.querySelectorAll(".auth-card-matte")).toHaveLength(1)
+    const region = screen.getByRole("region", { name: tAuth("login.title") })
+    expect(region).toHaveClass("auth-shell")
+    expect(region.querySelectorAll("form")).toHaveLength(1)
+    expect(region.querySelectorAll(".auth-card-matte")).toHaveLength(1)
     expect(
       screen.getByRole("heading", { level: 1, name: tAuth("login.title") })
     ).toBeInTheDocument()

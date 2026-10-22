@@ -92,10 +92,10 @@ describe("Register page", () => {
   it("presents one centered registration form with a concise university identity", async () => {
     await renderRegister()
 
-    const main = screen.getByRole("main", { name: tAuth("register.title") })
-    expect(main).toHaveClass("auth-shell")
-    expect(main.querySelectorAll("form")).toHaveLength(1)
-    expect(main.querySelectorAll(".auth-card-matte")).toHaveLength(1)
+    const region = screen.getByRole("region", { name: tAuth("register.title") })
+    expect(region).toHaveClass("auth-shell")
+    expect(region.querySelectorAll("form")).toHaveLength(1)
+    expect(region.querySelectorAll(".auth-card-matte")).toHaveLength(1)
     expect(screen.getByText(tAuth("register.hero.badge"))).toBeInTheDocument()
     expect(
       screen.getByRole("heading", { level: 1, name: tAuth("register.title") })

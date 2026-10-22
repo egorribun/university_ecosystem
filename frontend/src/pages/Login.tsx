@@ -56,7 +56,7 @@ const Login = () => {
 
   return (
     <div className="auth-theme min-h-screen bg-page text-text-primary">
-      <main className="auth-shell auth-shell--login" aria-labelledby="login-heading">
+      <section className="auth-shell auth-shell--login" aria-labelledby="login-heading">
         {logoutNotice === "server-unconfirmed" && !user ? (
           <p
             className="mb-4 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm"
@@ -66,7 +66,7 @@ const Login = () => {
           </p>
         ) : null}
         <LoginCredentialForm form={form} />
-      </main>
+      </section>
     </div>
   )
 }

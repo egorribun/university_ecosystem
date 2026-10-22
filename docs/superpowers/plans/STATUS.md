@@ -1616,3 +1616,36 @@ on ed31 (frontend static job 119942426710, TS18048 at the unsafe-URL
 assertion). A single object match now checks the expected record and its
 undefined URL together, still failing for an absent record or an unsafe
 string. The production parser and all negative URL inputs are unchanged.
+
+## Auth landmark and achievement URL corrections (2026-10-22)
+
+Source 5cccfb57, Matrix run 39815796693, quick job 119971322119
+completed with 430 passing and exactly 15 failing Vitest cases: both
+AuthPageLandmarks cases found two main landmarks, and all thirteen unsafe
+achievement URL cases retained their link. The PWA behavior suite passed
+20 cases; group-panel branches passed 42 and Escape integration passed one.
+Frontend static checks and production build passed. Contract job
+119968215223 completed with 1,406 passes / one deselected in 440.30 seconds
+and 270 exact security-policy passes in 52.48 seconds.
+
+The auth pages now use named sections inside the layout-owned main landmark.
+Their standalone assertions follow the named region; the real-layout RED
+tests remain unchanged. Achievement parsing now admits only HTTP(S) or
+relative links resolved against an inert base, rejects credentials, control
+characters and URL parse failures, and preserves the spelling of accepted
+links. Unsafe links lose only their URL, not the achievement record. All
+thirteen negative and seven positive URL regression inputs are unchanged.
+
+The same source had two test-maintenance failures. Ruff required a missing
+blank line and a single-line category subtraction in the policy test.
+Detect-secrets flagged the redundant plaintext password assertion in that
+test. It now checks non-null before computing the existing digest against
+the independently fixed approved identity; the original TypeScript fixture,
+exact identity, policy and validator are unchanged. No new disposition or
+scanner suppression is introduced.
+
+These corrections still require fresh hosted GREEN. The accepted ledger
+remains 223/512 (289 remaining); no new finding is accepted by this commit.
+Baseline 319, dispositions 295, required contexts 78, Gitleaks 25, blocking
+CodeQL, finite migration exception 131, budgets and shards are unchanged.
+No PR merge, deployment or release is performed.

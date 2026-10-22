@@ -148,7 +148,7 @@ const Register = () => {
 
   return (
     <div className="auth-theme min-h-screen bg-page text-text-primary">
-      <main className="auth-shell auth-shell--register" aria-labelledby="register-heading">
+      <section className="auth-shell auth-shell--register" aria-labelledby="register-heading">
         <div className="auth-card-matte w-full border border-border-subtle p-6 sm:p-10">
           <div className="mb-8 space-y-3">
             <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-brand">
@@ -468,7 +468,7 @@ const Register = () => {
             </div>
           </form>
         </div>
-      </main>
+      </section>
     </div>
   )
 }

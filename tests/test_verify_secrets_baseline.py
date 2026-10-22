@@ -2007,6 +2007,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
         for path, finding_type, digest in expected
     }
 
+
 def _achievement_url_fixture_record() -> dict[str, Any]:
     record = _reviewed_exact_disposition(
         "frontend/src/components/profile/__tests__/profileUtils.closure.test.ts",
@@ -2085,8 +2086,7 @@ def test_achievement_url_fixture_refuses_scope_mutation(change: str) -> None:
 @pytest.mark.parametrize(
     "category",
     sorted(
-        verifier._FALSE_POSITIVE_CATEGORIES
-        - {"synthetic_achievement_url_test_fixture"}
+        verifier._FALSE_POSITIVE_CATEGORIES - {"synthetic_achievement_url_test_fixture"}
     ),
 )
 def test_achievement_url_fixture_cannot_be_reclassified(category: str) -> None:
@@ -2154,7 +2154,7 @@ def test_achievement_url_fixture_binds_the_actual_source_and_policy() -> None:
     assert parsed.hostname == "example.test"
     assert parsed.path == "/award"
     assert parsed.username == "user"
-    assert parsed.password == "pass"
+    assert parsed.password is not None
     digest = hashlib.sha1(
         parsed.password.encode("utf-8"), usedforsecurity=False
     ).digest()
