@@ -11,6 +11,7 @@ import { useNavigate, useParams } from "@tanstack/react-router"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { formatDate, presets } from "@/utils/date"
+import { compareMessageOrder } from "@/utils/messageOrder"
 import { useAuth } from "@/contexts/AuthContext"
 import { useMessenger } from "@/contexts/MessengerContext"
 import {
@@ -497,10 +498,21 @@ export const useMessengerController = () => {
         (old) => {
           const items = old?.items ?? []
           if (items.some((m) => m.id === newMessage.id)) return old
+          // Keep HTTP completions in backend (created_at, id) order without
+          // applying the live WebSocket cache cap to previously loaded history.
+          // Invalid timestamps retain arrival order rather than guessing an edge.
+          const insertionIndex = items.some(
+            (message) => compareMessageOrder(newMessage, message) === null
+          )
+            ? -1
+            : items.findIndex((message) => compareMessageOrder(newMessage, message)! < 0)
           return {
             has_more: old?.has_more ?? false,
             next_cursor: old?.next_cursor ?? null,
-            items: [...items, newMessage],
+            items:
+              insertionIndex < 0
+                ? [...items, newMessage]
+                : [...items.slice(0, insertionIndex), newMessage, ...items.slice(insertionIndex)],
           }
         }
       )

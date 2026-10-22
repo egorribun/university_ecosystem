@@ -1782,6 +1782,59 @@ describe("concurrent HTTP send ordering", () => {
     ...overrides,
   })
 
+  const startSendHarness = (response: Message) => {
+    mocks.paramsRef.current = { chatId: "chat-1" }
+    mocks.chatApi.getChats.mockResolvedValue({
+      items: [
+        {
+          id: "chat-1",
+          participants: [{ id: "current-user-id" }, { id: "peer" }],
+          unread_count: 0,
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+    let resolveResponse!: (value: Message) => void
+    const responsePromise = new Promise<Message>((resolve) => {
+      resolveResponse = resolve
+    })
+    mocks.chatApi.sendMessage.mockReset().mockReturnValueOnce(responsePromise)
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, gcTime: 0 },
+        mutations: { retry: false },
+      },
+    })
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+    const { result, unmount } = renderHook(() => useMessengerController(), {
+      wrapper: localWrapper,
+    })
+    const deliveries: Promise<boolean>[] = []
+    const startSend = (content: string) => {
+      act(() => {
+        deliveries.push(result.current.handleSendMessage(content, []))
+      })
+    }
+    const settle = () =>
+      act(async () => {
+        resolveResponse(response)
+        await Promise.allSettled(deliveries)
+      })
+    const dispose = async () => {
+      try {
+        await settle()
+      } finally {
+        unmount()
+        queryClient.clear()
+        mocks.chatApi.sendMessage.mockReset()
+      }
+    }
+    return { queryClient, result, startSend, settle, dispose }
+  }
+
   it.each([
     {
       name: "reverse completion",
@@ -1974,6 +2027,143 @@ describe("concurrent HTTP send ordering", () => {
         queryClient.clear()
         mocks.chatApi.sendMessage.mockReset()
       }
+    }
+  })
+
+  it("retains more than 200 cached items and the cursor after an HTTP send", async () => {
+    const response = apiMessage("server-new", "new message", "2026-08-25T00:01:00.500000Z")
+    const { queryClient, result, startSend, settle, dispose } = startSendHarness(response)
+    try {
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+      await waitFor(() => expect(queryClient.getQueryData(["messages", "chat-1"])).toBeDefined())
+      const retainedItems = Array.from({ length: 205 }, (_, index) =>
+        apiMessage(
+          `cached-${String(index).padStart(3, "0")}`,
+          `cached ${index}`,
+          new Date(Date.UTC(2026, 7, 25, 0, 0, index)).toISOString(),
+          { sender_id: "peer" }
+        )
+      )
+      act(() => {
+        queryClient.setQueryData<MessagesListResponse>(["messages", "chat-1"], {
+          items: retainedItems,
+          has_more: true,
+          next_cursor: "history-cursor",
+        })
+      })
+      await waitFor(() => expect(result.current.messages).toHaveLength(retainedItems.length))
+      startSend("new message")
+      await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(1))
+      await settle()
+
+      const expected = [...retainedItems.slice(0, 61), response, ...retainedItems.slice(61)]
+      const cached = queryClient.getQueryData<MessagesListResponse>(["messages", "chat-1"])
+      expect(cached?.items).toEqual(expected)
+      expect(cached).toMatchObject({ has_more: true, next_cursor: "history-cursor" })
+      await waitFor(() =>
+        expect(result.current.messages.map(({ id }) => id)).toEqual(expected.map(({ id }) => id))
+      )
+    } finally {
+      await dispose()
+    }
+  })
+
+  it.each([
+    { cachedAt: "invalid-cached", incomingAt: "2026-08-25T11:00:00Z" },
+    { cachedAt: "2026-08-25T12:00:00Z", incomingAt: "invalid-incoming" },
+    { cachedAt: "invalid-cached", incomingAt: "invalid-incoming" },
+  ])("keeps arrival order for $cachedAt / $incomingAt", async ({ cachedAt, incomingAt }) => {
+    const cachedMessage = apiMessage("z-cached", "cached message", cachedAt, { sender_id: "peer" })
+    const response = apiMessage("a-http", "incoming message", incomingAt)
+    const { queryClient, result, startSend, settle, dispose } = startSendHarness(response)
+    try {
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+      await waitFor(() => expect(queryClient.getQueryData(["messages", "chat-1"])).toBeDefined())
+      act(() => {
+        queryClient.setQueryData<MessagesListResponse>(["messages", "chat-1"], {
+          items: [cachedMessage],
+          has_more: true,
+          next_cursor: "history-cursor",
+        })
+      })
+      await waitFor(() =>
+        expect(result.current.messages.map(({ id }) => id)).toEqual([cachedMessage.id])
+      )
+      startSend("incoming message")
+      await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(1))
+      await settle()
+
+      const expectedIds = [cachedMessage.id, response.id]
+      const cached = queryClient.getQueryData<MessagesListResponse>(["messages", "chat-1"])
+      expect(cached?.items).toEqual([cachedMessage, response])
+      expect(cached).toMatchObject({ has_more: true, next_cursor: "history-cursor" })
+      await waitFor(() => expect(result.current.messages.map(({ id }) => id)).toEqual(expectedIds))
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("keeps a same-id live cache record when its HTTP send resolves", async () => {
+    const response = apiMessage("server-shared", "stale HTTP body", "2026-08-25T12:00:01Z")
+    const liveMessage = apiMessage("server-shared", "live cache body", "2026-08-25T12:00:00Z", {
+      read_status: true,
+      read_at: "2026-08-25T12:01:00Z",
+      edited_at: "2026-08-25T12:02:00Z",
+      attachments: [
+        {
+          id: "live-attachment",
+          url: "/files/live.txt",
+          file_type: "file",
+          filename: "live.txt",
+          size: 9,
+        },
+      ],
+      reactions: [{ emoji: "👍", count: 2, reacted_by_me: true }],
+      forwarded_from_name: "Live Peer",
+    })
+    const { queryClient, result, startSend, settle, dispose } = startSendHarness(response)
+    try {
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+      await waitFor(() => expect(queryClient.getQueryData(["messages", "chat-1"])).toBeDefined())
+      startSend("outgoing message")
+      await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(1))
+      act(() => {
+        queryClient.setQueryData<MessagesListResponse>(["messages", "chat-1"], {
+          items: [liveMessage],
+          has_more: true,
+          next_cursor: "history-cursor",
+        })
+      })
+      const before = queryClient.getQueryData<MessagesListResponse>(["messages", "chat-1"])
+      await settle()
+
+      const cached = queryClient.getQueryData<MessagesListResponse>(["messages", "chat-1"])
+      expect(cached).toBe(before)
+      expect(cached?.items).toEqual([liveMessage])
+      expect(cached).toMatchObject({ has_more: true, next_cursor: "history-cursor" })
+      await waitFor(() =>
+        expect(result.current.messages.map(({ id }) => id)).toEqual([liveMessage.id])
+      )
+      expect(result.current.messages[0]).toMatchObject({
+        id: liveMessage.id,
+        text: liveMessage.content,
+        status: "read",
+        readAt: liveMessage.read_at,
+        editedAt: liveMessage.edited_at,
+        attachments: [
+          {
+            id: "live-attachment",
+            url: "/files/live.txt",
+            type: "file",
+            name: "live.txt",
+            size: 9,
+          },
+        ],
+        reactions: [{ emoji: "👍", count: 2, reactedByMe: true }],
+        forwardedFromName: "Live Peer",
+      })
+    } finally {
+      await dispose()
     }
   })
 })

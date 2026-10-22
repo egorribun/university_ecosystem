@@ -352,6 +352,7 @@ jobs:
           src/components/map/__tests__/MapSidebar.branches.test.tsx
           src/hooks/features/__tests__/useMessengerController.test.tsx
           src/hooks/__tests__/useChatWebSocket.test.tsx
+          src/components/ui/__tests__/SpotifyConnect.accessible-name.test.tsx
           --reporter=verbose
         env:
           CI: "true"
@@ -786,6 +787,23 @@ jobs:
             shift
             local status=0
             "$@" >"$STATIC_GATE_LOG_DIR/$gate.log" 2>&1 || status=$?
+            if [[ "$gate" == "formatting" && "$status" -ne 0 ]]; then
+              # Read-only, bounded diffs make remote formatting failures actionable.
+              # The original gate status remains authoritative, including errors.
+              local shown=0
+              while IFS= read -r file; do
+                if [[ "$shown" -ge 10 ]]; then
+                  echo "Further formatting diffs omitted." >>"$STATIC_GATE_LOG_DIR/$gate.log"
+                  break
+                fi
+                [[ -f "$file" ]] || continue
+                shown=$((shown + 1))
+                printf '\nFormatting diff: %s (first 200 lines)\n' "$file" >>"$STATIC_GATE_LOG_DIR/$gate.log"
+                ./node_modules/.bin/prettier "$file" 2>>"$STATIC_GATE_LOG_DIR/$gate.log" |
+                  diff -u -- "$file" - |
+                  sed -n '1,200p' >>"$STATIC_GATE_LOG_DIR/$gate.log" || true
+              done < <(./node_modules/.bin/prettier --list-different .)
+            fi
             printf '%s\n' "$status" >"$STATIC_GATE_LOG_DIR/$gate.status"
           }
 

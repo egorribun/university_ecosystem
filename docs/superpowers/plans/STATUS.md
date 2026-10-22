@@ -1227,3 +1227,48 @@ ESLint and i18n passed, but formatting did not. This is neither a globally
 green checkpoint nor AUD-157 acceptance. The verified ledger remains
 **218/512 (42.6%)**. Baseline 319, policy 294, required 78, Gitleaks 25,
 blocking CodeQL and finite migration exception 131 remain unchanged.
+
+## AUD-157 isolated RED and minimal ordering fix — 2026-10-22
+
+[Source fdfe52e](https://github.com/egorribun/university_ecosystem/commit/fdfe52e09da25bfcc4f011eb99f200a9a129bdf2)
+and [Matrix 39705589637](https://github.com/egorribun/university_ecosystem/actions/runs/39705589637)
+now provide isolated hosted RED. Frontend job 119585956137 passed both
+repaired Blob URL lifecycle cases and 302 quick cases, while the same three
+HTTP ordering cases failed with only the server-ID order reversed. The
+extra optimistic IDs no longer appeared after test-owned Actions settled.
+No production optimistic-state workaround is justified by that earlier
+test contamination.
+
+The fix extracts the existing microsecond parser and deterministic ID
+comparator into a type-only-dependent utility, then inserts HTTP responses
+at their ordered position. Duplicate-ID short-circuit behavior, pagination
+metadata, invalid-date arrival fallback and existing item order are
+preserved. WebSocket caps and recovery cursors retain their existing logic;
+HTTP history is not subjected to the live 200-message cap. History-page
+merge behavior is outside this change.
+
+The original three RED oracles remain unchanged. Five additional controls
+cover retained history beyond 200 items, invalid cached/incoming timestamp
+combinations and an HTTP response racing with an already cached same-ID
+live record. Every new harness owns and settles its deferred delivery
+before unmount/client cleanup. These added controls await hosted execution.
+
+Frontend typecheck, ESLint, i18n, message-contract and knip passed at fdfe52e,
+but Prettier still rejected the controller test file. The static-gate runner
+now prints bounded, read-only formatter diffs on failure (at most ten files,
+200 lines each), while preserving its original exit status. This is
+diagnostic evidence, not an autofix, waiver or substitute for formatting
+GREEN.
+
+AUD-289 is the next verification-only candidate: the existing Spotify
+track link already has a translated accessible name and eight EN/RU
+populated/blank/missing/whitespace test cases. Its unchanged dedicated test
+is routed into quick checks; neither code presence nor routing accepts the
+finding. AUD-157 and AUD-289 remain outside the **218/512 (42.6%)** ledger.
+
+Contract job 119585389303 finished with **1,406 passes / one deselected in
+441.80 seconds**, then **241 policy passes in 40.82 seconds**, including
+terminal cleanup. Lint, security/types and inventory passed. Global
+CI/NATS remain unaccepted. Baseline 319, policy 294, required 78, Gitleaks 25,
+blocking CodeQL, migration exception 131, all shard counts and budgets
+remain unchanged. No merge, deployment or release is performed.
