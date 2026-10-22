@@ -459,4 +459,4 @@ AUD-282, AUD-283, AUD-290, AUD-296 and AUD-305 on source
 [e508ab1c](https://github.com/egorribun/university_ecosystem/commit/e508ab1c4c91d9e8bfcf6b17f890432ff1b6445c),
 bringing the lower bound to **228/512 (284 remaining)**. The earlier
 223/512 count and pending candidate states in this approval-era note are
-historical, not current; see the [latest STATUS closure section](docs/superpowers/plans/STATUS.md#group-pwa-auth-and-achievement-link-closure-checkpoint-2026-10-22).
+historical, not current; see the [e508 STATUS closure section](docs/superpowers/plans/STATUS.md#group-pwa-auth-and-achievement-link-closure-checkpoint-2026-10-22).

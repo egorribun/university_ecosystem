@@ -348,6 +348,9 @@ jobs:
           src/components/messenger/__tests__/ChatWindow.ime-edit.audit.test.tsx
           src/routes/__tests__/activity.search-validation.test.ts
           src/features/events/components/__tests__/EventsList.closure.test.tsx
+          src/api/hooks/__tests__/events.branches.test.tsx
+          src/features/events/__tests__/EventsFeature.query-error.audit.test.tsx
+          src/components/events/__tests__/EventEditDialog.test.tsx
           src/pages/__tests__/StoriesAdmin.test.tsx
           src/components/map/__tests__/MapSidebar.branches.test.tsx
           src/hooks/features/__tests__/useMessengerController.test.tsx
@@ -362,6 +365,7 @@ jobs:
           src/components/layout/__tests__/AuthPageLandmarks.test.tsx
           src/components/profile/__tests__/profileUtils.closure.test.ts
           src/pages/__tests__/ResetPassword.token-error.test.tsx
+          src/pages/__tests__/ForgotPassword.test.tsx
           src/pages/__tests__/Register.test.tsx
           src/pages/__tests__/Profile.behavior.test.tsx
           --reporter=verbose

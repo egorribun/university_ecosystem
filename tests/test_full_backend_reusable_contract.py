@@ -148,7 +148,7 @@ def _assert_nightly_miri_is_only_toolchain_pin_update(
     assert len(toolchain_steps) == 1
     toolchain_step = toolchain_steps[0]
     assert toolchain_step.get("uses") == (
-        "dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067"
+        "dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8"
     )
     toolchain_step["uses"] = (
         "dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de"

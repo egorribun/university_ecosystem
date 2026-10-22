@@ -31,6 +31,13 @@ const renderForgot = async () => {
   return result
 }
 
+const renderForgotInLanguage = async (language: "en" | "ru") => {
+  localStorage.setItem("ue:language", language)
+  window.__UE_SELECTED_LANG__ = language
+  await i18n.changeLanguage(language)
+  return renderForgot()
+}
+
 const toPlainText = (markup: string) => {
   const template = document.createElement("template")
   template.innerHTML = markup
@@ -437,6 +444,75 @@ describe("ForgotPassword behaviour details", () => {
     expect(retryButton()).toBeEnabled()
     expect(retryButton()).toHaveAccessibleName(tAuth("forgot.enterAnother"))
   })
+
+  it.each([
+    ["en", "(30s)", "(29s)"],
+    ["ru", "(30 с)", "(29 с)"],
+  ] as const)(
+    "keeps the %s cooldown suffix localized as the timer counts down",
+    async (language, initialSuffix, nextSuffix) => {
+      const previousStoredLanguage = localStorage.getItem("ue:language")
+      const previousSelectedLanguage = window.__UE_SELECTED_LANG__
+      const previousI18nLanguage = i18n.language
+      const previousDocumentLanguage = document.documentElement.getAttribute("lang")
+      const previousDocumentDirection = document.documentElement.getAttribute("dir")
+      const previousBodyDirection = document.body.getAttribute("dir")
+      const previousLanguageCookie = document.cookie
+        .split(";")
+        .map((cookie) => cookie.trim())
+        .find((cookie) => cookie.startsWith("ue:language="))
+      let unmount: (() => void) | undefined
+
+      try {
+        const rendered = await renderForgotInLanguage(language)
+        unmount = rendered.unmount
+        vi.useFakeTimers()
+        await changeEmail("user@example.com")
+        await clickSend()
+
+        const retryLabel = tAuth("forgot.enterAnother")
+        expect(retryButton()).toHaveTextContent(`${retryLabel} ${initialSuffix}`)
+        act(() => {
+          vi.advanceTimersByTime(1000)
+        })
+        expect(retryButton()).toHaveTextContent(`${retryLabel} ${nextSuffix}`)
+      } finally {
+        unmount?.()
+        vi.useRealTimers()
+        await i18n.changeLanguage(previousI18nLanguage)
+        if (previousStoredLanguage === null) {
+          localStorage.removeItem("ue:language")
+        } else {
+          localStorage.setItem("ue:language", previousStoredLanguage)
+        }
+        if (previousSelectedLanguage === undefined) {
+          Reflect.deleteProperty(window, "__UE_SELECTED_LANG__")
+        } else {
+          window.__UE_SELECTED_LANG__ = previousSelectedLanguage
+        }
+        if (previousDocumentLanguage === null) {
+          document.documentElement.removeAttribute("lang")
+        } else {
+          document.documentElement.setAttribute("lang", previousDocumentLanguage)
+        }
+        if (previousDocumentDirection === null) {
+          document.documentElement.removeAttribute("dir")
+        } else {
+          document.documentElement.setAttribute("dir", previousDocumentDirection)
+        }
+        if (previousBodyDirection === null) {
+          document.body.removeAttribute("dir")
+        } else {
+          document.body.setAttribute("dir", previousBodyDirection)
+        }
+        if (previousLanguageCookie === undefined) {
+          document.cookie = "ue:language=; Max-Age=0; Path=/"
+        } else {
+          document.cookie = `${previousLanguageCookie}; Path=/`
+        }
+      }
+    }
+  )
 
   it("does not run a countdown timer while no cooldown is active", async () => {
     const setIntervalSpy = vi.spyOn(globalThis, "setInterval")
