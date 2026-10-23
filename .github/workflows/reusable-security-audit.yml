@@ -468,6 +468,31 @@ jobs:
           skip-setup-trivy: true
           exit-code: "1"
 
+      - name: Verify the pinned Kyverno fixture before the Trivy configuration scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          version_output="$(trivy --version)"
+          if ! grep -Fxq 'Version: 0.75.0' <<<"$version_output"; then
+            echo "::error::The fixture preflight requires Trivy 0.75.0" >&2
+            exit 1
+          fi
+          fixture="k8s/kyverno/tests/disallow-host-access/host-access.yaml"
+          report="$RUNNER_TEMP/trivy-host-access-noignore.json"
+          [[ ! -e "$report" && ! -L "$report" ]]
+          trivy config \
+            --config security/trivy-university-config.yaml \
+            --ignorefile= \
+            --skip-dirs "charts/revocation-store,charts/university-ecosystem,charts/redis-compat" \
+            --severity "CRITICAL,HIGH" \
+            --format json \
+            --output "$report" \
+            "$fixture"
+          python3 scripts/quality/validate_trivy_kyverno_fixture.py \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --target "$fixture" \
+            --report "$report"
+
       - name: Run Trivy configuration scanner (IaC)
         id: trivy_config
         continue-on-error: true

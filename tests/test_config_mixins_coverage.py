@@ -570,12 +570,13 @@ class TestMfaSettingsMixin:
 # RateLimitSettingsMixin
 # ─────────────────────────────────────────────────────────────────────────────
 class TestRateLimitSettingsMixin:
-    """The config layer ONLY validates ``rate_limit_storage_backend`` ∈ {memory, redis}.
-    There is NO validator on ``rate_limit_storage_uri`` — the "memory:// is not a valid
-    Redis scheme" rule lives at the consumption sites (``app/core/ratelimit/logic.py``,
-    ``app/core/middleware/setup.py``), NOT in this mixin. conftest sets
-    ``RATE_LIMIT_STORAGE_BACKEND=memory`` + ``RATE_LIMIT_STORAGE_URI=redis://localhost``
-    (a harmless dev mismatch — the URI is unused when backend=memory).
+    """Rate-limit configuration checks syntax and keeps deployment values external.
+
+    Local configurations retain the process-local memory default. When Redis is
+    selected, the mixin accepts only ``redis://`` or ``rediss://`` URLs with a host
+    and a valid optional port; it does not test reachability or shared storage. The
+    full composed ``Settings`` model requires Redis in staging and production.
+    The test process sets a harmless Redis URI while using the memory backend.
     """
 
     def test_storage_backend_redis_normalized(self, monkeypatch):

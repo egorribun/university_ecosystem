@@ -207,19 +207,21 @@ async def test_body_replay_full_content(client: AsyncClient):
 
 
 # ---------------------------------------------------------------------------
-# WebSocket paths bypass body checking
+# HTTP paths under /ws still enforce body limits
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_websocket_path_bypasses_body_check(client: AsyncClient):
-    """POST to /ws/* path skips body-size enforcement."""
+async def test_http_ws_path_still_enforces_body_check(client: AsyncClient):
+    """HTTP paths under /ws remain subject to the ordinary body limit."""
     payload = b"x" * (_MAX_BYTES + 100)
     response = await client.post("/ws/test", content=payload)
-    # Should succeed because /ws paths are exempted from chunked body check
-    assert response.status_code == 200
-    data = response.json()
-    assert data["length"] == len(payload)
+
+    assert response.status_code == 413
+    assert response.json()["status"] == 413
+    assert response.json()["detail"]
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert int(response.headers["content-length"]) == len(response.content)
 
 
 # ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { StrictMode, useContext, useLayoutEffect, type ReactNode } from "react"
 import { flushSync } from "react-dom"
+import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 /**
@@ -79,12 +80,14 @@ import {
 } from "@/api/chat"
 import {
   applyReactionChangedFrame,
+  applyMessageDeletedFrame,
   applyMessageEditedFrame,
   useChatWebSocket,
   WebSocketProvider,
   WebSocketStoreContext,
   type UseChatWebSocketOptions,
 } from "../useChatWebSocket"
+import { peekReplayCheckpoint, writeReplayCheckpoint } from "../chatReplayCheckpoints"
 
 const CHAT = "chat-a"
 const OTHER_CHAT = "chat-b"
@@ -97,6 +100,12 @@ const sentHeartbeats = (socket: ScriptedWebSocket) =>
   socket.send.mock.calls
     .map(([payload]) => JSON.parse(payload) as { type?: string; nonce?: string })
     .filter((frame) => frame.type === "heartbeat_ping")
+const sentJoins = (socket: ScriptedWebSocket) =>
+  socket.send.mock.calls
+    .map(
+      ([payload]) => JSON.parse(payload) as { type?: string; room?: string; resume_token?: string }
+    )
+    .filter((frame) => frame.type === "join")
 
 function expectTicketSocket(ticket: string) {
   expect(sockets()).toHaveLength(1)
@@ -1198,14 +1207,301 @@ describe("frame side effects", () => {
   ])("keeps the room checkpoint for %s", async (_label, fields) => {
     const { socket, result, invalidateQueries } = await connected({ currentUserId: "me" })
     socket.receive({ type: "replay_checkpoint", chat_id: CHAT, stream_seq: 3, resume_token: "t3" })
+    act(() => result.current.sendJoin(CHAT))
+    const joinsBeforeError = sentJoins(socket).length
 
     act(() => socket.receive({ type: "error", ...fields }))
+    await act(() => vi.advanceTimersByTimeAsync(1_050))
 
     expect(invalidateQueries).not.toHaveBeenCalled()
+    expect(sentJoins(socket)).toHaveLength(joinsBeforeError)
     act(() => result.current.sendJoin(CHAT))
     expect(socket.send).toHaveBeenLastCalledWith(
       JSON.stringify({ type: "join", room: CHAT, resume_token: "t3" })
     )
+  })
+
+  it("reconnects after replay storage recovers and rejoins with the saved signed cursor", async () => {
+    const session = await connected({ currentUserId: "me" })
+    vi.spyOn(Math, "random").mockReturnValue(0.5)
+    const rejectedSocket = session.socket
+    rejectedSocket.receive({
+      type: "replay_checkpoint",
+      chat_id: CHAT,
+      stream_seq: 3,
+      resume_token: "t3",
+    })
+    act(() => session.result.current.sendJoin(CHAT))
+
+    act(() => rejectedSocket.receive({ type: "error", code: "replay_unavailable", room: CHAT }))
+
+    expect(rejectedSocket.close).toHaveBeenCalledExactlyOnceWith(4002, "replay_unavailable")
+    expect(session.result.current.isConnected).toBe(false)
+    await act(() => vi.advanceTimersByTimeAsync(499))
+    expect(sockets()).toHaveLength(1)
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    await flush()
+
+    expect(sockets()).toHaveLength(2)
+    const recoveredSocket = lastSocket()
+    act(() => recoveredSocket.onopen?.())
+    expect(session.result.current.isConnected).toBe(true)
+    expect(sentJoins(recoveredSocket)).toStrictEqual([
+      { type: "join", room: CHAT, resume_token: "t3" },
+    ])
+
+    act(() =>
+      recoveredSocket.receive({
+        type: "replay_checkpoint",
+        chat_id: CHAT,
+        stream_seq: 4,
+        resume_token: "t4",
+      })
+    )
+    act(() => session.result.current.sendJoin(CHAT))
+    expect(sentJoins(recoveredSocket)).toStrictEqual([
+      { type: "join", room: CHAT, resume_token: "t3" },
+      { type: "join", room: CHAT, resume_token: "t4" },
+    ])
+  })
+
+  it.each([
+    ["another room", "me", true, OTHER_CHAT],
+    ["missing room", "me", true, undefined],
+    ["missing checkpoint", "me", false, CHAT],
+    ["anonymous scope", undefined, false, CHAT],
+  ])(
+    "does not restart the transport when replay is unavailable for %s",
+    async (_label, userId, hasCheckpoint, errorRoom) => {
+      const session = await connected({ currentUserId: userId })
+      if (hasCheckpoint) {
+        session.socket.receive({
+          type: "replay_checkpoint",
+          chat_id: CHAT,
+          stream_seq: 3,
+          resume_token: "t3",
+        })
+      }
+      act(() => session.result.current.sendJoin(CHAT))
+      act(() =>
+        session.socket.receive({ type: "error", code: "replay_unavailable", room: errorRoom })
+      )
+
+      await act(() => vi.advanceTimersByTimeAsync(1_000))
+
+      expect(session.socket.close).not.toHaveBeenCalled()
+      expect(sockets()).toHaveLength(1)
+      expect(session.result.current.isConnected).toBe(true)
+    }
+  )
+
+  it("uses the existing ten-attempt reconnect cap if replay remains unavailable", async () => {
+    const session = await connected({ currentUserId: "me" })
+    let socket = session.socket
+    socket.receive({ type: "replay_checkpoint", chat_id: CHAT, stream_seq: 3, resume_token: "t3" })
+    act(() => session.result.current.sendJoin(CHAT))
+
+    for (let unavailableCount = 0; unavailableCount <= 10; unavailableCount += 1) {
+      if (unavailableCount > 0) {
+        socket = lastSocket()
+        act(() => socket.onopen?.())
+        expect(sentJoins(socket)).toStrictEqual([{ type: "join", room: CHAT, resume_token: "t3" }])
+      }
+      act(() => socket.receive({ type: "error", code: "replay_unavailable", room: CHAT }))
+
+      if (unavailableCount < 10) {
+        await act(() => vi.advanceTimersByTimeAsync(60_000))
+        await flush()
+        expect(sockets()).toHaveLength(unavailableCount + 2)
+      }
+    }
+
+    expect(sockets()).toHaveLength(11)
+    expect(session.result.current.isConnected).toBe(false)
+    expect(mocks.logError).toHaveBeenCalledWith(
+      "[ws] Max reconnect attempts reached; giving up. Manual reconnect required.",
+      { attempts: 10, lastCode: 4002 }
+    )
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("retries a rate-limited resume once on the same socket with the unchanged signed cursor", async () => {
+    const { socket, result } = await connected({ currentUserId: "me" })
+    socket.receive({ type: "replay_checkpoint", chat_id: CHAT, stream_seq: 3, resume_token: "t3" })
+    act(() => result.current.sendJoin(CHAT))
+    act(() => socket.receive({ type: "error", code: "replay_join_rate_limited", room: CHAT }))
+    act(() => socket.receive({ type: "error", code: "replay_join_rate_limited", room: CHAT }))
+
+    await act(() => vi.advanceTimersByTimeAsync(1_049))
+    expect(sentJoins(socket)).toHaveLength(1)
+    await act(() => vi.advanceTimersByTimeAsync(1))
+
+    expect(lastSocket()).toBe(socket)
+    expect(sentJoins(socket)).toStrictEqual([
+      { type: "join", room: CHAT, resume_token: "t3" },
+      { type: "join", room: CHAT, resume_token: "t3" },
+    ])
+
+    act(() => socket.receive({ type: "error", code: "replay_join_rate_limited", room: CHAT }))
+    await act(() => vi.advanceTimersByTimeAsync(1_050))
+    expect(sentJoins(socket)).toHaveLength(2)
+  })
+
+  it("does not retry a rate-limited cursor after the active room changes", async () => {
+    const { socket, result } = await connected({ currentUserId: "me" })
+    socket.receive({ type: "replay_checkpoint", chat_id: CHAT, stream_seq: 3, resume_token: "t3" })
+    act(() => result.current.sendJoin(CHAT))
+    act(() => socket.receive({ type: "error", code: "replay_join_rate_limited", room: CHAT }))
+    act(() => result.current.sendJoin(OTHER_CHAT))
+
+    await act(() => vi.advanceTimersByTimeAsync(1_050))
+
+    expect(sentJoins(socket)).toStrictEqual([
+      { type: "join", room: CHAT, resume_token: "t3" },
+      { type: "join", room: OTHER_CHAT },
+    ])
+  })
+
+  it("does not retry a rate-limited cursor after its checkpoint advances", async () => {
+    const { socket, result } = await connected({ currentUserId: "me" })
+    socket.receive({ type: "replay_checkpoint", chat_id: CHAT, stream_seq: 3, resume_token: "t3" })
+    act(() => result.current.sendJoin(CHAT))
+    act(() => socket.receive({ type: "error", code: "replay_join_rate_limited", room: CHAT }))
+    act(() =>
+      socket.receive({
+        type: "replay_checkpoint",
+        chat_id: CHAT,
+        stream_seq: 4,
+        resume_token: "t4",
+      })
+    )
+
+    await act(() => vi.advanceTimersByTimeAsync(1_050))
+
+    expect(sentJoins(socket)).toStrictEqual([{ type: "join", room: CHAT, resume_token: "t3" }])
+  })
+
+  it("does not schedule a rate-limited retry for a room that is no longer active", async () => {
+    const { socket, result } = await connected({ currentUserId: "me" })
+    socket.receive({ type: "replay_checkpoint", chat_id: CHAT, stream_seq: 3, resume_token: "t3" })
+    act(() => result.current.sendJoin(CHAT))
+    act(() => result.current.sendJoin(OTHER_CHAT))
+    act(() => socket.receive({ type: "error", code: "replay_join_rate_limited", room: CHAT }))
+
+    await act(() => vi.advanceTimersByTimeAsync(1_050))
+
+    expect(sentJoins(socket)).toStrictEqual([
+      { type: "join", room: CHAT, resume_token: "t3" },
+      { type: "join", room: OTHER_CHAT },
+    ])
+  })
+
+  it("does not retry a rate-limited cursor after invalidation removes its checkpoint", async () => {
+    const { socket, result, invalidateQueries } = await connected({ currentUserId: "me" })
+    socket.receive({ type: "replay_checkpoint", chat_id: CHAT, stream_seq: 3, resume_token: "t3" })
+    act(() => result.current.sendJoin(CHAT))
+    act(() => socket.receive({ type: "error", code: "replay_join_rate_limited", room: CHAT }))
+    act(() => socket.receive({ type: "error", code: "invalid_resume_token", room: CHAT }))
+
+    expect(peekReplayCheckpoint("me", CHAT)).toBeUndefined()
+    await act(() => vi.advanceTimersByTimeAsync(1_050))
+
+    expect(sentJoins(socket)).toStrictEqual([{ type: "join", room: CHAT, resume_token: "t3" }])
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["messages", CHAT],
+      refetchType: "all",
+    })
+  })
+
+  it("does not retry a cursor when its resume token changes at the same sequence", async () => {
+    const { socket, result } = await connected({ currentUserId: "me" })
+    socket.receive({ type: "replay_checkpoint", chat_id: CHAT, stream_seq: 3, resume_token: "t3" })
+    act(() => result.current.sendJoin(CHAT))
+    act(() => socket.receive({ type: "error", code: "replay_join_rate_limited", room: CHAT }))
+    act(() => writeReplayCheckpoint("me", CHAT, 3, "replacement-t3", CHAT))
+
+    expect(peekReplayCheckpoint("me", CHAT)).toStrictEqual({
+      sequence: 3,
+      resumeToken: "replacement-t3",
+    })
+    await act(() => vi.advanceTimersByTimeAsync(1_050))
+
+    expect(sentJoins(socket)).toStrictEqual([{ type: "join", room: CHAT, resume_token: "t3" }])
+  })
+
+  it("does not retry a rate-limited cursor on a closed socket", async () => {
+    const { socket, result } = await connected({ currentUserId: "me" })
+    socket.receive({ type: "replay_checkpoint", chat_id: CHAT, stream_seq: 3, resume_token: "t3" })
+    act(() => result.current.sendJoin(CHAT))
+    act(() => socket.receive({ type: "error", code: "replay_join_rate_limited", room: CHAT }))
+    socket.readyState = ScriptedWebSocket.CLOSED
+
+    await act(() => vi.advanceTimersByTimeAsync(1_050))
+
+    expect(sentJoins(socket)).toHaveLength(1)
+  })
+
+  it("contains a socket send failure during the bounded replay retry", async () => {
+    const { socket, result } = await connected({ currentUserId: "me" })
+    socket.receive({ type: "replay_checkpoint", chat_id: CHAT, stream_seq: 3, resume_token: "t3" })
+    act(() => result.current.sendJoin(CHAT))
+    socket.send.mockImplementationOnce(() => {
+      throw new Error("socket closed during retry")
+    })
+    act(() => socket.receive({ type: "error", code: "replay_join_rate_limited", room: CHAT }))
+
+    await act(() => vi.advanceTimersByTimeAsync(1_050))
+
+    expect(sentJoins(socket)).toHaveLength(2)
+  })
+
+  it("does not retry a rate-limited cursor after the authenticated user changes", async () => {
+    const session = await connected({ currentUserId: "user-a" })
+    session.socket.receive({
+      type: "replay_checkpoint",
+      chat_id: CHAT,
+      stream_seq: 3,
+      resume_token: "a3",
+    })
+    act(() => session.result.current.sendJoin(CHAT))
+    act(() =>
+      session.socket.receive({ type: "error", code: "replay_join_rate_limited", room: CHAT })
+    )
+    session.rerender({ enabled: true, currentUserId: "user-b" })
+
+    await act(() => vi.advanceTimersByTimeAsync(1_050))
+
+    expect(sentJoins(session.socket)).toStrictEqual([
+      { type: "join", room: CHAT, resume_token: "a3" },
+    ])
+  })
+
+  it.each([
+    ["missing checkpoint", "me"],
+    ["anonymous session", undefined],
+  ])(
+    "does not retry a rate-limited join without an authenticated checkpoint for %s",
+    async (_label, userId) => {
+      const { socket, result } = await connected({ currentUserId: userId })
+      act(() => result.current.sendJoin(CHAT))
+      act(() => socket.receive({ type: "error", code: "replay_join_rate_limited", room: CHAT }))
+
+      await act(() => vi.advanceTimersByTimeAsync(1_050))
+
+      expect(sentJoins(socket)).toStrictEqual([{ type: "join", room: CHAT }])
+    }
+  )
+
+  it("clears a pending replay retry when the hook disconnects", async () => {
+    const { socket, result } = await connected({ currentUserId: "me" })
+    socket.receive({ type: "replay_checkpoint", chat_id: CHAT, stream_seq: 3, resume_token: "t3" })
+    act(() => result.current.sendJoin(CHAT))
+    act(() => socket.receive({ type: "error", code: "replay_join_rate_limited", room: CHAT }))
+    act(() => result.current.disconnect())
+
+    await act(() => vi.advanceTimersByTimeAsync(1_050))
+
+    expect(sentJoins(socket)).toStrictEqual([{ type: "join", room: CHAT, resume_token: "t3" }])
   })
 
   it.each([
@@ -1304,6 +1600,424 @@ describe("legacy message edit and deletion reconciliation", () => {
     expect(
       queryClient.getQueryData<ChatsListResponse>(["chats"])!.items[0]?.last_message
     ).toBeUndefined()
+  })
+})
+
+describe("remaining selected WebSocket decisions", () => {
+  it("uses the disconnected external-store snapshot during server rendering", () => {
+    function ServerSnapshot() {
+      return <output>{String(useChatWebSocket({}).isConnected)}</output>
+    }
+
+    const html = renderToString(
+      <QueryClientProvider client={new QueryClient()}>
+        <WebSocketProvider>
+          <ServerSnapshot />
+        </WebSocketProvider>
+      </QueryClientProvider>
+    )
+
+    expect(html).toContain("<output>false</output>")
+  })
+
+  it("uses WSS on an HTTPS page", async () => {
+    const originalWindow = globalThis.window
+    const secureLocation = new Proxy(originalWindow.location, {
+      get(target, property) {
+        if (property === "protocol") return "https:"
+        const value = Reflect.get(target, property, target)
+        return typeof value === "function" ? value.bind(target) : value
+      },
+    })
+    const secureWindow = new Proxy(originalWindow, {
+      get(target, property) {
+        if (property === "location") return secureLocation
+        return Reflect.get(target, property, target)
+      },
+    })
+    vi.stubGlobal("window", secureWindow)
+
+    try {
+      setup()
+      await flush()
+      expect(new URL(lastSocket().url).protocol).toBe("wss:")
+      expectTicketSocket("ticket-1")
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+
+  it("does not allocate a second heartbeat interval for a duplicate open event", async () => {
+    const intervalSpy = vi.spyOn(globalThis, "setInterval")
+    const session = await connected()
+    const heartbeatIntervals = () => intervalSpy.mock.calls.filter(([, delay]) => delay === 30_000)
+
+    expect(heartbeatIntervals()).toHaveLength(1)
+    act(() => session.socket.onopen?.())
+    expect(heartbeatIntervals()).toHaveLength(1)
+  })
+
+  it("uses safe offline defaults for absent message fields", async () => {
+    const { socket } = await connected()
+    const receivedAt = new Date(Date.now()).toISOString()
+
+    act(() =>
+      socket.receive({
+        type: "new_message",
+        chat_id: CHAT,
+        message: {
+          id: "defaults",
+          sender_id: "peer",
+          content: "",
+          created_at: "",
+          read_status: null,
+          read_at: null,
+          edited_at: null,
+          deleted_at: null,
+          attachments: null,
+          reactions: null,
+        },
+      })
+    )
+    await flush()
+
+    expect(mocks.dbUpsert).toHaveBeenCalledExactlyOnceWith({
+      id: "defaults",
+      chat_id: CHAT,
+      sender_id: "peer",
+      content: "",
+      created_at: receivedAt,
+      read_status: false,
+      read_at: null,
+      edited_at: null,
+      deleted_at: null,
+      attachments: [],
+      reactions: [],
+      sync_status: "synced",
+    })
+  })
+
+  it("swallows lazy database and message upsert failures", async () => {
+    const { socket } = await connected()
+    mocks.dbLoad.mockRejectedValueOnce(new Error("database unavailable"))
+    act(() => socket.receive({ type: "new_message", chat_id: CHAT, message: message() }))
+    await flush()
+
+    mocks.dbUpsert.mockRejectedValueOnce(new Error("write unavailable"))
+    mocks.dbLoad.mockResolvedValueOnce({ messages: { upsert: mocks.dbUpsert } })
+    act(() =>
+      socket.receive({ type: "new_message", chat_id: CHAT, message: message({ id: "m-2" }) })
+    )
+    await flush()
+
+    expect(mocks.dbLoad).toHaveBeenCalledTimes(2)
+    expect(mocks.dbUpsert).toHaveBeenCalledOnce()
+    expect(mocks.logError).not.toHaveBeenCalled()
+  })
+
+  it("logs a parser exception from a malformed socket frame", async () => {
+    const { socket } = await connected()
+    const parseError = new Error("bad frame")
+    mocks.parseWsMessage.mockImplementationOnce(() => {
+      throw parseError
+    })
+
+    act(() => socket.onmessage?.({ data: "not-json" } as MessageEvent))
+
+    expect(mocks.logError).toHaveBeenCalledExactlyOnceWith(
+      "[WebSocket] Failed to parse message:",
+      parseError
+    )
+  })
+
+  it("swallows transient typing request failures", async () => {
+    const sendTyping = vi.spyOn(chatApi, "sendTyping").mockRejectedValueOnce(new Error("offline"))
+    const { result } = setup()
+
+    act(() => result.current.sendTyping(CHAT))
+    await flush()
+
+    expect(sendTyping).toHaveBeenCalledExactlyOnceWith(CHAT)
+    expect(mocks.logError).not.toHaveBeenCalled()
+  })
+
+  it("keeps deleted messages terminal and accepts the first edit timestamp", () => {
+    const deleted = message({ id: "deleted", deleted_at: "2026-08-25T11:00:00Z" })
+    const live = message({ id: "live", edited_at: undefined, deleted_at: undefined })
+    const cache = { items: [deleted, live], has_more: false, next_cursor: null }
+
+    expect(
+      applyMessageEditedFrame(cache, {
+        message_id: "deleted",
+        content: "must stay deleted",
+        edited_at: "2026-08-25T12:00:00Z",
+      })?.items[0]
+    ).toMatchObject({ content: "hello", deleted_at: "2026-08-25T11:00:00Z" })
+    expect(
+      applyMessageEditedFrame(cache, {
+        message_id: "live",
+        content: "first edit",
+        edited_at: "2026-08-25T12:00:00Z",
+      })?.items[1]
+    ).toMatchObject({ content: "first edit", edited_at: "2026-08-25T12:00:00Z" })
+    expect(
+      applyMessageEditedFrame(
+        {
+          items: [message({ id: "ordered", edited_at: "2026-08-25T13:00:00Z" })],
+          has_more: false,
+          next_cursor: null,
+        },
+        {
+          message_id: "ordered",
+          content: "older edit",
+          edited_at: "2026-08-25T12:00:00Z",
+        }
+      )?.items[0]
+    ).toMatchObject({ content: "hello", edited_at: "2026-08-25T13:00:00Z" })
+    expect(
+      applyMessageEditedFrame(undefined, {
+        message_id: "live",
+        content: "ignored without cache",
+        edited_at: "2026-08-25T12:00:00Z",
+      })
+    ).toBeUndefined()
+  })
+
+  it("tombstones only the deleted message and preserves its first deletion time", () => {
+    const cache = {
+      items: [
+        message({ id: "target", deleted_at: undefined, attachments: [{ id: "file" }] as never }),
+        message({ id: "other" }),
+      ],
+      has_more: false,
+      next_cursor: null,
+    }
+    const result = applyMessageDeletedFrame(cache, {
+      message_id: "target",
+      deleted_at: "2026-08-25T12:00:00Z",
+    })
+
+    expect(result?.items[0]).toMatchObject({
+      id: "target",
+      content: "",
+      attachments: [],
+      deleted_at: "2026-08-25T12:00:00Z",
+    })
+    expect(result?.items[1]).toBe(cache.items[1])
+    const alreadyDeleted = applyMessageDeletedFrame(
+      {
+        items: [message({ id: "target", deleted_at: "2026-08-24T12:00:00Z" })],
+        has_more: false,
+        next_cursor: null,
+      },
+      { message_id: "target", deleted_at: "2026-08-25T12:00:00Z" }
+    )
+    expect(alreadyDeleted?.items[0]?.deleted_at).toBe("2026-08-24T12:00:00Z")
+    expect(
+      applyMessageDeletedFrame(undefined, {
+        message_id: "target",
+        deleted_at: "2026-08-25T12:00:00Z",
+      })
+    ).toBeUndefined()
+  })
+
+  it("decrements and removes peer reactions without creating missing deltas", () => {
+    const cache = {
+      items: [
+        message({
+          id: "target",
+          reactions: [
+            { emoji: "👍", count: 1, reacted_by_me: false },
+            { emoji: "❤️", count: 2, reacted_by_me: true },
+          ],
+        }),
+        message({ id: "other" }),
+      ],
+      has_more: false,
+      next_cursor: null,
+    }
+    const afterOneRemoval = applyReactionChangedFrame(cache, {
+      message_id: "target",
+      emoji: "❤️",
+      action: "removed",
+    })
+    const afterSecondHeartRemoval = applyReactionChangedFrame(afterOneRemoval, {
+      message_id: "target",
+      emoji: "❤️",
+      action: "removed",
+    })
+    const afterLastRemoval = applyReactionChangedFrame(afterSecondHeartRemoval, {
+      message_id: "target",
+      emoji: "👍",
+      action: "removed",
+    })
+    const missingReaction = applyReactionChangedFrame(afterLastRemoval, {
+      message_id: "target",
+      emoji: "🚀",
+      action: "removed",
+    })
+    const firstReaction = applyReactionChangedFrame(
+      {
+        items: [message({ id: "empty-reactions", reactions: undefined })],
+        has_more: false,
+        next_cursor: null,
+      },
+      { message_id: "empty-reactions", emoji: "✨", action: "added" }
+    )
+
+    expect(afterOneRemoval?.items[0]?.reactions).toStrictEqual([
+      { emoji: "👍", count: 1, reacted_by_me: false },
+      { emoji: "❤️", count: 1, reacted_by_me: true },
+    ])
+    expect(afterLastRemoval?.items[0]?.reactions).toStrictEqual([])
+    expect(missingReaction?.items[0]?.reactions).toStrictEqual([])
+    expect(firstReaction?.items[0]?.reactions).toStrictEqual([
+      { emoji: "✨", count: 1, reacted_by_me: false },
+    ])
+  })
+
+  it("does not apply the viewer's read or reaction echoes, but applies peer frames", async () => {
+    const { socket, queryClient, invalidateQueries } = await connected({ currentUserId: "me" })
+    const originalMessage = message({
+      sender_id: "peer",
+      reactions: [{ emoji: "👍", count: 1, reacted_by_me: true }],
+    })
+    queryClient.setQueryData<MessagesListResponse>(["messages", CHAT], {
+      items: [originalMessage],
+      has_more: false,
+      next_cursor: null,
+    })
+    invalidateQueries.mockClear()
+
+    act(() =>
+      socket.receive({
+        type: "read",
+        chat_id: CHAT,
+        user_id: "me",
+        read_at: "2026-08-25T12:00:00Z",
+      })
+    )
+    act(() =>
+      socket.receive({
+        type: "reaction_changed",
+        chat_id: CHAT,
+        message_id: originalMessage.id,
+        emoji: "👍",
+        action: "added",
+        user_id: "me",
+      })
+    )
+    expect(queryClient.getQueryData<MessagesListResponse>(["messages", CHAT])?.items[0]).toBe(
+      originalMessage
+    )
+    expect(invalidateQueries).not.toHaveBeenCalled()
+
+    act(() =>
+      socket.receive({
+        type: "reaction_changed",
+        chat_id: CHAT,
+        message_id: originalMessage.id,
+        emoji: "👍",
+        action: "added",
+        user_id: "peer",
+      })
+    )
+    expect(
+      queryClient.getQueryData<MessagesListResponse>(["messages", CHAT])?.items[0]?.reactions
+    ).toStrictEqual([{ emoji: "👍", count: 2, reacted_by_me: true }])
+    expect(invalidateQueries).toHaveBeenCalledOnce()
+  })
+
+  it("updates only the current edited sidebar preview", async () => {
+    const { socket, queryClient } = await connected()
+    const current = message({ id: "m-1", edited_at: "2026-08-24T12:00:00Z" })
+    const unrelated = message({ id: "other" })
+    queryClient.setQueryData(["chats"], {
+      items: [
+        { id: CHAT, last_message: current, unread_count: 0 },
+        { id: OTHER_CHAT, last_message: current, unread_count: 0 },
+        { id: CHAT, last_message: unrelated, unread_count: 0 },
+      ],
+    })
+    queryClient.setQueryData<MessagesListResponse>(["messages", CHAT], {
+      items: [current, unrelated],
+      has_more: false,
+      next_cursor: null,
+    })
+
+    act(() =>
+      socket.receive({
+        type: "message_edited",
+        chat_id: CHAT,
+        message_id: current.id,
+        content: "updated preview",
+        edited_at: "2026-08-25T12:00:00Z",
+      })
+    )
+
+    const chats = queryClient.getQueryData<ChatsListResponse>(["chats"])!.items
+    expect(chats[0]?.last_message).toMatchObject({ content: "updated preview" })
+    expect(chats[1]?.last_message).toBe(current)
+    expect(chats[2]?.last_message).toBe(unrelated)
+
+    const deletedPreview = message({
+      id: "deleted-preview",
+      deleted_at: "2026-08-24T12:00:00Z",
+    })
+    queryClient.setQueryData(["chats"], {
+      items: [{ id: CHAT, last_message: deletedPreview, unread_count: 0 }],
+    })
+    const cachedPreviewBeforeEdit = queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]
+      ?.last_message
+    expect(cachedPreviewBeforeEdit).toStrictEqual(deletedPreview)
+    const cachedPreviewSnapshotBeforeEdit = structuredClone(cachedPreviewBeforeEdit)
+    act(() =>
+      socket.receive({
+        type: "message_edited",
+        chat_id: CHAT,
+        message_id: deletedPreview.id,
+        content: "a tombstone cannot be edited",
+        edited_at: "2026-08-25T12:00:00Z",
+      })
+    )
+    const cachedPreviewAfterEdit = queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]
+      ?.last_message
+    expect(cachedPreviewAfterEdit).toBe(cachedPreviewBeforeEdit)
+    expect(cachedPreviewAfterEdit).toStrictEqual(cachedPreviewSnapshotBeforeEdit)
+  })
+
+  it("tombstones cached history and removes the matching deleted sidebar preview", async () => {
+    const { socket, queryClient } = await connected()
+    const target = message({ id: "deleted-preview" })
+    const other = message({ id: "other" })
+    queryClient.setQueryData<MessagesListResponse>(["messages", CHAT], {
+      items: [target, other],
+      has_more: false,
+      next_cursor: null,
+    })
+    queryClient.setQueryData(["chats"], {
+      items: [{ id: CHAT, last_message: target, unread_count: 0 }],
+    })
+
+    act(() =>
+      socket.receive({
+        type: "message_deleted",
+        chat_id: CHAT,
+        message_id: target.id,
+        deleted_at: "2026-08-25T12:00:00Z",
+      })
+    )
+
+    expect(
+      queryClient.getQueryData<MessagesListResponse>(["messages", CHAT])?.items[0]
+    ).toMatchObject({
+      id: target.id,
+      content: "",
+      deleted_at: "2026-08-25T12:00:00Z",
+    })
+    expect(queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]?.last_message).toBe(
+      undefined
+    )
   })
 })
 

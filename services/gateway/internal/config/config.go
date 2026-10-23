@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 )
@@ -27,6 +28,8 @@ func getEnvFloat64(key string, defaultValue float64) float64 {
 	return val
 }
 
+const defaultJWTIssuer = "university-ecosystem"
+
 // Config holds the gateway configuration.
 type Config struct {
 	Port       string
@@ -43,6 +46,10 @@ type Config struct {
 	// JWTAudience binds access tokens to this relying party. It must match the
 	// Python issuer's JWT_AUDIENCE setting.
 	JWTAudience string
+	// JWTIssuer binds verified tokens to the backend configured JWT_ISSUER.
+	JWTIssuer string
+	// jwtIssuerExplicit distinguishes an omitted dev value from an explicitly blank issuer.
+	jwtIssuerExplicit bool
 	// JWKSPublicKeyPEM is the PEM-encoded RSA/EC public key used to verify RS256 tokens.
 	// Optional. When empty, only HS256 tokens are accepted. Set JWKS_PUBLIC_KEY_PEM to
 	// enable RS256 support without a round-trip to the Python JWKS endpoint at startup.
@@ -140,6 +147,19 @@ func loadFromEnvironmentChecked() (*Config, error) {
 	if value, explicitlySet := os.LookupEnv("JWT_AUDIENCE"); explicitlySet {
 		jwtAudience = strings.TrimSpace(value)
 	}
+	environment := getEnv("VITE_ENVIRONMENT", "development")
+	jwtIssuer, issuerSet := os.LookupEnv("JWT_ISSUER")
+	if issuerSet {
+		jwtIssuer = trimJWTIssuerWhitespace(jwtIssuer)
+	} else {
+		switch strings.ToLower(strings.TrimSpace(environment)) {
+		case "staging", "production":
+			// Release environments must receive the same explicit issuer as the backend.
+			jwtIssuer = ""
+		default:
+			jwtIssuer = defaultJWTIssuer
+		}
+	}
 	return &Config{
 		Port:               getEnv("GATEWAY_PORT", "8080"),
 		BackendURL:         getEnv("BACKEND_URL", "http://backend:8000"),
@@ -148,13 +168,15 @@ func loadFromEnvironmentChecked() (*Config, error) {
 		RevocationRedisURL: revocationRedisURL,
 		JWTSecret:          jwtSecret, // No default — fail secure
 		JWTAudience:        jwtAudience,
+		JWTIssuer:          jwtIssuer,
+		jwtIssuerExplicit:  issuerSet,
 		JWKSPublicKeyPEM:   os.Getenv("JWKS_PUBLIC_KEY_PEM"), // Optional RS256 public key
 		FileProcessorAddr:  getEnv("FILE_PROCESSOR_ADDR", "file-processor:50051"),
 		RateLimitRPS:       getEnvInt("RATE_LIMIT_RPS", 100),
 		RateLimitBurst:     getEnvInt("RATE_LIMIT_BURST", 200),
 		AllowedOrigins:     getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
 		SentryDSN:          getEnv("SENTRY_DSN", ""),
-		Environment:        getEnv("VITE_ENVIRONMENT", "development"),
+		Environment:        environment,
 		OtelEndpoint:       getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "tempo:4317"),
 		AppVersion:         getEnv("APP_VERSION", "unknown"),
 		// AUDIT-INFRA-05: Fail-closed — TLS on by default. Set GRPC_USE_TLS=false
@@ -190,12 +212,15 @@ func loadFromEnvironmentChecked() (*Config, error) {
 }
 
 func validateConfig(cfg *Config) error {
+	environment := strings.ToLower(strings.TrimSpace(cfg.Environment))
+	isRelease := environment == "staging" || environment == "production"
+	if !isRelease && !cfg.jwtIssuerExplicit && cfg.JWTIssuer == "" {
+		// Directly constructed development configs keep the backend-matched default.
+		cfg.JWTIssuer = defaultJWTIssuer
+	}
 	if err := validateRequestSettings(cfg); err != nil {
 		return err
 	}
-
-	environment := strings.ToLower(strings.TrimSpace(cfg.Environment))
-	isRelease := environment == "staging" || environment == "production"
 	if isRelease {
 		cfg.InternalHMACSecret = strings.TrimSpace(cfg.InternalHMACSecret)
 		if err := validateInternalHMACSecret(cfg.InternalHMACSecret); err != nil {
@@ -235,11 +260,39 @@ func validateRequestSettings(cfg *Config) error {
 	if cfg.JWTAudience == "" {
 		return fmt.Errorf("JWT_AUDIENCE environment variable must not be blank")
 	}
+	if err := validateJWTIssuer(cfg.JWTIssuer); err != nil {
+		return err
+	}
 	if cfg.RateLimitRPS <= 0 {
 		return fmt.Errorf("RATE_LIMIT_RPS must be greater than zero")
 	}
 	if cfg.RateLimitBurst <= 0 {
 		return fmt.Errorf("RATE_LIMIT_BURST must be greater than zero")
+	}
+	return nil
+}
+
+// isJWTIssuerStripWhitespace matches the fixed whitespace set used by Python str.strip.
+func isJWTIssuerStripWhitespace(r rune) bool {
+	return r >= '\u0009' && r <= '\u000d' ||
+		r >= '\u001c' && r <= '\u0020' ||
+		r == '\u0085' || r == '\u00a0' || r == '\u1680' ||
+		r >= '\u2000' && r <= '\u200a' ||
+		r == '\u2028' || r == '\u2029' || r == '\u202f' ||
+		r == '\u205f' || r == '\u3000'
+}
+
+func trimJWTIssuerWhitespace(issuer string) string {
+	return strings.TrimFunc(issuer, isJWTIssuerStripWhitespace)
+}
+
+func validateJWTIssuer(issuer string) error {
+	normalized := trimJWTIssuerWhitespace(issuer)
+	if normalized == "" {
+		return fmt.Errorf("JWT_ISSUER must not be empty")
+	}
+	if utf8.RuneCountInString(normalized) > 512 || strings.IndexFunc(normalized, func(r rune) bool { return r < 0x20 }) >= 0 {
+		return fmt.Errorf("JWT_ISSUER contains invalid characters")
 	}
 	return nil
 }

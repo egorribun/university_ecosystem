@@ -91,7 +91,7 @@ export function useEventFilterPopover({
           ref={setFloating}
           style={floatingStyles}
           {...getFloatingProps()}
-          className="z-modal min-w-64 rounded-xl border border-glass-border bg-(--bg-surface)/(--opacity-heavy) p-4 shadow-glass backdrop-blur-xl"
+          className="z-modal min-w-64 rounded-xl border border-glass-border bg-(--bg-surface)/[calc(var(--opacity-heavy)*100%)] p-4 shadow-glass backdrop-blur-xl"
         >
           <div className="space-y-4">
             {/* Date range quick buttons */}

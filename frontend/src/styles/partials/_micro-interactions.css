@@ -21,7 +21,7 @@
     pointer-events: none;
     background: radial-gradient(
       circle at var(--ripple-x, 50%) var(--ripple-y, 50%),
-      color-mix(in srgb, white var(--opacity-dim), transparent) 0%,
+      color-mix(in srgb, white calc(var(--opacity-dim) * 100%), transparent) 0%,
       transparent 60%
     );
     opacity: 0;
@@ -48,7 +48,8 @@
 
   .input-focus-glow:focus-visible {
     box-shadow:
-      0 0 0 4px color-mix(in srgb, var(--primary-main) var(--opacity-subtle), transparent),
+      0 0 0 4px
+        color-mix(in srgb, var(--primary-main) calc(var(--opacity-subtle) * 100%), transparent),
       var(--raw-shadow-sm);
   }
 
@@ -63,7 +64,11 @@
   .card-hover-lift:hover {
     transform: translateY(calc(-1 * var(--space-1)));
     box-shadow: var(--raw-shadow-premium-lift);
-    border-color: color-mix(in srgb, var(--primary-main) var(--opacity-soft), transparent);
+    border-color: color-mix(
+      in srgb,
+      var(--primary-main) calc(var(--opacity-soft) * 100%),
+      transparent
+    );
   }
 
   .card-hover-lift:active {

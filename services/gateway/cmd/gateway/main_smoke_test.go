@@ -148,6 +148,7 @@ func TestSetupRouter_WiresRoutesAndProbes(t *testing.T) {
 		now := time.Now()
 		token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 			"sub":       "user-1",
+			"iss":       middleware.DefaultJWTIssuer,
 			"aud":       middleware.DefaultJWTAudience,
 			"role":      "student",
 			"jti":       "jti-1",
@@ -229,6 +230,7 @@ func TestSetupRouter_WiresRoutesAndProbes(t *testing.T) {
 			now := time.Now()
 			token, signErr := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 				"sub":       userID,
+				"iss":       middleware.DefaultJWTIssuer,
 				"aud":       middleware.DefaultJWTAudience,
 				"role":      "student",
 				"jti":       tokenID,

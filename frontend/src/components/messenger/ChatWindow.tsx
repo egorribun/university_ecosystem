@@ -537,7 +537,7 @@ export const ChatWindow = memo(function ChatWindow({
               whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
               whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
               onClick={onClearSearch}
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-(--color-violet-500)/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-5 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-(--color-violet-500)/[calc(var(--opacity-soft)*100%)] bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] px-5 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
             >
               <X className="size-4" strokeWidth={2.5} aria-hidden="true" />
               <span>{t("messenger:noMessages.searchEmpty.clearSearch")}</span>
@@ -620,7 +620,7 @@ export const ChatWindow = memo(function ChatWindow({
                     W184 SW1 stays intact). */}
                 {message.showDateDivider && message.dateLabel ? (
                   <div className="flex justify-center py-2">
-                    <span className="rounded-full bg-(--bg-surface-raised)/(--opacity-medium) px-3 py-1 text-micro font-semibold uppercase tracking-wide text-(--text-secondary)">
+                    <span className="rounded-full bg-(--bg-surface-raised)/[calc(var(--opacity-medium)*100%)] px-3 py-1 text-micro font-semibold uppercase tracking-wide text-(--text-secondary)">
                       {message.dateLabel}
                     </span>
                   </div>
@@ -647,7 +647,7 @@ export const ChatWindow = memo(function ChatWindow({
                         srcRaw={message.senderAvatar || AVATAR_PLACEHOLDER_URL}
                         fallback={AVATAR_PLACEHOLDER_URL}
                         alt={message.senderName || ""}
-                        className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-sm ring-1 ring-black/(--opacity-faint) dark:ring-white/(--opacity-faint)"
+                        className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-sm ring-1 ring-black/[calc(var(--opacity-faint)*100%)] dark:ring-white/[calc(var(--opacity-faint)*100%)]"
                       />
                     )}
                   </div>
@@ -719,7 +719,7 @@ export const ChatWindow = memo(function ChatWindow({
                           rows={2}
                           // eslint-disable-next-line jsx-a11y/no-autofocus
                           autoFocus
-                          className="w-full resize-none rounded-lg bg-(--bg-surface)/(--opacity-medium) px-3 py-2 text-base leading-relaxed text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+                          className="w-full resize-none rounded-lg bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] px-3 py-2 text-base leading-relaxed text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                         />
                         <div className="mt-2 flex items-center justify-end gap-2">
                           <button
@@ -808,10 +808,10 @@ export const ChatWindow = memo(function ChatWindow({
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className={cn(
-                                      "flex items-center gap-3 p-3 rounded-xl transition-colors border border-white/(--opacity-faint)",
+                                      "flex items-center gap-3 p-3 rounded-xl transition-colors border border-white/[calc(var(--opacity-faint)*100%)]",
                                       message.isMe
                                         ? "bg-(--messenger-attachment-bg) hover:bg-(--messenger-attachment-bg-hover)"
-                                        : "bg-(--bg-surface-raised)/(--opacity-medium) hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                                        : "bg-(--bg-surface-raised)/[calc(var(--opacity-medium)*100%)] hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)]"
                                     )}
                                   >
                                     <div
@@ -851,8 +851,8 @@ export const ChatWindow = memo(function ChatWindow({
                             className={cn(
                               "mb-2 rounded-lg border-l-2 px-2.5 py-1.5",
                               message.isMe
-                                ? "border-(--text-inverse)/(--opacity-medium) bg-(--text-inverse)/(--opacity-faint)"
-                                : "border-(--color-violet-500)/(--opacity-medium) bg-(--color-violet-500)/(--opacity-faint)"
+                                ? "border-(--text-inverse)/[calc(var(--opacity-medium)*100%)] bg-(--text-inverse)/[calc(var(--opacity-faint)*100%)]"
+                                : "border-(--color-violet-500)/[calc(var(--opacity-medium)*100%)] bg-(--color-violet-500)/[calc(var(--opacity-faint)*100%)]"
                             )}
                           >
                             <p

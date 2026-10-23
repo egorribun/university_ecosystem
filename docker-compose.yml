@@ -169,6 +169,7 @@ services:
     environment:
       # Runtime override used by Node SSR; browser API calls remain same-origin.
       BACKEND_ORIGIN: "http://backend:8000"
+      JWT_ISSUER: ${JWT_ISSUER:-university-ecosystem}
     ports:
       - "127.0.0.1:8081:3000"
     networks:

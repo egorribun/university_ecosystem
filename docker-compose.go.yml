@@ -29,6 +29,7 @@ services:
       REVOCATION_REDIS_URL: redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
       JWT_SECRET: ${SECRET_KEY:?SECRET_KEY must be explicitly set in .env}
       JWT_AUDIENCE: university-ecosystem-api
+      JWT_ISSUER: ${JWT_ISSUER:-university-ecosystem}
       JWKS_ENDPOINT: http://backend:8000/.well-known/jwks.json
       JWKS_REFRESH_INTERVAL: "60"
       INTERNAL_HMAC_SECRET: ${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - set in .env file}

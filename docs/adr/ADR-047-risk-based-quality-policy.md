@@ -436,6 +436,21 @@ Gitleaks25, the 78 required context/app pairs, blocking CodeQL, hooks and finite
 remain unchanged. Integration, final-source scans and hosted checks require
 their own evidence; this approval establishes no release or visual acceptance.
 
+## Owner-approved finite scanner-policy additions (2026-10-23)
+
+The owner approved exactly nine additional finite path/type/finding-digest dispositions: seven records associated with AUD-253/Trivy and two SEO identities. Together with the existing 301 records, the approved union is exactly 310. The exact identities, categories, evidence and expiry dates are recorded in `quality/security-false-positive-dispositions.json`; only those nine additions are covered by this approval.
+
+Separately, Trivy v4 test-fixture handling is approved only for the exact fixture findings `KSV0008` and `KSV0024`, through 2026-11-22. This fixture boundary is separate from the nine disposition records and does not authorize a general rule exclusion, production-image exception, or workflow identity. No new workflow identity is approved or included. Neither approval closes AUD-253 or AUD-297.
+
+The detect-secrets baseline remains at 319 identities; Gitleaks remains at 25 immutable fingerprints; all 78 required context/app pairs, blocking CodeQL, hooks, and existing thresholds remain unchanged. These approvals establish no scan, test, hosted-check, or release result. See the [dated audit supplement](../audits/AUDIT-2026-10.md#owner-approved-finite-scanner-policy-additions-2026-10-23).
+
+
+## Owner-approved five exact baseline-fixture dispositions (2026-10-23)
+
+The owner approved exactly five additional exact path/type/finding-digest dispositions, preserving the prior 310 records and extending the finite approved union to 315. One `public_integrity_digest` is bound to `tests/fixtures/full-backend-reusable-baseline.v4.yaml:8`; four `independent_contract_fingerprint` identities are bound to lines 21, 24, 25, and 26 of that fixture. Each addition is restricted to its exact existing category and identity and expires on 2027-01-10; the exact tuples remain in `quality/security-false-positive-dispositions.json`.
+
+This approval adds no category-wide match, baseline identity, pragma, reclassification, broad exclusion, expiry extension, bypass, or required-check change. It does not alter the 319-identity detect-secrets baseline, 25 Gitleaks fingerprints, 78 required context/app pairs, blocking CodeQL, hooks, or quality thresholds. Policy approval alone establishes no scan, test, hosted-check, or release result. See the [dated audit supplement](../audits/AUDIT-2026-10.md#owner-approved-five-exact-baseline-fixture-dispositions-2026-10-23).
+
 ## Consequences
 
 - The MVP can be released once product acceptance passes; mutation debt
@@ -457,3 +472,33 @@ their own evidence; this approval establishes no release or visual acceptance.
   it weakens authentication and cryptography code as much as presentation code.
 - **Remove mutation testing.** Rejected: nightly mutation runs still find weak
   tests in domain logic and are cheap to keep outside the blocking lane.
+
+## Global GHSA allowlist removal (2026-10-23)
+
+The owner's instruction to close all October audit findings includes the exact
+removal of the two global vulnerability suppressions identified by AUD-379 and
+AUD-479: `GHSA-4c8g-83qw-93j6` and `GHSA-v2hh-gcrm-f6hx`. Dependency Review now
+requires an empty global `allow-ghsas` list. Its delta guard permits removals
+and rejects additions; all other policy lists and scalar settings retain their
+existing restrictions. This tightens vulnerability detection and grants no new
+exception, package exclusion, expiry extension or scanner bypass.
+
+The owner-authored pull-request requirement, vulnerability/license checks,
+existing finite license dispositions, all 78 required context/app pairs,
+blocking CodeQL, hooks and coverage floors remain in force. This decision is
+separate from the finite detect-secrets and Gitleaks inventories. Local tests
+and this policy record do not establish current-source hosted success or
+closure of either finding; the final source still needs its required checks.
+
+
+## Owner-approved two exact AUD-495 cache-key canaries (2026-10-23)
+
+The owner explicitly approved exactly two new `aud495_cache_key_redaction_test_fixture` dispositions and the reviewed validator/test diff. The exact path/type/digest identities are the synthetic logger-redaction canaries in `tests/test_cache_object_keys_aud495.py` at source lines 109 and 159. The policy preserves the ordered prior 315 records and appends only these two, for exactly 317 records; both expire on 2027-01-10. This category accepts only those two immutable identities and their evidence markers.
+
+The 319-identity detect-secrets baseline, 25 historical Gitleaks fingerprints, 78 required context/app pairs, blocking CodeQL, hooks and coverage floors remain unchanged. No baseline entry, broad match, expiry extension or automatic approval is authorized. A new or changed identity remains blocking. Policy adoption alone does not prove a final-source scan or hosted check. See the [audit checkpoint](../audits/AUDIT-2026-10.md#owner-approved-two-exact-aud-495-cache-key-canaries-2026-10-23).
+
+## Owner-approved one exact AUD-495 public integrity digest (2026-10-24)
+
+The owner approved exactly one new finite detect-secrets disposition and the reviewed validator/test diff for the public SHA-256 digest used by the immutable policy-prefix source-contract test in `tests/test_verify_secrets_baseline.py`. It uses the exact `Hex High Entropy String` identity and the `public_integrity_digest` category; the validator constrains path, type, digest, evidence and expiry. The policy preserves the ordered 317-record prefix and appends this one record, for exactly 318 records.
+
+The owner is `egorribun`, reviewed on 2026-10-24, with expiry 2027-01-10. The 319-identity detect-secrets baseline, 25 Gitleaks fingerprints and 78 required context/app pairs remain unchanged. No additional identity, broad rule, baseline entry, Gitleaks entry or scanner bypass is authorized. Policy adoption does not establish a final-source scan or hosted-check result; those remain required for the final source. See the [audit checkpoint](../audits/AUDIT-2026-10.md#owner-approved-one-exact-aud-495-public-integrity-digest-2026-10-24).

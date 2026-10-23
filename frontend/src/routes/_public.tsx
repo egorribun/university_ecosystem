@@ -3,6 +3,7 @@ import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/
 import { useAuthStore } from "@/stores/useAuthStore"
 import { resolveRedirectPath } from "@/utils/redirect"
 import { evaluatePublicGuard } from "./guards"
+import { PageRouteSEO } from "@/components/ui/PageRouteSEO"
 
 /**
  * Wave 178 SW1 — Approach 1 extension closing W177 §Honesty #2.
@@ -60,7 +61,12 @@ export function PublicLayout() {
       navigate({ to: target, replace: true })
     }
   }, [user, navigate, search])
-  return <Outlet />
+  return (
+    <>
+      <PageRouteSEO />
+      <Outlet />
+    </>
+  )
 }
 
 export const Route = createFileRoute("/_public")({

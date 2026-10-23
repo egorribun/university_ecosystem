@@ -118,7 +118,7 @@ const EventCardHero = ({
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full overflow-hidden bg-linear-to-br from-brand/(--opacity-subtle) to-transparent"
+      className="relative h-full w-full overflow-hidden bg-linear-to-br from-brand/[calc(var(--opacity-subtle)*100%)] to-transparent"
       style={transitioning ? { viewTransitionName: "events-hero" } : undefined}
     >
       {/* Loading shimmer */}
@@ -146,13 +146,13 @@ const EventCardHero = ({
 
           {/* Bottom gradient */}
           <div
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-black/(--opacity-heavy) to-transparent"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-black/[calc(var(--opacity-heavy)*100%)] to-transparent"
             aria-hidden="true"
           />
         </>
       ) : (
         <div className="flex h-full w-full items-center justify-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl glass-layer-surface border border-glass-border/(--opacity-soft) text-brand shadow-glass">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl glass-layer-surface border border-glass-border/[calc(var(--opacity-soft)*100%)] text-brand shadow-glass">
             <CalendarDays className="h-7 w-7" />
           </div>
         </div>
@@ -187,7 +187,7 @@ const EventCardHero = ({
           </time>
         )}
         {!isOnline && (
-          <div className="flex items-center gap-1 rounded-full bg-warning-bg/(--opacity-heavy) px-2 py-0.5 text-micro font-bold uppercase tracking-wider text-warning-text backdrop-blur-sm">
+          <div className="flex items-center gap-1 rounded-full bg-warning-bg/[calc(var(--opacity-heavy)*100%)] px-2 py-0.5 text-micro font-bold uppercase tracking-wider text-warning-text backdrop-blur-sm">
             <Cloud size={11} />
             <span>{t("common:statuses.cached")}</span>
           </div>

@@ -107,7 +107,7 @@ describe("NewsTableOfContents", () => {
     const header = screen.getByRole("button", { name: /news:toc.title/ })
     expect(header).toBeDisabled()
     expect(header).toHaveAttribute("aria-expanded", "true")
-    expect(header).not.toHaveClass("hover:bg-(--bg-surface)/(--opacity-hover)")
+    expect(header).not.toHaveClass("hover:bg-(--bg-surface)/[calc(var(--opacity-hover)*100%)]")
     expect(header.querySelector("svg.rotate-180")).not.toBeInTheDocument()
     expect(header).toHaveClass(
       "flex",
@@ -129,7 +129,7 @@ describe("NewsTableOfContents", () => {
       "news-toc",
       "rounded-xl",
       "border",
-      "border-glass-border/(--opacity-soft)",
+      "border-glass-border/[calc(var(--opacity-soft)*100%)]",
       "overflow-hidden",
       "transition-all",
       "duration-base",
@@ -149,7 +149,7 @@ describe("NewsTableOfContents", () => {
     const header = screen.getByRole("button", { name: /news:toc.title/ })
     expect(header).toHaveAttribute("aria-expanded", "false")
     expect(header).toBeEnabled()
-    expect(header).toHaveClass("hover:bg-(--bg-surface)/(--opacity-hover)")
+    expect(header).toHaveClass("hover:bg-(--bg-surface)/[calc(var(--opacity-hover)*100%)]")
     expect(screen.queryByRole("button", { name: "Background" })).not.toBeInTheDocument()
     await user.click(screen.getByText("news:toc.title"))
     expect(header).toHaveAttribute("aria-expanded", "true")
@@ -225,7 +225,7 @@ describe("NewsTableOfContents", () => {
       expect(screen.getByRole("button", { name: "Methodology" })).toHaveClass(
         "text-(--text-secondary)",
         "hover:text-text-primary",
-        "hover:bg-(--bg-surface)/(--opacity-hover)"
+        "hover:bg-(--bg-surface)/[calc(var(--opacity-hover)*100%)]"
       )
       rerender(<NewsTableOfContents headings={[...HEADINGS]} />)
       expect(observerState.disconnects[0]).toHaveBeenCalled()

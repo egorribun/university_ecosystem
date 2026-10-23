@@ -19,6 +19,10 @@ from fastapi import FastAPI
 import app.core.lifespan as lifecycle
 from app.core.config import Settings
 from app.core.config.notifications import validate_api_smtp_configuration
+from app.core.middleware.setup import _configure_rate_limiting
+from app.core.ratelimit import logic as rate_limit_logic
+from app.core.ratelimit.middleware import RateLimitMiddleware
+from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
 
 
 def _valid_production_settings() -> dict[str, object]:
@@ -53,6 +57,8 @@ def _valid_production_settings() -> dict[str, object]:
         "spicedb_preshared_key": secrets.token_urlsafe(32),
         "ws_hub_internal_secret": secrets.token_urlsafe(32),
         "cache_redis_url": "redis://cache.aud467.invalid:6379/0",
+        "rate_limit_storage_backend": "redis",
+        "rate_limit_storage_uri": "redis://rate-limit.aud467.invalid:6379/1",
         "revocation_redis_url": "redis://revocation.aud467.invalid:6379/0",
         "event_file_scanner_enabled": True,
         "event_file_scanner_host": "clamd.aud467.invalid",
@@ -596,3 +602,63 @@ async def test_api_lifespan_allows_configured_relay_and_development_defaults(
     scheduler_stop.clear.assert_called_once_with()
     reset.assert_called_once_with(app)
     startup.assert_awaited_once_with(app)
+
+
+@pytest.mark.parametrize("environment", ("staging", "production"))
+def test_full_deployment_settings_select_redis_runtime_strategy(
+    environment: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", environment)
+    values = _api_smtp_settings_inputs(monkeypatch)
+    values.pop("rate_limit_storage_uri")
+    values["rate_limit_enabled"] = True
+    monkeypatch.setenv(
+        "RATE_LIMIT_STORAGE_URI", "redis://rate-limit.aud267.invalid:6379/1"
+    )
+    configured = Settings(**values)
+
+    monkeypatch.setattr(rate_limit_logic, "settings", configured)
+    strategy = rate_limit_logic.get_default_strategy("aud267-runtime")
+    app = FastAPI()
+    _configure_rate_limiting(app, configured)
+    middleware_definition = next(
+        item for item in app.user_middleware if item.cls is RateLimitMiddleware
+    )
+    middleware = RateLimitMiddleware(app, **middleware_definition.kwargs)
+
+    assert configured.environment == environment
+    assert configured.rate_limit_storage_backend == "redis"
+    assert isinstance(strategy, RedisSlidingWindowStrategy)
+    assert strategy.redis_url == configured.rate_limit_storage_uri
+    assert isinstance(middleware._strategy, RedisSlidingWindowStrategy)
+    assert middleware._redis_url == configured.rate_limit_storage_uri
+
+
+@pytest.mark.parametrize("environment", ("staging", "production"))
+@pytest.mark.parametrize(
+    "uri",
+    (
+        " redis://rate-limit.aud267.invalid:6379/1",
+        "redis://rate limit.aud267.invalid:6379/1",
+        "\tredis://rate-limit.aud267.invalid:6379/1",
+        "redis://rate\t-limit.aud267.invalid:6379/1",
+        "\x00redis://rate-limit.aud267.invalid:6379/1",
+        "redis://rate-limit.aud267.invalid:6379/1\x7f",
+    ),
+)
+def test_full_deployment_settings_reject_raw_whitespace_or_controls_in_redis_uri(
+    environment: str,
+    uri: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", environment)
+    values = _api_smtp_settings_inputs(monkeypatch)
+    if "\x00" in uri or "\x7f" in uri:
+        values["rate_limit_storage_uri"] = uri
+    else:
+        values.pop("rate_limit_storage_uri")
+        monkeypatch.setenv("RATE_LIMIT_STORAGE_URI", uri)
+
+    with pytest.raises(ValueError, match="RATE_LIMIT_STORAGE_URI"):
+        Settings(**values)

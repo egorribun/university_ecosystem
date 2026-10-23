@@ -724,7 +724,13 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 		// used by embedded callers and tests still receive the secure default.
 		jwtAudience = middleware.DefaultJWTAudience
 	}
-	jwtMiddleware := middleware.NewJWTMiddlewareWithConfig(cfg.JWTSecret, cfg.JWKSPublicKeyPEM, revocationRedisClient, middleware.DefaultL1CacheConfig(), jwtAudience)
+	jwtIssuer := strings.TrimSpace(cfg.JWTIssuer)
+	if jwtIssuer == "" {
+		// Config.Load rejects a missing release issuer; this default preserves
+		// directly constructed development configs used by embedded callers.
+		jwtIssuer = middleware.DefaultJWTIssuer
+	}
+	jwtMiddleware := middleware.NewJWTMiddlewareWithConfigAndIssuer(cfg.JWTSecret, cfg.JWKSPublicKeyPEM, revocationRedisClient, middleware.DefaultL1CacheConfig(), jwtAudience, jwtIssuer)
 	// PERF-W17-02: Pre-populate L1 cache from Redis to avoid cold-start thundering herd.
 	jwtMiddleware.WarmL1Cache(ctx)
 	jwtMiddleware.ListenForRevocations(ctx)

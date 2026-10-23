@@ -67,7 +67,7 @@ describe("OfflineIndicator", () => {
       "left-1/2",
       "z-toast",
       "bg-(--warning-bg)",
-      "border-(--warning-text)/(--opacity-dim)",
+      "border-(--warning-text)/[calc(var(--opacity-dim)*100%)]",
       "text-(--warning-text)"
     )
   })
@@ -86,7 +86,7 @@ describe("OfflineIndicator", () => {
     expect(offlineToast).toHaveTextContent("You're offline")
     expect(offlineToast).toHaveClass(
       "bg-(--warning-bg)",
-      "border-(--warning-text)/(--opacity-dim)",
+      "border-(--warning-text)/[calc(var(--opacity-dim)*100%)]",
       "text-(--warning-text)"
     )
 
@@ -98,7 +98,7 @@ describe("OfflineIndicator", () => {
     expect(onlineToast).toHaveTextContent("Back online")
     expect(onlineToast).toHaveClass(
       "bg-(--success-bg)",
-      "border-(--success-text)/(--opacity-dim)",
+      "border-(--success-text)/[calc(var(--opacity-dim)*100%)]",
       "text-(--success-text)"
     )
 

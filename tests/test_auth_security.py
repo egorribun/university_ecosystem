@@ -165,6 +165,7 @@ async def test_decode_token_accepts_legacy_and_active_secrets(monkeypatch):
     legacy_payload = {
         "sub": "legacy-user",
         "aud": settings.jwt_audience,
+        "iss": settings.jwt_issuer,
         "iat": now,
         "nbf": now,
         "exp": now + timedelta(minutes=5),

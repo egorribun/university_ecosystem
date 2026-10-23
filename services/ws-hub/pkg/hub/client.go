@@ -469,14 +469,15 @@ func mergeTopLevelJoinReplay(msg *Message, data []byte) {
 }
 
 type roomJoinDecision struct {
-	resumeToken   string
-	legacyCursor  bool
-	replayEnabled bool
-	replayLimited bool
-	replaySeq     uint64
-	replayCtx     context.Context
-	replayState   *roomReplayState
-	tokenErr      error
+	resumeToken       string
+	legacyCursor      bool
+	replayEnabled     bool
+	replayLimited     bool
+	replayUnavailable bool
+	replaySeq         uint64
+	replayCtx         context.Context
+	replayState       *roomReplayState
+	tokenErr          error
 }
 
 func (c *Client) handleJoin(ctx context.Context, msg Message) {
@@ -500,7 +501,7 @@ func (c *Client) prepareAuthorizedRoomJoin(
 	decision *roomJoinDecision,
 ) bool {
 	parseRoomJoinPayload(msg.Payload, decision)
-	if decision.resumeToken == "" || !c.Hub.chatReplayAvailable.Load() {
+	if decision.resumeToken == "" {
 		c.cancelRoomReplay(msg.Room)
 		return true
 	}
@@ -510,12 +511,19 @@ func (c *Client) prepareAuthorizedRoomJoin(
 		c.UserID,
 		msg.Room,
 	)
+	if !c.Hub.chatReplayAvailable.Load() {
+		c.cancelRoomReplay(msg.Room)
+		if decision.tokenErr == nil {
+			decision.replayUnavailable = true
+			return false
+		}
+	}
 	if decision.tokenErr != nil {
 		return true
 	}
 	if !c.allowReplayJoin(msg.Room) {
 		decision.replayLimited = true
-		return true
+		return false
 	}
 	decision.replayCtx, decision.replayState = c.prepareRoomReplay(ctx, msg.Room)
 	return false
@@ -547,6 +555,10 @@ func (c *Client) finishAuthorizedRoomJoin(
 	msg Message,
 	decision *roomJoinDecision,
 ) {
+	if decision.replayUnavailable {
+		c.sendReplayJoinError(msg.Room, "replay_unavailable", "chat history replay is temporarily unavailable")
+		return
+	}
 	if decision.replayEnabled {
 		if decision.tokenErr != nil {
 			c.sendReplayJoinError(msg.Room, "invalid_resume_token", "resume token is invalid or expired")

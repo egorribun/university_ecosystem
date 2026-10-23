@@ -9,11 +9,13 @@ vi.mock("jose", () => joseMocks)
 
 describe("ssrAuth real JWKS path", () => {
   beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "test")
+    vi.stubEnv("JWT_ISSUER", "https://issuer.example.test")
     joseMocks.createRemoteJWKSet.mockReset()
     joseMocks.jwtVerify.mockReset()
     joseMocks.createRemoteJWKSet.mockImplementation((url: URL) => ({ url }))
     joseMocks.jwtVerify.mockResolvedValue({
-      payload: { sub: "real-jwks-user", role: "teacher" },
+      payload: { sub: "real-jwks-user", role: "teacher", iss: "https://issuer.example.test" },
     })
   })
 
@@ -52,7 +54,7 @@ describe("ssrAuth real JWKS path", () => {
     expect(joseMocks.jwtVerify).toHaveBeenCalledWith(
       "signed-token",
       { url: new URL("https://api.example.test/.well-known/jwks.json") },
-      { audience: "university-ecosystem-api" }
+      { audience: "university-ecosystem-api", issuer: "https://issuer.example.test" }
     )
 
     await expect(validateJwt("second-token")).resolves.toMatchObject({ isAuth: true })

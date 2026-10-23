@@ -3,10 +3,13 @@ from __future__ import annotations
 import argparse
 import ast
 import fnmatch
+import io
 import json
 import os
+import posixpath
 import re
 import sys
+import tokenize
 from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
 
@@ -35,13 +38,25 @@ SLEEP_PATTERNS = [
     (re.compile(r"\bsetTimeout\("), "JS/TS test sleep (setTimeout) found"),
 ]
 
-# Dynamic skip patterns
-SKIP_PATTERNS = [
-    (re.compile(r"\bpytest\.skip\("), "Python dynamic skip (pytest.skip) found"),
-    (re.compile(r"\bt\.Skip\("), "Go dynamic skip (t.Skip) found"),
-    (re.compile(r"\btest\.skip\("), "JS/TS dynamic skip (test.skip) found"),
-    (re.compile(r"\bit\.skip\("), "JS/TS dynamic skip (it.skip) found"),
+# Dynamic skip syntax. Python is parsed with its AST; Go and JavaScript use the
+# existing comment/string masking plus syntax-shaped call matchers.
+PYTHON_SKIP_MESSAGE = (
+    "Python dynamic skip (pytest.skip/skip/mark.skip/mark.xfail) found"
+)
+GO_SKIP_PATTERNS = [
+    (re.compile(r"\bt\.Skip\s*\("), "Go dynamic skip (t.Skip) found"),
+    (re.compile(r"\bt\.Skipf\s*\("), "Go dynamic skip (t.Skipf) found"),
+    (re.compile(r"\bt\.SkipNow\s*\("), "Go dynamic skip (t.SkipNow) found"),
 ]
+JS_SKIP_PATTERNS = [
+    (re.compile(r"\btest\s*\.\s*skip\s*\("), "JS/TS dynamic skip (test.skip) found"),
+    (re.compile(r"\bit\s*\.\s*skip\s*\("), "JS/TS dynamic skip (it.skip) found"),
+    (
+        re.compile(r"\bdescribe\s*\.\s*skip\s*\("),
+        "JS/TS dynamic skip (describe.skip) found",
+    ),
+]
+OWNER_PATTERN = re.compile(r"(?<![\w])@[A-Za-z0-9][A-Za-z0-9_.-]*\b")
 
 _TYPESCRIPT_FILE_REFERENCE = re.compile(
     r"\breadFileSync\s*\(\s*resolve\s*\(\s*process\.cwd\(\)\s*,\s*(?P<quote>['\"])(?P<path>[^'\"]+)(?P=quote)\s*\)",
@@ -724,12 +739,28 @@ class PythonTestVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-        if node.module:
-            self.imported_modules.add(node.module)
-            self.imported_modules.add(node.module.split(".")[0])
+        module = node.module
+        if node.level:
+            try:
+                relative_path = self.file_path.resolve().relative_to(
+                    REPOSITORY_ROOT.resolve()
+                )
+            except ValueError:
+                relative_path = Path()
+            package_parts = relative_path.parts[:-1]
+            parent_count = node.level - 1
+            if parent_count > len(package_parts):
+                self.generic_visit(node)
+                return
+            package = package_parts[: len(package_parts) - parent_count]
+            prefix = ".".join(package)
+            module = ".".join(part for part in (prefix, module) if part)
+        if module:
+            self.imported_modules.add(module)
+            self.imported_modules.add(module.split(".")[0])
             for alias in node.names:
                 if alias.name != "*":
-                    self.imported_modules.add(f"{node.module}.{alias.name}")
+                    self.imported_modules.add(f"{module}.{alias.name}")
         self.generic_visit(node)
 
 
@@ -1331,6 +1362,159 @@ def matches_any_glob(path_str: str, patterns: list[str]) -> bool:
     return False
 
 
+def _python_attribute_name(node: ast.AST, aliases: dict[str, str]) -> str | None:
+    if isinstance(node, ast.Name):
+        return aliases.get(node.id, node.id)
+    if isinstance(node, ast.Attribute):
+        parent = _python_attribute_name(node.value, aliases)
+        return f"{parent}.{node.attr}" if parent is not None else None
+    return None
+
+
+def _python_skip_sites(content: str) -> list[tuple[int, str]]:
+    try:
+        tree = ast.parse(content)
+    except (SyntaxError, ValueError):
+        return []
+
+    aliases: dict[str, str] = {"pytest": "pytest"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "pytest":
+                    aliases[alias.asname or "pytest"] = "pytest"
+        elif isinstance(node, ast.ImportFrom) and node.module == "pytest":
+            for alias in node.names:
+                if alias.name in {"skip", "mark"}:
+                    aliases[alias.asname or alias.name] = f"pytest.{alias.name}"
+
+    sites: set[tuple[int, str]] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and _python_attribute_name(node.func, aliases) == "pytest.skip"
+        ):
+            sites.add((node.lineno, PYTHON_SKIP_MESSAGE))
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            for decorator in node.decorator_list:
+                expression = (
+                    decorator.func if isinstance(decorator, ast.Call) else decorator
+                )
+                if _python_attribute_name(expression, aliases) in {
+                    "pytest.mark.skip",
+                    "pytest.mark.xfail",
+                }:
+                    sites.add((decorator.lineno, PYTHON_SKIP_MESSAGE))
+    return sorted(sites)
+
+
+def _python_comments_by_line(content: str) -> dict[int, list[str]]:
+    comments: dict[int, list[str]] = {}
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(content).readline)
+        for token in tokens:
+            if token.type == tokenize.COMMENT:
+                comments.setdefault(token.start[0], []).append(token.string)
+    except (IndentationError, tokenize.TokenError):
+        pass
+    return comments
+
+
+def _c_style_comments_by_line(
+    content: str, *, javascript: bool
+) -> dict[int, list[str]]:
+    comments: dict[int, list[str]] = {}
+    masked: list[str] = []
+    index = 0
+    line = 1
+    length = len(content)
+
+    def mask_span(start: int, end: int) -> None:
+        nonlocal line
+        for char in content[start:end]:
+            masked.append("\n" if char == "\n" else " ")
+            if char == "\n":
+                line += 1
+
+    while index < length:
+        if content.startswith("//", index):
+            end = content.find("\n", index + 2)
+            if end == -1:
+                end = length
+            comments.setdefault(line, []).append(content[index + 2 : end])
+            mask_span(index, end)
+            index = end
+            continue
+        if content.startswith("/*", index):
+            closing = content.find("*/", index + 2)
+            end = length if closing == -1 else closing + 2
+            comment_end = length if closing == -1 else closing
+            for offset, comment_line in enumerate(
+                content[index + 2 : comment_end].splitlines()
+            ):
+                comments.setdefault(line + offset, []).append(comment_line)
+            mask_span(index, end)
+            index = end
+            continue
+        quote = content[index]
+        if quote in {"'", '"', "`"}:
+            start = index
+            index += 1
+            while index < length:
+                if content[index] == "\\" and (javascript or quote != "`"):
+                    index += 2
+                    continue
+                if content[index] == quote:
+                    index += 1
+                    break
+                if quote != "`" and content[index] in "\r\n":
+                    break
+                index += 1
+            mask_span(start, min(index, length))
+            continue
+        if javascript and quote == "/" and _js_regex_can_start(masked):
+            end = _skip_javascript_regex(content, index)
+            if end > index + 1:
+                mask_span(index, end)
+                index = end
+                continue
+        masked.append(content[index])
+        if content[index] == "\n":
+            line += 1
+        index += 1
+    return comments
+
+
+def _dynamic_skip_sites(file_path: Path, content: str) -> list[tuple[int, str]]:
+    suffix = file_path.suffix.lower()
+    if suffix == ".py":
+        return _python_skip_sites(content)
+
+    if suffix == ".go":
+        masked = _mask_go_comments_and_literals(content)
+        patterns = GO_SKIP_PATTERNS
+    elif suffix in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"}:
+        masked, _ = _mask_javascript_non_code(content)
+        patterns = JS_SKIP_PATTERNS
+    else:
+        return []
+
+    sites: set[tuple[int, str]] = set()
+    for pattern, message in patterns:
+        for match in pattern.finditer(masked):
+            line = masked.count("\n", 0, match.start()) + 1
+            sites.add((line, message))
+    return sorted(sites)
+
+
+def _has_skip_tracking_comment(line: int, comments: dict[int, list[str]]) -> bool:
+    evidence = "\n".join(comments.get(line, []) + comments.get(line - 1, []))
+    return (
+        ISSUE_PATTERN.search(evidence) is not None
+        and OWNER_PATTERN.search(evidence) is not None
+    )
+
+
 def check_anti_patterns(
     file_path: Path,
     errors: list[str],
@@ -1338,7 +1522,8 @@ def check_anti_patterns(
     allowed_dynamic_skips: list[str],
 ) -> None:
     try:
-        lines = file_path.read_text(encoding="utf-8").splitlines()
+        content = file_path.read_text(encoding="utf-8")
+        lines = content.splitlines()
     except Exception as error:
         errors.append(f"ERROR: unable to read {safe_relative_path(file_path)}: {error}")
         return
@@ -1379,26 +1564,92 @@ def check_anti_patterns(
                             f"ERROR: {path_str}:L{line_idx}: {msg} without explicit bound or retry pragma"
                         )
 
-        # 3. Dynamic skips
-        if not is_skip_allowed:
-            for regex, msg in SKIP_PATTERNS:
-                if regex.search(line):
-                    # Search for tracking issue and owner
-                    has_issue = ISSUE_PATTERN.search(line) is not None
-                    has_owner = "@" in line
+    if not is_skip_allowed:
+        if file_path.suffix.lower() == ".py":
+            comments = _python_comments_by_line(content)
+        else:
+            comments = _c_style_comments_by_line(
+                content,
+                javascript=file_path.suffix.lower()
+                in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"},
+            )
+        for line_idx, message in _dynamic_skip_sites(file_path, content):
+            if not _has_skip_tracking_comment(line_idx, comments):
+                errors.append(
+                    f"ERROR: {path_str}:L{line_idx}: {message} requires tracking issue (e.g. QUALITY-123) and owner (@username) in comment"
+                )
 
-                    # Check preceding line as well
-                    if line_idx > 1:
-                        prev_line = lines[line_idx - 2]
-                        if ISSUE_PATTERN.search(prev_line):
-                            has_issue = True
-                        if "@" in prev_line:
-                            has_owner = True
 
-                    if not (has_issue and has_owner) and "quarantined" not in line:
-                        errors.append(
-                            f"ERROR: {path_str}:L{line_idx}: {msg} requires tracking issue (e.g. QUALITY-123) and owner (@username) in comment"
-                        )
+def _python_module_inventory_paths(imported_modules: set[str]) -> set[str]:
+    paths: set[str] = set()
+    for module in imported_modules:
+        normalized = module.replace(".", "/").replace("\\", "/").strip("/")
+        if not normalized or any(part in {".", ".."} for part in normalized.split("/")):
+            continue
+        paths.add(f"{normalized}.py")
+        paths.add(f"{normalized}/__init__.py")
+    return paths
+
+
+def _typescript_import_targets(test_path: str, reference_paths: set[str]) -> bool:
+    normalized_test_path = test_path.replace("\\", "/")
+    test_file = REPOSITORY_ROOT.joinpath(*PurePosixPath(normalized_test_path).parts)
+    try:
+        content = test_file.read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return False
+
+    masked, literals = _mask_javascript_non_code(content)
+    for match in _JAVASCRIPT_MODULE_REFERENCE.finditer(masked):
+        specifier = _javascript_string_value(match.group("path"), literals)
+        if not specifier:
+            continue
+        if specifier.startswith("@/"):
+            base = PurePosixPath("frontend/src")
+            module_path = specifier[2:]
+        elif specifier.startswith(("./", "../")):
+            base = PurePosixPath(normalized_test_path).parent
+            module_path = specifier
+        else:
+            continue
+
+        resolved = posixpath.normpath((base / module_path).as_posix())
+        if (
+            resolved in {".", ".."}
+            or resolved.startswith("../")
+            or resolved.startswith("/")
+        ):
+            continue
+        candidates = {resolved}
+        if not PurePosixPath(resolved).suffix:
+            extensions = (
+                ".ts",
+                ".tsx",
+                ".js",
+                ".jsx",
+                ".mjs",
+                ".cjs",
+                ".mts",
+                ".cts",
+                ".json",
+            )
+            candidates.update(f"{resolved}{extension}" for extension in extensions)
+            candidates.update(
+                f"{resolved}/index{extension}" for extension in extensions
+            )
+        if candidates.intersection(reference_paths):
+            return True
+    return False
+
+
+def _go_package_name(file_path: Path) -> str | None:
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return None
+    masked = _mask_go_comments_and_literals(content)
+    match = re.search(r"(?m)^\s*package\s+([A-Za-z_]\w*)\b", masked)
+    return match.group(1) if match else None
 
 
 def matches_source(
@@ -1411,10 +1662,12 @@ def matches_source(
     reference_paths: set[str] | None = None,
     contract_test_paths: set[str] | None = None,
 ) -> bool:
+    test_path = test_path.replace("\\", "/")
     if matches_any_glob(test_path, allowed_orphans):
         return True
 
-    # 1. Allowed non-orphan folders
+    # These directories are explicit classifications with their own quality
+    # contracts; all other tests need a concrete inventoried relationship.
     allowed_folders = {
         "tests/integration",
         "tests/chaos",
@@ -1422,18 +1675,12 @@ def matches_source(
         "tests/performance",
         "tests/fuzz",
     }
-    for folder in allowed_folders:
-        if test_path.startswith(folder + "/"):
-            return True
+    if any(test_path.startswith(folder + "/") for folder in allowed_folders):
+        return True
 
-    # Static repository-file reads are direct contract dependencies across
-    # languages. Accept them only when their resolved target exists in the
-    # inventory as a non-test path.
     generic_reference_paths = reference_paths or set()
     if test_path.endswith(".test.mjs"):
-        # A Playwright spec is a test-to-test contract target only for the exact
-        # contract matcher below; its utility inventory classification must not
-        # make every MJS test referencing it appear covered.
+        # A Playwright spec is usable only through the exact contract matcher.
         generic_reference_paths = generic_reference_paths - (
             contract_test_paths or set()
         )
@@ -1442,9 +1689,6 @@ def matches_source(
     ):
         return True
 
-    # A JavaScript contract test may assert against one exact Playwright spec it
-    # statically reads. Keep this test-to-test relationship limited to files
-    # explicitly named as contract tests and exact existing .spec.ts[x] targets.
     if (
         test_path.endswith(".test.mjs")
         and re.search(r"(?:^|[.-])contract\.test\.mjs$", Path(test_path).name)
@@ -1453,145 +1697,105 @@ def matches_source(
     ):
         return True
 
-    # Remove test/test_ prefix/suffix
     path_obj = Path(test_path)
     name = path_obj.name
 
-    # 2. Python import & naming map
     if (
         test_path.startswith("tests/")
         and name.startswith("test_")
         and test_path.endswith(".py")
     ):
-        if imported_modules and (
-            "app" in imported_modules
-            or "services" in imported_modules
-            or "native" in imported_modules
-            or "scripts" in imported_modules
-        ):
-            return True
-
-        # Test support modules are authored repository utilities rather than
-        # production source.  Treat an import of one as a concrete ownership
-        # relationship only when its fully-qualified module resolves to a
-        # non-test inventory path; importing another test file must not bypass
-        # the orphan gate.
         if imported_modules and reference_paths:
-            for module in imported_modules:
-                if not module.startswith("tests."):
+            if _python_module_inventory_paths(imported_modules).intersection(
+                reference_paths
+            ):
+                return True
+
+        base_stem = name[len("test_") : -len(".py")]
+        common_suffixes = (
+            "_service",
+            "_api",
+            "_full",
+            "_coverage",
+            "_unit",
+            "_booster",
+        )
+        candidate_stems = [base_stem]
+        while candidate_stems:
+            current_stem = candidate_stems[-1]
+            next_stem = next(
+                (
+                    current_stem[: -len(suffix)]
+                    for suffix in common_suffixes
+                    if current_stem.endswith(suffix) and len(current_stem) > len(suffix)
+                ),
+                None,
+            )
+            if next_stem is None:
+                break
+            candidate_stems.append(next_stem)
+
+        for candidate_stem in candidate_stems:
+            naming_matches: set[str] = set()
+            for source in source_paths:
+                source_path = PurePosixPath(source.replace("\\", "/"))
+                if source_path.suffix != ".py":
                     continue
-                module_path = module.replace(".", "/") + ".py"
-                if module_path in reference_paths:
-                    return True
+                if source_path.stem == candidate_stem or (
+                    source_path.name == "__init__.py"
+                    and source_path.parent.name == candidate_stem
+                ):
+                    naming_matches.add(source_path.as_posix())
+            if naming_matches:
+                return len(naming_matches) == 1
 
-        base_name = name[5:]  # Remove 'test_'
-        base_name_clean = base_name.replace(".py", "")
-
-        # Workflow-contract suites intentionally verify a workflow document
-        # rather than importing executable Python.  Map the conventional
-        # ``test_<workflow>_workflow_contract.py`` name to that document so a
-        # new contract test remains governed by the orphan gate.
-        workflow_name = base_name_clean.removesuffix("_workflow_contract")
-        if workflow_name != base_name_clean and any(
-            Path(workflow_path).parent == Path(".github/workflows")
-            and Path(workflow_path).suffix in {".yml", ".yaml"}
-            and Path(workflow_path).stem.replace("-", "_") == workflow_name
+        workflow_name = name[len("test_") : -len(".py")].removesuffix(
+            "_workflow_contract"
+        )
+        if workflow_name != name[len("test_") : -len(".py")] and any(
+            PurePosixPath(workflow_path).parent == PurePosixPath(".github/workflows")
+            and PurePosixPath(workflow_path).suffix in {".yml", ".yaml"}
+            and PurePosixPath(workflow_path).stem.replace("-", "_") == workflow_name
             for workflow_path in workflow_paths or set()
         ):
             return True
-
-        # Remove common suffixes
-        for suffix in ("_service", "_api", "_full", "_coverage", "_unit", "_booster"):
-            if base_name_clean.endswith(suffix):
-                base_name_clean = base_name_clean[: -len(suffix)]
-
-        # Check matching folders or general name match
-        for src in source_paths:
-            src_name = Path(src).name
-            if src.endswith(base_name) or src.endswith(
-                base_name.replace(".py", "/__init__.py")
-            ):
-                return True
-            if base_name_clean in src_name:
-                return True
         return False
 
-    # 3. TS/JS naming map
     if test_path.endswith((".test.ts", ".test.tsx")):
-        # If it imports from local source, we consider it matched
-        try:
-            content = Path(test_path).read_text(encoding="utf-8")
-            if re.search(r'from\s+[\'"](@/|\.|\.\.)', content) or re.search(
-                r'import\s+[\'"](@/|\.|\.\.)', content
-            ):
-                return True
-        except Exception:  # noqa: S110
-            pass
-
-        base_name_ts = name.replace(".test.ts", ".ts").replace(".test.tsx", ".ts")
-        base_name_tsx = name.replace(".test.ts", ".tsx").replace(".test.tsx", ".tsx")
-        # Coverage-closure suites use a descriptive segment before the test
-        # suffix (for example ``rateLimit.closure.test.ts``). Normalize that
-        # segment before matching the test against its production module.
-        base_name_ts = re.sub(
-            r"\.(?:branches|booster|closure|edge)(?=\.tsx?$)", "", base_name_ts
-        )
-        base_name_tsx = re.sub(
-            r"\.(?:branches|booster|closure|edge)(?=\.tsx?$)", "", base_name_tsx
-        )
-
-        # Check local folder
-        local_src_ts = str(path_obj.parent / base_name_ts).replace("\\", "/")
-        local_src_tsx = str(path_obj.parent / base_name_tsx).replace("\\", "/")
-        if local_src_ts in source_paths or local_src_tsx in source_paths:
+        import_targets = source_paths | (reference_paths or set())
+        if _typescript_import_targets(test_path, import_targets):
             return True
 
-        # Check __tests__ parent
-        if "/__tests__/" in test_path:
-            parent_src_ts = (
-                test_path.replace("/__tests__/", "/")
-                .replace(".test.ts", ".ts")
-                .replace(".test.tsx", ".ts")
-            )
-            parent_src_tsx = (
-                test_path.replace("/__tests__/", "/")
-                .replace(".test.ts", ".tsx")
-                .replace(".test.tsx", ".tsx")
-            )
-            if parent_src_ts in source_paths or parent_src_tsx in source_paths:
-                return True
-
-        # Production/runtime suites may add one or more descriptive segments
-        # before `.test.ts[x]` (for example `client.csrf.production.test.ts`).
-        # Match those suites to a nearby source module by a dot-delimited stem;
-        # requiring the source directory to be the test directory or its
-        # `__tests__` parent avoids matching unrelated modules with a common
-        # prefix.
-        test_stem = name.rsplit(".test.", 1)[0]
-        nearby_source_dirs = {path_obj.parent}
-        if path_obj.parent.name == "__tests__":
-            nearby_source_dirs.add(path_obj.parent.parent)
-        for src in source_paths:
-            src_path = Path(src)
-            if src_path.parent not in nearby_source_dirs:
+        if name.endswith(".test.tsx"):
+            test_stem = name[: -len(".test.tsx")]
+        else:
+            test_stem = name[: -len(".test.ts")]
+        test_stem = re.sub(r"\.(?:branches|booster|closure|edge)$", "", test_stem)
+        source_stems = (f"{test_stem}.ts", f"{test_stem}.tsx")
+        nearby_source_dirs = {PurePosixPath(test_path).parent}
+        if PurePosixPath(test_path).parent.name == "__tests__":
+            nearby_source_dirs.add(PurePosixPath(test_path).parent.parent)
+        for source in source_paths:
+            source_path = PurePosixPath(source.replace("\\", "/"))
+            if source_path.parent not in nearby_source_dirs:
                 continue
-            source_stem = src_path.stem
-            if test_stem == source_stem or test_stem.startswith(source_stem + "."):
+            if source_path.name in source_stems:
                 return True
-
-        # Check general endswith match
-        for src in source_paths:
-            if src.endswith(base_name_ts) or src.endswith(base_name_tsx):
+            source_stem = source_path.stem
+            if source_path.suffix in {".ts", ".tsx"} and test_stem.startswith(
+                source_stem + "."
+            ):
                 return True
         return False
 
-    # 4. JavaScript module tests require a statically referenced inventoried
-    # non-test file or an exact nearby module with the same test stem.
     if test_path.endswith(".test.mjs"):
         test_stem = name.removesuffix(".test.mjs")
-        nearby_source_dirs = {path_obj.parent, path_obj.parent.parent}
+        nearby_source_dirs = {
+            PurePosixPath(test_path).parent,
+            PurePosixPath(test_path).parent.parent,
+        }
         for source in source_paths:
-            source_path = Path(source)
+            source_path = PurePosixPath(source.replace("\\", "/"))
             if (
                 source_path.parent in nearby_source_dirs
                 and source_path.suffix in {".mjs", ".js", ".cjs"}
@@ -1600,20 +1804,25 @@ def matches_source(
                 return True
         return False
 
-    # 5. Go naming map
     if test_path.endswith("_test.go"):
-        base_name = name.replace("_test.go", ".go")
-        local_src = str(path_obj.parent / base_name).replace("\\", "/")
-        if local_src in source_paths:
-            return True
-        # If any other .go file is in the same directory, it is matching
-        dir_path = path_obj.parent
-        for src in source_paths:
-            if Path(src).parent == dir_path:
-                return True
+        test_package = _go_package_name(REPOSITORY_ROOT / test_path)
+        test_directory = PurePosixPath(test_path).parent
+        package_paths = source_paths | (reference_paths or set())
+        if test_package:
+            for source in package_paths:
+                normalized_source = source.replace("\\", "/")
+                source_path = PurePosixPath(normalized_source)
+                if source_path.parent != test_directory or source_path.suffix != ".go":
+                    continue
+                source_package = _go_package_name(REPOSITORY_ROOT / normalized_source)
+                if source_package and test_package in {
+                    source_package,
+                    f"{source_package}_test",
+                }:
+                    return True
         return False
 
-    return True
+    return False
 
 
 def _inventory_validation_error(manifest: object) -> str | None:

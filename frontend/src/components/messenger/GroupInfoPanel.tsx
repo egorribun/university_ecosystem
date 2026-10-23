@@ -142,7 +142,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-overlay flex items-center justify-center bg-overlay/(--opacity-strong) p-4 backdrop-blur-md"
+          className="fixed inset-0 z-overlay flex items-center justify-center bg-overlay/[calc(var(--opacity-strong)*100%)] p-4 backdrop-blur-md"
           role="presentation"
           onClick={onClose}
         >
@@ -159,7 +159,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
             onClick={(event) => event.stopPropagation()}
           >
             {/* Header — group identity + rename + close */}
-            <div className="flex items-center justify-between border-b border-(--glass-border)/(--opacity-subtle) p-6 pb-4">
+            <div className="flex items-center justify-between border-b border-(--glass-border)/[calc(var(--opacity-subtle)*100%)] p-6 pb-4">
               <div className="flex min-w-0 items-center gap-3">
                 <GroupAvatar className="size-11" iconSize={20} />
                 <div className="min-w-0">
@@ -175,7 +175,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                 type="button"
                 onClick={onClose}
                 aria-label={t("common:buttons.close")}
-                className="min-h-[44px] min-w-[44px] shrink-0 rounded-full p-2 flex items-center justify-center transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                className="min-h-[44px] min-w-[44px] shrink-0 rounded-full p-2 flex items-center justify-center transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
               >
                 <X className="h-5 w-5" aria-hidden="true" />
               </button>
@@ -217,7 +217,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                   <button
                     type="button"
                     onClick={() => startRename(chat)}
-                    className="inline-flex min-h-[40px] items-center gap-2 rounded-xl px-3 text-sm font-semibold text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+                    className="inline-flex min-h-[40px] items-center gap-2 rounded-xl px-3 text-sm font-semibold text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                   >
                     <Pencil className="size-4" strokeWidth={2} aria-hidden="true" />
                     {t("messenger:renameGroup")}
@@ -253,7 +253,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                           setSearch("")
                         }}
                         aria-label={t("common:buttons.cancel")}
-                        className="flex size-11 shrink-0 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+                        className="flex size-11 shrink-0 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                       >
                         <X className="size-5" aria-hidden="true" />
                       </button>
@@ -280,7 +280,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                         type="button"
                         disabled={isAddingMember}
                         onClick={() => onAddMember(String(u.id))}
-                        className="flex w-full min-h-[52px] items-center gap-3 rounded-2xl p-2.5 text-left transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) disabled:opacity-medium disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+                        className="flex w-full min-h-[52px] items-center gap-3 rounded-2xl p-2.5 text-left transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] disabled:opacity-medium disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                       >
                         <SmartImage
                           srcRaw={u.avatar_url || AVATAR_PLACEHOLDER_URL}
@@ -303,7 +303,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                   <button
                     type="button"
                     onClick={() => setShowAddSearch(true)}
-                    className="inline-flex min-h-[44px] items-center gap-2 rounded-full px-4 text-sm font-semibold text-(--color-violet-500) transition-colors hover:bg-(--color-violet-500)/(--opacity-subtle) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+                    className="inline-flex min-h-[44px] items-center gap-2 rounded-full px-4 text-sm font-semibold text-(--color-violet-500) transition-colors hover:bg-(--color-violet-500)/[calc(var(--opacity-subtle)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                   >
                     <UserPlus className="size-4" strokeWidth={2.25} aria-hidden="true" />
                     {t("messenger:addMember")}
@@ -326,7 +326,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                   return (
                     <li
                       key={id}
-                      className="flex items-center gap-3 rounded-2xl p-2.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-faint)"
+                      className="flex items-center gap-3 rounded-2xl p-2.5 transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-faint)*100%)]"
                     >
                       <div className="relative shrink-0">
                         <SmartImage
@@ -367,7 +367,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                               ? t("messenger:leaveGroup")
                               : t("messenger:removeMember", { name: member.full_name })
                           }
-                          className="flex size-9 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--error-text)/(--opacity-subtle) hover:text-(--error-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)"
+                          className="flex size-9 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--error-text)/[calc(var(--opacity-subtle)*100%)] hover:text-(--error-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)"
                         >
                           {isSelf ? (
                             <LogOut className="size-4" strokeWidth={2} aria-hidden="true" />
@@ -383,11 +383,11 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
             </div>
 
             {/* Leave group (always) */}
-            <div className="border-t border-(--glass-border)/(--opacity-subtle) p-6 pt-4">
+            <div className="border-t border-(--glass-border)/[calc(var(--opacity-subtle)*100%)] p-6 pt-4">
               <button
                 type="button"
                 onClick={() => currentUserId && onRemoveMember(currentUserId)}
-                className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full px-5 text-sm font-bold text-(--error-text) transition-colors hover:bg-(--error-text)/(--opacity-subtle) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)"
+                className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full px-5 text-sm font-bold text-(--error-text) transition-colors hover:bg-(--error-text)/[calc(var(--opacity-subtle)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)"
               >
                 <LogOut className="size-4" strokeWidth={2.25} aria-hidden="true" />
                 {t("messenger:leaveGroup")}

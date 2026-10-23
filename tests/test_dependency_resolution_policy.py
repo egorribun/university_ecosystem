@@ -1,6 +1,7 @@
 import json
 import re
 import tomllib
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -94,6 +95,7 @@ def test_dependency_resolution_policy_enforces_cooldown_and_security_visibility(
     assert uv.get("required-version") == "==0.12.23"
     assert uv.get("exclude-newer") == "7 days"
     assert uv.get("exclude-newer-package") == {
+        "brotli": "2026-10-22T14:00:13Z",
         "certifi": "2026-10-20T02:24:17Z",
         "pillow": "2026-10-16T22:18:10Z",
         "virtualenv": "2026-10-17T16:09:43Z",
@@ -101,6 +103,8 @@ def test_dependency_resolution_policy_enforces_cooldown_and_security_visibility(
     assert "certifi==2026.10.19" in uv["constraint-dependencies"]
     assert "pillow==13.0.0" in uv["constraint-dependencies"]
     assert "virtualenv==21.14.9" in uv["constraint-dependencies"]
+    assert "brotli==1.2.1" in uv["constraint-dependencies"]
+    assert "brotli>=1.2.1,<2" in uv["constraint-dependencies"]
     assert "pillow>=13.0.0,<14" in pyproject["project"]["dependencies"]
 
     renovate = _read_renovate()
@@ -272,6 +276,7 @@ def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:
     assert "exclude-newer" in lock_options
     assert lock_options["exclude-newer-span"] == "P7D"
     assert lock_options.get("exclude-newer-package") == {
+        "brotli": "2026-10-22T14:00:13Z",
         "certifi": "2026-10-20T02:24:17Z",
         "pillow": "2026-10-16T22:18:10Z",
         "virtualenv": "2026-10-17T16:09:43Z",
@@ -301,6 +306,22 @@ def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:
     assert {"name": "virtualenv", "specifier": "==21.14.9"} in lock["manifest"][
         "constraints"
     ]
+
+    brotli_packages = [
+        package for package in lock["package"] if package["name"] == "brotli"
+    ]
+    assert len(brotli_packages) == 1
+    assert brotli_packages[0]["version"] == "1.2.1"
+    assert {"name": "brotli", "specifier": "==1.2.1"} in lock["manifest"]["constraints"]
+    assert {"name": "brotli", "specifier": ">=1.2.1,<2"} in lock["manifest"][
+        "constraints"
+    ]
+    brotli_cutoff = lock_options["exclude-newer-package"]["brotli"]
+    assert brotli_cutoff == "2026-10-22T14:00:13Z"
+    cutoff_time = datetime.fromisoformat(brotli_cutoff.replace("Z", "+00:00"))
+    removal_time = datetime.fromisoformat("2026-10-29T14:00:13+00:00")
+    assert removal_time - cutoff_time == timedelta(days=7)
+    assert "# Remove Brotli after 2026-10-29T14:00:13Z." in _read_text("pyproject.toml")
 
     runbook = _read_text("docs/DEPENDENCY_COOLDOWN_EMERGENCY.md")
     assert TARGETED_EMERGENCY_COMMAND in runbook

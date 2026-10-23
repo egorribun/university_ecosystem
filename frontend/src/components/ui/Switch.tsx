@@ -35,7 +35,7 @@ function SwitchImpl(
         className={cn(
           "pointer-events-none absolute inset-x-0 top-2 h-7 rounded-full transition-premium",
           focus && !disabled
-            ? "scale-100 opacity-100 ring-4 ring-brand/(--opacity-dim)"
+            ? "scale-100 opacity-100 ring-4 ring-brand/[calc(var(--opacity-dim)*100%)]"
             : "scale-90 opacity-0"
         )}
       />
@@ -45,7 +45,8 @@ function SwitchImpl(
         className={cn(
           "absolute inset-x-0 top-2 h-7 rounded-full border border-border-subtle transition-colors duration-base",
           "bg-(--bg-surface)-tint backdrop-blur-sm",
-          checked && "bg-brand/(--opacity-dim) border-brand/(--opacity-soft)"
+          checked &&
+            "bg-brand/[calc(var(--opacity-dim)*100%)] border-brand/[calc(var(--opacity-soft)*100%)]"
         )}
         animate={{
           borderColor: checked

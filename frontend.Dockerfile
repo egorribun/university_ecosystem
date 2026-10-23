@@ -174,6 +174,9 @@ RUN --mount=type=cache,target=/root/.npm \
 # SSR rollout. Edge routing is owned by `services/caddy/Caddyfile`.
 FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS runtime
 
+# npm is used in build/install stages only; the production entrypoint runs Node directly.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
 WORKDIR /app
 RUN addgroup -S -g 10001 app \
  && adduser -S -D -u 10001 -G app -h /home/app app

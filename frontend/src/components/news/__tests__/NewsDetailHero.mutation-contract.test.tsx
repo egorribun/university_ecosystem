@@ -93,7 +93,7 @@ describe("NewsDetailHero mutation contracts", () => {
       container: "h-(--h-hero-sm) min-h-80 max-h-(--layout-max-modal)",
       image: "object-cover",
       imageStyle: { objectPosition: "50% 40%" },
-      backdrop: "bg-(--bg-surface)/(--opacity-dim)",
+      backdrop: "bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)]",
     })
     expect(getNewsHeroFrame(Number.NaN)).toEqual(getNewsHeroFrame(0))
     expect(getNewsHeroFrame(Number.POSITIVE_INFINITY)).toEqual(getNewsHeroFrame(-1))
@@ -124,7 +124,7 @@ describe("NewsDetailHero mutation contracts", () => {
       "h-(--h-hero-sm)",
       "min-h-80",
       "max-h-(--layout-max-modal)",
-      "bg-(--bg-surface)/(--opacity-dim)"
+      "bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)]"
     )
   })
 
@@ -149,12 +149,12 @@ describe("NewsDetailHero mutation contracts", () => {
     const frame = () => image.parentElement!
 
     loadDimensions(image, 1, 2)
-    expect(frame()).toHaveClass("aspect-3/4", "bg-black/(--opacity-soft)")
+    expect(frame()).toHaveClass("aspect-3/4", "bg-black/[calc(var(--opacity-soft)*100%)]")
     expect(image).toHaveClass("object-contain", "object-center")
     expect(image).toHaveStyle({ objectPosition: "center" })
 
     loadDimensions(image, 82, 100)
-    expect(frame()).toHaveClass("aspect-5/4", "bg-(--bg-surface)/(--opacity-dim)")
+    expect(frame()).toHaveClass("aspect-5/4", "bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)]")
     expect(image).toHaveClass("object-cover")
     expect(image).toHaveStyle({ objectPosition: "50% 38%" })
 
@@ -164,13 +164,13 @@ describe("NewsDetailHero mutation contracts", () => {
     expect(image).toHaveStyle({ objectPosition: "50% 40%" })
 
     loadDimensions(image, 26, 10)
-    expect(frame()).toHaveClass("aspect-video", "bg-(--bg-surface)/(--opacity-dim)")
+    expect(frame()).toHaveClass("aspect-video", "bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)]")
 
     loadDimensions(image, 260, 100)
     expect(frame()).toHaveClass("aspect-video", "max-h-(--h-hero-max-landscape)")
 
     loadDimensions(image, 3, 1)
-    expect(frame()).toHaveClass("aspect-21/9", "bg-black/(--opacity-dim)")
+    expect(frame()).toHaveClass("aspect-21/9", "bg-black/[calc(var(--opacity-dim)*100%)]")
     expect(image).toHaveStyle({ objectPosition: "50% 46%" })
 
     loadDimensions(image, 100, Number.POSITIVE_INFINITY)

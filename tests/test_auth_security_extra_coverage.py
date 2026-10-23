@@ -296,8 +296,9 @@ def test_decode_token_branches(monkeypatch) -> None:
         .decode("utf-8")
     )
 
+    valid_payload = {**payload, "iss": settings.jwt_issuer}
     rs256_token = jwt.encode(
-        payload, private_pem, algorithm="RS256", headers={"kid": "rskey"}
+        valid_payload, private_pem, algorithm="RS256", headers={"kid": "rskey"}
     )
 
     monkeypatch.setattr(settings, "algorithm", "RS256")

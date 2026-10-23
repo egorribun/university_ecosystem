@@ -100,6 +100,8 @@ export interface ChatMaintenanceResult {
   deleted_attachments: number
 }
 
+const encodePathIdentifier = (identifier: string): string => encodeURIComponent(identifier)
+
 export const chatApi = {
   getChats: async (
     cursor?: string,
@@ -116,14 +118,16 @@ export const chatApi = {
   },
 
   getChat: async (chatId: string, signal?: AbortSignal): Promise<Chat> => {
-    const url = `/chats/${chatId}`
+    const url = `/chats/${encodePathIdentifier(chatId)}`
     const options = signal ? [{ signal }] : []
     const response = await client.get<Chat>(url, ...options)
     return response.data
   },
 
   createChat: async (participantId: string) => {
-    const response = await client.post<Chat>("/chats", { participant_id: participantId })
+    const response = await client.post<Chat>("/chats", {
+      participant_id: participantId,
+    })
     return response.data
   },
 
@@ -138,19 +142,21 @@ export const chatApi = {
   },
 
   addParticipant: async (chatId: string, userId: string) => {
-    const response = await client.post(`/chats/${chatId}/participants`, {
+    const response = await client.post(`/chats/${encodePathIdentifier(chatId)}/participants`, {
       user_id: userId,
     })
     return response.data
   },
 
   removeParticipant: async (chatId: string, userId: string) => {
-    const response = await client.delete(`/chats/${chatId}/participants/${userId}`)
+    const response = await client.delete(
+      `/chats/${encodePathIdentifier(chatId)}/participants/${encodePathIdentifier(userId)}`
+    )
     return response.data
   },
 
   renameChat: async (chatId: string, name: string) => {
-    const response = await client.patch(`/chats/${chatId}`, { name })
+    const response = await client.patch(`/chats/${encodePathIdentifier(chatId)}`, { name })
     return response.data
   },
 
@@ -163,7 +169,7 @@ export const chatApi = {
     const params = new URLSearchParams()
     if (cursor) params.append("cursor", cursor)
     params.append("limit", String(limit))
-    const url = `/chats/${chatId}/messages?${params.toString()}`
+    const url = `/chats/${encodePathIdentifier(chatId)}/messages?${params.toString()}`
     const options = signal ? [{ signal }] : []
     const response = await client.get<MessagesListResponse>(url, ...options)
     return response.data
@@ -187,11 +193,14 @@ export const chatApi = {
     if (replyToMessageId) {
       formData.append("reply_to_message_id", replyToMessageId)
     }
-    const response = idempotencyKey
-      ? await client.post<Message>(`/chats/${chatId}/messages`, formData, {
-          headers: { "Idempotency-Key": idempotencyKey },
-        })
-      : await client.post<Message>(`/chats/${chatId}/messages`, formData)
+    // Callers retrying an ambiguous send should keep passing the same attempt key.
+    // The fallback ensures direct API callers still participate in server deduplication.
+    const requestIdempotencyKey = idempotencyKey || crypto.randomUUID()
+    const response = await client.post<Message>(
+      `/chats/${encodePathIdentifier(chatId)}/messages`,
+      formData,
+      { headers: { "Idempotency-Key": requestIdempotencyKey } }
+    )
     return response.data
   },
 
@@ -206,15 +215,18 @@ export const chatApi = {
     sourceChatId: string,
     messageIds: string[]
   ): Promise<Message[]> => {
-    const response = await client.post<Message[]>(`/chats/${destChatId}/forward`, {
-      source_chat_id: sourceChatId,
-      message_ids: messageIds,
-    })
+    const response = await client.post<Message[]>(
+      `/chats/${encodePathIdentifier(destChatId)}/forward`,
+      {
+        source_chat_id: sourceChatId,
+        message_ids: messageIds,
+      }
+    )
     return response.data
   },
 
   markRead: async (chatId: string) => {
-    const response = await client.post(`/chats/${chatId}/read`)
+    const response = await client.post(`/chats/${encodePathIdentifier(chatId)}/read`)
     return response.data
   },
 
@@ -224,7 +236,7 @@ export const chatApi = {
   // bridge. The hook throttles the call to 500ms; the caller swallows errors
   // (typing is ephemeral).
   sendTyping: async (chatId: string): Promise<void> => {
-    await client.post(`/chats/${chatId}/typing`)
+    await client.post(`/chats/${encodePathIdentifier(chatId)}/typing`)
   },
 
   // Wave 205 — author-only edit / soft-delete. Edit sends FormData (the backend
@@ -234,12 +246,17 @@ export const chatApi = {
   editMessage: async (chatId: string, messageId: string, content: string) => {
     const formData = new FormData()
     formData.append("content", content)
-    const response = await client.patch(`/chats/${chatId}/messages/${messageId}`, formData)
+    const response = await client.patch(
+      `/chats/${encodePathIdentifier(chatId)}/messages/${encodePathIdentifier(messageId)}`,
+      formData
+    )
     return response.data
   },
 
   deleteMessage: async (chatId: string, messageId: string) => {
-    const response = await client.delete(`/chats/${chatId}/messages/${messageId}`)
+    const response = await client.delete(
+      `/chats/${encodePathIdentifier(chatId)}/messages/${encodePathIdentifier(messageId)}`
+    )
     return response.data
   },
 
@@ -252,7 +269,10 @@ export const chatApi = {
   addReaction: async (chatId: string, messageId: string, emoji: string) => {
     const formData = new FormData()
     formData.append("emoji", emoji)
-    const response = await client.post(`/chats/${chatId}/messages/${messageId}/reactions`, formData)
+    const response = await client.post(
+      `/chats/${encodePathIdentifier(chatId)}/messages/${encodePathIdentifier(messageId)}/reactions`,
+      formData
+    )
     return response.data
   },
 
@@ -261,7 +281,7 @@ export const chatApi = {
     // decode unambiguously, the robust shape for an arbitrary multi-codepoint emoji
     // sub-resource selector. Verified live (real 👍 cross-user remove, no refetch).
     const response = await client.delete(
-      `/chats/${chatId}/messages/${messageId}/reactions?emoji=${encodeURIComponent(emoji)}`
+      `/chats/${encodePathIdentifier(chatId)}/messages/${encodePathIdentifier(messageId)}/reactions?emoji=${encodeURIComponent(emoji)}`
     )
     return response.data
   },
@@ -276,19 +296,23 @@ export const chatApi = {
     emoji: string,
     signal?: AbortSignal
   ): Promise<Reactor[]> => {
-    const url = `/chats/${chatId}/messages/${messageId}/reactions?emoji=${encodeURIComponent(emoji)}`
+    const url = `/chats/${encodePathIdentifier(chatId)}/messages/${encodePathIdentifier(messageId)}/reactions?emoji=${encodeURIComponent(emoji)}`
     const options = signal ? [{ signal }] : []
     const response = await client.get<Reactor[]>(url, ...options)
     return response.data
   },
 
   clearChat: async (chatId: string) => {
-    const response = await client.post<ChatMaintenanceResult>(`/chats/${chatId}/clear`)
+    const response = await client.post<ChatMaintenanceResult>(
+      `/chats/${encodePathIdentifier(chatId)}/clear`
+    )
     return response.data
   },
 
   deleteChat: async (chatId: string) => {
-    const response = await client.delete<ChatMaintenanceResult>(`/chats/${chatId}`)
+    const response = await client.delete<ChatMaintenanceResult>(
+      `/chats/${encodePathIdentifier(chatId)}`
+    )
     return response.data
   },
 }

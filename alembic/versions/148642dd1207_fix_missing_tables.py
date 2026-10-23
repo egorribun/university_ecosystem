@@ -740,6 +740,142 @@ def _postgresql_signing_key_check(inspector: Any) -> None:
     op.execute("ALTER TABLE active_sessions ALTER COLUMN signing_key SET NOT NULL")
 
 
+def _backfill_spotify_integrations() -> None:
+    """Preserve legacy Spotify state before its user columns are removed."""
+    if context.is_offline_mode():
+        return
+
+    bind = op.get_bind()
+    if bind is None:
+        return
+
+    inspector = sa.inspect(bind)
+    if not inspector.has_table("users") or not inspector.has_table(
+        "spotify_integrations"
+    ):
+        return
+
+    users_column_names = {column["name"] for column in inspector.get_columns("users")}
+    if "id" not in users_column_names:
+        raise RuntimeError("Cannot backfill Spotify integrations without users.id")
+
+    legacy_mapping = (
+        ("spotify_user_id", "spotify_user_id"),
+        ("spotify_access_token", "access_token"),
+        ("spotify_refresh_token", "refresh_token"),
+        ("spotify_token_expires_at", "token_expires_at"),
+        ("spotify_scope", "scope"),
+        ("spotify_display_name", "display_name"),
+        ("spotify_last_checked_at", "last_checked_at"),
+        ("spotify_last_track_id", "last_track_id"),
+        ("spotify_last_track_name", "last_track_name"),
+        ("spotify_last_artist_name", "last_artist_name"),
+        ("spotify_last_album_name", "last_album_name"),
+        ("spotify_last_track_url", "last_track_url"),
+        ("spotify_last_album_image_url", "last_album_image_url"),
+    )
+    available_mapping = tuple(
+        (source_name, target_name)
+        for source_name, target_name in legacy_mapping
+        if source_name in users_column_names
+    )
+    available_flag_columns = tuple(
+        source_name
+        for source_name in ("spotify_is_connected", "spotify_is_playing")
+        if source_name in users_column_names
+    )
+    available_state_columns = (
+        *(source_name for source_name, _ in available_mapping),
+        *available_flag_columns,
+    )
+    if not available_state_columns:
+        return
+
+    metadata = sa.MetaData()
+    users = sa.Table("users", metadata, autoload_with=bind)
+    integrations = sa.Table("spotify_integrations", metadata, autoload_with=bind)
+    target_column_names = (
+        "user_id",
+        *(target_name for _, target_name in legacy_mapping),
+        "is_connected",
+        "is_playing",
+    )
+    missing_target_columns = set(target_column_names).difference(integrations.c.keys())
+    if missing_target_columns:
+        missing = ", ".join(sorted(missing_target_columns))
+        raise RuntimeError(
+            "Cannot backfill Spotify integrations; target columns are missing: "
+            f"{missing}"
+        )
+
+    values = [users.c.id]
+    for source_name, target_name in legacy_mapping:
+        if source_name in users_column_names:
+            values.append(users.c[source_name])
+        else:
+            values.append(sa.cast(sa.null(), integrations.c[target_name].type))
+    credential_checks = tuple(
+        sa.and_(
+            users.c[source_name].is_not(None),
+            users.c[source_name] != "",
+        )
+        for source_name in ("spotify_access_token", "spotify_refresh_token")
+        if source_name in users_column_names
+    )
+    derived_is_connected = (
+        sa.or_(*credential_checks) if credential_checks else sa.false()
+    )
+    is_connected = (
+        sa.func.coalesce(users.c.spotify_is_connected, derived_is_connected)
+        if "spotify_is_connected" in users_column_names
+        else derived_is_connected
+    )
+    is_playing = (
+        sa.func.coalesce(users.c.spotify_is_playing, sa.false())
+        if "spotify_is_playing" in users_column_names
+        else sa.false()
+    )
+    values.extend((is_connected, is_playing))
+
+    has_legacy_state = sa.or_(
+        *(users.c[source_name].is_not(None) for source_name in available_state_columns)
+    )
+    destination_exists = sa.exists(
+        sa.select(1)
+        .select_from(integrations)
+        .where(integrations.c.user_id == users.c.id)
+        .correlate(users)
+    )
+    source_rows = (
+        sa.select(*values)
+        .select_from(users)
+        .where(has_legacy_state, sa.not_(destination_exists))
+    )
+
+    if bind.dialect.name == "postgresql":
+        statement = (
+            postgresql.insert(integrations)
+            .from_select(target_column_names, source_rows)
+            .on_conflict_do_nothing(index_elements=[integrations.c.user_id])
+        )
+    elif bind.dialect.name == "sqlite":
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+        statement = (
+            sqlite_insert(integrations)
+            .from_select(target_column_names, source_rows)
+            .on_conflict_do_nothing(index_elements=[integrations.c.user_id])
+        )
+    else:
+        # The NOT EXISTS predicate preserves already-present rows. On a race,
+        # the primary-key violation aborts the migration instead of overwriting.
+        statement = sa.insert(integrations).from_select(
+            target_column_names, source_rows
+        )
+
+    bind.execute(statement)
+
+
 def upgrade() -> None:
     """Upgrade schema."""
     SKIPPED_TABLES.clear()
@@ -1333,6 +1469,8 @@ def upgrade() -> None:
             ["token_expires_at"],
             unique=False,
         )
+
+    _backfill_spotify_integrations()
 
     safe_create_table(
         "trusted_devices",

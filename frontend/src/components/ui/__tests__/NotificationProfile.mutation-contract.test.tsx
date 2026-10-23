@@ -36,7 +36,7 @@ describe("ProfileCardSkeleton mutation contracts", () => {
     })
     const card = await screen.findByLabelText("Loading profile")
     expect(card.className).toBe(
-      "rounded-2xl border border-white/(--opacity-subtle) bg-input-mix overflow-hidden "
+      "rounded-2xl border border-white/[calc(var(--opacity-subtle)*100%)] bg-input-mix overflow-hidden "
     )
     expect(card.className).not.toContain("Stryker was here")
     const avatarOffset = container.querySelector(".relative > div.mb-4")

@@ -29,6 +29,7 @@
  *     subsequent cursor pages bypass the ETag layer because their
  *     payloads are unique by cursor.
  */
+import * as v from "valibot"
 import {
   useInfiniteQuery,
   useQueryClient,
@@ -41,7 +42,8 @@ import { useEffect, useMemo, useSyncExternalStore } from "react"
 
 import { newsListApiV1NewsGet } from "@/api/generated/sdk.gen"
 import { fetchAnonymousNewsPage } from "@/api/client"
-import { fetchAnonymousNewsItem, fetchNewsItem, type NewsItem } from "@/api/news"
+import { fetchAnonymousNewsItem, fetchNewsItem, parseNewsList, type NewsItem } from "@/api/news"
+import { ensureValidResponse } from "@/api/validation"
 import type { PaginatedResponse } from "@/types/Pagination"
 import { StorageItem } from "@/utils/storage"
 import { getConfirmedUserId } from "@/stores/authIdentity"
@@ -119,6 +121,28 @@ export const anonymousNewsListQueryKey = (filters: NewsListFilters) => {
   return ["news", "anonymous-list", normalized] as AnonymousNewsListQueryKey
 }
 
+const paginatedNewsResponseSchema = v.object({
+  items: v.unknown(),
+  has_more: v.boolean(),
+  next_cursor: v.optional(v.nullable(v.string())),
+})
+
+const parsePaginatedNewsResponse = (
+  payload: unknown,
+  fallbackLimit: number
+): PaginatedResponse<NewsItem> => {
+  const page = ensureValidResponse(paginatedNewsResponseSchema, payload, "GET /api/v1/news")
+  const items = parseNewsList(page.items)
+
+  return {
+    items,
+    total: items.length,
+    limit: fallbackLimit,
+    cursor: null,
+    next_cursor: page.next_cursor ?? null,
+    has_more: page.has_more,
+  }
+}
 const ensurePaginatedResponse = (
   payload: PaginatedResponse<NewsItem> | null | undefined,
   fallbackLimit: number
@@ -242,7 +266,7 @@ const createNewsListQueryFn =
         signal: hasStaleBrowserSessionBinding() ? undefined : queryContext.signal,
       })
       if (!response.ok) throw new Error(`News request failed with status ${response.status}`)
-      return ensurePaginatedResponse(response.data as PaginatedResponse<NewsItem>, normalized.limit)
+      return parsePaginatedNewsResponse(response.data, normalized.limit)
     }
 
     const { signal } = queryContext
@@ -286,7 +310,7 @@ const createNewsListQueryFn =
       )
     }
 
-    return ensurePaginatedResponse(response.data as PaginatedResponse<NewsItem>, normalized.limit)
+    return parsePaginatedNewsResponse(response.data, normalized.limit)
   }
 
 type UseNewsListQueryOptions = PrivateListControls<

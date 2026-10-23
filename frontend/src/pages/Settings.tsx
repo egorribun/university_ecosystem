@@ -237,9 +237,9 @@ export default function Settings() {
               <div
                 className={`px-4 py-3 rounded-xl shadow-lg text-sm font-medium border ${
                   snackbar.severity === "error"
-                    ? "bg-error-bg text-error-text border-error-text/(--opacity-dim)"
+                    ? "bg-error-bg text-error-text border-error-text/[calc(var(--opacity-dim)*100%)]"
                     : snackbar.severity === "success"
-                      ? "bg-success-bg text-success-text border-success-text/(--opacity-dim)"
+                      ? "bg-success-bg text-success-text border-success-text/[calc(var(--opacity-dim)*100%)]"
                       : "bg-surface-raised text-text-primary border-border-subtle"
                 }`}
               >

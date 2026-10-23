@@ -130,6 +130,18 @@ def _build_signed_token(session_id: str, secret: bytes) -> str:
     return f"{nonce}{_TOKEN_SEPARATOR}{mac}"
 
 
+def _compare_digest_ascii(left: str, right: str) -> bool:
+    """Compare ASCII CSRF strings in constant time and reject malformed Unicode.
+
+    secrets.compare_digest raises TypeError for non-ASCII str inputs. Request
+    cookie and header values are untrusted, so reject those values before
+    comparing while preserving the constant-time ASCII path.
+    """
+    if not left.isascii() or not right.isascii():
+        return False
+    return secrets.compare_digest(left, right)
+
+
 def _verify_signed_token(token: str, session_id: str, secret: bytes) -> bool:
     """Verify a signed CSRF token in constant time.
 
@@ -146,7 +158,7 @@ def _verify_signed_token(token: str, session_id: str, secret: bytes) -> bool:
         return False
     expected_mac = _compute_csrf_hmac(nonce, session_id, secret)
     # secrets.compare_digest is constant-time on equal-length strings.
-    return secrets.compare_digest(expected_mac, received_mac)
+    return _compare_digest_ascii(expected_mac, received_mac)
 
 
 # ── Session ID extraction ─────────────────────────────────────────────────────
@@ -359,7 +371,7 @@ class CSRFMiddleware:
                 return
 
             # Step 1: Classic Double-Submit — constant-time comparison.
-            if not secrets.compare_digest(cookie_token, header_token):
+            if not _compare_digest_ascii(cookie_token, header_token):
                 _logger.warning(
                     "CSRF rejected (CSRF proof mismatch)",
                     method=method,

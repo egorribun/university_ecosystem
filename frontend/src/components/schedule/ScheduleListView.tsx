@@ -171,7 +171,7 @@ export const ScheduleListView = memo(function ScheduleListView({
 
             {/* ── Lesson list ────────────────────────────── */}
             {lessons.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-surface-elevated/(--opacity-medium) px-4 py-8 text-center text-sm text-text-secondary">
+              <div className="rounded-xl border border-dashed border-surface-elevated/[calc(var(--opacity-medium)*100%)] px-4 py-8 text-center text-sm text-text-secondary">
                 {t("schedule:mobile.noLessons")}
               </div>
             ) : (

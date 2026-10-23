@@ -51,6 +51,16 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _cache_key_fingerprint(key: str) -> str:
+    """Return a short digest for correlating cache errors without logging keys."""
+    return hashlib.sha256(key.encode("utf-8", errors="surrogatepass")).hexdigest()[:16]
+
+
+def _cache_key_fingerprints(keys: list[str]) -> tuple[str, ...]:
+    """Summarize only a bounded prefix of keys for invalidation error logs."""
+    return tuple(_cache_key_fingerprint(key) for key in keys[:5])
+
+
 @dataclass(slots=True)
 class CacheEntry:
     etag: str
@@ -260,11 +270,18 @@ class RedisCache(BaseCache):
                 ttl_seconds=ttl_seconds,
             )
         except orjson.JSONDecodeError:
-            logger.debug("Invalid cache payload for key %s, dropping", key)
+            logger.debug(
+                "Invalid cache payload, dropping",
+                cache_key_fingerprint=_cache_key_fingerprint(key),
+            )
             await self.invalidate(key)
             return None
-        except (RedisError, OSError):  # RZ-28-01
-            logger.warning("Redis cache get failed for key %s", key, exc_info=True)
+        except (RedisError, OSError) as exc:  # RZ-28-01
+            logger.warning(
+                "Redis cache get failed",
+                cache_key_fingerprint=_cache_key_fingerprint(key),
+                error_type=type(exc).__name__,
+            )
             return None
         finally:
             record_redis_command(
@@ -293,8 +310,12 @@ class RedisCache(BaseCache):
             else:
                 await client.set(key, envelope)
             success = True
-        except (RedisError, OSError):  # RZ-28-01
-            logger.warning("Redis cache set failed for key %s", key, exc_info=True)
+        except (RedisError, OSError) as exc:  # RZ-28-01
+            logger.warning(
+                "Redis cache set failed",
+                cache_key_fingerprint=_cache_key_fingerprint(key),
+                error_type=type(exc).__name__,
+            )
         finally:
             record_redis_command(
                 "set", time_module.perf_counter() - start, success=success
@@ -340,9 +361,12 @@ class RedisCache(BaseCache):
                     if cursor == 0:
                         break
             success = True
-        except (RedisError, OSError):  # RZ-28-01
+        except (RedisError, OSError) as exc:  # RZ-28-01
             logger.warning(
-                "Redis cache invalidate failed for keys %s", filtered, exc_info=True
+                "Redis cache invalidate failed",
+                cache_key_count=len(filtered),
+                cache_key_fingerprints=_cache_key_fingerprints(filtered),
+                error_type=type(exc).__name__,
             )
         finally:
             record_redis_command(
@@ -425,10 +449,17 @@ class RedisClusterCache(BaseCache):
                 ttl_seconds=float(parsed.get("ttl_seconds") or 0.0),
             )
         except orjson.JSONDecodeError:
-            logger.debug("Invalid cache payload in cluster for key %s", key)
+            logger.debug(
+                "Invalid cache payload in cluster",
+                cache_key_fingerprint=_cache_key_fingerprint(key),
+            )
             return None
-        except (RedisError, OSError):  # RZ-28-01
-            logger.warning("Redis cluster get failed for key %s", key, exc_info=True)
+        except (RedisError, OSError) as exc:  # RZ-28-01
+            logger.warning(
+                "Redis cluster get failed",
+                cache_key_fingerprint=_cache_key_fingerprint(key),
+                error_type=type(exc).__name__,
+            )
             return None
         finally:
             record_redis_command(
@@ -457,8 +488,12 @@ class RedisClusterCache(BaseCache):
             else:
                 await client.set(key, envelope)
             success = True
-        except (RedisError, OSError):  # RZ-28-01
-            logger.warning("Redis cluster set failed for key %s", key, exc_info=True)
+        except (RedisError, OSError) as exc:  # RZ-28-01
+            logger.warning(
+                "Redis cluster set failed",
+                cache_key_fingerprint=_cache_key_fingerprint(key),
+                error_type=type(exc).__name__,
+            )
         finally:
             record_redis_command(
                 "set", time_module.perf_counter() - start, success=success
@@ -503,9 +538,12 @@ class RedisClusterCache(BaseCache):
                     if cursor == 0:
                         break
             success = True
-        except (RedisError, OSError):  # RZ-28-01
+        except (RedisError, OSError) as exc:  # RZ-28-01
             logger.warning(
-                "Redis cluster invalidate failed for keys %s", filtered, exc_info=True
+                "Redis cluster invalidate failed",
+                cache_key_count=len(filtered),
+                cache_key_fingerprints=_cache_key_fingerprints(filtered),
+                error_type=type(exc).__name__,
             )
         finally:
             record_redis_command(
@@ -599,7 +637,11 @@ class NatsKVCache(BaseCache):
         except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — NATS KV get failures return None (cache miss) (reviewed TD-27-04)
             # nats.js.errors.KeyNotFoundError is common on cache miss if bucket exists
             # but key doesn't.
-            logger.debug("NATS KV get failed for key %s: %s", key, exc)
+            logger.debug(
+                "NATS KV get failed",
+                cache_key_fingerprint=_cache_key_fingerprint(key),
+                error_type=type(exc).__name__,
+            )
             return None
 
     async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:
@@ -622,7 +664,11 @@ class NatsKVCache(BaseCache):
             OSError,
             ConnectionError,
         ) as exc:  # RZ-22-01: narrowed — NATS KV write errors
-            logger.warning("NATS KV set failed for key %s: %s", key, exc)
+            logger.warning(
+                "NATS KV set failed",
+                cache_key_fingerprint=_cache_key_fingerprint(key),
+                error_type=type(exc).__name__,
+            )
         return CacheEntry(
             etag=etag,
             payload=normalized,
@@ -653,7 +699,7 @@ class NatsKVCache(BaseCache):
             OSError,
             ConnectionError,
         ) as exc:  # RZ-22-01: narrowed — NATS KV invalidation errors
-            logger.warning("NATS KV invalidate failed: %s", exc)
+            logger.warning("NATS KV invalidate failed", error_type=type(exc).__name__)
 
     async def close(self) -> None:
         self._kv = None
@@ -763,6 +809,11 @@ def cached(
         ttl: Time to live for the cache entry (seconds or timedelta).
         l1_ttl: Optional separate TTL for the L1 (memory) cache.
         key_builder: Optional custom function to build the cache key.
+
+    The default key includes every positional and keyword argument. Positional
+    values are stringified, and keyword values are stringified with their names;
+    use ``key_builder`` when that representation is unsuitable for the caller's
+    data or when calls should intentionally share a key across receiver objects.
     """
 
     def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
@@ -778,12 +829,9 @@ def cached(
             if key_builder:
                 key = key_builder(*args, **kwargs)
             else:
-                # Basic key building from args/kwargs
-                # Skip `self` for bound methods to avoid unstable str(self) in keys
-                _args: tuple[object, ...] = args
-                if _args and hasattr(_args[0], "__dict__"):
-                    _args = _args[1:]
-                key_parts = [str(arg) for arg in _args]
+                # Preserve every input in the default key. Dropping a first
+                # object argument can alias calls whose results depend on it.
+                key_parts = [str(arg) for arg in args]
                 key_parts.extend(f"{k}:{v}" for k, v in sorted(kwargs.items()))
                 key = ":".join(key_parts)
 

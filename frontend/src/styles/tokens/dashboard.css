@@ -52,18 +52,18 @@
 
     --dash-hero-radial-top: color-mix(
       in srgb,
-      var(--color-sky-400) var(--opacity-dim),
+      var(--color-sky-400) calc(var(--opacity-dim) * 100%),
       transparent
     );
     --dash-hero-orb: color-mix(in srgb, var(--color-sky-400) var(--glass-alpha-med), transparent);
     --dash-hero-highlight: color-mix(
       in srgb,
-      var(--color-indigo-500) var(--opacity-subtle),
+      var(--color-indigo-500) calc(var(--opacity-subtle) * 100%),
       transparent
     );
     --dash-hero-highlight-soft: color-mix(
       in srgb,
-      var(--primary-main) var(--opacity-faint),
+      var(--primary-main) calc(var(--opacity-faint) * 100%),
       transparent
     );
 

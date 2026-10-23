@@ -1870,12 +1870,14 @@ def _validate_reports(
 
 
 def _validate_components_manifest(
-    manifest: dict[str, object], contract: dict[str, object]
+    manifest: dict[str, object],
+    contract: dict[str, object],
+    legacy_records: dict[str, dict[str, object]],
 ) -> list[str]:
     errors: list[str] = []
     reports = cast(list[object], manifest["reports"])
     components = cast(dict[str, object], manifest["components"])
-    legacy_missing = _legacy_migration_missing_from_tier0(manifest, contract)
+    legacy_missing = _legacy_migration_missing_from_tier0(manifest, legacy_records)
     report_components = {
         report["component"] for report in reports if isinstance(report, dict)
     }
@@ -1988,22 +1990,24 @@ def _legacy_migration_records(
 
 def _validate_legacy_migration_source_binding(
     contract: dict[str, object], repository_root: Path
-) -> list[str]:
-    """Bind the finite exception list to unchanged source blobs from its base."""
+) -> tuple[list[str], frozenset[str]]:
+    """Bind the fixed exception inventory to base blobs and return its unchanged subset."""
     records = _legacy_migration_records(contract)
     if not records:
-        return []
+        return [], frozenset()
     errors: list[str] = []
     git_executable = shutil.which("git")
     if git_executable is None:
-        return ["legacy migration baseline validation requires git"]
+        return ["legacy migration baseline validation requires git"], frozenset()
     tier0 = contract.get("tier0")
     policy = (
         tier0.get("legacy_migration_baselines") if isinstance(tier0, dict) else None
     )
     base_sha = policy.get("base_sha") if isinstance(policy, dict) else None
     if base_sha != LEGACY_MIGRATION_BASE_SHA:
-        return ["legacy migration baselines do not name the approved base revision"]
+        return [
+            "legacy migration baselines do not name the approved base revision"
+        ], frozenset()
     try:
         head = _git_head(repository_root)
         ancestry = subprocess.run(  # noqa: S603
@@ -2022,7 +2026,7 @@ def _validate_legacy_migration_source_binding(
         if ancestry.returncode != 0:
             return [
                 "approved migration baseline revision is not an ancestor of current HEAD"
-            ]
+            ], frozenset()
         archive_result = subprocess.run(  # noqa: S603
             [
                 git_executable,
@@ -2060,15 +2064,20 @@ def _validate_legacy_migration_source_binding(
         ValueError,
         tarfile.TarError,
     ) as error:
-        return [f"unable to read approved migration source inventory from Git: {error}"]
+        return [
+            f"unable to read approved migration source inventory from Git: {error}"
+        ], frozenset()
 
-    base_paths = sorted(base_sources)
-    eligible: dict[str, str] = {}
-    for path in base_paths:
-        base_source = base_sources[path]
-        current_path = repository_root.joinpath(*PurePosixPath(path).parts)
-        if not current_path.exists():
-            continue
+    declared_paths = set(records)
+    missing_from_base = sorted(declared_paths - set(base_sources))
+    if missing_from_base:
+        errors.append(
+            "legacy migration baseline list contains paths absent from its approved base: "
+            + ", ".join(missing_from_base[:3])
+        )
+
+    unchanged_paths: set[str] = set()
+    for path in sorted(declared_paths & set(base_sources)):
         source_errors: list[str] = []
         safe_path = _safe_repository_file(
             repository_root, path, "legacy migration source", source_errors
@@ -2081,36 +2090,32 @@ def _validate_legacy_migration_source_binding(
         except OSError as error:
             errors.append(f"unable to read current migration source {path}: {error}")
             continue
-        base_digest = hashlib.sha256(base_source).hexdigest()
-        if hashlib.sha256(current_source).hexdigest() == base_digest:
-            eligible[path] = base_digest
+        if (
+            hashlib.sha256(current_source).digest()
+            == hashlib.sha256(base_sources[path]).digest()
+        ):
+            unchanged_paths.add(path)
+    return errors, frozenset(unchanged_paths)
 
-    declared_paths = set(records)
-    if declared_paths != set(eligible):
-        missing = sorted(set(eligible) - declared_paths)
-        unexpected = sorted(declared_paths - set(eligible))
-        if missing:
-            errors.append(
-                "legacy migration baseline list omits unchanged approved-source paths: "
-                + ", ".join(missing[:3])
-            )
-        if unexpected:
-            errors.append(
-                "legacy migration baseline list contains changed, new, or non-migration paths: "
-                + ", ".join(unexpected[:3])
-            )
-    if len(eligible) != LEGACY_MIGRATION_BASELINE_COUNT:
-        errors.append(
-            "unchanged migration source count differs from the approved finite set "
-            f"({len(eligible)} != {LEGACY_MIGRATION_BASELINE_COUNT})"
-        )
-    return errors
+
+def _effective_legacy_migration_records(
+    contract: dict[str, object], repository_root: Path
+) -> tuple[list[str], dict[str, dict[str, object]]]:
+    errors, unchanged_paths = _validate_legacy_migration_source_binding(
+        contract, repository_root
+    )
+    records = {
+        path: record
+        for path, record in _legacy_migration_records(contract).items()
+        if path in unchanged_paths
+    }
+    return errors, records
 
 
 def _legacy_migration_missing_from_tier0(
-    manifest: dict[str, object], contract: dict[str, object]
+    manifest: dict[str, object],
+    records: dict[str, dict[str, object]],
 ) -> dict[str, int]:
-    records = _legacy_migration_records(contract)
     tier0 = manifest.get("tier0")
     files = tier0.get("files") if isinstance(tier0, dict) else None
     if not isinstance(files, list):
@@ -2147,6 +2152,7 @@ def _validate_tier0_manifest(
     manifest: dict[str, object],
     contract: dict[str, object],
     repository_root: Path,
+    legacy_records: dict[str, dict[str, object]] | None = None,
 ) -> list[str]:
     errors: list[str] = []
     tier0 = cast(dict[str, object], manifest["tier0"])
@@ -2161,9 +2167,12 @@ def _validate_tier0_manifest(
             "tier0.rules must exactly equal canonical ownership-mapping tier0_rules"
         )
     files = cast(list[object], tier0["files"])
-    errors.extend(_validate_legacy_migration_source_binding(contract, repository_root))
-    legacy_records = _legacy_migration_records(contract)
-    legacy_missing = _legacy_migration_missing_from_tier0(manifest, contract)
+    if legacy_records is None:
+        source_binding_errors, legacy_records = _effective_legacy_migration_records(
+            contract, repository_root
+        )
+        errors.extend(source_binding_errors)
+    legacy_missing = _legacy_migration_missing_from_tier0(manifest, legacy_records)
     source_roots = cast(dict[str, object], manifest["source_roots"])
     manifest_scope_value = manifest.get("coverage_scope")
     contract_scope_value = contract.get("coverage_scope")
@@ -2614,8 +2623,16 @@ def validate_manifest_evidence(
         )
     errors.extend(_validate_tool_versions(manifest))
     errors.extend(_validate_reports(manifest, contract, repository_root))
-    errors.extend(_validate_components_manifest(manifest, contract))
-    errors.extend(_validate_tier0_manifest(manifest, contract, repository_root))
+    source_binding_errors, legacy_records = _effective_legacy_migration_records(
+        contract, repository_root
+    )
+    errors.extend(source_binding_errors)
+    errors.extend(_validate_components_manifest(manifest, contract, legacy_records))
+    errors.extend(
+        _validate_tier0_manifest(
+            manifest, contract, repository_root, legacy_records=legacy_records
+        )
+    )
     return sorted(set(errors))
 
 

@@ -590,7 +590,7 @@ describe("ChatWindow motion and layout mutation contract", () => {
       "p-3",
       "rounded-xl",
       "border",
-      "border-white/(--opacity-faint)",
+      "border-white/[calc(var(--opacity-faint)*100%)]",
       "bg-(--messenger-attachment-bg)"
     )
     expect(sentLink.querySelector("div")).toHaveClass(
@@ -603,7 +603,7 @@ describe("ChatWindow motion and layout mutation contract", () => {
     const receivedLink = container.querySelector<HTMLAnchorElement>(
       'a[href="https://example.test/received.pdf"]'
     )!
-    expect(receivedLink).toHaveClass("bg-(--bg-surface-raised)/(--opacity-medium)")
+    expect(receivedLink).toHaveClass("bg-(--bg-surface-raised)/[calc(var(--opacity-medium)*100%)]")
     expect(receivedLink.querySelector("div")).toHaveClass(
       "p-2",
       "rounded-lg",
@@ -618,8 +618,8 @@ describe("ChatWindow motion and layout mutation contract", () => {
       "border-l-2",
       "px-2.5",
       "py-1.5",
-      "border-(--text-inverse)/(--opacity-medium)",
-      "bg-(--text-inverse)/(--opacity-faint)"
+      "border-(--text-inverse)/[calc(var(--opacity-medium)*100%)]",
+      "bg-(--text-inverse)/[calc(var(--opacity-faint)*100%)]"
     )
     expect(sentReply.querySelector("p")).toHaveClass("font-semibold", "text-[var(--text-inverse)]")
 
@@ -630,8 +630,8 @@ describe("ChatWindow motion and layout mutation contract", () => {
       "border-l-2",
       "px-2.5",
       "py-1.5",
-      "border-(--color-violet-500)/(--opacity-medium)",
-      "bg-(--color-violet-500)/(--opacity-faint)"
+      "border-(--color-violet-500)/[calc(var(--opacity-medium)*100%)]",
+      "bg-(--color-violet-500)/[calc(var(--opacity-faint)*100%)]"
     )
     expect(deletedReply.querySelectorAll("p")[1]).toHaveClass("italic")
   })
@@ -872,7 +872,7 @@ describe("ChatWindow motion and layout mutation contract", () => {
       "w-full",
       "resize-none",
       "rounded-lg",
-      "bg-(--bg-surface)/(--opacity-medium)",
+      "bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)]",
       "px-3",
       "py-2",
       "text-base",

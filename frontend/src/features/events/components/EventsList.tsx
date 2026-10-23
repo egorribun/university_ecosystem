@@ -113,7 +113,7 @@ export const EventsList = ({
       {queryError && !isInitialLoading && isOnline && (
         <div
           role="alert"
-          className="my-6 flex flex-wrap items-center justify-center gap-3 rounded-xl border border-(--error-text)/(--opacity-medium) bg-(--error-text)/(--opacity-subtle) p-4 text-sm text-(--error-text)"
+          className="my-6 flex flex-wrap items-center justify-center gap-3 rounded-xl border border-(--error-text)/[calc(var(--opacity-medium)*100%)] bg-(--error-text)/[calc(var(--opacity-subtle)*100%)] p-4 text-sm text-(--error-text)"
         >
           <span>{t("common:statuses.error")}</span>
           <Button variant="outline" size="sm" onClick={handleRetry}>
@@ -144,7 +144,7 @@ export const EventsList = ({
                     variant="ghost"
                     size="sm"
                     onClick={() => onTabChange(tab === "active" ? "archive" : "active")}
-                    className="text-brand hover:bg-brand/(--opacity-subtle)"
+                    className="text-brand hover:bg-brand/[calc(var(--opacity-subtle)*100%)]"
                   >
                     {tab === "active" ? t("events:tabs.archive") : t("events:tabs.active")}
                   </Button>
@@ -171,7 +171,7 @@ export const EventsList = ({
           {/* Refetch indicator */}
           {showRefetchBar && (
             <div
-              className="h-0.5 w-full rounded-full bg-brand/(--opacity-medium) mb-4 animate-pulse"
+              className="h-0.5 w-full rounded-full bg-brand/[calc(var(--opacity-medium)*100%)] mb-4 animate-pulse"
               aria-hidden="true"
             />
           )}

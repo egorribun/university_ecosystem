@@ -104,7 +104,7 @@ export function MessengerSidebar({
           matching W181 violet/pink palette. Increased header padding
           (px-5 pt-5 pb-4) for breathing room around the title — user
           reported "верхняя часть левого блока" needed visual upgrade. */}
-      <div className="sticky top-0 z-deep flex items-center justify-between bg-surface/(--opacity-medium) px-5 pt-5 pb-4 backdrop-blur-xl">
+      <div className="sticky top-0 z-deep flex items-center justify-between bg-surface/[calc(var(--opacity-medium)*100%)] px-5 pt-5 pb-4 backdrop-blur-xl">
         <h1 className="sf-pro text-2xl font-bold tracking-tight">{t("messenger:title")}</h1>
         <m.button
           id="messenger-new-chat-btn"
@@ -112,7 +112,7 @@ export function MessengerSidebar({
           whileHover={newChatHoverAnim}
           whileTap={newChatTapAnim}
           onClick={handleStartNewChat}
-          className="rounded-full bg-(--primary-main)/(--opacity-low) p-2 text-msg-active min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+          className="rounded-full bg-(--primary-main)/[calc(var(--opacity-low)*100%)] p-2 text-msg-active min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
           aria-label={t("messenger:newChat")}
         >
           <SquarePen className="h-5 w-5" strokeWidth={2.5} />

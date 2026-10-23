@@ -15,13 +15,13 @@ export function Alert({
   className?: string
 }) {
   const palette = {
-    info: "bg-(--brand-main)/(--opacity-dim) text-(--brand-main) border-(--brand-main)/(--opacity-dim)",
+    info: "bg-(--brand-main)/[calc(var(--opacity-dim)*100%)] text-(--brand-main) border-(--brand-main)/[calc(var(--opacity-dim)*100%)]",
     error:
-      "bg-(--error-text)/(--opacity-dim) text-(--error-text) border-(--error-text)/(--opacity-dim)",
+      "bg-(--error-text)/[calc(var(--opacity-dim)*100%)] text-(--error-text) border-(--error-text)/[calc(var(--opacity-dim)*100%)]",
     warning:
-      "bg-(--warning-text)/(--opacity-dim) text-(--warning-text) border-(--warning-text)/(--opacity-dim)",
+      "bg-(--warning-text)/[calc(var(--opacity-dim)*100%)] text-(--warning-text) border-(--warning-text)/[calc(var(--opacity-dim)*100%)]",
     success:
-      "bg-(--success-bg)/(--opacity-dim) text-(--success-bg) border-(--success-bg)/(--opacity-dim)",
+      "bg-(--success-bg)/[calc(var(--opacity-dim)*100%)] text-(--success-bg) border-(--success-bg)/[calc(var(--opacity-dim)*100%)]",
   }
 
   return (
@@ -37,7 +37,7 @@ export function Alert({
       {onClose && (
         <button
           onClick={onClose}
-          className="rounded-xs p-1 transition hover:bg-black/(--opacity-faint) dark:hover:bg-white/(--opacity-faint)"
+          className="rounded-xs p-1 transition hover:bg-black/[calc(var(--opacity-faint)*100%)] dark:hover:bg-white/[calc(var(--opacity-faint)*100%)]"
         >
           ×
         </button>
@@ -59,9 +59,9 @@ export function Chip({
   const colorMap = {
     default: "text-(--text-secondary) bg-glass-bg border-glass-border",
     success:
-      "text-(--success-bg) bg-(--success-bg)/(--opacity-subtle) border-(--success-bg)/(--opacity-dim)",
+      "text-(--success-bg) bg-(--success-bg)/[calc(var(--opacity-subtle)*100%)] border-(--success-bg)/[calc(var(--opacity-dim)*100%)]",
     primary:
-      "text-(--brand-main) bg-(--brand-main)/(--opacity-subtle) border-(--brand-main)/(--opacity-dim)",
+      "text-(--brand-main) bg-(--brand-main)/[calc(var(--opacity-subtle)*100%)] border-(--brand-main)/[calc(var(--opacity-dim)*100%)]",
   }
 
   return (
@@ -93,7 +93,7 @@ export function Avatar({
     <div
       className={cn(
         "relative overflow-hidden rounded-full p-1",
-        "bg-linear-to-tr from-brand to-brand/(--opacity-dim) shadow-glass",
+        "bg-linear-to-tr from-brand to-brand/[calc(var(--opacity-dim)*100%)] shadow-glass",
         className
       )}
     >
@@ -127,7 +127,7 @@ export function Skeleton({
   return (
     <div
       className={cn(
-        "animate-pulse bg-white/(--opacity-subtle) dark:bg-white/(--opacity-dim)",
+        "animate-pulse bg-white/[calc(var(--opacity-subtle)*100%)] dark:bg-white/[calc(var(--opacity-dim)*100%)]",
         variant === "circular"
           ? "rounded-full"
           : variant === "rounded"

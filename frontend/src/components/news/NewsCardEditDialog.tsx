@@ -369,7 +369,7 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
               <SmartImage
                 srcRaw={displayImage}
                 alt={t("news:alt.preview")}
-                className="h-20 w-full max-w-44 rounded-lg border border-white/(--opacity-subtle) object-cover shadow-surface"
+                className="h-20 w-full max-w-44 rounded-lg border border-white/[calc(var(--opacity-subtle)*100%)] object-cover shadow-surface"
               />
             ) : null}
           </div>

@@ -263,7 +263,7 @@ function MessengerFeatureContent() {
                 ? { duration: 0 }
                 : { duration: 0.3, ease: [0.22, 1, 0.36, 1] as const }
             }
-            className="absolute left-1/2 top-3 z-overlay flex max-w-[28rem] -translate-x-1/2 items-center gap-3 rounded-full bg-(--warning-bg)/(--opacity-heavy) px-4 py-2 text-(--warning-text) shadow-xl backdrop-blur-md"
+            className="absolute left-1/2 top-3 z-overlay flex max-w-[28rem] -translate-x-1/2 items-center gap-3 rounded-full bg-(--warning-bg)/[calc(var(--opacity-heavy)*100%)] px-4 py-2 text-(--warning-text) shadow-xl backdrop-blur-md"
           >
             <WifiOff className="size-4 shrink-0" strokeWidth={2.5} aria-hidden="true" />
             <div className="flex flex-col leading-tight">

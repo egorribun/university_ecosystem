@@ -605,16 +605,16 @@ describe("NotificationsBell", () => {
     const chatRow = chatLink.parentElement!
     const scheduleRow = scheduleLink.parentElement!
     const readRow = readLink.parentElement!
-    expect(chatRow).toHaveClass("relative", "group", "bg-brand/(--opacity-faint)")
-    expect(readRow).not.toHaveClass("bg-brand/(--opacity-faint)")
+    expect(chatRow).toHaveClass("relative", "group", "bg-brand/[calc(var(--opacity-faint)*100%)]")
+    expect(readRow).not.toHaveClass("bg-brand/[calc(var(--opacity-faint)*100%)]")
     expect(readRow.className).toBe(
-      "relative group border-b border-glass-border last:border-0 p-4 transition-all hover:bg-(--text-secondary)/(--opacity-faint)"
+      "relative group border-b border-glass-border last:border-0 p-4 transition-all hover:bg-(--text-secondary)/[calc(var(--opacity-faint)*100%)]"
     )
     expect(chatLink.children[0]).toHaveClass(
       "w-8",
       "h-8",
       "rounded-full",
-      "bg-brand/(--opacity-subtle)",
+      "bg-brand/[calc(var(--opacity-subtle)*100%)]",
       "text-brand",
       "dark:text-brand"
     )
@@ -802,8 +802,8 @@ describe("NotificationsBell", () => {
 
     await user.click(trigger)
     expect(trigger).toHaveClass(
-      "bg-(--primary-main)/(--opacity-subtle)",
-      "!border-(--primary-main)/(--opacity-soft)",
+      "bg-(--primary-main)/[calc(var(--opacity-subtle)*100%)]",
+      "!border-(--primary-main)/[calc(var(--opacity-soft)*100%)]",
       "shadow-sm",
       "text-(--primary-main)"
     )
@@ -989,7 +989,7 @@ describe("NotificationsBell", () => {
       "shadow-glass",
       "overflow-hidden",
       "ring-1",
-      "ring-black/(--opacity-faint)"
+      "ring-black/[calc(var(--opacity-faint)*100%)]"
     )
     expect(screen.getByTitle("Mark all as read")).toHaveClass(
       "min-h-11",
@@ -997,7 +997,7 @@ describe("NotificationsBell", () => {
       "p-2",
       "text-(--text-secondary)",
       "hover:text-text-primary",
-      "hover:bg-(--text-secondary)/(--opacity-faint)",
+      "hover:bg-(--text-secondary)/[calc(var(--opacity-faint)*100%)]",
       "rounded-lg",
       "transition-colors",
       "focus-ring-premium",
@@ -1010,7 +1010,7 @@ describe("NotificationsBell", () => {
       "p-2",
       "text-(--text-secondary)",
       "hover:text-error-text",
-      "hover:bg-error-bg/(--opacity-subtle)",
+      "hover:bg-error-bg/[calc(var(--opacity-subtle)*100%)]",
       "rounded-lg",
       "transition-colors",
       "focus-ring-premium",

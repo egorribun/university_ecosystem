@@ -191,6 +191,16 @@ _FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS = {
         "user-visible password validation messages",
         "not credential material",
     ),
+    "aud253_private_env_mode_test_fixture": (
+        "AUD-253 private environment-file mode test fixture",
+        "not credential material",
+    ),
+    "aud495_cache_key_redaction_test_fixture": (
+        "AUD-495 cache-key log-redaction test fixture",
+        "synthetic canary used only by mocked backend tests",
+        "tests assert logger output omits the canary",
+        "not credential material",
+    ),
 }
 _FALSE_POSITIVE_EXACT_IDENTITY_CATEGORIES = frozenset(
     {
@@ -199,6 +209,8 @@ _FALSE_POSITIVE_EXACT_IDENTITY_CATEGORIES = frozenset(
         "public_compose_inspection_test_sentinel",
         "synthetic_achievement_url_test_fixture",
         "auth_validation_ui_copy",
+        "aud253_private_env_mode_test_fixture",
+        "aud495_cache_key_redaction_test_fixture",
     }
 )
 _FALSE_POSITIVE_CATEGORIES = (
@@ -425,6 +437,110 @@ _V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES = frozenset(
             (
                 *(248, 237, 176, 97, 148, 41, 246, 135, 86, 11),
                 *(12, 80, 246, 227, 80, 183, 82, 39, 146, 12),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                85,
+                158,
+                8,
+                17,
+                13,
+                217,
+                219,
+                104,
+                145,
+                111,
+                194,
+                19,
+                60,
+                251,
+                92,
+                240,
+                212,
+                85,
+                113,
+                116,
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                94,
+                40,
+                155,
+                35,
+                12,
+                205,
+                36,
+                191,
+                27,
+                93,
+                89,
+                252,
+                6,
+                36,
+                193,
+                174,
+                240,
+                78,
+                30,
+                64,
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                228,
+                251,
+                163,
+                207,
+                40,
+                164,
+                144,
+                11,
+                26,
+                225,
+                79,
+                240,
+                197,
+                199,
+                12,
+                121,
+                37,
+                113,
+                215,
+                216,
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                109,
+                237,
+                50,
+                137,
+                135,
+                161,
+                1,
+                220,
+                60,
+                104,
+                144,
+                173,
+                229,
+                20,
+                90,
+                76,
+                18,
+                192,
+                224,
+                154,
             ),
         ),
     }
@@ -727,6 +843,28 @@ _C6_CODE_FRAGMENT_IDENTITIES = frozenset(
         ),
     }
 )
+_PAGE_TITLE_ROUTE_IDENTIFIER_IDENTITIES = frozenset(
+    {
+        (
+            "frontend/src/components/ui/PageRouteSEO.tsx",
+            "Secret Keyword",
+            (
+                *(246, 11, 35, 176, 57, 187, 96, 181, 93, 29),
+                *(195, 205, 161, 83, 22, 254, 236, 136, 40, 118),
+            ),
+        ),
+        (
+            "frontend/src/components/ui/PageRouteSEO.tsx",
+            "Secret Keyword",
+            (
+                *(13, 39, 13, 74, 47, 213, 87, 245, 102, 242),
+                *(14, 180, 169, 34, 53, 125, 169, 142, 149, 34),
+            ),
+        ),
+    }
+)
+
+
 _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES = frozenset(
     {
         (
@@ -778,6 +916,7 @@ _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES = frozenset(
             ),
         ),
         *_C6_CODE_FRAGMENT_IDENTITIES,
+        *_PAGE_TITLE_ROUTE_IDENTIFIER_IDENTITIES,
     }
 )
 
@@ -837,6 +976,373 @@ _AUTH_VALIDATION_UI_COPY_IDENTITIES = frozenset(
     }
 )
 
+_AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES = frozenset(
+    {
+        (
+            "tests/test_aud253_private_env_files.py",
+            "Base64 High Entropy String",
+            (
+                249,
+                234,
+                225,
+                154,
+                241,
+                219,
+                19,
+                25,
+                164,
+                195,
+                226,
+                60,
+                70,
+                145,
+                159,
+                13,
+                181,
+                232,
+                96,
+                104,
+            ),
+        ),
+        (
+            "tests/test_aud253_private_env_files.py",
+            "Base64 High Entropy String",
+            (
+                209,
+                97,
+                7,
+                76,
+                56,
+                168,
+                75,
+                219,
+                177,
+                81,
+                156,
+                145,
+                146,
+                126,
+                11,
+                18,
+                227,
+                102,
+                242,
+                240,
+            ),
+        ),
+        (
+            "tests/test_aud253_private_env_files.py",
+            "Base64 High Entropy String",
+            (
+                237,
+                247,
+                83,
+                211,
+                2,
+                60,
+                48,
+                7,
+                117,
+                85,
+                234,
+                204,
+                176,
+                92,
+                16,
+                249,
+                59,
+                248,
+                247,
+                232,
+            ),
+        ),
+        (
+            "tests/test_aud253_private_env_files.py",
+            "Base64 High Entropy String",
+            (
+                39,
+                64,
+                185,
+                186,
+                132,
+                70,
+                33,
+                101,
+                34,
+                113,
+                107,
+                165,
+                89,
+                20,
+                200,
+                218,
+                104,
+                254,
+                31,
+                74,
+            ),
+        ),
+        (
+            "tests/test_aud253_private_env_files.py",
+            "Base64 High Entropy String",
+            (
+                34,
+                37,
+                215,
+                151,
+                209,
+                211,
+                130,
+                49,
+                24,
+                25,
+                155,
+                23,
+                171,
+                12,
+                127,
+                17,
+                161,
+                125,
+                42,
+                47,
+            ),
+        ),
+    }
+)
+
+_TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES = frozenset(
+    {
+        (
+            "scripts/quality/validate_trivy_kyverno_fixture.py",
+            "Hex High Entropy String",
+            (
+                208,
+                194,
+                211,
+                202,
+                127,
+                191,
+                176,
+                34,
+                28,
+                45,
+                65,
+                104,
+                252,
+                218,
+                78,
+                167,
+                15,
+                212,
+                3,
+                158,
+            ),
+        ),
+        (
+            "scripts/quality/validate_trivy_kyverno_fixture.py",
+            "Hex High Entropy String",
+            (
+                224,
+                192,
+                166,
+                76,
+                174,
+                89,
+                98,
+                209,
+                14,
+                59,
+                156,
+                41,
+                28,
+                44,
+                108,
+                70,
+                149,
+                242,
+                195,
+                91,
+            ),
+        ),
+    }
+)
+
+_TRIVY_KYVERNO_PUBLIC_CHECKSUM_DIGESTS = frozenset(
+    identity[2] for identity in _TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+)
+_AUD253_PRIVATE_ENV_MODE_TEST_DIGESTS = frozenset(
+    identity[2] for identity in _AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES
+)
+_AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES = frozenset(
+    {
+        (
+            "tests/test_cache_object_keys_aud495.py",
+            "Secret Keyword",
+            (
+                158,
+                96,
+                27,
+                174,
+                156,
+                212,
+                227,
+                7,
+                93,
+                85,
+                133,
+                139,
+                237,
+                131,
+                255,
+                78,
+                75,
+                253,
+                255,
+                16,
+            ),
+        ),
+        (
+            "tests/test_cache_object_keys_aud495.py",
+            "Secret Keyword",
+            (
+                206,
+                224,
+                34,
+                26,
+                248,
+                78,
+                22,
+                250,
+                97,
+                128,
+                240,
+                96,
+                14,
+                161,
+                75,
+                225,
+                205,
+                151,
+                196,
+                143,
+            ),
+        ),
+    }
+)
+_AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_DIGESTS = frozenset(
+    identity[2] for identity in _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES
+)
+_AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_PATH = "tests/test_cache_object_keys_aud495.py"
+_AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY = (
+    "aud495_cache_key_redaction_test_fixture"
+)
+_TRIVY_KYVERNO_VALIDATOR_PATH = "scripts/quality/validate_trivy_kyverno_fixture.py"
+
+_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_PATH = "tests/test_verify_secrets_baseline.py"
+_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITY = (
+    _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_PATH,
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        121,
+        18,
+        205,
+        213,
+        192,
+        120,
+        136,
+        208,
+        61,
+        126,
+        251,
+        249,
+        119,
+        59,
+        133,
+        113,
+        22,
+        198,
+        10,
+        132,
+    ),
+)
+_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES = frozenset(
+    {_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITY}
+)
+_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_DIGESTS = frozenset(
+    {_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITY[2]}
+)
+_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_EVIDENCE_MARKERS = {
+    _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITY: (
+        "Public SHA-256 integrity digest of immutable 315-record disposition prefix",
+        "source-contract test guard in tests/test_verify_secrets_baseline.py",
+        "not credential material",
+    ),
+}
+
+_TRIVY_KYVERNO_EXACT_EVIDENCE_MARKERS = {
+    (
+        "scripts/quality/validate_trivy_kyverno_fixture.py",
+        "Hex High Entropy String",
+        (
+            208,
+            194,
+            211,
+            202,
+            127,
+            191,
+            176,
+            34,
+            28,
+            45,
+            65,
+            104,
+            252,
+            218,
+            78,
+            167,
+            15,
+            212,
+            3,
+            158,
+        ),
+    ): (
+        "Public integrity checksum",
+        "public SHA-256 checksum of the pinned Kyverno fixture bytes",
+        "not credential material",
+    ),
+    (
+        "scripts/quality/validate_trivy_kyverno_fixture.py",
+        "Hex High Entropy String",
+        (
+            224,
+            192,
+            166,
+            76,
+            174,
+            89,
+            98,
+            209,
+            14,
+            59,
+            156,
+            41,
+            28,
+            44,
+            108,
+            70,
+            149,
+            242,
+            195,
+            91,
+        ),
+    ): (
+        "Public integrity checksum",
+        "public SHA-256 checksum of the complete candidate Trivy ignore policy",
+        "not credential material",
+    ),
+}
+
 _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
     "synthetic_achievement_url_test_fixture": (
         _SYNTHETIC_ACHIEVEMENT_URL_TEST_FIXTURE_IDENTITIES
@@ -847,6 +1353,12 @@ _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
     "external_kubernetes_secret_reference": _EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES,
     "source_contract_identifier": _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES,
     "auth_validation_ui_copy": _AUTH_VALIDATION_UI_COPY_IDENTITIES,
+    "aud253_private_env_mode_test_fixture": (
+        _AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES
+    ),
+    "aud495_cache_key_redaction_test_fixture": (
+        _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES
+    ),
 }
 _FALSE_POSITIVE_IDENTITY_FIELDS = frozenset({"path", "type", "hashed_secret_bytes"})
 _FALSE_POSITIVE_RECORD_FIELDS = frozenset(
@@ -1340,6 +1852,57 @@ def validate_false_positive_dispositions(
             finding_type,
             tuple(raw_digest_bytes),
         )
+        if tuple(raw_digest_bytes) in _AUD253_PRIVATE_ENV_MODE_TEST_DIGESTS and (
+            exact_source_identity
+            not in _AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES
+            or category != "aud253_private_env_mode_test_fixture"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-253 private env fixture identity changed scope"
+            )
+        if (
+            path == _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_PATH
+            and finding_type == "Secret Keyword"
+            and (
+                exact_source_identity
+                not in _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES
+                or category != _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY
+            )
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-495 cache-key fixture identity changed scope"
+            )
+        if tuple(
+            raw_digest_bytes
+        ) in _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_DIGESTS and (
+            exact_source_identity
+            not in _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES
+            or category != _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-495 cache-key fixture identity changed scope"
+            )
+
+        if (
+            (
+                path == _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_PATH
+                and finding_type == _FALSE_POSITIVE_ALLOWED_TYPE
+            )
+            or tuple(raw_digest_bytes) in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_DIGESTS
+        ) and (
+            exact_source_identity not in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES
+            or category != "public_integrity_digest"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: immutable policy-prefix digest identity changed scope"
+            )
+        if tuple(raw_digest_bytes) in _TRIVY_KYVERNO_PUBLIC_CHECKSUM_DIGESTS and (
+            exact_source_identity not in _TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+            or category != "public_integrity_digest"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: Trivy Kyverno checksum identity changed scope"
+            )
         if (
             exact_source_identity in _PUBLIC_COMPOSE_INSPECTION_TEST_SENTINEL_IDENTITIES
             and category != "public_compose_inspection_test_sentinel"
@@ -1370,6 +1933,24 @@ def validate_false_positive_dispositions(
             )
         if category in _FALSE_POSITIVE_HEX_CATEGORIES:
             category_matches = finding_type == _FALSE_POSITIVE_ALLOWED_TYPE
+            if (
+                category == "public_integrity_digest"
+                and path == _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_PATH
+            ):
+                category_matches = (
+                    category_matches
+                    and exact_source_identity
+                    in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES
+                )
+            if (
+                category == "public_integrity_digest"
+                and path == _TRIVY_KYVERNO_VALIDATOR_PATH
+            ):
+                category_matches = (
+                    category_matches
+                    and exact_source_identity
+                    in _TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+                )
             if category == "independent_contract_fingerprint":
                 exact_v4_identity = (
                     path,
@@ -1409,6 +1990,12 @@ def validate_false_positive_dispositions(
         ):
             raise BaselineArtifactError(f"{artifact}: evidence is invalid")
         required_evidence = _FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS.get(category, ())
+        required_evidence += _TRIVY_KYVERNO_EXACT_EVIDENCE_MARKERS.get(
+            exact_source_identity, ()
+        )
+        required_evidence += _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_EVIDENCE_MARKERS.get(
+            exact_source_identity, ()
+        )
         if any(
             marker.casefold() not in evidence.casefold() for marker in required_evidence
         ):
@@ -1467,6 +2054,46 @@ def validate_false_positive_dispositions(
         if category == "auth_validation_ui_copy" and expires_on > date(2027, 1, 10):
             raise BaselineArtifactError(
                 f"{artifact}: auth validation UI copy exceeds approved expiry"
+            )
+
+        if category == "aud253_private_env_mode_test_fixture" and expires_on > date(
+            2027, 1, 10
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-253 private env fixture exceeds approved expiry"
+            )
+
+        if (
+            category == _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY
+            and expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-495 cache-key fixture exceeds proposed expiry cap"
+            )
+
+        if (
+            exact_source_identity in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES
+            and expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: immutable policy-prefix digest exceeds proposed expiry"
+            )
+
+        if (
+            exact_source_identity in _TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+            and expires_on > date(2026, 11, 22)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: Trivy Kyverno checksum exceeds approved expiry"
+            )
+
+        if (
+            category == "source_contract_identifier"
+            and exact_source_identity in _PAGE_TITLE_ROUTE_IDENTIFIER_IDENTITIES
+            and expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: page title route identifier exceeds approved expiry"
             )
 
         finding = FindingIdentity(path, finding_type, hashed_secret, 1)

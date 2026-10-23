@@ -89,6 +89,8 @@ spec:
               value: {{ printf "/run/secrets/%s/jwt-secret" $applicationSecretName | quote }}
             - name: JWT_AUDIENCE
               value: {{ required "gateway.config.jwtAudience must be set" .Values.gateway.config.jwtAudience | quote }}
+            - name: JWT_ISSUER
+              value: {{ required "global.jwtIssuer must be set" .Values.global.jwtIssuer | quote }}
             - name: BACKEND_URL
               value: "http://{{ include "university-ecosystem.componentName" (dict "root" . "component" "backend") }}:8000"
             - name: FILE_PROCESSOR_ADDR

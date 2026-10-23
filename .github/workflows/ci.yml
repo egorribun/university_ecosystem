@@ -1544,9 +1544,20 @@ jobs:
             tests/test_touched_tier0_migration_contracts.py \
             tests/test_reconcile_schema_drift_migration.py \
             tests/test_legacy_migration_guard_contracts.py \
+            tests/test_aud350_reconcile_migration_coverage.py \
             tests/integration/test_aud038_default_partition_redistribution_postgres.py \
             tests/integration/test_historical_migration_semantics_postgres.py \
             tests/integration/test_aud226_partitioning_generated_ids_postgres.py \
+            --tb=short
+
+      - name: Append AUD-350 PostgreSQL timestamp counterfactual to migration coverage
+        env:
+          DATABASE_URL: postgresql+psycopg://test@127.0.0.1:5433/test_migration
+          RUN_INTEGRATION_TESTS: "1"
+        run: |
+          uv run coverage run --append --data-file=.coverage.migration \
+            --source=alembic/versions -m pytest \
+            tests/integration/test_aud350_stored_event_timestamp_migration.py \
             --tb=short
 
       - name: Build backend image for password preflight

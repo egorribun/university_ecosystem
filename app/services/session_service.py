@@ -114,7 +114,10 @@ class SessionService:
             ]
             for key in fields:
                 if val := metadata.get(key):
-                    session_data[key] = str(val)
+                    value = str(val)
+                    if key == "user_agent":
+                        value = value[:512]
+                    session_data[key] = value
 
             session_data["mfa_required"] = bool(metadata.get("mfa_required", False))
             if val := metadata.get("mfa_completed_at"):

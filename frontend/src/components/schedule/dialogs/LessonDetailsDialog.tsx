@@ -61,7 +61,7 @@ export function LessonDetailsDialog({
               <Badge
                 variant="outline"
                 leadingIcon={<AccessTimeIcon size={16} />}
-                className="font-medium border-brand/(--opacity-dim) bg-brand-subtle-bg text-brand"
+                className="font-medium border-brand/[calc(var(--opacity-dim)*100%)] bg-brand-subtle-bg text-brand"
               >
                 {`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
               </Badge>

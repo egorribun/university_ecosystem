@@ -18,7 +18,7 @@ import {
 } from "@/utils/telemetryContext"
 
 const inputClass =
-  "w-full rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-2.5 text-input text-text-primary shadow-sm focus:border-brand focus:outline-none transition placeholder:text-(--text-secondary)/(--opacity-medium)"
+  "w-full rounded-md border border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] px-4 py-2.5 text-input text-text-primary shadow-sm focus:border-brand focus:outline-none transition placeholder:text-(--text-secondary)/[calc(var(--opacity-medium)*100%)]"
 const textareaClass = cn(inputClass, "min-h-36 resize-y leading-relaxed")
 const errorClass = "text-error-text text-xs mt-1 font-medium"
 
@@ -35,7 +35,7 @@ function Field({ label, htmlFor, children, error, required = false }: FieldProps
     <div className="space-y-2">
       <label
         htmlFor={htmlFor}
-        className="text-sm font-semibold tracking-wide text-(--text-secondary)/(--opacity-hover)"
+        className="text-sm font-semibold tracking-wide text-(--text-secondary)/[calc(var(--opacity-hover)*100%)]"
       >
         {label}
         {required ? <span className="ml-1 text-error-text text-sm font-bold">*</span> : null}
@@ -254,7 +254,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
                         variant="outline"
                         size="sm"
                         className={cn(
-                          "w-full sm:w-auto bg-(--bg-surface)/(--opacity-dim) border-glass-border",
+                          "w-full sm:w-auto bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)] border-glass-border",
                           errors.image && "border-error-text/50 text-error-text"
                         )}
                         disabled={isSubmitting}

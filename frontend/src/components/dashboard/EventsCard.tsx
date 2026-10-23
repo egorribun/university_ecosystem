@@ -273,7 +273,7 @@ const EventsCardContent = memo(function EventsCardContent({
                       </span>
                       <span
                         aria-hidden="true"
-                        className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-(--border-matte) bg-(--bg-matte-list) text-brand opacity-0 transition-all duration-base group-hover:opacity-100 group-hover:bg-brand/(--opacity-faint) group-hover:border-brand/(--opacity-soft)"
+                        className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-(--border-matte) bg-(--bg-matte-list) text-brand opacity-0 transition-all duration-base group-hover:opacity-100 group-hover:bg-brand/[calc(var(--opacity-faint)*100%)] group-hover:border-brand/[calc(var(--opacity-soft)*100%)]"
                       >
                         <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
                       </span>

@@ -165,6 +165,7 @@ func TestLoad_ReturnsConfigWithValidEnv(t *testing.T) {
 	originalRedis := os.Getenv("REDIS_URL")
 	originalRevocationRedis := os.Getenv("REVOCATION_REDIS_URL")
 	originalAudience := os.Getenv("JWT_AUDIENCE")
+	originalIssuer := os.Getenv("JWT_ISSUER")
 	originalFileProc := os.Getenv("FILE_PROCESSOR_ADDR")
 	originalRPS := os.Getenv("RATE_LIMIT_RPS")
 	originalBurst := os.Getenv("RATE_LIMIT_BURST")
@@ -176,6 +177,7 @@ func TestLoad_ReturnsConfigWithValidEnv(t *testing.T) {
 		restoreEnv(t, "REDIS_URL", originalRedis)
 		restoreEnv(t, "REVOCATION_REDIS_URL", originalRevocationRedis)
 		restoreEnv(t, "JWT_AUDIENCE", originalAudience)
+		restoreEnv(t, "JWT_ISSUER", originalIssuer)
 		restoreEnv(t, "FILE_PROCESSOR_ADDR", originalFileProc)
 		restoreEnv(t, "RATE_LIMIT_RPS", originalRPS)
 		restoreEnv(t, "RATE_LIMIT_BURST", originalBurst)
@@ -199,6 +201,9 @@ func TestLoad_ReturnsConfigWithValidEnv(t *testing.T) {
 	if err := os.Setenv("JWT_AUDIENCE", "gateway-api"); err != nil {
 		t.Fatalf("failed to set env: %v", err)
 	}
+	if err := os.Setenv("JWT_ISSUER", "  https://issuer.example  "); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
 	if err := os.Setenv("FILE_PROCESSOR_ADDR", "test-processor:50051"); err != nil {
 		t.Fatalf("failed to set env: %v", err)
 	}
@@ -218,6 +223,7 @@ func TestLoad_ReturnsConfigWithValidEnv(t *testing.T) {
 	assert.Equal(t, "redis://security-redis:6379/0", cfg.RevocationRedisURL)
 	assert.Equal(t, "test-secret-key", cfg.JWTSecret)
 	assert.Equal(t, "gateway-api", cfg.JWTAudience)
+	assert.Equal(t, "https://issuer.example", cfg.JWTIssuer)
 	assert.Equal(t, "test-processor:50051", cfg.FileProcessorAddr)
 	assert.Equal(t, 50, cfg.RateLimitRPS)
 	assert.Equal(t, 100, cfg.RateLimitBurst)
@@ -228,12 +234,16 @@ func TestLoad_UsesDefaultValuesWithJWTSet(t *testing.T) {
 	originalBackend := os.Getenv("BACKEND_URL")
 	originalPort := os.Getenv("GATEWAY_PORT")
 	originalRevocationRedis := os.Getenv("REVOCATION_REDIS_URL")
+	originalIssuer := os.Getenv("JWT_ISSUER")
+	originalEnvironment := os.Getenv("VITE_ENVIRONMENT")
 
 	defer func() {
 		restoreEnv(t, "JWT_SECRET", originalJWT)
 		restoreEnv(t, "BACKEND_URL", originalBackend)
 		restoreEnv(t, "GATEWAY_PORT", originalPort)
 		restoreEnv(t, "REVOCATION_REDIS_URL", originalRevocationRedis)
+		restoreEnv(t, "JWT_ISSUER", originalIssuer)
+		restoreEnv(t, "VITE_ENVIRONMENT", originalEnvironment)
 	}()
 
 	if err := os.Setenv("JWT_SECRET", "required-secret"); err != nil {
@@ -248,6 +258,12 @@ func TestLoad_UsesDefaultValuesWithJWTSet(t *testing.T) {
 	if err := os.Unsetenv("REVOCATION_REDIS_URL"); err != nil {
 		t.Fatalf("failed to unset env: %v", err)
 	}
+	if err := os.Unsetenv("JWT_ISSUER"); err != nil {
+		t.Fatalf("failed to unset env: %v", err)
+	}
+	if err := os.Setenv("VITE_ENVIRONMENT", "development"); err != nil {
+		t.Fatalf("failed to set environment: %v", err)
+	}
 
 	cfg, err := Load()
 	assert.NoError(t, err)
@@ -255,6 +271,7 @@ func TestLoad_UsesDefaultValuesWithJWTSet(t *testing.T) {
 	assert.Equal(t, "http://backend:8000", cfg.BackendURL)
 	assert.Equal(t, "redis://redis:6379/0", cfg.RevocationRedisURL)
 	assert.Equal(t, "university-ecosystem-api", cfg.JWTAudience)
+	assert.Equal(t, defaultJWTIssuer, cfg.JWTIssuer)
 	assert.Equal(t, 100, cfg.RateLimitRPS)
 	assert.Equal(t, 200, cfg.RateLimitBurst)
 }
@@ -298,6 +315,36 @@ func TestLoad_ReturnsErrorWhenRevocationRedisURLIsExplicitlyEmpty(t *testing.T) 
 	}
 }
 
+func TestLoad_RequiresJWTIssuerInRelease(t *testing.T) {
+	t.Setenv("JWT_SECRET", "required-secret")
+	t.Setenv("VITE_ENVIRONMENT", "production")
+	originalIssuer, issuerSet := os.LookupEnv("JWT_ISSUER")
+	t.Cleanup(func() {
+		if issuerSet {
+			_ = os.Setenv("JWT_ISSUER", originalIssuer)
+		} else {
+			_ = os.Unsetenv("JWT_ISSUER")
+		}
+	})
+	if err := os.Unsetenv("JWT_ISSUER"); err != nil {
+		t.Fatalf("failed to unset env: %v", err)
+	}
+
+	cfg, err := Load()
+	require.ErrorContains(t, err, "JWT_ISSUER")
+	require.Nil(t, cfg)
+}
+
+func TestLoad_RejectsInvalidJWTIssuer(t *testing.T) {
+	t.Setenv("JWT_SECRET", "required-secret")
+	t.Setenv("VITE_ENVIRONMENT", "development")
+	t.Setenv("JWT_ISSUER", "invalid\nissuer")
+
+	cfg, err := Load()
+	require.ErrorContains(t, err, "JWT_ISSUER")
+	require.Nil(t, cfg)
+}
+
 func TestLoad_ReturnsErrorWhenJWTAudienceIsWhitespace(t *testing.T) {
 	t.Setenv("JWT_SECRET", "required-secret")
 	t.Setenv("JWT_AUDIENCE", "   ")
@@ -318,6 +365,7 @@ func TestConfig_StructFields(t *testing.T) {
 		RedisURL:           "redis://localhost:6379",
 		RevocationRedisURL: "redis://localhost:6379/0",
 		JWTSecret:          "secret",
+		JWTIssuer:          defaultJWTIssuer,
 		FileProcessorAddr:  "localhost:50051",
 		RateLimitRPS:       100,
 		RateLimitBurst:     200,
@@ -328,6 +376,7 @@ func TestConfig_StructFields(t *testing.T) {
 	assert.Equal(t, "redis://localhost:6379", cfg.RedisURL)
 	assert.Equal(t, "redis://localhost:6379/0", cfg.RevocationRedisURL)
 	assert.Equal(t, "secret", cfg.JWTSecret)
+	assert.Equal(t, defaultJWTIssuer, cfg.JWTIssuer)
 	assert.Equal(t, "localhost:50051", cfg.FileProcessorAddr)
 	assert.Equal(t, 100, cfg.RateLimitRPS)
 	assert.Equal(t, 200, cfg.RateLimitBurst)
@@ -545,6 +594,7 @@ func TestLoad_ReleaseGRPCTLSRequiresConventionalMTLSFiles(t *testing.T) {
 	for missing, expected := range required {
 		t.Run(missing, func(t *testing.T) {
 			t.Setenv("JWT_SECRET", "test-secret-at-least-32-chars-long")
+			t.Setenv("JWT_ISSUER", "https://issuer.example")
 			t.Setenv("INTERNAL_HMAC_SECRET", "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!")              // pragma: allowlist secret
 			t.Setenv("FILE_PROCESSING_CAPABILITY_SECRET", "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!") // pragma: allowlist secret
 			t.Setenv("VITE_ENVIRONMENT", "staging")
@@ -599,6 +649,7 @@ func TestLoad_ReleaseRejectsNonCanonicalGRPCClientIdentityURI(t *testing.T) {
 	t.Setenv("INTERNAL_HMAC_SECRET", "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!")              // pragma: allowlist secret
 	t.Setenv("FILE_PROCESSING_CAPABILITY_SECRET", "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!") // pragma: allowlist secret
 	t.Setenv("VITE_ENVIRONMENT", "staging")
+	t.Setenv("JWT_ISSUER", "https://issuer.example")
 	t.Setenv("GRPC_USE_TLS", "true")
 	t.Setenv("SPIFFE_ENABLED", "false")
 	t.Setenv("GRPC_CA_FILE", "/run/secrets/internal-grpc-mtls/ca.crt")
@@ -618,6 +669,7 @@ func TestLoad_ReleaseRejectsPlaintextGRPC(t *testing.T) {
 	t.Setenv("INTERNAL_HMAC_SECRET", "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!")              // pragma: allowlist secret
 	t.Setenv("FILE_PROCESSING_CAPABILITY_SECRET", "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!") // pragma: allowlist secret
 	t.Setenv("VITE_ENVIRONMENT", "production")
+	t.Setenv("JWT_ISSUER", "https://issuer.example")
 	t.Setenv("GRPC_USE_TLS", "false")
 
 	cfg, err := Load()
@@ -648,6 +700,7 @@ func TestValidateConfigRequiresStrongInternalHMACSecretInRelease(t *testing.T) {
 	base := Config{
 		JWTSecret:                      "jwt-secret",
 		JWTAudience:                    "university-ecosystem-api",
+		JWTIssuer:                      defaultJWTIssuer,
 		RevocationRedisURL:             "redis://revocation:6379/0",
 		RateLimitRPS:                   100,
 		RateLimitBurst:                 200,
@@ -694,6 +747,7 @@ func TestValidateConfigRequiresFileProcessingCapabilitySecretInRelease(t *testin
 	base := Config{
 		JWTSecret:                      "jwt-secret",
 		JWTAudience:                    "university-ecosystem-api",
+		JWTIssuer:                      defaultJWTIssuer,
 		RevocationRedisURL:             "redis://revocation:6379/0",
 		RateLimitRPS:                   100,
 		RateLimitBurst:                 200,

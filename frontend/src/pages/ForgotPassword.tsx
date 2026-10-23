@@ -125,7 +125,7 @@ export default function ForgotPassword() {
                   className="space-y-6 pt-4"
                 >
                   <div className="flex justify-center">
-                    <div className="h-20 w-20 rounded-lg bg-success-bg/(--opacity-dim) flex items-center justify-center text-success-text">
+                    <div className="h-20 w-20 rounded-lg bg-success-bg/[calc(var(--opacity-dim)*100%)] flex items-center justify-center text-success-text">
                       <CheckCircle2 className="h-10 w-10" />
                     </div>
                   </div>
@@ -208,7 +208,7 @@ export default function ForgotPassword() {
                               setEmailSuggestion(null)
                             }}
                             color="primary"
-                            className="cursor-pointer hover:bg-brand/(--opacity-subtle) transition-colors"
+                            className="cursor-pointer hover:bg-brand/[calc(var(--opacity-subtle)*100%)] transition-colors"
                           />
                         </m.div>
                       )}

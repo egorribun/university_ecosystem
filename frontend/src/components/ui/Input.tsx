@@ -27,7 +27,7 @@ function inputVariants(props?: InputVariantProps): string {
       {
         variants: {
           error: {
-            true: "border-error-text focus:border-error-text focus:ring-error-text/(--opacity-subtle)",
+            true: "border-error-text focus:border-error-text focus:ring-error-text/[calc(var(--opacity-subtle)*100%)]",
             false: "",
           },
           fullWidth: {

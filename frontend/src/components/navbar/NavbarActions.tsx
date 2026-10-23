@@ -61,11 +61,11 @@ export const NavbarActions = ({ logic, morph }: NavbarActionsProps) => {
               fallback={avatarFallback}
               alt={profileAlt}
               title={profileTitle}
-              className="pointer-events-none block size-8 shrink-0 rounded-full border-2 border-brand/(--opacity-medium) object-cover"
+              className="pointer-events-none block size-8 shrink-0 rounded-full border-2 border-brand/[calc(var(--opacity-medium)*100%)] object-cover"
             />
           </m.button>
         ) : (
-          <div className="size-11 shrink-0 rounded-full bg-brand/(--opacity-soft) animate-pulse" />
+          <div className="size-11 shrink-0 rounded-full bg-brand/[calc(var(--opacity-soft)*100%)] animate-pulse" />
         )}
         <button
           type="button"

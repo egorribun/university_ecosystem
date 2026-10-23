@@ -72,7 +72,7 @@ describe("EventDetailHero closure", () => {
       "glass-layer-elevated",
       "glass-noise",
       "border",
-      "border-glass-border/(--opacity-soft)",
+      "border-glass-border/[calc(var(--opacity-soft)*100%)]",
       "aspect-video"
     )
     expect(hero).toHaveStyle({ viewTransitionName: "events-hero" })

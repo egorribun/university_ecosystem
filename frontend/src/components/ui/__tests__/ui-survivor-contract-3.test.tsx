@@ -43,7 +43,9 @@ describe("small UI primitive mutation contracts", () => {
     rerender(<Input aria-label="error" error fullWidth={false} size="sm" />)
     const errorInput = screen.getByRole("textbox", { name: "error" })
     expect(allClasses(errorInput)).toContain("border-error-text")
-    expect(allClasses(errorInput)).toContain("focus:ring-error-text/(--opacity-subtle)")
+    expect(allClasses(errorInput)).toContain(
+      "focus:ring-error-text/[calc(var(--opacity-subtle)*100%)]"
+    )
     expect(allClasses(errorInput)).toContain("w-auto")
     expect(allClasses(errorInput)).toContain("px-3")
     expect(allClasses(errorInput)).toContain("py-2")
@@ -91,7 +93,7 @@ describe("small UI primitive mutation contracts", () => {
       "text-xs",
       "font-medium",
       "leading-tight",
-      "text-(--text-tertiary)/(--opacity-strong)"
+      "text-(--text-tertiary)/[calc(var(--opacity-strong)*100%)]"
     )
     fireEvent.change(input, { target: { value: "next" } })
     fireEvent.blur(input)

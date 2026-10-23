@@ -32,20 +32,36 @@ const filters = { language: "en", limit: 12 }
 const accountAKey = "news:list:account:account-a:en"
 const accountBKey = "news:list:account:account-b:en"
 const accountAItem = {
-  id: "article-a",
+  id: "00000000-0000-4000-8000-000000000002",
   title: "Private A",
+  content: "Private A article",
+  created_at: "2026-01-15T10:00:00.000Z",
+  image_url_optimized: null,
+  likes_count: 0,
+  comments_count: 0,
   is_liked: true,
 } as NewsItem
 const accountBItem = {
-  id: "article-b",
+  id: "00000000-0000-4000-8000-000000000003",
   title: "Private B",
+  content: "Private B article",
+  created_at: "2026-01-15T10:00:00.000Z",
+  image_url_optimized: null,
+  likes_count: 0,
+  comments_count: 0,
   is_liked: false,
 } as NewsItem
 const publicItem = {
-  id: "article-public",
+  id: "00000000-0000-4000-8000-000000000001",
   title: "Public",
+  content: "Public article",
+  created_at: "2026-01-15T10:00:00.000Z",
+  image_url_optimized: null,
+  likes_count: 0,
+  comments_count: 0,
   is_liked: false,
 } as NewsItem
+
 const page = <T,>(items: T[]): PaginatedResponse<T> => ({
   items,
   total: items.length,

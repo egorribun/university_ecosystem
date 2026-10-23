@@ -159,7 +159,7 @@ export const StepUpDialog = ({
     <>
       <button
         type="button"
-        className="mobile-drawer-backdrop fixed inset-0 z-overlay flex items-center justify-center p-4 bg-black/(--opacity-medium) border-none w-full h-full text-left outline-none cursor-default"
+        className="mobile-drawer-backdrop fixed inset-0 z-overlay flex items-center justify-center p-4 bg-black/[calc(var(--opacity-medium)*100%)] border-none w-full h-full text-left outline-none cursor-default"
         onClick={onClose}
         aria-label={t("common:buttons.close")}
         tabIndex={-1}
@@ -208,7 +208,7 @@ export const StepUpDialog = ({
           <div className="flex gap-2 justify-end px-6 pb-6 pt-2">
             <button
               onClick={onClose}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2 text-base font-bold rounded-lg transition-all duration-fast text-text-primary hover:bg-(--text-primary)/(--opacity-subtle)"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 text-base font-bold rounded-lg transition-all duration-fast text-text-primary hover:bg-(--text-primary)/[calc(var(--opacity-subtle)*100%)]"
             >
               {t("common:buttons.cancel")}
             </button>

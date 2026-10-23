@@ -156,7 +156,9 @@ describe("MessageInput motion and DOM contract", () => {
     expect(onSend).toHaveBeenCalledWith("hello", [])
     expect(send).toBeDisabled()
     expect(
-      container.querySelector('[class*="bg-(--bg-surface-hover)/(--opacity-subtle)"]')
+      container.querySelector(
+        '[class*="bg-(--bg-surface-hover)/[calc(var(--opacity-subtle)*100%)]"]'
+      )
     ).toBeTruthy()
   })
 
@@ -208,15 +210,15 @@ describe("MessageInput motion and DOM contract", () => {
       "transition-transform",
       "group-hover:scale-110",
       "text-(--primary-main)",
-      "bg-(--primary-main)/(--opacity-subtle)"
+      "bg-(--primary-main)/[calc(var(--opacity-subtle)*100%)]"
     )
     expect(container.querySelector("#chat-attach-type-document > div")).toHaveClass(
       "text-(--success-text)",
-      "bg-(--success-text)/(--opacity-subtle)"
+      "bg-(--success-text)/[calc(var(--opacity-subtle)*100%)]"
     )
     expect(container.querySelector("#chat-attach-type-file > div")).toHaveClass(
       "text-(--warning-text)",
-      "bg-(--warning-text)/(--opacity-subtle)"
+      "bg-(--warning-text)/[calc(var(--opacity-subtle)*100%)]"
     )
     const input = container.querySelector('input[type="file"]') as HTMLInputElement
     vi.spyOn(input, "click").mockImplementation(() => undefined)
@@ -237,7 +239,7 @@ describe("MessageInput motion and DOM contract", () => {
     expect(attach).toHaveClass("text-(--text-secondary)")
     expect(attach.querySelector("svg")).toHaveClass("transition-transform", "duration-base")
     expect(send).toHaveClass(
-      "bg-(--bg-surface-hover)/(--opacity-subtle)",
+      "bg-(--bg-surface-hover)/[calc(var(--opacity-subtle)*100%)]",
       "text-(--text-secondary)",
       "opacity-soft",
       "cursor-not-allowed",
@@ -245,7 +247,10 @@ describe("MessageInput motion and DOM contract", () => {
     )
 
     fireEvent.click(attach)
-    expect(attach).toHaveClass("text-(--brand-main)", "bg-(--brand-main)/(--opacity-subtle)")
+    expect(attach).toHaveClass(
+      "text-(--brand-main)",
+      "bg-(--brand-main)/[calc(var(--opacity-subtle)*100%)]"
+    )
     expect(attach.querySelector("svg")).toHaveClass("rotate-45")
     fireEvent.click(attach)
 

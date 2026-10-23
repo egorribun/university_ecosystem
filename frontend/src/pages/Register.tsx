@@ -351,7 +351,7 @@ const Register = () => {
                   className={cn(
                     "badge-brand",
                     minLenOk
-                      ? "border-brand/(--opacity-medium) text-brand"
+                      ? "border-brand/[calc(var(--opacity-medium)*100%)] text-brand"
                       : "text-text-muted-subtle"
                   )}
                 >
@@ -361,7 +361,7 @@ const Register = () => {
                   className={cn(
                     "badge-brand",
                     matchOk
-                      ? "border-brand/(--opacity-medium) text-brand"
+                      ? "border-brand/[calc(var(--opacity-medium)*100%)] text-brand"
                       : "text-text-muted-subtle"
                   )}
                 >

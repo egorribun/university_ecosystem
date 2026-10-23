@@ -52,6 +52,11 @@ const CLIENT_HEARTBEAT_INTERVAL_MS = 30_000
 const CLIENT_HEARTBEAT_ACK_TIMEOUT_MS = 10_000
 const CLIENT_HEARTBEAT_CLOSE_CODE = 4000
 const CLIENT_HEARTBEAT_CLOSE_REASON = "heartbeat_timeout"
+const REPLAY_UNAVAILABLE_CLOSE_CODE = 4002
+const REPLAY_UNAVAILABLE_CLOSE_REASON = "replay_unavailable"
+// The replay join limiter refills at one token per second with a burst of two.
+// Wait just over one refill before making one same-socket retry.
+const REPLAY_JOIN_RETRY_DELAY_MS = 1_050
 // Wave 183 SW3 — extract magic number into named constant (W181 SW1
 // convention). Typing indicator clears 3s after the last typing event from
 // a peer; if peer continues typing, the next event resets the timeout.
@@ -450,8 +455,8 @@ export function useChatWebSocket({
   })
 
   const scheduleReconnect = useConstant(() => (closeCode: number) => {
-    // Normal completion and authentication failures keep their existing
-    // non-retryable behavior. Heartbeat timeouts use private code 4000.
+    // Normal completion and authentication failures remain terminal. Heartbeat
+    // timeouts and unavailable replay use retryable client-owned close codes.
     if (closeCode === 1000 || closeCode === 4001 || closeCode === 4003) return
     if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
       logError("[ws] Max reconnect attempts reached; giving up. Manual reconnect required.", {
@@ -466,22 +471,28 @@ export function useChatWebSocket({
   })
 
   const finishOwnedTransport = useConstant(
-    () => (ws: WebSocket, closeCode: number, closeTransport: boolean) => {
-      if (wsRef.current !== ws) return
-      socketOpenedAtRef.current = null
-      wsRef.current = null
-      wsStore.setConnected(false)
-      cleanup()
+    () =>
+      (
+        ws: WebSocket,
+        closeCode: number,
+        closeTransport: boolean,
+        closeReason = CLIENT_HEARTBEAT_CLOSE_REASON
+      ) => {
+        if (wsRef.current !== ws) return
+        socketOpenedAtRef.current = null
+        wsRef.current = null
+        wsStore.setConnected(false)
+        cleanup()
 
-      if (closeTransport) {
-        try {
-          ws.close(closeCode, CLIENT_HEARTBEAT_CLOSE_REASON)
-        } catch {
-          // The socket may have failed between the watchdog check and close.
+        if (closeTransport) {
+          try {
+            ws.close(closeCode, closeReason)
+          } catch {
+            // The socket may have failed between the watchdog check and close.
+          }
         }
+        scheduleReconnect(closeCode)
       }
-      scheduleReconnect(closeCode)
-    }
   )
 
   const connect = useCallback(() => {
@@ -592,6 +603,8 @@ export function useChatWebSocket({
         let heartbeatAckTimeout: ReturnType<typeof setTimeout> | undefined
         let heartbeatPaused = false
         let heartbeatDisposed = false
+        let replayJoinRetryTimeout: ReturnType<typeof setTimeout> | undefined
+        let replayJoinRetryAttempted = false
 
         const clearHeartbeatTimers = () => {
           clearInterval(heartbeatInterval)
@@ -605,6 +618,53 @@ export function useChatWebSocket({
           heartbeatDisposed = true
           document.removeEventListener("visibilitychange", handleVisibilityChange)
           clearHeartbeatTimers()
+          clearTimeout(replayJoinRetryTimeout)
+          replayJoinRetryTimeout = undefined
+        }
+
+        const scheduleReplayJoinRetry = (room: string) => {
+          if (
+            replayJoinRetryAttempted ||
+            replayJoinRetryTimeout !== undefined ||
+            !currentUserId ||
+            activeRoomRef.current !== room
+          ) {
+            return
+          }
+          const checkpoint = peekReplayCheckpoint(currentUserId, room)
+          if (checkpoint === undefined) return
+
+          replayJoinRetryAttempted = true
+          replayJoinRetryTimeout = setTimeout(() => {
+            replayJoinRetryTimeout = undefined
+            // ownsTransport binds the retry to this socket's authenticated account epoch.
+            if (
+              !ownsTransport() ||
+              ws.readyState !== WebSocket.OPEN ||
+              activeRoomRef.current !== room
+            ) {
+              return
+            }
+            const currentCheckpoint = peekReplayCheckpoint(currentUserId, room)
+            if (
+              currentCheckpoint === undefined ||
+              currentCheckpoint.sequence !== checkpoint.sequence ||
+              currentCheckpoint.resumeToken !== checkpoint.resumeToken
+            ) {
+              return
+            }
+            try {
+              ws.send(
+                JSON.stringify({
+                  type: "join",
+                  room,
+                  resume_token: checkpoint.resumeToken,
+                })
+              )
+            } catch {
+              /* WS closed between the ownership check and send. */
+            }
+          }, REPLAY_JOIN_RETRY_DELAY_MS)
         }
 
         const sendHeartbeat = () => {
@@ -1002,7 +1062,28 @@ export function useChatWebSocket({
               }
 
               case "error":
-                if (validated.code === "invalid_resume_token" && validated.room !== undefined) {
+                if (validated.code === "replay_join_rate_limited" && validated.room !== undefined) {
+                  scheduleReplayJoinRetry(validated.room)
+                } else if (
+                  validated.code === "replay_unavailable" &&
+                  validated.room !== undefined &&
+                  validated.room === activeRoomRef.current &&
+                  currentUserId &&
+                  peekReplayCheckpoint(currentUserId, validated.room) !== undefined
+                ) {
+                  // Replay membership was rejected, so retry on a fresh socket
+                  // through the existing capped backoff. The active room's
+                  // saved signed cursor is left intact for the next join.
+                  finishOwnedTransport(
+                    ws,
+                    REPLAY_UNAVAILABLE_CLOSE_CODE,
+                    true,
+                    REPLAY_UNAVAILABLE_CLOSE_REASON
+                  )
+                } else if (
+                  validated.code === "invalid_resume_token" &&
+                  validated.room !== undefined
+                ) {
                   removeReplayCheckpoint(currentUserId, validated.room)
                   void queryClient.invalidateQueries({
                     queryKey: ["messages", validated.room],

@@ -264,3 +264,9 @@ evidence, not raw JSON reports. These checks do not establish compilation or
 final-source CI. All ordinary tests, WASM provenance, vulnerability gates, hooks
 and required contexts remain mandatory; no advisory waiver or scanner exception
 is authorized.
+
+## Owner-approved Brotli exception, 2026-10-23
+
+For PR [#1343](https://github.com/egorribun/university_ecosystem/pull/1343), the owner approved a package-specific artifact cutoff of `2026-10-22T14:00:13Z` for `brotli` `1.2.1`, addressing `PYSEC-2026-4322` / `CVE-2026-111497`. The temporary constraint is `brotli==1.2.1`; retain the durable floor `brotli>=1.2.1,<2`. The artifact cutoff and temporary exact constraint expire at `2026-10-29T14:00:13Z`; review and remove the temporary cutoff and pin at that time while retaining the patched floor. See [Brotli 1.2.1 on PyPI](https://pypi.org/project/brotli/1.2.1/).
+
+This approval is limited to the named package and cutoff. The routine seven-day policy for other releases remains unchanged. It does not authorize a global `exclude-newer` change, advisory suppression, scanner disposition, baseline edit, hook or required-context change, or workflow identity. This record does not claim lock generation, installation, vulnerability audit, final-source validation, hosted checks, or release success; the ordinary dependency and security gates remain required. See the [current policy checkpoint](superpowers/plans/STATUS.md#owner-approved-scanner-and-brotli-boundaries-2026-10-23).

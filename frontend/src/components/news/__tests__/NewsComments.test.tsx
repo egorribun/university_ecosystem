@@ -171,7 +171,9 @@ describe("NewsComments", () => {
     const editBox = screen.getByLabelText("news:form.editCommentAriaLabel")
     expect(editBox).toHaveClass("min-h-20", "text-sm")
     expect(editBox).toHaveAttribute("maxLength", "500")
-    expect(screen.getByText("42/500")).toHaveClass("text-(--text-secondary)/(--opacity-medium)")
+    expect(screen.getByText("42/500")).toHaveClass(
+      "text-(--text-secondary)/[calc(var(--opacity-medium)*100%)]"
+    )
 
     // The edit path caps input at the public maximum and does not allow whitespace-only saves.
     fireEvent.change(editBox, { target: { value: "x".repeat(501) } })
@@ -191,7 +193,9 @@ describe("NewsComments", () => {
     expect(newComment).toHaveAttribute("placeholder", "news:form.commentPlaceholder")
     expect(newComment).toHaveClass("min-h-24")
     fireEvent.change(newComment, { target: { value: "x".repeat(10) } })
-    expect(screen.getByText("10/500")).toHaveClass("text-(--text-secondary)/(--opacity-medium)")
+    expect(screen.getByText("10/500")).toHaveClass(
+      "text-(--text-secondary)/[calc(var(--opacity-medium)*100%)]"
+    )
     fireEvent.change(newComment, { target: { value: "x".repeat(400) } })
     expect(screen.getByText("400/500")).toHaveClass("text-warning-text", "font-semibold")
     fireEvent.change(newComment, { target: { value: "x".repeat(475) } })

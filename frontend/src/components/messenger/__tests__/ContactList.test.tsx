@@ -918,7 +918,7 @@ describe("ContactList — populated contacts", () => {
     const inactive = document.getElementById("messenger-contact-2")!
     expect(active).toHaveClass("messenger-active-chip", "focus-visible:ring-2")
     expect(inactive).toHaveClass(
-      "hover:bg-(--bg-surface-hover)/(--opacity-subtle)",
+      "hover:bg-(--bg-surface-hover)/[calc(var(--opacity-subtle)*100%)]",
       "focus-visible:ring-2"
     )
     expect(inactive).not.toHaveAttribute("aria-current")

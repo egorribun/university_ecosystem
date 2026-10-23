@@ -5,16 +5,29 @@ from __future__ import annotations
 import ast
 import copy
 import hashlib
+import importlib.util
 import json
+import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 import pytest
 
-from scripts import verify_secrets_baseline as verifier
+_VALIDATOR_PATH = (
+    Path(__file__).resolve().parents[1] / "scripts" / "verify_secrets_baseline.py"
+)
+_VALIDATOR_SPEC = importlib.util.spec_from_file_location(
+    "aud495_v4_verify_secrets_baseline", _VALIDATOR_PATH
+)
+if _VALIDATOR_SPEC is None or _VALIDATOR_SPEC.loader is None:
+    raise ImportError(f"cannot load v4 validator from {_VALIDATOR_PATH}")
+verifier = importlib.util.module_from_spec(_VALIDATOR_SPEC)
+sys.modules[_VALIDATOR_SPEC.name] = verifier
+_VALIDATOR_SPEC.loader.exec_module(verifier)
 
 Finding = tuple[str, str, str, int]
 _FINDING_TYPE = "Secret" + " Keyword"
@@ -662,7 +675,7 @@ def test_reviewed_false_positive_disposition_matches_exact_identity() -> None:
 
 
 def test_exact_new_identity_allowlists_remain_finite_and_path_scoped() -> None:
-    assert len(verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES) == 27
+    assert len(verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES) == 31
     assert len(verifier._EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES) == 27
     assert {
         path for path, _, _ in verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES
@@ -684,7 +697,7 @@ def test_exact_new_identity_allowlists_remain_finite_and_path_scoped() -> None:
 def test_source_contract_identifier_category_is_finite_and_evidence_bound() -> None:
     category = "source_contract_identifier"
     assert len(verifier._C6_CODE_FRAGMENT_IDENTITIES) == 9
-    assert len(verifier._SOURCE_CONTRACT_IDENTIFIER_IDENTITIES) == 15
+    assert len(verifier._SOURCE_CONTRACT_IDENTIFIER_IDENTITIES) == 17
     evidence = "; ".join(verifier._FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS[category])
     paths = {path for path, _, _ in verifier._C6_CODE_FRAGMENT_IDENTITIES}
     assert paths == {
@@ -710,6 +723,115 @@ def test_source_contract_identifier_category_is_finite_and_evidence_bound() -> N
         ) == {
             verifier.FindingIdentity(path, finding_type, bytes(digest_bytes).hex(), 1)
         }
+
+
+def test_page_title_route_identifier_candidates_are_exact_and_finite() -> None:
+    category = "source_contract_identifier"
+    expected = {
+        (
+            "frontend/src/components/ui/PageRouteSEO.tsx",
+            "Secret Keyword",
+            (
+                246,
+                11,
+                35,
+                176,
+                57,
+                187,
+                96,
+                181,
+                93,
+                29,
+                195,
+                205,
+                161,
+                83,
+                22,
+                254,
+                236,
+                136,
+                40,
+                118,
+            ),
+        ),
+        (
+            "frontend/src/components/ui/PageRouteSEO.tsx",
+            "Secret Keyword",
+            (
+                13,
+                39,
+                13,
+                74,
+                47,
+                213,
+                87,
+                245,
+                102,
+                242,
+                14,
+                180,
+                169,
+                34,
+                53,
+                125,
+                169,
+                142,
+                149,
+                34,
+            ),
+        ),
+    }
+    assert verifier._PAGE_TITLE_ROUTE_IDENTIFIER_IDENTITIES == expected
+    assert expected <= verifier._SOURCE_CONTRACT_IDENTIFIER_IDENTITIES
+
+    evidence = "; ".join(verifier._FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS[category])
+    for path, finding_type, digest_bytes in expected:
+        approved = _reviewed_exact_disposition(
+            path, finding_type, digest_bytes, category
+        )
+        approved["evidence"] = evidence
+        approved["reviewed_on"] = "2026-10-23"
+        approved["expires_on"] = "2027-01-10"
+        pending = {**approved, "approval_status": "pending"}
+        with pytest.raises(verifier.BaselineArtifactError, match="not approved"):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(pending),
+                today=verifier.date(2026, 10, 23),
+            )
+
+        identity = approved["identity"]
+        assert verifier.validate_false_positive_dispositions(
+            _disposition_document(approved),
+            today=verifier.date(2026, 10, 23),
+        ) == {
+            verifier.FindingIdentity(path, finding_type, bytes(digest_bytes).hex(), 1)
+        }
+
+        changed_records = (
+            {**approved, "identity": {**identity, "path": path + ".changed"}},
+            {
+                **approved,
+                "identity": {**identity, "type": "Basic Auth Credentials"},
+            },
+            {
+                **approved,
+                "identity": {
+                    **identity,
+                    "hashed_secret_bytes": [
+                        (digest_bytes[0] + 1) % 256,
+                        *digest_bytes[1:],
+                    ],
+                },
+            },
+            {**approved, "category": "auth_validation_ui_copy"},
+            {**approved, "expires_on": "2027-01-11"},
+        )
+        for changed in changed_records:
+            with pytest.raises(verifier.BaselineArtifactError):
+                verifier.validate_false_positive_dispositions(
+                    _disposition_document(changed),
+                    today=verifier.date(2026, 10, 23),
+                )
 
 
 def test_c6_source_contract_records_require_explicit_approval() -> None:
@@ -1963,7 +2085,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 301
+    assert len(policy["records"]) == 318
     records = [
         record
         for record in policy["records"]
@@ -2242,11 +2364,13 @@ _AUTH_VALIDATION_UI_COPY_DIGEST_BYTES = (
 
 def _auth_validation_candidate_policy() -> dict[str, Any]:
     root = Path(__file__).resolve().parents[1]
-    return json.loads(
+    policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_text(
             encoding="utf-8"
         )
     )
+    policy["records"] = policy["records"][:315]
+    return policy
 
 
 def test_auth_validation_ui_copy_accepts_only_three_exact_identities() -> None:
@@ -2328,7 +2452,777 @@ def test_auth_validation_ui_copy_preserves_existing_298_records() -> None:
         for record in records
         if record["category"] != _AUTH_VALIDATION_UI_COPY_CATEGORY
     ]
-    assert len(records) == 301
-    assert len(existing) == 298
-    assert records[:298] == existing
+    assert len(records) == 315
+    assert len(existing) == 312
+    assert records[:298] == existing[:298]
+    assert records[298:301] == proposed
+    assert records[301:] == existing[298:]
     assert len(proposed) == 3
+
+
+_AUD253_DISPOSITION_CATEGORY = "aud253_private_env_mode_test_fixture"
+_AUD253_DISPOSITION_EXPIRY = "2027-01-10"
+_TRIVY_DISPOSITION_PATH = "scripts/quality/validate_trivy_kyverno_fixture.py"
+_TRIVY_DISPOSITION_EXPIRY = "2026-11-22"
+_PRIOR_301_RECORDS_SHA256_BYTES = (
+    96,
+    123,
+    56,
+    7,
+    89,
+    203,
+    93,
+    254,
+    158,
+    177,
+    160,
+    18,
+    255,
+    82,
+    60,
+    102,
+    196,
+    38,
+    90,
+    151,
+    51,
+    197,
+    65,
+    95,
+    160,
+    54,
+    204,
+    127,
+    55,
+    154,
+    8,
+    140,
+)
+_AUTHORIZED_310_RECORDS_SHA256_BYTES = (
+    108,
+    60,
+    61,
+    59,
+    80,
+    160,
+    171,
+    13,
+    95,
+    7,
+    68,
+    56,
+    156,
+    213,
+    52,
+    179,
+    6,
+    82,
+    27,
+    22,
+    85,
+    54,
+    49,
+    37,
+    152,
+    32,
+    214,
+    120,
+    166,
+    81,
+    86,
+    43,
+)
+
+
+def _owner_review_candidate_policy() -> dict[str, Any]:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    policy["records"] = policy["records"][:315]
+    return policy
+
+
+def _owner_review_record(
+    policy: dict[str, Any], identity: tuple[str, str, tuple[int, ...]]
+) -> dict[str, Any]:
+    path, finding_type, digest_bytes = identity
+    matches = [
+        record
+        for record in policy["records"]
+        if record["identity"]["path"] == path
+        and record["identity"]["type"] == finding_type
+        and tuple(record["identity"]["hashed_secret_bytes"]) == digest_bytes
+    ]
+    assert len(matches) == 1
+    return matches[0]
+
+
+def test_aud253_and_trivy_candidate_records_are_exact_and_finite() -> None:
+    policy = _owner_review_candidate_policy()
+    aud253 = [
+        record
+        for record in policy["records"]
+        if record["category"] == _AUD253_DISPOSITION_CATEGORY
+    ]
+    trivy = [
+        record
+        for record in policy["records"]
+        if record["identity"]["path"] == _TRIVY_DISPOSITION_PATH
+    ]
+    assert len(policy["records"]) == 315
+    assert len(aud253) == 5
+    assert len(trivy) == 2
+    assert {
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            tuple(record["identity"]["hashed_secret_bytes"]),
+        )
+        for record in aud253
+    } == verifier._AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES
+    assert {
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            tuple(record["identity"]["hashed_secret_bytes"]),
+        )
+        for record in trivy
+    } == verifier._TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+    for record in aud253:
+        assert record["expires_on"] == _AUD253_DISPOSITION_EXPIRY
+    for record in trivy:
+        assert record["category"] == "public_integrity_digest"
+        assert record["expires_on"] == _TRIVY_DISPOSITION_EXPIRY
+    assert verifier.validate_false_positive_dispositions(
+        policy, today=verifier.date(2026, 10, 23)
+    )
+
+
+def test_aud253_candidate_rejects_identity_category_evidence_and_expiry_changes() -> (
+    None
+):
+    policy = _owner_review_candidate_policy()
+    identity = next(iter(verifier._AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES))
+    mutations = (
+        lambda row: row["identity"].update(path="tests/other_fixture.py"),
+        lambda row: row["identity"].update(type="Hex High Entropy String"),
+        lambda row: row["identity"]["hashed_secret_bytes"].__setitem__(
+            0, (row["identity"]["hashed_secret_bytes"][0] + 1) % 256
+        ),
+        lambda row: row.update(category="public_integrity_digest"),
+        lambda row: row.update(expires_on="2027-01-11"),
+        lambda row: row.update(
+            evidence="synthetic test fixture; not credential material."
+        ),
+    )
+    for mutate in mutations:
+        candidate = copy.deepcopy(policy)
+        mutate(_owner_review_record(candidate, identity))
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                candidate, today=verifier.date(2026, 10, 23)
+            )
+
+
+def test_trivy_candidate_stays_exact_in_public_integrity_category() -> None:
+    policy = _owner_review_candidate_policy()
+    identity = next(iter(verifier._TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES))
+    mutations = (
+        lambda row: row["identity"].update(path="scripts/quality/other_validator.py"),
+        lambda row: row["identity"].update(type="Base64 High Entropy String"),
+        lambda row: row["identity"]["hashed_secret_bytes"].__setitem__(
+            0, (row["identity"]["hashed_secret_bytes"][0] + 1) % 256
+        ),
+        lambda row: row.update(category="documented_crypto_test_vector"),
+        lambda row: row.update(expires_on="2026-11-23"),
+        lambda row: row.update(
+            evidence="Public integrity checksum; not credential material."
+        ),
+    )
+    for mutate in mutations:
+        candidate = copy.deepcopy(policy)
+        mutate(_owner_review_record(candidate, identity))
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                candidate, today=verifier.date(2026, 10, 23)
+            )
+
+
+def test_aud253_fixture_digests_are_bound_to_embedded_powershell_literals() -> None:
+    root = Path(__file__).resolve().parents[1]
+    tree = ast.parse(
+        (root / "tests/test_aud253_private_env_files.py").read_text(encoding="utf-8")
+    )
+    values = [
+        node.value.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "POWERSHELL_HARNESS"
+            for target in node.targets
+        )
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    ]
+    assert len(values) == 1
+    literal_pattern = re.compile("'((?:[^']|'')*)'|\"((?:[^\"`]|`.)*)\"")
+    observed = set()
+    for match in literal_pattern.finditer(values[0]):
+        value = match.group(1) if match.group(1) is not None else match.group(2)
+        value = value.replace("''", "'")
+        observed.add(
+            hashlib.sha1(value.encode("utf-8"), usedforsecurity=False).digest()
+        )
+    assert {
+        bytes(identity[2])
+        for identity in verifier._AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES
+    } <= observed
+
+
+def test_trivy_checksum_digests_are_bound_to_validator_constants() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = ast.parse((root / _TRIVY_DISPOSITION_PATH).read_text(encoding="utf-8"))
+    values: dict[str, str] = {}
+    for node in ast.walk(source):
+        if not isinstance(node, ast.Assign):
+            continue
+        names = {target.id for target in node.targets if isinstance(target, ast.Name)}
+        if names & {"EXPECTED_FIXTURE_SHA256", "EXPECTED_IGNORE_POLICY_SHA256"}:
+            value = ast.literal_eval(node.value)
+            assert isinstance(value, str)
+            for name in names:
+                if name in {"EXPECTED_FIXTURE_SHA256", "EXPECTED_IGNORE_POLICY_SHA256"}:
+                    values[name] = value
+    assert set(values) == {"EXPECTED_FIXTURE_SHA256", "EXPECTED_IGNORE_POLICY_SHA256"}
+    actual = {
+        hashlib.sha1(value.encode("ascii"), usedforsecurity=False).digest()
+        for value in values.values()
+    }
+    assert actual == {
+        bytes(identity[2])
+        for identity in verifier._TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+    }
+
+
+def test_owner_review_preserves_the_previous_301_records_byte_for_byte() -> None:
+    policy = _owner_review_candidate_policy()
+    prior = policy["records"][:301]
+    encoded = json.dumps(
+        prior, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(encoded).digest() == bytes(_PRIOR_301_RECORDS_SHA256_BYTES)
+    assert len(policy["records"]) == 315
+
+
+def test_workflow_owner_review_candidate_records_are_exact_and_finite() -> None:
+    policy = _owner_review_candidate_policy()
+    records = policy["records"][310:]
+    expected = [
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                143,
+                120,
+                48,
+                192,
+                43,
+                11,
+                20,
+                246,
+                31,
+                253,
+                204,
+                224,
+                203,
+                218,
+                179,
+                79,
+                187,
+                212,
+                10,
+                41,
+            ),
+            "public_integrity_digest",
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                85,
+                158,
+                8,
+                17,
+                13,
+                217,
+                219,
+                104,
+                145,
+                111,
+                194,
+                19,
+                60,
+                251,
+                92,
+                240,
+                212,
+                85,
+                113,
+                116,
+            ),
+            "independent_contract_fingerprint",
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                94,
+                40,
+                155,
+                35,
+                12,
+                205,
+                36,
+                191,
+                27,
+                93,
+                89,
+                252,
+                6,
+                36,
+                193,
+                174,
+                240,
+                78,
+                30,
+                64,
+            ),
+            "independent_contract_fingerprint",
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                228,
+                251,
+                163,
+                207,
+                40,
+                164,
+                144,
+                11,
+                26,
+                225,
+                79,
+                240,
+                197,
+                199,
+                12,
+                121,
+                37,
+                113,
+                215,
+                216,
+            ),
+            "independent_contract_fingerprint",
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                109,
+                237,
+                50,
+                137,
+                135,
+                161,
+                1,
+                220,
+                60,
+                104,
+                144,
+                173,
+                229,
+                20,
+                90,
+                76,
+                18,
+                192,
+                224,
+                154,
+            ),
+            "independent_contract_fingerprint",
+        ),
+    ]
+    actual = [
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            tuple(record["identity"]["hashed_secret_bytes"]),
+            record["category"],
+        )
+        for record in records
+    ]
+    assert actual == expected
+    assert all(record["owner"] == "egorribun" for record in records)
+    assert all(record["reviewed_on"] == "2026-10-23" for record in records)
+    assert all(record["expires_on"] == "2027-01-10" for record in records)
+    assert all(record["approval_status"] == "approved" for record in records)
+
+
+def test_workflow_owner_review_candidate_preserves_authorized_310_prefix() -> None:
+    policy = _owner_review_candidate_policy()
+    prior = policy["records"][:310]
+    encoded = json.dumps(
+        prior, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(encoded).digest() == bytes(
+        _AUTHORIZED_310_RECORDS_SHA256_BYTES
+    )
+    assert len(policy["records"]) == 315
+
+
+_AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY = (
+    "aud495_cache_key_redaction_test_fixture"
+)
+_AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_PATH = "tests/test_cache_object_keys_aud495.py"
+_AUD495_CACHE_KEY_HISTORICAL_IDENTITIES = {
+    (
+        _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_PATH,
+        "Secret Keyword",
+        tuple(bytes.fromhex("9e601bae9cd4e3075d55858bed83ff4e4bfdff10")),
+    ),
+    (
+        _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_PATH,
+        "Secret Keyword",
+        tuple(bytes.fromhex("cee0221af84e16fa6180f0600ea14be1cd97c48f")),
+    ),
+}
+
+
+def _assert_aud495_cache_canary_uses_runtime_secret(
+    function: ast.AsyncFunctionDef,
+) -> None:
+    assignments = [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "secret_key"
+            for target in node.targets
+        )
+    ]
+    assert len(assignments) == 1
+    value = assignments[0].value
+    assert isinstance(value, ast.Call)
+    assert isinstance(value.func, ast.Attribute)
+    assert isinstance(value.func.value, ast.Name)
+    assert value.func.value.id == "secrets"
+    assert value.func.attr == "token_urlsafe"
+    assert len(value.args) == 1
+    assert isinstance(value.args[0], ast.Constant) and value.args[0].value == 32
+    assert not value.keywords
+
+
+def _aud495_cache_key_historical_fixture_identities() -> set[
+    tuple[str, str, tuple[int, ...]]
+]:
+    path = _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_PATH
+    source_text = (Path(__file__).resolve().parents[1] / path).read_text(
+        encoding="utf-8"
+    )
+    source = ast.parse(source_text)
+    target_functions = {
+        "test_backend_error_logs_do_not_emit_cache_key_or_exception_text",
+        "test_invalid_payload_logs_redact_cache_key",
+    }
+    function_sources: dict[str, str] = {}
+    for function in source.body:
+        if (
+            not isinstance(function, ast.AsyncFunctionDef)
+            or function.name not in target_functions
+        ):
+            continue
+        _assert_aud495_cache_canary_uses_runtime_secret(function)
+        function_source = ast.get_source_segment(source_text, function)
+        assert function_source is not None
+        function_sources[function.name] = function_source
+    assert set(function_sources) == target_functions
+    assert all(
+        "secret_key not in repr(call)" in function_source
+        for function_source in function_sources.values()
+    )
+    assert (
+        'call.kwargs.get("exc_info")'
+        in function_sources[
+            "test_backend_error_logs_do_not_emit_cache_key_or_exception_text"
+        ]
+    )
+    assert (
+        'keyed_fake.get.await_args.args[0] == (\n            f"aud495-key-derived-from-object:{secret_key}"\n        )'
+        in function_sources[
+            "test_backend_error_logs_do_not_emit_cache_key_or_exception_text"
+        ]
+    )
+    assert len(_AUD495_CACHE_KEY_HISTORICAL_IDENTITIES) == 2
+    return set(_AUD495_CACHE_KEY_HISTORICAL_IDENTITIES)
+
+
+def test_aud495_cache_key_fixture_binds_historical_records_and_runtime_source() -> None:
+    expected = _aud495_cache_key_historical_fixture_identities()
+    assert verifier._AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES == expected
+    assert (
+        verifier._FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES[
+            _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY
+        ]
+        == expected
+    )
+    assert verifier._AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_DIGESTS == {
+        identity[2] for identity in expected
+    }
+
+
+def test_aud495_cache_key_fixture_rejects_literal_secret_mutation() -> None:
+    path = _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_PATH
+    source_text = (Path(__file__).resolve().parents[1] / path).read_text(
+        encoding="utf-8"
+    )
+    source = ast.parse(source_text)
+    function = next(
+        node
+        for node in source.body
+        if isinstance(node, ast.AsyncFunctionDef)
+        and node.name
+        == "test_backend_error_logs_do_not_emit_cache_key_or_exception_text"
+    )
+    assignment = next(
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "secret_key"
+            for target in node.targets
+        )
+    )
+    assignment.value = ast.Constant(value="literal fixture")
+    with pytest.raises(AssertionError):
+        _assert_aud495_cache_canary_uses_runtime_secret(function)
+
+
+def test_aud495_cache_key_fixture_candidate_is_exact_and_requires_owner_approval() -> (
+    None
+):
+    category = _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY
+    identities = _aud495_cache_key_historical_fixture_identities()
+    evidence = "; ".join(verifier._FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS[category])
+    approved_records = []
+    for path, finding_type, digest_bytes in sorted(identities):
+        record = _reviewed_exact_disposition(path, finding_type, digest_bytes, category)
+        record["evidence"] = evidence
+        record["reviewed_on"] = "2026-10-23"
+        record["expires_on"] = "2027-01-10"
+        approved_records.append(record)
+
+    expected_findings = {
+        verifier.FindingIdentity(path, finding_type, bytes(digest).hex(), 1)
+        for path, finding_type, digest in identities
+    }
+    assert (
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(*approved_records),
+            today=verifier.date(2026, 10, 23),
+        )
+        == expected_findings
+    )
+
+    pending = copy.deepcopy(approved_records)
+    pending[0]["approval_status"] = "pending_owner_review"
+    with pytest.raises(verifier.BaselineArtifactError, match="not approved"):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(*pending), today=verifier.date(2026, 10, 23)
+        )
+
+    for mutation in (
+        lambda row: row["identity"].update(path="tests/other.py"),
+        lambda row: row["identity"].update(type="Hex High Entropy String"),
+        lambda row: row["identity"].update(
+            hashed_secret_bytes=[
+                (row["identity"]["hashed_secret_bytes"][0] + 1) % 256,
+                *row["identity"]["hashed_secret_bytes"][1:],
+            ]
+        ),
+        lambda row: row.update(category="source_contract_identifier"),
+        lambda row: row.update(evidence="synthetic fixture; not credential material"),
+        lambda row: row.update(expires_on="2027-01-11"),
+    ):
+        changed = copy.deepcopy(approved_records)
+        mutation(changed[0])
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(*changed), today=verifier.date(2026, 10, 23)
+            )
+
+
+_AUD495_IMMUTABLE_315_PREFIX_SHA256 = (
+    "16330df8c10ee81bab39b51ab54917605d1e589b1d443f0c93862a179e69e653"
+)
+_AUD495_TEST_ONLY_OWNER_MARKER = "TEST_FIXTURE_ONLY"
+_AUD495_TEST_ONLY_EVIDENCE_MARKER = "HYPOTHETICAL_TEST_FIXTURE_ONLY_NOT_OWNER_APPROVAL"
+
+
+def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    records = policy["records"]
+    assert len(records) == 318
+    prefix = records[:315]
+    encoded_prefix = json.dumps(
+        prefix, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(encoded_prefix).hexdigest() == (
+        _AUD495_IMMUTABLE_315_PREFIX_SHA256
+    )
+
+    suffix = records[315:317]
+    expected_identities = _aud495_cache_key_historical_fixture_identities()
+    actual_identities = {
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            tuple(record["identity"]["hashed_secret_bytes"]),
+        )
+        for record in suffix
+    }
+    assert actual_identities == expected_identities
+    assert all(
+        record["category"] == _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY
+        for record in suffix
+    )
+    assert all(
+        record["expires_on"] <= "2027-01-10" and record["approval_status"] == "approved"
+        for record in suffix
+    )
+
+    test_only_rows = [
+        record for record in suffix if record["owner"] == _AUD495_TEST_ONLY_OWNER_MARKER
+    ]
+    if test_only_rows:
+        assert len(test_only_rows) == 2
+        assert all(
+            _AUD495_TEST_ONLY_EVIDENCE_MARKER in record["evidence"]
+            for record in test_only_rows
+        )
+
+    digest_identity = _public_integrity_digest_source_identity()
+    digest_record = records[317]
+    assert (
+        digest_record["identity"]["path"],
+        digest_record["identity"]["type"],
+        tuple(digest_record["identity"]["hashed_secret_bytes"]),
+    ) == digest_identity
+    assert digest_record["category"] == "public_integrity_digest"
+    assert digest_record["expires_on"] <= "2027-01-10"
+    assert digest_record["approval_status"] == "approved"
+
+    expected_findings = {
+        verifier.FindingIdentity(path, finding_type, bytes(digest).hex(), 1)
+        for path, finding_type, digest in expected_identities
+    }
+    validated = verifier.validate_false_positive_dispositions(
+        policy, today=verifier.date(2026, 10, 24)
+    )
+    assert expected_findings <= validated
+    assert (
+        verifier.FindingIdentity(
+            digest_identity[0], digest_identity[1], bytes(digest_identity[2]).hex(), 1
+        )
+        in validated
+    )
+
+    pending = copy.deepcopy(policy)
+    for record in pending["records"][315:]:
+        record["approval_status"] = "pending_owner_review"
+    with pytest.raises(verifier.BaselineArtifactError, match="not approved"):
+        verifier.validate_false_positive_dispositions(
+            pending, today=verifier.date(2026, 10, 24)
+        )
+
+
+def _public_integrity_digest_source_identity() -> tuple[str, str, tuple[int, ...]]:
+    source_path = Path(__file__).resolve()
+    source = ast.parse(source_path.read_text(encoding="utf-8"))
+    assignments = [
+        node
+        for node in source.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name)
+            and target.id == "_AUD495_IMMUTABLE_315_PREFIX_SHA256"
+            for target in node.targets
+        )
+    ]
+    assert len(assignments) == 1
+    public_digest = ast.literal_eval(assignments[0].value)
+    assert isinstance(public_digest, str)
+    assert len(public_digest) == 64
+    assert all(character in "0123456789abcdef" for character in public_digest)
+    detector_digest = hashlib.sha1(
+        public_digest.encode("ascii"), usedforsecurity=False
+    ).digest()
+    return (
+        "tests/test_verify_secrets_baseline.py",
+        "Hex High Entropy String",
+        tuple(detector_digest),
+    )
+
+
+def test_public_integrity_digest_candidate_is_one_exact_source_identity() -> None:
+    # The record below is an in-memory validator fixture, not owner approval.
+    identity = _public_integrity_digest_source_identity()
+    assert verifier._PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES == {identity}
+    path, finding_type, digest_bytes = identity
+    category = "public_integrity_digest"
+    record = _reviewed_exact_disposition(path, finding_type, digest_bytes, category)
+    record["evidence"] = (
+        "Public SHA-256 integrity digest of immutable 315-record disposition prefix; "
+        "source-contract test guard in tests/test_verify_secrets_baseline.py; "
+        "not credential material."
+    )
+    identity_finding = verifier.FindingIdentity(
+        path, finding_type, bytes(digest_bytes).hex(), 1
+    )
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(record), today=verifier.date(2026, 10, 23)
+    ) == {identity_finding}
+
+    mutations = []
+    changed_path = copy.deepcopy(record)
+    changed_path["identity"]["path"] = "tests/test_other_policy.py"
+    mutations.append(changed_path)
+    changed_digest = copy.deepcopy(record)
+    changed_bytes = list(digest_bytes)
+    changed_bytes[0] ^= 1
+    changed_digest["identity"]["hashed_secret_bytes"] = changed_bytes
+    mutations.append(changed_digest)
+    changed_category = copy.deepcopy(record)
+    changed_category["category"] = "documented_crypto_test_vector"
+    mutations.append(changed_category)
+    excessive_expiry = copy.deepcopy(record)
+    excessive_expiry["expires_on"] = "2027-01-11"
+    mutations.append(excessive_expiry)
+    missing_evidence = copy.deepcopy(record)
+    missing_evidence["evidence"] = "not credential material"
+    mutations.append(missing_evidence)
+    for changed in mutations:
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(changed),
+                today=verifier.date(2026, 10, 23),
+            )

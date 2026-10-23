@@ -68,7 +68,7 @@ export function useShare({ title, url, onNotify, translations = {} }: ShareOptio
         label: translations.email || "Email",
         href: `mailto:?subject=${encodedTitle}&body=${encodedTitle}%0A${encodedUrl}`,
         icon: AlternateEmailIcon,
-        accent: "text-brand/(--opacity-hover)",
+        accent: "text-brand/[calc(var(--opacity-hover)*100%)]",
       },
     ]
   }, [shareUrl, title, translations])

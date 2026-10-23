@@ -507,14 +507,12 @@ def test_matches_source_accepts_production_variant_suites() -> None:
 
 
 def test_matches_source_accepts_tests_for_utility_scripts() -> None:
-    assert (
-        matches_source(
-            "tests/test_aggregate_go_benchmarks.py",
-            set(),
-            [],
-            {"scripts"},
-        )
-        is True
+    assert matches_source(
+        "tests/test_aggregate_go_benchmarks.py",
+        set(),
+        [],
+        {"scripts", "scripts.quality", "scripts.quality.aggregate_go_benchmarks"},
+        reference_paths={"scripts/quality/aggregate_go_benchmarks.py"},
     )
 
 
@@ -1688,7 +1686,7 @@ def test_static_file_url_and_path_join_dependencies_are_resolved(
     }
 
 
-def test_contract_test_requires_an_exact_referenced_playwright_spec(
+def test_contract_test_requires_exact_playwright_spec_and_cleanup_helper(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repository = tmp_path / "repo"
@@ -1705,33 +1703,48 @@ def test_contract_test_requires_an_exact_referenced_playwright_spec(
         / "e2e-live"
         / "messenger-reconnect.live.spec.ts"
     )
+    cleanup_helper = (
+        repository
+        / "frontend"
+        / "tests"
+        / "e2e-live"
+        / "messenger-reconnect-cleanup.mjs"
+    )
     target.parent.mkdir(parents=True)
     test_file.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("test()\n", encoding="utf-8")
+    cleanup_helper.write_text(
+        "export async function cleanupMessengerReconnect() {}\n", encoding="utf-8"
+    )
     test_file.write_text(
-        'const spec = await readFile(new URL("../tests/e2e-live/messenger-reconnect.live.spec.ts", import.meta.url), "utf8");\n',
+        'import "../tests/e2e-live/messenger-reconnect-cleanup.mjs";\n'
+        "const spec = await readFile(\n"
+        '  new URL("../tests/e2e-live/messenger-reconnect.live.spec.ts", import.meta.url),\n'
+        '  "utf8"\n'
+        ")\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
     references = checker.find_javascript_repository_references(test_file)
     exact_spec = "frontend/tests/e2e-live/messenger-reconnect.live.spec.ts"
+    exact_cleanup_helper = "frontend/tests/e2e-live/messenger-reconnect-cleanup.mjs"
 
-    assert references == {exact_spec}
+    assert references == {exact_spec, exact_cleanup_helper}
     assert checker.matches_source(
         test_file.relative_to(repository).as_posix(),
         set(),
         [],
         repository_references=references,
-        reference_paths={exact_spec},
-        contract_test_paths={exact_spec},
+        reference_paths={exact_spec, exact_cleanup_helper},
+        contract_test_paths={exact_spec, exact_cleanup_helper},
     )
     assert not checker.matches_source(
         "frontend/scripts/unrelated.test.mjs",
         set(),
         [],
         repository_references=references,
-        reference_paths={exact_spec},
-        contract_test_paths={exact_spec},
+        reference_paths={exact_spec, exact_cleanup_helper},
+        contract_test_paths={exact_spec, exact_cleanup_helper},
     )
     assert not checker.matches_source(
         test_file.relative_to(repository).as_posix(),
@@ -2288,3 +2301,296 @@ def test_mjs_source_stem_match_is_exact_and_nearby() -> None:
     assert not checker.matches_source(
         test_path, {"frontend/scripts/validator-extra.js"}, []
     )
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_message"),
+    [
+        (
+            '@pytest.mark.skip(reason="unavailable")\ndef test_case(): ...\n',
+            "Python dynamic skip",
+        ),
+        (
+            '@pytest.mark.xfail(reason="known failure")\ndef test_case(): ...\n',
+            "Python dynamic skip",
+        ),
+        (
+            'pytest.skip(\n    "unavailable",\n)\n',
+            "Python dynamic skip",
+        ),
+        (
+            'func TestCase(t *testing.T) { t.Skipf("unavailable: %s", reason) }\n',
+            "Go dynamic skip",
+        ),
+        (
+            'describe\n  .skip("unavailable", () => {})\n',
+            "JS/TS dynamic skip (describe.skip)",
+        ),
+    ],
+)
+def test_aud508_dynamic_skip_syntax_is_detected(
+    tmp_path: Path, source: str, expected_message: str
+) -> None:
+    suffix = (
+        ".py"
+        if expected_message.startswith("Python")
+        else ".go"
+        if expected_message.startswith("Go")
+        else ".ts"
+    )
+    test_file = tmp_path / f"test_dynamic_skip{suffix}"
+    test_file.write_text(source, encoding="utf-8")
+
+    errors: list[str] = []
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert any(expected_message in error for error in errors)
+
+
+def test_aud508_skip_exemptions_require_real_comment_evidence(tmp_path: Path) -> None:
+    cases = {
+        "commented.py": ('# pytest.skip("example")\n', False),
+        "string.py": ('message = "pytest.skip(\\"reason\\")"\n', False),
+        "static_skipif.py": (
+            '@pytest.mark.skipif(not PLATFORM_SUPPORTED, reason="platform")\ndef test_case(): ...\n',
+            False,
+        ),
+        "commented_skip.py": ('# QUALITY-123 @owner\npytest.skip("reason")\n', False),
+        "reason_text_is_not_comment.py": (
+            'pytest.skip("QUALITY-123 @owner")\n',
+            True,
+        ),
+        "quarantine_text_is_not_allowance.py": (
+            'pytest.skip("quarantined pending review")\n',
+            True,
+        ),
+    }
+    for name, (source, should_error) in cases.items():
+        test_file = tmp_path / name
+        test_file.write_text(source, encoding="utf-8")
+        errors: list[str] = []
+
+        check_anti_patterns(test_file, errors, [], [])
+
+        assert any("dynamic skip" in error for error in errors) is should_error, name
+
+
+def test_aud509_source_matching_requires_exact_module_relationships(
+    tmp_path: Path, monkeypatch
+) -> None:
+    assert not matches_source("tests/test_auth.py", {"app/subauth.py"}, [])
+    assert not matches_source("tests/test_auth.py", {"app/authentication.py"}, [])
+    assert matches_source("tests/test_auth_service.py", {"app/auth.py"}, [])
+
+    repository = tmp_path / "repository"
+    gateway = repository / "services" / "gateway"
+    gateway.mkdir(parents=True)
+    (gateway / "go.mod").write_text("module example.com/gateway\n", encoding="utf-8")
+    (gateway / "unrelated.go").write_text("package unrelated\n", encoding="utf-8")
+    (gateway / "auth.go").write_text("package gateway\n", encoding="utf-8")
+    (gateway / "auth_test.go").write_text("package gateway\n", encoding="utf-8")
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert not matches_source(
+        "services/gateway/auth_test.go", {"services/gateway/unrelated.go"}, []
+    )
+    assert matches_source(
+        "services/gateway/auth_test.go", {"services/gateway/auth.go"}, []
+    )
+
+    assert not matches_source(
+        "frontend/src/components/__tests__/Button.test.tsx",
+        {"frontend/src/other/Button.tsx"},
+        [],
+    )
+    assert not matches_source(
+        "frontend/src/components/__tests__/Button.test.tsx", set(), []
+    )
+
+
+def test_aud509_go_test_matches_its_same_package_without_a_sibling_name(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repository = tmp_path / "repository"
+    package = repository / "services" / "gateway" / "middleware"
+    package.mkdir(parents=True)
+    (repository / "go.mod").write_text("module example.com/repo\n", encoding="utf-8")
+    (package / "auth.go").write_text("package middleware\n", encoding="utf-8")
+    (package / "auth_and_jwks_setup_test.go").write_text(
+        "package middleware\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert matches_source(
+        "services/gateway/middleware/auth_and_jwks_setup_test.go",
+        {"services/gateway/middleware/auth.go"},
+        [],
+        reference_paths={"services/gateway/middleware/auth.go"},
+    )
+    assert not matches_source(
+        "services/gateway/middleware/auth_and_jwks_setup_test.go",
+        {"services/gateway/handlers.go"},
+        [],
+        reference_paths={"services/gateway/handlers.go"},
+    )
+
+
+def test_aud509_go_external_test_requires_exact_package_ownership(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repository = tmp_path / "repository"
+    package = repository / "services" / "pkg" / "spiffe"
+    package.mkdir(parents=True)
+    (package / "spiffe.go").write_text("package spiffe\n", encoding="utf-8")
+    test_file = package / "spiffe_dynamic_rotation_stress_test.go"
+    test_file.write_text(
+        'package spiffe_test\nimport "github.com/spiffe/go-spiffe/v2/workloadapi"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert matches_source(
+        "services/pkg/spiffe/spiffe_dynamic_rotation_stress_test.go",
+        {"services/pkg/spiffe/spiffe.go"},
+        [],
+        reference_paths={
+            "services/pkg/spiffe/spiffe.go",
+        },
+    )
+
+    test_file.write_text(
+        'package unrelated_test\nimport "github.com/spiffe/go-spiffe/v2/workloadapi"\n',
+        encoding="utf-8",
+    )
+    assert not matches_source(
+        "services/pkg/spiffe/spiffe_dynamic_rotation_stress_test.go",
+        {"services/pkg/spiffe/spiffe.go"},
+        [],
+        reference_paths={"services/pkg/spiffe/spiffe.go"},
+    )
+
+
+def test_aud509_imports_match_only_the_exact_inventoried_module() -> None:
+    assert not matches_source(
+        "tests/test_auth.py",
+        {"app/unrelated.py"},
+        [],
+        imported_modules={"app"},
+        reference_paths={"app/unrelated.py"},
+    )
+    assert matches_source(
+        "tests/test_auth.py",
+        {"app/auth.py"},
+        [],
+        imported_modules={"app", "app.auth"},
+        reference_paths={"app/auth.py"},
+    )
+
+
+def test_aud509_typescript_import_must_resolve_to_an_inventoried_module(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    test_file = repository / "frontend/src/components/__tests__/unrelated.test.tsx"
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text('import helper from "../../helpers";\n', encoding="utf-8")
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+    sources = {"frontend/src/components/Button.tsx"}
+
+    assert not matches_source(
+        "frontend/src/components/__tests__/unrelated.test.tsx",
+        sources,
+        [],
+        reference_paths=sources,
+    )
+
+    test_file.write_text('import Button from "../Button";\n', encoding="utf-8")
+    assert matches_source(
+        "frontend/src/components/__tests__/unrelated.test.tsx",
+        sources,
+        [],
+        reference_paths=sources,
+    )
+
+
+def test_aud509_relative_python_import_resolves_inside_its_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    test_file = repository / "tests/unit/test_case.py"
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text("from .helpers import helper\n", encoding="utf-8")
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+    imported_modules = checker.check_python_duplicates_and_imports(test_file, [])
+
+    assert matches_source(
+        "tests/unit/test_case.py",
+        set(),
+        [],
+        imported_modules=imported_modules,
+        reference_paths={"tests/unit/helpers.py"},
+    )
+    assert not matches_source(
+        "tests/unit/test_case.py",
+        set(),
+        [],
+        imported_modules=imported_modules,
+        reference_paths={"helpers.py"},
+    )
+
+
+def test_aud509_python_name_match_prefers_exact_and_rejects_ambiguity() -> None:
+    assert matches_source(
+        "tests/test_report_api.py",
+        {"app/report.py", "app/report_api.py"},
+        [],
+    )
+    assert not matches_source(
+        "tests/test_report_api.py",
+        {"app/report.py", "services/report.py"},
+        [],
+    )
+
+
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        (
+            "fake_skip.go",
+            '// t.Skipf("comment only")\nmessage := "t.Skipf(\\"string only\\")"\n',
+        ),
+        (
+            "fake_skip.mjs",
+            '// describe.skip("comment only")\nconst text = "describe.skip(\\"string only\\")";\n',
+        ),
+    ],
+)
+def test_aud508_non_python_skip_scanner_ignores_comments_and_strings(
+    tmp_path: Path, filename: str, source: str
+) -> None:
+    test_file = tmp_path / filename
+    test_file.write_text(source, encoding="utf-8")
+    errors: list[str] = []
+
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert not any("dynamic skip" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        ("tracked_skip.go", 't.Skipf("reason") // QUALITY-123 @owner\n'),
+        ("tracked_skip.mjs", 'describe.skip("reason") // QUALITY-123 @owner\n'),
+    ],
+)
+def test_aud508_non_python_skip_accepts_tracking_comments(
+    tmp_path: Path, filename: str, source: str
+) -> None:
+    test_file = tmp_path / filename
+    test_file.write_text(source, encoding="utf-8")
+    errors: list[str] = []
+
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert not any("dynamic skip" in error for error in errors)

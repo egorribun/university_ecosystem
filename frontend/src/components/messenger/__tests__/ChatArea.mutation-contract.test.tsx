@@ -445,7 +445,9 @@ describe("ChatArea motion and delegation contract", () => {
 
     const { container: closedContainer } = render(<ChatArea {...base} />)
     const closedMenuToggle = closedContainer.querySelector<HTMLButtonElement>("#chat-menu-toggle")!
-    expect(closedMenuToggle).toHaveClass("hover:bg-(--bg-surface-hover)/(--opacity-medium)")
+    expect(closedMenuToggle).toHaveClass(
+      "hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)]"
+    )
   })
 
   it("preserves direct-message avatar and name fallbacks for all participant shapes", () => {

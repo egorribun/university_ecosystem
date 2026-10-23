@@ -159,7 +159,7 @@ describe("NewChatModal motion/layout mutation contract", () => {
     expect(overlay).toHaveClass("fixed", "inset-0", "z-modal", "p-4")
     await waitFor(() => expect(document.body).not.toHaveClass("blurred"))
     expect(container.querySelector(".absolute.inset-0")).toHaveClass(
-      "bg-black/(--opacity-strong)",
+      "bg-black/[calc(var(--opacity-strong)*100%)]",
       "backdrop-blur-md",
       "cursor-default"
     )

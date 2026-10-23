@@ -406,11 +406,11 @@ export default function NewsDetail() {
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setShareDialogOpen(false)}
-                  className="group flex items-center gap-3 rounded-xl glass-layer-surface border border-glass-border/(--opacity-soft) px-4 py-3 transition hover:border-glass-border hover:shadow-sm"
+                  className="group flex items-center gap-3 rounded-xl glass-layer-surface border border-glass-border/[calc(var(--opacity-soft)*100%)] px-4 py-3 transition hover:border-glass-border hover:shadow-sm"
                 >
                   <span
                     className={cn(
-                      "inline-flex h-10 w-10 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-hover) shadow-sm transition group-hover:scale-105",
+                      "inline-flex h-10 w-10 items-center justify-center rounded-full bg-(--bg-surface)/[calc(var(--opacity-hover)*100%)] shadow-sm transition group-hover:scale-105",
                       option.accent
                     )}
                   >

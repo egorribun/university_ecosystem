@@ -1420,7 +1420,7 @@ def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
     trivy_ignore = yaml.safe_load(
         (REPOSITORY_ROOT / ".trivyignore.yaml").read_text(encoding="utf-8")
     )
-    assert [entry["id"] for entry in trivy_ignore["misconfigurations"]] == [
+    expected_exception_ids = [
         "KSV-0012",
         "KSV-0104",
         "KSV-0023",
@@ -1431,7 +1431,66 @@ def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
         "KSV-0017",
         "KSV-0009",
         "KSV-0010",
+        "KSV-0008",
+        "KSV-0024",
     ]
+    assert [
+        entry["id"] for entry in trivy_ignore["misconfigurations"]
+    ] == expected_exception_ids
+
+    fixture_path = "k8s/kyverno/tests/disallow-host-access/host-access.yaml"
+    scoped_fixture_entries = trivy_ignore["misconfigurations"][-2:]
+    assert [entry["paths"] for entry in scoped_fixture_entries] == [
+        [fixture_path],
+        [fixture_path],
+    ]
+    assert [str(entry["expired_at"]) for entry in scoped_fixture_entries] == [
+        "2026-11-22",
+        "2026-11-22",
+    ]
+    assert all(
+        set(entry) == {"id", "paths", "expired_at", "statement"}
+        for entry in scoped_fixture_entries
+    )
+
+
+def test_trivy_fixture_preflight_is_ordered_pinned_and_nonprinting() -> None:
+    workflow = yaml.safe_load(SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["docker-security"]["steps"]
+    preflight = next(
+        step
+        for step in steps
+        if step.get("name")
+        == "Verify the pinned Kyverno fixture before the Trivy configuration scan"
+    )
+    config_scan = next(
+        step
+        for step in steps
+        if step.get("name") == "Run Trivy configuration scanner (IaC)"
+    )
+
+    assert steps.index(preflight) < steps.index(config_scan)
+    assert preflight["shell"] == "bash"
+    script = str(preflight["run"])
+    version_command = 'version_output="$(trivy --version)"'
+    version_guard = "grep -Fxq 'Version: 0.75.0'"
+    assert version_command in script
+    assert version_guard in script
+    assert (
+        script.index(version_command)
+        < script.index(version_guard)
+        < script.index("trivy config")
+    )
+    assert "--ignorefile=" in script
+    assert "--format json" in script
+    assert '--output "$report"' in script
+    assert "trivy-host-access-noignore.json" in script
+    assert "python3 scripts/quality/validate_trivy_kyverno_fixture.py" in script
+    assert "--format table" not in script
+    assert not any(
+        line.lstrip().startswith(("cat ", "tee ", "jq "))
+        for line in script.splitlines()
+    )
 
 
 def test_checkov_sarif_filter_removes_only_source_backed_suppressions(tmp_path) -> None:
@@ -7138,3 +7197,61 @@ def test_aud481_counterfactuals_reject_missing_image_and_nonblocking_scan() -> N
     scanner["with"]["exit-code"] = "0"
     with pytest.raises(AssertionError):
         _aud481_assert_matrix_contract(nonblocking_scan, release_workflow, catalog)
+
+
+def test_aud350_postgresql_counterfactual_uses_existing_migration_gate() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["db-migration-gate"]
+    steps = job["steps"]
+    roundtrip = _provenance_step(
+        job, "Run supported migration round-trip and verify boundary"
+    )
+    focused = _provenance_step(job, "Append focused migration tests to coverage")
+    postgres_case = _provenance_step(
+        job, "Append AUD-350 PostgreSQL timestamp counterfactual to migration coverage"
+    )
+    image_build = _provenance_step(job, "Build backend image for password preflight")
+
+    assert steps.index(roundtrip) < steps.index(focused) < steps.index(postgres_case)
+    assert steps.index(postgres_case) < steps.index(image_build)
+    assert job["timeout-minutes"] == 20
+    assert job["services"]["postgres"]["image"].startswith(
+        "pgvector/pgvector:pg17@sha256:"
+    )
+    assert (
+        focused["run"].count("tests/test_aud350_reconcile_migration_coverage.py") == 1
+    )
+    assert postgres_case["env"] == {
+        "DATABASE_URL": "postgresql+psycopg://test@127.0.0.1:5433/test_migration",
+        "RUN_INTEGRATION_TESTS": "1",
+    }
+    integration_source = (
+        REPOSITORY_ROOT
+        / "tests"
+        / "integration"
+        / "test_aud350_stored_event_timestamp_migration.py"
+    ).read_text(encoding="utf-8")
+    assert "make_url(database_url)" in integration_source
+    assert 'url.set(drivername="postgresql+psycopg")' in integration_source
+    assert "SET LOCAL TIME ZONE 'America/Los_Angeles'" in integration_source
+    assert "created_at AT TIME ZONE 'UTC' FROM stored_events" in integration_source
+    assert "actual_local.astimezone(UTC) == expected_utc" in integration_source
+    assert (
+        "actual_utc_display == expected_utc.replace(tzinfo=None)" in integration_source
+    )
+    assert "actual_local.utcoffset() == timedelta(hours=-7)" in integration_source
+    assert (
+        "BASELINE_EXPECTED_UTC - CANDIDATE_EXPECTED_UTC != timedelta(hours=7)"
+        in integration_source
+    )
+    assert "actual_utc.utcoffset().total_seconds() == 0" not in integration_source
+
+    command = str(postgres_case["run"])
+    assert "coverage run --append --data-file=.coverage.migration" in command
+    assert "--source=alembic/versions -m pytest" in command
+    assert (
+        command.count(
+            "tests/integration/test_aud350_stored_event_timestamp_migration.py"
+        )
+        == 1
+    )

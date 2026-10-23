@@ -38,7 +38,7 @@ export function NewsShortcutsOverlay() {
   return (
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- backdrop with dialog semantics; Escape key handled for WCAG 2.1 1.4.13
     <div
-      className="fixed inset-0 z-overlay flex items-center justify-center bg-black/(--opacity-strong) backdrop-blur-sm"
+      className="fixed inset-0 z-overlay flex items-center justify-center bg-black/[calc(var(--opacity-strong)*100%)] backdrop-blur-sm"
       onClick={() => setOpen(false)}
       onKeyDown={(e) => {
         if (e.key === "Escape") setOpen(false)
@@ -62,14 +62,14 @@ export function NewsShortcutsOverlay() {
                 {t(`news:${action}`, { defaultValue: action.split(".").pop() })}
               </dt>
               <dd>
-                <kbd className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg glass-layer-surface border border-glass-border/(--opacity-soft) px-2 text-xs font-bold text-text-primary shadow-sm">
+                <kbd className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg glass-layer-surface border border-glass-border/[calc(var(--opacity-soft)*100%)] px-2 text-xs font-bold text-text-primary shadow-sm">
                   {key}
                 </kbd>
               </dd>
             </div>
           ))}
         </dl>
-        <p className="mt-4 text-[11px] text-(--text-secondary)/(--opacity-medium)">
+        <p className="mt-4 text-[11px] text-(--text-secondary)/[calc(var(--opacity-medium)*100%)]">
           {t("news:keyboard.pressToClose")}
         </p>
       </div>

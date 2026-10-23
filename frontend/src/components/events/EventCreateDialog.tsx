@@ -380,7 +380,7 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
                     onClick={() => imageInputRef.current?.click()}
                     variant="outline"
                     disabled={imageUploading || isCreating}
-                    className="w-full justify-start gap-2 bg-(--bg-surface)/(--opacity-dim)"
+                    className="w-full justify-start gap-2 bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)]"
                   >
                     {imageUploading ? (
                       t("common:statuses.uploading")
