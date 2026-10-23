@@ -4,6 +4,8 @@
 @import "./partials/_micro-interactions.css";
 @import "./partials/_modern-css.css";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   /*
    * Semantic Color Mapping

@@ -278,7 +278,31 @@ async def test_reset_success_pins_locks_arguments_and_revocation_scope(
     service.user_repo.update.assert_awaited_once_with(
         user_id, {"hashed_password": "new-hash", "mfa_epoch": 4}
     )
-    assert len(db.statements) == 2
+    cleanup_statements = (
+        (
+            auth_module.models.MfaChallenge,
+            "DELETE FROM mfa_challenges WHERE mfa_challenges.user_id = :user_id_1",
+        ),
+        (
+            auth_module.models.TrustedDevice,
+            "DELETE FROM trusted_devices WHERE trusted_devices.user_id = :user_id_1",
+        ),
+        (
+            auth_module.models.MfaTotpEnrollment,
+            "DELETE FROM mfa_totp_enrollments WHERE "
+            "mfa_totp_enrollments.user_id = :user_id_1 AND "
+            "mfa_totp_enrollments.confirmed_at IS NULL AND "
+            "mfa_totp_enrollments.revoked_at IS NULL",
+        ),
+    )
+    assert len(db.statements) == len(cleanup_statements)
+    for statement, (model, expected_sql) in zip(
+        db.statements, cleanup_statements, strict=True
+    ):
+        assert statement.table.name == model.__tablename__
+        compiled = statement.compile()
+        assert str(compiled) == expected_sql
+        assert compiled.params == {"user_id_1": user_id}
 
     revoke.assert_awaited_once()
     assert revoke.await_args.kwargs["db"] is db

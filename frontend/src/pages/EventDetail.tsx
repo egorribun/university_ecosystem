@@ -169,10 +169,7 @@ export default function EventDetail() {
 
   /* ── Error / not found state ── */
   if (error || !event) {
-    const messageKey =
-      isAxiosError(error) && error.response?.status === 404
-        ? "events:detail.messages.notFound"
-        : "events:detail.messages.loadFailed"
+    const isNotFound = isAxiosError(error) && error.response?.status === 404
 
     return (
       <>
@@ -186,7 +183,11 @@ export default function EventDetail() {
             >
               <InfoIcon size={32} />
             </div>
-            <p className="text-lg font-semibold text-text-primary">{t(messageKey)}</p>
+            <p className="text-lg font-semibold text-text-primary">
+              {isNotFound
+                ? t("events:detail.messages.notFound")
+                : t("events:detail.messages.loadFailed")}
+            </p>
             <Button variant="glass" onClick={() => navigate({ to: "/events" })}>
               {t("common:buttons.back")}
             </Button>

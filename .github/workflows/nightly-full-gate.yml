@@ -517,6 +517,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -729,7 +731,10 @@ jobs:
           STORAGE_S3_ACCESS_KEY_ID: minioadmin
           STORAGE_S3_SECRET_ACCESS_KEY: minioadminsecret
           UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
-        run: uv run pytest tests/chaos/ -v -m chaos --tb=short
+        run: |
+          export MINIO_ACCESS_KEY="$STORAGE_S3_ACCESS_KEY_ID"
+          export MINIO_SECRET_KEY="$STORAGE_S3_SECRET_ACCESS_KEY"
+          uv run pytest tests/chaos/ -v -m chaos --tb=short
 
   chaos-loadtest-orchestrator:
     name: Chaos Loadtest Orchestrator
@@ -779,6 +784,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -938,6 +945,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Kyverno CLI v1.19.1
         shell: bash
@@ -984,6 +993,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install nightly Rust + Miri
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # pinned action

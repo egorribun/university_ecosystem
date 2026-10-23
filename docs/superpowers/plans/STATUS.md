@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Текущая принятая нижняя граница — **263/512 (51,4%)** по [последней source-bound контрольной точке](#rate-limit-identity-nats-startup-recovery-and-weekly-cleanup-checkpoint-2026-10-23); полный список принятых ID и evidence приведён в [аудите](../../audits/AUDIT-2026-10.md#rate-limit-identity-nats-startup-recovery-and-weekly-cleanup-checkpoint-2026-10-23). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Текущая принятая нижняя граница — **271/512 (52,9%)** по [последней source-bound контрольной точке](#existing-source-notification-recovery-and-per-user-rate-limit-checkpoint-2026-10-23); осталось 241 ID. Полный список принятых ID и evidence приведён в [аудите](../../audits/AUDIT-2026-10.md#existing-source-notification-recovery-and-per-user-rate-limit-checkpoint-2026-10-23). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Текущая работа идёт только на `egorribun`, в одном checkout, через открытый [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343); [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306) был owner-merged и является историческим. Root управляет Git; по поручению владельца от 2026-10-23 — максимум 20 GPT-6 Luna Max с непересекающимися файлами и отдельным допуском тяжёлых прогонов по ресурсам. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -2205,12 +2205,12 @@ plan/performance, browser lifecycle или assistive-technology acceptance.
 Принятая source-bound нижняя граница — **263/512 (51,4%)**; к историческим 260 добавлены только AUD-177, AUD-202 и AUD-207. Точные критерии, source bindings, шесть именованных PASS и пределы доказательства сохранены в [контрольной точке аудита](../../audits/AUDIT-2026-10.md#rate-limit-identity-nats-startup-recovery-and-weekly-cleanup-checkpoint-2026-10-23).
 
 Обычный локальный прогон на неизменённых target-файлах дал 6 PASS за 0,94s; JUnit содержит ровно шесть случаев без failures, errors и skips. Проверка подтверждает только IP-bucket для pre-auth limiter, восстановление NATS worker до подписки под mock и отсутствие REINDEX в исполняемом cleanup пути. Она не подтверждает Redis или production client-IP forwarding, live NATS delivery/ACK, deployed scheduler, полный CI или публикацию. AUD-198 остаётся PostgreSQL-gated; AUD-204 остаётся открытым.
-## Selected publication candidate (2026-10-23)
+## Selected publication candidate snapshot (2026-10-23)
 
-Текущий checkout остаётся на 8342ce93; выбранная партия ещё не опубликована.
-Два файла AUD-253 (`start-docker.ps1` и новый private-env test) сохранены вне
-checkout вместе с полным diff; в checkout восстановлены опубликованные версии.
-Они не входят в выбранную партию до отдельного решения по пяти scanner identities.
+Этот раздел фиксирует выбранный 65-путевой снимок до финальной постановки `.secrets.baseline`; следующие строки описывают состояние только на тот момент. При публикации к нему добавлен 66-й путь — metadata-only обновление `.secrets.baseline`: три значения `line_number` и `generated_at`, без изменения 319 finding identities. Итоговые сведения приведены ниже.
+На момент этого снимка два файла AUD-253 (`start-docker.ps1` и новый private-env test) были сохранены вне
+checkout вместе с полным diff; тогда в checkout были восстановлены опубликованные версии.
+На тот момент они не входили в выбранную партию до отдельного решения по пяти scanner identities.
 Ни Trivy-пакет, ни семь новых dispositions не применены: policy301 и baseline319
 сохранены. Приватные кандидаты миграции, inventory, receipt schema, titles и theme
 также не интегрированы и не увеличивают принятый счёт 263.
@@ -2220,11 +2220,45 @@ checkout вместе с полным diff; в checkout восстановлен
 сохранение session/owner rollback. Typecheck и lint с нулём новых предупреждений
 прошли. Bounded production build прошёл за 21,72s (2 workers, RSS 2048 MiB,
 heap 1536 MiB, peak host 57,73%); retained artifacts и итоговые exit codes приватны.
-Скан выбранного кода перед этой документационной записью: 545 findings,
-0 unmatched, baseline319 неизменён. Финальные hooks и проверки source ещё требуются.
+Скан выбранного кода на момент этого снимка: 545 findings, 0 unmatched, baseline319 неизменён. Тогда финальные hooks и проверки source ещё требовались.
 
-Свежий четырёхслучайный PostgreSQL sanity для AUD-265 пока не выполнен: первая
-попытка остановилась в launcher до тестов, owned container/volume удалены и
-отсутствие подтверждено. Приватный AUD-348 также остановился в preflight до БД;
-это не результат миграционных тестов. Общий CI остаётся незелёным; новые закрытия
-по этим кандидатам не заявлены.
+На момент этой записи четырёхслучайный PostgreSQL sanity для AUD-265 ещё не был выполнен: первая
+попытка остановилась в launcher до тестов, owned container/volume были удалены и
+их отсутствие подтверждено. Позже AUD-265 прошёл отдельную source-bound проверку на PostgreSQL 17.11,
+описанную в последней контрольной точке. Приватный AUD-348 остановился в preflight до БД; это не результат
+миграционных тестов и не входит в приёмку.
+
+## Published source checkpoint b1d01826 (2026-10-23)
+
+Опубликован [commit `b1d01826a7e04874bfa5f2bcb2b83f10f78696fb`](https://github.com/egorribun/university_ecosystem/commit/b1d01826a7e04874bfa5f2bcb2b83f10f78696fb), parent `8342ce935ce5e5f89b742872217a6694b2aa33fc`, tree `31358df658ce8056c40ca425b57ef3026e5d5a9c`; он имеет тот же tree, что и локально hooked commit `97f1a9900c831fd0d47e1b0a1c7c2c895b12a415`. В опубликованном commit 66 изменённых путей: выбранный выше 65-путевой снимок и повторно поставленный `.secrets.baseline` с metadata-only изменениями. В baseline сохранены 319 finding identities; disposition policy сохранила 301 запись. На момент публикации принятая нижняя граница была 263/512; последующие source-bound приёмки приведены ниже.
+
+Все применимые обычные commit hooks и обычный pre-push прошли. Финальная полная detect-secrets проверка: 545 findings, 0 unmatched; проверка целостности подтвердила 319 baseline identities.
+
+На момент первого GitHub workflow snapshot [Matrix Expansion](https://github.com/egorribun/university_ecosystem/actions/runs/39976047319) стоял в очереди, [Checkov](https://github.com/egorribun/university_ecosystem/actions/runs/39976047084), [Owned Live Acceptance](https://github.com/egorribun/university_ecosystem/actions/runs/39976047368) и [Continuous Performance](https://github.com/egorribun/university_ecosystem/actions/runs/39976047173) выполнялись. [SBOM — Supply Chain Provenance](https://github.com/egorribun/university_ecosystem/actions/runs/39976047095) завершился отказом из-за неразрешённого `brotli:PYSEC-2026-4322`. [Unauthenticated Routes Smoke (Linux PR)](https://github.com/egorribun/university_ecosystem/actions/runs/39976047273) завершился отказом при установке зависимостей dark-theme job (`npm ECONNRESET`); light-theme job прошёл, dark-theme smoke не запускался. Более поздняя проверка frontend static i18n на том же b1 также осталась красной (job `120491778102`): обнаружены динамический `t(messageKey)` в `EventDetail` и ложное срабатывание `TypeError` в строковом regex `formatting.py`. Hosted CI остаётся частично красным; полный CI и релизная приёмка не заявлены.
+
+
+## Bounded task cancellation, gate state and lifecycle checkpoint (2026-10-23)
+
+Принятая source-bound нижняя граница — **267/512 (52,1%)**: сохранены все 263 предыдущих ID, добавлены только AUD-204, AUD-223, AUD-265 и AUD-336; осталось 245 ID. Все четыре критерия привязаны к опубликованному b1d01826, tree `31358df658ce8056c40ca425b57ef3026e5d5a9c`; точные source/test bindings, именованные проверки и границы приёмки приведены в [контрольной точке аудита](../../audits/AUDIT-2026-10.md#source-bound-task-cancellation-gate-state-and-lifecycle-checkpoint-2026-10-23).
+
+AUD-204 ограничен отменой и закрытием SMTP transport при NATS timeout до redelivery; 24 обычных pytest cases прошли. Он не обобщается на generic synchronous broker handler и не разрешает неоднозначность, принял ли удалённый SMTP peer сообщение. Все 14 текущих task registrations асинхронны.
+
+AUD-223 закрывает только обход stop-gate через удаление уже инициализированного состояния: 31 обычный contract test прошёл. Валидное состояние, намеренный rollback и удобство fresh-checkout остаются вне критерия. AUD-265 и AUD-336 имеют отдельные ограниченные доказательства в аудите: реальный PostgreSQL 17.11 (четыре случая) и 138 PASS controller-state suite соответственно.
+
+Последний unpublished local cohort дал 45 frontend PASS, полный inventory checker PASS, 64 localization PASS и 250 workflow/catalog PASS; frontend typecheck/lint прошли, bounded build — 20,68s при peak host 58,84%. Предыдущие inventory/router RED попытки разрешились локально и не остаются текущими сбоями; эти unpublished проверки не добавляют AUD closures. Hosted CI для b1 остаётся частично красным, поэтому полный CI и release не заявлены.
+
+## Existing-source notification, recovery and per-user rate-limit checkpoint (2026-10-23)
+
+Принятая source-bound нижняя граница — **271/512 (52,9%)**: сохранены все 267 предыдущих ID, добавлены ровно AUD-280, AUD-300, AUD-302 и AUD-374; осталось 241 ID. Все четыре критерия привязаны к опубликованному source `b1d01826a7e04874bfa5f2bcb2b83f10f78696fb`, tree `31358df658ce8056c40ca425b57ef3026e5d5a9c`; bindings, evidence и пределы критериев приведены в [контрольной точке аудита](../../audits/AUDIT-2026-10.md#existing-source-notification-recovery-and-per-user-rate-limit-checkpoint-2026-10-23).
+
+AUD-280 закрывает только визуально успешное представление ошибок mark-read/mark-all/clear notifications: отказ остаётся видимым, отдельную операцию можно повторить, неуспешная отметка не запускает переход по ссылке. AUD-300 закрывает только показ generic operational error вместо экрана «письмо отправлено» при неуспешном запросе восстановления пароля; успешный retry остаётся доступен. AUD-302 подтверждает error/success severity для известных share, edit и delete outcomes. AUD-374 закрывает только недостижимый per-user rate-limit: после сохранённого front-door IP gate middleware применяет отдельный `user:<id>` bucket, только когда `user_id` совпадает с verified `Claims.UserID`; отсутствующий, malformed, mismatched или unverified identity не выбирает user bucket. Обычные Vitest когорты — 63 PASS для AUD-280/AUD-300 и 20 PASS для AUD-302; последние используют jsdom и mock `Alert`, без browser/accessibility доказательства. Bounded Windows Go 1.26.10 non-race run с `GOMAXPROCS=2` и `-p=2` прошёл оба пакета: 24 PASS JSON events (включая parent/subtest events), 0 failures; это не race или deployment/trusted-proxy proof.
+
+Последние unpublished локальные когорты: NATS 106 PASS, settings 82 PASS, Node 661 PASS / один существующий SKIP, MinIO contract 4 PASS. Исправленный bounded frontend build завершился с exit 0 за 21,705s (два worker, RSS cap 2048 MiB, heap 1536 MiB, peak host 52,41%). После исправления метаданных артефактов combined ordinary CI-catalog/fail-closed/MinIO cohort прошёл 112 тестов за 45,75s; первоначальные семь FAIL — разрешённая локальная попытка, не текущий отказ. Эти когорты не добавляют другие AUD IDs. Предыдущий unpublished scan snapshot кандидата AUD-297 зафиксировал 547 findings, включая две новые SEO identities, ожидающие точного решения владельца. Шесть связанных AUD-297 feature files оставлены в private; AUD-297 не принят, dispositions остаются на 301 записи, и эти SEO findings не одобрены. Для текущего unpublished 41-file tree финальные source checks завершены: bounded frontend build прошёл с exit 0 за 21,7636s (Windows, Node 24.21.0, два worker, RSS cap 2048 MiB, heap cap 1536 MiB, peak host 53,33%); trusted-base scan выявил 545 findings и 0 unmatched. Integrity check подтвердил 319 baseline findings, 154 suppressed paths, 20 stale findings для удалённых файлов/секретов и review 246 exact false-positive findings на trusted b1 base; dispositions остаются на 301 записи. Build report `frontend-build-batch3-final.report.json` SHA-256 `58102901F5EEA51FCAA4E0C4DD005171A2993ECC5E030305AB84CAF1233DC4DE`; scan JSON `batch3-final-v2-current-scan.json` SHA-256 `13CA4A428DF8E280649CFB79CDD4FBB6349E5B6B8A08BBC21A53937507E7F742`; verifier log `batch3-final-v2-scan-verification.log` SHA-256 `3EED199619ED79864092420FE8C15974D77347C7EBAE1237C898ACE74DE19740`; trusted-base manifest `batch3-final-v2-trusted-base-baseline.json` SHA-256 `7EB401D029FE0EA44DB6314C5235F19F0066B836AE38B72795BC702DF9CF6290`. Эти результаты относятся к ограниченному локальному 41-file tree и не подтверждают hosted CI или release readiness.
+
+Hosted CI для b1 остаётся частично красным: решение владельца по Brotli ожидается, проверка Trivy fixture не завершена, frontend image findings пока не установлены точно. Полный CI и release acceptance не заявлены; этот checkpoint не утверждает прохождение hooks или полной финальной scan.
+
+## Published b1 Matrix final triage and 42-file test correction (2026-10-23)
+
+Hosted Matrix на b1 завершил все 91 jobs. Backend shard 2 прошёл; shard 3 завершился с 6122 PASS, 36 существующими SKIP и одним FAIL: password-reset contract ожидал две операции очистки, тогда как production также удаляет незавершённые и неотозванные `MfaTotpEnrollment`. Test-only исправление требует точные SQL, user binding и null predicates всех трёх DELETE; весь обычный модуль прошёл 15 тестов без предупреждений. Production-логика сброса пароля не меняется.
+
+Это 42-й изменённый путь следующей партии. Предыдущие build/scan результаты относятся к своему 41-file снимку; frontend production inputs после них не менялись. Итоговый снимок проходит отдельные обычные hooks, полный scan и новые hosted checks. Принятая нижняя граница остаётся 271/512 (52,9%), осталось 241 ID; полный CI и release acceptance не заявлены.

@@ -855,6 +855,11 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
             "docker-security-scan",
             "Upload Trivy results to GitHub Security tab",
         ),
+        (
+            "ci.yml",
+            "docker-security-scan-additional",
+            "Upload Trivy results to GitHub Security tab",
+        ),
         ("contract-validation.yml", "spectral-lint", "Run Spectral lint"),
         (
             "contract-validation.yml",
@@ -1588,6 +1593,47 @@ def test_reusable_trivy_scans_upload_evidence_then_fail_closed() -> None:
     }
     assert 'exit "$failed"' in reassert["run"]
     assert 'if [[ "$outcome" != "success" ]]' in reassert["run"]
+
+
+def test_matrix_trivy_images_upload_bounded_sarif_without_weakening_gate() -> None:
+    workflow = _workflow(CI)
+    job_id = "docker-security-scan-additional"
+    job = workflow["jobs"][job_id]
+    matrix_images = [
+        entry["image_name"] for entry in job["strategy"]["matrix"]["include"]
+    ]
+    assert matrix_images == ["frontend", "gateway", "ws-hub", "file-processor", "caddy"]
+    assert len(matrix_images) == len(set(matrix_images))
+
+    scan = _step(job, "Run Trivy vulnerability scanner")
+    sarif_path = "trivy-${{ matrix.image_name }}.sarif"
+    assert scan["with"]["output"] == sarif_path
+    assert scan["with"]["severity"] == "CRITICAL,HIGH"
+    assert scan["with"]["limit-severities-for-sarif"] is True
+    assert scan["with"]["exit-code"] == "1"
+    assert "continue-on-error" not in scan
+    assert "continue-on-error" not in job
+
+    artifact = _step(job, "Upload Trivy SARIF diagnostic artifact")
+    assert artifact["uses"] == (
+        "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+    )
+    assert artifact["if"] == (
+        "always() && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''"
+    )
+    assert "continue-on-error" not in artifact
+    assert artifact["with"] == {
+        "name": "trivy-image-${{ matrix.image_name }}-sarif",
+        "path": sarif_path,
+        "retention-days": 14,
+        "if-no-files-found": "error",
+    }
+    assert job["steps"].index(scan) < job["steps"].index(artifact)
+
+    ci_success = workflow["jobs"]["ci-success"]
+    assert job_id in ci_success["needs"]
+    gate_run = _step(ci_success, "Check all jobs passed")["run"]
+    assert f'"{job_id}|${{{{ needs.{job_id}.result }}}}"' in gate_run
 
 
 def test_trivy_oci_export_precedes_helm_dependency_mutation_and_preflight(

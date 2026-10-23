@@ -790,6 +790,8 @@ def test_runtime_inspection_uses_only_exact_captured_ids_and_filters_nats_servic
     assert "com.docker.compose.service" in format_string
     assert "outbox-worker" in format_string
     assert 'split . "_"' in format_string
+    assert "{{ $first := true }}[{{range .Config.Env}}" in format_string
+    assert "{{end}}{{end}}]{{else}}[]{{end}}" in format_string
     assert "json .Config.Env" not in format_string
     assert "else}}[]{{end}}" in format_string
 

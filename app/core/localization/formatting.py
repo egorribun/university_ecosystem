@@ -83,7 +83,7 @@ def translate(
     if translation_key is None:
         translation_key = kwargs.pop("key", None)
         if translation_key is None:
-            raise TypeError("translate() missing 1 required positional argument: 'key'")
+            raise TypeError("A translation key is required")
 
     from .core import DEFAULT_LOCALE, resolve_locale
 

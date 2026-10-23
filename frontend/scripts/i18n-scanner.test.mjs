@@ -343,6 +343,41 @@ test("backend dynamic translation keys require a finite backend registry", () =>
   assert.ok(report.errors.some((entry) => entry.code === "DYNAMIC_KEY_UNREGISTERED"))
 })
 
+test("backend lesson-type translation registry covers every finite canonical key", async () => {
+  const expectedKeys = [
+    "schedule.lesson.type.lecture",
+    "schedule.lesson.type.practice",
+    "schedule.lesson.type.lab",
+    "schedule.lesson.type.seminar",
+    "schedule.lesson.type.consultation",
+    "schedule.lesson.type.project",
+  ]
+  const report = await scanBackendRepository({
+    backendTemplateFiles: ["app/core/localization/formatting.py"],
+  })
+
+  assert.equal(report.ok, true, JSON.stringify(report.errors))
+  assert.deepEqual(report.dynamicRegistry.translation_key, expectedKeys)
+  assert.ok(
+    report.dynamicReferences.some(
+      (entry) => entry.pattern === "translation_key" && entry.registered
+    )
+  )
+  for (const key of expectedKeys) {
+    assert.ok(report.references.some((entry) => entry.key === key && entry.dynamic))
+    const catalog = { ...report.catalog }
+    delete catalog[key]
+    const missing = scanBackendSource("translate(translation_key, locale=locale)", {
+      catalog,
+      dynamicRegistry: report.dynamicRegistry,
+    })
+    assert.ok(
+      missing.errors.some((entry) => entry.code === "TRANSLATION_KEY_MISSING" && entry.key === key),
+      `the registered lesson-type key ${key} must remain in the catalogue`
+    )
+  }
+})
+
 test("business-rule exception messages resolve only the finite translated service errors", async () => {
   const expectedKeys = [
     "errors.chat.invalid_participants",

@@ -4,6 +4,7 @@ import argparse
 import ast
 import fnmatch
 import json
+import os
 import re
 import sys
 from collections.abc import Sequence
@@ -46,6 +47,605 @@ _TYPESCRIPT_FILE_REFERENCE = re.compile(
     r"\breadFileSync\s*\(\s*resolve\s*\(\s*process\.cwd\(\)\s*,\s*(?P<quote>['\"])(?P<path>[^'\"]+)(?P=quote)\s*\)",
     re.DOTALL,
 )
+
+_JS_LITERAL_PATTERN = r"\x00CODEX_JS_LITERAL_\d+\x00"
+_JS_LITERAL_TOKEN = re.compile(_JS_LITERAL_PATTERN)
+_JAVASCRIPT_MODULE_REFERENCE = re.compile(
+    rf"(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)"
+    rf"(?P<path>{_JS_LITERAL_PATTERN})",
+    re.DOTALL,
+)
+_JS_NEW_URL_REFERENCE = re.compile(
+    r"\bnew\s+URL\s*\(\s*"
+    rf"(?P<path>{_JS_LITERAL_PATTERN})\s*,\s*"
+    r"(?P<base>import\.meta\.url|[A-Za-z_$][\w$]*)\s*\)"
+)
+_JS_URL_BASE = re.compile(
+    r"\bconst\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*new\s+URL\s*\(\s*"
+    rf"(?P<path>{_JS_LITERAL_PATTERN})\s*,\s*import\.meta\.url\s*\)"
+)
+_JS_READ_HELPER = re.compile(
+    r"\bconst\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*\(\s*(?P<arg>[A-Za-z_$][\w$]*)\s*\)"
+    r"\s*=>\s*readFile\s*\(\s*new\s+URL\s*\(\s*(?P=arg)\s*,\s*"
+    r"(?P<base>import\.meta\.url|[A-Za-z_$][\w$]*)\s*\)"
+)
+_JS_PATH_RESOLVE_ROOT = re.compile(
+    r"\bconst\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*path\.resolve\s*\(\s*"
+    r"path\.dirname\s*\(\s*fileURLToPath\s*\(\s*import\.meta\.url\s*\)\s*\)"
+    rf"(?P<segments>(?:\s*,\s*{_JS_LITERAL_PATTERN})+)\s*,?\s*\)"
+)
+_JS_IMPORT_META_DIRNAME_ROOT = re.compile(
+    r"\bconst\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*path\.resolve\s*\(\s*"
+    rf"import\.meta\.dirname\s*,\s*(?P<path>{_JS_LITERAL_PATTERN})\s*\)"
+)
+_JS_FILE_URL_DIRNAME = re.compile(
+    r"\bconst\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*path\.dirname\s*\(\s*"
+    r"fileURLToPath\s*\(\s*import\.meta\.url\s*\)\s*\)"
+)
+_JS_SCAN_ROOTS = re.compile(
+    r"\bconst\s+scanRoots\s*=\s*\[(?P<values>[^\]]*)\]", re.DOTALL
+)
+
+
+def _js_regex_can_start(masked: list[str]) -> bool:
+    prefix = "".join(masked).rstrip()
+    if not prefix:
+        return True
+    match = re.search(r"([A-Za-z_$][\w$]*|=>|.)$", prefix)
+    last_significant = match.group(1)
+    if last_significant == ")":
+        depth = 0
+        for index in range(len(prefix) - 1, -1, -1):
+            if prefix[index] == ")":
+                depth += 1
+            elif prefix[index] == "(":
+                depth -= 1
+                if depth == 0:
+                    preceding = prefix[:index].rstrip()
+                    return (
+                        re.search(r"(?:^|[\s;{}:])(?:if|while|for|with)\s*$", preceding)
+                        is not None
+                    )
+        # A closing parenthesis without a matching opener is malformed source.
+        # Treat the following slash as opaque so malformed text cannot expose a
+        # fake import to the reference matcher.
+        return True
+    return last_significant in {
+        "return",
+        "throw",
+        "case",
+        "delete",
+        "void",
+        "typeof",
+        "instanceof",
+        "in",
+        "of",
+        "yield",
+        "await",
+        "else",
+        "do",
+        "=",
+        "(",
+        "[",
+        "{",
+        ",",
+        ";",
+        ":",
+        "?",
+        "!",
+        "~",
+        "+",
+        "-",
+        "*",
+        "%",
+        "&",
+        "|",
+        "^",
+        "<",
+        ">",
+        "=>",
+    }
+
+
+def _skip_javascript_regex(content: str, start: int) -> int:
+    """Return the end of a regex literal, or the end of malformed source."""
+    index = start + 1
+    in_character_class = False
+    while index < len(content):
+        char = content[index]
+        if char == "\\":
+            index += 2
+            continue
+        if char in "\r\n":
+            return len(content)
+        if char == "[":
+            in_character_class = True
+        elif char == "]":
+            in_character_class = False
+        elif char == "/" and not in_character_class:
+            index += 1
+            while index < len(content) and content[index].isalpha():
+                index += 1
+            return index
+        index += 1
+    return len(content)
+
+
+def _mask_javascript_non_code(content: str) -> tuple[str, dict[str, str]]:
+    """Replace comments, strings, templates, and regex literals before code matching."""
+    # NUL is not valid in JavaScript source tokens. Reject it in raw source so
+    # the private placeholders below cannot collide with code.
+    if "\0" in content:
+        return "", {}
+
+    masked: list[str] = []
+    literals: dict[str, str] = {}
+    literal_index = 0
+    index = 0
+    while index < len(content):
+        if content.startswith("//", index):
+            end = content.find("\n", index + 2)
+            if end == -1:
+                end = len(content)
+            masked.extend("\n" if char == "\n" else " " for char in content[index:end])
+            index = end
+            continue
+        if content.startswith("/*", index):
+            closing = content.find("*/", index + 2)
+            end = len(content) if closing == -1 else closing + 2
+            masked.extend("\n" if char == "\n" else " " for char in content[index:end])
+            index = end
+            continue
+        if content[index] in {"'", '"', "`"}:
+            quote = content[index]
+            start = index
+            index += 1
+            closed = False
+            while index < len(content):
+                if content[index] == "\\":
+                    index += 2
+                    continue
+                if content[index] == quote:
+                    index += 1
+                    closed = True
+                    break
+                if quote != "`" and content[index] in "\r\n":
+                    break
+                index += 1
+            if not closed:
+                return "", {}
+            token = f"\0CODEX_JS_LITERAL_{literal_index}\0"
+            literal_index += 1
+            # Template text is opaque; it is not a static path literal here.
+            if quote != "`":
+                literals[token] = content[start + 1 : index - 1]
+            masked.append(f" {token} ")
+            continue
+        if content[index] == "/" and _js_regex_can_start(masked):
+            end = _skip_javascript_regex(content, index)
+            if end > index + 1:
+                masked.extend(
+                    "\n" if char == "\n" else " " for char in content[index:end]
+                )
+                index = end
+                continue
+        masked.append(content[index])
+        index += 1
+    return "".join(masked), literals
+
+
+def _javascript_string_values(text: str, literals: dict[str, str]) -> list[str]:
+    return [
+        literals[token]
+        for token in _JS_LITERAL_TOKEN.findall(text)
+        if token in literals
+    ]
+
+
+def _javascript_string_value(token: str, literals: dict[str, str]) -> str | None:
+    return literals.get(token)
+
+
+def _extract_braced_body(content: str, opening_brace: int) -> tuple[str, int] | None:
+    depth = 0
+    for index in range(opening_brace, len(content)):
+        if content[index] == "{":
+            depth += 1
+        elif content[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return content[opening_brace + 1 : index], index + 1
+    return None
+
+
+def _collects_authored_files_recursively(
+    content: str, literals: dict[str, str]
+) -> tuple[set[str], set[str]] | None:
+    function = re.search(
+        r"\bfunction\s+collectAuthoredFiles\s*\(\s*(?P<root>[A-Za-z_$][\w$]*)\s*\)\s*\{",
+        content,
+    )
+    if function is None:
+        return None
+    extracted = _extract_braced_body(content, function.end() - 1)
+    if extracted is None:
+        return None
+    body, _ = extracted
+    root_name = function.group("root")
+    normalized = re.sub(r"\s+", "", body)
+    guard = re.match(
+        rf"if\(!fs\.existsSync\({re.escape(root_name)}\)\)return\[\];?",
+        normalized,
+    )
+    if guard is not None:
+        normalized = normalized[guard.end() :]
+    if not normalized.startswith("constfiles=[]"):
+        return None
+    after_files = normalized[len("constfiles=[]") :]
+    if after_files.startswith(";"):
+        after_files = after_files[1:]
+    loop = re.match(
+        rf"for\(const(?P<entry>[A-Za-z_$][\w$]*)offs\.readdirSync\({re.escape(root_name)},\{{withFileTypes:true\}}\)\)\{{",
+        after_files,
+    )
+    if loop is None:
+        return None
+    entry_name = loop.group("entry")
+    expected_loop_body = (
+        rf"if\({re.escape(entry_name)}\.isDirectory\(\)\)\{{"
+        rf"if\(!ignoredDirectories\.has\({re.escape(entry_name)}\.name\)\)\{{"
+        rf"files\.push\(\.\.\.collectAuthoredFiles\(path\.join\({re.escape(root_name)},{re.escape(entry_name)}\.name\)\)\);?"
+        r"\}continue;?\}"
+        rf"if\(authoredExtensions\.has\(path\.extname\({re.escape(entry_name)}\.name\)\)\)\{{"
+        rf"files\.push\(path\.join\({re.escape(root_name)},{re.escape(entry_name)}\.name\)\);?"
+        r"\}"
+    )
+    opening_brace = loop.end() - 1
+    loop_body = _extract_braced_body(after_files, opening_brace)
+    if loop_body is None or not re.fullmatch(expected_loop_body, loop_body[0]):
+        return None
+    suffix = after_files[loop_body[1] :]
+    if not re.fullmatch(r"returnfiles;?", suffix):
+        return None
+    extension_set = re.search(
+        r"\bconst\s+authoredExtensions\s*=\s*new\s+Set\s*\(\s*\[(?P<values>[^\]]*)\]\s*\)",
+        content,
+        re.DOTALL,
+    )
+    if extension_set is None:
+        return None
+    extensions = set(_javascript_string_values(extension_set.group("values"), literals))
+    if not extensions:
+        return None
+    ignored_set = re.search(
+        r"\bconst\s+ignoredDirectories\s*=\s*new\s+Set\s*\(\s*\[(?P<values>[^\]]*)\]\s*\)",
+        content,
+        re.DOTALL,
+    )
+    if ignored_set is None:
+        return None
+    ignored = set(_javascript_string_values(ignored_set.group("values"), literals))
+    return extensions, ignored
+
+
+def _walk_authored_files(
+    root: Path, extensions: set[str], ignored: set[str], repository_root: Path
+) -> set[Path]:
+    """Mirror the proven Dirent recursion and return file paths, never directories."""
+    found: set[Path] = set()
+    pending = [root]
+    while pending:
+        directory = pending.pop()
+        try:
+            entries = list(os.scandir(directory))
+        except OSError:
+            continue
+        for entry in entries:
+            if entry.is_dir(follow_symlinks=False):
+                if entry.name not in ignored:
+                    pending.append(Path(entry.path))
+                continue
+            if Path(entry.name).suffix not in extensions or not entry.is_file(
+                follow_symlinks=True
+            ):
+                continue
+            file_path = Path(entry.path)
+            try:
+                resolved_file = file_path.resolve(strict=True)
+                resolved_file.relative_to(repository_root)
+            except (OSError, RuntimeError, ValueError):
+                # The production reader follows file symlinks. Only retain the
+                # lexical path when its resolved target stays inside the repo.
+                continue
+            found.add(file_path)
+    return found
+
+
+def _recursive_scan_references(
+    content: str,
+    file_path: Path,
+    repository_root: Path,
+    literals: dict[str, str],
+) -> set[str]:
+    frontend_root_match = _JS_IMPORT_META_DIRNAME_ROOT.search(content)
+    scan_roots_match = _JS_SCAN_ROOTS.search(content)
+    if frontend_root_match is None or scan_roots_match is None:
+        return set()
+    root_path = _javascript_string_value(frontend_root_match.group("path"), literals)
+    if root_path is None:
+        return set()
+    collector = _collects_authored_files_recursively(content, literals)
+    if collector is None:
+        return set()
+
+    root_loop = re.search(
+        r"for\s*\(\s*const\s+root\s+of\s+scanRoots\s*\)\s*\{", content
+    )
+    if root_loop is None:
+        return set()
+    root_body = _extract_braced_body(content, root_loop.end() - 1)
+    if root_body is None:
+        return set()
+    root_body_text = root_body[0]
+    if not re.search(
+        r"\bconst\s+absoluteRoot\s*=\s*path\.join\s*\(\s*frontendRoot\s*,\s*root\s*\)",
+        root_body_text,
+    ):
+        return set()
+    file_loop = re.search(
+        r"for\s*\(\s*const\s+filePath\s+of\s+collectAuthoredFiles\s*\(\s*absoluteRoot\s*\)\s*\)\s*\{",
+        root_body_text,
+    )
+    if file_loop is None:
+        return set()
+    file_body = _extract_braced_body(root_body_text, file_loop.end() - 1)
+    file_body_text = "" if file_body is None else re.sub(r"\s+", "", file_body[0])
+    if not re.match(
+        rf"(?:const[A-Za-z_$][\w$]*=)?fs\.readFileSync\(filePath(?:,{_JS_LITERAL_PATTERN})?\);?",
+        file_body_text,
+    ):
+        return set()
+
+    frontend_root = (file_path.resolve().parent / root_path).resolve()
+    try:
+        frontend_root.relative_to(repository_root)
+    except ValueError:
+        return set()
+    extensions, ignored = collector
+    scan_roots = _javascript_string_values(scan_roots_match.group("values"), literals)
+    references: set[str] = set()
+    for scan_root in scan_roots:
+        resolved = _js_target_path(
+            scan_root, frontend_root, repository_root, allow_directory=True
+        )
+        if resolved is None:
+            continue
+        candidate = repository_root / resolved
+        if not candidate.is_dir():
+            continue
+        for source_file in _walk_authored_files(
+            candidate, extensions, ignored, repository_root
+        ):
+            references.add(source_file.relative_to(repository_root).as_posix())
+    return references
+
+
+def _js_target_path(
+    target: str, base: Path, repository_root: Path, *, allow_directory: bool = False
+) -> str | None:
+    """Resolve a literal relative JS path without accepting aliases or dynamic values."""
+    if (
+        not target
+        or target.startswith(("/", "\\"))
+        or "\\" in target
+        or "?" in target
+        or "#" in target
+        or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target)
+    ):
+        return None
+    candidate = (base / target).resolve()
+    try:
+        relative = candidate.relative_to(repository_root)
+    except ValueError:
+        return None
+
+    extensions = (".mjs", ".js", ".cjs", ".ts", ".tsx", ".jsx", ".json")
+    candidates = [candidate]
+    if not candidate.suffix:
+        candidates.extend(candidate.with_suffix(extension) for extension in extensions)
+        candidates.extend(candidate / f"index{extension}" for extension in extensions)
+    for resolved in candidates:
+        if not resolved.is_file():
+            continue
+        try:
+            resolved_target = resolved.resolve(strict=True)
+            resolved_target.relative_to(repository_root)
+        except (OSError, RuntimeError, ValueError):
+            continue
+        return resolved_target.relative_to(repository_root).as_posix()
+    if allow_directory and candidate.is_dir():
+        return relative.as_posix()
+    return None
+
+
+def _js_url_base_directory(
+    file_path: Path, target: str, repository_root: Path
+) -> Path | None:
+    if (
+        not target
+        or target.startswith(("/", "\\"))
+        or "\\" in target
+        or "?" in target
+        or "#" in target
+        or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target)
+    ):
+        return None
+    resolved = (file_path.resolve().parent / target).resolve()
+    try:
+        resolved.relative_to(repository_root)
+    except ValueError:
+        return None
+    if target.endswith("/") or resolved.is_dir():
+        return resolved
+    return resolved.parent
+
+
+def find_javascript_repository_references(file_path: Path) -> set[str]:
+    """Return existing JS files statically imported or read by a JavaScript test.
+
+    The reader follows only literal relative module/URL paths, the repository-root
+    helpers used by release contracts, and one-argument ``read`` helpers whose
+    implementation delegates to ``readFile(new URL(literal, base))``. It also
+    records source directories only when the test recursively enumerates and reads
+    each authored file below a literal scan-root list. The recursive scan records
+    each matching file path it reads, never a source-root directory.
+    """
+    try:
+        content, literals = _mask_javascript_non_code(
+            file_path.read_text(encoding="utf-8")
+        )
+    except Exception:
+        return set()
+
+    repository_root = REPOSITORY_ROOT.resolve()
+    references: set[str] = set()
+    for match in _JAVASCRIPT_MODULE_REFERENCE.finditer(content):
+        if content[: match.start()].rstrip().endswith("."):
+            continue
+        target = _javascript_string_value(match.group("path"), literals)
+        if target is None:
+            continue
+        resolved = _js_target_path(target, file_path.resolve().parent, repository_root)
+        if resolved:
+            references.add(resolved)
+
+    url_bases: dict[str, Path] = {}
+    for match in _JS_URL_BASE.finditer(content):
+        target = _javascript_string_value(match.group("path"), literals)
+        if target is None:
+            continue
+        base = _js_url_base_directory(file_path, target, repository_root)
+        if base is not None:
+            url_bases[match.group("name")] = base
+
+    static_bases: dict[str, Path] = dict(url_bases)
+    for match in _JS_FILE_URL_DIRNAME.finditer(content):
+        static_bases[match.group("name")] = file_path.resolve().parent
+    for match in _JS_IMPORT_META_DIRNAME_ROOT.finditer(content):
+        relative_base = _javascript_string_value(match.group("path"), literals)
+        if relative_base is None:
+            continue
+        base = (file_path.resolve().parent / relative_base).resolve()
+        try:
+            base.relative_to(repository_root)
+        except ValueError:
+            continue
+        static_bases[match.group("name")] = base
+
+    for match in _JS_NEW_URL_REFERENCE.finditer(content):
+        target = _javascript_string_value(match.group("path"), literals)
+        if target is None:
+            continue
+        base_name = match.group("base")
+        base = (
+            file_path.resolve().parent
+            if base_name == "import.meta.url"
+            else url_bases.get(base_name)
+        )
+        if base is None:
+            continue
+        resolved = _js_target_path(target, base, repository_root)
+        if resolved:
+            references.add(resolved)
+
+    for helper in _JS_READ_HELPER.finditer(content):
+        helper_name = helper.group("name")
+        base_name = helper.group("base")
+        base = (
+            file_path.resolve().parent
+            if base_name == "import.meta.url"
+            else url_bases.get(base_name)
+        )
+        if base is None:
+            continue
+        call_pattern = re.compile(
+            rf"\b{re.escape(helper_name)}\s*\(\s*(?P<path>{_JS_LITERAL_PATTERN})\s*\)"
+        )
+        for call in call_pattern.finditer(content):
+            target = _javascript_string_value(call.group("path"), literals)
+            if target is None:
+                continue
+            resolved = _js_target_path(target, base, repository_root)
+            if resolved:
+                references.add(resolved)
+
+    for root_match in _JS_PATH_RESOLVE_ROOT.finditer(content):
+        root_name = root_match.group("name")
+        segments = _javascript_string_values(root_match.group("segments"), literals)
+        root = file_path.resolve().parent.joinpath(*segments).resolve()
+        try:
+            root.relative_to(repository_root)
+        except ValueError:
+            continue
+        static_bases[root_name] = root
+
+        # A literal JSON reader is a concrete dependency only if the helper
+        # actually joins its literal argument under this statically derived root.
+        helpers = re.finditer(
+            r"\bfunction\s+(?P<name>[A-Za-z_$][\w$]*)\s*\(\s*(?P<arg>[A-Za-z_$][\w$]*)\s*\)\s*\{(?P<body>.*?)\}",
+            content,
+            re.DOTALL,
+        )
+        for function in helpers:
+            if not re.search(
+                rf"readFileSync\s*\(\s*path\.join\s*\(\s*{re.escape(root_name)}\s*,\s*{re.escape(function.group('arg'))}\s*\)",
+                function.group("body"),
+            ):
+                continue
+            call_pattern = re.compile(
+                rf"\b{re.escape(function.group('name'))}\s*\(\s*(?P<path>{_JS_LITERAL_PATTERN})\s*\)"
+            )
+            for call in call_pattern.finditer(content):
+                target = _javascript_string_value(call.group("path"), literals)
+                if target is None:
+                    continue
+                resolved = _js_target_path(target, root, repository_root)
+                if resolved:
+                    references.add(resolved)
+
+        # Direct path.join(root, "literal", ...) reads are also static.
+        join_pattern = re.compile(
+            rf"path\.join\s*\(\s*{re.escape(root_name)}(?P<tail>(?:\s*,\s*{_JS_LITERAL_PATTERN})+)\s*\)"
+        )
+        for join in join_pattern.finditer(content):
+            segments = _javascript_string_values(join.group("tail"), literals)
+            if segments:
+                resolved = _js_target_path("/".join(segments), root, repository_root)
+                if resolved:
+                    references.add(resolved)
+
+    # Resolve path.join(base, "literal", ...) when the base is itself statically
+    # rooted at this test file or at a literal repository-relative URL.
+    for base_name, base in static_bases.items():
+        join_pattern = re.compile(
+            rf"path\.join\s*\(\s*{re.escape(base_name)}(?P<tail>(?:\s*,\s*{_JS_LITERAL_PATTERN})+)\s*\)"
+        )
+        for join in join_pattern.finditer(content):
+            segments = _javascript_string_values(join.group("tail"), literals)
+            if not segments:
+                continue
+            resolved = _js_target_path(
+                "/".join(segments), base, repository_root, allow_directory=True
+            )
+            if resolved:
+                references.add(resolved)
+
+    # Track recursive source-root scans only when the test declares literal roots,
+    # iterates those roots, and reads files returned by its recursive enumerator.
+    references.update(
+        _recursive_scan_references(content, file_path, repository_root, literals)
+    )
+    return references
 
 
 def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
@@ -809,6 +1409,7 @@ def matches_source(
     workflow_paths: set[str] | None = None,
     repository_references: set[str] | None = None,
     reference_paths: set[str] | None = None,
+    contract_test_paths: set[str] | None = None,
 ) -> bool:
     if matches_any_glob(test_path, allowed_orphans):
         return True
@@ -828,8 +1429,27 @@ def matches_source(
     # Static repository-file reads are direct contract dependencies across
     # languages. Accept them only when their resolved target exists in the
     # inventory as a non-test path.
+    generic_reference_paths = reference_paths or set()
+    if test_path.endswith(".test.mjs"):
+        # A Playwright spec is a test-to-test contract target only for the exact
+        # contract matcher below; its utility inventory classification must not
+        # make every MJS test referencing it appear covered.
+        generic_reference_paths = generic_reference_paths - (
+            contract_test_paths or set()
+        )
     if repository_references and _references_inventory_target(
-        repository_references, reference_paths or set()
+        repository_references, generic_reference_paths
+    ):
+        return True
+
+    # A JavaScript contract test may assert against one exact Playwright spec it
+    # statically reads. Keep this test-to-test relationship limited to files
+    # explicitly named as contract tests and exact existing .spec.ts[x] targets.
+    if (
+        test_path.endswith(".test.mjs")
+        and re.search(r"(?:^|[.-])contract\.test\.mjs$", Path(test_path).name)
+        and repository_references
+        and repository_references.intersection(contract_test_paths or set())
     ):
         return True
 
@@ -965,7 +1585,22 @@ def matches_source(
                 return True
         return False
 
-    # 4. Go naming map
+    # 4. JavaScript module tests require a statically referenced inventoried
+    # non-test file or an exact nearby module with the same test stem.
+    if test_path.endswith(".test.mjs"):
+        test_stem = name.removesuffix(".test.mjs")
+        nearby_source_dirs = {path_obj.parent, path_obj.parent.parent}
+        for source in source_paths:
+            source_path = Path(source)
+            if (
+                source_path.parent in nearby_source_dirs
+                and source_path.suffix in {".mjs", ".js", ".cjs"}
+                and source_path.stem == test_stem
+            ):
+                return True
+        return False
+
+    # 5. Go naming map
     if test_path.endswith("_test.go"):
         base_name = name.replace("_test.go", ".go")
         local_src = str(path_obj.parent / base_name).replace("\\", "/")
@@ -1068,6 +1703,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if f["path"].startswith(".github/workflows/")
         and f["path"].endswith((".yml", ".yaml"))
     }
+    contract_test_paths = {
+        f["path"] for f in files if f["path"].endswith((".spec.ts", ".spec.tsx"))
+    }
 
     for f in files:
         path_str = f["path"]
@@ -1090,6 +1728,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             repository_references = find_python_repository_references(file_path)
         elif path_str.endswith((".test.ts", ".test.tsx")) and classification == "test":
             repository_references = find_typescript_repository_references(file_path)
+        elif path_str.endswith(".test.mjs") and classification == "test":
+            repository_references = find_javascript_repository_references(file_path)
 
         # 3. Orphan Tests Check
         if classification == "test":
@@ -1101,6 +1741,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 workflow_paths,
                 repository_references,
                 reference_paths,
+                contract_test_paths,
             ):
                 errors.append(
                     f"ERROR: {path_str}: orphaned test file (no matching source file found)"

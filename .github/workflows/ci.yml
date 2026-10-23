@@ -1360,6 +1360,15 @@ jobs:
           sarif_file: "trivy-${{ matrix.image_name }}.sarif"
           category: ${{ matrix.category }}
 
+      - name: Upload Trivy SARIF diagnostic artifact
+        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-image-${{ matrix.image_name }}-sarif
+          path: trivy-${{ matrix.image_name }}.sarif
+          retention-days: 14
+          if-no-files-found: error
+
 
   # MOD-W15-03 (audit 2026-03-23 Wave 15): Helm lint + kubeconform validation.
   # Catches broken Helm templates and K8s manifest schema violations before deploy.

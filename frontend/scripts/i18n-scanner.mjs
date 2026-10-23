@@ -105,6 +105,7 @@ const DEFAULT_BACKEND_DYNAMIC_REGISTRY = {
     "schedule.lesson.type.lab",
     "schedule.lesson.type.seminar",
     "schedule.lesson.type.consultation",
+    "schedule.lesson.type.project",
   ],
 }
 

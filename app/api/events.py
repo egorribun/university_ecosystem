@@ -1,3 +1,5 @@
+import hashlib
+import json
 import uuid
 from datetime import UTC, date, datetime
 from typing import Annotated, Any, Literal
@@ -776,9 +778,14 @@ async def semantic_search(
     # Use ETag based on events list version
     cache = get_cache()
     version = await _get_events_list_version(cache)
-    etag_value = (
-        f"semantic_events:{version}:{query}:{limit}:{min_score}:{normalized_locale}"
+    etag_material = json.dumps(
+        [version, query, limit, min_score, normalized_locale],
+        ensure_ascii=True,
+        separators=(",", ":"),
+        allow_nan=False,
     )
+    etag_digest = hashlib.sha256(etag_material.encode("ascii")).hexdigest()
+    etag_value = f"semantic_events:{etag_digest}"
     if etag_matches(etag_value, if_none_match):
         not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
         not_modified.headers["ETag"] = format_etag(etag_value)

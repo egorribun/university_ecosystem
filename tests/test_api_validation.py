@@ -435,7 +435,7 @@ def test_translate_without_identifier_preserves_required_key_error() -> None:
 
     with pytest.raises(
         TypeError,
-        match=r"missing 1 required positional argument: 'key'",
+        match=r"A translation key is required",
     ):
         translate()
 

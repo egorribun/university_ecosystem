@@ -27,7 +27,8 @@
     "scripts/": "@egorribun",
     "tests/": "@egorribun",
     ".github/": "@egorribun",
-    "alembic/": "@egorribun"
+    "alembic/": "@egorribun",
+    "tools/npm-cli-shim/test/": "@egorribun"
   },
   "tier0_rules": [
     "**/auth/**",

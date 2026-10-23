@@ -314,3 +314,67 @@ async def test_successfully_committed_terminal_dlq_releases_successor(
     assert dispatched == [head.id, successor.id]
     final_rows = await _stored_events(session_factory, successor.id)
     assert final_rows[successor.id].processed_at is not None
+
+
+async def test_singleton_membership_retries_choose_oldest_created_at_before_aggregate_id(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """FIFO retry ordering wins over aggregate-ID order for singleton polls."""
+    from app.core.events import ChatParticipantRemoved
+
+    session_factory = _postgres_session_factory()
+    base_time = datetime(2035, 1, 1, tzinfo=UTC)
+    oldest_id = uuid.UUID("ffffffff-ffff-4fff-8fff-fffffffffff1")
+    oldest_aggregate_id = uuid.UUID("ffffffff-ffff-4fff-8fff-fffffffffff2")
+    newer_id = uuid.UUID("00000000-0000-4000-8000-000000000001")
+    newer_aggregate_id = uuid.UUID("00000000-0000-4000-8000-000000000002")
+
+    oldest = StoredEvent(
+        id=oldest_id,
+        event_type=ChatParticipantRemoved.EVENT_TYPE,
+        aggregate_type="Chat",
+        aggregate_id=str(oldest_aggregate_id),
+        aggregate_id_uuid=None,
+        sequence_number=None,
+        payload={"chat_id": str(uuid.uuid4()), "user_id": str(uuid.uuid4())},
+        metadata_={},
+        status="pending",
+        error_count=1,
+        created_at=base_time,
+    )
+    newer = StoredEvent(
+        id=newer_id,
+        event_type=ChatParticipantRemoved.EVENT_TYPE,
+        aggregate_type="Chat",
+        aggregate_id=str(newer_aggregate_id),
+        aggregate_id_uuid=None,
+        sequence_number=None,
+        payload={"chat_id": str(uuid.uuid4()), "user_id": str(uuid.uuid4())},
+        metadata_={},
+        status="pending",
+        error_count=1,
+        created_at=base_time + timedelta(seconds=1),
+    )
+    db_session.add_all([oldest, newer])
+    await db_session.commit()
+
+    dispatches: list[uuid.UUID] = []
+
+    async def record(event: StoredEvent) -> None:
+        dispatches.append(event.id)
+
+    monkeypatch.setattr(outbox_module, "async_session", session_factory)
+    worker = OutboxWorker(batch_size=1)
+    monkeypatch.setattr(worker, "_dispatch_event", record)
+
+    assert await asyncio.wait_for(worker.process_batch(), timeout=5) == 1
+    assert dispatches == [oldest_id]
+    rows = await _stored_events(session_factory, oldest_id, newer_id)
+    assert rows[oldest_id].processed_at is not None
+    assert rows[newer_id].processed_at is None
+
+    assert await asyncio.wait_for(worker.process_batch(), timeout=5) == 1
+    assert dispatches == [oldest_id, newer_id]
+    rows = await _stored_events(session_factory, oldest_id, newer_id)
+    assert rows[newer_id].processed_at is not None

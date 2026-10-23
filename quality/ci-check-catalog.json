@@ -1284,7 +1284,14 @@
           "needs": [
             "pre-commit-check"
           ],
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "trivy-image-${{ matrix.image_name }}-sarif",
+              "path_pattern": "trivy-${{ matrix.image_name }}.sarif",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
           "retry_policy": {
             "mode": "none",
             "first_failure_preserved": true,

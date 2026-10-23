@@ -430,10 +430,10 @@ def prepare_runtime_nats_inspect_request(
     env_format = (
         '{{if or (eq (index .Config.Labels "com.docker.compose.service") "backend") '
         '(eq (index .Config.Labels "com.docker.compose.service") "outbox-worker")}}'
-        "{{ $first := true }}{{range .Config.Env}}"
+        "{{ $first := true }}[{{range .Config.Env}}"
         '{{ $key := index (split . "_") 0 }}{{if eq $key "NATS"}}'
         "{{if not $first}},{{end}}{{json .}}{{ $first = false }}"
-        "{{end}}{{end}}{{else}}[]{{end}}"
+        "{{end}}{{end}}]{{else}}[]{{end}}"
     )
     format_string = (
         '{"Id":{{json .Id}},"Labels":{{json .Config.Labels}},"Env":'
