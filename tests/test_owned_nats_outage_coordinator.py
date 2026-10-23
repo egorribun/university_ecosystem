@@ -14,6 +14,7 @@ from scripts.owned_nats_coordinator import (
     CorrelationRows,
     LoginEvidence,
     MessagePostEvidence,
+    OutageCheckpoint,
     OutageOutcome,
     OutageResult,
     OutageStage,
@@ -75,6 +76,7 @@ def test_valid_path_binds_exact_event_and_restores_before_drain() -> None:
 
     assert result.outcome is OutageOutcome.ACCEPTED
     assert result.stage is OutageStage.COMPLETE
+    assert result.checkpoint is None
     assert ports.owner.repository.startswith("/")
     assert ports.owner.worktree.startswith(
         "/fixtures/system-temp/ue-live-acceptance/run-"
@@ -598,6 +600,17 @@ def test_coordinator_requires_exact_raw_broker_receipt(case: str) -> None:
         ports.broker = replace(ports.broker, envelope={"type": "new_message"})
     result = assert_failed(ports, sends=1, restores=1)
     assert result.stage is OutageStage.BROKER
+    assert result.checkpoint is OutageCheckpoint.BROKER_RECEIPT
+
+
+def test_invalid_broker_probe_has_distinct_finite_checkpoint() -> None:
+    ports = FakePorts()
+    ports.broker = BrokerErrorEvidence(status=503, error_code=None)
+
+    result = assert_failed(ports, sends=1, restores=1)
+
+    assert result.stage is OutageStage.BROKER
+    assert result.checkpoint is OutageCheckpoint.BROKER_PROBE
 
 
 @pytest.mark.parametrize(

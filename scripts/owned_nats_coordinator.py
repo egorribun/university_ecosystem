@@ -201,6 +201,8 @@ class OutageCheckpoint(StrEnum):
     CREATE_DM_ONCE = "create_dm_once"
     READ_DM = "read_dm"
     PENDING_COUNT = "pending_count"
+    BROKER_PROBE = "broker_probe"
+    BROKER_RECEIPT = "broker_receipt"
     COORDINATOR_EXCEPTION = "coordinator_exception"
 
 
@@ -810,6 +812,7 @@ class _Coordinator:
         self.stage = OutageStage.BROKER
         receipt = self.primary.child(45)
         while True:
+            self.checkpoint = OutageCheckpoint.BROKER_PROBE
             evidence = _call(
                 receipt,
                 self.ports.broker_last_message,
@@ -818,6 +821,7 @@ class _Coordinator:
                 f"chat.{context.chat_id}",
             )
             if isinstance(evidence, BrokerMessageEvidence):
+                self.checkpoint = OutageCheckpoint.BROKER_RECEIPT
                 _require(
                     validate_broker_receipt(
                         message,
@@ -827,6 +831,7 @@ class _Coordinator:
                     )
                     is BrokerVerdict.VALID
                 )
+                self.checkpoint = None
                 return
             _require(
                 isinstance(evidence, BrokerErrorEvidence)
@@ -875,6 +880,7 @@ class _Coordinator:
                     self.stage = previous_stage
             _live(self.primary)
             self._delivery(context, message, event_id, retry_count)
+            self.checkpoint = None
             self.stage = OutageStage.FINAL_REVALIDATION
             self._complete_inventory(context, self.primary)
             accepted = True

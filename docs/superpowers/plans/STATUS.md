@@ -1,6 +1,6 @@
 # Статус выпуска MVP v1.0.0
 
-Обновлено: 2026-10-22 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+Обновлено: 2026-10-23 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
 ## Приоритет и подтверждённый прогресс
 
@@ -2027,3 +2027,43 @@ The accepted ledger remains **234/512**. This checkpoint does not close another
 audit finding or claim globally green CI, visual acceptance, a merge or a release.
 The repaired contracts and exact policy additions require source-bound validation;
 further audit implementation is outside this checkpoint.
+
+## Безопасная локальная контрольная точка (2026-10-23)
+
+По поручению владельца работа приостановлена после проверки пакета; публикация и новый CI
+не запускались. Последний опубликованный source PR #1343 — `0d416849d1e86c62f0484526ceee0bbef95ea10f`.
+Принятая граница остаётся **234/512**; перечисленные ниже изменения не добавляют закрытий.
+
+- AUD-299: суффикс cooldown вынесен в EN/RU locale resources. Root повторил 42 frontend
+  теста (ForgotPassword и translation parity), все PASS на locked Vitest 5.0.5.
+- Полный workflow-модуль подтверждён обычным pytest: 27 PASS, а не изолированным AST.
+  Он добавлен в consumer selection. Все прежние selectors сохранены; добавлены также
+  два HTTP healthz regression cases и NATS checkpoint cases.
+- Contract сохраняет timeout 10 минут и оба blocking набора. Consumer и 270 policy tests
+  запускаются параллельно с раздельными temp/DB/log/JUnit paths, ожиданием обоих статусов
+  и ограниченной очисткой их process groups. Root повторил реальный Linux Bash harness:
+  обе успешные команды, каждый одиночный отказ, два отказа и TERM cancellation PASS;
+  посторонний sentinel сохранился. Реальный hosted wall time ещё не измерен.
+- Полный native population run: 1434 PASS, 26 существующих Windows SKIP, один deselected
+  и четыре setup ERROR в Makefile contracts, явно требующих POSIX. Отдельно 270 policy
+  PASS. Это не зелёный полный consumer run и не замена Linux CI. Source pins стабильны,
+  пик RAM 38,9%, свободно минимум 19,44 GiB; supervision ceiling не достигнут.
+- AUD-263/266: добавлены реальные GET /healthz проверки отказа Redis под работающим L1
+  и короткого error TTL с восстановлением и ограничением success TTL. Контрфактические
+  дефекты дали RED; полный health endpoint module — 22 PASS. AUD-259 и AUD-284 также
+  перепроверены в точном описанном в аудите объёме; приёмка нового source ещё требуется.
+- NATS: добавлены только конечные checkpoint labels broker_probe/broker_receipt и
+  отказ CLI принимать ACCEPTED result с ненулевым checkpoint. Финальные целевые NATS
+  проверки — 217 PASS, независимая выборка — 29 PASS. Содержимое broker envelope
+  не выводится. Причина исходного hosted outage всё ещё не установлена; actual outage
+  acceptance остаётся открытой.
+- AGENTS.md сокращён до общих требований проекта; хронология разрешений и инструкции
+  конкретному агентскому инструменту заменены ссылками на действующие ADR и contracts.
+  Baseline319, approved298, Gitleaks25, required78, CodeQL, hooks и finite131 сохранены.
+- Ошибочно созданный каталог временных тестов .codex вынесен из checkout в приватный
+  карантин без удаления evidence. Стенд не запускался; Docker-контейнеров не оставлено.
+
+При возобновлении: сверить локальный checkpoint и новые изменения владельца; проверить
+обычные hooks, final diff и cleanup, опубликовать через существующий PR только по новой
+команде продолжения. Затем проверить все страницы новых CI jobs, фактический budget
+Contract и broker checkpoint в Owned Live; не засчитывать новые AUD IDs заранее.

@@ -9888,6 +9888,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     and type(result.checkpoint) is not OutageCheckpoint
                 )
                 or (
+                    result.outcome is OutageOutcome.ACCEPTED
+                    and result.checkpoint is not None
+                )
+                or (
                     result.runtime_diagnostic is not None
                     and (
                         type(result.runtime_diagnostic) is not RuntimeObservationPhase

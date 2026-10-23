@@ -950,16 +950,21 @@ def test_pact_workflow_replays_every_cross_process_boundary() -> None:
     # cross-process artifact job publish an unverified/orphan Pact file.
     assert "test_file_processor_contract.py" not in consumer_text
     assert "test_files_process_contract.py" not in consumer_text
-    consumer_only_ci = CI_WORKFLOW_PATH.read_text(encoding="utf-8")
-    assert "uv run pytest tests/contracts/" in consumer_only_ci
-    assert '-k "not integration"' in consumer_only_ci
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    consumer_contract_run = next(
+        str(step.get("run", ""))
+        for step in ci["jobs"]["contract-tests"]["steps"]
+        if step.get("name") == "Run contract tests (consumer-side)"
+    )
+    assert "uv run --frozen --no-sync pytest tests/contracts/" in consumer_contract_run
+    assert '-k "not integration"' in consumer_contract_run
     assert (
         "--ignore=tests/contracts/test_file_processor_contract.py"
-        not in consumer_only_ci
+        not in consumer_contract_run
     )
     assert (
         "--ignore=tests/contracts/test_files_process_contract.py"
-        not in consumer_only_ci
+        not in consumer_contract_run
     )
     assert "test_nats_message_contract.py" in consumer_text
     assert "ws-hub-university-backend.json" in artifact_path

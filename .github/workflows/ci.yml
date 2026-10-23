@@ -1566,10 +1566,84 @@ jobs:
         # Contract coverage includes test_file_processor_contract.py (ProcessResult
         # callback schema) alongside the existing ws-hub NATS contract.
         run: |
-          uv run pytest tests/contracts/ tests/test_live_stand_cleanup_profile_contract.py tests/test_live_nats_transport.py \
+          set -euo pipefail
+          cohort_root="$RUNNER_TEMP/contract-tests-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          consumer_root="$cohort_root/consumer"
+          policy_root="$cohort_root/security-disposition"
+          mkdir -p "$consumer_root/tmp" "$policy_root/tmp"
+
+          consumer_pid=""
+          policy_pid=""
+          terminate_contract_process_groups() {
+            local process_pid
+            local grace_tick
+            local any_alive
+            local cleanup_status=0
+
+            for process_pid in "$@"; do
+              if [[ -n "$process_pid" ]] && kill -0 -- "-$process_pid" 2>/dev/null; then
+                kill -TERM -- "-$process_pid" 2>/dev/null || true
+              fi
+            done
+
+            # Allow both owned process groups one shared 2s grace period, then
+            # escalate only groups started by this step.
+            for ((grace_tick = 0; grace_tick < 20; grace_tick++)); do
+              any_alive=0
+              for process_pid in "$@"; do
+                if [[ -n "$process_pid" ]] && kill -0 -- "-$process_pid" 2>/dev/null; then
+                  any_alive=1
+                fi
+              done
+              if (( any_alive == 0 )); then
+                break
+              fi
+              sleep 0.1
+            done
+
+            for process_pid in "$@"; do
+              if [[ -n "$process_pid" ]] && kill -0 -- "-$process_pid" 2>/dev/null; then
+                kill -KILL -- "-$process_pid" 2>/dev/null || true
+              fi
+            done
+            for process_pid in "$@"; do
+              if [[ -n "$process_pid" ]]; then
+                wait "$process_pid" 2>/dev/null || true
+              fi
+            done
+            for process_pid in "$@"; do
+              if [[ -n "$process_pid" ]] && kill -0 -- "-$process_pid" 2>/dev/null; then
+                echo "::error::Contract test process group $process_pid survived SIGKILL."
+                cleanup_status=1
+              fi
+            done
+            return "$cleanup_status"
+          }
+          cleanup_contract_processes() {
+            terminate_contract_process_groups "$consumer_pid" "$policy_pid" || true
+          }
+          trap cleanup_contract_processes EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          trap 'exit 129' HUP
+
+          # Keep the full consumer and exact-disposition populations in this
+          # required job, but overlap their independent pytest processes. Each
+          # process gets its own basetemp, temp/database root, log, and JUnit file.
+          # The positional expansions in each single-quoted -c script belong to
+          # the child Bash, so suppress shellcheck's literal-single-quote warning.
+          # shellcheck disable=SC2016
+          setsid env \
+            TMPDIR="$consumer_root/tmp" TMP="$consumer_root/tmp" TEMP="$consumer_root/tmp" \
+            PACT_DO_NOT_TRACK=true \
+            bash -c '
+              set -euo pipefail
+              uv run --frozen --no-sync pytest tests/contracts/ tests/test_live_stand_cleanup_profile_contract.py tests/test_live_nats_transport.py \
             tests/test_owned_nats_outage_cli.py \
+            tests/test_owned_nats_outage_cli.py::test_main_renders_broker_receipt_checkpoint_without_private_evidence \
             tests/test_owned_nats_outage_coordinator.py::test_public_result_and_logs_contain_only_closed_labels \
             tests/test_owned_nats_outage_coordinator.py::test_runtime_checkpoint_distinguishes_callback_and_inventory_rejection \
+            tests/test_owned_nats_outage_coordinator.py::test_invalid_broker_probe_has_distinct_finite_checkpoint \
             tests/test_owned_nats_outage_coordinator.py::test_broker_receipt_cannot_hide_final_owner_or_inventory_drift \
             tests/test_owned_nats_outage_coordinator.py::test_coordinator_requires_exact_raw_broker_receipt \
             tests/test_owned_nats_outage_coordinator.py::test_valid_path_binds_exact_event_and_restores_before_drain \
@@ -1645,9 +1719,12 @@ jobs:
             tests/test_management_scripts.py::test_mfa_reset_parser_keeps_email_and_mutual_exclusion \
             tests/test_management_scripts.py::test_load_user_by_id \
             tests/test_security_hardening_workflow_contract.py::test_ci_scanner_bootstraps_are_version_pinned_and_checksum_verified \
+            tests/test_full_backend_reusable_contract.py \
             tests/test_live_acceptance_workflow.py::test_live_stand_nats_outage_dispatches_once_and_redacts_failures \
             tests/test_ci_check_catalog.py tests/test_dependency_resolution_policy.py \
             tests/test_cache_settings_closure.py tests/test_check_no_python2_except.py \
+            tests/test_health_endpoint.py::test_healthcheck_tiered_cache_reports_shared_layer_failure \
+            tests/test_health_endpoint.py::test_healthcheck_storage_probe_recovers_errors_and_caps_success_cache \
             tests/test_geolocation.py::test_geolocation_service_init_success \
             tests/test_aud469_partition_scheduler_resilience.py \
             tests/test_chat_query_projection_regressions.py::test_message_history_projects_page_senders_in_one_public_profile_query \
@@ -1680,15 +1757,75 @@ jobs:
             tests/test_live_stand.py::test_live_caddy_probe_brackets_one_union_read_within_the_shared_deadline -v \
             --tb=short --durations=20 \
             -p no:cacheprovider \
-            -k "not integration"
-        env:
-          PACT_DO_NOT_TRACK: "true"
+            -k "not integration" \
+            --basetemp="$1" \
+            --junitxml="$2" 2>&1 | tee "$3"
+            ' _ "$consumer_root/basetemp" "$consumer_root/junit.xml" "$consumer_root/pytest.log" &
+          consumer_pid=$!
+
+          # shellcheck disable=SC2016
+          setsid env \
+            TMPDIR="$policy_root/tmp" TMP="$policy_root/tmp" TEMP="$policy_root/tmp" \
+            bash -c '
+              set -euo pipefail
+              exec uv run --frozen --no-sync pytest tests/test_verify_secrets_baseline.py -v \
+                --tb=short --durations=20 -p no:cacheprovider \
+                --basetemp="$1" --junitxml="$2"
+            ' _ "$policy_root/basetemp" "$policy_root/junit.xml" \
+            > "$policy_root/pytest.log" 2>&1 &
+          policy_pid=$!
+
+          consumer_status=0
+          if wait "$consumer_pid"; then
+            consumer_status=0
+          else
+            consumer_status=$?
+          fi
+          lingering_process_groups=()
+          if [[ -n "$consumer_pid" ]] && kill -0 -- "-$consumer_pid" 2>/dev/null; then
+            echo "::error::Consumer pytest left a child process after its leader exited."
+            consumer_status=1
+            lingering_process_groups+=("$consumer_pid")
+          fi
+
+          policy_status=0
+          if wait "$policy_pid"; then
+            policy_status=0
+          else
+            policy_status=$?
+          fi
+          if [[ -n "$policy_pid" ]] && kill -0 -- "-$policy_pid" 2>/dev/null; then
+            echo "::error::Exact-disposition pytest left a child process after its leader exited."
+            policy_status=1
+            lingering_process_groups+=("$policy_pid")
+          fi
+          if (( ${#lingering_process_groups[@]} > 0 )); then
+            terminate_contract_process_groups "${lingering_process_groups[@]}" || true
+          fi
+          consumer_pid=""
+          policy_pid=""
+
+          printf '%s\n' "$policy_status" > "$policy_root/status"
+          printf 'Consumer pytest exit status: %s\n' "$consumer_status"
+          printf 'Exact disposition pytest exit status: %s\n' "$policy_status"
+          if (( consumer_status != 0 || policy_status != 0 )); then
+            exit 1
+          fi
 
       - name: Verify exact security disposition contracts
         if: ${{ !cancelled() }}
         run: |
-          uv run --frozen --no-sync pytest tests/test_verify_secrets_baseline.py -v \
-            --tb=short --durations=20 -p no:cacheprovider
+          policy_root="$RUNNER_TEMP/contract-tests-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/security-disposition"
+          if [[ ! -f "$policy_root/status" || ! -f "$policy_root/pytest.log" ]]; then
+            echo "::error::The parallel exact-disposition pytest result is missing."
+            exit 1
+          fi
+          cat "$policy_root/pytest.log"
+          policy_status="$(cat "$policy_root/status")"
+          if [[ "$policy_status" != "0" ]]; then
+            echo "::error::Exact-disposition pytest exited with status $policy_status."
+            exit 1
+          fi
 
   # Compare frontend MSW mocks with the authoritative OpenAPI contract.
   # This hermetic drift check remains a required PR/main-push gate.

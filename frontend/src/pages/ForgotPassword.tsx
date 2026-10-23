@@ -166,7 +166,9 @@ export default function ForgotPassword() {
                       className="w-full text-(--text-secondary) hover:text-text-primary"
                     >
                       {t("auth:forgot.enterAnother")}
-                      {cooldown > 0 ? ` (${cooldown}s)` : ""}
+                      {cooldown > 0
+                        ? ` ${t("auth:forgot.cooldownSuffix", { seconds: cooldown })}`
+                        : ""}
                     </Button>
                   </div>
                 </m.div>
