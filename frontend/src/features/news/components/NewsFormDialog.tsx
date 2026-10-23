@@ -106,7 +106,8 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
       const fallback = t("news:notifications.savedError") ?? "Failed to save the news"
 
       if (isAxiosError(error)) {
-        const data = error.response?.data
+        const response = error.response
+        const data = response?.data
         if (typeof data === "string" && data.trim()) return data
         if (data && typeof data === "object") {
           const detail = (data as { detail?: unknown }).detail
@@ -114,6 +115,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
           const message = (data as { message?: unknown }).message
           if (typeof message === "string" && message.trim()) return message
         }
+        if (response) return fallback
       }
 
       if (error instanceof Error && error.message?.trim()) {
@@ -176,7 +178,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
               label={t("news:form.title") ?? ""}
               htmlFor="news-title"
               required
-              error={errors.title?.message}
+              error={errors.title?.message ? t(errors.title.message) : undefined}
             >
               <input
                 id="news-title"
@@ -192,7 +194,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
               label={t("news:form.content") ?? ""}
               htmlFor="news-content"
               required
-              error={errors.content?.message}
+              error={errors.content?.message ? t(errors.content.message) : undefined}
             >
               <textarea
                 id="news-content"
@@ -209,7 +211,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
             <Field
               label={t("news:form.title_en") ?? ""}
               htmlFor="news-title-en"
-              error={errors.title_en?.message}
+              error={errors.title_en?.message ? t(errors.title_en.message) : undefined}
             >
               <input
                 id="news-title-en"
@@ -224,7 +226,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
             <Field
               label={t("news:form.content_en") ?? ""}
               htmlFor="news-content-en"
-              error={errors.content_en?.message}
+              error={errors.content_en?.message ? t(errors.content_en.message) : undefined}
             >
               <textarea
                 id="news-content-en"
@@ -293,7 +295,9 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
                   </div>
                 ) : null}
               </div>
-              {errors.image?.message ? <p className={errorClass}>{errors.image.message}</p> : null}
+              {errors.image?.message ? (
+                <p className={errorClass}>{t(errors.image.message)}</p>
+              ) : null}
             </div>
           </div>
         </form>

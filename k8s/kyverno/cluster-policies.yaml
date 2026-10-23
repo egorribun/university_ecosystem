@@ -225,12 +225,18 @@ spec:
         object.spec.containers + object.spec.?initContainers.orValue([]) +
         object.spec.?ephemeralContainers.orValue([])
   validations:
+    # Keep the first-party boundary at the repository path and the finite image
+    # names published by build-release-images.yml. Other publishers require an
+    # administrator-reviewed policy change; workload data cannot add trust.
     - expression: >-
         variables.allContainers.all(container,
-          container.image.startsWith('registry.example.com/') ||
-          container.image.startsWith('ghcr.io/') ||
+          container.image.matches('^ghcr[.]io/egorribun/university_ecosystem/(backend|frontend|gateway|ws-hub|file-processor)(:[^/@]+)?(@sha256:[0-9a-f]{64})?$') ||
+          container.image == 'ghcr.io/open-feature/flagd:v0.17.0@sha256:c9f21380dfe51d3ad662a116bc350c7692dead7a8d1e640aa0f6b40cd3d966df' ||
+          container.image == 'docker.io/redis@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499' ||
+          container.image == 'docker.io/oliver006/redis_exporter@sha256:6ca518a72f30f7f576ef92963de1b91d3c3f5fd3aeac949f878bfda183587820' ||
+          container.image == 'docker.io/nats@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4' ||
           container.image.matches('^docker[.]io/bitnami/(redis|redis-exporter|nats)@sha256:[0-9a-f]{64}$'))
-      message: Images must come from an approved registry or an explicitly pinned Bitnami dependency
+      message: Images must match an approved publisher/image identity or a pinned Bitnami dependency
 
 ---
 apiVersion: policies.kyverno.io/v1

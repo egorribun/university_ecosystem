@@ -708,3 +708,26 @@ describe("Register behaviour details", () => {
     }
   })
 })
+
+describe("registration validation locale regression", () => {
+  it("renders field validation in the active Russian language provider", async () => {
+    const selectedLanguage = window.__UE_SELECTED_LANG__
+    window.__UE_SELECTED_LANG__ = "ru"
+    try {
+      const user = userEvent.setup()
+      await renderRegister()
+      const name = screen.getByLabelText(matchText(tAuth("fields.name")))
+      await user.type(name, "A")
+      await user.tab()
+      await waitFor(() => expect(name).toHaveAttribute("aria-invalid", "true"))
+      expect(document.querySelector("#register-name-error")?.textContent).toBe(
+        "Имя должно содержать не менее 2 символов"
+      )
+    } finally {
+      cleanup()
+      await i18n.changeLanguage("en")
+      if (selectedLanguage === undefined) delete window.__UE_SELECTED_LANG__
+      else window.__UE_SELECTED_LANG__ = selectedLanguage
+    }
+  })
+})

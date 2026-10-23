@@ -22,6 +22,7 @@ from scripts import owned_nats_process as process
 from scripts.owned_nats_coordinator import (
     BrokerErrorEvidence,
     BrokerMessageEvidence,
+    BrokerProbePhase,
     CommandEvidence,
     OwnerEvidence,
     RuntimeEvidence,
@@ -495,9 +496,17 @@ def decode_broker_probe_result(
     deadline: Deadline,
 ) -> BrokerMessageEvidence | BrokerErrorEvidence:
     """Decode only a full successful local response with the remote-close marker."""
-    invalid = BrokerErrorEvidence(None, None)
+    precheck_invalid = BrokerErrorEvidence(
+        None, None, failure_phase=BrokerProbePhase.PRECHECK
+    )
+    execution_invalid = BrokerErrorEvidence(
+        None, None, failure_phase=BrokerProbePhase.PRIVATE_EXEC
+    )
+    decode_invalid = BrokerErrorEvidence(
+        None, None, failure_phase=BrokerProbePhase.DECODE
+    )
     if not _canonical_subject(expected_subject):
-        return invalid
+        return precheck_invalid
     supplied = _probe_result(
         result,
         deadline=deadline,
@@ -505,15 +514,17 @@ def decode_broker_probe_result(
         stderr_max=_PROBE_STDERR_MAX,
     )
     if supplied is None:
-        return invalid
+        return execution_invalid
     raw, _private_stderr = supplied
     if not raw.endswith(b"\n") or raw.count(b"\n") != 1:
-        return invalid
+        return decode_invalid
     value = _load_strict_json(raw[:-1], limit=_PROBE_STDOUT_MAX, max_depth=32)
     if type(value) is not dict:
-        return invalid
+        return decode_invalid
     kind = value.get("kind")
     if kind == "missing":
+        if value.get("closed") is not True:
+            return execution_invalid
         if (
             set(value) == {"kind", "closed", "status", "error_code"}
             and value.get("closed") is True
@@ -524,9 +535,13 @@ def decode_broker_probe_result(
             and _live(deadline)
         ):
             return BrokerErrorEvidence(404, 10037)
-        return invalid
+        return decode_invalid
     if kind == "invalid":
-        return invalid
+        if set(value) == {"kind", "closed"} and type(value.get("closed")) is bool:
+            return execution_invalid
+        return decode_invalid
+    if kind == "message" and value.get("closed") is not True:
+        return execution_invalid
     if (
         kind != "message"
         or set(value) != {"kind", "closed", "subject", "sequence", "envelope"}
@@ -537,7 +552,7 @@ def decode_broker_probe_result(
         or type(value.get("envelope")) is not dict
         or not _live(deadline)
     ):
-        return invalid
+        return decode_invalid
     return _PrivateBrokerMessageEvidence(
         subject=expected_subject,
         sequence=value["sequence"],
@@ -1157,7 +1172,11 @@ class OwnedNatsBrokerControlPort:
         *,
         deadline: Deadline,
     ) -> BrokerMessageEvidence | BrokerErrorEvidence:
-        invalid = BrokerErrorEvidence(None, None)
+        phase = BrokerProbePhase.PRECHECK
+
+        def invalid() -> BrokerErrorEvidence:
+            return BrokerErrorEvidence(None, None, failure_phase=phase)
+
         if (
             not _canonical_subject(subject)
             or type(backend) is not ContainerSnapshot
@@ -1165,7 +1184,7 @@ class OwnedNatsBrokerControlPort:
             or owner != self._owner
             or not self._active(deadline)
         ):
-            return invalid
+            return invalid()
         try:
             original_backend = self._by_service.get("backend")
             original_worker = self._by_service.get("outbox-worker")
@@ -1177,7 +1196,8 @@ class OwnedNatsBrokerControlPort:
                 or backend.identity != original_backend.identity
                 or backend.service != "backend"
             ):
-                return invalid
+                return invalid()
+            phase = BrokerProbePhase.RUNTIME
             before = self._runtime_snapshot(owner, owner.daemon_fingerprint, deadline)
             before_rows = {row.service: row for row in before.containers}
             backend_now = before_rows.get("backend")
@@ -1195,20 +1215,22 @@ class OwnedNatsBrokerControlPort:
                 or nats_now.status != "running"
                 or nats_now.health != "healthy"
             ):
-                return invalid
+                return invalid()
+            phase = BrokerProbePhase.RENDER
             settings = self._compose_nats_settings(owner, deadline)
             if settings is None:
-                return invalid
+                return invalid()
             containers = {
                 original_backend.container_id: "backend",
                 original_worker.container_id: "outbox-worker",
                 original_nats.container_id: "nats",
             }
+            phase = BrokerProbePhase.RUNTIME
             config_rows = self._runtime_config_inspection(
                 containers, settings, deadline
             )
             if config_rows is None:
-                return invalid
+                return invalid()
             post_config_backend = config_rows.get(original_backend.container_id)
             post_config_worker = config_rows.get(original_worker.container_id)
             post_config_nats = config_rows.get(original_nats.container_id)
@@ -1221,26 +1243,31 @@ class OwnedNatsBrokerControlPort:
                 or post_config_nats.status != "running"
                 or post_config_nats.health != "healthy"
             ):
-                return invalid
+                return invalid()
+            phase = BrokerProbePhase.PRIVATE_EXEC
             request = self._probe_request(
                 original_backend.container_id, subject, deadline=deadline
             )
             if request is None or not _live(deadline):
-                return invalid
+                return invalid()
             result = process.run_private_process(request, deadline=deadline)
             evidence = decode_broker_probe_result(
                 result, expected_subject=subject, deadline=deadline
             )
             if isinstance(evidence, BrokerErrorEvidence) and evidence.status is None:
-                return invalid
+                failure_phase = evidence.failure_phase
+                if type(failure_phase) is BrokerProbePhase:
+                    phase = failure_phase
+                return invalid()
             # Recheck the exact backend/worker/NATS IDs, NATS settings and restored
             # NATS health after the remote probe. A local CLI reaper alone is not
             # remote-process completion evidence.
+            phase = BrokerProbePhase.POSTCHECK
             after_probe = self._runtime_config_inspection(
                 containers, settings, deadline
             )
             if after_probe is None:
-                return invalid
+                return invalid()
             after_backend = after_probe.get(original_backend.container_id)
             after_worker = after_probe.get(original_worker.container_id)
             after_nats = after_probe.get(original_nats.container_id)
@@ -1255,10 +1282,10 @@ class OwnedNatsBrokerControlPort:
                 or after_nats.status != "running"
                 or after_nats.health != "healthy"
             ):
-                return invalid
+                return invalid()
             return evidence
         except Exception:
-            return invalid
+            return invalid()
 
     def close_clients(self, *, deadline: Deadline) -> None:
         # NATS client state lives only inside each bounded remote probe process.

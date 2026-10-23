@@ -2,6 +2,7 @@ import { createPortal } from "react-dom"
 import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth, ChallengeLockedError } from "@/contexts/AuthContext"
+import useFocusTrap from "@/hooks/useFocusTrap"
 import type { PendingMfaState, SubmitMfaChallengePayload } from "@/types/Auth"
 import { OtpEntry } from "./OtpEntry"
 
@@ -34,6 +35,11 @@ export const StepUpDialog = ({
   const [pending, setPending] = useState<PendingMfaState | null>(null)
   const [verifying, setVerifying] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const dialogRef = useFocusTrap<HTMLDivElement>({
+    active: open,
+    escapeDeactivates: false,
+    returnFocus: true,
+  })
 
   const challenge: ChallengeMethod = pending
     ? (pending.methods.find((candidate) => candidate.method === pending.default_method) ??
@@ -161,9 +167,11 @@ export const StepUpDialog = ({
       />
 
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="step-up-dialog-title"
+        aria-describedby="step-up-dialog-description"
         className="fixed inset-0 z-overlay flex items-center justify-center pointer-events-none"
       >
         <div
@@ -179,7 +187,7 @@ export const StepUpDialog = ({
           </h2>
           <div className="px-6 py-4">
             <div className="flex flex-col gap-6 mt-2">
-              <p className="text-sm text-(--text-secondary)">
+              <p id="step-up-dialog-description" className="text-sm text-(--text-secondary)">
                 {description ?? t("mfa.stepUp.description")}
               </p>
               {challenge ? (

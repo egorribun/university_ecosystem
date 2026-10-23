@@ -16,6 +16,19 @@ export const dynamicTranslationRegistry = {
     "auth:messages.invalidEmail",
     "auth:messages.invalidFormat",
   ],
+  'errors.full_name.message || "auth:validation.nameMinLength"': ["auth:validation.nameMinLength"],
+  "errors.password.message": ["auth:validation.passwordMinLength"],
+  'errors.confirmPassword.message || "auth:validation.confirmPasswordRequired"': [
+    "auth:validation.confirmPasswordRequired",
+    "auth:validation.passwordsMismatch",
+  ],
+  "errors.confirmPassword.message": [
+    "auth:validation.confirmPasswordRequired",
+    "auth:validation.passwordsMismatch",
+  ],
+  'errors.invite_code.message || "auth:validation.inviteCodeRequired"': [
+    "auth:validation.inviteCodeRequired",
+  ],
   'showPassword ? "auth:actions.hideCredential" : "auth:actions.showPassword"': [
     "auth:actions.hideCredential",
     "auth:actions.showPassword",
@@ -32,7 +45,24 @@ export const dynamicTranslationRegistry = {
     "auth:messages.passwordRequired",
     "auth:messages.invalidFormat",
   ],
+  'errors.password.message || "auth:validation.passwordMinLength"': [
+    "auth:validation.passwordMinLength",
+  ],
   "dashboard:scope.${scope}": ["dashboard:scope.today", "dashboard:scope.week"],
+  "errors.title.message": [
+    "news:form.validation.titleRequired",
+    "news:form.validation.titleMaxLength",
+  ],
+  "errors.content.message": [
+    "news:form.validation.contentRequired",
+    "news:form.validation.contentMaxLength",
+  ],
+  "errors.title_en.message": ["news:form.validation.titleEnMaxLength"],
+  "errors.content_en.message": ["news:form.validation.contentEnMaxLength"],
+  "errors.image.message": [
+    "news:form.validation.imageMaxSize",
+    "news:form.validation.imageFormats",
+  ],
   labelKey: [
     "events:categories.conference",
     "events:categories.lecture",
@@ -298,7 +328,11 @@ export const dynamicTranslationRegistry = {
     "dashboard:greeting.evening",
     "dashboard:greeting.night",
   ],
-  "errors.email.message": ["auth:messages.invalidEmail", "auth:messages.invalidFormat"],
+  "errors.email.message": [
+    "auth:messages.invalidEmail",
+    "auth:messages.invalidFormat",
+    "auth:validation.emailInvalid",
+  ],
   "profile:snackbar.${snackbar.key}": [
     "profile:snackbar.spotifyConnected",
     "profile:snackbar.spotifyError",
@@ -309,6 +343,7 @@ export const dynamicTranslationRegistry = {
   "resolveRegistrationEmailErrorKey(errors.email.message)": [
     "auth:messages.invalidEmail",
     "auth:messages.invalidFormat",
+    "auth:validation.emailInvalid",
   ],
   fallbackKey: [
     "settings:security.snackbar.emailMfaStartFailed",

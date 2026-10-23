@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 import json
 import shutil
@@ -1962,7 +1963,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 298
+    assert len(policy["records"]) == 301
     records = [
         record
         for record in policy["records"]
@@ -2159,3 +2160,175 @@ def test_achievement_url_fixture_binds_the_actual_source_and_policy() -> None:
         parsed.password.encode("utf-8"), usedforsecurity=False
     ).digest()
     assert digest == bytes(record["identity"]["hashed_secret_bytes"])
+
+
+_AUTH_VALIDATION_UI_COPY_PATH = "frontend/src/i18n/locales/en/auth.json"
+_AUTH_VALIDATION_UI_COPY_CATEGORY = "auth_validation_ui_copy"
+_AUTH_VALIDATION_UI_COPY_DIGEST_BYTES = (
+    bytes(
+        (
+            62,
+            125,
+            86,
+            169,
+            88,
+            4,
+            255,
+            60,
+            50,
+            43,
+            151,
+            167,
+            231,
+            205,
+            186,
+            37,
+            220,
+            146,
+            9,
+            87,
+        )
+    ),
+    bytes(
+        (
+            81,
+            214,
+            154,
+            230,
+            4,
+            109,
+            42,
+            59,
+            226,
+            69,
+            68,
+            157,
+            91,
+            56,
+            22,
+            93,
+            93,
+            120,
+            222,
+            245,
+        )
+    ),
+    bytes(
+        (
+            214,
+            156,
+            59,
+            26,
+            197,
+            75,
+            231,
+            218,
+            54,
+            102,
+            217,
+            147,
+            123,
+            156,
+            120,
+            231,
+            195,
+            9,
+            214,
+            232,
+        )
+    ),
+)
+
+
+def _auth_validation_candidate_policy() -> dict[str, Any]:
+    root = Path(__file__).resolve().parents[1]
+    return json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def test_auth_validation_ui_copy_accepts_only_three_exact_identities() -> None:
+    policy = _auth_validation_candidate_policy()
+    records = [
+        record
+        for record in policy["records"]
+        if record["category"] == _AUTH_VALIDATION_UI_COPY_CATEGORY
+    ]
+    assert len(records) == 3
+    assert {
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            bytes(record["identity"]["hashed_secret_bytes"]).hex(),
+        )
+        for record in records
+    } == {
+        (_AUTH_VALIDATION_UI_COPY_PATH, "Secret Keyword", digest.hex())
+        for digest in _AUTH_VALIDATION_UI_COPY_DIGEST_BYTES
+    }
+    assert verifier.validate_false_positive_dispositions(
+        policy, today=verifier.date(2026, 10, 23)
+    ) >= {
+        verifier.FindingIdentity(
+            _AUTH_VALIDATION_UI_COPY_PATH, "Secret Keyword", digest.hex(), 1
+        )
+        for digest in _AUTH_VALIDATION_UI_COPY_DIGEST_BYTES
+    }
+
+
+def test_auth_validation_ui_copy_rejects_identity_or_category_transfer() -> None:
+    original = _auth_validation_candidate_policy()
+    invalid_mutations = (
+        lambda record: record["identity"].update(
+            path="frontend/src/i18n/locales/en/auth-copy.json"
+        ),
+        lambda record: record["identity"].update(type="Basic Auth Credentials"),
+        lambda record: record["identity"]["hashed_secret_bytes"].__setitem__(
+            0, (record["identity"]["hashed_secret_bytes"][0] + 1) % 256
+        ),
+        lambda record: record.update(category="source_contract_identifier"),
+        lambda record: record.update(expires_on="2027-01-11"),
+        lambda record: record.update(
+            evidence="English auth validation UI copy; not credential material."
+        ),
+    )
+    for mutate in invalid_mutations:
+        policy = copy.deepcopy(original)
+        record = next(
+            row
+            for row in policy["records"]
+            if row["category"] == _AUTH_VALIDATION_UI_COPY_CATEGORY
+        )
+        mutate(record)
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                policy, today=verifier.date(2026, 10, 23)
+            )
+
+
+def test_auth_validation_ui_copy_expires_at_the_finite_cap() -> None:
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _auth_validation_candidate_policy(), today=verifier.date(2027, 1, 11)
+        )
+
+
+def test_auth_validation_ui_copy_preserves_existing_298_records() -> None:
+    policy = _auth_validation_candidate_policy()
+    records = policy["records"]
+    proposed = [
+        record
+        for record in records
+        if record["category"] == _AUTH_VALIDATION_UI_COPY_CATEGORY
+    ]
+    existing = [
+        record
+        for record in records
+        if record["category"] != _AUTH_VALIDATION_UI_COPY_CATEGORY
+    ]
+    assert len(records) == 301
+    assert len(existing) == 298
+    assert records[:298] == existing
+    assert len(proposed) == 3

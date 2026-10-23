@@ -30,6 +30,7 @@ import client from "@/api/client"
 import { chatDisplayInfo } from "@/components/messenger/chatDisplay"
 import type { User } from "@/types/User"
 import type { Message as UiMessage, Contact } from "@/components/messenger"
+import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
 
 // dayjs.extend(utc) removed in favor of native Intl utility
 
@@ -193,6 +194,7 @@ export const useMessengerController = () => {
   const [profileUser, setProfileUser] = useState<User | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
+  const profileRequestIdRef = useRef(0)
 
   // Dialog State
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -907,6 +909,16 @@ export const useMessengerController = () => {
     return () => sendLeave(selectedChatId)
   }, [selectedChatId, isConnected, sendJoin, sendLeave])
 
+  // A room leave clears the socket hook's active-room ref. When the socket
+  // reconnects, join the room effect above restores live delivery; also refresh
+  // the open history so frames missed while disconnected are recovered.
+  const previousConnectionRef = useRef(isConnected)
+  useEffect(() => {
+    const reconnected = !previousConnectionRef.current && isConnected
+    previousConnectionRef.current = isConnected
+    if (reconnected && selectedChatId) void refetchMessages()
+  }, [selectedChatId, isConnected, refetchMessages])
+
   const handleSendMessage = (text: string, files: File[]): Promise<boolean> => {
     if (!selectedChatId) return Promise.resolve(false)
 
@@ -1036,6 +1048,22 @@ export const useMessengerController = () => {
     },
     [user?.id]
   )
+
+  const profileScopeKey = JSON.stringify([
+    selectedChatId,
+    user?.id ?? null,
+    activeChat ? (getOtherParticipant(activeChat)?.id ?? null) : null,
+  ])
+  const profileScopeRef = useRef(profileScopeKey)
+
+  useIsomorphicLayoutEffect(() => {
+    if (profileScopeRef.current === profileScopeKey) return
+    profileScopeRef.current = profileScopeKey
+    profileRequestIdRef.current += 1
+    setProfileUser(null)
+    setIsProfileLoading(false)
+    setProfileError(null)
+  }, [profileScopeKey])
 
   const handleCreateChat = (participantId: string) => {
     createChatMutation.mutate(participantId)
@@ -1178,16 +1206,40 @@ export const useMessengerController = () => {
     setShowChatMenu(false)
     const other = activeChat && getOtherParticipant(activeChat)
     if (!other) return
+    const requestId = ++profileRequestIdRef.current
+    const requestScopeKey = profileScopeKey
     setIsProfileLoading(true)
     setProfileError(null)
     client
       .get<User>(`/users/${other.id}`)
-      .then((response) => setProfileUser(response.data))
-      .catch(() => setProfileError(t("messenger:profileLoadError")))
-      .finally(() => setIsProfileLoading(false))
+      .then((response) => {
+        if (
+          profileRequestIdRef.current === requestId &&
+          profileScopeRef.current === requestScopeKey
+        ) {
+          setProfileUser(response.data)
+        }
+      })
+      .catch(() => {
+        if (
+          profileRequestIdRef.current === requestId &&
+          profileScopeRef.current === requestScopeKey
+        ) {
+          setProfileError(t("messenger:profileLoadError"))
+        }
+      })
+      .finally(() => {
+        if (
+          profileRequestIdRef.current === requestId &&
+          profileScopeRef.current === requestScopeKey
+        ) {
+          setIsProfileLoading(false)
+        }
+      })
   }
 
   const handleCloseProfile = () => {
+    profileRequestIdRef.current += 1
     setProfileUser(null)
     setIsProfileLoading(false)
     setProfileError(null)

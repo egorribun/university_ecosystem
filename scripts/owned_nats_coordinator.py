@@ -157,10 +157,24 @@ class BrokerMessageEvidence:
     envelope: object
 
 
+class BrokerProbePhase(StrEnum):
+    """Finite broker-probe boundaries; never private process or wire data."""
+
+    PRECHECK = "precheck"
+    RENDER = "render"
+    RUNTIME = "runtime"
+    PRIVATE_EXEC = "private_exec"
+    DECODE = "decode"
+    POSTCHECK = "postcheck"
+
+
 @dataclass(frozen=True)
 class BrokerErrorEvidence:
     status: int | None
     error_code: int | None
+    failure_phase: BrokerProbePhase | None = field(
+        default=None, compare=False, repr=False
+    )
 
 
 type BrokerEvidence = BrokerMessageEvidence | BrokerErrorEvidence
@@ -254,6 +268,9 @@ class OutageResult:
     stage: OutageStage
     checkpoint: OutageCheckpoint | None = field(default=None, compare=False)
     runtime_diagnostic: RuntimeObservationPhase | None = field(
+        default=None, compare=False, repr=False
+    )
+    broker_diagnostic: BrokerProbePhase | None = field(
         default=None, compare=False, repr=False
     )
 
@@ -567,6 +584,7 @@ class _Coordinator:
         self.stage = OutageStage.PREFLIGHT
         self.checkpoint: OutageCheckpoint | None = OutageCheckpoint.ACQUIRE_LOCK
         self.runtime_diagnostic: RuntimeObservationPhase | None = None
+        self.broker_diagnostic: BrokerProbePhase | None = None
 
     def _preflight(self) -> _Context:
         inventory = self.primary.child(45)
@@ -813,6 +831,7 @@ class _Coordinator:
         receipt = self.primary.child(45)
         while True:
             self.checkpoint = OutageCheckpoint.BROKER_PROBE
+            self.broker_diagnostic = None
             evidence = _call(
                 receipt,
                 self.ports.broker_last_message,
@@ -821,6 +840,7 @@ class _Coordinator:
                 f"chat.{context.chat_id}",
             )
             if isinstance(evidence, BrokerMessageEvidence):
+                self.broker_diagnostic = None
                 self.checkpoint = OutageCheckpoint.BROKER_RECEIPT
                 _require(
                     validate_broker_receipt(
@@ -833,11 +853,16 @@ class _Coordinator:
                 )
                 self.checkpoint = None
                 return
+            if isinstance(evidence, BrokerErrorEvidence):
+                phase = evidence.failure_phase
+                if type(phase) is BrokerProbePhase:
+                    self.broker_diagnostic = phase
             _require(
                 isinstance(evidence, BrokerErrorEvidence)
                 and classify_broker_error(evidence.status, evidence.error_code)
                 is BrokerVerdict.MISSING
             )
+            self.broker_diagnostic = None
             self._wait(receipt)
 
     def run(self) -> OutageResult:
@@ -916,6 +941,12 @@ class _Coordinator:
                 self.runtime_diagnostic
                 if self.stage is OutageStage.PREFLIGHT
                 and self.checkpoint is OutageCheckpoint.OBSERVE_RUNTIME
+                else None
+            ),
+            broker_diagnostic=(
+                self.broker_diagnostic
+                if self.stage is OutageStage.BROKER
+                and self.checkpoint is OutageCheckpoint.BROKER_PROBE
                 else None
             ),
         )

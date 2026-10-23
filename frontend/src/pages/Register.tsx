@@ -187,7 +187,7 @@ const Register = () => {
                 />
                 {errors.full_name && (
                   <p id="register-name-error" role="alert" className="text-xs text-error-text">
-                    {errors.full_name.message}
+                    {t(errors.full_name.message || "auth:validation.nameMinLength")}
                   </p>
                 )}
               </div>
@@ -284,7 +284,7 @@ const Register = () => {
                 />
                 {errors.invite_code && (
                   <p id="register-invite-error" role="alert" className="text-xs text-error-text">
-                    {errors.invite_code.message}
+                    {t(errors.invite_code.message || "auth:validation.inviteCodeRequired")}
                   </p>
                 )}
               </div>
@@ -375,7 +375,7 @@ const Register = () => {
               )}
               {errors.password && (
                 <p id="register-password-error" role="alert" className="text-xs text-error-text">
-                  {errors.password.message}
+                  {t(errors.password.message || "auth:validation.passwordMinLength")}
                 </p>
               )}
             </div>
@@ -431,7 +431,7 @@ const Register = () => {
                   role="alert"
                   className="text-xs text-error-text"
                 >
-                  {errors.confirmPassword.message}
+                  {t(errors.confirmPassword.message || "auth:validation.confirmPasswordRequired")}
                 </p>
               )}
             </div>

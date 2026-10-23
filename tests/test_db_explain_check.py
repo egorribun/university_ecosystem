@@ -592,6 +592,39 @@ async def test_optional_gate_never_reports_passed_after_violations(
 
 
 @pytest.mark.asyncio
+async def test_optional_gate_warns_when_no_target_query_is_eligible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Optional mode must not claim a pass when no requested table was checked."""
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://db/perf")
+    monkeypatch.setattr(sys, "argv", ["db_explain_check.py", "--tables", "users"])
+    engine, query_connection, _ = _make_analysis_engine()
+
+    with (
+        patch.object(db_explain_check, "create_async_engine", return_value=engine),
+        patch.object(
+            db_explain_check,
+            "extract_queries_from_logs",
+            return_value=["SELECT * FROM audit_entries WHERE id = 1"],
+        ),
+        patch.object(db_explain_check.logger, "info") as info,
+        patch.object(db_explain_check.logger, "warning") as warning,
+    ):
+        await db_explain_check.main()
+
+    logged = [recorded.args[0] for recorded in info.call_args_list]
+    assert not any("PASSED" in str(message) for message in logged)
+    assert any(
+        "No eligible target queries" in str(recorded.args[0])
+        and "optional mode" in str(recorded.args[0])
+        for recorded in warning.call_args_list
+    )
+    engine.dispose.assert_awaited_once()
+    query_connection.exec_driver_sql.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 @pytest.mark.skipif(
     not os.getenv("RUN_INTEGRATION_TESTS"),
     reason="Set RUN_INTEGRATION_TESTS=1 to run",
@@ -708,3 +741,38 @@ def test_script_entry_point_rejects_missing_arguments(
         runpy.run_path(db_explain_check.__file__, run_name="__main__")
 
     assert exit_info.value.code == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failure", "error"),
+    [
+        ("database-unavailable", ConnectionError("connection refused")),
+        ("explain-error", RuntimeError("EXPLAIN failed")),
+        ("explain-timeout", TimeoutError("statement timeout")),
+    ],
+)
+async def test_optional_main_does_not_report_pass_after_database_or_explain_failure(
+    monkeypatch: pytest.MonkeyPatch, failure: str, error: Exception
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://db/perf")
+    monkeypatch.setattr(sys, "argv", ["db_explain_check.py", "--tables", "users"])
+    engine, _, _ = _make_analysis_engine(
+        explain_error=error if failure != "database-unavailable" else None
+    )
+    if failure == "database-unavailable":
+        engine.connect.return_value.__aenter__.side_effect = error
+
+    with (
+        patch.object(db_explain_check, "create_async_engine", return_value=engine),
+        patch.object(
+            db_explain_check,
+            "extract_queries_from_logs",
+            return_value=["SELECT * FROM users WHERE id = 1"],
+        ),
+        patch.object(db_explain_check.logger, "info") as info,
+    ):
+        await db_explain_check.main()
+
+    logged_messages = [record.args[0] for record in info.call_args_list]
+    assert not any("PASSED" in str(message) for message in logged_messages)

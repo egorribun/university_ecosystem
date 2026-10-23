@@ -420,7 +420,10 @@ async def main():
         queries,
         target_tables,
         args.max_cost,
-        fail_on_analysis_error=args.fail_on_seq_scan,
+        # Preserve analysis failures in the result even for the optional mode,
+        # so that it cannot print PASSED after an incomplete plan check. The CLI
+        # flag controls whether that result changes the process exit status.
+        fail_on_analysis_error=True,
     )
 
     await engine.dispose()
@@ -442,8 +445,16 @@ async def main():
     # claim a pass after them.
     if has_violations:
         logger.warning(
-            "DB Performance Gate reported violations in optional mode; "
+            "DB Performance Gate reported violations or analysis failures "
+            "in optional mode; "
             "pass --fail-on-seq-scan to enforce them."
+        )
+        return
+
+    if checked_count == 0:
+        logger.warning(
+            "DB Performance Gate: No eligible target queries were checked in optional mode; "
+            "no pass was established."
         )
         return
 

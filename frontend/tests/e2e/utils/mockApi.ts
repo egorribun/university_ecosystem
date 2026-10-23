@@ -67,6 +67,8 @@ type MockApiOptions = {
   serviceWorker?: "disabled" | "preserve"
   /** Start without the SSR auth cookie for public login/MFA flows. */
   authenticated?: boolean
+  /** Skip the shared no-op route when a test installs a browser WebSocket route. */
+  mockWebSocket?: boolean
 }
 
 const MOCK_TOTP_SECRET = "JBSW Y3DP EHJK" // pragma: allowlist secret
@@ -453,7 +455,9 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
   // fails DNS resolution for the service host and starts a reconnect loop.
   // Playwright's WebSocket routing applies to every document, including the
   // initial about:blank page, so it also covers direct socket smoke tests.
-  await page.routeWebSocket("**/ws/**", () => {})
+  if (options.mockWebSocket ?? true) {
+    await page.routeWebSocket("**/ws/**", () => {})
+  }
 
   page.on("console", (msg) => {
     const location = msg.location()
@@ -589,6 +593,15 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
 
     if (method === "OPTIONS" && isBackendRequest) {
       await route.fulfill({ status: 204 })
+      return
+    }
+
+    if (normPath === "api/campus/config" && method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ campus_timezone: "Europe/Istanbul" }),
+      })
       return
     }
 

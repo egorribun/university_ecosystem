@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest"
 
 import * as v from "valibot"
 
-import { parseWsMessage, WsServerMessageSchema } from "./wsMessage"
+import { parseWsMessage, WsClientHeartbeatPingSchema, WsServerMessageSchema } from "./wsMessage"
 
 const CHAT_ID = "11111111-1111-1111-1111-111111111111"
 const USER_ID = "22222222-2222-2222-2222-222222222222"
@@ -51,6 +51,49 @@ describe("parseWsMessage — canonical message content boundary", () => {
         })
       )
     ).toBeNull()
+  })
+})
+
+describe("parseWsMessage — application heartbeat frames", () => {
+  const nonce = "a1".repeat(16)
+
+  it("accepts a heartbeat pong only with its protocol nonce", () => {
+    expect(
+      v.safeParse(WsClientHeartbeatPingSchema, { type: "heartbeat_ping", nonce }).success
+    ).toBe(true)
+    expect(parseWsMessage(JSON.stringify({ type: "heartbeat_pong", nonce }))).toStrictEqual({
+      type: "heartbeat_pong",
+      nonce,
+    })
+  })
+
+  it.each([`${nonce}A`, nonce.slice(0, -3), `${nonce.slice(0, -1)}g`, nonce.toUpperCase()])(
+    "rejects a heartbeat pong with invalid nonce %s",
+    (invalidNonce) => {
+      expect(
+        v.safeParse(WsClientHeartbeatPingSchema, {
+          type: "heartbeat_ping",
+          nonce: invalidNonce,
+        }).success
+      ).toBe(false)
+      expect(
+        parseWsMessage(JSON.stringify({ type: "heartbeat_pong", nonce: invalidNonce }))
+      ).toBeNull()
+    }
+  )
+
+  it.each([
+    ["missing", { type: "heartbeat_ping" }],
+    ["null", { type: "heartbeat_ping", nonce: null }],
+    ["number", { type: "heartbeat_ping", nonce: 123 }],
+  ])("requires a string heartbeat nonce (%s)", (_label, frame) => {
+    expect(v.safeParse(WsClientHeartbeatPingSchema, frame).success).toBe(false)
+    expect(parseWsMessage(JSON.stringify({ ...frame, type: "heartbeat_pong" }))).toBeNull()
+  })
+
+  it("keeps generic JSON ping and client-origin heartbeat_ping outside the server catalog", () => {
+    expect(parseWsMessage(JSON.stringify({ type: "ping" }))).toBeNull()
+    expect(parseWsMessage(JSON.stringify({ type: "heartbeat_ping", nonce }))).toBeNull()
   })
 })
 

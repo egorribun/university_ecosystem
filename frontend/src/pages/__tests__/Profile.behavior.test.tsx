@@ -601,6 +601,43 @@ describe("Profile behavior", () => {
     expect(screen.queryByTestId("snackbar")).not.toBeInTheDocument()
   })
 
+  it("does not write contact details when the current identity is signed out", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    mockClipboard(writeText)
+    authState.user = null
+    render(<Profile />)
+
+    fireEvent.click(screen.getByTestId("email-button"))
+
+    expect(writeText).not.toHaveBeenCalled()
+    expect(screen.queryByTestId("snackbar")).not.toBeInTheDocument()
+  })
+
+  it("does not show clipboard rejection feedback after the session changes", async () => {
+    let rejectWrite: ((reason?: unknown) => void) | undefined
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectWrite = reject
+        })
+    )
+    mockClipboard(writeText)
+    const { rerender } = render(<Profile />)
+
+    fireEvent.click(screen.getByTestId("email-button"))
+    expect(writeText).toHaveBeenCalledWith("ada@example.com")
+    expect(rejectWrite).toBeDefined()
+
+    rotateBrowserSession()
+    authState.user = { ...user, id: "user-2", email: "grace@example.com" }
+    rerender(<Profile />)
+    await act(async () => {
+      rejectWrite!(new Error("clipboard denied"))
+    })
+
+    expect(screen.queryByTestId("snackbar")).not.toBeInTheDocument()
+  })
+
   it("enters edit mode and saves the complete profile payload", async () => {
     const updatedUser = { ...user, full_name: "Grace Lovelace" } as User
     apiState.put.mockResolvedValueOnce({ data: updatedUser })

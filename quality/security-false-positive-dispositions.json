@@ -8532,5 +8532,108 @@
       "expires_on": "2027-01-10",
       "approval_status": "approved"
     }
+,
+    {
+      "identity": {
+        "path": "frontend/src/i18n/locales/en/auth.json",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          62,
+          125,
+          86,
+          169,
+          88,
+          4,
+          255,
+          60,
+          50,
+          43,
+          151,
+          167,
+          231,
+          205,
+          186,
+          37,
+          220,
+          146,
+          9,
+          87
+        ]
+      },
+      "category": "auth_validation_ui_copy",
+      "evidence": "English auth validation UI copy; user-visible password validation messages; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/src/i18n/locales/en/auth.json",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          81,
+          214,
+          154,
+          230,
+          4,
+          109,
+          42,
+          59,
+          226,
+          69,
+          68,
+          157,
+          91,
+          56,
+          22,
+          93,
+          93,
+          120,
+          222,
+          245
+        ]
+      },
+      "category": "auth_validation_ui_copy",
+      "evidence": "English auth validation UI copy; user-visible password validation messages; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/src/i18n/locales/en/auth.json",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          214,
+          156,
+          59,
+          26,
+          197,
+          75,
+          231,
+          218,
+          54,
+          102,
+          217,
+          147,
+          123,
+          156,
+          120,
+          231,
+          195,
+          9,
+          214,
+          232
+        ]
+      },
+      "category": "auth_validation_ui_copy",
+      "evidence": "English auth validation UI copy; user-visible password validation messages; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    }
   ]
 }

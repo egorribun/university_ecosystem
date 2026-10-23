@@ -186,6 +186,11 @@ _FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS = {
         "secret-related source identifier or required key-list expression",
         "not credential material",
     ),
+    "auth_validation_ui_copy": (
+        "English auth validation UI copy",
+        "user-visible password validation messages",
+        "not credential material",
+    ),
 }
 _FALSE_POSITIVE_EXACT_IDENTITY_CATEGORIES = frozenset(
     {
@@ -193,6 +198,7 @@ _FALSE_POSITIVE_EXACT_IDENTITY_CATEGORIES = frozenset(
         "source_contract_identifier",
         "public_compose_inspection_test_sentinel",
         "synthetic_achievement_url_test_fixture",
+        "auth_validation_ui_copy",
     }
 )
 _FALSE_POSITIVE_CATEGORIES = (
@@ -801,6 +807,36 @@ _SYNTHETIC_ACHIEVEMENT_URL_TEST_FIXTURE_IDENTITIES = frozenset(
     }
 )
 
+
+_AUTH_VALIDATION_UI_COPY_IDENTITIES = frozenset(
+    {
+        (
+            "frontend/src/i18n/locales/en/auth.json",
+            "Secret Keyword",
+            (
+                *(62, 125, 86, 169, 88, 4, 255, 60, 50, 43),
+                *(151, 167, 231, 205, 186, 37, 220, 146, 9, 87),
+            ),
+        ),
+        (
+            "frontend/src/i18n/locales/en/auth.json",
+            "Secret Keyword",
+            (
+                *(81, 214, 154, 230, 4, 109, 42, 59, 226, 69),
+                *(68, 157, 91, 56, 22, 93, 93, 120, 222, 245),
+            ),
+        ),
+        (
+            "frontend/src/i18n/locales/en/auth.json",
+            "Secret Keyword",
+            (
+                *(214, 156, 59, 26, 197, 75, 231, 218, 54, 102),
+                *(217, 147, 123, 156, 120, 231, 195, 9, 214, 232),
+            ),
+        ),
+    }
+)
+
 _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
     "synthetic_achievement_url_test_fixture": (
         _SYNTHETIC_ACHIEVEMENT_URL_TEST_FIXTURE_IDENTITIES
@@ -810,6 +846,7 @@ _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
     ),
     "external_kubernetes_secret_reference": _EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES,
     "source_contract_identifier": _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES,
+    "auth_validation_ui_copy": _AUTH_VALIDATION_UI_COPY_IDENTITIES,
 }
 _FALSE_POSITIVE_IDENTITY_FIELDS = frozenset({"path", "type", "hashed_secret_bytes"})
 _FALSE_POSITIVE_RECORD_FIELDS = frozenset(
@@ -1324,6 +1361,13 @@ def validate_false_positive_dispositions(
             raise BaselineArtifactError(
                 f"{artifact}: synthetic achievement URL fixture changed category"
             )
+        if (
+            exact_source_identity in _AUTH_VALIDATION_UI_COPY_IDENTITIES
+            and category != "auth_validation_ui_copy"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: auth validation UI copy identity changed category"
+            )
         if category in _FALSE_POSITIVE_HEX_CATEGORIES:
             category_matches = finding_type == _FALSE_POSITIVE_ALLOWED_TYPE
             if category == "independent_contract_fingerprint":
@@ -1418,6 +1462,11 @@ def validate_false_positive_dispositions(
         ):
             raise BaselineArtifactError(
                 f"{artifact}: synthetic achievement URL fixture exceeds approved expiry"
+            )
+
+        if category == "auth_validation_ui_copy" and expires_on > date(2027, 1, 10):
+            raise BaselineArtifactError(
+                f"{artifact}: auth validation UI copy exceeds approved expiry"
             )
 
         finding = FindingIdentity(path, finding_type, hashed_secret, 1)

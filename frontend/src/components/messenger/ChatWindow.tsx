@@ -198,6 +198,7 @@ export const ChatWindow = memo(function ChatWindow({
   // Wave 206 — which message's emoji picker is open (null = none). The "+react"
   // affordance toggles it; selecting an emoji or clicking outside / Escape closes.
   const [reactionPickerForId, setReactionPickerForId] = useState<string | null>(null)
+  const reactionPickerTriggerRef = useRef<HTMLButtonElement | null>(null)
   // Wave 181 SW3 — useReducedMotion guard. Without this, virtualized message
   // bubbles fade+scale in on every scroll-into-view event, which becomes
   // disorienting motion for reduced-motion users.
@@ -317,7 +318,12 @@ export const ChatWindow = memo(function ChatWindow({
       setReactionPickerForId(null)
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setReactionPickerForId(null)
+      if (event.key === "Escape") {
+        setReactionPickerForId(null)
+        if (reactionPickerTriggerRef.current?.isConnected) {
+          reactionPickerTriggerRef.current.focus()
+        }
+      }
     }
     document.addEventListener("mousedown", onMouseDown)
     document.addEventListener("keydown", onKeyDown)
@@ -1054,11 +1060,12 @@ export const ChatWindow = memo(function ChatWindow({
                           <button
                             type="button"
                             data-reaction-ui
-                            onClick={() =>
+                            onClick={(event) => {
+                              reactionPickerTriggerRef.current = event.currentTarget
                               setReactionPickerForId((prev) =>
                                 prev === message.id ? null : message.id
                               )
-                            }
+                            }}
                             aria-label={t("messenger:reactions.add")}
                             aria-expanded={reactionPickerForId === message.id}
                             className="-m-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-(--text-secondary) opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-surface)"
@@ -1085,6 +1092,9 @@ export const ChatWindow = memo(function ChatWindow({
                             onClick={() => {
                               handleToggleReaction(message.id, emoji)
                               setReactionPickerForId(null)
+                              if (reactionPickerTriggerRef.current?.isConnected) {
+                                reactionPickerTriggerRef.current.focus()
+                              }
                             }}
                             aria-label={t("messenger:reactions.react", { emoji })}
                             className="-m-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-xl transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"

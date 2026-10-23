@@ -18,6 +18,8 @@ import pytest
 from scripts import live_stand
 from scripts.live_nats_transport import LifecycleLockLease
 from scripts.owned_nats_coordinator import (
+    BrokerErrorEvidence,
+    BrokerProbePhase,
     CommandEvidence,
     OwnerEvidence,
     RuntimeEvidence,
@@ -439,6 +441,96 @@ def test_probe_decoder_rejects_local_timeout_without_remote_completion_marker() 
         result, expected_subject=SUBJECT, deadline=deadline()
     )
 
+    assert evidence.status is None
+    assert evidence.error_code is None
+
+
+def test_probe_decoder_classifies_execution_and_decode_failures_separately() -> None:
+    from scripts.owned_nats_coordinator import BrokerProbePhase
+
+    timed_out = PrivateProcessResult(
+        ProcessOutcome.TIMED_OUT,
+        None,
+        b'{"kind":"message"}\n',
+        b"",
+        LocalCleanup.UNPROVEN,
+    )
+    malformed = PrivateProcessResult(
+        ProcessOutcome.EXITED,
+        0,
+        b"not-json\n",
+        b"",
+        LocalCleanup.CONFIRMED,
+    )
+    remote_failure = PrivateProcessResult(
+        ProcessOutcome.EXITED,
+        0,
+        b'{"kind":"invalid","closed":true}\n',
+        b"",
+        LocalCleanup.CONFIRMED,
+    )
+    unclosed = PrivateProcessResult(
+        ProcessOutcome.EXITED,
+        0,
+        (
+            b'{"kind":"message","closed":false,"subject":"'
+            + SUBJECT.encode()
+            + b'","sequence":1,"envelope":{}}\n'
+        ),
+        b"",
+        LocalCleanup.CONFIRMED,
+    )
+
+    execution_error = broker.decode_broker_probe_result(
+        timed_out, expected_subject=SUBJECT, deadline=deadline()
+    )
+    decode_error = broker.decode_broker_probe_result(
+        malformed, expected_subject=SUBJECT, deadline=deadline()
+    )
+    remote_error = broker.decode_broker_probe_result(
+        remote_failure, expected_subject=SUBJECT, deadline=deadline()
+    )
+    unclosed_error = broker.decode_broker_probe_result(
+        unclosed, expected_subject=SUBJECT, deadline=deadline()
+    )
+
+    assert type(execution_error) is broker.BrokerErrorEvidence
+    assert execution_error.failure_phase is BrokerProbePhase.PRIVATE_EXEC
+    assert type(decode_error) is broker.BrokerErrorEvidence
+    assert decode_error.failure_phase is BrokerProbePhase.DECODE
+    assert remote_error.failure_phase is BrokerProbePhase.PRIVATE_EXEC
+    assert unclosed_error.failure_phase is BrokerProbePhase.PRIVATE_EXEC
+    assert repr(execution_error) == "BrokerErrorEvidence(status=None, error_code=None)"
+
+
+@pytest.mark.parametrize(
+    ("stdout", "expected_phase"),
+    [
+        (b'{"kind":"invalid"}\n', BrokerProbePhase.DECODE),
+        (b'{"kind":"invalid","closed":true,"extra":0}\n', BrokerProbePhase.DECODE),
+        (b'{"kind":"invalid","closed":"true"}\n', BrokerProbePhase.DECODE),
+        (b'{"kind":"invalid","closed":true}\n', BrokerProbePhase.PRIVATE_EXEC),
+    ],
+    ids=[
+        "missing-close-marker",
+        "unexpected-key",
+        "non-boolean-close-marker",
+        "exact-remote-marker",
+    ],
+)
+def test_probe_decoder_requires_exact_invalid_marker(
+    stdout: bytes, expected_phase: BrokerProbePhase
+) -> None:
+    result = PrivateProcessResult(
+        ProcessOutcome.EXITED, 0, stdout, b"", LocalCleanup.CONFIRMED
+    )
+
+    evidence = broker.decode_broker_probe_result(
+        result, expected_subject=SUBJECT, deadline=deadline()
+    )
+
+    assert type(evidence) is BrokerErrorEvidence
+    assert evidence.failure_phase is expected_phase
     assert evidence.status is None
     assert evidence.error_code is None
 

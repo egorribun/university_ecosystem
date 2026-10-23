@@ -28,17 +28,34 @@ class ScriptedWebSocket {
   onmessage: ((event: MessageEvent) => void) | null = null
   onclose: ((event: CloseEvent) => void) | null = null
   onerror: ((event: Event) => void) | null = null
+  autoAcknowledgeHeartbeats = true
+  emitCloseEventOnClose = true
+  closeEventCount = 0
 
   constructor(url: string) {
     this.url = url
     ScriptedWebSocket.instances.push(this)
   }
 
-  send = vi.fn()
+  send = vi.fn((payload: string) => {
+    const frame = JSON.parse(payload) as { type?: unknown; nonce?: unknown }
+    if (
+      this.autoAcknowledgeHeartbeats &&
+      frame.type === "heartbeat_ping" &&
+      typeof frame.nonce === "string"
+    ) {
+      const pong = { type: "heartbeat_pong", nonce: frame.nonce }
+      mocks.parseWsMessage.mockReturnValueOnce(pong)
+      this.onmessage?.({ data: JSON.stringify(pong) } as MessageEvent)
+    }
+  })
 
-  close = vi.fn((code = 1000) => {
+  close = vi.fn((code = 1000, reason?: string) => {
     this.readyState = ScriptedWebSocket.CLOSED
-    this.onclose?.({ code } as CloseEvent)
+    if (this.emitCloseEventOnClose) {
+      this.closeEventCount += 1
+      this.onclose?.({ code, reason } as CloseEvent)
+    }
   })
 
   receive(frame: unknown) {
@@ -76,6 +93,10 @@ const TICKET = { data: { ticket: "ticket-1", expires_in: 15 } }
 const flush = () => act(() => vi.advanceTimersByTimeAsync(0))
 const sockets = () => ScriptedWebSocket.instances
 const lastSocket = () => sockets().at(-1)!
+const sentHeartbeats = (socket: ScriptedWebSocket) =>
+  socket.send.mock.calls
+    .map(([payload]) => JSON.parse(payload) as { type?: string; nonce?: string })
+    .filter((frame) => frame.type === "heartbeat_ping")
 
 function expectTicketSocket(ticket: string) {
   expect(sockets()).toHaveLength(1)
@@ -272,6 +293,48 @@ describe("ticket exchange", () => {
 })
 
 describe("connection lifecycle", () => {
+  it("bounds retries when every short-lived reconnect opens before failing", async () => {
+    setup()
+    await flush()
+
+    for (let attempt = 0; attempt < 11; attempt += 1) {
+      const socket = sockets()[attempt]!
+      act(() => socket.onopen?.())
+      act(() => socket.close(1006))
+      await flush()
+    }
+
+    expect(sockets()).toHaveLength(11)
+    expect(mocks.logError).toHaveBeenLastCalledWith(
+      "[ws] Max reconnect attempts reached; giving up. Manual reconnect required.",
+      { attempts: 10, lastCode: 1006 }
+    )
+  })
+
+  it("restores the retry budget only after a connection stays open for the stability window", async () => {
+    setup()
+    await flush()
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const socket = sockets()[attempt]!
+      act(() => socket.onopen?.())
+      act(() => socket.close(1006))
+      await flush()
+    }
+
+    const stableSocket = sockets()[10]!
+    act(() => stableSocket.onopen?.())
+    await act(() => vi.advanceTimersByTimeAsync(30_000))
+    act(() => stableSocket.close(1006))
+    await flush()
+
+    expect(sockets()).toHaveLength(12)
+    expect(mocks.logError).not.toHaveBeenCalledWith(
+      "[ws] Max reconnect attempts reached; giving up. Manual reconnect required.",
+      expect.anything()
+    )
+  })
+
   it("does not publish a message after a cache subscriber synchronously changes accounts", async () => {
     const onNewMessageA = vi.fn()
     const onNewMessageB = vi.fn()
@@ -858,7 +921,7 @@ describe("typing indicators", () => {
       await flush()
 
       expect(session.result.current.getTypingUsersForChat(CHAT)).toStrictEqual([])
-      expect(vi.getTimerCount()).toBe(baselineTimers)
+      expect(vi.getTimerCount()).toBe(0)
       session.unmount()
       expect(vi.getTimerCount()).toBe(0)
     }
@@ -1242,4 +1305,441 @@ describe("legacy message edit and deletion reconciliation", () => {
       queryClient.getQueryData<ChatsListResponse>(["chats"])!.items[0]?.last_message
     ).toBeUndefined()
   })
+})
+
+describe("application heartbeat", () => {
+  it("sends every 30 seconds and accepts the matching nonce acknowledgement", async () => {
+    const session = await connected()
+    session.socket.autoAcknowledgeHeartbeats = false
+
+    await act(() => vi.advanceTimersByTimeAsync(29_999))
+    expect(sentHeartbeats(session.socket)).toHaveLength(0)
+
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    const firstPings = sentHeartbeats(session.socket)
+    expect(firstPings).toHaveLength(1)
+    const firstPing = firstPings[0]!
+    expect(firstPing.type).toBe("heartbeat_ping")
+    expect(firstPing.nonce).toMatch(/^[0-9a-f]{32}$/)
+
+    act(() => session.socket.receive({ type: "heartbeat_pong", nonce: firstPing.nonce }))
+    await act(() => vi.advanceTimersByTimeAsync(10_000))
+    expect(session.socket.close).not.toHaveBeenCalled()
+    expect(session.result.current.isConnected).toBe(true)
+
+    await act(() => vi.advanceTimersByTimeAsync(20_000))
+    const heartbeats = sentHeartbeats(session.socket)
+    expect(heartbeats).toHaveLength(2)
+    expect(heartbeats[1]!.nonce).not.toBe(firstPing.nonce)
+  })
+
+  it("does not schedule a heartbeat interval when the socket opens in a hidden page", async () => {
+    const originalVisibility = Object.getOwnPropertyDescriptor(document, "visibilityState")
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" })
+    const session = await connected()
+    session.socket.autoAcknowledgeHeartbeats = false
+
+    try {
+      await act(() => vi.advanceTimersByTimeAsync(60_000))
+      expect(sentHeartbeats(session.socket)).toHaveLength(0)
+      expect(session.socket.close).not.toHaveBeenCalled()
+
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" })
+      act(() => document.dispatchEvent(new Event("visibilitychange")))
+      expect(sentHeartbeats(session.socket)).toHaveLength(1)
+    } finally {
+      session.unmount()
+      if (originalVisibility) {
+        Object.defineProperty(document, "visibilityState", originalVisibility)
+      } else {
+        Reflect.deleteProperty(document, "visibilityState")
+      }
+    }
+  })
+
+  it("pauses an acknowledgement deadline when visibility became hidden without an event", async () => {
+    const originalVisibility = Object.getOwnPropertyDescriptor(document, "visibilityState")
+    const session = await connected()
+    session.socket.autoAcknowledgeHeartbeats = false
+
+    try {
+      await act(() => vi.advanceTimersByTimeAsync(30_000))
+      const firstPing = sentHeartbeats(session.socket)[0]!
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" })
+
+      await act(() => vi.advanceTimersByTimeAsync(10_000))
+      expect(session.socket.close).not.toHaveBeenCalled()
+      expect(session.result.current.isConnected).toBe(true)
+      expect(vi.getTimerCount()).toBe(0)
+
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" })
+      act(() => document.dispatchEvent(new Event("visibilitychange")))
+      const heartbeats = sentHeartbeats(session.socket)
+      expect(heartbeats).toHaveLength(2)
+      expect(heartbeats[1]!.nonce).not.toBe(firstPing.nonce)
+      act(() => session.socket.receive({ type: "heartbeat_pong", nonce: heartbeats[1]!.nonce }))
+      await act(() => vi.advanceTimersByTimeAsync(10_000))
+      expect(session.socket.close).not.toHaveBeenCalled()
+    } finally {
+      session.unmount()
+      if (originalVisibility) {
+        Object.defineProperty(document, "visibilityState", originalVisibility)
+      } else {
+        Reflect.deleteProperty(document, "visibilityState")
+      }
+    }
+  })
+
+  it("ignores spurious visible changes and interval ticks while an ACK is pending", async () => {
+    const intervalSpy = vi.spyOn(globalThis, "setInterval")
+    const session = await connected()
+    session.socket.autoAcknowledgeHeartbeats = false
+    const intervalCallback = intervalSpy.mock.calls.find(([, delay]) => delay === 30_000)?.[0]
+    expect(typeof intervalCallback).toBe("function")
+
+    try {
+      act(() => document.dispatchEvent(new Event("visibilitychange")))
+      expect(sentHeartbeats(session.socket)).toHaveLength(0)
+
+      await act(() => vi.advanceTimersByTimeAsync(30_000))
+      const firstPing = sentHeartbeats(session.socket)[0]!
+      act(() => (intervalCallback as () => void)())
+      expect(sentHeartbeats(session.socket)).toHaveLength(1)
+
+      act(() => session.socket.receive({ type: "heartbeat_pong", nonce: firstPing.nonce }))
+      session.socket.readyState = ScriptedWebSocket.CLOSED
+      act(() => (intervalCallback as () => void)())
+      expect(sentHeartbeats(session.socket)).toHaveLength(1)
+      expect(session.socket.close).not.toHaveBeenCalled()
+    } finally {
+      session.unmount()
+    }
+  })
+
+  it("ignores a captured ACK timeout callback after transport cleanup", async () => {
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout")
+    const session = await connected()
+    session.socket.autoAcknowledgeHeartbeats = false
+    session.socket.emitCloseEventOnClose = false
+
+    await act(() => vi.advanceTimersByTimeAsync(30_000))
+    expect(sentHeartbeats(session.socket)).toHaveLength(1)
+    const timeoutCallback = timeoutSpy.mock.calls.find(([, delay]) => delay === 10_000)?.[0]
+    expect(typeof timeoutCallback).toBe("function")
+
+    act(() => session.result.current.disconnect())
+    const closeCallsAfterDisconnect = session.socket.close.mock.calls.length
+    act(() => (timeoutCallback as () => void)())
+
+    expect(session.socket.close).toHaveBeenCalledTimes(closeCallsAfterDisconnect)
+    expect(mocks.apiPost).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+    session.unmount()
+  })
+
+  it("does not finish the transport twice when heartbeat send races a close event", async () => {
+    const session = await connected()
+    session.socket.autoAcknowledgeHeartbeats = false
+    vi.spyOn(Math, "random").mockReturnValue(0.5)
+    session.socket.send.mockImplementationOnce(() => {
+      session.socket.close(1006)
+      throw new Error("socket closed during send")
+    })
+
+    await act(() => vi.advanceTimersByTimeAsync(30_000))
+
+    expect(session.socket.close).toHaveBeenCalledExactlyOnceWith(1006)
+    expect(session.socket.closeEventCount).toBe(1)
+    expect(session.result.current.isConnected).toBe(false)
+    expect(vi.getTimerCount()).toBe(1)
+    await act(() => vi.advanceTimersByTimeAsync(499))
+    expect(sockets()).toHaveLength(1)
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    await flush()
+    expect(sockets()).toHaveLength(2)
+    expect(mocks.apiPost).toHaveBeenCalledTimes(2)
+    session.unmount()
+  })
+
+  it("does not treat an early matching heartbeat ACK as a stable recovery", async () => {
+    const originalVisibility = Object.getOwnPropertyDescriptor(document, "visibilityState")
+    const session = await connected()
+    session.socket.autoAcknowledgeHeartbeats = false
+
+    const changeVisibility = (state: DocumentVisibilityState) => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: state })
+      act(() => document.dispatchEvent(new Event("visibilitychange")))
+    }
+
+    try {
+      changeVisibility("hidden")
+      changeVisibility("visible")
+      const ping = sentHeartbeats(session.socket)[0]!
+      expect(ping.nonce).toMatch(/^[0-9a-f]{32}$/)
+      act(() => session.socket.receive({ type: "heartbeat_pong", nonce: ping.nonce }))
+      await act(() => vi.advanceTimersByTimeAsync(10_000))
+      expect(session.socket.close).not.toHaveBeenCalled()
+      expect(session.result.current.isConnected).toBe(true)
+    } finally {
+      session.unmount()
+      if (originalVisibility) {
+        Object.defineProperty(document, "visibilityState", originalVisibility)
+      } else {
+        Reflect.deleteProperty(document, "visibilityState")
+      }
+    }
+  })
+
+  it("closes a blackholed socket and retries without a close event or stale timer", async () => {
+    const session = await connected()
+    session.socket.autoAcknowledgeHeartbeats = false
+    session.socket.emitCloseEventOnClose = false
+
+    await act(() => vi.advanceTimersByTimeAsync(30_000))
+    expect(sentHeartbeats(session.socket)).toHaveLength(1)
+    await act(() => vi.advanceTimersByTimeAsync(9_999))
+    expect(session.socket.close).not.toHaveBeenCalled()
+    expect(session.result.current.isConnected).toBe(true)
+
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    expect(session.socket.close).toHaveBeenCalledExactlyOnceWith(4000, "heartbeat_timeout")
+    expect(session.socket.closeEventCount).toBe(0)
+    expect(session.result.current.isConnected).toBe(false)
+    expect(sockets()).toHaveLength(1)
+
+    await act(() => vi.advanceTimersByTimeAsync(1_000))
+    await flush()
+    expect(sockets()).toHaveLength(2)
+    expect(mocks.apiPost).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not reset the reconnect cap after repeated unacknowledged heartbeats", async () => {
+    const session = await connected()
+    let socket = session.socket
+
+    for (let failedSocket = 0; failedSocket <= 10; failedSocket += 1) {
+      socket.autoAcknowledgeHeartbeats = false
+      socket.emitCloseEventOnClose = false
+      if (failedSocket > 0) act(() => socket.onopen?.())
+
+      await act(() => vi.advanceTimersByTimeAsync(40_000))
+
+      expect(sentHeartbeats(socket)).toHaveLength(1)
+      expect(socket.close).toHaveBeenCalledExactlyOnceWith(4000, "heartbeat_timeout")
+      expect(socket.closeEventCount).toBe(0)
+      expect(session.result.current.isConnected).toBe(false)
+      await flush()
+
+      if (failedSocket < 10) {
+        await act(() => vi.advanceTimersByTimeAsync(1_000))
+        await flush()
+        expect(sockets()).toHaveLength(failedSocket + 2)
+        socket = lastSocket()
+      }
+    }
+
+    expect(sockets()).toHaveLength(11)
+    expect(mocks.logError).toHaveBeenLastCalledWith(
+      "[ws] Max reconnect attempts reached; giving up. Manual reconnect required.",
+      { attempts: 10, lastCode: 4000 }
+    )
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("resets the reconnect budget after a stable matching heartbeat acknowledgement", async () => {
+    const session = await connected()
+    vi.spyOn(Math, "random").mockReturnValue(0.5)
+    act(() => session.socket.close(1006))
+
+    await act(() => vi.advanceTimersByTimeAsync(499))
+    expect(sockets()).toHaveLength(1)
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    await flush()
+    expect(sockets()).toHaveLength(2)
+
+    const stableSocket = lastSocket()
+    stableSocket.autoAcknowledgeHeartbeats = false
+    act(() => stableSocket.onopen?.())
+    await act(() => vi.advanceTimersByTimeAsync(30_000))
+    const ping = sentHeartbeats(stableSocket)[0]!
+    act(() => stableSocket.receive({ type: "heartbeat_pong", nonce: ping.nonce }))
+    // Disconnect invalidates ownership before its close callback, so only the
+    // matching ACK can reset the retry budget for the next short-lived socket.
+    act(() => session.result.current.disconnect())
+    act(() => session.result.current.reconnect())
+    await flush()
+    expect(sockets()).toHaveLength(3)
+    const shortLivedSocket = lastSocket()
+    act(() => shortLivedSocket.onopen?.())
+    act(() => shortLivedSocket.close(1006))
+
+    await act(() => vi.advanceTimersByTimeAsync(499))
+    expect(sockets()).toHaveLength(3)
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    await flush()
+    expect(sockets()).toHaveLength(4)
+  })
+
+  it("tears down on send failure and schedules one retry through the capped path", async () => {
+    const session = await connected()
+    session.socket.autoAcknowledgeHeartbeats = false
+    vi.spyOn(Math, "random").mockReturnValue(0.5)
+    session.socket.send.mockImplementationOnce(() => {
+      throw new Error("simulated send failure")
+    })
+
+    await act(() => vi.advanceTimersByTimeAsync(30_000))
+
+    expect(sentHeartbeats(session.socket)).toHaveLength(1)
+    expect(session.socket.close).toHaveBeenCalledExactlyOnceWith(4000, "heartbeat_timeout")
+    expect(session.socket.closeEventCount).toBe(1)
+    expect(session.result.current.isConnected).toBe(false)
+    // The synchronous close callback is stale after ownership is cleared;
+    // exactly one capped-backoff timer remains for the retry.
+    expect(vi.getTimerCount()).toBe(1)
+
+    await act(() => vi.advanceTimersByTimeAsync(499))
+    expect(sockets()).toHaveLength(1)
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    await flush()
+    expect(sockets()).toHaveLength(2)
+    expect(mocks.apiPost).toHaveBeenCalledTimes(2)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("does not let a wrong nonce acknowledge the outstanding heartbeat", async () => {
+    const session = await connected()
+    session.socket.autoAcknowledgeHeartbeats = false
+
+    await act(() => vi.advanceTimersByTimeAsync(30_000))
+    const pings = sentHeartbeats(session.socket)
+    expect(pings).toHaveLength(1)
+    const ping = pings[0]!
+    const wrongNonce = ping.nonce === "f".repeat(32) ? "e".repeat(32) : "f".repeat(32)
+    act(() => session.socket.receive({ type: "heartbeat_pong", nonce: wrongNonce }))
+
+    await act(() => vi.advanceTimersByTimeAsync(9_999))
+    expect(session.socket.close).not.toHaveBeenCalled()
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    expect(session.socket.close).toHaveBeenCalledExactlyOnceWith(4000, "heartbeat_timeout")
+  })
+
+  it("does not let a duplicate prior pong clear the next heartbeat deadline", async () => {
+    const session = await connected()
+    session.socket.autoAcknowledgeHeartbeats = false
+
+    await act(() => vi.advanceTimersByTimeAsync(30_000))
+    const firstPing = sentHeartbeats(session.socket)[0]!
+    act(() => session.socket.receive({ type: "heartbeat_pong", nonce: firstPing.nonce }))
+
+    await act(() => vi.advanceTimersByTimeAsync(30_000))
+    const heartbeatFrames = sentHeartbeats(session.socket)
+    expect(heartbeatFrames).toHaveLength(2)
+    const secondPing = heartbeatFrames[1]!
+    expect(secondPing.nonce).not.toBe(firstPing.nonce)
+    act(() => session.socket.receive({ type: "heartbeat_pong", nonce: firstPing.nonce }))
+
+    await act(() => vi.advanceTimersByTimeAsync(9_999))
+    expect(session.socket.close).not.toHaveBeenCalled()
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    expect(session.socket.close).toHaveBeenCalledExactlyOnceWith(4000, "heartbeat_timeout")
+  })
+
+  it("does not let a superseded socket acknowledge its replacement", async () => {
+    const session = await connected({ currentUserId: "user-a" })
+    const oldSocket = session.socket
+    oldSocket.autoAcknowledgeHeartbeats = false
+    await act(() => vi.advanceTimersByTimeAsync(30_000))
+    const oldPings = sentHeartbeats(oldSocket)
+    expect(oldPings).toHaveLength(1)
+    const oldPing = oldPings[0]!
+
+    act(() => window.dispatchEvent(new Event("offline")))
+    act(() => window.dispatchEvent(new Event("online")))
+    await flush()
+    const currentSocket = lastSocket()
+    act(() => currentSocket.onopen?.())
+    currentSocket.autoAcknowledgeHeartbeats = false
+
+    await act(() => vi.advanceTimersByTimeAsync(30_000))
+    const currentPings = sentHeartbeats(currentSocket)
+    expect(currentPings).toHaveLength(1)
+    const currentPing = currentPings[0]!
+    expect(currentPing.nonce).not.toBe(oldPing.nonce)
+
+    act(() => oldSocket.receive({ type: "heartbeat_pong", nonce: oldPing.nonce }))
+    await act(() => vi.advanceTimersByTimeAsync(9_999))
+    expect(currentSocket.close).not.toHaveBeenCalled()
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    expect(currentSocket.close).toHaveBeenCalledExactlyOnceWith(4000, "heartbeat_timeout")
+  })
+
+  it("pauses in a hidden page and sends a fresh nonce when visibility resumes", async () => {
+    const originalVisibility = Object.getOwnPropertyDescriptor(document, "visibilityState")
+    const session = await connected()
+    session.socket.autoAcknowledgeHeartbeats = false
+
+    const changeVisibility = (state: DocumentVisibilityState) => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: state })
+      act(() => document.dispatchEvent(new Event("visibilitychange")))
+    }
+
+    try {
+      changeVisibility("hidden")
+      await act(() => vi.advanceTimersByTimeAsync(60_000))
+      expect(sentHeartbeats(session.socket)).toHaveLength(0)
+      expect(session.socket.close).not.toHaveBeenCalled()
+      expect(session.result.current.isConnected).toBe(true)
+
+      changeVisibility("visible")
+      const firstPings = sentHeartbeats(session.socket)
+      expect(firstPings).toHaveLength(1)
+      const firstPing = firstPings[0]!
+      expect(firstPing.nonce).toMatch(/^[0-9a-f]{32}$/)
+      changeVisibility("hidden")
+      await act(() => vi.advanceTimersByTimeAsync(60_000))
+      expect(session.socket.close).not.toHaveBeenCalled()
+
+      changeVisibility("visible")
+      const resumedPings = sentHeartbeats(session.socket)
+      expect(resumedPings).toHaveLength(2)
+      const secondPing = resumedPings[1]!
+      expect(secondPing.nonce).not.toBe(firstPing.nonce)
+      act(() => session.socket.receive({ type: "heartbeat_pong", nonce: firstPing.nonce }))
+      await act(() => vi.advanceTimersByTimeAsync(9_999))
+      expect(session.socket.close).not.toHaveBeenCalled()
+      act(() => session.socket.receive({ type: "heartbeat_pong", nonce: secondPing.nonce }))
+      await act(() => vi.advanceTimersByTimeAsync(10_000))
+      expect(session.socket.close).not.toHaveBeenCalled()
+    } finally {
+      if (originalVisibility) {
+        Object.defineProperty(document, "visibilityState", originalVisibility)
+      } else {
+        Reflect.deleteProperty(document, "visibilityState")
+      }
+    }
+  })
+
+  it.each(["server close", "manual disconnect", "disabled", "account change", "logout", "unmount"])(
+    "clears the heartbeat timer on %s",
+    async (transition) => {
+      const session = await connected({ currentUserId: "user-a" })
+      const socket = session.socket
+      socket.autoAcknowledgeHeartbeats = false
+
+      if (transition === "server close") act(() => socket.close(1000))
+      else if (transition === "manual disconnect") act(() => session.result.current.disconnect())
+      else if (transition === "disabled")
+        session.rerender({ enabled: false, currentUserId: "user-a" })
+      else if (transition === "account change")
+        session.rerender({ enabled: true, currentUserId: "user-b" })
+      else if (transition === "logout")
+        session.rerender({ enabled: false, currentUserId: undefined })
+      else session.unmount()
+
+      await act(() => vi.advanceTimersByTimeAsync(60_000))
+      expect(sentHeartbeats(socket)).toHaveLength(0)
+      expect(vi.getTimerCount()).toBe(0)
+    }
+  )
 })

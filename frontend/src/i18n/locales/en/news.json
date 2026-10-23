@@ -52,6 +52,16 @@
     "editCommentAriaLabel": "Edit comment",
     "errors": {
       "uploadFailed": "The image could not be uploaded. Your changes are still here; try again."
+    },
+    "validation": {
+      "titleRequired": "Title is required",
+      "titleMaxLength": "Title must be less than 100 characters",
+      "contentRequired": "Content is required",
+      "contentMaxLength": "Content must be less than 3000 characters",
+      "titleEnMaxLength": "Title (EN) must be less than 100 characters",
+      "contentEnMaxLength": "Content (EN) must be less than 3000 characters",
+      "imageMaxSize": "Max image size is 5MB.",
+      "imageFormats": "Only .jpg, .jpeg, .png and .webp formats are supported."
     }
   },
   "dialogs": {

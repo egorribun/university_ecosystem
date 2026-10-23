@@ -56,6 +56,17 @@ helm upgrade --install university charts/university-ecosystem \
   --atomic --wait --timeout 20m --history-max 10
 ```
 
+**Approved dependency identities:** on 2026-10-23 the owner approved exactly the
+three rendered Docker Hub references below for `k8s/kyverno/cluster-policies.yaml`.
+Admission compares complete image strings; other repositories, digests and tag
+forms remain denied. Deployment environment digest variables must resolve to
+these same references. A mismatch keeps deployment on hold pending a separate
+exact-reference review; this approval does not authorize deployment.
+
+- Chart value: `docker.io/redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499`; rendered Pod: `docker.io/redis@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499`.
+- Chart value: `docker.io/oliver006/redis_exporter:v1.93.0@sha256:6ca518a72f30f7f576ef92963de1b91d3c3f5fd3aeac949f878bfda183587820`; rendered Pod: `docker.io/oliver006/redis_exporter@sha256:6ca518a72f30f7f576ef92963de1b91d3c3f5fd3aeac949f878bfda183587820`.
+- Chart value: `docker.io/nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4`; rendered Pod: `docker.io/nats@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4`.
+
 ### Supporting raw manifests
 
 Use raw files only for an explicitly approved supporting operation, such as
@@ -85,6 +96,23 @@ bash scripts/apply_raw_k8s.sh k8s/ingress.yaml
 VAULT_URL=https://vault.example.com \
 bash scripts/apply_raw_k8s.sh k8s/backend/secret-store.yaml
 ```
+
+Rendering and admission are separate trust decisions. The wrapper checks that
+`IMAGE_REGISTRY` is syntactically valid; it does not authorize that publisher.
+In `university-ecosystem`, the registry policy allows the exact first-party
+publisher path `ghcr.io/egorribun/university_ecosystem/` for only `backend`,
+`frontend`, `gateway`, `ws-hub`, and `file-processor`, plus the exact pinned
+`ghcr.io/open-feature/flagd:v0.17.0@sha256:c9f21380dfe51d3ad662a116bc350c7692dead7a8d1e640aa0f6b40cd3d966df`
+image, the three owner-approved Docker Hub references above and the existing
+digest-pinned Bitnami dependency patterns. The release
+workflow builds `caddy`, but the application chart does not deploy it into this
+namespace. The chart's default `university-*` image names are development/test
+references and are not trusted by this policy. The `registry.example.com` values
+above are placeholders: the wrapper can render them, but Kyverno rejects them at
+pod admission. Other custom registry
+or repository paths require an administrator-reviewed update naming the exact
+publisher and workload images; an application workload cannot opt itself into
+trust by setting pod or namespace metadata.
 
 The chart's opt-in `gatewayApi` route mode needs a cluster-scoped
 `GatewayClass`; the application chart itself does not install Gateway API

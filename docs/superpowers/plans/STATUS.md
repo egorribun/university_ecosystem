@@ -4,9 +4,9 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Текущая принятая нижняя граница — **234/512 (45,7%)** по [последней source-bound контрольной точке](#notification-rendering-error-locale-and-clipboard-closure-checkpoint-2026-10-22); полный список принятых ID и evidence приведён в [аудите](../../audits/AUDIT-2026-10.md#notification-rendering-error-locale-and-clipboard-closure-checkpoint-2026-10-22). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Текущая принятая нижняя граница — **240/512 (46,9%)** по [последней source-bound контрольной точке](#active-audit-closure-checkpoint-2026-10-23); полный список принятых ID и evidence приведён в [аудите](../../audits/AUDIT-2026-10.md#behavioral-closure-checkpoint-2026-10-23). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
-Текущая работа идёт только на `egorribun`, в одном checkout, через открытый [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343); [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306) был owner-merged и является историческим. Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
+Текущая работа идёт только на `egorribun`, в одном checkout, через открытый [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343); [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306) был owner-merged и является историческим. Root управляет Git; максимум восемь GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
 Датированные checkpoint-разделы ниже сохраняют значения и статусы на указанных source. Их прежние acceptance counts, включая 223/512, и тогдашние pending states — исторические; актуальная нижняя граница указана выше и раскрыта в последней closure section.
 
@@ -86,7 +86,7 @@ Actual focused AUD-174 на bef8: два browser PASS и `redaction=verified pro
 
 ## Неизменные границы
 
-Detect-secrets baseline — 319 identities; опубликованная в 8c202a75 политика — 282 owner-approved dispositions. Исторический bef8 содержал прежние 264. Отдельное Gitleaks-разрешение ограничено 25 точными историческими fingerprints. Все 78 required context/app pairs, blocking CodeQL, hooks и finite131 migration exception до 2026-11-13 сохраняются. Changed/unmatched identities остаются блокирующими. Q1/Q4 migration действует; Q2/Q3 — v1.1; глобальный mutation score не повышается ради MVP.
+Detect-secrets baseline — 319 identities; действующая политика содержит 301 finite owner-approved dispositions. Остальные counts в исторических checkpoint-записях относятся к указанным там source. Отдельное Gitleaks-разрешение ограничено 25 точными историческими fingerprints. Все 78 required context/app pairs, blocking CodeQL, hooks и finite131 migration exception до 2026-11-13 сохраняются. Changed/unmatched identities остаются блокирующими. Q1/Q4 migration действует; Q2/Q3 — v1.1; глобальный mutation score не повышается ради MVP.
 
 Перед тяжёлым прогоном: RAM ≤75% / free ≥8 GiB; остановка при RAM ≥85% / free <4 GiB. Отдельное исключение для одиночных Linux screenshots: ≤80% / ≥6 GiB, container ≤1 GiB / 2 CPU. Удалять только доказанно принадлежащие работе ресурсы; чужие процессы и prune не трогать.
 
@@ -2067,3 +2067,36 @@ further audit implementation is outside this checkpoint.
 обычные hooks, final diff и cleanup, опубликовать через существующий PR только по новой
 команде продолжения. Затем проверить все страницы новых CI jobs, фактический budget
 Contract и broker checkpoint в Owned Live; не засчитывать новые AUD IDs заранее.
+
+
+## Active audit closure checkpoint (2026-10-23)
+
+Work is resumed on egorribun through PR #1343. Published source ad3b3f2b9 has the
+same tree as the former local checkpoint f31942c31. The accepted lower bound is
+240/512; the six newly verified IDs and exact hosted evidence are recorded in
+[the current audit checkpoint](../../audits/AUDIT-2026-10.md#behavioral-closure-checkpoint-2026-10-23).
+
+Contract Tests now finishes inside its unchanged ten-minute limit. The ordinary
+27-test workflow-contract module passed, but the consumer population has one
+PowerShell child timeout (1,464 PASS / one FAIL / one deselected); policy tests
+are 270 PASS. The exact 7.6.6 private Linux reproduction did not reproduce that
+timeout, so only a finite-phase diagnostic is prepared. The terminal Matrix run
+39879242309 has 69 successful, three failed and 14 skipped jobs. All four Python
+unit shards passed. The coverage gate also failed on two untested clipboard
+session guards in Profile.tsx; regression tests cover those guards locally,
+without changing production code or coverage floors. Global CI remains open.
+Owned Live Core passed; NATS outage failed at broker_probe and cleanup succeeded.
+The broker subphase diagnostic preserves the existing acceptance gates.
+
+The owner approved exactly the three chart-default Redis, redis_exporter and
+NATS rendered digest references for Kyverno on 2026-10-23; see
+[ADR-010](../../adr/ADR-010-kyverno-admission-control.md#registry-boundary-decision-2026-10-23).
+Different environment digests remain blocked. No deployment is authorized by
+that decision. Local draft fixes and privately tested candidates remain subject
+to final-source checks, ordinary hooks and their own hosted checks.
+
+The owner approved exactly three auth validation UI-copy dispositions and their
+finite validator/test diff on 2026-10-23. The actual policy now contains 301
+records, preserving the previous 298; see ADR-047. The final local Windows-adapted
+scan passed with zero unmatched findings and all 319 baseline identities intact.
+Hosted final-source checks remain required.

@@ -296,6 +296,29 @@ describe("useMessengerController — branch top-up", () => {
       await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledWith("offline-chat"))
       expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
     })
+
+    it("refetches the open chat messages after a socket disconnect and reconnect", async () => {
+      seedChat("reconnected-chat")
+      const { HookWrapper } = createQueryHarness()
+      const { result, rerender } = renderHook(() => useMessengerController(), {
+        wrapper: HookWrapper,
+      })
+
+      await waitFor(() => expect(result.current.selectedChatId).toBe("reconnected-chat"))
+      await waitFor(() => expect(mocks.chatApi.getMessages).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledWith("reconnected-chat"))
+
+      mocks.isConnectedRef.current = false
+      rerender()
+      await waitFor(() => expect(mocks.sendLeave).toHaveBeenCalledWith("reconnected-chat"))
+
+      mocks.isConnectedRef.current = true
+      rerender()
+
+      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect(mocks.chatApi.getMessages).toHaveBeenCalledTimes(2))
+      expect(mocks.chatApi.getMessages.mock.calls[1]?.[0]).toBe("reconnected-chat")
+    })
   })
 
   describe("createChat / createGroup mutations (386-403)", () => {
@@ -1266,6 +1289,135 @@ describe("useMessengerController — branch top-up", () => {
 
       act(() => result.current.handleCloseProfile())
       expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+    })
+
+    it("keeps the profile modal closed when its request resolves after close", async () => {
+      seedChat()
+      let resolveProfile!: (response: { data: { id: string; full_name: string } }) => void
+      const profileRequest = new Promise<{ data: { id: string; full_name: string } }>((resolve) => {
+        resolveProfile = resolve
+      })
+      mocks.apiClient.get.mockReturnValue(profileRequest)
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      act(() => result.current.handleViewProfile())
+      expect(result.current.isProfileLoading).toBe(true)
+
+      act(() => result.current.handleCloseProfile())
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+
+      await act(async () => {
+        resolveProfile({ data: { id: "peer", full_name: "Peer" } })
+        await profileRequest
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+    })
+
+    it("ignores a pending profile result after the selected chat changes", async () => {
+      seedChat()
+      let resolveProfile!: (response: { data: { id: string; full_name: string } }) => void
+      const profileRequest = new Promise<{ data: { id: string; full_name: string } }>((resolve) => {
+        resolveProfile = resolve
+      })
+      mocks.apiClient.get.mockReturnValue(profileRequest)
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      act(() => result.current.handleViewProfile())
+      expect(result.current.isProfileLoading).toBe(true)
+
+      mocks.paramsRef.current = { chatId: "chat-2" }
+      rerender()
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-2"))
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+
+      await act(async () => {
+        resolveProfile({ data: { id: "peer", full_name: "Peer" } })
+        await profileRequest
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+    })
+
+    it("ignores a stale profile rejection after the authenticated user changes", async () => {
+      seedChat()
+      let rejectProfile!: (reason: Error) => void
+      const profileRequest = new Promise<{ data: { id: string; full_name: string } }>(
+        (_, reject) => {
+          rejectProfile = reject
+        }
+      )
+      mocks.apiClient.get.mockReturnValue(profileRequest)
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      act(() => result.current.handleViewProfile())
+      expect(result.current.isProfileLoading).toBe(true)
+
+      mocks.authUserRef.current = { ...mocks.testUser, id: "new-account-id" }
+      rerender()
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+
+      await act(async () => {
+        rejectProfile(new Error("old profile request failed"))
+        await profileRequest.catch(() => undefined)
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+    })
+
+    it("does not let an older overlapping request clear the newest request's loading state", async () => {
+      seedChat()
+      let resolveFirst!: (response: { data: { id: string; full_name: string } }) => void
+      let resolveSecond!: (response: { data: { id: string; full_name: string } }) => void
+      const firstRequest = new Promise<{ data: { id: string; full_name: string } }>((resolve) => {
+        resolveFirst = resolve
+      })
+      const secondRequest = new Promise<{ data: { id: string; full_name: string } }>((resolve) => {
+        resolveSecond = resolve
+      })
+      mocks.apiClient.get.mockReturnValueOnce(firstRequest).mockReturnValueOnce(secondRequest)
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      act(() => result.current.handleViewProfile())
+      act(() => result.current.handleViewProfile())
+      expect(result.current.isProfileLoading).toBe(true)
+
+      await act(async () => {
+        resolveFirst({ data: { id: "older-peer", full_name: "Older Peer" } })
+        await firstRequest
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(true)
+
+      await act(async () => {
+        resolveSecond({ data: { id: "peer", full_name: "Peer" } })
+        await secondRequest
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toEqual({ id: "peer", full_name: "Peer" })
       expect(result.current.isProfileLoading).toBe(false)
       expect(result.current.profileError).toBeNull()
     })

@@ -49,3 +49,18 @@ Deployed **Kyverno** as the Kubernetes admission controller with **5 ClusterPoli
 
 - `k8s/kyverno/cluster-policies.yaml` — 5 ClusterPolicies (all in Enforce mode)
 - Kyverno installed via Helm: `helm install kyverno kyverno/kyverno --namespace kyverno`
+
+## Registry boundary decision, 2026-10-23
+
+The owner approved exactly the three Redis, redis_exporter and NATS rendered
+digest references recorded in [the Kubernetes deployment guide](../../k8s/README.md).
+The registry policy compares their complete image strings. This approval does
+not authorize other digests, tag forms or a registry-wide allowlist, and does not
+authorize deployment. Release environment variables must match those exact
+identities before the admission hold can be lifted for that environment.
+
+First-party trust is restricted to the current release repository and its five
+deployed workload image names; the pinned flagd identity and existing Bitnami
+dependency patterns remain explicit. The current implementation uses nine
+Kyverno ValidatingPolicies; the original ClusterPolicy inventory above records
+the initial design.

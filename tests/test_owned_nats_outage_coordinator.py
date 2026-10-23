@@ -327,6 +327,7 @@ def test_public_result_and_logs_contain_only_closed_labels(capsys) -> None:
         "stage",
         "checkpoint",
         "runtime_diagnostic",
+        "broker_diagnostic",
     }
     assert result.checkpoint is None
     assert result.runtime_diagnostic is None
@@ -611,6 +612,28 @@ def test_invalid_broker_probe_has_distinct_finite_checkpoint() -> None:
 
     assert result.stage is OutageStage.BROKER
     assert result.checkpoint is OutageCheckpoint.BROKER_PROBE
+
+
+def test_coordinator_carries_finite_broker_probe_phase_only_on_failure() -> None:
+    from scripts.owned_nats_coordinator import BrokerProbePhase
+
+    ports = FakePorts()
+    ports.broker = BrokerErrorEvidence(
+        status=None,
+        error_code=None,
+        failure_phase=BrokerProbePhase.DECODE,
+    )
+
+    result = assert_failed(ports, sends=1, restores=1)
+
+    assert result.stage is OutageStage.BROKER
+    assert result.checkpoint is OutageCheckpoint.BROKER_PROBE
+    assert result.broker_diagnostic is BrokerProbePhase.DECODE
+    assert result.outcome is OutageOutcome.FAILED
+
+    accepted = run(FakePorts())
+    assert accepted.outcome is OutageOutcome.ACCEPTED
+    assert accepted.broker_diagnostic is None
 
 
 @pytest.mark.parametrize(

@@ -272,7 +272,7 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
             label={t("news:form.title") ?? ""}
             htmlFor={`news-edit-title-${id}`}
             required
-            error={errors.title?.message}
+            error={errors.title?.message ? t(errors.title.message) : undefined}
           >
             <input
               id={`news-edit-title-${id}`}
@@ -287,7 +287,7 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
             label={t("news:form.text") ?? ""}
             htmlFor={`news-edit-content-${id}`}
             required
-            error={errors.content?.message}
+            error={errors.content?.message ? t(errors.content.message) : undefined}
           >
             <textarea
               id={`news-edit-content-${id}`}
@@ -301,7 +301,7 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
           <Field
             label={t("news:form.title_en") ?? ""}
             htmlFor={`news-edit-title-en-${id}`}
-            error={errors.title_en?.message}
+            error={errors.title_en?.message ? t(errors.title_en.message) : undefined}
           >
             <input
               id={`news-edit-title-en-${id}`}
@@ -315,7 +315,7 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
           <Field
             label={t("news:form.content_en") ?? ""}
             htmlFor={`news-edit-content-en-${id}`}
-            error={errors.content_en?.message}
+            error={errors.content_en?.message ? t(errors.content_en.message) : undefined}
           >
             <textarea
               id={`news-edit-content-en-${id}`}
@@ -373,7 +373,7 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
               />
             ) : null}
           </div>
-          {errors.image?.message ? <p className={errorClass}>{errors.image.message}</p> : null}
+          {errors.image?.message ? <p className={errorClass}>{t(errors.image.message)}</p> : null}
         </form>
       )}
     </Dialog>

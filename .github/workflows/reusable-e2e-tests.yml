@@ -480,7 +480,7 @@ jobs:
           # invocation. Keep auxiliary suites in separate subdirectories so
           # the coverage merger can still see the regular shard output and
           # every auxiliary suite's report.
-          npx playwright test url-state-persistence.spec.ts \
+          npx playwright test url-state-persistence.spec.ts messenger-heartbeat-blackhole.spec.ts \
             --project=chromium \
             --output=test-results/url-state \
             --reporter=html

@@ -1720,6 +1720,8 @@ jobs:
             tests/test_management_scripts.py::test_load_user_by_id \
             tests/test_security_hardening_workflow_contract.py::test_ci_scanner_bootstraps_are_version_pinned_and_checksum_verified \
             tests/test_full_backend_reusable_contract.py \
+            tests/test_kyverno_registry_source_binding.py \
+            tests/test_kyverno_registry_owner_review_b.py \
             tests/test_live_acceptance_workflow.py::test_live_stand_nats_outage_dispatches_once_and_redacts_failures \
             tests/test_ci_check_catalog.py tests/test_dependency_resolution_policy.py \
             tests/test_cache_settings_closure.py tests/test_check_no_python2_except.py \

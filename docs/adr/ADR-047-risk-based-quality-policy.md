@@ -419,6 +419,23 @@ hooks and finite131 migration exception remain unchanged. Approval is separate
 from integration, final-source scanning, tests and hosted checks, and establishes
 no release or visual acceptance.
 
+## Owner-approved exact three auth validation copy dispositions (2026-10-23)
+
+The owner approved exactly three additional path/type/finding-digest identities
+and the reviewed validator/test diff for public English password-validation
+messages in `frontend/src/i18n/locales/en/auth.json`. The new
+`auth_validation_ui_copy` category matches only those three exact identities,
+requires their existing category, and caps expiry at 2027-01-10. The exact tuples
+are recorded in `quality/security-false-positive-dispositions.json`. The previous
+298 records are preserved unchanged, for exactly 301 approved identities.
+
+Changed, unmatched or expired findings remain blocking. This decision permits
+no additional identity, broad match, automatic approval, baseline entry, inline
+pragma, reclassification, expiry extension or scanner bypass. Baseline319,
+Gitleaks25, the 78 required context/app pairs, blocking CodeQL, hooks and finite131
+remain unchanged. Integration, final-source scans and hosted checks require
+their own evidence; this approval establishes no release or visual acceptance.
+
 ## Consequences
 
 - The MVP can be released once product acceptance passes; mutation debt

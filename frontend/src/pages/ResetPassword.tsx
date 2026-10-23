@@ -703,7 +703,9 @@ export default function ResetPassword() {
                           disabled={isSubmitting}
                           className="rounded-lg"
                           error={!!errors.password}
-                          helperText={errors.password?.message}
+                          helperText={
+                            errors.password?.message ? t(errors.password.message) : undefined
+                          }
                           trailingIcon={
                             <button
                               id="reset-password-toggle"
@@ -789,7 +791,11 @@ export default function ResetPassword() {
                           disabled={isSubmitting}
                           className="rounded-lg"
                           error={!!errors.confirmPassword}
-                          helperText={errors.confirmPassword?.message}
+                          helperText={
+                            errors.confirmPassword?.message
+                              ? t(errors.confirmPassword.message)
+                              : undefined
+                          }
                           trailingIcon={
                             <button
                               id="reset-confirm-toggle"
