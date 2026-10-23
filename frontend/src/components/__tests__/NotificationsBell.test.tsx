@@ -6,6 +6,7 @@ import type { useNotifications } from "@/hooks/useNotifications"
 import NotificationsBell, {
   canUpdateNotificationPosition,
   focusNotificationTrigger,
+  navigateAfterNotificationRead,
   shouldCloseNotificationDropdown,
 } from "../feedback/NotificationsBell"
 
@@ -38,6 +39,7 @@ const translations: Record<string, string> = {
   "system:notificationsBell.loadMore": "Load more",
   "system:notificationsBell.loadingMore": "Loading more…",
   "system:notificationsBell.loadMoreError": "Couldn't load more notifications",
+  "system:errorBoundary.title": "Something went wrong",
   "system:errorBoundary.retry": "Try again",
 }
 
@@ -132,9 +134,11 @@ describe("NotificationsBell", () => {
     error: null,
     isRefetching: false,
     refetch: vi.fn(),
-    markRead: vi.fn(),
-    markAll: vi.fn(),
-    clearAll: vi.fn(),
+    markRead: vi.fn().mockResolvedValue(undefined),
+    markAll: vi.fn().mockResolvedValue(undefined),
+    clearAll: vi.fn().mockResolvedValue(undefined),
+    mutationFailures: [],
+    retryMutationFailure: vi.fn().mockResolvedValue(undefined),
     isMarkingAll: false,
     isClearing: false,
     fetchMore: vi.fn(),
@@ -193,6 +197,64 @@ describe("NotificationsBell", () => {
     trigger.remove()
     dropdown.remove()
     outside.remove()
+  })
+
+  it("navigates after marking a notification read and stays put when marking fails", async () => {
+    const navigate = vi.fn()
+    const markRead = vi.fn().mockResolvedValue(undefined)
+    await navigateAfterNotificationRead(markRead, "notification-1", "/news/one", navigate)
+    expect(markRead).toHaveBeenCalledWith("notification-1")
+    expect(navigate).toHaveBeenCalledTimes(1)
+    expect(navigate).toHaveBeenCalledWith("/news/one")
+
+    navigate.mockClear()
+    markRead.mockRejectedValueOnce(new Error("request failed"))
+    await expect(
+      navigateAfterNotificationRead(markRead, "notification-1", "/news/one", navigate)
+    ).rejects.toThrow("request failed")
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it("uses browser navigation when no navigation callback is injected", async () => {
+    const assign = vi.fn()
+    vi.stubGlobal("window", { location: { assign } })
+    try {
+      await navigateAfterNotificationRead(vi.fn().mockResolvedValue(undefined), "n1", "/news/one")
+      expect(assign).toHaveBeenCalledWith("/news/one")
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it("keeps the notification id retry target when its item is no longer in the list", async () => {
+    const state = baseState()
+    state.mutationFailures = [
+      {
+        ownerId: "notifications-test-user",
+        ownerRevision: 1,
+        operation: "mark-read",
+        notificationId: "missing-notification",
+        failureKey: "read-failure-key",
+        attemptId: 1,
+        mutationSequence: 1,
+      },
+    ]
+    state.retryMutationFailure = vi.fn().mockRejectedValue(new Error("still unavailable"))
+    useNotificationsMock.mockReturnValue(state)
+
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+    const alert = screen.getByRole("alert")
+    expect(alert).toHaveTextContent("Something went wrong: Mark as read: missing-notification")
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Try again: Mark as read: missing-notification",
+      })
+    )
+    expect(state.retryMutationFailure).toHaveBeenCalledWith(state.mutationFailures[0])
+    expect(screen.getByRole("alert")).toHaveTextContent("missing-notification")
   })
 
   it("does not render an unread badge when the count is zero", async () => {
@@ -331,7 +393,9 @@ describe("NotificationsBell", () => {
     const user = userEvent.setup()
     render(<NotificationsBell />)
 
-    const openButton = screen.getByRole("button", { name: "Open notifications" })
+    const openButton = screen.getByRole("button", {
+      name: "Open notifications",
+    })
     await user.click(openButton)
 
     expect(screen.getByText("Error loading notifications")).toBeInTheDocument()
@@ -353,7 +417,9 @@ describe("NotificationsBell", () => {
     const user = userEvent.setup()
     render(<NotificationsBell />)
 
-    const openButton = screen.getByRole("button", { name: "Open notifications" })
+    const openButton = screen.getByRole("button", {
+      name: "Open notifications",
+    })
     await user.click(openButton)
 
     const retryButton = screen.getByRole("button", { name: "Try again" })
@@ -382,7 +448,9 @@ describe("NotificationsBell", () => {
     const user = userEvent.setup()
     render(<NotificationsBell />)
 
-    const openButton = screen.getByRole("button", { name: "Open notifications" })
+    const openButton = screen.getByRole("button", {
+      name: "Open notifications",
+    })
     await user.click(openButton)
 
     const loadMoreButton = screen.getByRole("button", { name: "Load more" })
@@ -410,10 +478,14 @@ describe("NotificationsBell", () => {
     const user = userEvent.setup()
     render(<NotificationsBell />)
 
-    const openButton = screen.getByRole("button", { name: "Open notifications" })
+    const openButton = screen.getByRole("button", {
+      name: "Open notifications",
+    })
     await user.click(openButton)
 
-    const loadMoreButton = screen.getByRole("button", { name: "Loading more…" })
+    const loadMoreButton = screen.getByRole("button", {
+      name: "Loading more…",
+    })
     expect(loadMoreButton).toBeDisabled()
   })
 
@@ -462,7 +534,9 @@ describe("NotificationsBell", () => {
     const user = userEvent.setup()
     render(<NotificationsBell />)
 
-    const openButton = screen.getByRole("button", { name: "Open notifications" })
+    const openButton = screen.getByRole("button", {
+      name: "Open notifications",
+    })
     await user.click(openButton)
 
     expect(screen.getByText("Couldn't load more notifications")).toBeInTheDocument()
@@ -484,7 +558,7 @@ describe("NotificationsBell", () => {
 
   it("handles unread links, read markers, and notification icon variants", async () => {
     const state = baseState()
-    const markRead = vi.fn()
+    const markRead = vi.fn(() => new Promise<void>(() => undefined))
     state.markRead = markRead
     state.data = [
       {
@@ -573,7 +647,10 @@ describe("NotificationsBell", () => {
     await user.click(screen.getByText("Unread chat"))
     expect(markRead).toHaveBeenCalledWith("chat-1")
 
-    const noLinkClick = new MouseEvent("click", { bubbles: true, cancelable: true })
+    const noLinkClick = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+    })
     fireEvent(chatLink, noLinkClick)
     expect(noLinkClick.defaultPrevented).toBe(true)
     expect(markRead).toHaveBeenCalledTimes(2)
@@ -597,14 +674,17 @@ describe("NotificationsBell", () => {
       "focus:opacity-100"
     )
     markRead.mockClear()
-    const markReadClick = new MouseEvent("click", { bubbles: true, cancelable: true })
+    const markReadClick = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+    })
     fireEvent(markButtons[0]!, markReadClick)
     expect(markReadClick.defaultPrevented).toBe(true)
     expect(markRead).toHaveBeenCalledTimes(1)
     expect(markRead).toHaveBeenCalledWith("chat-1")
   })
 
-  it("keeps linked notification clicks cancellable only when no destination exists", async () => {
+  it("prevents unread link navigation until its mark-read request succeeds", async () => {
     const state = baseState()
     state.data = [
       {
@@ -615,21 +695,71 @@ describe("NotificationsBell", () => {
         read: false,
         link: "/news/linked-click",
       },
+      {
+        id: "read-link",
+        title: "Previously read update",
+        body: "Already handled",
+        created_at: "2024-01-01T00:00:00Z",
+        read: true,
+        link: "/news/already-read",
+      },
     ]
-    const markRead = vi.fn()
+    const markRead = vi.fn(() => new Promise<void>(() => undefined))
     state.markRead = markRead
     useNotificationsMock.mockReturnValue(state)
 
+    const attemptedNavigations: string[] = []
+    const emulateBrowserDefaultNavigation = (event: MouseEvent) => {
+      if (event.defaultPrevented || !(event.target instanceof Element)) return
+      const link = event.target.closest("a[href]")
+      if (!link) return
+
+      attemptedNavigations.push(link.getAttribute("href")!)
+      // Model the browser accepting the navigation while preventing jsdom's
+      // unsupported cross-document navigation from running in this test.
+      event.preventDefault()
+    }
+    document.addEventListener("click", emulateBrowserDefaultNavigation)
+
     const user = userEvent.setup()
-    render(<NotificationsBell />)
-    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+    try {
+      render(<NotificationsBell />)
+      await user.click(screen.getByRole("button", { name: "Open notifications" }))
 
-    const link = screen.getByRole("link", { name: /Linked update Open the destination/ })
-    const click = new MouseEvent("click", { bubbles: true, cancelable: true })
-    fireEvent(link, click)
+      const link = screen.getByRole("link", {
+        name: /Linked update Open the destination/,
+      })
+      const click = new MouseEvent("click", { bubbles: true, cancelable: true })
+      fireEvent(link, click)
 
-    expect(click.defaultPrevented).toBe(false)
-    expect(markRead).toHaveBeenCalledWith("linked-click")
+      expect(click.defaultPrevented).toBe(true)
+      expect(markRead).toHaveBeenCalledWith("linked-click")
+      expect(attemptedNavigations).toEqual([])
+
+      const modifiedClick = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: true,
+      })
+      fireEvent(link, modifiedClick)
+      expect(modifiedClick.defaultPrevented).toBe(true)
+      expect(attemptedNavigations).toEqual(["/news/linked-click"])
+      expect(markRead).toHaveBeenCalledTimes(2)
+
+      const readLink = screen.getByRole("link", {
+        name: /Previously read update/,
+      })
+      const readClick = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+      })
+      fireEvent(readLink, readClick)
+      expect(readClick.defaultPrevented).toBe(true)
+      expect(attemptedNavigations).toEqual(["/news/linked-click", "/news/already-read"])
+      expect(markRead).toHaveBeenCalledTimes(2)
+    } finally {
+      document.removeEventListener("click", emulateBrowserDefaultNavigation)
+    }
   })
 
   it("uses the localized new-notifications label for the unread badge", async () => {
@@ -922,7 +1052,10 @@ describe("NotificationsBell", () => {
     expect(variants.hidden.x).toBe(0)
     expect(variants.visible.x).toBe(0)
     expect(variants.visible.transition.duration).toBe(0)
-    expect(variants.visible.transition).toMatchObject({ ease: "easeOut", staggerChildren: 0.05 })
+    expect(variants.visible.transition).toMatchObject({
+      ease: "easeOut",
+      staggerChildren: 0.05,
+    })
     expect(variants.exit).toMatchObject({ opacity: 0, y: -10, scale: 0.95 })
     expect(variants.exit.x).toBe(0)
     expect(variants.exit.transition.duration).toBe(0)
@@ -1073,7 +1206,9 @@ describe("NotificationsBell", () => {
       const user = userEvent.setup()
       render(<NotificationsBell />)
 
-      const openButton = screen.getByRole("button", { name: "Open notifications" })
+      const openButton = screen.getByRole("button", {
+        name: "Open notifications",
+      })
       await user.click(openButton)
 
       // mousedown on the button is inside buttonRef → contains() guard keeps it open
@@ -1110,7 +1245,7 @@ describe("NotificationsBell", () => {
         },
       ]
       state.unreadCount = 1
-      const markAll = vi.fn()
+      const markAll = vi.fn().mockResolvedValue(undefined)
       state.markAll = markAll
       useNotificationsMock.mockReturnValue(state)
 
@@ -1134,10 +1269,8 @@ describe("NotificationsBell", () => {
           read: true,
         },
       ]
-      const clearAll = vi.fn((_arg?: unknown, opts?: { onSuccess?: () => void }) => {
-        opts?.onSuccess?.()
-      })
-      state.clearAll = clearAll as NotificationsState["clearAll"]
+      const clearAll = vi.fn().mockResolvedValue(undefined)
+      state.clearAll = clearAll
       useNotificationsMock.mockReturnValue(state)
 
       const user = userEvent.setup()

@@ -747,12 +747,17 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	}
 	wsProxyFn := handlers.ProxyHandler(wsProxy, internalSecret)
 	ticketAuthFn := jwtMiddleware.Validate(ctx)
+	authenticatedRateLimitFn := rateLimiter.AuthenticatedMiddleware(ctx)
 	wsPathProxyFn := func(c *gin.Context) {
 		// Gin does not permit a static /ws/ticket route beside /ws/*path. Keep
 		// the wildcard but dispatch only the exact ticket path to the authenticated
 		// backend; every other /ws/* route remains owned by ws-hub.
 		if c.Param("path") == "/ticket" {
 			ticketAuthFn(c)
+			if c.IsAborted() {
+				return
+			}
+			authenticatedRateLimitFn(c)
 			if c.IsAborted() {
 				return
 			}
@@ -804,6 +809,10 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 			if c.IsAborted() {
 				return
 			}
+			authenticatedRateLimitFn(c)
+			if c.IsAborted() {
+				return
+			}
 			fileFn(c)
 		})
 		api.Any("/admin/*path", func(c *gin.Context) {
@@ -811,10 +820,18 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 			if c.IsAborted() {
 				return
 			}
+			authenticatedRateLimitFn(c)
+			if c.IsAborted() {
+				return
+			}
 			proxyFn(c)
 		})
 		api.Any("/public/*path", func(c *gin.Context) {
 			callOptionalAuthHandler(jwtMiddleware, ctx)(c)
+			if c.IsAborted() {
+				return
+			}
+			authenticatedRateLimitFn(c)
 			if c.IsAborted() {
 				return
 			}

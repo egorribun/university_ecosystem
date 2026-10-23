@@ -21,6 +21,7 @@ export function useAvatarUpload(setSnackbar: SetSnackbar) {
   const { user } = useAuth()
   const captureOperation = useProfileSessionGuard()
   const refreshUser = useSessionProfileRefresh()
+  const refreshFailedMessage = t("settings:media.avatar.savedRefreshFailed")
 
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [busy, setBusy] = useState(false)
@@ -70,7 +71,20 @@ export function useAvatarUpload(setSnackbar: SetSnackbar) {
         await api.post("/users/me/avatar", formData, {
           headers: { "Content-Type": "multipart/form-data" },
         })
-        if (!(await refreshUser(isCurrent)) || !isCurrent()) return
+        if (!isCurrent()) return
+        let refreshedUser
+        try {
+          refreshedUser = await refreshUser(isCurrent)
+        } catch {
+          if (!isCurrent()) return
+          setSnackbar({ text: refreshFailedMessage, severity: "warning" })
+          return
+        }
+        if (!isCurrent()) return
+        if (!refreshedUser) {
+          setSnackbar({ text: refreshFailedMessage, severity: "warning" })
+          return
+        }
         // Keep cache-busting monotonic even when an upload and the initial
         // render happen within the same clock tick.  A repeated timestamp
         // would leave the browser serving the stale avatar URL.
@@ -92,7 +106,15 @@ export function useAvatarUpload(setSnackbar: SetSnackbar) {
         }
       }
     },
-    [beginPreview, captureOperation, clearPreview, refreshUser, setSnackbar, t]
+    [
+      beginPreview,
+      captureOperation,
+      clearPreview,
+      refreshFailedMessage,
+      refreshUser,
+      setSnackbar,
+      t,
+    ]
   )
 
   const remove = useCallback(async () => {
@@ -101,7 +123,20 @@ export function useAvatarUpload(setSnackbar: SetSnackbar) {
     setBusy(true)
     try {
       await api.delete("/users/me/avatar")
-      if (!(await refreshUser(isCurrent)) || !isCurrent()) return
+      if (!isCurrent()) return
+      let refreshedUser
+      try {
+        refreshedUser = await refreshUser(isCurrent)
+      } catch {
+        if (!isCurrent()) return
+        setSnackbar({ text: refreshFailedMessage, severity: "warning" })
+        return
+      }
+      if (!isCurrent()) return
+      if (!refreshedUser) {
+        setSnackbar({ text: refreshFailedMessage, severity: "warning" })
+        return
+      }
       setVersion((current) => Math.max(Date.now(), current + 1))
       setSnackbar({
         text: t("settings:media.avatar.deleted"),
@@ -116,7 +151,7 @@ export function useAvatarUpload(setSnackbar: SetSnackbar) {
     } finally {
       if (isCurrent()) setBusy(false)
     }
-  }, [captureOperation, refreshUser, setSnackbar, t])
+  }, [captureOperation, refreshFailedMessage, refreshUser, setSnackbar, t])
 
   const handleError = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
     const img = event.currentTarget

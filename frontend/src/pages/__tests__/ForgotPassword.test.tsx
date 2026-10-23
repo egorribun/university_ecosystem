@@ -185,28 +185,34 @@ describe("ForgotPassword page", () => {
     }
   })
 
-  it("keeps the same success response when the API rejects the request", async () => {
+  it("reports an operational failure generically and permits a successful retry", async () => {
+    let requestCount = 0
     server.use(
-      http.post("*/password/forgot", () =>
-        HttpResponse.json({ detail: "not found" }, { status: 500 })
-      )
+      http.post("*/password/forgot", () => {
+        requestCount += 1
+        return requestCount === 1
+          ? HttpResponse.json({ detail: "temporary failure" }, { status: 500 })
+          : HttpResponse.json({ ok: true })
+      })
     )
     const user = userEvent.setup()
     await renderForgot()
 
-    await user.type(
-      screen.getByLabelText(startsWithText(tAuth("fields.email"))),
-      "user@example.com"
-    )
-    await user.click(screen.getByRole("button", { name: tAuth("forgot.sendLink") }))
+    const emailInput = screen.getByLabelText(startsWithText(tAuth("fields.email")))
+    await user.type(emailInput, "user@example.com")
+    const sendButton = screen.getByRole("button", { name: tAuth("forgot.sendLink") })
+    await user.click(sendButton)
 
-    const successMessages = await screen.findAllByText(
-      (_, element) => element?.textContent?.includes("user@example.com") ?? false
-    )
-    expect(successMessages.length).toBeGreaterThan(0)
-    expect(
-      screen.getByRole("button", { name: startsWithText(tAuth("forgot.enterAnother")) })
-    ).toBeDisabled()
+    const failureAlert = await screen.findByRole("alert")
+    expect(failureAlert).toHaveTextContent(i18n.t("common:errors.generic"))
+    expect(emailInput).toHaveValue("user@example.com")
+    expect(screen.queryByText(tAuth("forgot.successSent"))).not.toBeInTheDocument()
+    expect(sendButton).toBeEnabled()
+
+    await user.click(sendButton)
+    expect(await screen.findByText(tAuth("forgot.successSent"))).toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(requestCount).toBe(2)
   })
 
   it("resets the request form after the resend cooldown expires", async () => {

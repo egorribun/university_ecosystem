@@ -315,8 +315,12 @@ describe("EventDetail", () => {
     )
   })
 
-  it("renders a navigable not-found state for failed or absent data", () => {
-    mocks.detail = { data: undefined, isLoading: false, error: new Error("not found") }
+  it("renders a navigable not-found state for an HTTP 404", () => {
+    const notFoundError = Object.assign(new Error("not found"), {
+      isAxiosError: true,
+      response: { status: 404 },
+    })
+    mocks.detail = { data: undefined, isLoading: false, error: notFoundError }
 
     render(<EventDetail />)
 
@@ -329,6 +333,30 @@ describe("EventDetail", () => {
     )
     fireEvent.click(screen.getByRole("button", { name: "common:buttons.back" }))
     expect(mocks.navigate).toHaveBeenCalledWith({ to: "/events" })
+  })
+
+  it.each([
+    [
+      "an HTTP 503",
+      Object.assign(new Error("unavailable"), { isAxiosError: true, response: { status: 503 } }),
+    ],
+    ["a network error", new Error("offline")],
+  ])("shows the load-failed message for %s", (_label, error) => {
+    mocks.detail = { data: undefined, isLoading: false, error }
+
+    render(<EventDetail />)
+
+    expect(screen.getByText("events:detail.messages.loadFailed")).toBeInTheDocument()
+    expect(screen.queryByText("events:detail.messages.notFound")).not.toBeInTheDocument()
+  })
+
+  it("shows the load-failed message when the query has no event and no HTTP error", () => {
+    mocks.detail = { data: undefined, isLoading: false, error: null }
+
+    render(<EventDetail />)
+
+    expect(screen.getByText("events:detail.messages.loadFailed")).toBeInTheDocument()
+    expect(screen.queryByText("events:detail.messages.notFound")).not.toBeInTheDocument()
   })
 
   it("renders data and completes the administrator edit and delete flow", async () => {

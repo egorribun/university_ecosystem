@@ -11,6 +11,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { useAuthStore } from "@/stores/useAuthStore"
+import { invalidateSessionEpoch } from "@/stores/sessionEpoch"
 import { logError } from "@/app/logger"
 import { useLessonNotes, useLessonNotesMap, type LessonNote } from "../useLessonNotes"
 
@@ -553,6 +554,98 @@ describe("useLessonNotesMap", () => {
 })
 
 describe("deferred note storage ownership", () => {
+  it("keeps an IndexedDB save that finishes after the hook unmounts", async () => {
+    vi.useFakeTimers()
+    const entered = deferred<void>()
+    const release = deferred<void>()
+    idb.set.mockImplementationOnce(async (key, value) => {
+      entered.resolve()
+      await release.promise
+      idb.store.set(key, value)
+    })
+    const { result, unmount } = renderHook(() => useLessonNotes("unmount-save"))
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    act(() => result.current.setNote("keep after leaving"))
+    await act(() => vi.advanceTimersByTimeAsync(300))
+    await entered.promise
+
+    unmount()
+    await act(async () => {
+      release.resolve()
+      await release.promise
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(idb.store.get(KEY("unmount-save"))).toEqual({
+      text: "keep after leaving",
+      updatedAt: expect.any(Number),
+    })
+    expect(idb.del).not.toHaveBeenCalled()
+  })
+
+  it("keeps an RxDB upsert that finishes after the hook unmounts", async () => {
+    vi.useFakeTimers()
+    const entered = deferred<void>()
+    const release = deferred<{ remove: ReturnType<typeof vi.fn> }>()
+    const remove = vi.fn(async () => undefined)
+    const upsert = vi.fn(async () => {
+      entered.resolve()
+      return release.promise
+    })
+    const findOne = vi.fn(() => ({ exec: vi.fn(async () => null) }))
+    dbState.getDatabase.mockResolvedValue({ notes: { findOne, upsert } } as never)
+    const { result, unmount } = renderHook(() => useLessonNotes("unmount-rxdb"))
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    act(() => result.current.setNote("keep RxDB after leaving"))
+    await act(() => vi.advanceTimersByTimeAsync(300))
+    await entered.promise
+
+    unmount()
+    await act(async () => {
+      release.resolve({ remove })
+      await release.promise
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(remove).not.toHaveBeenCalled()
+    expect(idb.store.get(KEY("unmount-rxdb"))).toEqual({
+      text: "keep RxDB after leaving",
+      updatedAt: expect.any(Number),
+    })
+  })
+
+  it("rolls back an IndexedDB write after same-owner session epoch rotation", async () => {
+    vi.useFakeTimers()
+    const entered = deferred<void>()
+    const release = deferred<void>()
+    idb.set.mockImplementationOnce(async (key, value) => {
+      entered.resolve()
+      await release.promise
+      idb.store.set(key, value)
+    })
+    const { result } = renderHook(() => useLessonNotes("same-owner-epoch"))
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    act(() => result.current.setNote("session-bound note"))
+    await act(() => vi.advanceTimersByTimeAsync(300))
+    await entered.promise
+    expect(useAuthStore.getState().user?.id).toBe("user-a")
+
+    act(() => invalidateSessionEpoch())
+    expect(useAuthStore.getState().user?.id).toBe("user-a")
+    await act(async () => {
+      release.resolve()
+      await release.promise
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(idb.store.has(KEY("same-owner-epoch"))).toBe(false)
+    expect(idb.del).toHaveBeenCalledWith(KEY("same-owner-epoch"))
+  })
+
   it("rolls back an RxDB save and discards queued work after account expiry", async () => {
     vi.useFakeTimers()
     const saved = deferred<{ remove: ReturnType<typeof vi.fn> }>()

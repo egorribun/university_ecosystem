@@ -167,8 +167,16 @@ vi.mock("@/components/ui/SEO", async () =>
 )
 
 vi.mock("@/components/settings", () => ({
-  Alert: ({ children, onClose }: { children: ReactNode; onClose?: () => void }) => (
-    <div role="alert">
+  Alert: ({
+    children,
+    onClose,
+    severity,
+  }: {
+    children: ReactNode
+    onClose?: () => void
+    severity?: string
+  }) => (
+    <div role="alert" data-severity={severity}>
       {children}
       {onClose ? <button aria-label="alert-close" onClick={onClose} /> : null}
     </div>
@@ -498,6 +506,16 @@ describe("NewsDetail", () => {
     vi.useRealTimers()
   })
 
+  it("classifies share errors as errors and share confirmations as successes", () => {
+    render(<NewsDetail />)
+
+    act(() => mocks.shareNotify("news:notifications.shareError"))
+    expect(screen.getByRole("alert")).toHaveAttribute("data-severity", "error")
+
+    act(() => mocks.shareNotify("news:notifications.shareSuccess"))
+    expect(screen.getByRole("alert")).toHaveAttribute("data-severity", "success")
+  })
+
   it("localizes article content and wires interaction, edit, and delete flows", async () => {
     const historyLength = vi.spyOn(window.history, "length", "get").mockReturnValue(1)
     render(<NewsDetail />)
@@ -525,8 +543,10 @@ describe("NewsDetail", () => {
     expect(screen.getByText("edit-dialog")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "edit-success" }))
     expect(screen.getByRole("alert")).toHaveTextContent("edit-success")
+    expect(screen.getByRole("alert")).toHaveAttribute("data-severity", "success")
     fireEvent.click(screen.getByRole("button", { name: "edit-error" }))
     expect(screen.getByRole("alert")).toHaveTextContent("edit-error")
+    expect(screen.getByRole("alert")).toHaveAttribute("data-severity", "error")
     fireEvent.click(screen.getByRole("button", { name: "edit-close" }))
 
     act(() => mocks.shareNotify("share-notification"))
@@ -541,6 +561,7 @@ describe("NewsDetail", () => {
       expect(mocks.invalidateQueries).toHaveBeenCalledWith({ queryKey: ["news", "list"] })
       expect(mocks.navigate).toHaveBeenCalledWith({ to: "/news" })
     })
+    expect(screen.getByRole("alert")).toHaveAttribute("data-severity", "success")
     historyLength.mockRestore()
   })
 
@@ -660,6 +681,7 @@ describe("NewsDetail", () => {
     await waitFor(() => {
       expect(screen.getByText("news:notifications.deleteError")).toBeInTheDocument()
     })
+    expect(screen.getByRole("alert")).toHaveAttribute("data-severity", "error")
     fireEvent.click(screen.getByRole("button", { name: "alert-close" }))
     expect(screen.queryByText("news:notifications.deleteError")).not.toBeInTheDocument()
   })

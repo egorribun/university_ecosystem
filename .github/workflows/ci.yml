@@ -1274,6 +1274,93 @@ jobs:
           # reusable audit has a separate job key for filesystem/config scans.
           category: ".github/workflows/ci.yml:docker-security-scan"
 
+  docker-security-scan-additional:
+    name: "Trivy Image Scan - ${{ matrix.image_name }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: pre-commit-check
+    permissions:
+      security-events: write
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - image_name: frontend
+            file: frontend.Dockerfile
+            context: .
+            category: trivy-image-frontend
+          - image_name: gateway
+            file: services/gateway/Dockerfile
+            context: .
+            category: trivy-image-gateway
+          - image_name: ws-hub
+            file: services/ws-hub/Dockerfile
+            context: .
+            category: trivy-image-ws-hub
+          - image_name: file-processor
+            file: services/file-processor/Dockerfile
+            context: .
+            category: trivy-image-file-processor
+          - image_name: caddy
+            file: services/caddy/Dockerfile
+            context: services/caddy
+            category: trivy-image-caddy
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build local runtime image for scanning
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: "university-ecosystem/${{ matrix.image_name }}:${{ github.sha }}"
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          build-args: |
+            ${{ matrix.image_name == 'frontend' && format('VITE_APP_RELEASE={0}', github.sha) || '' }}
+            ${{ matrix.image_name == 'frontend' && 'VITE_ENABLE_WEB_VITALS=false' || '' }}
+            ${{ matrix.image_name == 'frontend' && 'VITE_CWV_TRUSTED_RUM=false' || '' }}
+            ${{ matrix.image_name == 'frontend' && 'VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv' || '' }}
+          cache-from: type=gha,scope=university-${{ matrix.image_name }}
+          cache-to: type=gha,scope=university-${{ matrix.image_name }},mode=max
+          provenance: false
+          sbom: false
+
+      - name: Run Trivy vulnerability scanner
+        id: trivy_scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
+        with:
+          version: v0.75.0
+          image-ref: "university-ecosystem/${{ matrix.image_name }}:${{ github.sha }}"
+          format: sarif
+          output: "trivy-${{ matrix.image_name }}.sarif"
+          severity: CRITICAL,HIGH
+          limit-severities-for-sarif: true
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Upload Trivy results to GitHub Security tab
+        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          sarif_file: "trivy-${{ matrix.image_name }}.sarif"
+          category: ${{ matrix.category }}
+
+
   # MOD-W15-03 (audit 2026-03-23 Wave 15): Helm lint + kubeconform validation.
   # Catches broken Helm templates and K8s manifest schema violations before deploy.
   helm-validate:
@@ -3359,6 +3446,7 @@ jobs:
       - openapi-verify
       - verify-runtime-reqs
       - docker-security-scan
+      - docker-security-scan-additional
       - helm-validate
       - db-migration-gate
       - go-fuzz
@@ -3417,6 +3505,7 @@ jobs:
             "openapi-verify|${{ needs.openapi-verify.result }}"
             "verify-runtime-reqs|${{ needs.verify-runtime-reqs.result }}"
             "docker-security-scan|${{ needs.docker-security-scan.result }}"
+            "docker-security-scan-additional|${{ needs.docker-security-scan-additional.result }}"
             "helm-validate|${{ needs.helm-validate.result }}"
             "db-migration-gate|${{ needs.db-migration-gate.result }}"
             "go-fuzz|${{ needs.go-fuzz.result }}"

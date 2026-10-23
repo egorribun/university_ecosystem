@@ -341,6 +341,15 @@ class AuthService:
                         models.TrustedDevice.user_id == user.id
                     )
                 )
+                # Password reset must discard any TOTP bootstrap secret created
+                # by a session that may have been compromised. Confirmed factors
+                # remain intact; only live, unconfirmed setup rows are removed.
+                await db.execute(
+                    delete(models.MfaTotpEnrollment)
+                    .where(models.MfaTotpEnrollment.user_id == user.id)
+                    .where(models.MfaTotpEnrollment.confirmed_at.is_(None))
+                    .where(models.MfaTotpEnrollment.revoked_at.is_(None))
+                )
 
             # Revoke DB sessions and publish durable Redis JTI tombstones in
             # the same security transaction.  Redis failures propagate, so a

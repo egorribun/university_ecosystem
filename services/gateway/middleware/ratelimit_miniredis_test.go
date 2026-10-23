@@ -140,3 +140,134 @@ func TestRateLimiter_GetClientKey_NonStringUserID(t *testing.T) {
 
 	assert.Contains(t, capturedKey, "ip:")
 }
+
+func TestRateLimiter_AuthenticatedMiddleware_RequiresVerifiedContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("health stays exempt even for an authenticated identity", func(t *testing.T) {
+		rl := &RateLimiter{
+			fallbackCounters: map[string]*fallbackEntry{
+				"user:alice": {count: 1, windowStart: time.Now().Unix()},
+			},
+			fallbackLimit:  1,
+			fallbackWindow: 60,
+		}
+		t.Cleanup(func() { assert.NoError(t, rl.Close()) })
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("user_id", "alice")
+			c.Set("claims", &Claims{UserID: "alice"})
+		})
+		router.Use(rl.AuthenticatedMiddleware(t.Context()))
+		router.GET("/health/ready", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/ready", nil))
+		assert.Equal(t, http.StatusOK, response.Code, "health probes must bypass even a saturated identity bucket")
+		assert.Equal(t, int64(1), rl.fallbackCounters["user:alice"].count, "the health probe must not consume the identity bucket")
+	})
+
+	tests := []struct {
+		name      string
+		setUserID bool
+		userID    any
+		setClaims bool
+		claims    any
+	}{
+		{name: "anonymous"},
+		{name: "malformed user ID", setUserID: true, userID: 42, setClaims: true, claims: &Claims{UserID: "alice"}},
+		{name: "empty user ID", setUserID: true, userID: "", setClaims: true, claims: &Claims{}},
+		{name: "missing claims", setUserID: true, userID: "alice"},
+		{name: "wrong claims type", setUserID: true, userID: "alice", setClaims: true, claims: map[string]string{"user_id": "alice"}},
+		{name: "nil claims", setUserID: true, userID: "alice", setClaims: true, claims: (*Claims)(nil)},
+		{name: "identity mismatch", setUserID: true, userID: "alice", setClaims: true, claims: &Claims{UserID: "bob"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rl := &RateLimiter{
+				fallbackCounters: make(map[string]*fallbackEntry),
+				fallbackLimit:    1,
+				fallbackWindow:   60,
+			}
+			t.Cleanup(func() { assert.NoError(t, rl.Close()) })
+			router := gin.New()
+			router.Use(func(c *gin.Context) {
+				if tt.setUserID {
+					c.Set("user_id", tt.userID)
+				}
+				if tt.setClaims {
+					c.Set("claims", tt.claims)
+				}
+			})
+			router.Use(rl.AuthenticatedMiddleware(t.Context()))
+			router.GET("/api/thing", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/thing", nil))
+			assert.Equal(t, http.StatusOK, response.Code, "unverified context should continue under the pre-auth IP gate only")
+			assert.Empty(t, rl.fallbackCounters, "unverified context must not create a user bucket")
+		})
+	}
+}
+
+func TestRateLimiter_AuthenticatedMiddleware_UsesVerifiedIdentityFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rl := &RateLimiter{
+		fallbackCounters: make(map[string]*fallbackEntry),
+		fallbackLimit:    1,
+		fallbackWindow:   60,
+	}
+	t.Cleanup(func() { assert.NoError(t, rl.Close()) })
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "alice")
+		c.Set("claims", &Claims{UserID: "alice"})
+	})
+	router.Use(rl.AuthenticatedMiddleware(t.Context()))
+	router.GET("/api/thing", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	request := func() *httptest.ResponseRecorder {
+		t.Helper()
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/thing", nil))
+		return response
+	}
+
+	assert.Equal(t, http.StatusOK, request().Code, "first request for a verified identity should pass the existing fallback")
+	blocked := request()
+	assert.Equal(t, http.StatusTooManyRequests, blocked.Code, "the existing fallback should reject after the configured per-user allowance")
+	assert.Equal(t, "60", blocked.Header().Get("Retry-After"))
+	assert.Contains(t, rl.fallbackCounters, "user:alice")
+	assert.NotContains(t, rl.fallbackCounters, "ip:", "the verified identity fallback should not create an IP-keyed second bucket")
+}
+
+func TestRateLimiter_AuthenticatedMiddleware_UsesRedisIdentityBucket(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mr := miniredis.RunT(t)
+	mr.SetTime(time.Unix(1_700_000_000, 0))
+	rl, err := NewRateLimiter(context.Background(), "redis://"+mr.Addr(), 1, 1)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, rl.Close()) })
+
+	requestCtx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "alice")
+		c.Set("claims", &Claims{UserID: "alice"})
+	})
+	router.Use(rl.AuthenticatedMiddleware(requestCtx))
+	router.GET("/api/thing", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	request := func() *httptest.ResponseRecorder {
+		t.Helper()
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/thing", nil))
+		return response
+	}
+
+	assert.Equal(t, http.StatusOK, request().Code, "a verified identity should get the configured Redis burst")
+	blocked := request()
+	assert.Equal(t, http.StatusTooManyRequests, blocked.Code, "the verified identity Redis bucket must enforce 429")
+	assert.Equal(t, "1", blocked.Header().Get("RateLimit-Limit"))
+}

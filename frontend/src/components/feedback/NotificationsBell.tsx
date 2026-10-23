@@ -12,7 +12,7 @@ import {
   MessageCircle,
   Calendar,
 } from "lucide-react"
-import { useNotifications } from "@/hooks/useNotifications"
+import { useNotifications, type NotificationMutationFailure } from "@/hooks/useNotifications"
 import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
 
@@ -40,6 +40,17 @@ export const shouldCloseNotificationDropdown = (
   return !button.contains(target) && !dropdown.contains(target)
 }
 
+/** @internal A failed mark-read request must leave the user on this alert. */
+export const navigateAfterNotificationRead = async (
+  markRead: (notificationId: string) => Promise<void> | void,
+  notificationId: string,
+  link: string,
+  navigate: (path: string) => void = (path) => window.location.assign(path)
+): Promise<void> => {
+  await markRead(notificationId)
+  navigate(link)
+}
+
 export default function NotificationsBell() {
   const { t } = useTranslation(["system"])
   const {
@@ -51,6 +62,8 @@ export default function NotificationsBell() {
     markRead,
     markAll,
     clearAll,
+    mutationFailures,
+    retryMutationFailure,
     isMarkingAll,
     isClearing,
     isError,
@@ -227,7 +240,9 @@ export default function NotificationsBell() {
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        onClick={() => markAll()}
+                        onClick={() => {
+                          void Promise.resolve(markAll()).catch(() => undefined)
+                        }}
                         disabled={actionsDisabled}
                         className="min-h-11 min-w-11 p-2 text-(--text-secondary) hover:text-text-primary hover:bg-(--text-secondary)/(--opacity-faint) rounded-lg transition-colors focus-ring-premium disabled:opacity-soft disabled:hover:bg-transparent"
                         aria-label={t("system:notificationsBell.markAll")}
@@ -237,11 +252,11 @@ export default function NotificationsBell() {
                       </button>
                       <button
                         type="button"
-                        onClick={() =>
-                          clearAll(undefined, {
-                            onSuccess: () => setIsOpen(false),
-                          })
-                        }
+                        onClick={() => {
+                          void Promise.resolve(clearAll())
+                            .then(() => setIsOpen(false))
+                            .catch(() => undefined)
+                        }}
                         disabled={actionsDisabled}
                         className="min-h-11 min-w-11 p-2 text-(--text-secondary) hover:text-error-text hover:bg-error-bg/(--opacity-subtle) rounded-lg transition-colors focus-ring-premium disabled:opacity-soft disabled:hover:bg-transparent"
                         aria-label={t("system:notificationsBell.clear")}
@@ -251,6 +266,50 @@ export default function NotificationsBell() {
                       </button>
                     </div>
                   </div>
+
+                  {mutationFailures.map((failure: NotificationMutationFailure) => {
+                    const actionLabel =
+                      failure.operation === "mark-read"
+                        ? t("system:notificationsBell.markRead")
+                        : failure.operation === "mark-all"
+                          ? t("system:notificationsBell.markAll")
+                          : t("system:notificationsBell.clear")
+                    const targetLabel =
+                      failure.operation === "mark-read"
+                        ? (data.find((item) => item.id === failure.notificationId)?.title ??
+                          failure.notificationId)
+                        : null
+                    const actionDetail = targetLabel
+                      ? `${actionLabel}: ${targetLabel}`
+                      : actionLabel
+                    const retryLabel = `${t("system:errorBoundary.retry")}: ${actionDetail}`
+
+                    return (
+                      <div
+                        key={failure.failureKey}
+                        role="alert"
+                        className="px-4 py-3 border-b border-glass-border flex items-center justify-between gap-3"
+                      >
+                        <p className="text-sm text-error-text">
+                          {t("system:errorBoundary.title")}: {actionDetail}
+                        </p>
+                        <button
+                          type="button"
+                          aria-label={retryLabel}
+                          onClick={() => {
+                            void retryMutationFailure(failure)
+                              .then(() => {
+                                if (failure.operation === "clear") setIsOpen(false)
+                              })
+                              .catch(() => undefined)
+                          }}
+                          className="min-h-11 text-xs bg-(--border-subtle) hover:bg-(--border-strong) text-text-primary px-3 py-1.5 rounded-lg transition-colors"
+                        >
+                          {retryLabel}
+                        </button>
+                      </div>
+                    )
+                  })}
 
                   {/* Content */}
                   <div className="max-h-(--h-hero-lg) sm:max-h-(--h-hero-md) overflow-y-auto custom-scrollbar">
@@ -296,8 +355,26 @@ export default function NotificationsBell() {
                             <a
                               href={n.link || "#"}
                               onClick={(e) => {
-                                if (!n.link) e.preventDefault()
-                                if (!n.read) markRead(n.id)
+                                if (!n.link) {
+                                  e.preventDefault()
+                                  if (!n.read) {
+                                    void Promise.resolve(markRead(n.id)).catch(() => undefined)
+                                  }
+                                  return
+                                }
+                                if (n.read) return
+
+                                const modifiedClick =
+                                  e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey
+                                if (modifiedClick) {
+                                  void Promise.resolve(markRead(n.id)).catch(() => undefined)
+                                  return
+                                }
+
+                                e.preventDefault()
+                                void navigateAfterNotificationRead(markRead, n.id, n.link).catch(
+                                  () => undefined
+                                )
                               }}
                               className={cn(
                                 "flex gap-3",
@@ -343,7 +420,7 @@ export default function NotificationsBell() {
                                 onClick={(e) => {
                                   e.preventDefault()
                                   e.stopPropagation()
-                                  markRead(n.id)
+                                  void Promise.resolve(markRead(n.id)).catch(() => undefined)
                                 }}
                                 className="absolute top-2 right-2 min-h-11 min-w-11 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-1.5 rounded-lg text-(--text-secondary) hover:text-text-primary hover:bg-(--border-strong) bg-(--bg-surface)/(--opacity-medium) backdrop-blur-sm"
                                 title={t("system:notificationsBell.markRead")}

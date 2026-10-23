@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams, useNavigate, useRouter } from "@tanstack/react-router"
 import { Info as InfoIcon, ArrowLeft as ArrowBackIcon } from "lucide-react"
+import { isAxiosError } from "axios"
 import "@/styles/tokens/events.css"
 import { useAuth } from "@/contexts/AuthContext"
 import { useTranslation } from "react-i18next"
@@ -168,6 +169,11 @@ export default function EventDetail() {
 
   /* ── Error / not found state ── */
   if (error || !event) {
+    const messageKey =
+      isAxiosError(error) && error.response?.status === 404
+        ? "events:detail.messages.notFound"
+        : "events:detail.messages.loadFailed"
+
     return (
       <>
         <SEO title={t("events:pageTitle")} description={t("events:pageDescription")} />
@@ -180,9 +186,7 @@ export default function EventDetail() {
             >
               <InfoIcon size={32} />
             </div>
-            <p className="text-lg font-semibold text-text-primary">
-              {t("events:detail.messages.notFound")}
-            </p>
+            <p className="text-lg font-semibold text-text-primary">{t(messageKey)}</p>
             <Button variant="glass" onClick={() => navigate({ to: "/events" })}>
               {t("common:buttons.back")}
             </Button>

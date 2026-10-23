@@ -4,7 +4,7 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Текущая принятая нижняя граница — **247/512 (48,2%)** по [последней source-bound контрольной точке](#registry-and-schedule-lock-checkpoint-2026-10-23); полный список принятых ID и evidence приведён в [аудите](../../audits/AUDIT-2026-10.md#registry-denial-audit-ui-feedback-and-schedule-lock-checkpoint-2026-10-23). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Текущая принятая нижняя граница — **263/512 (51,4%)** по [последней source-bound контрольной точке](#rate-limit-identity-nats-startup-recovery-and-weekly-cleanup-checkpoint-2026-10-23); полный список принятых ID и evidence приведён в [аудите](../../audits/AUDIT-2026-10.md#rate-limit-identity-nats-startup-recovery-and-weekly-cleanup-checkpoint-2026-10-23). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
 Текущая работа идёт только на `egorribun`, в одном checkout, через открытый [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343); [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306) был owner-merged и является историческим. Root управляет Git; по поручению владельца от 2026-10-23 — максимум 20 GPT-6 Luna Max с непересекающимися файлами и отдельным допуском тяжёлых прогонов по ресурсам. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
@@ -2117,3 +2117,114 @@ merge 10c1bc04 имеет тот же tree. Root сверил source/test blobs 
 ctutils 0.4.4 ещё требуют обычных hooks, публикации и собственных final-source checks.
 Решение владельца о regular/init-only границе require-resource-limits записано
 в ADR-010. Ни новая визуальная приёмка, ни merge/deploy не выполнены.
+
+
+## CSRF and gate evidence checkpoint (2026-10-23)
+
+Принято **252/512 (49,2%)**: сохранены прежние 247 ID, добавлены только AUD-001,
+AUD-224, AUD-225, AUD-227 и AUD-229. Root связал 27 файлов с опубликованным
+8342ce93 и проверил 81 локальный PASS без ошибок и skips; [полные границы
+доказательств и актуальный список ID](../../audits/AUDIT-2026-10.md#csrf-and-gate-evidence-checkpoint-2026-10-23)
+сохранены в аудите. Это не приёмка общего CI или production.
+
+Первый пакет опубликован в PR #1343, обычные hooks и полный скан прошли;
+baseline319, dispositions301, Gitleaks25 и 78 required contexts сохранены.
+На этом source прошли Nilaway, Cargo Deny, SBOM vulnerability gate, CodeQL,
+Contract, frontend unit shards, inventory и Kyverno. Linux production build
+успешен; общий CI остаётся незелёным. Trivy config gate упал; локальный скан
+тем же Trivy 0.75.0 воспроизвёл пять HIGH в негативной Kyverno-фикстуре.
+Полный hosted SARIF не получен. Новые исключения не применены и требуют
+отдельного решения владельца. Следующие кандидаты и локальные тесты пока не
+увеличивают принятый счёт; им нужны обычные hooks и final-source checks.
+
+
+## Local second-batch validation checkpoint (2026-10-23)
+
+Принятая нижняя граница остаётся **252/512 (49,2%)**; новых AUD IDs не добавлено.
+На опубликованном 8342ce93 Matrix Contract, frontend, Rust и Go — SUCCESS;
+две ошибки Python unit tests остаются в диагностике. Trivy findings из намеренно
+негативной Kyverno-фикстуры ожидают предложения владельца; новая disposition или
+exception не заявляется. Owned Live завершился ошибкой на `runtime_config`, но
+failure cleanup прошёл.
+
+Локальная вторая партия: frontend 8 files / 298 PASS / 37.73s, typecheck PASS,
+lint `--max-warnings=0` PASS; Node 660 PASS / один существующий SKIP. Bounded
+Windows production build PASS за 21.63s (2 threads, RSS 2048, heap 1536; peak
+host 46.09%); только прежние dynamic-import/timing diagnostics. Workflow/catalog:
+250 PASS за 65,57s в обычном pytest до предложенных Trivy-изменений.
+
+## Existing-source closure checkpoint (2026-10-23)
+
+Принятая нижняя граница — **255/512 (49,8%)**: к историческим 252 добавлены
+только AUD-176, AUD-200 и AUD-285. Все 11 исходных файлов, конфигураций и тестов
+связаны с опубликованными байтами 8342ce93; полный source-binding, точные IDs,
+JUnit-хеши, именованные тесты и границы доказательств приведены в
+[аудите](../../audits/AUDIT-2026-10.md#existing-source-closure-checkpoint-2026-10-23).
+Python-run завершился 17 PASS, включая 10 тестов AUD-176 и один тест AUD-200;
+86 frontend-тестов включают 39 целевых случаев AUD-285. Остальные 6 Python и
+47 frontend cases являются контекстом, не добавляя IDs. Ограничения остаются:
+in-memory single-process, SQLite-fixture без timestamp ties, jsdom без browser
+или assistive-technology certification.
+
+## Unpublished working checkpoint (2026-10-23)
+
+Локальная проверка текущей партии: outbox cohort из 9 файлов — 89 PASS за 13,72s;
+frontend typecheck/lint PASS; backend CI — 117 PASS; NATS diagnostics — 167 PASS;
+frontend-прогоны — 298, 42 и 86 PASS (сумма не означает число уникальных тестов). Production build прошёл за
+20,59s при прежних ограничениях ресурсов; peak host составил 46,07%.
+
+Это unpublished/локальное подтверждение, а не полный зелёный CI. Обычные hooks,
+финальный чистый scan и публикация ещё pending. Последний полный локальный scan:
+550 findings, пять unmatched синтетических значений в
+`tests/test_aud253_private_env_files.py`; проверка завершилась отказом.
+Эти пять входят в ожидающий решения пакет семи identities, другие две относятся
+к ещё не интегрированному Trivy validator. AUD-175, AUD-303, AUD-236 и AUD-265
+не входят в 255. Открыты два решения владельца: точный пакет Trivy с двумя
+fixture-исключениями и ровно семь новых detect-secrets identities с точным
+validator/test diff. Ни одно из этих исключений пока не применено.
+
+
+## Admin feedback, NATS, media ownership and chat aggregation checkpoint (2026-10-23)
+
+Принятая нижняя граница — **260/512 (50,8%)**: к историческим 255 добавлены
+только AUD-180, AUD-203, AUD-205, AUD-254 и AUD-291. Полный список, точные
+привязки к 8342ce93, named tests, хеши локальных доказательств и границы
+приёмки приведены в [контрольной точке аудита](../../audits/AUDIT-2026-10.md#admin-feedback-nats-media-ownership-and-chat-aggregation-checkpoint-2026-10-23).
+
+Обычные локальные прогоны на target-файлах, неизменённых относительно 8342ce93,
+составили 82 PASS в media-ownership, 53 PASS в NATS/chat и 9 PASS в admin-feedback
+cohorts; JUnit подтверждает ноль failures, errors и skips. Admin-feedback suite
+использует mocked Snackbar. Это bounded source-bound проверка: она не подтверждает
+live NATS outage, exactly-once между JetStream и БД, production S3, PostgreSQL
+plan/performance, browser lifecycle или assistive-technology acceptance.
+Полный CI и публикация остаются отдельными воротами.
+
+
+## Rate-limit identity, NATS startup recovery and weekly cleanup checkpoint (2026-10-23)
+
+Принятая source-bound нижняя граница — **263/512 (51,4%)**; к историческим 260 добавлены только AUD-177, AUD-202 и AUD-207. Точные критерии, source bindings, шесть именованных PASS и пределы доказательства сохранены в [контрольной точке аудита](../../audits/AUDIT-2026-10.md#rate-limit-identity-nats-startup-recovery-and-weekly-cleanup-checkpoint-2026-10-23).
+
+Обычный локальный прогон на неизменённых target-файлах дал 6 PASS за 0,94s; JUnit содержит ровно шесть случаев без failures, errors и skips. Проверка подтверждает только IP-bucket для pre-auth limiter, восстановление NATS worker до подписки под mock и отсутствие REINDEX в исполняемом cleanup пути. Она не подтверждает Redis или production client-IP forwarding, live NATS delivery/ACK, deployed scheduler, полный CI или публикацию. AUD-198 остаётся PostgreSQL-gated; AUD-204 остаётся открытым.
+## Selected publication candidate (2026-10-23)
+
+Текущий checkout остаётся на 8342ce93; выбранная партия ещё не опубликована.
+Два файла AUD-253 (`start-docker.ps1` и новый private-env test) сохранены вне
+checkout вместе с полным diff; в checkout восстановлены опубликованные версии.
+Они не входят в выбранную партию до отдельного решения по пяти scanner identities.
+Ни Trivy-пакет, ни семь новых dispositions не применены: policy301 и baseline319
+сохранены. Приватные кандидаты миграции, inventory, receipt schema, titles и theme
+также не интегрированы и не увеличивают принятый счёт 263.
+
+После исправления reply scope Messenger обычные два полных модуля дали 138 PASS;
+38 lesson-notes cases подтверждают завершение начатого сохранения после unmount и
+сохранение session/owner rollback. Typecheck и lint с нулём новых предупреждений
+прошли. Bounded production build прошёл за 21,72s (2 workers, RSS 2048 MiB,
+heap 1536 MiB, peak host 57,73%); retained artifacts и итоговые exit codes приватны.
+Скан выбранного кода перед этой документационной записью: 545 findings,
+0 unmatched, baseline319 неизменён. Финальные hooks и проверки source ещё требуются.
+
+Свежий четырёхслучайный PostgreSQL sanity для AUD-265 пока не выполнен: первая
+попытка остановилась в launcher до тестов, owned container/volume удалены и
+отсутствие подтверждено. Приватный AUD-348 также остановился в preflight до БД;
+это не результат миграционных тестов. Общий CI остаётся незелёным; новые закрытия
+по этим кандидатам не заявлены.

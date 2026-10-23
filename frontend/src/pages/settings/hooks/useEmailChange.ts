@@ -55,11 +55,11 @@ export function useEmailChange({
   // Sync email from user context
   useEffect(() => {
     setEmailValue(user?.email ?? "")
-  }, [user?.email])
+  }, [user?.id, user?.email])
 
   useEffect(() => {
     setPendingEmail(user?.pending_email ?? null)
-  }, [user?.pending_email])
+  }, [user?.id, user?.pending_email])
 
   const resolveDetailMessage = useCallback((error: unknown, fallback: string) => {
     if (isAxiosError(error)) {
@@ -116,10 +116,30 @@ export function useEmailChange({
         })
         if (!isCurrent()) return
         setPendingEmail(trimmedEmail.toLowerCase())
-        if (!(await refreshUser(isCurrent)) || !isCurrent()) return
         setEmailPassword("")
+        const refreshWarning = {
+          text: t("settings:security.email.confirmationSentRefreshFailed", {
+            email: trimmedEmail,
+          }),
+          severity: "warning" as const,
+        }
+        let refreshedUser
+        try {
+          refreshedUser = await refreshUser(isCurrent)
+        } catch {
+          if (!isCurrent()) return
+          setSnackbar(refreshWarning)
+          return
+        }
+        if (!isCurrent()) return
+        if (!refreshedUser) {
+          setSnackbar(refreshWarning)
+          return
+        }
         setSnackbar({
-          text: t("settings:security.email.confirmationSent", { email: trimmedEmail }),
+          text: t("settings:security.email.confirmationSent", {
+            email: trimmedEmail,
+          }),
           severity: "success",
         })
       } catch (error) {

@@ -114,16 +114,7 @@ export function useLessonNotes(lessonId: string | null | undefined) {
     )
       return
     lastSavedRef.current = debounced
-    let active = true
-    persistNote(
-      key,
-      lessonId,
-      debounced.note,
-      () => active && selectOwner(useAuthStore.getState()) === owner
-    )
-    return () => {
-      active = false
-    }
+    persistNote(key, lessonId, debounced.note, () => selectOwner(useAuthStore.getState()) === owner)
   }, [debounced, key, lessonId, owner, loadingKey])
 
   const setNote = useCallback(

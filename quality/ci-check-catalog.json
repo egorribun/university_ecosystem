@@ -1275,6 +1275,27 @@
             "notes": "No automatic retry: the pinned Trivy action exposes no typed failure reason. Rerun the workflow manually for suspected transient runner or registry failures."
           }
         },
+        "docker-security-scan-additional": {
+          "profile": "internal",
+          "check_name_template": "Trivy Image Scan - ${{ matrix.image_name }}",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false,
+            "notes": "Five additional source-built runtime images are scanned on pull requests; CI Success enforces this matrix result without adding a branch-protection context."
+          },
+          "matrix_governance": {
+            "max_parallel": 3
+          }
+        },
         "helm-validate": {
           "profile": "required-pr-main",
           "check_name_template": "Helm Lint & Validate",
@@ -1593,6 +1614,7 @@
             "openapi-verify",
             "verify-runtime-reqs",
             "docker-security-scan",
+            "docker-security-scan-additional",
             "helm-validate",
             "db-migration-gate",
             "go-fuzz",

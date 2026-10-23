@@ -226,7 +226,8 @@ const createNewsListQueryFn =
     owner: string | null,
     anonymous = false
   ) =>
-  async ({ pageParam, signal }: { pageParam?: string | null; signal?: AbortSignal }) => {
+  async (queryContext: { pageParam?: string | null; signal?: AbortSignal }) => {
+    const { pageParam } = queryContext
     if (anonymous) {
       // Anonymous reads cover both an unconfirmed account and a stale session
       // generation observed from another tab. The transport omits cookies and
@@ -238,15 +239,13 @@ const createNewsListQueryFn =
         language: normalized.language,
         limit: normalized.limit,
         cursor: pageParam,
-        signal,
+        signal: hasStaleBrowserSessionBinding() ? undefined : queryContext.signal,
       })
       if (!response.ok) throw new Error(`News request failed with status ${response.status}`)
-      return ensurePaginatedResponse(
-        (await response.json()) as PaginatedResponse<NewsItem>,
-        normalized.limit
-      )
+      return ensurePaginatedResponse(response.data as PaginatedResponse<NewsItem>, normalized.limit)
     }
 
+    const { signal } = queryContext
     const currentEpoch = captureSessionEpoch()
     const ownsSession = () =>
       typeof window === "undefined" ||

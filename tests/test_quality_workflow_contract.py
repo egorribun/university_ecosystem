@@ -6708,7 +6708,10 @@ def test_frontend_npm_installs_require_node_24_and_npm_11() -> None:
     assert 'node-version: "22"' not in workflow_sources
     assert 'default: "20"' not in workflow_sources
     assert 'default: "22"' not in workflow_sources
-    assert package["engines"] == {"node": ">=24.0.0", "npm": ">=11.0.0"}
+    assert package["engines"] == {
+        "node": "^24.15.0 || >=26.0.0",
+        "npm": ">=11.0.0",
+    }
     assert package["packageManager"] == "npm@11.17.0"
     assert "engine-strict=true" in npmrc.splitlines()
     assert "strict-allow-scripts=true" in npmrc.splitlines()
@@ -6902,3 +6905,236 @@ def test_frozen_rc_preflight_uses_bounded_parallel_merged_coverage() -> None:
         ]
     ]
     assert "coverage run" not in script
+
+
+# AUD-481 private candidate: PR scans cover every release image besides the
+# backend image already covered by the stable required Trivy job.
+def _aud481_gh(expression: str) -> str:
+    return "$" + "{{ " + expression + " }}"
+
+
+def _aud481_assert_matrix_contract(
+    ci_workflow: dict[str, object],
+    release_workflow: dict[str, object],
+    catalog: dict[str, object],
+) -> None:
+    jobs = ci_workflow["jobs"]
+    job_id = "docker-security-scan-additional"
+    assert job_id in jobs, "AUD-481 additional image scan matrix is missing"
+    job = jobs[job_id]
+    assert job["name"] == f"Trivy Image Scan - {_aud481_gh('matrix.image_name')}"
+    assert job["runs-on"] == "ubuntu-24.04"
+    assert job["timeout-minutes"] == 15
+    assert job["needs"] == "pre-commit-check"
+    assert job["permissions"] == {"security-events": "write", "contents": "read"}
+    strategy = job["strategy"]
+    assert strategy["fail-fast"] is False
+    assert strategy["max-parallel"] == 3
+    entries = strategy["matrix"]["include"]
+    actual = {
+        entry["image_name"]: (entry["file"], entry["context"]) for entry in entries
+    }
+    assert len(actual) == len(entries) == 5
+
+    release_build = release_workflow["jobs"]["build"]
+    release_entries = release_build["strategy"]["matrix"]["include"]
+    expected = {
+        entry["image_name"]: (entry["file"], entry["context"])
+        for entry in release_entries
+        if entry["image_name"] != "backend"
+    }
+    assert actual == expected
+    assert "backend" not in actual
+    assert {entry["category"] for entry in entries} == {
+        f"trivy-image-{name}" for name in actual
+    }
+
+    steps = job["steps"]
+    buildx_steps = [
+        step for step in steps if step.get("name") == "Set up Docker Buildx"
+    ]
+    assert len(buildx_steps) == 1
+    buildx = buildx_steps[0]
+    assert (
+        buildx["uses"]
+        == "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069"
+    )
+    build = next(
+        step
+        for step in steps
+        if step.get("name") == "Build local runtime image for scanning"
+    )
+    assert steps.index(buildx) < steps.index(build)
+    assert (
+        build["uses"]
+        == "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc"
+    )
+    assert build["with"]["context"] == _aud481_gh("matrix.context")
+    assert build["with"]["file"] == _aud481_gh("matrix.file")
+    assert build["with"]["push"] is False
+    assert build["with"]["load"] is True
+    assert build["with"]["platforms"] == "linux/amd64"
+    image_ref = f"university-ecosystem/{_aud481_gh('matrix.image_name')}:{_aud481_gh('github.sha')}"
+    assert build["with"]["tags"] == image_ref
+    assert build["with"]["labels"] == (
+        f"org.opencontainers.image.source=https://github.com/{_aud481_gh('github.repository')}\n"
+        f"org.opencontainers.image.revision={_aud481_gh('github.sha')}\n"
+    )
+    build_args = build["with"]["build-args"]
+    assert (
+        _aud481_gh(
+            "matrix.image_name == 'frontend' && format('VITE_APP_RELEASE={0}', github.sha) || ''"
+        )
+        in build_args
+    )
+    assert (
+        _aud481_gh(
+            "matrix.image_name == 'frontend' && 'VITE_ENABLE_WEB_VITALS=false' || ''"
+        )
+        in build_args
+    )
+    assert (
+        _aud481_gh(
+            "matrix.image_name == 'frontend' && 'VITE_CWV_TRUSTED_RUM=false' || ''"
+        )
+        in build_args
+    )
+    assert (
+        _aud481_gh(
+            "matrix.image_name == 'frontend' && 'VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv' || ''"
+        )
+        in build_args
+    )
+    assert (
+        build["with"]["cache-from"]
+        == f"type=gha,scope=university-{_aud481_gh('matrix.image_name')}"
+    )
+    assert (
+        build["with"]["cache-to"]
+        == f"type=gha,scope=university-{_aud481_gh('matrix.image_name')},mode=max"
+    )
+    assert build["with"]["provenance"] is False
+    assert build["with"]["sbom"] is False
+
+    scanners = [
+        step
+        for step in steps
+        if step.get("uses", "").startswith("aquasecurity/trivy-action@")
+    ]
+    assert len(scanners) == 1
+    scanner = scanners[0]
+    assert (
+        scanner["uses"]
+        == "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25"
+    )
+    assert scanner["id"] == "trivy_scan"
+    assert "continue-on-error" not in scanner
+    assert scanner["with"]["version"] == "v0.75.0"
+    assert scanner["with"]["image-ref"] == image_ref
+    assert scanner["with"]["format"] == "sarif"
+    sarif = f"trivy-{_aud481_gh('matrix.image_name')}.sarif"
+    assert scanner["with"]["output"] == sarif
+    assert scanner["with"]["severity"] == "CRITICAL,HIGH"
+    assert scanner["with"]["limit-severities-for-sarif"] is True
+    assert scanner["with"]["exit-code"] == "1"
+    assert scanner["with"]["ignore-unfixed"] is True
+    assert scanner["env"]["TRIVY_DB_REPOSITORY"] == "ghcr.io/aquasecurity/trivy-db:2"
+
+    uploads = [
+        step
+        for step in steps
+        if step.get("uses", "").startswith("github/codeql-action/upload-sarif@")
+    ]
+    assert len(uploads) == 1
+    upload = uploads[0]
+    assert (
+        upload["uses"]
+        == "github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee"
+    )
+    assert (
+        upload["if"]
+        == "always() && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''"
+    )
+    assert upload["with"]["sarif_file"] == sarif
+    assert upload["with"]["category"] == _aud481_gh("matrix.category")
+    assert upload["continue-on-error"] is True
+
+    backend_job = jobs["docker-security-scan"]
+    assert backend_job["name"] == "Trivy Image Scan"
+    assert "docker-security-scan" in jobs["ci-success"]["needs"]
+    assert job_id in jobs["ci-success"]["needs"]
+    gate = next(
+        step
+        for step in jobs["ci-success"]["steps"]
+        if step.get("name") == "Check all jobs passed"
+    )
+    assert f'"{job_id}|{_aud481_gh(f"needs.{job_id}.result")}"' in gate["run"]
+
+    ci_entry = next(
+        item
+        for item in catalog["workflows"]
+        if item["path"] == ".github/workflows/ci.yml"
+    )
+    matrix_catalog = ci_entry["jobs"][job_id]
+    assert matrix_catalog["profile"] == "internal"
+    assert matrix_catalog["check_name_template"] == job["name"]
+    assert matrix_catalog["expected_timeout_minutes"] == 15
+    assert matrix_catalog["expected_duration_seconds"] == 900
+    assert matrix_catalog["matrix_governance"] == {"max_parallel": 3}
+    assert matrix_catalog["needs"] == ["pre-commit-check"]
+    assert ci_entry["jobs"]["ci-success"]["needs"] == jobs["ci-success"]["needs"]
+    assert ci_entry["jobs"]["docker-security-scan"]["profile"] == "required-pr-main"
+
+
+def test_aud481_pr_image_scan_coverage_matches_release_image_inventory() -> None:
+    candidate_root = Path(__file__).resolve().parents[1]
+    ci_workflow = yaml.safe_load(
+        (candidate_root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )
+    release_workflow = yaml.safe_load(
+        (candidate_root / ".github/workflows/build-release-images.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    catalog = json.loads(
+        (candidate_root / "quality/ci-check-catalog.json").read_text(encoding="utf-8")
+    )
+    _aud481_assert_matrix_contract(ci_workflow, release_workflow, catalog)
+
+
+def test_aud481_counterfactuals_reject_missing_image_and_nonblocking_scan() -> None:
+    candidate_root = Path(__file__).resolve().parents[1]
+    ci_workflow = yaml.safe_load(
+        (candidate_root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )
+    release_workflow = yaml.safe_load(
+        (candidate_root / ".github/workflows/build-release-images.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    catalog = json.loads(
+        (candidate_root / "quality/ci-check-catalog.json").read_text(encoding="utf-8")
+    )
+
+    if "docker-security-scan-additional" not in ci_workflow["jobs"]:
+        with pytest.raises(AssertionError):
+            _aud481_assert_matrix_contract(ci_workflow, release_workflow, catalog)
+        return
+
+    missing_image = deepcopy(ci_workflow)
+    include = missing_image["jobs"]["docker-security-scan-additional"]["strategy"][
+        "matrix"
+    ]["include"]
+    include[:] = [entry for entry in include if entry["image_name"] != "caddy"]
+    with pytest.raises(AssertionError):
+        _aud481_assert_matrix_contract(missing_image, release_workflow, catalog)
+
+    nonblocking_scan = deepcopy(ci_workflow)
+    scanner = next(
+        step
+        for step in nonblocking_scan["jobs"]["docker-security-scan-additional"]["steps"]
+        if step.get("uses", "").startswith("aquasecurity/trivy-action@")
+    )
+    scanner["with"]["exit-code"] = "0"
+    with pytest.raises(AssertionError):
+        _aud481_assert_matrix_contract(nonblocking_scan, release_workflow, catalog)

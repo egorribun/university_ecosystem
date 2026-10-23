@@ -1100,39 +1100,62 @@ class OwnedNatsBrokerControlPort:
         expected_containers: dict[str, str],
         settings: EffectiveNatsSettings,
         deadline: Deadline,
-    ) -> dict[str, _RuntimeServiceInspection] | None:
-        if self._owner is None or not self._active(deadline):
-            return None
-        request = prepare_runtime_nats_inspect_request(
-            self._pins, expected_containers, deadline=deadline
-        )
-        if request is None:
-            return None
-        result = process.run_private_process(request, deadline=deadline)
-        supplied = _probe_result(
-            result,
-            deadline=deadline,
-            stdout_max=_SERVICE_INSPECT_STDOUT_MAX,
-            stderr_max=_SERVICE_INSPECT_STDERR_MAX,
-        )
-        if supplied is None:
-            return None
-        inspections = _decode_runtime_inspections(
-            supplied[0],
-            expected_containers=expected_containers,
-            project_name=self._owner.project_name,
-            expected=settings,
-        )
-        if (
-            inspections is None
-            or self._runtime.read_signed_owner(deadline=deadline) != self._owner
-            or not _active_daemon_matches(
-                self._pins, self._owner.daemon_fingerprint, deadline
+    ) -> tuple[
+        dict[str, _RuntimeServiceInspection] | None,
+        BrokerProbePhase | None,
+    ]:
+        phase = BrokerProbePhase.RUNTIME_CONFIG_REQUEST
+        try:
+            if self._owner is None or not self._active(deadline):
+                return None, phase
+            request = prepare_runtime_nats_inspect_request(
+                self._pins, expected_containers, deadline=deadline
             )
-            or not self._active(deadline)
-        ):
-            return None
-        return inspections
+        except Exception:
+            return None, phase
+        if request is None:
+            return None, phase
+
+        phase = BrokerProbePhase.RUNTIME_CONFIG_PROCESS
+        try:
+            result = process.run_private_process(request, deadline=deadline)
+            supplied = _probe_result(
+                result,
+                deadline=deadline,
+                stdout_max=_SERVICE_INSPECT_STDOUT_MAX,
+                stderr_max=_SERVICE_INSPECT_STDERR_MAX,
+            )
+        except Exception:
+            return None, phase
+        if supplied is None:
+            return None, phase
+
+        phase = BrokerProbePhase.RUNTIME_CONFIG_DECODE
+        try:
+            inspections = _decode_runtime_inspections(
+                supplied[0],
+                expected_containers=expected_containers,
+                project_name=self._owner.project_name,
+                expected=settings,
+            )
+        except Exception:
+            return None, phase
+        if inspections is None:
+            return None, phase
+
+        phase = BrokerProbePhase.RUNTIME_CONFIG_REVALIDATION
+        try:
+            if (
+                self._runtime.read_signed_owner(deadline=deadline) != self._owner
+                or not _active_daemon_matches(
+                    self._pins, self._owner.daemon_fingerprint, deadline
+                )
+                or not self._active(deadline)
+            ):
+                return None, phase
+        except Exception:
+            return None, phase
+        return inspections, None
 
     def _probe_request(
         self, backend_id: str, subject: str, *, deadline: Deadline
@@ -1226,11 +1249,14 @@ class OwnedNatsBrokerControlPort:
                 original_nats.container_id: "nats",
             }
             phase = BrokerProbePhase.RUNTIME_CONFIG
-            config_rows = self._runtime_config_inspection(
+            config_rows, config_failure_phase = self._runtime_config_inspection(
                 containers, settings, deadline
             )
             if config_rows is None:
+                if type(config_failure_phase) is BrokerProbePhase:
+                    phase = config_failure_phase
                 return invalid()
+            phase = BrokerProbePhase.RUNTIME_RESTORED_STATE
             post_config_backend = config_rows.get(original_backend.container_id)
             post_config_worker = config_rows.get(original_worker.container_id)
             post_config_nats = config_rows.get(original_nats.container_id)
@@ -1263,7 +1289,7 @@ class OwnedNatsBrokerControlPort:
             # NATS health after the remote probe. A local CLI reaper alone is not
             # remote-process completion evidence.
             phase = BrokerProbePhase.POSTCHECK
-            after_probe = self._runtime_config_inspection(
+            after_probe, _post_config_failure_phase = self._runtime_config_inspection(
                 containers, settings, deadline
             )
             if after_probe is None:

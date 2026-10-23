@@ -101,7 +101,8 @@
       "updated": "Avatar updated",
       "deleted": "Avatar removed",
       "uploadFailed": "Couldn't upload avatar",
-      "deleteFailed": "Couldn't delete avatar"
+      "deleteFailed": "Couldn't delete avatar",
+      "savedRefreshFailed": "Your avatar change was saved, but your profile could not refresh. Reload the page to see the latest photo."
     },
     "cover": {
       "title": "Profile cover",
@@ -179,6 +180,7 @@
       "helper": "We'll email you a confirmation link to finish the update.",
       "updated": "Email updated",
       "confirmationSent": "We sent a confirmation link to {{email}}. Follow it to finish updating your email.",
+      "confirmationSentRefreshFailed": "We sent a confirmation link to {{email}}, but could not refresh your profile. Check your inbox to finish updating your email.",
       "pendingNotice": "Confirmation pending for {{email}}. Check your inbox to finalize the change.",
       "pendingSame": "We're already waiting for confirmation at {{email}}",
       "failed": "Couldn't update email",

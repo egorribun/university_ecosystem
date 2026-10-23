@@ -44,6 +44,9 @@ import { TIMEOUTS } from "@/config/timeouts"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { setNewsHeroId } from "@/utils/newsTransition"
 
+type NewsSnackbarSeverity = "success" | "error"
+type NewsSnackbarNotice = { message: string; severity: NewsSnackbarSeverity }
+
 /* ══════════════════════════════════════════════════════════
    NEWS DETAIL PAGE — Orchestrator
    ══════════════════════════════════════════════════════════ */
@@ -87,7 +90,9 @@ export default function NewsDetail() {
   const [editOpen, setEditOpen] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [snackbar, setSnackbar] = useState("")
+  const [snackbar, setSnackbar] = useState<NewsSnackbarNotice | null>(null)
+  const showSnackbar = (message: string, severity: NewsSnackbarSeverity) =>
+    setSnackbar({ message, severity })
 
   /* ── Query ── */
   // Wave 129 SW5 — uses the shared `newsDetailQueryOptions` factory so the
@@ -114,7 +119,8 @@ export default function NewsDetail() {
   } = useShare({
     title: query.data?.title || "",
     url: articleUrl,
-    onNotify: (msg) => setSnackbar(msg),
+    onNotify: (msg) =>
+      showSnackbar(msg, msg === t("news:notifications.shareError") ? "error" : "success"),
     translations: {
       shareSuccess: t("news:notifications.shareSuccess"),
       shareError: t("news:notifications.shareError"),
@@ -159,7 +165,7 @@ export default function NewsDetail() {
   /* ── Side-effects ── */
   useEffect(() => {
     if (!snackbar) return
-    const timer = window.setTimeout(() => setSnackbar(""), TIMEOUTS.TOAST_SHORT)
+    const timer = window.setTimeout(() => setSnackbar(null), TIMEOUTS.TOAST_SHORT)
     return () => window.clearTimeout(timer)
   }, [snackbar])
 
@@ -195,7 +201,7 @@ export default function NewsDetail() {
     setDeleting(true)
     try {
       await telemetryContext.run(() => deleteNews(query.data.id))
-      setSnackbar(t("news:notifications.deleted"))
+      showSnackbar(t("news:notifications.deleted"), "success")
       queryClient.removeQueries({ queryKey: ["news", id] })
       await telemetryContext.run(() =>
         queryClient.invalidateQueries({ queryKey: ["news", "list"] })
@@ -203,7 +209,7 @@ export default function NewsDetail() {
       if (window.history.length > 1) window.history.back()
       else void navigate({ to: "/news" })
     } catch {
-      setSnackbar(t("news:notifications.deleteError"))
+      showSnackbar(t("news:notifications.deleteError"), "error")
     } finally {
       setDeleting(false)
       setConfirmDeleteOpen(false)
@@ -440,8 +446,8 @@ export default function NewsDetail() {
         newsId={id}
         language={language}
         initialData={editInitialData}
-        onSuccess={(msg) => setSnackbar(msg)}
-        onError={(msg) => setSnackbar(msg)}
+        onSuccess={(msg) => showSnackbar(msg, "success")}
+        onError={(msg) => showSnackbar(msg, "error")}
       />
 
       {/* ═══ CONFIRM DELETE ═══ */}
@@ -460,14 +466,14 @@ export default function NewsDetail() {
       {/* ═══ SNACKBAR ═══ */}
       {snackbar && (
         <Snackbar
-          open={!!snackbar}
+          open
           autoHideDuration={2400}
-          onClose={() => setSnackbar("")}
+          onClose={() => setSnackbar(null)}
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
           className="z-navbar"
         >
-          <Alert severity="success" onClose={() => setSnackbar("")}>
-            {snackbar}
+          <Alert severity={snackbar.severity} onClose={() => setSnackbar(null)}>
+            {snackbar.message}
           </Alert>
         </Snackbar>
       )}

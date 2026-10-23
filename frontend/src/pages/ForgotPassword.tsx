@@ -30,6 +30,7 @@ export default function ForgotPassword() {
   const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null)
   const [cooldown, setCooldown] = useState(0)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [requestFailed, setRequestFailed] = useState(false)
 
   const {
     register,
@@ -68,19 +69,15 @@ export default function ForgotPassword() {
     data: ResetPasswordValues,
     telemetryContext: CapturedTelemetryContext
   ) => {
+    setRequestFailed(false)
     try {
       await telemetryContext.run(() => axios.post(FORGOT_URL, { email: data.email }))
-      // Even if API fails (security reasons), we often show success or generic message.
-      // But here we'll assume success for the UX flow if no error thrown.
-      // If the backend throws for non-existent email, we might want to catch that.
-      // The original code caught all errors and ignored them ("Ignore errors, message is same for security").
-
       setCooldown(RESEND_COOLDOWN_SEC)
       setIsSuccess(true)
     } catch {
-      // Ignore errors for security, pretend it worked
-      setCooldown(RESEND_COOLDOWN_SEC)
-      setIsSuccess(true)
+      // Keep the response generic so an operational failure does not reveal
+      // whether an account exists, while allowing the user to retry.
+      setRequestFailed(true)
     }
   }
 
@@ -216,6 +213,12 @@ export default function ForgotPassword() {
                         </m.div>
                       )}
                     </div>
+
+                    {requestFailed ? (
+                      <p role="alert" className="text-body-sm text-error-text">
+                        {t("common:errors.generic")}
+                      </p>
+                    ) : null}
 
                     <div className="space-y-4 pt-2">
                       <Button

@@ -95,6 +95,8 @@ if exists {
 - The Gateway intercepts and verifies JWTs at the edge on `/api/v1/*`.
 - Once verified, the gateway signs the caller's identity claims into `X-Internal-Signature` via HMAC-SHA256 before proxying upstream to backend microservices.
 
+The global rate limiter checks the trusted-proxy-aware client IP before authentication. Routes using JWT `Validate` or `Optional` then apply a separate user bucket only when the verified claims and `user_id` agree; anonymous requests remain IP-limited. Keep both layers fail-closed. Authenticated requests may make two sequential Redis calls with the existing 50 ms deadline per call; both fallback buckets share the existing bounded in-memory store.
+
 ### 4.3. L1 Cache Stampede Prevention (XFetch)
 - In-memory L1 cache entries utilize XFetch probabilistic early refresh via `shouldRefreshProbabilistic()` (PERF-31-02).
 - Prevents cache stampedes and dog-piling when hot keys near expiration.
