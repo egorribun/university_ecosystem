@@ -128,6 +128,40 @@ async def test_totp_budget_is_shared_across_challenges_and_not_reset_by_success(
 
 
 @pytest.mark.asyncio
+async def test_totp_hourly_budget_blocks_rotated_login_challenges_over_http(
+    async_client, user_factory, monkeypatch, enable_mfa_api_memory_rate_limiter
+):
+    monkeypatch.setattr(settings, "mfa_totp_attempt_limit", 5)
+    monkeypatch.setattr(settings, "mfa_totp_attempt_hourly_limit", 2)
+    short_window_seconds = settings.mfa_challenge_ttl_seconds
+    password = f"{uuid4().hex}Aa1!"
+    user = await user_factory(
+        email=f"mfa-hourly-budget-{uuid4().hex}@example.com",
+        hashed_password=await get_password_hash(password),
+    )
+    totp = await _enroll_totp(async_client, user, password)
+    wrong_code = _code_outside_current_window(totp)
+
+    challenge_tokens: set[str] = set()
+    for _ in range(settings.mfa_totp_attempt_hourly_limit):
+        challenge_token = await _issue_totp_login_challenge(
+            async_client, user, password
+        )
+        assert challenge_token not in challenge_tokens
+        challenge_tokens.add(challenge_token)
+
+        response = await _verify_totp(async_client, challenge_token, wrong_code)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST, response.text
+
+    # The next independently issued challenge cannot reset the account budget.
+    challenge_token = await _issue_totp_login_challenge(async_client, user, password)
+    assert challenge_token not in challenge_tokens
+    blocked = await _verify_totp(async_client, challenge_token, wrong_code)
+    assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS, blocked.text
+    assert int(blocked.headers["Retry-After"]) > short_window_seconds
+
+
+@pytest.mark.asyncio
 async def test_totp_budget_isolated_between_users(
     async_client, user_factory, monkeypatch, enable_mfa_api_memory_rate_limiter
 ):

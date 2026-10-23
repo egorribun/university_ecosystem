@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from "react"
-import { Trash2 } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Trash2, X } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import type { DataTableColumnDef } from "@/components/ui/data-table/dataTableFeatures"
 import { useQueryClient } from "@tanstack/react-query"
@@ -20,12 +20,21 @@ import {
 import { useAuth } from "@/contexts/AuthContext"
 import { buildAvatarUrl } from "@/utils/avatar"
 import { cn } from "@/utils/cn"
-import { TextField, SectionCard, Avatar } from "@/components/settings"
+import { TextField, SectionCard, Avatar, Alert, Snackbar } from "@/components/settings"
 import { DataTable } from "@/components/ui/data-table/DataTable"
 import { DataTableColumnHeader } from "@/components/ui/data-table/DataTableColumnHeader"
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 
 type UserFilters = AdminUserFilters
+type MutationScope = `group:${string}:group_id` | `delete:${string}`
+
+function groupMutationScope(userId: string): MutationScope {
+  return `group:${userId}:group_id`
+}
+
+function deleteMutationScope(userId: string): MutationScope {
+  return `delete:${userId}`
+}
 
 /**
  * AdminUsersFeature — Wave 164 SW2 orchestrator.
@@ -51,9 +60,50 @@ export function AdminUsersFeature() {
   const { data: users = [] } = useAdminUsersQuery(debouncedFilters)
   const { data: groups = [] } = useAdminGroupsQuery()
   const { user: userContext } = useAuth()
+  const actingUserId = userContext?.id
   const { t } = useTranslation("admin")
   const [userToDelete, setUserToDelete] = useState<string | null>(null)
-  const [isDeleting, setIsDeleting] = useState(false)
+  const [deletingMutationScope, setDeletingMutationScope] = useState<MutationScope | null>(null)
+  const [mutationErrors, setMutationErrors] = useState<Map<MutationScope, true>>(() => new Map())
+  const latestMutationRequestIds = useRef(new Map<MutationScope, number>())
+  const nextMutationRequestId = useRef(0)
+  const isDeleting =
+    userToDelete !== null && deletingMutationScope === deleteMutationScope(userToDelete)
+
+  useEffect(() => {
+    latestMutationRequestIds.current.clear()
+    setMutationErrors(new Map())
+    setUserToDelete(null)
+    setDeletingMutationScope(null)
+  }, [actingUserId])
+
+  const clearMutationError = useCallback(() => setMutationErrors(new Map()), [])
+  const clearMutationErrorFor = useCallback((scope: MutationScope) => {
+    setMutationErrors((currentErrors) => {
+      if (!currentErrors.has(scope)) return currentErrors
+      const nextErrors = new Map(currentErrors)
+      nextErrors.delete(scope)
+      return nextErrors
+    })
+  }, [])
+  const beginMutation = useCallback(
+    (scope: MutationScope) => {
+      const requestId = nextMutationRequestId.current + 1
+      nextMutationRequestId.current = requestId
+      latestMutationRequestIds.current.set(scope, requestId)
+      clearMutationErrorFor(scope)
+      return requestId
+    },
+    [clearMutationErrorFor]
+  )
+  const reportMutationError = useCallback((scope: MutationScope, requestId: number) => {
+    if (requestId !== latestMutationRequestIds.current.get(scope)) return
+    setMutationErrors((currentErrors) => {
+      const nextErrors = new Map(currentErrors)
+      nextErrors.set(scope, true)
+      return nextErrors
+    })
+  }, [])
 
   const roleOptions: Record<UserRole, string> = useMemo(
     () => ({
@@ -66,11 +116,17 @@ export function AdminUsersFeature() {
 
   const handleGroupChange = useCallback(
     async (userId: string, groupId: string) => {
+      const scope = groupMutationScope(userId)
+      const requestId = beginMutation(scope)
       const nextGroup = groupId || null
-      await api.patch(`/users/${userId}`, { group_id: nextGroup })
-      void invalidateAllAdminUsers(queryClient)
+      try {
+        await api.patch(`/users/${userId}`, { group_id: nextGroup })
+        void invalidateAllAdminUsers(queryClient)
+      } catch {
+        reportMutationError(scope, requestId)
+      }
     },
-    [queryClient]
+    [beginMutation, queryClient, reportMutationError]
   )
 
   const handleDelete = useCallback((userId: string) => {
@@ -79,16 +135,23 @@ export function AdminUsersFeature() {
 
   const executeDelete = useCallback(
     async (userId: string) => {
-      setIsDeleting(true)
+      const scope = deleteMutationScope(userId)
+      const requestId = beginMutation(scope)
+      setDeletingMutationScope(scope)
       try {
         await api.delete(`/users/${userId}`)
+        if (latestMutationRequestIds.current.get(scope) !== requestId) return
         void invalidateAllAdminUsers(queryClient)
-        setUserToDelete(null)
+        setUserToDelete((currentUserId) => (currentUserId === userId ? null : currentUserId))
+      } catch {
+        reportMutationError(scope, requestId)
       } finally {
-        setIsDeleting(false)
+        if (latestMutationRequestIds.current.get(scope) === requestId) {
+          setDeletingMutationScope((currentScope) => (currentScope === scope ? null : currentScope))
+        }
       }
     },
-    [queryClient]
+    [beginMutation, queryClient, reportMutationError]
   )
 
   const handleFilterChange = useCallback(
@@ -329,6 +392,26 @@ export function AdminUsersFeature() {
         onCancel={() => setUserToDelete(null)}
         isLoading={isDeleting}
       />
+      <Snackbar
+        open={mutationErrors.size > 0}
+        onClose={clearMutationError}
+        autoHideDuration={5000}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert severity="error">
+          <span className="flex items-center justify-between gap-3">
+            <span>{t("common:errors.generic")}</span>
+            <button
+              type="button"
+              onClick={clearMutationError}
+              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg transition-colors hover:bg-black/(--opacity-faint) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2"
+              aria-label={t("common:buttons.close")}
+            >
+              <X className="h-5 w-5" aria-hidden="true" />
+            </button>
+          </span>
+        </Alert>
+      </Snackbar>
     </>
   )
 }

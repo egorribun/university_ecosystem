@@ -865,6 +865,8 @@ jobs:
       # this same bounded pair is exercised by the Linux E2E/browser builds.
       FRONTEND_BUILD_MAX_RSS_MB: "2048"
       FRONTEND_BUILD_MAX_OLD_SPACE_MB: "1536"
+      # Rolldown keeps native allocations across the client and SSR passes.
+      ROLLDOWN_WORKER_THREADS: "2"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

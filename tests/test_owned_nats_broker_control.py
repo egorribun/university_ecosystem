@@ -835,6 +835,46 @@ def test_runtime_inspection_binds_restored_nats_id_and_health() -> None:
     )
 
 
+def test_broker_probe_reports_runtime_snapshot_failure_phase(monkeypatch) -> None:
+    port, owner, _pins_value, _compose, rows = _port(monkeypatch)
+    nats = next(row for row in rows if row.service == "nats")
+    rows[rows.index(nats)] = replace(nats, health="starting")
+
+    result = port.broker_last_message(
+        owner, port._by_service["backend"], SUBJECT, deadline=deadline()
+    )
+
+    assert type(result) is BrokerErrorEvidence
+    assert result.failure_phase is BrokerProbePhase.RUNTIME_SNAPSHOT
+    assert result.status is None
+    assert result.error_code is None
+
+
+def test_broker_probe_reports_runtime_config_failure_phase(monkeypatch) -> None:
+    port, owner, _pins_value, _compose, _rows = _port(monkeypatch)
+    settings = broker.extract_effective_nats_settings(_configured_project())
+    assert settings is not None
+    monkeypatch.setattr(
+        broker.OwnedNatsBrokerControlPort,
+        "_compose_nats_settings",
+        lambda _self, _owner, _deadline: settings,
+    )
+    monkeypatch.setattr(
+        broker.OwnedNatsBrokerControlPort,
+        "_runtime_config_inspection",
+        lambda _self, *_args, **_kwargs: None,
+    )
+
+    result = port.broker_last_message(
+        owner, port._by_service["backend"], SUBJECT, deadline=deadline()
+    )
+
+    assert type(result) is BrokerErrorEvidence
+    assert result.failure_phase is BrokerProbePhase.RUNTIME_CONFIG
+    assert result.status is None
+    assert result.error_code is None
+
+
 def test_stop_requires_observed_remote_stopped_state_after_local_success(
     monkeypatch,
 ) -> None:

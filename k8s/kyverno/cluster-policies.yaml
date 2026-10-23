@@ -36,17 +36,18 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
-        resources: [pods]
+        resources: [pods, pods/ephemeralcontainers]
   variables:
     - name: allContainers
       expression: >-
         object.spec.containers + object.spec.?initContainers.orValue([]) +
         object.spec.?ephemeralContainers.orValue([])
+    - name: podRunAsNonRoot
+      expression: object.spec.?securityContext.?runAsNonRoot.orValue(false)
   validations:
     - expression: >-
-        object.spec.?securityContext.?runAsNonRoot.orValue(false) ||
         variables.allContainers.all(container,
-          container.?securityContext.?runAsNonRoot.orValue(false))
+          container.?securityContext.?runAsNonRoot.orValue(variables.podRunAsNonRoot))
       message: Pod or every container must set runAsNonRoot to true
 
 ---
@@ -72,7 +73,7 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
-        resources: [pods]
+        resources: [pods, pods/ephemeralcontainers]
   variables:
     - name: allContainers
       expression: >-
@@ -107,7 +108,7 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
-        resources: [pods]
+        resources: [pods, pods/ephemeralcontainers]
   variables:
     - name: allContainers
       expression: >-
@@ -143,7 +144,7 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
-        resources: [pods]
+        resources: [pods, pods/ephemeralcontainers]
   variables:
     - name: allContainers
       expression: >-
@@ -153,10 +154,9 @@ spec:
       expression: object.spec.?securityContext.?seccompProfile.?type.orValue('')
   validations:
     - expression: >-
-        variables.podSeccompType in ['RuntimeDefault', 'Localhost'] ||
         variables.allContainers.all(container,
-          container.?securityContext.?seccompProfile.?type.orValue('') in
-            ['RuntimeDefault', 'Localhost'])
+          container.?securityContext.?seccompProfile.?type.orValue(
+            variables.podSeccompType) in ['RuntimeDefault', 'Localhost'])
       message: Pod or every container must use the RuntimeDefault or Localhost seccomp profile
 
 ---
@@ -182,7 +182,7 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
-        resources: [pods]
+        resources: [pods, pods/ephemeralcontainers]
   variables:
     - name: allContainers
       expression: >-
@@ -218,7 +218,7 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
-        resources: [pods]
+        resources: [pods, pods/ephemeralcontainers]
   variables:
     - name: allContainers
       expression: >-
@@ -265,8 +265,7 @@ spec:
   variables:
     - name: allContainers
       expression: >-
-        object.spec.containers + object.spec.?initContainers.orValue([]) +
-        object.spec.?ephemeralContainers.orValue([])
+        object.spec.containers + object.spec.?initContainers.orValue([])
   validations:
     - expression: >-
         variables.allContainers.all(container,
@@ -297,7 +296,7 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
-        resources: [pods]
+        resources: [pods, pods/ephemeralcontainers]
   variables:
     - name: allContainers
       expression: >-
@@ -330,7 +329,7 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
-        resources: [pods]
+        resources: [pods, pods/ephemeralcontainers]
   variables:
     - name: allContainers
       expression: >-
@@ -342,3 +341,43 @@ spec:
           container.image.matches('^.+(@sha256:[a-f0-9]{64}|:[^/:@]+)$') &&
           !container.image.matches('(?i)^.+:latest$'))
       message: Every image must use an explicit non-empty tag or immutable sha256 digest
+
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: disallow-host-access
+  annotations:
+    policies.kyverno.io/title: Disallow Host Namespace and Filesystem Access
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: high
+spec:
+  failurePolicy: Fail
+  validationActions: [Deny, Audit]
+  evaluation:
+    admission: { enabled: true }
+    background: { enabled: true }
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: university-ecosystem
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods, pods/ephemeralcontainers]
+  variables:
+    - name: allContainers
+      expression: >-
+        object.spec.containers + object.spec.?initContainers.orValue([]) +
+        object.spec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: >-
+        object.spec.?hostNetwork.orValue(false) == false &&
+        object.spec.?hostPID.orValue(false) == false &&
+        object.spec.?hostIPC.orValue(false) == false &&
+        object.spec.?volumes.orValue([]).all(volume, !has(volume.hostPath)) &&
+        variables.allContainers.all(container,
+          container.?ports.orValue([]).all(port,
+            port.?hostPort.orValue(0) == 0))
+      message: Host namespaces, hostPath volumes, and host ports are not allowed

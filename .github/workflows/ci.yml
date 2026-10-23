@@ -264,15 +264,7 @@ jobs:
         # is the safe replacement.  This gate prevents future re-introduction.
         shell: bash
         run: |
-          # TD-W18-04 (audit 2026-03-23 Wave 18): exclude comments to prevent false
-          # positives (e.g. "# Do NOT import pickle" triggered the old gate).
-          result=$(grep -rn "import pickle\|from pickle\|pickle\.loads\|pickle\.dumps" app/ --include="*.py" | grep -v '^\s*#' | grep -v '# nosec' || true)
-          if [ -n "$result" ]; then
-            echo "::error::pickle usage detected in app/ — replace with Pydantic model_validate_json / model_dump_json (see RED-01 in Wave 13 audit)"
-            echo "$result"
-            exit 1
-          fi
-          echo "OK: no pickle usage found in app/"
+          python scripts/quality/check_no_pickle.py app/
 
       - name: "Enforce Python 3 except tuple syntax (RZ-25-01 / MOD-27-01)"
         # MOD-27-01: Fixed regex — previous `grep -v 'except ('` accidentally

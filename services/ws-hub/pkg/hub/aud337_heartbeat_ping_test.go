@@ -119,8 +119,15 @@ func assertAUD337NoData(t *testing.T, conn *websocket.Conn) {
 	require.NoError(t, conn.SetReadDeadline(time.Now().Add(100*time.Millisecond)))
 	_, _, err := conn.ReadMessage()
 	var networkError net.Error
-	require.ErrorAs(t, err, &networkError)
-	require.True(t, networkError.Timeout(), "expected no queued WebSocket response")
+	if !errors.As(err, &networkError) {
+		t.Fatalf("expected a network timeout error, got %T: %v", err, err)
+	}
+	if networkError == nil {
+		t.Fatal("expected errors.As to provide a network timeout error")
+	}
+	if !networkError.Timeout() {
+		t.Fatalf("expected no queued WebSocket response, got non-timeout error: %v", err)
+	}
 }
 
 func TestAUD337HeartbeatPingEchoesNonceOverRealHubTransport(t *testing.T) {

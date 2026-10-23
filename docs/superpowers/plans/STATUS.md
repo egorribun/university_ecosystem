@@ -4,9 +4,9 @@
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Текущая принятая нижняя граница — **240/512 (46,9%)** по [последней source-bound контрольной точке](#active-audit-closure-checkpoint-2026-10-23); полный список принятых ID и evidence приведён в [аудите](../../audits/AUDIT-2026-10.md#behavioral-closure-checkpoint-2026-10-23). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Текущая принятая нижняя граница — **247/512 (48,2%)** по [последней source-bound контрольной точке](#registry-and-schedule-lock-checkpoint-2026-10-23); полный список принятых ID и evidence приведён в [аудите](../../audits/AUDIT-2026-10.md#registry-denial-audit-ui-feedback-and-schedule-lock-checkpoint-2026-10-23). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
 
-Текущая работа идёт только на `egorribun`, в одном checkout, через открытый [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343); [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306) был owner-merged и является историческим. Root управляет Git; максимум восемь GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
+Текущая работа идёт только на `egorribun`, в одном checkout, через открытый [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343); [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306) был owner-merged и является историческим. Root управляет Git; по поручению владельца от 2026-10-23 — максимум 20 GPT-6 Luna Max с непересекающимися файлами и отдельным допуском тяжёлых прогонов по ресурсам. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
 Датированные checkpoint-разделы ниже сохраняют значения и статусы на указанных source. Их прежние acceptance counts, включая 223/512, и тогдашние pending states — исторические; актуальная нижняя граница указана выше и раскрыта в последней closure section.
 
@@ -2100,3 +2100,20 @@ finite validator/test diff on 2026-10-23. The actual policy now contains 301
 records, preserving the previous 298; see ADR-047. The final local Windows-adapted
 scan passed with zero unmatched findings and all 319 baseline identities intact.
 Hosted final-source checks remain required.
+
+
+## Registry and schedule-lock checkpoint (2026-10-23)
+
+Принято **247/512 (48,2%)**, добавлены только AUD-228, AUD-249, AUD-261,
+AUD-287, AUD-288, AUD-337 и AUD-344. Source — опубликованный ed2337b9,
+merge 10c1bc04 имеет тот же tree. Root сверил source/test blobs и JUnit;
+[границы доказательств и актуальный список ID](../../audits/AUDIT-2026-10.md#registry-denial-audit-ui-feedback-and-schedule-lock-checkpoint-2026-10-23)
+сохранены в аудите. AUD-228 подтверждён отдельным локальным PostgreSQL-прогоном
+7/7 с наблюдаемым advisory-lock ожиданием; это не новый hosted result.
+
+Работа возобновлена по поручению владельца: до 20 GPT-6 Luna Max, один checkout
+и PR #1343. Общий CI не зелёный. Contract на ed2337b9 прошёл 1475 consumer cases
+и 275 policy cases в прежнем лимите. Локальные исправления и отдельно разрешённый
+ctutils 0.4.4 ещё требуют обычных hooks, публикации и собственных final-source checks.
+Решение владельца о regular/init-only границе require-resource-limits записано
+в ADR-010. Ни новая визуальная приёмка, ни merge/deploy не выполнены.

@@ -25,11 +25,11 @@ release claims require fresh evidence under the master plan.
   319-identity baseline and 78 required contexts, and source-bound historical evidence.
   The supplement indexes local source-bound C3 receipts, including chart profiles
   that used actual C2 OCI digests; those receipts do not establish C3 image provenance
-  or hosted status. Git and [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306)
+  or hosted status. Git and [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343)
   determine the current published SHA and hosted checks; final-source gates remain
   required. The dated 18-, 7-, and 2-identity approvals brought the scope to
   252; the subsequent nine-identity Go source-contract approval extended the
-  historical scope to 261. The current approved scope is 282; see
+  historical scope to 261. The current approved scope is 301; see
   [current MVP STATUS](../superpowers/plans/STATUS.md). See the [dated update](AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16),
   [two-identity update](AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16),
   and [nine-identity update](AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).

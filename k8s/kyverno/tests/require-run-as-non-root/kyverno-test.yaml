@@ -17,3 +17,8 @@ results:
       - university-ecosystem/root-pod
     kind: Pod
     result: fail
+  - policy: require-run-as-non-root
+    resources:
+      - university-ecosystem/container-root-pod
+    kind: Pod
+    result: fail

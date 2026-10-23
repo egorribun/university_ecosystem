@@ -163,6 +163,8 @@ class BrokerProbePhase(StrEnum):
     PRECHECK = "precheck"
     RENDER = "render"
     RUNTIME = "runtime"
+    RUNTIME_SNAPSHOT = "runtime_snapshot"
+    RUNTIME_CONFIG = "runtime_config"
     PRIVATE_EXEC = "private_exec"
     DECODE = "decode"
     POSTCHECK = "postcheck"

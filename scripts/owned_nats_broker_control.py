@@ -1197,7 +1197,7 @@ class OwnedNatsBrokerControlPort:
                 or backend.service != "backend"
             ):
                 return invalid()
-            phase = BrokerProbePhase.RUNTIME
+            phase = BrokerProbePhase.RUNTIME_SNAPSHOT
             before = self._runtime_snapshot(owner, owner.daemon_fingerprint, deadline)
             before_rows = {row.service: row for row in before.containers}
             backend_now = before_rows.get("backend")
@@ -1225,7 +1225,7 @@ class OwnedNatsBrokerControlPort:
                 original_worker.container_id: "outbox-worker",
                 original_nats.container_id: "nats",
             }
-            phase = BrokerProbePhase.RUNTIME
+            phase = BrokerProbePhase.RUNTIME_CONFIG
             config_rows = self._runtime_config_inspection(
                 containers, settings, deadline
             )

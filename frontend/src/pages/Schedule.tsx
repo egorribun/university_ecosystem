@@ -440,9 +440,11 @@ function ScheduleContent() {
                 offset: weekOffset > 0 ? `+${weekOffset}` : String(weekOffset),
               })}
           .{" "}
-          {t(`schedule:parity.${scheduleData.currentParity}`, {
-            defaultValue: scheduleData.currentParity,
-          })}
+          {scheduleData.currentParity === null
+            ? t("schedule:parity.all")
+            : t(`schedule:parity.${scheduleData.currentParity}`, {
+                defaultValue: scheduleData.currentParity,
+              })}
         </div>
 
         <Snackbar

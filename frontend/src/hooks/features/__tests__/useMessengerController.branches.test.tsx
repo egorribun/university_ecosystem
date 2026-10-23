@@ -1352,6 +1352,61 @@ describe("useMessengerController — branch top-up", () => {
       expect(result.current.profileError).toBeNull()
     })
 
+    it("ignores a pending profile result after the selected chat loses its peer", async () => {
+      seedChat()
+      let resolveOldPeer!: (response: { data: { id: string; full_name: string } }) => void
+      const oldPeerRequest = new Promise<{ data: { id: string; full_name: string } }>((resolve) => {
+        resolveOldPeer = resolve
+      })
+      mocks.apiClient.get.mockReturnValueOnce(oldPeerRequest)
+
+      const { queryClient, HookWrapper } = createQueryHarness()
+      const { result } = renderHook(() => useMessengerController(), { wrapper: HookWrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      act(() => result.current.handleViewProfile())
+      expect(mocks.apiClient.get).toHaveBeenNthCalledWith(1, "/users/peer")
+      expect(result.current.isProfileLoading).toBe(true)
+
+      act(() => {
+        queryClient.setQueryData(["chats"], {
+          items: [
+            {
+              id: "chat-1",
+              participants: [{ id: "current-user-id" }],
+              unread_count: 0,
+            },
+          ],
+          has_more: false,
+          next_cursor: null,
+        })
+      })
+
+      await waitFor(() =>
+        expect(result.current.getOtherParticipant(result.current.activeChat!)).toBeUndefined()
+      )
+      expect(result.current.activeChat?.id).toBe("chat-1")
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+
+      await act(async () => {
+        resolveOldPeer({ data: { id: "peer", full_name: "Old Peer" } })
+        await oldPeerRequest
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+
+      act(() => result.current.handleViewProfile())
+      expect(mocks.apiClient.get).toHaveBeenCalledTimes(1)
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+    })
+
     it("ignores a stale profile rejection after the authenticated user changes", async () => {
       seedChat()
       let rejectProfile!: (reason: Error) => void

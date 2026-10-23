@@ -200,7 +200,11 @@ export const dynamicTranslationRegistry = {
     "notifications:permission.unsupported",
   ],
   "schedule:parity.${p}": ["schedule:parity.odd", "schedule:parity.even"],
-  "schedule:parity.${scheduleData.currentParity}": ["schedule:parity.odd", "schedule:parity.even"],
+  "schedule:parity.${scheduleData.currentParity}": [
+    "schedule:parity.odd",
+    "schedule:parity.even",
+    "schedule:parity.all",
+  ],
   "config.label": [
     "common:notifications.relevance.high",
     "common:notifications.relevance.medium",

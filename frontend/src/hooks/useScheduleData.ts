@@ -55,14 +55,14 @@ export function useScheduleData() {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const nowTick = useScheduleClock()
   const timeZone = useCampusTimezone()
-  const automaticParity = nowParity(nowTick, timeZone)
+  const automaticParity = timeZone ? nowParity(nowTick, timeZone) : null
   const [parityOverride, setParityOverride] = useState<"odd" | "even" | null>(null)
   const currentParity = parityOverride ?? automaticParity
   // Even choosing the current value is an explicit choice, not automatic mode.
   const setCurrentParity = useCallback<Dispatch<SetStateAction<"odd" | "even">>>(
     (next) => {
       setParityOverride((previous) => {
-        const effectivePrevious = previous ?? automaticParity
+        const effectivePrevious = previous ?? automaticParity ?? "odd"
         return typeof next === "function" ? next(effectivePrevious) : next
       })
     },
@@ -202,15 +202,20 @@ export function useScheduleData() {
   }, [user, groups])
 
   // ── Parity filter ──────────────────────────────────
+  // Without the campus zone, automatic parity is unknown; show all weeks until
+  // the authoritative zone arrives. An explicit user selection still filters.
   const filteredSchedule = useMemo(
-    () => groupSchedule.filter((l) => l.parity === "both" || l.parity === currentParity),
+    () =>
+      currentParity === null
+        ? groupSchedule
+        : groupSchedule.filter((l) => l.parity === "both" || l.parity === currentParity),
     [groupSchedule, currentParity]
   )
 
-  // ── Today + time calculations ──────────────────────
+  // ── Today + time calculations (no-day sentinel -1 when campus zone is unavailable) ─
   const clock = getCampusClockParts(nowTick, timeZone)
-  const todayIdx = (clock?.weekday ?? nowTick.getDay()) - 1
-  const hasToday = todayIdx >= 0 && todayIdx < weekdayBackend.length
+  const todayIdx = clock === null ? -1 : clock.weekday - 1
+  const hasToday = clock !== null && todayIdx >= 0 && todayIdx < weekdayBackend.length
 
   const todayLessons = useMemo(() => {
     if (!hasToday) return []
@@ -223,7 +228,19 @@ export function useScheduleData() {
   const time = useScheduleTime(todayLessons, hasToday, nowTick)
 
   // ── Conflict detection ─────────────────────────────
-  const conflictedIds = useMemo(() => detectConflicts(filteredSchedule), [filteredSchedule])
+  const conflictedIds = useMemo(() => {
+    if (currentParity !== null) return detectConflicts(filteredSchedule)
+
+    // Rows from different parity weeks do not overlap in the same occurrence.
+    const conflicted = new Set<string>()
+    for (const parity of ["odd", "even"] as const) {
+      const weekRows = groupSchedule.filter(
+        (lesson) => lesson.parity === "both" || lesson.parity === parity
+      )
+      for (const id of detectConflicts(weekRows)) conflicted.add(id)
+    }
+    return conflicted
+  }, [currentParity, filteredSchedule, groupSchedule])
 
   // ── Lesson days for MiniCalendar ───────────────────
   // The mini-calendar can show any month, so the caller passes the month it displays.

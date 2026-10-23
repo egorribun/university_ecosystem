@@ -7,7 +7,6 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,8 +21,9 @@ MONITORING_NAMESPACE_LABEL = {
 
 def _render_resources(tmp_path: Path) -> list[dict[str, Any]]:
     helm = shutil.which("helm")
-    if helm is None:
-        pytest.skip("pinned Helm 4.2.4 is required for rendered chart contracts")
+    assert helm is not None, (
+        "pinned Helm 4.2.4 is required for rendered chart contracts"
+    )
 
     version = subprocess.run(  # noqa: S603 - fixed local Helm contract command
         [helm, "version", "--template", "{{.Version}}"],

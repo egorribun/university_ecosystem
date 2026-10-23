@@ -244,3 +244,23 @@ Upgrading virtualenv does not repair previously generated environment scripts;
 affected existing environments require recreation with patched tooling before
 use. The known trigger requires later execution of a generated POSIX launcher
 under an attacker-influenced destination path; this is not a claim of compromise.
+
+## Owner-approved ctutils exception, 2026-10-23
+
+The owner approved only `ctutils 0.4.4` in PR
+[#1343](https://github.com/egorribun/university_ecosystem/pull/1343), addressing
+[RUSTSEC-2026-0385](https://github.com/rustsec/advisory-db/blob/main/crates/ctutils/RUSTSEC-2026-0385.md).
+The approved checksum is the exact value in the four lock records, verified
+against the [official release metadata](https://crates.io/api/v1/crates/ctutils/0.4.4).
+Approval covers only the version/checksum records in `native/rust_ext/Cargo.lock`,
+`native/rust_ext/fuzz/Cargo.lock`, `frontend/rust-crypto/Cargo.lock` and
+`frontend/rust-crypto/fuzz/Cargo.lock`. It expires when the release reaches seven
+days on 2026-10-30 at 01:04:28.877964 UTC.
+
+The owner is the approving reviewer. Independent private candidate checks passed
+with cargo-audit 0.22.2 across the seven SBOM lockfiles and cargo-deny 0.20.2 across
+the three production crates. The audit results were retained only as console
+evidence, not raw JSON reports. These checks do not establish compilation or
+final-source CI. All ordinary tests, WASM provenance, vulnerability gates, hooks
+and required contexts remain mandatory; no advisory waiver or scanner exception
+is authorized.

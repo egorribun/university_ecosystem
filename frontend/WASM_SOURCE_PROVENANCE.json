@@ -4,7 +4,7 @@
     {
       "path": "rust-crypto/Cargo.lock",
       "size": 21964,
-      "sha256": "5da0863c86a6f097dbe58c15f2e326269aa2492f9cf6b90900ec1d21284e30aa"
+      "sha256": "d18fc51b57a605db19d9f2128436758e419f5f931ae2d3333842a7583a5b2b16"
     },
     {
       "path": "rust-crypto/Cargo.toml",
@@ -32,7 +32,7 @@
       "sha256": "91eb2a042d5495b52b6537ee0cad8ef258afe421316f9309f650f0b63d6c4293"
     }
   ],
-  "source_tree_sha256": "9077e6441b1c96bced7468d6155290dae8896a4d69b143fb5fcd77140e6eccc4",
+  "source_tree_sha256": "0b52158ba53e924e7e6e499b391c6702131b9ce8b48482889d42f1089fa749eb",
   "packages": {
     "rust-crypto/pkg/package.json": {
       "size": 306,

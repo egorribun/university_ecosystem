@@ -1,0 +1,17 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Values
+metadata:
+  name: ephemeral-container-subresource
+globalValues:
+  request.operation: UPDATE
+subresources:
+  - subresource:
+      name: pods/ephemeralcontainers
+      kind: Pod
+      group: ""
+      version: v1
+    parentResource:
+      name: pods
+      kind: Pod
+      group: ""
+      version: v1

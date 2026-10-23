@@ -25,7 +25,7 @@ interface ScheduleSettingsPanelProps {
   onClose: () => void
   weekdayLabels: string[]
   /** Parity selector */
-  currentParity: "odd" | "even"
+  currentParity: "odd" | "even" | null
   setCurrentParity: (p: "odd" | "even") => void
   /** Export grid ref */
   gridRef?: React.RefObject<HTMLElement | null>
@@ -177,12 +177,18 @@ export function ScheduleSettingsPanel({
                 <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-text-secondary">
                   {t("schedule:parity.label")}
                 </h3>
+                {currentParity === null && (
+                  <p role="status" className="mb-2 text-sm text-text-secondary">
+                    {t("schedule:parity.all")}
+                  </p>
+                )}
                 <div className="flex gap-2">
                   {(["odd", "even"] as const).map((p) => (
                     <button
                       key={p}
                       type="button"
                       onClick={() => setCurrentParity(p)}
+                      aria-pressed={currentParity === p}
                       className={cn(
                         "relative flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-fast overflow-hidden",
                         currentParity === p

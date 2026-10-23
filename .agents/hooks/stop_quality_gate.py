@@ -26,17 +26,27 @@ try:
     from .common import (
         find_executable,
         find_repo_root,
+        gate_state_lock,
         get_gate_state_path,
         load_gate_state,
         run_process,
+    )
+    from .post_tool_linter import (
+        ensure_gate_state_initialization_marker,
+        has_gate_state_initialization_marker,
     )
 except (ImportError, ValueError):
     from common import (
         find_executable,
         find_repo_root,
+        gate_state_lock,
         get_gate_state_path,
         load_gate_state,
         run_process,
+    )
+    from post_tool_linter import (
+        ensure_gate_state_initialization_marker,
+        has_gate_state_initialization_marker,
     )
 
 
@@ -229,14 +239,31 @@ def check_gate_state_errors() -> tuple[bool, str]:
     """Check recent failures recorded in .gate_state.json."""
     state_path = get_gate_state_path()
     try:
-        state = load_gate_state(state_path, require_existing=True)
-    except FileNotFoundError:
-        return (
-            False,
-            "Automated quality gate state is missing. Run a supported PostToolUse "
-            "quality check on a source file to initialize it; do not create an "
-            "empty state file manually.",
-        )
+        with gate_state_lock(state_path):
+            try:
+                state = load_gate_state(
+                    state_path,
+                    acquire_lock=False,
+                    require_existing=True,
+                )
+            except FileNotFoundError:
+                previously_initialized = has_gate_state_initialization_marker(
+                    state_path
+                )
+                if previously_initialized:
+                    return (
+                        False,
+                        "Automated quality gate state is missing after initialization. "
+                        "Restore the persisted state; PostToolUse cannot recreate it "
+                        "without discarding prior quality results.",
+                    )
+                return (
+                    False,
+                    "Automated quality gate state is missing. Run a supported PostToolUse "
+                    "quality check on a source file to initialize it; do not create an "
+                    "empty state file manually.",
+                )
+            ensure_gate_state_initialization_marker(state_path)
     except (OSError, RuntimeError, UnicodeError, RecursionError):
         return False, "Automated quality gate state is unreadable or malformed."
 

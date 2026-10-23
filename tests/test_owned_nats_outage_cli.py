@@ -1029,6 +1029,19 @@ def test_main_formats_only_exact_broker_probe_diagnostic(monkeypatch, capsys):
         "checkpoint=broker_probe broker_diagnostic=decode\n"
     )
 
+    for phase in BrokerProbePhase:
+        annotated = replace(result, broker_diagnostic=phase)
+        monkeypatch.setattr(
+            cli, "run_owned_nats_outage", lambda *_a, _r=annotated, **_k: _r
+        )
+        assert live_stand.main(arguments) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == (
+            "live_stand: owned NATS acceptance failed outcome=failed stage=broker "
+            f"checkpoint=broker_probe broker_diagnostic={phase.value}\n"
+        )
+
     class OtherPhase(StrEnum):
         DECODE = "decode"
 

@@ -297,6 +297,22 @@ def test_sbom_cancels_superseded_pr_and_main_push_runs_only() -> None:
     }
 
 
+def test_no_pickle_gate_runs_fail_closed_ast_scan_of_backend_source() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    step = next(
+        step
+        for step in workflow["jobs"]["compose-validate"]["steps"]
+        if step.get("name") == "Enforce no-pickle gate (RED-01 RZ-W13)"
+    )
+    assert "if" not in step
+    assert not step.get("continue-on-error", False)
+    assert shlex.split(step["run"]) == [
+        "python",
+        "scripts/quality/check_no_pickle.py",
+        "app/",
+    ]
+
+
 def test_dockerfile_lint_excludes_companion_dockerignore_files() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     hadolint_step = next(
@@ -2081,6 +2097,7 @@ def test_frontend_build_memory_budget_keeps_native_headroom_bounded() -> None:
     # heap, so the process ceiling must retain finite native-memory headroom.
     assert env["FRONTEND_BUILD_MAX_RSS_MB"] == "2048"
     assert env["FRONTEND_BUILD_MAX_OLD_SPACE_MB"] == "1536"
+    assert env["ROLLDOWN_WORKER_THREADS"] == "2"
 
 
 def test_linux_build_reproducibility_gate_canonicalizes_known_metadata() -> None:

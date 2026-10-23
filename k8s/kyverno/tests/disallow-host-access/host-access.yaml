@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: host-network-pod
+  namespace: university-ecosystem
+spec:
+  hostNetwork: true
+  containers:
+    - name: app
+      image: ghcr.io/example/university-ecosystem:v1.0.0
+      imagePullPolicy: Always
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: host-pid-pod
+  namespace: university-ecosystem
+spec:
+  hostPID: true
+  containers:
+    - name: app
+      image: ghcr.io/example/university-ecosystem:v1.0.0
+      imagePullPolicy: Always
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: host-ipc-pod
+  namespace: university-ecosystem
+spec:
+  hostIPC: true
+  containers:
+    - name: app
+      image: ghcr.io/example/university-ecosystem:v1.0.0
+      imagePullPolicy: Always
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: host-path-pod
+  namespace: university-ecosystem
+spec:
+  volumes:
+    - name: host-files
+      hostPath:
+        path: /var/log
+  containers:
+    - name: app
+      image: ghcr.io/example/university-ecosystem:v1.0.0
+      imagePullPolicy: Always
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: host-port-pod
+  namespace: university-ecosystem
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/example/university-ecosystem:v1.0.0
+      imagePullPolicy: Always
+      ports:
+        - containerPort: 8080
+          hostPort: 8080
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: init-host-port-pod
+  namespace: university-ecosystem
+spec:
+  initContainers:
+    - name: init
+      image: ghcr.io/example/university-ecosystem:v1.0.0
+      imagePullPolicy: Always
+      ports:
+        - containerPort: 8081
+          hostPort: 8081
+  containers:
+    - name: app
+      image: ghcr.io/example/university-ecosystem:v1.0.0
+      imagePullPolicy: Always
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: spire-host-access-pod
+  namespace: spire
+spec:
+  hostPID: true
+  hostNetwork: true
+  volumes:
+    - name: host-root
+      hostPath:
+        path: /var/lib/kubelet
+  containers:
+    - name: spire-agent
+      image: ghcr.io/spiffe/spire-agent:1.15.3
+      imagePullPolicy: Always
+      ports:
+        - containerPort: 10250
+          hostPort: 10250

@@ -14,3 +14,29 @@ spec:
         readOnlyRootFilesystem: true
         capabilities: {drop: ["ALL"]}
       resources: {limits: {cpu: "100m", memory: "128Mi"}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unconfined-pod
+  namespace: university-ecosystem
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: ghcr.io/example/university-ecosystem:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        seccompProfile:
+          type: Unconfined
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        limits:
+          cpu: "100m"
+          memory: "128Mi"
