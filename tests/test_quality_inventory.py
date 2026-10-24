@@ -3051,9 +3051,7 @@ def test_typescript_ownership_prefix_excludes_preceding_non_code(
     test_file = repository / relative
     test_file.parent.mkdir(parents=True)
     test_file.write_text(
-        prefix
-        + "const helper = <T,>() => ({});\n"
-        + 'import Other from "../Other";\n',
+        prefix + "const helper = <T,>() => ({});\n" + 'import Other from "../Other";\n',
         encoding="utf-8",
     )
     monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
@@ -3065,8 +3063,7 @@ def test_typescript_ownership_prefix_excludes_preceding_non_code(
 @pytest.mark.parametrize(
     "source",
     [
-        "const helper = <T,>() => ({});\n"
-        'import Button from "../Button";\n',
+        'const helper = <T,>() => ({});\nimport Button from "../Button";\n',
         "const helper = <T,>() => { if (true) { void 0; } "
         '/[} import Button from "../Button"]/.test(""); };\n',
         "const helper = <T,>() => { while (true) { break\n"

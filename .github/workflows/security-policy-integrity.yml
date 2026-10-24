@@ -164,6 +164,8 @@ jobs:
               native/rust_ext/deny.toml|\
               quality/*|security/*|frontend/scripts/lhci-route-policy.mjs|\
               frontend/scripts/lhci-route-policy-config.cjs|\
+              frontend/scripts/generate-undici-lock-candidate.mjs|\
+              frontend/scripts/generate-undici-lock-candidate.test.mjs|\
               frontend/scripts/admin-visual-smoke.mjs|\
               frontend/scripts/authenticated-visual-audit.mjs|\
               frontend/scripts/build-orchestrated.mjs|\
@@ -174,6 +176,8 @@ jobs:
               .github/scripts/verify_mfa_key_rotation.py|\
               scripts/osv_batch_audit.py|scripts/check_dependency_audit_report.py|\
               scripts/audit_dependencies.py|scripts/ci/helm_dependency_build.py|\
+              scripts/ci/probe_react_compiler_artifacts.py|\
+              tests/test_probe_react_compiler_artifacts.py|\
               scripts/quality/filter_checkov_sarif.py|\
               scripts/verify_secrets_baseline.py|\
               scripts/quality/coverage_provenance.py|\

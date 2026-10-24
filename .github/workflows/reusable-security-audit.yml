@@ -100,10 +100,14 @@ jobs:
             "pyproject.toml"
             "frontend/scripts/lhci-route-policy.mjs"
             "frontend/scripts/lhci-route-policy-config.cjs"
+            "frontend/scripts/generate-undici-lock-candidate.mjs"
+            "frontend/scripts/generate-undici-lock-candidate.test.mjs"
             "scripts/osv_batch_audit.py"
             "scripts/check_dependency_audit_report.py"
             "scripts/audit_dependencies.py"
             "scripts/ci/helm_dependency_build.py"
+            "scripts/ci/probe_react_compiler_artifacts.py"
+            "tests/test_probe_react_compiler_artifacts.py"
             "scripts/quality/prepare_trivy_backend_values.py"
             "scripts/quality/create_checkov_oci_image_evidence.py"
             "scripts/quality/resolve_oci_platform_digest.py"
@@ -194,10 +198,14 @@ jobs:
             "security/trivy-revocation-values.yaml"
             "frontend/scripts/lhci-route-policy.mjs"
             "frontend/scripts/lhci-route-policy-config.cjs"
+            "frontend/scripts/generate-undici-lock-candidate.mjs"
+            "frontend/scripts/generate-undici-lock-candidate.test.mjs"
             "scripts/osv_batch_audit.py"
             "scripts/check_dependency_audit_report.py"
             "scripts/audit_dependencies.py"
             "scripts/ci/helm_dependency_build.py"
+            "scripts/ci/probe_react_compiler_artifacts.py"
+            "tests/test_probe_react_compiler_artifacts.py"
             "scripts/quality/prepare_trivy_backend_values.py"
             "scripts/quality/create_checkov_oci_image_evidence.py"
             "scripts/quality/resolve_oci_platform_digest.py"
@@ -282,10 +290,34 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Verify Undici lock candidate guards
+        timeout-minutes: 1
+        shell: bash
+        run: node --test scripts/generate-undici-lock-candidate.test.mjs
+
+      - name: Generate mature Undici lock candidate
+        timeout-minutes: 8
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: node scripts/generate-undici-lock-candidate.mjs
+
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ inputs.python-version }}
+
+      - name: Verify React compiler artifact probe guards
+        timeout-minutes: 1
+        working-directory: .
+        run: python -B tests/test_probe_react_compiler_artifacts.py
+
+      - name: Inspect mature React compiler artifacts without executing them
+        timeout-minutes: 8
+        working-directory: .
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: python -B scripts/ci/probe_react_compiler_artifacts.py
 
       - name: Install uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from pathlib import Path
 from uuid import uuid4
 
@@ -207,7 +207,7 @@ def _prepare_parent_revision(
 
 
 def _add_lowercase_role_values(connection: psycopg.Connection) -> None:
-    # Keep AUD-327's uppercase-role path out of this focused AUD-348 scenario.
+    # Keep AUD-327's uppercase-role path out of these focused backfill scenarios.
     for role in ("student", "teacher", "admin", "superuser", "anonymous"):
         connection.execute(f"ALTER TYPE userrole ADD VALUE IF NOT EXISTS '{role}'")
     connection.commit()
@@ -656,3 +656,153 @@ def test_upgrade_does_not_overwrite_existing_spotify_integration_rows(
         )
         assert decrypt_string(inserted[1]) == decrypt_string(legacy_access)
         assert decrypt_string(inserted[2]) == decrypt_string(legacy_refresh)
+
+
+@pytest.fixture
+def legacy_preferences_config(
+    spotify_scenario_urls: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> Config:
+    """Restore the historical preference shape in a fresh, fixture-owned DB."""
+    config = _alembic_config(spotify_scenario_urls["alembic"])
+    monkeypatch.setenv("DATABASE_URL", spotify_scenario_urls["alembic"])
+    command.upgrade(config, "f7aa476e968a")
+
+    with psycopg.connect(spotify_scenario_urls["sync"]) as connection:
+        _add_lowercase_role_values(connection)
+        # The normal ancestry removed these columns in 202511240001. Recreate
+        # their original 23d991e593b5/202505250001 definitions to exercise the
+        # surviving-legacy-columns branch that 148642dd1207 explicitly handles.
+        connection.execute(
+            "ALTER TABLE users "
+            "ADD COLUMN dnd_enabled boolean NOT NULL DEFAULT false, "
+            "ADD COLUMN dnd_start time without time zone, "
+            "ADD COLUMN dnd_end time without time zone, "
+            "ADD COLUMN timezone varchar(64)"
+        )
+        with connection.cursor() as cursor:
+            cursor.executemany(
+                "INSERT INTO users (id, email, hashed_password, role, "
+                "mfa_required, dnd_enabled, dnd_start, dnd_end, timezone) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                [
+                    (
+                        930001,
+                        "preferences-930001@example.test",
+                        "unused-migration-test-hash",
+                        "student",
+                        False,
+                        True,
+                        time(23, 45, 30, 123456),
+                        time(6, 15, 1, 654321),
+                        "Asia/Kathmandu",
+                    ),
+                    (
+                        930002,
+                        "preferences-930002@example.test",
+                        "unused-migration-test-hash",
+                        "student",
+                        False,
+                        False,
+                        time(0),
+                        time(0),
+                        "Europe/Istanbul",
+                    ),
+                    (
+                        930003,
+                        "preferences-930003@example.test",
+                        "unused-migration-test-hash",
+                        "student",
+                        False,
+                        False,
+                        None,
+                        None,
+                        "America/St_Johns",
+                    ),
+                ],
+            )
+    return config
+
+
+def _assert_legacy_preferences_removed(connection: psycopg.Connection) -> None:
+    remaining = {
+        row[0]
+        for row in connection.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = current_schema() AND table_name = 'users'"
+        )
+    }
+    assert {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}.isdisjoint(remaining)
+
+
+def test_upgrade_preserves_legacy_user_preferences(
+    legacy_preferences_config: Config,
+    spotify_scenario_urls: dict[str, str],
+) -> None:
+    """Do not discard quiet hours or timezone when creating user_preferences."""
+    command.upgrade(legacy_preferences_config, "148642dd1207")
+
+    with psycopg.connect(spotify_scenario_urls["sync"]) as connection:
+        version = connection.execute(
+            "SELECT version_num FROM alembic_version"
+        ).fetchone()
+        assert version == ("148642dd1207",)
+        migrated = connection.execute(
+            "SELECT user_id, dnd_enabled, dnd_start, dnd_end, timezone "
+            "FROM user_preferences ORDER BY user_id"
+        ).fetchall()
+        assert migrated == [
+            (
+                930001,
+                True,
+                time(23, 45, 30, 123456),
+                time(6, 15, 1, 654321),
+                "Asia/Kathmandu",
+            ),
+            (930002, False, time(0), time(0), "Europe/Istanbul"),
+            (930003, False, None, None, "America/St_Johns"),
+        ]
+        _assert_legacy_preferences_removed(connection)
+
+
+def test_upgrade_backfills_missing_preferences_without_overwriting_existing_rows(
+    legacy_preferences_config: Config,
+    spotify_scenario_urls: dict[str, str],
+) -> None:
+    """Existing destination rows win, including explicit false and NULL fields."""
+    with psycopg.connect(spotify_scenario_urls["sync"]) as connection:
+        connection.execute(
+            "CREATE TABLE user_preferences ("
+            "user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, "
+            "dnd_enabled boolean NOT NULL, "
+            "dnd_start time without time zone, "
+            "dnd_end time without time zone, timezone varchar(64))"
+        )
+        with connection.cursor() as cursor:
+            cursor.executemany(
+                "INSERT INTO user_preferences "
+                "(user_id, dnd_enabled, dnd_start, dnd_end, timezone) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                [
+                    (930001, False, None, None, None),
+                    (930003, True, time(11, 30), time(12, 30), "Pacific/Chatham"),
+                ],
+            )
+
+    command.upgrade(legacy_preferences_config, "148642dd1207")
+
+    with psycopg.connect(spotify_scenario_urls["sync"]) as connection:
+        version = connection.execute(
+            "SELECT version_num FROM alembic_version"
+        ).fetchone()
+        assert version == ("148642dd1207",)
+        migrated = connection.execute(
+            "SELECT user_id, dnd_enabled, dnd_start, dnd_end, timezone "
+            "FROM user_preferences ORDER BY user_id"
+        ).fetchall()
+        assert migrated == [
+            (930001, False, None, None, None),
+            (930002, False, time(0), time(0), "Europe/Istanbul"),
+            (930003, True, time(11, 30), time(12, 30), "Pacific/Chatham"),
+        ]
+        _assert_legacy_preferences_removed(connection)

@@ -774,7 +774,7 @@ def _linux_process_identity(pid: int) -> tuple[str, int, int] | None:
     return fields[0], int(fields[2]), int(fields[19])
 
 
-def test_scan_timeout_kills_descendant_or_rejects_unsupported_platform(
+def _assert_scan_timeout_contract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     if os.name != "posix":
@@ -831,43 +831,96 @@ def test_scan_timeout_kills_descendant_or_rejects_unsupported_platform(
 
     child_record = tmp_path / "child-process.txt"
     child_code = (
-        "import os, signal, sys; "
-        "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
-        "stat_fields = open('/proc/self/stat', encoding='ascii').read()"
-        ".rsplit(') ', 1)[1].split(); "
-        "open(sys.argv[1], 'w', encoding='ascii').write("
-        "f'{os.getpid()} {os.getpgid(0)} {stat_fields[19]}\\n'); "
-        "signal.pause()"
+        "import os, signal, sys\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "with open('/proc/self/stat', encoding='ascii') as stat:\n"
+        "    stat_fields = stat.read().rsplit(') ', 1)[1].split()\n"
+        "with open(sys.argv[1], 'w', encoding='ascii') as record:\n"
+        "    record.write("
+        "f'{os.getpid()} {os.getpgid(0)} {stat_fields[19]}\\n')\n"
+        "print('descendant-ready', flush=True)\n"
+        "signal.pause()\n"
     )
     parent_code = (
         "import signal, subprocess, sys; "
         f"subprocess.Popen([sys.executable, '-c', {child_code!r}, {str(child_record)!r}]); "
         "signal.pause()"
     )
+    command = [sys.executable, "-c", parent_code]
+    environment = {"PATH": os.environ.get("PATH", "")}
     original_spawn = asyncio.create_subprocess_exec
     spawned: list[tuple[asyncio.subprocess.Process, dict[str, object]]] = []
 
-    async def capture_spawn(
-        *args: object, **kwargs: object
-    ) -> asyncio.subprocess.Process:
-        process = await original_spawn(*args, **kwargs)
-        spawned.append((process, dict(kwargs)))
-        return process
+    async def exercise_ready_process_group() -> float:
+        # Interpreter startup is fixture setup, not the timeout-cleanup budget.
+        # Use a real isolated group and a readiness record, never a fixed sleep.
+        process = await original_spawn(
+            *command,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+            env=environment,
+            start_new_session=True,
+        )
+        try:
+            assert process.stdout is not None
+            readiness = await asyncio.wait_for(process.stdout.readline(), timeout=10)
+            assert readiness == b"descendant-ready\n"
+            assert process.returncode is None
+            assert os.getsid(process.pid) == process.pid
+            ready_pid, ready_group, ready_start = map(
+                int, child_record.read_text(encoding="ascii").split()
+            )
+            assert ready_group == process.pid
+            ready_identity = _linux_process_identity(ready_pid)
+            assert ready_identity is not None
+            assert ready_identity[0] != "Z"
+            assert ready_identity[1:] == (ready_group, ready_start)
 
-    monkeypatch.setattr(gitleaks_ci.asyncio, "create_subprocess_exec", capture_spawn)
-    started = time.monotonic()
-    try:
-        with pytest.raises(TimeoutError):
-            asyncio.run(
-                gitleaks_ci._spawn_and_collect(
-                    [sys.executable, "-c", parent_code],
-                    {"PATH": os.environ.get("PATH", "")},
+            async def capture_spawn(
+                *args: object, **kwargs: object
+            ) -> asyncio.subprocess.Process:
+                # Exercise production timeout/cleanup on this ready real group.
+                # The production launch request must still match its contract.
+                assert args == tuple(command)
+                assert kwargs.get("env") == environment
+                assert kwargs.get("start_new_session") is True
+                assert kwargs.get("stdin") is asyncio.subprocess.DEVNULL
+                assert kwargs.get("stdout") is asyncio.subprocess.DEVNULL
+                assert kwargs.get("stderr") is asyncio.subprocess.DEVNULL
+                spawned.append((process, dict(kwargs)))
+                return process
+
+            monkeypatch.setattr(
+                gitleaks_ci.asyncio, "create_subprocess_exec", capture_spawn
+            )
+            started = time.monotonic()
+            with pytest.raises(TimeoutError):
+                await gitleaks_ci._spawn_and_collect(
+                    command,
+                    environment,
                     timeout_seconds=1,
                     max_stdout_bytes=None,
                     require_process_group_cleanup=True,
                 )
+            elapsed = time.monotonic() - started
+            # Observe production's result before fixture rescue can repair it.
+            assert process.returncode is not None, (
+                "production did not reap scanner leader"
             )
-        elapsed = time.monotonic() - started
+            return elapsed
+        finally:
+            # Setup can fail before production owns the process. Kill only
+            # while this direct child is unreaped, then bound its reap as well.
+            if process.returncode is None:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                await asyncio.wait_for(process.wait(), timeout=1)
+
+    try:
+        elapsed = asyncio.run(exercise_ready_process_group())
         assert elapsed < 3
         assert len(spawned) == 1
         process, spawn_kwargs = spawned[0]
@@ -933,6 +986,31 @@ def test_scan_timeout_kills_descendant_or_rejects_unsupported_platform(
                         pass
                     finally:
                         os.close(pidfd)
+
+
+def test_scan_timeout_kills_descendant_or_rejects_unsupported_platform(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _assert_scan_timeout_contract(tmp_path, monkeypatch)
+
+
+def test_scan_timeout_contract_rejects_disabled_production_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if os.name != "posix" or sys.platform != "linux":
+        _assert_scan_timeout_contract(tmp_path, monkeypatch)
+        return
+
+    cleanup_calls: list[int] = []
+
+    async def ignore_cleanup(process: asyncio.subprocess.Process) -> bool:
+        cleanup_calls.append(process.pid)
+        return True
+
+    monkeypatch.setattr(gitleaks_ci, "_terminate_and_reap", ignore_cleanup)
+    with pytest.raises(AssertionError, match="production did not reap scanner leader"):
+        _assert_scan_timeout_contract(tmp_path, monkeypatch)
+    assert len(cleanup_calls) == 1
 
 
 def test_scan_cleanup_bounds_unconfirmed_direct_child_reap(

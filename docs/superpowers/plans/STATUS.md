@@ -75,6 +75,50 @@ validator и все TOTP assertions сохранены. Unit shard1 отдель
 готовности дочернего процесса в Gitleaks cleanup test; разбор продолжается.
 Все изменения этого follow-up ещё требуют hosted проверки. Ledger — 280/512.
 
+### Следующие проверяемые regressions и dependency evidence, 02:18 UTC
+
+На `46eb1c9` inventory job 120749625194 SUCCESS; actionlint в fast hook
+также PASS. Единственный отказ этого hook — два formatter-only hunks в
+inventory tests; применены точные строки из job 120749625051.
+Baseline integrity и frontend lint SUCCESS. Это не полный CI.
+
+Undici получает временный ordinary-module scratch generator с отдельными
+guard tests. Он связывает исходные bytes с точным checkout SHA, проверяет
+официальные npm metadata и оба archive digests, требует семидневную зрелость
+npm tool и Undici, запрещает lifecycle scripts и изменение checkout.
+Допустимый lock diff — только три artifact fields единственного dev-only
+Undici `8.11.0 -> 8.12.2`; body-parser `1.20.9` должен сохраниться.
+Нового cooldown exception нет; actual generation ещё не выполнялась.
+
+Zod remediation требует проверки опубликованных compiler artifacts:
+старый ESLint compiler plugin больше не публикуется, а Babel compiler может
+содержать bundled Zod, невидимый обычному dependency audit. Добавлены 25
+stdlib guard tests и явный fail-closed stub read-only artifact probe.
+Это намеренный tests-first checkpoint: ожидается assertion RED, а не успешная
+инспекция. Stub не скачивает пакеты и не выдаёт artifact evidence.
+Guard выполняется после независимого Undici generator. Обычные audit/install
+команды и их блокирующий статус сохранены; отсутствие их исполнения не PASS.
+Все четыре новых executable inputs добавлены к существующим защищённым paths.
+
+Gitleaks descendant-cleanup regression теперь отдельно ожидает готовности
+реального child/session до проверяемого timeout. Production deadline остаётся
+одна секунда, elapsed budget — менее трёх. Сохранены PID/start/group/pidfd
+проверки; leader-reaped assertion наблюдается до аварийной уборки fixture.
+Отдельный no-op-cleanup counterfactual не позволяет fixture скрыть отказ
+production cleanup. Исправление test-only; actual hosted GREEN ещё требуется.
+
+Для migration `148642dd1207` добавлены два настоящих PostgreSQL tests-first
+сценария сохранения legacy DND/timezone и приоритета существующих preference
+rows. Они явно восстанавливают исторические поля после parent revision:
+обычная ancestry уже удаляет их в `202511240001`. Поэтому эти tests не
+доказывают сохранение данных через ту более раннюю миграцию.
+Production migration не меняется до наблюдённого assertion RED.
+
+Вопрос владельцу о подготовке конечного, source-bound ADR-047 исключения для
+неизбежного transactional DDL остаётся без ответа. Никакое исключение не
+применено. Выявленные потенциально теряющие данные ветви не считаются
+кандидатами на waiver. Ledger и все quality/security thresholds неизменны.
+
 ## Облачное продолжение 2026-10-24, 00:04 UTC
 
 Работа возобновлена по новому поручению владельца: только через GitHub plugin,
