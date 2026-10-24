@@ -27,6 +27,7 @@ from app.schemas.cwv import (
 from app.services.cwv import (
     CwvConfigurationError,
     CwvEnvelopeError,
+    CwvIdentityUnavailableError,
     CwvOriginError,
     CwvRumBinding,
     GithubActionsOidcVerifier,
@@ -229,7 +230,7 @@ async def export_cwv_report(
         await asyncio.to_thread(
             verifier.verify, _bearer(authorization), expected_sha=release_sha
         )
-    except CwvConfigurationError as exc:
+    except (CwvConfigurationError, CwvIdentityUnavailableError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="CWV exporter unavailable",

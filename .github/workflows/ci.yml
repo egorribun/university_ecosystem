@@ -2072,7 +2072,8 @@ jobs:
             tests/test_live_stand.py::test_live_caddy_probe_brackets_one_union_read_within_the_shared_deadline \
             tests/test_health_api_closure.py::test_healthz_brief_cache_hit_filters_full_payload \
             tests/test_logging_pii_redaction_contract.py \
-            tests/test_cwv_rum_security.py -v \
+            tests/test_cwv_rum_security.py \
+            tests/test_gitleaks_hygiene_contract.py -v \
             --tb=short --durations=20 -n 2 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \

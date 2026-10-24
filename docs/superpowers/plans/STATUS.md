@@ -5,6 +5,40 @@
 
 
 
+## Поведенческий RED и минимальные исправления AUD-359/AUD-446, 2026-10-24
+
+Ledger остаётся **283/512**. Source75de40e / merge
+`d5b57fe9c2e13b31c6ad31cdccf2ef9906050d3c` имеет одинаковое дерево
+`3aa9b2ac0031c45e3e7c73b13e41a1f0ccf0d80e`. Contract job120806473928
+получил 16 ожидаемых поведенческих FAIL / 1624 PASS, без setup failures;
+отдельный policy325 cohort — 395 PASS. AUD-388 получил named PASS для
+`test_healthz_brief_cache_hit_filters_full_payload`; его ledger-запись ещё
+не обновлена. Общий CI не принят.
+
+Четырнадцать logging regressions доказали сохранение synthetic-value вместо
+redaction на нормализованных ключах и в JSON/console sinks. В production
+добавлены только exact names reset_token и csrf_hmac_secret. Два CWV regressions
+доказали CwvEnvelopeError/401 при недоступности JWKS. Новый sibling error и
+узкий catch PyJWKClientConnectionError дают generic503; шесть controls сохраняют
+invalid-identity401, disabled-policy503 и нормальный подписанный export.
+GREEN обоих исправлений ещё требуется.
+
+Три точных Ruff postimages применены к новым тестам; предыдущий fast отказ
+блокировал Alembic и backend integration, поэтому PostgreSQL GREEN preference
+fix пока не получен. Исходные migration/source pins не изменены этим formatting.
+
+Gitleaks history на75de отказал со scanner code2 после успешной SARIF validation;
+предыдущий2bc на том же base и конфигурации проходил. Это означает findings,
+не доказанную утечку. ZIP report не прочитан в разрешённом plugin-only режиме.
+Добавляются только tests-first требования к ограниченному metadata diagnostic:
+без match/snippet/message/секретных значений, без изменения scanner/ignore/config.
+Полный test module добавлен как selector140; прежние139 сохранены.
+
+Новый staged adapter lock generator также находится в inert tests-first стадии:
+ожидаются assertion RED, сетевых запросов и генерации пока нет. Это не изменение
+npm graph. Применение root4.6.7 lock всё ещё ожидает отдельное подтверждение
+инструмента; текущий lock не меняется, root generator ещё не удалён.
+
 ## Транзакционные предпочтения и следующий RED cohort, 2026-10-24
 
 Ledger остаётся **283/512 (55,3%)**. На 2bc65c3 Contract завершился 1555 + 366

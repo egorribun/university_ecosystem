@@ -847,10 +847,13 @@ def test_null_legacy_enabled_aborts_upgrade_without_losing_preferences(
             "WHERE table_schema = 'public' AND table_name = 'groups' "
             "AND column_name = 'id'"
         ).fetchone() == ("character varying",)
-        assert connection.execute(
-            "SELECT id, dnd_enabled, dnd_start, dnd_end, timezone "
-            "FROM users ORDER BY id"
-        ).fetchall() == original
+        assert (
+            connection.execute(
+                "SELECT id, dnd_enabled, dnd_start, dnd_end, timezone "
+                "FROM users ORDER BY id"
+            ).fetchall()
+            == original
+        )
 
 
 # This diagnostic is deliberately test-only. It does not alter the production

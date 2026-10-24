@@ -797,8 +797,10 @@ def test_preferences_backfill_rejects_present_null_enabled_and_rolls_back(
             assert connection.execute(
                 sa.select(preferences).order_by(preferences.c.user_id)
             ).all() == [(43, False, None, None, None)]
-            assert connection.execute(
-                sa.select(users).order_by(users.c.id)
-            ).all() == [(41, False), (42, None), (43, True)]
+            assert connection.execute(sa.select(users).order_by(users.c.id)).all() == [
+                (41, False),
+                (42, None),
+                (43, True),
+            ]
     finally:
         engine.dispose()

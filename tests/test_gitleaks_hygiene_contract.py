@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import selectors
 import shutil
@@ -579,7 +580,9 @@ def test_execute_scan_runs_quietly_with_deadline_and_validates_redacted_sarif(
         observed["timeout_seconds"] = timeout_seconds
         observed["cwd"] = cwd
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text('{"version":"2.1.0","runs":[]}', encoding="utf-8")
+        report_path.write_text(
+            '{"version":"2.1.0","runs":[{"results":[]}]}', encoding="utf-8"
+        )
         return SimpleNamespace(returncode=0, stdout="")
 
     monkeypatch.setattr(gitleaks_ci, "_run_silent", fake_scan)
@@ -1091,3 +1094,440 @@ def test_scan_cleanup_does_not_signal_after_leader_is_already_reaped(
     assert process.signal_calls == 0
     assert process.wait_calls == 0
     assert group_signals == []
+
+
+@pytest.fixture(scope="module")
+def diagnostic_graph(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[Path, str, str, str]:
+    return _create_pull_request_graph(tmp_path_factory.mktemp("gitleaks-diagnostics"))
+
+
+@pytest.fixture
+def diagnostic_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    diagnostic_graph: tuple[Path, str, str, str],
+):
+    """Keep graph validation real; replace only the external scanner process."""
+    repo, base_sha, head_sha, checkout_sha = diagnostic_graph
+    report_path = tmp_path / "reports" / "results.sarif"
+    event = {
+        **_pull_request_environment(base_sha, head_sha, checkout_sha, repo),
+        "GITLEAKS_REPORT_PATH": str(report_path),
+        "GITLEAKS_BIN": str(tmp_path / "scanner"),
+    }
+    for name, value in event.items():
+        monkeypatch.setenv(name, value)
+
+    state: dict[str, object] = {}
+
+    def fake_scan(
+        command: list[str],
+        environment: dict[str, str],
+        *,
+        timeout_seconds: int,
+        cwd: Path,
+    ) -> SimpleNamespace:
+        assert cwd == repo.resolve()
+        assert "--redact=100" in command
+        assert "--exit-code=2" in command
+        assert timeout_seconds == 960
+        assert "GITHUB_TOKEN" not in environment
+        error = state.get("error")
+        if error is not None:
+            raise error
+        report = state["report"]
+        if report is not None:
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            report_path.write_text(json.dumps(report), encoding="utf-8")
+        return SimpleNamespace(returncode=state["returncode"], stdout="")
+
+    monkeypatch.setattr(gitleaks_ci, "_run_silent", fake_scan)
+
+    def invoke(
+        report: object,
+        returncode: int = 2,
+        error: GitleaksGateError | None = None,
+    ) -> int:
+        report_path.unlink(missing_ok=True)
+        state.update(report=report, returncode=returncode, error=error)
+        return gitleaks_ci.main()
+
+    return invoke
+
+
+def _diagnostic_result(index: int = 7) -> dict[str, object]:
+    """Match the pinned SARIF field names, never scanner secret values."""
+    marker = "synthetic-private-diagnostic-marker"
+    return {
+        "ruleId": "generic-api-key",
+        "message": {"text": marker},
+        "locations": [
+            {
+                "physicalLocation": {
+                    "artifactLocation": {"uri": "tests/synthetic_case.py"},
+                    "region": {
+                        "startLine": index,
+                        "endLine": index,
+                        "startColumn": 1,
+                        "endColumn": 9,
+                        "snippet": {"text": marker},
+                    },
+                }
+            }
+        ],
+        "partialFingerprints": {
+            "commitSha": "1" * 40,
+            "author": marker,
+            "email": marker,
+            "commitMessage": marker,
+            "date": marker,
+            "arbitraryFingerprint": marker,
+        },
+        "properties": {"tags": [marker]},
+        "match": marker,
+        "secret": marker,
+    }
+
+
+def _diagnostic_report(
+    results: list[dict[str, object]],
+) -> dict[str, object]:
+    return {
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "gitleaks",
+                        "semanticVersion": "8.30.1",
+                        "informationUri": "https://github.com/gitleaks/gitleaks",
+                        "rules": [],
+                    }
+                },
+                "results": results,
+            }
+        ],
+    }
+
+
+def _read_diagnostic(captured: pytest.CaptureResult[str]) -> dict[str, object]:
+    lines = (captured.out + captured.err).splitlines()
+    prefix = "GITLEAKS_DIAGNOSTIC "
+    summaries = [line[len(prefix) :] for line in lines if line.startswith(prefix)]
+    assert len(summaries) == 1, "one bounded non-sensitive diagnostic is required"
+    summary = json.loads(summaries[0])
+    assert isinstance(summary, dict)
+    return summary
+
+
+def test_findings_diagnostic_preserves_failure_and_omits_all_report_content(
+    diagnostic_scan, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert diagnostic_scan(_diagnostic_report([_diagnostic_result()])) == 2
+
+    captured = capsys.readouterr()
+    assert "synthetic-private-diagnostic-marker" not in captured.out + captured.err
+    assert _read_diagnostic(captured) == {
+        "status": "findings",
+        "scanner_exit_code": 2,
+        "result_count": 1,
+        "identities": [
+            {
+                "rule_id": "generic-api-key",
+                "path": "tests/synthetic_case.py",
+                "line": 7,
+                "commit": "1" * 40,
+            }
+        ],
+        "omitted_identity_count": 0,
+    }
+
+
+def test_clean_diagnostic_preserves_zero_exit(
+    diagnostic_scan, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert diagnostic_scan(_diagnostic_report([]), returncode=0) == 0
+
+    assert _read_diagnostic(capsys.readouterr()) == {
+        "status": "clean",
+        "scanner_exit_code": 0,
+        "result_count": 0,
+        "identities": [],
+        "omitted_identity_count": 0,
+    }
+
+
+@pytest.mark.parametrize("commit_case", ["absent", "empty"])
+def test_diagnostic_never_substitutes_arbitrary_fingerprints_for_missing_commit(
+    diagnostic_scan,
+    capsys: pytest.CaptureFixture[str],
+    commit_case: str,
+) -> None:
+    result = _diagnostic_result()
+    if commit_case == "absent":
+        del result["partialFingerprints"]
+    else:
+        result["partialFingerprints"]["commitSha"] = ""
+
+    assert diagnostic_scan(_diagnostic_report([result])) == 2
+
+    captured = capsys.readouterr()
+    assert "synthetic-private-diagnostic-marker" not in captured.out + captured.err
+    assert _read_diagnostic(captured)["identities"] == [
+        {
+            "rule_id": "generic-api-key",
+            "path": "tests/synthetic_case.py",
+            "line": 7,
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("rule", ""),
+        ("rule", None),
+        ("rule", "generic api key"),
+        ("rule", "generic.api-key"),
+        ("rule", "/unsafe-rule"),
+        ("rule", "generic-api-key\n::error::synthetic-injection"),
+        ("rule", "x" * 129),
+        ("path", None),
+        ("path", ""),
+        ("path", "tests/source name.py"),
+        ("path", "tests/é.py"),
+        ("path", "/absolute/source.py"),
+        ("path", "../outside.py"),
+        ("path", "tests/../outside.py"),
+        ("path", "tests/./source.py"),
+        ("path", "tests//source.py"),
+        ("path", r"tests\source.py"),
+        ("path", "https://example.invalid/source.py"),
+        ("path", "tests/%2e%2e/source.py"),
+        ("path", "tests/source.py\n::error::synthetic-injection"),
+        ("path", "x" * 513),
+        ("line", 0),
+        ("line", -1),
+        ("line", True),
+        ("line", "7"),
+        ("line", 2**31),
+        ("commit", "not-an-immutable-commit"),
+        ("commit", "a" * 39),
+        ("commit", "a" * 41),
+        ("commit", "a" * 40 + "\n"),
+        ("commit", 7),
+    ],
+)
+def test_malformed_diagnostic_identity_fails_closed_without_partial_output(
+    diagnostic_scan,
+    capsys: pytest.CaptureFixture[str],
+    field: str,
+    value: object,
+) -> None:
+    result = _diagnostic_result()
+    location = result["locations"][0]["physicalLocation"]
+    if field == "rule":
+        result["ruleId"] = value
+    elif field == "path":
+        location["artifactLocation"]["uri"] = value
+    elif field == "line":
+        location["region"]["startLine"] = value
+    else:
+        result["partialFingerprints"]["commitSha"] = value
+
+    # A valid result before the malformed one must not be partially printed.
+    report = _diagnostic_report([_diagnostic_result(), result])
+    assert diagnostic_scan(report) == 1
+
+    captured = capsys.readouterr()
+    assert "synthetic-private-diagnostic-marker" not in captured.out + captured.err
+    assert "synthetic-injection" not in captured.out + captured.err
+    assert "tests/synthetic_case.py" not in captured.out + captured.err
+    assert _read_diagnostic(captured) == {"status": "gate_error"}
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        "run_not_object",
+        "later_run_not_object",
+        "results_not_list",
+        "result_not_object",
+        "locations_empty",
+        "locations_not_list",
+        "location_not_object",
+        "physical_location_not_object",
+        "region_not_object",
+        "artifact_location_missing",
+        "artifact_location_not_object",
+        "line_missing",
+        "fingerprints_not_object",
+    ],
+)
+def test_malformed_diagnostic_structure_is_never_reported_as_clean(
+    diagnostic_scan, capsys: pytest.CaptureFixture[str], shape: str
+) -> None:
+    result = _diagnostic_result()
+    report = _diagnostic_report([result])
+    if shape == "run_not_object":
+        report["runs"] = [None]
+    elif shape == "later_run_not_object":
+        report["runs"].append(None)
+    elif shape == "results_not_list":
+        report["runs"][0]["results"] = "synthetic-malformed-report"
+    elif shape == "result_not_object":
+        report["runs"][0]["results"] = [None]
+    elif shape == "locations_empty":
+        result["locations"] = []
+    elif shape == "locations_not_list":
+        result["locations"] = {}
+    elif shape == "location_not_object":
+        result["locations"] = [None]
+    elif shape == "physical_location_not_object":
+        result["locations"][0]["physicalLocation"] = None
+    elif shape == "region_not_object":
+        result["locations"][0]["physicalLocation"]["region"] = None
+    elif shape == "artifact_location_missing":
+        del result["locations"][0]["physicalLocation"]["artifactLocation"]
+    elif shape == "artifact_location_not_object":
+        result["locations"][0]["physicalLocation"]["artifactLocation"] = None
+    elif shape == "line_missing":
+        del result["locations"][0]["physicalLocation"]["region"]["startLine"]
+    else:
+        result["partialFingerprints"] = []
+
+    assert diagnostic_scan(report, returncode=0) == 1
+
+    captured = capsys.readouterr()
+    assert "synthetic-malformed-report" not in captured.out + captured.err
+    assert _read_diagnostic(captured) == {"status": "gate_error"}
+
+
+def test_diagnostic_caps_output_but_counts_every_valid_identity(
+    diagnostic_scan, capsys: pytest.CaptureFixture[str]
+) -> None:
+    results = [_diagnostic_result(index) for index in range(1, 101)]
+    for result in results:
+        result["ruleId"] = "r" * 128
+        location = result["locations"][0]["physicalLocation"]
+        location["artifactLocation"]["uri"] = "p" * 512
+    assert diagnostic_scan(_diagnostic_report(results)) == 2
+
+    captured = capsys.readouterr()
+    summary = _read_diagnostic(captured)
+    assert summary["status"] == "findings"
+    assert summary["result_count"] == 100
+    assert len(summary["identities"]) == 25
+    assert summary["omitted_identity_count"] == 75
+    assert len((captured.out + captured.err).encode("utf-8")) <= 32 * 1024
+    assert "synthetic-private-diagnostic-marker" not in captured.out + captured.err
+
+
+def test_diagnostic_validates_even_identities_past_output_cap(
+    diagnostic_scan, capsys: pytest.CaptureFixture[str]
+) -> None:
+    results = [_diagnostic_result(index) for index in range(1, 27)]
+    results[-1]["locations"][0]["physicalLocation"]["region"]["startLine"] = False
+
+    assert diagnostic_scan(_diagnostic_report(results)) == 1
+
+    captured = capsys.readouterr()
+    assert "tests/synthetic_case.py" not in captured.out + captured.err
+    assert _read_diagnostic(captured) == {"status": "gate_error"}
+
+
+@pytest.mark.parametrize("scanner_exit", [1, 3, -9])
+def test_scanner_errors_stay_failed_without_printing_report_metadata(
+    diagnostic_scan, capsys: pytest.CaptureFixture[str], scanner_exit: int
+) -> None:
+    assert (
+        diagnostic_scan(
+            _diagnostic_report([_diagnostic_result()]), returncode=scanner_exit
+        )
+        == 1
+    )
+
+    captured = capsys.readouterr()
+    assert "synthetic-private-diagnostic-marker" not in captured.out + captured.err
+    assert "tests/synthetic_case.py" not in captured.out + captured.err
+    assert _read_diagnostic(captured) == {"status": "gate_error"}
+
+
+def test_gate_error_diagnostic_never_prints_exception_details(
+    diagnostic_scan, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert (
+        diagnostic_scan(
+            None,
+            error=GitleaksGateError("synthetic-private-exception-details"),
+        )
+        == 1
+    )
+
+    captured = capsys.readouterr()
+    assert "synthetic-private-exception-details" not in captured.out + captured.err
+    assert _read_diagnostic(captured) == {"status": "gate_error"}
+
+
+def test_missing_report_still_fails_with_only_fixed_diagnostic(
+    diagnostic_scan, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert diagnostic_scan(None) == 1
+
+    assert _read_diagnostic(capsys.readouterr()) == {"status": "gate_error"}
+
+
+@pytest.mark.parametrize("topology", ["multiple_runs", "multiple_locations"])
+def test_diagnostic_rejects_topology_outside_pinned_scanner_schema(
+    diagnostic_scan, capsys: pytest.CaptureFixture[str], topology: str
+) -> None:
+    result = _diagnostic_result()
+    report = _diagnostic_report([result])
+    if topology == "multiple_runs":
+        report["runs"].append(_diagnostic_report([_diagnostic_result(9)])["runs"][0])
+    else:
+        result["locations"].append(_diagnostic_result(8)["locations"][0])
+
+    assert diagnostic_scan(report) == 1
+
+    captured = capsys.readouterr()
+    assert "tests/synthetic_case.py" not in captured.out + captured.err
+    assert _read_diagnostic(captured) == {"status": "gate_error"}
+
+
+def test_diagnostic_rejects_malformed_later_location_before_any_output(
+    diagnostic_scan, capsys: pytest.CaptureFixture[str]
+) -> None:
+    result = _diagnostic_result()
+    invalid = _diagnostic_result(8)["locations"][0]
+    invalid["physicalLocation"]["artifactLocation"]["uri"] = "../outside.py"
+    result["locations"].append(invalid)
+
+    assert diagnostic_scan(_diagnostic_report([result])) == 1
+
+    captured = capsys.readouterr()
+    assert "tests/synthetic_case.py" not in captured.out + captured.err
+    assert _read_diagnostic(captured) == {"status": "gate_error"}
+
+
+def test_nonempty_results_cannot_be_reported_as_a_clean_scan(
+    diagnostic_scan, capsys: pytest.CaptureFixture[str]
+) -> None:
+    status = diagnostic_scan(_diagnostic_report([_diagnostic_result()]), returncode=0)
+    assert status == 1
+
+    assert _read_diagnostic(capsys.readouterr()) == {"status": "gate_error"}
+
+
+def test_empty_report_cannot_turn_scanner_findings_exit_into_success(
+    diagnostic_scan, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert diagnostic_scan(_diagnostic_report([]), returncode=2) == 2
+
+    summary = _read_diagnostic(capsys.readouterr())
+    assert summary["status"] == "findings"
+    assert summary["scanner_exit_code"] == 2
+    assert summary["result_count"] == 0
+    assert summary["identities"] == []

@@ -848,8 +848,7 @@ def oidc_export_identity(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     """Use real JWT validation with only the external JWKS fetch replaced."""
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     workflow_ref = (
-        "acme/university/.github/workflows/"
-        "cwv-field-certification.yml@refs/heads/main"
+        "acme/university/.github/workflows/cwv-field-certification.yml@refs/heads/main"
     )
     subject = "repo:acme/university:environment:staging"
     now = datetime.now(UTC)
