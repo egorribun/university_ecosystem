@@ -1,7 +1,7 @@
 {
   "$schema": "./ci-check-catalog.schema.json",
   "schema_version": 1,
-  "catalog_version": "1.1.2",
+  "catalog_version": "1.1.3",
   "repository": "egorribun/university_ecosystem",
   "default_runbook": "docs/testing/ci-check-catalog-runbook.md",
   "profiles": {
@@ -4768,6 +4768,12 @@
           "guard": "${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}",
           "needs": [],
           "artifacts": [
+            {
+              "name_pattern": "browser-dependency-smoke-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
+              "path_pattern": "${{ runner.temp }}/browser-dependency-smoke-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json",
+              "required": false,
+              "provenance": "sha"
+            },
             {
               "name_pattern": "core-live-receipt-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
               "path_pattern": "core-live-acceptance-receipt.json",

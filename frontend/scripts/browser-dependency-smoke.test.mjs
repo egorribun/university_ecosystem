@@ -248,7 +248,7 @@ function libraryFixture(change = {}) {
       return {
         protocol: change.protocolMode === mode ? change.protocol : mode,
         async version() {
-          return browserVersion
+          return mode === "cdp" ? browserVersion : browserVersion + "/synthetic-revision"
         },
         wsEndpoint() {
           return change.endpoint ?? "ws://127.0.0.1:9234/devtools/browser/owned-fixture"

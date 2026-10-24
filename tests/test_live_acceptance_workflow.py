@@ -648,7 +648,10 @@ def test_browser_dependency_smoke_is_pr_only_bounded_and_precedes_docker() -> No
     assert not smoke.get("continue-on-error", False)
     upload = steps[smoke_index + 1]
     assert upload["if"] == "${{ success() && github.event_name == 'pull_request' }}"
-    assert upload["uses"] == "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+    assert (
+        upload["uses"]
+        == "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+    )
     artifact = (
         "browser-dependency-smoke-${{ github.run_id }}-"
         "${{ github.run_attempt }}-${{ github.sha }}"

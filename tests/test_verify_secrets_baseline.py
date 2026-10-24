@@ -4259,8 +4259,9 @@ def test_public_git_blob_fixture_rebind_preserves_all_328_prior_records() -> Non
     assert policy["records"][328:] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5]
-    assert rebound["identity"]["path"] == (
-        _PUBLIC_GIT_BLOB_APPROVED_RECORDS[1]["identity"]["path"]
+    assert (
+        rebound["identity"]["path"]
+        == (_PUBLIC_GIT_BLOB_APPROVED_RECORDS[1]["identity"]["path"])
     )
     assert tuple(rebound["identity"]["hashed_secret_bytes"]) not in {
         tuple(record["identity"]["hashed_secret_bytes"])
