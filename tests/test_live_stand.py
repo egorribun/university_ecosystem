@@ -13867,10 +13867,9 @@ def test_live_reset_registration_v2_accepts_only_finite_failure_observations() -
         csrfRequested=False,
         csrfResponse="not-observed",
     )
-    output = (
-        _reset_registration_v2_row(available).replace("\n", "\r\n")
-        + _reset_registration_v2_row(unavailable)
-    )
+    output = _reset_registration_v2_row(available).replace(
+        "\n", "\r\n"
+    ) + _reset_registration_v2_row(unavailable)
     assert parser(output) == [available, unavailable]
     for key, values in {
         "project": ("desktop", "mobile"),

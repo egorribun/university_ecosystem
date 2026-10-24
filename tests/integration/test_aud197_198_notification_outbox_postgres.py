@@ -1103,7 +1103,7 @@ async def _owned_tenant_worker(postgres_app_database: AsyncEngine):
                         if grants_applied:
                             for privileges, objects in reversed(grants):
                                 await connection.exec_driver_sql(
-                                    f'REVOKE {privileges} ON {objects} '
+                                    f"REVOKE {privileges} ON {objects} "
                                     f'FROM "{role_name}"'
                                 )
                         # No IF EXISTS, DROP OWNED, CASCADE or pre-existing role.
@@ -1211,7 +1211,13 @@ async def test_content_outbox_restores_tenant_scope(
                 },
                 locale="en",
             )
-            table_name = "news"
+            tenant_update = text(
+                "UPDATE public.news SET tenant_id = :tenant_id WHERE id = :source_id"
+            )
+            tenant_query = text(
+                "SELECT tenant_id FROM public.news WHERE id = :source_id"
+            )
+            source_query = text("SELECT id FROM public.news WHERE id = :source_id")
             event_type = "news.created"
             dedupe_key = f"news.created:{content.id}"
             handler = event_handlers.handle_news_created_notification
@@ -1229,16 +1235,19 @@ async def test_content_outbox_restores_tenant_scope(
                 },
                 locale="en",
             )
-            table_name = "events"
+            tenant_update = text(
+                "UPDATE public.events SET tenant_id = :tenant_id WHERE id = :source_id"
+            )
+            tenant_query = text(
+                "SELECT tenant_id FROM public.events WHERE id = :source_id"
+            )
+            source_query = text("SELECT id FROM public.events WHERE id = :source_id")
             event_type = "event.created"
             dedupe_key = f"events.created:{content.id}"
             handler = event_handlers.handle_event_created_notification
         source_id = content.id
         await db_session.execute(
-            text(
-                f"UPDATE public.{table_name} SET tenant_id = :tenant_id "
-                "WHERE id = :source_id"
-            ),
+            tenant_update,
             {"tenant_id": tenant_a_id, "source_id": source_id},
         )
         await db_session.commit()
@@ -1248,7 +1257,7 @@ async def test_content_outbox_restores_tenant_scope(
 
     async with database.async_session() as administrator:
         physical_tenant = await administrator.scalar(
-            text(f"SELECT tenant_id FROM public.{table_name} WHERE id = :source_id"),
+            tenant_query,
             {"source_id": source_id},
         )
         assert physical_tenant == tenant_a_id
@@ -1276,7 +1285,6 @@ async def test_content_outbox_restores_tenant_scope(
             for row in policies
         )
 
-    source_query = text(f"SELECT id FROM public.{table_name} WHERE id = :source_id")
     for scope, expected_source, expected_users in (
         ("", None, set()),
         (str(tenant_b_id), None, {user_b.id}),

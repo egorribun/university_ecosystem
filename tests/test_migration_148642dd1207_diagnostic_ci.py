@@ -358,7 +358,7 @@ def test_tenant_context_diagnostic_is_separate_bounded_and_fail_closed() -> None
     run = tenant["run"]
     assert "set -euo pipefail" in run
     assert 'probe_root="$(mktemp -d)"' in run
-    assert 'trap \'rm -rf -- "$probe_root"\' EXIT' in run
+    assert "trap 'rm -rf -- \"$probe_root\"' EXIT" in run
     assert "uv run pytest -v --tb=short --no-cov --maxfail=0" in run
     selector = (
         "tests/integration/test_aud197_198_notification_outbox_postgres.py::"
