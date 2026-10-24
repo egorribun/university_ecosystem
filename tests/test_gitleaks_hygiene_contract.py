@@ -836,8 +836,7 @@ def _assert_scan_timeout_contract(
         "with open('/proc/self/stat', encoding='ascii') as stat:\n"
         "    stat_fields = stat.read().rsplit(') ', 1)[1].split()\n"
         "with open(sys.argv[1], 'w', encoding='ascii') as record:\n"
-        "    record.write("
-        "f'{os.getpid()} {os.getpgid(0)} {stat_fields[19]}\\n')\n"
+        "    record.write(f'{os.getpid()} {os.getpgid(0)} {stat_fields[19]}\\n')\n"
         "print('descendant-ready', flush=True)\n"
         "signal.pause()\n"
     )
