@@ -51,32 +51,7 @@ def test_normalize_explainable_query_rejects_unsafe_input(query: str) -> None:
 async def test_run_explain_analysis_binds_calibration_and_uses_planner_only_explain() -> (
     None
 ):
-    calibration_connection = MagicMock()
-    calibration_connection.execute = AsyncMock()
-    calibration_context = MagicMock()
-    calibration_context.__aenter__ = AsyncMock(return_value=calibration_connection)
-    calibration_context.__aexit__ = AsyncMock(return_value=False)
-
-    plan_result = MagicMock()
-    plan_result.scalar.return_value = [
-        {"Plan": {"Node Type": "Index Scan", "Total Cost": 1.0}}
-    ]
-    query_connection = MagicMock()
-    query_connection.execute = AsyncMock()
-    query_connection.exec_driver_sql = AsyncMock(return_value=plan_result)
-    transaction = MagicMock()
-    transaction.rollback = AsyncMock()
-    transaction_context = MagicMock()
-    transaction_context.__aenter__ = AsyncMock(return_value=transaction)
-    transaction_context.__aexit__ = AsyncMock(return_value=False)
-    query_connection.begin.return_value = transaction_context
-    query_context = MagicMock()
-    query_context.__aenter__ = AsyncMock(return_value=query_connection)
-    query_context.__aexit__ = AsyncMock(return_value=False)
-
-    engine = MagicMock()
-    engine.begin.return_value = calibration_context
-    engine.connect.return_value = query_context
+    engine, query_connection, transaction = _make_analysis_engine()
 
     with patch.object(db_explain_check.logger, "warning") as warning:
         violations, checked = await db_explain_check.run_explain_analysis(
@@ -88,9 +63,24 @@ async def test_run_explain_analysis_binds_calibration_and_uses_planner_only_expl
 
     assert violations is False
     assert checked == 1
-    assert calibration_connection.execute.await_count == 2
-    for awaited in calibration_connection.execute.await_args_list:
+    calibration_calls = [
+        awaited
+        for awaited in query_connection.execute.await_args_list
+        if str(awaited.args[0]).startswith("UPDATE pg_class")
+    ]
+    assert len(calibration_calls) == 2
+    for awaited in calibration_calls:
         assert awaited.args[1] == {"table_names": ["users"]}
+    assert [
+        str(awaited.args[0])
+        for awaited in query_connection.execute.await_args_list
+        if str(awaited.args[0]).startswith("SET ")
+    ] == [
+        "SET LOCAL enable_seqscan = off",
+        "SET statement_timeout = '15s'",
+        "SET LOCAL plan_cache_mode = force_generic_plan",
+    ]
+    engine.begin.assert_not_called()
     # AUD-461: $n stays a parameter. It is prepared and planned under
     # force_generic_plan, so a bound NULL cannot fold the filter away.
     assert query_connection.exec_driver_sql.await_args_list == [
@@ -167,23 +157,23 @@ def _make_analysis_engine(
     calibration_error: Exception | None = None,
     plan: object | None = None,
 ) -> tuple[MagicMock, MagicMock, MagicMock]:
-    calibration_connection = MagicMock()
-    calibration_connection.execute = AsyncMock()
-    calibration_context = MagicMock()
-    if calibration_error is None:
-        calibration_context.__aenter__ = AsyncMock(return_value=calibration_connection)
-    else:
-        calibration_context.__aenter__ = AsyncMock(side_effect=calibration_error)
-    calibration_context.__aexit__ = AsyncMock(return_value=False)
-
     plan_result = MagicMock()
     plan_result.scalar.return_value = (
         plan
         if plan is not None
         else [{"Plan": {"Node Type": "Index Scan", "Total Cost": 1.0}}]
     )
+
+    async def execute(statement, parameters=None):
+        if calibration_error is not None and "pg_index" in str(statement):
+            raise calibration_error
+
     query_connection = MagicMock()
-    query_connection.execute = AsyncMock()
+    query_connection.execute = AsyncMock(side_effect=execute)
+    savepoint_context = MagicMock()
+    savepoint_context.__aenter__ = AsyncMock(return_value=MagicMock())
+    savepoint_context.__aexit__ = AsyncMock(return_value=False)
+    query_connection.begin_nested.return_value = savepoint_context
     if explain_error is None:
         query_connection.exec_driver_sql = AsyncMock(return_value=plan_result)
     else:
@@ -200,7 +190,6 @@ def _make_analysis_engine(
     query_context.__aexit__ = AsyncMock(return_value=False)
 
     engine = MagicMock()
-    engine.begin.return_value = calibration_context
     engine.connect.return_value = query_context
     engine.dispose = AsyncMock()
     return engine, query_connection, transaction
@@ -729,6 +718,7 @@ async def test_table_wide_write_without_where_is_not_planned() -> None:
 
     assert violations is False
     assert checked == 0
+    query_connection.execute.assert_not_awaited()
     query_connection.exec_driver_sql.assert_not_awaited()
 
 

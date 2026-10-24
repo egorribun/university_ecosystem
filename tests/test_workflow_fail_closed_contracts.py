@@ -95,6 +95,8 @@ _POWERSHELL_DOCKER_PULL = re.compile(
 )
 _DOCKER_RUN_OPTIONS_WITH_VALUE = {
     "--add-host",
+    "--cap-add",
+    "--cap-drop",
     "--cidfile",
     "--cpus",
     "--entrypoint",
@@ -109,6 +111,7 @@ _DOCKER_RUN_OPTIONS_WITH_VALUE = {
     "--pids-limit",
     "--platform",
     "--publish",
+    "--security-opt",
     "--tmpfs",
     "--user",
     "--volume",
@@ -1172,6 +1175,30 @@ def test_reusable_backend_image_pull_loop_keeps_all_four_audited_pins() -> None:
             "pgvector/pgvector:pg17",
         )
     )
+
+
+@pytest.mark.parametrize("command", ["run", "create"])
+@pytest.mark.parametrize(
+    "options",
+    [
+        "--cap-add NET_BIND_SERVICE",
+        "--cap-add=NET_BIND_SERVICE",
+        "--cap-drop ALL",
+        "--cap-drop=ALL",
+        "--security-opt no-new-privileges",
+        "--security-opt=no-new-privileges",
+        "--cap-drop ALL --security-opt no-new-privileges --read-only",
+    ],
+)
+def test_docker_security_option_values_do_not_hide_the_real_image(
+    command: str, options: str
+) -> None:
+    pinned = EXPECTED_EXTERNAL_IMAGES["redis:7-alpine"]
+    assert list(_docker_cli_images(f"docker {command} {options} {pinned}")) == [pinned]
+    images = list(_docker_cli_images(f"docker {command} {options} redis:7-alpine"))
+    assert images == ["redis:7-alpine"]
+    with pytest.raises(AssertionError, match="unpinned static image"):
+        _assert_pinned(images[0], source="security-option-regression")
 
 
 def test_all_static_external_workflow_images_are_digest_pinned() -> None:

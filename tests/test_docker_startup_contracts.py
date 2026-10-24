@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -1973,6 +1974,7 @@ MIGRATION_CONNECTION_SECRET_KEYS = {
     "database-url",
     "redis-revocation-url",
     "redis-backend-url",
+    "rate-limit-storage-uri",
     "nats-auth-token",
 }
 MIGRATION_APPLICATION_SECRET_KEYS = {
@@ -1989,6 +1991,7 @@ MIGRATION_APPLICATION_SECRET_KEYS = {
 OUTBOX_CONNECTION_SECRET_KEYS = {
     "database-url",
     "redis-backend-url",
+    "rate-limit-storage-uri",
     "nats-url",
     "nats-auth-token",
 }
@@ -2218,6 +2221,7 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         connections_secret,
         {
             "DATABASE_URL": "database-url",
+            "RATE_LIMIT_STORAGE_URI": "rate-limit-storage-uri",
             "REVOCATION_REDIS_URL": "redis-revocation-url",
         },
     )
@@ -2246,6 +2250,7 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         MIGRATION_CONNECTION_SECRET_KEYS,
         MIGRATION_APPLICATION_SECRET_KEYS,
     )
+    assert migration_env["RATE_LIMIT_STORAGE_BACKEND"]["value"] == "redis"
     assert migration_env["ENVIRONMENT"]["value"] == "development"
     assert migration_container["securityContext"]["readOnlyRootFilesystem"] is True
     deployments = {
@@ -2420,11 +2425,13 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         {
             "DATABASE_URL": "database-url",
             "CACHE_REDIS_URL": "redis-backend-url",
+            "RATE_LIMIT_STORAGE_URI": "rate-limit-storage-uri",
             "NATS_URL": "nats-url",
             "NATS_AUTH_TOKEN": "nats-auth-token",
         },
     )
     assert "KEDA_POSTGRESQL_CONNECTION" not in outbox_env
+    assert outbox_env["RATE_LIMIT_STORAGE_BACKEND"]["value"] == "redis"
     assert outbox_env["APP_PROCESS_ROLE"]["value"] == "outbox-worker"
     assert outbox_env["REVOCATION_REDIS_ACCESS_ENABLED"]["value"] == "false"
     assert "REVOCATION_REDIS_URL" not in outbox_env
@@ -2816,18 +2823,157 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
     assert "image" not in full_caddy
 
 
-def test_ci_caddy_smokes_use_the_pinned_project_runtime() -> None:
+@pytest.mark.parametrize(
+    ("workflow_name", "job_id", "job_name", "job_timeout", "smoke_script"),
+    [
+        (
+            "visual-audit.yml",
+            "visual-audit",
+            "Axe a11y audit on Linux",
+            30,
+            "authenticated-visual-audit.mjs",
+        ),
+        (
+            "admin-smoke-monitoring.yml",
+            "admin-smoke",
+            "Admin React #418 monitoring",
+            30,
+            "admin-visual-smoke.mjs",
+        ),
+        (
+            "unauthenticated-routes-smoke.yml",
+            "unauthed-smoke",
+            "Unauthenticated routes smoke (theme=${{ matrix.theme }})",
+            20,
+            "unauthenticated-routes-smoke.mjs",
+        ),
+    ],
+)
+def test_ci_caddy_smokes_use_the_pinned_project_runtime(
+    workflow_name: str,
+    job_id: str,
+    job_name: str,
+    job_timeout: int,
+    smoke_script: str,
+) -> None:
+    """Smoke the patched checkout image, never the unpatched upstream runtime."""
+    workflow = yaml.safe_load(_read(f".github/workflows/{workflow_name}"))
+    job = workflow["jobs"][job_id]
+    steps = job["steps"]
+    builds = [
+        step
+        for step in steps
+        if step.get("uses", "").startswith("docker/build-push-action@")
+    ]
+    assert len(builds) == 1, f"{workflow_name} must build the project Caddy runtime"
+    build = builds[0]
+    assert build["uses"] == (
+        "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc"
+    )
+    assert "if" not in build
+    assert build.get("continue-on-error", False) is False
+    assert 0 < build["timeout-minutes"] <= 10
+    build_inputs = build["with"]
+    image = "university-ecosystem/caddy:${{ github.sha }}"
+    assert build_inputs["context"] == "services/caddy"
+    assert build_inputs["file"] == "services/caddy/Dockerfile"
+    assert build_inputs["tags"] == image
+    assert build_inputs["platforms"] == "linux/amd64"
+    assert build_inputs["load"] is True
+    assert build_inputs["push"] is False
+    assert build_inputs["cache-from"] == "type=gha,scope=university-caddy"
+    assert "cache-to" not in build_inputs
+    assert not {"build-args", "target", "secrets", "ssh", "allow"} & build_inputs.keys()
+    assert (
+        "org.opencontainers.image.revision=${{ github.sha }}"
+        in build_inputs["labels"].splitlines()
+    )
+
+    checkout = next(
+        step for step in steps if step.get("uses", "").startswith("actions/checkout@")
+    )
+    assert checkout["with"]["persist-credentials"] is False
+    assert checkout["with"].get("ref", "${{ github.sha }}") == "${{ github.sha }}"
+    buildx = next(
+        step
+        for step in steps
+        if step.get("uses", "").startswith("docker/setup-buildx-action@")
+    )
+    assert buildx["uses"] == (
+        "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069"
+    )
+    start = next(step for step in steps if step.get("name") == "Start Caddy ingress")
+    assert steps.index(checkout) < steps.index(buildx) < steps.index(build)
+    assert steps.index(build) < steps.index(start)
+    assert "if" not in start
+    assert start.get("continue-on-error", False) is False
+    assert start.get("env", {}).get("IMAGE_TAG") == "${{ github.sha }}"
+
+    start_script = start["run"]
+    commands = [
+        shlex.split(line)
+        for line in start_script.replace("\\\n", " ").splitlines()
+        if line.strip().startswith("docker run ")
+    ]
+    assert len(commands) == 1
+    command = commands[0]
+    assert command[-1] == "university-ecosystem/caddy:${IMAGE_TAG}"
+    assert "--pull=never" in command
+    assert command[command.index("--network") + 1] == "host"
+    assert command[command.index("--name") + 1] == "caddy"
+    assert "/tmp/Caddyfile:/etc/caddy/Caddyfile:ro" in command
+    for argument in command:
+        assert not argument.startswith(
+            ("--user", "--privileged", "--cap-add", "--sysctl", "--entrypoint")
+        )
+        assert not argument.startswith("-u")
+    runtime_users = re.findall(
+        r"^USER\s+(.+)$", _read("services/caddy/Dockerfile"), re.MULTILINE
+    )
+    assert runtime_users[-1] == "100:101"
+
+    origin = "http://localhost:8080"
+    assert re.search(r"^\s*:8080\s*\{", start_script, re.MULTILINE)
+    assert not re.search(r"^\s*:80\s*\{", start_script, re.MULTILINE)
+    assert "reverse_proxy 127.0.0.1:8000" in start_script
+    assert "reverse_proxy 127.0.0.1:3000" in start_script
+    assert f"curl -sf {origin}/healthz" in start_script
+    assert f"curl -sf {origin}/.well-known/jwks.json" in start_script
+    assert "auto_https off" in start_script
+    assert "admin off" in start_script
+
+    backend = next(step for step in steps if step.get("name") == "Start backend")
+    frontend_build = next(
+        step for step in steps if "npm run build" in step.get("run", "")
+    )
+    frontend_start = next(
+        step for step in steps if step.get("name") == "Start frontend Node SSR"
+    )
+    browser = next(
+        step for step in steps if step.get("run") == f"node ./scripts/{smoke_script}"
+    )
+    backend_env = {
+        **workflow.get("env", {}),
+        **job.get("env", {}),
+        **backend.get("env", {}),
+    }
+    for key in ("FRONTEND_ORIGIN", "FRONTEND_ORIGINS", "APP_BASE_URL"):
+        assert backend_env.get(key) == origin
+    assert frontend_build.get("env", {}).get("VITE_BACKEND_ORIGIN") == origin
+    assert browser.get("env", {}).get("ORIGIN") == origin
+    assert "--host 127.0.0.1 --port 8000" in backend["run"]
+    assert frontend_start["env"]["PORT"] == "3000"
+    assert job["name"] == job_name
+    assert job["timeout-minutes"] == job_timeout
+    if job_id == "unauthed-smoke":
+        assert job["strategy"]["matrix"]["theme"] == ["light", "dark"]
+        assert job["strategy"]["fail-fast"] is False
+
     workflows = "\n".join(
         path.read_text(encoding="utf-8")
         for path in (ROOT / ".github" / "workflows").glob("*.yml")
     )
-    runtime = (
-        "caddy:2.11.7-alpine@sha256:"
-        "d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f"
-    )
-
-    assert "caddy:2.11.2" not in workflows
-    assert workflows.count(runtime) == 3
+    assert not re.search(r"(?<![/\w-])caddy:[^\s]+", workflows)
 
 
 def test_default_caddy_config_references_only_compose_services() -> None:

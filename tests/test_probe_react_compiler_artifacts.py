@@ -10,8 +10,10 @@ import io
 import json
 import tarfile
 import unittest
+from contextlib import redirect_stdout
 from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 from unittest.mock import patch
 
@@ -214,6 +216,108 @@ class CandidateContracts(unittest.TestCase):
             )
 
 
+class ProvenanceContracts(unittest.TestCase):
+    def test_matching_registry_and_manifest_revisions_are_corroborated(self) -> None:
+        revision = "a" * 40
+        result = probe.artifact_provenance({"gitHead": revision}, {"gitHead": revision})
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["source_revision"], revision)
+        self.assertEqual(result["provenance_status"], "corroborated")
+        self.assertEqual(result["source_binding"], "unverified")
+
+    def test_registry_only_revision_does_not_claim_artifact_source_proof(self) -> None:
+        revision = "a" * 40
+        result = probe.artifact_provenance({"gitHead": revision}, {})
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["source_revision"], revision)
+        self.assertEqual(result["provenance_status"], "registry_only")
+        self.assertEqual(result["source_binding"], "unverified")
+
+    def test_manifest_only_revision_does_not_claim_registry_corroboration(self) -> None:
+        revision = "b" * 40
+        result = probe.artifact_provenance({}, {"gitHead": revision})
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["source_revision"], revision)
+        self.assertEqual(result["provenance_status"], "manifest_only")
+        self.assertEqual(result["source_binding"], "unverified")
+
+    def test_missing_revisions_are_reported_as_absent_not_inferred(self) -> None:
+        result = probe.artifact_provenance({}, {})
+        self.assertIsInstance(result, dict)
+        self.assertIsNone(result["source_revision"])
+        self.assertEqual(result["provenance_status"], "absent")
+        self.assertEqual(result["source_binding"], "unverified")
+
+    def test_conflicting_registry_and_manifest_revisions_fail_closed(self) -> None:
+        with self.assertRaises(probe.ProbeError):
+            probe.artifact_provenance({"gitHead": "a" * 40}, {"gitHead": "b" * 40})
+
+    def test_malformed_revisions_fail_closed_in_either_location(self) -> None:
+        for invalid in (None, 12, "a" * 39, "a" * 41, "g" * 40, "A" * 40):
+            with self.subTest(value=invalid):
+                with self.assertRaises(probe.ProbeError):
+                    probe.artifact_provenance({"gitHead": invalid}, {})
+                with self.assertRaises(probe.ProbeError):
+                    probe.artifact_provenance({}, {"gitHead": invalid})
+
+    def test_main_preserves_registry_revision_in_each_validated_artifact(self) -> None:
+        revisions = {BABEL: "b" * 40, ESLINT: "c" * 40}
+        responses: dict[str, bytes] = {}
+        locked: dict[str, Any] = {}
+        for name, version in ((BABEL, "1.0.0"), (ESLINT, "19.1.0-rc.2")):
+            artifact = archive(name=name, version=version)
+            entry = metadata(name, version, sri(artifact))
+            entry["gitHead"] = revisions[name]
+            responses[entry["dist"]["tarball"]] = artifact
+            responses[f"https://registry.npmjs.org/{name}"] = json.dumps(
+                {
+                    "name": name,
+                    "versions": {version: entry},
+                    "time": {version: "2025-01-01T00:00:00Z"},
+                }
+            ).encode()
+            locked[f"node_modules/{name}"] = {
+                "version": version,
+                "integrity": sri(artifact),
+            }
+
+        def fixture_fetch(url: str, limit: int) -> bytes:
+            self.assertIn(url, responses)
+            data = responses[url]
+            self.assertLessEqual(len(data), limit)
+            return data
+
+        output = io.StringIO()
+        with TemporaryDirectory(prefix="react-probe-contract-") as directory:
+            root = Path(directory)
+            lock_path = root / "frontend" / "package-lock.json"
+            lock_path.parent.mkdir(parents=True)
+            lock_path.write_text(json.dumps({"packages": locked}), encoding="utf-8")
+            module_path = root / "scripts" / "ci" / "probe_react_compiler_artifacts.py"
+            with (
+                patch.object(probe, "__file__", str(module_path)),
+                patch.dict(probe.os.environ, {"SOURCE_SHA": "a" * 40}),
+                patch.object(probe, "fetch_bounded", side_effect=fixture_fetch),
+                redirect_stdout(output),
+            ):
+                probe.main()
+
+        report = json.loads(output.getvalue())
+        self.assertEqual(len(report["candidates"]), 2)
+        for candidate in report["candidates"]:
+            self.assertIn("source_provenance", candidate)
+            self.assertEqual(
+                candidate["source_provenance"]["source_revision"],
+                revisions[candidate["name"]],
+            )
+            self.assertEqual(
+                candidate["source_provenance"]["provenance_status"], "registry_only"
+            )
+            self.assertEqual(
+                candidate["source_provenance"]["source_binding"], "unverified"
+            )
+
+
 class ArchiveContracts(unittest.TestCase):
     def inspect(self, data: bytes, **kwargs: Any) -> dict[str, Any] | None:
         return probe.inspect_artifact(
@@ -241,6 +345,13 @@ class ArchiveContracts(unittest.TestCase):
         self.assertEqual(result["patched_status"], "not_established")
         self.assertNotIn("SOURCE_MUST_NOT_APPEAR_IN_REPORT", json.dumps(result))
         self.assertNotIn("MUST_NOT_EXECUTE", json.dumps(result))
+
+    def test_report_includes_source_provenance(self) -> None:
+        result = self.inspect(archive())
+        self.assertIsInstance(result, dict)
+        self.assertIn("source_provenance", result)
+        self.assertEqual(result["source_provenance"]["provenance_status"], "absent")
+        self.assertEqual(result["source_provenance"]["source_binding"], "unverified")
 
     def test_prepare_only_lifecycle_script_is_reported_without_execution(self) -> None:
         result = self.inspect(archive(scripts={"prepare": "MUST_NOT_EXECUTE"}))

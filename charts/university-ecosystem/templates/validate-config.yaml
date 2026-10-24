@@ -141,8 +141,8 @@
   {{- if not .Values.applicationSecrets.existingSecret -}}
     {{- fail "applicationSecrets.existingSecret must be set in staging/production so credentials do not enter Helm release state" -}}
   {{- end -}}
-  {{- if not (regexMatch "^[0-9a-f]{40}([0-9a-f]{24})?$" .Values.global.imageTag) -}}
-    {{- fail "global.imageTag must be the exact 40- or 64-character lowercase Git SHA in staging/production" -}}
+  {{- if not (regexMatch "^[0-9a-f]{40}$" .Values.global.imageTag) -}}
+    {{- fail "global.imageTag must be the exact 40-character lowercase Git SHA in staging/production" -}}
   {{- end -}}
   {{- if ne .Values.cwv.releaseSHA .Values.global.imageTag -}}
     {{- fail "cwv.releaseSHA must exactly equal global.imageTag in staging/production" -}}

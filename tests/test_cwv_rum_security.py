@@ -63,6 +63,8 @@ def _valid_staging_environment_settings() -> dict[str, object]:
     spotify_key = Fernet.generate_key().decode("ascii")
     totp_key = Fernet.generate_key().decode("ascii")
     return {
+        "rate_limit_storage_backend": "redis",
+        "rate_limit_storage_uri": "redis://localhost",
         "smtp_host": "relay.aud471.invalid",
         "smtp_port": 587,
         "smtp_security": "starttls",
@@ -786,6 +788,7 @@ def test_staging_settings_redact_secret_and_reject_partial_oidc_policy() -> None
         "cwv_export_oidc_subject": "repo:acme/university:environment:staging",
     }
     configured = Settings(**values)
+    assert configured.rate_limit_storage_backend == "redis"
     assert SECRET not in repr(configured)
     values["cwv_export_oidc_workflow_ref"] = ""
     with pytest.raises(ValueError, match="OIDC"):

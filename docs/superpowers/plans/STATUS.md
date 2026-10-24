@@ -3,6 +3,71 @@
 Обновлено: 2026-10-24 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
 
+
+## Текущий hosted checkpoint и следующий пакет, 2026-10-24
+
+Принятая source-level нижняя граница — **282/512 (55,1%)**, осталось **230 ID**:
+добавлены только AUD-350 и AUD-481 по [точным критериям и evidence](../../audits/AUDIT-2026-10.md#hosted-timestamp-and-image-scan-closure-checkpoint-2026-10-24).
+Все 280 прежних ID сохранены. Это не full-CI или release acceptance.
+
+На [8db323bc](https://github.com/egorribun/university_ecosystem/commit/8db323bcdfe932e9c1d99d587e125c40d10c5e8e)
+[Matrix 40055175068](https://github.com/egorribun/university_ecosystem/actions/runs/40055175068)
+подтвердил оба pre-commit jobs, inventory, contract cohort и все четыре
+frontend unit shards. PostgreSQL migration gate SUCCESS: 86 focused tests
+и два AUD-350 counterfactual cases. Все шесть release-image типов действительно
+собраны и просканированы; backend/gateway/ws-hub/file-processor/Caddy Trivy PASS,
+frontend корректно FAIL на HIGH Zod. У custom Caddy отдельно прошла offline
+проверка установленного `brotli-libs=1.2.1-r0`.
+
+Обычный `npm ci` в job 120756555656 SUCCESS (2153 packages); затем реальный
+npm audit больше не сообщает body-parser/Undici, но блокирует цепочку Zod.
+Read-only compiler probe выполнил 36 tests и четыре artifact inspections.
+Он подтвердил external Zod imports старого ESLint compiler plugin и признаки
+bundled Zod в Babel compiler, но не установил exploitability или remediation.
+Переход на другой compiler без сохранения diagnostics не применяется.
+
+Полный backend unit cohort завершился: **19160 PASS / 22 FAIL / 253 SKIP**.
+Все 22 причины разобраны: 15 CWV prerequisite fixtures, две ожидаемые AUD-493
+template-only 64-hex отказы, development Helm fixture без external secret,
+projection key-set drift, historical MFA identifier false positive, Docker
+capability-option parsing и staging migration fixture без Redis prerequisite.
+Отдельный integration job прошёл 112 tests и воспроизвёл AUD-504: synthetic
+`pg_class` statistics видны независимой транзакции и сохраняются после анализа.
+
+Следующий пакет исправляет AUD-504: обе calibration UPDATE выполняются внутри
+savepoint той же rollback-only транзакции, что EXPLAIN; partial failure
+восстанавливает default statistics. Шесть PostgreSQL regressions неизменны.
+AUD-493 приводит template к действующему lowercase 40-hex schema/release
+контракту; development fixture получает существующий external-secret input.
+Оба production изменения прошли source review после observed RED, но новый
+hosted GREEN ещё требуется.
+
+Tests-only corrections явно задают необходимые Redis prerequisites, сохраняют
+все negative CWV/missing-secret assertions и строгие projection key sets.
+Docker image parser распознаёт только три добавленных value-options и сохраняет
+отказ на unpinned image. MFA guard допускает лишь два historical literals
+по точному пути и неизменному Git blob; любые другие bytes, пути или symlink
+aliases остаются видимыми. Runtime MFA и scanner/disposition policy не меняются.
+
+Добавлены tests-first checkpoints: три Caddy smoke contracts требуют source-built
+custom runtime и согласованный unprivileged CI origin; smoke workflows пока
+не изменены. Восемь новых provenance tests требуют явного сопоставления registry
+и artifact gitHead; одно importable stub не выдаёт доказательств происхождения.
+Их ожидаемый assertion RED не считается passing audit и не заменяется skip.
+
+Test-only migration diagnostic связывает пять nested EXECUTE sites с точным
+source, сравнивает instrumented run с неизменённым control и отдельно проверяет
+late-failure rollback. Новый consumer в существующем Alembic job сохраняет
+исходный lint, permissions, budget и scanner flags; печатает bounded metadata/
+expanded SQL и возвращает реальный Squawk status. Positive preservation
+evidence ещё не получено; expanded Squawk ожидаемо остаётся RED.
+Никакой migration waiver не применён: владелец разрешил только подготовить
+конечное предложение, точные границы требуют отдельного подтверждения.
+
+Baseline319 identities, approved policy321, Gitleaks25, 78 required context/app
+pairs, blocking CodeQL и coverage floors сохранены. Предыдущие датированные
+значения ниже исторические. Новому source нужны собственные проверки.
+
 ## Проверенный checkpoint и следующий source, 2026-10-24 01:59 UTC
 
 На source `772a17927a1aa0cc89ff974d46e669d56b3bccd7`
@@ -364,9 +429,9 @@ TLS остаётся приватным кандидатом: текущий res
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Текущая принятая нижняя граница — **280/512 (54,7%)** по [source-bound сверке AUD-492](../../audits/AUDIT-2026-10.md#existing-source-campus-reminder-checkpoint-2026-10-24); осталось 232 ID. Все 279 прежних ID сохранены. Campus-local weekday/parity уже исправлены в опубликованном source; три целевых теста и прежнее AUD-008 PostgreSQL evidence проверены на тех же scheduler/test blobs. Deployment timezone и push delivery не проверялись. Полный список и ограничения приведены в последней closure section аудита. Commit и отдельный тест не заменяют приёмку; к продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Текущая принятая нижняя граница — **282/512 (55,1%)** по [hosted source-bound сверке AUD-350 и AUD-481](../../audits/AUDIT-2026-10.md#hosted-timestamp-and-image-scan-closure-checkpoint-2026-10-24); осталось 230 ID. Все 280 прежних ID сохранены. Приняты только сохранение naive-UTC timestamp при конвертации и фактическое покрытие PR-сканированием шести release-image типов. Frontend Trivy продолжает блокировать Zod; полный CI, релиз и deployment не приняты. Полный список и ограничения приведены в последней closure section аудита. К продуктовой приёмке MVP вернуться после аудита.
 
-Текущая работа идёт только на `egorribun`, в одном checkout, через открытый [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343); [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306) был owner-merged и является историческим. Root управляет Git; по поручению владельца от 2026-10-23 — максимум 64 GPT-6 Luna Max с непересекающимися файлами и отдельным допуском тяжёлых прогонов по ресурсам. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
+Текущая работа идёт строго в облаке через GitHub plugin на `egorribun`, через открытый [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343). [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306) был owner-merged и является историческим. Публикация использует обычные fast-forward commits с проверкой ожидаемого HEAD. Локальный checkout, новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
 
 Датированные checkpoint-разделы ниже сохраняют значения и статусы на указанных source. Их прежние acceptance counts, включая 223/512 и 277/512, и тогдашние pending states — исторические; актуальная нижняя граница указана выше и раскрыта в последней closure section аудита.
 

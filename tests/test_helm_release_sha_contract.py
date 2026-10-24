@@ -20,7 +20,7 @@ from tests.test_helm_staging_contract import (
     _render_staging,
     _values,
 )
-from tests.test_mfa_helm_contract import _render
+from tests.test_mfa_helm_contract import MFA_EXTERNAL_APPLICATION_SECRET, _render
 
 RELEASE_SHA = "0123456789abcdef" * 2 + "01234567"
 
@@ -192,7 +192,12 @@ def test_release_rejects_mismatched_valid_40_hex_identities(
 
 def test_development_preserves_schema_placeholder_without_release_gate() -> None:
     assert shutil.which("helm") is not None, "Actual Helm rendering is required"
-    resources = _render("--set-string", "cwv.releaseSHA=REQUIRED_GIT_SHA")
+    resources = _render(
+        "--set-string",
+        f"applicationSecrets.existingSecret={MFA_EXTERNAL_APPLICATION_SECRET}",
+        "--set-string",
+        "cwv.releaseSHA=REQUIRED_GIT_SHA",
+    )
     backend = _component_resource(resources, "Deployment", "backend")
     env = {
         entry["name"]: entry

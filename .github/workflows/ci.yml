@@ -951,6 +951,7 @@ jobs:
           uv sync --frozen
 
       - name: Lint Postgres Migrations (Squawk)
+        id: migration-squawk
         env:
           SECRET_KEY: ${{ env.SECRET_KEY }}
           ENVIRONMENT: testing
@@ -984,6 +985,157 @@ jobs:
             uv run python -m scripts.quality.render_live_alembic_sql "$migration" "$sql_file"
             squawk "${squawk_args[@]}" "$sql_file"
           done <<< "$changed_files"
+
+      - name: Collect bounded 148642dd1207 DDL evidence
+        id: migration-ddl-evidence
+        if: >-
+          ${{ !cancelled() &&
+              (steps.migration-squawk.outcome == 'success' ||
+               steps.migration-squawk.outcome == 'failure') }}
+        env:
+          SECRET_KEY: ${{ env.SECRET_KEY }}
+          ENVIRONMENT: testing
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          RUN_INTEGRATION_TESTS: "1"
+          ORIGINAL_SQUAWK_OUTCOME: ${{ steps.migration-squawk.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          print_bounded() {
+            local file="$1" limit="$2" bytes
+            bytes="$(wc -c < "$file")"
+            head -c "$limit" "$file"
+            if [ "$bytes" -gt "$limit" ]; then
+              echo "::error::AUD148 diagnostic output exceeded $limit bytes"
+              return 1
+            fi
+          }
+          test_log="$(mktemp)"
+          trace_root=".pytest_tmp/aud148-expanded"
+          pytest_status=0
+          uv run pytest -q -s --tb=short \
+            tests/test_migration_148642dd1207_trace.py \
+            tests/test_migration_148642dd1207_diagnostic_ci.py \
+            tests/integration/test_migration_148642dd1207.py::test_expanded_ddl_inventory_matches_unmodified_populated_control \
+            tests/integration/test_migration_148642dd1207.py::test_convertible_orphan_rolls_back_cutover_and_diagnostic_rows \
+            --basetemp="$trace_root" > "$test_log" 2>&1 || pytest_status=$?
+          echo "AUD148_FOCUSED_TESTS_BEGIN"
+          if ! print_bounded "$test_log" 131072; then
+            [ "$pytest_status" -ne 0 ] || pytest_status=1
+          fi
+          echo "AUD148_FOCUSED_TESTS_END"
+          if [ "$pytest_status" -ne 0 ]; then exit "$pytest_status"; fi
+          shopt -s globstar nullglob
+          sql_files=("$trace_root"/**/148642dd1207.expanded.sql)
+          json_files=("$trace_root"/**/148642dd1207.trace.json)
+          if [ "${#sql_files[@]}" -ne 1 ] || [ "${#json_files[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one AUD148 SQL/evidence pair"
+            exit 1
+          fi
+          sql_file="${sql_files[0]}"
+          json_file="${json_files[0]}"
+          if [ "$json_file" != "${sql_file%.expanded.sql}.trace.json" ]; then
+            echo "::error::AUD148 SQL and JSON are not from the same test"
+            exit 1
+          fi
+          AUD148_CHECKOUT_SHA="$(git rev-parse HEAD)"
+          AUD148_SQUAWK_VERSION="$(squawk --version)"
+          AUD148_SQUAWK_BINARY_SHA256="$(sha256sum "$(command -v squawk)" | cut -d ' ' -f 1)"
+          export AUD148_CHECKOUT_SHA AUD148_SQUAWK_VERSION AUD148_SQUAWK_BINARY_SHA256
+          squawk_args=(
+            --exclude prefer-robust-stmts --exclude prefer-text-field
+            --exclude prefer-bigint-over-int --exclude prefer-identity
+            --exclude prefer-timestamp-tz --exclude disallowed-unique-constraint
+            --exclude require-enum-value-ordering
+          )
+          uv run python - "$sql_file" "$json_file" "${squawk_args[@]}" <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          sql_path, evidence_path = map(Path, sys.argv[1:3])
+          if sql_path.stat().st_size > 65536 or evidence_path.stat().st_size > 4194304:
+              raise SystemExit("AUD148 evidence exceeds its input byte limit")
+          sql_bytes = sql_path.read_bytes()
+          sql_text = sql_bytes.decode("utf-8")
+          evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+          if evidence["status"] != "diagnostic-only-not-an-exception":
+              raise SystemExit("AUD148 evidence is not diagnostic-only")
+          if not sql_text.startswith("-- DIAGNOSTIC ONLY:"):
+              raise SystemExit("AUD148 expanded SQL is missing its diagnostic label")
+          if hashlib.sha256(sql_bytes).hexdigest() != evidence["expanded_sql_sha256"]:
+              raise SystemExit("AUD148 expanded SQL digest mismatch")
+
+          def git_blob(path):
+              data = Path(path).read_bytes()
+              header = b"blob " + str(len(data)).encode("ascii") + b"\0"
+              return hashlib.sha1(header + data, usedforsecurity=False).hexdigest()
+
+          migration_path = "alembic/versions/148642dd1207_fix_missing_tables.py"
+          if git_blob(migration_path) != evidence["migration_blob"]:
+              raise SystemExit("AUD148 migration source mismatch")
+          for key, path in (
+              ("helper_sha256", "tests/helpers/migration_148642dd1207_trace.py"),
+              ("fixture_sha256", "tests/integration/test_migration_148642dd1207.py"),
+          ):
+              if hashlib.sha256(Path(path).read_bytes()).hexdigest() != evidence[key]:
+                  raise SystemExit("AUD148 diagnostic source mismatch")
+          nested = evidence["nested_ddl"]
+          if not isinstance(nested, list) or not 1 <= len(nested) <= 100:
+              raise SystemExit("AUD148 nested inventory is not finite")
+          records = []
+          for entry in nested:
+              statement = entry["sql"]
+              digest = hashlib.sha256(statement.encode("utf-8")).hexdigest()
+              if not statement.startswith("ALTER TABLE ") or digest != entry["sql_sha256"]:
+                  raise SystemExit("AUD148 nested DDL identity mismatch")
+              keys = ("outer_ordinal", "site", "sql", "sql_sha256")
+              records.append({key: entry[key] for key in keys})
+          version = os.environ["AUD148_SQUAWK_VERSION"]
+          if "2.67.0" not in version.split() or len(version) > 128:
+              raise SystemExit("AUD148 requires the existing Squawk 2.67.0 binary")
+          metadata = {
+              "status": evidence["status"],
+              "checkout_sha": os.environ["AUD148_CHECKOUT_SHA"],
+              "workflow_sha": evidence["workflow_sha"],
+              "workflow_run_id": evidence["workflow_run_id"],
+              "original_squawk_outcome": os.environ["ORIGINAL_SQUAWK_OUTCOME"],
+              "migration_blob": evidence["migration_blob"],
+              "helper_sha256": evidence["helper_sha256"],
+              "fixture_sha256": evidence["fixture_sha256"],
+              "workflow_blob": git_blob(".github/workflows/ci.yml"),
+              "renderer_blob": git_blob("scripts/quality/render_live_alembic_sql.py"),
+              "squawk_config_blob": git_blob(".squawk.toml"),
+              "lockfile_blob": git_blob("uv.lock"),
+              "postgres_version": evidence["postgres_version"],
+              "squawk_version": version,
+              "squawk_binary_sha256": os.environ["AUD148_SQUAWK_BINARY_SHA256"],
+              "squawk_args": sys.argv[3:],
+              "expanded_sql_sha256": evidence["expanded_sql_sha256"],
+              "nested_ddl": records,
+          }
+          rendered = json.dumps(metadata, sort_keys=True, indent=2)
+          if len(rendered.encode("utf-8")) + len(sql_bytes) > 131072:
+              raise SystemExit("AUD148 log payload exceeds its output byte limit")
+          print("AUD148_DIAGNOSTIC_METADATA_BEGIN")
+          print(rendered)
+          print("AUD148_DIAGNOSTIC_METADATA_END")
+          print("AUD148_EXPANDED_SQL_BEGIN")
+          print(sql_text, end="" if sql_text.endswith("\n") else "\n")
+          print("AUD148_EXPANDED_SQL_END")
+          PY
+          lint_log="$(mktemp)"
+          lint_status=0
+          squawk "${squawk_args[@]}" "$sql_file" > "$lint_log" 2>&1 || lint_status=$?
+          echo "AUD148_EXPANDED_SQUAWK_BEGIN"
+          if ! print_bounded "$lint_log" 131072; then
+            [ "$lint_status" -ne 0 ] || lint_status=1
+          fi
+          echo "AUD148_EXPANDED_SQUAWK_END"
+          echo "AUD148_EXPANDED_SQUAWK_EXIT=$lint_status"
+          exit "$lint_status"
 
       - name: Wait for PostgreSQL
         shell: pwsh
@@ -1788,6 +1940,7 @@ jobs:
             tests/test_audit_timetravel.py tests/test_audit_service_closure.py \
             tests/test_audit_service.py tests/test_admin_audit_closure.py \
             tests/test_docker_startup_contracts.py::test_migrations_disable_inherited_backend_runtime_healthcheck \
+            tests/test_docker_startup_contracts.py::test_ci_caddy_smokes_use_the_pinned_project_runtime \
             tests/test_security_hardening_workflow_contract.py::test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_locked \
             tests/test_quality_configuration.py::test_virtualenv_security_floor_is_dev_only_and_locked \
             tests/test_dependency_audit_contract.py::test_storybook_security_floor_and_aligned_lock \

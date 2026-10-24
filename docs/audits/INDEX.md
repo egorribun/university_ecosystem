@@ -9,8 +9,8 @@ release claims require fresh evidence under the master plan.
 - [Active MVP closure status](../superpowers/plans/STATUS.md) — the current
   operational checkpoint; every release claim still requires fresh exact-SHA
   evidence.
-- [Safe pause checkpoint, 2026-10-24](../superpowers/plans/STATUS.md#контрольная-точка-безопасной-паузы-2026-10-24) — accepted count remains 280/512; the latest private PostgreSQL cohort passed 22/22 with verified cleanup. Pending source integrations, scanner decisions and incomplete runners remain explicit.
-- [Current accepted audit lower bound: 280/512 (54.7%)](AUDIT-2026-10.md#existing-source-campus-reminder-checkpoint-2026-10-24) — the latest bounded existing-source check adds AUD-492; all prior IDs remain, and no full-CI, deployed-timezone or delivery claim is made.
+- [Historical safe pause checkpoint, 2026-10-24](../superpowers/plans/STATUS.md#контрольная-точка-безопасной-паузы-2026-10-24) — the accepted count at that checkpoint was 280/512; its private PostgreSQL evidence and then-pending integrations are retained as history, not current hosted outcomes.
+- [Current accepted audit lower bound: 282/512 (55.1%)](AUDIT-2026-10.md#hosted-timestamp-and-image-scan-closure-checkpoint-2026-10-24) — hosted source-bound evidence adds only AUD-350 and AUD-481, preserving all 280 prior IDs. Timestamp preservation and six-image PR scan coverage do not imply vulnerability-free, full-CI or release acceptance.
 - [MVP master plan](../superpowers/plans/MVP_MASTER_PLAN.md) and
   [ADR-047](../adr/ADR-047-risk-based-quality-policy.md) — since 2026-10-08 the
   `v1.0.0` definition of done is product acceptance; mutation score and release
@@ -31,10 +31,13 @@ release claims require fresh evidence under the master plan.
   determine the current published SHA and hosted checks; final-source gates remain
   required. The dated 18-, 7-, and 2-identity approvals brought the scope to
   252; the subsequent nine-identity Go source-contract approval extended the
-  historical scope to 261. The current approved scope is 318, including the
+  historical scope to 261. The current approved scope is 321, including the
   [two cache-key canaries](AUDIT-2026-10.md#owner-approved-two-exact-aud-495-cache-key-canaries-2026-10-23)
   and [one public integrity digest](AUDIT-2026-10.md#owner-approved-one-exact-aud-495-public-integrity-digest-2026-10-24);
-  the prior 310-record state is retained in
+  the three additional public integrity/fingerprint identities approved on
+  2026-10-24 are recorded in [ADR-047](../adr/ADR-047-risk-based-quality-policy.md)
+  and the existing [321-record policy](../../quality/security-false-positive-dispositions.json).
+  The prior 310-record state is retained in
   [the 2026-10-23 finite scanner-policy update](AUDIT-2026-10.md#owner-approved-finite-scanner-policy-additions-2026-10-23), and the
   five additive fixture-bound identities are recorded in the [dated supplement](AUDIT-2026-10.md#owner-approved-five-exact-baseline-fixture-dispositions-2026-10-23).
   See [current MVP STATUS](../superpowers/plans/STATUS.md), the [dated update](AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16),

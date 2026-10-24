@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import ast
 import copy
+import hashlib
 import json
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_ROOTS = (ROOT / "app",)
@@ -14,6 +17,10 @@ ALLOWED_RETIREMENT_CONTRACTS = {
     ROOT / "tests" / "integration" / "test_mfa_email_otp_postgres.py",
     ROOT / "tests" / "test_mfa_openapi_artifacts_contract.py",
 }
+# Historical migration fixture only, not an active factor or a file exclusion.
+# Re-review this exact Git blob binding after ANY orchestrator source change.
+HISTORICAL_ORCHESTRATOR_TEST = Path("tests/test_migration_148642dd1207_orchestrator.py")
+HISTORICAL_ORCHESTRATOR_BLOB = "8d263dac2d57d0adee95b012f915f2ad6e688bf7"
 # This map contains file-level pytest telemetry, not active product/security
 # declarations. Its keys intentionally include immutable tombstone test
 # filenames so the scheduler can retain their measured cost without making
@@ -45,6 +52,26 @@ def _active_quality_contract_content(contract: dict[str, object]) -> str:
             ):
                 record["path"] = "<inactive historical migration path>"
     return json.dumps(active_contract).lower()
+
+
+def _active_backend_test_content(path: Path, raw_content: bytes) -> str:
+    content = raw_content.decode("utf-8")
+    if path != ROOT / HISTORICAL_ORCHESTRATOR_TEST:
+        return content.lower()
+
+    # Git's blob ID binds every byte, including comments and line endings.
+    header = f"blob {len(raw_content)}\0".encode("ascii")
+    blob_sha = hashlib.sha1(header + raw_content, usedforsecurity=False).hexdigest()
+    if blob_sha != HISTORICAL_ORCHESTRATOR_BLOB:
+        return content.lower()
+
+    # The reviewed blob has exactly these two historical identifier literals:
+    # _Inspector.__init__.self.user_columns and the create-index assertion.
+    return (
+        content.replace('"webauthn_id"', '"<historical migration column>"', 1)
+        .replace('"ix_users_webauthn_id"', '"<historical migration index>"', 1)
+        .lower()
+    )
 
 
 def test_runtime_has_no_webauthn_references_or_models() -> None:
@@ -128,9 +155,142 @@ def test_backend_tests_have_no_retired_factor_references() -> None:
     for path in (ROOT / "tests").rglob("*.py"):
         if path.resolve() in ALLOWED_RETIREMENT_CONTRACTS:
             continue
-        if (
-            "webauthn" in path.read_text(encoding="utf-8").lower()
-            or "passkey" in path.read_text(encoding="utf-8").lower()
-        ):
+        content = _active_backend_test_content(path, path.read_bytes())
+        if "webauthn" in content or "passkey" in content:
             findings.append(str(path.relative_to(ROOT)))
     assert findings == []
+
+
+@pytest.fixture
+def historical_orchestrator_source() -> bytes:
+    return (ROOT / HISTORICAL_ORCHESTRATOR_TEST).read_bytes()
+
+
+def test_backend_guard_accepts_only_the_source_bound_historical_literals(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    historical_orchestrator_source: bytes,
+) -> None:
+    monkeypatch.setitem(globals(), "ROOT", tmp_path)
+    path = tmp_path / HISTORICAL_ORCHESTRATOR_TEST
+    path.parent.mkdir()
+    path.write_bytes(historical_orchestrator_source)
+
+    test_backend_tests_have_no_retired_factor_references()
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        (b"class _Inspector:", b"class _ActiveInspector:"),
+        (b"self.user_columns = {", b"self.active_columns = {"),
+        (b'"webauthn_id"', b'"webauthn_active"'),
+        (b'"webauthn_id"', b'"webauthn_id", "passkey"'),
+        (b'"webauthn_id"', b'"webauthn_id", "webauthn_id"'),
+        (
+            b'assert "ix_users_webauthn_id" in created_indexes',
+            b'active_factor = "ix_users_webauthn_id"',
+        ),
+    ],
+    ids=[
+        "moved-fixture-context",
+        "moved-literal-target",
+        "new-identifier",
+        "new-factor",
+        "duplicate-identifier",
+        "active-use-instead-of-history-assertion",
+    ],
+)
+def test_backend_guard_rejects_changed_historical_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    historical_orchestrator_source: bytes,
+    old: bytes,
+    new: bytes,
+) -> None:
+    monkeypatch.setitem(globals(), "ROOT", tmp_path)
+    path = tmp_path / HISTORICAL_ORCHESTRATOR_TEST
+    path.parent.mkdir()
+    assert historical_orchestrator_source.count(old) == 1
+    changed = historical_orchestrator_source.replace(old, new)
+    path.write_bytes(changed)
+
+    unmasked = changed.decode("utf-8").lower()
+    assert _active_backend_test_content(path, changed) == unmasked
+    with pytest.raises(AssertionError, match="test_migration_148642dd1207"):
+        test_backend_tests_have_no_retired_factor_references()
+
+
+@pytest.mark.parametrize(
+    "addition",
+    [
+        b"\n# Unrelated edits also require explicit source-binding review.\n",
+        b'\nactive_factor = "webauthn_id"\n',
+        b'\nactive_factor = "passkey"\n',
+    ],
+    ids=["unrelated-source-change", "new-active-reference", "new-active-factor"],
+)
+def test_backend_guard_requires_review_after_any_historical_test_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    historical_orchestrator_source: bytes,
+    addition: bytes,
+) -> None:
+    monkeypatch.setitem(globals(), "ROOT", tmp_path)
+    path = tmp_path / HISTORICAL_ORCHESTRATOR_TEST
+    path.parent.mkdir()
+    changed = historical_orchestrator_source + addition
+    path.write_bytes(changed)
+
+    unmasked = changed.decode("utf-8").lower()
+    assert _active_backend_test_content(path, changed) == unmasked
+    with pytest.raises(AssertionError, match="test_migration_148642dd1207"):
+        test_backend_tests_have_no_retired_factor_references()
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "tests/test_active_factor.py",
+        "tests/new/test_migration_148642dd1207_orchestrator.py",
+        "app/test_migration_148642dd1207_orchestrator.py",
+    ],
+)
+def test_source_bound_history_is_not_exempt_at_other_test_or_runtime_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    historical_orchestrator_source: bytes,
+    relative_path: str,
+) -> None:
+    monkeypatch.setitem(globals(), "ROOT", tmp_path)
+    monkeypatch.setitem(globals(), "RUNTIME_ROOTS", (tmp_path / "app",))
+    path = tmp_path / relative_path
+    path.parent.mkdir(parents=True)
+    path.write_bytes(historical_orchestrator_source)
+
+    unmasked = historical_orchestrator_source.decode("utf-8").lower()
+    active = _active_backend_test_content(path, historical_orchestrator_source)
+    assert active == unmasked
+    guard = (
+        test_runtime_has_no_webauthn_references_or_models
+        if relative_path.startswith("app/")
+        else test_backend_tests_have_no_retired_factor_references
+    )
+    with pytest.raises(AssertionError):
+        guard()
+
+
+def test_source_bound_history_does_not_exempt_a_new_symlink_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    historical_orchestrator_source: bytes,
+) -> None:
+    monkeypatch.setitem(globals(), "ROOT", tmp_path)
+    path = tmp_path / HISTORICAL_ORCHESTRATOR_TEST
+    path.parent.mkdir()
+    path.write_bytes(historical_orchestrator_source)
+    alias = path.with_name("test_active_alias.py")
+    alias.symlink_to(path)
+
+    with pytest.raises(AssertionError, match="test_active_alias"):
+        test_backend_tests_have_no_retired_factor_references()

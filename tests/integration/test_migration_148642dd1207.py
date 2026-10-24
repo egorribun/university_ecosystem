@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, time
 from pathlib import Path
 from uuid import uuid4
 
 import psycopg
 import pytest
+import sqlalchemy as sa
 from alembic.config import Config
 from cryptography.fernet import Fernet
 from psycopg import sql
-from sqlalchemy import Text
+from sqlalchemy import Text, event
 from sqlalchemy.engine import make_url
 from testcontainers.community.postgres import PostgresContainer
 
@@ -26,6 +30,7 @@ from app.utils.encryption import (
     encrypt_string,
     reset_cached_cipher,
 )
+from tests.helpers import migration_148642dd1207_trace as ddl_trace
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _RUN = bool(os.getenv("RUN_INTEGRATION_TESTS"))
@@ -119,8 +124,8 @@ def test_invalid_fk_value_aborts_shadow_conversion_without_data_loss(
             os.environ.pop("DATABASE_URL", None)
 
 
-@pytest.fixture
-def spotify_scenario_urls(migration_postgres) -> Iterator[dict[str, str]]:
+@contextmanager
+def _owned_migration_scenario(migration_postgres) -> Iterator[dict[str, str]]:
     """Give each Spotify migration scenario a fresh database on the shared test PG."""
     base_url = make_url(migration_postgres.get_connection_url())
     database_name = f"aud348_spotify_{uuid4().hex}"
@@ -154,6 +159,12 @@ def spotify_scenario_urls(migration_postgres) -> Iterator[dict[str, str]]:
                         identifier
                     )
                 )
+
+
+@pytest.fixture
+def spotify_scenario_urls(migration_postgres) -> Iterator[dict[str, str]]:
+    with _owned_migration_scenario(migration_postgres) as urls:
+        yield urls
 
 
 _SPOTIFY_LEGACY_FIELDS = (
@@ -806,3 +817,384 @@ def test_upgrade_backfills_missing_preferences_without_overwriting_existing_rows
             (930003, True, time(11, 30), time(12, 30), "Pacific/Chatham"),
         ]
         _assert_legacy_preferences_removed(connection)
+
+
+# This diagnostic is deliberately test-only. It does not alter the production
+# renderer, scanner configuration, migration, or exception policy.
+_TRACE_TABLE_DDL = """
+CREATE SCHEMA aud148_diag;
+CREATE TABLE aud148_diag.executed_ddl (
+    ordinal bigint GENERATED ALWAYS AS IDENTITY,
+    outer_ordinal integer NOT NULL,
+    site text NOT NULL,
+    ddl text NOT NULL
+)
+"""
+_TRACE_FIXTURE_DDL = """
+CREATE SCHEMA aud148_fixture;
+INSERT INTO public.groups (id, name) VALUES ('1', 'first'), ('02', 'second');
+CREATE TABLE aud148_fixture.child_cascade (
+    id integer PRIMARY KEY,
+    group_id varchar(20),
+    CONSTRAINT aud148_child_cascade_fk FOREIGN KEY (group_id)
+        REFERENCES public.groups(id) ON UPDATE CASCADE ON DELETE CASCADE
+        DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE aud148_fixture."child quoted" (
+    id integer PRIMARY KEY,
+    "group key" varchar(20),
+    CONSTRAINT aud148_child_quoted_fk FOREIGN KEY ("group key")
+        REFERENCES public.groups(id) MATCH FULL ON DELETE SET NULL
+);
+CREATE TABLE aud148_fixture.child_unvalidated (
+    id integer PRIMARY KEY,
+    group_id varchar(20)
+);
+INSERT INTO aud148_fixture.child_cascade VALUES (1, '1'), (2, NULL);
+INSERT INTO aud148_fixture."child quoted" VALUES (1, '02'), (2, NULL)
+"""
+_CATALOG_QUERIES = {
+    "schemas": """
+        SELECT nspname, nspowner::regrole::text, nspacl::text
+        FROM pg_namespace
+        WHERE nspname !~ '^pg_' AND nspname NOT IN
+            ('information_schema', 'aud148_diag')
+        ORDER BY nspname
+    """,
+    "relations": """
+        SELECT n.nspname, c.relname, c.relkind, c.relpersistence,
+               c.relowner::regrole::text, c.relacl::text, c.reloptions,
+               c.relrowsecurity, c.relforcerowsecurity,
+               pg_get_expr(c.relpartbound, c.oid),
+               obj_description(c.oid, 'pg_class')
+        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname !~ '^pg_' AND n.nspname NOT IN
+            ('information_schema', 'aud148_diag')
+        ORDER BY n.nspname, c.relname
+    """,
+    "columns": """
+        SELECT n.nspname, c.relname, a.attnum, a.attname,
+               format_type(a.atttypid, a.atttypmod), a.attnotnull,
+               a.attidentity, a.attgenerated,
+               pg_get_expr(d.adbin, d.adrelid)
+        FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
+        WHERE a.attnum > 0 AND NOT a.attisdropped
+          AND n.nspname !~ '^pg_' AND n.nspname NOT IN
+              ('information_schema', 'aud148_diag')
+        ORDER BY n.nspname, c.relname, a.attnum
+    """,
+    "constraints": """
+        SELECT n.nspname, c.relname, k.conname, k.contype,
+               k.convalidated, k.condeferrable, k.condeferred,
+               pg_get_constraintdef(k.oid, true)
+        FROM pg_constraint k JOIN pg_class c ON c.oid = k.conrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname !~ '^pg_' AND n.nspname NOT IN
+            ('information_schema', 'aud148_diag')
+        ORDER BY n.nspname, c.relname, k.conname
+    """,
+    "indexes": """
+        SELECT n.nspname, t.relname, i.relname, x.indisprimary, x.indisunique,
+               x.indisvalid, x.indisready, x.indislive, pg_get_indexdef(i.oid)
+        FROM pg_index x JOIN pg_class i ON i.oid = x.indexrelid
+        JOIN pg_class t ON t.oid = x.indrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE n.nspname !~ '^pg_' AND n.nspname NOT IN
+            ('information_schema', 'aud148_diag')
+        ORDER BY n.nspname, t.relname, i.relname
+    """,
+    "triggers": """
+        SELECT n.nspname, c.relname, t.tgisinternal,
+               CASE WHEN t.tgisinternal THEN NULL ELSE t.tgname END,
+               k.conname, p.proname, t.tgtype, t.tgenabled,
+               encode(t.tgargs, 'hex'),
+               CASE WHEN t.tgisinternal THEN NULL
+                    ELSE pg_get_triggerdef(t.oid, true) END
+        FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_proc p ON p.oid = t.tgfoid
+        LEFT JOIN pg_constraint k ON k.oid = t.tgconstraint
+        WHERE n.nspname !~ '^pg_' AND n.nspname NOT IN
+            ('information_schema', 'aud148_diag')
+        ORDER BY 1, 2, 3, 4, 5, 6, 7, 8, 9
+    """,
+    "enum_labels": """
+        SELECT n.nspname, t.typname, e.enumsortorder, e.enumlabel
+        FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE n.nspname !~ '^pg_' AND n.nspname NOT IN
+            ('information_schema', 'aud148_diag')
+        ORDER BY n.nspname, t.typname, e.enumsortorder
+    """,
+    "policies": """
+        SELECT schemaname, tablename, policyname, permissive, roles,
+               cmd, qual, with_check
+        FROM pg_policies
+        WHERE schemaname !~ '^pg_' AND schemaname NOT IN
+            ('information_schema', 'aud148_diag')
+        ORDER BY schemaname, tablename, policyname
+    """,
+    "sequences": """
+        SELECT schemaname, sequencename, sequenceowner, data_type::text,
+               start_value, min_value, max_value, increment_by, cycle,
+               cache_size, last_value
+        FROM pg_sequences
+        WHERE schemaname !~ '^pg_' AND schemaname NOT IN
+            ('information_schema', 'aud148_diag')
+        ORDER BY schemaname, sequencename
+    """,
+}
+
+
+def _prepare_ddl_inventory(urls, monkeypatch, *, orphan=False) -> Config:
+    config = _alembic_config(urls["alembic"])
+    monkeypatch.setenv("DATABASE_URL", urls["alembic"])
+    command.upgrade(config, "f7aa476e968a")
+    with psycopg.connect(urls["sync"]) as connection:
+        _add_lowercase_role_values(connection)
+        connection.execute(_TRACE_TABLE_DDL)
+        connection.execute(_TRACE_FIXTURE_DDL)
+        connection.execute(
+            "INSERT INTO aud148_fixture.child_unvalidated VALUES (1, %s)",
+            ("99" if orphan else "02",),
+        )
+        connection.execute(
+            "ALTER TABLE aud148_fixture.child_unvalidated "
+            "ADD CONSTRAINT aud148_child_unvalidated_fk FOREIGN KEY (group_id) "
+            "REFERENCES public.groups(id) NOT VALID"
+        )
+    return config
+
+
+def _inventory_snapshot(sync_url):
+    """Compare user catalogs and row digests, never emit application row data."""
+    with psycopg.connect(sync_url) as connection:
+        connection.execute("SET search_path = public")
+        trace_objects = connection.execute(
+            "SELECT c.relname, c.relkind FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE n.nspname = 'aud148_diag' ORDER BY c.relname"
+        ).fetchall()
+        assert trace_objects == [
+            ("executed_ddl", "r"),
+            ("executed_ddl_ordinal_seq", "S"),
+        ]
+        catalog = {
+            name: connection.execute(query).fetchall()
+            for name, query in _CATALOG_QUERIES.items()
+        }
+        tables = connection.execute(
+            "SELECT n.nspname, c.relname FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE c.relkind IN ('r', 'p') AND n.nspname !~ '^pg_' "
+            "AND n.nspname NOT IN ('information_schema', 'aud148_diag') "
+            "ORDER BY n.nspname, c.relname"
+        ).fetchall()
+        data = {}
+        for namespace, table in tables:
+            rows = connection.execute(
+                sql.SQL(
+                    "SELECT to_jsonb(row)::text FROM {} AS row "
+                    "ORDER BY to_jsonb(row)::text LIMIT 1001"
+                ).format(sql.Identifier(namespace, table))
+            ).fetchall()
+            assert len(rows) <= 1000, "Only bounded synthetic fixtures are supported"
+            encoded = json.dumps(rows, ensure_ascii=True).encode("utf-8")
+            data[namespace + "." + table] = {
+                "rows": len(rows),
+                "sha256": hashlib.sha256(encoded).hexdigest(),
+            }
+        sequence_state = {}
+        for row in catalog["sequences"]:
+            namespace, sequence = row[:2]
+            sequence_state[namespace + "." + sequence] = connection.execute(
+                sql.SQL("SELECT last_value, is_called FROM {}").format(
+                    sql.Identifier(namespace, sequence)
+                )
+            ).fetchone()
+        # OIDs and autogenerated RI trigger names are represented by stable
+        # qualified objects, constraint names and trigger action functions.
+        return {
+            "catalog": catalog,
+            "data": data,
+            "sequence_state": sequence_state,
+        }
+
+
+def _execute_ddl_inventory(config, urls, recorder, monkeypatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", urls["alembic"])
+    actual_blob = ddl_trace.git_blob_id(ddl_trace.MIGRATION_PATH.read_bytes())
+    assert actual_blob == ddl_trace.SOURCE_GIT_BLOB
+    engine = sa.create_engine(urls["alembic"])
+    listeners = (
+        ("begin", recorder.on_begin, {}),
+        ("commit", recorder.on_commit, {}),
+        ("rollback", recorder.on_rollback, {}),
+        ("before_cursor_execute", recorder.before_cursor_execute, {"retval": True}),
+    )
+    try:
+        with engine.connect() as connection:
+            for name, listener, options in listeners:
+                event.listen(connection, name, listener, **options)
+            config.attributes["connection"] = connection
+            try:
+                command.upgrade(config, "148642dd1207")
+            finally:
+                # Keep listeners installed through cleanup of a failed operation.
+                if connection.in_transaction():
+                    connection.rollback()
+                config.attributes.pop("connection", None)
+                for name, listener, _ in reversed(listeners):
+                    event.remove(connection, name, listener)
+    finally:
+        engine.dispose()
+
+
+def test_expanded_ddl_inventory_matches_unmodified_populated_control(
+    migration_postgres,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Produce inventory, not a waiver, after proving instrumentation equivalence."""
+    source = ddl_trace.MIGRATION_PATH.read_bytes()
+    ddl_trace.reviewed_sites(source)
+    with (
+        _owned_migration_scenario(migration_postgres) as control_urls,
+        _owned_migration_scenario(migration_postgres) as traced_urls,
+    ):
+        control_config = _prepare_ddl_inventory(control_urls, monkeypatch)
+        traced_config = _prepare_ddl_inventory(traced_urls, monkeypatch)
+        control_before = _inventory_snapshot(control_urls["sync"])
+        traced_before = _inventory_snapshot(traced_urls["sync"])
+        assert control_before == traced_before
+        control = ddl_trace.ExpandedDdlTrace(source, instrument=False)
+        traced = ddl_trace.ExpandedDdlTrace(source, instrument=True)
+        _execute_ddl_inventory(control_config, control_urls, control, monkeypatch)
+        _execute_ddl_inventory(traced_config, traced_urls, traced, monkeypatch)
+
+        assert control.replacements == []
+        assert control.events == traced.events
+        control_snapshot = _inventory_snapshot(control_urls["sync"])
+        traced_snapshot = _inventory_snapshot(traced_urls["sync"])
+        assert control_snapshot == traced_snapshot
+        assert [e["kind"] for e in traced.events].count("begin") == 1
+        assert [e["kind"] for e in traced.events].count("commit") == 1
+        assert not any(e["kind"] == "rollback" for e in traced.events)
+
+        with psycopg.connect(control_urls["sync"]) as connection:
+            assert connection.execute(
+                "SELECT count(*) FROM aud148_diag.executed_ddl"
+            ).fetchone() == (0,)
+        with psycopg.connect(traced_urls["sync"]) as connection:
+            rows = connection.execute(
+                "SELECT outer_ordinal, site, ddl "
+                "FROM aud148_diag.executed_ddl ORDER BY ordinal"
+            ).fetchall()
+            assert connection.execute(
+                "SELECT id FROM public.groups ORDER BY id"
+            ).fetchall() == [(1,), (2,)]
+            assert connection.execute(
+                'SELECT "group key" FROM aud148_fixture."child quoted" '
+                "WHERE id = 1"
+            ).fetchone() == (2,)
+            assert connection.execute(
+                "SELECT convalidated FROM pg_constraint "
+                "WHERE conname = 'aud148_child_unvalidated_fk'"
+            ).fetchone() == (True,)
+            postgres_version = connection.execute("SELECT version()").fetchone()[0]
+
+        assert len(rows) <= 100, "The nested DDL fixture inventory must stay finite"
+        expanded = traced.expanded_sql(rows)
+        statements = [row[2] for row in rows]
+        assert "ALTER TABLE groups DROP COLUMN id" in statements
+        assert "ALTER TABLE groups DROP COLUMN id__integer" in statements
+        assert any(
+            statement.startswith(
+                'ALTER TABLE aud148_fixture."child quoted" ALTER COLUMN "group key" '
+                "TYPE INTEGER"
+            )
+            for statement in statements
+        )
+        assert sum(
+            site == "child_fk_restore" and "aud148_fixture." in statement
+            for _, site, statement in rows
+        ) == 3
+
+        sql_path = tmp_path / "148642dd1207.expanded.sql"
+        evidence_path = tmp_path / "148642dd1207.trace.json"
+        sql_path.write_text(expanded, encoding="utf-8")
+        evidence = {
+            "status": "diagnostic-only-not-an-exception",
+            "migration_blob": ddl_trace.SOURCE_GIT_BLOB,
+            "helper_sha256": hashlib.sha256(
+                Path(ddl_trace.__file__).read_bytes()
+            ).hexdigest(),
+            "fixture_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "workflow_sha": os.getenv("GITHUB_SHA"),
+            "workflow_run_id": os.getenv("GITHUB_RUN_ID"),
+            "postgres_version": postgres_version,
+            "excluded_objects": [
+                "aud148_diag",
+                "aud148_diag.executed_ddl",
+                "aud148_diag.executed_ddl_ordinal_seq",
+            ],
+            "original_cursor_events": traced.events,
+            "replacements": traced.replacements,
+            "nested_ddl": [
+                {
+                    "outer_ordinal": ordinal,
+                    "site": site,
+                    "sql": statement,
+                    "sql_sha256": hashlib.sha256(
+                        statement.encode("utf-8")
+                    ).hexdigest(),
+                }
+                for ordinal, site, statement in rows
+            ],
+            "equivalent_snapshot": traced_snapshot,
+            "expanded_sql_sha256": hashlib.sha256(
+                expanded.encode("utf-8")
+            ).hexdigest(),
+        }
+        evidence_path.write_text(
+            json.dumps(evidence, indent=2, sort_keys=True, default=str) + "\n",
+            encoding="utf-8",
+        )
+        print("AUD148_EXPANDED_SQL=" + str(sql_path))
+        print("AUD148_TRACE_EVIDENCE=" + str(evidence_path))
+
+
+def test_convertible_orphan_rolls_back_cutover_and_diagnostic_rows(
+    migration_postgres,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failure after key replacement is not successful trace-inventory evidence."""
+    with _owned_migration_scenario(migration_postgres) as urls:
+        config = _prepare_ddl_inventory(urls, monkeypatch, orphan=True)
+        before = _inventory_snapshot(urls["sync"])
+        recorder = ddl_trace.ExpandedDdlTrace(
+            ddl_trace.MIGRATION_PATH.read_bytes(), instrument=True
+        )
+        with pytest.raises(sa.exc.IntegrityError, match="aud148_child_unvalidated_fk"):
+            _execute_ddl_inventory(config, urls, recorder, monkeypatch)
+        assert _inventory_snapshot(urls["sync"]) == before
+        assert any(event["kind"] == "rollback" for event in recorder.events)
+        assert not any(event["kind"] == "commit" for event in recorder.events)
+        assert {row["site"] for row in recorder.replacements} == {
+            site.name for site in recorder.sites
+        }
+        with psycopg.connect(urls["sync"]) as connection:
+            assert connection.execute(
+                "SELECT version_num FROM alembic_version"
+            ).fetchone() == ("f7aa476e968a",)
+            assert connection.execute(
+                "SELECT count(*) FROM aud148_diag.executed_ddl"
+            ).fetchone() == (0,)
+            assert connection.execute(
+                "SELECT convalidated FROM pg_constraint "
+                "WHERE conname = 'aud148_child_unvalidated_fk'"
+            ).fetchone() == (False,)
+        with pytest.raises(ddl_trace.TraceContractError, match="one transaction"):
+            recorder.expanded_sql([])

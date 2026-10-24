@@ -313,6 +313,13 @@ def _signals(source: str) -> dict[str, int]:
     return signals
 
 
+def artifact_provenance(
+    metadata: Mapping[str, Any], manifest: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """TDD stub: do not claim source provenance before hosted assertion RED."""
+    return None
+
+
 def inspect_artifact(
     raw: bytes,
     package: str,
