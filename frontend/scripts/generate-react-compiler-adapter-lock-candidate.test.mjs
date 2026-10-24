@@ -18,7 +18,7 @@ import {
 } from "./generate-react-compiler-adapter-lock-candidate.mjs"
 
 const local = "scripts/react-compiler-zod-compat"
-const alias = local + "/node_modules/patched-zod"
+const alias = "node_modules/patched-zod"
 const transport = [
   "--registry=https://registry.npmjs.org/",
   "--fetch-retries=0",
@@ -219,6 +219,7 @@ test("source prerequisites require patched root and preserve both old consumer n
     local,
     alias,
     "node_modules/other/node_modules/zod",
+    local + "/node_modules/patched-zod",
   ]) {
     const lock = lockFixture()
     lock.packages[key] = { version: "unapproved" }
@@ -231,6 +232,16 @@ test("whole-lock scope accepts only the staged three-node dev graph and preserve
   const before = JSON.stringify(original)
   assertStagedLockScope(original, candidateFixture(), release)
   assert.equal(JSON.stringify(original), before)
+})
+
+test("whole-lock scope rejects unobserved nested or duplicate alias placements", () => {
+  for (const keepRoot of [false, true]) {
+    const candidate = candidateFixture()
+    const record = structuredClone(candidate.packages[alias])
+    candidate.packages[local + "/node_modules/patched-zod"] = record
+    if (!keepRoot) delete candidate.packages[alias]
+    assert.throws(() => assertStagedLockScope(lockFixture(), candidate, release))
+  }
 })
 
 test("whole-lock scope rejects changed, removed and unexpected records", () => {
@@ -480,8 +491,8 @@ test("production graph rejects the adapter, compiler and patched alias", () => {
     for (const path of [
       "node_modules/react-compiler-zod-compat",
       "node_modules/eslint-plugin-react-compiler",
-      "node_modules/patched-zod",
       alias,
+      local + "/node_modules/patched-zod",
     ]) {
       put(path + "/package.json", { name: "unexpected", version: "1.0.0" })
       assert.throws(() => assertInstalledGraph(root, "production"))

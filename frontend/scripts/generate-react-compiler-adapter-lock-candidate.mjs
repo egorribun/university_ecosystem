@@ -25,7 +25,7 @@ import {
 } from "./generate-zod-root-lock-candidate.mjs"
 
 const LOCAL = "scripts/react-compiler-zod-compat"
-const ALIAS = LOCAL + "/node_modules/patched-zod"
+const ALIAS = "node_modules/patched-zod"
 const LINK = "node_modules/react-compiler-zod-compat"
 
 export function adapterManifest() {
@@ -86,7 +86,7 @@ export function assertStagedSourcePrerequisites(lock) {
       "node_modules/zod",
     ]
   )
-  for (const path of [LINK, LOCAL, ALIAS, "node_modules/patched-zod"]) {
+  for (const path of [LINK, LOCAL, ALIAS, LOCAL + "/node_modules/patched-zod"]) {
     assert(!Object.hasOwn(lock.packages, path))
   }
 }
@@ -148,7 +148,7 @@ export function assertInstalledGraph(frontend, mode) {
   const root = JSON.parse(readFileSync(join(frontend, "node_modules/zod/package.json")))
   assert.equal(root.name, "zod")
   assert.equal(root.version, "4.6.7")
-  assert(!existsSync(join(frontend, "node_modules/patched-zod")))
+  assert(!existsSync(join(frontend, LOCAL, "node_modules/patched-zod")))
   if (mode === "production") {
     for (const path of [LINK, ALIAS, "node_modules/eslint-plugin-react-compiler"]) {
       assert(!existsSync(join(frontend, path)))

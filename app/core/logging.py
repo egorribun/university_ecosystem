@@ -82,6 +82,7 @@ _PII_FIELD_NAMES = frozenset(
         "password",
         "password_hash",
         "secret",
+        "secret_key",
         "credential",
         "credentials",
         "client_secret",
@@ -107,9 +108,22 @@ _PII_FIELD_NAMES = frozenset(
         "api_key",
         "x_api_key",
         "private_key",
+        "signing_key",
+        "jwt_signing_keys",
+        "jwt_signing_key_registry",
+        "vapid_private_key",
+        "spicedb_preshared_key",
+        "storage_s3_secret_access_key",
+        "mfa_totp_encryption_keys",
+        "mfa_email_otp_hmac_keys",
+        "mfa_email_delivery_keks",
+        "mfa_trusted_device_hmac_keys",
+        "imgproxy_key",
+        "imgproxy_salt",
         "internal_signature",
         "x_internal_signature",
         "otp",
+        "otpauth_url",
         "one_time_code",
         "recovery_code",
         "ticket",
@@ -131,7 +145,13 @@ def _normalize_field_name(value: str) -> str:
 def _is_pii_field_name(value: object) -> bool:
     """Return whether a structured field name is credential/PII-bearing."""
 
-    return isinstance(value, str) and _normalize_field_name(value) in _PII_FIELD_NAMES
+    if not isinstance(value, str):
+        return False
+    normalized = _normalize_field_name(value)
+    # Match terminal words, not metadata such as token_type or secret_name.
+    return normalized in _PII_FIELD_NAMES or normalized.endswith(
+        ("_token", "_secret", "_password")
+    )
 
 
 def _redact_free_text(value: str) -> str:
@@ -213,7 +233,7 @@ def _redact_pii(
 ) -> dict[str, Any]:
     """Redact PII from log event dicts.
 
-    - Field-level: keys matching _PII_FIELD_NAMES are replaced entirely.
+    - Field-level: PII names and terminal credential families are replaced entirely.
     - Value-level: email/phone patterns in string values are masked.
     """
     for key in list(event_dict):
