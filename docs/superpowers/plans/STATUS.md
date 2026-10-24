@@ -51,6 +51,30 @@ regex. Production template пока не меняется. Squawk timeout findin
 Новые source changes требуют собственных проверок; текущие PASS не переносятся
 на новый SHA. Все 78 required context/app pairs и coverage floors сохранены.
 
+### Inventory и hosted follow-up, 02:06 UTC
+
+На `ddd8419f` Security & Types job 120747561988 SUCCESS: mypy и actual
+detect-secrets прошли после metadata-only restage. Fast hook job 120747562035
+отказал на ShellCheck SC2016 во вложенном Caddy shell script; literal body
+перенесён в quoted heredoc с Docker stdin, без suppression и изменения команд.
+Полная сборка Caddy ещё не исполнялась из-за этого upstream gate.
+
+Inventory сохранял три доказанных false negatives на TSX generic helpers.
+После независимого ревью fallback принимает только непрерывный начальный блок
+простых static imports из исходного текста, останавливаясь до произвольного кода.
+Он не использует ранее masked prefix и не разбирает generic body.
+37 дополнительных cases охватывают реальные формы, regex/template ложные
+ссылки, Unicode line terminators и неподдержанные declarations; skip detection
+не изменён. Actual три owned imports расположены до границы fallback.
+
+На прежнем `772a179` backend unit job 120738976938 завершился
+4494 PASS / 5 FAIL / 38 SKIP. Один AUD-350 assertion уже исправлен в
+`ddd8419f`; четыре TOTP Settings fixtures явно задают обязательный
+`rate_limit_storage_backend=redis` вместе с существующим URI. Production
+validator и все TOTP assertions сохранены. Unit shard1 отдельно показал race
+готовности дочернего процесса в Gitleaks cleanup test; разбор продолжается.
+Все изменения этого follow-up ещё требуют hosted проверки. Ledger — 280/512.
+
 ## Облачное продолжение 2026-10-24, 00:04 UTC
 
 Работа возобновлена по новому поручению владельца: только через GitHub plugin,

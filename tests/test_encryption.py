@@ -341,6 +341,7 @@ def _production_auth_settings_values(
         not in {"outbox-worker", "notifications-worker"},
         "cache_redis_url": "redis://cache.test:6379/0",
         "revocation_redis_url": "redis://revocation.test:6379/0",
+        "rate_limit_storage_backend": "redis",
         "rate_limit_storage_uri": "redis://rate-limit.test:6379/1",
         "event_file_scanner_enabled": True,
         "database_url": (
@@ -414,6 +415,7 @@ def test_full_production_settings_require_totp_ring_for_auth_consumers(
         )
     )
     assert configured.environment == "production"
+    assert configured.rate_limit_storage_backend == "redis"
     assert configured.app_process_role == "api"
     assert configured.mfa_totp_active_encryption_key_id == "active"
     assert active_key not in repr(configured)
@@ -461,6 +463,7 @@ def test_non_auth_worker_settings_start_without_totp_keys(
     )
 
     assert configured.app_process_role == role
+    assert configured.rate_limit_storage_backend == "redis"
     assert configured.revocation_redis_access_enabled is False
     assert configured.mfa_totp_encryption_keys == ""
     assert configured.mfa_totp_active_encryption_key_id == ""

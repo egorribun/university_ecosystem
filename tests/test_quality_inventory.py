@@ -3000,3 +3000,236 @@ def test_typescript_glob_scan_requires_module_scope_root_binding(
     _, contract = _write_typescript_glob_fixture(tmp_path, monkeypatch, source)
 
     assert find_typescript_repository_references(contract) == set()
+
+
+@pytest.mark.parametrize(
+    "helper",
+    [
+        "const page = <T,>(items: T[]) => ({ items });\n",
+        "const deferred = <T,>() => {\n"
+        "  let resolve!: (value: T) => void;\n"
+        "  const promise = new Promise<T>((accept) => { resolve = accept; });\n"
+        "  return { promise, resolve };\n"
+        "};\n",
+        "const mockResponse = <T,>(data: T): AxiosResponse<T> => ({ data });\n",
+    ],
+)
+def test_typescript_ownership_keeps_imports_before_unsupported_generic_helpers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, helper: str
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        'import Button from "../Button";\n'
+        + helper
+        + 'import Other from "../Other";\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+    assert not matches_source(relative, {"frontend/src/components/Other.tsx"}, [])
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        '// import Button from "../Button";\n',
+        "const example = 'import Button from \"../Button\"';\n",
+        'const example = /[import Button from "../Button"]/;\n',
+        'if (true) {} /[} import Button from "../Button"]/.test("");\n',
+        'const example = <main>import Button from "../Button"</main>;\n',
+    ],
+)
+def test_typescript_ownership_prefix_excludes_preceding_non_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, prefix: str
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        prefix
+        + "const helper = <T,>() => ({});\n"
+        + 'import Other from "../Other";\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert not matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+    assert not matches_source(relative, {"frontend/src/components/Other.tsx"}, [])
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "const helper = <T,>() => ({});\n"
+        'import Button from "../Button";\n',
+        "const helper = <T,>() => { if (true) { void 0; } "
+        '/[} import Button from "../Button"]/.test(""); };\n',
+        "const helper = <T,>() => { while (true) { break\n"
+        '/[}} import Button from "../Button"]/.test(""); } };\n',
+        "const helper = <T,>() => { debugger\n"
+        '<main>} import Button from "../Button"</main>; };\n',
+        'const helper = <T,>import Button from "../Button"</T>;\n',
+    ],
+)
+def test_typescript_ownership_discards_all_unsupported_tail_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(source, encoding="utf-8")
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert not matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+
+
+def test_typescript_ownership_boundary_does_not_truncate_skip_detection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        'import Button from "../Button";\n'
+        'const helper = <T,>() => { describe.skip("hidden", () => {}); };\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+    errors: list[str] = []
+
+    assert matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert any("JS/TS dynamic skip (describe.skip)" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        'import Button from "../Button"\n',
+        'import * as ButtonModule from "../Button";\n',
+        'import { Button, type ButtonProps as Props } from "../Button"\n',
+        'import type { ButtonProps } from "../Button"\n',
+        'import "../Button"\n',
+        'import Button from "../Button"; // source dependency\n',
+        'import Button from "../Button" /* source dependency */\n',
+    ],
+)
+def test_typescript_ownership_fallback_accepts_only_leading_static_declarations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, declaration: str
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        '/* import Other from "../Other"; */\n// leading comment\n'
+        + declaration
+        + "const helper = <T,>() => ({});\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+    assert not matches_source(relative, {"frontend/src/components/Other.tsx"}, [])
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        'import("../Button");\n',
+        'import class from "../Button";\n',
+        'import Button from "../Button" + suffix;\n',
+        'import Button from "../Button" with { type: "json" };\n',
+        'import Button from "../Button"\nwith { type: "json" }\n',
+        'import {\n  Button,\n} from "../Button";\n',
+    ],
+)
+def test_typescript_ownership_fallback_rejects_unproven_declarations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, declaration: str
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        declaration + "const helper = <T,>() => ({});\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert not matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+
+
+def test_typescript_ownership_fallback_never_resumes_after_arbitrary_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        'import Button from "../Button";\n'
+        'if (true) {} /[} import Other from "../Other"]/.test("");\n'
+        'import Later from "../Later";\n'
+        "const helper = <T,>() => ({});\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+    assert not matches_source(relative, {"frontend/src/components/Other.tsx"}, [])
+    assert not matches_source(relative, {"frontend/src/components/Later.tsx"}, [])
+
+
+@pytest.mark.parametrize("line_terminator", ["\u2028", "\u2029"])
+@pytest.mark.parametrize("leading_import", ["", 'import Other from "../Other";\n'])
+def test_typescript_ownership_fallback_honors_unicode_comment_termination(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    line_terminator: str,
+    leading_import: str,
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        leading_import
+        + "// comment"
+        + line_terminator
+        + "const text = `\n"
+        + 'import Button from "../Button";\n'
+        + "<T,>\n`;\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert not matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+    owns_other = matches_source(relative, {"frontend/src/components/Other.tsx"}, [])
+    assert owns_other is bool(leading_import)
+
+
+@pytest.mark.parametrize("character", ["\x85", "\x1c", "\x1d", "\x1e", "\x1f"])
+def test_typescript_ownership_fallback_rejects_non_javascript_whitespace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, character: str
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/boundary.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        character
+        + 'import Button from "../Button";\n'
+        + "const helper = <T,>() => ({});\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert not matches_source(relative, {"frontend/src/components/Button.tsx"}, [])

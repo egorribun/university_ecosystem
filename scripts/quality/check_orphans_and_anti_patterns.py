@@ -371,6 +371,93 @@ def _skip_jsx_element(content: str, start: int, nesting: int = 0) -> int | None:
     return None
 
 
+_STATIC_IMPORT_LINE_TERMINATOR = re.compile(r"[\r\n\u2028\u2029]")
+_STATIC_IMPORT_BINDING = (
+    r"(?!(?:await|break|case|catch|class|const|continue|debugger|default|delete|do"
+    r"|else|enum|export|extends|false|finally|for|function|if|import|in|instanceof"
+    r"|let|new|null|return|super|switch|this|throw|true|try|typeof|var|void|while"
+    r"|with|yield|implements|interface|package|private|protected|public|static)\b)"
+    r"[A-Za-z_$][A-Za-z0-9_$]*"
+)
+_STATIC_IMPORT_SPECIFIER = (
+    rf"(?:type[ \t]+)?{_STATIC_IMPORT_BINDING}"
+    rf"(?:[ \t]+as[ \t]+{_STATIC_IMPORT_BINDING})?"
+)
+_STATIC_IMPORT_NAMED = (
+    rf"\{{[ \t]*(?:{_STATIC_IMPORT_SPECIFIER}"
+    rf"(?:[ \t]*,[ \t]*{_STATIC_IMPORT_SPECIFIER})*[ \t]*,?)?[ \t]*\}}"
+)
+_LEADING_STATIC_IMPORT = re.compile(
+    r"import[ \t]+"
+    rf"(?:(?:type[ \t]+)?(?:{_STATIC_IMPORT_BINDING}"
+    rf"|\*[ \t]+as[ \t]+{_STATIC_IMPORT_BINDING}|{_STATIC_IMPORT_NAMED})"
+    r"[ \t]+from[ \t]+)?"
+    r"(?P<quote>['\"])(?P<path>[^'\"\\\r\n\x00\u2028\u2029]+)(?P=quote)"
+)
+
+
+def _skip_static_import_trivia(content: str, start: int) -> int | None:
+    """Skip only whitespace and closed comments, never arbitrary code."""
+    index = start
+    while index < len(content):
+        if content[index] in " \t\r\n\u2028\u2029":
+            index += 1
+            continue
+        if content.startswith("//", index):
+            line_end = _STATIC_IMPORT_LINE_TERMINATOR.search(content, index + 2)
+            index = len(content) if line_end is None else line_end.end()
+            continue
+        if content.startswith("/*", index):
+            comment_end = content.find("*/", index + 2)
+            if comment_end == -1:
+                return None
+            index = comment_end + 2
+            continue
+        return index
+    return index
+
+
+def _leading_static_imports(content: str) -> tuple[str, dict[str, str]]:
+    """Preserve only a closed, leading single-line static-import block.
+
+    This ownership fallback starts from raw source, not previously masked code:
+    regex/division ambiguity in arbitrary code must never become import proof.
+    Unsupported declarations or the first non-import statement end the block.
+    """
+    masked: list[str] = []
+    literals: dict[str, str] = {}
+    index = 0
+    while (start := _skip_static_import_trivia(content, index)) is not None:
+        if start >= len(content):
+            break
+        line_end = _STATIC_IMPORT_LINE_TERMINATOR.search(content, start)
+        end = len(content) if line_end is None else line_end.start()
+        line = content[start:end]
+        declaration = _LEADING_STATIC_IMPORT.match(line)
+        if declaration is None:
+            break
+        tail = declaration.end()
+        while tail < len(line) and line[tail] in " \t":
+            tail += 1
+        terminated = tail < len(line) and line[tail] == ";"
+        if terminated:
+            tail += 1
+        if _skip_static_import_trivia(line, tail) != len(line):
+            break
+        next_index = _skip_static_import_trivia(content, end)
+        if next_index is None:
+            break
+        if not terminated and re.match(r"(?:with|assert)\b", content[next_index:]):
+            # An attribute clause may continue on the next physical line.
+            # Its grammar is outside this deliberately closed fallback.
+            break
+        token = f"\0CODEX_JS_LITERAL_{len(literals)}\0"
+        literals[token] = declaration.group("path")
+        masked.append(f"import {token};\n")
+        index = end
+    return "".join(masked), literals
+
+
 def _mask_javascript_non_code(
     content: str, *, jsx: bool = False
 ) -> tuple[str, dict[str, str]]:
@@ -426,10 +513,9 @@ def _mask_javascript_non_code(
         if jsx and content[index] == "<" and _js_regex_can_start(masked):
             jsx_end = _skip_jsx_element(content, index)
             if jsx_end is None:
-                # A possible JSX opener in expression context must not fall
-                # back to code if its spelling, grammar, or depth is unsupported.
-                # This is a bounded ownership recognizer, not a full TSX parser.
-                return "", {}
+                # Discard arbitrary-code prefix tokens as well as this tail:
+                # only fresh proof from leading static declarations survives.
+                return _leading_static_imports(content[:index])
             # Ownership only: JSX text and attribute values are not imports.
             # Keep a value marker so a following slash remains division.
             masked.extend(

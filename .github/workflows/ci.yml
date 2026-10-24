@@ -1347,10 +1347,10 @@ jobs:
           set -euo pipefail
           container_name="caddy-package-proof-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           trap 'timeout --kill-after=2s 5s docker rm -f "$container_name" >/dev/null 2>&1 || true' EXIT
-          timeout --kill-after=5s 30s docker run --rm --pull=never \
+          timeout --kill-after=5s 30s docker run --rm --interactive --pull=never \
             --name "$container_name" --network none --read-only \
             --cap-drop ALL --security-opt no-new-privileges \
-            --entrypoint /bin/sh "university-ecosystem/caddy:${IMAGE_TAG}" -eu -c '
+            --entrypoint /bin/sh "university-ecosystem/caddy:${IMAGE_TAG}" -eu <<'CADDY_PACKAGE_PROOF'
               release="$(cat /etc/alpine-release)"
               case "$release" in
                 3.23.*) ;;
@@ -1359,7 +1359,7 @@ jobs:
               printf "Caddy Alpine release: %s\n" "$release"
               cat /etc/apk/repositories
               apk --no-network --verbose info --exists "brotli-libs=1.2.1-r0"
-            '
+          CADDY_PACKAGE_PROOF
 
       - name: Run Trivy vulnerability scanner
         id: trivy_scan
