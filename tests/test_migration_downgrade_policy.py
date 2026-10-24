@@ -520,8 +520,8 @@ def test_adr_rollback_boundary_matches_source_derived_plan() -> None:
     ) in section
 
 
-def test_adr_rollback_scope_maps_exactly_eight_unaccepted_historical_findings() -> None:
-    """A scope record is not a repair, a ledger increment or restore evidence."""
+def test_adr_rollback_scope_maps_eight_unsupported_historical_findings() -> None:
+    """A scope record alone is not a repair, a ledger increment or restore evidence."""
     section = _mvp_rollback_adr_section()
     rows = [
         tuple(cell.strip() for cell in line.strip().strip("|").split("|"))
@@ -556,7 +556,8 @@ def test_adr_rollback_scope_maps_exactly_eight_unaccepted_historical_findings() 
     normalized = " ".join(section.split())
     for boundary in (
         "without claiming that their historical downgrade implementations were "
-        "repaired or adding them to the accepted audit ledger.",
+        "repaired.",
+        "This scope record alone does not add findings to the accepted audit ledger.",
         "Migration-local barriers protect only paths that execute them.",
         "A database already below a barrier, an explicit offline revision range "
         "or a direct historical migration call is not made safe by a later barrier.",

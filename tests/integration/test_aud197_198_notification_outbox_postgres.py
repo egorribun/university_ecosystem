@@ -52,6 +52,7 @@ from app.core.events import (
 )
 from app.models import Group, Schedule, User
 from app.models.domain_events import StoredEvent
+from app.models.failed_outbox_events import FailedOutboxEvent
 from app.models.news import News
 from app.models.notifications import (
     Notification,
@@ -1578,3 +1579,277 @@ async def test_legacy_null_tenant_content_ignores_worker_ambient_scope(
         notification_ids = {str(row.id) for row in notifications}
         assert set(requests[0].payload["notification_ids"]) == notification_ids
         assert requests[0].processed_at is None
+
+
+@pytest_asyncio.fixture
+async def _owned_tenant_retry_worker(
+    _owned_tenant_worker, postgres_app_database: AsyncEngine
+):
+    """Add only owned DLQ privileges, then revoke before the owning role is dropped."""
+    harness = _owned_tenant_worker
+    engine = postgres_app_database
+    role_name = harness.role_name
+    assert re.fullmatch(r"ue_aud197_role_[0-9a-f]{32}", role_name)
+    privileges = "SELECT, INSERT"
+    objects = "TABLE public.failed_outbox_events"
+    privilege_query = text(
+        "SELECT has_table_privilege(:role, 'public.failed_outbox_events', 'SELECT'), "
+        "has_table_privilege(:role, 'public.failed_outbox_events', 'INSERT')"
+    )
+    granted = False
+    try:
+        async with asyncio.timeout(20):
+            async with engine.begin() as connection:
+                database_name = await connection.scalar(
+                    text("SELECT current_database()")
+                )
+                assert database_name == engine.url.database
+                assert re.fullmatch(r"ue_aud197198_[0-9a-f]{32}", database_name)
+                before = (
+                    await connection.execute(privilege_query, {"role": role_name})
+                ).one()
+                assert tuple(before) == (False, False)
+                await connection.exec_driver_sql(
+                    f'GRANT {privileges} ON {objects} TO "{role_name}"'
+                )
+            granted = True
+            async with engine.connect() as connection:
+                applied = (
+                    await connection.execute(privilege_query, {"role": role_name})
+                ).one()
+                assert tuple(applied) == (True, True)
+        yield harness
+    finally:
+        if granted:
+            async with asyncio.timeout(20):
+                async with engine.begin() as connection:
+                    await connection.exec_driver_sql(
+                        f'REVOKE {privileges} ON {objects} FROM "{role_name}"'
+                    )
+                async with engine.connect() as connection:
+                    remaining = (
+                        await connection.execute(privilege_query, {"role": role_name})
+                    ).one()
+                    assert tuple(remaining) == (False, False)
+
+
+@pytest.mark.parametrize("kind", ["news", "event"])
+@pytest.mark.parametrize("source_state", ["hidden-tenant", "deleted-public"])
+async def test_unscoped_missing_content_retains_retry_and_dlq_evidence(
+    db_session,
+    user_factory,
+    _owned_tenant_retry_worker,
+    monkeypatch,
+    kind,
+    source_state,
+):
+    """Unknown legacy scope is retry/DLQ evidence, never successful silent ack."""
+    _require_postgres()
+    harness = _owned_tenant_retry_worker
+    tenant_a_id = uuid.uuid4()
+    db_session.add(
+        Tenant(
+            id=tenant_a_id, name="Tenant A", slug=f"aud198-backlog-{uuid.uuid4().hex}"
+        )
+    )
+    await db_session.commit()
+    author = await user_factory()
+    if source_state == "hidden-tenant":
+        await db_session.execute(
+            text("UPDATE public.users SET tenant_id = :tenant_id WHERE id = :user_id"),
+            {"tenant_id": tenant_a_id, "user_id": author.id},
+        )
+        await db_session.commit()
+    # Seed historical absent-scope metadata through the real repository. Assign
+    # migrated ownership below without rewriting the stored event or its hash.
+    with _tenant_proof_context(""):
+        if kind == "news":
+            content = await NewsRepository(db_session).create(
+                {
+                    "title": "Legacy backlog news",
+                    "content": "Synthetic unknown-scope backlog",
+                    "author_id": author.id,
+                },
+                locale="en",
+            )
+            tenant_update = text(
+                "UPDATE public.news SET tenant_id = :tenant_id WHERE id = :source_id"
+            )
+            source_query = text("SELECT id FROM public.news WHERE id = :source_id")
+            tenant_query = text(
+                "SELECT tenant_id FROM public.news WHERE id = :source_id"
+            )
+            source_delete = text("DELETE FROM public.news WHERE id = :source_id")
+            event_type = "news.created"
+            handler = event_handlers.handle_news_created_notification
+        else:
+            now = datetime.now(UTC)
+            content = await EventRepository(db_session).create(
+                {
+                    "title": "Legacy backlog event",
+                    "description": "Synthetic unknown-scope backlog",
+                    "location": "Room 1",
+                    "event_type": "meeting",
+                    "starts_at": now + timedelta(days=1),
+                    "ends_at": now + timedelta(days=1, hours=1),
+                    "created_by": author.id,
+                },
+                locale="en",
+            )
+            tenant_update = text(
+                "UPDATE public.events SET tenant_id = :tenant_id WHERE id = :source_id"
+            )
+            source_query = text("SELECT id FROM public.events WHERE id = :source_id")
+            tenant_query = text(
+                "SELECT tenant_id FROM public.events WHERE id = :source_id"
+            )
+            source_delete = text("DELETE FROM public.events WHERE id = :source_id")
+            event_type = "event.created"
+            handler = event_handlers.handle_event_created_notification
+        source_id = content.id
+        if source_state == "hidden-tenant":
+            await db_session.execute(
+                tenant_update, {"tenant_id": tenant_a_id, "source_id": source_id}
+            )
+        await db_session.commit()
+        source = await _source_event(db_session, event_type, source_id)
+        assert isinstance(source.metadata_, dict)
+        assert "tenant_id" not in source.metadata_
+        stored_id = source.id
+        original_payload = dict(source.payload)
+        await db_session.commit()
+
+    if source_state == "deleted-public":
+        # Prove this branch really removes our existing NULL-tenant source.
+        before_delete = await db_session.scalar(source_query, {"source_id": source_id})
+        assert before_delete == source_id
+        public_tenant = await db_session.scalar(tenant_query, {"source_id": source_id})
+        assert public_tenant is None
+        await db_session.execute(source_delete, {"source_id": source_id})
+        await db_session.commit()
+
+    async with database.async_session() as administrator:
+        physical_source = await administrator.scalar(
+            source_query, {"source_id": source_id}
+        )
+        expected_source = source_id if source_state == "hidden-tenant" else None
+        assert physical_source == expected_source
+        if source_state == "hidden-tenant":
+            physical_tenant = await administrator.scalar(
+                tenant_query, {"source_id": source_id}
+            )
+            assert physical_tenant == tenant_a_id
+        policy_state = (
+            await administrator.execute(
+                text(
+                    "SELECT count(*), bool_and(c.relrowsecurity AND "
+                    "c.relforcerowsecurity AND c.relowner <> r.oid) "
+                    "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "CROSS JOIN pg_roles r "
+                    "WHERE n.nspname = 'public' AND r.rolname = :role "
+                    "AND c.relname IN ('users', 'news', 'events', 'notifications')"
+                ),
+                {"role": harness.role_name},
+            )
+        ).one()
+        assert tuple(policy_state) == (4, True)
+
+    scopes = ["", str(tenant_a_id)] if source_state == "hidden-tenant" else [""]
+    for scope in scopes:
+        with _tenant_proof_context(scope):
+            async with asyncio.timeout(10):
+                async with harness.sessions() as reader:
+                    await _assert_tenant_worker_transaction(
+                        reader, harness.role_name, scope
+                    )
+                    visible = await reader.scalar(
+                        source_query, {"source_id": source_id}
+                    )
+                    expected_visible = source_id if scope else None
+                    assert visible == expected_visible
+
+    monkeypatch.setattr(notifications_delivery, "_is_push_configured", lambda: False)
+    monkeypatch.setattr(
+        webpush_module,
+        "_send_push_async",
+        AsyncMock(side_effect=AssertionError("backlog proof must not send push")),
+    )
+    monkeypatch.setattr(event_handlers, "async_session", harness.sessions)
+    monkeypatch.setattr(outbox_module, "async_session", harness.sessions)
+    bus = EventBus()
+    bus.subscribe("user.created", event_handlers.handle_user_created)
+    bus.subscribe(event_type, handler)
+    monkeypatch.setattr(outbox_module, "event_bus", bus)
+    worker = outbox_module.OutboxWorker(batch_size=100, max_retries=2)
+
+    failure_id = None
+    for attempt in (1, 2):
+        with _tenant_proof_context(""):
+            try:
+                async with asyncio.timeout(20):
+                    await worker.process_batch()
+            finally:
+                assert tenant_context.tenant_id_ctx.get() == ""
+                assert tenant_context.bypass_rls_ctx.get() is False
+        async with database.async_session() as administrator:
+            source = await administrator.get(StoredEvent, stored_id)
+            assert source is not None
+            assert "tenant_id" not in source.metadata_
+            assert source.error_count == attempt
+            assert source.last_error is not None
+            assert "Durable event handler failed" in source.last_error
+            notifications = list(
+                (await administrator.scalars(select(Notification))).all()
+            )
+            assert notifications == []
+            requests = list(
+                (
+                    await administrator.scalars(
+                        select(StoredEvent).where(
+                            StoredEvent.event_type == NotificationsRequested.EVENT_TYPE
+                        )
+                    )
+                ).all()
+            )
+            assert requests == []
+            failures = list(
+                (
+                    await administrator.scalars(
+                        select(FailedOutboxEvent).where(
+                            FailedOutboxEvent.original_event_id == stored_id
+                        )
+                    )
+                ).all()
+            )
+            if attempt == 1:
+                assert source.processed_at is None
+                assert failures == []
+            else:
+                assert source.processed_at is not None
+                assert len(failures) == 1
+                failure = failures[0]
+                assert failure.event_type == event_type
+                assert failure.aggregate_id == str(source_id)
+                assert failure.payload == original_payload
+                assert failure.retry_count == 2
+                assert failure.resolved_at is None
+                assert failure.failed_at == source.processed_at
+                assert "Durable event handler failed" in failure.error_message
+                failure_id = failure.id
+
+    with _tenant_proof_context(""):
+        async with asyncio.timeout(20):
+            processed = await worker.process_batch()
+        assert processed == 0
+    assert failure_id is not None
+    async with database.async_session() as administrator:
+        failure_ids = list(
+            (
+                await administrator.scalars(
+                    select(FailedOutboxEvent.id).where(
+                        FailedOutboxEvent.original_event_id == stored_id
+                    )
+                )
+            ).all()
+        )
+        assert failure_ids == [failure_id]

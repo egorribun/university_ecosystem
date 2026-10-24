@@ -377,6 +377,18 @@ def test_tenant_context_diagnostic_is_separate_bounded_and_fail_closed() -> None
         "tests/integration/test_aud197_198_notification_outbox_postgres.py::"
         "test_legacy_null_tenant_content_ignores_worker_ambient_scope",
         "tests/test_outbox_tenant_context.py",
+        "tests/integration/test_aud197_198_notification_outbox_postgres.py::"
+        "test_unscoped_missing_content_retains_retry_and_dlq_evidence",
+        "tests/test_event_handlers_behavior_closure.py::"
+        "test_created_notification_handler_skips_deleted_source_record",
+        "tests/test_event_handlers_behavior_closure.py::"
+        "test_comment_notification_fails_closed_when_news_or_author_disappears",
+        "tests/test_event_handlers_behavior_closure.py::"
+        "test_comment_notification_skips_deleted_comment_before_loading_sources",
+        "tests/test_event_handlers_behavior_closure.py::"
+        "test_created_notification_handler_retries_unscoped_missing_source",
+        "tests/test_event_handlers_behavior_closure.py::"
+        "test_comment_notification_retries_unscoped_missing_protected_parent",
     )
     for additional in additional_selectors:
         assert run.count(additional) == 1

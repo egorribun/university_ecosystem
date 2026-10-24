@@ -37,8 +37,11 @@ const FORMATTER = "node_modules/zod-validation-error"
 const HOOKS = "node_modules/eslint-plugin-react-hooks"
 const HOOKS_FORMATTER = HOOKS + "/node_modules/zod-validation-error"
 const ENGINE = "node_modules/zod"
-const CONSUMER = "eslint-plugin-react-compiler@19.1.0-rc.2"
+const EXACT_CONSUMER = "eslint-plugin-react-compiler@19.1.0-rc.2"
+const SINGLETON_RANGE = ">=19.1.0-rc.2 <=19.1.0-rc.2"
+const CONSUMER = "eslint-plugin-react-compiler@" + SINGLETON_RANGE
 const FINAL_OVERRIDE = Object.freeze({
+  ".": "$eslint-plugin-react-compiler",
   zod: "$react-compiler-zod-compat",
   "zod-validation-error": Object.freeze({ ".": "4.0.2", zod: "4.6.7" }),
 })
@@ -375,27 +378,75 @@ export function inspectOverrideSelector(toolRoot, manifest) {
   regularBytes(semverPath, 128 * 1024)
   const overridePath = join(packages["@npmcli/arborist"].path, "lib/override-set.js")
   regularBytes(overridePath, 128 * 1024)
+  const nodePath = join(packages["@npmcli/arborist"].path, "lib/node.js")
+  const edgePath = join(packages["@npmcli/arborist"].path, "lib/edge.js")
+  regularBytes(nodePath, 128 * 1024)
+  regularBytes(edgePath, 128 * 1024)
   // Only the already verified npm tool's own resolver is inspected. No project
   // package entrypoint or npm install/update operation is invoked here.
   const semver = toolRequire(semverPath)
   const OverrideSet = toolRequire(overridePath)
-  const root = new OverrideSet({ overrides: structuredClone(manifest.overrides) })
+  const Node = toolRequire(nodePath)
+  const Edge = toolRequire(edgePath)
+  // Retain the previously observed exact-selector failure as a separate control.
+  const baselineOverrides = structuredClone(manifest.overrides)
+  delete baselineOverrides[CONSUMER]
+  baselineOverrides[EXACT_CONSUMER] = structuredClone(FINAL_OVERRIDE)
+  delete baselineOverrides[EXACT_CONSUMER]["."]
+  const baseline = new OverrideSet({ overrides: baselineOverrides })
+  const selected = new OverrideSet({ overrides: structuredClone(manifest.overrides) })
   const name = "eslint-plugin-react-compiler"
   const version = "19.1.0-rc.2"
   const range = manifest.devDependencies[name]
-  const edgeRule = root.getEdgeRule({ name, rawSpec: range, spec: range })
-  const nodeRule = root.getNodeRule({ name, version })
-  const identity = (rule) => {
+  const edge = { name, rawSpec: range, spec: range }
+  const node = { name, version }
+  const identity = (root, rule, key) => {
     if (rule === root) return null
-    assert.equal(rule?.key, CONSUMER)
+    assert.equal(rule?.key, key)
     return rule.key
   }
-  const booleans = {
-    satisfiesRange: semver.satisfies(version, range),
-    satisfiesSelector: semver.satisfies(version, version),
-    intersectsSelector: semver.intersects(range, version),
+  const boolean = (value) => {
+    assert.equal(typeof value, "boolean")
+    return value
   }
-  for (const value of Object.values(booleans)) assert.equal(typeof value, "boolean")
+  const selectedIdentity = (rule) => identity(selected, rule, CONSUMER)
+  // Node and Edge model this one direct dependency in memory; no tree is loaded
+  // from disk and no installer runs. The reference must preserve its raw spec.
+  const directRoot = (override) =>
+    new Node({
+      path: join(toolRoot, "selector-control"),
+      loadOverrides: true,
+      pkg: {
+        name: "react-compiler-selector-control",
+        version: "1.0.0",
+        devDependencies: { [name]: range },
+        overrides: { [CONSUMER]: structuredClone(override) },
+      },
+    })
+  const direct = directRoot(FINAL_OVERRIDE)
+  const directEdge = direct.edgesOut.get(name)
+  assert(directEdge instanceof Edge)
+  assert.equal(directEdge.overrides.key, CONSUMER)
+  direct.assertRootOverrides()
+  const withoutReference = structuredClone(FINAL_OVERRIDE)
+  delete withoutReference["."]
+  assert.throws(() => directRoot(withoutReference).assertRootOverrides(), {
+    code: "EOVERRIDE",
+  })
+  const versionChecks = [
+    "19.1.0-rc.1",
+    "19.1.0-rc.2",
+    "19.1.0-rc.2+fixture",
+    "19.1.0-rc.3",
+    "19.1.0",
+    "19.1.1-rc.2",
+    "20.0.0",
+  ].map((candidate) => ({
+    version: candidate,
+    exact: boolean(semver.satisfies(candidate, version)),
+    selected: boolean(semver.satisfies(candidate, SINGLETON_RANGE)),
+    nodeAttached: selectedIdentity(selected.getNodeRule({ name, version: candidate })) !== null,
+  }))
   const result = {
     kind: "react-compiler-override-selector-diagnostic",
     npm: npmMetadata.version,
@@ -405,13 +456,77 @@ export function inspectOverrideSelector(toolRoot, manifest) {
     declaredRange: range,
     installedVersion: version,
     selectorVersion: version,
-    ...booleans,
-    edgeRule: identity(edgeRule),
-    nodeRule: identity(nodeRule),
+    satisfiesRange: boolean(semver.satisfies(version, range)),
+    satisfiesSelector: boolean(semver.satisfies(version, version)),
+    intersectsSelector: boolean(semver.intersects(range, version)),
+    edgeRule: identity(baseline, baseline.getEdgeRule(edge), EXACT_CONSUMER),
+    nodeRule: identity(baseline, baseline.getNodeRule(node), EXACT_CONSUMER),
+    selectedSelector: {
+      range: SINGLETON_RANGE,
+      satisfies: boolean(semver.satisfies(version, SINGLETON_RANGE)),
+      intersects: boolean(semver.intersects(range, SINGLETON_RANGE)),
+      edgeRule: selectedIdentity(selected.getEdgeRule(edge)),
+      nodeRule: selectedIdentity(selected.getNodeRule(node)),
+    },
+    versionChecks,
+    directDependency: {
+      rawSpec: directEdge.rawSpec,
+      effectiveSpec: directEdge.spec,
+      rootOverrideAccepted: true,
+      missingReferenceError: "EOVERRIDE",
+    },
     candidateAccepted: false,
   }
   assert(Buffer.byteLength(JSON.stringify(result)) <= 2048)
   return result
+}
+
+export function assertOverrideSelectorControl(report) {
+  const versionChecks = [
+    ["19.1.0-rc.1", false],
+    ["19.1.0-rc.2", true],
+    ["19.1.0-rc.2+fixture", true],
+    ["19.1.0-rc.3", false],
+    ["19.1.0", false],
+    ["19.1.1-rc.2", false],
+    ["20.0.0", false],
+  ].map(([version, accepted]) => ({
+    version,
+    exact: accepted,
+    selected: accepted,
+    nodeAttached: accepted,
+  }))
+  assert.deepEqual(report, {
+    kind: "react-compiler-override-selector-diagnostic",
+    npm: "11.17.0",
+    semver: "7.8.4",
+    arborist: "9.8.0",
+    packageName: "eslint-plugin-react-compiler",
+    declaredRange: "^19.1.0-rc.2",
+    installedVersion: "19.1.0-rc.2",
+    selectorVersion: "19.1.0-rc.2",
+    satisfiesRange: true,
+    satisfiesSelector: true,
+    intersectsSelector: false,
+    edgeRule: null,
+    nodeRule: EXACT_CONSUMER,
+    selectedSelector: {
+      range: SINGLETON_RANGE,
+      satisfies: true,
+      intersects: true,
+      edgeRule: CONSUMER,
+      nodeRule: CONSUMER,
+    },
+    versionChecks,
+    directDependency: {
+      rawSpec: "^19.1.0-rc.2",
+      effectiveSpec: "^19.1.0-rc.2",
+      rootOverrideAccepted: true,
+      missingReferenceError: "EOVERRIDE",
+    },
+    candidateAccepted: false,
+  })
+  return true
 }
 
 export function assertFinalInstalledGraph(frontend, mode, controls) {
@@ -721,6 +836,7 @@ export async function runFinalCompilerGenerator() {
     stage = "pinned npm override selector diagnostic"
     const selectorDiagnostic = inspectOverrideSelector(dirname(dirname(cli)), candidateManifest)
     console.log("FINAL_COMPILER_OVERRIDE_DIAGNOSTIC " + JSON.stringify(selectorDiagnostic))
+    assertOverrideSelectorControl(selectorDiagnostic)
 
     stage = "isolated final consumer lock generation"
     npm(cli, "generateLock", generation)

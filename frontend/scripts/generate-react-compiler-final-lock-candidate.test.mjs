@@ -11,6 +11,7 @@ import {
   assertFinalLockScope,
   assertFinalNpmCommand,
   assertFinalSourcePrerequisites,
+  assertOverrideSelectorControl,
   assertStrictLock,
   finalNpmCommand,
   inspectInstalledEngineLicense,
@@ -27,6 +28,7 @@ const OLD_ENGINE = COMPILER + "/node_modules/zod"
 const FORMATTER = "node_modules/zod-validation-error"
 const HOOKS_FORMATTER = "node_modules/eslint-plugin-react-hooks/node_modules/zod-validation-error"
 const FINAL_OVERRIDE = Object.freeze({
+  ".": "$eslint-plugin-react-compiler",
   zod: "$react-compiler-zod-compat",
   "zod-validation-error": Object.freeze({ ".": "4.0.2", zod: "4.6.7" }),
 })
@@ -298,7 +300,7 @@ test("final manifest changes only the exact legacy consumer override", () => {
   const original = manifest()
   const snapshot = structuredClone(original)
   const expected = structuredClone(original)
-  expected.overrides["eslint-plugin-react-compiler@19.1.0-rc.2"] = FINAL_OVERRIDE
+  expected.overrides["eslint-plugin-react-compiler@>=19.1.0-rc.2 <=19.1.0-rc.2"] = FINAL_OVERRIDE
   assert.deepEqual(prepareFinalManifest(original), expected)
   assert.deepEqual(original, snapshot)
 })
@@ -308,6 +310,7 @@ test("existing consumer or global engine overrides cannot be silently replaced",
     "zod",
     "zod@4",
     "eslint-plugin-react-compiler",
+    "eslint-plugin-react-compiler@>=19.1.0-rc.2 <=19.1.0-rc.2",
     "eslint-plugin-react-compiler@19.1.0-rc.2",
     "eslint-plugin-react-compiler@*",
   ]) {
@@ -566,7 +569,7 @@ test("strict subprocess environment excludes inherited credentials and npm relax
 
 test("strict fixture pins real current ESLint and consumers instead of downgrading peers", () => {
   const input = manifest()
-  input.overrides["eslint-plugin-react-compiler@19.1.0-rc.2"] = FINAL_OVERRIDE
+  input.overrides["eslint-plugin-react-compiler@>=19.1.0-rc.2 <=19.1.0-rc.2"] = FINAL_OVERRIDE
   assert.deepEqual(prepareStrictManifest(input), {
     name: "react-compiler-peer-proof",
     version: "1.0.0",
@@ -580,7 +583,7 @@ test("strict fixture pins real current ESLint and consumers instead of downgradi
       zod: "4.6.7",
     },
     overrides: {
-      "eslint-plugin-react-compiler@19.1.0-rc.2": FINAL_OVERRIDE,
+      "eslint-plugin-react-compiler@>=19.1.0-rc.2 <=19.1.0-rc.2": FINAL_OVERRIDE,
       "eslint-plugin-react-hooks": { "zod-validation-error": "4.0.2" },
     },
   })
@@ -767,22 +770,29 @@ test("physical engine license evidence rejects unbounded or substituted package 
   }
 })
 
-function selectorToolFixture(root, attached = false) {
+function selectorToolFixture(root, attached = true) {
   const tool = join(root, "tool")
   const compiler = "eslint-plugin-react-compiler"
-  const selector = compiler + "@19.1.0-rc.2"
+  const exact = compiler + "@19.1.0-rc.2"
+  const selected = compiler + "@>=19.1.0-rc.2 <=19.1.0-rc.2"
   writePackage(root, "tool", { name: "npm", version: "11.17.0" })
   writePackage(
     tool,
     "node_modules/semver",
     { name: "semver", version: "7.8.4", main: "index.cjs" },
-    "module.exports = { satisfies: () => true, intersects: () => false }\n"
+    [
+      "module.exports = {",
+      "  satisfies: (version) => ['19.1.0-rc.2', '19.1.0-rc.2+fixture'].includes(version),",
+      "  intersects: (_, range) => range === '>=19.1.0-rc.2 <=19.1.0-rc.2' && " + attached,
+      "}",
+      "",
+    ].join("\n")
   )
-  writePackage(
-    tool,
-    "node_modules/@npmcli/arborist",
-    { name: "@npmcli/arborist", version: "9.8.0", main: "index.cjs" }
-  )
+  writePackage(tool, "node_modules/@npmcli/arborist", {
+    name: "@npmcli/arborist",
+    version: "9.8.0",
+    main: "index.cjs",
+  })
   mkdirSync(join(tool, "node_modules/@npmcli/arborist/lib"))
   writeFileSync(
     join(tool, "node_modules/@npmcli/arborist/lib/override-set.js"),
@@ -790,53 +800,150 @@ function selectorToolFixture(root, attached = false) {
       "const assert = require('node:assert/strict')",
       "module.exports = class OverrideSet {",
       "  constructor({ overrides }) {",
-      "    assert.equal(overrides[" +
-        JSON.stringify(selector) +
-        "].zod, '$react-compiler-zod-compat')",
-      "    this.rule = { key: " + JSON.stringify(selector) + " }",
+      "    this.key = [" +
+        JSON.stringify(exact) +
+        ", " +
+        JSON.stringify(selected) +
+        "].find(key => overrides[key])",
+      "    assert.equal(overrides[this.key].zod, '$react-compiler-zod-compat')",
+      "    this.rule = { key: this.key }",
       "  }",
       "  getEdgeRule(edge) {",
       "    assert.deepEqual(edge, " +
         JSON.stringify({ name: compiler, rawSpec: "^19.1.0-rc.2", spec: "^19.1.0-rc.2" }) +
         ")",
-      "    return " + (attached ? "this.rule" : "this"),
+      "    return this.key === " +
+        JSON.stringify(selected) +
+        " && " +
+        attached +
+        " ? this.rule : this",
       "  }",
       "  getNodeRule(node) {",
-      "    assert.deepEqual(node, " +
-        JSON.stringify({ name: compiler, version: "19.1.0-rc.2" }) +
-        ")",
-      "    return this.rule",
+      "    assert.equal(node.name, " + JSON.stringify(compiler) + ")",
+      "    return ['19.1.0-rc.2', '19.1.0-rc.2+fixture'].includes(node.version) ? this.rule : this",
+      "  }",
+      "}",
+      "",
+    ].join("\n")
+  )
+  writeFileSync(
+    join(tool, "node_modules/@npmcli/arborist/lib/edge.js"),
+    "module.exports = class Edge {}\n"
+  )
+  writeFileSync(
+    join(tool, "node_modules/@npmcli/arborist/lib/node.js"),
+    [
+      "const assert = require('node:assert/strict')",
+      "const Edge = require('./edge.js')",
+      "module.exports = class Node {",
+      "  constructor({ loadOverrides, pkg }) {",
+      "    assert.equal(loadOverrides, true)",
+      "    assert.equal(pkg.name, 'react-compiler-selector-control')",
+      "    const key = Object.keys(pkg.overrides)[0]",
+      "    const name = 'eslint-plugin-react-compiler'",
+      "    const rule = pkg.overrides[key]",
+      "    const edge = new Edge()",
+      "    edge.overrides = { key }",
+      "    edge.rawSpec = pkg.devDependencies[name]",
+      "    edge.spec = rule['.'] === '$' + name ? edge.rawSpec : key.slice(name.length + 1)",
+      "    this.edgesOut = new Map([[name, edge]])",
+      "  }",
+      "  assertRootOverrides() {",
+      "    const edge = this.edgesOut.get('eslint-plugin-react-compiler')",
+      "    if (edge.spec !== edge.rawSpec) {",
+      "      throw Object.assign(new Error('synthetic conflict'), { code: 'EOVERRIDE' })",
+      "    }",
       "  }",
       "}",
       "",
     ].join("\n")
   )
   const candidate = manifest()
-  candidate.overrides[selector] = FINAL_OVERRIDE
+  candidate.overrides[selected] = FINAL_OVERRIDE
   return { tool, candidate }
 }
 
-test("selector diagnostic retains tool results without treating them as a graph proof", () => {
+function selectorDiagnostic(attached = true) {
+  return {
+    kind: "react-compiler-override-selector-diagnostic",
+    npm: "11.17.0",
+    semver: "7.8.4",
+    arborist: "9.8.0",
+    packageName: "eslint-plugin-react-compiler",
+    declaredRange: "^19.1.0-rc.2",
+    installedVersion: "19.1.0-rc.2",
+    selectorVersion: "19.1.0-rc.2",
+    satisfiesRange: true,
+    satisfiesSelector: true,
+    intersectsSelector: false,
+    edgeRule: null,
+    nodeRule: "eslint-plugin-react-compiler@19.1.0-rc.2",
+    selectedSelector: {
+      range: ">=19.1.0-rc.2 <=19.1.0-rc.2",
+      satisfies: true,
+      intersects: attached,
+      edgeRule: attached ? "eslint-plugin-react-compiler@>=19.1.0-rc.2 <=19.1.0-rc.2" : null,
+      nodeRule: "eslint-plugin-react-compiler@>=19.1.0-rc.2 <=19.1.0-rc.2",
+    },
+    versionChecks: [
+      { version: "19.1.0-rc.1", exact: false, selected: false, nodeAttached: false },
+      { version: "19.1.0-rc.2", exact: true, selected: true, nodeAttached: true },
+      { version: "19.1.0-rc.2+fixture", exact: true, selected: true, nodeAttached: true },
+      { version: "19.1.0-rc.3", exact: false, selected: false, nodeAttached: false },
+      { version: "19.1.0", exact: false, selected: false, nodeAttached: false },
+      { version: "19.1.1-rc.2", exact: false, selected: false, nodeAttached: false },
+      { version: "20.0.0", exact: false, selected: false, nodeAttached: false },
+    ],
+    directDependency: {
+      rawSpec: "^19.1.0-rc.2",
+      effectiveSpec: "^19.1.0-rc.2",
+      rootOverrideAccepted: true,
+      missingReferenceError: "EOVERRIDE",
+    },
+    candidateAccepted: false,
+  }
+}
+
+test("selector diagnostic preserves exact baseline and requires singleton attachment", () => {
   for (const attached of [false, true]) {
     withDirectory((root) => {
       const { tool, candidate } = selectorToolFixture(root, attached)
-      assert.deepEqual(inspectOverrideSelector(tool, candidate), {
-        kind: "react-compiler-override-selector-diagnostic",
-        npm: "11.17.0",
-        semver: "7.8.4",
-        arborist: "9.8.0",
-        packageName: "eslint-plugin-react-compiler",
-        declaredRange: "^19.1.0-rc.2",
-        installedVersion: "19.1.0-rc.2",
-        selectorVersion: "19.1.0-rc.2",
-        satisfiesRange: true,
-        satisfiesSelector: true,
-        intersectsSelector: false,
-        edgeRule: attached ? "eslint-plugin-react-compiler@19.1.0-rc.2" : null,
-        nodeRule: "eslint-plugin-react-compiler@19.1.0-rc.2",
-        candidateAccepted: false,
-      })
+      const report = inspectOverrideSelector(tool, candidate)
+      assert.deepEqual(report, selectorDiagnostic(attached))
+      if (attached) assert.equal(assertOverrideSelectorControl(report), true)
+      else assert.throws(() => assertOverrideSelectorControl(report), { name: "AssertionError" })
     })
+  }
+})
+
+test("singleton selector controls reject wider versions, lost evidence and altered tooling", () => {
+  for (const mutate of [
+    (value) => (value.npm = "11.19.0"),
+    (value) => (value.semver = "7.8.3"),
+    (value) => (value.arborist = "9.7.0"),
+    (value) => (value.intersectsSelector = true),
+    (value) => (value.edgeRule = value.nodeRule),
+    (value) => (value.selectedSelector.range = "*"),
+    (value) => (value.selectedSelector.edgeRule = "eslint-plugin-react-compiler"),
+    (value) => (value.selectedSelector.nodeRule = value.nodeRule),
+    (value) => (value.selectedSelector.intersects = false),
+    (value) => (value.versionChecks[0].selected = true),
+    (value) => (value.versionChecks[3].selected = true),
+    (value) => (value.versionChecks[4].selected = true),
+    (value) => (value.versionChecks[5].selected = true),
+    (value) => (value.versionChecks[6].selected = true),
+    (value) => (value.versionChecks[0].nodeAttached = true),
+    (value) => (value.versionChecks[1].nodeAttached = false),
+    (value) => value.versionChecks.pop(),
+    (value) => (value.directDependency.rawSpec = "19.1.0-rc.2"),
+    (value) => (value.directDependency.effectiveSpec = value.selectedSelector.range),
+    (value) => (value.directDependency.rootOverrideAccepted = false),
+    (value) => (value.directDependency.missingReferenceError = null),
+    (value) => (value.candidateAccepted = true),
+  ]) {
+    const report = selectorDiagnostic()
+    mutate(report)
+    assert.throws(() => assertOverrideSelectorControl(report), { name: "AssertionError" })
   }
 })
 

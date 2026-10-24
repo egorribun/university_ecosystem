@@ -10,7 +10,8 @@ release claims require fresh evidence under the master plan.
   operational checkpoint; every release claim still requires fresh exact-SHA
   evidence.
 - [Historical safe pause checkpoint, 2026-10-24](../superpowers/plans/STATUS.md#контрольная-точка-безопасной-паузы-2026-10-24) — the accepted count at that checkpoint was 280/512; its private PostgreSQL evidence and then-pending integrations are retained as history, not current hosted outcomes.
-- [Current accepted audit lower bound: 292/512 (57.0%)](AUDIT-2026-10.md#hosted-logging-and-inventory-scoped-closure-checkpoint-2026-10-24) — preserves all 289 preceding IDs and adds only AUD-452, AUD-508 and AUD-509 after scoped hosted verification; 220 IDs remain unaccepted. Dependency cleanup, additional migration findings, full CI and release readiness are not accepted.
+- [Current accepted audit lower bound: 300/512 (58.6%)](AUDIT-2026-10.md#owner-approved-unsupported-historical-rollback-dispositions-checkpoint-2026-10-24) — preserves all 292 preceding IDs and adds only AUD-268, AUD-273, AUD-276, AUD-324, AUD-325, AUD-326, AUD-349 and AUD-435 as owner-approved unsupported historical rollback dispositions, not migration repairs; 212 IDs remain unaccepted. The original owner decision, current barriers and named hosted evidence are bounded explicitly. Paired database/S3 restore remains OPEN; AUD-197/198, dependency cleanup, universal rollback safety, full CI and release readiness are not accepted.
+- [Historical logging/inventory checkpoint: 292/512 (57.0%)](AUDIT-2026-10.md#hosted-logging-and-inventory-scoped-closure-checkpoint-2026-10-24) — preserved all 289 preceding IDs and added only AUD-452, AUD-508 and AUD-509 after scoped hosted verification; its source-specific evidence and limits are retained.
 - [Historical six-finding checkpoint: 289/512 (56.4%)](AUDIT-2026-10.md#hosted-six-finding-scoped-closure-checkpoint-2026-10-24) — added AUD-359, AUD-388, AUD-443, AUD-446, AUD-451 and AUD-453 to the preceding 283 IDs; its source-specific evidence and limits are retained.
 - [Historical planner-calibration checkpoint: 283/512 (55.3%)](AUDIT-2026-10.md#hosted-planner-calibration-rollback-closure-checkpoint-2026-10-24) — six actual PostgreSQL rollback/isolation cases added only AUD-504 to the previous 282 IDs. Its evidence and limits are retained.
 - [MVP master plan](../superpowers/plans/MVP_MASTER_PLAN.md) and
@@ -59,7 +60,7 @@ release claims require fresh evidence under the master plan.
   immutable historical fingerprints: its original 25 plus one reviewed code
   expression at a single commit/path/rule/line, with matching negative tests.
   Baseline319 and ledger283 were unchanged by that policy checkpoint. The current
-  accepted lower bound is 292/512 as linked above. Policy records alone do not
+  accepted lower bound is 300/512 as linked above. Policy records alone do not
   establish a final-source scan, full CI, audit closure or release result.
   The historical [exact orchestrator-fixture pin rebind](../adr/ADR-047-risk-based-quality-policy.md#exact-orchestrator-fixture-isolation-git-pin-rebind-2026-10-24)
   preserves all 328 records and appends only its sixth independently fixture-bound
@@ -77,8 +78,10 @@ release claims require fresh evidence under the master plan.
   The [exact V2 invalid-private-field sentinel](../adr/ADR-047-risk-based-quality-policy.md#exact-v2-invalid-private-field-sentinel-disposition-2026-10-24)
   preserves all 336 records and adds only one existing-category identity,
   for the current total of 337, after its observed 6-failure / 584-pass policy
-  cohort. All 26 source/scope guards remain; new final-source tests and scans
-  are still required. Records alone do not establish a passing scan or audit closure.
+  cohort. All 26 source/scope guards remain; source2208db1e subsequently passed
+  all 590 policy cases and the raw scanner, as recorded in current STATUS.
+  New source changes still require their own tests/scans. Records alone do not
+  establish a passing scan or audit closure.
   The prior 310-record state is retained in
   [the 2026-10-23 finite scanner-policy update](AUDIT-2026-10.md#owner-approved-finite-scanner-policy-additions-2026-10-23), and the
   five additive fixture-bound identities are recorded in the [dated supplement](AUDIT-2026-10.md#owner-approved-five-exact-baseline-fixture-dispositions-2026-10-23).

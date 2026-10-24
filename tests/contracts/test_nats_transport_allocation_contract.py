@@ -179,11 +179,11 @@ def test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_univers
 
 # Ordered argv population from 1a3954e99f06bf7b1660ad2df609a84b022daefa.
 # Preserve all 136 original selectors, including intentional file/node overlaps.
-# Forty-three explicit selections follow that unchanged prefix: existing audit
+# Fifty-one explicit selections follow that unchanged prefix: existing audit
 # regressions, Gitleaks diagnostics, WebSocket/migration safety, logging/email,
 # inventory, repaired orchestrators, typed DLQ, client-IP and owned registration
 # diagnostic, configuration-warning, exact Knip, outbox tenant and historical
-# rollback-boundary contracts. Do not shrink this scope.
+# rollback-boundary and reset-URL sink contracts. Do not shrink this scope.
 _CONSUMER_SELECTORS = (
     "tests/contracts/",
     "tests/test_live_stand_cleanup_profile_contract.py",
@@ -364,6 +364,14 @@ _CONSUMER_SELECTORS = (
     "tests/test_mfa_email_otp_migrations.py::test_expansion_downgrade_is_explicitly_irreversible",
     "tests/test_touched_tier0_migration_contracts.py::test_dnd_wall_clock_downgrade_refuses_to_invent_lost_offsets",
     "tests/test_quarantine_migration.py::test_migration_downgrade_refuses_to_drop_quota_evidence",
+    "tests/test_event_handlers_behavior_closure.py",
+    "tests/test_csp_report_closure.py::test_receive_csp_report_logs_only_sanitized_document_uri",
+    "tests/test_csp_report_closure.py::test_receive_csp_report_sanitizes_uri_edge_cases",
+    "tests/test_caddy_routing.py::test_reset_password_uri_filter_covers_encoded_route_characters_and_separators",
+    "tests/test_caddy_routing.py::test_query_uri_filter_redacts_each_encoded_credential_key_character",
+    "tests/test_caddy_routing.py::test_uri_filter_preserves_ordinary_non_reset_diagnostics",
+    "tests/test_caddy_routing.py::test_tls_edge_sets_the_shared_browser_security_headers",
+    "tests/test_caddy_routing.py::test_caddy_uri_redaction_rules_keep_path_first_and_sensitive_keys_ordered",
 )
 _DISPATCH_PROBE = """\
 import json

@@ -78,7 +78,8 @@ release acceptance still requires a verified, paired database and S3 restore.
 
 The audit's owner decision names the following eight findings. Their scope is
 recorded here without claiming that their historical downgrade implementations
-were repaired or adding them to the accepted audit ledger.
+were repaired. This scope record alone does not add findings to the accepted
+audit ledger.
 
 | Finding | Revision or operation | Behavior outside the supported rollback contract |
 | --- | --- | --- |

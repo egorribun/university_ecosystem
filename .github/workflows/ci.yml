@@ -1194,6 +1194,12 @@ jobs:
             tests/integration/test_aud197_198_notification_outbox_postgres.py::test_content_outbox_restores_tenant_scope \
             tests/integration/test_aud197_198_notification_outbox_postgres.py::test_legacy_null_tenant_content_ignores_worker_ambient_scope \
             tests/test_outbox_tenant_context.py \
+            tests/integration/test_aud197_198_notification_outbox_postgres.py::test_unscoped_missing_content_retains_retry_and_dlq_evidence \
+            tests/test_event_handlers_behavior_closure.py::test_created_notification_handler_skips_deleted_source_record \
+            tests/test_event_handlers_behavior_closure.py::test_comment_notification_fails_closed_when_news_or_author_disappears \
+            tests/test_event_handlers_behavior_closure.py::test_comment_notification_skips_deleted_comment_before_loading_sources \
+            tests/test_event_handlers_behavior_closure.py::test_created_notification_handler_retries_unscoped_missing_source \
+            tests/test_event_handlers_behavior_closure.py::test_comment_notification_retries_unscoped_missing_protected_parent \
             --basetemp="$probe_root/basetemp" > "$test_log" 2>&1 || pytest_status=$?
           echo "OWNED_TENANT_CONTEXT_TESTS_BEGIN"
           bytes="$(wc -c < "$test_log")"
@@ -2163,7 +2169,15 @@ jobs:
             tests/test_mfa_email_otp_migrations.py::test_contract_downgrade_is_explicitly_irreversible \
             tests/test_mfa_email_otp_migrations.py::test_expansion_downgrade_is_explicitly_irreversible \
             tests/test_touched_tier0_migration_contracts.py::test_dnd_wall_clock_downgrade_refuses_to_invent_lost_offsets \
-            tests/test_quarantine_migration.py::test_migration_downgrade_refuses_to_drop_quota_evidence -v \
+            tests/test_quarantine_migration.py::test_migration_downgrade_refuses_to_drop_quota_evidence \
+            tests/test_event_handlers_behavior_closure.py \
+            tests/test_csp_report_closure.py::test_receive_csp_report_logs_only_sanitized_document_uri \
+            tests/test_csp_report_closure.py::test_receive_csp_report_sanitizes_uri_edge_cases \
+            tests/test_caddy_routing.py::test_reset_password_uri_filter_covers_encoded_route_characters_and_separators \
+            tests/test_caddy_routing.py::test_query_uri_filter_redacts_each_encoded_credential_key_character \
+            tests/test_caddy_routing.py::test_uri_filter_preserves_ordinary_non_reset_diagnostics \
+            tests/test_caddy_routing.py::test_tls_edge_sets_the_shared_browser_security_headers \
+            tests/test_caddy_routing.py::test_caddy_uri_redaction_rules_keep_path_first_and_sensitive_keys_ordered -v \
             --tb=short --durations=20 -n 2 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \

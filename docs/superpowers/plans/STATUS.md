@@ -5,11 +5,35 @@
 
 
 
-## Текущий checkpoint: проверенные этапы и точечная policy337, 2026-10-24
+## Текущий checkpoint: scoped rollback dispositions и source-bound проверки, 2026-10-24
 
-Ledger остаётся **292/512 (57,0%)**, **220 ID не принято**. Новых принятых ID
-этот checkpoint не добавляет. Разделы ниже сохраняют результаты своих SHA;
-они не заменяют проверки текущего опубликованного исходного кода.
+Принятый ledger — **300/512 (58,6%)**, **212 ID не принято**. Сохранены все
+прежние 292 ID; добавлены только **AUD-268, AUD-273, AUD-276, AUD-324,
+AUD-325, AUD-326, AUD-349 и AUD-435** как owner-approved unsupported historical
+rollback dispositions, **не как исправления миграций**.
+[Датированное основание, exact source, tests и полный список](../../audits/AUDIT-2026-10.md#owner-approved-unsupported-historical-rollback-dispositions-checkpoint-2026-10-24)
+разделяют исходное решение владельца, действующие барьеры и сохранившееся
+разрушительное поведение исторических downgrade. Парный database/S3 restore
+release gate остаётся **OPEN**; универсальная безопасность отката не заявлена.
+AUD-197/198 остаются в числе 212 непринятых ID. Разделы ниже
+сохраняют результаты своих SHA и не заменяют проверки нового source.
+
+На опубликованном `2208db1e`, tested merge `cc2626f1` с тем же деревом,
+[Contract120945584300](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120945584300)
+дал **2535 consumer PASS / 590 policy PASS**. Raw detect-secrets, security/types
+и Gitleaks прошли на этом source. Отдельно все четыре backend unit shards этого же source завершились успешно:
+**20095 PASS / 284 SKIP / 0 FAIL**. [Shard0](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120946035005)
+дал 4656/44, [shard1](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120946034952)
+— 4012/144, [shard2](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120951041875)
+— 6560/45, [shard3](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120953266537)
+— 4867/51 (PASS/SKIP). Отдельные preliminary probes 847 и 240 PASS не входят
+в сумму. [Coverage & Quality Policy Gate](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120958915392)
+был SKIPPED: полный unit-suite GREEN не означает aggregate coverage/floors,
+полный CI или release GREEN. Новый source требует собственных проверок.
+
+[Owned Live текущего source](https://github.com/egorribun/university_ecosystem/actions/runs/40118573865/job/120947409185)
+дал **275 Node PASS**, **38 browser PASS / 2 SKIP**; NATS и cleanup SUCCESS,
+receipt12571525530. Неизвестная причина исторического сбоя30b этим не устранена.
 
 На source `e6a97bd3` ([CI 40102373009](https://github.com/egorribun/university_ecosystem/actions/runs/40102373009))
 consumer cohort дал **2442 PASS**, включая все **192** чистых client-IP
@@ -36,9 +60,14 @@ full/production/strict candidate validation не достигнута.
 заданных пакетов; ожидаемый трёх-record delta не расширен.
 [Новый cohort](https://github.com/egorribun/university_ecosystem/actions/runs/40117430250/job/120942304580)
 дал **29 PASS**, но реальный named npm update снова дал пустой delta и
-fail-closed rejection. Следующий candidate добавляет только bounded resolver
-diagnostic и расширяет guards до 31; выбор пакетов и ожидаемый lock delta
-не меняются. Принятый lock, dependency graph и advisory closure не изменены.
+fail-closed rejection. На `2208db1e`
+[bounded resolver diagnostic](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120945654619)
+дал **31 PASS** и фактически показал npm prerelease edge mismatch:
+caret/exact satisfies true, но intersects false; exact selector привязывается
+к node, не к объявленному dependency edge. Реальный update снова оставил
+пустой lock delta и корректно отказал. Следующий singleton
+candidate с **32 guards** ещё не имеет hosted результата. Принятый lock,
+dependency graph и advisory closure не изменены.
 
 На source `36e84f25` ([CI 40103663774](https://github.com/egorribun/university_ecosystem/actions/runs/40103663774))
 точная import-only правка прошла fast lint и допустила PostgreSQL:
@@ -53,10 +82,14 @@ PK attachment и запрещает только лишний index. На source
 На `f7182c73` [расширенный diagnostic](https://github.com/egorribun/university_ecosystem/actions/runs/40117430250/job/120942731865)
 дал **81 PASS**, включая все **27 физических migration cases** через 17
 явных selectors; прежние 74 cases сохранены. Actual Squawk всё ещё даёт
-**14 original / 25 expanded** findings. Source-bound SQL metadata, rollback,
-transaction, catalog и final-FK controls сохранены. Это scoped post-fix GREEN,
-не полный Squawk/CI GREEN, гарантия отсутствия downtime или дополнительная
-приёмка migration findings.
+**14 original / 25 expanded** findings.
+[Повтор на 2208db1e](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120946034277)
+подтвердил **81 PASS**, включая все 27 физических migration cases, и те же
+**14/25** blocking findings. Source-bound SQL metadata, rollback, transaction,
+catalog и final-FK controls сохранены. Это scoped post-fix GREEN, не полный
+Squawk/CI GREEN и не гарантия отсутствия downtime. Отдельная приёмка восьми
+исторических rollback dispositions основана на решении владельца, а не на
+предположении, что эти upgrade/helper tests доказывают безопасный downgrade.
 
 [PostgreSQL integration](https://github.com/egorribun/university_ecosystem/actions/runs/40103663774/job/120901869525)
 подтвердил все **8** notification-outbox cases, включая concurrent sessions и
@@ -69,11 +102,23 @@ AUD-197/198 остаются pending. Исторический six-case step н�
 прошли; все четыре empty/B traceback подтверждают ноль вместо двух
 notifications, оба legacy-null-tenant случая — три вместо двух.
 `--show-capture=no` сохранил capture, прежние budgets и все причины.
-Подготовлен независимо reviewed узкий producer/dispatcher fix; его новый
-31-case GREEN ещё требуется. DDL artifacts получены до tenant step.
-Полный integration на f7182c73 остановился на первом tenant defect
-(**1 FAIL / 29 PASS**); полные 27 migration cases доказаны отдельным diagnostic,
-не этим остановленным integration run.
+Независимо reviewed узкий producer/dispatcher fix на `2208db1e` прошёл
+все **31 cases** в том же отдельном tenant step. DDL artifacts получены до него.
+AUD-197/198 ещё не приняты: следующие **13 historical cases** остаются
+tests-first; планируемые bounded tenant cohort44 и consumer selector187
+ещё требуют собственного выполнения. Исторический полный integration на
+f7182c73 остановился на первом tenant defect (**1 FAIL / 29 PASS**); полные
+27 migration cases доказаны отдельным diagnostic, не тем остановленным run.
+
+На `2208db1e` [полный PostgreSQL integration](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120946034962)
+дал **311 PASS / 9 SKIP**, включая все 16 notification-module cases.
+Это не снимает отдельную historical metadata-less backlog проверку.
+
+Для AUD-178 в consumer cohort добавляются семь существующих named Python
+contracts CSP-handler и Caddy configuration. Они проверяют границы sanitization,
+но не wire-level Referer или доставку логов. [Четыре SSR sanitizer Node cases](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120946077762)
+прошли на `2208db1e`; reset-specific browser/HTTP/log-sink evidence ещё требуется,
+поэтому AUD-178 не принимается.
 
 Полный unit shard 1 на 36e84f выявил два дополнительных config-warning FAIL:
 локальные Path аргументы стали opaque markers после строгой redaction.
@@ -94,15 +139,17 @@ sentinel после observed tests-first **6 FAIL / 584 PASS** в
 На том же source8d501 scanner оставил только это unmatched finding; четыре
 compiler-golden findings больше не unmatched. Новая запись использует
 существующий exact path/type/digest механизм и прежнюю sentinel category,
-не разрешает весь путь и не подтверждает final-source scanner GREEN.
-Все 26 source/scope guards сохранены; новые 590-case policy и raw scan ещё
-требуются. Исторические policy counts ниже относятся к своим source revisions.
+не разрешает весь путь. На `2208db1e` все **590 policy cases PASS**, а
+[raw detect-secrets120945654632](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120945654632)
+прошёл с прежними **319** baseline identities и без unmatched finding.
+Все 26 source/scope guards сохранены. Любой новый source требует собственных
+tests/scans; исторические policy counts ниже относятся к своим revisions.
 Ledger не увеличивается от scanner dispositions.
 
 Для отдельного intermittent mobile registration observation
 [Node V2 cohort на ee35e6de](https://github.com/egorribun/university_ecosystem/actions/runs/40108844115/job/120916103708)
 дал **10 FAIL / 264 PASS**, а Python V2 — **6 FAIL / 2474 PASS** с PASS
-существующего runner control. Публикуемый runtime candidate добавляет только
+существующего runner control. Проверенный runtime добавляет только
 failure-only конечный snapshot enum/boolean наблюдений и строгий ограниченный
 stdout parser. На source `8d5011b0` все **7 V2 Python cases PASS**; общий
 consumer cohort имел **20 tenant-context FAIL / 2483 PASS**, не full Contract GREEN.
