@@ -51,11 +51,13 @@ def test_consumer_keeps_original_gate_context_budget_and_scanner_rules() -> None
     assert "uv run pytest -q -s --tb=short" in diagnostic["run"]
     assert "tests/test_migration_148642dd1207_trace.py" in diagnostic["run"]
     assert "tests/test_migration_148642dd1207_diagnostic_ci.py" in diagnostic["run"]
-    assert "::test_expanded_ddl_inventory_matches_unmodified_populated_control" in (
-        diagnostic["run"]
+    assert (
+        "::test_expanded_ddl_inventory_matches_unmodified_populated_control"
+        in (diagnostic["run"])
     )
-    assert "::test_convertible_orphan_rolls_back_cutover_and_diagnostic_rows" in (
-        diagnostic["run"]
+    assert (
+        "::test_convertible_orphan_rolls_back_cutover_and_diagnostic_rows"
+        in (diagnostic["run"])
     )
     assert 'exit "$pytest_status"' in diagnostic["run"]
     assert diagnostic["run"].rstrip().endswith('exit "$lint_status"')
@@ -120,7 +122,12 @@ def _fixture(tmp_path, monkeypatch):
     monkeypatch.setattr(
         sys,
         "argv",
-        [str(script), str(sql_path), str(evidence_path), *_squawk_args(diagnostic["run"])],
+        [
+            str(script),
+            str(sql_path),
+            str(evidence_path),
+            *_squawk_args(diagnostic["run"]),
+        ],
     )
     return script, sql_path, evidence_path, evidence
 

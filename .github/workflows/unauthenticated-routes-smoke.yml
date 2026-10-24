@@ -30,6 +30,9 @@ jobs:
       # and JWKS initialization still require valid settings.
       SECRET_KEY: "dummy_secret_key_for_unauthenticated_routes_smoke" # pragma: allowlist secret
       ENVIRONMENT: testing
+      FRONTEND_ORIGIN: http://localhost:8080
+      FRONTEND_ORIGINS: http://localhost:8080
+      APP_BASE_URL: http://localhost:8080
       DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/test_public_routes_smoke" # pragma: allowlist secret
       OTEL_SDK_DISABLED: "true"
       ALGORITHM: "RS256"
@@ -160,7 +163,7 @@ jobs:
           ROLLDOWN_WORKER_THREADS: "2"
           FRONTEND_BUILD_MAX_RSS_MB: "2048"
           FRONTEND_BUILD_MAX_OLD_SPACE_MB: "1536"
-          VITE_BACKEND_ORIGIN: http://localhost
+          VITE_BACKEND_ORIGIN: http://localhost:8080
           VITE_E2E_MODE: "1"
         run: |
           npm run build
@@ -176,6 +179,8 @@ jobs:
         run: bash ../scripts/ci/install-playwright-with-deps.sh chromium
 
       - name: Start backend
+        env:
+          JWT_ISSUER: university-ecosystem
         run: |
           uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level debug > /tmp/backend.log 2>&1 &
           echo "BACKEND_PID=$!" >> "$GITHUB_ENV"
@@ -211,6 +216,7 @@ jobs:
         working-directory: frontend
         env:
           NODE_ENV: production
+          JWT_ISSUER: university-ecosystem
           PORT: "3000"
           HOST: "0.0.0.0"
         run: |
@@ -230,15 +236,37 @@ jobs:
           echo "::error::Frontend Node SSR failed to start within 60s"
           exit 1
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build project Caddy runtime for smoke
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        timeout-minutes: 10
+        with:
+          context: services/caddy
+          file: services/caddy/Dockerfile
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: "university-ecosystem/caddy:${{ github.sha }}"
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=university-caddy
+          provenance: false
+          sbom: false
+
       - name: Start Caddy ingress
-        # Mirrors admin-smoke-monitoring.yml:341-376 Caddyfile.
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        # Project-built Caddy uses unprivileged :8080 with the shared smoke routes.
         run: |
-          cat > /tmp/Caddyfile <<'EOF'
+          cat > "${RUNNER_TEMP}/Caddyfile" <<'EOF'
           {
             auto_https off
             admin off
           }
-          :80 {
+          :8080 {
             handle /api/v1/* {
               reverse_proxy 127.0.0.1:8000
             }
@@ -250,9 +278,12 @@ jobs:
             }
           }
           EOF
-          docker run -d --name caddy --network host -v /tmp/Caddyfile:/etc/caddy/Caddyfile caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+          chmod 0444 "${RUNNER_TEMP}/Caddyfile"
+          docker run -d --pull=never --name caddy --network host \
+            -v "${RUNNER_TEMP}/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            "university-ecosystem/caddy:${IMAGE_TAG}"
           for i in {1..15}; do
-            if curl -sf http://localhost/healthz > /dev/null && curl -sf http://localhost/.well-known/jwks.json > /dev/null; then
+            if curl -sf http://localhost:8080/healthz > /dev/null && curl -sf http://localhost:8080/.well-known/jwks.json > /dev/null; then
               echo "OK: Caddy ingress reachable + proxying correctly"
               exit 0
             fi
@@ -274,7 +305,7 @@ jobs:
         id: smoke
         working-directory: frontend
         env:
-          ORIGIN: http://localhost
+          ORIGIN: http://localhost:8080
           THEME: ${{ matrix.theme }}
           OUT_DIR: .screenshots/unauthenticated-routes-smoke-${{ matrix.theme }}
         run: node ./scripts/unauthenticated-routes-smoke.mjs

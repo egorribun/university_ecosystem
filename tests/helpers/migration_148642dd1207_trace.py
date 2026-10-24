@@ -70,14 +70,18 @@ class DdlSite:
         if outer_ordinal < 0:
             raise TraceContractError("Trace ordinals must be nonnegative")
         expression = self.executable.removeprefix("EXECUTE ").removesuffix(";")
-        observation = sql.SQL(
-            "INSERT INTO aud148_diag.executed_ddl "
-            "(outer_ordinal, site, ddl) VALUES ({ordinal}, {site}, {expression});\n"
-        ).format(
-            ordinal=sql.Literal(outer_ordinal),
-            site=sql.Literal(self.name),
-            expression=sql.SQL(expression),
-        ).as_string()
+        observation = (
+            sql.SQL(
+                "INSERT INTO aud148_diag.executed_ddl "
+                "(outer_ordinal, site, ddl) VALUES ({ordinal}, {site}, {expression});\n"
+            )
+            .format(
+                ordinal=sql.Literal(outer_ordinal),
+                site=sql.Literal(self.name),
+                expression=sql.SQL(expression),
+            )
+            .as_string()
+        )
         transformed = self.outer_sql.replace(
             self.executable, observation + self.executable, 1
         )
@@ -185,9 +189,7 @@ class ExpandedDdlTrace:
             if transformed.replace(observation, "", 1) != site.outer_sql:
                 raise TraceContractError("Instrumentation changed original SQL")
             compiled = str(sa.text(transformed).compile(dialect=connection.dialect))
-            self.replacements.append(
-                {"outer_ordinal": ordinal, "site": site.name}
-            )
+            self.replacements.append({"outer_ordinal": ordinal, "site": site.name})
             return compiled, parameters
         return statement, parameters
 
@@ -195,10 +197,9 @@ class ExpandedDdlTrace:
         """Build lint-only SQL, not a replay script, from a successful trace."""
         if not self.instrument:
             raise TraceContractError("Only the instrumented run has nested evidence")
-        if (
-            [event["kind"] for event in self.events].count("begin") != 1
-            or [event["kind"] for event in self.events].count("commit") != 1
-        ):
+        if [event["kind"] for event in self.events].count("begin") != 1 or [
+            event["kind"] for event in self.events
+        ].count("commit") != 1:
             raise TraceContractError("Successful inventory requires one transaction")
         if any(event["kind"] == "rollback" for event in self.events):
             raise TraceContractError("Rolled-back trace is not successful evidence")

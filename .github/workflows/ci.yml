@@ -1913,6 +1913,9 @@ jobs:
           # Keep the full consumer and exact-disposition populations in this
           # required job, but overlap their independent pytest processes. Each
           # process gets its own basetemp, temp/database root, log, and JUnit file.
+          # Bound the consumer to two file-grouped xdist workers: conftest owns
+          # each worker database, query log, and temporary Pact directory. Keep
+          # module-scoped Pact fixtures together without changing any selectors.
           # The positional expansions in each single-quoted -c script belong to
           # the child Bash, so suppress shellcheck's literal-single-quote warning.
           # shellcheck disable=SC2016
@@ -2050,7 +2053,7 @@ jobs:
             tests/test_live_stand.py::test_live_caddy_capture_deadline_cannot_be_rebased_during_reader_admission \
             tests/test_live_stand.py::test_live_caddy_probe_reads_one_union_window_from_reverified_pinned_container \
             tests/test_live_stand.py::test_live_caddy_probe_brackets_one_union_read_within_the_shared_deadline -v \
-            --tb=short --durations=20 \
+            --tb=short --durations=20 -n 2 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \
             --basetemp="$1" \

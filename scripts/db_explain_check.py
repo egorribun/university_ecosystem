@@ -303,9 +303,7 @@ async def run_explain_analysis(
                     )
                     try:
                         await _calibrate_statistics(conn, target_tables)
-                        logger.info(
-                            "Table and index statistics successfully updated."
-                        )
+                        logger.info("Table and index statistics successfully updated.")
                     except Exception as error:
                         logger.warning(
                             "Could not calibrate table statistics: %s. "

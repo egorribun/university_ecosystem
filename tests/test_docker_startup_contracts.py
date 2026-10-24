@@ -2921,7 +2921,9 @@ def test_ci_caddy_smokes_use_the_pinned_project_runtime(
     assert "--pull=never" in command
     assert command[command.index("--network") + 1] == "host"
     assert command[command.index("--name") + 1] == "caddy"
-    assert "/tmp/Caddyfile:/etc/caddy/Caddyfile:ro" in command
+    assert "${RUNNER_TEMP}/Caddyfile:/etc/caddy/Caddyfile:ro" in command
+    assert 'cat > "${RUNNER_TEMP}/Caddyfile" <<' in start_script
+    assert 'chmod 0444 "${RUNNER_TEMP}/Caddyfile"' in start_script
     for argument in command:
         assert not argument.startswith(
             ("--user", "--privileged", "--cap-add", "--sysctl", "--entrypoint")
@@ -2963,6 +2965,8 @@ def test_ci_caddy_smokes_use_the_pinned_project_runtime(
     assert browser.get("env", {}).get("ORIGIN") == origin
     assert "--host 127.0.0.1 --port 8000" in backend["run"]
     assert frontend_start["env"]["PORT"] == "3000"
+    assert backend_env.get("JWT_ISSUER") == "university-ecosystem"
+    assert frontend_start["env"].get("JWT_ISSUER") == "university-ecosystem"
     assert job["name"] == job_name
     assert job["timeout-minutes"] == job_timeout
     if job_id == "unauthed-smoke":

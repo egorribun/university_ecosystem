@@ -28,7 +28,7 @@
 #
 #   - backend: `uv run uvicorn` on :8000 (mirrors reusable-e2e-tests.yml)
 #   - frontend Node SSR: `npm run start` on :3000 (W131 SW1 server-prod.mjs)
-#   - Caddy ingress: `docker run caddy --network host` on :80 with minimal
+#   - Project-built Caddy ingress on :8080 (host network) with minimal
 #     Caddyfile that routes /api/v1/* + /.well-known/* → :8000, default → :3000
 #   - postgres + redis: GitHub Actions `services:` (mirrors reusable-e2e-tests.yml)
 #
@@ -81,6 +81,9 @@ jobs:
       # Backend env (mirrors reusable-e2e-tests.yml + adds RS256)
       SECRET_KEY: "dummy_secret_key_for_visual_audit_ci_at_least_32_chars" # pragma: allowlist secret
       ENVIRONMENT: testing
+      FRONTEND_ORIGIN: http://localhost:8080
+      FRONTEND_ORIGINS: http://localhost:8080
+      APP_BASE_URL: http://localhost:8080
       DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/test_visual_audit" # pragma: allowlist secret
       OTEL_SDK_DISABLED: "true"
       ALGORITHM: "RS256"
@@ -260,7 +263,7 @@ jobs:
         env:
           FRONTEND_BUILD_MAX_RSS_MB: "2048"
           FRONTEND_BUILD_MAX_OLD_SPACE_MB: "1536"
-          VITE_BACKEND_ORIGIN: http://localhost
+          VITE_BACKEND_ORIGIN: http://localhost:8080
           VITE_E2E_MODE: "1"
         run: |
           npm run build
@@ -286,6 +289,8 @@ jobs:
         run: bash ../scripts/ci/install-playwright-with-deps.sh chromium
 
       - name: Start backend
+        env:
+          JWT_ISSUER: university-ecosystem
         # uvicorn on 127.0.0.1:8000 with --log-level debug + redirect to log file
         # so the next "Wait for backend health" step can tail it on timeout.
         # W139 SW3 first-run discovery: backend lifespan calls
@@ -381,10 +386,11 @@ jobs:
       - name: Start frontend Node SSR
         # W131 SW1 server-prod.mjs: bare Node SSR on :3000 (NOT Caddy ingress).
         # /healthz fast-path returns <10ms (W131 SW2). VITE_BACKEND_ORIGIN baked
-        # at build time = http://localhost (matches Caddy ingress below).
+        # at build time = http://localhost:8080 (matches Caddy ingress below).
         working-directory: frontend
         env:
           NODE_ENV: production
+          JWT_ISSUER: university-ecosystem
           PORT: "3000"
           HOST: "0.0.0.0"
         run: |
@@ -404,8 +410,30 @@ jobs:
           echo "::error::Frontend Node SSR failed to start within 60s"
           exit 1
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build project Caddy runtime for smoke
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        timeout-minutes: 10
+        with:
+          context: services/caddy
+          file: services/caddy/Dockerfile
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: "university-ecosystem/caddy:${{ github.sha }}"
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=university-caddy
+          provenance: false
+          sbom: false
+
       - name: Start Caddy ingress
-        # Caddy on :80 (host network) routes:
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        # Caddy on :8080 (host network) routes:
         #   /api/v1/*           → backend :8000
         #   /.well-known/*      → backend :8000
         #   default (frontend)  → Node SSR :3000
@@ -413,12 +441,12 @@ jobs:
         # docker run with `--network host` so caddy can reach 127.0.0.1:8000 +
         # 127.0.0.1:3000 directly — simpler than mapping individual ports.
         run: |
-          cat > /tmp/Caddyfile <<'EOF'
+          cat > "${RUNNER_TEMP}/Caddyfile" <<'EOF'
           {
             auto_https off
             admin off
           }
-          :80 {
+          :8080 {
             handle /api/v1/* {
               reverse_proxy 127.0.0.1:8000
             }
@@ -430,10 +458,13 @@ jobs:
             }
           }
           EOF
-          docker run -d --name caddy --network host -v /tmp/Caddyfile:/etc/caddy/Caddyfile caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+          chmod 0444 "${RUNNER_TEMP}/Caddyfile"
+          docker run -d --pull=never --name caddy --network host \
+            -v "${RUNNER_TEMP}/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            "university-ecosystem/caddy:${IMAGE_TAG}"
           # Wait for Caddy proxy chain
           for i in {1..15}; do
-            if curl -sf http://localhost/healthz > /dev/null && curl -sf http://localhost/.well-known/jwks.json > /dev/null; then
+            if curl -sf http://localhost:8080/healthz > /dev/null && curl -sf http://localhost:8080/.well-known/jwks.json > /dev/null; then
               echo "OK: Caddy ingress reachable + proxying correctly"
               exit 0
             fi
@@ -446,13 +477,13 @@ jobs:
 
       - name: Run visual audit script
         id: visual_audit
-        # ORIGIN=http://localhost — Caddy on :80 fronts backend + frontend Node SSR.
+        # ORIGIN=http://localhost:8080 — Caddy on :8080 fronts backend + frontend Node SSR.
         # ROUTES env from workflow_dispatch input (empty = full sweep).
         # `continue-on-error: true` so artifact upload always runs (script exit
         # codes 1-5 indicate violations or setup issues; we want the sidecar JSON).
         working-directory: frontend
         env:
-          ORIGIN: http://localhost
+          ORIGIN: http://localhost:8080
           ROUTES: ${{ inputs.routes }}
           TEST_EMAIL: test@university.dev
           TEST_PASSWORD: TestPass@2024x # pragma: allowlist secret

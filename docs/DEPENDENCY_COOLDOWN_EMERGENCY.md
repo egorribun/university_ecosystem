@@ -396,3 +396,30 @@ findings. Normal lock consistency, compatibility tests, vulnerability checks
 and all required hosted gates remain mandatory after integration. No advisory
 waiver, scanner disposition, baseline change, global cooldown change, merge or
 deployment is authorized by this routine repair.
+
+## Caddy runtime evidence and smoke-wiring follow-up, 2026-10-24
+
+The earlier preparation-only statements above describe their recorded source,
+not the later result. On source `8db323bc`,
+[custom Caddy job 120757133521](https://github.com/egorribun/university_ecosystem/actions/runs/40055175068/job/120757133521)
+successfully built the image, verified installed `brotli-libs=1.2.1-r0` in
+the bounded offline container, and passed the blocking Trivy scan.
+This does not certify every later source or all upstream Caddy images.
+
+The smoke follow-up configures visual-audit, admin-smoke-monitoring and
+unauthenticated-routes-smoke to build that same project Dockerfile at their
+exact checkout SHA instead of running the unmodified upstream runtime directly.
+Both base digests and all package/module pins remain unchanged. Builds load a
+local image and do not push; runtime inherits UID 100:101 and uses an
+unprivileged HTTP listener on 8080. Browser, backend and SSR origins agree.
+Generated public routing config uses RUNNER_TEMP with mode 0444 and a read-only
+bind. Explicit matching JWT_ISSUER supplies the pre-existing production-SSR
+configuration prerequisite without disabling issuer or signature checks.
+
+The three contract cases failed on the previous source before its Contract job
+was cancelled. The full new workflow builds/startup/browser checks remain
+unverified at integration. The unauthenticated lane is PR-triggered;
+visual/admin remain manual and their exact-source runtime results are not
+inferred from source review or unrelated jobs. No trigger, permissions,
+timeout budget, advisory waiver or release/deployment authorization is added.
+The original finite Brotli exception and its expiry are unchanged.

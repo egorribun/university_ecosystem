@@ -4,6 +4,56 @@
 
 
 
+
+## Проверяемое продолжение после CI 1a3954e, 2026-10-24
+
+Принятый ledger остаётся **282/512 (55,1%)**, 230 ID не принято.
+На [1a3954e](https://github.com/egorribun/university_ecosystem/commit/1a3954e99f06bf7b1660ad2df609a84b022daefa)
+inventory PASS, но fast lint отказал на четырёх formatter diffs и Caddy S108.
+Применяются точные nine-hunk Ruff postimages из job 120776948690, без
+семантических изменений. Caddy config теперь использует runner-owned temporary
+path с точным read-only bind, а не suppression небезопасного literal.
+
+Contract job 120776948669 напечатал три FAILED Caddy parameter nodes, затем
+был отменён на десятиминутном бюджете около конца cohort. Отсутствие custom
+build — source-bound объяснение первого assertion, не напечатанный traceback;
+полный pytest итог этого job не получен. Следующий source переводит все три
+smoke workflow на существующий custom Caddy Dockerfile, точный checkout SHA,
+local load/no push, cache read без записи, унаследованный UID100 и порт8080.
+Finite browser/SSR/backend origins согласованы; public config chmod0444
+обеспечивает чтение non-root процессом. Matching JWT_ISSUER явно задан backend
+и production SSR как отдельный исправленный CI prerequisite; проверки
+issuer/signature не отключаются. Budgets 30/30/20 минут и action/base pins
+сохранены. Runtime smoke GREEN ещё требуется; visual/admin остаются manual lanes.
+
+Для устранения observed Contract timeout consumer получает только два
+pytest-xdist workers и loadfile grouping. Все 136 ordered selector arguments,
+последовательный policy cohort, временные корни, process groups, JUnit/log
+outputs, exit handling и десятиминутный budget сохранены. Worker DB/log/Pact
+изоляция проверена по source и существующим characterization tests.
+Десять дополнительных real-shell boundary cases проверяют argv/status/negative
+mutants; их новый hosted GREEN и фактическая скорость пока не установлены.
+Динамическое containment nested process groups при принудительной отмене
+этими новыми tests не доказывается.
+
+Node job 120777206146 выполнил 44 tests и получил 13 assertion failures только
+в восьми новых provenance cases; исходные 36 остались passing. После этого
+stub заменяется точным helper и wiring registry/manifest gitHead.
+Модуль отвергает malformed/conflicting declarations и всегда сообщает
+source_binding=unverified: совпадающие заявления не доказывают build provenance.
+
+Actual detect-secrets scan обнаружил ровно два новых публичных Git-идентификатора
+в trace helper и historical MFA guard. Решение владельца о двух finite
+public_integrity_digest dispositions запрошено, но пока **не получено**.
+Policy остаётся 321, baseline319 identities и Gitleaks25 не меняются; новые
+совпадения остаются блокирующими. Migration waiver также не применён:
+разрешена только подготовка точного предложения с последующим подтверждением.
+
+На 1a3954e Alembic diagnostic и backend units были SKIPPED из-за pre-commit.
+Поэтому PostgreSQL/expanded-Squawk evidence нового harness отсутствует.
+Исправления AUD-493/AUD-504 ещё требуют нового GREEN. Полный CI, release,
+merge и deployment не приняты; работа продолжается только на egorribun.
+
 ## Текущий hosted checkpoint и следующий пакет, 2026-10-24
 
 Принятая source-level нижняя граница — **282/512 (55,1%)**, осталось **230 ID**:

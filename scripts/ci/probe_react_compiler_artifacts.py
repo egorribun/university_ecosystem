@@ -315,9 +315,38 @@ def _signals(source: str) -> dict[str, int]:
 
 def artifact_provenance(
     metadata: Mapping[str, Any], manifest: Mapping[str, Any]
-) -> dict[str, Any] | None:
-    """TDD stub: do not claim source provenance before hosted assertion RED."""
-    return None
+) -> dict[str, Any]:
+    """Report declared revisions, not proof that source produced these bytes."""
+    revisions: list[str | None] = []
+    for source in (metadata, manifest):
+        if "gitHead" not in source:
+            revisions.append(None)
+            continue
+        revision = source["gitHead"]
+        if (
+            not isinstance(revision, str)
+            or re.fullmatch(r"[0-9a-f]{40}", revision) is None
+        ):
+            raise ProbeError("Invalid declared source revision")
+        revisions.append(revision)
+    registry, artifact = revisions
+    if registry is not None and artifact is not None and registry != artifact:
+        raise ProbeError("Registry and artifact source revisions disagree")
+    if registry is not None and artifact is not None:
+        status = "corroborated"
+    elif registry is not None:
+        status = "registry_only"
+    elif artifact is not None:
+        status = "manifest_only"
+    else:
+        status = "absent"
+    return {
+        "registry_git_head": registry,
+        "manifest_git_head": artifact,
+        "source_revision": registry or artifact,
+        "provenance_status": status,
+        "source_binding": "unverified",
+    }
 
 
 def inspect_artifact(
@@ -326,6 +355,7 @@ def inspect_artifact(
     version: str,
     integrity: str,
     *,
+    registry_metadata: Mapping[str, Any] | None = None,
     max_unpacked: int = MAX_UNPACKED,
     max_members: int = MAX_MEMBERS,
 ) -> dict[str, Any]:
@@ -421,6 +451,9 @@ def inspect_artifact(
         "declares_zod_dependency": isinstance(dependencies, dict)
         and "zod" in dependencies,
         "signals": _signals(decoded["package/dist/index.js"]),
+        "source_provenance": artifact_provenance(
+            {} if registry_metadata is None else registry_metadata, manifest
+        ),
         "patched_status": "not_established",
         "artifact_executed": False,
     }
@@ -464,7 +497,13 @@ def main() -> None:
             locked_integrity=controls.get((package, version)),
         )
         raw = fetch_bounded(request["url"], MAX_COMPRESSED)
-        report = inspect_artifact(raw, package, version, request["integrity"])
+        report = inspect_artifact(
+            raw,
+            package,
+            version,
+            request["integrity"],
+            registry_metadata=packuments[package]["versions"][version],
+        )
         report["published_at"] = _published(
             packuments[package]["time"][version]
         ).isoformat()

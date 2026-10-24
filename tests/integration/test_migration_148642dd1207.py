@@ -1096,8 +1096,7 @@ def test_expanded_ddl_inventory_matches_unmodified_populated_control(
                 "SELECT id FROM public.groups ORDER BY id"
             ).fetchall() == [(1,), (2,)]
             assert connection.execute(
-                'SELECT "group key" FROM aud148_fixture."child quoted" '
-                "WHERE id = 1"
+                'SELECT "group key" FROM aud148_fixture."child quoted" WHERE id = 1'
             ).fetchone() == (2,)
             assert connection.execute(
                 "SELECT convalidated FROM pg_constraint "
@@ -1117,10 +1116,13 @@ def test_expanded_ddl_inventory_matches_unmodified_populated_control(
             )
             for statement in statements
         )
-        assert sum(
-            site == "child_fk_restore" and "aud148_fixture." in statement
-            for _, site, statement in rows
-        ) == 3
+        assert (
+            sum(
+                site == "child_fk_restore" and "aud148_fixture." in statement
+                for _, site, statement in rows
+            )
+            == 3
+        )
 
         sql_path = tmp_path / "148642dd1207.expanded.sql"
         evidence_path = tmp_path / "148642dd1207.trace.json"
@@ -1147,16 +1149,12 @@ def test_expanded_ddl_inventory_matches_unmodified_populated_control(
                     "outer_ordinal": ordinal,
                     "site": site,
                     "sql": statement,
-                    "sql_sha256": hashlib.sha256(
-                        statement.encode("utf-8")
-                    ).hexdigest(),
+                    "sql_sha256": hashlib.sha256(statement.encode("utf-8")).hexdigest(),
                 }
                 for ordinal, site, statement in rows
             ],
             "equivalent_snapshot": traced_snapshot,
-            "expanded_sql_sha256": hashlib.sha256(
-                expanded.encode("utf-8")
-            ).hexdigest(),
+            "expanded_sql_sha256": hashlib.sha256(expanded.encode("utf-8")).hexdigest(),
         }
         evidence_path.write_text(
             json.dumps(evidence, indent=2, sort_keys=True, default=str) + "\n",
