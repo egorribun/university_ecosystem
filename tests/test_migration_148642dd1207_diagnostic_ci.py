@@ -331,3 +331,48 @@ def test_invalid_or_oversized_evidence_fails_before_logging(
     with pytest.raises(SystemExit, match="AUD148"):
         runpy.run_path(str(script), run_name="__main__")
     assert capsys.readouterr().out == ""
+
+
+def test_tenant_context_diagnostic_is_separate_bounded_and_fail_closed() -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["alembic-migrations"]
+    steps = job["steps"]
+    tenant = next(step for step in steps if step.get("id") == "tenant-context-evidence")
+    migration = next(
+        step for step in steps if step.get("id") == "migration-ddl-evidence"
+    )
+    assert steps.index(migration) < steps.index(tenant)
+    assert job["timeout-minutes"] == 15
+    assert tenant["timeout-minutes"] == 3
+    guard = tenant["if"]
+    assert "!cancelled()" in guard
+    assert "steps.migration-squawk.outcome == 'success'" in guard
+    assert "steps.migration-squawk.outcome == 'failure'" in guard
+    assert "always()" not in guard
+    assert tenant["env"] == {
+        "SECRET_KEY": "${{ env.SECRET_KEY }}",
+        "ENVIRONMENT": "testing",
+        "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
+        "RUN_INTEGRATION_TESTS": "1",
+    }
+    run = tenant["run"]
+    assert "set -euo pipefail" in run
+    assert 'probe_root="$(mktemp -d)"' in run
+    assert 'trap \'rm -rf -- "$probe_root"\' EXIT' in run
+    assert "uv run pytest -v --tb=short --no-cov --maxfail=0" in run
+    selector = (
+        "tests/integration/test_aud197_198_notification_outbox_postgres.py::"
+        "test_content_outbox_restores_tenant_scope"
+    )
+    assert run.count(selector) == 1
+    assert selector not in migration["run"]
+    assert '--basetemp="$probe_root/basetemp"' in run
+    assert '> "$test_log" 2>&1 || pytest_status=$?' in run
+    assert 'head -c 131072 "$test_log"' in run
+    assert 'if [ "$bytes" -gt 131072 ]; then' in run
+    assert '[ "$pytest_status" -ne 0 ] || pytest_status=1' in run
+    assert 'exit "$pytest_status"' in run
+    assert "OWNED_TENANT_CONTEXT_TESTS_BEGIN" in run
+    assert "OWNED_TENANT_CONTEXT_TESTS_END" in run
+    assert "--capture=no" not in run
+    assert "continue-on-error" not in tenant

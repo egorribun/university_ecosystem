@@ -2085,7 +2085,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 329
+    assert len(policy["records"]) == 332
     records = [
         record
         for record in policy["records"]
@@ -3081,7 +3081,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         )
     )
     records = policy["records"]
-    assert len(records) == 329
+    assert len(records) == 332
     prefix = records[:315]
     encoded_prefix = json.dumps(
         prefix, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -3483,7 +3483,7 @@ def test_oct24_public_digest_policy_preserves_all_318_prior_records() -> None:
         _AUD495_IMMUTABLE_315_PREFIX_SHA256
     )
     assert records[315:318] == _OCT24_ORIGINAL_SUFFIX
-    assert len(records) == 329
+    assert len(records) == 332
     assert records[318:321] == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS
 
 
@@ -3673,9 +3673,9 @@ def test_public_git_blob_policy_preserves_all_321_prior_records() -> None:
     )
     # These existing independent guards compose the immutable 321-record prefix.
     test_oct24_public_digest_policy_preserves_all_318_prior_records()
-    assert len(policy["records"]) == 329
+    assert len(policy["records"]) == 332
     assert policy["records"][321:323] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:2]
-    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 6
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 8
 
 
 def test_public_git_blob_rebind_policy_preserves_all_323_prior_records() -> None:
@@ -3983,7 +3983,7 @@ def test_observed_public_metadata_policy_preserves_all_325_prior_records() -> No
         )
     )
     test_public_git_blob_rebind_policy_preserves_all_323_prior_records()
-    assert len(policy["records"]) == 329
+    assert len(policy["records"]) == 332
     assert policy["records"][325:327] == _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS
     assert len(_OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS) == 2
 
@@ -4234,7 +4234,7 @@ def test_public_git_blob_catalog_proof_preserves_all_327_prior_records() -> None
         )
     )
     test_observed_public_metadata_policy_preserves_all_325_prior_records()
-    assert len(policy["records"]) == 329
+    assert len(policy["records"]) == 332
     assert policy["records"][327:328] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4]
@@ -4255,9 +4255,9 @@ def test_public_git_blob_fixture_rebind_preserves_all_328_prior_records() -> Non
         )
     )
     test_public_git_blob_catalog_proof_preserves_all_327_prior_records()
-    assert len(policy["records"]) == 329
-    assert policy["records"][328:] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:]
-    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:]) == 1
+    assert len(policy["records"]) == 332
+    assert policy["records"][328:329] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5]
     assert (
         rebound["identity"]["path"]
@@ -4384,8 +4384,8 @@ def test_public_alembic_revision_policy_preserves_all_329_prior_records() -> Non
         )
     )
     test_public_git_blob_fixture_rebind_preserves_all_328_prior_records()
-    assert len(policy["records"]) == 330
-    assert policy["records"][329:] == [_PUBLIC_ALEMBIC_REVISION_RECORD]
+    assert len(policy["records"]) == 332
+    assert policy["records"][329:330] == [_PUBLIC_ALEMBIC_REVISION_RECORD]
 
 
 def test_public_alembic_revision_accepts_only_its_exact_record_without_source(
@@ -4579,3 +4579,265 @@ def test_public_alembic_revision_source_binding_rejects_changed_definition(
         _assert_public_revision_source_binding(
             source, revision_source=ast.unparse(tree)
         )
+
+
+def test_public_git_blob_index_rebind_preserves_all_330_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_public_alembic_revision_policy_preserves_all_329_prior_records()
+    assert len(policy["records"]) == 332
+    assert policy["records"][330:331] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]) == 1
+    rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6]
+    assert rebound["identity"]["path"] == (
+        "tests/helpers/migration_148642dd1207_trace.py"
+    )
+    assert tuple(rebound["identity"]["hashed_secret_bytes"]) not in {
+        tuple(record["identity"]["hashed_secret_bytes"])
+        for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:6]
+    }
+
+
+def test_public_git_blob_index_assertion_preserves_all_331_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_public_git_blob_index_rebind_preserves_all_330_prior_records()
+    assert len(policy["records"]) == 332
+    assert policy["records"][331:332] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]) == 1
+    rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7]
+    assert (
+        rebound["identity"]["path"]
+        == (_PUBLIC_GIT_BLOB_APPROVED_RECORDS[1]["identity"]["path"])
+    )
+    assert tuple(rebound["identity"]["hashed_secret_bytes"]) not in {
+        tuple(record["identity"]["hashed_secret_bytes"])
+        for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:7]
+    }
+
+
+_PUBLIC_COMPILER_GOLDEN_RECORDS = json.loads(
+    (
+        Path(__file__).resolve().parents[1]
+        / "tests/fixtures/public-compiler-golden-dispositions.json"
+    ).read_text(encoding="utf-8")
+)["records"]
+_PUBLIC_COMPILER_GOLDEN_FIELDS = (
+    "sourceSha",
+    "compilerIntegrity",
+    "compilerBundleSha256",
+    "formatterEntrySha256",
+)
+
+
+def _assert_public_compiler_golden_source_binding(
+    golden: dict[str, Any], lock: dict[str, Any]
+) -> None:
+    assert len(_PUBLIC_COMPILER_GOLDEN_RECORDS) == 4
+    assert golden["kind"] == "react-compiler-legacy-baseline"
+    assert golden["schemaVersion"] == 1
+    assert golden["compilerVersion"] == "19.1.0-rc.2"
+    assert golden["evidence"]["status"] == "legacy_baseline_not_fix_verification"
+    assert golden["evidence"]["source"] == (
+        "https://github.com/egorribun/university_ecosystem/"
+        "actions/runs/40069691438/job/120802074003"
+    )
+    assert re.fullmatch(r"[0-9a-f]{40}", golden["sourceSha"])
+    compiler = lock["packages"]["node_modules/eslint-plugin-react-compiler"]
+    assert compiler["version"] == golden["compilerVersion"]
+    assert compiler["integrity"] == golden["compilerIntegrity"]
+    for index, field in enumerate(_PUBLIC_COMPILER_GOLDEN_FIELDS):
+        record = _PUBLIC_COMPILER_GOLDEN_RECORDS[index]
+        identity = record["identity"]
+        assert identity["path"] == (
+            "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json"
+        )
+        assert identity["type"] == (
+            "Base64 High Entropy String"
+            if field == "compilerIntegrity"
+            else "Hex High Entropy String"
+        )
+        assert record["category"] == (
+            "public_package_integrity_metadata"
+            if field == "compilerIntegrity"
+            else "public_integrity_digest"
+        )
+        # Include the complete public literal, including the SRI algorithm prefix.
+        digest = hashlib.sha1(
+            golden[field].encode("utf-8"), usedforsecurity=False
+        ).digest()
+        assert list(digest) == identity["hashed_secret_bytes"]
+
+
+def _public_compiler_golden_source() -> tuple[dict[str, Any], dict[str, Any]]:
+    root = Path(__file__).resolve().parents[1]
+    golden = json.loads(
+        (root / _PUBLIC_COMPILER_GOLDEN_RECORDS[0]["identity"]["path"]).read_text(
+            encoding="utf-8"
+        )
+    )
+    lock = json.loads((root / "frontend/package-lock.json").read_text(encoding="utf-8"))
+    return golden, lock
+
+
+def test_public_compiler_golden_current_source_has_exact_policy_identities() -> None:
+    golden, lock = _public_compiler_golden_source()
+    _assert_public_compiler_golden_source_binding(golden, lock)
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    for record in _PUBLIC_COMPILER_GOLDEN_RECORDS:
+        assert record in policy["records"]
+
+
+def test_public_compiler_golden_policy_preserves_all_332_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_public_git_blob_index_assertion_preserves_all_331_prior_records()
+    assert len(policy["records"]) == 336
+    assert policy["records"][332:336] == _PUBLIC_COMPILER_GOLDEN_RECORDS
+
+
+@pytest.mark.parametrize("index", range(4), ids=_PUBLIC_COMPILER_GOLDEN_FIELDS)
+def test_public_compiler_golden_accepts_only_exact_record_without_source(
+    index: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    record = _PUBLIC_COMPILER_GOLDEN_RECORDS[index]
+    identity = record["identity"]
+    expected = verifier.FindingIdentity(
+        identity["path"],
+        identity["type"],
+        bytes(identity["hashed_secret_bytes"]).hex(),
+        1,
+    )
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(copy.deepcopy(record)),
+        today=verifier.date(2026, 10, 24),
+    ) == {expected}
+
+
+@pytest.mark.parametrize("index", range(4), ids=_PUBLIC_COMPILER_GOLDEN_FIELDS)
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "detector",
+        "digest",
+        "category",
+        "owner",
+        "review_date",
+        "evidence",
+        "pending",
+        "expiry_extension",
+        "digest_at_other_path",
+        "unknown_digest_at_reserved_path",
+    ],
+)
+def test_public_compiler_golden_rejects_changed_scope_or_approval(
+    index: int, mutation: str
+) -> None:
+    changed = copy.deepcopy(_PUBLIC_COMPILER_GOLDEN_RECORDS[index])
+    if mutation == "path":
+        changed["identity"]["path"] = "tests/unapproved_compiler_golden.json"
+    elif mutation == "detector":
+        changed["identity"]["type"] = (
+            "Hex High Entropy String"
+            if changed["identity"]["type"] == "Base64 High Entropy String"
+            else "Base64 High Entropy String"
+        )
+    elif mutation == "digest":
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "category":
+        changed["category"] = "documented_crypto_test_vector"
+    elif mutation == "owner":
+        changed["owner"] = "Different Reviewer"
+    elif mutation == "review_date":
+        changed["reviewed_on"] = "2026-10-23"
+    elif mutation == "evidence":
+        changed["evidence"] = "public checksum; not credential material"
+    elif mutation == "pending":
+        changed["approval_status"] = "pending_owner_review"
+    elif mutation == "expiry_extension":
+        changed["expires_on"] = "2027-01-11"
+    elif mutation == "digest_at_other_path":
+        changed["identity"]["path"] = "tests/unapproved_compiler_golden.json"
+        changed["identity"]["type"] = "Hex High Entropy String"
+        changed["category"] = "public_integrity_digest"
+    else:
+        assert mutation == "unknown_digest_at_reserved_path"
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+        changed["identity"]["type"] = "Hex High Entropy String"
+        changed["category"] = "public_integrity_digest"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+        )
+
+
+def test_public_compiler_golden_rejects_expiry_duplicate_and_extra_identity() -> None:
+    for record in _PUBLIC_COMPILER_GOLDEN_RECORDS:
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(copy.deepcopy(record)),
+                today=verifier.date(2027, 1, 11),
+            )
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
+                today=verifier.date(2026, 10, 24),
+            )
+        extra = copy.deepcopy(record)
+        extra["identity"]["hashed_secret_bytes"] = list(range(20))
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(copy.deepcopy(record), extra),
+                today=verifier.date(2026, 10, 24),
+            )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        *_PUBLIC_COMPILER_GOLDEN_FIELDS,
+        "kind",
+        "status",
+        "capture_source",
+        "lock_integrity",
+    ],
+)
+def test_public_compiler_golden_source_binding_rejects_changed_metadata(
+    mutation: str,
+) -> None:
+    golden, lock = _public_compiler_golden_source()
+    _assert_public_compiler_golden_source_binding(golden, lock)
+    if mutation in _PUBLIC_COMPILER_GOLDEN_FIELDS:
+        golden[mutation] = "0" * len(golden[mutation])
+    elif mutation == "kind":
+        golden["kind"] = "unreviewed-compiler-baseline"
+    elif mutation == "status":
+        golden["evidence"]["status"] = "fix_verified"
+    elif mutation == "capture_source":
+        golden["evidence"]["source"] = "https://example.test/unreviewed"
+    else:
+        assert mutation == "lock_integrity"
+        lock["packages"]["node_modules/eslint-plugin-react-compiler"]["integrity"] = (
+            "unreviewed-integrity"
+        )
+    with pytest.raises(AssertionError):
+        _assert_public_compiler_golden_source_binding(golden, lock)

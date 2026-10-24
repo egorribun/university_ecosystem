@@ -211,6 +211,7 @@ _FALSE_POSITIVE_EXACT_IDENTITY_CATEGORIES = frozenset(
         "auth_validation_ui_copy",
         "aud253_private_env_mode_test_fixture",
         "aud495_cache_key_redaction_test_fixture",
+        "public_alembic_revision_identifier",
     }
 )
 _FALSE_POSITIVE_CATEGORIES = (
@@ -1515,9 +1516,36 @@ _LOGGING_PUBLIC_METADATA_LABEL_IDENTITY = (
         148,
     ),
 )
+_PUBLIC_ALEMBIC_REVISION_IDENTITY = (
+    "tests/integration/test_migration_148642dd1207.py",
+    "Hex High Entropy String",
+    (
+        174,
+        174,
+        131,
+        77,
+        96,
+        48,
+        11,
+        115,
+        251,
+        85,
+        202,
+        160,
+        255,
+        71,
+        89,
+        188,
+        236,
+        209,
+        111,
+        134,
+    ),
+)
 _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY = {
     _ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY: "public_integrity_digest",
     _LOGGING_PUBLIC_METADATA_LABEL_IDENTITY: "source_contract_identifier",
+    _PUBLIC_ALEMBIC_REVISION_IDENTITY: "public_alembic_revision_identifier",
 }
 _PUBLIC_SOURCE_METADATA_PATHS = frozenset(
     identity[0] for identity in _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY
@@ -1526,6 +1554,15 @@ _PUBLIC_SOURCE_METADATA_DIGESTS = frozenset(
     identity[2] for identity in _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY
 )
 _PUBLIC_SOURCE_METADATA_EVIDENCE_MARKERS = {
+    _PUBLIC_ALEMBIC_REVISION_IDENTITY: (
+        "Public Alembic revision identifier for the groups sequence successor",
+        "command.upgrade target in "
+        "tests/integration/test_migration_148642dd1207.py::"
+        "test_groups_successors_do_not_require_the_duplicate_id_index",
+        "exact public revision definition and down_revision identify "
+        "the immediate successor of the audited groups cutover",
+        "not credential material",
+    ),
     _ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY: (
         "Public upstream Git commit identifier for colinhacks/zod v4.6.7",
         "EXPECTED_ZOD_SOURCE_SHA in "
@@ -1544,6 +1581,7 @@ _PUBLIC_SOURCE_METADATA_EVIDENCE_MARKERS = {
 }
 
 _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
+    "public_alembic_revision_identifier": {_PUBLIC_ALEMBIC_REVISION_IDENTITY},
     "synthetic_achievement_url_test_fixture": (
         _SYNTHETIC_ACHIEVEMENT_URL_TEST_FIXTURE_IDENTITIES
     ),
@@ -1720,6 +1758,58 @@ _PUBLIC_GIT_BLOB_IDENTITIES = frozenset(
                 76,
                 152,
                 145,
+            ),
+        ),
+        (
+            "tests/helpers/migration_148642dd1207_trace.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                61,
+                18,
+                225,
+                35,
+                20,
+                181,
+                232,
+                224,
+                158,
+                7,
+                236,
+                140,
+                119,
+                214,
+                26,
+                47,
+                69,
+                105,
+                11,
+                255,
+            ),
+        ),
+        (
+            "tests/test_mfa_webauthn_tombstone.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                8,
+                134,
+                59,
+                8,
+                97,
+                25,
+                239,
+                115,
+                186,
+                55,
+                39,
+                151,
+                107,
+                170,
+                223,
+                60,
+                12,
+                240,
+                148,
+                10,
             ),
         ),
     }

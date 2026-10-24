@@ -33,12 +33,12 @@ release claims require fresh evidence under the master plan.
   determine the current published SHA and hosted checks; final-source gates remain
   required. The dated 18-, 7-, and 2-identity approvals brought the scope to
   252; the subsequent nine-identity Go source-contract approval extended the
-  historical scope to 261. The current approved scope is 329, including the
+  historical scope to 261. The current approved scope is 332, including the
   [two cache-key canaries](AUDIT-2026-10.md#owner-approved-two-exact-aud-495-cache-key-canaries-2026-10-23)
   and [one public integrity digest](AUDIT-2026-10.md#owner-approved-one-exact-aud-495-public-integrity-digest-2026-10-24);
   the three additional public integrity/fingerprint identities approved on
   2026-10-24 are recorded in [ADR-047](../adr/ADR-047-risk-based-quality-policy.md)
-  and the existing [329-record policy](../../quality/security-false-positive-dispositions.json).
+  and the existing [332-record policy](../../quality/security-false-positive-dispositions.json).
   The [two exact public Git-blob identities](../adr/ADR-047-risk-based-quality-policy.md#owner-approved-two-exact-public-git-blob-dispositions-2026-10-24)
   approved at 05:35 UTC on 2026-10-24 preserve the first 321 records and expire
   on 2027-01-10. Their policy/test candidate does not establish a passing scan
@@ -67,6 +67,12 @@ release claims require fresh evidence under the master plan.
   fingerprint had been computed, while hosted scan and corrected-test validation
   were still pending. Current source results are in STATUS; no finding was
   accepted by that policy change alone.
+  The [exact public Alembic revision identifier](../adr/ADR-047-risk-based-quality-policy.md#exact-public-alembic-revision-identifier-disposition-2026-10-24)
+  adds record 330 to that unchanged 329-record prefix. The coordinated
+  [duplicate-index source and orchestrator rebindings](../adr/ADR-047-risk-based-quality-policy.md#exact-post-primary-key-duplicate-index-source-rebind-2026-10-24)
+  add only two exact public Git-pin identities, for the current total of 332.
+  Four compiler-golden metadata findings remain undisposed; their tests-first
+  fixture is not a passing scan or an additional audit closure.
   The prior 310-record state is retained in
   [the 2026-10-23 finite scanner-policy update](AUDIT-2026-10.md#owner-approved-finite-scanner-policy-additions-2026-10-23), and the
   five additive fixture-bound identities are recorded in the [dated supplement](AUDIT-2026-10.md#owner-approved-five-exact-baseline-fixture-dispositions-2026-10-23).

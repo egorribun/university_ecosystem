@@ -179,9 +179,10 @@ def test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_univers
 
 # Ordered argv population from 1a3954e99f06bf7b1660ad2df609a84b022daefa.
 # Preserve all 136 original selectors, including intentional file/node overlaps.
-# Twenty-eight explicit selections follow that unchanged prefix: existing audit
+# Thirty-seven explicit selections follow that unchanged prefix: existing audit
 # regressions, Gitleaks diagnostics, WebSocket/migration safety, logging/email,
-# inventory, repaired orchestrator, typed DLQ and client-IP harness contracts. Do not shrink this scope.
+# inventory, repaired orchestrators, typed DLQ, client-IP and owned registration
+# diagnostic, configuration-warning and exact Knip workspace contracts. Do not shrink this scope.
 _CONSUMER_SELECTORS = (
     "tests/contracts/",
     "tests/test_live_stand_cleanup_profile_contract.py",
@@ -347,6 +348,15 @@ _CONSUMER_SELECTORS = (
     "tests/test_migration_148642dd1207_orchestrator.py::test_upgrade_with_unavailable_inspector_exposes_later_unconditional_lookup",
     "tests/test_dead_letter_queue.py::test_mark_job_completed",
     "tests/test_owned_client_ip_acceptance.py",
+    "tests/test_migration_148642dd1207_orchestrator.py::test_upgrade_postgresql_legacy_group_cutover_without_existing_group_index",
+    "tests/test_live_stand.py::test_live_reset_registration_v2_accepts_only_finite_failure_observations",
+    "tests/test_live_stand.py::test_live_reset_registration_v2_rejects_private_fields_and_wrong_types",
+    "tests/test_live_stand.py::test_live_reset_registration_v2_rejects_inconsistent_observations",
+    "tests/test_live_stand.py::test_live_reset_registration_v2_rejects_duplicate_keys_and_untrusted_framing",
+    "tests/test_live_stand.py::test_live_reset_registration_v2_deduplicates_and_caps_output",
+    "tests/test_live_stand.py::test_live_reset_registration_v2_runner_uses_failure_stdout_only",
+    "tests/test_config_base_closure.py",
+    "tests/test_frontend_knip_asset_contract.py",
 )
 _DISPATCH_PROBE = """\
 import json

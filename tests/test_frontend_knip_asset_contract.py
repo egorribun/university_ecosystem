@@ -75,10 +75,32 @@ def test_boundary_adapter_uses_its_own_manifest_without_disabling_checks() -> No
     # package must own its imports, rather than ignoring its picomatch usage.
     assert "entry" not in knip
     assert "project" not in knip
-    assert set(knip["workspaces"]) == {".", adapter}
+    assert set(knip["workspaces"]) == {
+        ".",
+        adapter,
+        "scripts/react-compiler-zod-compat",
+    }
     assert knip["workspaces"][adapter] == {}
     manifest = json.loads(_read_frontend(f"{adapter}/package.json"))
     assert manifest["dependencies"] == {"picomatch": "2.3.2"}
+    assert (FRONTEND / adapter / manifest["main"]).is_file()
+
+
+def test_compiler_adapter_uses_its_own_manifest_without_disabling_checks() -> None:
+    knip = json.loads(_read_frontend("knip.json"))
+    package = json.loads(_read_frontend("package.json"))
+    adapter = "scripts/react-compiler-zod-compat"
+
+    assert knip["workspaces"][adapter] == {}
+    manifest = json.loads(_read_frontend(f"{adapter}/package.json"))
+    assert manifest["name"] == "@university-ecosystem/react-compiler-zod-compat"
+    assert manifest["private"] is True
+    assert manifest["dependencies"] == {"patched-zod": "npm:zod@4.6.7"}
+    assert (
+        package["devDependencies"]["react-compiler-zod-compat"] == f"file:./{adapter}"
+    )
+    for section in ("dependencies", "optionalDependencies", "peerDependencies"):
+        assert "react-compiler-zod-compat" not in package.get(section, {})
     assert (FRONTEND / adapter / manifest["main"]).is_file()
 
 

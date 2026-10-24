@@ -13824,3 +13824,226 @@ def test_live_caddy_capture_deadline_cannot_be_rebased_during_reader_admission(
     assert state["calls"][0][1]["command_timeout_seconds"] == pytest.approx(10.0)
     assert now[0] == 115.0
     assert started == []
+
+
+def _reset_registration_v2_record(**overrides: object) -> dict[str, object]:
+    record: dict[str, object] = {
+        "project": "mobile",
+        "step": "await-response",
+        "errorCategory": "timeout",
+        "snapshot": "available",
+        "hydrated": True,
+        "formPresent": True,
+        "formInvalid": False,
+        "formError": False,
+        "submitPresent": True,
+        "submitDisabled": False,
+        "submitBusy": False,
+        "csrfRequested": True,
+        "csrfResponse": "success",
+        "csrfFailed": False,
+    }
+    record.update(overrides)
+    return record
+
+
+def _reset_registration_v2_row(record: dict[str, object]) -> str:
+    encoded = json.dumps(record, separators=(",", ":"))
+    return "UE_LIVE_RESET_REGISTRATION_V2 " + encoded + "\n"
+
+
+def test_live_reset_registration_v2_accepts_only_finite_failure_observations() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    available = _reset_registration_v2_record()
+    unavailable = _reset_registration_v2_record(
+        project="desktop",
+        step="click",
+        errorCategory="other",
+        snapshot="unavailable",
+        hydrated=False,
+        formPresent=False,
+        submitPresent=False,
+        csrfRequested=False,
+        csrfResponse="not-observed",
+    )
+    output = (
+        _reset_registration_v2_row(available).replace("\n", "\r\n")
+        + _reset_registration_v2_row(unavailable)
+    )
+    assert parser(output) == [available, unavailable]
+    for key, values in {
+        "project": ("desktop", "mobile"),
+        "step": ("arm-response", "click", "await-response"),
+        "errorCategory": (
+            "timeout",
+            "abort",
+            "type-error",
+            "target-closed",
+            "error",
+            "other",
+        ),
+        "csrfResponse": (
+            "not-observed",
+            "success",
+            "http-error",
+            "mixed",
+            "unavailable",
+        ),
+    }.items():
+        for value in values:
+            record = _reset_registration_v2_record(**{key: value})
+            assert parser(_reset_registration_v2_row(record)) == [record]
+
+
+def test_live_reset_registration_v2_rejects_private_fields_and_wrong_types() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    valid = _reset_registration_v2_record()
+    invalid = [
+        {**valid, "url": "https://private.invalid/"},
+        {**valid, "message": "private-message"},
+        {**valid, "body": "private-body"},
+        {**valid, "cookie": "private-cookie"},
+        {**valid, "password": "private-input"},
+        {**valid, "schema": 2},
+    ]
+    enums = {
+        "project": ("desktop", "mobile"),
+        "step": ("arm-response", "click", "await-response"),
+        "errorCategory": (
+            "timeout",
+            "abort",
+            "type-error",
+            "target-closed",
+            "error",
+            "other",
+        ),
+        "snapshot": ("available", "unavailable"),
+        "csrfResponse": (
+            "not-observed",
+            "success",
+            "http-error",
+            "mixed",
+            "unavailable",
+        ),
+    }
+    for key in enums:
+        for value in ("private", "timeout\nprivate", "", True, 0, None, [], {}):
+            invalid.append({**valid, key: value})
+    boolean_keys = set(valid) - set(enums)
+    for key in boolean_keys:
+        for value in (0, 1, "true", "false", None, [], {}):
+            invalid.append({**valid, key: value})
+    for key in valid:
+        invalid.append({name: value for name, value in valid.items() if name != key})
+    output = "".join(_reset_registration_v2_row(record) for record in invalid)
+    assert parser(output) == []
+
+
+def test_live_reset_registration_v2_rejects_inconsistent_observations() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    invalid = [
+        _reset_registration_v2_record(snapshot="unavailable"),
+        _reset_registration_v2_record(formPresent=False),
+        _reset_registration_v2_record(submitPresent=False, submitDisabled=True),
+        _reset_registration_v2_record(submitPresent=False, submitBusy=True),
+        _reset_registration_v2_record(csrfRequested=False),
+        _reset_registration_v2_record(
+            csrfRequested=False, csrfResponse="not-observed", csrfFailed=True
+        ),
+    ]
+    rows = "".join(_reset_registration_v2_row(record) for record in invalid)
+    assert parser(rows) == []
+
+
+def test_live_reset_registration_v2_rejects_duplicate_keys_and_untrusted_framing() -> (
+    None
+):
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    valid = _reset_registration_v2_row(_reset_registration_v2_record())
+    rows = [
+        valid[:-1],
+        "private " + valid,
+        "private\r" + valid,
+        "private\v" + valid,
+        "private\u2028" + valid,
+        "\x1b[31m" + valid,
+        valid.replace("\n", "\r\r\n"),
+        valid.replace('"project":"mobile"', '"project":"mobile","project":"mobile"'),
+        valid.replace('"formInvalid":false', '"formInvalid":NaN'),
+        valid.replace('"formInvalid":false', '"formInvalid":Infinity'),
+        valid.replace(
+            '"snapshot":"available"', '"snapshot":"available","body":"private"'
+        ),
+        valid.rstrip("\n") + " private\n",
+        "UE_LIVE_RESET_REGISTRATION_V2 " + "x" * 1024 + "\n",
+    ]
+    for row in rows:
+        assert parser(row) == []
+
+
+def test_live_reset_registration_v2_deduplicates_and_caps_output() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    records = [
+        _reset_registration_v2_record(errorCategory=category)
+        for category in (
+            "timeout",
+            "abort",
+            "type-error",
+            "target-closed",
+            "error",
+            "other",
+        )
+    ]
+    rows = "".join(_reset_registration_v2_row(record) * 3 for record in records)
+    overflow = _reset_registration_v2_row(
+        _reset_registration_v2_record(project="desktop")
+    )
+    assert parser(rows + overflow) == records
+
+
+@pytest.mark.parametrize("return_code", [0, 1])
+def test_live_reset_registration_v2_runner_uses_failure_stdout_only(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    return_code: int,
+) -> None:
+    command = live_stand._live_e2e_command(mode="smoke")
+    record = _reset_registration_v2_record()
+    valid = _reset_registration_v2_row(record)
+    stderr_only = _reset_registration_v2_row(
+        _reset_registration_v2_record(project="desktop")
+    )
+    private = "private-body https://private.invalid/?token=hidden"
+    completed = subprocess.CompletedProcess(
+        command,
+        return_code,
+        stdout=(valid + valid + private + "\n").encode(),
+        stderr=(stderr_only + private).encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    if return_code:
+        with pytest.raises(live_stand.StandError, match="exit code 1"):
+            live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    else:
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    captured = capsys.readouterr()
+    expected = ["+ " + " ".join(command)]
+    if return_code:
+        expected.append(
+            "live E2E reset-registration-v2 "
+            + json.dumps(record, separators=(",", ":"), sort_keys=True)
+        )
+    outcome = "failed" if return_code else "passed"
+    expected.append(f"live E2E outcome={outcome} exit_code={return_code}")
+    assert captured.out.splitlines() == expected
+    assert captured.err == ""
+    assert private not in captured.out
+    assert completed.stdout == completed.stderr == b""

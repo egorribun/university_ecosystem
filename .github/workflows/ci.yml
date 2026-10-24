@@ -1164,6 +1164,38 @@ jobs:
           echo "AUD148_EXPANDED_SQUAWK_EXIT=$lint_status"
           exit "$lint_status"
 
+      - name: Verify owned PostgreSQL tenant-context acceptance
+        id: tenant-context-evidence
+        if: >-
+          ${{ !cancelled() &&
+              (steps.migration-squawk.outcome == 'success' ||
+               steps.migration-squawk.outcome == 'failure') }}
+        timeout-minutes: 3
+        env:
+          SECRET_KEY: ${{ env.SECRET_KEY }}
+          ENVIRONMENT: testing
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          RUN_INTEGRATION_TESTS: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_root="$(mktemp -d)"
+          trap 'rm -rf -- "$probe_root"' EXIT
+          test_log="$probe_root/pytest.log"
+          pytest_status=0
+          uv run pytest -v --tb=short --no-cov --maxfail=0 \
+            tests/integration/test_aud197_198_notification_outbox_postgres.py::test_content_outbox_restores_tenant_scope \
+            --basetemp="$probe_root/basetemp" > "$test_log" 2>&1 || pytest_status=$?
+          echo "OWNED_TENANT_CONTEXT_TESTS_BEGIN"
+          bytes="$(wc -c < "$test_log")"
+          head -c 131072 "$test_log"
+          if [ "$bytes" -gt 131072 ]; then
+            echo "::error::Owned tenant-context diagnostic output exceeded 131072 bytes"
+            [ "$pytest_status" -ne 0 ] || pytest_status=1
+          fi
+          echo "OWNED_TENANT_CONTEXT_TESTS_END"
+          exit "$pytest_status"
+
       - name: Wait for PostgreSQL
         shell: pwsh
         run: |
@@ -2107,7 +2139,16 @@ jobs:
             tests/test_quality_inventory.py \
             tests/test_migration_148642dd1207_orchestrator.py::test_upgrade_with_unavailable_inspector_exposes_later_unconditional_lookup \
             tests/test_dead_letter_queue.py::test_mark_job_completed \
-            tests/test_owned_client_ip_acceptance.py -v \
+            tests/test_owned_client_ip_acceptance.py \
+            tests/test_migration_148642dd1207_orchestrator.py::test_upgrade_postgresql_legacy_group_cutover_without_existing_group_index \
+            tests/test_live_stand.py::test_live_reset_registration_v2_accepts_only_finite_failure_observations \
+            tests/test_live_stand.py::test_live_reset_registration_v2_rejects_private_fields_and_wrong_types \
+            tests/test_live_stand.py::test_live_reset_registration_v2_rejects_inconsistent_observations \
+            tests/test_live_stand.py::test_live_reset_registration_v2_rejects_duplicate_keys_and_untrusted_framing \
+            tests/test_live_stand.py::test_live_reset_registration_v2_deduplicates_and_caps_output \
+            tests/test_live_stand.py::test_live_reset_registration_v2_runner_uses_failure_stdout_only \
+            tests/test_config_base_closure.py \
+            tests/test_frontend_knip_asset_contract.py -v \
             --tb=short --durations=20 -n 2 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \

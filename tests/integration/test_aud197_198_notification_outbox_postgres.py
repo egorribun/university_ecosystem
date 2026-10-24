@@ -8,7 +8,7 @@ import os
 import re
 import uuid
 from collections.abc import AsyncIterator, Iterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -34,6 +34,8 @@ from sqlalchemy.orm import Session
 from testcontainers.community.postgres import PostgresContainer
 
 import app.core.database as database
+import app.core.db.listeners as tenant_listeners
+import app.core.tenant as tenant_context
 import app.services.event_handlers as event_handlers
 import app.services.notifications.delivery as notifications_delivery
 import app.services.notifications.schedule_reminders as schedule_reminders_module
@@ -48,7 +50,7 @@ from app.core.events import (
     capture_domain_events,
     register_event_listeners,
 )
-from app.models import Group, Schedule
+from app.models import Group, Schedule, User
 from app.models.domain_events import StoredEvent
 from app.models.news import News
 from app.models.notifications import (
@@ -56,6 +58,7 @@ from app.models.notifications import (
     NotificationDelivery,
     PushSubscription,
 )
+from app.models.tenant import Tenant
 from app.repositories.event_repository import EventRepository
 from app.repositories.news_repository import NewsRepository
 from tests.integration.owned_postgres import _LoopbackMigrationPostgres
@@ -997,3 +1000,367 @@ async def test_delivery_outbox_partial_failure_commits_before_recipient_retry(
         assert await worker.process_batch() == 0
     assert provider_calls.count(first_subscription_id) == 1
     assert provider_calls.count(second_subscription_id) == 2
+
+
+@contextmanager
+def _tenant_proof_context(tenant_id: str) -> Iterator[None]:
+    tenant_token = tenant_context.tenant_id_ctx.set(tenant_id)
+    bypass_token = tenant_context.bypass_rls_ctx.set(False)
+    try:
+        yield
+    finally:
+        tenant_context.bypass_rls_ctx.reset(bypass_token)
+        tenant_context.tenant_id_ctx.reset(tenant_token)
+
+
+@pytest_asyncio.fixture
+async def _owned_tenant_worker(postgres_app_database: AsyncEngine):
+    """Grant one new NOLOGIN role access only to this owned child database."""
+    engine = postgres_app_database
+    role_name = f"ue_aud197_role_{uuid.uuid4().hex}"
+    assert re.fullmatch(r"ue_aud197_role_[0-9a-f]{32}", role_name)
+    role_created = False
+    grants_applied = False
+    role_listener_registered = False
+    tenant_listener_owned = False
+    transaction_pids: list[int] = []
+    grants = (
+        ("USAGE", "SCHEMA public"),
+        (
+            "SELECT",
+            "TABLE public.news, public.events, public.users, "
+            "public.user_push_topics, public.notifications, public.stored_events",
+        ),
+        ("INSERT", "TABLE public.notifications, public.stored_events"),
+        ("UPDATE", "TABLE public.stored_events"),
+    )
+
+    class TenantProofSession(Session):
+        pass
+
+    def constrain_role(_session, _transaction, connection):
+        # The identifier is solely the checked random name generated above.
+        connection.exec_driver_sql(f'SET LOCAL ROLE "{role_name}"')
+        current_role, pid = connection.execute(
+            text("SELECT current_user, pg_backend_pid()")
+        ).one()
+        assert current_role == role_name
+        transaction_pids.append(pid)
+
+    try:
+        async with asyncio.timeout(20):
+            async with engine.begin() as connection:
+                database_name = await connection.scalar(
+                    text("SELECT current_database()")
+                )
+                assert database_name == engine.url.database
+                assert re.fullmatch(r"ue_aud197198_[0-9a-f]{32}", database_name)
+                await connection.exec_driver_sql(
+                    f'CREATE ROLE "{role_name}" NOLOGIN NOSUPERUSER NOBYPASSRLS '
+                    "NOCREATEDB NOCREATEROLE NOINHERIT"
+                )
+            # CREATE must commit before this fixture acquires cleanup ownership.
+            role_created = True
+            async with engine.begin() as connection:
+                for privileges, objects in grants:
+                    await connection.exec_driver_sql(
+                        f'GRANT {privileges} ON {objects} TO "{role_name}"'
+                    )
+            grants_applied = True
+
+        tenant_listener_owned = not sqlalchemy_event.contains(
+            Session, "after_begin", tenant_listeners.set_pg_tenant_context
+        )
+        if tenant_listener_owned:
+            tenant_listeners.register_tenant_listeners()
+        sqlalchemy_event.listen(TenantProofSession, "after_begin", constrain_role)
+        role_listener_registered = True
+        sessions = async_sessionmaker(
+            engine,
+            class_=AsyncSession,
+            sync_session_class=TenantProofSession,
+            expire_on_commit=False,
+        )
+        yield SimpleNamespace(
+            role_name=role_name,
+            sessions=sessions,
+            transaction_pids=transaction_pids,
+        )
+    finally:
+        try:
+            if role_listener_registered:
+                sqlalchemy_event.remove(
+                    TenantProofSession, "after_begin", constrain_role
+                )
+            if tenant_listener_owned:
+                sqlalchemy_event.remove(
+                    Session, "after_begin", tenant_listeners.set_pg_tenant_context
+                )
+        finally:
+            if role_created:
+                async with asyncio.timeout(20):
+                    async with engine.begin() as connection:
+                        if grants_applied:
+                            for privileges, objects in reversed(grants):
+                                await connection.exec_driver_sql(
+                                    f'REVOKE {privileges} ON {objects} '
+                                    f'FROM "{role_name}"'
+                                )
+                        # No IF EXISTS, DROP OWNED, CASCADE or pre-existing role.
+                        await connection.exec_driver_sql(f'DROP ROLE "{role_name}"')
+                    async with engine.connect() as connection:
+                        remaining = await connection.scalar(
+                            text("SELECT count(*) FROM pg_roles WHERE rolname = :role"),
+                            {"role": role_name},
+                        )
+                        assert remaining == 0
+
+
+async def _assert_tenant_worker_transaction(
+    session: AsyncSession, role_name: str, tenant_id: str
+) -> int:
+    result = await session.execute(
+        text(
+            "SELECT current_user AS role_name, pg_backend_pid() AS pid, "
+            "rolsuper, rolbypassrls, rolcanlogin, rolcreatedb, rolcreaterole, "
+            "rolinherit, has_schema_privilege(current_user, 'public', 'CREATE') "
+            "AS can_create, "
+            "coalesce(current_setting('app.current_tenant', true), '') "
+            "AS tenant_id, "
+            "coalesce(current_setting('app.bypass_rls', true), '') AS bypass "
+            "FROM pg_roles WHERE rolname = current_user"
+        )
+    )
+    row = result.mappings().one()
+    assert row["role_name"] == role_name
+    assert row["can_create"] is False
+    flags = tuple(
+        row[name]
+        for name in (
+            "rolsuper",
+            "rolbypassrls",
+            "rolcanlogin",
+            "rolcreatedb",
+            "rolcreaterole",
+            "rolinherit",
+        )
+    )
+    assert flags == (False, False, False, False, False, False)
+    assert row["tenant_id"] == tenant_id
+    assert row["bypass"] == ""
+    return row["pid"]
+
+
+@pytest.mark.parametrize(
+    ("kind", "initial_context"),
+    [
+        pytest.param("news", "A", id="news-A"),
+        pytest.param("event", "A", id="event-A"),
+        pytest.param("news", "empty", id="news-empty"),
+        pytest.param("event", "empty", id="event-empty"),
+        pytest.param("news", "B", id="news-B"),
+        pytest.param("event", "B", id="event-B"),
+    ],
+)
+async def test_content_outbox_restores_tenant_scope(
+    db_session,
+    user_factory,
+    _owned_tenant_worker,
+    monkeypatch,
+    kind,
+    initial_context,
+):
+    """A worker must not acknowledge a tenant-hidden source without notifications."""
+    _require_postgres()
+    harness = _owned_tenant_worker
+    tenant_a_id, tenant_b_id = uuid.uuid4(), uuid.uuid4()
+    db_session.add_all(
+        [
+            Tenant(
+                id=tenant_a_id, name="Tenant A", slug=f"aud197-a-{uuid.uuid4().hex}"
+            ),
+            Tenant(
+                id=tenant_b_id, name="Tenant B", slug=f"aud197-b-{uuid.uuid4().hex}"
+            ),
+        ]
+    )
+    await db_session.commit()
+    first_a = await user_factory()
+    second_a = await user_factory()
+    user_b = await user_factory()
+    a_recipients = {first_a.id, second_a.id}
+    await db_session.execute(
+        text("UPDATE public.users SET tenant_id = :tenant_id WHERE id = :user_id"),
+        [
+            {"tenant_id": tenant_a_id, "user_id": first_a.id},
+            {"tenant_id": tenant_a_id, "user_id": second_a.id},
+            {"tenant_id": tenant_b_id, "user_id": user_b.id},
+        ],
+    )
+    await db_session.commit()
+
+    # tenant_id is migrated but unmapped on these ORM models. This deliberately
+    # models existing/imported tenant-owned rows, not API tenant assignment.
+    with _tenant_proof_context(str(tenant_a_id)):
+        if kind == "news":
+            content = await NewsRepository(db_session).create(
+                {
+                    "title": "Tenant-owned news",
+                    "content": "Synthetic tenant proof",
+                    "author_id": first_a.id,
+                },
+                locale="en",
+            )
+            table_name = "news"
+            event_type = "news.created"
+            dedupe_key = f"news.created:{content.id}"
+            handler = event_handlers.handle_news_created_notification
+        else:
+            now = datetime.now(UTC)
+            content = await EventRepository(db_session).create(
+                {
+                    "title": "Tenant-owned event",
+                    "description": "Synthetic tenant proof",
+                    "location": "Room 1",
+                    "event_type": "meeting",
+                    "starts_at": now + timedelta(days=1),
+                    "ends_at": now + timedelta(days=1, hours=1),
+                    "created_by": first_a.id,
+                },
+                locale="en",
+            )
+            table_name = "events"
+            event_type = "event.created"
+            dedupe_key = f"events.created:{content.id}"
+            handler = event_handlers.handle_event_created_notification
+        source_id = content.id
+        await db_session.execute(
+            text(
+                f"UPDATE public.{table_name} SET tenant_id = :tenant_id "
+                "WHERE id = :source_id"
+            ),
+            {"tenant_id": tenant_a_id, "source_id": source_id},
+        )
+        await db_session.commit()
+        stored = await _source_event(db_session, event_type, source_id)
+        stored_id = stored.id
+        await db_session.commit()
+
+    async with database.async_session() as administrator:
+        physical_tenant = await administrator.scalar(
+            text(f"SELECT tenant_id FROM public.{table_name} WHERE id = :source_id"),
+            {"source_id": source_id},
+        )
+        assert physical_tenant == tenant_a_id
+        policies = (
+            await administrator.execute(
+                text(
+                    "SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity, "
+                    "c.relowner <> r.oid AS foreign_owner "
+                    "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "CROSS JOIN pg_roles r "
+                    "WHERE n.nspname = 'public' AND r.rolname = :role "
+                    "AND c.relname IN ('users', 'news', 'events', 'notifications')"
+                ),
+                {"role": harness.role_name},
+            )
+        ).all()
+        assert {row.relname for row in policies} == {
+            "users",
+            "news",
+            "events",
+            "notifications",
+        }
+        assert all(
+            row.relrowsecurity and row.relforcerowsecurity and row.foreign_owner
+            for row in policies
+        )
+
+    source_query = text(f"SELECT id FROM public.{table_name} WHERE id = :source_id")
+    for scope, expected_source, expected_users in (
+        ("", None, set()),
+        (str(tenant_b_id), None, {user_b.id}),
+        (str(tenant_a_id), source_id, a_recipients),
+    ):
+        with _tenant_proof_context(scope):
+            async with asyncio.timeout(10):
+                async with harness.sessions() as reader:
+                    await _assert_tenant_worker_transaction(
+                        reader, harness.role_name, scope
+                    )
+                    visible_source = await reader.scalar(
+                        source_query, {"source_id": source_id}
+                    )
+                    assert visible_source == expected_source
+                    visible_users = set((await reader.scalars(select(User.id))).all())
+                    assert visible_users == expected_users
+
+    monkeypatch.setattr(notifications_delivery, "_is_push_configured", lambda: False)
+    monkeypatch.setattr(
+        webpush_module,
+        "_send_push_async",
+        AsyncMock(side_effect=AssertionError("tenant proof must defer push delivery")),
+    )
+    monkeypatch.setattr(event_handlers, "async_session", harness.sessions)
+    monkeypatch.setattr(outbox_module, "async_session", harness.sessions)
+    bus = EventBus()
+    bus.subscribe("user.created", event_handlers.handle_user_created)
+    bus.subscribe(event_type, handler)
+    monkeypatch.setattr(outbox_module, "event_bus", bus)
+    worker_scope = {"A": str(tenant_a_id), "empty": "", "B": str(tenant_b_id)}[
+        initial_context
+    ]
+    prior_tenant = tenant_context.tenant_id_ctx.get()
+    prior_bypass = tenant_context.bypass_rls_ctx.get()
+    with _tenant_proof_context(worker_scope):
+        harness.transaction_pids.clear()
+        try:
+            async with asyncio.timeout(20):
+                await outbox_module.OutboxWorker(batch_size=100).process_batch()
+        finally:
+            assert tenant_context.tenant_id_ctx.get() == worker_scope
+            assert tenant_context.bypass_rls_ctx.get() is False
+        worker_pids = set(harness.transaction_pids)
+        assert len(worker_pids) >= 2
+        async with asyncio.timeout(10):
+            async with harness.sessions() as next_transaction:
+                reused_pid = await _assert_tenant_worker_transaction(
+                    next_transaction, harness.role_name, worker_scope
+                )
+                assert reused_pid in worker_pids
+    assert tenant_context.tenant_id_ctx.get() == prior_tenant
+    assert tenant_context.bypass_rls_ctx.get() == prior_bypass
+
+    async with database.async_session() as administrator:
+        source = await administrator.get(StoredEvent, stored_id)
+        assert source is not None
+        assert source.error_count == 0
+        assert source.processed_at is not None
+        notifications = list(
+            (
+                await administrator.scalars(
+                    select(Notification).where(Notification.dedupe_key == dedupe_key)
+                )
+            ).all()
+        )
+        assert len(notifications) == 2, (
+            f"{kind}: tenant-owned source was acknowledged without its notifications"
+        )
+        assert {row.user_id for row in notifications} == a_recipients
+        all_recipients = set(
+            (await administrator.scalars(select(Notification.user_id))).all()
+        )
+        assert all_recipients == a_recipients
+        requests = list(
+            (
+                await administrator.scalars(
+                    select(StoredEvent).where(
+                        StoredEvent.event_type == NotificationsRequested.EVENT_TYPE
+                    )
+                )
+            ).all()
+        )
+        assert len(requests) == 1
+        notification_ids = {str(row.id) for row in notifications}
+        assert set(requests[0].payload["notification_ids"]) == notification_ids
+        assert requests[0].processed_at is None

@@ -383,7 +383,6 @@ def _postgresql_groups_id_upgrade(inspector: Any) -> None:
     op.execute(
         "ALTER TABLE groups ADD CONSTRAINT groups_pkey PRIMARY KEY USING INDEX groups_pkey_idx"
     )
-    op.execute("CREATE INDEX IF NOT EXISTS ix_groups_id ON groups (id)")
     op.execute(
         sa.text(
             """

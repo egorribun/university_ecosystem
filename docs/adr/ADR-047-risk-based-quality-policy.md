@@ -760,3 +760,115 @@ inline pragma, baseline addition, reclassification or automatic approval is
 introduced. Baseline319, Gitleaks26, all 78 required context/app pairs, blocking
 CodeQL, hooks and quality floors are unchanged. This policy update accepts no
 additional audit item and establishes neither full CI nor release readiness.
+
+
+## Exact public Alembic revision identifier disposition (2026-10-24)
+
+Under the owner's task-scoped authorization for narrow, justified public-source
+exceptions, append exactly one record to the unchanged 329-record policy
+prefix as record 330, before the two coordinated Git-pin additions below. The finding is
+`Hex High Entropy String` at
+`tests/integration/test_migration_148642dd1207.py:1823`: the public
+groups-sequence successor revision passed directly to `command.upgrade`.
+It is a public Alembic revision identifier, not a Git-blob digest or credential.
+The new exact-only category is `public_alembic_revision_identifier`; it does
+not reclassify any existing record or authorize arbitrary revision-shaped values.
+
+The initial hosted observation is
+[security/types job 120891538662](https://github.com/egorribun/university_ecosystem/actions/runs/40100380000/job/120891538662).
+The same finding recurred on source `e6a97bd3` in
+[security/types job 120896980362](https://github.com/egorribun/university_ecosystem/actions/runs/40102373009/job/120896980362).
+The exact path/type/SHA-1-of-UTF-8 identity is recorded in the policy and
+independently in `tests/fixtures/public-alembic-revision-disposition.json`.
+The original literal remains explicit and unchanged. Source-binding tests
+derive it from the direct upgrade call and require the exact public revision
+definition and `down_revision` relationship; sequence runtime semantics remain
+the responsibility of the PostgreSQL regression tests, not scanner authorization.
+
+The tests-first
+[contract job 120896980434](https://github.com/egorribun/university_ecosystem/actions/runs/40102373009/job/120896980434)
+ran 24 new revision guards on that source: the full policy lane reported
+**7 failed / 469 passed**, with exactly the expected missing record,
+missing category, total-count and four generic-category/scope bypass failures.
+The independent consumer lane passed all 2442 cases. These are pre-fix
+observations, not a claim that the new policy or migration index plan is GREEN.
+
+The validator reserves only this exact identity, its path and fingerprint.
+Changed paths, detector types, digests or categories cannot fall through to
+generic hash categories; changed evidence, owner, review date, pending approval,
+duplicate/extra identities and expiry extensions remain rejected. The record
+retains owner `egorribun`, review date 2026-10-24 and expiry 2027-01-10.
+Historical prefix contracts remain exact and bounded, and all 329 preceding
+records retain their original categories, evidence and expiry dates.
+
+Four separate public compiler-golden findings remain undisposed in this
+332-record coordinated policy below. Their new negative/source-binding tests are intentionally
+tests-first; their fixture is not an approval and does not match scanner
+findings until a separately reviewed policy update. No global hash, SRI,
+path-wide or category-wide allowance is introduced.
+
+Baseline319, Gitleaks26, all 78 required context/app pairs, blocking CodeQL,
+hooks and coverage floors remain unchanged. There is no baseline addition,
+inline pragma, automatic approval, blanket waiver or scanner bypass. This
+record closes no additional audit item, grants no Squawk exception and does
+not establish a passing final-source scan, full CI, deployment or release.
+Fresh hosted evidence is required for the new source.
+
+
+## Exact post-primary-key duplicate-index source rebind (2026-10-24)
+
+The coordinated policy contains exactly 332 records: the complete published
+329-record prefix, the observed Alembic revision record above, and two new
+`public_integrity_digest` identities. They bind `SOURCE_GIT_BLOB` in
+`tests/helpers/migration_148642dd1207_trace.py` and `HISTORICAL_ORCHESTRATOR_BLOB`
+in `tests/test_mfa_webauthn_tombstone.py`. The owner, review date and
+expiry remain `egorribun`, 2026-10-24 and 2027-01-10. This uses the existing
+exact public-Git-blob mechanism; no new matching rule or broad hash allowance
+is introduced.
+
+The production change removes only the redundant upgrade-side
+`CREATE INDEX IF NOT EXISTS ix_groups_id ON groups (id)` immediately after
+attaching the validated unique index as `groups_pkey`. The identical downgrade
+index build is retained. All transaction boundaries, access-exclusive locking,
+preflights, data conversions, enforcing checks, final key and foreign-key
+validations remain byte-for-byte unchanged. The source has 100312 bytes and
+its complete Git blob framing was independently rehashed before the trace
+pin was rebound. The resulting exact SHA-1-of-UTF-8 detector identity is
+recorded in the policy and seventh public-Git-blob fixture record. It is a
+**computed expected finding**, not an observed scanner result for the new pin.
+
+The tests-first
+[PostgreSQL diagnostic job 120901869267](https://github.com/egorribun/university_ecosystem/actions/runs/40103663774/job/120901869267)
+on source `36e84f25` reported exactly **2 failed / 71 passed**. Only the two
+legacy-key cases retained the redundant physical index; both integer-key
+controls, rollback catalog/data checks, helper downgrade/upgrade round trips
+and sequence/UUID successor controls passed. That result authorizes this
+narrow implementation step; it is not post-fix GREEN. The helper round trips
+do not establish a full-revision downgrade guarantee.
+
+The existing legacy-upgrade orchestrator assertion also required the removed
+index. Its narrow update retains the dropped-column assertion, requires the
+primary-key attachment and forbids only the redundant index creation. The
+reviewed test has 18098 bytes; its complete Git blob framing and the new pin's
+detector fingerprint were independently recomputed. The eighth Git-pin fixture
+record binds this source change. Both pin findings remain computed expectations,
+not hosted observations or automatic approvals.
+
+All six earlier Git-pin fixture records and all 329 published policy records
+are unchanged. Existing per-record positive and negative controls apply to
+both new tuples; bounded prefix guards isolate policy records 331 and 332.
+Current-source verification still recomputes each entire referred Git blob and
+the literal's detector fingerprint. The retirement guard adds only the fourth
+exact own-path bookkeeping identity. Only its matching `identity.path` is
+normalized; evidence, categories, other fields and active retired-factor
+references remain scanned. The previous three identities and all negative
+controls remain, with the same controls applied to the fourth identity.
+
+The four compiler-golden identities remain tests-first only, targeting a
+future 336-record policy after their own observed RED and review. Their fixture
+does not approve scanner findings. Baseline319, Gitleaks26, all 78 required
+context/app pairs, blocking CodeQL, hooks, expiry caps and coverage floors are
+unchanged. The modified migration still requires Tier 0 coverage and fresh
+hosted PostgreSQL, trace, rollback and scanner evidence. Remaining Squawk
+findings remain blocking; no downtime guarantee, blanket waiver, production
+deployment, additional audit closure or full-CI success is claimed.

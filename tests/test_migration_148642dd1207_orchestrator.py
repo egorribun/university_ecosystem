@@ -385,7 +385,8 @@ def test_upgrade_postgresql_legacy_group_cutover_without_existing_group_index(
 
     sql = _executed_sql(ops)
     assert "DROP COLUMN ID" in sql
-    assert "CREATE INDEX IF NOT EXISTS IX_GROUPS_ID" in sql
+    assert "PRIMARY KEY USING INDEX GROUPS_PKEY_IDX" in sql
+    assert "CREATE INDEX IF NOT EXISTS IX_GROUPS_ID" not in sql
 
 
 def test_upgrade_non_postgresql_preserves_existing_group_columns(

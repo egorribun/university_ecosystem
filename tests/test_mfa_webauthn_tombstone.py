@@ -20,7 +20,7 @@ ALLOWED_RETIREMENT_CONTRACTS = {
 # Historical migration fixture only, not an active factor or a file exclusion.
 # Re-review this exact Git blob binding after ANY orchestrator source change.
 HISTORICAL_ORCHESTRATOR_TEST = Path("tests/test_migration_148642dd1207_orchestrator.py")
-HISTORICAL_ORCHESTRATOR_BLOB = "069deb3c6984e1e9992b01f6ce4313ea3cc49a57"
+HISTORICAL_ORCHESTRATOR_BLOB = "91b50f0f764540206c9c5838f7b38ab0038b6773"
 # This map contains file-level pytest telemetry, not active product/security
 # declarations. Its keys intentionally include immutable tombstone test
 # filenames so the scheduler can retain their measured cost without making
@@ -142,6 +142,32 @@ def _active_scanner_policy_content(policy: dict[str, object]) -> str:
                             76,
                             152,
                             145,
+                        ],
+                    },
+                    {
+                        "path": "tests/test_mfa_webauthn_tombstone.py",
+                        "type": "Hex High Entropy String",
+                        "hashed_secret_bytes": [
+                            8,
+                            134,
+                            59,
+                            8,
+                            97,
+                            25,
+                            239,
+                            115,
+                            186,
+                            55,
+                            39,
+                            151,
+                            107,
+                            170,
+                            223,
+                            60,
+                            12,
+                            240,
+                            148,
+                            10,
                         ],
                     },
                 )
@@ -397,7 +423,7 @@ def test_source_bound_history_does_not_exempt_a_new_symlink_alias(
         test_backend_tests_have_no_retired_factor_references()
 
 
-@pytest.fixture(params=(0, 1, 2))
+@pytest.fixture(params=(0, 1, 2, 3))
 def public_git_blob_disposition_record(
     request: pytest.FixtureRequest,
 ) -> dict[str, object]:
@@ -405,7 +431,7 @@ def public_git_blob_disposition_record(
     records = json.loads(fixture.read_text(encoding="utf-8"))["records"]
     own_path = Path(__file__).resolve().relative_to(ROOT).as_posix()
     matches = [row for row in records if row["identity"]["path"] == own_path]
-    assert len(matches) == 3
+    assert len(matches) == 4
     return copy.deepcopy(matches[request.param])
 
 

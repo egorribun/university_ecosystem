@@ -9334,6 +9334,108 @@
       "reviewed_on": "2026-10-24",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/integration/test_migration_148642dd1207.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          174,
+          174,
+          131,
+          77,
+          96,
+          48,
+          11,
+          115,
+          251,
+          85,
+          202,
+          160,
+          255,
+          71,
+          89,
+          188,
+          236,
+          209,
+          111,
+          134
+        ]
+      },
+      "category": "public_alembic_revision_identifier",
+      "evidence": "Public Alembic revision identifier for the groups sequence successor; command.upgrade target in tests/integration/test_migration_148642dd1207.py::test_groups_successors_do_not_require_the_duplicate_id_index; exact public revision definition and down_revision identify the immediate successor of the audited groups cutover; not credential material. Observed by detect-secrets in hosted job 120891538662.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/helpers/migration_148642dd1207_trace.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          61,
+          18,
+          225,
+          35,
+          20,
+          181,
+          232,
+          224,
+          158,
+          7,
+          236,
+          140,
+          119,
+          214,
+          26,
+          47,
+          69,
+          105,
+          11,
+          255
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git SHA-1 integrity digest of alembic/versions/148642dd1207_fix_missing_tables.py; source-bound five-site migration diagnostic assignment SOURCE_GIT_BLOB; Git blob framing binds all source bytes; not credential material. Reviewed removal of only the redundant post-primary-key groups(id) index build after hosted two-case PostgreSQL RED; detector identity computed from the public Git pin, awaiting hosted scan confirmation.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_mfa_webauthn_tombstone.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          8,
+          134,
+          59,
+          8,
+          97,
+          25,
+          239,
+          115,
+          186,
+          55,
+          39,
+          151,
+          107,
+          170,
+          223,
+          60,
+          12,
+          240,
+          148,
+          10
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git SHA-1 integrity digest of tests/test_migration_148642dd1207_orchestrator.py; source-bound historical migration reference guard assignment HISTORICAL_ORCHESTRATOR_BLOB; Git blob framing binds all source bytes; not credential material. Reviewed legacy-upgrade assertion requires the primary-key attachment and forbids the redundant duplicate index after hosted PostgreSQL RED; detector identity computed from the public Git pin, awaiting hosted scan confirmation.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

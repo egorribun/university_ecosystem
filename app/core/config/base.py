@@ -46,8 +46,8 @@ def _resolve_env_file(base_dir: Path) -> Path | None:
                         _logger.warning(
                             "%s is identical to %s; update it with real secrets "
                             "before deploying.",
-                            candidate,
-                            example_path,
+                            str(candidate),
+                            str(example_path),
                         )
             return candidate
         return None
@@ -66,8 +66,8 @@ def _resolve_env_file(base_dir: Path) -> Path | None:
                     _logger.warning(
                         "%s is identical to %s; update it with real secrets "
                         "before deploying.",
-                        candidate,
-                        example_path,
+                        str(candidate),
+                        str(example_path),
                     )
         return candidate
     return None
