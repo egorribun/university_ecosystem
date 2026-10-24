@@ -2085,7 +2085,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 318
+    assert len(policy["records"]) == 321
     records = [
         record
         for record in policy["records"]
@@ -3081,7 +3081,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         )
     )
     records = policy["records"]
-    assert len(records) == 318
+    assert len(records) == 321
     prefix = records[:315]
     encoded_prefix = json.dumps(
         prefix, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -3226,3 +3226,430 @@ def test_public_integrity_digest_candidate_is_one_exact_source_identity() -> Non
                 _disposition_document(changed),
                 today=verifier.date(2026, 10, 23),
             )
+
+
+_OCT24_APPROVED_PUBLIC_DIGEST_RECORDS = [
+    {
+        "identity": {
+            "path": "tests/integration/test_aud350_stored_event_timestamp_migration.py",
+            "type": "Hex High Entropy String",
+            "hashed_secret_bytes": [
+                75,
+                241,
+                247,
+                240,
+                201,
+                124,
+                150,
+                116,
+                118,
+                155,
+                103,
+                137,
+                228,
+                223,
+                153,
+                93,
+                208,
+                224,
+                145,
+                58,
+            ],
+        },
+        "category": "public_integrity_digest",
+        "evidence": (
+            "Public SHA-256 integrity digest of the frozen AUD-350 migration "
+            "fixture; independent source-contract guard in "
+            "tests/integration/test_aud350_stored_event_timestamp_migration.py; "
+            "not credential material."
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-10-24",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    },
+    {
+        "identity": {
+            "path": "tests/test_verify_secrets_baseline.py",
+            "type": "Hex High Entropy String",
+            "hashed_secret_bytes": [
+                200,
+                36,
+                105,
+                58,
+                159,
+                122,
+                4,
+                140,
+                251,
+                170,
+                213,
+                164,
+                38,
+                210,
+                200,
+                58,
+                142,
+                211,
+                129,
+                137,
+            ],
+        },
+        "category": "independent_contract_fingerprint",
+        "evidence": (
+            "Public detect-secrets SHA-1 identity of the first historical "
+            "AUD-495 cache-key canary; independent source-contract guard in "
+            "tests/test_verify_secrets_baseline.py; original canary record "
+            "retains its aud495_cache_key_redaction_test_fixture category; not "
+            "credential material."
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-10-24",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    },
+    {
+        "identity": {
+            "path": "tests/test_verify_secrets_baseline.py",
+            "type": "Hex High Entropy String",
+            "hashed_secret_bytes": [
+                73,
+                167,
+                128,
+                111,
+                78,
+                205,
+                84,
+                128,
+                139,
+                99,
+                249,
+                165,
+                3,
+                236,
+                79,
+                56,
+                147,
+                246,
+                140,
+                151,
+            ],
+        },
+        "category": "independent_contract_fingerprint",
+        "evidence": (
+            "Public detect-secrets SHA-1 identity of the second historical "
+            "AUD-495 cache-key canary; independent source-contract guard in "
+            "tests/test_verify_secrets_baseline.py; original canary record "
+            "retains its aud495_cache_key_redaction_test_fixture category; not "
+            "credential material."
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-10-24",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    },
+]
+
+_OCT24_ORIGINAL_SUFFIX = [
+    {
+        "identity": {
+            "path": "tests/test_cache_object_keys_aud495.py",
+            "type": "Secret Keyword",
+            "hashed_secret_bytes": [
+                158,
+                96,
+                27,
+                174,
+                156,
+                212,
+                227,
+                7,
+                93,
+                85,
+                133,
+                139,
+                237,
+                131,
+                255,
+                78,
+                75,
+                253,
+                255,
+                16,
+            ],
+        },
+        "category": "aud495_cache_key_redaction_test_fixture",
+        "evidence": (
+            "AUD-495 cache-key log-redaction test fixture; synthetic canary "
+            "used only by mocked backend tests; tests assert logger output "
+            "omits the canary; not credential material"
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-10-23",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    },
+    {
+        "identity": {
+            "path": "tests/test_cache_object_keys_aud495.py",
+            "type": "Secret Keyword",
+            "hashed_secret_bytes": [
+                206,
+                224,
+                34,
+                26,
+                248,
+                78,
+                22,
+                250,
+                97,
+                128,
+                240,
+                96,
+                14,
+                161,
+                75,
+                225,
+                205,
+                151,
+                196,
+                143,
+            ],
+        },
+        "category": "aud495_cache_key_redaction_test_fixture",
+        "evidence": (
+            "AUD-495 cache-key log-redaction test fixture; synthetic canary "
+            "used only by mocked backend tests; tests assert logger output "
+            "omits the canary; not credential material"
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-10-23",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    },
+    {
+        "identity": {
+            "path": "tests/test_verify_secrets_baseline.py",
+            "type": "Hex High Entropy String",
+            "hashed_secret_bytes": [
+                121,
+                18,
+                205,
+                213,
+                192,
+                120,
+                136,
+                208,
+                61,
+                126,
+                251,
+                249,
+                119,
+                59,
+                133,
+                113,
+                22,
+                198,
+                10,
+                132,
+            ],
+        },
+        "category": "public_integrity_digest",
+        "evidence": (
+            "Public SHA-256 integrity digest of immutable 315-record "
+            "disposition prefix; source-contract test guard in "
+            "tests/test_verify_secrets_baseline.py; not credential material."
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-10-24",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    },
+]
+
+
+def test_oct24_public_digest_policy_preserves_all_318_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    records = policy["records"]
+    encoded_prefix = json.dumps(
+        records[:315], sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(encoded_prefix).hexdigest() == (
+        _AUD495_IMMUTABLE_315_PREFIX_SHA256
+    )
+    assert records[315:318] == _OCT24_ORIGINAL_SUFFIX
+    assert len(records) == 321
+    assert records[318:] == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS
+
+
+def test_oct24_public_digest_identities_are_bound_to_unchanged_source() -> None:
+    root = Path(__file__).resolve().parents[1]
+    migration_path = _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS[0]["identity"]["path"]
+    migration_source = ast.parse((root / migration_path).read_text(encoding="utf-8"))
+    checksum_nodes = [
+        node
+        for node in migration_source.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name)
+            and target.id == "BASELINE_MIGRATION_SHA256"
+            for target in node.targets
+        )
+    ]
+    assert len(checksum_nodes) == 1
+    checksum = ast.literal_eval(checksum_nodes[0].value)
+    assert isinstance(checksum, str)
+    frozen_fixture = (
+        root
+        / "tests/fixtures/migrations/aud350"
+        / "202603280001_reconcile_post_uuid_migration_drift_baseline.py.txt"
+    )
+    assert hashlib.sha256(frozen_fixture.read_bytes()).hexdigest() == checksum
+    assert list(
+        hashlib.sha1(checksum.encode("ascii"), usedforsecurity=False).digest()
+    ) == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS[0]["identity"]["hashed_secret_bytes"]
+
+    source = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    historical_nodes = [
+        node
+        for node in source.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name)
+            and target.id == "_AUD495_CACHE_KEY_HISTORICAL_IDENTITIES"
+            for target in node.targets
+        )
+    ]
+    assert len(historical_nodes) == 1
+    fingerprints = [
+        node.args[0].value
+        for node in ast.walk(historical_nodes[0].value)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "bytes"
+        and node.func.attr == "fromhex"
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+    ]
+    assert len(fingerprints) == 2
+    assert {tuple(bytes.fromhex(value)) for value in fingerprints} == {
+        tuple(row["identity"]["hashed_secret_bytes"])
+        for row in _OCT24_ORIGINAL_SUFFIX[:2]
+    }
+    assert {
+        tuple(hashlib.sha1(value.encode("ascii"), usedforsecurity=False).digest())
+        for value in fingerprints
+    } == {
+        tuple(row["identity"]["hashed_secret_bytes"])
+        for row in _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS[1:]
+    }
+
+
+@pytest.mark.parametrize("record", _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS)
+def test_oct24_public_digest_validator_accepts_only_reviewed_identity(
+    record: dict[str, Any],
+) -> None:
+    identity = record["identity"]
+    expected = verifier.FindingIdentity(
+        identity["path"],
+        identity["type"],
+        bytes(identity["hashed_secret_bytes"]).hex(),
+        1,
+    )
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(copy.deepcopy(record)),
+        today=verifier.date(2026, 10, 24),
+    ) == {expected}
+
+
+@pytest.mark.parametrize("record", _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS)
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "detector",
+        "digest",
+        "category",
+        "owner",
+        "review_date",
+        "evidence",
+        "pending",
+        "expiry_extension",
+    ],
+)
+def test_oct24_public_digest_validator_rejects_scope_or_approval_change(
+    record: dict[str, Any],
+    mutation: str,
+) -> None:
+    changed = copy.deepcopy(record)
+    if mutation == "path":
+        changed["identity"]["path"] = "tests/unapproved_public_digest.py"
+    elif mutation == "detector":
+        changed["identity"]["type"] = "Secret Keyword"
+    elif mutation == "digest":
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "category":
+        changed["category"] = "documented_crypto_test_vector"
+    elif mutation == "owner":
+        changed["owner"] = "Different Reviewer"
+    elif mutation == "review_date":
+        changed["reviewed_on"] = "2026-10-23"
+    elif mutation == "evidence":
+        changed["evidence"] = "public value; not credential material"
+    elif mutation == "pending":
+        changed["approval_status"] = "pending_owner_review"
+    else:
+        assert mutation == "expiry_extension"
+        changed["expires_on"] = "2027-01-11"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+        )
+
+
+@pytest.mark.parametrize("record", _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS)
+def test_oct24_public_digest_validator_rejects_expired_disposition(
+    record: dict[str, Any],
+) -> None:
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record)),
+            today=verifier.date(2027, 1, 11),
+        )
+
+
+@pytest.mark.parametrize(
+    "category",
+    ["public_integrity_digest", "independent_contract_fingerprint"],
+)
+def test_oct24_public_digest_reserved_test_path_still_rejects_unlisted_values(
+    category: str,
+) -> None:
+    changed = copy.deepcopy(_OCT24_APPROVED_PUBLIC_DIGEST_RECORDS[1])
+    changed["category"] = category
+    changed["identity"]["hashed_secret_bytes"] = list(range(20))
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+        )
+
+
+@pytest.mark.parametrize("record", _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS[1:])
+def test_oct24_public_fingerprint_cannot_move_to_legacy_allowed_path(
+    record: dict[str, Any],
+) -> None:
+    changed = copy.deepcopy(record)
+    changed["identity"]["path"] = (
+        "tests/fixtures/full-backend-reusable-baseline.v3.yaml"
+    )
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+        )

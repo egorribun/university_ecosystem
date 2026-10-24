@@ -8960,6 +8960,108 @@
       "reviewed_on": "2026-10-24",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/integration/test_aud350_stored_event_timestamp_migration.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          75,
+          241,
+          247,
+          240,
+          201,
+          124,
+          150,
+          116,
+          118,
+          155,
+          103,
+          137,
+          228,
+          223,
+          153,
+          93,
+          208,
+          224,
+          145,
+          58
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public SHA-256 integrity digest of the frozen AUD-350 migration fixture; independent source-contract guard in tests/integration/test_aud350_stored_event_timestamp_migration.py; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_verify_secrets_baseline.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          200,
+          36,
+          105,
+          58,
+          159,
+          122,
+          4,
+          140,
+          251,
+          170,
+          213,
+          164,
+          38,
+          210,
+          200,
+          58,
+          142,
+          211,
+          129,
+          137
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Public detect-secrets SHA-1 identity of the first historical AUD-495 cache-key canary; independent source-contract guard in tests/test_verify_secrets_baseline.py; original canary record retains its aud495_cache_key_redaction_test_fixture category; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_verify_secrets_baseline.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          73,
+          167,
+          128,
+          111,
+          78,
+          205,
+          84,
+          128,
+          139,
+          99,
+          249,
+          165,
+          3,
+          236,
+          79,
+          56,
+          147,
+          246,
+          140,
+          151
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Public detect-secrets SHA-1 identity of the second historical AUD-495 cache-key canary; independent source-contract guard in tests/test_verify_secrets_baseline.py; original canary record retains its aud495_cache_key_redaction_test_fixture category; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

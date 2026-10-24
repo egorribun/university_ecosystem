@@ -1280,6 +1280,127 @@ _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_EVIDENCE_MARKERS = {
     ),
 }
 
+_AUD350_PUBLIC_MIGRATION_DIGEST_IDENTITY = (
+    "tests/integration/test_aud350_stored_event_timestamp_migration.py",
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        75,
+        241,
+        247,
+        240,
+        201,
+        124,
+        150,
+        116,
+        118,
+        155,
+        103,
+        137,
+        228,
+        223,
+        153,
+        93,
+        208,
+        224,
+        145,
+        58,
+    ),
+)
+_AUD495_PUBLIC_FIRST_FINGERPRINT_IDENTITY = (
+    "tests/test_verify_secrets_baseline.py",
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        200,
+        36,
+        105,
+        58,
+        159,
+        122,
+        4,
+        140,
+        251,
+        170,
+        213,
+        164,
+        38,
+        210,
+        200,
+        58,
+        142,
+        211,
+        129,
+        137,
+    ),
+)
+_AUD495_PUBLIC_SECOND_FINGERPRINT_IDENTITY = (
+    "tests/test_verify_secrets_baseline.py",
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        73,
+        167,
+        128,
+        111,
+        78,
+        205,
+        84,
+        128,
+        139,
+        99,
+        249,
+        165,
+        3,
+        236,
+        79,
+        56,
+        147,
+        246,
+        140,
+        151,
+    ),
+)
+_AUD495_PUBLIC_HISTORICAL_FINGERPRINT_IDENTITIES = frozenset(
+    {
+        _AUD495_PUBLIC_FIRST_FINGERPRINT_IDENTITY,
+        _AUD495_PUBLIC_SECOND_FINGERPRINT_IDENTITY,
+    }
+)
+_OCT24_PUBLIC_DIGEST_CATEGORY_BY_IDENTITY = {
+    _AUD350_PUBLIC_MIGRATION_DIGEST_IDENTITY: "public_integrity_digest",
+    _AUD495_PUBLIC_FIRST_FINGERPRINT_IDENTITY: "independent_contract_fingerprint",
+    _AUD495_PUBLIC_SECOND_FINGERPRINT_IDENTITY: "independent_contract_fingerprint",
+}
+_OCT24_PUBLIC_DIGEST_BYTES = frozenset(
+    identity[2] for identity in _OCT24_PUBLIC_DIGEST_CATEGORY_BY_IDENTITY
+)
+_OCT24_PUBLIC_DIGEST_RESERVED_PATH_TYPES = frozenset(
+    (identity[0], identity[1])
+    for identity in _OCT24_PUBLIC_DIGEST_CATEGORY_BY_IDENTITY
+)
+_OCT24_PUBLIC_DIGEST_EVIDENCE_MARKERS = {
+    _AUD350_PUBLIC_MIGRATION_DIGEST_IDENTITY: (
+        "Public SHA-256 integrity digest of the frozen AUD-350 migration fixture",
+        "independent source-contract guard in "
+        "tests/integration/test_aud350_stored_event_timestamp_migration.py",
+        "not credential material",
+    ),
+    _AUD495_PUBLIC_FIRST_FINGERPRINT_IDENTITY: (
+        "Public detect-secrets SHA-1 identity of the first historical "
+        "AUD-495 cache-key canary",
+        "independent source-contract guard in tests/test_verify_secrets_baseline.py",
+        "original canary record retains its "
+        "aud495_cache_key_redaction_test_fixture category",
+        "not credential material",
+    ),
+    _AUD495_PUBLIC_SECOND_FINGERPRINT_IDENTITY: (
+        "Public detect-secrets SHA-1 identity of the second historical "
+        "AUD-495 cache-key canary",
+        "independent source-contract guard in tests/test_verify_secrets_baseline.py",
+        "original canary record retains its "
+        "aud495_cache_key_redaction_test_fixture category",
+        "not credential material",
+    ),
+}
+
 _TRIVY_KYVERNO_EXACT_EVIDENCE_MARKERS = {
     (
         "scripts/quality/validate_trivy_kyverno_fixture.py",
@@ -1883,10 +2004,27 @@ def validate_false_positive_dispositions(
                 f"{artifact}: AUD-495 cache-key fixture identity changed scope"
             )
 
+        oct24_category = _OCT24_PUBLIC_DIGEST_CATEGORY_BY_IDENTITY.get(
+            exact_source_identity
+        )
+        if (
+            tuple(raw_digest_bytes) in _OCT24_PUBLIC_DIGEST_BYTES
+            or (path, finding_type) in _OCT24_PUBLIC_DIGEST_RESERVED_PATH_TYPES
+        ) and (
+            exact_source_identity
+            not in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES
+        ):
+            if oct24_category is None or category != oct24_category:
+                raise BaselineArtifactError(
+                    f"{artifact}: October 24 public digest identity changed scope"
+                )
+
         if (
             (
                 path == _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_PATH
                 and finding_type == _FALSE_POSITIVE_ALLOWED_TYPE
+                and exact_source_identity
+                not in _AUD495_PUBLIC_HISTORICAL_FINGERPRINT_IDENTITIES
             )
             or tuple(raw_digest_bytes) in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_DIGESTS
         ) and (
@@ -1958,7 +2096,10 @@ def validate_false_positive_dispositions(
                     tuple(raw_digest_bytes),
                 ) in _V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES
                 category_matches = category_matches and (
-                    path == _INDEPENDENT_CONTRACT_FINGERPRINT_PATH or exact_v4_identity
+                    path == _INDEPENDENT_CONTRACT_FINGERPRINT_PATH
+                    or exact_v4_identity
+                    or exact_source_identity
+                    in _AUD495_PUBLIC_HISTORICAL_FINGERPRINT_IDENTITIES
                 )
         elif category in _FALSE_POSITIVE_EXACT_IDENTITY_CATEGORIES:
             exact_identities = _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES.get(
@@ -1994,6 +2135,9 @@ def validate_false_positive_dispositions(
             exact_source_identity, ()
         )
         required_evidence += _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_EVIDENCE_MARKERS.get(
+            exact_source_identity, ()
+        )
+        required_evidence += _OCT24_PUBLIC_DIGEST_EVIDENCE_MARKERS.get(
             exact_source_identity, ()
         )
         if any(
@@ -2036,6 +2180,15 @@ def validate_false_positive_dispositions(
             or expires_on - reviewed_on > timedelta(days=90)
         ):
             raise BaselineArtifactError(f"{artifact}: date range is invalid")
+
+        if oct24_category is not None and (
+            owner != "egorribun"
+            or raw_reviewed != "2026-10-24"
+            or expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: October 24 public digest approval metadata changed"
+            )
 
         if category == "public_compose_inspection_test_sentinel" and expires_on > date(
             2027, 1, 10

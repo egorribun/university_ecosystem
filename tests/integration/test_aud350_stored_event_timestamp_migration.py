@@ -1,7 +1,8 @@
 """PostgreSQL counterfactual for AUD-350's naive-UTC timestamp conversion.
 
 This compares the exact frozen migration from HEAD with the one-line candidate,
-using the existing disposable PostgreSQL CI service supplied through DATABASE_URL.
+using the existing disposable PostgreSQL CI service supplied through
+AUD350_POSTGRES_DATABASE_URL.
 Each Alembic upgrade is invoked once in a separate schema. The target-only
 Operations adapter intentionally scopes this regression to stored_events.created_at;
 it does not exercise the whole revision or the full migration graph.
@@ -154,28 +155,30 @@ def _synchronous_postgres_url(database_url: str):
     try:
         url = make_url(database_url)
     except ArgumentError as exc:
-        raise ValueError("DATABASE_URL is not a valid SQLAlchemy URL") from exc
+        raise ValueError(
+            "AUD350_POSTGRES_DATABASE_URL is not a valid SQLAlchemy URL"
+        ) from exc
     if url.drivername == "postgresql+asyncpg":
         return url.set(drivername="postgresql+psycopg")
     if url.drivername == "postgresql+psycopg":
         return url
-    raise ValueError("DATABASE_URL must use a PostgreSQL asyncpg or psycopg driver")
+    raise ValueError(
+        "AUD350_POSTGRES_DATABASE_URL must use a PostgreSQL asyncpg or psycopg driver"
+    )
 
 
 @pytest.fixture(scope="module")
 def postgres_engine() -> sa.Engine:
-    database_url = os.environ.get("DATABASE_URL", "")
+    database_url = os.environ.get("AUD350_POSTGRES_DATABASE_URL", "")
     try:
         sync_url = _synchronous_postgres_url(database_url)
     except ValueError as exc:
-        pytest.fail(f"AUD-350 integration requires a PostgreSQL DATABASE_URL: {exc}")
+        pytest.fail(f"AUD-350 integration requires AUD350_POSTGRES_DATABASE_URL: {exc}")
     engine = sa.create_engine(sync_url, pool_pre_ping=True)
     try:
         with engine.connect() as connection:
             if connection.dialect.name != "postgresql":
-                pytest.fail(
-                    "AUD-350 integration DATABASE_URL must connect to PostgreSQL"
-                )
+                pytest.fail("AUD350_POSTGRES_DATABASE_URL must connect to PostgreSQL")
             connection.execute(sa.text("SELECT 1"))
         yield engine
     finally:

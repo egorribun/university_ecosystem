@@ -270,3 +270,54 @@ is authorized.
 For PR [#1343](https://github.com/egorribun/university_ecosystem/pull/1343), the owner approved a package-specific artifact cutoff of `2026-10-22T14:00:13Z` for `brotli` `1.2.1`, addressing `PYSEC-2026-4322` / `CVE-2026-111497`. The temporary constraint is `brotli==1.2.1`; retain the durable floor `brotli>=1.2.1,<2`. The artifact cutoff and temporary exact constraint expire at `2026-10-29T14:00:13Z`; review and remove the temporary cutoff and pin at that time while retaining the patched floor. See [Brotli 1.2.1 on PyPI](https://pypi.org/project/brotli/1.2.1/).
 
 This approval is limited to the named package and cutoff. The routine seven-day policy for other releases remains unchanged. It does not authorize a global `exclude-newer` change, advisory suppression, scanner disposition, baseline edit, hook or required-context change, or workflow identity. This record does not claim lock generation, installation, vulnerability audit, final-source validation, hosted checks, or release success; the ordinary dependency and security gates remain required. See the [current policy checkpoint](superpowers/plans/STATUS.md#owner-approved-scanner-and-brotli-boundaries-2026-10-23).
+
+## Owner-approved body-parser exception, 2026-10-24
+
+The owner explicitly approved a package-specific seven-day cooldown exception
+for only `body-parser 1.20.9` in the ongoing normal PR
+[#1343](https://github.com/egorribun/university_ecosystem/pull/1343), addressing
+GHSA-27r3-jxmh-p828 / CVE-2026-111181. The owner is the approving security
+reviewer. The [upstream release](https://github.com/expressjs/body-parser/releases/tag/1.20.9)
+was published on GitHub at 2026-10-22 11:33:51 UTC; this is not the npm artifact
+publication timestamp. The npm timestamp and artifact integrity remain to be
+verified by the bounded hosted generator before integration.
+
+The approved dependency change is limited to the existing development-tooling
+transitive record in `frontend/package-lock.json`: version, resolved URL and
+integrity for `node_modules/body-parser`, from 1.20.8 to exactly 1.20.9.
+Its parent Express range already accepts this patch. No direct application
+dependency is introduced. No other package receives a cooldown exception.
+
+The temporary generator stays inside the existing Node.js Dependency Audit
+job and resolves only in a bounded scratch mirror. The mirror contains the
+original frontend manifest, lock and npm configuration plus the two tracked
+local file-dependency directories; symlinks and extra local dependencies are
+rejected. The checked-in source is never modified, including on cancellation. It verifies official npm metadata, exact package/version identities,
+canonical registry archive URLs, publication times and archive SHA-512/SHA-1
+digests. It uses the declared npm 11.17.0 from a verified isolated temporary
+archive; that tooling must itself satisfy the ordinary seven-day maturity
+window. Install-time lifecycle scripts are disabled throughout.
+
+Only the temporary resolver manifest pins body-parser to 1.20.9. Resolution
+keeps `--min-release-age=7` and uses only
+`--min-release-age-exclude=body-parser`; it never disables the global cooldown.
+A whole-lock comparison permits only the three named artifact fields. The
+bounded candidate diff and sanitized provenance are printed only after the
+original manifest, lockfile and npm configuration are verified byte-identical
+and repository cleanliness is confirmed. Distinct empty npm user/global
+configuration files and a token-free child environment isolate registry access.
+A six-minute cumulative operation deadline leaves cleanup reserve inside the
+eight-minute step timeout. Nothing in the generator rewrites the
+checked-in lock by hand or changes the ordinary npm audit command.
+
+This exception expires seven days after the npm publication time established
+by that verification. Record the precise timestamp and generation provenance
+when integrating the reviewed npm-generated diff, and remove the temporary
+generator in that follow-up. The existing npm configuration remains unchanged.
+At this preparation checkpoint, generation, installation, compatibility and
+final-source vulnerability checks are not yet established.
+
+This approval does not cover Zod, Puppeteer, any advisory allowance, scanner
+disposition, baseline, hook, required context, merge or deployment. Normal
+lock consistency, tests, vulnerability gates and all required hosted checks
+remain mandatory on the final source.

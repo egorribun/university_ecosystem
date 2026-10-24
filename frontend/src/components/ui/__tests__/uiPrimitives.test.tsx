@@ -274,10 +274,20 @@ describe("Switch", () => {
     fireEvent.focus(baselineInput)
     fireEvent.mouseEnter(baselineInput.parentElement!)
     const interactiveDigest = digest(baseline.container.innerHTML)
+    const focusRing = baselineInput.parentElement?.firstElementChild
+    expect(focusRing).toHaveClass("ring-brand/[calc(var(--opacity-dim)*100%)]")
+    expect(focusRing).not.toHaveClass("ring-brand/(--opacity-dim)")
     baseline.unmount()
 
     const checked = renderMotion(<Switch checked aria-label="checked" />)
     const checkedDigest = digest(checked.container.innerHTML)
+    const checkedTrack = checked.container.firstElementChild?.children.item(1)
+    expect(checkedTrack).toHaveClass(
+      "bg-brand/[calc(var(--opacity-dim)*100%)]",
+      "border-brand/[calc(var(--opacity-soft)*100%)]"
+    )
+    expect(checkedTrack).not.toHaveClass("bg-brand/(--opacity-dim)")
+    expect(checkedTrack).not.toHaveClass("border-brand/(--opacity-soft)")
     checked.unmount()
 
     const disabled = renderMotion(<Switch checked={false} disabled aria-label="disabled" />)
@@ -289,10 +299,10 @@ describe("Switch", () => {
         "2d28_6809_f643_90dc_ff83_d296_922c_511a_ab9b_0771_9f2a_a10b_65ce_2aaf_1276_88c5"
       ),
       interactiveDigest: expectedDigest(
-        "6999_d5e3_1760_cf23_857f_17a3_b2bb_3c69_fb04_e139_9eea_f995_724b_fee8_07fd_75cf"
+        "8df3_70d0_6524_5a41_4b71_a14a_c75c_f840_81ee_9639_a1f2_f431_2be2_d69e_871d_b338"
       ),
       checkedDigest: expectedDigest(
-        "0715_8c6c_9057_63e3_ac6e_7361_878c_eab4_53a2_3d48_bb6a_858c_62bb_91c3_1922_8608"
+        "85e1_649f_87ad_ed6f_18c2_d0e5_d90e_a5b1_ad34_25d8_bc5f_d707_d8e8_6f2f_beb1_d17d"
       ),
       disabledDigest: expectedDigest(
         "5c06_7440_2f1a_9fad_198f_9be1_fe68_91fe_ec1e_268f_40a7_37d2_b670_265b_554d_95f6"

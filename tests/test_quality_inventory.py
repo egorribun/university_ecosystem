@@ -2626,7 +2626,7 @@ def test_typescript_import_after_jsx_keeps_exact_source_relationship(
     "source",
     [
         'const view = <main>import Button from "../Button"</main>;\n',
-        'const view = <main title=\'import Button from "../Button"\' />;\n',
+        "const view = <main title='import Button from \"../Button\"' />;\n",
         'const value = left </main>\nimport Button from "../Button";\n',
     ],
 )
@@ -2812,11 +2812,17 @@ def test_python_contract_accepts_verified_test_root_alias(
 
 
 @pytest.mark.parametrize(
-    "rebind",
-    ['TEST_ROOT = Path("elsewhere")\n', "import elsewhere as TEST_ROOT\n"],
+    ("rebind", "expected"),
+    [
+        ('TEST_ROOT = Path("elsewhere")\n', {"elsewhere"}),
+        ("import elsewhere as TEST_ROOT\n", set()),
+    ],
 )
 def test_python_contract_rejects_rebound_test_root_alias(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rebind: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rebind: str,
+    expected: set[str],
 ) -> None:
     contract = _write_repository_contract(
         tmp_path,
@@ -2827,4 +2833,12 @@ def test_python_contract_rejects_rebound_test_root_alias(
         ' / "validate_trivy_kyverno_fixture.py"\n',
     )
 
-    assert find_python_repository_references(contract) == set()
+    references = find_python_repository_references(contract)
+    assert references == expected
+    assert not matches_source(
+        "tests/test_contract.py",
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={"scripts/quality/validate_trivy_kyverno_fixture.py"},
+    )

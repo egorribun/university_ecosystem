@@ -502,3 +502,38 @@ The 319-identity detect-secrets baseline, 25 historical Gitleaks fingerprints, 7
 The owner approved exactly one new finite detect-secrets disposition and the reviewed validator/test diff for the public SHA-256 digest used by the immutable policy-prefix source-contract test in `tests/test_verify_secrets_baseline.py`. It uses the exact `Hex High Entropy String` identity and the `public_integrity_digest` category; the validator constrains path, type, digest, evidence and expiry. The policy preserves the ordered 317-record prefix and appends this one record, for exactly 318 records.
 
 The owner is `egorribun`, reviewed on 2026-10-24, with expiry 2027-01-10. The 319-identity detect-secrets baseline, 25 Gitleaks fingerprints and 78 required context/app pairs remain unchanged. No additional identity, broad rule, baseline entry, Gitleaks entry or scanner bypass is authorized. Policy adoption does not establish a final-source scan or hosted-check result; those remain required for the final source. See the [audit checkpoint](../audits/AUDIT-2026-10.md#owner-approved-one-exact-aud-495-public-integrity-digest-2026-10-24).
+
+## Owner-approved three exact public digest dispositions (2026-10-24)
+
+The owner explicitly approved exactly three additional detect-secrets identities
+after the post-rollover scan of source `1cadcd03` reported them. The policy
+preserves all 318 ordered prior records and appends only these three, for exactly
+321 records. Each new record has owner `egorribun`, review date 2026-10-24 and
+expiry 2027-01-10.
+
+- `tests/integration/test_aud350_stored_event_timestamp_migration.py`:
+  one `Hex High Entropy String` under `public_integrity_digest`, binding the
+  frozen historical AUD-350 migration bytes independently of the candidate.
+- `tests/test_verify_secrets_baseline.py`: two `Hex High Entropy String`
+  identities under `independent_contract_fingerprint`, binding the first and
+  second historical AUD-495 cache-canary finding identities. These are new
+  fingerprints of quoted public finding hashes, not the original canary
+  credentials or a reclassification of their existing dispositions.
+
+The exact ordered additions are records 319-321 in
+`quality/security-false-positive-dispositions.json`; their identity tuples,
+categories and required evidence are independently constrained by
+`scripts/verify_secrets_baseline.py` and source-bound tests in
+`tests/test_verify_secrets_baseline.py`. The existing policy-prefix singleton
+on the reserved verifier-test path is unchanged. Every other identity on that
+path remains rejected; neither the category nor the path receives a broad
+allowance. New entries cannot change path, detector, digest, category, owner,
+review date or approved expiry scope.
+
+The raw source checksum and historical fingerprint literals remain unchanged.
+The first 318 policy records, detect-secrets baseline319, Gitleaks25, all 78
+required context/app pairs, blocking CodeQL, hooks and coverage floors are
+preserved. No additional identity, inline pragma, broad exclusion, automatic
+approval or scanner bypass is authorized. This approval and candidate source do
+not establish a successful scan, test or hosted check; final-source evidence
+remains required.

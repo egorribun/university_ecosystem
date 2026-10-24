@@ -43,7 +43,7 @@ jobs; точные причины разбираются по текущему s
 Порядок продолжения: получить собственный результат live-contract follow-up;
 устранить доказанные текущие inventory/migration/dependency блокеры без
 ослабления гейтов; сверить все страницы required checks и только затем
-принимать дополнительные AUD IDs. Baseline319, approved policy318,
+принимать дополнительные AUD IDs. Baseline319, approved policy321,
 Gitleaks25, 78 required context/app pairs и действующие coverage floors
 сохраняются. Новые scanner dispositions и cooldown exceptions требуют
 отдельного решения владельца.
@@ -72,6 +72,53 @@ AUD-350. Эти cases включены в прежний early consumer job бе
 selectors или изменения лимитов. Checker и migration probe пока не изменены:
 ожидаемые RED должны быть наблюдены до их исправления. Frozen fixture bytes,
 baseline и scanner policy остаются неизменными; принятый ledger — 280.
+
+### Утверждённые точечные допуски и восстановление release wiring, 00:31 UTC
+
+На `50800c2e` consumer job 120722914909/run 40044230057 подтвердил
+**11 FAIL / 1501 PASS / один deselected**: два новых AUD-350 routing cases
+и девять inventory regressions; отдельные 299 policy cases PASS.
+Один отрицательный TEST_ROOT case слишком широко ожидал пустой набор:
+самостоятельный относительный Path("elsewhere") допустим как отдельная ссылка.
+Уточнён exact expected set и отдельно запрещено владение целевым validator;
+это исправление теста, не ослабление checker. Реализация inventory ещё проходит
+отдельное ревью и в этот пакет не входит. Это наблюдённый RED, не приёмка.
+Frontend lint/typecheck и shard 2/4 SUCCESS;
+остальные стадии и общий CI ещё не приняты.
+
+Владелец отдельно разрешил body-parser `1.20.9` до прохождения семидневного
+cooldown и ровно три path/type/digest dispositions до `2027-01-10`.
+Точные границы записаны в
+[ADR-047](../../adr/ADR-047-risk-based-quality-policy.md) и
+[dependency runbook](../../DEPENDENCY_COOLDOWN_EMERGENCY.md).
+Approved policy теперь 321; первые 318 записей, baseline319 и Gitleaks25
+сохранены. Verifier и 39 новых cases ограничивают категории, пути, identities,
+owner/date/evidence и expiry; новые исключения не распространяются на другие
+совпадения. Hosted tests и новый полный scan ещё требуются.
+
+Временный bounded generator body-parser работает только в scratch mirror:
+checkout не изменяется даже при отмене. Он проверяет npm `11.17.0`, официальный
+tarball, package-specific age exception и точный diff трёх lock-полей;
+обычный npm audit сохранён и остаётся блокирующим. Сгенерированный lock пока
+не интегрирован. После получения и проверки bytes generator подлежит удалению.
+Zod и Caddy vulnerability remediation остаются отдельными открытыми задачами.
+
+Исходный PostgreSQL migration regression отказал на новой обязательной Redis
+rate-limit конфигурации staging Settings. Migration Job и outbox теперь
+получают уже существующий dedicated connection key по тому же file-secret
+контракту, что backend. ServiceAccount, RBAC, role/revocation flags и networks
+не меняются; deployment не выполняется. Render contracts и actual Alembic
+regression должны подтвердить новый source. AUD-350 probe получает отдельный
+`AUD350_POSTGRES_DATABASE_URL`, а общий pytest `DATABASE_URL` остаётся SQLite:
+reset protection и byte-frozen timestamp counterfactual сохранены.
+
+Switch DOM hashes обновлены только для interactive/checked состояний:
+точная реконструкция прежней разметки и трёх изменённых opacity tokens
+воспроизводит исходные и observed CI digests. Baseline/disabled и raw DOM hash
+проверка сохранены; добавлены assertions новых tokens и отсутствия прежних.
+Новый runtime PASS ещё требуется. Caddy scan получает ограниченный metadata-only
+SARIF diagnostic без raw Match/source/help/secret output; исходный scan остаётся
+блокирующим. Принятый ledger не увеличен: **280/512**, 232 не принято.
 
 ## Историческая пауза перед публикацией 8efec0df
 
