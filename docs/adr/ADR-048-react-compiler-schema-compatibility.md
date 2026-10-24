@@ -2,8 +2,9 @@
 
 ## Status and date
 
-Accepted by the repository owner on 2026-10-24. Compatibility implementation
-and final-source validation remain pending; approval is not a passing audit.
+Accepted by the repository owner on 2026-10-24. The staged compatibility
+implementation is included; hosted compatibility and final-source validation
+remain pending. Approval is not a passing audit.
 
 ## Context
 
@@ -40,7 +41,7 @@ nodes alone does not establish that the embedded code is fixed or exploitable.
    suppression, suggestions and both unused opt-out directives.
 5. Keep all application, browser, SSR and production-runtime validation on
    Valibot. Verify fresh development and production installs, actual consumer
-   resolution, local-package realpaths and Docker nested-dependency transfer.
+   resolution, local-package realpaths and Docker transfer of the actual npm layout.
    The adapter and compiler must not enter the deployed runtime or client
    bundle.
 6. Preserve every required gate, warning threshold, scanner finding and
@@ -55,12 +56,22 @@ The source-linked consumer uses these factories: `array`, `boolean`, `enum`,
 Zod 3 replacement. Two known compatibility points are the legacy
 `function().args(...)` builder and parsing/cloning of map defaults.
 
-The first checkpoint deliberately contains only an importable null facade
-and failing assertions, alongside a bounded baseline capture. No override,
-engine import or lock change is introduced by that checkpoint. The baseline
-is evidence to review and freeze, not an automatically accepted golden file.
+The first checkpoint used an importable null facade and failing assertions.
+Hosted job 120802074003 captured 37 legacy fixtures and passed all five schema
+controls; the eight intended facade assertions failed. The installed compiler
+bundle hash matched the earlier integrity-verified npm artifact.
 
-Before integration, test the actual installed plugin against reviewed golden
+The next stage adds only the private dev package and its patched engine using
+an npm-generated lock; the actual legacy-consumer override remains absent.
+The full reviewed capture is retained as `legacy-baseline.json`. A test-owned
+temporary module tree checks the unchanged compiler artifact with native Node
+dependency resolution against the facade and the existing formatter 4.0.2.
+It compares every diagnostic, suppression and suggestion, while separately
+reporting wording changes for the two malformed configurations that must
+still fail with the same InvalidConfig reason. This is not blanket permission
+to change compiler messages, severity, defaults or suppression semantics.
+
+Before the final consumer override, test the installed plugin against reviewed golden
 records and the patched engine's early size-bound rejection. Resolve any
 behavioral difference explicitly; do not silently normalize away diagnostics
 or treat more configuration exceptions as an automatic improvement.
@@ -79,4 +90,5 @@ boundary when a validated official replacement preserves the existing gate.
   44 probe tests passed; rc.2 externalizes Zod, while the examined Babel
   compiler artifacts embed pre-fix code. This is not a fix verification.
 - [Artifact probe source](../../scripts/ci/probe_react_compiler_artifacts.py)
+- [Legacy baseline and assertion RED](https://github.com/egorribun/university_ecosystem/actions/runs/40069691438/job/120802074003)
 - [Frontend standards](../../frontend/AGENTS.md)

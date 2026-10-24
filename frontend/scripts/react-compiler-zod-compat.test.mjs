@@ -1,7 +1,18 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
-import { readFileSync } from "node:fs"
+import {
+  copyFileSync,
+  cpSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs"
 import { createRequire } from "node:module"
+import { tmpdir } from "node:os"
 import path from "node:path"
 import test from "node:test"
 
@@ -18,6 +29,9 @@ const compilerRequire = createRequire(compilerPath)
 const legacy = compilerRequire("zod").z
 const ruleId = "react-compiler/react-compiler"
 const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"))
+const golden = JSON.parse(
+  readFileSync(new URL("./react-compiler-zod-compat/legacy-baseline.json", import.meta.url), "utf8")
+)
 
 const shapes = [
   ["declaration", (body) => `function Widget() { ${body} }`],
@@ -113,11 +127,7 @@ for (const [shape, wrap] of shapes.filter(([name]) =>
   ])
 }
 
-test("capture the installed rc.2 baseline before changing its dependency graph", async () => {
-  assert.equal(require("eslint-plugin-react-compiler/package.json").version, "19.1.0-rc.2")
-  assert.equal(compilerRequire("zod/package.json").version, "3.25.76")
-  assert.equal(lock.packages["node_modules/eslint-plugin-react-compiler"].version, "19.1.0-rc.2")
-  assert.equal(fixtures.length, 37)
+async function collectRuleRecords(plugin) {
   const records = []
   for (const [name, source, options = {}] of fixtures) {
     assert.ok(source.length < 2048)
@@ -136,7 +146,7 @@ test("capture the installed rc.2 baseline before changing its dependency graph",
                 ecmaFeatures: { jsx: true },
               },
             },
-            plugins: { "react-compiler": reactCompiler },
+            plugins: { "react-compiler": plugin },
             rules: { [ruleId]: ["error", options] },
           },
         ],
@@ -161,6 +171,15 @@ test("capture the installed rc.2 baseline before changing its dependency graph",
       })
     }
   }
+  return records
+}
+
+test("the installed rc.2 still matches the reviewed pre-override baseline", async () => {
+  assert.equal(require("eslint-plugin-react-compiler/package.json").version, "19.1.0-rc.2")
+  assert.equal(compilerRequire("zod/package.json").version, "3.25.76")
+  assert.equal(lock.packages["node_modules/eslint-plugin-react-compiler"].version, "19.1.0-rc.2")
+  assert.equal(fixtures.length, 37)
+  const records = await collectRuleRecords(reactCompiler)
   // ESLint 10 clones rule options; functions are rejected before the compiler.
   // Preserve that real public boundary instead of injecting a bypassing wrapper.
   for (const record of records.filter(({ name }) => name.startsWith("provider-function"))) {
@@ -192,6 +211,18 @@ test("capture the installed rc.2 baseline before changing its dependency graph",
   const serialized = JSON.stringify(report)
   assert.ok(Buffer.byteLength(serialized) < 98304)
   console.log(serialized)
+  const persisted = JSON.parse(serialized)
+  for (const key of [
+    "compilerVersion",
+    "compilerIntegrity",
+    "compilerBundleSha256",
+    "schemaVersionInstalled",
+    "formatterEntrySha256",
+    "records",
+    "schemaErrors",
+  ]) {
+    assert.deepEqual(persisted[key], golden[key], key)
+  }
 })
 
 function captureSchemaErrors(z) {
@@ -256,9 +287,11 @@ function verifyProvider(z) {
   assert.equal(schema.parse(undefined), null)
   assert.equal(schema.safeParse("invalid").success, false)
   const marker = { name: "result" }
+  let calls = 0
   const receiver = {
     marker,
     provider: schema.parse(function (name, extra) {
+      calls += 1
       assert.equal(name, "module")
       assert.equal(extra, 42)
       return this.marker
@@ -267,6 +300,7 @@ function verifyProvider(z) {
   assert.equal(receiver.provider("module", 42), marker)
   assert.throws(() => receiver.provider(42))
   assert.throws(() => receiver.provider())
+  assert.equal(calls, 1, "invalid arguments must be rejected before invoking the provider")
   assert.equal(schema.parse(() => undefined)("module"), undefined)
   assert.equal(schema.parse(() => null)("module"), null)
 }
@@ -411,4 +445,208 @@ test("adapter map upper bounds reject before key and value refinements", () => {
     result.error.issues.map(({ code }) => code),
     ["too_big"]
   )
+})
+
+test("the isolated unchanged rc.2 rule retains every compiler diagnostic", async () => {
+  assert.ok(adapter.z, "the compatibility facade is not implemented")
+  const compilerRoot = path.dirname(
+    compilerRequire.resolve("eslint-plugin-react-compiler/package.json")
+  )
+  const compilerManifest = compilerRequire("eslint-plugin-react-compiler/package.json")
+  const dependencyNames = Object.keys(compilerManifest.dependencies).sort()
+  assert.deepEqual(dependencyNames, [
+    "@babel/core",
+    "@babel/parser",
+    "@babel/plugin-proposal-private-methods",
+    "hermes-parser",
+    "zod",
+    "zod-validation-error",
+  ])
+
+  assert.equal(
+    createHash("sha256").update(readFileSync(compilerPath)).digest("hex"),
+    golden.compilerBundleSha256
+  )
+  const target = mkdtempSync(path.join(tmpdir(), "react-compiler-parity-"))
+  try {
+    const modules = path.join(target, "node_modules")
+    const targetCompiler = path.join(modules, "eslint-plugin-react-compiler")
+    const requiredFiles = ["package.json", "dist/index.js", "dist/index.d.ts"]
+    const optionalDocs = ["LICENSE", "LICENCE", "README.md"]
+    for (const relative of [...requiredFiles, ...optionalDocs]) {
+      const source = path.join(compilerRoot, relative)
+      const destination = path.join(targetCompiler, relative)
+      const metadata = lstatSync(source, { throwIfNoEntry: false })
+      if (metadata === undefined) {
+        assert.equal(optionalDocs.includes(relative), true, relative)
+        continue
+      }
+      assert.equal(metadata.isFile(), true, relative)
+      assert.ok(metadata.size > 0 && metadata.size < 2 * 1024 * 1024, relative)
+      mkdirSync(path.dirname(destination), { recursive: true })
+      copyFileSync(source, destination)
+      assert.deepEqual(readFileSync(destination), readFileSync(source), relative)
+    }
+
+    const hooksRequire = createRequire(require.resolve("eslint-plugin-react-hooks"))
+    const formatterEntry = hooksRequire.resolve("zod-validation-error")
+    const formatterRoot = path.resolve(path.dirname(formatterEntry), "..")
+    const formatterManifest = JSON.parse(
+      readFileSync(path.join(formatterRoot, "package.json"), "utf8")
+    )
+    assert.equal(formatterManifest.name, "zod-validation-error")
+    assert.equal(formatterManifest.version, "4.0.2")
+    for (const name of dependencyNames) {
+      const dependencyRoot =
+        name === "zod"
+          ? path.join(import.meta.dirname, "react-compiler-zod-compat")
+          : name === "zod-validation-error"
+            ? formatterRoot
+            : path.dirname(compilerRequire.resolve(`${name}/package.json`))
+      const destination = path.join(modules, name)
+      mkdirSync(path.dirname(destination), { recursive: true })
+      symlinkSync(dependencyRoot, destination, "junction")
+    }
+
+    const isolatedRequire = createRequire(path.join(targetCompiler, "package.json"))
+    assert.equal(isolatedRequire("zod"), adapter)
+    assert.equal(isolatedRequire.resolve("zod-validation-error"), formatterEntry)
+    const copiedBundle = path.join(targetCompiler, "dist", "index.js")
+    assert.equal(
+      createHash("sha256").update(readFileSync(copiedBundle)).digest("hex"),
+      golden.compilerBundleSha256
+    )
+    const capturedRecords = await collectRuleRecords(isolatedRequire(copiedBundle))
+    const records = JSON.parse(JSON.stringify(capturedRecords))
+    const configurationChanges = []
+    assert.equal(records.length, golden.records.length)
+    for (const [index, record] of records.entries()) {
+      const expected = golden.records[index]
+      assert.equal(record.name, expected.name)
+      if (["provider-invalid-config", "target-invalid-config"].includes(record.name)) {
+        assert.equal(record.error?.name, "ReactCompilerError", record.name)
+        const reason =
+          record.name === "provider-invalid-config"
+            ? "InvalidConfig: Error in validating environment config."
+            : "InvalidConfig: Not a valid target."
+        assert.equal(record.error.message.startsWith(reason), true, record.name)
+        configurationChanges.push({
+          name: record.name,
+          before: expected.error,
+          after: record.error,
+        })
+      } else {
+        assert.deepEqual(record, expected, record.name)
+      }
+    }
+    // Only the two already rejected configuration values may change formatter wording.
+    // Every rule diagnostic, suppression and suggestion above remains byte-for-byte equal.
+    const serialized = JSON.stringify({
+      kind: "react-compiler-config-error-diff",
+      configurationChanges,
+    })
+    assert.ok(Buffer.byteLength(serialized) < 16384)
+    console.log(serialized)
+  } finally {
+    rmSync(target, { recursive: true, force: true })
+  }
+})
+
+test("the staged adapter engine is pinned, honestly named and development-only", () => {
+  const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"))
+  assert.equal(
+    manifest.devDependencies["react-compiler-zod-compat"],
+    "file:./scripts/react-compiler-zod-compat"
+  )
+  for (const section of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+    assert.equal(Object.hasOwn(manifest[section] ?? {}, "react-compiler-zod-compat"), false)
+  }
+  const adapterPath = require.resolve("./react-compiler-zod-compat/index.cjs")
+  const adapterRequire = createRequire(adapterPath)
+  const localManifest = adapterRequire("./package.json")
+  assert.equal(localManifest.name, "@university-ecosystem/react-compiler-zod-compat")
+  assert.deepEqual(localManifest.dependencies, { "patched-zod": "npm:zod@4.6.7" })
+  assert.equal(localManifest.scripts, undefined)
+  assert.equal(require("react-compiler-zod-compat"), adapter)
+  assert.equal(
+    realpathSync(adapterRequire.resolve("patched-zod/package.json")),
+    path.join(frontendRoot, "node_modules", "patched-zod", "package.json")
+  )
+  const nestedEngine = path.join(
+    import.meta.dirname,
+    "react-compiler-zod-compat",
+    "node_modules",
+    "patched-zod"
+  )
+  assert.equal(lstatSync(nestedEngine, { throwIfNoEntry: false }), undefined)
+  const engine = adapterRequire("patched-zod/package.json")
+  assert.equal(engine.name, "zod")
+  assert.equal(engine.version, "4.6.7")
+  const local = lock.packages["scripts/react-compiler-zod-compat"]
+  const alias = lock.packages["node_modules/patched-zod"]
+  assert.equal(
+    Object.hasOwn(lock.packages, "scripts/react-compiler-zod-compat/node_modules/patched-zod"),
+    false
+  )
+  assert.equal(local.dev, true)
+  assert.equal(alias.dev, true)
+  assert.equal(alias.name, "zod")
+  for (const key of ["version", "resolved", "integrity"]) {
+    assert.equal(alias[key], lock.packages["node_modules/zod"][key], key)
+  }
+  // This stage does not route the real compiler through the adapter yet.
+  assert.notEqual(compilerRequire.resolve("zod"), adapterPath)
+  assert.equal(compilerRequire("zod/package.json").version, "3.25.76")
+})
+
+test("the Docker builder transfer preserves the observed hoisted engine", () => {
+  const dockerfile = readFileSync(new URL("../../frontend.Dockerfile", import.meta.url), "utf8")
+  const builder = dockerfile.split("FROM base AS builder")[1].split("FROM base AS prod-deps")[0]
+  assert.match(
+    builder,
+    /COPY --from=deps \/app\/scripts\/react-compiler-zod-compat \.\/scripts\/react-compiler-zod-compat/
+  )
+  assert.match(builder, /COPY --from=deps \/app\/node_modules \.\/node_modules/)
+  const runtime = dockerfile.split(" AS runtime")[1]
+  assert.equal(runtime.includes("react-compiler-zod-compat"), false)
+  const target = mkdtempSync(path.join(tmpdir(), "react-compiler-builder-"))
+  try {
+    const sourceAdapter = path.join(import.meta.dirname, "react-compiler-zod-compat")
+    const targetAdapter = path.join(target, "scripts", "react-compiler-zod-compat")
+    const sourceEngine = path.join(frontendRoot, "node_modules", "patched-zod")
+    const targetEngine = path.join(target, "node_modules", "patched-zod")
+    assert.equal(realpathSync(sourceEngine), sourceEngine)
+    mkdirSync(path.join(target, "node_modules"), { recursive: true })
+    cpSync(sourceEngine, targetEngine, { recursive: true })
+    cpSync(sourceAdapter, targetAdapter, { recursive: true })
+    symlinkSync(
+      targetAdapter,
+      path.join(target, "node_modules", "react-compiler-zod-compat"),
+      "junction"
+    )
+    cpSync(sourceAdapter, targetAdapter, {
+      recursive: true,
+      filter: (entry) => !entry.split(path.sep).includes("node_modules"),
+    })
+    const builderRequire = createRequire(path.join(target, "package.json"))
+    const copiedAdapterPath = builderRequire.resolve("react-compiler-zod-compat")
+    const copiedRequire = createRequire(copiedAdapterPath)
+    for (const name of ["patched-zod", "patched-zod/package.json"]) {
+      const relative = path.relative(
+        realpathSync(targetEngine),
+        realpathSync(copiedRequire.resolve(name))
+      )
+      assert.notEqual(relative, "", name)
+      assert.equal(relative.split(path.sep).includes(".."), false, name)
+      assert.equal(path.isAbsolute(relative), false, name)
+    }
+    const engine = copiedRequire("patched-zod/package.json")
+    assert.equal(engine.name, "zod")
+    assert.equal(engine.version, "4.6.7")
+    const copied = builderRequire("react-compiler-zod-compat")
+    verifyProvider(copied.z)
+    verifyMapDefaults(copied.z)
+  } finally {
+    rmSync(target, { recursive: true, force: true })
+  }
 })

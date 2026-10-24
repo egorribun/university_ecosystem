@@ -4267,3 +4267,315 @@ def test_public_git_blob_fixture_rebind_preserves_all_328_prior_records() -> Non
         tuple(record["identity"]["hashed_secret_bytes"])
         for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:5]
     }
+
+
+_PUBLIC_ALEMBIC_REVISION_RECORD = json.loads(
+    (
+        Path(__file__).resolve().parents[1]
+        / "tests/fixtures/public-alembic-revision-disposition.json"
+    ).read_text(encoding="utf-8")
+)["records"][0]
+
+
+def _public_revision_calls(source: str) -> tuple[ast.With, list[ast.Call]]:
+    functions = [
+        node
+        for node in ast.parse(source).body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "test_groups_successors_do_not_require_the_duplicate_id_index"
+    ]
+    assert len(functions) == 1
+    assert len(functions[0].body) == 2
+    assert isinstance(functions[0].body[0], ast.Expr)
+    assert isinstance(functions[0].body[0].value, ast.Constant)
+    assert isinstance(functions[0].body[0].value.value, str)
+    scenario = functions[0].body[1]
+    assert isinstance(scenario, ast.With) and len(scenario.items) == 1
+    context = scenario.items[0].context_expr
+    assert isinstance(context, ast.Call)
+    assert isinstance(context.func, ast.Name)
+    assert context.func.id == "_owned_migration_scenario"
+    assert len(context.args) == 1 and not context.keywords
+    assert isinstance(context.args[0], ast.Name)
+    assert context.args[0].id == "migration_postgres"
+    assert isinstance(scenario.items[0].optional_vars, ast.Name)
+    assert scenario.items[0].optional_vars.id == "urls"
+    calls = [
+        node.value
+        for node in scenario.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Attribute)
+        and isinstance(node.value.func.value, ast.Name)
+        and node.value.func.value.id == "command"
+        and node.value.func.attr == "upgrade"
+    ]
+    assert len(calls) == 4
+    for call in calls:
+        assert len(call.args) == 2 and not call.keywords
+        assert isinstance(call.args[0], ast.Name) and call.args[0].id == "config"
+        assert isinstance(call.args[1], ast.Constant)
+        assert isinstance(call.args[1].value, str)
+    return scenario, calls
+
+
+def _revision_assignments(source: str) -> dict[str, str]:
+    result = {}
+    for node in ast.parse(source).body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        for target in targets:
+            if isinstance(target, ast.Name) and target.id in {
+                "revision",
+                "down_revision",
+            }:
+                assert target.id not in result
+                assert isinstance(node.value, ast.Constant)
+                assert isinstance(node.value.value, str)
+                result[target.id] = node.value.value
+    assert set(result) == {"revision", "down_revision"}
+    return result
+
+
+def _assert_public_revision_source_binding(
+    source: str, *, revision_source: str | None = None
+) -> tuple[int, ...]:
+    _, calls = _public_revision_calls(source)
+    target = calls[2].args[1].value
+    assert re.fullmatch(r"[0-9a-f]{12}", target)
+    # Shape alone never authorizes a value: require the observed exact identity.
+    digest = tuple(hashlib.sha1(target.encode("ascii"), usedforsecurity=False).digest())
+    assert digest == tuple(
+        _PUBLIC_ALEMBIC_REVISION_RECORD["identity"]["hashed_secret_bytes"]
+    )
+    root = Path(__file__).resolve().parents[1]
+    definitions = list((root / "alembic/versions").glob(f"{target}_*.py"))
+    assert len(definitions) == 1
+    assert definitions[0].name.endswith("_fix_groups_id_sequence.py")
+    metadata = _revision_assignments(
+        definitions[0].read_text(encoding="utf-8")
+        if revision_source is None
+        else revision_source
+    )
+    assert metadata["revision"] == target
+    assert metadata["down_revision"] == calls[1].args[1].value
+    return digest
+
+
+def test_public_alembic_revision_current_source_has_exact_policy_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    record = _PUBLIC_ALEMBIC_REVISION_RECORD
+    source = (root / record["identity"]["path"]).read_text(encoding="utf-8")
+    _assert_public_revision_source_binding(source)
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert record in policy["records"]
+
+
+def test_public_alembic_revision_policy_preserves_all_329_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_public_git_blob_fixture_rebind_preserves_all_328_prior_records()
+    assert len(policy["records"]) == 330
+    assert policy["records"][329:] == [_PUBLIC_ALEMBIC_REVISION_RECORD]
+
+
+def test_public_alembic_revision_accepts_only_its_exact_record_without_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    record = _PUBLIC_ALEMBIC_REVISION_RECORD
+    identity = record["identity"]
+    expected = verifier.FindingIdentity(
+        identity["path"],
+        identity["type"],
+        bytes(identity["hashed_secret_bytes"]).hex(),
+        1,
+    )
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(copy.deepcopy(record)),
+        today=verifier.date(2026, 10, 24),
+    ) == {expected}
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "detector",
+        "digest",
+        "category",
+        "integrity_category",
+        "digest_at_other_path",
+        "unknown_digest_at_reserved_path",
+        "owner",
+        "review_date",
+        "evidence",
+        "pending",
+        "expiry_extension",
+    ],
+)
+def test_public_alembic_revision_rejects_changed_scope_or_approval(
+    mutation: str,
+) -> None:
+    changed = copy.deepcopy(_PUBLIC_ALEMBIC_REVISION_RECORD)
+    if mutation == "path":
+        changed["identity"]["path"] = "tests/unapproved_revision_target.py"
+    elif mutation == "detector":
+        changed["identity"]["type"] = "Base64 High Entropy String"
+    elif mutation == "digest":
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "category":
+        changed["category"] = "documented_crypto_test_vector"
+    elif mutation == "integrity_category":
+        changed["category"] = "public_integrity_digest"
+    elif mutation == "digest_at_other_path":
+        changed["identity"]["path"] = "tests/unapproved_revision_target.py"
+        changed["category"] = "public_integrity_digest"
+    elif mutation == "unknown_digest_at_reserved_path":
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+        changed["category"] = "public_integrity_digest"
+    elif mutation == "owner":
+        changed["owner"] = "Different Reviewer"
+    elif mutation == "review_date":
+        changed["reviewed_on"] = "2026-10-23"
+    elif mutation == "evidence":
+        changed["evidence"] = "public revision; not credential material"
+    elif mutation == "pending":
+        changed["approval_status"] = "pending_owner_review"
+    else:
+        assert mutation == "expiry_extension"
+        changed["expires_on"] = "2027-01-11"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+        )
+
+
+def test_public_alembic_revision_rejects_expiry_duplicate_and_extra_identity() -> None:
+    record = _PUBLIC_ALEMBIC_REVISION_RECORD
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record)),
+            today=verifier.date(2027, 1, 11),
+        )
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
+            today=verifier.date(2026, 10, 24),
+        )
+    extra = copy.deepcopy(record)
+    extra["identity"]["hashed_secret_bytes"] = list(range(20))
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record), extra),
+            today=verifier.date(2026, 10, 24),
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "changed_target",
+        "dynamic_target",
+        "different_call",
+        "duplicate_call",
+        "renamed_test",
+        "nested_upgrade",
+    ],
+)
+def test_public_alembic_revision_source_binding_rejects_changed_consumer(
+    mutation: str,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    path = root / _PUBLIC_ALEMBIC_REVISION_RECORD["identity"]["path"]
+    source = path.read_text(encoding="utf-8")
+    _assert_public_revision_source_binding(source)
+    tree = ast.parse(source)
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "test_groups_successors_do_not_require_the_duplicate_id_index"
+    )
+    calls = sorted(
+        (
+            node
+            for node in ast.walk(function)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "command"
+            and node.func.attr == "upgrade"
+        ),
+        key=lambda node: node.lineno,
+    )
+    scenario = function.body[1]
+    sequence_index = next(
+        index
+        for index, node in enumerate(scenario.body)
+        if isinstance(node, ast.Expr) and node.value is calls[2]
+    )
+    target = calls[2].args[1]
+    if mutation == "changed_target":
+        target.value = "0" * len(target.value)
+    elif mutation == "dynamic_target":
+        value = target.value
+        calls[2].args[1] = ast.BinOp(
+            left=ast.Constant(value=value[:6]),
+            op=ast.Add(),
+            right=ast.Constant(value=value[6:]),
+        )
+    elif mutation == "different_call":
+        calls[2].func.value.id = "unrelated"
+    elif mutation == "duplicate_call":
+        function.body.append(ast.Expr(value=copy.deepcopy(calls[2])))
+    elif mutation == "renamed_test":
+        function.name = "test_unreviewed_revision_use"
+    else:
+        assert mutation == "nested_upgrade"
+        scenario.body[sequence_index] = ast.If(
+            test=ast.Constant(value=False),
+            body=[scenario.body[sequence_index]],
+            orelse=[],
+        )
+    changed = ast.unparse(ast.fix_missing_locations(tree))
+    with pytest.raises(AssertionError):
+        _assert_public_revision_source_binding(changed)
+
+
+@pytest.mark.parametrize("field", ["revision", "down_revision"])
+def test_public_alembic_revision_source_binding_rejects_changed_definition(
+    field: str,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    consumer = root / _PUBLIC_ALEMBIC_REVISION_RECORD["identity"]["path"]
+    source = consumer.read_text(encoding="utf-8")
+    _assert_public_revision_source_binding(source)
+    _, calls = _public_revision_calls(source)
+    target = calls[2].args[1].value
+    path = next((root / "alembic/versions").glob(f"{target}_*.py"))
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    changed = 0
+    for node in tree.body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        if any(
+            isinstance(target, ast.Name) and target.id == field for target in targets
+        ):
+            node.value = ast.Constant(value="0" * 12)
+            changed += 1
+    assert changed == 1
+    with pytest.raises(AssertionError):
+        _assert_public_revision_source_binding(
+            source, revision_source=ast.unparse(tree)
+        )

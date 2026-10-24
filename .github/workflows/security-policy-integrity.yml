@@ -183,6 +183,8 @@ jobs:
               frontend/scripts/generate-react-compiler-adapter-lock-candidate.mjs|\
               frontend/scripts/generate-react-compiler-adapter-lock-candidate.test.mjs|\
               frontend/scripts/react-compiler-zod-compat/index.cjs|\
+              frontend/scripts/react-compiler-zod-compat/package.json|\
+              frontend/scripts/react-compiler-zod-compat/legacy-baseline.json|\
               frontend/scripts/react-compiler-zod-compat.test.mjs|\
               scripts/ci/probe_react_compiler_artifacts.py|\
               tests/test_probe_react_compiler_artifacts.py|\

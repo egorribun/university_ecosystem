@@ -29,6 +29,7 @@
         "tests/**/*.{ts,tsx}"
       ]
     },
-    "scripts/boundary-micromatch-compat": {}
+    "scripts/boundary-micromatch-compat": {},
+    "scripts/react-compiler-zod-compat": {}
   }
 }

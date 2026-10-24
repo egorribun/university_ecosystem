@@ -415,13 +415,16 @@ def test_decoder_does_not_confuse_local_reaping_with_remote_socket_closure():
 
 
 def test_decoder_rejects_success_received_after_the_outer_deadline():
-    assert decode_observations(
-        _result(_wire()),
-        expected_source_sha=SHA,
-        expected_run_id=RUN_ID,
-        now_ms=121000,
-        deadline_ms=121000,
-    ) is None
+    assert (
+        decode_observations(
+            _result(_wire()),
+            expected_source_sha=SHA,
+            expected_run_id=RUN_ID,
+            now_ms=121000,
+            deadline_ms=121000,
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize(
@@ -479,13 +482,16 @@ def test_duplicate_keys_are_rejected_even_when_the_remaining_frame_is_valid(
 def test_matching_but_malformed_expected_bindings_are_not_admitted(field, value):
     wire = _wire()
     wire[field] = value
-    assert decode_observations(
-        _result(wire),
-        expected_source_sha=value if field == "source_sha" else SHA,
-        expected_run_id=value if field == "run_id" else RUN_ID,
-        now_ms=61000,
-        deadline_ms=121000,
-    ) is None
+    assert (
+        decode_observations(
+            _result(wire),
+            expected_source_sha=value if field == "source_sha" else SHA,
+            expected_run_id=value if field == "run_id" else RUN_ID,
+            now_ms=61000,
+            deadline_ms=121000,
+        )
+        is None
+    )
 
 
 def test_decoder_rejects_a_total_elapsed_time_shorter_than_its_case_observations():

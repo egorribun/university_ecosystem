@@ -40,7 +40,8 @@ The owner approved [ADR-048](../docs/adr/ADR-048-react-compiler-schema-compatibi
 on 2026-10-24. Only `scripts/react-compiler-zod-compat/` may directly use the
 verified, mature Zod 4.6.7 engine for the exact legacy
 `eslint-plugin-react-compiler@19.1.0-rc.2` consumer. Its bounded tests may inspect
-that already-installed consumer to capture the pre-change baseline.
+that already-installed consumer and adapter to prove compatibility and
+development-only packaging.
 
 This is not permission to use Zod for application schemas, SSR, browser or
 production runtime code, or to import `zod/v3`. Preserve the original compiler
