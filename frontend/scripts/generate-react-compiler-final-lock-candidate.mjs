@@ -484,8 +484,8 @@ export function summarizeStrictListFailure(result) {
   for (const problem of problems.slice(0, 64)) {
     const match =
       typeof problem === "string" && problem.length <= 4096
-        ? /^(invalid|extraneous): (\S+) .+$/.exec(problem) ??
-          /^(missing): (\S+), required by .+$/.exec(problem)
+        ? (/^(invalid|extraneous): (\S+) .+$/.exec(problem) ??
+          /^(missing): (\S+), required by .+$/.exec(problem))
         : null
     const kind = match?.[1] ?? "unrecognized"
     report.problemCategories[kind] += 1
@@ -1037,8 +1037,7 @@ export async function runFinalCompilerGenerator() {
       }
       if (options.strictListDiagnostic && (result.error || result.signal || result.status !== 0)) {
         console.error(
-          "FINAL_COMPILER_STRICT_LIST_FAILURE " +
-            JSON.stringify(summarizeStrictListFailure(result))
+          "FINAL_COMPILER_STRICT_LIST_FAILURE " + JSON.stringify(summarizeStrictListFailure(result))
         )
       }
       assert(!result.error && !result.signal && result.status === 0)

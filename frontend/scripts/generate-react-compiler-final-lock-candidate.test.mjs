@@ -1436,8 +1436,14 @@ test("strict npm ls diagnostics cap observations and avoid arbitrary traversal",
   })
   assert.equal(report.observations.length, 8)
   assert.equal(new Set(report.observations.map((item) => JSON.stringify(item))).size, 8)
-  assert.equal(Object.values(report.problemCategories).reduce((sum, value) => sum + value), 64)
-  assert.equal(report.observations.some((item) => item.kind === "invalid-edge"), false)
+  assert.equal(
+    Object.values(report.problemCategories).reduce((sum, value) => sum + value),
+    64
+  )
+  assert.equal(
+    report.observations.some((item) => item.kind === "invalid-edge"),
+    false
+  )
   assert.equal(report.omitted, true)
   assert.ok(Buffer.byteLength(JSON.stringify(report)) <= 4096)
 })

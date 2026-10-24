@@ -5,6 +5,41 @@
 
 
 
+## Hosted validation cb0f939, 2026-10-25
+
+На `cb0f939e9908f41415e4cfdf04d409348b81d689` проверялся merge
+`5d46b2efe8636de34f58e2a88d29f194c982a1b0` с тем же tree
+`a51ba1538ae780156c614a364931d2eccf5510a5`.
+[Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/40135728448/job/120997087597)
+завершился GREEN: **2742 consumer PASS / 590 policy PASS**. Неизменённый
+PowerShell readiness test прошёл за 9,54 s при прежнем 20 s limit; 10-minute
+job cap сохранён. Предыдущий timeout/cancellation не удалён из истории и не
+объявляется исправленным изменением приложения.
+
+[Compiler diagnostic](https://github.com/egorribun/university_ecosystem/actions/runs/40135728448/job/120997231953)
+дал **48/48 guards PASS**. Реальный strict npm ls отказал с ELSPROBLEMS:
+ровно один invalid, без missing/extraneous/unknown или truncation. Это edge
+`file:../../scripts/react-compiler-zod-compat` от compiler к genuine
+`@university-ecosystem/react-compiler-zod-compat@1.0.0`, установленному как
+zod. Strict install, native graph и license equality до этого прошли.
+Относительный local-link вариант не принят; metadata/patch не выданы.
+Проверяется отдельный план детерминированного first-party archive, а не
+ослабление npm ls/peer ranges или подмена версии. Archive ещё не создан.
+
+[Fast lint](https://github.com/egorribun/university_ecosystem/actions/runs/40135728448/job/120997087680)
+остановился на единственном S608 нового AUD-343 fixture: динамическая INSERT
+строка с закрытым набором table names. Правка выбирает между двумя полными
+статическими параметризованными запросами; значения, temporary-schema isolation,
+cleanup и пять test oracles не меняются. Suppression не добавлен.
+Ruff format/imports прошли, но dependent PostgreSQL jobs были SKIPPED:
+новые 13 cases ещё не выполнялись, свежие46/fullPG на этом source не заявлены.
+[Frontend static](https://github.com/egorribun/university_ecosystem/actions/runs/40135728448/job/120997659847)
+нашёл только Prettier layout двух npm diagnostic files; точный formatter
+postimage применён без изменения семантики/48 cases. Staged17 parity,
+production build и bundle прошли. Post-fix lint/format и PG нужны на новом SHA.
+
+Ledger остаётся **301/512**; AUD-197, AUD-262 и AUD-343 здесь не добавляются.
+
 ## Hosted validation b14520e, 2026-10-25
 
 На `b14520e31390406506b21946134f5347d4e9683b` проверялся merge

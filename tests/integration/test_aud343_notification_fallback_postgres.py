@@ -135,14 +135,19 @@ async def _insert_notification(
     failure_source: bool = False,
 ) -> uuid.UUID:
     notification_id = uuid.uuid4()
-    table_name = "aud343_notification_source" if failure_source else "notifications"
+    statement = (
+        "INSERT INTO aud343_notification_source "
+        "(id, user_id, title, body, type, url, created_at, read) "
+        "VALUES (:id, :user_id, 'Legacy title', 'Legacy body', "
+        "'system', '/news', :created_at, false)"
+        if failure_source
+        else "INSERT INTO notifications "
+        "(id, user_id, title, body, type, url, created_at, read) "
+        "VALUES (:id, :user_id, 'Legacy title', 'Legacy body', "
+        "'system', '/news', :created_at, false)"
+    )
     await session.execute(
-        text(
-            f"INSERT INTO {table_name} "
-            "(id, user_id, title, body, type, url, created_at, read) "
-            "VALUES (:id, :user_id, 'Legacy title', 'Legacy body', "
-            "'system', '/news', :created_at, false)"
-        ),
+        text(statement),
         {
             "id": notification_id,
             "user_id": user_id,
