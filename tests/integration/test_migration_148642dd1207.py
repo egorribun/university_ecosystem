@@ -1651,11 +1651,14 @@ def test_groups_cutover_uses_only_the_exact_primary_key_index(
                 "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
                 "WHERE attrelid = 'public.groups'::regclass AND attname = 'id'"
             ).fetchone() == ("integer",)
-            assert connection.execute(
-                "SELECT attname FROM pg_attribute "
-                "WHERE attrelid = 'public.groups'::regclass AND NOT attisdropped "
-                "AND attname IN ('id__integer', 'id__varchar')"
-            ).fetchall() == []
+            assert (
+                connection.execute(
+                    "SELECT attname FROM pg_attribute "
+                    "WHERE attrelid = 'public.groups'::regclass AND NOT attisdropped "
+                    "AND attname IN ('id__integer', 'id__varchar')"
+                ).fetchall()
+                == []
+            )
             assert connection.execute(
                 "SELECT to_regclass('public.groups_pkey_idx')"
             ).fetchone() == (None,)
@@ -1838,11 +1841,14 @@ def test_groups_successors_do_not_require_the_duplicate_id_index(
             assert connection.execute(
                 "SELECT version_num FROM alembic_version"
             ).fetchone() == ("202602010004",)
-            assert connection.execute(
-                "SELECT attname FROM pg_attribute "
-                "WHERE attrelid = 'public.groups'::regclass "
-                "AND attname = 'legacy_id' AND NOT attisdropped"
-            ).fetchall() == []
+            assert (
+                connection.execute(
+                    "SELECT attname FROM pg_attribute "
+                    "WHERE attrelid = 'public.groups'::regclass "
+                    "AND attname = 'legacy_id' AND NOT attisdropped"
+                ).fetchall()
+                == []
+            )
             assert connection.execute(
                 "SELECT g.name, pg_typeof(u.group_id)::text "
                 "FROM users u JOIN groups g ON g.id = u.group_id "

@@ -179,9 +179,9 @@ def test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_univers
 
 # Ordered argv population from 1a3954e99f06bf7b1660ad2df609a84b022daefa.
 # Preserve all 136 original selectors, including intentional file/node overlaps.
-# Twenty-seven explicit selections follow that unchanged prefix: existing audit
+# Twenty-eight explicit selections follow that unchanged prefix: existing audit
 # regressions, Gitleaks diagnostics, WebSocket/migration safety, logging/email,
-# inventory, repaired orchestrator and typed DLQ fixture verification. Do not shrink this scope.
+# inventory, repaired orchestrator, typed DLQ and client-IP harness contracts. Do not shrink this scope.
 _CONSUMER_SELECTORS = (
     "tests/contracts/",
     "tests/test_live_stand_cleanup_profile_contract.py",
@@ -346,6 +346,7 @@ _CONSUMER_SELECTORS = (
     "tests/test_quality_inventory.py",
     "tests/test_migration_148642dd1207_orchestrator.py::test_upgrade_with_unavailable_inspector_exposes_later_unconditional_lookup",
     "tests/test_dead_letter_queue.py::test_mark_job_completed",
+    "tests/test_owned_client_ip_acceptance.py",
 )
 _DISPATCH_PROBE = """\
 import json

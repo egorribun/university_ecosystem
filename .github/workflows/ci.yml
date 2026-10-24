@@ -2106,7 +2106,8 @@ jobs:
             tests/test_quality_inventory.py::test_aud508_non_python_skip_accepts_tracking_comments \
             tests/test_quality_inventory.py \
             tests/test_migration_148642dd1207_orchestrator.py::test_upgrade_with_unavailable_inspector_exposes_later_unconditional_lookup \
-            tests/test_dead_letter_queue.py::test_mark_job_completed -v \
+            tests/test_dead_letter_queue.py::test_mark_job_completed \
+            tests/test_owned_client_ip_acceptance.py -v \
             --tb=short --durations=20 -n 2 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \
