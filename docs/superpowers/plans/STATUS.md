@@ -5,6 +5,58 @@
 
 
 
+## Hosted validation b14520e, 2026-10-25
+
+На `b14520e31390406506b21946134f5347d4e9683b` проверялся merge
+`c1d3691fb857b5e9256d42da92dc6c70b0fc4fde` с тем же tree
+`671349cc232c875ae97ba7036da17a5f96ecb868`.
+[Focused PostgreSQL](https://github.com/egorribun/university_ecosystem/actions/runs/40133823187/job/120992268970)
+подтвердил **46/46 PASS**, включая обе grade cases и прежние 44 controls.
+[Full PostgreSQL integration](https://github.com/egorribun/university_ecosystem/actions/runs/40133823187/job/120992269253)
+завершился **317 PASS / 9 SKIP**; все 22 notification-outbox cases прошли.
+One-argument grade opt-in теперь имеет hosted post-fix proof: rollback не
+выпускает push, fresh-session retry и replay сохраняют одну committed delivery.
+Это не HTTP assignment idempotency и не гарантия external-provider exactly-once
+при crash между отправкой и journal commit. Ledger остаётся **301/512**;
+AUD-197 до отдельной согласованной по evidence приёмки не добавлен.
+
+[Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/40133823187/job/120991577148)
+дал consumer **1 FAIL / 2741 PASS**, после чего job был CANCELLED.
+Единственный failure — неизменённый PowerShell readiness subprocess на фазе
+selection-guard по 20-second timeout; тот же test прошёл на `b5e4720`.
+Catalog110/40, scoped343, related121, grades17/delivery22/audit6 прошли.
+Policy verification был SKIPPED, fresh590 не заявлены. Один запрос rerun
+не создал попытку: GitHub отказал, потому что весь workflow ещё выполнялся.
+Причина cancellation явно не названа; совпадение с 10-minute job cap не
+объявляется подтверждённой причиной. Следующий source проверяется заново,
+без удаления теста, timeout increase или ослабления gates.
+
+[Compiler job](https://github.com/egorribun/university_ecosystem/actions/runs/40133823187/job/120991677281)
+подтвердил **43/43 guards PASS**. Isolated strict generation, installation,
+native graph и physical-license equality прошли; отказ локализован в самом
+`npm ls --all --json --long`. Accepted patch/metadata нет. Следующие
+**48 guards** добавляют failure-only bounded summary: allowlisted public
+identities/ranges и fixed categories, без raw paths/config/stderr. Nonzero
+npm ls по-прежнему hard rejection; graph/peer ranges не изменены. Source-based
+гипотеза разных base paths у npm build и dependency validation пока не
+подменяет фактический вывод npm ls.
+
+[Markdown/CSpell](https://github.com/egorribun/university_ecosystem/actions/runs/40133823187/job/120992268830)
+прошли: 119 Markdown files, zero issues; исправленный AUD-198 anchor валиден.
+Fast lint, security/types, baseline319, Gitleaks, frontend format/17 staged
+parity cases/build/bundle прошли. Migration81, raw14/25 и DB gate86+2 сохраняют
+прежний scoped результат; это не full CI/release GREEN.
+
+Следующий tests-only cohort добавляет пять реальных PostgreSQL случаев для
+AUD-343: три missing-column fallback, complete schema и unexpected SQL error.
+Connection-owned temporary objects и rollback оставляют public notification
+table неизменной; transaction sentinel проверяет сохранение outer work.
+Семь существующих AUD-262 cases и один concurrent-dispatcher case запускаются
+рядом; hosted step требует ровно **13** named PASS без skips/errors.
+Новые пять cases ещё не выполнялись, AUD-343 не принят. **AUD-262 остаётся OPEN**:
+исправление postcommit false-500 не обеспечивает durable same-key idempotency
+после истечения 300-second Redis lease или потери Redis state.
+
 ## Hosted validation b5e4720, 2026-10-25
 
 На `b5e472014191dad0ce30a0f014f5ce0115413b9d` проверялся merge

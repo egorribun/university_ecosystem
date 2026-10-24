@@ -412,6 +412,154 @@ export function summarizeStrictNpmFailure(result) {
   return report
 }
 
+export function summarizeStrictListFailure(result) {
+  assert(result.status !== 0 || result.error || result.signal)
+  const report = {
+    kind: "react-compiler-strict-list-failure",
+    operation: "strictList",
+    exitCode:
+      Number.isInteger(result.status) && result.status > 0 && result.status <= 255
+        ? result.status
+        : null,
+    timedOut: result.error?.code === "ETIMEDOUT",
+    terminated: Boolean(result.signal),
+    outputLimitExceeded: result.error?.code === "ENOBUFS",
+    jsonRecognized: false,
+    errorCode: "unrecognized",
+    problemCategories: { invalid: 0, missing: 0, extraneous: 0, unrecognized: 0 },
+    observations: [],
+    omitted: false,
+    candidateAccepted: false,
+  }
+  if (typeof result.stdout !== "string" || Buffer.byteLength(result.stdout) > 1024 * 1024) {
+    return report
+  }
+  let parsed
+  try {
+    parsed = JSON.parse(result.stdout)
+  } catch {
+    return report
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return report
+  report.jsonRecognized = true
+  if (["ELSPROBLEMS", "EJSONPARSE", "EOVERRIDE", "EUSAGE"].includes(parsed.error?.code)) {
+    report.errorCode = parsed.error.code
+  }
+  const versions = new Map([
+    ["eslint", ["10.12.0"]],
+    ["eslint-plugin-react-compiler", ["19.1.0-rc.2"]],
+    ["eslint-plugin-react-hooks", ["7.1.1"]],
+    ["zod", ["1.0.0", "3.25.76", "4.6.7"]],
+    ["zod-validation-error", ["3.5.4", "4.0.2"]],
+    ["react-compiler-zod-compat", ["1.0.0"]],
+    ["@university-ecosystem/react-compiler-zod-compat", ["1.0.0"]],
+    ["patched-zod", ["4.6.7"]],
+  ])
+  const identities = new Map()
+  for (const [name, values] of versions) {
+    for (const version of values) identities.set(name + "@" + version, { name, version })
+  }
+  for (const [name, packageName, version] of [
+    ["zod", "@university-ecosystem/react-compiler-zod-compat", "1.0.0"],
+    ["react-compiler-zod-compat", "@university-ecosystem/react-compiler-zod-compat", "1.0.0"],
+    ["patched-zod", "zod", "4.6.7"],
+  ]) {
+    identities.set(name + "@npm:" + packageName + "@" + version, {
+      name,
+      version,
+      packageName,
+    })
+  }
+  const seen = new Set()
+  const append = (item) => {
+    const key = JSON.stringify(item)
+    if (seen.has(key)) return
+    seen.add(key)
+    if (report.observations.length < 8) report.observations.push(item)
+    else report.omitted = true
+  }
+  if (parsed.problems !== undefined && !Array.isArray(parsed.problems)) report.omitted = true
+  const problems = Array.isArray(parsed.problems) ? parsed.problems : []
+  if (problems.length > 64) report.omitted = true
+  for (const problem of problems.slice(0, 64)) {
+    const match =
+      typeof problem === "string" && problem.length <= 4096
+        ? /^(invalid|extraneous): (\S+) .+$/.exec(problem) ??
+          /^(missing): (\S+), required by .+$/.exec(problem)
+        : null
+    const kind = match?.[1] ?? "unrecognized"
+    report.problemCategories[kind] += 1
+    const identity = identities.get(match?.[2])
+    if (identity) append({ kind, ...identity })
+    else report.omitted = true
+  }
+  const ranges = new Set([
+    "^3.22.4",
+    "^3.24.4",
+    FORMATTER_PEER,
+    HOOKS_PEER,
+    "^3.0.3",
+    "4.0.2",
+    "4.6.7",
+    ">=7",
+    "file:./scripts/react-compiler-zod-compat",
+    "file:../../scripts/react-compiler-zod-compat",
+  ])
+  const consumers = new Map([
+    ["the root project", "react-compiler-peer-proof"],
+    [COMPILER, "eslint-plugin-react-compiler"],
+    [HOOKS, "eslint-plugin-react-hooks"],
+    [FORMATTER, "zod-validation-error"],
+    [LOCAL, "@university-ecosystem/react-compiler-zod-compat"],
+  ])
+  // Inspect only these fixed dependency keys, at most two levels deep.
+  for (const keys of [
+    ["eslint"],
+    ["eslint-plugin-react-compiler"],
+    ["eslint-plugin-react-compiler", "zod"],
+    ["eslint-plugin-react-compiler", "zod-validation-error"],
+    ["eslint-plugin-react-hooks"],
+    ["eslint-plugin-react-hooks", "zod-validation-error"],
+    ["zod-validation-error"],
+    ["zod"],
+    ["react-compiler-zod-compat"],
+    ["react-compiler-zod-compat", "patched-zod"],
+  ]) {
+    let node = parsed
+    for (const key of keys) node = node?.dependencies?.[key]
+    if (node?.invalid === undefined) continue
+    if (
+      typeof node.invalid !== "string" ||
+      node.invalid.length > 2048 ||
+      !versions.get(node.name)?.includes(node.version)
+    ) {
+      report.omitted = true
+      continue
+    }
+    const fragments = node.invalid.split(", ")
+    if (fragments.length > 8) report.omitted = true
+    for (const fragment of fragments.slice(0, 8)) {
+      const match = /^"([^"]+)" from (.+)$/.exec(fragment)
+      const consumer = consumers.get(match?.[2])
+      if (!match || !ranges.has(match[1]) || !consumer) {
+        report.omitted = true
+        continue
+      }
+      const name = keys.at(-1)
+      append({
+        kind: "invalid-edge",
+        name,
+        version: node.version,
+        ...(name !== node.name ? { packageName: node.name } : {}),
+        range: match[1],
+        consumer,
+      })
+    }
+  }
+  assert(Buffer.byteLength(JSON.stringify(report)) <= 4096)
+  return report
+}
+
 function artifactIdentity(record) {
   assert(record && typeof record === "object")
   const identity = { ...record }
@@ -887,6 +1035,12 @@ export async function runFinalCompilerGenerator() {
           "FINAL_COMPILER_STRICT_FAILURE " + JSON.stringify(summarizeStrictNpmFailure(result))
         )
       }
+      if (options.strictListDiagnostic && (result.error || result.signal || result.status !== 0)) {
+        console.error(
+          "FINAL_COMPILER_STRICT_LIST_FAILURE " +
+            JSON.stringify(summarizeStrictListFailure(result))
+        )
+      }
       assert(!result.error && !result.signal && result.status === 0)
       return result.stdout
     }
@@ -979,6 +1133,7 @@ export async function runFinalCompilerGenerator() {
       return command(process.execPath, [cli, ...args], cwd, {
         env,
         strictDiagnostic: operation === "strictGenerate",
+        strictListDiagnostic: operation === "strictList",
       })
     }
     assert.equal(npm(bootstrap, "version", generation).trim(), "11.19.0")

@@ -540,6 +540,82 @@ jobs:
                       raise SystemExit("Required Mailpit acceptance did not execute successfully")
                   PY
 
+            - name: Verify chat commit and notification fallback PostgreSQL regressions
+              shell: bash
+              timeout-minutes: 5
+              run: |
+                  set -euo pipefail
+                  probe_root="$(mktemp -d "$RUNNER_TEMP/aud262343-postgres.XXXXXX")"
+                  trap 'rm -rf -- "$probe_root"' EXIT
+                  pytest_status=0
+                  uv run --frozen --no-sync pytest \
+                    tests/test_aud262_postcommit_redis_failure.py \
+                    tests/test_chat_idempotency_ownership.py::test_simultaneous_dispatchers_persist_one_real_message \
+                    tests/integration/test_aud343_notification_fallback_postgres.py \
+                    -n 0 -v --tb=short --show-capture=no --no-cov --maxfail=0 \
+                    -p no:cacheprovider --junitxml="$probe_root/junit.xml" \
+                    --basetemp="$probe_root/basetemp" \
+                    > "$probe_root/pytest.log" 2>&1 || pytest_status=$?
+                  tail -n 160 "$probe_root/pytest.log"
+                  if ! python3 - "$probe_root/junit.xml" <<'PY'
+                  import sys
+                  from xml.etree import ElementTree
+
+                  cases = list(ElementTree.parse(sys.argv[1]).getroot().iter("testcase"))
+                  completion = (
+                      "tests/test_aud262_postcommit_redis_failure.py::"
+                      "test_postcommit_completion_failure_keeps_database_result"
+                  )
+                  expected = {
+                      f"{completion}[{case}]"
+                      for case in (
+                          "os-error",
+                          "redis-error",
+                          "redis-timeout",
+                          "redis-response-error-propagates",
+                          "cancellation-propagates",
+                          "unexpected-error-propagates",
+                      )
+                  }
+                  expected.update({
+                      "tests/test_aud262_postcommit_redis_failure.py::"
+                      "test_message_without_idempotency_key_skips_cache_completion",
+                      "tests/test_chat_idempotency_ownership.py::"
+                      "test_simultaneous_dispatchers_persist_one_real_message",
+                      "tests/integration/test_aud343_notification_fallback_postgres.py::"
+                      "test_complete_schema_reads_without_fallback_on_postgres",
+                      "tests/integration/test_aud343_notification_fallback_postgres.py::"
+                      "test_unexpected_postgres_error_propagates_without_losing_outer_work",
+                  })
+                  expected.update(
+                      "tests/integration/test_aud343_notification_fallback_postgres.py::"
+                      f"test_missing_column_fallback_preserves_postgres_transaction[{column}]"
+                      for column in ("title_en", "body_en", "read_at")
+                  )
+                  actual = {
+                      case.attrib["classname"].replace(".", "/")
+                      + ".py::"
+                      + case.attrib["name"]
+                      for case in cases
+                  }
+                  if (
+                      len(cases) != 13
+                      or len(expected) != 13
+                      or actual != expected
+                      or any(
+                          case.find(status) is not None
+                          for case in cases
+                          for status in ("failure", "error", "skipped")
+                      )
+                  ):
+                      raise SystemExit("Required PostgreSQL cohort did not pass all 13 cases")
+                  print("PostgreSQL AUD-262/343 cohort: 13 expected passes, zero skips")
+                  PY
+                  then
+                    [ "$pytest_status" -ne 0 ] || pytest_status=1
+                  fi
+                  exit "$pytest_status"
+
             - name: Pre-pull testcontainer images with bounded retries
               shell: pwsh
               run: |

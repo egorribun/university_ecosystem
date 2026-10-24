@@ -22,6 +22,7 @@ import {
   prepareStrictManifest,
   strictPeerEnvironment,
   strictVerificationPhase,
+  summarizeStrictListFailure,
   summarizeStrictNpmFailure,
   validateFormatterMetadata,
 } from "./generate-react-compiler-final-lock-candidate.mjs"
@@ -1279,6 +1280,195 @@ test("strict verification labels reject arbitrary data and prototype keys", () =
   for (const phase of ["", "/private/fixture", "unreviewed", "__proto__", "toString", null, 1]) {
     assert.throws(() => strictVerificationPhase(phase), { name: "AssertionError" })
   }
+})
+
+test("strict npm ls diagnostics classify only reviewed package and alias identities", () => {
+  const report = summarizeStrictListFailure({
+    status: 1,
+    stdout: JSON.stringify({
+      name: "react-compiler-peer-proof",
+      version: "1.0.0",
+      error: { code: "ELSPROBLEMS", summary: "/private/fixture", detail: "ignored" },
+      problems: [
+        "invalid: zod@npm:@university-ecosystem/react-compiler-zod-compat@1.0.0 /private/fixture",
+        "missing: zod-validation-error@4.0.2, required by private-fixture",
+        "extraneous: patched-zod@npm:zod@4.6.7 /private/fixture",
+      ],
+      dependencies: {
+        "eslint-plugin-react-compiler": {
+          name: "eslint-plugin-react-compiler",
+          version: "19.1.0-rc.2",
+          dependencies: {
+            zod: {
+              name: "@university-ecosystem/react-compiler-zod-compat",
+              version: "1.0.0",
+              path: "/private/fixture",
+              resolved: "/private/fixture",
+              invalid:
+                '"file:../../scripts/react-compiler-zod-compat" from node_modules/eslint-plugin-react-compiler',
+            },
+          },
+        },
+      },
+    }),
+  })
+  assert.deepEqual(report, {
+    kind: "react-compiler-strict-list-failure",
+    operation: "strictList",
+    exitCode: 1,
+    timedOut: false,
+    terminated: false,
+    outputLimitExceeded: false,
+    jsonRecognized: true,
+    errorCode: "ELSPROBLEMS",
+    problemCategories: { invalid: 1, missing: 1, extraneous: 1, unrecognized: 0 },
+    observations: [
+      {
+        kind: "invalid",
+        name: "zod",
+        version: "1.0.0",
+        packageName: "@university-ecosystem/react-compiler-zod-compat",
+      },
+      { kind: "missing", name: "zod-validation-error", version: "4.0.2" },
+      { kind: "extraneous", name: "patched-zod", version: "4.6.7", packageName: "zod" },
+      {
+        kind: "invalid-edge",
+        name: "zod",
+        version: "1.0.0",
+        packageName: "@university-ecosystem/react-compiler-zod-compat",
+        range: "file:../../scripts/react-compiler-zod-compat",
+        consumer: "eslint-plugin-react-compiler",
+      },
+    ],
+    omitted: false,
+    candidateAccepted: false,
+  })
+  assert.equal(JSON.stringify(report).includes("private"), false)
+})
+
+test("strict npm ls diagnostics do not expose unreviewed identities or metadata", () => {
+  for (const [name, version, invalid] of [
+    ["private-package", "1.0.0", '"4.6.7" from node_modules/zod-validation-error'],
+    ["zod", "999.0.0", '"4.6.7" from node_modules/zod-validation-error'],
+    ["zod", "4.6.7", '"private-range" from node_modules/zod-validation-error'],
+    ["zod", "4.6.7", '"4.6.7" from node_modules/private-package'],
+    ["zod", "4.6.7", '"4.6.7" from /private/fixture'],
+  ]) {
+    const report = summarizeStrictListFailure({
+      status: 1,
+      stderr: "/private/fixture",
+      stdout: JSON.stringify({
+        error: { code: "PRIVATE_CODE", detail: "/private/fixture" },
+        problems: ["invalid: private-package@1.0.0 /private/fixture"],
+        dependencies: {
+          zod: { name, version, invalid, _path: "/private/fixture", linkTargets: "ignored" },
+        },
+      }),
+    })
+    assert.equal(report.errorCode, "unrecognized")
+    assert.deepEqual(report.observations, [])
+    assert.equal(report.omitted, true)
+    assert.equal(JSON.stringify(report).includes("private"), false)
+  }
+})
+
+test("strict npm ls diagnostics bound malformed JSON and byte-sized input", () => {
+  for (const stdout of [
+    "not json",
+    "null",
+    "[]",
+    '{"dependencies":',
+    JSON.stringify({ padding: "x".repeat(1024 * 1024) }),
+    JSON.stringify({ padding: "é".repeat(512 * 1024) }),
+  ]) {
+    const report = summarizeStrictListFailure({
+      status: null,
+      signal: "SIGTERM",
+      error: { code: "ETIMEDOUT", message: "/private/fixture" },
+      stdout,
+    })
+    assert.equal(report.jsonRecognized, false)
+    assert.equal(report.exitCode, null)
+    assert.equal(report.timedOut, true)
+    assert.equal(report.terminated, true)
+    assert.deepEqual(report.observations, [])
+    assert.equal(JSON.stringify(report).includes("private"), false)
+  }
+  const overflow = summarizeStrictListFailure({
+    status: null,
+    error: { code: "ENOBUFS", message: "/private/fixture" },
+    stdout: "{}",
+  })
+  assert.equal(overflow.outputLimitExceeded, true)
+  assert.throws(() => summarizeStrictListFailure({ status: 0, stdout: "{}" }), {
+    name: "AssertionError",
+  })
+})
+
+test("strict npm ls diagnostics cap observations and avoid arbitrary traversal", () => {
+  const problems = [
+    ...Array(30).fill("invalid: zod@4.6.7 /private/fixture"),
+    ...["invalid", "missing", "extraneous"].flatMap((kind) =>
+      ["1.0.0", "3.25.76", "4.6.7"].map((version) =>
+        kind === "missing"
+          ? "missing: zod@" + version + ", required by private-fixture"
+          : kind + ": zod@" + version + " /private/fixture"
+      )
+    ),
+    ...Array(40).fill("unrecognized private-fixture"),
+  ]
+  const report = summarizeStrictListFailure({
+    status: 1,
+    stdout: JSON.stringify({
+      problems,
+      dependencies: {
+        "private-package": {
+          dependencies: {
+            zod: {
+              name: "zod",
+              version: "4.6.7",
+              invalid: '"4.6.7" from node_modules/zod-validation-error',
+            },
+          },
+        },
+      },
+    }),
+  })
+  assert.equal(report.observations.length, 8)
+  assert.equal(new Set(report.observations.map((item) => JSON.stringify(item))).size, 8)
+  assert.equal(Object.values(report.problemCategories).reduce((sum, value) => sum + value), 64)
+  assert.equal(report.observations.some((item) => item.kind === "invalid-edge"), false)
+  assert.equal(report.omitted, true)
+  assert.ok(Buffer.byteLength(JSON.stringify(report)) <= 4096)
+})
+
+test("strict npm ls diagnostics reject malformed problem and invalid-edge shapes", () => {
+  for (const value of [null, {}, 1, ["invalid: zod@4.6.7 /private/fixture"]]) {
+    const report = summarizeStrictListFailure({
+      status: 1,
+      stdout: JSON.stringify({
+        problems: [value, "invalid: zod@4.6.7 " + "x".repeat(4096)],
+        dependencies: { zod: { name: "zod", version: "4.6.7", invalid: value } },
+      }),
+    })
+    assert.deepEqual(report.observations, [])
+    assert.equal(report.omitted, true)
+  }
+  const report = summarizeStrictListFailure({
+    status: 1,
+    stdout: JSON.stringify({
+      problems: "invalid: zod@4.6.7 /private/fixture",
+      dependencies: {
+        zod: {
+          name: "zod",
+          version: "4.6.7",
+          invalid: '"4.6.7" from node_modules/zod-validation-error'.repeat(64),
+        },
+      },
+    }),
+  })
+  assert.deepEqual(report.observations, [])
+  assert.equal(report.omitted, true)
 })
 
 test("import is inert and direct execution produces no false candidate evidence", () => {
