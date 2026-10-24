@@ -94,7 +94,14 @@ function sourceLock() {
         devDependencies: structuredClone(source.devDependencies),
       },
       [COMPILER]: packageRecord("eslint-plugin-react-compiler", "19.1.0-rc.2", {
-        dependencies: { zod: "^3.22.4", "zod-validation-error": "^3.0.3" },
+        dependencies: {
+          "@babel/core": "^7.24.4",
+          "@babel/parser": "^7.24.4",
+          "@babel/plugin-proposal-private-methods": "^7.18.6",
+          "hermes-parser": "^0.25.1",
+          zod: "^3.22.4",
+          "zod-validation-error": "^3.0.3",
+        },
         peerDependencies: { eslint: ">=7" },
       }),
       [OLD_ENGINE]: packageRecord("zod", "3.25.76"),
@@ -266,6 +273,7 @@ function installedFixture(root, mode = "full") {
     name: "zod-validation-error",
     version: "4.0.2",
     main: "index.cjs",
+    exports: { ".": "./index.cjs" },
     peerDependencies: { zod: "^3.25.0 || ^4.0.0" },
   })
   for (const name of ["eslint", "eslint-plugin-react-hooks"]) {
@@ -281,6 +289,7 @@ function installedFixture(root, mode = "full") {
   symlinkSync(join(root, LOCAL), join(root, "node_modules/react-compiler-zod-compat"), "dir")
   return {
     compilerBundleSha256: createHash("sha256").update(compilerEntry).digest("hex"),
+    compilerDependencies: lock.packages[COMPILER].dependencies,
   }
 }
 

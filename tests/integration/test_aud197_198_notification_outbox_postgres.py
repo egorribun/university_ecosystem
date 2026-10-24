@@ -1372,3 +1372,209 @@ async def test_content_outbox_restores_tenant_scope(
         notification_ids = {str(row.id) for row in notifications}
         assert set(requests[0].payload["notification_ids"]) == notification_ids
         assert requests[0].processed_at is None
+
+
+@pytest.mark.parametrize("kind", ["news", "event"])
+async def test_legacy_null_tenant_content_ignores_worker_ambient_scope(
+    db_session,
+    user_factory,
+    _owned_tenant_worker,
+    monkeypatch,
+    kind,
+):
+    """Legacy NULL-tenant content must not inherit a different worker tenant."""
+    _require_postgres()
+    harness = _owned_tenant_worker
+    tenant_b_id = uuid.uuid4()
+    db_session.add(
+        Tenant(
+            id=tenant_b_id, name="Tenant B", slug=f"aud197-legacy-{uuid.uuid4().hex}"
+        )
+    )
+    await db_session.commit()
+    first_global = await user_factory()
+    second_global = await user_factory()
+    user_b = await user_factory()
+    global_recipients = {first_global.id, second_global.id}
+    await db_session.execute(
+        text("UPDATE public.users SET tenant_id = :tenant_id WHERE id = :user_id"),
+        {"tenant_id": tenant_b_id, "user_id": user_b.id},
+    )
+    await db_session.commit()
+
+    with _tenant_proof_context(""):
+        if kind == "news":
+            content = await NewsRepository(db_session).create(
+                {
+                    "title": "Legacy global news",
+                    "content": "Synthetic legacy tenant proof",
+                    "author_id": first_global.id,
+                },
+                locale="en",
+            )
+            tenant_query = text(
+                "SELECT tenant_id FROM public.news WHERE id = :source_id"
+            )
+            source_query = text("SELECT id FROM public.news WHERE id = :source_id")
+            event_type = "news.created"
+            dedupe_key = f"news.created:{content.id}"
+            handler = event_handlers.handle_news_created_notification
+            legacy_metadata = None
+        else:
+            now = datetime.now(UTC)
+            content = await EventRepository(db_session).create(
+                {
+                    "title": "Legacy global event",
+                    "description": "Synthetic legacy tenant proof",
+                    "location": "Room 1",
+                    "event_type": "meeting",
+                    "starts_at": now + timedelta(days=1),
+                    "ends_at": now + timedelta(days=1, hours=1),
+                    "created_by": first_global.id,
+                },
+                locale="en",
+            )
+            tenant_query = text(
+                "SELECT tenant_id FROM public.events WHERE id = :source_id"
+            )
+            source_query = text("SELECT id FROM public.events WHERE id = :source_id")
+            event_type = "event.created"
+            dedupe_key = f"events.created:{content.id}"
+            handler = event_handlers.handle_event_created_notification
+            legacy_metadata = {}
+        source_id = content.id
+        await db_session.commit()
+        stored = await _source_event(db_session, event_type, source_id)
+        stored.metadata_ = legacy_metadata
+        stored_id = stored.id
+        await db_session.commit()
+
+    async with database.async_session() as administrator:
+        physical_tenant = await administrator.scalar(
+            tenant_query, {"source_id": source_id}
+        )
+        assert physical_tenant is None
+        user_tenants = (
+            await administrator.execute(
+                text("SELECT id, tenant_id FROM public.users ORDER BY id")
+            )
+        ).all()
+        assert dict(user_tenants) == {
+            first_global.id: None,
+            second_global.id: None,
+            user_b.id: tenant_b_id,
+        }
+        policies = (
+            await administrator.execute(
+                text(
+                    "SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity, "
+                    "c.relowner <> r.oid AS foreign_owner "
+                    "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "CROSS JOIN pg_roles r "
+                    "WHERE n.nspname = 'public' AND r.rolname = :role "
+                    "AND c.relname IN ('users', 'news', 'events', 'notifications')"
+                ),
+                {"role": harness.role_name},
+            )
+        ).all()
+        assert {row.relname for row in policies} == {
+            "users",
+            "news",
+            "events",
+            "notifications",
+        }
+        assert all(
+            row.relrowsecurity and row.relforcerowsecurity and row.foreign_owner
+            for row in policies
+        )
+
+    for scope, expected_users in (
+        ("", global_recipients),
+        (str(tenant_b_id), global_recipients | {user_b.id}),
+    ):
+        with _tenant_proof_context(scope):
+            async with asyncio.timeout(10):
+                async with harness.sessions() as reader:
+                    await _assert_tenant_worker_transaction(
+                        reader, harness.role_name, scope
+                    )
+                    visible_source = await reader.scalar(
+                        source_query, {"source_id": source_id}
+                    )
+                    assert visible_source == source_id
+                    visible_users = set((await reader.scalars(select(User.id))).all())
+                    assert visible_users == expected_users
+
+    monkeypatch.setattr(notifications_delivery, "_is_push_configured", lambda: False)
+    monkeypatch.setattr(
+        webpush_module,
+        "_send_push_async",
+        AsyncMock(side_effect=AssertionError("legacy proof must defer push delivery")),
+    )
+    monkeypatch.setattr(event_handlers, "async_session", harness.sessions)
+    monkeypatch.setattr(outbox_module, "async_session", harness.sessions)
+    bus = EventBus()
+    bus.subscribe("user.created", event_handlers.handle_user_created)
+    bus.subscribe(event_type, handler)
+    monkeypatch.setattr(outbox_module, "event_bus", bus)
+    prior_tenant = tenant_context.tenant_id_ctx.get()
+    prior_bypass = tenant_context.bypass_rls_ctx.get()
+    with _tenant_proof_context(str(tenant_b_id)):
+        bypass_token = tenant_context.bypass_rls_ctx.set(True)
+        harness.transaction_pids.clear()
+        try:
+            async with asyncio.timeout(20):
+                await outbox_module.OutboxWorker(batch_size=100).process_batch()
+            worker_pids = set(harness.transaction_pids)
+            assert len(worker_pids) >= 2
+            # Observe a subsequent transaction without inheriting the caller's
+            # intentional bypass probe, then restore that caller flag as well.
+            with _tenant_proof_context(str(tenant_b_id)):
+                async with asyncio.timeout(10):
+                    async with harness.sessions() as next_transaction:
+                        reused_pid = await _assert_tenant_worker_transaction(
+                            next_transaction, harness.role_name, str(tenant_b_id)
+                        )
+                        assert reused_pid in worker_pids
+        finally:
+            try:
+                assert tenant_context.tenant_id_ctx.get() == str(tenant_b_id)
+                assert tenant_context.bypass_rls_ctx.get() is True
+            finally:
+                tenant_context.bypass_rls_ctx.reset(bypass_token)
+    assert tenant_context.tenant_id_ctx.get() == prior_tenant
+    assert tenant_context.bypass_rls_ctx.get() == prior_bypass
+
+    async with database.async_session() as administrator:
+        source = await administrator.get(StoredEvent, stored_id)
+        assert source is not None
+        assert source.metadata_ == legacy_metadata
+        assert source.error_count == 0
+        assert source.processed_at is not None
+        notifications = list(
+            (
+                await administrator.scalars(
+                    select(Notification).where(Notification.dedupe_key == dedupe_key)
+                )
+            ).all()
+        )
+        assert len(notifications) == 2
+        assert {row.user_id for row in notifications} == global_recipients
+        all_recipients = set(
+            (await administrator.scalars(select(Notification.user_id))).all()
+        )
+        assert all_recipients == global_recipients
+        requests = list(
+            (
+                await administrator.scalars(
+                    select(StoredEvent).where(
+                        StoredEvent.event_type == NotificationsRequested.EVENT_TYPE
+                    )
+                )
+            ).all()
+        )
+        assert len(requests) == 1
+        assert requests[0].metadata_ is None
+        notification_ids = {str(row.id) for row in notifications}
+        assert set(requests[0].payload["notification_ids"]) == notification_ids
+        assert requests[0].processed_at is None

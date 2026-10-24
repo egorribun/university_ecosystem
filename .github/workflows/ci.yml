@@ -1029,6 +1029,13 @@ jobs:
             tests/integration/test_migration_148642dd1207.py::test_groups_index_cutover_failure_restores_exact_catalog_and_data \
             tests/integration/test_migration_148642dd1207.py::test_groups_key_helper_round_trip_restores_legacy_index_and_foreign_keys \
             tests/integration/test_migration_148642dd1207.py::test_groups_successors_do_not_require_the_duplicate_id_index \
+            tests/integration/test_migration_148642dd1207.py::test_invalid_fk_value_aborts_shadow_conversion_without_data_loss \
+            tests/integration/test_migration_148642dd1207.py::test_upgrade_copies_spotify_state_and_skips_empty_legacy_rows \
+            tests/integration/test_migration_148642dd1207.py::test_upgrade_copies_available_fields_from_a_partial_legacy_schema \
+            tests/integration/test_migration_148642dd1207.py::test_upgrade_does_not_overwrite_existing_spotify_integration_rows \
+            tests/integration/test_migration_148642dd1207.py::test_upgrade_preserves_legacy_user_preferences \
+            tests/integration/test_migration_148642dd1207.py::test_upgrade_backfills_missing_preferences_without_overwriting_existing_rows \
+            tests/integration/test_migration_148642dd1207.py::test_null_legacy_enabled_aborts_upgrade_without_losing_preferences \
             --basetemp="$trace_root" > "$test_log" 2>&1 || pytest_status=$?
           echo "AUD148_FOCUSED_TESTS_BEGIN"
           if ! print_bounded "$test_log" 131072; then
@@ -1183,8 +1190,10 @@ jobs:
           trap 'rm -rf -- "$probe_root"' EXIT
           test_log="$probe_root/pytest.log"
           pytest_status=0
-          uv run pytest -v --tb=short --no-cov --maxfail=0 \
+          uv run pytest -v --tb=short --show-capture=no --no-cov --maxfail=0 \
             tests/integration/test_aud197_198_notification_outbox_postgres.py::test_content_outbox_restores_tenant_scope \
+            tests/integration/test_aud197_198_notification_outbox_postgres.py::test_legacy_null_tenant_content_ignores_worker_ambient_scope \
+            tests/test_outbox_tenant_context.py \
             --basetemp="$probe_root/basetemp" > "$test_log" 2>&1 || pytest_status=$?
           echo "OWNED_TENANT_CONTEXT_TESTS_BEGIN"
           bytes="$(wc -c < "$test_log")"
@@ -2148,7 +2157,8 @@ jobs:
             tests/test_live_stand.py::test_live_reset_registration_v2_deduplicates_and_caps_output \
             tests/test_live_stand.py::test_live_reset_registration_v2_runner_uses_failure_stdout_only \
             tests/test_config_base_closure.py \
-            tests/test_frontend_knip_asset_contract.py -v \
+            tests/test_frontend_knip_asset_contract.py \
+            tests/test_outbox_tenant_context.py -v \
             --tb=short --durations=20 -n 2 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \

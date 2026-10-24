@@ -20,7 +20,14 @@ import {
 
 import { reportLiveHttpStatus, reportLiveRateLimitRetry } from "./http-status-diagnostic"
 import { reportLivePasswordResetRegistrationFailure } from "./live-ui-diagnostic"
-import { runPasswordResetRegistrationAction } from "./password-reset-registration-action"
+import {
+  createPasswordResetRegistrationDiagnostics,
+  runPasswordResetRegistrationAction,
+} from "./password-reset-registration-action"
+import {
+  readPlaywrightTestSlotDeadlineAtMs,
+  REGISTRATION_MAX_TEST_TIMEOUT_MS,
+} from "../../scripts/live-registration-admission.mjs"
 
 const RESET_LINK = /\/reset-password#token=([\w.~-]+)/
 const UNTRUSTED_REDIRECT = "https://redirect-target.invalid/landing"
@@ -116,7 +123,13 @@ test("a student resets with the Mailpit link without retaining tokens or followi
             new URL(response.url()).pathname.endsWith("/auth/register")
         ),
       () => page.getByRole("button", { name: "Зарегистрироваться" }).click(),
-      (step) => reportLivePasswordResetRegistrationFailure(testInfo.project.name, step)
+      (step) => reportLivePasswordResetRegistrationFailure(testInfo.project.name, step),
+      createPasswordResetRegistrationDiagnostics(
+        page,
+        testInfo.project.name,
+        ownedSessionOrigin(),
+        readPlaywrightTestSlotDeadlineAtMs(testInfo, REGISTRATION_MAX_TEST_TIMEOUT_MS)
+      )
     )
   )
   expect(registered.ok()).toBe(true)

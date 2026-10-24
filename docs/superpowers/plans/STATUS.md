@@ -5,7 +5,7 @@
 
 
 
-## Текущий checkpoint: проверенные этапы и точечная policy332, 2026-10-24
+## Текущий checkpoint: проверенные этапы и точечная policy336, 2026-10-24
 
 Ledger остаётся **292/512 (57,0%)**, **220 ID не принято**. Новых принятых ID
 этот checkpoint не добавляет. Разделы ниже сохраняют результаты своих SHA;
@@ -26,52 +26,72 @@ bundle analysis и перенос npm layout в Docker builder прошли.
 дал **38 PASS / 2 SKIP**, NATS outage и cleanup также PASS.
 Это приёмка staged dev-only boundary, не замены конечного consumer:
 его Zod3 и отдельный embedded Babel risk пока не закрыты.
-Новый final-lock generator находится в inert tests-first стадии; функциональный
-CLI не включён и dependency graph им не изменяется.
+На source `ee35e6de` [27-case final-lock generator cohort](https://github.com/egorribun/university_ecosystem/actions/runs/40108844098/job/120916370637)
+дал **26 assertion FAIL / 1 PASS**, без import/setup failures. После этого
+подготовлен функциональный generator candidate; его новый hosted GREEN ещё
+требуется. Эта публикация не применяет generated lock и сама по себе не меняет
+принятый dependency graph или результат dependency audit.
 
 На source `36e84f25` ([CI 40103663774](https://github.com/egorribun/university_ecosystem/actions/runs/40103663774))
 точная import-only правка прошла fast lint и допустила PostgreSQL:
 [73-case diagnostic](https://github.com/egorribun/university_ecosystem/actions/runs/40103663774/job/120901869267)
 дал **2 FAIL / 71 PASS**. Только legacy-key controls обнаружили лишний
 `ix_groups_id`; integer, rollback, helper round-trip и successor controls PASS.
-Публикуемый fix удаляет одну upgrade-side CREATE INDEX операцию; downgrade,
-primary key, locking, checks и foreign keys сохранены. Противоречивый unit
-assertion теперь требует PK attachment и запрещает только лишний index.
-Это ещё не post-fix GREEN и не снятие остальных Squawk findings.
+Исправление удалило одну upgrade-side CREATE INDEX операцию; downgrade,
+primary key, locking, checks и foreign keys сохранены. Unit assertion требует
+PK attachment и запрещает только лишний index. На source `b0e25caa`
+[74-case diagnostic](https://github.com/egorribun/university_ecosystem/actions/runs/40110852740/job/120923222979)
+дал **74 PASS**; original Squawk сохранил **14**, expanded — **25** findings.
+Это scoped post-fix GREEN, не полный Squawk GREEN или гарантия отсутствия
+downtime. Cohort выполнил 20 из 27 физических migration cases; семь прежних
+cases добавляются отдельно, расширяя следующий diagnostic до 81 без удаления
+прежних selectors. Полный 27-case результат этого нового source ещё требуется.
 
 [PostgreSQL integration](https://github.com/egorribun/university_ecosystem/actions/runs/40103663774/job/120901869525)
 подтвердил все **8** notification-outbox cases, включая concurrent sessions и
 partial-recipient retry. Общий результат **1 FAIL / 164 PASS / 4 SKIP**:
 fail-fast остановился на первом том же migration-index defect.
-AUD-197/198 остаются pending: добавляется отдельная six-case least-privilege
-tenant-context проверка; оба correct-tenant controls должны пройти до
-интерпретации empty/wrong-tenant failures. Её собственный результат ещё нужен.
-Она не блокирует получение независимых migration DDL artifacts.
+AUD-197/198 остаются pending. В отдельном six-case least-privilege tenant step
+на b0e25caa наблюдались **2 correct-tenant A PASS / 4 empty-or-B FAIL**.
+Первые три доступных traceback показывают ноль вместо двух notifications;
+четвёртый traceback и итоговый summary обрезаны лимитом log output.
+Повтор с `--show-capture=no` должен сохранить все четыре причины, не отключая
+capture и не увеличивая budgets. DDL artifacts получены до tenant step.
+Полный integration на b0e25caa остановился раньше migration module на первом
+tenant defect (**1 FAIL / 29 PASS**); это не доказательство всех 27 migration cases.
 
 Полный unit shard 1 на 36e84f выявил два дополнительных config-warning FAIL:
 локальные Path аргументы стали opaque markers после строгой redaction.
-Публикуемый caller-only fix преобразует ровно эти четыре аргумента в native
-strings; redactor и оба real-caplog assertions не ослаблены. Полный
-`tests/test_config_base_closure.py` добавлен в consumer cohort; его GREEN
-и aggregate coverage ещё требуются. Все четыре unit shards этого source
-завершились: дополнительно выявлен один устаревший Knip workspace assertion.
-Он теперь допускает ровно новый dev-only compiler workspace с проверкой его
+Caller-only fix преобразовал ровно эти четыре аргумента в native strings;
+redactor и оба real-caplog assertions не ослаблены.
+[Contract на b0e25caa](https://github.com/egorribun/university_ecosystem/actions/runs/40110852740/job/120922068539)
+дал **22 config-base PASS** и **8 Knip contract PASS**. Исправленный Knip
+assertion допускает ровно новый dev-only compiler workspace с проверкой
 manifest; существующие ignore lists и blocking hints не ослаблены.
+Это scoped GREEN, не aggregate coverage. Общий consumer результат остаётся
+**6 V2 FAIL / 2474 PASS**, а не full Contract GREEN.
 
-Текущая политика содержит **332** точных path/type/digest identities:
-все прежние **329** сохранены, добавлены только observed public revision
-и два computed public Git-pin rebindings для migration/orchestrator.
-[ADR-047 фиксирует точные границы](../../adr/ADR-047-risk-based-quality-policy.md#exact-post-primary-key-duplicate-index-source-rebind-2026-10-24).
-Новые pins независимо связаны с полными Git blob bytes; их scanner result
-ещё требуется. Четыре public compiler-golden findings пока не разрешены
-политикой: их новые guard tests намеренно tests-first, будущий scope336
-не применяется досрочно. Fixture не является разрешением сканера.
+Текущая политика содержит **336** точных path/type/digest identities:
+все прежние **332** сохранены, добавлены только четыре public compiler-golden
+metadata identities после observed tests-first **33 FAIL / 531 PASS** в
+[policy job 120916104222](https://github.com/egorribun/university_ecosystem/actions/runs/40108844098/job/120916104222).
+[ADR-047 фиксирует точные границы](../../adr/ADR-047-risk-based-quality-policy.md#four-exact-public-compiler-golden-metadata-dispositions-2026-10-24).
+Это отдельные exact path/type/digest records, не разрешение для всего пути.
+Новый synthetic V2 private-field sentinel остаётся tests-first: fixture и
+26 source/scope guards на будущую policy337 ещё не разрешают это finding.
+Исторические policy counts ниже относятся к своим source revisions.
+Новые records не подтверждают final-source scanner GREEN или audit closure.
 
-Для отдельного intermittent mobile registration observation добавляются
-tests-first V2 diagnostic contracts. Они не меняют runtime, UI path,
-pending-admission ledger, retries или deadlines. Успешные 51f/e6a live runs
-не переименовывают более ранний failed 30b run в GREEN и не доказывают
-устранение его неизвестной причины.
+Для отдельного intermittent mobile registration observation
+[Node V2 cohort на ee35e6de](https://github.com/egorribun/university_ecosystem/actions/runs/40108844115/job/120916103708)
+дал **10 FAIL / 264 PASS**, а Python V2 — **6 FAIL / 2474 PASS** с PASS
+существующего runner control. Публикуемый runtime candidate добавляет только
+failure-only конечный snapshot enum/boolean наблюдений и строгий ограниченный
+stdout parser; его hosted GREEN ещё требуется. Дополнительный deterministic
+250ms scheduling control не имеет собственного исторического RED.
+Исходные UI path, pending-admission ledger, retries и deadlines сохранены.
+Это instrumentation candidate, не исправление неизвестной причины сбоя 30b.
+Успешные 51f/e6a live runs не переименовывают тот failed run в GREEN.
 
 Baseline **319**, Gitleaks **26**, 78 required context/app pairs, blocking
 CodeQL, hooks, 100% patch coverage и действующие quality floors неизменны.

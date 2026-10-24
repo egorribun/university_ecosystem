@@ -2085,7 +2085,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 332
+    assert len(policy["records"]) == 336
     records = [
         record
         for record in policy["records"]
@@ -3081,7 +3081,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         )
     )
     records = policy["records"]
-    assert len(records) == 332
+    assert len(records) == 336
     prefix = records[:315]
     encoded_prefix = json.dumps(
         prefix, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -3483,7 +3483,7 @@ def test_oct24_public_digest_policy_preserves_all_318_prior_records() -> None:
         _AUD495_IMMUTABLE_315_PREFIX_SHA256
     )
     assert records[315:318] == _OCT24_ORIGINAL_SUFFIX
-    assert len(records) == 332
+    assert len(records) == 336
     assert records[318:321] == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS
 
 
@@ -3673,7 +3673,7 @@ def test_public_git_blob_policy_preserves_all_321_prior_records() -> None:
     )
     # These existing independent guards compose the immutable 321-record prefix.
     test_oct24_public_digest_policy_preserves_all_318_prior_records()
-    assert len(policy["records"]) == 332
+    assert len(policy["records"]) == 336
     assert policy["records"][321:323] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:2]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 8
 
@@ -3983,7 +3983,7 @@ def test_observed_public_metadata_policy_preserves_all_325_prior_records() -> No
         )
     )
     test_public_git_blob_rebind_policy_preserves_all_323_prior_records()
-    assert len(policy["records"]) == 332
+    assert len(policy["records"]) == 336
     assert policy["records"][325:327] == _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS
     assert len(_OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS) == 2
 
@@ -4234,7 +4234,7 @@ def test_public_git_blob_catalog_proof_preserves_all_327_prior_records() -> None
         )
     )
     test_observed_public_metadata_policy_preserves_all_325_prior_records()
-    assert len(policy["records"]) == 332
+    assert len(policy["records"]) == 336
     assert policy["records"][327:328] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4]
@@ -4255,7 +4255,7 @@ def test_public_git_blob_fixture_rebind_preserves_all_328_prior_records() -> Non
         )
     )
     test_public_git_blob_catalog_proof_preserves_all_327_prior_records()
-    assert len(policy["records"]) == 332
+    assert len(policy["records"]) == 336
     assert policy["records"][328:329] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5]
@@ -4384,7 +4384,7 @@ def test_public_alembic_revision_policy_preserves_all_329_prior_records() -> Non
         )
     )
     test_public_git_blob_fixture_rebind_preserves_all_328_prior_records()
-    assert len(policy["records"]) == 332
+    assert len(policy["records"]) == 336
     assert policy["records"][329:330] == [_PUBLIC_ALEMBIC_REVISION_RECORD]
 
 
@@ -4589,7 +4589,7 @@ def test_public_git_blob_index_rebind_preserves_all_330_prior_records() -> None:
         )
     )
     test_public_alembic_revision_policy_preserves_all_329_prior_records()
-    assert len(policy["records"]) == 332
+    assert len(policy["records"]) == 336
     assert policy["records"][330:331] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6]
@@ -4610,7 +4610,7 @@ def test_public_git_blob_index_assertion_preserves_all_331_prior_records() -> No
         )
     )
     test_public_git_blob_index_rebind_preserves_all_330_prior_records()
-    assert len(policy["records"]) == 332
+    assert len(policy["records"]) == 336
     assert policy["records"][331:332] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7]
@@ -4841,3 +4841,307 @@ def test_public_compiler_golden_source_binding_rejects_changed_metadata(
         )
     with pytest.raises(AssertionError):
         _assert_public_compiler_golden_source_binding(golden, lock)
+
+
+_LIVE_PRIVATE_FIELD_RECORD = json.loads(
+    (
+        Path(__file__).resolve().parents[1]
+        / "tests/fixtures/live-registration-private-field-disposition.json"
+    ).read_text(encoding="utf-8")
+)["records"][0]
+
+
+def _live_private_field_fixture_nodes(
+    source: str,
+) -> tuple[ast.Module, ast.FunctionDef, ast.Dict]:
+    tree = ast.parse(source)
+    functions = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name
+        == "test_live_reset_registration_v2_rejects_private_fields_and_wrong_types"
+    ]
+    assert len(functions) == 1
+    function = functions[0]
+
+    def assignment(name: str) -> ast.Assign:
+        nodes = [
+            node
+            for node in function.body
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == name
+                for target in node.targets
+            )
+        ]
+        assert len(nodes) == 1
+        return nodes[0]
+
+    expressions = {
+        "parser": (
+            'getattr(live_stand, "_live_playwright_reset_registration_v2", None)'
+        ),
+        "valid": "_reset_registration_v2_record()",
+        "output": (
+            '"".join(_reset_registration_v2_row(record) for record in invalid)'
+        ),
+    }
+    for name, expression in expressions.items():
+        assert ast.dump(assignment(name).value) == ast.dump(
+            ast.parse(expression, mode="eval").body
+        )
+    rejection = ast.dump(ast.parse("parser(output) == []", mode="eval").body)
+    assert (
+        sum(
+            isinstance(node, ast.Assert) and ast.dump(node.test) == rejection
+            for node in function.body
+        )
+        == 1
+    )
+    invalid_assignment = assignment("invalid")
+    assert len(invalid_assignment.targets) == 1
+    invalid = invalid_assignment.value
+    assert isinstance(invalid, ast.List)
+    output_refs = {
+        node
+        for node in ast.walk(assignment("output").value)
+        if isinstance(node, ast.Name) and node.id == "invalid"
+    }
+    assert len(output_refs) == 1
+    parents = {
+        child: parent
+        for parent in ast.walk(function)
+        for child in ast.iter_child_nodes(parent)
+    }
+    # Keep the fixture in the corpus: reject aliases, deletion and destructive
+    # methods while retaining the real test's append-only expansion loops.
+    for node in ast.walk(function):
+        if not isinstance(node, ast.Name) or node.id != "invalid":
+            continue
+        if node in invalid_assignment.targets or node in output_refs:
+            continue
+        attribute = parents[node]
+        assert isinstance(attribute, ast.Attribute) and attribute.value is node
+        assert attribute.attr == "append"
+        call = parents[attribute]
+        assert isinstance(call, ast.Call) and call.func is attribute
+        assert len(call.args) == 1 and not call.keywords
+    fixtures = [
+        node
+        for node in invalid.elts
+        if isinstance(node, ast.Dict)
+        and any(
+            isinstance(key, ast.Constant) and key.value == "password"
+            for key in node.keys
+        )
+    ]
+    assert len(fixtures) == 1
+    fixture = fixtures[0]
+    assert len(fixture.keys) == 2 and fixture.keys[0] is None
+    assert isinstance(fixture.values[0], ast.Name)
+    assert fixture.values[0].id == "valid"
+    assert isinstance(fixture.keys[1], ast.Constant)
+    assert fixture.keys[1].value == "password"
+    value = fixture.values[1]
+    assert isinstance(value, ast.Constant) and isinstance(value.value, str)
+    digest = hashlib.sha1(value.value.encode("utf-8"), usedforsecurity=False).digest()
+    assert list(digest) == _LIVE_PRIVATE_FIELD_RECORD["identity"]["hashed_secret_bytes"]
+    assert (
+        sum(
+            isinstance(node, ast.Constant) and node.value == value.value
+            for node in ast.walk(tree)
+        )
+        == 1
+    )
+    return tree, function, fixture
+
+
+def test_live_private_field_current_source_has_exact_policy_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    record = _LIVE_PRIVATE_FIELD_RECORD
+    source = (root / record["identity"]["path"]).read_text(encoding="utf-8")
+    _live_private_field_fixture_nodes(source)
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert record in policy["records"]
+
+
+def test_live_private_field_policy_preserves_all_336_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_public_compiler_golden_policy_preserves_all_332_prior_records()
+    assert len(policy["records"]) == 337
+    assert policy["records"][336:337] == [_LIVE_PRIVATE_FIELD_RECORD]
+
+
+def test_live_private_field_accepts_exact_record_without_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    record = _LIVE_PRIVATE_FIELD_RECORD
+    identity = record["identity"]
+    expected = verifier.FindingIdentity(
+        identity["path"],
+        identity["type"],
+        bytes(identity["hashed_secret_bytes"]).hex(),
+        1,
+    )
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(copy.deepcopy(record)),
+        today=verifier.date(2026, 10, 24),
+    ) == {expected}
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "path_transplant",
+        "detector",
+        "digest",
+        "category",
+        "integrity_category",
+        "unknown_digest_at_reserved_path",
+        "owner",
+        "review_date",
+        "evidence",
+        "pending",
+        "expiry_extension",
+    ],
+)
+def test_live_private_field_rejects_changed_scope_or_approval(mutation: str) -> None:
+    changed = copy.deepcopy(_LIVE_PRIVATE_FIELD_RECORD)
+    if mutation == "path":
+        changed["identity"]["path"] = "tests/unapproved_private_field.py"
+    elif mutation == "path_transplant":
+        changed["identity"]["path"] = ".github/workflows/ci.yml"
+    elif mutation == "detector":
+        changed["identity"]["type"] = "Hex High Entropy String"
+    elif mutation == "digest":
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "category":
+        changed["category"] = "source_contract_identifier"
+    elif mutation == "integrity_category":
+        changed["identity"]["type"] = "Hex High Entropy String"
+        changed["category"] = "public_integrity_digest"
+    elif mutation == "unknown_digest_at_reserved_path":
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+        changed["identity"]["type"] = "Hex High Entropy String"
+        changed["category"] = "public_integrity_digest"
+    elif mutation == "owner":
+        changed["owner"] = "Different Reviewer"
+    elif mutation == "review_date":
+        changed["reviewed_on"] = "2026-10-23"
+    elif mutation == "evidence":
+        changed["evidence"] = "synthetic test value; not credential material"
+    elif mutation == "pending":
+        changed["approval_status"] = "pending_owner_review"
+    else:
+        assert mutation == "expiry_extension"
+        changed["expires_on"] = "2027-01-11"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+        )
+
+
+def test_live_private_field_rejects_expiry_duplicate_and_extra_identity() -> None:
+    record = _LIVE_PRIVATE_FIELD_RECORD
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record)),
+            today=verifier.date(2027, 1, 11),
+        )
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
+            today=verifier.date(2026, 10, 24),
+        )
+    extra = copy.deepcopy(record)
+    extra["identity"]["hashed_secret_bytes"] = list(range(20))
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record), extra),
+            today=verifier.date(2026, 10, 24),
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "changed_value",
+        "changed_field",
+        "duplicate_fixture",
+        "renamed_test",
+        "different_serialization",
+        "different_assertion",
+        "inactive_fixture",
+        "clear_corpus",
+        "delete_fixture",
+        "mutating_alias",
+    ],
+)
+def test_live_private_field_source_binding_rejects_changed_usage(
+    mutation: str,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / _LIVE_PRIVATE_FIELD_RECORD["identity"]["path"]).read_text(
+        encoding="utf-8"
+    )
+    tree, function, fixture = _live_private_field_fixture_nodes(source)
+    assignments = {
+        target.id: node
+        for node in function.body
+        if isinstance(node, ast.Assign)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+    if mutation == "changed_value":
+        fixture.values[1] = ast.Constant(value="changed-fixture")
+    elif mutation == "changed_field":
+        fixture.keys[1] = ast.Constant(value="unapprovedField")
+    elif mutation == "duplicate_fixture":
+        assignments["invalid"].value.elts.append(copy.deepcopy(fixture))
+    elif mutation == "renamed_test":
+        function.name = "test_unreviewed_private_field_use"
+    elif mutation == "different_serialization":
+        assignments["output"].value = ast.Constant(value="")
+    elif mutation == "different_assertion":
+        rejection = ast.dump(ast.parse("parser(output) == []", mode="eval").body)
+        node = next(
+            node
+            for node in function.body
+            if isinstance(node, ast.Assert) and ast.dump(node.test) == rejection
+        )
+        node.test.comparators[0].elts.append(ast.Constant(value=None))
+    elif mutation == "inactive_fixture":
+        assignments["invalid"].value.elts.remove(fixture)
+        function.body.append(
+            ast.If(
+                test=ast.Constant(value=False),
+                body=[ast.Expr(value=fixture)],
+                orelse=[],
+            )
+        )
+    else:
+        position = function.body.index(assignments["output"])
+        if mutation == "clear_corpus":
+            statements = ast.parse("invalid.clear()").body
+        elif mutation == "delete_fixture":
+            index = assignments["invalid"].value.elts.index(fixture)
+            statements = ast.parse(f"del invalid[{index}]").body
+        else:
+            assert mutation == "mutating_alias"
+            statements = ast.parse("alias = invalid\nalias.clear()").body
+        function.body[position:position] = statements
+    changed = ast.unparse(ast.fix_missing_locations(tree))
+    with pytest.raises(AssertionError):
+        _live_private_field_fixture_nodes(changed)

@@ -872,3 +872,71 @@ unchanged. The modified migration still requires Tier 0 coverage and fresh
 hosted PostgreSQL, trace, rollback and scanner evidence. Remaining Squawk
 findings remain blocking; no downtime guarantee, blanket waiver, production
 deployment, additional audit closure or full-CI success is claimed.
+
+
+## Four exact public compiler-golden metadata dispositions (2026-10-24)
+
+Under the same task-scoped owner authorization for narrow public-source audit
+exceptions, append exactly four records to the unchanged 332-record policy
+prefix, for 336 finite dispositions. The immutable source is
+`frontend/scripts/react-compiler-zod-compat/legacy-baseline.json`, captured by
+[legacy compiler job 120802074003](https://github.com/egorribun/university_ecosystem/actions/runs/40069691438/job/120802074003).
+It preserves historical behavior and artifact identities; it is not a
+vulnerability-closure certificate or a current-source identifier.
+
+The four actual findings were reported by
+[security/types job 120896980362](https://github.com/egorribun/university_ecosystem/actions/runs/40102373009/job/120896980362)
+and repeated on source `ee35e6de` in
+[job 120916104166](https://github.com/egorribun/university_ecosystem/actions/runs/40108844098/job/120916104166):
+
+- `sourceSha`, line 9: the public Git commit of the legacy capture,
+  `Hex High Entropy String` under `public_integrity_digest`.
+- `compilerIntegrity`, line 13: the complete public npm SHA-512 SRI for
+  `eslint-plugin-react-compiler@19.1.0-rc.2`,
+  `Base64 High Entropy String` under `public_package_integrity_metadata`.
+- `compilerBundleSha256`, line 14: the unchanged official rc.2 bundle checksum,
+  `Hex High Entropy String` under `public_integrity_digest`.
+- `formatterEntrySha256`, line 133: the historical pre-override
+  `zod-validation-error@3.5.4` entry-file checksum, not the separately tested
+  adapter formatter, with the same exact Hex detector and integrity category.
+
+The pinned detector hashes each complete UTF-8 literal with SHA-1, including
+the SRI algorithm prefix. The exact path/type/digest tuples and categories are
+stored in the policy, validator and independent
+`tests/fixtures/public-compiler-golden-dispositions.json`. Source tests derive
+all four hashes from their actual JSON fields, retain the capture kind/status
+and source link, and require the compiler SRI to match the unchanged current
+lockfile. The existing frontend parity tests own the complete 37-case runtime
+corpus and installed artifact/formatter checks; scanner authorization does not
+replace those checks or widen the adapter's compatibility claim.
+
+Before implementation,
+[contract job 120916104222](https://github.com/egorribun/university_ecosystem/actions/runs/40108844098/job/120916104222)
+reported exactly **33 failed / 531 passed** in the 564-case policy cohort.
+All 33 failures belonged to the new golden guards: missing records/count/SRI
+scope and currently accepted scope or approval mutations. The additional
+category-generated achievement-URL reclassification control passed, as did
+the revision and both migration pin chains. The separate consumer result was
+6 V2 fixture failures / 2474 passed, not full contract GREEN.
+
+The validator now reserves only the four exact identities, their path and
+fingerprints, categories and evidence. The existing SRI category gains one
+path/type pair behind the exact reservation, not a path-wide SRI allowance.
+Changed paths, types, digests, categories, owners, review dates, evidence,
+pending approvals, expiry extensions, duplicate/extra records and transferred
+digests remain rejected. Owner `egorribun`, review date 2026-10-24 and expiry
+2027-01-10 are retained. No matching algorithm, detector or existing identity
+is reclassified; all 332 earlier records and eight Git-pin fixture records
+remain unchanged.
+
+A separate new V2 invalid-private-field test finding in
+`tests/test_live_stand.py` is not approved by these four records and still
+requires its own disposition decision and strict tests. The accompanying V2
+sentinel fixture and 26 source/scope guards are tests-first only, targeting a
+future 337-record policy after their own observed RED; they authorize no
+additional scanner finding. Baseline319, Gitleaks26,
+all 78 required context/app pairs, blocking CodeQL, hooks, expiry caps and
+coverage floors remain unchanged. No baseline entry, inline pragma, broad
+exclusion, automatic approval or scanner bypass is introduced. This update
+closes no additional audit item and establishes neither final-source scanner
+GREEN nor PostgreSQL, full-CI, deployment or release success.

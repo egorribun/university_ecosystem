@@ -62,6 +62,13 @@ def test_consumer_keeps_original_gate_context_budget_and_scanner_rules() -> None
         "test_groups_index_cutover_failure_restores_exact_catalog_and_data",
         "test_groups_key_helper_round_trip_restores_legacy_index_and_foreign_keys",
         "test_groups_successors_do_not_require_the_duplicate_id_index",
+        "test_invalid_fk_value_aborts_shadow_conversion_without_data_loss",
+        "test_upgrade_copies_spotify_state_and_skips_empty_legacy_rows",
+        "test_upgrade_copies_available_fields_from_a_partial_legacy_schema",
+        "test_upgrade_does_not_overwrite_existing_spotify_integration_rows",
+        "test_upgrade_preserves_legacy_user_preferences",
+        "test_upgrade_backfills_missing_preferences_without_overwriting_existing_rows",
+        "test_null_legacy_enabled_aborts_upgrade_without_losing_preferences",
     ):
         assert (
             f"tests/integration/test_migration_148642dd1207.py::{regression}"
@@ -359,13 +366,21 @@ def test_tenant_context_diagnostic_is_separate_bounded_and_fail_closed() -> None
     assert "set -euo pipefail" in run
     assert 'probe_root="$(mktemp -d)"' in run
     assert "trap 'rm -rf -- \"$probe_root\"' EXIT" in run
-    assert "uv run pytest -v --tb=short --no-cov --maxfail=0" in run
+    assert "uv run pytest -v --tb=short --show-capture=no --no-cov --maxfail=0" in run
     selector = (
         "tests/integration/test_aud197_198_notification_outbox_postgres.py::"
         "test_content_outbox_restores_tenant_scope"
     )
     assert run.count(selector) == 1
     assert selector not in migration["run"]
+    additional_selectors = (
+        "tests/integration/test_aud197_198_notification_outbox_postgres.py::"
+        "test_legacy_null_tenant_content_ignores_worker_ambient_scope",
+        "tests/test_outbox_tenant_context.py",
+    )
+    for additional in additional_selectors:
+        assert run.count(additional) == 1
+        assert additional not in migration["run"]
     assert '--basetemp="$probe_root/basetemp"' in run
     assert '> "$test_log" 2>&1 || pytest_status=$?' in run
     assert 'head -c 131072 "$test_log"' in run

@@ -830,3 +830,55 @@ test("reset V2 diagnostic frames are deduplicated and capped", () => {
     ["timeout", "abort", "type-error", "target-closed", "error", "other"]
   )
 })
+
+test("reset V2 caps snapshot scheduling at 250ms with a long remaining deadline", () => {
+  const output = resetV2InChild(`
+    const page = new ObservationPage();
+    page.evaluate = () => new Promise(() => {});
+    const diagnostic = create(page, "mobile", "https://owned.invalid", performance.now() + 60_000);
+    const original = privateError();
+    const requested = [];
+    const cleared = [];
+    const handle = {};
+    let expire;
+    const originalSetTimeout = globalThis.setTimeout;
+    const originalClearTimeout = globalThis.clearTimeout;
+    globalThis.setTimeout = (callback, delay) => {
+      requested.push(delay);
+      expire = callback;
+      return handle;
+    };
+    globalThis.clearTimeout = timer => { cleared.push(timer); };
+    try {
+      const rejected = assert.rejects(
+        run(() => Promise.reject(original), async () => {}, () => {}, diagnostic),
+        error => error === original
+      );
+      // Drain pending microtasks without advancing a real timeout clock.
+      await new Promise(resolve => setImmediate(resolve));
+      assert.deepEqual(requested, [250]);
+      assert.equal(typeof expire, "function");
+      expire();
+      await rejected;
+      assert.deepEqual(cleared, [handle]);
+      for (const event of ["request", "response", "requestfailed"]) {
+        assert.equal(page.listenerCount(event), 0);
+      }
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+      globalThis.clearTimeout = originalClearTimeout;
+      page.dom.window.close();
+    }
+  `)
+  assert.deepEqual(resetV2Records(output), [
+    {
+      ...resetV2Expected,
+      snapshot: "unavailable",
+      hydrated: false,
+      formPresent: false,
+      submitPresent: false,
+      csrfRequested: false,
+      csrfResponse: "not-observed",
+    },
+  ])
+})

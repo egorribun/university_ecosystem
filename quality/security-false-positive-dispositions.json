@@ -9436,6 +9436,142 @@
       "reviewed_on": "2026-10-24",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          243,
+          24,
+          34,
+          108,
+          78,
+          41,
+          162,
+          36,
+          129,
+          21,
+          226,
+          107,
+          34,
+          108,
+          32,
+          104,
+          57,
+          178,
+          58,
+          118
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git commit identifier in sourceSha of the pre-override React compiler golden; source revision of the hosted legacy capture, not the current checkout; not credential material. Public capture run40069691438/job120802074003; observed detect-secrets finding in job120896980362.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json",
+        "type": "Base64 High Entropy String",
+        "hashed_secret_bytes": [
+          69,
+          230,
+          158,
+          112,
+          111,
+          161,
+          38,
+          145,
+          4,
+          233,
+          113,
+          13,
+          46,
+          236,
+          50,
+          51,
+          249,
+          168,
+          228,
+          195
+        ]
+      },
+      "category": "public_package_integrity_metadata",
+      "evidence": "Public npm SHA-512 integrity in compilerIntegrity for eslint-plugin-react-compiler@19.1.0-rc.2; matches the unchanged current lockfile; not credential material. Public capture run40069691438/job120802074003; observed detect-secrets finding in job120896980362.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          234,
+          253,
+          112,
+          114,
+          99,
+          21,
+          100,
+          47,
+          245,
+          255,
+          254,
+          206,
+          137,
+          143,
+          67,
+          238,
+          254,
+          4,
+          2,
+          186
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public SHA-256 artifact checksum in compilerBundleSha256 of the unchanged official rc.2 dist/index.js; preserved by the pre-override React compiler golden; not credential material. Public capture run40069691438/job120802074003; observed detect-secrets finding in job120896980362.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          94,
+          84,
+          58,
+          79,
+          142,
+          129,
+          187,
+          45,
+          47,
+          248,
+          117,
+          139,
+          130,
+          137,
+          195,
+          56,
+          251,
+          33,
+          156,
+          105
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public SHA-256 artifact checksum in formatterEntrySha256 of the historical pre-override zod-validation-error@3.5.4 entry file, not the adapter formatter; not credential material. Public capture run40069691438/job120802074003; observed detect-secrets finding in job120896980362.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

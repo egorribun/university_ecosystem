@@ -6240,6 +6240,108 @@ def _live_playwright_reset_registration_steps(output: str) -> list[tuple[str, st
     return records
 
 
+_RESET_REGISTRATION_V2_SNAPSHOT_KEYS = (
+    "hydrated",
+    "formPresent",
+    "formInvalid",
+    "formError",
+    "submitPresent",
+    "submitDisabled",
+    "submitBusy",
+)
+_RESET_REGISTRATION_V2_KEYS = (
+    "project",
+    "step",
+    "errorCategory",
+    "snapshot",
+    *_RESET_REGISTRATION_V2_SNAPSHOT_KEYS,
+    "csrfRequested",
+    "csrfResponse",
+    "csrfFailed",
+)
+
+
+def _validated_reset_registration_v2(value: object) -> dict[str, object] | None:
+    record = _auth_diag_object(value, _RESET_REGISTRATION_V2_KEYS)
+    if record is None:
+        return None
+    allowed_values = {
+        "project": ("desktop", "mobile"),
+        "step": ("arm-response", "click", "await-response"),
+        "errorCategory": (
+            "timeout",
+            "abort",
+            "type-error",
+            "target-closed",
+            "error",
+            "other",
+        ),
+        "snapshot": ("available", "unavailable"),
+        "csrfResponse": (
+            "not-observed",
+            "success",
+            "http-error",
+            "mixed",
+            "unavailable",
+        ),
+    }
+    if any(record[key] not in values for key, values in allowed_values.items()):
+        return None
+    boolean_keys = (
+        *_RESET_REGISTRATION_V2_SNAPSHOT_KEYS,
+        "csrfRequested",
+        "csrfFailed",
+    )
+    if any(type(record[key]) is not bool for key in boolean_keys):
+        return None
+    if record["snapshot"] == "unavailable" and any(
+        record[key] for key in _RESET_REGISTRATION_V2_SNAPSHOT_KEYS
+    ):
+        return None
+    if not record["formPresent"] and any(
+        record[key] for key in _RESET_REGISTRATION_V2_SNAPSHOT_KEYS[2:]
+    ):
+        return None
+    if not record["submitPresent"] and (
+        record["submitDisabled"] or record["submitBusy"]
+    ):
+        return None
+    if not record["csrfRequested"] and (
+        record["csrfResponse"] != "not-observed" or record["csrfFailed"]
+    ):
+        return None
+    return dict(record)
+
+
+def _live_playwright_reset_registration_v2(output: str) -> list[dict[str, object]]:
+    prefix = "UE_LIVE_RESET_REGISTRATION_V2 "
+    records: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 1_024 or not line.isprintable() or not line.startswith(prefix):
+            continue
+        try:
+            value = json.loads(
+                line[len(prefix) :],
+                object_pairs_hook=_auth_diag_json_object,
+                parse_constant=_reject_auth_diag_json_constant,
+            )
+        except (json.JSONDecodeError, ValueError):
+            continue
+        record = _validated_reset_registration_v2(value)
+        if record is None:
+            continue
+        identity = json.dumps(record, sort_keys=True, separators=(",", ":"))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        records.append(record)
+        if len(records) == 6:
+            break
+    return records
+
+
 def _live_playwright_registration_admission_diagnostics(
     output: str,
 ) -> list[dict[str, object]]:
@@ -7659,6 +7761,9 @@ def _run_live_playwright(
     reset_registration_steps = (
         _live_playwright_reset_registration_steps(stdout) if return_code != 0 else []
     )
+    reset_registration_v2 = (
+        _live_playwright_reset_registration_v2(stdout) if return_code != 0 else []
+    )
     registration_admission_diagnostics = (
         _live_playwright_registration_admission_diagnostics(stdout)
         if return_code != 0
@@ -7802,6 +7907,12 @@ def _run_live_playwright(
     for project, step in reset_registration_steps:
         print(
             f"live E2E reset-registration project={project} step={step}",
+            flush=True,
+        )
+    for record in reset_registration_v2:
+        print(
+            "live E2E reset-registration-v2 "
+            + json.dumps(record, separators=(",", ":"), sort_keys=True),
             flush=True,
         )
     for record in registration_admission_diagnostics:

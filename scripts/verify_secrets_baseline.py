@@ -96,6 +96,10 @@ _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES = {
     "public_package_integrity_metadata": frozenset(
         {
             (
+                "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json",
+                "Base64 High Entropy String",
+            ),
+            (
                 "frontend/scripts/stryker-inventory.test.mjs",
                 "Base64 High Entropy String",
             ),
@@ -1542,10 +1546,118 @@ _PUBLIC_ALEMBIC_REVISION_IDENTITY = (
         134,
     ),
 )
+_PUBLIC_COMPILER_GOLDEN_SOURCE_IDENTITY = (
+    "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json",
+    "Hex High Entropy String",
+    (
+        243,
+        24,
+        34,
+        108,
+        78,
+        41,
+        162,
+        36,
+        129,
+        21,
+        226,
+        107,
+        34,
+        108,
+        32,
+        104,
+        57,
+        178,
+        58,
+        118,
+    ),
+)
+_PUBLIC_COMPILER_GOLDEN_PACKAGE_IDENTITY = (
+    "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json",
+    "Base64 High Entropy String",
+    (
+        69,
+        230,
+        158,
+        112,
+        111,
+        161,
+        38,
+        145,
+        4,
+        233,
+        113,
+        13,
+        46,
+        236,
+        50,
+        51,
+        249,
+        168,
+        228,
+        195,
+    ),
+)
+_PUBLIC_COMPILER_GOLDEN_BUNDLE_IDENTITY = (
+    "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json",
+    "Hex High Entropy String",
+    (
+        234,
+        253,
+        112,
+        114,
+        99,
+        21,
+        100,
+        47,
+        245,
+        255,
+        254,
+        206,
+        137,
+        143,
+        67,
+        238,
+        254,
+        4,
+        2,
+        186,
+    ),
+)
+_PUBLIC_COMPILER_GOLDEN_FORMATTER_IDENTITY = (
+    "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json",
+    "Hex High Entropy String",
+    (
+        94,
+        84,
+        58,
+        79,
+        142,
+        129,
+        187,
+        45,
+        47,
+        248,
+        117,
+        139,
+        130,
+        137,
+        195,
+        56,
+        251,
+        33,
+        156,
+        105,
+    ),
+)
 _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY = {
     _ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY: "public_integrity_digest",
     _LOGGING_PUBLIC_METADATA_LABEL_IDENTITY: "source_contract_identifier",
     _PUBLIC_ALEMBIC_REVISION_IDENTITY: "public_alembic_revision_identifier",
+    _PUBLIC_COMPILER_GOLDEN_SOURCE_IDENTITY: "public_integrity_digest",
+    _PUBLIC_COMPILER_GOLDEN_PACKAGE_IDENTITY: "public_package_integrity_metadata",
+    _PUBLIC_COMPILER_GOLDEN_BUNDLE_IDENTITY: "public_integrity_digest",
+    _PUBLIC_COMPILER_GOLDEN_FORMATTER_IDENTITY: "public_integrity_digest",
 }
 _PUBLIC_SOURCE_METADATA_PATHS = frozenset(
     identity[0] for identity in _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY
@@ -1554,6 +1666,33 @@ _PUBLIC_SOURCE_METADATA_DIGESTS = frozenset(
     identity[2] for identity in _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY
 )
 _PUBLIC_SOURCE_METADATA_EVIDENCE_MARKERS = {
+    _PUBLIC_COMPILER_GOLDEN_SOURCE_IDENTITY: (
+        "Public Git commit identifier",
+        "sourceSha",
+        "pre-override React compiler golden",
+        "source revision of the hosted legacy capture",
+        "not credential material",
+    ),
+    _PUBLIC_COMPILER_GOLDEN_PACKAGE_IDENTITY: (
+        "Public npm SHA-512 integrity",
+        "compilerIntegrity",
+        "eslint-plugin-react-compiler@19.1.0-rc.2",
+        "matches the unchanged current lockfile",
+        "not credential material",
+    ),
+    _PUBLIC_COMPILER_GOLDEN_BUNDLE_IDENTITY: (
+        "Public SHA-256 artifact checksum",
+        "compilerBundleSha256",
+        "unchanged official rc.2 dist/index.js",
+        "not credential material",
+    ),
+    _PUBLIC_COMPILER_GOLDEN_FORMATTER_IDENTITY: (
+        "Public SHA-256 artifact checksum",
+        "formatterEntrySha256",
+        "historical pre-override zod-validation-error@3.5.4 entry file",
+        "not the adapter formatter",
+        "not credential material",
+    ),
     _PUBLIC_ALEMBIC_REVISION_IDENTITY: (
         "Public Alembic revision identifier for the groups sequence successor",
         "command.upgrade target in "
