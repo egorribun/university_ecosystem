@@ -164,8 +164,6 @@ jobs:
               native/rust_ext/deny.toml|\
               quality/*|security/*|frontend/scripts/lhci-route-policy.mjs|\
               frontend/scripts/lhci-route-policy-config.cjs|\
-              frontend/scripts/generate-undici-lock-candidate.mjs|\
-              frontend/scripts/generate-undici-lock-candidate.test.mjs|\
               frontend/scripts/admin-visual-smoke.mjs|\
               frontend/scripts/authenticated-visual-audit.mjs|\
               frontend/scripts/build-orchestrated.mjs|\

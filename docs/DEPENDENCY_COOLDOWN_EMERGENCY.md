@@ -356,3 +356,43 @@ APK availability, installed-version proof, compatibility tests and final-source
 hosted checks remain pending. This exception authorizes no image push,
 deployment, merge, advisory waiver, scanner disposition, baseline or hook change,
 new required context, or global cooldown-policy change.
+
+## Routine Undici repair (no exception), 2026-10-24
+
+Undici `8.12.2` repairs GHSA-xjj6-f33q-929c, GHSA-4qv8-2p9j-2685 and
+GHSA-f72v-6w45-q472 in the existing development-tooling dependency. The
+[official release](https://github.com/nodejs/undici/releases/tag/v8.12.2)
+identifies the fixes. No cooldown exception is requested or applied.
+
+The bounded hosted generator succeeded in
+[run 40053749654, job 120752636880](https://github.com/egorribun/university_ecosystem/actions/runs/40053749654/job/120752636880).
+All ten guard tests passed before generation. Official npm metadata records
+publication at `2026-10-15T15:05:34.415Z`; the release reached seven days on
+`2026-10-22T15:05:34.415Z`. Both the pinned npm 11.17.0 tool archive and the
+Undici archive passed publication-age and SHA-512/SHA-1 verification.
+The npm 11.17.0 release was published on `2026-06-11T18:42:34.887Z`.
+
+Generation ran on Node 24.21.0 with declared npm 11.17.0, using a six-minute
+operation deadline, bounded archive downloads, zero transport retries and
+disabled lifecycle scripts. Resolution took place only in an isolated scratch
+mirror with a token-free subprocess environment. The checkout remained
+unchanged. Whole-lock comparison and the bounded emitted patch permit only
+`version`, `resolved` and `integrity` for `node_modules/undici`, from 8.11.0
+to 8.12.2; the integrated body-parser 1.20.9 fix and every other record remain
+unchanged. The existing manifest override and normal seven-day policy are
+unchanged.
+
+Source commit `f70570f3` and merge checkout `5a64a37f` have the same tree.
+The follow-up replays the exact npm-generated patch, verifies both complete
+lock digests against the emitted evidence, and removes the completed temporary
+generator, its tests, steps and exact temporary protected-path entries.
+The separately protected React Compiler artifact probe is retained.
+
+This proves bounded candidate generation, not a passing final-source audit.
+The later compiler-probe tests intentionally failed against their unimplemented
+stub; the normal installation and audit steps did not execute in this job.
+The read-only advisory diagnostic still reported the original Undici and Zod
+findings. Normal lock consistency, compatibility tests, vulnerability checks
+and all required hosted gates remain mandatory after integration. No advisory
+waiver, scanner disposition, baseline change, global cooldown change, merge or
+deployment is authorized by this routine repair.

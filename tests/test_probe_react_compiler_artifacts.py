@@ -13,6 +13,7 @@ import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 MODULE_PATH = (
     Path(__file__).resolve().parents[1]
@@ -45,6 +46,7 @@ def archive(
     source: bytes = SOURCE,
     extra: tuple[str, bytes, bytes] | None = None,
     duplicate: bool = False,
+    scripts: dict[str, str] | None = None,
 ) -> bytes:
     """Produce actual tar/gzip bytes; no package code is executed."""
     entries = [
@@ -55,7 +57,7 @@ def archive(
                     "name": name,
                     "version": version,
                     "dependencies": {"zod": "^4.6.6"},
-                    "scripts": {"postinstall": "MUST_NOT_EXECUTE"},
+                    "scripts": scripts or {"postinstall": "MUST_NOT_EXECUTE"},
                 }
             ).encode(),
             tarfile.REGTYPE,
@@ -240,9 +242,15 @@ class ArchiveContracts(unittest.TestCase):
         self.assertNotIn("SOURCE_MUST_NOT_APPEAR_IN_REPORT", json.dumps(result))
         self.assertNotIn("MUST_NOT_EXECUTE", json.dumps(result))
 
+    def test_prepare_only_lifecycle_script_is_reported_without_execution(self) -> None:
+        result = self.inspect(archive(scripts={"prepare": "MUST_NOT_EXECUTE"}))
+        self.assertIsInstance(result, dict)
+        self.assertTrue(result["has_lifecycle_scripts"])
+        self.assertNotIn("MUST_NOT_EXECUTE", json.dumps(result))
+
     def test_patch_tokens_are_only_hints_and_never_a_clean_verdict(self) -> None:
         data = archive(
-            source=b'// $ZodArray capSize(inst, arraySize); sizeCaps generateSizeGate'
+            source=b"// $ZodArray capSize(inst, arraySize); sizeCaps generateSizeGate"
         )
         result = self.inspect(data)
         self.assertIsInstance(result, dict)
@@ -263,7 +271,7 @@ class ArchiveContracts(unittest.TestCase):
     def test_rejects_traversal_absolute_windows_and_wrong_prefix_paths(self) -> None:
         for path in (
             "package/../outside",
-            "/tmp/outside",
+            "/outside",
             "package\\outside",
             "other/index.js",
             "package//outside",
@@ -315,6 +323,19 @@ class ArchiveContracts(unittest.TestCase):
             self.inspect(gzip.compress(output.getvalue(), mtime=0))
 
 
+class RegistryResponse(io.BytesIO):
+    def __init__(
+        self,
+        body: bytes = b"abc",
+        *,
+        status: int = 200,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        super().__init__(body)
+        self.status = status
+        self.headers = headers or {}
+
+
 class ResponseContracts(unittest.TestCase):
     def test_reads_bounded_response_bytes(self) -> None:
         self.assertEqual(probe.read_bounded(io.BytesIO(b"abc"), 3), b"abc")
@@ -331,6 +352,105 @@ class ResponseContracts(unittest.TestCase):
             probe.fetch_bounded(
                 "https://example.invalid/private", 100, opener=must_not_open
             )
+
+    def test_fixed_https_transport_has_timeout_and_no_redirect_following(self) -> None:
+        url = f"https://registry.npmjs.org/{BABEL}"
+        with patch.object(probe.http.client, "HTTPSConnection") as transport:
+            connection = transport.return_value
+            connection.getresponse.return_value = RegistryResponse()
+            self.assertEqual(probe.fetch_bounded(url, 3), b"abc")
+            transport.assert_called_once_with("registry.npmjs.org", timeout=20)
+            self.assertEqual(connection.request.call_args.args, ("GET", f"/{BABEL}"))
+            connection.getresponse.assert_called_once_with()
+            connection.close.assert_called_once_with()
+
+    def test_redirect_and_error_statuses_are_rejected_without_following(self) -> None:
+        for status in (301, 302, 307, 308, 400, 429, 500):
+            with self.subTest(status=status):
+                with patch.object(probe.http.client, "HTTPSConnection") as transport:
+                    connection = transport.return_value
+                    response = RegistryResponse(status=status)
+                    response.headers["Location"] = "https://example.invalid/private"
+                    connection.getresponse.return_value = response
+                    with self.assertRaises(probe.ProbeError):
+                        probe.fetch_bounded(f"https://registry.npmjs.org/{BABEL}", 3)
+                    self.assertEqual(connection.request.call_count, 1)
+                    connection.close.assert_called_once_with()
+
+    def test_advertised_length_is_bounded_before_body_read(self) -> None:
+        for length in ("4", "-1", "not-a-size", "9" * 40):
+            with self.subTest(length=length):
+                response = RegistryResponse(headers={"Content-Length": length})
+                with patch.object(probe, "_registry_response") as transport:
+                    transport.return_value = response
+                    with self.assertRaises(probe.ProbeError):
+                        probe.fetch_bounded(f"https://registry.npmjs.org/{BABEL}", 3)
+
+    def test_unadvertised_response_overflow_is_rejected(self) -> None:
+        with patch.object(probe, "_registry_response") as transport:
+            transport.return_value = RegistryResponse(b"abcd")
+            with self.assertRaises(probe.ProbeError):
+                probe.fetch_bounded(f"https://registry.npmjs.org/{BABEL}", 3)
+
+    def test_transport_timeout_becomes_sanitized_probe_error(self) -> None:
+        with patch.object(probe, "_registry_response") as transport:
+            transport.side_effect = TimeoutError("PRIVATE_TRANSPORT_DETAIL")
+            with self.assertRaises(probe.ProbeError) as error:
+                probe.fetch_bounded(f"https://registry.npmjs.org/{BABEL}", 3)
+            self.assertNotIn("PRIVATE_TRANSPORT_DETAIL", str(error.exception))
+
+    def test_unexpected_content_encoding_is_rejected(self) -> None:
+        with patch.object(probe, "_registry_response") as transport:
+            transport.return_value = RegistryResponse(
+                headers={"Content-Encoding": "gzip"}
+            )
+            with self.assertRaises(probe.ProbeError):
+                probe.fetch_bounded(f"https://registry.npmjs.org/{BABEL}", 3)
+
+    def test_read_deadline_is_enforced(self) -> None:
+        with patch.object(probe.time, "monotonic", side_effect=(0, 61)):
+            with self.assertRaises(probe.ProbeError):
+                probe.read_bounded(io.BytesIO(b"abc"), 3)
+
+    def test_bounded_reader_uses_incremental_reads_not_read_to_fill(self) -> None:
+        class IncrementalResponse:
+            def __init__(self) -> None:
+                self.chunks = iter((b"abc", b""))
+
+            def read(self, _limit: int) -> bytes:
+                raise AssertionError("read-to-fill must not be called")
+
+            def read1(self, _limit: int) -> bytes:
+                return next(self.chunks)
+
+        self.assertEqual(probe.read_bounded(IncrementalResponse(), 3), b"abc")
+
+    def test_cli_total_deadline_installs_and_restores_alarm(self) -> None:
+        with (
+            patch.object(probe.signal, "signal", return_value="previous") as handler,
+            patch.object(probe.signal, "alarm") as alarm,
+            patch.object(probe, "main") as main,
+        ):
+            probe._run_with_deadline()
+            main.assert_called_once_with()
+            self.assertEqual(
+                [call.args for call in alarm.call_args_list], [(420,), (0,)]
+            )
+            self.assertEqual(handler.call_args.args, (probe.signal.SIGALRM, "previous"))
+            expired = handler.call_args_list[0].args[1]
+            with self.assertRaises(probe.ProbeError):
+                expired(probe.signal.SIGALRM, None)
+
+    def test_cli_total_deadline_is_restored_after_failure(self) -> None:
+        with (
+            patch.object(probe.signal, "signal", return_value="previous") as handler,
+            patch.object(probe.signal, "alarm") as alarm,
+            patch.object(probe, "main", side_effect=probe.ProbeError("fixture")),
+        ):
+            with self.assertRaises(probe.ProbeError):
+                probe._run_with_deadline()
+            alarm.assert_called_with(0)
+            handler.assert_called_with(probe.signal.SIGALRM, "previous")
 
 
 if __name__ == "__main__":

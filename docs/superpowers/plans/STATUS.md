@@ -119,6 +119,64 @@ Production migration не меняется до наблюдённого asserti
 применено. Выявленные потенциально теряющие данные ветви не считаются
 кандидатами на waiver. Ledger и все quality/security thresholds неизменны.
 
+### Hosted Undici candidate и реализация read-only probe, 02:36 UTC
+
+В [job 120752636880/run 40053749654](https://github.com/egorribun/university_ecosystem/actions/runs/40053749654/job/120752636880)
+на `f70570f3` Undici guard tests и scratch generation действительно завершились.
+npm publication `8.12.2` — `2026-10-15T15:05:34.415Z`, maturity —
+`2026-10-22T15:05:34.415Z`; cooldown exception отсутствует.
+Verified candidate меняет только version/resolved/integrity; его SHA-256 —
+`58b289ca7f4af5e3fb19aa2bfded95f1133ffe86227c4e8a55408da173ca02ab`.
+Исходный checkout не изменён. Generated lock пока не интегрирован, поэтому
+обычный audit не считается исправленным; generator временно сохранён.
+
+Следующий этап того же job наблюдал ожидаемый RED artifact probe:
+25 unittest methods, 41 assertion failures с учётом subtests, без import error.
+После этого stub заменён реализацией и 36 guard tests. Probe проверяет exact
+registry origin, публикационную зрелость, deployed control SRI, SHA-512 до
+bounded gzip/tar parsing; не извлекает и не исполняет пакеты. CLI wall-clock
+limit — семь минут под неизменным восьмиминутным job step. Отчёт содержит
+только metadata/hashes/static hints и никогда не утверждает remediation.
+Hosted GREEN и actual artifact report этой реализации ещё требуются.
+
+Fast job 120752566493 выявил только insecure-temp-path literal в новом
+adversarial archive test и его quote formatting. Absolute-path rejection
+теперь использует `/outside`, без записи файла или suppression.
+Frontend lint job 120753011438 выявил ровно три Prettier hunks временного
+Undici module; применён точный whitespace-only diff. Existing type/security
+hooks и inventory на `f70570f3` SUCCESS. Полный CI, PostgreSQL regressions
+и приёмка новых AUD IDs остаются открытыми; ledger не увеличен.
+
+### Интеграция проверенного Undici lock и решение о подготовке ADR, 02:39 UTC
+
+После отдельной проверки integrated lock воспроизводит точный hosted patch
+job 120752636880: только три поля Undici, все остальные package records
+неизменны. Merge checkout `5a64a37f31acf0cd836f80717b5d3d3b33717d11`
+и `f70570f3` имеют одно дерево
+`bdda8ec0b2e4987292145ee65543f924acf69d8e`.
+Завершённый temporary generator, его tests/steps и только его protected paths
+удалены; read-only compiler probe и его защита сохранены. Provenance записан
+в [dependency runbook](../../DEPENDENCY_COOLDOWN_EMERGENCY.md).
+Нормальный audit и final-source CI должны подтвердить интегрированный lock.
+
+На `f70570f3` consumer job 120752566604 подтвердил **1541 PASS / один
+deselected**, отдельный policy cohort — **338 PASS**. Это не включает 37 новых
+leading-import cases и Gitleaks readiness counterfactual из полного backend
+unit shard: этот shard не стартовал из-за fast lint. Их runtime evidence
+по-прежнему требуется.
+
+Все четыре frontend unit shards на `f70570f3` завершились SUCCESS.
+Job 120753011575 подтвердил Dashboard error-recovery regression и полный
+shard: **200 files / 2388 tests PASS**. Это observed GREEN исправления
+повторного observer, не приёмка всего нового source или deployment.
+
+Владелец согласился подготовить конечное, source-bound migration exception
+предложение. Это согласие не применяет waiver: точные rule/statement identities,
+срок и гарантии будут представлены отдельно перед применением.
+Ни data-loss branches, ни произвольные catalog FKs, ни все 16 наблюдённых
+warnings автоматически не разрешены. Работа остаётся только на `egorribun`,
+без merge/deployment/reset. Принятый ledger — **280/512**, без новых закрытий.
+
 ## Облачное продолжение 2026-10-24, 00:04 UTC
 
 Работа возобновлена по новому поручению владельца: только через GitHub plugin,
