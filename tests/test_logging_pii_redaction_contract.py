@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+from contextvars import Context
+from copy import deepcopy
 from io import StringIO
 from typing import Any
 
@@ -238,3 +240,278 @@ def test_account_recovery_and_csrf_values_never_reach_log_renderers(
         assert rendered[field_name] == REDACTED
         assert rendered["details"] == {"items": [{field_name: REDACTED}]}
         assert rendered["status"] == "public-diagnostic"
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "challenge_token",
+        "challenge-token",
+        "challengeToken",
+        "ChallengeToken",
+        "CHALLENGE_TOKEN",
+        "nats_auth_token",
+        "current_password",
+        "new_password",
+        "new-password",
+        "newPassword",
+        "NewPassword",
+        "NEW_PASSWORD",
+        "smtp_password",
+        "elasticsearch_password",
+        "token_hmac_secret",
+        "token-hmac-secret",
+        "tokenHmacSecret",
+        "TokenHmacSecret",
+        "TOKEN_HMAC_SECRET",
+        "internal_hmac_secret",
+        "audit_log_secret",
+        "jwt_signing_active_secret",
+        "spotify_client_secret",
+        "spotify_token_secret",
+        "spotify_oauth_state_secret",
+        "ws_hub_internal_secret",
+        "idempotency_hmac_secret",
+        "cwv_rum_signing_secret",
+    ],
+)
+def test_terminal_credential_families_are_redacted_at_every_depth(
+    field_name: str,
+) -> None:
+    """AUD-359: actual schema/config credentials share terminal word families."""
+    sensitive_value = "synthetic-value"
+    event = {
+        field_name: sensitive_value,
+        "details": [({field_name: sensitive_value},)],
+    }
+
+    assert _redact_pii(None, "info", event) == {
+        field_name: REDACTED,
+        "details": [({field_name: REDACTED},)],
+    }
+
+
+@pytest.mark.parametrize(
+    ("field_name", "field_value"),
+    [
+        ("secret_key", "synthetic-value"),
+        ("SECRET_KEY", "synthetic-value"),
+        ("signing_key", "synthetic-value"),
+        ("signingKey", "synthetic-value"),
+        (
+            "jwt_signing_keys",
+            ["primary:synthetic-value", "previous:synthetic-value"],
+        ),
+        (
+            "jwt_signing_key_registry",
+            {"primary": "synthetic-value", "previous": "synthetic-value"},
+        ),
+        (
+            "jwtSigningKeyRegistry",
+            {"primary": "synthetic-value", "previous": "synthetic-value"},
+        ),
+        ("mfa_totp_encryption_keys", "synthetic-value"),
+        ("MFA_TOTP_ENCRYPTION_KEYS", "synthetic-value"),
+        ("mfa_email_otp_hmac_keys", "synthetic-value"),
+        ("mfa-email-otp-hmac-keys", "synthetic-value"),
+        ("mfa_email_delivery_keks", "synthetic-value"),
+        ("mfa_trusted_device_hmac_keys", "synthetic-value"),
+        ("storage_s3_secret_access_key", "synthetic-value"),
+        ("storageS3SecretAccessKey", "synthetic-value"),
+        ("vapid_private_key", "synthetic-value"),
+        ("spicedb_preshared_key", "synthetic-value"),
+        ("otpauth_url", "synthetic-value"),
+        ("otpauthUrl", "synthetic-value"),
+        ("imgproxy_key", "synthetic-value"),
+        ("imgproxy_salt", "synthetic-value"),
+    ],
+    ids=[
+        "secret_key",
+        "SECRET_KEY",
+        "signing_key",
+        "signingKey",
+        "jwt_signing_keys",
+        "jwt_signing_key_registry",
+        "jwtSigningKeyRegistry",
+        "mfa_totp_encryption_keys",
+        "MFA_TOTP_ENCRYPTION_KEYS",
+        "mfa_email_otp_hmac_keys",
+        "mfa-email-otp-hmac-keys",
+        "mfa_email_delivery_keks",
+        "mfa_trusted_device_hmac_keys",
+        "storage_s3_secret_access_key",
+        "storageS3SecretAccessKey",
+        "vapid_private_key",
+        "spicedb_preshared_key",
+        "otpauth_url",
+        "otpauthUrl",
+        "imgproxy_key",
+        "imgproxy_salt",
+    ],
+)
+def test_known_key_material_and_keyrings_are_redacted_as_complete_values(
+    field_name: str, field_value: Any
+) -> None:
+    """AUD-359: key IDs inside a credential registry do not make its values public."""
+    event = {
+        field_name: field_value,
+        "details": [{field_name: field_value}],
+    }
+
+    assert _redact_pii(None, "info", event) == {
+        field_name: REDACTED,
+        "details": [{field_name: REDACTED}],
+    }
+
+
+@pytest.mark.parametrize(
+    ("field_name", "field_value"),
+    [
+        ("token_type", "Bearer"),
+        ("access_token_expire_minutes", 60),
+        ("reset_token_count", 7),
+        ("challenge-token-count", 2),
+        ("csrfHmacSecretConfigured", True),
+        ("newPasswordConfigured", True),
+        ("mfaTotpEncryptionKeysConfigured", True),
+        ("mfa_totp_active_encryption_key_id", "primary"),
+        ("MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID", "primary"),
+        ("mfa_email_otp_active_hmac_key_id", "primary"),
+        ("mfa_email_delivery_active_kek_id", "primary"),
+        ("mfa_trusted_device_active_hmac_key_id", "primary"),
+        ("jwt_active_kid", "primary"),
+        ("jwt_signing_active_kid", "primary"),
+        ("storage_s3_access_key_id", "public-identifier"),
+        ("vapid_public_key", "public-material"),
+        ("vapidPublicKey", "public-material"),
+        ("public_key", "public-material"),
+        ("jwt_private_key_path", "mounted-path"),
+        ("tokenizer", "ready"),
+        ("secretary", "ready"),
+        ("password_policy", "standard"),
+        ("cache_key", "public-cache-slot"),
+        ("key", "public-slot"),
+        ("id", "public-id"),
+        ("notatoken", "public-label"),
+        ("notasecret", "public-label"),
+        ("notapassword", "public-label"),
+        ("user_id", "public-user-id"),
+        ("error_code", "validation_failed"),
+        ("code", "validation_failed"),
+        ("codes", ["validation_failed"]),
+    ],
+    ids=[
+        "token_type",
+        "access_token_expire_minutes",
+        "reset_token_count",
+        "challenge-token-count",
+        "csrfHmacSecretConfigured",
+        "newPasswordConfigured",
+        "mfaTotpEncryptionKeysConfigured",
+        "mfa_totp_active_encryption_key_id",
+        "MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID",
+        "mfa_email_otp_active_hmac_key_id",
+        "mfa_email_delivery_active_kek_id",
+        "mfa_trusted_device_active_hmac_key_id",
+        "jwt_active_kid",
+        "jwt_signing_active_kid",
+        "storage_s3_access_key_id",
+        "vapid_public_key",
+        "vapidPublicKey",
+        "public_key",
+        "jwt_private_key_path",
+        "tokenizer",
+        "secretary",
+        "password_policy",
+        "cache_key",
+        "key",
+        "id",
+        "notatoken",
+        "notasecret",
+        "notapassword",
+        "user_id",
+        "error_code",
+        "code",
+        "codes",
+    ],
+)
+def test_credential_classification_preserves_public_metadata_and_nonsecret_words(
+    field_name: str, field_value: Any
+) -> None:
+    """Suffixes must be terminal words; generic key/id/code fields are not secrets."""
+    event = {
+        field_name: deepcopy(field_value),
+        "details": [{field_name: deepcopy(field_value)}],
+    }
+
+    assert _redact_pii(None, "info", event) == {
+        field_name: field_value,
+        "details": [{field_name: field_value}],
+    }
+
+
+@pytest.mark.usefixtures("preserve_logging_configuration")
+@pytest.mark.parametrize("json_output", [True, False], ids=["json", "console"])
+@pytest.mark.parametrize(
+    ("field_name", "field_value"),
+    [
+        ("challengeToken", "synthetic-value"),
+        ("smtp-password", "synthetic-value"),
+        ("jwtSigningActiveSecret", "synthetic-value"),
+        ("mfaTotpEncryptionKeys", "synthetic-value"),
+        (
+            "jwtSigningKeyRegistry",
+            {"primary": "synthetic-value", "previous": "synthetic-value"},
+        ),
+    ],
+    ids=[
+        "challengeToken",
+        "smtp-password",
+        "jwtSigningActiveSecret",
+        "mfaTotpEncryptionKeys",
+        "jwtSigningKeyRegistry",
+    ],
+)
+def test_context_bound_credential_families_and_keyrings_never_reach_renderers(
+    monkeypatch: pytest.MonkeyPatch,
+    json_output: bool,
+    field_name: str,
+    field_value: Any,
+) -> None:
+    """Both renderers redact contextvars merged into a real configured log event."""
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    root = logging.getLogger()
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+    monkeypatch.setattr(logging_mod, "_configured", False)
+    context = Context()
+
+    try:
+        logging_mod.configure_logging(json_output=json_output)
+        context.run(logging_mod.bind_context, **{field_name: field_value})
+        logger = logging_mod.get_logger("audit-359-context-regression")
+        context.run(
+            logger.info,
+            "credential configuration inspected",
+            details={"items": [{field_name: field_value}]},
+            status="public-diagnostic",
+            token_type="Bearer",
+        )
+        output = stream.getvalue()
+    finally:
+        root.removeHandler(handler)
+        handler.close()
+
+    assert "credential configuration inspected" in output
+    assert "public-diagnostic" in output
+    assert "Bearer" in output
+    assert field_name in output
+    assert "synthetic-value" not in output
+    assert output.count(REDACTED) == 2
+    if json_output:
+        rendered = json.loads(output)
+        assert rendered[field_name] == REDACTED
+        assert rendered["details"] == {"items": [{field_name: REDACTED}]}
+        assert rendered["status"] == "public-diagnostic"
+        assert rendered["token_type"] == "Bearer"

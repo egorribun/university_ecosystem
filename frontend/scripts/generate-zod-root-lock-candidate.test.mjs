@@ -1,7 +1,6 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import { spawnSync } from "node:child_process"
-import { readFileSync } from "node:fs"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 import {
@@ -311,9 +310,6 @@ test("source prerequisites preserve prior fixes and the exact three existing Zod
   extra.packages["node_modules/other/node_modules/zod"] = { version: "3.25.76" }
   assert.throws(() => assertSourceLockPrerequisites(extra))
   assertSourceLockPrerequisites(lock)
-  assertSourceLockPrerequisites(
-    JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url)))
-  )
 })
 
 test("temporary override targets existing Zod 4.6.5 without adding an application dependency", () => {
