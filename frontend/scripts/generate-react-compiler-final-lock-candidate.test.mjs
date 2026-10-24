@@ -447,7 +447,7 @@ test("metadata rejects immature, deprecated, wrong-origin and replaced formatter
 
 test("ordinary graph commands keep scripts disabled without claiming strict peer proof", () => {
   for (const [operation, prefix] of [
-    ["generateLock", ["install", "--package-lock-only"]],
+    ["generateLock", ["update", "zod", "zod-validation-error", "--package-lock-only"]],
     ["fullGraph", ["ci", "--include=dev"]],
     ["productionGraph", ["ci", "--omit=dev"]],
   ]) {
@@ -455,6 +455,28 @@ test("ordinary graph commands keep scripts disabled without claiming strict peer
     assert.deepEqual(finalNpmCommand(operation), expected)
     assert.equal(assertFinalNpmCommand(operation, expected), true)
   }
+})
+
+test("final generation rejects stale install, unbounded updates and additional targets", () => {
+  for (const prefix of [
+    ["install", "--package-lock-only"],
+    ["update", "--package-lock-only"],
+    ["update", "zod", "--package-lock-only"],
+    ["update", "zod-validation-error", "--package-lock-only"],
+    ["update", "zod", "zod-validation-error", "eslint", "--package-lock-only"],
+  ]) {
+    assert.throws(
+      () =>
+        assertFinalNpmCommand("generateLock", [...prefix, "--no-audit", "--no-fund", ...TRANSPORT]),
+      { name: "AssertionError" }
+    )
+  }
+})
+
+test("a successful npm no-op cannot be accepted as a remediated candidate", () => {
+  assert.throws(() => assertFinalLockScope(sourceLock(), sourceLock(), formatterMetadata()), {
+    name: "AssertionError",
+  })
 })
 
 test("strict peer commands explicitly disable legacy resolution and bind isolated configs", () => {

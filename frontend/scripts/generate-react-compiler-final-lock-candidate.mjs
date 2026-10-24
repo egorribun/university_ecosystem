@@ -210,7 +210,7 @@ function assertConfigPaths(paths) {
 
 export function finalNpmCommand(operation, paths = {}) {
   const operations = {
-    generateLock: ["install", "--package-lock-only"],
+    generateLock: ["update", "zod", "zod-validation-error", "--package-lock-only"],
     fullGraph: ["ci", "--include=dev"],
     productionGraph: ["ci", "--omit=dev"],
     strictGenerate: ["install", "--package-lock-only"],
@@ -445,8 +445,9 @@ export async function runFinalCompilerGenerator() {
       const path = join(workspace, name)
       return { path, bytes: regularBytes(path, 4 * 1024 * 1024) }
     })
-    const [manifestBytes, lockBytes, configBytes, localManifestBytes, goldenBytes] =
-      snapshots.map((item) => item.bytes)
+    const [manifestBytes, lockBytes, configBytes, localManifestBytes, goldenBytes] = snapshots.map(
+      (item) => item.bytes
+    )
     const manifest = JSON.parse(manifestBytes)
     const lock = JSON.parse(lockBytes)
     const golden = JSON.parse(goldenBytes)
@@ -715,9 +716,7 @@ export async function runFinalCompilerGenerator() {
     stage = "isolated strict peer physical graph and npm ls verification"
     assertFinalInstalledGraph(strict, "full", controls)
     assert.deepEqual(inspectInstalledEngineLicense(strict), licenseEvidence)
-    const strictListing = JSON.parse(
-      npm(cli, "strictList", strict, strictPaths, strictEnvironment)
-    )
+    const strictListing = JSON.parse(npm(cli, "strictList", strict, strictPaths, strictEnvironment))
     assert.equal(strictListing.name, "react-compiler-peer-proof")
     assert.equal(strictListing.version, "1.0.0")
     assert.deepEqual(strictListing.problems ?? [], [])

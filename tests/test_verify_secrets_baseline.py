@@ -4883,9 +4883,7 @@ def _live_private_field_fixture_nodes(
             'getattr(live_stand, "_live_playwright_reset_registration_v2", None)'
         ),
         "valid": "_reset_registration_v2_record()",
-        "output": (
-            '"".join(_reset_registration_v2_row(record) for record in invalid)'
-        ),
+        "output": ('"".join(_reset_registration_v2_row(record) for record in invalid)'),
     }
     for name, expression in expressions.items():
         assert ast.dump(assignment(name).value) == ast.dump(
