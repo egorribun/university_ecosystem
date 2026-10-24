@@ -238,6 +238,47 @@ def _executed_sql(ops: _Ops) -> str:
     ).upper()
 
 
+@pytest.mark.parametrize(
+    ("dialect", "expected_sql"),
+    [
+        (
+            "postgresql",
+            [
+                "SET LOCAL lock_timeout = '10s'",
+                "SET LOCAL statement_timeout = '60s'",
+            ],
+        ),
+        ("sqlite", []),
+        ("mysql", []),
+    ],
+)
+@pytest.mark.parametrize("offline", [False, True], ids=["online", "offline"])
+def test_upgrade_sets_postgresql_timeouts_before_inspection(
+    monkeypatch: pytest.MonkeyPatch,
+    dialect: str,
+    expected_sql: list[str],
+    offline: bool,
+) -> None:
+    migration, ops, _ = _install(monkeypatch, dialect=dialect)
+    monkeypatch.setattr(migration.context, "is_offline_mode", lambda: offline)
+
+    class _InspectionReached(RuntimeError):
+        pass
+
+    def stop_at_inspection(_bind: Any) -> Any:
+        raise _InspectionReached
+
+    monkeypatch.setattr(migration.sa, "inspect", stop_at_inspection)
+
+    with pytest.raises(_InspectionReached):
+        migration.upgrade()
+
+    assert all(
+        kind == "op" and name == "execute" for kind, name, _args, _kwargs in ops.events
+    )
+    assert [str(args[0]) for _kind, _name, args, _kwargs in ops.events] == expected_sql
+
+
 def test_upgrade_postgresql_runs_legacy_shadow_conversion_with_existing_indexes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

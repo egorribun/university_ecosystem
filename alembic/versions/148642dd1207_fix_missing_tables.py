@@ -881,6 +881,10 @@ def upgrade() -> None:
     SKIPPED_TABLES.clear()
     bind = op.get_bind()
     is_postgresql = bind.dialect.name == "postgresql"
+    # Bound reflection and DDL without changing the migration transaction.
+    if is_postgresql:
+        op.execute(sa.text("SET LOCAL lock_timeout = '10s'"))
+        op.execute(sa.text("SET LOCAL statement_timeout = '60s'"))
     try:
         inspector = sa.inspect(bind)
     except (sa.exc.NoInspectionAvailable, NameError):

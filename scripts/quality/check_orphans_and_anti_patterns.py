@@ -186,7 +186,194 @@ def _skip_javascript_regex(content: str, start: int) -> int:
     return len(content)
 
 
-def _mask_javascript_non_code(content: str) -> tuple[str, dict[str, str]]:
+_JSX_OPENING_TAG = re.compile(
+    r"<((?:[A-Za-z_$]|[^\x00-\x7f\s])"
+    r"(?:[\w$.:-]|[^\x00-\x7f\s])*)(?=[\s/><])"
+)
+
+
+def _skip_jsx_string(content: str, start: int, nesting: int = 0) -> int | None:
+    """Skip a JavaScript quoted value inside a JSX expression or type argument."""
+    if nesting > 64:
+        return None
+    quote = content[start]
+    index = start + 1
+    while index < len(content):
+        if content[index] == "\\":
+            index += 2
+            continue
+        if quote == "`" and content.startswith("${", index):
+            end = _skip_jsx_expression(content, index + 1, nesting + 1)
+            if end is None:
+                return None
+            index = end
+            continue
+        if content[index] == quote:
+            return index + 1
+        if quote != "`" and content[index] in "\r\n":
+            return None
+        index += 1
+    return None
+
+
+def _skip_jsx_expression(content: str, start: int, nesting: int) -> int | None:
+    """Balance one JSX expression; its contents cannot establish ownership."""
+    if nesting > 64:
+        return None
+    depth = 1
+    index = start + 1
+    prefix: list[str] = []
+    while index < len(content):
+        if content.startswith("//", index):
+            comment_end = content.find("\n", index + 2)
+            if comment_end == -1:
+                return None
+            index = comment_end
+            continue
+        if content.startswith("/*", index):
+            comment_end = content.find("*/", index + 2)
+            if comment_end == -1:
+                return None
+            index = comment_end + 2
+            continue
+        char = content[index]
+        if char in {"'", '"', "`"}:
+            value_end = _skip_jsx_string(content, index, nesting + 1)
+            if value_end is None:
+                return None
+            prefix.append(" value ")
+            index = value_end
+            continue
+        if char == "<" and _js_regex_can_start(prefix):
+            jsx_end = _skip_jsx_element(content, index, nesting + 1)
+            if jsx_end is None:
+                return None
+            prefix.append(" value ")
+            index = jsx_end
+            continue
+        if char == "/" and _js_regex_can_start(prefix):
+            regex_end = _skip_javascript_regex(content, index)
+            if regex_end >= len(content):
+                return None
+            prefix.append(" value ")
+            index = regex_end
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return index + 1
+        prefix.append(char)
+        index += 1
+    return None
+
+
+def _skip_jsx_type_arguments(content: str, start: int, nesting: int) -> int | None:
+    """Balance generic component arguments without exposing their text as code."""
+    depth = 1
+    index = start + 1
+    while index < len(content):
+        if nesting + depth > 64:
+            return None
+        if content.startswith("/*", index):
+            comment_end = content.find("*/", index + 2)
+            if comment_end == -1:
+                return None
+            index = comment_end + 2
+            continue
+        if content.startswith("//", index):
+            comment_end = content.find("\n", index + 2)
+            if comment_end == -1:
+                return None
+            index = comment_end
+            continue
+        char = content[index]
+        if char in {"'", '"', "`"}:
+            value_end = _skip_jsx_string(content, index, nesting + depth)
+            if value_end is None:
+                return None
+            index = value_end
+            continue
+        if char == "<":
+            depth += 1
+        elif char == ">" and content[index - 1] != "=":
+            depth -= 1
+            if depth == 0:
+                return index + 1
+        index += 1
+    return None
+
+
+def _skip_jsx_element(content: str, start: int, nesting: int = 0) -> int | None:
+    """Recognize a balanced JSX subtree, not a relational-expression regex."""
+    if nesting > 64:
+        return None
+    if content.startswith("<>", start):
+        name = ""
+        index = start + 2
+    else:
+        opening = _JSX_OPENING_TAG.match(content, start)
+        if opening is None:
+            return None
+        name = opening.group(1)
+        index = opening.end()
+        if content[index] == "<":
+            arguments_end = _skip_jsx_type_arguments(content, index, nesting + 1)
+            if arguments_end is None:
+                return None
+            index = arguments_end
+        while index < len(content):
+            if content.startswith("/>", index):
+                return index + 2
+            char = content[index]
+            if char == ">":
+                index += 1
+                break
+            if char in {"'", '"'}:
+                # JSX attributes are multiline text, not JavaScript strings.
+                # Backslashes do not escape their closing quote.
+                quote_end = content.find(char, index + 1)
+                if quote_end == -1:
+                    return None
+                index = quote_end + 1
+                continue
+            if char == "{":
+                expression_end = _skip_jsx_expression(content, index, nesting + 1)
+                if expression_end is None:
+                    return None
+                index = expression_end
+                continue
+            if char == "<":
+                return None
+            index += 1
+        else:
+            return None
+
+    closing = re.compile(r"</" + re.escape(name) + r"\s*>")
+    while index < len(content):
+        if content.startswith("</", index):
+            match = closing.match(content, index)
+            return match.end() if match is not None else None
+        if content[index] == "<":
+            element_end = _skip_jsx_element(content, index, nesting + 1)
+            if element_end is None:
+                return None
+            index = element_end
+            continue
+        if content[index] == "{":
+            expression_end = _skip_jsx_expression(content, index, nesting + 1)
+            if expression_end is None:
+                return None
+            index = expression_end
+            continue
+        index += 1
+    return None
+
+
+def _mask_javascript_non_code(
+    content: str, *, jsx: bool = False
+) -> tuple[str, dict[str, str]]:
     """Replace comments, strings, templates, and regex literals before code matching."""
     # NUL is not valid in JavaScript source tokens. Reject it in raw source so
     # the private placeholders below cannot collide with code.
@@ -235,6 +422,21 @@ def _mask_javascript_non_code(content: str) -> tuple[str, dict[str, str]]:
             if quote != "`":
                 literals[token] = content[start + 1 : index - 1]
             masked.append(f" {token} ")
+            continue
+        if jsx and content[index] == "<" and _js_regex_can_start(masked):
+            jsx_end = _skip_jsx_element(content, index)
+            if jsx_end is None:
+                # A possible JSX opener in expression context must not fall
+                # back to code if its spelling, grammar, or depth is unsupported.
+                # This is a bounded ownership recognizer, not a full TSX parser.
+                return "", {}
+            # Ownership only: JSX text and attribute values are not imports.
+            # Keep a value marker so a following slash remains division.
+            masked.extend(
+                "\n" if char == "\n" else " " for char in content[index:jsx_end]
+            )
+            masked.append(" jsx_value ")
+            index = jsx_end
             continue
         if content[index] == "/" and _js_regex_can_start(masked):
             end = _skip_javascript_regex(content, index)
@@ -775,7 +977,9 @@ def check_python_duplicates_and_imports(file_path: Path, errors: list[str]) -> s
         return set()
 
 
-_REPOSITORY_ROOT_NAMES = frozenset({"ROOT", "REPOSITORY_ROOT", "PROJECT_ROOT"})
+_REPOSITORY_ROOT_NAMES = frozenset(
+    {"ROOT", "REPOSITORY_ROOT", "PROJECT_ROOT", "TEST_ROOT"}
+)
 
 
 def _repository_root_parent_index(node: ast.AST) -> int | None:
@@ -1166,6 +1370,108 @@ def _static_repository_path_parts(
     return None
 
 
+class _FunctionScopeBindingVisitor(_ModuleBindingVisitor):
+    """A bare annotation creates a function local, unlike a module binding."""
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        self.visit(node.target)
+        self.visit(node.annotation)
+        if node.value is not None:
+            self.visit(node.value)
+
+
+def _repository_root_scope_bindings(tree: ast.AST) -> dict[ast.AST, set[str]]:
+    """Collect root-name shadows in each child scope, never in its parent."""
+    bindings: dict[ast.AST, set[str]] = {}
+    for node in ast.walk(tree):
+        visitor = (
+            _FunctionScopeBindingVisitor(locals_are_module=False)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))
+            else _ModuleBindingVisitor(locals_are_module=False)
+        )
+        arguments: ast.arguments | None = None
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            for statement in node.body:
+                visitor.visit(statement)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                arguments = node.args
+        elif isinstance(node, ast.Lambda):
+            visitor.visit(node.body)
+            arguments = node.args
+        elif isinstance(
+            node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+        ):
+            for generator in node.generators:
+                visitor.visit(generator.target)
+        else:
+            continue
+        if arguments is not None:
+            visitor.names.update(
+                argument.arg
+                for argument in (
+                    *arguments.posonlyargs,
+                    *arguments.args,
+                    *arguments.kwonlyargs,
+                )
+            )
+            for argument in (arguments.vararg, arguments.kwarg):
+                if argument is not None:
+                    visitor.names.add(argument.arg)
+        bindings[node] = (
+            visitor.names | visitor.module_effects
+        ) & _REPOSITORY_ROOT_NAMES
+    return bindings
+
+
+def _visible_repository_root_names(
+    node: ast.AST,
+    active_names: set[str],
+    parents: dict[ast.AST, ast.AST],
+    scope_bindings: dict[ast.AST, set[str]],
+) -> set[str]:
+    """Do not lend a module alias's proof to a different lexical binding."""
+    visible = active_names.copy()
+    class_scope_visible = True
+    ancestors = {node}
+    child = node
+    while (parent := parents.get(child)) is not None:
+        # PEP 695 introduces annotation scopes for generic functions, classes,
+        # and type aliases. Conservatively shadow these names throughout the
+        # declaration instead of borrowing a module alias's path proof.
+        visible.difference_update(
+            name
+            for parameter in getattr(parent, "type_params", ())
+            if isinstance(name := getattr(parameter, "name", None), str)
+        )
+        shadows = scope_bindings.get(parent, set())
+        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            # Defaults, decorators, and annotations are evaluated outside the
+            # body scope. Bindings anywhere in a function body shadow throughout.
+            if child in parent.body:
+                visible.difference_update(shadows)
+                class_scope_visible = False
+        elif isinstance(parent, ast.ClassDef):
+            if child in parent.body:
+                if class_scope_visible:
+                    visible.difference_update(shadows)
+                # Methods and nested classes do not close over class locals.
+                class_scope_visible = False
+        elif isinstance(parent, ast.Lambda):
+            if child is parent.body:
+                visible.difference_update(shadows)
+                class_scope_visible = False
+        elif isinstance(
+            parent, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+        ):
+            # Only the first iterable is evaluated in the enclosing scope.
+            if parent.generators[0].iter not in ancestors:
+                visible.difference_update(shadows)
+                class_scope_visible = False
+        ancestors.add(parent)
+        child = parent
+    return visible
+
+
 def find_python_repository_references(file_path: Path) -> set[str]:
     """Return statically declared repository paths from a Python contract test.
 
@@ -1204,6 +1510,7 @@ def find_python_repository_references(file_path: Path) -> set[str]:
         for parent in ast.walk(tree)
         for child in ast.iter_child_nodes(parent)
     }
+    scope_bindings = _repository_root_scope_bindings(tree)
     active_root_names: set[str] = set()
     references: set[str] = set()
     for statement in tree.body:
@@ -1215,12 +1522,176 @@ def find_python_repository_references(file_path: Path) -> set[str]:
                 and parent.left is node
             ):
                 continue
-            resolved = _static_repository_path_parts(node, active_root_names, file_path)
+            visible_roots = _visible_repository_root_names(
+                node, active_root_names, parents, scope_bindings
+            )
+            resolved = _static_repository_path_parts(node, visible_roots, file_path)
             if resolved is not None and resolved[0]:
                 references.add("/".join(resolved[0]))
         for name, binding_statement in authoritative_statements.items():
             if binding_statement is statement:
                 active_root_names.add(name)
+    return references
+
+
+def _typescript_glob_references(
+    file_path: Path, repository_root: Path, source: str
+) -> set[str]:
+    """Prove the closed local glob-and-read form used by source policy tests.
+
+    Only the supported recursive pattern and exact ignore set are understood.
+    Return actual files read by that traversal, never a directory-wide claim.
+    """
+    content, literals = _mask_javascript_non_code(source)
+    # Escaped identifiers can denote a recognized binding with different raw
+    # spelling. This closed grammar does not normalize them or borrow its proof.
+    if "\\" in content:
+        return set()
+    required_imports = (
+        (r"\{\s*readFileSync\s*\}", "node:fs"),
+        (r"\{\s*fileURLToPath\s*\}", "node:url"),
+        ("path", "node:path"),
+        (r"\{\s*glob\s*\}", "glob"),
+    )
+    for binding, module in required_imports:
+        matches = list(
+            re.finditer(
+                rf"\bimport\s+{binding}\s+from\s*"
+                rf"(?P<module>{_JS_LITERAL_PATTERN})",
+                content,
+            )
+        )
+        if len(matches) != 1:
+            return set()
+        imported_module = _javascript_string_value(matches[0].group("module"), literals)
+        if imported_module != module:
+            return set()
+
+    # Supplement the closed declaration/read sequence below with a binding-use
+    # check. Extra declarations, assignments, parameter shadows, or overrides
+    # cannot borrow another lexical binding's proof.
+    expected_uses = {
+        "readFileSync": 2,
+        "fileURLToPath": 2,
+        "path": 4,
+        "glob": 2,
+        "__filename": 2,
+        "__dirname": 2,
+        "SRC_ROOT": 3,
+        "files": 3,
+        "relFile": 2,
+    }
+    if any(
+        len(re.findall(rf"\b{re.escape(name)}\b", content)) != count
+        for name, count in expected_uses.items()
+    ):
+        return set()
+
+    # A newline alone does not close an initializer: + and . can continue it.
+    # Each separator below must lead directly to the next proven statement.
+    separator = r"(?:[ \t\r]*;\s*|[ \t]*\r?\n\s*)"
+    root_match = re.search(
+        r"\bconst\s+__filename\s*=\s*fileURLToPath\s*\("
+        rf"\s*import\.meta\.url\s*\){separator}"
+        r"const\s+__dirname\s*=\s*path\.dirname\s*\(\s*__filename\s*\)"
+        rf"{separator}const\s+SRC_ROOT\s*=\s*path\.resolve\s*\("
+        rf"\s*__dirname\s*,\s*(?P<root>{_JS_LITERAL_PATTERN})\s*\)"
+        rf"{separator}(?=const\b)",
+        content,
+    )
+    glob_match = re.search(
+        r"\bconst\s+files\s*=\s*await\s+glob\s*\(\s*"
+        rf"(?P<pattern>{_JS_LITERAL_PATTERN})\s*,\s*\{{\s*"
+        r"cwd\s*:\s*SRC_ROOT\s*,\s*ignore\s*:\s*\["
+        rf"\s*(?P<ignores>{_JS_LITERAL_PATTERN}"
+        rf"(?:\s*,\s*{_JS_LITERAL_PATTERN})*\s*,?)\s*\]"
+        r"\s*,?\s*\}\s*\)",
+        content,
+    )
+    reader_match = re.search(
+        r"\bconst\s+[A-Za-z_$][\w$]*\s*=\s*"
+        r"files\.filter\s*\(\s*\(\s*relFile\s*\)\s*=>\s*"
+        r"[A-Za-z_$][\w$]*\.test\s*\(\s*readFileSync\s*\(\s*"
+        r"path\.join\s*\(\s*SRC_ROOT\s*,\s*relFile\s*\)\s*,\s*"
+        rf"(?P<encoding>{_JS_LITERAL_PATTERN})\s*\)\s*\)\s*\)",
+        content,
+    )
+    if root_match is None or glob_match is None or reader_match is None:
+        return set()
+    if not root_match.end() < glob_match.start() < reader_match.start():
+        return set()
+    between_statements = re.fullmatch(
+        rf"{separator}expect\s*\(\s*files\.length\s*\)"
+        rf"\.toBeGreaterThan\s*\(\s*0\s*\){separator}",
+        content[glob_match.end() : reader_match.start()],
+    )
+    if between_statements is None:
+        return set()
+
+    # The root proof belongs to module scope, not a similarly named local in an
+    # unrelated block/function. Strings, comments, and regexes are already opaque.
+    delimiters: list[str] = []
+    closing_delimiters = {")": "(", "]": "[", "}": "{"}
+    for char in content[: root_match.start()]:
+        if char in "([{":
+            delimiters.append(char)
+        elif char in closing_delimiters:
+            if not delimiters or delimiters.pop() != closing_delimiters[char]:
+                return set()
+    if delimiters:
+        return set()
+
+    glob_pattern = _javascript_string_value(glob_match.group("pattern"), literals)
+    if glob_pattern != "**/*.{ts,tsx,css}":
+        return set()
+    if _javascript_string_value(reader_match.group("encoding"), literals) not in {
+        "utf-8",
+        "utf8",
+    }:
+        return set()
+    ignored_patterns = _javascript_string_values(glob_match.group("ignores"), literals)
+    supported_ignores = {
+        "tests/**",
+        "**/__tests__/**",
+        "**/*.test.{ts,tsx}",
+        "**/*.spec.{ts,tsx}",
+        "**/*.stories.{ts,tsx}",
+    }
+    if (
+        len(ignored_patterns) != len(supported_ignores)
+        or set(ignored_patterns) != supported_ignores
+    ):
+        return set()
+
+    relative_root = _javascript_string_value(root_match.group("root"), literals)
+    if relative_root is None:
+        return set()
+    root_path = _js_target_path(
+        relative_root,
+        file_path.resolve().parent,
+        repository_root,
+        allow_directory=True,
+    )
+    if root_path is None:
+        return set()
+    root = repository_root / root_path
+    if not root.is_dir():
+        return set()
+
+    references: set[str] = set()
+    for candidate in _walk_authored_files(
+        root, {".ts", ".tsx", ".css"}, {"__tests__"}, repository_root
+    ):
+        relative = candidate.relative_to(root)
+        if relative.parts[0] == "tests" or any(
+            part.startswith(".") for part in relative.parts
+        ):
+            continue
+        if candidate.suffix in {".ts", ".tsx"} and candidate.stem.endswith(
+            (".test", ".spec", ".stories")
+        ):
+            continue
+        references.add(candidate.relative_to(repository_root).as_posix())
     return references
 
 
@@ -1244,7 +1715,7 @@ def find_typescript_repository_references(file_path: Path) -> set[str]:
     if package_root is None:
         return set()
 
-    references: set[str] = set()
+    references = _typescript_glob_references(file_path, repository_root, content)
     for match in _TYPESCRIPT_FILE_REFERENCE.finditer(content):
         target = match.group("path")
         if (
@@ -1599,7 +2070,9 @@ def _typescript_import_targets(test_path: str, reference_paths: set[str]) -> boo
     except (OSError, ValueError):
         return False
 
-    masked, literals = _mask_javascript_non_code(content)
+    masked, literals = _mask_javascript_non_code(
+        content, jsx=normalized_test_path.endswith(".tsx")
+    )
     for match in _JAVASCRIPT_MODULE_REFERENCE.finditer(masked):
         specifier = _javascript_string_value(match.group("path"), literals)
         if not specifier:
@@ -1621,18 +2094,18 @@ def _typescript_import_targets(test_path: str, reference_paths: set[str]) -> boo
         ):
             continue
         candidates = {resolved}
-        if not PurePosixPath(resolved).suffix:
-            extensions = (
-                ".ts",
-                ".tsx",
-                ".js",
-                ".jsx",
-                ".mjs",
-                ".cjs",
-                ".mts",
-                ".cts",
-                ".json",
-            )
+        extensions = (
+            ".ts",
+            ".tsx",
+            ".js",
+            ".jsx",
+            ".mjs",
+            ".cjs",
+            ".mts",
+            ".cts",
+            ".json",
+        )
+        if PurePosixPath(resolved).suffix not in extensions:
             candidates.update(f"{resolved}{extension}" for extension in extensions)
             candidates.update(
                 f"{resolved}/index{extension}" for extension in extensions

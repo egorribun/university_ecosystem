@@ -1373,8 +1373,7 @@ _OCT24_PUBLIC_DIGEST_BYTES = frozenset(
     identity[2] for identity in _OCT24_PUBLIC_DIGEST_CATEGORY_BY_IDENTITY
 )
 _OCT24_PUBLIC_DIGEST_RESERVED_PATH_TYPES = frozenset(
-    (identity[0], identity[1])
-    for identity in _OCT24_PUBLIC_DIGEST_CATEGORY_BY_IDENTITY
+    (identity[0], identity[1]) for identity in _OCT24_PUBLIC_DIGEST_CATEGORY_BY_IDENTITY
 )
 _OCT24_PUBLIC_DIGEST_EVIDENCE_MARKERS = {
     _AUD350_PUBLIC_MIGRATION_DIGEST_IDENTITY: (
@@ -2011,8 +2010,7 @@ def validate_false_positive_dispositions(
             tuple(raw_digest_bytes) in _OCT24_PUBLIC_DIGEST_BYTES
             or (path, finding_type) in _OCT24_PUBLIC_DIGEST_RESERVED_PATH_TYPES
         ) and (
-            exact_source_identity
-            not in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES
+            exact_source_identity not in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES
         ):
             if oct24_category is None or category != oct24_category:
                 raise BaselineArtifactError(

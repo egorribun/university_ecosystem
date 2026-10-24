@@ -46,7 +46,6 @@ func TestSetupRouterUsesConfiguredJWTIssuerForRequiredAndOptionalAuth(t *testing
 	} {
 		t.Run(configCase.name, func(t *testing.T) {
 			secret := randomIssuerStartupSecret(t)
-			hmacKey := randomIssuerStartupSecret(t)
 			redisServer := miniredis.RunT(t)
 			type forwardedRequest struct {
 				path      string
@@ -85,7 +84,7 @@ func TestSetupRouterUsesConfiguredJWTIssuerForRequiredAndOptionalAuth(t *testing
 			cfg.RevocationRedisURL = redisURL
 			cfg.BackendURL = backend.URL
 			cfg.WsHubURL = backend.URL
-			cfg.InternalHMACSecret = hmacKey
+			cfg.InternalHMACSecret = randomIssuerStartupSecret(t)
 			cfg.RateLimitRPS = 100
 			cfg.RateLimitBurst = 100
 			cfg.AllowedOrigins = []string{"http://frontend.example.test"}

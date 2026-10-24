@@ -308,9 +308,7 @@ def test_outbox_env_cannot_override_shared_rate_limit_store_contract() -> None:
     )
     for name in names:
         overrides.extend(("--set-string", f"outboxWorker.env.{name}=untrusted"))
-    overrides.extend(
-        ("--set-string", "outboxWorker.env.CUSTOM_FEATURE_FLAG=retained")
-    )
+    overrides.extend(("--set-string", "outboxWorker.env.CUSTOM_FEATURE_FLAG=retained"))
     resources = _render_development(*overrides)
     _, container = _shared_settings_workload(resources, "outbox-worker")
     env = {item["name"]: item for item in container["env"]}

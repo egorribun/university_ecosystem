@@ -6,7 +6,6 @@ import json
 import re
 import shlex
 import subprocess
-import sys
 import tomllib
 from collections import Counter
 from collections.abc import Iterator
@@ -1932,26 +1931,6 @@ def test_q4_heavy_scans_are_scheduled_manual_and_default_branch_guarded() -> Non
         assert "TruffleHog Scan" not in names
 
 
-def _run_trivy_metadata_diagnostic(
-    tmp_path: Path, report: dict[str, Any] | bytes
-) -> subprocess.CompletedProcess[str]:
-    job = _workflow(CI)["jobs"]["docker-security-scan-additional"]
-    step = _step(job, "Summarize Trivy vulnerability metadata")
-    script = step["run"].split("<<'PY'\n", maxsplit=1)[1].rsplit("\nPY", maxsplit=1)[0]
-    report_path = tmp_path / "trivy-fixture.sarif"
-    report_path.write_bytes(
-        report if isinstance(report, bytes) else json.dumps(report).encode("utf-8")
-    )
-    return subprocess.run(
-        [sys.executable, "-c", script, str(report_path)],
-        timeout=10,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-
-
 def test_trivy_diagnostic_is_failure_only_and_preserves_scan_permissions() -> None:
     job = _workflow(CI)["jobs"]["docker-security-scan-additional"]
     step = _step(job, "Summarize Trivy vulnerability metadata")
@@ -1964,122 +1943,6 @@ def test_trivy_diagnostic_is_failure_only_and_preserves_scan_permissions() -> No
     assert "continue-on-error" not in step
     assert job["steps"].index(scan) < job["steps"].index(step)
     assert job["permissions"] == {"security-events": "write", "contents": "read"}
-    assert "environ" not in step["run"]
-
-
-def test_trivy_diagnostic_emits_only_bounded_vulnerability_metadata(
-    tmp_path: Path,
-) -> None:
-    vulnerability = {
-        "ruleId": "CVE-2099-0001",
-        "message": {
-            "text": (
-                "Package: libexample\nInstalled Version: 1.0.0\n"
-                "Severity: HIGH\nFixed Version: 1.0.1\n"
-                "Match: never-emit-source-match"
-            )
-        },
-        "locations": [
-            {
-                "physicalLocation": {
-                    "artifactLocation": {
-                        "uri": (
-                            "usr/bin/caddy\n::error::not-a-workflow-command" + "x" * 300
-                        )
-                    },
-                    "region": {"snippet": {"text": "never-emit-source-snippet"}},
-                }
-            }
-        ],
-    }
-    report = {
-        "runs": [
-            {
-                "tool": {
-                    "driver": {
-                        "rules": [
-                            {
-                                "id": "CVE-2099-0001",
-                                "name": "LanguageSpecificPackageVulnerability",
-                                "help": {"text": "never-emit-rule-help"},
-                            },
-                            {"id": "secret-fixture", "name": "Secret"},
-                        ]
-                    }
-                },
-                "results": [
-                    {
-                        "ruleId": "secret-fixture",
-                        "message": {"text": "Match: never-emit-secret-match"},
-                    },
-                    *[vulnerability for _ in range(105)],
-                ],
-            }
-        ]
-    }
-    result = _run_trivy_metadata_diagnostic(tmp_path, report)
-    assert result.returncode == 0, result.stderr
-    lines = result.stdout.splitlines()
-    assert len(lines) == 101
-    assert "never-emit-" not in result.stdout
-    assert not any(line.startswith("::") for line in lines)
-    metadata = json.loads(lines[0].removeprefix("TRIVY_VULNERABILITY "))
-    assert metadata == {
-        "rule_id": "CVE-2099-0001",
-        "package": "libexample",
-        "installed_version": "1.0.0",
-        "severity": "HIGH",
-        "fixed_version": "1.0.1",
-        "location": vulnerability["locations"][0]["physicalLocation"][
-            "artifactLocation"
-        ]["uri"][:256],
-    }
-    assert json.loads(lines[-1].removeprefix("TRIVY_SUMMARY ")) == {
-        "results": 106,
-        "vulnerabilities": 105,
-        "printed": 100,
-        "omitted_non_vulnerability": 1,
-    }
-
-
-def test_trivy_diagnostic_allows_missing_optional_metadata(tmp_path: Path) -> None:
-    result = _run_trivy_metadata_diagnostic(
-        tmp_path,
-        {
-            "runs": [
-                {
-                    "tool": {
-                        "driver": {
-                            "rules": [
-                                {
-                                    "id": "CVE-2099-0002",
-                                    "name": "OsPackageVulnerability",
-                                }
-                            ]
-                        }
-                    },
-                    "results": [{"ruleId": "CVE-2099-0002"}],
-                }
-            ]
-        },
+    assert step["run"] == (
+        'python3 scripts/quality/report_trivy_metadata.py "$SARIF_PATH"'
     )
-    assert result.returncode == 0, result.stderr
-    assert json.loads(
-        result.stdout.splitlines()[0].removeprefix("TRIVY_VULNERABILITY ")
-    ) == {"rule_id": "CVE-2099-0002"}
-
-
-@pytest.mark.parametrize("oversized", [False, True])
-def test_trivy_diagnostic_rejects_invalid_or_oversized_reports(
-    tmp_path: Path, oversized: bool
-) -> None:
-    raw = b" " * (8 * 1024 * 1024 + 1) if oversized else b"{invalid-sarif"
-    result = _run_trivy_metadata_diagnostic(tmp_path, raw)
-    assert result.returncode != 0
-    assert result.stdout == ""
-    expected = (
-        "SARIF report exceeds diagnostic size limit"
-        if oversized
-        else "Invalid SARIF report"
-    )
-    assert result.stderr.strip() == expected

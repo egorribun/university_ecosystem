@@ -2603,6 +2603,13 @@ def test_aud508_non_python_skip_accepts_tracking_comments(
         "<><section>content</section></>",
         "<Widget.Part><span /></Widget.Part>",
         '<main title={">"}>content</main>',
+        "<Widget<string> />",
+        "<Widget<Array<string>>><span /></Widget>",
+        "<Widget-1>content</Widget-1>",
+        "<Élement>content</Élement>",
+        "<Élement>content</Élement>",
+        '<main title="line one\nline two" />',
+        '<main>{value ? <span /> : "</main>"}</main>',
     ],
 )
 def test_typescript_import_after_jsx_keeps_exact_source_relationship(
@@ -2628,6 +2635,22 @@ def test_typescript_import_after_jsx_keeps_exact_source_relationship(
         'const view = <main>import Button from "../Button"</main>;\n',
         "const view = <main title='import Button from \"../Button\"' />;\n",
         'const value = left </main>\nimport Button from "../Button";\n',
+        'const view = <main>import Button from "../Button";\n',
+        'const view = <main>import Button from "../Button"</other>;\n',
+        'const view = <Widget<string>>import Button from "../Button"</Widget>;\n',
+        'const view = <Widget-1>import Button from "../Button"</Widget-1>;\n',
+        'const view = <Élement>import Button from "../Button"</Élement>;\n',
+        'const view = <Élement>import Button from "../Button"</Élement>;\n',
+        'const view = <Widget!>import Button from "../Button"</Widget!>;\n',
+        'const view = <main title="line one\nline two">'
+        'import Button from "../Button"</main>;\n',
+        (
+            "const view = "
+            + "<main>" * 66
+            + 'import Button from "../Button"'
+            + "</main>" * 66
+            + ";\n"
+        ),
     ],
 )
 def test_typescript_non_code_jsx_and_regex_do_not_claim_source_ownership(
@@ -2708,6 +2731,8 @@ def _write_typescript_glob_fixture(
         "frontend/src/components/Button.spec.tsx",
         "frontend/src/components/Button.stories.tsx",
         "frontend/src/components/data.json",
+        "frontend/src/.hidden.ts",
+        "frontend/src/.private/hidden.ts",
     ):
         target = repository / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -2765,6 +2790,24 @@ def test_typescript_glob_scan_links_only_files_it_recursively_reads(
         ("async function scan()", "async function scan(SRC_ROOT: string)"),
         ('"tests/**",', '"tests/**", "**/*",'),
         ('"**/*.{ts,tsx,css}"', '"*.{ts,tsx,css}"'),
+        (
+            'path.resolve(__dirname, "..")',
+            'path.resolve(__dirname, "..") + "/elsewhere"',
+        ),
+        (
+            'path.resolve(__dirname, "..")',
+            'path.resolve(__dirname, "..")\n + "/elsewhere"',
+        ),
+        ("  })\n  expect", "  }).then(() => [])\n  expect"),
+        ("  })\n  expect", "  })\n .then(() => [])\n  expect"),
+        (
+            "async function scan()",
+            r"async function scan(SRC_\u0052OOT: string)",
+        ),
+        (
+            'const SRC_ROOT = path.resolve(__dirname, "..")',
+            'const SRC_ROOT = path.resolve(__dirname, "..") as string',
+        ),
     ],
 )
 def test_typescript_glob_scan_rejects_unproven_traversal_or_reads(
@@ -2842,3 +2885,119 @@ def test_python_contract_rejects_rebound_test_root_alias(
         repository_references=references,
         reference_paths={"scripts/quality/validate_trivy_kyverno_fixture.py"},
     )
+
+
+@pytest.mark.parametrize("root_name", ["TEST_ROOT", "ROOT"])
+@pytest.mark.parametrize(
+    "body",
+    [
+        "def helper({root_name}):\n    return {root_name} / {target}\n",
+        "async def helper({root_name}):\n    return {root_name} / {target}\n",
+        "def helper():\n    {root_name} = fallback\n"
+        "    return {root_name} / {target}\n",
+        "def helper():\n    return {root_name} / {target}\n"
+        "    {root_name} = fallback\n",
+        "def helper():\n    {root_name}: Path\n"
+        "    return {root_name} / {target}\n",
+        "def helper[{root_name}]():\n    return {root_name} / {target}\n",
+        "class Subject[{root_name}]:\n    target = {root_name} / {target}\n",
+        "type Subject[{root_name}] = list[{root_name} / {target}]\n",
+        "subject = lambda {root_name}: {root_name} / {target}\n",
+        "class Subject:\n    {root_name} = fallback\n"
+        "    target = {root_name} / {target}\n",
+        "targets = [{root_name} / {target} for {root_name} in roots]\n",
+        "targets = ({root_name} / {target} for {root_name} in roots)\n",
+        "targets = [{root_name} / {target} for value in roots "
+        "for {root_name} in value]\n",
+    ],
+)
+def test_python_contract_does_not_borrow_shadowed_root_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    root_name: str,
+    body: str,
+) -> None:
+    contract = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        f"{root_name} = Path(__file__).resolve().parents[1]\n"
+        + body.format(
+            root_name=root_name,
+            target='"scripts" / "quality" / "validate_trivy_kyverno_fixture.py"',
+        )
+        + f'MODULE_TARGET = {root_name} / "app" / "unrelated.py"\n',
+    )
+
+    references = find_python_repository_references(contract)
+
+    assert references == {"app/unrelated.py"}
+    assert not matches_source(
+        "tests/test_contract.py",
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={"scripts/quality/validate_trivy_kyverno_fixture.py"},
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "def helper():\n    return TEST_ROOT / {target}\n",
+        "def helper[Value]():\n    return TEST_ROOT / {target}\n",
+        "subject = lambda: TEST_ROOT / {target}\n",
+        "class Subject:\n    TEST_ROOT = fallback\n"
+        "    def helper(self):\n        return TEST_ROOT / {target}\n",
+        "targets = [TEST_ROOT / {target} for item in items]\n",
+        "targets = [item for TEST_ROOT in [TEST_ROOT / {target}] for item in items]\n",
+        "def helper(TEST_ROOT=TEST_ROOT / {target}):\n    return TEST_ROOT\n",
+    ],
+)
+def test_python_contract_keeps_unshadowed_root_references(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str
+) -> None:
+    contract = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        "TEST_ROOT = Path(__file__).resolve().parents[1]\n"
+        + body.format(
+            target='"scripts" / "quality" / "validate_trivy_kyverno_fixture.py"'
+        ),
+    )
+
+    assert find_python_repository_references(contract) == {
+        "scripts/quality/validate_trivy_kyverno_fixture.py"
+    }
+
+
+def test_typescript_glob_scan_accepts_closed_semicolon_initializers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = (
+        _LOCAL_TYPESCRIPT_GLOB_CONTRACT.replace(")\nconst", ");\nconst")
+        .replace("  })\n  expect", "  });\n  expect")
+        .replace(
+            "expect(files.length).toBeGreaterThan(0)\n",
+            "expect(files.length).toBeGreaterThan(0);\n",
+        )
+    )
+    _, contract = _write_typescript_glob_fixture(tmp_path, monkeypatch, source)
+
+    assert find_typescript_repository_references(contract) == {
+        "frontend/src/components/Button.tsx",
+        "frontend/src/utils/nested/helper.ts",
+        "frontend/src/theme.css",
+    }
+
+
+def test_typescript_glob_scan_requires_module_scope_root_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = _LOCAL_TYPESCRIPT_GLOB_CONTRACT.replace(
+        "const __filename", "function unrelated() {\nconst __filename"
+    ).replace("async function scan()", "}\nasync function scan()")
+    _, contract = _write_typescript_glob_fixture(tmp_path, monkeypatch, source)
+
+    assert find_typescript_repository_references(contract) == set()

@@ -3496,8 +3496,7 @@ def test_oct24_public_digest_identities_are_bound_to_unchanged_source() -> None:
         for node in migration_source.body
         if isinstance(node, ast.Assign)
         and any(
-            isinstance(target, ast.Name)
-            and target.id == "BASELINE_MIGRATION_SHA256"
+            isinstance(target, ast.Name) and target.id == "BASELINE_MIGRATION_SHA256"
             for target in node.targets
         )
     ]
@@ -3510,9 +3509,10 @@ def test_oct24_public_digest_identities_are_bound_to_unchanged_source() -> None:
         / "202603280001_reconcile_post_uuid_migration_drift_baseline.py.txt"
     )
     assert hashlib.sha256(frozen_fixture.read_bytes()).hexdigest() == checksum
-    assert list(
-        hashlib.sha1(checksum.encode("ascii"), usedforsecurity=False).digest()
-    ) == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS[0]["identity"]["hashed_secret_bytes"]
+    assert (
+        list(hashlib.sha1(checksum.encode("ascii"), usedforsecurity=False).digest())
+        == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS[0]["identity"]["hashed_secret_bytes"]
+    )
 
     source = ast.parse(Path(__file__).read_text(encoding="utf-8"))
     historical_nodes = [

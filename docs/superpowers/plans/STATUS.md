@@ -100,7 +100,8 @@ owner/date/evidence и expiry; новые исключения не распро
 checkout не изменяется даже при отмене. Он проверяет npm `11.17.0`, официальный
 tarball, package-specific age exception и точный diff трёх lock-полей;
 обычный npm audit сохранён и остаётся блокирующим. Сгенерированный lock пока
-не интегрирован. После получения и проверки bytes generator подлежит удалению.
+не интегрирован. После получения и проверки bytes временный generator удалён;
+обычный npm audit восстановлен побайтно без изменения его гейтов.
 Zod и Caddy vulnerability remediation остаются отдельными открытыми задачами.
 
 Исходный PostgreSQL migration regression отказал на новой обязательной Redis
@@ -119,6 +120,42 @@ Switch DOM hashes обновлены только для interactive/checked с�
 Новый runtime PASS ещё требуется. Caddy scan получает ограниченный metadata-only
 SARIF diagnostic без raw Match/source/help/secret output; исходный scan остаётся
 блокирующим. Принятый ledger не увеличен: **280/512**, 232 не принято.
+
+### Последующая проверка и ограниченные исправления, 01:10 UTC
+
+На `3de6d3d` все четыре frontend shard, lint/typecheck, production build,
+WASM contracts и bundle analysis SUCCESS. Consumer — 1497 PASS / 15 FAIL /
+один deselected: восемь ожидаемых inventory RED и семь catalog failures от
+временного npm шага. Оба новых AUD-350 routing cases PASS; отдельный policy
+cohort — **338 PASS**. Actual scan принимает 259 reviewed findings и блокирует
+только bare-reference fixture `cfg.InternalHMACSecret = hmacKey`; следующий
+source присваивает уже используемый crypto/rand generator напрямую, без новых
+исключений, переименований или маскирования.
+
+Generator job 120727506876/run 40045867045 действительно получил npm-generated
+body-parser `1.20.9` candidate: только version/resolved/integrity, tarball verified,
+checkoutModified=false. npm publication — `2026-10-22T11:38:27.889Z`, maturity —
+`2026-10-29T11:38:27.889Z`. Полный patch сохранён в source-bound job log.
+Временный шаг удалён после завершения этой задачи; lock ещё не интегрирован.
+Catalog classifier не ослаблен: динамические конструкции сохраняют retry
+classification и дополнительно закреплены регрессионными тестами.
+Undici `8.12.2` и Zod remediation остаются открытыми; новых cooldown exceptions нет.
+
+После независимого ревью интегрирован ограниченный inventory parser:
+ownership-only JSX fail-closed masking, exact dotted-stem resolution,
+лексическая видимость root aliases и доказанная закрытая форма glob/read.
+Unsupported syntax не превращается в ложную ownership связь. Новые
+adversarial tests, полный inventory и coverage ещё требуют hosted результата.
+Trivy diagnostic вынесен в обычный importable module: динамический subprocess
+из тестов удалён, bounded projection и исходный блокирующий scan сохранены.
+
+В `148642dd1207` добавлены только transaction-local 10s lock/60s statement
+timeouts до reflection/DDL, без изменения атомарности и порядка операций.
+Это не решение остальных 16 Squawk warnings; стратегия исторической миграции
+ещё уточняется. Добавлены tests-first сценарии Dashboard news error remount
+и AUD-504 PostgreSQL calibration isolation; production behavior этих двух
+проблем пока не изменён, RED ещё должен быть наблюдён.
+Принятый ledger остаётся **280/512**; общий CI и release не приняты.
 
 ## Историческая пауза перед публикацией 8efec0df
 

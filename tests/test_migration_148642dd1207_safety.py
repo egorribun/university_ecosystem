@@ -50,6 +50,15 @@ def _render(direction: str) -> str:
 def test_upgrade_uses_validated_shadow_cutover_for_groups_and_sessions() -> None:
     sql = _render("upgrade f7aa476e968a:148642dd1207")
 
+    assert "SET LOCAL LOCK_TIMEOUT = '10S'" in sql
+    assert "SET LOCAL STATEMENT_TIMEOUT = '60S'" in sql
+    assert (
+        sql.index("BEGIN;")
+        < sql.index("SET LOCAL LOCK_TIMEOUT = '10S'")
+        < sql.index("SET LOCAL STATEMENT_TIMEOUT = '60S'")
+        < sql.index("ALTER TABLE GROUPS ADD COLUMN")
+    )
+
     assert "ALTER TABLE GROUPS ALTER COLUMN ID TYPE" not in sql
     # PostgreSQL receives the same physical NOT NULL invariant as the other
     # supported dialects, but only after the validated check-backed preflight.
