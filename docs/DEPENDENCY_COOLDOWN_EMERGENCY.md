@@ -277,47 +277,82 @@ The owner explicitly approved a package-specific seven-day cooldown exception
 for only `body-parser 1.20.9` in the ongoing normal PR
 [#1343](https://github.com/egorribun/university_ecosystem/pull/1343), addressing
 GHSA-27r3-jxmh-p828 / CVE-2026-111181. The owner is the approving security
-reviewer. The [upstream release](https://github.com/expressjs/body-parser/releases/tag/1.20.9)
-was published on GitHub at 2026-10-22 11:33:51 UTC; this is not the npm artifact
-publication timestamp. The npm timestamp and artifact integrity remain to be
-verified by the bounded hosted generator before integration.
+reviewer. The exception covers only the existing development-tooling transitive
+record in `frontend/package-lock.json`: version, resolved URL and integrity
+for `node_modules/body-parser`, from 1.20.8 to exactly 1.20.9. Its parent Express
+range already accepts this patch; no direct application dependency is introduced.
 
-The approved dependency change is limited to the existing development-tooling
-transitive record in `frontend/package-lock.json`: version, resolved URL and
-integrity for `node_modules/body-parser`, from 1.20.8 to exactly 1.20.9.
-Its parent Express range already accepts this patch. No direct application
-dependency is introduced. No other package receives a cooldown exception.
+The bounded scratch generator succeeded in
+[run 40045867045, job 120727506876](https://github.com/egorribun/university_ecosystem/actions/runs/40045867045/job/120727506876).
+It verified the official npm publication timestamp
+`2026-10-22T11:38:27.889Z`, the archive URL and both SHA-512/SHA-1 digests.
+This differs from the upstream GitHub release timestamp
+`2026-10-22T11:33:51Z`. The exact-release exception expires at
+`2026-10-29T11:38:27.889Z`, seven days after the verified npm publication.
 
-The temporary generator stays inside the existing Node.js Dependency Audit
-job and resolves only in a bounded scratch mirror. The mirror contains the
-original frontend manifest, lock and npm configuration plus the two tracked
-local file-dependency directories; symlinks and extra local dependencies are
-rejected. The checked-in source is never modified, including on cancellation. It verifies official npm metadata, exact package/version identities,
-canonical registry archive URLs, publication times and archive SHA-512/SHA-1
-digests. It uses the declared npm 11.17.0 from a verified isolated temporary
-archive; that tooling must itself satisfy the ordinary seven-day maturity
-window. Install-time lifecycle scripts are disabled throughout.
+Generation used declared npm 11.17.0 on Node 24.21.0, isolated empty npm
+configuration files and a token-free subprocess environment. Install-time
+lifecycle scripts were disabled. Resolution happened only in a bounded scratch
+mirror; the checked-in source was never modified. Whole-lock comparison and
+the bounded diff verified that only the three approved artifact fields changed.
+Source merge checkout `be3f679854de377e82578b2dea7a6f45ca594287` and source
+commit `3de6d3d33a0ad497c718f5f02a5f5d580d52d068` have the identical tree
+`1953a557b5782953dfe7be5b908601656945ea76`.
 
-Only the temporary resolver manifest pins body-parser to 1.20.9. Resolution
-keeps `--min-release-age=7` and uses only
-`--min-release-age-exclude=body-parser`; it never disables the global cooldown.
-A whole-lock comparison permits only the three named artifact fields. The
-bounded candidate diff and sanitized provenance are printed only after the
-original manifest, lockfile and npm configuration are verified byte-identical
-and repository cleanliness is confirmed. Distinct empty npm user/global
-configuration files and a token-free child environment isolate registry access.
-A six-minute cumulative operation deadline leaves cleanup reserve inside the
-eight-minute step timeout. Nothing in the generator rewrites the
-checked-in lock by hand or changes the ordinary npm audit command.
+The original lock SHA-256 was
+`d042e0f9e15b2cd2cb229b4a5e99184f67b4c6b1308895190024d976afd051d0`;
+the reviewed npm-generated candidate is
+`c9abaad83f2316b792825f61040290c2f5dcb950af683dc1cfef7a461983c0f6`.
+The follow-up integrates that exact candidate and removes the body-parser
+generator. The ordinary audit correctly failed against the untouched original
+lock, also reporting Zod and Undici findings; candidate generation is not
+evidence that the updated source passes the full audit.
 
-This exception expires seven days after the npm publication time established
-by that verification. Record the precise timestamp and generation provenance
-when integrating the reviewed npm-generated diff, and remove the temporary
-generator in that follow-up. The existing npm configuration remains unchanged.
-At this preparation checkpoint, generation, installation, compatibility and
-final-source vulnerability checks are not yet established.
-
-This approval does not cover Zod, Puppeteer, any advisory allowance, scanner
+No other package receives a cooldown exception. The existing npm configuration,
+normal dependency installation and audit commands remain unchanged. This
+approval does not cover Zod, Puppeteer, Undici, any advisory allowance, scanner
 disposition, baseline, hook, required context, merge or deployment. Normal
 lock consistency, tests, vulnerability gates and all required hosted checks
 remain mandatory on the final source.
+
+
+## Owner-approved Caddy Alpine Brotli exception, 2026-10-24
+
+The owner separately approved only `brotli-libs=1.2.1-r0` from the official
+Alpine 3.23 repositories in PR
+[#1343](https://github.com/egorribun/university_ecosystem/pull/1343), addressing
+CVE-2026-111497. The owner is the approving security reviewer. This is distinct
+from the earlier PyPI Brotli exception; no other package or release is admitted.
+
+The source-bound failure is
+[run 40049236347, job 120738976897](https://github.com/egorribun/university_ecosystem/actions/runs/40049236347/job/120738976897)
+for source `772a17927a1aa0cc89ff974d46e669d56b3bccd7`: Trivy identifies
+Alpine 3.23.6, installed `brotli-libs 1.2.0-r0`, fixed `1.2.1-r0`, and HIGH
+CVE-2026-111497. Alpine's
+[3.23 security upgrade](https://github.com/alpinelinux/aports/commit/613a63bfdea80e8e7ab904805c95e19beedbcde3)
+and [security annotation](https://github.com/alpinelinux/aports/blob/06a99b3e1a170b721212a85927391fdd26128460/main/brotli/APKBUILD)
+identify that exact fix. Git commit dates are not APK publication timestamps;
+binary repository availability and package maturity are not established by them.
+
+The exception expires no later than `2026-10-31T02:00:00Z`. This is a finite
+administrative boundary, not a claim that the APK reaches seven days then.
+Before that boundary, review authoritative package publication evidence and
+record maturity or seek a new specific owner decision if it remains unproven.
+Expiration does not authorize a vulnerable rollback or a broader exception.
+
+The only runtime dependency change is the exact package added to the existing
+version-pinned `apk add` list. Both image digests, Caddy/xcaddy/plugin/Go module
+pins, Alpine repository configuration and APK signature verification remain
+unchanged. A normal hosted build must obtain the exact signed package or fail.
+The existing Caddy image-scan job then checks the installed version and records
+the Alpine release/repositories in a bounded, read-only, network-disabled
+container without mounts or supplied credentials. The ordinary Trivy scan
+remains blocking and unchanged. The three smoke workflows that directly run
+unmodified upstream Caddy images retain their existing digest pins; this
+custom-runtime fix does not establish that those CI-only images are patched.
+
+At this preparation checkpoint, the updated image has not been built or scanned;
+APK availability, installed-version proof, compatibility tests and final-source
+hosted checks remain pending. This exception authorizes no image push,
+deployment, merge, advisory waiver, scanner disposition, baseline or hook change,
+new required context, or global cooldown-policy change.

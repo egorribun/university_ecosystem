@@ -2,6 +2,55 @@
 
 Обновлено: 2026-10-24 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+
+## Проверенный checkpoint и следующий source, 2026-10-24 01:59 UTC
+
+На source `772a17927a1aa0cc89ff974d46e669d56b3bccd7`
+[Owned Live 40049236166](https://github.com/egorribun/university_ecosystem/actions/runs/40049236166)
+завершил основной acceptance job SUCCESS; отдельные frozen-RC jobs SKIPPED
+не считаются доказательством полного release smoke. В
+[Matrix 40049236347](https://github.com/egorribun/university_ecosystem/actions/runs/40049236347)
+contract consumer, fast pre-commit, baseline integrity, PostgreSQL migration gate,
+Helm lint и Go lint/unit/race jobs SUCCESS. Полный CI не принят:
+остаются inventory, dependency/security, Alembic SQL lint и frontend failures.
+
+Следующий пакет интегрирует точный npm-generated body-parser `1.20.9`:
+сравнение полного lock подтверждает только три одобренных artifact fields.
+Происхождение и срок исключения записаны в
+[dependency runbook](../../DEPENDENCY_COOLDOWN_EMERGENCY.md).
+Отдельное решение владельца разрешает только Alpine
+`brotli-libs=1.2.1-r0` в custom Caddy runtime. Добавлен bounded offline
+installed-version proof; исходный Trivy остаётся блокирующим, image push и
+deployment не выполняются. Это ещё не доказательство успешной сборки/сканирования.
+
+Actual detect-secrets job 120738399103 потребовал обновить восемь номеров строк
+и generated_at. Интегрируются только эти metadata изменения: все 319 identities,
+flags, plugins и filters совпадают; approved policy321 и Gitleaks25 не изменены.
+Это не новая disposition и не утверждение о побайтной неизменности baseline.
+
+Broad PostgreSQL integration job 120738976887 остановился после 97 PASS:
+AUD-350 не получил свой обязательный explicit target. Caller теперь явно
+передаёт собственный DATABASE_URL через AUD350_POSTGRES_DATABASE_URL;
+fixture fallback, destructive reset opt-in и skip обходы не добавлены.
+Новые AUD-504 transaction regressions ещё не исполнялись до этой остановки.
+
+Dashboard regression в job 120739189845 воспроизвёл повторный запрос после
+исчерпания retries; остальные 2387 tests этого shard PASS. NewsCard теперь
+принимает существующий parent query result; standalone wrapper сохраняет
+безусловный hook, а presentation component не создаёт второго observer.
+Retry policy и ручное/фокусное обновление не изменены. Исправлен ровно observed
+Prettier diff в regression; hosted GREEN нового source ещё требуется.
+
+AUD-493 получает tests-first проверки фактического JSON Schema и Helm:
+канонический release identity остаётся lowercase 40-hex; 64-hex поддержка
+не вводится. Template-only isolation ожидает RED для прежнего расширенного
+regex. Production template пока не меняется. Squawk timeout finding устранён,
+но job 120738976747 сохраняет 16 SQL warnings; никакие suppressions не добавлены.
+
+Принятый ledger остаётся **280/512 (54,7%)**, 232 ID ещё не принято.
+Новые source changes требуют собственных проверок; текущие PASS не переносятся
+на новый SHA. Все 78 required context/app pairs и coverage floors сохранены.
+
 ## Облачное продолжение 2026-10-24, 00:04 UTC
 
 Работа возобновлена по новому поручению владельца: только через GitHub plugin,

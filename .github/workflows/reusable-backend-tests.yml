@@ -585,6 +585,8 @@ jobs:
             - name: Run integration tests
               shell: pwsh
               env:
+                  # Explicitly opt this probe into the job's disposable PostgreSQL service.
+                  AUD350_POSTGRES_DATABASE_URL: ${{ env.DATABASE_URL }}
                   INTEGRATION_SHARD_ID: ${{ inputs.integration-shard-id }}
                   INTEGRATION_NUM_SHARDS: ${{ inputs.integration-num-shards }}
                   INTEGRATION_TEST_PATTERN: ${{ inputs.integration-test-pattern }}

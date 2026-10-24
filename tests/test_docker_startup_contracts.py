@@ -2790,6 +2790,7 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
         "d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f"
     )
     assert runtime_image in dockerfile
+    runtime_stage = dockerfile.split(runtime_image, maxsplit=1)[1]
     assert "ARG CADDY_VERSION=2.11.7" in dockerfile
     assert "--replace golang.org/x/net=golang.org/x/net@v0.60.0" in dockerfile
     assert "--replace golang.org/x/text=golang.org/x/text@v0.42.0" in dockerfile
@@ -2803,10 +2804,11 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
         "libcrypto3=3.5.9-r0",
         "libssl3=3.5.9-r0",
         "c-ares=1.34.8-r0",
+        "brotli-libs=1.2.1-r0",
         "libcurl=8.22.0-r0",
         "curl=8.22.0-r0",
     ):
-        assert package in dockerfile
+        assert package in runtime_stage
     assert "apk upgrade" not in dockerfile
     assert "build" in full_caddy
     assert full_caddy["build"]["context"] == "./services/caddy"

@@ -61,11 +61,7 @@ vi.mock("@/components/dashboard/EventsCard", () => ({ EventsCard: () => null }))
 vi.mock("@/components/stories", () => ({ DashboardStories: () => null }))
 vi.mock("@/components/dashboard/NewsCardBackground", () => ({ NewsCardBackground: () => null }))
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({
-    children,
-    to,
-    ...props
-  }: AnchorHTMLAttributes<HTMLAnchorElement> & { to: string }) => (
+  Link: ({ children, to, ...props }: AnchorHTMLAttributes<HTMLAnchorElement> & { to: string }) => (
     <a href={to} {...props}>
       {children}
     </a>

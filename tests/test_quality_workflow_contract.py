@@ -7222,7 +7222,10 @@ def test_aud350_postgresql_counterfactual_uses_existing_migration_gate() -> None
         focused["run"].count("tests/test_aud350_reconcile_migration_coverage.py") == 1
     )
     assert postgres_case["env"] == {
-        "DATABASE_URL": "postgresql+psycopg://test@127.0.0.1:5433/test_migration",
+        "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
+        "AUD350_POSTGRES_DATABASE_URL": (
+            "postgresql+psycopg://test@127.0.0.1:5433/test_migration"
+        ),
         "RUN_INTEGRATION_TESTS": "1",
     }
     integration_source = (
@@ -7255,3 +7258,21 @@ def test_aud350_postgresql_counterfactual_uses_existing_migration_gate() -> None
         )
         == 1
     )
+
+
+def test_aud350_integration_caller_passes_its_owned_postgres_target() -> None:
+    workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["integration-tests"]
+    step = _provenance_step(job, "Run integration tests")
+
+    assert job["env"]["RUN_INTEGRATION_TESTS"] == "1"
+    assert job["env"]["DATABASE_URL"].startswith("postgresql+asyncpg://")
+    assert step["env"]["AUD350_POSTGRES_DATABASE_URL"] == "${{ env.DATABASE_URL }}"
+    assert "DATABASE_URL" not in step["env"]
+    assert "AUD350_POSTGRES_DATABASE_URL" not in workflow.get("env", {})
+    assert "AUD350_POSTGRES_DATABASE_URL" not in job["env"]
+    assert "AUD350_POSTGRES_DATABASE_URL" not in (
+        workflow["jobs"]["unit-tests"].get("env", {})
+    )
+    assert "if" not in step
+    assert "continue-on-error" not in step
