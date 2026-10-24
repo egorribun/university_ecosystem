@@ -51,7 +51,11 @@ from app.core.events import (
 from app.models import Group, Schedule
 from app.models.domain_events import StoredEvent
 from app.models.news import News
-from app.models.notifications import Notification, NotificationDelivery, PushSubscription
+from app.models.notifications import (
+    Notification,
+    NotificationDelivery,
+    PushSubscription,
+)
 from app.repositories.event_repository import EventRepository
 from app.repositories.news_repository import NewsRepository
 from tests.integration.owned_postgres import _LoopbackMigrationPostgres
