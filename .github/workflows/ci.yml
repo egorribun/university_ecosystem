@@ -1014,11 +1014,17 @@ jobs:
           trace_root=".pytest_tmp/aud148-expanded"
           mkdir -p "$(dirname "$trace_root")"
           pytest_status=0
-          uv run pytest -q -s --tb=short \
+          # Artifact discovery reads physical files; normal capture bounds setup logs.
+          uv run pytest -q --tb=short \
             tests/test_migration_148642dd1207_trace.py \
             tests/test_migration_148642dd1207_diagnostic_ci.py \
+            tests/test_migration_148642dd1207_safety.py \
             tests/integration/test_migration_148642dd1207.py::test_expanded_ddl_inventory_matches_unmodified_populated_control \
             tests/integration/test_migration_148642dd1207.py::test_convertible_orphan_rolls_back_cutover_and_diagnostic_rows \
+            tests/integration/test_migration_148642dd1207.py::test_existing_exact_shadow_check_is_reused_from_real_pg_catalog \
+            tests/integration/test_migration_148642dd1207.py::test_existing_shadow_check_rejects_wrong_real_pg_catalog_identity \
+            tests/integration/test_migration_148642dd1207.py::test_stale_shadow_value_aborts_before_fk_capture_with_exact_rollback \
+            tests/integration/test_migration_148642dd1207.py::test_shadow_cutover_omits_only_transient_validation_after_null_backfill \
             --basetemp="$trace_root" > "$test_log" 2>&1 || pytest_status=$?
           echo "AUD148_FOCUSED_TESTS_BEGIN"
           if ! print_bounded "$test_log" 131072; then
@@ -2073,7 +2079,9 @@ jobs:
             tests/test_health_api_closure.py::test_healthz_brief_cache_hit_filters_full_payload \
             tests/test_logging_pii_redaction_contract.py \
             tests/test_cwv_rum_security.py \
-            tests/test_gitleaks_hygiene_contract.py -v \
+            tests/test_gitleaks_hygiene_contract.py \
+            tests/test_websocket_closure.py \
+            tests/test_migration_148642dd1207_safety.py -v \
             --tb=short --durations=20 -n 2 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \

@@ -49,9 +49,23 @@ def test_consumer_keeps_original_gate_context_budget_and_scanner_rules() -> None
     assert "always()" not in guard
     assert diagnostic["env"]["DATABASE_URL"] == "sqlite+aiosqlite:///:memory:"
     assert diagnostic["env"]["RUN_INTEGRATION_TESTS"] == "1"
-    assert "uv run pytest -q -s --tb=short" in diagnostic["run"]
+    assert "uv run pytest -q --tb=short" in diagnostic["run"]
     assert "tests/test_migration_148642dd1207_trace.py" in diagnostic["run"]
     assert "tests/test_migration_148642dd1207_diagnostic_ci.py" in diagnostic["run"]
+    assert "tests/test_migration_148642dd1207_safety.py" in diagnostic["run"]
+    for regression in (
+        "test_existing_exact_shadow_check_is_reused_from_real_pg_catalog",
+        "test_existing_shadow_check_rejects_wrong_real_pg_catalog_identity",
+        "test_stale_shadow_value_aborts_before_fk_capture_with_exact_rollback",
+        "test_shadow_cutover_omits_only_transient_validation_after_null_backfill",
+    ):
+        assert (
+            f"tests/integration/test_migration_148642dd1207.py::{regression}"
+            in diagnostic["run"]
+        )
+    # Keep passing setup logs captured; emitted artifacts are found on disk.
+    assert "pytest -q -s" not in diagnostic["run"]
+    assert "--capture=no" not in diagnostic["run"]
     assert (
         "::test_expanded_ddl_inventory_matches_unmodified_populated_control"
         in (diagnostic["run"])
@@ -72,7 +86,7 @@ def test_consumer_creates_temp_parent_before_pytest() -> None:
     lines = diagnostic["run"].splitlines()
     root = lines.index('trace_root=".pytest_tmp/aud148-expanded"')
     prepare = lines.index('mkdir -p "$(dirname "$trace_root")"')
-    invoke = lines.index("uv run pytest -q -s --tb=short \\")
+    invoke = lines.index("uv run pytest -q --tb=short \\")
     assert root < prepare < invoke
 
 

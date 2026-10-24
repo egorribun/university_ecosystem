@@ -106,6 +106,8 @@ jobs:
             "scripts/ci/helm_dependency_build.py"
             "frontend/scripts/generate-zod-root-lock-candidate.mjs"
             "frontend/scripts/generate-zod-root-lock-candidate.test.mjs"
+            "frontend/scripts/generate-puppeteer-lock-candidate.mjs"
+            "frontend/scripts/generate-puppeteer-lock-candidate.test.mjs"
             "frontend/scripts/generate-react-compiler-adapter-lock-candidate.mjs"
             "frontend/scripts/generate-react-compiler-adapter-lock-candidate.test.mjs"
             "frontend/scripts/react-compiler-zod-compat/index.cjs"
@@ -208,6 +210,8 @@ jobs:
             "scripts/ci/helm_dependency_build.py"
             "frontend/scripts/generate-zod-root-lock-candidate.mjs"
             "frontend/scripts/generate-zod-root-lock-candidate.test.mjs"
+            "frontend/scripts/generate-puppeteer-lock-candidate.mjs"
+            "frontend/scripts/generate-puppeteer-lock-candidate.test.mjs"
             "frontend/scripts/generate-react-compiler-adapter-lock-candidate.mjs"
             "frontend/scripts/generate-react-compiler-adapter-lock-candidate.test.mjs"
             "frontend/scripts/react-compiler-zod-compat/index.cjs"
@@ -328,6 +332,10 @@ jobs:
         env:
           SOURCE_SHA: ${{ github.sha }}
         run: python -B scripts/ci/probe_react_compiler_artifacts.py
+
+      - name: Verify Puppeteer lock candidate guards
+        timeout-minutes: 1
+        run: node --test scripts/generate-puppeteer-lock-candidate.test.mjs
 
       - name: Install uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0

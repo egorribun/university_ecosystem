@@ -176,6 +176,8 @@ jobs:
               scripts/audit_dependencies.py|scripts/ci/helm_dependency_build.py|\
               frontend/scripts/generate-zod-root-lock-candidate.mjs|\
               frontend/scripts/generate-zod-root-lock-candidate.test.mjs|\
+              frontend/scripts/generate-puppeteer-lock-candidate.mjs|\
+              frontend/scripts/generate-puppeteer-lock-candidate.test.mjs|\
               frontend/scripts/generate-react-compiler-adapter-lock-candidate.mjs|\
               frontend/scripts/generate-react-compiler-adapter-lock-candidate.test.mjs|\
               frontend/scripts/react-compiler-zod-compat/index.cjs|\

@@ -1233,3 +1233,282 @@ def test_convertible_orphan_rolls_back_cutover_and_diagnostic_rows(
             ).fetchone() == (False,)
         with pytest.raises(ddl_trace.TraceContractError, match="one transaction"):
             recorder.expanded_sql([])
+
+
+def _shadow_check_catalog(connection):
+    return connection.execute(
+        "SELECT c.contype::text, c.convalidated, pg_get_constraintdef(c.oid), "
+        "pg_get_expr(c.conbin, c.conrelid), c.conkey, a.attnum "
+        "FROM pg_constraint c JOIN pg_attribute a "
+        "ON a.attrelid = c.conrelid AND a.attname = 'id__integer' "
+        "WHERE c.conrelid = 'public.groups'::regclass "
+        "AND c.conname = 'ck_groups_id_shadow_not_null'"
+    ).fetchone()
+
+
+@pytest.mark.parametrize("validated", [True, False], ids=["validated", "not_valid"])
+def test_existing_exact_shadow_check_is_reused_from_real_pg_catalog(
+    migration_postgres,
+    monkeypatch: pytest.MonkeyPatch,
+    validated: bool,
+) -> None:
+    """Catalog output, rather than a simplified mock, defines the reuse contract."""
+    with _owned_migration_scenario(migration_postgres) as urls:
+        config = _prepare_ddl_inventory(urls, monkeypatch)
+        with psycopg.connect(urls["sync"]) as connection:
+            connection.execute("ALTER TABLE groups ADD COLUMN id__integer integer")
+            connection.execute("UPDATE groups SET id__integer = id::integer")
+            definition = "CHECK (id__integer IS NOT NULL)"
+            if not validated:
+                definition += " NOT VALID"
+            connection.execute(
+                sql.SQL(
+                    "ALTER TABLE groups "
+                    "ADD CONSTRAINT ck_groups_id_shadow_not_null {}"
+                ).format(sql.SQL(definition))
+            )
+            catalog = _shadow_check_catalog(connection)
+            assert catalog is not None
+            assert catalog[0] == "c"
+            assert catalog[1] is validated
+            assert catalog[4] == [catalog[5]]
+            assert catalog[3] == "(id__integer IS NOT NULL)"
+            assert catalog[2].endswith(" NOT VALID") is (not validated)
+
+        recorder = ddl_trace.ExpandedDdlTrace(
+            ddl_trace.MIGRATION_PATH.read_bytes(), instrument=False
+        )
+        _execute_ddl_inventory(config, urls, recorder, monkeypatch)
+        statements = [e["sql"] for e in recorder.events if e["kind"] == "cursor"]
+        assert not any(
+            "ADD CONSTRAINT ck_groups_id_shadow_not_null" in statement
+            for statement in statements
+        )
+        assert [e["kind"] for e in recorder.events].count("commit") == 1
+        assert not any(e["kind"] == "rollback" for e in recorder.events)
+        with psycopg.connect(urls["sync"]) as connection:
+            assert connection.execute(
+                "SELECT version_num FROM alembic_version"
+            ).fetchone() == ("148642dd1207",)
+            assert connection.execute(
+                "SELECT id, name FROM groups ORDER BY id"
+            ).fetchall() == [(1, "first"), (2, "second")]
+            assert connection.execute(
+                "SELECT count(*) FROM pg_constraint "
+                "WHERE conrelid = 'public.groups'::regclass "
+                "AND conname = 'ck_groups_id_shadow_not_null'"
+            ).fetchone() == (0,)
+
+
+@pytest.mark.parametrize(
+    ("case", "definition", "constraint_type", "same_column"),
+    [
+        ("weaker", "CHECK (id__integer > 0)", "c", True),
+        ("wrong_type", "UNIQUE (id__integer)", "u", True),
+        ("wrong_column", "CHECK (other_integer IS NOT NULL)", "c", False),
+        ("quoted_uppercase", 'CHECK ("ID__INTEGER" IS NOT NULL)', "c", False),
+    ],
+    ids=["weaker", "wrong_type", "wrong_column", "quoted_uppercase"],
+)
+def test_existing_shadow_check_rejects_wrong_real_pg_catalog_identity(
+    migration_postgres,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+    definition: str,
+    constraint_type: str,
+    same_column: bool,
+) -> None:
+    """A same-name constraint must protect the exact lowercase shadow column."""
+    with _owned_migration_scenario(migration_postgres) as urls:
+        config = _prepare_ddl_inventory(urls, monkeypatch)
+        with psycopg.connect(urls["sync"]) as connection:
+            connection.execute(
+                "ALTER TABLE groups ADD COLUMN id__integer integer, "
+                "ADD COLUMN other_integer integer DEFAULT 900, "
+                'ADD COLUMN "ID__INTEGER" integer DEFAULT 901'
+            )
+            connection.execute("UPDATE groups SET id__integer = id::integer")
+            connection.execute(
+                sql.SQL(
+                    "ALTER TABLE groups "
+                    "ADD CONSTRAINT ck_groups_id_shadow_not_null {}"
+                ).format(sql.SQL(definition))
+            )
+            catalog = _shadow_check_catalog(connection)
+            assert catalog is not None
+            assert catalog[0] == constraint_type
+            assert catalog[1] is True
+            assert (catalog[4] == [catalog[5]]) is same_column
+            if case == "quoted_uppercase":
+                assert catalog[3] == '("ID__INTEGER" IS NOT NULL)'
+
+        before = _inventory_snapshot(urls["sync"])
+        recorder = ddl_trace.ExpandedDdlTrace(
+            ddl_trace.MIGRATION_PATH.read_bytes(), instrument=False
+        )
+        with pytest.raises(RuntimeError, match="does not match"):
+            _execute_ddl_inventory(config, urls, recorder, monkeypatch)
+        assert _inventory_snapshot(urls["sync"]) == before
+        assert any(e["kind"] == "rollback" for e in recorder.events)
+        assert not any(e["kind"] == "commit" for e in recorder.events)
+        assert not any(
+            "CREATE TEMP TABLE _groups_fk_restore" in e.get("sql", "")
+            for e in recorder.events
+        )
+        with psycopg.connect(urls["sync"]) as connection:
+            assert connection.execute(
+                "SELECT version_num FROM alembic_version"
+            ).fetchone() == ("f7aa476e968a",)
+
+
+def test_stale_shadow_value_aborts_before_fk_capture_with_exact_rollback(
+    migration_postgres,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Backfilling a NULL neighbor must roll back with a rejected stale value."""
+    with _owned_migration_scenario(migration_postgres) as urls:
+        config = _prepare_ddl_inventory(urls, monkeypatch)
+        with psycopg.connect(urls["sync"]) as connection:
+            connection.execute("ALTER TABLE groups ADD COLUMN id__integer integer")
+            connection.execute("UPDATE groups SET id__integer = 999 WHERE id = '1'")
+        before = _inventory_snapshot(urls["sync"])
+        recorder = ddl_trace.ExpandedDdlTrace(
+            ddl_trace.MIGRATION_PATH.read_bytes(), instrument=False
+        )
+
+        with pytest.raises(sa.exc.DBAPIError, match="does not match the validated"):
+            _execute_ddl_inventory(config, urls, recorder, monkeypatch)
+
+        assert _inventory_snapshot(urls["sync"]) == before
+        assert any(e["kind"] == "rollback" for e in recorder.events)
+        assert not any(e["kind"] == "commit" for e in recorder.events)
+        assert not any(
+            "CREATE TEMP TABLE _groups_fk_restore" in e.get("sql", "")
+            for e in recorder.events
+        )
+        with psycopg.connect(urls["sync"]) as connection:
+            assert connection.execute(
+                "SELECT version_num FROM alembic_version"
+            ).fetchone() == ("f7aa476e968a",)
+            assert connection.execute(
+                "SELECT id, id__integer FROM groups ORDER BY id"
+            ).fetchall() == [("02", None), ("1", 999)]
+
+
+def test_shadow_cutover_omits_only_transient_validation_after_null_backfill(
+    migration_postgres,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep guards, locking and final-key validation without a redundant scan."""
+    with _owned_migration_scenario(migration_postgres) as urls:
+        config = _prepare_ddl_inventory(urls, monkeypatch)
+        with psycopg.connect(urls["sync"]) as connection:
+            connection.execute("ALTER TABLE groups ADD COLUMN id__integer integer")
+            assert connection.execute(
+                "SELECT count(*) FROM groups WHERE id__integer IS NULL"
+            ).fetchone() == (2,)
+
+        recorder = ddl_trace.ExpandedDdlTrace(
+            ddl_trace.MIGRATION_PATH.read_bytes(), instrument=False
+        )
+        original_before_cursor = recorder.before_cursor_execute
+        shadow_check = (
+            "ALTER TABLE groups ADD CONSTRAINT ck_groups_id_shadow_not_null "
+            "CHECK (id__integer IS NOT NULL) NOT VALID"
+        )
+        exclusion_locks = []
+
+        def observe_check(connection, cursor, statement, parameters, context, many):
+            if statement == shadow_check:
+                pid = connection.connection.driver_connection.info.backend_pid
+                with psycopg.connect(urls["sync"], connect_timeout=5) as observer:
+                    observer.execute("SET LOCAL statement_timeout = '2s'")
+                    exclusion_locks.append(
+                        observer.execute(
+                            "SELECT EXISTS (SELECT 1 FROM pg_locks "
+                            "WHERE pid = %s AND relation = 'public.groups'::regclass "
+                            "AND mode = 'AccessExclusiveLock' AND granted)",
+                            (pid,),
+                        ).fetchone()[0]
+                    )
+            return original_before_cursor(
+                connection, cursor, statement, parameters, context, many
+            )
+
+        monkeypatch.setattr(recorder, "before_cursor_execute", observe_check)
+        _execute_ddl_inventory(config, urls, recorder, monkeypatch)
+        assert exclusion_locks == [True]
+        kinds = [e["kind"] for e in recorder.events]
+        assert kinds.count("begin") == kinds.count("commit") == 1
+        assert "rollback" not in kinds
+        statements = [e["sql"] for e in recorder.events if e["kind"] == "cursor"]
+        source_guard = next(
+            i
+            for i, statement in enumerate(statements)
+            if "groups.id contains a value that cannot be converted" in statement
+        )
+        equality_guard = next(
+            i
+            for i, statement in enumerate(statements)
+            if "id__integer IS DISTINCT FROM id::integer" in statement
+        )
+        capture = next(
+            i
+            for i, statement in enumerate(statements)
+            if "CREATE TEMP TABLE _groups_fk_restore ON COMMIT DROP" in statement
+        )
+        fill = statements.index(
+            "UPDATE groups SET id__integer = id::integer WHERE id__integer IS NULL"
+        )
+        final_validation = statements.index(
+            "ALTER TABLE groups VALIDATE CONSTRAINT ck_groups_id_not_null"
+        )
+        primary_key = statements.index(
+            "ALTER TABLE groups ADD CONSTRAINT groups_pkey "
+            "PRIMARY KEY USING INDEX groups_pkey_idx"
+        )
+        assert (
+            source_guard
+            < fill
+            < equality_guard
+            < statements.index(shadow_check)
+            < capture
+            < final_validation
+            < primary_key
+        )
+        assert (
+            statements.index("SET LOCAL lock_timeout = '10s'")
+            < statements.index("SET LOCAL statement_timeout = '60s'")
+            < source_guard
+        )
+        assert any(
+            "pg_advisory_xact_lock(824148642)" in statement
+            for statement in statements[:source_guard]
+        )
+        with psycopg.connect(urls["sync"]) as connection:
+            assert connection.execute(
+                "SELECT version_num FROM alembic_version"
+            ).fetchone() == ("148642dd1207",)
+            assert connection.execute(
+                "SELECT id, name FROM groups ORDER BY id"
+            ).fetchall() == [(1, "first"), (2, "second")]
+            assert connection.execute(
+                "SELECT attnotnull FROM pg_attribute "
+                "WHERE attrelid = 'public.groups'::regclass AND attname = 'id'"
+            ).fetchone() == (True,)
+            assert connection.execute(
+                "SELECT count(*) FROM pg_attribute "
+                "WHERE attrelid = 'public.groups'::regclass "
+                "AND attname = 'id__integer' AND NOT attisdropped"
+            ).fetchone() == (0,)
+
+        assert [
+            statement
+            for statement in statements
+            if statement.startswith("ALTER TABLE ")
+            and "VALIDATE CONSTRAINT" in statement
+        ] == [
+            "ALTER TABLE groups VALIDATE CONSTRAINT ck_groups_id_not_null",
+            "ALTER TABLE active_sessions VALIDATE CONSTRAINT "
+            "ck_active_sessions_signing_key_not_null",
+        ]

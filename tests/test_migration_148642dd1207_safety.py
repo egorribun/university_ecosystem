@@ -66,7 +66,7 @@ def test_upgrade_uses_validated_shadow_cutover_for_groups_and_sessions() -> None
     assert "ID__INTEGER INTEGER" in sql
     assert "CHECK (ID__INTEGER IS NOT NULL) NOT VALID" in sql
     assert "CHECK (ID IS NOT NULL) NOT VALID" in sql
-    assert "VALIDATE CONSTRAINT CK_GROUPS_ID_SHADOW_NOT_NULL" in sql
+    assert "VALIDATE CONSTRAINT CK_GROUPS_ID_SHADOW_NOT_NULL" not in sql
     assert "VALIDATE CONSTRAINT CK_GROUPS_ID_NOT_NULL" in sql
     assert "VALIDATE CONSTRAINT CK_ACTIVE_SESSIONS_SIGNING_KEY_NOT_NULL" in sql
     assert sql.index(

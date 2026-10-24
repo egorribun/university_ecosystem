@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import logging
 from contextvars import Context
 from copy import deepcopy
 from io import StringIO
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -515,3 +517,228 @@ def test_context_bound_credential_families_and_keyrings_never_reach_renderers(
         assert rendered["details"] == {"items": [{field_name: REDACTED}]}
         assert rendered["status"] == "public-diagnostic"
         assert rendered["token_type"] == "Bearer"
+
+
+# Explicit security review of the mounted-file configuration contract. Do not
+# derive this partition by treating every file-backed field as a secret.
+_SENSITIVE_FILE_CONFIGURATION_FIELDS = frozenset(
+    {
+        "audit_log_secret",
+        "cache_redis_url",
+        "csrf_hmac_secret",
+        "cwv_manual_tester_user_ids",
+        "cwv_rum_signing_secret",
+        "database_url",
+        "elasticsearch_password",
+        "idempotency_hmac_secret",
+        "internal_auth_token",
+        "internal_hmac_secret",
+        "mfa_email_delivery_keks",
+        "mfa_email_otp_hmac_keys",
+        "mfa_totp_encryption_keys",
+        "mfa_trusted_device_hmac_keys",
+        "nats_auth_token",
+        "nats_url",
+        "rate_limit_storage_uri",
+        "revocation_redis_url",
+        "secret_key",
+        "smtp_password",
+        "spicedb_preshared_key",
+        "spotify_client_secret",
+        "spotify_oauth_state_secret",
+        "spotify_token_secret",
+        "storage_s3_secret_access_key",
+        "token_hmac_secret",
+        "vapid_private_key",
+        "ws_hub_internal_secret",
+    }
+)
+_NON_SECRET_FILE_CONFIGURATION_IDENTIFIERS = frozenset(
+    {
+        "mfa_email_delivery_active_kek_id",
+        "mfa_email_otp_active_hmac_key_id",
+        "mfa_trusted_device_active_hmac_key_id",
+        "storage_s3_access_key_id",
+    }
+)
+
+
+def test_file_configuration_fields_have_an_explicit_redaction_disposition() -> None:
+    """A mounted-file field addition requires an explicit privacy review."""
+    source = Path(__file__).resolve().parents[1] / "app/core/config/base.py"
+    module = ast.parse(source.read_text(encoding="utf-8"))
+    declarations = [
+        node
+        for node in module.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "_FILE_SECRET_FIELDS"
+    ]
+    assert len(declarations) == 1
+    declaration = declarations[0].value
+    assert isinstance(declaration, ast.Call)
+    assert isinstance(declaration.func, ast.Name)
+    assert declaration.func.id == "frozenset"
+    assert len(declaration.args) == 1
+    assert not declaration.keywords
+    assert isinstance(declaration.args[0], ast.Set)
+    inventory = ast.literal_eval(declaration.args[0])
+
+    assert len(_SENSITIVE_FILE_CONFIGURATION_FIELDS) == 28
+    assert len(_NON_SECRET_FILE_CONFIGURATION_IDENTIFIERS) == 4
+    assert _SENSITIVE_FILE_CONFIGURATION_FIELDS.isdisjoint(
+        _NON_SECRET_FILE_CONFIGURATION_IDENTIFIERS
+    )
+    assert inventory == (
+        _SENSITIVE_FILE_CONFIGURATION_FIELDS
+        | _NON_SECRET_FILE_CONFIGURATION_IDENTIFIERS
+    )
+
+
+def test_file_configuration_redaction_matches_the_reviewed_partition() -> None:
+    """The explicit inventory separates secrets from non-secret identifiers."""
+    event = {
+        **dict.fromkeys(_SENSITIVE_FILE_CONFIGURATION_FIELDS, "synthetic-value"),
+        **dict.fromkeys(
+            _NON_SECRET_FILE_CONFIGURATION_IDENTIFIERS, "public-identifier"
+        ),
+    }
+
+    assert _redact_pii(None, "info", event) == {
+        **dict.fromkeys(_SENSITIVE_FILE_CONFIGURATION_FIELDS, REDACTED),
+        **dict.fromkeys(
+            _NON_SECRET_FILE_CONFIGURATION_IDENTIFIERS, "public-identifier"
+        ),
+    }
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "database_url",
+        "DatabaseURL",
+        "database_read_replica_url",
+        "databaseReadReplicaUrl",
+        "cache_redis_url",
+        "cache-redis-url",
+        "revocation_redis_url",
+        "RevocationRedisURL",
+        "rate_limit_storage_uri",
+        "rateLimitStorageURI",
+        "nats_url",
+        "NATS_URL",
+        "cwv_manual_tester_user_ids",
+        "cwvManualTesterUserIds",
+    ],
+)
+def test_known_connection_and_private_cohort_fields_are_redacted_at_every_depth(
+    field_name: str,
+) -> None:
+    """AUD-359: exact connection aliases and the private tester cohort are opaque."""
+    sensitive_value = "synthetic-value"
+    event = {
+        field_name: sensitive_value,
+        "details": [({field_name: sensitive_value},)],
+    }
+
+    assert _redact_pii(None, "info", event) == {
+        field_name: REDACTED,
+        "details": [({field_name: REDACTED},)],
+    }
+
+
+@pytest.mark.parametrize(
+    ("field_name", "field_value"),
+    [
+        ("url", "public-resource"),
+        ("public_url", "public-resource"),
+        ("cwv_deployment_url", "public-origin"),
+        ("storage_s3_endpoint_url", "public-resource"),
+        ("user_ids", ["public-user"]),
+        ("database_url_configured", True),
+        ("database_read_replica_url_configured", True),
+        ("cwv_manual_tester_user_ids_count", 25),
+        ("cwvManualTesterUserIdsConfigured", True),
+        ("nats_url_configured", True),
+    ],
+    ids=[
+        "url",
+        "public_url",
+        "cwv_deployment_url",
+        "storage_s3_endpoint_url",
+        "user_ids",
+        "database_url_configured",
+        "database_read_replica_url_configured",
+        "cwv_manual_tester_user_ids_count",
+        "cwvManualTesterUserIdsConfigured",
+        "nats_url_configured",
+    ],
+)
+def test_connection_alias_redaction_preserves_public_urls_users_and_metadata(
+    field_name: str, field_value: Any
+) -> None:
+    """Do not generalize the finite aliases to every URL, user ID or metadata key."""
+    event = {
+        field_name: deepcopy(field_value),
+        "details": [{field_name: deepcopy(field_value)}],
+    }
+
+    assert _redact_pii(None, "info", event) == {
+        field_name: field_value,
+        "details": [{field_name: field_value}],
+    }
+
+
+@pytest.mark.usefixtures("preserve_logging_configuration")
+@pytest.mark.parametrize("json_output", [True, False], ids=["json", "console"])
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "databaseReadReplicaUrl",
+        "nats_url",
+        "cwvManualTesterUserIds",
+    ],
+)
+def test_context_bound_connections_and_private_cohort_never_reach_renderers(
+    monkeypatch: pytest.MonkeyPatch,
+    json_output: bool,
+    field_name: str,
+) -> None:
+    """Credential-capable fields are redacted without parsing fixture values."""
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    root = logging.getLogger()
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+    monkeypatch.setattr(logging_mod, "_configured", False)
+    context = Context()
+    sensitive_value = "synthetic-value"
+
+    try:
+        logging_mod.configure_logging(json_output=json_output)
+        context.run(logging_mod.bind_context, **{field_name: sensitive_value})
+        logger = logging_mod.get_logger("audit-359-config-regression")
+        context.run(
+            logger.info,
+            "connection configuration inspected",
+            details={"items": [{field_name: sensitive_value}]},
+            public_url="public-resource",
+            user_ids=["public-user"],
+        )
+        output = stream.getvalue()
+    finally:
+        root.removeHandler(handler)
+        handler.close()
+
+    assert "connection configuration inspected" in output
+    assert "public-resource" in output
+    assert "public-user" in output
+    assert field_name in output
+    assert sensitive_value not in output
+    assert output.count(REDACTED) == 2
+    if json_output:
+        rendered = json.loads(output)
+        assert rendered[field_name] == REDACTED
+        assert rendered["details"] == {"items": [{field_name: REDACTED}]}
+        assert rendered["public_url"] == "public-resource"
+        assert rendered["user_ids"] == ["public-user"]

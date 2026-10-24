@@ -179,9 +179,9 @@ def test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_univers
 
 # Ordered argv population from 1a3954e99f06bf7b1660ad2df609a84b022daefa.
 # Preserve all 136 original selectors, including intentional file/node overlaps.
-# Four explicit selections follow that unchanged prefix: AUD-388 cache,
-# AUD-359 logging, AUD-446 identity availability and safe Gitleaks diagnostics.
-# Scheduling must not shrink the original or added scope.
+# Six explicit selections follow that unchanged prefix: existing audit
+# regressions, safe Gitleaks diagnostics, WebSocket lifecycle and migration
+# safety. Scheduling must not shrink the original or added scope.
 _CONSUMER_SELECTORS = (
     "tests/contracts/",
     "tests/test_live_stand_cleanup_profile_contract.py",
@@ -323,6 +323,8 @@ _CONSUMER_SELECTORS = (
     "tests/test_logging_pii_redaction_contract.py",
     "tests/test_cwv_rum_security.py",
     "tests/test_gitleaks_hygiene_contract.py",
+    "tests/test_websocket_closure.py",
+    "tests/test_migration_148642dd1207_safety.py",
 )
 _DISPATCH_PROBE = """\
 import json
