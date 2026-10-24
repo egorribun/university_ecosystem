@@ -274,6 +274,23 @@ export function strictPeerEnvironment(original, paths) {
   }
 }
 
+export function strictVerificationPhase(phase) {
+  const labels = {
+    native: "native graph verification",
+    license: "license equality",
+    npmList: "npm ls execution",
+    json: "npm ls JSON decoding",
+    identity: "npm ls identity verification",
+    problems: "npm ls problem-list verification",
+    fixture: "fixture byte immutability",
+    configuration: "empty configuration verification",
+    source: "source snapshot verification",
+  }
+  assert.equal(typeof phase, "string")
+  assert(Object.hasOwn(labels, phase))
+  return "isolated strict root-formatter " + labels[phase]
+}
+
 export function summarizeStrictNpmFailure(result) {
   assert(result.status !== 0 || result.error || result.signal)
   let exitCode = null
@@ -1109,16 +1126,24 @@ export async function runFinalCompilerGenerator() {
     assertStrictLock(JSON.parse(strictLockBytes), candidate, true)
     stage = "isolated strict root-formatter installation"
     npm(cli, "strictInstall", strict, strictPaths, strictEnvironment)
-    stage = "isolated strict root-formatter graph and npm ls verification"
+    stage = strictVerificationPhase("native")
     assertFinalInstalledGraph(strict, "full", controls)
+    stage = strictVerificationPhase("license")
     assert.deepEqual(inspectInstalledEngineLicense(strict), licenseEvidence)
-    const strictListing = JSON.parse(npm(cli, "strictList", strict, strictPaths, strictEnvironment))
+    stage = strictVerificationPhase("npmList")
+    const strictListingOutput = npm(cli, "strictList", strict, strictPaths, strictEnvironment)
+    stage = strictVerificationPhase("json")
+    const strictListing = JSON.parse(strictListingOutput)
+    stage = strictVerificationPhase("identity")
     assert.equal(strictListing.name, "react-compiler-peer-proof")
     assert.equal(strictListing.version, "1.0.0")
+    stage = strictVerificationPhase("problems")
     assert.deepEqual(strictListing.problems ?? [], [])
+    stage = strictVerificationPhase("fixture")
     assert.deepEqual(readFileSync(join(strict, "package.json")), strictManifest)
     assert.deepEqual(readFileSync(join(strict, "package-lock.json")), strictLockBytes)
     assert(!existsSync(join(strict, ".npmrc")))
+    stage = strictVerificationPhase("configuration")
     for (const path of [
       userConfig,
       globalConfig,
@@ -1127,6 +1152,7 @@ export async function runFinalCompilerGenerator() {
     ]) {
       assert.equal(readFileSync(path).length, 0)
     }
+    stage = strictVerificationPhase("source")
     for (const item of copied) assert.deepEqual(readFileSync(item.path), item.bytes)
 
     stage = "bounded generated candidate diff"

@@ -21,6 +21,7 @@ import {
   prepareStrictFormatterPlacementManifest,
   prepareStrictManifest,
   strictPeerEnvironment,
+  strictVerificationPhase,
   summarizeStrictNpmFailure,
   validateFormatterMetadata,
 } from "./generate-react-compiler-final-lock-candidate.mjs"
@@ -1256,6 +1257,28 @@ test("strict npm diagnostics deduplicate and cap reviewed observations", () => {
   assert.equal(new Set(report.observations.map((item) => JSON.stringify(item))).size, 8)
   assert.equal(report.omitted, true)
   assert.ok(Buffer.byteLength(JSON.stringify(report)) < 4096)
+})
+
+test("strict verification labels are fixed and distinguish every post-install boundary", () => {
+  for (const [phase, label] of [
+    ["native", "native graph verification"],
+    ["license", "license equality"],
+    ["npmList", "npm ls execution"],
+    ["json", "npm ls JSON decoding"],
+    ["identity", "npm ls identity verification"],
+    ["problems", "npm ls problem-list verification"],
+    ["fixture", "fixture byte immutability"],
+    ["configuration", "empty configuration verification"],
+    ["source", "source snapshot verification"],
+  ]) {
+    assert.equal(strictVerificationPhase(phase), "isolated strict root-formatter " + label)
+  }
+})
+
+test("strict verification labels reject arbitrary data and prototype keys", () => {
+  for (const phase of ["", "/private/fixture", "unreviewed", "__proto__", "toString", null, 1]) {
+    assert.throws(() => strictVerificationPhase(phase), { name: "AssertionError" })
+  }
 })
 
 test("import is inert and direct execution produces no false candidate evidence", () => {

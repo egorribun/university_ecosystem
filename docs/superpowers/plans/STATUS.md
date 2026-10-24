@@ -5,6 +5,52 @@
 
 
 
+## Hosted validation b5e4720, 2026-10-25
+
+На `b5e472014191dad0ce30a0f014f5ce0115413b9d` проверялся merge
+`4cd23d20193ff3ab6db89ed3f2891cbba32a249c` с тем же tree
+`1a5421b48f200f903520d33beb652392038d77f5`.
+[Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/40132657228/job/120987490376)
+дал **2742 consumer PASS / 590 policy PASS**. Исправленный detector различает
+точный literal pytest selector и реальные retry markers; исходные metadata,
+dynamic-command и negative controls сохранены. Fast lint, security/types,
+inventory и baseline319 scan прошли. В consumer cohort входят все 110 catalog
+cases (включая 40 новых guards), 343 logging/email/config/DLQ/Knip cases,
+121 related content/handler/outbox cases, 17 grades API и 22 delivery cases.
+Это не full CI GREEN.
+
+[Compiler candidate](https://github.com/egorribun/university_ecosystem/actions/runs/40132657228/job/120987653988)
+дал **41/41 guards PASS**. Реальные exact three-record scope, project full/
+production checks, isolated direct-formatter lock generation и strict npm ci
+пройдены. Следующая совмещённая стадия native graph/license/npm ls/immutability
+отказала: accepted metadata/patch нет. Новый **43-case diagnostic-only** candidate
+разделяет её на девять фиксированных phase labels без вывода paths/raw npm data;
+все прежние acceptance assertions, peer ranges и graph scope сохранены.
+Tracked project manifest/lock по-прежнему staged, advisory closure не заявлена.
+
+[Grade PostgreSQL reproduction](https://github.com/egorribun/university_ecosystem/actions/runs/40132657228/job/120988680897)
+подтвердил committed-assignment/replay control и прежние 20 notification cases.
+Rollback case фактически обнаружил один provider send до caller commit;
+проверки отдельного session PID и отсутствия persisted rows после rollback
+прошли. Общий fail-fast результат **1 FAIL / 40 PASS**, не полный PG-suite.
+[Отдельный 46-case cohort](https://github.com/egorribun/university_ecosystem/actions/runs/40132657228/job/120988680042)
+дал **1 FAIL / 45 PASS**: тот же rollback assertion RED, прежние 44 cases и
+committed grade control PASS. Следующая точечная правка включает существующий
+`push_via_outbox_only=True` только для assignment notification. Caller commit,
+audit и grade/provider content сохраняются; используется действующий outbox
+envelope, включая `payload_data: null`. Post-fix hosted GREEN ещё требуется.
+AUD-197 остаётся OPEN. Ledger **301/512** и scope прежней AUD-198 acceptance
+не расширены.
+
+В том же Alembic job **81 migration cases PASS**, raw Squawk по-прежнему
+**14 original / 25 expanded** blocking findings.
+[DB Migration Gate](https://github.com/egorribun/university_ecosystem/actions/runs/40132657228/job/120988679975)
+подтвердил newest-boundary refusal, 86+2 controls и immutable-image
+migrate-passwords check. Это не исторический rollback/restore proof.
+[Markdown lint](https://github.com/egorribun/university_ecosystem/actions/runs/40132657228/job/120988679777)
+нашёл один MD051: slash в AUD-198 heading не совпал с тремя ссылками.
+Heading нормализован к `news-event`; ссылки, ledger и acceptance scope не меняются.
+
 ## Текущий checkpoint: scoped AUD-198 и rollback dispositions, 2026-10-24
 
 Принятый ledger — **301/512 (58,8%)**, **211 ID не принято**. Сохранены все
@@ -38,7 +84,7 @@ dispositions, **не исправления миграций**.
 был SKIPPED: полный unit-suite GREEN не означает aggregate coverage/floors,
 полный CI или release GREEN. Новый source требует собственных проверок.
 
-[Owned Live текущего source](https://github.com/egorribun/university_ecosystem/actions/runs/40118573865/job/120947409185)
+[Owned Live исторического source 2208db1e](https://github.com/egorribun/university_ecosystem/actions/runs/40118573865/job/120947409185)
 дал **275 Node PASS**, **38 browser PASS / 2 SKIP**; NATS и cleanup SUCCESS,
 receipt12571525530. Неизвестная причина исторического сбоя30b этим не устранена.
 

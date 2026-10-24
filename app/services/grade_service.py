@@ -87,6 +87,7 @@ class GradeService:
             body_translations={"ru": f"{score:g}", "en": f"{score:g}"},
             type="grade",
             user_ids=[student_id],
+            push_via_outbox_only=True,
         )
         return grade
 
