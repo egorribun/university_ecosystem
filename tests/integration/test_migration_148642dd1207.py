@@ -1263,8 +1263,7 @@ def test_existing_exact_shadow_check_is_reused_from_real_pg_catalog(
                 definition += " NOT VALID"
             connection.execute(
                 sql.SQL(
-                    "ALTER TABLE groups "
-                    "ADD CONSTRAINT ck_groups_id_shadow_not_null {}"
+                    "ALTER TABLE groups ADD CONSTRAINT ck_groups_id_shadow_not_null {}"
                 ).format(sql.SQL(definition))
             )
             catalog = _shadow_check_catalog(connection)
@@ -1330,8 +1329,7 @@ def test_existing_shadow_check_rejects_wrong_real_pg_catalog_identity(
             connection.execute("UPDATE groups SET id__integer = id::integer")
             connection.execute(
                 sql.SQL(
-                    "ALTER TABLE groups "
-                    "ADD CONSTRAINT ck_groups_id_shadow_not_null {}"
+                    "ALTER TABLE groups ADD CONSTRAINT ck_groups_id_shadow_not_null {}"
                 ).format(sql.SQL(definition))
             )
             catalog = _shadow_check_catalog(connection)
