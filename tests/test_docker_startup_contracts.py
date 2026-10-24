@@ -2836,7 +2836,7 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
         (
             "admin-smoke-monitoring.yml",
             "admin-smoke",
-            "Admin React #418 monitoring",
+            "Admin React",  # The workflow's #418 suffix is a YAML comment.
             30,
             "admin-visual-smoke.mjs",
         ),

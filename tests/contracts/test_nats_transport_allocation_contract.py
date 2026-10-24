@@ -356,10 +356,7 @@ def _run_contract_dispatch(
     """Run the real orchestration; replace only the expensive pytest boundary."""
     bash = shutil.which("bash")
     if os.name != "posix" or bash is None or shutil.which("setsid") is None:
-        assert os.environ.get("GITHUB_ACTIONS") != "true", (
-            "required hosted contract lane must support Bash and setsid"
-        )
-        pytest.skip("the contract runner uses Linux Bash and setsid")
+        pytest.fail("Contract dispatch requires Linux/POSIX, Bash, and setsid")
     binaries = tmp_path / "bin"
     records = tmp_path / "dispatch"
     binaries.mkdir()
@@ -517,3 +514,28 @@ def test_contract_dispatch_rejects_budget_and_population_mutations(
     assert result.returncode == 0, result.stdout + result.stderr
     with pytest.raises(AssertionError, match=reason):
         _assert_contract_dispatch(root, dispatched)
+
+
+def test_contract_dispatch_missing_bash_fails_before_allocating_or_spawning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    real_which = shutil.which
+    monkeypatch.setattr(
+        shutil,
+        "which",
+        lambda command: None if command == "bash" else real_which(command),
+    )
+    spawn_attempts: list[bool] = []
+
+    def forbid_spawn(*_args: object, **_kwargs: object) -> None:
+        spawn_attempts.append(True)
+        raise AssertionError("missing Bash reached process startup")
+
+    monkeypatch.setattr(process, "run_private_process", forbid_spawn)
+    with pytest.raises((pytest.fail.Exception, pytest.skip.Exception)) as failure:
+        _run_contract_dispatch(tmp_path, "exit 0")
+    assert isinstance(failure.value, pytest.fail.Exception)
+    assert "requires Linux/POSIX, Bash, and setsid" in str(failure.value)
+    assert spawn_attempts == []
+    assert list(tmp_path.iterdir()) == []

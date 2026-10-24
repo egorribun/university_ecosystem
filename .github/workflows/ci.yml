@@ -1012,6 +1012,7 @@ jobs:
           }
           test_log="$(mktemp)"
           trace_root=".pytest_tmp/aud148-expanded"
+          mkdir -p "$(dirname "$trace_root")"
           pytest_status=0
           uv run pytest -q -s --tb=short \
             tests/test_migration_148642dd1207_trace.py \

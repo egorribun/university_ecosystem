@@ -66,6 +66,15 @@ def test_consumer_keeps_original_gate_context_budget_and_scanner_rules() -> None
     assert "|| true" not in diagnostic["run"]
 
 
+def test_consumer_creates_temp_parent_before_pytest() -> None:
+    _, _, _, diagnostic = _steps()
+    lines = diagnostic["run"].splitlines()
+    root = lines.index('trace_root=".pytest_tmp/aud148-expanded"')
+    prepare = lines.index('mkdir -p "$(dirname "$trace_root")"')
+    invoke = lines.index("uv run pytest -q -s --tb=short \\")
+    assert root < prepare < invoke
+
+
 def _git_blob(data):
     header = b"blob " + str(len(data)).encode("ascii") + b"\0"
     return hashlib.sha1(header + data, usedforsecurity=False).hexdigest()
