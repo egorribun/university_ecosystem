@@ -123,7 +123,7 @@ describe("News page interaction", () => {
         return HttpResponse.json({
           items: [
             {
-              id: "news-1",
+              id: "550e8400-e29b-41d4-a716-446655440105",
               title: "Headline 1",
               content: "Content 1",
               created_at: new Date().toISOString(),
@@ -131,7 +131,7 @@ describe("News page interaction", () => {
               image_url_optimized: null,
             },
             {
-              id: "news-2",
+              id: "550e8400-e29b-41d4-a716-446655440106",
               title: "Headline 2",
               content: "Content 2",
               created_at: new Date().toISOString(),

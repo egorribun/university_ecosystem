@@ -48,6 +48,31 @@ Gitleaks25, 78 required context/app pairs и действующие coverage flo
 сохраняются. Новые scanner dispositions и cooldown exceptions требуют
 отдельного решения владельца.
 
+### Восстановление CI и tests-first продолжение, 00:14 UTC
+
+На опубликованном `1cadcd03`
+[Owned Live 40043231846](https://github.com/egorribun/university_ecosystem/actions/runs/40043231846)
+прошёл pre-Docker live-contract stage; полный stand/browser результат и Matrix
+ещё не приняты. После смены UTC-даты trusted policy validation проходит,
+но actual scan job 120719590389 обнаружил пять новых identities: две
+gateway fixtures и три публичных integrity/identity digests. Никакие новые
+dispositions не добавлены.
+
+Следующий source исправляет три доказанных Go lint ошибки без изменения
+порядка проверок и fail-closed recovery; статические gateway test secrets
+заменены независимым runtime crypto/rand material. Frontend fixtures приведены
+к уже действующим UUID/nullable-image/count-default контрактам; типы IndexedDB
+и Playwright callbacks сохранены без подавления diagnostics. Все прежние
+поведенческие assertions сохранены. Собственные lint/typecheck/race/Vitest
+результаты нового SHA ещё требуются.
+
+Tests-first добавляет отдельные regressions для JSX/dotted-import/glob и
+`TEST_ROOT` ownership resolution, а также явного отдельного PostgreSQL target
+AUD-350. Эти cases включены в прежний early consumer job без удаления старых
+selectors или изменения лимитов. Checker и migration probe пока не изменены:
+ожидаемые RED должны быть наблюдены до их исправления. Frozen fixture bytes,
+baseline и scanner policy остаются неизменными; принятый ledger — 280.
+
 ## Историческая пауза перед публикацией 8efec0df
 
 **Работа приостановлена по поручению владельца (2026-10-24).** Ветка `egorribun`, PR #1343; последний проверенный опубликованный HEAD — `4f7fc9583529cd5f61bf1d8ab1496fb1d2b0b529`. Приватная контрольная точка перед финальной правкой документации сохраняет 322 staged paths, index tree `60ce5601b067ced4972c6079d85a6cf7cedde9e4`, без unstaged/untracked files. Интегрированы Gateway issuer, frontend, AUD-343/350/370/486/488/498/499/500/505/507/508/509; интеграция не означает приёмку. Approved policy — ровно 318 identities; итоговые baseline319 и Gitleaks25 совпадают с сохранёнными эталонами. Новые scanner identities остаются блокирующими; неподтверждённые кандидаты не считаются закрытиями.

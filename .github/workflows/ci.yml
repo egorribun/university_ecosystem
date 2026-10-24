@@ -1802,6 +1802,15 @@ jobs:
             tests/test_schedule_reminders_closure.py::test_build_schedule_reminder_formats_resolved_occurrence_in_campus_timezone \
             tests/test_notifications_news_events_closure.py::test_event_notification_times_use_campus_timezone \
             tests/test_ws_connection_manager_closure.py::test_send_to_user_uses_real_websocket_json_boundary \
+            tests/test_aud350_frozen_migration_fixture.py \
+            tests/test_quality_inventory.py::test_typescript_import_after_jsx_keeps_exact_source_relationship \
+            tests/test_quality_inventory.py::test_typescript_non_code_jsx_and_regex_do_not_claim_source_ownership \
+            tests/test_quality_inventory.py::test_typescript_dotted_module_stem_resolves_exact_config_file \
+            tests/test_quality_inventory.py::test_typescript_glob_scan_links_only_files_it_recursively_reads \
+            tests/test_quality_inventory.py::test_typescript_glob_scan_rejects_unproven_traversal_or_reads \
+            tests/test_quality_inventory.py::test_typescript_glob_scan_does_not_follow_external_file_symlinks \
+            tests/test_quality_inventory.py::test_python_contract_accepts_verified_test_root_alias \
+            tests/test_quality_inventory.py::test_python_contract_rejects_rebound_test_root_alias \
             tests/test_quality_inventory.py::test_go_duplicate_checker_ignores_comments_and_literals \
             tests/test_quality_inventory.py::test_go_duplicate_checker_still_rejects_real_duplicate_declarations \
             tests/test_quality_inventory.py::test_python_duplicate_scopes \

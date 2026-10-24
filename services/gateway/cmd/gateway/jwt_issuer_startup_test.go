@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,13 +19,20 @@ import (
 	"github.com/university-ecosystem/gateway/middleware"
 )
 
+func randomIssuerStartupSecret(t *testing.T) string {
+	t.Helper()
+	value := make([]byte, 32)
+	if _, err := rand.Read(value); err != nil {
+		t.Fatal("generate issuer startup test secret:", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(value)
+}
+
 func TestSetupRouterUsesConfiguredJWTIssuerForRequiredAndOptionalAuth(t *testing.T) {
 	const (
-		secret         = "gateway-custom-issuer-test-secret-32-bytes"
 		customIssuer   = "https://issuer.example.test/custom"
 		customAudience = "university-ecosystem-api"
 		userID         = "bootstrap-issuer-user"
-		hmacKey        = "gateway-internal-hmac-test-key-32-bytes"
 	)
 
 	for _, configCase := range []struct {
@@ -36,6 +45,8 @@ func TestSetupRouterUsesConfiguredJWTIssuerForRequiredAndOptionalAuth(t *testing
 		{name: "direct development defaults", issuer: middleware.DefaultJWTIssuer, audience: middleware.DefaultJWTAudience},
 	} {
 		t.Run(configCase.name, func(t *testing.T) {
+			secret := randomIssuerStartupSecret(t)
+			hmacKey := randomIssuerStartupSecret(t)
 			redisServer := miniredis.RunT(t)
 			type forwardedRequest struct {
 				path      string

@@ -24,7 +24,6 @@ func TestTrimJWTIssuerWhitespaceMatchesPythonStripSet(t *testing.T) {
 }
 
 func TestLoad_JWTIssuerMatchesPythonStripSemantics(t *testing.T) {
-	t.Setenv("JWT_SECRET", "private-test-secret")
 	t.Setenv("VITE_ENVIRONMENT", "development")
 
 	astral512 := strings.Repeat("😀", 512)
@@ -49,6 +48,7 @@ func TestLoad_JWTIssuerMatchesPythonStripSemantics(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("JWT_SECRET", randomStrongTestValue(t))
 			t.Setenv("JWT_ISSUER", testCase.issuer)
 			cfg, err := Load()
 			if testCase.wantError {

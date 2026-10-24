@@ -104,9 +104,10 @@ func EvaluateWithTimeout(ctx context.Context, fn func(context.Context) (bool, er
 		result := res{}
 		completed := false
 		defer func() {
+			// Recover first so short-circuit evaluation cannot skip recovery.
+			// The completion sentinel also covers panic(nil) and runtime.Goexit.
 			// Discard panic values so callback details never escape.
-			_ = recover()
-			if !completed {
+			if recover() != nil || !completed {
 				result = res{err: errPermissionEvaluationPanicked}
 			}
 			ch <- result

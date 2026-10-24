@@ -297,8 +297,7 @@ func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *red
 	return NewJWTMiddlewareWithConfigAndIssuer(secret, rsaPublicKeyPEM, redisClient, config, audience, DefaultJWTIssuer)
 }
 
-// NewJWTMiddlewareWithConfigAndIssuer creates a JWT middleware bound to the
-// audience and issuer explicitly supplied by gateway configuration.
+// isJWTIssuerStripWhitespace matches the fixed whitespace set used by Python str.strip.
 func isJWTIssuerStripWhitespace(r rune) bool {
 	return r >= '\u0009' && r <= '\u000d' ||
 		r >= '\u001c' && r <= '\u0020' ||
@@ -312,6 +311,8 @@ func trimJWTIssuerWhitespace(issuer string) string {
 	return strings.TrimFunc(issuer, isJWTIssuerStripWhitespace)
 }
 
+// NewJWTMiddlewareWithConfigAndIssuer creates a JWT middleware bound to the
+// audience and issuer explicitly supplied by gateway configuration.
 func NewJWTMiddlewareWithConfigAndIssuer(secret, rsaPublicKeyPEM string, redisClient *redis.Client, config L1CacheConfig, audience, issuer string) *JWTMiddleware {
 	audience = strings.TrimSpace(audience)
 	if audience == "" {

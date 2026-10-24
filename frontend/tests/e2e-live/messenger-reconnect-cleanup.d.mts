@@ -7,21 +7,25 @@ export type MessengerReconnectLocator = {
   click(options: { timeout: number }): Promise<void>
 }
 
-export type MessengerReconnectLog = {
-  getByText(text: string, options: { exact: true }): MessengerReconnectLocator
+export type MessengerReconnectLog<
+  TLocator extends MessengerReconnectLocator = MessengerReconnectLocator,
+> = {
+  getByText(text: string, options: { exact: true }): TLocator
 }
 
-export type MessengerReconnectPage = {
-  getByRole(role: "alertdialog", options: { name: string }): MessengerReconnectLocator
+export type MessengerReconnectPage<
+  TLocator extends MessengerReconnectLocator = MessengerReconnectLocator,
+> = {
+  getByRole(role: "alertdialog", options: { name: string }): TLocator
 }
 
-export function deleteOwnedMessengerMessage(options: {
-  page: MessengerReconnectPage
-  log: MessengerReconnectLog
+export function deleteOwnedMessengerMessage<TLocator extends MessengerReconnectLocator>(options: {
+  page: MessengerReconnectPage<TLocator>
+  log: MessengerReconnectLog<TLocator>
   content: string
   timeoutMs: number
-  expectVisible(locator: MessengerReconnectLocator, timeoutMs: number): Promise<void>
-  expectCount(locator: MessengerReconnectLocator, count: number, timeoutMs: number): Promise<void>
+  expectVisible(locator: TLocator, timeoutMs: number): Promise<void>
+  expectCount(locator: TLocator, count: number, timeoutMs: number): Promise<void>
 }): Promise<void>
 
 export function cleanupMessengerReconnect(options: {

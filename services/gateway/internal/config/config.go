@@ -230,13 +230,13 @@ func validateConfig(cfg *Config) error {
 		if err := validateFileProcessingCapabilitySecret(cfg.FileProcessingCapabilitySecret); err != nil {
 			return err
 		}
-	}
-	if isRelease && !cfg.GrpcUseTLS {
-		return fmt.Errorf("GRPC_USE_TLS=true is required in %s", environment)
-	}
-	if isRelease && !cfg.SpiffeEnabled {
-		if err := validateConventionalGRPCConfig(cfg, environment); err != nil {
-			return err
+		if !cfg.GrpcUseTLS {
+			return fmt.Errorf("GRPC_USE_TLS=true is required in %s", environment)
+		}
+		if !cfg.SpiffeEnabled {
+			if err := validateConventionalGRPCConfig(cfg, environment); err != nil {
+				return err
+			}
 		}
 	}
 

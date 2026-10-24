@@ -861,6 +861,7 @@ describe("useNewsInteraction — toggleLike", () => {
     const transactionAborted = deferred<void>()
     const originalAdd = IDBObjectStore.prototype.add
     const addSpy = vi.spyOn(IDBObjectStore.prototype, "add").mockImplementation(function (
+      this: IDBObjectStore,
       ...args: Parameters<IDBObjectStore["add"]>
     ) {
       const request = originalAdd.apply(this, args)
@@ -926,6 +927,7 @@ describe("useNewsInteraction — toggleLike", () => {
     const transactionErrored = deferred<void>()
     const originalAdd = IDBObjectStore.prototype.add
     const addSpy = vi.spyOn(IDBObjectStore.prototype, "add").mockImplementation(function (
+      this: IDBObjectStore,
       ...args: Parameters<IDBObjectStore["add"]>
     ) {
       const [value] = args

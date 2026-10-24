@@ -112,10 +112,11 @@ vi.mock("framer-motion", async () => {
 })
 
 const article = {
-  id: "news-hydration-item",
+  id: "550e8400-e29b-41d4-a716-446655440104",
   title: "Hydrated news item",
   content: "The real news query resolved after the owner was confirmed.",
   created_at: "2026-10-05T08:00:00.000Z",
+  image_url_optimized: null,
 }
 
 const response = {

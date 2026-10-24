@@ -2594,3 +2594,237 @@ def test_aud508_non_python_skip_accepts_tracking_comments(
     check_anti_patterns(test_file, errors, [], [])
 
     assert not any("dynamic skip" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "markup",
+    [
+        "<main>content</main>",
+        "<><section>content</section></>",
+        "<Widget.Part><span /></Widget.Part>",
+        '<main title={">"}>content</main>',
+    ],
+)
+def test_typescript_import_after_jsx_keeps_exact_source_relationship(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, markup: str
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/jsx.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        f'const view = {markup};\nimport Button from "../Button";\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+    assert not matches_source(relative, {"frontend/src/components/Other.tsx"}, [])
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'const view = <main>import Button from "../Button"</main>;\n',
+        'const view = <main title=\'import Button from "../Button"\' />;\n',
+        'const value = left </main>\nimport Button from "../Button";\n',
+    ],
+)
+def test_typescript_non_code_jsx_and_regex_do_not_claim_source_ownership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/components/__tests__/unrelated.test.tsx"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(source, encoding="utf-8")
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert not matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+
+
+def test_typescript_dotted_module_stem_resolves_exact_config_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    relative = "frontend/src/test/__tests__/mockIsolation.test.ts"
+    test_file = repository / relative
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        'import config from "../../../vitest.config";\n', encoding="utf-8"
+    )
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+
+    assert matches_source(
+        relative, set(), [], reference_paths={"frontend/vitest.config.ts"}
+    )
+    assert not matches_source(
+        relative, set(), [], reference_paths={"frontend/other.config.ts"}
+    )
+
+
+_LOCAL_TYPESCRIPT_GLOB_CONTRACT = """import { readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
+import path from "node:path"
+import { glob } from "glob"
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const SRC_ROOT = path.resolve(__dirname, "..")
+const MATCHER = /removed/
+async function scan() {
+  const files = await glob("**/*.{ts,tsx,css}", {
+    cwd: SRC_ROOT,
+    ignore: [
+      "tests/**",
+      "**/__tests__/**",
+      "**/*.test.{ts,tsx}",
+      "**/*.spec.{ts,tsx}",
+      "**/*.stories.{ts,tsx}",
+    ],
+  })
+  expect(files.length).toBeGreaterThan(0)
+  const violations = files.filter((relFile) =>
+    MATCHER.test(readFileSync(path.join(SRC_ROOT, relFile), "utf-8"))
+  )
+  return violations
+}
+"""
+
+
+def _write_typescript_glob_fixture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+) -> tuple[Path, Path]:
+    repository = tmp_path / "repo"
+    contract = repository / "frontend/src/tests/glob.test.ts"
+    contract.parent.mkdir(parents=True)
+    (repository / "frontend/package.json").write_text("{}", encoding="utf-8")
+    for relative in (
+        "frontend/src/components/Button.tsx",
+        "frontend/src/utils/nested/helper.ts",
+        "frontend/src/theme.css",
+        "frontend/src/tests/fixture.ts",
+        "frontend/src/components/__tests__/fixture.tsx",
+        "frontend/src/components/Button.test.tsx",
+        "frontend/src/components/Button.spec.tsx",
+        "frontend/src/components/Button.stories.tsx",
+        "frontend/src/components/data.json",
+    ):
+        target = repository / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("fixture\n", encoding="utf-8")
+    contract.write_text(source, encoding="utf-8")
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+    return repository, contract
+
+
+def test_typescript_glob_scan_links_only_files_it_recursively_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, contract = _write_typescript_glob_fixture(
+        tmp_path, monkeypatch, _LOCAL_TYPESCRIPT_GLOB_CONTRACT
+    )
+
+    references = find_typescript_repository_references(contract)
+
+    assert references == {
+        "frontend/src/components/Button.tsx",
+        "frontend/src/utils/nested/helper.ts",
+        "frontend/src/theme.css",
+    }
+    assert matches_source(
+        "frontend/src/tests/glob.test.ts",
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={"frontend/src/utils/nested/helper.ts"},
+    )
+    assert not matches_source(
+        "frontend/src/tests/glob.test.ts",
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={"frontend/src/components/Unscanned.tsx"},
+    )
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("fileURLToPath(import.meta.url)", "fileURLToPath(otherUrl)"),
+        (
+            'path.resolve(__dirname, "..")',
+            'path.resolve(__dirname, "../../../..")',
+        ),
+        ("cwd: SRC_ROOT", "cwd: otherRoot"),
+        ("path.join(SRC_ROOT, relFile)", "path.join(otherRoot, relFile)"),
+        ("files.filter", '["components/Button.tsx"].filter'),
+        (
+            'readFileSync(path.join(SRC_ROOT, relFile), "utf-8")',
+            "String(path.join(SRC_ROOT, relFile))",
+        ),
+        ("async function scan()", "async function scan(SRC_ROOT: string)"),
+        ('"tests/**",', '"tests/**", "**/*",'),
+        ('"**/*.{ts,tsx,css}"', '"*.{ts,tsx,css}"'),
+    ],
+)
+def test_typescript_glob_scan_rejects_unproven_traversal_or_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, old: str, new: str
+) -> None:
+    _, contract = _write_typescript_glob_fixture(
+        tmp_path, monkeypatch, _LOCAL_TYPESCRIPT_GLOB_CONTRACT.replace(old, new)
+    )
+
+    assert find_typescript_repository_references(contract) == set()
+
+
+def test_typescript_glob_scan_does_not_follow_external_file_symlinks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository, contract = _write_typescript_glob_fixture(
+        tmp_path, monkeypatch, _LOCAL_TYPESCRIPT_GLOB_CONTRACT
+    )
+    outside = tmp_path / "outside.ts"
+    outside.write_text("external\n", encoding="utf-8")
+    os.symlink(outside, repository / "frontend/src/components/external.ts")
+
+    assert find_typescript_repository_references(contract) == {
+        "frontend/src/components/Button.tsx",
+        "frontend/src/utils/nested/helper.ts",
+        "frontend/src/theme.css",
+    }
+
+
+def test_python_contract_accepts_verified_test_root_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    contract = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        "TEST_ROOT = Path(__file__).resolve().parents[1]\n"
+        'VALIDATOR_PATH = TEST_ROOT / "scripts" / "quality"'
+        ' / "validate_trivy_kyverno_fixture.py"\n',
+    )
+
+    assert find_python_repository_references(contract) == {
+        "scripts/quality/validate_trivy_kyverno_fixture.py"
+    }
+
+
+@pytest.mark.parametrize(
+    "rebind",
+    ['TEST_ROOT = Path("elsewhere")\n', "import elsewhere as TEST_ROOT\n"],
+)
+def test_python_contract_rejects_rebound_test_root_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rebind: str
+) -> None:
+    contract = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        f"TEST_ROOT = Path(__file__).resolve().parents[1]\n{rebind}"
+        'TARGET = TEST_ROOT / "scripts" / "quality"'
+        ' / "validate_trivy_kyverno_fixture.py"\n',
+    )
+
+    assert find_python_repository_references(contract) == set()
