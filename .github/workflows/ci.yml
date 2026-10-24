@@ -1025,6 +1025,10 @@ jobs:
             tests/integration/test_migration_148642dd1207.py::test_existing_shadow_check_rejects_wrong_real_pg_catalog_identity \
             tests/integration/test_migration_148642dd1207.py::test_stale_shadow_value_aborts_before_fk_capture_with_exact_rollback \
             tests/integration/test_migration_148642dd1207.py::test_shadow_cutover_omits_only_transient_validation_after_null_backfill \
+            tests/integration/test_migration_148642dd1207.py::test_groups_cutover_uses_only_the_exact_primary_key_index \
+            tests/integration/test_migration_148642dd1207.py::test_groups_index_cutover_failure_restores_exact_catalog_and_data \
+            tests/integration/test_migration_148642dd1207.py::test_groups_key_helper_round_trip_restores_legacy_index_and_foreign_keys \
+            tests/integration/test_migration_148642dd1207.py::test_groups_successors_do_not_require_the_duplicate_id_index \
             --basetemp="$trace_root" > "$test_log" 2>&1 || pytest_status=$?
           echo "AUD148_FOCUSED_TESTS_BEGIN"
           if ! print_bounded "$test_log" 131072; then
@@ -2101,7 +2105,8 @@ jobs:
             tests/test_quality_inventory.py::test_aud508_non_python_skip_scanner_ignores_comments_and_strings \
             tests/test_quality_inventory.py::test_aud508_non_python_skip_accepts_tracking_comments \
             tests/test_quality_inventory.py \
-            tests/test_migration_148642dd1207_orchestrator.py::test_upgrade_with_unavailable_inspector_exposes_later_unconditional_lookup -v \
+            tests/test_migration_148642dd1207_orchestrator.py::test_upgrade_with_unavailable_inspector_exposes_later_unconditional_lookup \
+            tests/test_dead_letter_queue.py::test_mark_job_completed -v \
             --tb=short --durations=20 -n 2 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \

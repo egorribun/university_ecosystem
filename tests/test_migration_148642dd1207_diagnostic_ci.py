@@ -58,6 +58,10 @@ def test_consumer_keeps_original_gate_context_budget_and_scanner_rules() -> None
         "test_existing_shadow_check_rejects_wrong_real_pg_catalog_identity",
         "test_stale_shadow_value_aborts_before_fk_capture_with_exact_rollback",
         "test_shadow_cutover_omits_only_transient_validation_after_null_backfill",
+        "test_groups_cutover_uses_only_the_exact_primary_key_index",
+        "test_groups_index_cutover_failure_restores_exact_catalog_and_data",
+        "test_groups_key_helper_round_trip_restores_legacy_index_and_foreign_keys",
+        "test_groups_successors_do_not_require_the_duplicate_id_index",
     ):
         assert (
             f"tests/integration/test_migration_148642dd1207.py::{regression}"

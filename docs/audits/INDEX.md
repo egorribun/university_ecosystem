@@ -10,7 +10,8 @@ release claims require fresh evidence under the master plan.
   operational checkpoint; every release claim still requires fresh exact-SHA
   evidence.
 - [Historical safe pause checkpoint, 2026-10-24](../superpowers/plans/STATUS.md#контрольная-точка-безопасной-паузы-2026-10-24) — the accepted count at that checkpoint was 280/512; its private PostgreSQL evidence and then-pending integrations are retained as history, not current hosted outcomes.
-- [Current accepted audit lower bound: 289/512 (56.4%)](AUDIT-2026-10.md#hosted-six-finding-scoped-closure-checkpoint-2026-10-24) — preserves all 283 preceding IDs and adds only AUD-359, AUD-388, AUD-443, AUD-446, AUD-451 and AUD-453 after source-bound hosted verification; 223 IDs remain unaccepted. AUD-452/508/509, dependency cleanup, additional migration findings, full CI and release readiness are not accepted.
+- [Current accepted audit lower bound: 292/512 (57.0%)](AUDIT-2026-10.md#hosted-logging-and-inventory-scoped-closure-checkpoint-2026-10-24) — preserves all 289 preceding IDs and adds only AUD-452, AUD-508 and AUD-509 after scoped hosted verification; 220 IDs remain unaccepted. Dependency cleanup, additional migration findings, full CI and release readiness are not accepted.
+- [Historical six-finding checkpoint: 289/512 (56.4%)](AUDIT-2026-10.md#hosted-six-finding-scoped-closure-checkpoint-2026-10-24) — added AUD-359, AUD-388, AUD-443, AUD-446, AUD-451 and AUD-453 to the preceding 283 IDs; its source-specific evidence and limits are retained.
 - [Historical planner-calibration checkpoint: 283/512 (55.3%)](AUDIT-2026-10.md#hosted-planner-calibration-rollback-closure-checkpoint-2026-10-24) — six actual PostgreSQL rollback/isolation cases added only AUD-504 to the previous 282 IDs. Its evidence and limits are retained.
 - [MVP master plan](../superpowers/plans/MVP_MASTER_PLAN.md) and
   [ADR-047](../adr/ADR-047-risk-based-quality-policy.md) — since 2026-10-08 the
@@ -58,13 +59,14 @@ release claims require fresh evidence under the master plan.
   immutable historical fingerprints: its original 25 plus one reviewed code
   expression at a single commit/path/rule/line, with matching negative tests.
   Baseline319 and ledger283 were unchanged by that policy checkpoint. The current
-  accepted lower bound is 289/512 as linked above. Policy records alone do not
+  accepted lower bound is 292/512 as linked above. Policy records alone do not
   establish a final-source scan, full CI, audit closure or release result.
-  A subsequent [exact orchestrator-fixture pin rebind](../adr/ADR-047-risk-based-quality-policy.md#exact-orchestrator-fixture-isolation-git-pin-rebind-2026-10-24)
+  The historical [exact orchestrator-fixture pin rebind](../adr/ADR-047-risk-based-quality-policy.md#exact-orchestrator-fixture-isolation-git-pin-rebind-2026-10-24)
   preserves all 328 records and appends only its sixth independently fixture-bound
-  public Git-blob identity, for a total of 329. The new fingerprint is computed,
-  not yet a hosted scanner observation; the corrected test and current-source
-  checks remain required. No additional finding is accepted by that policy change.
+  public Git-blob identity, for a total of 329. At that policy checkpoint the
+  fingerprint had been computed, while hosted scan and corrected-test validation
+  were still pending. Current source results are in STATUS; no finding was
+  accepted by that policy change alone.
   The prior 310-record state is retained in
   [the 2026-10-23 finite scanner-policy update](AUDIT-2026-10.md#owner-approved-finite-scanner-policy-additions-2026-10-23), and the
   five additive fixture-bound identities are recorded in the [dated supplement](AUDIT-2026-10.md#owner-approved-five-exact-baseline-fixture-dispositions-2026-10-23).

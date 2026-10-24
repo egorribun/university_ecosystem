@@ -5,55 +5,48 @@
 
 
 
-## Текущая source-bound приёмка шести находок, 2026-10-24
+## Текущая source-bound приёмка logging и inventory, 2026-10-24
 
 Этот раздел задаёт текущий checkpoint; последующие разделы сохраняют результаты
 своих SHA и исторические counts, а не заменяют проверку текущей ветки.
 
-Принятый ledger — **289/512 (56,4%)**, **223 ID не принято**. Добавлены только
-**AUD-359, AUD-388, AUD-443, AUD-446, AUD-451 и AUD-453**, все прежние 283 ID
-сохранены. [Точные границы, RED/GREEN, Git blobs и полный список](../../audits/AUDIT-2026-10.md#hosted-six-finding-scoped-closure-checkpoint-2026-10-24).
-AUD-388 — подтверждённый already-fixed source; остальные пять имеют
-поведенческий RED/GREEN. Это не full-CI или release acceptance.
+Принятый ledger — **292/512 (57,0%)**, **220 ID не принято**. Добавлены только
+**AUD-452, AUD-508 и AUD-509**; все прежние 289 ID сохранены.
+[Точные evidence, Git blobs, границы и полный список](../../audits/AUDIT-2026-10.md#hosted-logging-and-inventory-scoped-closure-checkpoint-2026-10-24).
+AUD-452 имеет actual RED/GREEN; AUD-508/509 — verified already-fixed dispositions,
+без заявления о первоначальном историческом RED. Это scoped audit acceptance.
 
-Проверенный source — `b2edc989c51d7502e24f16e8ee99e548be6c4aea`;
-merge `6352979043411c02f2c898246397d1068868ed64` имеет то же дерево
-`6d37c2ea091998afa6edacf11c282fb0e61830bb`.
-[Contract 120864514925](https://github.com/egorribun/university_ecosystem/actions/runs/40091236608/job/120864514925)
-повторно исполнил named health/CWV/WebSocket и logging field-name cases.
-Consumer: **1972 PASS / 65 FAIL** по AUD-452/object/isolation; отдельный
-policy cohort: **438 PASS**. Эти failures не скрыты и не закрыты этим ledger.
+Проверенный source — `78c94a26b41896811c6038a8cedf259458a222d4`;
+merge `fdd444d59dabc7121619215017f4d3e0ed0ebe7b` имеет то же дерево
+`8c9265108dfc90db88e6cef2317fb42357687d1c`.
+[Contract 120881543869](https://github.com/egorribun/university_ecosystem/actions/runs/40097104326/job/120881543869):
+**2249 consumer PASS / 452 policy PASS**, включая 312 logging/email/isolation
+и 277 unique inventory cases. Все 64 прежних direct logging/email FAIL и
+derived isolation FAIL теперь PASS на неизменённых regression tests.
+Полный inventory-модуль сохранён в consumer cohort; предыдущие selectors
+не удалены. [Repository inventory 120881544124](https://github.com/egorribun/university_ecosystem/actions/runs/40097104326/job/120881544124)
+прошёл actual checker и 28 harness tests.
 
-CLI прошёл все 23 новых leaf cases и 14 существующих tests, `-race`,
-100% statement coverage, threshold, provenance и upload
-[artifact 12559715405](https://github.com/egorribun/university_ecosystem/actions/runs/40091236608/artifacts/12559715405);
-[lint 120865767825](https://github.com/egorribun/university_ecosystem/actions/runs/40091236608/job/120865767825)
-дал zero issues. AUD-451 принят только для help/usage/default metadata.
+[Backend types 120882280666](https://github.com/egorribun/university_ecosystem/actions/runs/40097104326/job/120882280666):
+352 source files, 0 issues; error budget 0; relaxed overrides 9/9; deptry clean.
+Named orchestrator isolation regression также PASS в текущем Contract.
+Это не доказательство 100% patch или aggregate coverage; обязательные coverage
+lanes и проверки конечного SHA не заменяются числом прошедших tests.
 
-В проверенном evidence source действовали **328** exact detect-secrets dispositions, **26**
-исторических Gitleaks fingerprints и baseline **319**; 78 context/app pairs,
-blocking CodeQL, hooks и quality floors не изменены.
-[Baseline scanner 120864857998](https://github.com/egorribun/university_ecosystem/actions/runs/40091236608/job/120864857998)
-и [Gitleaks 40091236578](https://github.com/egorribun/university_ecosystem/actions/runs/40091236578)
-прошли на указанном source. Новые или изменённые identities по-прежнему
-блокируются; документационная публикация требует собственных final-source checks.
+Текущая политика сохраняет **329** точных dispositions, baseline **319** и
+**26** исторических Gitleaks fingerprints. 78 context/app pairs, blocking
+CodeQL, hooks, 100% patch coverage и все действующие quality floors не меняются.
+[Точная граница orchestrator-fixture rebind](../../adr/ADR-047-risk-based-quality-policy.md#exact-orchestrator-fixture-isolation-git-pin-rebind-2026-10-24)
+сохранена. Эта приёмка не расширяет одобренный scanner scope;
+новые или изменённые identities блокируются;
+документационная публикация требует собственных final-source checks.
 
-Текущая публикуемая политика содержит **329** точных записей: все 328 сохранены,
-добавлен только пересчитанный публичный pin однострочной изоляции orchestrator
-fixture. [Граница rebind](../../adr/ADR-047-risk-based-quality-policy.md#exact-orchestrator-fixture-isolation-git-pin-rebind-2026-10-24).
-Новый fingerprint вычислен независимо; его hosted scan и исправленный unit test
-ещё требуют проверки. Baseline319 и Gitleaks26 не меняются.
-
-Migration checkpoint: [63 focused PostgreSQL PASS](https://github.com/egorribun/university_ecosystem/actions/runs/40091236608/job/120865063245)
-и все 17 cases `tests/integration/test_migration_148642dd1207.py`
-[PASS в integration 120865063554](https://github.com/egorribun/university_ecosystem/actions/runs/40091236608/job/120865063554).
-Original 15 и expanded 26 Squawk findings остаются blocking; общий migration
-finding не принят. Compiler Zod3 остаётся уязвимым; dependency cleanup не закрыт.
-
-Следующий объём: AUD-452 immutable/object-safe logging и isolation; полная
-проверка inventory-модуля после 17 named AUD-508/AUD-509 PASS; миграционные
-Squawk findings и compiler dependency repair. AUD-508/AUD-509 остаются вне
-ledger. Полный normal CI, release, merge и deployment не объявляются GREEN.
+Следующий объём: подтвердить применимые coverage/remaining required checks,
+устранить blocking migration Squawk findings и compiler Zod3 dependency gap,
+затем продолжить остальные 220 ID. Ранее 63 focused PostgreSQL и 17 migration
+integration PASS не являются общей приёмкой migration finding; original 15 и
+expanded 26 Squawk findings не закрыты этим checkpoint. Dependency cleanup,
+полный normal CI, release, merge и deployment не объявляются GREEN.
 
 Владелец явно разрешил публичные audit results, CI links, точные hashes и
 exception IDs, а также сохранение уже записанных archive metadata в этих

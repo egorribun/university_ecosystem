@@ -9,12 +9,15 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, time
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import psycopg
 import pytest
 import sqlalchemy as sa
 from alembic.config import Config
+from alembic.operations import Operations
+from alembic.runtime.environment import EnvironmentContext
+from alembic.script import ScriptDirectory
 from cryptography.fernet import Fernet
 from psycopg import sql
 from sqlalchemy import Text, event
@@ -985,14 +988,26 @@ _CATALOG_QUERIES = {
 }
 
 
-def _prepare_ddl_inventory(urls, monkeypatch, *, orphan=False) -> Config:
+def _prepare_ddl_inventory(
+    urls, monkeypatch, *, orphan=False, integer_key=False, duplicate_index=True
+) -> Config:
     config = _alembic_config(urls["alembic"])
     monkeypatch.setenv("DATABASE_URL", urls["alembic"])
     command.upgrade(config, "f7aa476e968a")
     with psycopg.connect(urls["sync"]) as connection:
         _add_lowercase_role_values(connection)
+        if integer_key:
+            assert not orphan
+            connection.execute(
+                "ALTER TABLE groups ALTER COLUMN id TYPE INTEGER USING id::integer"
+            )
         connection.execute(_TRACE_TABLE_DDL)
-        connection.execute(_TRACE_FIXTURE_DDL)
+        fixture_ddl = (
+            _TRACE_FIXTURE_DDL.replace("varchar(20)", "integer")
+            if integer_key
+            else _TRACE_FIXTURE_DDL
+        )
+        connection.execute(fixture_ddl)
         connection.execute(
             "INSERT INTO aud148_fixture.child_unvalidated VALUES (1, %s)",
             ("99" if orphan else "02",),
@@ -1002,6 +1017,13 @@ def _prepare_ddl_inventory(urls, monkeypatch, *, orphan=False) -> Config:
             "ADD CONSTRAINT aud148_child_unvalidated_fk FOREIGN KEY (group_id) "
             "REFERENCES public.groups(id) NOT VALID"
         )
+        if integer_key:
+            connection.execute(
+                "ALTER TABLE aud148_fixture.child_unvalidated "
+                "VALIDATE CONSTRAINT aud148_child_unvalidated_fk"
+            )
+        if not duplicate_index:
+            connection.execute("DROP INDEX IF EXISTS ix_groups_id")
     return config
 
 
@@ -1510,3 +1532,319 @@ def test_shadow_cutover_omits_only_transient_validation_after_null_backfill(
             "ALTER TABLE active_sessions VALIDATE CONSTRAINT "
             "ck_active_sessions_signing_key_not_null",
         ]
+
+
+def _assert_groups_primary_key(connection) -> None:
+    """Prove the PK owns a valid, ready, exact one-column btree on groups.id."""
+    assert connection.execute(
+        """
+        SELECT c.conname, i.relname,
+               c.convalidated AND c.conkey = ARRAY[a.attnum]
+               AND x.indisprimary AND x.indisunique
+               AND x.indisvalid AND x.indisready AND x.indislive
+               AND x.indnkeyatts = 1 AND x.indnatts = 1
+               AND x.indkey[0] = a.attnum
+               AND x.indexprs IS NULL AND x.indpred IS NULL
+               AND am.amname = 'btree' AND a.attnotnull
+        FROM pg_constraint c
+        JOIN pg_index x ON x.indexrelid = c.conindid
+        JOIN pg_class i ON i.oid = x.indexrelid
+        JOIN pg_am am ON am.oid = i.relam
+        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attname = 'id'
+        WHERE c.conrelid = 'public.groups'::regclass AND c.contype = 'p'
+        """
+    ).fetchall() == [("groups_pkey", "groups_pkey", True)]
+
+
+def _assert_group_fixture_foreign_keys(connection) -> None:
+    assert connection.execute(
+        """
+        SELECT conname, convalidated, condeferrable, condeferred,
+               confmatchtype, confupdtype, confdeltype
+        FROM pg_constraint
+        WHERE connamespace = 'aud148_fixture'::regnamespace AND contype = 'f'
+        ORDER BY conname
+        """
+    ).fetchall() == [
+        ("aud148_child_cascade_fk", True, True, True, "s", "c", "c"),
+        ("aud148_child_quoted_fk", True, False, False, "f", "a", "n"),
+        ("aud148_child_unvalidated_fk", True, False, False, "s", "a", "a"),
+    ]
+
+
+def _assert_groups_key_dml(connection) -> None:
+    """Exercise constraints, then roll back all probe writes."""
+    with pytest.raises(psycopg.errors.UniqueViolation), connection.transaction():
+        connection.execute("INSERT INTO groups (id, name) VALUES (1, 'duplicate')")
+    with pytest.raises(psycopg.errors.NotNullViolation), connection.transaction():
+        connection.execute("INSERT INTO groups (id, name) VALUES (NULL, 'null key')")
+    with pytest.raises(psycopg.errors.ForeignKeyViolation), connection.transaction():
+        connection.execute('INSERT INTO aud148_fixture."child quoted" VALUES (99, 99)')
+
+    connection.execute("UPDATE groups SET id = 11 WHERE id = 1")
+    assert connection.execute(
+        "SELECT group_id FROM aud148_fixture.child_cascade WHERE id = 1"
+    ).fetchone() == (11,)
+    connection.execute("DELETE FROM groups WHERE id = 11")
+    assert connection.execute(
+        "SELECT count(*) FROM aud148_fixture.child_cascade WHERE id = 1"
+    ).fetchone() == (0,)
+    connection.execute(
+        "UPDATE aud148_fixture.child_unvalidated SET group_id = NULL WHERE id = 1"
+    )
+    connection.execute("DELETE FROM groups WHERE id = 2")
+    assert connection.execute(
+        'SELECT "group key" FROM aud148_fixture."child quoted" WHERE id = 1'
+    ).fetchone() == (None,)
+    connection.rollback()
+
+
+@pytest.mark.parametrize("integer_key", [False, True], ids=["legacy", "integer"])
+@pytest.mark.parametrize("duplicate_index", [False, True], ids=["absent", "present"])
+def test_groups_cutover_uses_only_the_exact_primary_key_index(
+    migration_postgres,
+    monkeypatch: pytest.MonkeyPatch,
+    integer_key: bool,
+    duplicate_index: bool,
+) -> None:
+    """The conversion must not build a second btree already supplied by the PK."""
+    with _owned_migration_scenario(migration_postgres) as urls:
+        config = _prepare_ddl_inventory(
+            urls,
+            monkeypatch,
+            integer_key=integer_key,
+            duplicate_index=duplicate_index,
+        )
+        recorder = ddl_trace.ExpandedDdlTrace(
+            ddl_trace.MIGRATION_PATH.read_bytes(), instrument=False
+        )
+        _execute_ddl_inventory(config, urls, recorder, monkeypatch)
+        kinds = [event["kind"] for event in recorder.events]
+        assert kinds.count("begin") == kinds.count("commit") == 1
+        assert "rollback" not in kinds
+        statements = [
+            event["sql"] for event in recorder.events if event["kind"] == "cursor"
+        ]
+        assert statements.count("DROP INDEX IF EXISTS ix_groups_id") == int(
+            duplicate_index
+        )
+        if not integer_key:
+            assert (
+                statements.index(
+                    "ALTER TABLE groups VALIDATE CONSTRAINT ck_groups_id_not_null"
+                )
+                < statements.index(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS groups_pkey_idx ON groups (id)"
+                )
+                < statements.index(
+                    "ALTER TABLE groups ADD CONSTRAINT groups_pkey "
+                    "PRIMARY KEY USING INDEX groups_pkey_idx"
+                )
+            )
+        with psycopg.connect(urls["sync"]) as connection:
+            _assert_groups_primary_key(connection)
+            _assert_group_fixture_foreign_keys(connection)
+            assert connection.execute(
+                "SELECT id, name FROM groups ORDER BY id"
+            ).fetchall() == [(1, "first"), (2, "second")]
+            assert connection.execute(
+                "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
+                "WHERE attrelid = 'public.groups'::regclass AND attname = 'id'"
+            ).fetchone() == ("integer",)
+            assert connection.execute(
+                "SELECT attname FROM pg_attribute "
+                "WHERE attrelid = 'public.groups'::regclass AND NOT attisdropped "
+                "AND attname IN ('id__integer', 'id__varchar')"
+            ).fetchall() == []
+            assert connection.execute(
+                "SELECT to_regclass('public.groups_pkey_idx')"
+            ).fetchone() == (None,)
+            _assert_groups_key_dml(connection)
+            assert connection.execute(
+                """
+                SELECT i.relname
+                FROM pg_index x
+                JOIN pg_class i ON i.oid = x.indexrelid
+                JOIN pg_attribute a ON a.attrelid = x.indrelid AND a.attname = 'id'
+                WHERE x.indrelid = 'public.groups'::regclass
+                  AND a.attnum = ANY(x.indkey)
+                ORDER BY i.relname
+                """
+            ).fetchall() == [("groups_pkey",)]
+        assert (
+            "CREATE INDEX IF NOT EXISTS ix_groups_id ON groups (id)" not in statements
+        )
+
+
+@pytest.mark.parametrize("duplicate_index", [False, True], ids=["absent", "present"])
+def test_groups_index_cutover_failure_restores_exact_catalog_and_data(
+    migration_postgres,
+    monkeypatch: pytest.MonkeyPatch,
+    duplicate_index: bool,
+) -> None:
+    """A late FK rejection rolls back the PK and every original index exactly."""
+    with _owned_migration_scenario(migration_postgres) as urls:
+        config = _prepare_ddl_inventory(
+            urls, monkeypatch, orphan=True, duplicate_index=duplicate_index
+        )
+        before = _inventory_snapshot(urls["sync"])
+        recorder = ddl_trace.ExpandedDdlTrace(
+            ddl_trace.MIGRATION_PATH.read_bytes(), instrument=False
+        )
+        with pytest.raises(sa.exc.IntegrityError) as error:
+            _execute_ddl_inventory(config, urls, recorder, monkeypatch)
+        assert error.value.orig.sqlstate == "23503"
+        kinds = [event["kind"] for event in recorder.events]
+        assert kinds.count("begin") == kinds.count("rollback") == 1
+        assert "commit" not in kinds
+        statements = [
+            event["sql"] for event in recorder.events if event["kind"] == "cursor"
+        ]
+        assert (
+            "ALTER TABLE groups ADD CONSTRAINT groups_pkey "
+            "PRIMARY KEY USING INDEX groups_pkey_idx"
+        ) in statements
+        assert _inventory_snapshot(urls["sync"]) == before
+
+
+def _run_groups_key_helper(urls, *, downgrade: bool) -> None:
+    """Run the real key helper in its own transaction, without stamping Alembic."""
+    source = ddl_trace.MIGRATION_PATH.read_bytes()
+    assert ddl_trace.git_blob_id(source) == ddl_trace.SOURCE_GIT_BLOB
+    config = _alembic_config(urls["alembic"])
+    scripts = ScriptDirectory.from_config(config)
+    revision = scripts.get_revision("148642dd1207")
+    assert revision is not None
+    migration = revision.module
+    engine = sa.create_engine(urls["alembic"])
+    try:
+        with engine.begin() as connection:
+            with EnvironmentContext(config, scripts) as environment:
+                environment.configure(connection=connection)
+                with Operations.context(environment.get_context()):
+                    helper = (
+                        migration._postgresql_groups_id_downgrade
+                        if downgrade
+                        else migration._postgresql_groups_id_upgrade
+                    )
+                    helper(sa.inspect(connection))
+                    assert connection.in_transaction()
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("duplicate_index", [False, True], ids=["absent", "present"])
+def test_groups_key_helper_round_trip_restores_legacy_index_and_foreign_keys(
+    migration_postgres,
+    monkeypatch: pytest.MonkeyPatch,
+    duplicate_index: bool,
+) -> None:
+    """This is a key-helper rollback control, not a full revision downgrade."""
+    with _owned_migration_scenario(migration_postgres) as urls:
+        config = _prepare_ddl_inventory(urls, monkeypatch)
+        command.upgrade(config, "148642dd1207")
+        with psycopg.connect(urls["sync"]) as connection:
+            if duplicate_index:
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS ix_groups_id ON groups (id)"
+                )
+            else:
+                connection.execute("DROP INDEX IF EXISTS ix_groups_id")
+
+        _run_groups_key_helper(urls, downgrade=True)
+        with psycopg.connect(urls["sync"]) as connection:
+            _assert_groups_primary_key(connection)
+            _assert_group_fixture_foreign_keys(connection)
+            assert connection.execute(
+                "SELECT id, name FROM groups ORDER BY id"
+            ).fetchall() == [("1", "first"), ("2", "second")]
+            assert connection.execute(
+                """
+                SELECT format_type(a.atttypid, a.atttypmod), x.indisvalid,
+                       x.indisready, x.indislive, x.indisunique
+                FROM pg_index x
+                JOIN pg_attribute a ON a.attrelid = x.indrelid
+                  AND a.attnum = x.indkey[0]
+                WHERE x.indexrelid = 'public.ix_groups_id'::regclass
+                  AND x.indrelid = 'public.groups'::regclass
+                  AND x.indnkeyatts = 1 AND a.attname = 'id'
+                """
+            ).fetchall() == [("character varying(20)", True, True, True, False)]
+            assert connection.execute(
+                "SELECT version_num FROM alembic_version"
+            ).fetchone() == ("148642dd1207",)
+
+        _run_groups_key_helper(urls, downgrade=False)
+        with psycopg.connect(urls["sync"]) as connection:
+            _assert_groups_primary_key(connection)
+            _assert_group_fixture_foreign_keys(connection)
+            assert connection.execute(
+                "SELECT id, name FROM groups ORDER BY id"
+            ).fetchall() == [(1, "first"), (2, "second")]
+            _assert_groups_key_dml(connection)
+
+
+@pytest.mark.parametrize("duplicate_index", [False, True], ids=["absent", "present"])
+def test_groups_successors_do_not_require_the_duplicate_id_index(
+    migration_postgres,
+    monkeypatch: pytest.MonkeyPatch,
+    duplicate_index: bool,
+) -> None:
+    """Exercise the real sequence and UUID chain on a canonical populated schema."""
+    with _owned_migration_scenario(migration_postgres) as urls:
+        config = _alembic_config(urls["alembic"])
+        monkeypatch.setenv("DATABASE_URL", urls["alembic"])
+        command.upgrade(config, "f7aa476e968a")
+        with psycopg.connect(urls["sync"]) as connection:
+            _add_lowercase_role_values(connection)
+            connection.execute(
+                "INSERT INTO groups (id, name) VALUES ('1', 'first'), ('02', 'second')"
+            )
+        command.upgrade(config, "148642dd1207")
+        with psycopg.connect(urls["sync"]) as connection:
+            # Stage each index state only in this isolated control database.
+            if duplicate_index:
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS ix_groups_id ON groups (id)"
+                )
+            else:
+                connection.execute("DROP INDEX IF EXISTS ix_groups_id")
+            _assert_groups_primary_key(connection)
+            connection.execute(
+                "INSERT INTO users "
+                "(id, email, hashed_password, role, mfa_required, group_id) "
+                "VALUES (101, 'index-control@example.test', "
+                "'unused-migration-test-hash', 'student', false, 1)"
+            )
+
+        command.upgrade(config, "2956fd6376cc")
+        with psycopg.connect(urls["sync"]) as connection:
+            assert connection.execute(
+                "INSERT INTO groups (name) VALUES ('third') RETURNING id"
+            ).fetchone() == (3,)
+            assert connection.execute(
+                "SELECT pg_get_serial_sequence('public.groups', 'id')"
+            ).fetchone() == ("public.groups_id_seq",)
+
+        command.upgrade(config, "202602010004")
+        with psycopg.connect(urls["sync"]) as connection:
+            _assert_groups_primary_key(connection)
+            rows = connection.execute(
+                "SELECT name, id::text, pg_typeof(id)::text FROM groups ORDER BY name"
+            ).fetchall()
+            assert [row[0] for row in rows] == ["first", "second", "third"]
+            assert all(row[2] == "uuid" for row in rows)
+            assert len({UUID(row[1]) for row in rows}) == 3
+            assert connection.execute(
+                "SELECT version_num FROM alembic_version"
+            ).fetchone() == ("202602010004",)
+            assert connection.execute(
+                "SELECT attname FROM pg_attribute "
+                "WHERE attrelid = 'public.groups'::regclass "
+                "AND attname = 'legacy_id' AND NOT attisdropped"
+            ).fetchall() == []
+            assert connection.execute(
+                "SELECT g.name, pg_typeof(u.group_id)::text "
+                "FROM users u JOIN groups g ON g.id = u.group_id "
+                "WHERE u.email = 'index-control@example.test'"
+            ).fetchall() == [("first", "uuid")]
