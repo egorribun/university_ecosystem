@@ -179,10 +179,11 @@ def test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_univers
 
 # Ordered argv population from 1a3954e99f06bf7b1660ad2df609a84b022daefa.
 # Preserve all 136 original selectors, including intentional file/node overlaps.
-# Thirty-eight explicit selections follow that unchanged prefix: existing audit
+# Forty-three explicit selections follow that unchanged prefix: existing audit
 # regressions, Gitleaks diagnostics, WebSocket/migration safety, logging/email,
 # inventory, repaired orchestrators, typed DLQ, client-IP and owned registration
-# diagnostic, configuration-warning, exact Knip and outbox tenant contracts. Do not shrink this scope.
+# diagnostic, configuration-warning, exact Knip, outbox tenant and historical
+# rollback-boundary contracts. Do not shrink this scope.
 _CONSUMER_SELECTORS = (
     "tests/contracts/",
     "tests/test_live_stand_cleanup_profile_contract.py",
@@ -358,6 +359,11 @@ _CONSUMER_SELECTORS = (
     "tests/test_config_base_closure.py",
     "tests/test_frontend_knip_asset_contract.py",
     "tests/test_outbox_tenant_context.py",
+    "tests/test_migration_downgrade_policy.py",
+    "tests/test_mfa_email_otp_migrations.py::test_contract_downgrade_is_explicitly_irreversible",
+    "tests/test_mfa_email_otp_migrations.py::test_expansion_downgrade_is_explicitly_irreversible",
+    "tests/test_touched_tier0_migration_contracts.py::test_dnd_wall_clock_downgrade_refuses_to_invent_lost_offsets",
+    "tests/test_quarantine_migration.py::test_migration_downgrade_refuses_to_drop_quota_evidence",
 )
 _DISPATCH_PROBE = """\
 import json

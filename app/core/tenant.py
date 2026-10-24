@@ -20,6 +20,22 @@ def get_current_tenant() -> str:
     return tenant_id_ctx.get()
 
 
+def canonical_tenant_id(value: object) -> str:
+    """Validate durable tenant authority without arbitrary string coercion."""
+    if not isinstance(value, str) or not value:
+        raise ValueError("Invalid tenant identity")
+    try:
+        return str(uuid.UUID(value))
+    except ValueError:
+        raise ValueError("Invalid tenant identity") from None
+
+
+def capture_tenant_id() -> str | None:
+    """Snapshot trusted scope only; RLS bypass is never transferable."""
+    tenant_id = get_current_tenant()
+    return None if tenant_id == "" else canonical_tenant_id(tenant_id)
+
+
 def set_bypass_rls(bypass: bool) -> Token[bool]:
     """Set RLS bypass flag for super-admin or system tasks."""
     return bypass_rls_ctx.set(bypass)

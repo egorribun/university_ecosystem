@@ -349,6 +349,71 @@ export function inspectInstalledEngineLicense(frontend) {
   }
 }
 
+export function inspectOverrideSelector(toolRoot, manifest) {
+  assert.equal(realpathSync(toolRoot), toolRoot)
+  assertSourceManifest(manifest)
+  assert.deepEqual(manifest.overrides[CONSUMER], FINAL_OVERRIDE)
+  const npmPath = join(toolRoot, "package.json")
+  const npmMetadata = packageMetadata(npmPath)
+  assert.equal(npmMetadata.name, "npm")
+  assert.equal(npmMetadata.version, "11.17.0")
+  const toolRequire = createRequire(npmPath)
+  const packages = {}
+  for (const [name, version] of [
+    ["semver", "7.8.4"],
+    ["@npmcli/arborist", "9.8.0"],
+  ]) {
+    const packagePath = toolRequire.resolve(name + "/package.json")
+    assert.equal(packagePath, join(toolRoot, "node_modules", name, "package.json"))
+    const metadata = packageMetadata(packagePath)
+    assert.equal(metadata.name, name)
+    assert.equal(metadata.version, version)
+    packages[name] = { path: dirname(packagePath), version: metadata.version }
+  }
+  const semverPath = toolRequire.resolve("semver")
+  assert(semverPath.startsWith(packages.semver.path + "/"))
+  regularBytes(semverPath, 128 * 1024)
+  const overridePath = join(packages["@npmcli/arborist"].path, "lib/override-set.js")
+  regularBytes(overridePath, 128 * 1024)
+  // Only the already verified npm tool's own resolver is inspected. No project
+  // package entrypoint or npm install/update operation is invoked here.
+  const semver = toolRequire(semverPath)
+  const OverrideSet = toolRequire(overridePath)
+  const root = new OverrideSet({ overrides: structuredClone(manifest.overrides) })
+  const name = "eslint-plugin-react-compiler"
+  const version = "19.1.0-rc.2"
+  const range = manifest.devDependencies[name]
+  const edgeRule = root.getEdgeRule({ name, rawSpec: range, spec: range })
+  const nodeRule = root.getNodeRule({ name, version })
+  const identity = (rule) => {
+    if (rule === root) return null
+    assert.equal(rule?.key, CONSUMER)
+    return rule.key
+  }
+  const booleans = {
+    satisfiesRange: semver.satisfies(version, range),
+    satisfiesSelector: semver.satisfies(version, version),
+    intersectsSelector: semver.intersects(range, version),
+  }
+  for (const value of Object.values(booleans)) assert.equal(typeof value, "boolean")
+  const result = {
+    kind: "react-compiler-override-selector-diagnostic",
+    npm: npmMetadata.version,
+    semver: packages.semver.version,
+    arborist: packages["@npmcli/arborist"].version,
+    packageName: name,
+    declaredRange: range,
+    installedVersion: version,
+    selectorVersion: version,
+    ...booleans,
+    edgeRule: identity(edgeRule),
+    nodeRule: identity(nodeRule),
+    candidateAccepted: false,
+  }
+  assert(Buffer.byteLength(JSON.stringify(result)) <= 2048)
+  return result
+}
+
 export function assertFinalInstalledGraph(frontend, mode, controls) {
   assert(mode === "full" || mode === "production")
   assert.equal(realpathSync(frontend), frontend)
@@ -652,6 +717,10 @@ export async function runFinalCompilerGenerator() {
       join(scratch, "zod-validation-error-4.0.2.tgz"),
       4 * 1024 * 1024
     )
+
+    stage = "pinned npm override selector diagnostic"
+    const selectorDiagnostic = inspectOverrideSelector(dirname(dirname(cli)), candidateManifest)
+    console.log("FINAL_COMPILER_OVERRIDE_DIAGNOSTIC " + JSON.stringify(selectorDiagnostic))
 
     stage = "isolated final consumer lock generation"
     npm(cli, "generateLock", generation)

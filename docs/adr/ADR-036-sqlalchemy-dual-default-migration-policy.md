@@ -63,22 +63,41 @@ an irreversible downgrade and raise before changing schema.
 
 The current migration graph also contains irreversible revision 202610120001.
 Its parent, 202610010001, retains the unused tables and their data on both upgrade
-and downgrade. The existing migration_downgrade_policy.py planner selects
-202610120001 as the safe target. The CI migration gate downgrades only to that
-computed target, verifies that crossing to its parent fails with the declared
-reason, and then upgrades to head. The original owner decision does not make
-this later data-loss barrier reversible.
+and downgrade. The newest irreversible revision is 202610200001, whose parent
+is 202610120002. The existing migration_downgrade_policy.py planner selects
+202610200001 as the safe target. This currently equals head, so the safe-range
+downgrade is a no-op; the separate boundary probe must reject crossing to
+202610120002 with the declared quarantine-ledger reason before upgrading to
+head again. The original owner decision does not make either later data-loss
+barrier reversible.
 
-If recovery requires a schema below this boundary, restore a consistent
-backup/restore set rather than invoking older Alembic downgrade functions.
-This is the required recovery path across the irreversible boundary; release
-acceptance still requires a verified, paired database and S3 restore. The
-decision is recorded in the 2026-10
-audit's owner decision table; AUD-324 is intentionally not repaired for MVP:
-the 202607280001 downgrade's drops of populated grades and vector_chunks are
-on an unsupported historical path. This disposition does not claim that every
-older downgrade is data-preserving, nor does it make a database that is still
-at 202607280001 safe to downgrade.
+If recovery requires a schema below an irreversible boundary, restore a
+consistent backup/restore set rather than invoking older Alembic downgrade
+functions. This is the required recovery path across the irreversible boundary;
+release acceptance still requires a verified, paired database and S3 restore.
+
+The audit's owner decision names the following eight findings. Their scope is
+recorded here without claiming that their historical downgrade implementations
+were repaired or adding them to the accepted audit ledger.
+
+| Finding | Revision or operation | Behavior outside the supported rollback contract |
+| --- | --- | --- |
+| AUD-268 | 202607020001 | Downgrade drops monthly and default partitions, including their rows. |
+| AUD-273 | 202607230001 | Downgrade disables RLS on messages even when the older message RLS migration remains applied. |
+| AUD-276 | 202503150001 | Downgrade writes decryption results into plaintext columns; an invalid token can become NULL before ciphertext columns are removed. |
+| AUD-324 | 202607280001 | Downgrade still drops grades and vector_chunks; preserving the parent-owned tenants table does not make those drops data-preserving. |
+| AUD-325 | 202605070001 | Downgrade deletes failed_login_attempts rows whose user_id is NULL before restoring NOT NULL. |
+| AUD-326 | Downgrade to base | Irreversible MFA, DND and quarantine revisions intentionally prevent crossing their boundaries; reaching base is not a supported recovery path. |
+| AUD-349 | 148642dd1207 | Historical downgrade drops existing messages, events, chats and profile columns without retaining their data. |
+| AUD-435 | Relative downgrade at 7ad848733a4b | The two-parent merge makes an unqualified -1 walk ambiguous; no repair of historical relative-target resolution is claimed. |
+
+The planner derives its target from the repository head, not from every live
+database starting revision or arbitrary requested target. Migration-local
+barriers protect only paths that execute them. A database already below a
+barrier, an explicit offline revision range or a direct historical migration
+call is not made safe by a later barrier. In particular, a database still at
+202607280001 is not safe to downgrade. Choosing an older explicit target or a
+relative target does not authorize an otherwise unsupported operation.
 
 The AUD-230 PostgreSQL regression may exercise 202607280001 to 202607240001
 on an isolated database created before the boundary, solely to check
@@ -87,12 +106,14 @@ production rollback support and does not certify retention of grades or
 vector_chunks. Any change to the supported rollback range requires a new
 owner decision and corresponding backup/restore and PostgreSQL evidence.
 
-References: [owner decision and AUD-324](../audits/AUDIT-2026-10.md),
+References: [owner decision and original findings](../audits/AUDIT-2026-10.md),
 [MVP master plan](../superpowers/plans/MVP_MASTER_PLAN.md),
 [202608250001](../../alembic/versions/202608250001_expand_email_otp_mfa.py),
 [202608250002](../../alembic/versions/202608250002_contract_retire_webauthn.py),
 [202610010001](../../alembic/versions/202610010001_drop_unused_user_stats_and_vector_chunks.py),
 [202610120001](../../alembic/versions/202610120001_dnd_wall_clock_time.py),
+[202610120002](../../alembic/versions/202610120002_add_news_media_asset_ownership.py),
+[202610200001](../../alembic/versions/202610200001_add_quarantine_storage_ledger.py),
 [downgrade policy](../../scripts/quality/migration_downgrade_policy.py),
 [CI migration gate](../../.github/workflows/ci.yml),
 [PostgreSQL round-trip test](../../tests/integration/test_migration_roundtrip.py).

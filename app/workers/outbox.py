@@ -31,6 +31,7 @@ from app.core.events import (
     EventMetadata,
     event_bus,
 )
+from app.core.tenant import bypass_rls_ctx, canonical_tenant_id, tenant_id_ctx
 from app.models.domain_events import StoredEvent
 
 logger = get_logger(__name__)
@@ -565,26 +566,37 @@ class OutboxWorker:
         import dataclasses
 
         # 1. Reconstruct using known dataclass fields only
-        known_fields = {f.name for f in dataclasses.fields(event_cls)}
+        known_fields = {
+            f.name for f in dataclasses.fields(event_cls) if f.name != "metadata"
+        }
         safe_payload = {k: v for k, v in se.payload.items() if k in known_fields}
+        stored_metadata = se.metadata_ or {}
+        tenant_id = ""
+        if "tenant_id" in stored_metadata:
+            try:
+                tenant_id = canonical_tenant_id(stored_metadata["tenant_id"])
+            except ValueError:
+                raise PermanentOutboxError("Invalid outbox tenant metadata") from None
 
+        # Legacy absence uses empty scope, never the caller's ambient tenant.
+        # Bypass is an in-process privilege, not transferable event authority.
+        tenant_token = tenant_id_ctx.set(tenant_id)
+        bypass_token = bypass_rls_ctx.set(False)
         try:
             event = event_cls(**safe_payload)
 
-            # 2. Restore metadata if present
+            # 2. Restore only persisted metadata, never ordinary payload metadata.
             # Manually-created StoredEvent rows may have no event_id metadata.
             # Anchor their domain identity to the persisted row so every retry
             # reaches idempotent handlers with the same event_id.
             event.event_id = str(
-                (se.metadata_ or {}).get("event_id")
-                or safe_payload.get("event_id")
-                or se.id
+                stored_metadata.get("event_id") or safe_payload.get("event_id") or se.id
             )
-            if se.metadata_:
-                event.metadata = EventMetadata(
-                    correlation_id=se.metadata_.get("correlation_id"),
-                    user_id=se.metadata_.get("user_id"),
-                )
+            event.metadata = EventMetadata(
+                correlation_id=stored_metadata.get("correlation_id"),
+                user_id=stored_metadata.get("user_id"),
+                tenant_id=tenant_id or None,
+            )
 
             with tracer.start_as_current_span("outbox.dispatch_event") as span:
                 span.set_attribute("outbox.event_type", se.event_type)
@@ -604,6 +616,9 @@ class OutboxWorker:
         except Exception as e:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — logs then re-raises for caller retry logic (reviewed TD-27-04)
             logger.error("Failed to reconstruct event %s: %s", se.id, e)
             raise
+        finally:
+            bypass_rls_ctx.reset(bypass_token)
+            tenant_id_ctx.reset(tenant_token)
 
 
 async def _wait_for_signals(stop_event: asyncio.Event) -> None:

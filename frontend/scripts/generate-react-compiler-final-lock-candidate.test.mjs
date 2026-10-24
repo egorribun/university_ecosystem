@@ -14,6 +14,7 @@ import {
   assertStrictLock,
   finalNpmCommand,
   inspectInstalledEngineLicense,
+  inspectOverrideSelector,
   prepareFinalManifest,
   prepareStrictManifest,
   strictPeerEnvironment,
@@ -762,6 +763,111 @@ test("physical engine license evidence rejects unbounded or substituted package 
         }
       }
       assert.throws(() => inspectInstalledEngineLicense(root), { name: "AssertionError" })
+    })
+  }
+})
+
+function selectorToolFixture(root, attached = false) {
+  const tool = join(root, "tool")
+  const compiler = "eslint-plugin-react-compiler"
+  const selector = compiler + "@19.1.0-rc.2"
+  writePackage(root, "tool", { name: "npm", version: "11.17.0" })
+  writePackage(
+    tool,
+    "node_modules/semver",
+    { name: "semver", version: "7.8.4", main: "index.cjs" },
+    "module.exports = { satisfies: () => true, intersects: () => false }\n"
+  )
+  writePackage(
+    tool,
+    "node_modules/@npmcli/arborist",
+    { name: "@npmcli/arborist", version: "9.8.0", main: "index.cjs" }
+  )
+  mkdirSync(join(tool, "node_modules/@npmcli/arborist/lib"))
+  writeFileSync(
+    join(tool, "node_modules/@npmcli/arborist/lib/override-set.js"),
+    [
+      "const assert = require('node:assert/strict')",
+      "module.exports = class OverrideSet {",
+      "  constructor({ overrides }) {",
+      "    assert.equal(overrides[" +
+        JSON.stringify(selector) +
+        "].zod, '$react-compiler-zod-compat')",
+      "    this.rule = { key: " + JSON.stringify(selector) + " }",
+      "  }",
+      "  getEdgeRule(edge) {",
+      "    assert.deepEqual(edge, " +
+        JSON.stringify({ name: compiler, rawSpec: "^19.1.0-rc.2", spec: "^19.1.0-rc.2" }) +
+        ")",
+      "    return " + (attached ? "this.rule" : "this"),
+      "  }",
+      "  getNodeRule(node) {",
+      "    assert.deepEqual(node, " +
+        JSON.stringify({ name: compiler, version: "19.1.0-rc.2" }) +
+        ")",
+      "    return this.rule",
+      "  }",
+      "}",
+      "",
+    ].join("\n")
+  )
+  const candidate = manifest()
+  candidate.overrides[selector] = FINAL_OVERRIDE
+  return { tool, candidate }
+}
+
+test("selector diagnostic retains tool results without treating them as a graph proof", () => {
+  for (const attached of [false, true]) {
+    withDirectory((root) => {
+      const { tool, candidate } = selectorToolFixture(root, attached)
+      assert.deepEqual(inspectOverrideSelector(tool, candidate), {
+        kind: "react-compiler-override-selector-diagnostic",
+        npm: "11.17.0",
+        semver: "7.8.4",
+        arborist: "9.8.0",
+        packageName: "eslint-plugin-react-compiler",
+        declaredRange: "^19.1.0-rc.2",
+        installedVersion: "19.1.0-rc.2",
+        selectorVersion: "19.1.0-rc.2",
+        satisfiesRange: true,
+        satisfiesSelector: true,
+        intersectsSelector: false,
+        edgeRule: attached ? "eslint-plugin-react-compiler@19.1.0-rc.2" : null,
+        nodeRule: "eslint-plugin-react-compiler@19.1.0-rc.2",
+        candidateAccepted: false,
+      })
+    })
+  }
+})
+
+test("selector diagnostic rejects changed tool versions and external resolution", () => {
+  for (const mutation of ["npm", "semver", "arborist", "linked-semver", "nonboolean"]) {
+    withDirectory((root) => {
+      const { tool, candidate } = selectorToolFixture(root)
+      if (mutation === "linked-semver") {
+        writePackage(root, "outside", { name: "semver", version: "7.8.4" })
+        rmSync(join(tool, "node_modules/semver"), { recursive: true })
+        symlinkSync(join(root, "outside"), join(tool, "node_modules/semver"), "dir")
+      } else if (mutation === "nonboolean") {
+        writeFileSync(
+          join(tool, "node_modules/semver/index.cjs"),
+          "module.exports = { satisfies: () => true, intersects: () => 'unbounded' }\n"
+        )
+      } else {
+        const relative = {
+          npm: "",
+          semver: "node_modules/semver",
+          arborist: "node_modules/@npmcli/arborist",
+        }[mutation]
+        writeFileSync(
+          join(tool, relative, "package.json"),
+          JSON.stringify({
+            name: mutation === "arborist" ? "@npmcli/arborist" : mutation,
+            version: "0.0.0",
+          })
+        )
+      }
+      assert.throws(() => inspectOverrideSelector(tool, candidate), { name: "AssertionError" })
     })
   }
 })

@@ -2158,7 +2158,12 @@ jobs:
             tests/test_live_stand.py::test_live_reset_registration_v2_runner_uses_failure_stdout_only \
             tests/test_config_base_closure.py \
             tests/test_frontend_knip_asset_contract.py \
-            tests/test_outbox_tenant_context.py -v \
+            tests/test_outbox_tenant_context.py \
+            tests/test_migration_downgrade_policy.py \
+            tests/test_mfa_email_otp_migrations.py::test_contract_downgrade_is_explicitly_irreversible \
+            tests/test_mfa_email_otp_migrations.py::test_expansion_downgrade_is_explicitly_irreversible \
+            tests/test_touched_tier0_migration_contracts.py::test_dnd_wall_clock_downgrade_refuses_to_invent_lost_offsets \
+            tests/test_quarantine_migration.py::test_migration_downgrade_refuses_to_drop_quota_evidence -v \
             --tb=short --durations=20 -n 2 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \

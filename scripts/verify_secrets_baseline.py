@@ -67,6 +67,7 @@ _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES = {
             (".github/workflows/ci.yml", "Basic Auth Credentials"),
             (".github/workflows/ci.yml", "Secret Keyword"),
             (".github/workflows/nightly-full-gate.yml", "Secret Keyword"),
+            ("tests/test_live_stand.py", "Secret Keyword"),
             (
                 "frontend/scripts/frontend-quality-contract.test.mjs",
                 "Secret Keyword",
@@ -1650,7 +1651,34 @@ _PUBLIC_COMPILER_GOLDEN_FORMATTER_IDENTITY = (
         105,
     ),
 )
+_LIVE_REGISTRATION_PRIVATE_FIELD_IDENTITY = (
+    "tests/test_live_stand.py",
+    "Secret Keyword",
+    (
+        168,
+        153,
+        163,
+        54,
+        208,
+        140,
+        140,
+        91,
+        29,
+        67,
+        114,
+        254,
+        148,
+        83,
+        90,
+        153,
+        76,
+        25,
+        192,
+        185,
+    ),
+)
 _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY = {
+    _LIVE_REGISTRATION_PRIVATE_FIELD_IDENTITY: "ci_test_contract_sentinel",
     _ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY: "public_integrity_digest",
     _LOGGING_PUBLIC_METADATA_LABEL_IDENTITY: "source_contract_identifier",
     _PUBLIC_ALEMBIC_REVISION_IDENTITY: "public_alembic_revision_identifier",
@@ -1666,6 +1694,15 @@ _PUBLIC_SOURCE_METADATA_DIGESTS = frozenset(
     identity[2] for identity in _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY
 )
 _PUBLIC_SOURCE_METADATA_EVIDENCE_MARKERS = {
+    _LIVE_REGISTRATION_PRIVATE_FIELD_IDENTITY: (
+        "Synthetic invalid private-field test sentinel",
+        "tests/test_live_stand.py::"
+        "test_live_reset_registration_v2_rejects_private_fields_and_wrong_types",
+        "sole exact password-field fixture is serialized into "
+        "the invalid V2 observation corpus and rejected by the parser",
+        "never credentials or request data",
+        "not credential material",
+    ),
     _PUBLIC_COMPILER_GOLDEN_SOURCE_IDENTITY: (
         "Public Git commit identifier",
         "sourceSha",

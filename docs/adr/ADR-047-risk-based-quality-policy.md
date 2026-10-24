@@ -940,3 +940,63 @@ coverage floors remain unchanged. No baseline entry, inline pragma, broad
 exclusion, automatic approval or scanner bypass is introduced. This update
 closes no additional audit item and establishes neither final-source scanner
 GREEN nor PostgreSQL, full-CI, deployment or release success.
+
+
+## Exact V2 invalid-private-field sentinel disposition (2026-10-24)
+
+Under the existing task-scoped owner authorization for analogous narrow
+exceptions, append exactly one record to the unchanged 336-record prefix,
+for 337 finite dispositions. Its existing category is
+`ci_test_contract_sentinel`; no category, detector or matching algorithm is
+introduced. The exact `tests/test_live_stand.py` / `Secret Keyword` identity
+is independently recorded in
+`tests/fixtures/live-registration-private-field-disposition.json` and the
+policy. It is the synthetic invalid password-field value in
+`test_live_reset_registration_v2_rejects_private_fields_and_wrong_types`,
+not credentials or request data. The raw sentinel is not copied into this
+policy documentation.
+
+The finding was observed in
+[security/types job 120916104166](https://github.com/egorribun/university_ecosystem/actions/runs/40108844098/job/120916104166).
+On source `8d5011b0`, the tested merge `8e397586` had the identical source
+tree; [scanner job 120938703794](https://github.com/egorribun/university_ecosystem/actions/runs/40116445226/job/120938703794)
+reported only this unmatched finding at line 13907. The four compiler-golden
+findings were no longer unmatched. This is source-specific evidence, not a
+passing final-source scanner result.
+
+Before implementation,
+[contract job 120938602851](https://github.com/egorribun/university_ecosystem/actions/runs/40116445226/job/120938602851)
+executed all 590 policy cases: exactly **6 failed / 584 passed**, without
+policy setup errors. The failures were the missing record, total 336 rather
+than 337, rejected exact category/path pair, and three unexpectedly accepted
+mutations: a transplanted digest, integrity-category reclassification and an
+unknown digest at the reserved path. All other existing policy controls
+passed. The consumer cohort separately reported 20 tenant-context failures
+and 2483 passes; all seven V2 Python cases passed. These results do not imply
+full Contract GREEN.
+
+The finite identity and evidence tuple reuse the existing reserved path-or-
+digest guard. Only its exact path/type pair is added to the existing sentinel
+category behind that reservation. No path-wide or digest-wide permission is
+created. The whole validator function body is unchanged. Existing evidence,
+owner `egorribun`, review date 2026-10-24 and maximum expiry 2027-01-10
+checks remain enforced. Changed path, detector, digest, category, owner,
+review date, evidence, pending approval, expiry extension, duplicate and extra
+records remain rejected.
+
+Source guards derive the fingerprint from the actual sole exact scalar,
+require its invalid-field dictionary, serialization and rejection assertion,
+and reject destructive corpus edits, deletion or aliasing while retaining
+the real append-only cases. These are bounded AST contracts, not a proof of
+arbitrary Python semantics. All 26 sentinel tests, previous historical
+prefix slices, four golden fixture records and eight Git-pin fixture records
+remain unchanged; only eleven active cumulative-count assertions advance
+from 336 to 337. The prior formatter-only repair is retained.
+
+Baseline319, Gitleaks26, all 78 required context/app pairs, blocking CodeQL,
+hooks, expiry caps and coverage floors remain unchanged. There is no baseline
+entry, inline pragma, broad exclusion, automatic approval or scanner bypass.
+This record adds no accepted audit ID; ledger292 remains unchanged. Fresh
+590-case policy and raw scanner results are required on the final source.
+No additional migration closure, full CI, release or deployment success is
+claimed.

@@ -27,6 +27,7 @@ from app.core.notification_contract import (
     build_notification_metadata,
     infer_notification_topic,
 )
+from app.core.tenant import capture_tenant_id
 from app.models import (
     Notification,
     NotificationDelivery,
@@ -414,6 +415,7 @@ async def create_notifications_for_users(
     if not uids:
         return 0
 
+    tenant_id = capture_tenant_id()
     if user_filter is not None:
         filtered_stmt = select(User.id).where(User.id.in_(uids))
         filtered_stmt = user_filter(filtered_stmt)
@@ -491,6 +493,8 @@ async def create_notifications_for_users(
             aggregate_id=_batch_id,
             payload=event_payload,
         )
+        if tenant_id is not None:
+            outbox_event.metadata_ = {"tenant_id": tenant_id}
         db.add(outbox_event)
 
     if notification_ids_by_user and type == "grade":

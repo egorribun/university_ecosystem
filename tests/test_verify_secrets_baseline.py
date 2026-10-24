@@ -2085,7 +2085,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 336
+    assert len(policy["records"]) == 337
     records = [
         record
         for record in policy["records"]
@@ -3081,7 +3081,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         )
     )
     records = policy["records"]
-    assert len(records) == 336
+    assert len(records) == 337
     prefix = records[:315]
     encoded_prefix = json.dumps(
         prefix, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -3483,7 +3483,7 @@ def test_oct24_public_digest_policy_preserves_all_318_prior_records() -> None:
         _AUD495_IMMUTABLE_315_PREFIX_SHA256
     )
     assert records[315:318] == _OCT24_ORIGINAL_SUFFIX
-    assert len(records) == 336
+    assert len(records) == 337
     assert records[318:321] == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS
 
 
@@ -3673,7 +3673,7 @@ def test_public_git_blob_policy_preserves_all_321_prior_records() -> None:
     )
     # These existing independent guards compose the immutable 321-record prefix.
     test_oct24_public_digest_policy_preserves_all_318_prior_records()
-    assert len(policy["records"]) == 336
+    assert len(policy["records"]) == 337
     assert policy["records"][321:323] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:2]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 8
 
@@ -3983,7 +3983,7 @@ def test_observed_public_metadata_policy_preserves_all_325_prior_records() -> No
         )
     )
     test_public_git_blob_rebind_policy_preserves_all_323_prior_records()
-    assert len(policy["records"]) == 336
+    assert len(policy["records"]) == 337
     assert policy["records"][325:327] == _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS
     assert len(_OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS) == 2
 
@@ -4234,7 +4234,7 @@ def test_public_git_blob_catalog_proof_preserves_all_327_prior_records() -> None
         )
     )
     test_observed_public_metadata_policy_preserves_all_325_prior_records()
-    assert len(policy["records"]) == 336
+    assert len(policy["records"]) == 337
     assert policy["records"][327:328] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4]
@@ -4255,7 +4255,7 @@ def test_public_git_blob_fixture_rebind_preserves_all_328_prior_records() -> Non
         )
     )
     test_public_git_blob_catalog_proof_preserves_all_327_prior_records()
-    assert len(policy["records"]) == 336
+    assert len(policy["records"]) == 337
     assert policy["records"][328:329] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5]
@@ -4384,7 +4384,7 @@ def test_public_alembic_revision_policy_preserves_all_329_prior_records() -> Non
         )
     )
     test_public_git_blob_fixture_rebind_preserves_all_328_prior_records()
-    assert len(policy["records"]) == 336
+    assert len(policy["records"]) == 337
     assert policy["records"][329:330] == [_PUBLIC_ALEMBIC_REVISION_RECORD]
 
 
@@ -4589,7 +4589,7 @@ def test_public_git_blob_index_rebind_preserves_all_330_prior_records() -> None:
         )
     )
     test_public_alembic_revision_policy_preserves_all_329_prior_records()
-    assert len(policy["records"]) == 336
+    assert len(policy["records"]) == 337
     assert policy["records"][330:331] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6]
@@ -4610,7 +4610,7 @@ def test_public_git_blob_index_assertion_preserves_all_331_prior_records() -> No
         )
     )
     test_public_git_blob_index_rebind_preserves_all_330_prior_records()
-    assert len(policy["records"]) == 336
+    assert len(policy["records"]) == 337
     assert policy["records"][331:332] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7]
@@ -4709,7 +4709,7 @@ def test_public_compiler_golden_policy_preserves_all_332_prior_records() -> None
         )
     )
     test_public_git_blob_index_assertion_preserves_all_331_prior_records()
-    assert len(policy["records"]) == 336
+    assert len(policy["records"]) == 337
     assert policy["records"][332:336] == _PUBLIC_COMPILER_GOLDEN_RECORDS
 
 

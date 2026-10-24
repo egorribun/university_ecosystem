@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from uuid import UUID, uuid4
 
 from app.core.logging import get_logger
+from app.core.tenant import capture_tenant_id
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -57,6 +58,7 @@ class EventMetadata:
     source: str = "app"
     retry_count: int = 0
     max_retries: int = 3
+    tenant_id: str | None = None
 
 
 @dataclass
@@ -842,6 +844,11 @@ class EventEmitterMixin:
 
     def record_event(self, event: DomainEvent) -> None:
         """Queue a domain event for persistence (Thread-safe init)."""
+        # Snapshot trusted scope at recording, not construction or a deferred
+        # flush. Keep the event identity and all non-tenant metadata unchanged.
+        event.metadata = dataclasses.replace(
+            event.metadata, tenant_id=capture_tenant_id()
+        )
         # SEC-004: Atomic-like initialization of the list to prevent race conditions
         # in the common hasattr -> setattr pattern during concurrent flushes.
         if "_pending_domain_events" not in self.__dict__:
@@ -922,6 +929,15 @@ def capture_domain_events(
                 )
                 raw_id = "unknown"
 
+            metadata: dict[str, Any] = {
+                "event_id": event_data.event_id,
+                "occurred_at": event_data.occurred_at.isoformat(),
+                "correlation_id": event_data.metadata.correlation_id,
+                "user_id": event_data.metadata.user_id,
+            }
+            if event_data.metadata.tenant_id is not None:
+                metadata["tenant_id"] = event_data.metadata.tenant_id
+
             stored_event = StoredEvent(
                 event_type=event_data.event_type,
                 aggregate_type=obj.__class__.__name__,
@@ -931,12 +947,7 @@ def capture_domain_events(
                 # per-aggregate causal ordering across multiple workers.
                 aggregate_id_uuid=raw_id if isinstance(raw_id, UUID) else None,
                 payload=payload,
-                metadata_={
-                    "event_id": event_data.event_id,
-                    "occurred_at": event_data.occurred_at.isoformat(),
-                    "correlation_id": event_data.metadata.correlation_id,
-                    "user_id": event_data.metadata.user_id,
-                },
+                metadata_=metadata,
             )
             events_to_store.append(stored_event)
 
