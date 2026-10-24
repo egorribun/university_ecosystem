@@ -20,6 +20,7 @@ import {
   prepareFinalManifest,
   prepareStrictManifest,
   strictPeerEnvironment,
+  summarizeStrictNpmFailure,
   validateFormatterMetadata,
 } from "./generate-react-compiler-final-lock-candidate.mjs"
 
@@ -503,7 +504,7 @@ test("strict peer commands explicitly disable legacy resolution and bind isolate
       globalconfig: join(root, "global.npmrc"),
     }
     for (const [operation, prefix] of [
-      ["strictGenerate", ["install", "--package-lock-only"]],
+      ["strictGenerate", ["install", "--package-lock-only", "--json"]],
       ["strictInstall", ["ci", "--include=dev"]],
       ["strictList", ["ls", "--all", "--json", "--long"]],
     ]) {
@@ -1088,6 +1089,126 @@ test("local override targets require the exact canonical adapter and compiler pl
       name: "AssertionError",
     })
   })
+})
+
+test("strict npm failure diagnostics retain only reviewed dependency tuples", () => {
+  const report = summarizeStrictNpmFailure({
+    status: 1,
+    signal: null,
+    stderr: "/private/fixture",
+    stdout: JSON.stringify({
+      error: {
+        code: "ERESOLVE",
+        summary: "/private/fixture",
+        detail: [
+          "\u001b[34mWhile resolving: react-compiler-peer-proof@1.0.0\u001b[0m",
+          "\u001b[31mFound: zod@1.0.0 overridden\u001b[0m",
+          "node_modules/private-fixture",
+          'peer overridden zod@"4.6.7" (was "^3.25.0 || ^4.0.0") from zod-validation-error@4.0.2',
+          "Conflicting peer dependency: zod@4.6.7",
+        ].join("\n"),
+      },
+    }),
+  })
+  assert.deepEqual(report, {
+    kind: "react-compiler-strict-npm-failure",
+    operation: "strictGenerate",
+    exitCode: 1,
+    timedOut: false,
+    terminated: false,
+    jsonRecognized: true,
+    errorCode: "ERESOLVE",
+    observations: [
+      { kind: "resolving", name: "react-compiler-peer-proof", version: "1.0.0" },
+      { kind: "found", name: "zod", version: "1.0.0" },
+      {
+        kind: "peer",
+        name: "zod",
+        range: "4.6.7",
+        originalRange: "^3.25.0 || ^4.0.0",
+        consumer: "zod-validation-error",
+        consumerVersion: "4.0.2",
+      },
+      { kind: "conflicting", name: "zod", version: "4.6.7" },
+    ],
+    omitted: false,
+    candidateAccepted: false,
+  })
+  assert.equal(JSON.stringify(report).includes("private"), false)
+})
+
+test("strict npm diagnostics reject unknown fields, packages, versions and ranges", () => {
+  for (const detail of [
+    "Found: private-package@1.0.0",
+    "Found: zod@999.0.0",
+    'peer zod@"unreviewed-value" from zod-validation-error@4.0.2',
+    'peer zod@"4.6.7" from private-package@1.0.0',
+    'peer zod@"4.6.7" (was "unreviewed-value") from zod-validation-error@4.0.2',
+    "Found: zod@4.6.7 /private/fixture",
+    "https://example.invalid/private-fixture",
+  ]) {
+    const report = summarizeStrictNpmFailure({
+      status: 1,
+      stdout: JSON.stringify({
+        error: { code: "UNREVIEWED", summary: "/private/fixture", detail, extra: "ignored" },
+      }),
+    })
+    assert.equal(report.errorCode, "unrecognized")
+    assert.deepEqual(report.observations, [])
+    assert.equal(JSON.stringify(report).includes("private"), false)
+    assert.equal(JSON.stringify(report).includes("unreviewed-value"), false)
+  }
+})
+
+test("strict npm diagnostics bound malformed, oversized and interrupted results", () => {
+  const oversized = (padding) =>
+    JSON.stringify({
+      error: { code: "ERESOLVE", summary: padding, detail: "Found: zod@4.6.7" },
+    })
+  for (const stdout of [
+    "not json",
+    "null",
+    "[]",
+    "{}",
+    '{"error":[]}',
+    "x".repeat(65537),
+    oversized("x".repeat(65536)),
+    oversized("é".repeat(32768)),
+  ]) {
+    const report = summarizeStrictNpmFailure({
+      status: null,
+      signal: "SIGTERM",
+      error: { code: "ETIMEDOUT", message: "/private/fixture" },
+      stdout,
+    })
+    assert.equal(report.jsonRecognized, false)
+    assert.equal(report.exitCode, null)
+    assert.equal(report.timedOut, true)
+    assert.equal(report.terminated, true)
+    assert.deepEqual(report.observations, [])
+    assert.equal(JSON.stringify(report).includes("private"), false)
+  }
+  assert.throws(() => summarizeStrictNpmFailure({ status: 0, stdout: "{}" }), {
+    name: "AssertionError",
+  })
+})
+
+test("strict npm diagnostics deduplicate and cap reviewed observations", () => {
+  const headings = ["Found", "While resolving", "Conflicting peer dependency"]
+  const detail = [
+    ...Array(30).fill("Found: zod@4.6.7"),
+    ...headings.flatMap((heading) =>
+      ["1.0.0", "3.25.76", "4.6.7"].map((version) => heading + ": zod@" + version)
+    ),
+  ].join("\n")
+  const report = summarizeStrictNpmFailure({
+    status: 1,
+    stdout: JSON.stringify({ error: { code: "ERESOLVE", detail } }),
+  })
+  assert.equal(report.observations.length, 8)
+  assert.equal(new Set(report.observations.map((item) => JSON.stringify(item))).size, 8)
+  assert.equal(report.omitted, true)
+  assert.ok(Buffer.byteLength(JSON.stringify(report)) < 4096)
 })
 
 test("import is inert and direct execution produces no false candidate evidence", () => {

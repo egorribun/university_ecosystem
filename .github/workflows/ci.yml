@@ -1200,6 +1200,8 @@ jobs:
             tests/test_event_handlers_behavior_closure.py::test_comment_notification_skips_deleted_comment_before_loading_sources \
             tests/test_event_handlers_behavior_closure.py::test_created_notification_handler_retries_unscoped_missing_source \
             tests/test_event_handlers_behavior_closure.py::test_comment_notification_retries_unscoped_missing_protected_parent \
+            tests/integration/test_aud197_198_notification_outbox_postgres.py::test_grade_committed_assignment_delivery_replay_sends_once \
+            tests/integration/test_aud197_198_notification_outbox_postgres.py::test_grade_rollback_then_fresh_retry_sends_only_after_commit \
             --basetemp="$probe_root/basetemp" > "$test_log" 2>&1 || pytest_status=$?
           echo "OWNED_TENANT_CONTEXT_TESTS_BEGIN"
           bytes="$(wc -c < "$test_log")"

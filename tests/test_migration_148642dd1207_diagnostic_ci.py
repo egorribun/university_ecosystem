@@ -389,6 +389,10 @@ def test_tenant_context_diagnostic_is_separate_bounded_and_fail_closed() -> None
         "test_created_notification_handler_retries_unscoped_missing_source",
         "tests/test_event_handlers_behavior_closure.py::"
         "test_comment_notification_retries_unscoped_missing_protected_parent",
+        "tests/integration/test_aud197_198_notification_outbox_postgres.py::"
+        "test_grade_committed_assignment_delivery_replay_sends_once",
+        "tests/integration/test_aud197_198_notification_outbox_postgres.py::"
+        "test_grade_rollback_then_fresh_retry_sends_only_after_commit",
     )
     for additional in additional_selectors:
         assert run.count(additional) == 1

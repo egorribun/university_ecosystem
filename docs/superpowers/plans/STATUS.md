@@ -5,18 +5,25 @@
 
 
 
-## Текущий checkpoint: scoped rollback dispositions и source-bound проверки, 2026-10-24
+## Текущий checkpoint: scoped AUD-198 и rollback dispositions, 2026-10-24
 
-Принятый ledger — **300/512 (58,6%)**, **212 ID не принято**. Сохранены все
-прежние 292 ID; добавлены только **AUD-268, AUD-273, AUD-276, AUD-324,
-AUD-325, AUD-326, AUD-349 и AUD-435** как owner-approved unsupported historical
-rollback dispositions, **не как исправления миграций**.
-[Датированное основание, exact source, tests и полный список](../../audits/AUDIT-2026-10.md#owner-approved-unsupported-historical-rollback-dispositions-checkpoint-2026-10-24)
-разделяют исходное решение владельца, действующие барьеры и сохранившееся
-разрушительное поведение исторических downgrade. Парный database/S3 restore
-release gate остаётся **OPEN**; универсальная безопасность отката не заявлена.
-AUD-197/198 остаются в числе 212 непринятых ID. Разделы ниже
-сохраняют результаты своих SHA и не заменяют проверки нового source.
+Принятый ledger — **301/512 (58,8%)**, **211 ID не принято**. Сохранены все
+прежние 300 ID; добавлен только **AUD-198** для проверенного active news/event
+transactional outbox path. [Датированная приёмка, exact source и полный список](../../audits/AUDIT-2026-10.md#hosted-aud-198-news-event-outbox-scoped-closure-checkpoint-2026-10-24)
+связывают исходную потерю при enqueue, действующие API/service/repository и
+durable notification/push-outbox stages с actual hosted evidence на `6a2629e6`.
+Это не гарантия provider exactly-once, восстановления historical tenant scope
+или совместимости всех manual producers/cross-tenant fanout.
+
+Прежние **AUD-268, AUD-273, AUD-276, AUD-324, AUD-325, AUD-326, AUD-349 и
+AUD-435** сохраняют категорию owner-approved unsupported historical rollback
+dispositions, **не исправления миграций**.
+[Их отдельное датированное основание](../../audits/AUDIT-2026-10.md#owner-approved-unsupported-historical-rollback-dispositions-checkpoint-2026-10-24)
+не расширено. Парный database/S3 restore release gate остаётся **OPEN**;
+универсальная безопасность отката не заявлена. **AUD-197 остаётся OPEN**,
+включая grades: ошибочная третья ссылка исходной строки на news.comment
+не удаляет оценки из явно указанного scope. Разделы ниже сохраняют результаты
+своих SHA и не заменяют проверки нового source.
 
 На опубликованном `2208db1e`, tested merge `cc2626f1` с тем же деревом,
 [Contract120945584300](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120945584300)
@@ -71,6 +78,13 @@ caret/exact satisfies true, но intersects false; exact selector привязы
 whole-lock guard его отверг, full/production/strict proof не достигнута.
 Следующий candidate использует точный consumer-relative file target, проверяемый
 реальными pinned Node/Edge/NPA, и **34 guards**, включая исходный misplaced record.
+На `6a2629e6` [34 guards и native target control](https://github.com/egorribun/university_ecosystem/actions/runs/40125756161/job/120967455893)
+прошли. Генератор прошёл exact three-record scope, full и production physical
+проверки и чтение license evidence, затем отказал при isolated strict peer lock
+generation. Accepted metadata/patch не выданы; strict proof не получена.
+Следующий diagnostic-only candidate добавляет `--json` только этому npm шагу
+и 38 guards: вывод ограничен фиксированным error code и allowlisted tuples,
+без raw stderr/summary/detail/paths. Peer ranges/config и graph scope не ослаблены.
 Новый результат ещё требуется; принятый lock, graph и advisory closure не изменены.
 
 На source `36e84f25` ([CI 40103663774](https://github.com/egorribun/university_ecosystem/actions/runs/40103663774))
@@ -99,7 +113,7 @@ Squawk/CI GREEN и не гарантия отсутствия downtime. Отде
 подтвердил все **8** notification-outbox cases, включая concurrent sessions и
 partial-recipient retry. Общий результат **1 FAIL / 164 PASS / 4 SKIP**:
 fail-fast остановился на первом том же migration-index defect.
-AUD-197/198 остаются pending. Исторический six-case step на b0e25caa дал
+На том source AUD-197/198 ещё не были приняты. Исторический six-case step на b0e25caa дал
 **2 correct-tenant A PASS / 4 empty-or-B FAIL**, с обрезанным четвёртым traceback.
 На f7182c73 отдельный bounded tenant cohort полностью завершился:
 **26 FAIL / 5 PASS из 31**, без fixture errors и truncation. Оба A controls
@@ -108,19 +122,35 @@ notifications, оба legacy-null-tenant случая — три вместо д
 `--show-capture=no` сохранил capture, прежние budgets и все причины.
 Независимо reviewed узкий producer/dispatcher fix на `2208db1e` прошёл
 все **31 cases** в том же отдельном tenant step. DDL artifacts получены до него.
-AUD-197/198 ещё не приняты. На `941f56af`
+На том checkpoint AUD-197/198 ещё не были приняты. На `941f56af`
 [bounded tenant cohort44](https://github.com/egorribun/university_ecosystem/actions/runs/40123590419/job/120961216029)
 дал **8 expected FAIL / 36 PASS** без fixture/teardown errors: прежние 31 cases
 и пять known-scope/missing-comment controls прошли; четыре unknown-scope
 handler cases и четыре hidden/deleted PostgreSQL cases воспроизвели silent ack.
-Публикуемый узкий handler fix сохраняет retry/DLQ evidence при отсутствующем
-защищённом источнике без tenant metadata; он ещё требует GREEN. Это граница
+Узкий handler fix на `6a2629e6` сохраняет retry/DLQ evidence при отсутствующем
+защищённом источнике без tenant metadata; его actual GREEN приведён ниже. Это граница
 неизвестного scope, не возраста записи: newly emitted global events тоже могут
 консервативно попасть в retry/DLQ после удаления источника. Known-tenant deletion
 и missing non-RLS comment по-прежнему пропускаются; privileged lookup и изменение
 wire envelope не вводятся. Consumer cohort расширен до **194 selectors**:
 добавлены целые связанные handler/search/content suites и существующие
-retry/DLQ controls, без сокращения прежних 187. Исторический полный integration на
+retry/DLQ controls, без сокращения прежних 187.
+На `6a2629e6` [все 44 focused cases](https://github.com/egorribun/university_ecosystem/actions/runs/40125756161/job/120967804209)
+прошли, включая реальные PG retry→DLQ→no-duplicate polls. [Полный PostgreSQL](https://github.com/egorribun/university_ecosystem/actions/runs/40125756161/job/120967804706)
+дал **315 PASS / 9 SKIP**, все 20 notification-module cases PASS; все 121
+связанный handler/content/search/retry case также PASS. Этот checkpoint
+принимает только AUD-198, повышая ledger 300→301; AUD-197 остаётся открытым
+по grade producer transaction/retry path. У исходного AUD-197 третья ссылка указывает
+на news.comment, хотя текст называет grades; это не разрешает молча убрать
+оценки из scope. Current GradeService immediate-provider path ещё требует
+собственного rollback/commit/retry PostgreSQL proof.
+Добавлены только два grade tests-first cases с настоящими GradeService/audit/DB
+и fake provider: committed replay control и rollback→fresh request retry.
+Они отдельно проверяют отсутствие push до caller commit и сохранение одного
+успешного delivery pair после commit; нового GREEN пока нет. Dedicated cohort
+расширен **44→46** без изменения 3-minute/capture/output bounds; consumer194
+не изменён. Это не вводит HTTP grade-request dedupe или изменение audit/auth.
+ Исторический полный integration на
 f7182c73 остановился на первом tenant defect (**1 FAIL / 29 PASS**); полные
 27 migration cases доказаны отдельным diagnostic, не тем остановленным run.
 
@@ -142,6 +172,18 @@ barrier-refusal controls прошли; [реальный DB Migration Gate](http
 security/types и Gitleaks GREEN; это свежая проверка scoped300 dispositions,
 не приёмка restore или полного CI. Full PostgreSQL integration этого source
 остановился на ожидаемом первом новом unknown-scope случае: **1 FAIL / 35 PASS**.
+
+На `6a2629e6` [Contract](https://github.com/egorribun/university_ecosystem/actions/runs/40125756161/job/120967127340)
+дал **7 catalog FAIL / 2656 PASS**, затем **590 policy PASS**. Каталог ошибочно
+считает слово `retries` в literal pytest node признаком CI retry behavior;
+реального повторного запуска job не добавлено. Следующие 38 tests-first cases (ожидаются 4 новых RED и 34 controls,
+не observed результат) проверяют только точный positional pytest literal и сохраняют реальные
+retry/metadata/dynamic negatives; detector и retry:none пока не изменены.
+Тесты и все 194 selectors сохранены. Raw scanner, security/types и Gitleaks
+на этом source GREEN; **81 migration PASS**, raw Squawk всё ещё **14/25**.
+[Owned Live](https://github.com/egorribun/university_ecosystem/actions/runs/40125756149/job/120966678260)
+дал **275 Node PASS / 38 browser PASS / 2 SKIP**, NATS и cleanup SUCCESS;
+это не универсальная tenant/notification или full-CI приёмка.
 
 Полный unit shard 1 на 36e84f выявил два дополнительных config-warning FAIL:
 локальные Path аргументы стали opaque markers после строгой redaction.

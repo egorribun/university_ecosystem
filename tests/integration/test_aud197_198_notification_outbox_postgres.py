@@ -53,6 +53,7 @@ from app.core.events import (
 from app.models import Group, Schedule, User
 from app.models.domain_events import StoredEvent
 from app.models.failed_outbox_events import FailedOutboxEvent
+from app.models.grade import Grade
 from app.models.news import News
 from app.models.notifications import (
     Notification,
@@ -62,6 +63,7 @@ from app.models.notifications import (
 from app.models.tenant import Tenant
 from app.repositories.event_repository import EventRepository
 from app.repositories.news_repository import NewsRepository
+from app.services.grade_service import GradeService
 from tests.integration.owned_postgres import _LoopbackMigrationPostgres
 
 _RUN_INTEGRATION_TESTS = os.getenv("RUN_INTEGRATION_TESTS") == "1"
@@ -1853,3 +1855,272 @@ async def test_unscoped_missing_content_retains_retry_and_dlq_evidence(
             ).all()
         )
         assert failure_ids == [failure_id]
+
+
+@pytest.fixture
+def _grade_delivery_harness(
+    _owned_push_runtime, monkeypatch: pytest.MonkeyPatch
+) -> SimpleNamespace:
+    """Replace only provider I/O; observe the real result processor's sessions."""
+    provider_calls: list[tuple[uuid.UUID, uuid.UUID]] = []
+    processor_pids: list[int] = []
+    real_sessions = database.async_session
+
+    async def fake_provider(subscription, payload):
+        assert payload["type"] == "grade"
+        notification_id = uuid.UUID(payload["data"]["notificationId"])
+        provider_calls.append((subscription.id, notification_id))
+        return webpush_module.WebPushResult(
+            subscription_id=subscription.id,
+            endpoint=subscription.endpoint,
+            user_id=subscription.user_id,
+            status="sent",
+            status_code=201,
+        )
+
+    @asynccontextmanager
+    async def observed_processor_sessions() -> AsyncIterator[AsyncSession]:
+        async with real_sessions() as session:
+            pid = await session.scalar(text("SELECT pg_backend_pid()"))
+            assert isinstance(pid, int)
+            processor_pids.append(pid)
+            yield session
+
+    assert notifications_delivery.send_web_push is webpush_module.send_web_push
+    monkeypatch.setattr(webpush_module, "_send_push_async", fake_provider)
+    monkeypatch.setattr(webpush_module, "async_session", observed_processor_sessions)
+    monkeypatch.setattr(event_handlers, "async_session", real_sessions)
+    bus = EventBus()
+    bus.subscribe("user.created", event_handlers.handle_user_created)
+    bus.subscribe("GRADE_ASSIGNED", event_handlers.acknowledge_audit_only_event)
+    bus.subscribe(
+        NotificationsRequested.EVENT_TYPE, event_handlers.handle_notifications_requested
+    )
+    monkeypatch.setattr(outbox_module, "event_bus", bus)
+    return SimpleNamespace(
+        provider_calls=provider_calls,
+        processor_pids=processor_pids,
+        worker=outbox_module.OutboxWorker(batch_size=100),
+    )
+
+
+async def _grade_persisted_ids() -> dict[str, set[uuid.UUID]]:
+    """Use an independent reader, never the producer's uncommitted identity map."""
+    async with asyncio.timeout(10):
+        async with database.async_session() as reader:
+            return {
+                "grades": set(await reader.scalars(select(Grade.id))),
+                "notifications": set(await reader.scalars(select(Notification.id))),
+                "events": set(await reader.scalars(select(StoredEvent.id))),
+                "deliveries": set(
+                    await reader.scalars(select(NotificationDelivery.id))
+                ),
+            }
+
+
+async def _assert_grade_commit_and_replay(
+    harness,
+    *,
+    baseline: dict[str, set[uuid.UUID]],
+    student_id: uuid.UUID,
+    teacher_id: uuid.UUID,
+    grade_id: uuid.UUID,
+    subscription_id: uuid.UUID,
+) -> None:
+    async with asyncio.timeout(20):
+        await harness.worker.process_batch()
+
+    async with asyncio.timeout(10):
+        async with database.async_session() as reader:
+            grades = list((await reader.scalars(select(Grade))).all())
+            assert {grade.id for grade in grades} == baseline["grades"] | {grade_id}
+            grade = next(grade for grade in grades if grade.id == grade_id)
+            actual_grade = (grade.student_id, grade.assigned_by, grade.score)
+            expected_grade = (student_id, teacher_id, 4.5)
+            assert actual_grade == expected_grade
+            notifications = list((await reader.scalars(select(Notification))).all())
+            created = [
+                row for row in notifications if row.id not in baseline["notifications"]
+            ]
+            assert len(created) == 1
+            notification = created[0]
+            notification_id = notification.id
+            assert notification.user_id == student_id
+            assert notification.type == "grade"
+            assert notification.read is False
+            events = list((await reader.scalars(select(StoredEvent))).all())
+            created_events = [row for row in events if row.id not in baseline["events"]]
+            assert len(created_events) == 2
+            by_type = {row.event_type: row for row in created_events}
+            assert set(by_type) == {"GRADE_ASSIGNED", NotificationsRequested.EVENT_TYPE}
+            audit = by_type["GRADE_ASSIGNED"]
+            assert audit.aggregate_id == str(grade_id)
+            assert audit.payload["student_id"] == str(student_id)
+            assert audit.metadata_ == {"actor_id": str(teacher_id)}
+            assert audit.hash is not None and len(audit.hash) == 64
+            request = by_type[NotificationsRequested.EVENT_TYPE]
+            assert request.payload["notification_ids"] == [str(notification_id)]
+            assert all(row.processed_at is not None for row in created_events)
+            assert all(row.error_count == 0 for row in created_events)
+            deliveries = list(
+                (await reader.scalars(select(NotificationDelivery))).all()
+            )
+            created_deliveries = [
+                row for row in deliveries if row.id not in baseline["deliveries"]
+            ]
+            assert len(created_deliveries) == 1
+            delivery = created_deliveries[0]
+            actual_pair = (
+                delivery.notification_id,
+                delivery.subscription_id,
+                delivery.channel,
+                delivery.status,
+                delivery.status_code,
+            )
+            expected_pair = (notification_id, subscription_id, "webpush", "sent", 201)
+            assert actual_pair == expected_pair
+            assert delivery.delivered_at is not None
+            journal_identity = (delivery.id, delivery.attempted_at)
+
+    expected_calls = [(subscription_id, notification_id)]
+    assert harness.provider_calls == expected_calls
+    assert harness.processor_pids
+    committed_ids = await _grade_persisted_ids()
+    async with asyncio.timeout(15):
+        await asyncio.gather(
+            harness.worker._dispatch_event(audit),
+            harness.worker._dispatch_event(request),
+            harness.worker._dispatch_event(request),
+        )
+    async with asyncio.timeout(20):
+        assert await harness.worker.process_batch() == 0
+    assert harness.provider_calls == expected_calls
+    assert await _grade_persisted_ids() == committed_ids
+    async with asyncio.timeout(10):
+        async with database.async_session() as reader:
+            delivery = (
+                await reader.scalars(
+                    select(NotificationDelivery).where(
+                        NotificationDelivery.notification_id == notification_id
+                    )
+                )
+            ).one()
+            assert (delivery.id, delivery.attempted_at) == journal_identity
+
+
+async def test_grade_committed_assignment_delivery_replay_sends_once(
+    db_session,
+    user_factory,
+    push_subscription_factory,
+    _grade_delivery_harness,
+):
+    """A committed grade keeps one notification and successful provider pair."""
+    _require_postgres()
+    student = await user_factory(role="student")
+    teacher = await user_factory(role="teacher")
+    subscription = await push_subscription_factory(student)
+    student_id, teacher_id, subscription_id = student.id, teacher.id, subscription.id
+    await db_session.commit()
+    baseline = await _grade_persisted_ids()
+    harness = _grade_delivery_harness
+
+    with _tenant_proof_context(""):
+        async with asyncio.timeout(20):
+            async with database.async_session() as caller:
+                caller_pid = await caller.scalar(text("SELECT pg_backend_pid()"))
+                processor_start = len(harness.processor_pids)
+                grade = await GradeService(caller).assign_grade(
+                    student_id=student_id,
+                    subject="Physics",
+                    score=4.5,
+                    assigned_by=teacher_id,
+                )
+                grade_id = grade.id
+                assert caller.in_transaction()
+                assert all(
+                    pid != caller_pid
+                    for pid in harness.processor_pids[processor_start:]
+                )
+                # Canonical result processing may commit its own subscription
+                # session, but must never commit this caller's business mutation.
+                assert await _grade_persisted_ids() == baseline
+                await caller.commit()
+        await _assert_grade_commit_and_replay(
+            harness,
+            baseline=baseline,
+            student_id=student_id,
+            teacher_id=teacher_id,
+            grade_id=grade_id,
+            subscription_id=subscription_id,
+        )
+
+
+async def test_grade_rollback_then_fresh_retry_sends_only_after_commit(
+    db_session,
+    user_factory,
+    push_subscription_factory,
+    _grade_delivery_harness,
+):
+    """A rolled-back assignment must not leak an unrecoverable external push."""
+    _require_postgres()
+    student = await user_factory(role="student")
+    teacher = await user_factory(role="teacher")
+    subscription = await push_subscription_factory(student)
+    student_id, teacher_id, subscription_id = student.id, teacher.id, subscription.id
+    await db_session.commit()
+    baseline = await _grade_persisted_ids()
+    harness = _grade_delivery_harness
+
+    with _tenant_proof_context(""):
+        async with asyncio.timeout(20):
+            async with database.async_session() as first_request:
+                try:
+                    caller_pid = await first_request.scalar(
+                        text("SELECT pg_backend_pid()")
+                    )
+                    processor_start = len(harness.processor_pids)
+                    rolled_back = await GradeService(first_request).assign_grade(
+                        student_id=student_id,
+                        subject="Physics",
+                        score=4.5,
+                        assigned_by=teacher_id,
+                    )
+                    rolled_back_id = rolled_back.id
+                    sends_before_rollback = list(harness.provider_calls)
+                    assert first_request.in_transaction()
+                    assert all(
+                        pid != caller_pid
+                        for pid in harness.processor_pids[processor_start:]
+                    )
+                    assert await _grade_persisted_ids() == baseline
+                finally:
+                    await first_request.rollback()
+    assert await _grade_persisted_ids() == baseline
+    assert sends_before_rollback == [], "Grade push escaped before the caller commit"
+    assert harness.provider_calls == []
+
+    # This is a fresh request/session after rollback, not an invented HTTP
+    # idempotency key or a retry that reuses the rolled-back ORM identity map.
+    with _tenant_proof_context(""):
+        async with asyncio.timeout(20):
+            async with database.async_session() as retry_request:
+                assert retry_request is not first_request
+                grade = await GradeService(retry_request).assign_grade(
+                    student_id=student_id,
+                    subject="Physics",
+                    score=4.5,
+                    assigned_by=teacher_id,
+                )
+                grade_id = grade.id
+                assert grade_id != rolled_back_id
+                assert harness.provider_calls == []
+                assert await _grade_persisted_ids() == baseline
+                await retry_request.commit()
+        await _assert_grade_commit_and_replay(
+            harness,
+            baseline=baseline,
+            student_id=student_id,
+            teacher_id=teacher_id,
+            grade_id=grade_id,
+            subscription_id=subscription_id,
+        )

@@ -15,6 +15,7 @@ import { get } from "node:https"
 import { createRequire } from "node:module"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
+import { stripVTControlCharacters } from "node:util"
 import {
   NPM_TRANSPORT_ARGS,
   assertNpmCommand,
@@ -216,7 +217,7 @@ export function finalNpmCommand(operation, paths = {}) {
     generateLock: ["update", "zod", "zod-validation-error", "--package-lock-only"],
     fullGraph: ["ci", "--include=dev"],
     productionGraph: ["ci", "--omit=dev"],
-    strictGenerate: ["install", "--package-lock-only"],
+    strictGenerate: ["install", "--package-lock-only", "--json"],
     strictInstall: ["ci", "--include=dev"],
     strictList: ["ls", "--all", "--json", "--long"],
   }
@@ -263,6 +264,127 @@ export function strictPeerEnvironment(original, paths) {
     npm_config_strict_peer_deps: "true",
     npm_config_ignore_scripts: "true",
   }
+}
+
+export function summarizeStrictNpmFailure(result) {
+  assert(result.status !== 0 || result.error || result.signal)
+  let exitCode = null
+  if (Number.isInteger(result.status) && result.status > 0 && result.status <= 255) {
+    exitCode = result.status
+  }
+  const report = {
+    kind: "react-compiler-strict-npm-failure",
+    operation: "strictGenerate",
+    exitCode,
+    timedOut: result.error?.code === "ETIMEDOUT",
+    terminated: Boolean(result.signal),
+    jsonRecognized: false,
+    errorCode: "unrecognized",
+    observations: [],
+    omitted: false,
+    candidateAccepted: false,
+  }
+  if (typeof result.stdout !== "string" || Buffer.byteLength(result.stdout) > 65536) {
+    return report
+  }
+  let error
+  try {
+    const parsed = JSON.parse(result.stdout)
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return report
+    error = parsed.error
+  } catch {
+    return report
+  }
+  if (!error || typeof error !== "object" || Array.isArray(error)) return report
+  report.jsonRecognized = true
+  const codes = new Set([
+    "ERESOLVE",
+    "EOVERRIDE",
+    "EUSAGE",
+    "ETARGET",
+    "E404",
+    "ENOENT",
+    "EINTEGRITY",
+    "EBADENGINE",
+    "ETIMEDOUT",
+    "ECONNRESET",
+    "ENOTFOUND",
+    "EAI_AGAIN",
+    "EACCES",
+    "EPERM",
+    "ELSPROBLEMS",
+  ])
+  if (codes.has(error.code)) report.errorCode = error.code
+  const versions = new Map([
+    ["eslint", ["10.12.0"]],
+    ["eslint-plugin-react-compiler", ["19.1.0-rc.2"]],
+    ["eslint-plugin-react-hooks", ["7.1.1"]],
+    ["zod", ["1.0.0", "3.25.76", "4.6.7"]],
+    ["zod-validation-error", ["3.5.4", "4.0.2"]],
+    ["react-compiler-peer-proof", ["1.0.0"]],
+    ["react-compiler-zod-compat", ["1.0.0"]],
+    ["@university-ecosystem/react-compiler-zod-compat", ["1.0.0"]],
+    ["patched-zod", ["4.6.7"]],
+  ])
+  const ranges = new Set([
+    "^3.22.4",
+    "^3.24.4",
+    FORMATTER_PEER,
+    HOOKS_PEER,
+    "^3.0.3",
+    "4.0.2",
+    "4.6.7",
+    ">=7",
+    "*",
+    "file:./scripts/react-compiler-zod-compat",
+    "file:../../scripts/react-compiler-zod-compat",
+  ])
+  const node = (value) => {
+    const match = /^([@a-z0-9/_-]+)@([0-9][0-9A-Za-z.+-]*)(.*)$/.exec(value)
+    if (!match || !versions.get(match[1])?.includes(match[2])) return null
+    if (!/^(?: (?:dev|optional|peer|bundled|overridden|extraneous))*$/.test(match[3])) return null
+    return { name: match[1], version: match[2] }
+  }
+  const seen = new Set()
+  const append = (observation) => {
+    const key = JSON.stringify(observation)
+    if (seen.has(key)) return
+    seen.add(key)
+    if (report.observations.length < 8) report.observations.push(observation)
+    else report.omitted = true
+  }
+  for (const raw of typeof error.detail === "string" ? error.detail.split("\n") : []) {
+    const line = stripVTControlCharacters(raw).trim()
+    const heading = /^(Found|While resolving|Conflicting peer dependency): (.+)$/.exec(line)
+    if (heading) {
+      const value = node(heading[2])
+      if (value) {
+        const kind = {
+          Found: "found",
+          "While resolving": "resolving",
+          "Conflicting peer dependency": "conflicting",
+        }[heading[1]]
+        append({ kind, ...value })
+      }
+      continue
+    }
+    const peer = /^(?:peer|peerOptional) (?:overridden )?([@a-z0-9/_-]+)@"([^"]+)"(.*)$/.exec(line)
+    if (!peer || !versions.has(peer[1]) || !ranges.has(peer[2])) continue
+    const from = /^(?: \(was "([^"]+)"\))? from (.+)$/.exec(peer[3])
+    if (!from || (from[1] !== undefined && !ranges.has(from[1]))) continue
+    const consumer = node(from[2])
+    if (!consumer) continue
+    append({
+      kind: "peer",
+      name: peer[1],
+      range: peer[2],
+      originalRange: from[1] ?? null,
+      consumer: consumer.name,
+      consumerVersion: consumer.version,
+    })
+  }
+  assert(Buffer.byteLength(JSON.stringify(report)) <= 4096)
+  return report
 }
 
 function artifactIdentity(record) {
@@ -732,6 +854,11 @@ export async function runFinalCompilerGenerator() {
         timeout: options.postflight ? 10_000 : remaining(options.timeout ?? 120_000),
         maxBuffer: 4 * 1024 * 1024,
       })
+      if (options.strictDiagnostic && (result.error || result.signal || result.status !== 0)) {
+        console.error(
+          "FINAL_COMPILER_STRICT_FAILURE " + JSON.stringify(summarizeStrictNpmFailure(result))
+        )
+      }
       assert(!result.error && !result.signal && result.status === 0)
       return result.stdout
     }
@@ -821,7 +948,10 @@ export async function runFinalCompilerGenerator() {
       const args = helper ? npmCommand(operation, paths) : finalNpmCommand(operation, paths)
       if (helper) assertNpmCommand(operation, args, paths)
       else assertFinalNpmCommand(operation, args, paths)
-      return command(process.execPath, [cli, ...args], cwd, { env })
+      return command(process.execPath, [cli, ...args], cwd, {
+        env,
+        strictDiagnostic: operation === "strictGenerate",
+      })
     }
     assert.equal(npm(bootstrap, "version", generation).trim(), "11.19.0")
     async function verifiedArchive(meta, destination, limit) {
