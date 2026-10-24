@@ -169,11 +169,13 @@ def test_redact_pii_masks_sensitive_transport_headers_case_insensitively():
 
 
 def test_redact_pii_normalizes_transport_key_styles_and_nested_values():
+    """Only native string field names are safe for both configured renderers."""
     event = {
         "X-Internal-Signature": "internal-signature",
         "csrfToken": "csrf-token",
         "nested": {"sessionId": "session-id", "recovery-code": "recovery-code"},
         7: "non-sensitive value",
+        "7": "native-string-field",
     }
     event["".join(("API", "Key"))] = "opaque"
     event["_".join(("client", "secret"))] = "opaque"
@@ -184,10 +186,20 @@ def test_redact_pii_normalizes_transport_key_styles_and_nested_values():
         "X-Internal-Signature": "[REDACTED]",
         "csrfToken": "[REDACTED]",
         "nested": {"sessionId": "[REDACTED]", "recovery-code": "[REDACTED]"},
-        7: "non-sensitive value",
+        "7": "native-string-field",
         "APIKey": "[REDACTED]",
         "client_secret": "[REDACTED]",
     }
+
+    assert redacted is not event
+    assert 7 not in redacted
+    assert event[7] == "non-sensitive value"
+    assert event["7"] == "native-string-field"
+    assert event["nested"] == {
+        "sessionId": "session-id",
+        "recovery-code": "recovery-code",
+    }
+    assert logging_mod._is_pii_field_name(7) is False
 
 
 def test_add_service_context_uses_configured_and_default_environment(monkeypatch):

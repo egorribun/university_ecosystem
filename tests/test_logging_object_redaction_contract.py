@@ -11,7 +11,7 @@ from contextvars import Context
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from io import StringIO
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 from typing import Any
 from uuid import UUID
 
@@ -48,6 +48,19 @@ class _Unrenderable:
     @property
     def password(self) -> str:
         raise AssertionError("Logging must not inspect arbitrary properties")
+
+
+class _UnrenderableStringKey(str):
+    __hash__ = str.__hash__
+
+    def __str__(self) -> str:
+        raise AssertionError("Logging must not coerce unsupported field names")
+
+    def __repr__(self) -> str:
+        raise AssertionError("Logging must not render unsupported field names")
+
+    def __eq__(self, other: object) -> bool:
+        raise AssertionError("Logging must not compare unsupported control names")
 
 
 class _PrivateModel(BaseModel):
@@ -247,7 +260,9 @@ def test_repeated_logs_copy_shared_payloads_before_both_renderers(
             }
 
 
-@pytest.mark.parametrize("kind", ["true", "false", "exception", "tuple"])
+@pytest.mark.parametrize(
+    "kind", ["true", "false", "exception", "tuple", "tuple-without-traceback"]
+)
 def test_redaction_preserves_top_level_exception_and_formatter_controls(
     kind: str,
 ) -> None:
@@ -263,6 +278,7 @@ def test_redaction_preserves_top_level_exception_and_formatter_controls(
         "false": False,
         "exception": exc_info[1],
         "tuple": exc_info,
+        "tuple-without-traceback": (ValueError, exc_info[1], None),
     }[kind]
     event = {
         "event": "event",
@@ -289,6 +305,8 @@ def test_redaction_preserves_top_level_exception_and_formatter_controls(
         ("exc_info", _Unrenderable),
         ("exc_info", lambda: (ValueError, ValueError("safe diagnostic failure"))),
         ("exc_info", lambda: (ValueError, _Unrenderable(), None)),
+        ("exc_info", lambda: (_Unrenderable(), ValueError("safe failure"), None)),
+        ("exc_info", lambda: (str, ValueError("safe failure"), None)),
         (
             "exc_info",
             lambda: (
@@ -305,6 +323,8 @@ def test_redaction_preserves_top_level_exception_and_formatter_controls(
         "opaque-exception",
         "short-exception-tuple",
         "invalid-exception-value",
+        "invalid-exception-type",
+        "nonexception-type",
         "invalid-traceback",
         "counterfeit-record",
         "opaque-origin",
@@ -441,3 +461,211 @@ def test_email_bridge_keeps_raw_record_extras_redacted_without_mutating_input(
     assert extra["email"] == "student@example.org"
     assert extra["details"][0] is shared
     assert shared == {"password": MARKER, "note": "student@example.org"}
+
+
+@pytest.mark.usefixtures("preserve_logging_configuration")
+@pytest.mark.parametrize("json_output", [True, False], ids=["json", "console"])
+def test_stdlib_stack_requests_survive_foreign_processor_redaction(
+    monkeypatch: pytest.MonkeyPatch,
+    json_output: bool,
+) -> None:
+    """ProcessorFormatter supplies a preformatted string, not a boolean."""
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    root = logging.getLogger()
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+    monkeypatch.setattr(logging_mod, "_configured", False)
+
+    try:
+        logging_mod.configure_logging(json_output=json_output)
+        logging_mod.get_stdlib_logger("audit-452-stack").info(
+            "stack requested", stack_info=True
+        )
+        output = stream.getvalue()
+    finally:
+        root.removeHandler(handler)
+        handler.close()
+
+    assert "stack requested" in output
+    assert "Stack (most recent call last):" in output
+    if json_output:
+        rendered = json.loads(output)
+        assert rendered["message"] == "stack requested"
+        assert "Stack (most recent call last):" in rendered["stack"]
+        assert rendered["logger"] == "audit-452-stack"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (
+            UUID("3c3be1b0-0669-4f05-bf29-d73d3f7f838f"),
+            "3c3be1b0-0669-4f05-bf29-d73d3f7f838f",
+        ),
+        (
+            datetime(2026, 10, 24, 10, 0, tzinfo=UTC),
+            "2026-10-24 10:00:00+00:00",
+        ),
+    ],
+    ids=["uuid", "datetime"],
+)
+def test_json_fallback_preserves_known_scalar_metadata_without_unknown_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+    value: UUID | datetime,
+    expected: str,
+) -> None:
+    def dumps(obj: Any, *, default: Callable[[Any], Any]) -> bytes:
+        return json.dumps(obj, default=default).encode("utf-8")
+
+    monkeypatch.setattr(logging_mod, "orjson", SimpleNamespace(dumps=dumps))
+
+    output = logging_mod._orjson_serializer({"value": value, "opaque": _Unrenderable()})
+
+    assert json.loads(output) == {"value": expected, "opaque": REDACTED}
+
+
+@pytest.mark.parametrize(
+    "key_factory",
+    [_Unrenderable, lambda: _UnrenderableStringKey("non-native-key")],
+    ids=["opaque-key", "string-subclass-key"],
+)
+def test_non_native_field_names_are_discarded_before_control_matching(
+    key_factory: Callable[[], Any],
+) -> None:
+    key = key_factory()
+    value = _Unrenderable()
+    record = logging.LogRecord(
+        "audit-452-key", logging.INFO, __file__, 1, "event", (), None
+    )
+    event = {
+        "event": "public-diagnostic",
+        key: value,
+        "count": 7,
+        "password": MARKER,
+        "exc_info": False,
+        "_record": record,
+        "_from_structlog": False,
+        "stack_info": False,
+    }
+
+    result = logging_mod._redact_pii(None, "info", event)
+
+    if any(type(field_name) is not str for field_name in result):
+        pytest.fail("Unsupported field name reached the copied event")
+    assert result == {
+        "event": "public-diagnostic",
+        "count": 7,
+        "password": REDACTED,
+        "exc_info": False,
+        "_record": record,
+        "_from_structlog": False,
+        "stack_info": False,
+    }
+    assert result is not event
+    assert len(event) == 8
+    assert any(field_name is key for field_name in event)
+    assert event[key] is value
+    assert event["password"] == MARKER
+    assert event["_record"] is record
+
+
+@pytest.mark.parametrize(
+    "mapping_factory",
+    [dict, UserDict, MappingProxyType],
+    ids=["dict", "user-dict", "mapping-proxy"],
+)
+@pytest.mark.parametrize(
+    "key_factory",
+    [_Unrenderable, lambda: _UnrenderableStringKey("non-native-key")],
+    ids=["opaque-key", "string-subclass-key"],
+)
+def test_mapping_keys_cannot_bypass_opaque_payload_handling(
+    mapping_factory: Callable[[dict[Any, Any]], Mapping[Any, Any]],
+    key_factory: Callable[[], Any],
+) -> None:
+    key = key_factory()
+    value = _Unrenderable()
+    backing = {
+        key: value,
+        "status": "public-diagnostic",
+        "count": 7,
+        "password": MARKER,
+        "note": "student@example.org",
+        REDACTED: "literal-field-name",
+    }
+    payload = mapping_factory(backing)
+
+    result = logging_mod._redact_nested(payload, seen=set())
+
+    if any(type(field_name) is not str for field_name in result):
+        pytest.fail("Unsupported field name reached the copied mapping")
+    assert result == {
+        "status": "public-diagnostic",
+        "count": 7,
+        "password": REDACTED,
+        "note": REDACTED,
+        REDACTED: "literal-field-name",
+    }
+    assert result is not payload
+    assert len(payload) == len(backing) == 6
+    assert any(field_name is key for field_name in payload)
+    assert payload[key] is backing[key] is value
+    assert payload["password"] == backing["password"] == MARKER
+    assert payload["note"] == backing["note"] == "student@example.org"
+
+
+@pytest.mark.usefixtures("preserve_logging_configuration")
+@pytest.mark.parametrize("json_output", [True, False], ids=["json", "console"])
+@pytest.mark.parametrize(
+    "key_factory",
+    [_Unrenderable, lambda: _UnrenderableStringKey("non-native-key")],
+    ids=["opaque-key", "string-subclass-key"],
+)
+def test_non_native_mapping_keys_never_reach_configured_renderers(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    json_output: bool,
+    key_factory: Callable[[], Any],
+) -> None:
+    key = key_factory()
+    payload = {
+        key: "discarded-entry",
+        "status": "public-diagnostic",
+        "password": MARKER,
+    }
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    root = logging.getLogger()
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+    monkeypatch.setattr(logging_mod, "_configured", False)
+    monkeypatch.setattr(logging, "raiseExceptions", True)
+
+    try:
+        logging_mod.configure_logging(json_output=json_output)
+        logging_mod.get_logger("audit-452-key").info(
+            "mapping keys inspected", payload=payload
+        )
+        output = stream.getvalue()
+        error_output = capsys.readouterr().err
+    finally:
+        root.removeHandler(handler)
+        handler.close()
+
+    assert "mapping keys inspected" in output
+    assert "public-diagnostic" in output
+    assert REDACTED in output
+    assert MARKER not in output
+    assert MARKER not in error_output
+    assert "--- Logging error ---" not in error_output
+    assert len(payload) == 3
+    assert any(field_name is key for field_name in payload)
+    assert payload[key] == "discarded-entry"
+    assert payload["password"] == MARKER
+    if json_output:
+        rendered = json.loads(output)
+        assert rendered["payload"] == {
+            "status": "public-diagnostic",
+            "password": REDACTED,
+        }
