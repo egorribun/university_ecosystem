@@ -2,6 +2,54 @@
 
 Обновлено: 2026-10-24 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Облачное продолжение 2026-10-24, 00:04 UTC
+
+Работа возобновлена по новому поручению владельца: только через GitHub plugin,
+строго на `egorribun`, без локального checkout, новых веток, force-push,
+обхода защит, merge или deployment. Этот раздел заменяет состояние паузы
+ниже; прежние локальные результаты сохранены как исторические, а не как
+проверки нового source.
+
+Начальная сверка подтверждает опубликованный
+[`8efec0df`](https://github.com/egorribun/university_ecosystem/commit/8efec0dfeec5990be61918815f6b94db297083b2),
+parent `4f7fc958`: 323 изменённых файла, +16941/-1332 строк. Поэтому прежнее
+утверждение «commit не создан» относится только к сохранённой паузе до этой
+публикации. Приватный index и неопубликованные пакеты в облаке не проверены
+и автоматически не импортируются.
+
+Принятый ledger остаётся **280/512 (54,7%)**, не принято 232 ID.
+Исходный реестр и последняя source-bound closure section
+[AUDIT-2026-10.md](../../audits/AUDIT-2026-10.md) остаются источником приёмки.
+Из P1 ещё не приняты AUD-164, AUD-167 и AUD-169; статические проверки не
+заменяют actual trusted-proxy/NetworkPolicy evidence.
+
+На исходном SHA
+[Owned Live 40040679666](https://github.com/egorribun/university_ecosystem/actions/runs/40040679666)
+отказал до Docker на двух устаревших source assertions. Messenger contract
+ожидал неэкранированный `chatId`, хотя API уже использует
+`encodePathIdentifier`. Profile CSRF contract ожидал прямой
+`secrets.compare_digest`, хотя middleware уже использует ASCII-safe helper.
+Точечный test-only follow-up проверяет текущие защитные функции и сохраняет
+все проверки membership/fan-out, отсутствия transport mocks, 403 и HMAC.
+Production source, workflow, coverage и scanner policy не меняются.
+Собственный hosted GREEN этого follow-up ещё требуется.
+
+[Matrix 40040679788](https://github.com/egorribun/university_ecosystem/actions/runs/40040679788)
+на момент сверки не завершён. Обнаружены отдельные отказы inventory,
+detect-secrets policy validation, npm audit, migration checks и других
+jobs; точные причины разбираются по текущему source. Gitleaks и CodeQL
+для исходного SHA SUCCESS. Это не полный CI и не новые закрытия AUD IDs.
+
+Порядок продолжения: получить собственный результат live-contract follow-up;
+устранить доказанные текущие inventory/migration/dependency блокеры без
+ослабления гейтов; сверить все страницы required checks и только затем
+принимать дополнительные AUD IDs. Baseline319, approved policy318,
+Gitleaks25, 78 required context/app pairs и действующие coverage floors
+сохраняются. Новые scanner dispositions и cooldown exceptions требуют
+отдельного решения владельца.
+
+## Историческая пауза перед публикацией 8efec0df
+
 **Работа приостановлена по поручению владельца (2026-10-24).** Ветка `egorribun`, PR #1343; последний проверенный опубликованный HEAD — `4f7fc9583529cd5f61bf1d8ab1496fb1d2b0b529`. Приватная контрольная точка перед финальной правкой документации сохраняет 322 staged paths, index tree `60ce5601b067ced4972c6079d85a6cf7cedde9e4`, без unstaged/untracked files. Интегрированы Gateway issuer, frontend, AUD-343/350/370/486/488/498/499/500/505/507/508/509; интеграция не означает приёмку. Approved policy — ровно 318 identities; итоговые baseline319 и Gitleaks25 совпадают с сохранёнными эталонами. Новые scanner identities остаются блокирующими; неподтверждённые кандидаты не считаются закрытиями.
 
 На соответствующих сохранённых исходниках подтверждены 298 policy-тестов, 135 quality/catalog/Gitleaks-тестов, четыре обычных workflow-контракта, 125 Gateway cmd-тестов и 29 notifications/migration-тестов. Предшествующий frontend cohort — 457/457 PASS и 100% всех четырёх метрик для восьми модулей; его typecheck/ESLint и coverage не покрывают последующую интеграцию AUD-498/499/500. Исходный post-run wrapper failure сохранён и отдельно сверён с raw reports. Canonical AUD-505 — 27 PASS; raw coverage подтверждает 41/41 изменённых executable lines и 6/6 branch arcs, тогда как полный exporter module остаётся 70,59%. Canonical AUD-500 — 11 Node PASS с 100% helper coverage; composed inventory — 161 PASS. Canonical AUD-507 — полный пакет Go PASS и 100% statement coverage client.go, без race. Это пересекающиеся локальные наборы, не полный CI или прохождение aggregate coverage gate.

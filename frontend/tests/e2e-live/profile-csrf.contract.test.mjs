@@ -35,7 +35,14 @@ test("live profile mutation proves CSRF rejection and the real UI path", async (
   assert.match(apiClient, /fetch\(["']\/api\/v1\/auth\/csrf-cookie["']/u)
   assert.match(apiClient, /await ensureCsrfCookie\(\)/u)
   assert.match(csrfMiddleware, /if not cookie_token or not header_token/u)
-  assert.match(csrfMiddleware, /secrets\.compare_digest\(cookie_token, header_token\)/u)
+  assert.match(
+    csrfMiddleware,
+    /if not _compare_digest_ascii\(cookie_token, header_token\):[\s\S]*?await _reject_csrf\(scope, receive, send\)\s+return/u
+  )
+  assert.match(
+    csrfMiddleware,
+    /def _compare_digest_ascii\(left: str, right: str\) -> bool:[\s\S]*?if not left\.isascii\(\) or not right\.isascii\(\):\s+return False\s+return secrets\.compare_digest\(left, right\)/u
+  )
   assert.match(
     csrfMiddleware,
     /if self\._signed:[\s\S]*?if not _verify_signed_token\(cookie_token, session_id, self\._hmac_key\):[\s\S]*?await _reject_csrf/u,
