@@ -337,6 +337,14 @@ jobs:
         timeout-minutes: 1
         run: node --test scripts/generate-puppeteer-lock-candidate.test.mjs
 
+      - name: Generate isolated Puppeteer lock candidate
+        timeout-minutes: 8
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        # Emit a verified metadata-only candidate; never modify the checkout.
+        # The preceding guards and the ordinary dependency audit remain blocking.
+        run: node scripts/generate-puppeteer-lock-candidate.mjs
+
       - name: Install uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
