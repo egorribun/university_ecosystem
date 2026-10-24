@@ -106,6 +106,8 @@ jobs:
             "scripts/ci/helm_dependency_build.py"
             "frontend/scripts/generate-zod-root-lock-candidate.mjs"
             "frontend/scripts/generate-zod-root-lock-candidate.test.mjs"
+            "frontend/scripts/react-compiler-zod-compat/index.cjs"
+            "frontend/scripts/react-compiler-zod-compat.test.mjs"
             "scripts/ci/probe_react_compiler_artifacts.py"
             "tests/test_probe_react_compiler_artifacts.py"
             "scripts/quality/prepare_trivy_backend_values.py"
@@ -204,6 +206,8 @@ jobs:
             "scripts/ci/helm_dependency_build.py"
             "frontend/scripts/generate-zod-root-lock-candidate.mjs"
             "frontend/scripts/generate-zod-root-lock-candidate.test.mjs"
+            "frontend/scripts/react-compiler-zod-compat/index.cjs"
+            "frontend/scripts/react-compiler-zod-compat.test.mjs"
             "scripts/ci/probe_react_compiler_artifacts.py"
             "tests/test_probe_react_compiler_artifacts.py"
             "scripts/quality/prepare_trivy_backend_values.py"
@@ -298,6 +302,12 @@ jobs:
       - name: Verify root Zod lock candidate guards
         timeout-minutes: 1
         run: node --test scripts/generate-zod-root-lock-candidate.test.mjs
+
+      - name: Generate isolated mature root Zod lock candidate
+        timeout-minutes: 8
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: node scripts/generate-zod-root-lock-candidate.mjs
 
       - name: Verify React compiler artifact probe guards
         timeout-minutes: 1

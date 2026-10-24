@@ -9062,6 +9062,74 @@
       "reviewed_on": "2026-10-24",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/helpers/migration_148642dd1207_trace.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          68,
+          206,
+          125,
+          127,
+          3,
+          60,
+          194,
+          207,
+          158,
+          109,
+          182,
+          148,
+          201,
+          31,
+          221,
+          196,
+          89,
+          5,
+          101,
+          163
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git SHA-1 integrity digest of alembic/versions/148642dd1207_fix_missing_tables.py; source-bound five-site migration diagnostic assignment SOURCE_GIT_BLOB; Git blob framing binds all source bytes; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_mfa_webauthn_tombstone.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          109,
+          67,
+          120,
+          143,
+          21,
+          122,
+          30,
+          20,
+          91,
+          168,
+          79,
+          9,
+          37,
+          165,
+          80,
+          183,
+          80,
+          124,
+          201,
+          40
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git SHA-1 integrity digest of tests/test_migration_148642dd1207_orchestrator.py; source-bound historical migration reference guard assignment HISTORICAL_ORCHESTRATOR_BLOB; Git blob framing binds all source bytes; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

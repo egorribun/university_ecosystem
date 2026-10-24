@@ -1480,6 +1480,87 @@ _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
         _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES
     ),
 }
+
+_PUBLIC_GIT_BLOB_IDENTITIES = frozenset(
+    {
+        (
+            "tests/helpers/migration_148642dd1207_trace.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                68,
+                206,
+                125,
+                127,
+                3,
+                60,
+                194,
+                207,
+                158,
+                109,
+                182,
+                148,
+                201,
+                31,
+                221,
+                196,
+                89,
+                5,
+                101,
+                163,
+            ),
+        ),
+        (
+            "tests/test_mfa_webauthn_tombstone.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                109,
+                67,
+                120,
+                143,
+                21,
+                122,
+                30,
+                20,
+                91,
+                168,
+                79,
+                9,
+                37,
+                165,
+                80,
+                183,
+                80,
+                124,
+                201,
+                40,
+            ),
+        ),
+    }
+)
+_PUBLIC_GIT_BLOB_DIGESTS = frozenset(
+    identity[2] for identity in _PUBLIC_GIT_BLOB_IDENTITIES
+)
+_PUBLIC_GIT_BLOB_PATHS = frozenset(
+    identity[0] for identity in _PUBLIC_GIT_BLOB_IDENTITIES
+)
+_PUBLIC_GIT_BLOB_EVIDENCE_MARKERS = {
+    "tests/helpers/migration_148642dd1207_trace.py": (
+        "Public Git SHA-1 integrity digest of "
+        "alembic/versions/148642dd1207_fix_missing_tables.py",
+        "source-bound five-site migration diagnostic assignment SOURCE_GIT_BLOB",
+        "Git blob framing binds all source bytes",
+        "not credential material",
+    ),
+    "tests/test_mfa_webauthn_tombstone.py": (
+        "Public Git SHA-1 integrity digest of "
+        "tests/test_migration_148642dd1207_orchestrator.py",
+        "source-bound historical migration reference guard assignment "
+        "HISTORICAL_ORCHESTRATOR_BLOB",
+        "Git blob framing binds all source bytes",
+        "not credential material",
+    ),
+}
+
 _FALSE_POSITIVE_IDENTITY_FIELDS = frozenset({"path", "type", "hashed_secret_bytes"})
 _FALSE_POSITIVE_RECORD_FIELDS = frozenset(
     {
@@ -2003,6 +2084,17 @@ def validate_false_positive_dispositions(
                 f"{artifact}: AUD-495 cache-key fixture identity changed scope"
             )
 
+        if (
+            path in _PUBLIC_GIT_BLOB_PATHS
+            or tuple(raw_digest_bytes) in _PUBLIC_GIT_BLOB_DIGESTS
+        ) and (
+            exact_source_identity not in _PUBLIC_GIT_BLOB_IDENTITIES
+            or category != "public_integrity_digest"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: public Git blob identity changed scope"
+            )
+
         oct24_category = _OCT24_PUBLIC_DIGEST_CATEGORY_BY_IDENTITY.get(
             exact_source_identity
         )
@@ -2138,6 +2230,8 @@ def validate_false_positive_dispositions(
         required_evidence += _OCT24_PUBLIC_DIGEST_EVIDENCE_MARKERS.get(
             exact_source_identity, ()
         )
+        if exact_source_identity in _PUBLIC_GIT_BLOB_IDENTITIES:
+            required_evidence += _PUBLIC_GIT_BLOB_EVIDENCE_MARKERS[path]
         if any(
             marker.casefold() not in evidence.casefold() for marker in required_evidence
         ):
@@ -2178,6 +2272,15 @@ def validate_false_positive_dispositions(
             or expires_on - reviewed_on > timedelta(days=90)
         ):
             raise BaselineArtifactError(f"{artifact}: date range is invalid")
+
+        if exact_source_identity in _PUBLIC_GIT_BLOB_IDENTITIES and (
+            owner != "egorribun"
+            or raw_reviewed != "2026-10-24"
+            or expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: public Git blob approval metadata changed"
+            )
 
         if oct24_category is not None and (
             owner != "egorribun"

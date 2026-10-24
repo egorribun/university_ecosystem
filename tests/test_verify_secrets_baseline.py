@@ -2085,7 +2085,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 321
+    assert len(policy["records"]) == 323
     records = [
         record
         for record in policy["records"]
@@ -3081,7 +3081,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         )
     )
     records = policy["records"]
-    assert len(records) == 321
+    assert len(records) == 323
     prefix = records[:315]
     encoded_prefix = json.dumps(
         prefix, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -3483,8 +3483,8 @@ def test_oct24_public_digest_policy_preserves_all_318_prior_records() -> None:
         _AUD495_IMMUTABLE_315_PREFIX_SHA256
     )
     assert records[315:318] == _OCT24_ORIGINAL_SUFFIX
-    assert len(records) == 321
-    assert records[318:] == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS
+    assert len(records) == 323
+    assert records[318:321] == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS
 
 
 def test_oct24_public_digest_identities_are_bound_to_unchanged_source() -> None:
@@ -3649,6 +3649,205 @@ def test_oct24_public_fingerprint_cannot_move_to_legacy_allowed_path(
     changed["identity"]["path"] = (
         "tests/fixtures/full-backend-reusable-baseline.v3.yaml"
     )
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+        )
+
+
+_PUBLIC_GIT_BLOB_APPROVED_RECORDS = json.loads(
+    (
+        Path(__file__).resolve().parent
+        / "fixtures"
+        / "public-git-blob-dispositions.json"
+    ).read_text(encoding="utf-8")
+)["records"]
+
+
+def test_public_git_blob_policy_preserves_all_321_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    # These existing independent guards compose the immutable 321-record prefix.
+    test_oct24_public_digest_policy_preserves_all_318_prior_records()
+    assert len(policy["records"]) == 323
+    assert policy["records"][321:] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 2
+
+
+def _public_git_blob_source_identity(
+    consumer: str, assignment_name: str, source: bytes
+) -> tuple[int, ...]:
+    assignments = [
+        node
+        for node in ast.parse(consumer).body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == assignment_name
+            for target in node.targets
+        )
+    ]
+    assert len(assignments) == 1
+    value = ast.literal_eval(assignments[0].value)
+    assert isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value)
+    header = f"blob {len(source)}\0".encode("ascii")
+    expected = hashlib.sha1(header + source, usedforsecurity=False).hexdigest()
+    assert value == expected
+    return tuple(hashlib.sha1(value.encode("ascii"), usedforsecurity=False).digest())
+
+
+@pytest.mark.parametrize(
+    ("record", "assignment_name", "source_path"),
+    [
+        (
+            _PUBLIC_GIT_BLOB_APPROVED_RECORDS[0],
+            "SOURCE_GIT_BLOB",
+            "alembic/versions/148642dd1207_fix_missing_tables.py",
+        ),
+        (
+            _PUBLIC_GIT_BLOB_APPROVED_RECORDS[1],
+            "HISTORICAL_ORCHESTRATOR_BLOB",
+            "tests/test_migration_148642dd1207_orchestrator.py",
+        ),
+    ],
+)
+def test_public_git_blob_current_pin_has_an_exact_approved_identity(
+    record: dict[str, Any], assignment_name: str, source_path: str
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    consumer = root / record["identity"]["path"]
+    if not consumer.exists():
+        # Removed consumers may leave valid historical records, as with baseline.
+        return
+    digest = _public_git_blob_source_identity(
+        consumer.read_text(encoding="utf-8"),
+        assignment_name,
+        (root / source_path).read_bytes(),
+    )
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert any(
+        row["identity"]
+        == {
+            "path": record["identity"]["path"],
+            "type": "Hex High Entropy String",
+            "hashed_secret_bytes": list(digest),
+        }
+        and row["category"] == "public_integrity_digest"
+        for row in policy["records"]
+    )
+
+
+def test_public_git_blob_binding_rejects_source_literal_or_assignment_drift() -> None:
+    source = b"reviewed source\n"
+    header = f"blob {len(source)}\0".encode("ascii")
+    value = hashlib.sha1(header + source, usedforsecurity=False).hexdigest()
+    consumer = f"SOURCE = {value!r}\n"
+    expected = tuple(
+        hashlib.sha1(value.encode("ascii"), usedforsecurity=False).digest()
+    )
+    assert _public_git_blob_source_identity(consumer, "SOURCE", source) == expected
+    changed_value = ("0" if value[0] != "0" else "1") + value[1:]
+    for changed_consumer, changed_source in (
+        (consumer, source + b"# drift\n"),
+        (f"SOURCE = {changed_value!r}\n", source),
+        (consumer + consumer, source),
+        (consumer.replace("SOURCE", "OTHER"), source),
+    ):
+        with pytest.raises(AssertionError):
+            _public_git_blob_source_identity(changed_consumer, "SOURCE", changed_source)
+
+
+@pytest.mark.parametrize("record", _PUBLIC_GIT_BLOB_APPROVED_RECORDS)
+def test_public_git_blob_validator_accepts_exact_historical_record_without_source(
+    record: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    identity = record["identity"]
+    expected = verifier.FindingIdentity(
+        identity["path"],
+        identity["type"],
+        bytes(identity["hashed_secret_bytes"]).hex(),
+        1,
+    )
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(copy.deepcopy(record)),
+        today=verifier.date(2026, 10, 24),
+    ) == {expected}
+
+
+@pytest.mark.parametrize("record", _PUBLIC_GIT_BLOB_APPROVED_RECORDS)
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "detector",
+        "digest",
+        "category",
+        "owner",
+        "review_date",
+        "evidence",
+        "pending",
+        "expiry_extension",
+    ],
+)
+def test_public_git_blob_validator_rejects_changed_scope_or_metadata(
+    record: dict[str, Any], mutation: str
+) -> None:
+    changed = copy.deepcopy(record)
+    if mutation == "path":
+        changed["identity"]["path"] = "tests/unapproved_public_digest.py"
+    elif mutation == "detector":
+        changed["identity"]["type"] = "Secret Keyword"
+    elif mutation == "digest":
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "category":
+        changed["category"] = "documented_crypto_test_vector"
+    elif mutation == "owner":
+        changed["owner"] = "Different Reviewer"
+    elif mutation == "review_date":
+        changed["reviewed_on"] = "2026-10-23"
+    elif mutation == "evidence":
+        changed["evidence"] = "public value; not credential material"
+    elif mutation == "pending":
+        changed["approval_status"] = "pending_owner_review"
+    else:
+        assert mutation == "expiry_extension"
+        changed["expires_on"] = "2027-01-11"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+        )
+
+
+@pytest.mark.parametrize("record", _PUBLIC_GIT_BLOB_APPROVED_RECORDS)
+def test_public_git_blob_validator_rejects_expired_or_duplicate_record(
+    record: dict[str, Any],
+) -> None:
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record)),
+            today=verifier.date(2027, 1, 11),
+        )
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
+            today=verifier.date(2026, 10, 24),
+        )
+
+
+@pytest.mark.parametrize("record", _PUBLIC_GIT_BLOB_APPROVED_RECORDS)
+def test_public_git_blob_reserved_path_rejects_other_fingerprint(
+    record: dict[str, Any],
+) -> None:
+    changed = copy.deepcopy(record)
+    changed["identity"]["hashed_secret_bytes"] = list(range(20))
     with pytest.raises(verifier.BaselineArtifactError):
         verifier.validate_false_positive_dispositions(
             _disposition_document(changed), today=verifier.date(2026, 10, 24)

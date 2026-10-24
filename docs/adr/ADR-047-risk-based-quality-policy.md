@@ -537,3 +537,44 @@ preserved. No additional identity, inline pragma, broad exclusion, automatic
 approval or scanner bypass is authorized. This approval and candidate source do
 not establish a successful scan, test or hosted check; final-source evidence
 remains required.
+
+
+## Owner-approved two exact public Git-blob dispositions (2026-10-24)
+
+At 05:35 UTC the owner explicitly approved the two public Git-hash exceptions
+requested after the hosted detect-secrets failure. The ordered 321-record
+policy prefix is unchanged; only records 322-323 are appended, for exactly 323
+finite identities. Both are `Hex High Entropy String` findings in the existing
+`public_integrity_digest` category, owned by `egorribun`, reviewed on
+2026-10-24 and expiring on 2027-01-10:
+
+- `tests/helpers/migration_148642dd1207_trace.py`, assignment `SOURCE_GIT_BLOB`,
+  identifies the complete source bytes of
+  `alembic/versions/148642dd1207_fix_missing_tables.py`.
+- `tests/test_mfa_webauthn_tombstone.py`, assignment
+  `HISTORICAL_ORCHESTRATOR_BLOB`, identifies the complete source bytes of
+  `tests/test_migration_148642dd1207_orchestrator.py`.
+
+The exact detector fingerprints are recorded in the policy and independently
+in `tests/fixtures/public-git-blob-dispositions.json`. Source contracts compute
+the Git blob SHA-1 from the actual referred bytes and then the detect-secrets
+SHA-1 of the consumer's literal. No Git pin is changed or duplicated as a new
+test literal. The validator restricts both reserved paths and fingerprints,
+category, evidence, owner, review date and finite expiry. It remains
+filesystem-independent: removal of a consumer may leave a stale historical
+record, while a changed pin is a distinct finding requiring its own disposition.
+
+The retired-factor guard treats only the exact second record's
+`identity.path` as inactive scanner bookkeeping. Its detector fingerprint,
+path, type and category must all match; evidence, category and every other
+field remain scanned for active retired-factor references. Runtime and backend
+test guards remain in force. The independent JSON fixture avoids introducing
+a second backend-source exemption or obscuring the literal path.
+
+Baseline319, Gitleaks25, all 78 required context/app pairs, blocking CodeQL,
+hooks and quality floors are unchanged. No baseline addition, inline pragma,
+broad exclusion, reclassification, expiry extension or scanner bypass is
+authorized. No migration waiver is established by these scanner dispositions.
+Accepted audit scope remains 282/512; policy adoption is not a passing scan,
+test, hosted-check, full-CI or release result. Final-source validation remains
+required.

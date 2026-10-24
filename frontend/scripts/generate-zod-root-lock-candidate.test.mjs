@@ -112,7 +112,9 @@ test("targeted npm operations prohibit broad update and mutable transport argume
   }
   assert.throws(() => npmCommand("auditFix"))
   assert.throws(() => npmCommand("toolInstall", { ...paths, prefix: "relative/tool" }))
-  assert.throws(() => npmCommand("toolInstall", { ...paths, archive: "/tmp/other/npm-11.17.0.tgz" }))
+  assert.throws(() =>
+    npmCommand("toolInstall", { ...paths, archive: "/tmp/other/npm-11.17.0.tgz" })
+  )
   assert.throws(() => npmCommand("toolInstall", { ...paths, archive: "/tmp/zod-test/other.tgz" }))
 })
 
@@ -135,7 +137,10 @@ test("argv guard rejects retry aliases, bypass flags and additional update targe
     assert.throws(() => assertNpmCommand("targetUpdate", [...args, extra]))
   }
   assert.throws(() =>
-    assertNpmCommand("targetUpdate", args.filter((arg) => arg !== "--fetch-retries=0"))
+    assertNpmCommand(
+      "targetUpdate",
+      args.filter((arg) => arg !== "--fetch-retries=0")
+    )
   )
 })
 
@@ -148,13 +153,24 @@ test("registry metadata enforces seven full days for Zod and pinned npm", () => 
       "not-a-date",
     ]) {
       assert.throws(() =>
-        validateRegistryMetadata(metadata(name, published), name, release.version, now, sourceGitHead)
+        validateRegistryMetadata(
+          metadata(name, published),
+          name,
+          release.version,
+          now,
+          sourceGitHead
+        )
       )
     }
     const missing = metadata(name)
     delete missing.time[missing.version]
-    assert.throws(() => validateRegistryMetadata(missing, name, missing.version, now, sourceGitHead))
-    assert.equal(validateRegistryMetadata(release, name, release.version, now, sourceGitHead).timestamp, now - age)
+    assert.throws(() =>
+      validateRegistryMetadata(missing, name, missing.version, now, sourceGitHead)
+    )
+    assert.equal(
+      validateRegistryMetadata(release, name, release.version, now, sourceGitHead).timestamp,
+      now - age
+    )
   }
 })
 
@@ -304,7 +320,10 @@ test("temporary override targets existing Zod 4.6.5 without adding an applicatio
   const manifest = {
     dependencies: { valibot: "^1.3.0" },
     devDependencies: { knip: "6.2.0" },
-    overrides: { undici: ">=8.10.2", "eslint-plugin-react-hooks": { "zod-validation-error": "4.0.2" } },
+    overrides: {
+      undici: ">=8.10.2",
+      "eslint-plugin-react-hooks": { "zod-validation-error": "4.0.2" },
+    },
   }
   const before = JSON.stringify(manifest)
   assert.deepEqual(prepareTemporaryManifest(manifest), {
@@ -312,7 +331,12 @@ test("temporary override targets existing Zod 4.6.5 without adding an applicatio
     overrides: { ...manifest.overrides, "zod@4.6.5": "4.6.7" },
   })
   assert.equal(JSON.stringify(manifest), before)
-  for (const section of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
+  for (const section of [
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+    "peerDependencies",
+  ]) {
     const changed = structuredClone(manifest)
     changed[section] = { ...changed[section], zod: "^4.6.5" }
     assert.throws(() => prepareTemporaryManifest(changed))

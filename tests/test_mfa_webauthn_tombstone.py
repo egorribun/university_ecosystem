@@ -54,6 +54,51 @@ def _active_quality_contract_content(contract: dict[str, object]) -> str:
     return json.dumps(active_contract).lower()
 
 
+def _active_scanner_policy_content(policy: dict[str, object]) -> str:
+    active_policy = copy.deepcopy(policy)
+    records = active_policy.get("records")
+    if isinstance(records, list):
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            identity = record.get("identity")
+            if (
+                isinstance(identity, dict)
+                and identity
+                == {
+                    "path": "tests/test_mfa_webauthn_tombstone.py",
+                    "type": "Hex High Entropy String",
+                    "hashed_secret_bytes": [
+                        109,
+                        67,
+                        120,
+                        143,
+                        21,
+                        122,
+                        30,
+                        20,
+                        91,
+                        168,
+                        79,
+                        9,
+                        37,
+                        165,
+                        80,
+                        183,
+                        80,
+                        124,
+                        201,
+                        40,
+                    ],
+                }
+                and record.get("category") == "public_integrity_digest"
+            ):
+                # Only the exact inactive identity path is scanner bookkeeping.
+                # Category, evidence and every other field remain fully visible.
+                identity["path"] = "<inactive scanner identity path>"
+    return json.dumps(active_policy).lower()
+
+
 def _active_backend_test_content(path: Path, raw_content: bytes) -> str:
     content = raw_content.decode("utf-8")
     if path != ROOT / HISTORICAL_ORCHESTRATOR_TEST:
@@ -109,6 +154,8 @@ def test_active_quality_contracts_have_no_retired_factor_references() -> None:
         raw_content = path.read_text(encoding="utf-8")
         if path.resolve() == QUALITY_CONTRACT.resolve():
             content = _active_quality_contract_content(json.loads(raw_content))
+        elif path == ROOT / "quality" / "security-false-positive-dispositions.json":
+            content = _active_scanner_policy_content(json.loads(raw_content))
         else:
             content = raw_content.lower()
         if "webauthn" in content or "passkey" in content:
@@ -294,3 +341,92 @@ def test_source_bound_history_does_not_exempt_a_new_symlink_alias(
 
     with pytest.raises(AssertionError, match="test_active_alias"):
         test_backend_tests_have_no_retired_factor_references()
+
+
+@pytest.fixture
+def public_git_blob_disposition_record() -> dict[str, object]:
+    fixture = ROOT / "tests" / "fixtures" / "public-git-blob-dispositions.json"
+    records = json.loads(fixture.read_text(encoding="utf-8"))["records"]
+    own_path = Path(__file__).resolve().relative_to(ROOT).as_posix()
+    matches = [row for row in records if row["identity"]["path"] == own_path]
+    assert len(matches) == 1
+    return copy.deepcopy(matches[0])
+
+
+def _write_scanner_policy_fixture(
+    root: Path, record: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(globals(), "ROOT", root)
+    quality = root / "quality"
+    quality.mkdir()
+    (quality / "security-false-positive-dispositions.json").write_text(
+        json.dumps({"schema_version": 1, "records": [record]}), encoding="utf-8"
+    )
+
+
+def test_quality_guard_accepts_only_the_exact_inactive_scanner_path_field(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    public_git_blob_disposition_record: dict[str, object],
+) -> None:
+    _write_scanner_policy_fixture(
+        tmp_path, public_git_blob_disposition_record, monkeypatch
+    )
+    test_active_quality_contracts_have_no_retired_factor_references()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "detector",
+        "digest",
+        "category_scope",
+        "category",
+        "evidence",
+        "runtime_field",
+    ],
+)
+def test_quality_guard_keeps_changed_identity_and_active_references_visible(
+    mutation: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    public_git_blob_disposition_record: dict[str, object],
+) -> None:
+    record = public_git_blob_disposition_record
+    identity = record["identity"]
+    assert isinstance(identity, dict)
+    if mutation == "path":
+        identity["path"] = "tests/test_active_webauthn.py"
+    elif mutation == "detector":
+        identity["type"] = "Secret Keyword"
+    elif mutation == "digest":
+        digest = identity["hashed_secret_bytes"]
+        assert isinstance(digest, list)
+        digest[0] ^= 1
+    elif mutation == "category_scope":
+        record["category"] = "documented_crypto_test_vector"
+    elif mutation == "category":
+        record["category"] = "webauthn_runtime_factor"
+    elif mutation == "evidence":
+        record["evidence"] = "active passkey authentication"
+    else:
+        assert mutation == "runtime_field"
+        record["runtime_factor"] = "webauthn"
+    _write_scanner_policy_fixture(tmp_path, record, monkeypatch)
+    with pytest.raises(AssertionError):
+        test_active_quality_contracts_have_no_retired_factor_references()
+
+
+def test_runtime_guard_still_rejects_an_active_retired_factor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = tmp_path / "app"
+    runtime.mkdir()
+    (runtime / "active_factor.py").write_text(
+        "FACTOR = 'webauthn'\n", encoding="utf-8"
+    )
+    monkeypatch.setitem(globals(), "ROOT", tmp_path)
+    monkeypatch.setitem(globals(), "RUNTIME_ROOTS", (runtime,))
+    with pytest.raises(AssertionError):
+        test_runtime_has_no_webauthn_references_or_models()

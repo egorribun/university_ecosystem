@@ -8,7 +8,7 @@ This document defines the architectural invariants, framework constraints, acces
 
 - **Core Frameworks**: React 19.2+, TypeScript 5.7+ (strict mode), TanStack Router 1.168+, TanStack Query 5.90+, Zustand 5.0+.
 - **Bundler & Build**: Vite 8 with Rolldown / `@rolldown/plugin-babel` and `babel-plugin-react-compiler`.
-- **Validation Library**: **Valibot 1.3+ ONLY** (`valibot`). Zod is completely forbidden and was excised from the codebase in Wave 21.
+- **Validation Library**: **Valibot 1.3+ ONLY** (`valibot`). Zod is forbidden in application and runtime code; the sole dev-tool compatibility exception is defined in section 2.3 and ADR-048.
 - **Type Checking**: `cd frontend && npx tsc --noEmit` must pass with zero errors.
 - **Linting**: `cd frontend && npm run lint` must pass with zero warnings.
 
@@ -19,7 +19,7 @@ This document defines the architectural invariants, framework constraints, acces
 ### 2.1. Strict Valibot Usage
 
 - All form validation, route search parameters, local storage schemas, and API payload schemas must be defined using `valibot` (`v.*`).
-- **Zod is Forbidden**: Do not import or introduce `zod`.
+- **Zod is Forbidden**: Do not import or introduce `zod` in application or runtime code. Only the exact dev-tool boundary in section 2.3 is authorized.
 
 ### 2.2. TanStack Router Search Params Schema Unions
 
@@ -33,6 +33,20 @@ This document defines the architectural invariants, framework constraints, acces
     buildingId: v.optional(v.string()),
   })
   ```
+
+### 2.3. Dev-only React Compiler compatibility exception
+
+The owner approved [ADR-048](../docs/adr/ADR-048-react-compiler-schema-compatibility.md)
+on 2026-10-24. Only `scripts/react-compiler-zod-compat/` may directly use the
+verified, mature Zod 4.6.7 engine for the exact legacy
+`eslint-plugin-react-compiler@19.1.0-rc.2` consumer. Its bounded tests may inspect
+that already-installed consumer to capture the pre-change baseline.
+
+This is not permission to use Zod for application schemas, SSR, browser or
+production runtime code, or to import `zod/v3`. Preserve the original compiler
+rule, diagnostic strength and all quality gates. Prove compatibility and
+development-only packaging before a scoped dependency override is integrated.
+Review by 2027-01-10; see ADR-048 for ownership, evidence and sunset conditions.
 
 ---
 
@@ -215,7 +229,7 @@ Use the standardized `useDebounced` hook from `@/hooks/useDebounced` with strate
 
 | Anti-Pattern                                     | Why It Is Forbidden                                        | Correct Pattern                                   |
 | ------------------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------- |
-| Importing `zod`                                  | Zod was removed in Wave 21; adds bloat and breaks contract | Use `valibot` (`v.*`) exclusively                 |
+| Importing `zod` in application/runtime code      | Violates the Valibot contract; dev-tool exception is only section 2.3 | Use `valibot` (`v.*`) exclusively             |
 | Reading router context `.auth` in client guards  | Context is server-only; causes stale auth state            | Read `useAuthStore.getState()` in `beforeLoad`    |
 | `useMutation` result object in hook dependencies | Breaks referential stability, causes infinite re-renders   | Depend only on `mut.mutate`                       |
 | Reading `ref.current` during render              | Violates React Compiler contract                           | Extract primitives or store in `useState`         |

@@ -5,7 +5,29 @@
 
 
 
-## Проверяемое продолжение после CI 1a3954e, 2026-10-24
+## Подтверждённая изоляция калибровки AUD-504, 2026-10-24
+
+Принятый ledger: **283/512 (55,3%)**, 229 ID не принято. Добавлен только
+AUD-504 к прежним 282 ID: неизменённый PostgreSQL regression после реального
+RED на 8db дал шесть named PASS на a1a50e, job 120787537522. Проверены внешняя
+наблюдаемость, rollback после успеха/ошибки и частичный отказ калибровки.
+[Точное основание](../../audits/AUDIT-2026-10.md#hosted-planner-calibration-rollback-closure-checkpoint-2026-10-24)
+не является заявлением о полном CI или исправлении исторических данных.
+
+Broad integration остановился на потере legacy user preferences: 149 PASS,
+4 SKIP, один FAIL (ожидались три строки, получен пустой результат); второй
+preference case не выполнялся из-за fail-fast. Исправление проходит отдельную
+проверку и не включено в эту приёмку. Два backend unit shards и все четыре
+frontend unit shards прошли на a1a50e; остальные backend shards были отменены,
+полный unit universe не считается проверенным.
+
+На 6082f38 опубликованы исправления Caddy name expectation, fail-closed
+unsupported-shell guard и создания pytest temp parent; root Zod generator пока
+содержит tests-first guards, не обновлённый lock. Light/dark Caddy browser smoke
+run 40067042826 PASS на этом exact source. Main CI run 40067042977 начался;
+его новые результаты и дальнейшие изменения требуют отдельной верификации.
+
+## Историческое продолжение после CI 1a3954e, 2026-10-24
 
 Принятый ledger остаётся **282/512 (55,1%)**, 230 ID не принято.
 На [1a3954e](https://github.com/egorribun/university_ecosystem/commit/1a3954e99f06bf7b1660ad2df609a84b022daefa)
@@ -43,11 +65,15 @@ stub заменяется точным helper и wiring registry/manifest gitHea
 source_binding=unverified: совпадающие заявления не доказывают build provenance.
 
 Actual detect-secrets scan обнаружил ровно два новых публичных Git-идентификатора
-в trace helper и historical MFA guard. Решение владельца о двух finite
-public_integrity_digest dispositions запрошено, но пока **не получено**.
-Policy остаётся 321, baseline319 identities и Gitleaks25 не меняются; новые
-совпадения остаются блокирующими. Migration waiver также не применён:
-разрешена только подготовка точного предложения с последующим подтверждением.
+в trace helper и historical MFA guard. В 05:35 UTC владелец явно разрешил
+именно эти две finite public_integrity_digest dispositions до 2027-01-10.
+[ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#owner-approved-two-exact-public-git-blob-dispositions-2026-10-24)
+фиксирует policy323: прежние 321 записи сохранены, baseline319 identities и
+Gitleaks25 не меняются. Точный inactive identity.path второго record учитывается
+только как scanner bookkeeping; category/evidence и active references остаются
+под guard. Новый или изменённый finding по-прежнему блокирует; это не разрешение
+на автоматическую замену Git pin. Новые tests/scan/hosted GREEN ещё не получены.
+Migration waiver этим решением не применяется; accepted остаётся 282/512.
 
 На 1a3954e Alembic diagnostic и backend units были SKIPPED из-за pre-commit.
 Поэтому PostgreSQL/expanded-Squawk evidence нового harness отсутствует.
@@ -561,7 +587,7 @@ Actual focused AUD-174 на bef8: два browser PASS и `redaction=verified pro
 
 ## Неизменные границы
 
-Detect-secrets baseline — 319 identities; действующая политика содержит 318 finite owner-approved dispositions. Остальные counts в исторических checkpoint-записях относятся к указанным там source. Отдельное Gitleaks-разрешение ограничено 25 точными историческими fingerprints. Все 78 required context/app pairs, blocking CodeQL, hooks и finite131 migration exception до 2026-11-13 сохраняются. Changed/unmatched identities остаются блокирующими. Q1/Q4 migration действует; Q2/Q3 — v1.1; глобальный mutation score не повышается ради MVP.
+Detect-secrets baseline — 319 identities; действующая политика содержит 323 finite owner-approved dispositions. Остальные counts в исторических checkpoint-записях относятся к указанным там source. Отдельное Gitleaks-разрешение ограничено 25 точными историческими fingerprints. Все 78 required context/app pairs, blocking CodeQL, hooks и finite131 migration exception до 2026-11-13 сохраняются. Changed/unmatched identities остаются блокирующими. Q1/Q4 migration действует; Q2/Q3 — v1.1; глобальный mutation score не повышается ради MVP.
 
 Перед тяжёлым прогоном: RAM ≤75% / free ≥8 GiB; остановка при RAM ≥85% / free <4 GiB. Отдельное исключение для одиночных Linux screenshots: ≤80% / ≥6 GiB, container ≤1 GiB / 2 CPU. Удалять только доказанно принадлежащие работе ресурсы; чужие процессы и prune не трогать.
 
