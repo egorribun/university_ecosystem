@@ -179,11 +179,11 @@ def test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_univers
 
 # Ordered argv population from 1a3954e99f06bf7b1660ad2df609a84b022daefa.
 # Preserve all 136 original selectors, including intentional file/node overlaps.
-# Fifty-eight explicit selections follow that unchanged prefix: existing audit
+# Sixty explicit selections follow that unchanged prefix: existing audit
 # regressions, Gitleaks diagnostics, WebSocket/migration safety, logging/email,
 # inventory, repaired orchestrators, typed DLQ, client-IP and owned registration
 # diagnostic, configuration-warning, exact Knip, outbox tenant and historical
-# rollback-boundary, reset-URL sink and complete related handler contracts.
+# rollback-boundary, reset-URL sink, handler and grade/delivery contracts.
 # Do not shrink this scope.
 _CONSUMER_SELECTORS = (
     "tests/contracts/",
@@ -380,6 +380,8 @@ _CONSUMER_SELECTORS = (
     "tests/test_outbox_worker.py::test_outbox_worker_error_handling",
     "tests/test_outbox_worker.py::test_outbox_worker_dlq_transition",
     "tests/test_outbox_worker.py::test_durable_outbox_handler_failure_retries_without_pii",
+    "tests/test_grades_api.py",
+    "tests/test_notifications_delivery_coverage.py",
 )
 _DISPATCH_PROBE = """\
 import json

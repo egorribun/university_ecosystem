@@ -2186,7 +2186,9 @@ jobs:
             tests/test_search_indexer.py \
             tests/test_outbox_worker.py::test_outbox_worker_error_handling \
             tests/test_outbox_worker.py::test_outbox_worker_dlq_transition \
-            tests/test_outbox_worker.py::test_durable_outbox_handler_failure_retries_without_pii -v \
+            tests/test_outbox_worker.py::test_durable_outbox_handler_failure_retries_without_pii \
+            tests/test_grades_api.py \
+            tests/test_notifications_delivery_coverage.py -v \
             --tb=short --durations=20 -n 2 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \

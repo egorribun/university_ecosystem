@@ -18,6 +18,7 @@ import {
   inspectInstalledEngineLicense,
   inspectOverrideSelector,
   prepareFinalManifest,
+  prepareStrictFormatterPlacementManifest,
   prepareStrictManifest,
   strictPeerEnvironment,
   summarizeStrictNpmFailure,
@@ -600,6 +601,52 @@ test("strict fixture pins real current ESLint and consumers instead of downgradi
       "eslint-plugin-react-compiler@>=19.1.0-rc.2 <=19.1.0-rc.2": FINAL_OVERRIDE,
       "eslint-plugin-react-hooks": { "zod-validation-error": "4.0.2" },
     },
+  })
+})
+
+test("root formatter pin is confined to the isolated fixture", () => {
+  const project = prepareFinalManifest(manifest())
+  const snapshot = structuredClone(project)
+  const unanchored = prepareStrictManifest(project)
+  const anchored = prepareStrictFormatterPlacementManifest(project)
+  assert.deepEqual(anchored, {
+    ...unanchored,
+    devDependencies: { ...unanchored.devDependencies, "zod-validation-error": "4.0.2" },
+  })
+  assert.equal(Object.hasOwn(unanchored.devDependencies, "zod-validation-error"), false)
+  assert.equal(Object.hasOwn(project.devDependencies, "zod-validation-error"), false)
+  assert.deepEqual(project, snapshot)
+})
+
+test("strict formatter placement keeps the exact pin and original peers", () => {
+  const project = expectedFinalLock()
+  const anchored = strictLock()
+  anchored.packages[""].devDependencies["zod-validation-error"] = "4.0.2"
+  assert.equal(assertStrictLock(anchored, project, true), true)
+  assert.throws(() => assertStrictLock(anchored, project), { name: "AssertionError" })
+  for (const mode of [null, "true", 1]) {
+    assert.throws(() => assertStrictLock(anchored, project, mode), { name: "AssertionError" })
+  }
+  for (const mutate of [
+    (value) => delete value.packages[""].devDependencies["zod-validation-error"],
+    (value) => (value.packages[""].devDependencies["zod-validation-error"] = "4.0.3"),
+    (value) => (value.packages[""].devDependencies["zod-validation-error"] = "*"),
+    (value) => (value.packages[""].devDependencies.unrelated = "1.0.0"),
+    (value) => (value.packages[FORMATTER].peerDependencies.zod = "*"),
+    (value) => (value.packages[FORMATTER].integrity = sri("different formatter")),
+    (value) => (value.packages[COMPILER].peerDependencies.eslint = "*"),
+  ]) {
+    const value = structuredClone(anchored)
+    mutate(value)
+    assert.throws(() => assertStrictLock(value, project, true), { name: "AssertionError" })
+  }
+})
+
+test("fixture-only formatter pin must not leak into the accepted project lock", () => {
+  const candidate = expectedFinalLock()
+  candidate.packages[""].devDependencies["zod-validation-error"] = "4.0.2"
+  assert.throws(() => assertFinalLockScope(sourceLock(), candidate, formatterMetadata()), {
+    name: "AssertionError",
   })
 })
 

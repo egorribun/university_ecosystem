@@ -107,6 +107,14 @@ export function prepareStrictManifest(manifest) {
   }
 }
 
+export function prepareStrictFormatterPlacementManifest(manifest) {
+  // Keep the unanchored fixture above unchanged as the recorded ERESOLVE control.
+  // This extra direct pin exists only in the isolated peer-placement fixture.
+  const candidate = prepareStrictManifest(manifest)
+  candidate.devDependencies["zod-validation-error"] = "4.0.2"
+  return candidate
+}
+
 export function assertFinalSourcePrerequisites(lock) {
   assert.equal(lock.lockfileVersion, 3)
   for (const [path, version] of [
@@ -394,17 +402,20 @@ function artifactIdentity(record) {
   return identity
 }
 
-export function assertStrictLock(strict, project) {
+export function assertStrictLock(strict, project, rootFormatterPinned = false) {
+  assert.equal(typeof rootFormatterPinned, "boolean")
   assert.equal(strict.lockfileVersion, 3)
   assert.equal(strict.name, "react-compiler-peer-proof")
   assert.equal(strict.version, "1.0.0")
-  assert.deepEqual(strict.packages[""].devDependencies, {
+  const expectedDevDependencies = {
     eslint: "10.12.0",
     "eslint-plugin-react-compiler": "19.1.0-rc.2",
     "eslint-plugin-react-hooks": "7.1.1",
     "react-compiler-zod-compat": "file:./" + LOCAL,
     zod: "4.6.7",
-  })
+  }
+  if (rootFormatterPinned) expectedDevDependencies["zod-validation-error"] = "4.0.2"
+  assert.deepEqual(strict.packages[""].devDependencies, expectedDevDependencies)
   for (const path of [
     COMPILER,
     FORMATTER,
@@ -1074,7 +1085,7 @@ export async function runFinalCompilerGenerator() {
       assert.deepEqual(readFileSync(join(target, LOCAL, "package.json")), localManifestBytes)
     }
 
-    stage = "isolated strict peer fixture preparation"
+    stage = "isolated strict root-formatter fixture preparation"
     const strictPaths = {
       home: join(scratch, "strict-home"),
       cache: join(scratch, "strict-cache"),
@@ -1088,17 +1099,17 @@ export async function runFinalCompilerGenerator() {
     }
     const strictEnvironment = strictPeerEnvironment(npmEnv, strictPaths)
     const strictManifest = Buffer.from(
-      JSON.stringify(prepareStrictManifest(candidateManifest), null, 2) + "\n"
+      JSON.stringify(prepareStrictFormatterPlacementManifest(candidateManifest), null, 2) + "\n"
     )
     const strict = mirror("strict", strictManifest, null, true)
     assert(!existsSync(join(strict, ".npmrc")))
-    stage = "isolated strict peer lock generation"
+    stage = "isolated strict root-formatter lock generation"
     npm(cli, "strictGenerate", strict, strictPaths, strictEnvironment)
     const strictLockBytes = regularBytes(join(strict, "package-lock.json"), 4 * 1024 * 1024)
-    assertStrictLock(JSON.parse(strictLockBytes), candidate)
-    stage = "isolated strict peer installation"
+    assertStrictLock(JSON.parse(strictLockBytes), candidate, true)
+    stage = "isolated strict root-formatter installation"
     npm(cli, "strictInstall", strict, strictPaths, strictEnvironment)
-    stage = "isolated strict peer physical graph and npm ls verification"
+    stage = "isolated strict root-formatter graph and npm ls verification"
     assertFinalInstalledGraph(strict, "full", controls)
     assert.deepEqual(inspectInstalledEngineLicense(strict), licenseEvidence)
     const strictListing = JSON.parse(npm(cli, "strictList", strict, strictPaths, strictEnvironment))
@@ -1182,7 +1193,13 @@ export async function runFinalCompilerGenerator() {
       productionGraphInstallVerified: true,
       graphInstallPolicy: "project-configured legacy-peer-deps=true; ignore-scripts",
       strictPeerCompatibilityVerified: true,
-      strictPeerScope: "isolated exact-version dev-tool fixture, not the entire project",
+      strictPeerScope: "isolated direct-formatter fixture; not whole-project strict resolution",
+      strictPeerFixture: {
+        rootFormatterPin: "zod-validation-error@4.0.2",
+        targetArtifactsMatchProject: true,
+        unanchoredResolutionRechecked: false,
+        wholeProjectStrictResolutionVerified: false,
+      },
       strictPeerVersions: {
         eslint: "10.12.0",
         compiler: "19.1.0-rc.2",

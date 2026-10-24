@@ -1,6 +1,6 @@
 # Статус выпуска MVP v1.0.0
 
-Обновлено: 2026-10-24 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+Обновлено: 2026-10-25 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
 
 
@@ -85,7 +85,16 @@ generation. Accepted metadata/patch не выданы; strict proof не пол�
 Следующий diagnostic-only candidate добавляет `--json` только этому npm шагу
 и 38 guards: вывод ограничен фиксированным error code и allowlisted tuples,
 без raw stderr/summary/detail/paths. Peer ranges/config и graph scope не ослаблены.
-Новый результат ещё требуется; принятый lock, graph и advisory closure не изменены.
+На `2a8042c5` [38 guards](https://github.com/egorribun/university_ecosystem/actions/runs/40130028792/job/120979743409)
+прошли; bounded npm diagnostic зафиксировал ERESOLVE на strict generation:
+honest facade zod1.0.0 у compiler против peer
+formatter4.0.2: исходный range ^3.25.0 || ^4.0.0, scoped override4.6.7. Следующий **41-case** эксперимент
+добавляет direct formatter4.0.2 только в изолированный strict fixture, сохраняя
+project manifest/three-record graph scope и все peer ranges. Metadata явно
+отличает fixture-only placement от whole-project strict resolution; старый
+unanchored ERESOLVE не объявляется повторно исполненным. Fresh strict install,
+real npm ls и artifact/native equivalence ещё нужны. Никакого accepted graph
+или advisory closure пока нет.
 
 На source `36e84f25` ([CI 40103663774](https://github.com/egorribun/university_ecosystem/actions/runs/40103663774))
 точная import-only правка прошла fast lint и допустила PostgreSQL:
@@ -179,7 +188,19 @@ security/types и Gitleaks GREEN; это свежая проверка scoped300
 реального повторного запуска job не добавлено. Следующие 38 tests-first cases (ожидаются 4 новых RED и 34 controls,
 не observed результат) проверяют только точный positional pytest literal и сохраняют реальные
 retry/metadata/dynamic negatives; detector и retry:none пока не изменены.
-Тесты и все 194 selectors сохранены. Raw scanner, security/types и Gitleaks
+На `2a8042c5` [actual tests-first Contract](https://github.com/egorribun/university_ecosystem/actions/runs/40130028792/job/120979582764)
+дал **11 catalog FAIL / 2690 PASS**: семь прежних ошибок плюс четыре новых
+safe-literal assertion RED; все 34 дополнительных negative controls PASS.
+Policy cohort снова дал **590 PASS**. Публикуемый classifier candidate маскирует
+только точный reviewed positional literal в статической uv/pytest-команде,
+сохраняет все другие markers/metadata и retry:none; 40 новых guard cases
+включают два compatibility controls. Его GREEN ещё требуется. Четыре
+наблюдённые Ruff-format правки в tests/test_ci_check_catalog.py применены
+без изменения assertions. PG/DB jobs `2a8042c5` были SKIPPED именно из-за
+того formatter failure; grade runtime RED/GREEN ещё не получен.
+Все прежние 194 selectors сохранены; следующие **196** добавляют полные
+существующие grades_api и notifications_delivery_coverage suites без изменения
+budget или dedicated46. Raw scanner, security/types и Gitleaks
 на этом source GREEN; **81 migration PASS**, raw Squawk всё ещё **14/25**.
 [Owned Live](https://github.com/egorribun/university_ecosystem/actions/runs/40125756149/job/120966678260)
 дал **275 Node PASS / 38 browser PASS / 2 SKIP**, NATS и cleanup SUCCESS;

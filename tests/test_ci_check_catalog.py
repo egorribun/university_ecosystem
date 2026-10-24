@@ -919,14 +919,8 @@ def test_reviewed_literal_pytest_node_is_not_ci_retry_behavior(command: str) -> 
             "test_durable_outbox_handler_failure_retries_without_pii"
         ),
         f'{_STATIC_PYTEST_COMMAND} "{_REVIEWED_OUTBOX_NODE}"',
-        (
-            f"{_STATIC_PYTEST_COMMAND} "
-            f"$(printf '%s' '{_REVIEWED_OUTBOX_NODE}')"
-        ),
-        (
-            f"selector={_REVIEWED_OUTBOX_NODE}\n"
-            f'{_STATIC_PYTEST_COMMAND} "$selector"'
-        ),
+        (f"{_STATIC_PYTEST_COMMAND} $(printf '%s' '{_REVIEWED_OUTBOX_NODE}')"),
+        (f'selector={_REVIEWED_OUTBOX_NODE}\n{_STATIC_PYTEST_COMMAND} "$selector"'),
         f"{_STATIC_PYTEST_COMMAND} -k {_REVIEWED_OUTBOX_NODE}",
         f"{_STATIC_PYTEST_COMMAND} --override-ini {_REVIEWED_OUTBOX_NODE}",
         f"{_STATIC_PYTEST_COMMAND} --pyargs {_REVIEWED_OUTBOX_NODE}",
@@ -935,10 +929,7 @@ def test_reviewed_literal_pytest_node_is_not_ci_retry_behavior(command: str) -> 
         f"{_STATIC_PYTEST_COMMAND} tests/ || echo {_REVIEWED_OUTBOX_NODE}",
         f"{_STATIC_PYTEST_COMMAND} tests/ | echo {_REVIEWED_OUTBOX_NODE}",
         f"{_STATIC_PYTEST_COMMAND} tests/\n{_REVIEWED_OUTBOX_NODE}",
-        (
-            f"{_STATIC_PYTEST_COMMAND} tests/ "
-            f"# {_REVIEWED_OUTBOX_NODE}"
-        ),
+        (f"{_STATIC_PYTEST_COMMAND} tests/ # {_REVIEWED_OUTBOX_NODE}"),
     ],
 )
 def test_reviewed_pytest_node_does_not_hide_retry_or_dynamic_text(
@@ -999,8 +990,7 @@ def test_real_retry_alongside_reviewed_node_still_violates_none_policy(
 
     errors = _validate_changed_ci(tmp_path, value)
     assert any(
-        "jobs['contract-tests']: retry behavior is present" in error
-        for error in errors
+        "jobs['contract-tests']: retry behavior is present" in error for error in errors
     ), errors
 
 
@@ -1009,6 +999,21 @@ def test_reviewed_pytest_node_does_not_hide_job_retry_metadata() -> None:
         "name": _REVIEWED_OUTBOX_NODE,
         "steps": [{"run": f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE}"}],
     }
+    original = copy.deepcopy(job)
+
+    assert catalog_validator._is_retry_candidate(job)
+    assert job == original
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        "retry",
+        [None, 7, {"run": 17}, {"run": None}, "retry"],
+    ],
+)
+def test_retry_scan_preserves_non_script_values_fail_closed(steps: Any) -> None:
+    job = {"steps": steps}
     original = copy.deepcopy(job)
 
     assert catalog_validator._is_retry_candidate(job)
