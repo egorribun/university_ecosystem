@@ -2897,8 +2897,7 @@ def test_python_contract_rejects_rebound_test_root_alias(
         "    return {root_name} / {target}\n",
         "def helper():\n    return {root_name} / {target}\n"
         "    {root_name} = fallback\n",
-        "def helper():\n    {root_name}: Path\n"
-        "    return {root_name} / {target}\n",
+        "def helper():\n    {root_name}: Path\n    return {root_name} / {target}\n",
         "def helper[{root_name}]():\n    return {root_name} / {target}\n",
         "class Subject[{root_name}]:\n    target = {root_name} / {target}\n",
         "type Subject[{root_name}] = list[{root_name} / {target}]\n",

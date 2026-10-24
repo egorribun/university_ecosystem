@@ -448,10 +448,7 @@ def test_timeout_duration_and_required_policy_are_source_bound() -> None:
         'const args = [\n  "--fetch-retries=0",\n  "1"\n].join("");',
         "const args = ['prefix --fetch-retries=0 suffix'];",
         "const args = [`prefix\n --fetch-retries=0 \nsuffix`];",
-        (
-            'const npm = (args) => args.join("");\n'
-            'npm(["--fetch-retries=0", "1"]);'
-        ),
+        ('const npm = (args) => args.join("");\nnpm(["--fetch-retries=0", "1"]);'),
     ],
 )
 def test_apparent_zero_fetch_retries_in_dynamic_arguments_remain_fail_closed(

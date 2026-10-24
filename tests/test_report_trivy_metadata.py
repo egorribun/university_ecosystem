@@ -157,11 +157,7 @@ def test_every_emitted_field_is_bounded_and_non_string_values_are_empty() -> Non
                         {
                             "ruleId": 123,
                             "locations": [
-                                {
-                                    "physicalLocation": {
-                                        "artifactLocation": {"uri": 123}
-                                    }
-                                }
+                                {"physicalLocation": {"artifactLocation": {"uri": 123}}}
                             ],
                         },
                     ],
@@ -190,7 +186,7 @@ def test_invalid_reports_fail_without_printing_input(
 ) -> None:
     path = tmp_path / "invalid.sarif"
     path.write_bytes(raw)
-    with pytest.raises(SystemExit, match="^Invalid SARIF report$"):
+    with pytest.raises(SystemExit, match=r"^Invalid SARIF report$"):
         report_trivy_metadata.main([str(path)])
     captured = capsys.readouterr()
     assert captured.out == ""
@@ -203,7 +199,7 @@ def test_oversized_reports_fail_without_printing_input(
     path = tmp_path / "oversized.sarif"
     path.write_bytes(b" " * (report_trivy_metadata.MAX_BYTES + 1))
     with pytest.raises(
-        SystemExit, match="^SARIF report exceeds diagnostic size limit$"
+        SystemExit, match=r"^SARIF report exceeds diagnostic size limit$"
     ):
         report_trivy_metadata.main([str(path)])
     captured = capsys.readouterr()
@@ -230,7 +226,7 @@ def test_exact_size_limit_is_accepted(
 def test_unreadable_report_fails_without_exposing_path(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    with pytest.raises(SystemExit, match="^Unable to read SARIF report$"):
+    with pytest.raises(SystemExit, match=r"^Unable to read SARIF report$"):
         report_trivy_metadata.main([str(tmp_path / "missing.sarif")])
     captured = capsys.readouterr()
     assert captured.out == ""
