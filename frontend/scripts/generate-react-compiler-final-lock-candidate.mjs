@@ -42,7 +42,7 @@ const SINGLETON_RANGE = ">=19.1.0-rc.2 <=19.1.0-rc.2"
 const CONSUMER = "eslint-plugin-react-compiler@" + SINGLETON_RANGE
 const FINAL_OVERRIDE = Object.freeze({
   ".": "$eslint-plugin-react-compiler",
-  zod: "$react-compiler-zod-compat",
+  zod: "file:../../scripts/react-compiler-zod-compat",
   "zod-validation-error": Object.freeze({ ".": "4.0.2", zod: "4.6.7" }),
 })
 const HOOKS_PEER = "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0-0 || ^9.0.0 || ^10.0.0"
@@ -352,7 +352,16 @@ export function inspectInstalledEngineLicense(frontend) {
   }
 }
 
-export function inspectOverrideSelector(toolRoot, manifest) {
+export function assertLocalOverrideTarget(frontend, consumer, target) {
+  assert.equal(realpathSync(frontend), frontend)
+  assert.equal(consumer, join(frontend, COMPILER))
+  assert.equal(target, join(frontend, LOCAL))
+  assert.equal(realpathSync(target), target)
+  assert.deepEqual(packageMetadata(join(target, "package.json")), adapterManifest())
+  return true
+}
+
+export function inspectOverrideSelector(toolRoot, manifest, frontend) {
   assert.equal(realpathSync(toolRoot), toolRoot)
   assertSourceManifest(manifest)
   assert.deepEqual(manifest.overrides[CONSUMER], FINAL_OVERRIDE)
@@ -365,6 +374,7 @@ export function inspectOverrideSelector(toolRoot, manifest) {
   for (const [name, version] of [
     ["semver", "7.8.4"],
     ["@npmcli/arborist", "9.8.0"],
+    ["npm-package-arg", "13.0.2"],
   ]) {
     const packagePath = toolRequire.resolve(name + "/package.json")
     assert.equal(packagePath, join(toolRoot, "node_modules", name, "package.json"))
@@ -373,6 +383,18 @@ export function inspectOverrideSelector(toolRoot, manifest) {
     assert.equal(metadata.version, version)
     packages[name] = { path: dirname(packagePath), version: metadata.version }
   }
+  assert.equal(realpathSync(frontend), frontend)
+  const npaPath = toolRequire.resolve("npm-package-arg")
+  assert(npaPath.startsWith(packages["npm-package-arg"].path + "/"))
+  regularBytes(npaPath, 128 * 1024)
+  const buildPath = join(packages["@npmcli/arborist"].path, "lib/arborist/build-ideal-tree.js")
+  regularBytes(buildPath, 128 * 1024)
+  const arboristRequire = createRequire(buildPath)
+  assert.equal(arboristRequire.resolve("npm-package-arg"), npaPath)
+  assert.equal(
+    arboristRequire.resolve("npm-package-arg/package.json"),
+    join(packages["npm-package-arg"].path, "package.json")
+  )
   const semverPath = toolRequire.resolve("semver")
   assert(semverPath.startsWith(packages.semver.path + "/"))
   regularBytes(semverPath, 128 * 1024)
@@ -384,6 +406,7 @@ export function inspectOverrideSelector(toolRoot, manifest) {
   regularBytes(edgePath, 128 * 1024)
   // Only the already verified npm tool's own resolver is inspected. No project
   // package entrypoint or npm install/update operation is invoked here.
+  const npa = toolRequire(npaPath)
   const semver = toolRequire(semverPath)
   const OverrideSet = toolRequire(overridePath)
   const Node = toolRequire(nodePath)
@@ -393,6 +416,7 @@ export function inspectOverrideSelector(toolRoot, manifest) {
   delete baselineOverrides[CONSUMER]
   baselineOverrides[EXACT_CONSUMER] = structuredClone(FINAL_OVERRIDE)
   delete baselineOverrides[EXACT_CONSUMER]["."]
+  baselineOverrides[EXACT_CONSUMER].zod = "$react-compiler-zod-compat"
   const baseline = new OverrideSet({ overrides: baselineOverrides })
   const selected = new OverrideSet({ overrides: structuredClone(manifest.overrides) })
   const name = "eslint-plugin-react-compiler"
@@ -414,12 +438,15 @@ export function inspectOverrideSelector(toolRoot, manifest) {
   // from disk and no installer runs. The reference must preserve its raw spec.
   const directRoot = (override) =>
     new Node({
-      path: join(toolRoot, "selector-control"),
+      path: frontend,
       loadOverrides: true,
       pkg: {
         name: "react-compiler-selector-control",
         version: "1.0.0",
-        devDependencies: { [name]: range },
+        devDependencies: {
+          [name]: range,
+          "react-compiler-zod-compat": manifest.devDependencies["react-compiler-zod-compat"],
+        },
         overrides: { [CONSUMER]: structuredClone(override) },
       },
     })
@@ -433,6 +460,25 @@ export function inspectOverrideSelector(toolRoot, manifest) {
   assert.throws(() => directRoot(withoutReference).assertRootOverrides(), {
     code: "EOVERRIDE",
   })
+  const localDependency = (override) => {
+    const consumer = new Node({
+      parent: directRoot(override),
+      pkg: { name, version, dependencies: { zod: "^3.22.4" } },
+    })
+    assert.equal(consumer.path, join(frontend, COMPILER))
+    const dependency = consumer.edgesOut.get("zod")
+    assert(dependency instanceof Edge)
+    assert.equal(dependency.rawSpec, "^3.22.4")
+    const parsed = npa.resolve(dependency.name, dependency.spec, dependency.from.path)
+    assert.equal(parsed.type, "directory")
+    return { consumer, dependency, target: parsed.fetchSpec }
+  }
+  const originalReference = structuredClone(FINAL_OVERRIDE)
+  originalReference.zod = "$react-compiler-zod-compat"
+  const misplaced = localDependency(originalReference)
+  const corrected = localDependency(FINAL_OVERRIDE)
+  assert.equal(misplaced.target, join(frontend, COMPILER, LOCAL))
+  assertLocalOverrideTarget(frontend, corrected.consumer.path, corrected.target)
   const versionChecks = [
     "19.1.0-rc.1",
     "19.1.0-rc.2",
@@ -474,6 +520,16 @@ export function inspectOverrideSelector(toolRoot, manifest) {
       effectiveSpec: directEdge.spec,
       rootOverrideAccepted: true,
       missingReferenceError: "EOVERRIDE",
+    },
+    localDependency: {
+      parser: "npm-package-arg",
+      parserVersion: packages["npm-package-arg"].version,
+      rawSpec: corrected.dependency.rawSpec,
+      baselineSpec: misplaced.dependency.spec,
+      baselineTarget: relative(frontend, misplaced.target),
+      selectedSpec: corrected.dependency.spec,
+      selectedTarget: relative(frontend, corrected.target),
+      targetCanonical: true,
     },
     candidateAccepted: false,
   }
@@ -523,6 +579,16 @@ export function assertOverrideSelectorControl(report) {
       effectiveSpec: "^19.1.0-rc.2",
       rootOverrideAccepted: true,
       missingReferenceError: "EOVERRIDE",
+    },
+    localDependency: {
+      parser: "npm-package-arg",
+      parserVersion: "13.0.2",
+      rawSpec: "^3.22.4",
+      baselineSpec: "file:./scripts/react-compiler-zod-compat",
+      baselineTarget: COMPILER + "/" + LOCAL,
+      selectedSpec: "file:../../scripts/react-compiler-zod-compat",
+      selectedTarget: LOCAL,
+      targetCanonical: true,
     },
     candidateAccepted: false,
   })
@@ -834,7 +900,11 @@ export async function runFinalCompilerGenerator() {
     )
 
     stage = "pinned npm override selector diagnostic"
-    const selectorDiagnostic = inspectOverrideSelector(dirname(dirname(cli)), candidateManifest)
+    const selectorDiagnostic = inspectOverrideSelector(
+      dirname(dirname(cli)),
+      candidateManifest,
+      generation
+    )
     console.log("FINAL_COMPILER_OVERRIDE_DIAGNOSTIC " + JSON.stringify(selectorDiagnostic))
     assertOverrideSelectorControl(selectorDiagnostic)
 
@@ -1002,7 +1072,7 @@ export async function runFinalCompilerGenerator() {
       compilerDiagnosticParityVerified: false,
       normalLifecycleOrBuildVerified: false,
       cryptographicPublishProvenanceVerified: false,
-      libraryCodeExecuted: false,
+      projectLibraryCodeExecuted: false,
       lifecycleScriptsExecuted: false,
       checkoutModified: false,
       originalManifestSha256: digest(manifestBytes),

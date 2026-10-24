@@ -65,9 +65,13 @@ fail-closed rejection. На `2208db1e`
 дал **31 PASS** и фактически показал npm prerelease edge mismatch:
 caret/exact satisfies true, но intersects false; exact selector привязывается
 к node, не к объявленному dependency edge. Реальный update снова оставил
-пустой lock delta и корректно отказал. Следующий singleton
-candidate с **32 guards** ещё не имеет hosted результата. Принятый lock,
-dependency graph и advisory closure не изменены.
+пустой lock delta и корректно отказал. На `941f56af`
+[32 guards и pinned singleton/self-reference controls](https://github.com/egorribun/university_ecosystem/actions/runs/40123590419/job/120961096224)
+прошли. Реальный npm создал лишний четвёртый compiler-relative facade record:
+whole-lock guard его отверг, full/production/strict proof не достигнута.
+Следующий candidate использует точный consumer-relative file target, проверяемый
+реальными pinned Node/Edge/NPA, и **34 guards**, включая исходный misplaced record.
+Новый результат ещё требуется; принятый lock, graph и advisory closure не изменены.
 
 На source `36e84f25` ([CI 40103663774](https://github.com/egorribun/university_ecosystem/actions/runs/40103663774))
 точная import-only правка прошла fast lint и допустила PostgreSQL:
@@ -104,9 +108,19 @@ notifications, оба legacy-null-tenant случая — три вместо д
 `--show-capture=no` сохранил capture, прежние budgets и все причины.
 Независимо reviewed узкий producer/dispatcher fix на `2208db1e` прошёл
 все **31 cases** в том же отдельном tenant step. DDL artifacts получены до него.
-AUD-197/198 ещё не приняты: следующие **13 historical cases** остаются
-tests-first; планируемые bounded tenant cohort44 и consumer selector187
-ещё требуют собственного выполнения. Исторический полный integration на
+AUD-197/198 ещё не приняты. На `941f56af`
+[bounded tenant cohort44](https://github.com/egorribun/university_ecosystem/actions/runs/40123590419/job/120961216029)
+дал **8 expected FAIL / 36 PASS** без fixture/teardown errors: прежние 31 cases
+и пять known-scope/missing-comment controls прошли; четыре unknown-scope
+handler cases и четыре hidden/deleted PostgreSQL cases воспроизвели silent ack.
+Публикуемый узкий handler fix сохраняет retry/DLQ evidence при отсутствующем
+защищённом источнике без tenant metadata; он ещё требует GREEN. Это граница
+неизвестного scope, не возраста записи: newly emitted global events тоже могут
+консервативно попасть в retry/DLQ после удаления источника. Known-tenant deletion
+и missing non-RLS comment по-прежнему пропускаются; privileged lookup и изменение
+wire envelope не вводятся. Consumer cohort расширен до **194 selectors**:
+добавлены целые связанные handler/search/content suites и существующие
+retry/DLQ controls, без сокращения прежних 187. Исторический полный integration на
 f7182c73 остановился на первом tenant defect (**1 FAIL / 29 PASS**); полные
 27 migration cases доказаны отдельным diagnostic, не тем остановленным run.
 
@@ -119,6 +133,15 @@ contracts CSP-handler и Caddy configuration. Они проверяют гран
 но не wire-level Referer или доставку логов. [Четыре SSR sanitizer Node cases](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120946077762)
 прошли на `2208db1e`; reset-specific browser/HTTP/log-sink evidence ещё требуется,
 поэтому AUD-178 не принимается.
+
+На `941f56af` [Contract](https://github.com/egorribun/university_ecosystem/actions/runs/40123590419/job/120960182391)
+дал **4 expected unknown-scope FAIL / 2587 PASS**, затем **590 policy PASS**.
+Все 28 planner cases, включая нейтрально переименованный тест, и четыре
+barrier-refusal controls прошли; [реальный DB Migration Gate](https://github.com/egorribun/university_ecosystem/actions/runs/40123590419/job/120961216015)
+снова подтвердил точный newest-boundary отказ и 86+2 PASS. Raw scanner,
+security/types и Gitleaks GREEN; это свежая проверка scoped300 dispositions,
+не приёмка restore или полного CI. Full PostgreSQL integration этого source
+остановился на ожидаемом первом новом unknown-scope случае: **1 FAIL / 35 PASS**.
 
 Полный unit shard 1 на 36e84f выявил два дополнительных config-warning FAIL:
 локальные Path аргументы стали opaque markers после строгой redaction.

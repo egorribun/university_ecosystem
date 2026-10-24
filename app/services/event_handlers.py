@@ -161,12 +161,21 @@ def _required_event_uuid(value: UUID | str | None) -> UUID:
         raise ValueError("Invalid durable content identifier") from None
 
 
+def _require_scope_for_missing_content(event: DomainEvent) -> None:
+    """Retain retry evidence when a protected source cannot be resolved."""
+    # Absent tenant metadata cannot distinguish a hidden row from deletion,
+    # including newly emitted global events. Do not acknowledge that ambiguity.
+    if event.metadata.tenant_id is None:
+        raise RuntimeError("Durable content source is unavailable without tenant scope")
+
+
 async def handle_event_created_notification(event: EventCreated) -> None:
     """Create event notifications from the committed source event."""
     event_id = _required_event_uuid(event.event_id_entity)
     async with async_session() as db:
         record = await db.get(models.Event, event_id)
         if record is None:
+            _require_scope_for_missing_content(event)
             return
         await notify_about_event(db, record, locale=event.locale)
         await db.commit()
@@ -178,6 +187,7 @@ async def handle_news_created_notification(event: NewsCreated) -> None:
     async with async_session() as db:
         record = await db.get(models.News, news_id)
         if record is None:
+            _require_scope_for_missing_content(event)
             return
         await notify_about_news(db, record, locale=event.locale)
         await db.commit()
@@ -193,6 +203,7 @@ async def handle_news_comment_created_notification(event: NewsCommentCreated) ->
         news = await db.get(models.News, comment.news_id)
         author = await db.get(models.User, comment.user_id)
         if news is None or author is None:
+            _require_scope_for_missing_content(event)
             return
         await notify_about_comment(db, news, comment, author, locale=event.locale)
         await db.commit()

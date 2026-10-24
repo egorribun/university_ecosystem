@@ -11,6 +11,7 @@ import {
   assertFinalLockScope,
   assertFinalNpmCommand,
   assertFinalSourcePrerequisites,
+  assertLocalOverrideTarget,
   assertOverrideSelectorControl,
   assertStrictLock,
   finalNpmCommand,
@@ -29,7 +30,7 @@ const FORMATTER = "node_modules/zod-validation-error"
 const HOOKS_FORMATTER = "node_modules/eslint-plugin-react-hooks/node_modules/zod-validation-error"
 const FINAL_OVERRIDE = Object.freeze({
   ".": "$eslint-plugin-react-compiler",
-  zod: "$react-compiler-zod-compat",
+  zod: "file:../../scripts/react-compiler-zod-compat",
   "zod-validation-error": Object.freeze({ ".": "4.0.2", zod: "4.6.7" }),
 })
 const TRANSPORT = [
@@ -379,6 +380,18 @@ test("unrelated package, root-manifest and top-level lock changes are rejected",
   ]) {
     const value = expectedFinalLock()
     mutate(value)
+    assert.throws(() => assertFinalLockScope(sourceLock(), value, formatterMetadata()), {
+      name: "AssertionError",
+    })
+  }
+})
+
+test("the observed consumer-relative facade fourth record remains rejected", () => {
+  const misplaced = "node_modules/eslint-plugin-react-compiler/scripts/react-compiler-zod-compat"
+  for (const redirect of [false, true]) {
+    const value = expectedFinalLock()
+    value.packages[misplaced] = {}
+    if (redirect) value.packages[OLD_ENGINE] = { resolved: misplaced, link: true }
     assert.throws(() => assertFinalLockScope(sourceLock(), value, formatterMetadata()), {
       name: "AssertionError",
     })
@@ -805,7 +818,9 @@ function selectorToolFixture(root, attached = true) {
         ", " +
         JSON.stringify(selected) +
         "].find(key => overrides[key])",
-      "    assert.equal(overrides[this.key].zod, '$react-compiler-zod-compat')",
+      "    assert.equal(overrides[this.key].zod, this.key === " +
+        JSON.stringify(exact) +
+        " ? '$react-compiler-zod-compat' : 'file:../../scripts/react-compiler-zod-compat')",
       "    this.rule = { key: this.key }",
       "  }",
       "  getEdgeRule(edge) {",
@@ -834,18 +849,32 @@ function selectorToolFixture(root, attached = true) {
     join(tool, "node_modules/@npmcli/arborist/lib/node.js"),
     [
       "const assert = require('node:assert/strict')",
+      "const { join } = require('node:path')",
       "const Edge = require('./edge.js')",
       "module.exports = class Node {",
-      "  constructor({ loadOverrides, pkg }) {",
+      "  constructor({ loadOverrides, pkg, path, parent }) {",
+      "    if (parent) {",
+      "      this.path = join(parent.path, 'node_modules', pkg.name)",
+      "      const edge = new Edge()",
+      "      edge.name = 'zod'",
+      "      edge.rawSpec = pkg.dependencies.zod",
+      "      const spec = parent.rule.zod",
+      "      edge.spec = spec.startsWith('$') ? parent.pkg.devDependencies[spec.slice(1)] : spec",
+      "      edge.from = this",
+      "      this.edgesOut = new Map([['zod', edge]])",
+      "      return",
+      "    }",
       "    assert.equal(loadOverrides, true)",
       "    assert.equal(pkg.name, 'react-compiler-selector-control')",
+      "    this.path = path",
+      "    this.pkg = pkg",
       "    const key = Object.keys(pkg.overrides)[0]",
       "    const name = 'eslint-plugin-react-compiler'",
-      "    const rule = pkg.overrides[key]",
+      "    this.rule = pkg.overrides[key]",
       "    const edge = new Edge()",
       "    edge.overrides = { key }",
       "    edge.rawSpec = pkg.devDependencies[name]",
-      "    edge.spec = rule['.'] === '$' + name ? edge.rawSpec : key.slice(name.length + 1)",
+      "    edge.spec = this.rule['.'] === '$' + name ? edge.rawSpec : key.slice(name.length + 1)",
       "    this.edgesOut = new Map([[name, edge]])",
       "  }",
       "  assertRootOverrides() {",
@@ -858,9 +887,31 @@ function selectorToolFixture(root, attached = true) {
       "",
     ].join("\n")
   )
+  writePackage(
+    tool,
+    "node_modules/npm-package-arg",
+    { name: "npm-package-arg", version: "13.0.2", main: "index.cjs" },
+    [
+      "const assert = require('node:assert/strict')",
+      "const { resolve } = require('node:path')",
+      "module.exports = { resolve(name, spec, where) {",
+      "  assert.equal(name, 'zod')",
+      "  assert.equal(spec.startsWith('file:'), true)",
+      "  return { type: 'directory', fetchSpec: resolve(where, spec.slice(5)) }",
+      "} }",
+      "",
+    ].join("\n")
+  )
+  mkdirSync(join(tool, "node_modules/@npmcli/arborist/lib/arborist"))
+  writeFileSync(
+    join(tool, "node_modules/@npmcli/arborist/lib/arborist/build-ideal-tree.js"),
+    "throw new Error('Resolver control must not execute build-ideal-tree')\n"
+  )
+  const frontend = join(root, "frontend")
+  installedFixture(frontend)
   const candidate = manifest()
   candidate.overrides[selected] = FINAL_OVERRIDE
-  return { tool, candidate }
+  return { tool, candidate, frontend }
 }
 
 function selectorDiagnostic(attached = true) {
@@ -900,6 +951,16 @@ function selectorDiagnostic(attached = true) {
       rootOverrideAccepted: true,
       missingReferenceError: "EOVERRIDE",
     },
+    localDependency: {
+      parser: "npm-package-arg",
+      parserVersion: "13.0.2",
+      rawSpec: "^3.22.4",
+      baselineSpec: "file:./scripts/react-compiler-zod-compat",
+      baselineTarget: COMPILER + "/" + LOCAL,
+      selectedSpec: "file:../../scripts/react-compiler-zod-compat",
+      selectedTarget: LOCAL,
+      targetCanonical: true,
+    },
     candidateAccepted: false,
   }
 }
@@ -907,8 +968,8 @@ function selectorDiagnostic(attached = true) {
 test("selector diagnostic preserves exact baseline and requires singleton attachment", () => {
   for (const attached of [false, true]) {
     withDirectory((root) => {
-      const { tool, candidate } = selectorToolFixture(root, attached)
-      const report = inspectOverrideSelector(tool, candidate)
+      const { tool, candidate, frontend } = selectorToolFixture(root, attached)
+      const report = inspectOverrideSelector(tool, candidate, frontend)
       assert.deepEqual(report, selectorDiagnostic(attached))
       if (attached) assert.equal(assertOverrideSelectorControl(report), true)
       else assert.throws(() => assertOverrideSelectorControl(report), { name: "AssertionError" })
@@ -939,6 +1000,12 @@ test("singleton selector controls reject wider versions, lost evidence and alter
     (value) => (value.directDependency.effectiveSpec = value.selectedSelector.range),
     (value) => (value.directDependency.rootOverrideAccepted = false),
     (value) => (value.directDependency.missingReferenceError = null),
+    (value) => (value.localDependency.parserVersion = "13.0.1"),
+    (value) => (value.localDependency.rawSpec = "*"),
+    (value) => (value.localDependency.baselineTarget = LOCAL),
+    (value) => (value.localDependency.selectedTarget = COMPILER + "/" + LOCAL),
+    (value) => (value.localDependency.selectedSpec = "file:../scripts/react-compiler-zod-compat"),
+    (value) => (value.localDependency.targetCanonical = false),
     (value) => (value.candidateAccepted = true),
   ]) {
     const report = selectorDiagnostic()
@@ -948,13 +1015,27 @@ test("singleton selector controls reject wider versions, lost evidence and alter
 })
 
 test("selector diagnostic rejects changed tool versions and external resolution", () => {
-  for (const mutation of ["npm", "semver", "arborist", "linked-semver", "nonboolean"]) {
+  for (const mutation of [
+    "npm",
+    "semver",
+    "arborist",
+    "npm-package-arg",
+    "linked-semver",
+    "shadow-parser",
+    "nonboolean",
+  ]) {
     withDirectory((root) => {
-      const { tool, candidate } = selectorToolFixture(root)
+      const { tool, candidate, frontend } = selectorToolFixture(root)
       if (mutation === "linked-semver") {
         writePackage(root, "outside", { name: "semver", version: "7.8.4" })
         rmSync(join(tool, "node_modules/semver"), { recursive: true })
         symlinkSync(join(root, "outside"), join(tool, "node_modules/semver"), "dir")
+      } else if (mutation === "shadow-parser") {
+        writePackage(tool, "node_modules/@npmcli/arborist/node_modules/npm-package-arg", {
+          name: "npm-package-arg",
+          version: "13.0.2",
+          main: "index.cjs",
+        })
       } else if (mutation === "nonboolean") {
         writeFileSync(
           join(tool, "node_modules/semver/index.cjs"),
@@ -965,6 +1046,7 @@ test("selector diagnostic rejects changed tool versions and external resolution"
           npm: "",
           semver: "node_modules/semver",
           arborist: "node_modules/@npmcli/arborist",
+          "npm-package-arg": "node_modules/npm-package-arg",
         }[mutation]
         writeFileSync(
           join(tool, relative, "package.json"),
@@ -974,9 +1056,38 @@ test("selector diagnostic rejects changed tool versions and external resolution"
           })
         )
       }
-      assert.throws(() => inspectOverrideSelector(tool, candidate), { name: "AssertionError" })
+      assert.throws(() => inspectOverrideSelector(tool, candidate, frontend), {
+        name: "AssertionError",
+      })
     })
   }
+})
+
+test("local override targets require the exact canonical adapter and compiler placement", () => {
+  withDirectory((root) => {
+    const frontend = join(root, "frontend")
+    installedFixture(frontend)
+    const consumer = join(frontend, COMPILER)
+    const target = join(frontend, LOCAL)
+    assert.equal(assertLocalOverrideTarget(frontend, consumer, target), true)
+    for (const [parent, destination] of [
+      [join(frontend, "node_modules/other-consumer"), target],
+      [consumer, join(frontend, COMPILER, LOCAL)],
+      [consumer, join(frontend, "node_modules", LOCAL)],
+      [consumer, join(root, "outside")],
+    ]) {
+      assert.throws(() => assertLocalOverrideTarget(frontend, parent, destination), {
+        name: "AssertionError",
+      })
+    }
+    const outside = join(root, "outside")
+    mkdirSync(outside)
+    rmSync(target, { recursive: true })
+    symlinkSync(outside, target, "dir")
+    assert.throws(() => assertLocalOverrideTarget(frontend, consumer, target), {
+      name: "AssertionError",
+    })
+  })
 })
 
 test("import is inert and direct execution produces no false candidate evidence", () => {

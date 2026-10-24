@@ -2177,7 +2177,14 @@ jobs:
             tests/test_caddy_routing.py::test_query_uri_filter_redacts_each_encoded_credential_key_character \
             tests/test_caddy_routing.py::test_uri_filter_preserves_ordinary_non_reset_diagnostics \
             tests/test_caddy_routing.py::test_tls_edge_sets_the_shared_browser_security_headers \
-            tests/test_caddy_routing.py::test_caddy_uri_redaction_rules_keep_path_first_and_sensitive_keys_ordered -v \
+            tests/test_caddy_routing.py::test_caddy_uri_redaction_rules_keep_path_first_and_sensitive_keys_ordered \
+            tests/test_event_handlers.py \
+            tests/test_event_handlers_closure.py \
+            tests/test_content_consistency_regressions.py \
+            tests/test_search_indexer.py \
+            tests/test_outbox_worker.py::test_outbox_worker_error_handling \
+            tests/test_outbox_worker.py::test_outbox_worker_dlq_transition \
+            tests/test_outbox_worker.py::test_durable_outbox_handler_failure_retries_without_pii -v \
             --tb=short --durations=20 -n 2 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \

@@ -179,11 +179,12 @@ def test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_univers
 
 # Ordered argv population from 1a3954e99f06bf7b1660ad2df609a84b022daefa.
 # Preserve all 136 original selectors, including intentional file/node overlaps.
-# Fifty-one explicit selections follow that unchanged prefix: existing audit
+# Fifty-eight explicit selections follow that unchanged prefix: existing audit
 # regressions, Gitleaks diagnostics, WebSocket/migration safety, logging/email,
 # inventory, repaired orchestrators, typed DLQ, client-IP and owned registration
 # diagnostic, configuration-warning, exact Knip, outbox tenant and historical
-# rollback-boundary and reset-URL sink contracts. Do not shrink this scope.
+# rollback-boundary, reset-URL sink and complete related handler contracts.
+# Do not shrink this scope.
 _CONSUMER_SELECTORS = (
     "tests/contracts/",
     "tests/test_live_stand_cleanup_profile_contract.py",
@@ -372,6 +373,13 @@ _CONSUMER_SELECTORS = (
     "tests/test_caddy_routing.py::test_uri_filter_preserves_ordinary_non_reset_diagnostics",
     "tests/test_caddy_routing.py::test_tls_edge_sets_the_shared_browser_security_headers",
     "tests/test_caddy_routing.py::test_caddy_uri_redaction_rules_keep_path_first_and_sensitive_keys_ordered",
+    "tests/test_event_handlers.py",
+    "tests/test_event_handlers_closure.py",
+    "tests/test_content_consistency_regressions.py",
+    "tests/test_search_indexer.py",
+    "tests/test_outbox_worker.py::test_outbox_worker_error_handling",
+    "tests/test_outbox_worker.py::test_outbox_worker_dlq_transition",
+    "tests/test_outbox_worker.py::test_durable_outbox_handler_failure_retries_without_pii",
 )
 _DISPATCH_PROBE = """\
 import json
