@@ -311,7 +311,7 @@ async def test_cached_decorator_uses_distinct_tiered_l1_ttl() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cached_decorator_skips_self_in_bound_method_key() -> None:
+async def test_cached_decorator_includes_receiver_in_bound_method_key() -> None:
     from app.deps.cache import cached
 
     cache = AsyncMock()
@@ -323,9 +323,10 @@ async def test_cached_decorator_skips_self_in_bound_method_key() -> None:
         async def load(self, value: int) -> int:
             return value
 
+    loader = Loader()
     with patch("app.deps.cache.get_cache", return_value=cache):
-        assert await Loader().load(4) == 4
-    cache.set.assert_awaited_once_with("bound:4", 4, ttl=None)
+        assert await loader.load(4) == 4
+    cache.set.assert_awaited_once_with(f"bound:{loader}:4", 4, ttl=None)
 
 
 def test_create_cache_backend_nats_and_get_cache_inner_double_check() -> None:

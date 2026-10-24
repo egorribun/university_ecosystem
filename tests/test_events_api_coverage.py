@@ -188,6 +188,8 @@ async def test_semantic_search_etag_match(request_mock):
                         MagicMock(),
                         query="test",
                         if_none_match='W/"match"',
+                        limit=5,
+                        min_score=0.7,
                         _user=MagicMock(),
                         provides={
                             "AsyncDatabaseSession": MagicMock(),

@@ -185,6 +185,8 @@ def _staging_environment_without_secret_key() -> dict[str, str]:
         APP_PROCESS_ROLE="api",
         AUTO_CREATE_SCHEMA="false",
         CACHE_REDIS_URL="redis://cache.staging.internal:6379/0",
+        RATE_LIMIT_STORAGE_BACKEND="redis",
+        RATE_LIMIT_STORAGE_URI="redis://localhost",
         ELASTICSEARCH_URL="https://elasticsearch.staging.internal",
         EVENT_FILE_SCANNER_ENABLED="true",
         MINIO_SECURE="true",

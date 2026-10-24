@@ -241,8 +241,8 @@ describe("OtpEntry mutation contracts", () => {
     expect(fields[1]).toHaveClass(
       "w-11",
       "h-14",
-      "bg-(--bg-surface-raised)/(--opacity-medium)",
-      "border-(--glass-border)/(--opacity-dim)",
+      "bg-(--bg-surface-raised)/[calc(var(--opacity-medium)*100%)]",
+      "border-(--glass-border)/[calc(var(--opacity-dim)*100%)]",
       "disabled:cursor-not-allowed"
     )
     fireEvent.focus(fields[1]!)
@@ -250,15 +250,15 @@ describe("OtpEntry mutation contracts", () => {
     fireEvent.change(fields[1]!, { target: { value: "7" } })
     fireEvent.blur(fields[1]!)
     expect(fields[1]).toHaveClass(
-      "border-brand-main/(--opacity-medium)",
-      "bg-brand-main/(--opacity-faint)"
+      "border-brand-main/[calc(var(--opacity-medium)*100%)]",
+      "bg-brand-main/[calc(var(--opacity-faint)*100%)]"
     )
     expect(screen.getByText("hint")).toHaveClass("text-xs", "font-bold")
 
     rerender(<OtpEntry onSubmit={vi.fn()} error="invalid" />)
     await waitFor(() => {
       expect(inputs()[0]).toHaveClass(
-        "border-(--error-border)/(--opacity-medium)",
+        "border-(--error-border)/[calc(var(--opacity-medium)*100%)]",
         "focus:border-(--error-border)",
         "focus:ring-4"
       )

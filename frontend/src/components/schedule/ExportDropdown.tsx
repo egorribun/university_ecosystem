@@ -192,7 +192,7 @@ export function ExportDropdown({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-sm font-semibold text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+        className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-sm font-semibold text-text-secondary transition-colors hover:bg-surface-elevated/[calc(var(--opacity-dim)*100%)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
       >
         {shouldShowExportSpinner(isExporting, exporting) ? (
           <div
@@ -221,7 +221,7 @@ export function ExportDropdown({
                 title={id === "gcal" && !googleCalendarUrl ? googleCalendarReason : undefined}
                 disabled={disabled || exporting === id}
                 onClick={onClick}
-                className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-text-primary transition-colors hover:bg-surface-elevated/(--opacity-dim) disabled:opacity-40 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-brand"
+                className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-text-primary transition-colors hover:bg-surface-elevated/[calc(var(--opacity-dim)*100%)] disabled:opacity-40 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-brand"
               >
                 {exporting === id ? (
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current" />

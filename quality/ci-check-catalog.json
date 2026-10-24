@@ -1,7 +1,7 @@
 {
   "$schema": "./ci-check-catalog.schema.json",
   "schema_version": 1,
-  "catalog_version": "1.1.2",
+  "catalog_version": "1.1.3",
   "repository": "egorribun/university_ecosystem",
   "default_runbook": "docs/testing/ci-check-catalog-runbook.md",
   "profiles": {
@@ -1275,6 +1275,34 @@
             "notes": "No automatic retry: the pinned Trivy action exposes no typed failure reason. Rerun the workflow manually for suspected transient runner or registry failures."
           }
         },
+        "docker-security-scan-additional": {
+          "profile": "internal",
+          "check_name_template": "Trivy Image Scan - ${{ matrix.image_name }}",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
+          "artifacts": [
+            {
+              "name_pattern": "trivy-image-${{ matrix.image_name }}-sarif",
+              "path_pattern": "trivy-${{ matrix.image_name }}.sarif",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false,
+            "notes": "Five additional source-built runtime images are scanned on pull requests; CI Success enforces this matrix result without adding a branch-protection context."
+          },
+          "matrix_governance": {
+            "max_parallel": 3
+          }
+        },
         "helm-validate": {
           "profile": "required-pr-main",
           "check_name_template": "Helm Lint & Validate",
@@ -1593,6 +1621,7 @@
             "openapi-verify",
             "verify-runtime-reqs",
             "docker-security-scan",
+            "docker-security-scan-additional",
             "helm-validate",
             "db-migration-gate",
             "go-fuzz",
@@ -4739,6 +4768,12 @@
           "guard": "${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}",
           "needs": [],
           "artifacts": [
+            {
+              "name_pattern": "browser-dependency-smoke-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
+              "path_pattern": "${{ runner.temp }}/browser-dependency-smoke-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json",
+              "required": false,
+              "provenance": "sha"
+            },
             {
               "name_pattern": "core-live-receipt-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
               "path_pattern": "core-live-acceptance-receipt.json",

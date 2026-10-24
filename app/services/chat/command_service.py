@@ -37,7 +37,15 @@ if TYPE_CHECKING:
     from .notification_service import ChatNotificationService
 
 from fastapi import HTTPException, status
-from redis.exceptions import WatchError
+from redis.exceptions import (
+    ConnectionError as RedisConnectionError,
+)
+from redis.exceptions import (
+    TimeoutError as RedisTimeoutError,
+)
+from redis.exceptions import (
+    WatchError,
+)
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -489,12 +497,17 @@ class ChatMessageDispatcher:
         # Record the committed ID before response hydration, which may itself
         # fail. A retry can then reload that same message rather than insert again.
         if _idempotency_cache_key and _pending_value:
-            await _change_idempotency_slot(
-                _idempotency_cache_key,
-                _pending_value,
-                json.dumps({"status": "completed", "message_id": str(message.id)}),
-                ttl=86400,
-            )
+            try:
+                await _change_idempotency_slot(
+                    _idempotency_cache_key,
+                    _pending_value,
+                    json.dumps({"status": "completed", "message_id": str(message.id)}),
+                    ttl=86400,
+                )
+            except (RedisConnectionError, RedisTimeoutError, OSError):
+                # The database commit is authoritative. Do not report a committed
+                # message as failed solely because the retry cache is unavailable.
+                logger.warning("chat_message_idempotency_completion_failed")
 
         # Reload message with attachments for the response
         reloaded = await self.repository.get_last_messages(

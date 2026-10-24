@@ -264,15 +264,7 @@ jobs:
         # is the safe replacement.  This gate prevents future re-introduction.
         shell: bash
         run: |
-          # TD-W18-04 (audit 2026-03-23 Wave 18): exclude comments to prevent false
-          # positives (e.g. "# Do NOT import pickle" triggered the old gate).
-          result=$(grep -rn "import pickle\|from pickle\|pickle\.loads\|pickle\.dumps" app/ --include="*.py" | grep -v '^\s*#' | grep -v '# nosec' || true)
-          if [ -n "$result" ]; then
-            echo "::error::pickle usage detected in app/ — replace with Pydantic model_validate_json / model_dump_json (see RED-01 in Wave 13 audit)"
-            echo "$result"
-            exit 1
-          fi
-          echo "OK: no pickle usage found in app/"
+          python scripts/quality/check_no_pickle.py app/
 
       - name: "Enforce Python 3 except tuple syntax (RZ-25-01 / MOD-27-01)"
         # MOD-27-01: Fixed regex — previous `grep -v 'except ('` accidentally
@@ -508,7 +500,7 @@ jobs:
             !.venv/**
       - name: Run cspell
         id: cspell
-        uses: streetsidesoftware/cspell-action@6f3c77c1406bc930f944ba97e9801a22e42caf58 # v9.1.0
+        uses: streetsidesoftware/cspell-action@ce1816e4ce36532956ac6e983737392774b6e169 # v9.2.0
         with:
           config: "cspell.json"
           use_cspell_files: true
@@ -959,6 +951,7 @@ jobs:
           uv sync --frozen
 
       - name: Lint Postgres Migrations (Squawk)
+        id: migration-squawk
         env:
           SECRET_KEY: ${{ env.SECRET_KEY }}
           ENVIRONMENT: testing
@@ -992,6 +985,184 @@ jobs:
             uv run python -m scripts.quality.render_live_alembic_sql "$migration" "$sql_file"
             squawk "${squawk_args[@]}" "$sql_file"
           done <<< "$changed_files"
+
+      - name: Collect bounded 148642dd1207 DDL evidence
+        id: migration-ddl-evidence
+        if: >-
+          ${{ !cancelled() &&
+              (steps.migration-squawk.outcome == 'success' ||
+               steps.migration-squawk.outcome == 'failure') }}
+        env:
+          SECRET_KEY: ${{ env.SECRET_KEY }}
+          ENVIRONMENT: testing
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          RUN_INTEGRATION_TESTS: "1"
+          ORIGINAL_SQUAWK_OUTCOME: ${{ steps.migration-squawk.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          print_bounded() {
+            local file="$1" limit="$2" bytes
+            bytes="$(wc -c < "$file")"
+            head -c "$limit" "$file"
+            if [ "$bytes" -gt "$limit" ]; then
+              echo "::error::AUD148 diagnostic output exceeded $limit bytes"
+              return 1
+            fi
+          }
+          test_log="$(mktemp)"
+          trace_root=".pytest_tmp/aud148-expanded"
+          mkdir -p "$(dirname "$trace_root")"
+          pytest_status=0
+          # Artifact discovery reads physical files; normal capture bounds setup logs.
+          uv run pytest -q --tb=short \
+            tests/test_migration_148642dd1207_trace.py \
+            tests/test_migration_148642dd1207_diagnostic_ci.py \
+            tests/test_migration_148642dd1207_safety.py \
+            tests/integration/test_migration_148642dd1207.py::test_expanded_ddl_inventory_matches_unmodified_populated_control \
+            tests/integration/test_migration_148642dd1207.py::test_convertible_orphan_rolls_back_cutover_and_diagnostic_rows \
+            tests/integration/test_migration_148642dd1207.py::test_existing_exact_shadow_check_is_reused_from_real_pg_catalog \
+            tests/integration/test_migration_148642dd1207.py::test_existing_shadow_check_rejects_wrong_real_pg_catalog_identity \
+            tests/integration/test_migration_148642dd1207.py::test_stale_shadow_value_aborts_before_fk_capture_with_exact_rollback \
+            tests/integration/test_migration_148642dd1207.py::test_shadow_cutover_omits_only_transient_validation_after_null_backfill \
+            tests/integration/test_migration_148642dd1207.py::test_groups_cutover_uses_only_the_exact_primary_key_index \
+            tests/integration/test_migration_148642dd1207.py::test_groups_index_cutover_failure_restores_exact_catalog_and_data \
+            tests/integration/test_migration_148642dd1207.py::test_groups_key_helper_round_trip_restores_legacy_index_and_foreign_keys \
+            tests/integration/test_migration_148642dd1207.py::test_groups_successors_do_not_require_the_duplicate_id_index \
+            --basetemp="$trace_root" > "$test_log" 2>&1 || pytest_status=$?
+          echo "AUD148_FOCUSED_TESTS_BEGIN"
+          if ! print_bounded "$test_log" 131072; then
+            [ "$pytest_status" -ne 0 ] || pytest_status=1
+          fi
+          echo "AUD148_FOCUSED_TESTS_END"
+          if [ "$pytest_status" -ne 0 ]; then exit "$pytest_status"; fi
+          artifact_paths="$(mktemp)"
+          uv run python - "$trace_root" "$artifact_paths" <<'SELECT_AUD148'
+          import sys
+          from pathlib import Path
+
+          def fail_walk(error):
+              raise error
+
+
+          root = Path(sys.argv[1])
+          names = ("148642dd1207.expanded.sql", "148642dd1207.trace.json")
+          matches = {name: [] for name in names}
+          for directory, _, filenames in root.walk(on_error=fail_walk, follow_symlinks=False):
+              for name in names:
+                  path = directory / name
+                  if name in filenames and path.is_file() and not path.is_symlink():
+                      matches[name].append(path)
+          if any(len(matches[name]) != 1 for name in names):
+              raise SystemExit("AUD148 expected exactly one physical SQL/evidence pair")
+          sql_path, evidence_path = (matches[name][0] for name in names)
+          if sql_path.parent != evidence_path.parent:
+              raise SystemExit("AUD148 SQL and JSON are not from the same test")
+          Path(sys.argv[2]).write_bytes(
+              b"\0".join(str(path).encode() for path in (sql_path, evidence_path)) + b"\0"
+          )
+          SELECT_AUD148
+          mapfile -d '' -t evidence_files < "$artifact_paths"
+          sql_file="${evidence_files[0]}"
+          json_file="${evidence_files[1]}"
+          AUD148_CHECKOUT_SHA="$(git rev-parse HEAD)"
+          AUD148_SQUAWK_VERSION="$(squawk --version)"
+          AUD148_SQUAWK_BINARY_SHA256="$(sha256sum "$(command -v squawk)" | cut -d ' ' -f 1)"
+          export AUD148_CHECKOUT_SHA AUD148_SQUAWK_VERSION AUD148_SQUAWK_BINARY_SHA256
+          squawk_args=(
+            --exclude prefer-robust-stmts --exclude prefer-text-field
+            --exclude prefer-bigint-over-int --exclude prefer-identity
+            --exclude prefer-timestamp-tz --exclude disallowed-unique-constraint
+            --exclude require-enum-value-ordering
+          )
+          uv run python - "$sql_file" "$json_file" "${squawk_args[@]}" <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          sql_path, evidence_path = map(Path, sys.argv[1:3])
+          if sql_path.stat().st_size > 65536 or evidence_path.stat().st_size > 4194304:
+              raise SystemExit("AUD148 evidence exceeds its input byte limit")
+          sql_bytes = sql_path.read_bytes()
+          sql_text = sql_bytes.decode("utf-8")
+          evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+          if evidence["status"] != "diagnostic-only-not-an-exception":
+              raise SystemExit("AUD148 evidence is not diagnostic-only")
+          if not sql_text.startswith("-- DIAGNOSTIC ONLY:"):
+              raise SystemExit("AUD148 expanded SQL is missing its diagnostic label")
+          if hashlib.sha256(sql_bytes).hexdigest() != evidence["expanded_sql_sha256"]:
+              raise SystemExit("AUD148 expanded SQL digest mismatch")
+
+          def git_blob(path):
+              data = Path(path).read_bytes()
+              header = b"blob " + str(len(data)).encode("ascii") + b"\0"
+              return hashlib.sha1(header + data, usedforsecurity=False).hexdigest()
+
+          migration_path = "alembic/versions/148642dd1207_fix_missing_tables.py"
+          if git_blob(migration_path) != evidence["migration_blob"]:
+              raise SystemExit("AUD148 migration source mismatch")
+          for key, path in (
+              ("helper_sha256", "tests/helpers/migration_148642dd1207_trace.py"),
+              ("fixture_sha256", "tests/integration/test_migration_148642dd1207.py"),
+          ):
+              if hashlib.sha256(Path(path).read_bytes()).hexdigest() != evidence[key]:
+                  raise SystemExit("AUD148 diagnostic source mismatch")
+          nested = evidence["nested_ddl"]
+          if not isinstance(nested, list) or not 1 <= len(nested) <= 100:
+              raise SystemExit("AUD148 nested inventory is not finite")
+          records = []
+          for entry in nested:
+              statement = entry["sql"]
+              digest = hashlib.sha256(statement.encode("utf-8")).hexdigest()
+              if not statement.startswith("ALTER TABLE ") or digest != entry["sql_sha256"]:
+                  raise SystemExit("AUD148 nested DDL identity mismatch")
+              keys = ("outer_ordinal", "site", "sql", "sql_sha256")
+              records.append({key: entry[key] for key in keys})
+          version = os.environ["AUD148_SQUAWK_VERSION"]
+          if "2.67.0" not in version.split() or len(version) > 128:
+              raise SystemExit("AUD148 requires the existing Squawk 2.67.0 binary")
+          metadata = {
+              "status": evidence["status"],
+              "checkout_sha": os.environ["AUD148_CHECKOUT_SHA"],
+              "workflow_sha": evidence["workflow_sha"],
+              "workflow_run_id": evidence["workflow_run_id"],
+              "original_squawk_outcome": os.environ["ORIGINAL_SQUAWK_OUTCOME"],
+              "migration_blob": evidence["migration_blob"],
+              "helper_sha256": evidence["helper_sha256"],
+              "fixture_sha256": evidence["fixture_sha256"],
+              "workflow_blob": git_blob(".github/workflows/ci.yml"),
+              "renderer_blob": git_blob("scripts/quality/render_live_alembic_sql.py"),
+              "squawk_config_blob": git_blob(".squawk.toml"),
+              "lockfile_blob": git_blob("uv.lock"),
+              "postgres_version": evidence["postgres_version"],
+              "squawk_version": version,
+              "squawk_binary_sha256": os.environ["AUD148_SQUAWK_BINARY_SHA256"],
+              "squawk_args": sys.argv[3:],
+              "expanded_sql_sha256": evidence["expanded_sql_sha256"],
+              "nested_ddl": records,
+          }
+          rendered = json.dumps(metadata, sort_keys=True, indent=2)
+          if len(rendered.encode("utf-8")) + len(sql_bytes) > 131072:
+              raise SystemExit("AUD148 log payload exceeds its output byte limit")
+          print("AUD148_DIAGNOSTIC_METADATA_BEGIN")
+          print(rendered)
+          print("AUD148_DIAGNOSTIC_METADATA_END")
+          print("AUD148_EXPANDED_SQL_BEGIN")
+          print(sql_text, end="" if sql_text.endswith("\n") else "\n")
+          print("AUD148_EXPANDED_SQL_END")
+          PY
+          lint_log="$(mktemp)"
+          lint_status=0
+          squawk "${squawk_args[@]}" "$sql_file" > "$lint_log" 2>&1 || lint_status=$?
+          echo "AUD148_EXPANDED_SQUAWK_BEGIN"
+          if ! print_bounded "$lint_log" 131072; then
+            [ "$lint_status" -ne 0 ] || lint_status=1
+          fi
+          echo "AUD148_EXPANDED_SQUAWK_END"
+          echo "AUD148_EXPANDED_SQUAWK_EXIT=$lint_status"
+          exit "$lint_status"
 
       - name: Wait for PostgreSQL
         shell: pwsh
@@ -1273,7 +1444,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always() && hashFiles('trivy-results.sarif') != ''
         continue-on-error: true
         with:
@@ -1281,6 +1452,133 @@ jobs:
           # Match the pre-category configuration key used by main. The
           # reusable audit has a separate job key for filesystem/config scans.
           category: ".github/workflows/ci.yml:docker-security-scan"
+
+  docker-security-scan-additional:
+    name: "Trivy Image Scan - ${{ matrix.image_name }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: pre-commit-check
+    permissions:
+      security-events: write
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - image_name: frontend
+            file: frontend.Dockerfile
+            context: .
+            category: trivy-image-frontend
+          - image_name: gateway
+            file: services/gateway/Dockerfile
+            context: .
+            category: trivy-image-gateway
+          - image_name: ws-hub
+            file: services/ws-hub/Dockerfile
+            context: .
+            category: trivy-image-ws-hub
+          - image_name: file-processor
+            file: services/file-processor/Dockerfile
+            context: .
+            category: trivy-image-file-processor
+          - image_name: caddy
+            file: services/caddy/Dockerfile
+            context: services/caddy
+            category: trivy-image-caddy
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build local runtime image for scanning
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: "university-ecosystem/${{ matrix.image_name }}:${{ github.sha }}"
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          build-args: |
+            ${{ matrix.image_name == 'frontend' && format('VITE_APP_RELEASE={0}', github.sha) || '' }}
+            ${{ matrix.image_name == 'frontend' && 'VITE_ENABLE_WEB_VITALS=false' || '' }}
+            ${{ matrix.image_name == 'frontend' && 'VITE_CWV_TRUSTED_RUM=false' || '' }}
+            ${{ matrix.image_name == 'frontend' && 'VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv' || '' }}
+          cache-from: type=gha,scope=university-${{ matrix.image_name }}
+          cache-to: type=gha,scope=university-${{ matrix.image_name }},mode=max
+          provenance: false
+          sbom: false
+
+      - name: Verify fixed Caddy Brotli package offline
+        if: matrix.image_name == 'caddy'
+        timeout-minutes: 1
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_name="caddy-package-proof-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'timeout --kill-after=2s 5s docker rm -f "$container_name" >/dev/null 2>&1 || true' EXIT
+          timeout --kill-after=5s 30s docker run --rm --interactive --pull=never \
+            --name "$container_name" --network none --read-only \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --entrypoint /bin/sh "university-ecosystem/caddy:${IMAGE_TAG}" -eu <<'CADDY_PACKAGE_PROOF'
+              release="$(cat /etc/alpine-release)"
+              case "$release" in
+                3.23.*) ;;
+                *) echo "Unexpected Caddy Alpine release: $release" >&2; exit 1 ;;
+              esac
+              printf "Caddy Alpine release: %s\n" "$release"
+              cat /etc/apk/repositories
+              apk --no-network --verbose info --exists "brotli-libs=1.2.1-r0"
+          CADDY_PACKAGE_PROOF
+
+      - name: Run Trivy vulnerability scanner
+        id: trivy_scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
+        with:
+          version: v0.75.0
+          image-ref: "university-ecosystem/${{ matrix.image_name }}:${{ github.sha }}"
+          format: sarif
+          output: "trivy-${{ matrix.image_name }}.sarif"
+          severity: CRITICAL,HIGH
+          limit-severities-for-sarif: true
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Upload Trivy results to GitHub Security tab
+        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          sarif_file: "trivy-${{ matrix.image_name }}.sarif"
+          category: ${{ matrix.category }}
+
+      - name: Summarize Trivy vulnerability metadata
+        if: always() && steps.trivy_scan.outcome == 'failure' && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''
+        env:
+          SARIF_PATH: "trivy-${{ matrix.image_name }}.sarif"
+        shell: bash
+        run: python3 scripts/quality/report_trivy_metadata.py "$SARIF_PATH"
+
+      - name: Upload Trivy SARIF diagnostic artifact
+        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-image-${{ matrix.image_name }}-sarif
+          path: trivy-${{ matrix.image_name }}.sarif
+          retention-days: 14
+          if-no-files-found: error
+
 
   # MOD-W15-03 (audit 2026-03-23 Wave 15): Helm lint + kubeconform validation.
   # Catches broken Helm templates and K8s manifest schema violations before deploy.
@@ -1456,9 +1754,21 @@ jobs:
             tests/test_touched_tier0_migration_contracts.py \
             tests/test_reconcile_schema_drift_migration.py \
             tests/test_legacy_migration_guard_contracts.py \
+            tests/test_aud350_reconcile_migration_coverage.py \
             tests/integration/test_aud038_default_partition_redistribution_postgres.py \
             tests/integration/test_historical_migration_semantics_postgres.py \
             tests/integration/test_aud226_partitioning_generated_ids_postgres.py \
+            --tb=short
+
+      - name: Append AUD-350 PostgreSQL timestamp counterfactual to migration coverage
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          AUD350_POSTGRES_DATABASE_URL: postgresql+psycopg://test@127.0.0.1:5433/test_migration
+          RUN_INTEGRATION_TESTS: "1"
+        run: |
+          uv run coverage run --append --data-file=.coverage.migration \
+            --source=alembic/versions -m pytest \
+            tests/integration/test_aud350_stored_event_timestamp_migration.py \
             --tb=short
 
       - name: Build backend image for password preflight
@@ -1566,10 +1876,87 @@ jobs:
         # Contract coverage includes test_file_processor_contract.py (ProcessResult
         # callback schema) alongside the existing ws-hub NATS contract.
         run: |
-          uv run pytest tests/contracts/ tests/test_live_stand_cleanup_profile_contract.py tests/test_live_nats_transport.py \
+          set -euo pipefail
+          cohort_root="$RUNNER_TEMP/contract-tests-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          consumer_root="$cohort_root/consumer"
+          policy_root="$cohort_root/security-disposition"
+          mkdir -p "$consumer_root/tmp" "$policy_root/tmp"
+
+          consumer_pid=""
+          policy_pid=""
+          terminate_contract_process_groups() {
+            local process_pid
+            local grace_tick
+            local any_alive
+            local cleanup_status=0
+
+            for process_pid in "$@"; do
+              if [[ -n "$process_pid" ]] && kill -0 -- "-$process_pid" 2>/dev/null; then
+                kill -TERM -- "-$process_pid" 2>/dev/null || true
+              fi
+            done
+
+            # Allow both owned process groups one shared 2s grace period, then
+            # escalate only groups started by this step.
+            for ((grace_tick = 0; grace_tick < 20; grace_tick++)); do
+              any_alive=0
+              for process_pid in "$@"; do
+                if [[ -n "$process_pid" ]] && kill -0 -- "-$process_pid" 2>/dev/null; then
+                  any_alive=1
+                fi
+              done
+              if (( any_alive == 0 )); then
+                break
+              fi
+              sleep 0.1
+            done
+
+            for process_pid in "$@"; do
+              if [[ -n "$process_pid" ]] && kill -0 -- "-$process_pid" 2>/dev/null; then
+                kill -KILL -- "-$process_pid" 2>/dev/null || true
+              fi
+            done
+            for process_pid in "$@"; do
+              if [[ -n "$process_pid" ]]; then
+                wait "$process_pid" 2>/dev/null || true
+              fi
+            done
+            for process_pid in "$@"; do
+              if [[ -n "$process_pid" ]] && kill -0 -- "-$process_pid" 2>/dev/null; then
+                echo "::error::Contract test process group $process_pid survived SIGKILL."
+                cleanup_status=1
+              fi
+            done
+            return "$cleanup_status"
+          }
+          cleanup_contract_processes() {
+            terminate_contract_process_groups "$consumer_pid" "$policy_pid" || true
+          }
+          trap cleanup_contract_processes EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          trap 'exit 129' HUP
+
+          # Keep the full consumer and exact-disposition populations in this
+          # required job, but overlap their independent pytest processes. Each
+          # process gets its own basetemp, temp/database root, log, and JUnit file.
+          # Bound the consumer to two file-grouped xdist workers: conftest owns
+          # each worker database, query log, and temporary Pact directory. Keep
+          # module-scoped Pact fixtures together without changing any selectors.
+          # The positional expansions in each single-quoted -c script belong to
+          # the child Bash, so suppress shellcheck's literal-single-quote warning.
+          # shellcheck disable=SC2016
+          setsid env \
+            TMPDIR="$consumer_root/tmp" TMP="$consumer_root/tmp" TEMP="$consumer_root/tmp" \
+            PACT_DO_NOT_TRACK=true \
+            bash -c '
+              set -euo pipefail
+              uv run --frozen --no-sync pytest tests/contracts/ tests/test_live_stand_cleanup_profile_contract.py tests/test_live_nats_transport.py \
             tests/test_owned_nats_outage_cli.py \
+            tests/test_owned_nats_outage_cli.py::test_main_renders_broker_receipt_checkpoint_without_private_evidence \
             tests/test_owned_nats_outage_coordinator.py::test_public_result_and_logs_contain_only_closed_labels \
             tests/test_owned_nats_outage_coordinator.py::test_runtime_checkpoint_distinguishes_callback_and_inventory_rejection \
+            tests/test_owned_nats_outage_coordinator.py::test_invalid_broker_probe_has_distinct_finite_checkpoint \
             tests/test_owned_nats_outage_coordinator.py::test_broker_receipt_cannot_hide_final_owner_or_inventory_drift \
             tests/test_owned_nats_outage_coordinator.py::test_coordinator_requires_exact_raw_broker_receipt \
             tests/test_owned_nats_outage_coordinator.py::test_valid_path_binds_exact_event_and_restores_before_drain \
@@ -1583,6 +1970,7 @@ jobs:
             tests/test_audit_timetravel.py tests/test_audit_service_closure.py \
             tests/test_audit_service.py tests/test_admin_audit_closure.py \
             tests/test_docker_startup_contracts.py::test_migrations_disable_inherited_backend_runtime_healthcheck \
+            tests/test_docker_startup_contracts.py::test_ci_caddy_smokes_use_the_pinned_project_runtime \
             tests/test_security_hardening_workflow_contract.py::test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_locked \
             tests/test_quality_configuration.py::test_virtualenv_security_floor_is_dev_only_and_locked \
             tests/test_dependency_audit_contract.py::test_storybook_security_floor_and_aligned_lock \
@@ -1619,9 +2007,25 @@ jobs:
             tests/test_chat_repository_coverage.py::test_find_existing_dm_none_when_no_shared_chat \
             tests/test_chat_repository_coverage.py::test_find_existing_dm_ignores_two_member_group \
             tests/test_news_repository_db.py::test_anonymous_interactions_never_use_email_as_comment_name \
+            tests/test_notifications_news_events_db.py::test_comment_notification_uses_real_profile_name_without_email \
+            tests/test_localization_core_closure.py::test_missing_resource_not_found_keys_return_localized_404_details \
+            tests/test_chat_reaction_emoji_validation.py::test_reaction_input_accepts_qualified_unicode_emoji_sequences \
+            tests/test_chat_reaction_emoji_validation.py::test_reaction_input_rejects_text_multiple_or_invalid_sequences \
+            tests/test_chat_reaction_emoji_validation.py::test_reaction_creation_is_strict_but_legacy_lookup_and_delete_remain \
+            tests/test_health_api_closure.py::test_healthz_tiered_cache_reports_unavailable_shared_layer \
+            tests/test_health_api_closure.py::test_storage_probe_uses_short_outcome_ttls_and_recovers \
             tests/test_schedule_reminders_closure.py::test_build_schedule_reminder_formats_resolved_occurrence_in_campus_timezone \
             tests/test_notifications_news_events_closure.py::test_event_notification_times_use_campus_timezone \
             tests/test_ws_connection_manager_closure.py::test_send_to_user_uses_real_websocket_json_boundary \
+            tests/test_aud350_frozen_migration_fixture.py \
+            tests/test_quality_inventory.py::test_typescript_import_after_jsx_keeps_exact_source_relationship \
+            tests/test_quality_inventory.py::test_typescript_non_code_jsx_and_regex_do_not_claim_source_ownership \
+            tests/test_quality_inventory.py::test_typescript_dotted_module_stem_resolves_exact_config_file \
+            tests/test_quality_inventory.py::test_typescript_glob_scan_links_only_files_it_recursively_reads \
+            tests/test_quality_inventory.py::test_typescript_glob_scan_rejects_unproven_traversal_or_reads \
+            tests/test_quality_inventory.py::test_typescript_glob_scan_does_not_follow_external_file_symlinks \
+            tests/test_quality_inventory.py::test_python_contract_accepts_verified_test_root_alias \
+            tests/test_quality_inventory.py::test_python_contract_rejects_rebound_test_root_alias \
             tests/test_quality_inventory.py::test_go_duplicate_checker_ignores_comments_and_literals \
             tests/test_quality_inventory.py::test_go_duplicate_checker_still_rejects_real_duplicate_declarations \
             tests/test_quality_inventory.py::test_python_duplicate_scopes \
@@ -1638,9 +2042,14 @@ jobs:
             tests/test_management_scripts.py::test_mfa_reset_parser_keeps_email_and_mutual_exclusion \
             tests/test_management_scripts.py::test_load_user_by_id \
             tests/test_security_hardening_workflow_contract.py::test_ci_scanner_bootstraps_are_version_pinned_and_checksum_verified \
+            tests/test_full_backend_reusable_contract.py \
+            tests/test_kyverno_registry_source_binding.py \
+            tests/test_kyverno_registry_owner_review_b.py \
             tests/test_live_acceptance_workflow.py::test_live_stand_nats_outage_dispatches_once_and_redacts_failures \
             tests/test_ci_check_catalog.py tests/test_dependency_resolution_policy.py \
             tests/test_cache_settings_closure.py tests/test_check_no_python2_except.py \
+            tests/test_health_endpoint.py::test_healthcheck_tiered_cache_reports_shared_layer_failure \
+            tests/test_health_endpoint.py::test_healthcheck_storage_probe_recovers_errors_and_caps_success_cache \
             tests/test_geolocation.py::test_geolocation_service_init_success \
             tests/test_aud469_partition_scheduler_resilience.py \
             tests/test_chat_query_projection_regressions.py::test_message_history_projects_page_senders_in_one_public_profile_query \
@@ -1670,18 +2079,106 @@ jobs:
             tests/test_live_stand.py::test_live_caddy_disjoint_second_read_failure_preserves_cleanup \
             tests/test_live_stand.py::test_live_caddy_capture_deadline_cannot_be_rebased_during_reader_admission \
             tests/test_live_stand.py::test_live_caddy_probe_reads_one_union_window_from_reverified_pinned_container \
-            tests/test_live_stand.py::test_live_caddy_probe_brackets_one_union_read_within_the_shared_deadline -v \
-            --tb=short --durations=20 \
+            tests/test_live_stand.py::test_live_caddy_probe_brackets_one_union_read_within_the_shared_deadline \
+            tests/test_health_api_closure.py::test_healthz_brief_cache_hit_filters_full_payload \
+            tests/test_logging_pii_redaction_contract.py \
+            tests/test_cwv_rum_security.py \
+            tests/test_gitleaks_hygiene_contract.py \
+            tests/test_websocket_closure.py \
+            tests/test_migration_148642dd1207_safety.py \
+            tests/test_logging_object_redaction_contract.py \
+            tests/test_logging_contract_closure.py \
+            tests/test_logging_core.py \
+            tests/test_logging_test_isolation.py \
+            tests/test_email_utils.py \
+            tests/test_email_utils_full.py \
+            tests/test_utils_email.py \
+            tests/test_quality_inventory.py::test_aud508_dynamic_skip_syntax_is_detected \
+            tests/test_quality_inventory.py::test_aud508_skip_exemptions_require_real_comment_evidence \
+            tests/test_quality_inventory.py::test_aud509_source_matching_requires_exact_module_relationships \
+            tests/test_quality_inventory.py::test_aud509_go_test_matches_its_same_package_without_a_sibling_name \
+            tests/test_quality_inventory.py::test_aud509_go_external_test_requires_exact_package_ownership \
+            tests/test_quality_inventory.py::test_aud509_imports_match_only_the_exact_inventoried_module \
+            tests/test_quality_inventory.py::test_aud509_typescript_import_must_resolve_to_an_inventoried_module \
+            tests/test_quality_inventory.py::test_aud509_relative_python_import_resolves_inside_its_package \
+            tests/test_quality_inventory.py::test_aud509_python_name_match_prefers_exact_and_rejects_ambiguity \
+            tests/test_quality_inventory.py::test_aud508_non_python_skip_scanner_ignores_comments_and_strings \
+            tests/test_quality_inventory.py::test_aud508_non_python_skip_accepts_tracking_comments \
+            tests/test_quality_inventory.py \
+            tests/test_migration_148642dd1207_orchestrator.py::test_upgrade_with_unavailable_inspector_exposes_later_unconditional_lookup \
+            tests/test_dead_letter_queue.py::test_mark_job_completed \
+            tests/test_owned_client_ip_acceptance.py -v \
+            --tb=short --durations=20 -n 2 --dist loadfile \
             -p no:cacheprovider \
-            -k "not integration"
-        env:
-          PACT_DO_NOT_TRACK: "true"
+            -k "not integration" \
+            --basetemp="$1" \
+            --junitxml="$2" 2>&1 | tee "$3"
+            ' _ "$consumer_root/basetemp" "$consumer_root/junit.xml" "$consumer_root/pytest.log" &
+          consumer_pid=$!
+
+          # shellcheck disable=SC2016
+          setsid env \
+            TMPDIR="$policy_root/tmp" TMP="$policy_root/tmp" TEMP="$policy_root/tmp" \
+            bash -c '
+              set -euo pipefail
+              exec uv run --frozen --no-sync pytest tests/test_verify_secrets_baseline.py -v \
+                --tb=short --durations=20 -p no:cacheprovider \
+                --basetemp="$1" --junitxml="$2"
+            ' _ "$policy_root/basetemp" "$policy_root/junit.xml" \
+            > "$policy_root/pytest.log" 2>&1 &
+          policy_pid=$!
+
+          consumer_status=0
+          if wait "$consumer_pid"; then
+            consumer_status=0
+          else
+            consumer_status=$?
+          fi
+          lingering_process_groups=()
+          if [[ -n "$consumer_pid" ]] && kill -0 -- "-$consumer_pid" 2>/dev/null; then
+            echo "::error::Consumer pytest left a child process after its leader exited."
+            consumer_status=1
+            lingering_process_groups+=("$consumer_pid")
+          fi
+
+          policy_status=0
+          if wait "$policy_pid"; then
+            policy_status=0
+          else
+            policy_status=$?
+          fi
+          if [[ -n "$policy_pid" ]] && kill -0 -- "-$policy_pid" 2>/dev/null; then
+            echo "::error::Exact-disposition pytest left a child process after its leader exited."
+            policy_status=1
+            lingering_process_groups+=("$policy_pid")
+          fi
+          if (( ${#lingering_process_groups[@]} > 0 )); then
+            terminate_contract_process_groups "${lingering_process_groups[@]}" || true
+          fi
+          consumer_pid=""
+          policy_pid=""
+
+          printf '%s\n' "$policy_status" > "$policy_root/status"
+          printf 'Consumer pytest exit status: %s\n' "$consumer_status"
+          printf 'Exact disposition pytest exit status: %s\n' "$policy_status"
+          if (( consumer_status != 0 || policy_status != 0 )); then
+            exit 1
+          fi
 
       - name: Verify exact security disposition contracts
         if: ${{ !cancelled() }}
         run: |
-          uv run --frozen --no-sync pytest tests/test_verify_secrets_baseline.py -v \
-            --tb=short --durations=20 -p no:cacheprovider
+          policy_root="$RUNNER_TEMP/contract-tests-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/security-disposition"
+          if [[ ! -f "$policy_root/status" || ! -f "$policy_root/pytest.log" ]]; then
+            echo "::error::The parallel exact-disposition pytest result is missing."
+            exit 1
+          fi
+          cat "$policy_root/pytest.log"
+          policy_status="$(cat "$policy_root/status")"
+          if [[ "$policy_status" != "0" ]]; then
+            echo "::error::Exact-disposition pytest exited with status $policy_status."
+            exit 1
+          fi
 
   # Compare frontend MSW mocks with the authoritative OpenAPI contract.
   # This hermetic drift check remains a required PR/main-push gate.
@@ -1949,7 +2446,7 @@ jobs:
             ${{ runner.os }}-cargo-rust-tests-v2-
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           # 0.9.1 understands Cargo's build-dir v2 layout used by current
           # nightly Rust, while remaining immutable and reproducible here.
@@ -2102,7 +2599,7 @@ jobs:
       - name: Install wasm-pack
         # rustwasm canonical curl installer (W141 polish-v2 / W142 polish-v3:
         # taiki-e/install-action hardcodes the old drager/wasm-pack repo → 404).
-        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: wasm-pack@0.15.0
 
@@ -3221,6 +3718,7 @@ jobs:
       - openapi-verify
       - verify-runtime-reqs
       - docker-security-scan
+      - docker-security-scan-additional
       - helm-validate
       - db-migration-gate
       - go-fuzz
@@ -3279,6 +3777,7 @@ jobs:
             "openapi-verify|${{ needs.openapi-verify.result }}"
             "verify-runtime-reqs|${{ needs.verify-runtime-reqs.result }}"
             "docker-security-scan|${{ needs.docker-security-scan.result }}"
+            "docker-security-scan-additional|${{ needs.docker-security-scan-additional.result }}"
             "helm-validate|${{ needs.helm-validate.result }}"
             "db-migration-gate|${{ needs.db-migration-gate.result }}"
             "go-fuzz|${{ needs.go-fuzz.result }}"

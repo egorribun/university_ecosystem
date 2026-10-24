@@ -419,6 +419,38 @@ hooks and finite131 migration exception remain unchanged. Approval is separate
 from integration, final-source scanning, tests and hosted checks, and establishes
 no release or visual acceptance.
 
+## Owner-approved exact three auth validation copy dispositions (2026-10-23)
+
+The owner approved exactly three additional path/type/finding-digest identities
+and the reviewed validator/test diff for public English password-validation
+messages in `frontend/src/i18n/locales/en/auth.json`. The new
+`auth_validation_ui_copy` category matches only those three exact identities,
+requires their existing category, and caps expiry at 2027-01-10. The exact tuples
+are recorded in `quality/security-false-positive-dispositions.json`. The previous
+298 records are preserved unchanged, for exactly 301 approved identities.
+
+Changed, unmatched or expired findings remain blocking. This decision permits
+no additional identity, broad match, automatic approval, baseline entry, inline
+pragma, reclassification, expiry extension or scanner bypass. Baseline319,
+Gitleaks25, the 78 required context/app pairs, blocking CodeQL, hooks and finite131
+remain unchanged. Integration, final-source scans and hosted checks require
+their own evidence; this approval establishes no release or visual acceptance.
+
+## Owner-approved finite scanner-policy additions (2026-10-23)
+
+The owner approved exactly nine additional finite path/type/finding-digest dispositions: seven records associated with AUD-253/Trivy and two SEO identities. Together with the existing 301 records, the approved union is exactly 310. The exact identities, categories, evidence and expiry dates are recorded in `quality/security-false-positive-dispositions.json`; only those nine additions are covered by this approval.
+
+Separately, Trivy v4 test-fixture handling is approved only for the exact fixture findings `KSV0008` and `KSV0024`, through 2026-11-22. This fixture boundary is separate from the nine disposition records and does not authorize a general rule exclusion, production-image exception, or workflow identity. No new workflow identity is approved or included. Neither approval closes AUD-253 or AUD-297.
+
+The detect-secrets baseline remains at 319 identities; Gitleaks remains at 25 immutable fingerprints; all 78 required context/app pairs, blocking CodeQL, hooks, and existing thresholds remain unchanged. These approvals establish no scan, test, hosted-check, or release result. See the [dated audit supplement](../audits/AUDIT-2026-10.md#owner-approved-finite-scanner-policy-additions-2026-10-23).
+
+
+## Owner-approved five exact baseline-fixture dispositions (2026-10-23)
+
+The owner approved exactly five additional exact path/type/finding-digest dispositions, preserving the prior 310 records and extending the finite approved union to 315. One `public_integrity_digest` is bound to `tests/fixtures/full-backend-reusable-baseline.v4.yaml:8`; four `independent_contract_fingerprint` identities are bound to lines 21, 24, 25, and 26 of that fixture. Each addition is restricted to its exact existing category and identity and expires on 2027-01-10; the exact tuples remain in `quality/security-false-positive-dispositions.json`.
+
+This approval adds no category-wide match, baseline identity, pragma, reclassification, broad exclusion, expiry extension, bypass, or required-check change. It does not alter the 319-identity detect-secrets baseline, 25 Gitleaks fingerprints, 78 required context/app pairs, blocking CodeQL, hooks, or quality thresholds. Policy approval alone establishes no scan, test, hosted-check, or release result. See the [dated audit supplement](../audits/AUDIT-2026-10.md#owner-approved-five-exact-baseline-fixture-dispositions-2026-10-23).
+
 ## Consequences
 
 - The MVP can be released once product acceptance passes; mutation debt
@@ -440,3 +472,291 @@ no release or visual acceptance.
   it weakens authentication and cryptography code as much as presentation code.
 - **Remove mutation testing.** Rejected: nightly mutation runs still find weak
   tests in domain logic and are cheap to keep outside the blocking lane.
+
+## Global GHSA allowlist removal (2026-10-23)
+
+The owner's instruction to close all October audit findings includes the exact
+removal of the two global vulnerability suppressions identified by AUD-379 and
+AUD-479: `GHSA-4c8g-83qw-93j6` and `GHSA-v2hh-gcrm-f6hx`. Dependency Review now
+requires an empty global `allow-ghsas` list. Its delta guard permits removals
+and rejects additions; all other policy lists and scalar settings retain their
+existing restrictions. This tightens vulnerability detection and grants no new
+exception, package exclusion, expiry extension or scanner bypass.
+
+The owner-authored pull-request requirement, vulnerability/license checks,
+existing finite license dispositions, all 78 required context/app pairs,
+blocking CodeQL, hooks and coverage floors remain in force. This decision is
+separate from the finite detect-secrets and Gitleaks inventories. Local tests
+and this policy record do not establish current-source hosted success or
+closure of either finding; the final source still needs its required checks.
+
+
+## Owner-approved two exact AUD-495 cache-key canaries (2026-10-23)
+
+The owner explicitly approved exactly two new `aud495_cache_key_redaction_test_fixture` dispositions and the reviewed validator/test diff. The exact path/type/digest identities are the synthetic logger-redaction canaries in `tests/test_cache_object_keys_aud495.py` at source lines 109 and 159. The policy preserves the ordered prior 315 records and appends only these two, for exactly 317 records; both expire on 2027-01-10. This category accepts only those two immutable identities and their evidence markers.
+
+The 319-identity detect-secrets baseline, 25 historical Gitleaks fingerprints, 78 required context/app pairs, blocking CodeQL, hooks and coverage floors remain unchanged. No baseline entry, broad match, expiry extension or automatic approval is authorized. A new or changed identity remains blocking. Policy adoption alone does not prove a final-source scan or hosted check. See the [audit checkpoint](../audits/AUDIT-2026-10.md#owner-approved-two-exact-aud-495-cache-key-canaries-2026-10-23).
+
+## Owner-approved one exact AUD-495 public integrity digest (2026-10-24)
+
+The owner approved exactly one new finite detect-secrets disposition and the reviewed validator/test diff for the public SHA-256 digest used by the immutable policy-prefix source-contract test in `tests/test_verify_secrets_baseline.py`. It uses the exact `Hex High Entropy String` identity and the `public_integrity_digest` category; the validator constrains path, type, digest, evidence and expiry. The policy preserves the ordered 317-record prefix and appends this one record, for exactly 318 records.
+
+The owner is `egorribun`, reviewed on 2026-10-24, with expiry 2027-01-10. The 319-identity detect-secrets baseline, 25 Gitleaks fingerprints and 78 required context/app pairs remain unchanged. No additional identity, broad rule, baseline entry, Gitleaks entry or scanner bypass is authorized. Policy adoption does not establish a final-source scan or hosted-check result; those remain required for the final source. See the [audit checkpoint](../audits/AUDIT-2026-10.md#owner-approved-one-exact-aud-495-public-integrity-digest-2026-10-24).
+
+## Owner-approved three exact public digest dispositions (2026-10-24)
+
+The owner explicitly approved exactly three additional detect-secrets identities
+after the post-rollover scan of source `1cadcd03` reported them. The policy
+preserves all 318 ordered prior records and appends only these three, for exactly
+321 records. Each new record has owner `egorribun`, review date 2026-10-24 and
+expiry 2027-01-10.
+
+- `tests/integration/test_aud350_stored_event_timestamp_migration.py`:
+  one `Hex High Entropy String` under `public_integrity_digest`, binding the
+  frozen historical AUD-350 migration bytes independently of the candidate.
+- `tests/test_verify_secrets_baseline.py`: two `Hex High Entropy String`
+  identities under `independent_contract_fingerprint`, binding the first and
+  second historical AUD-495 cache-canary finding identities. These are new
+  fingerprints of quoted public finding hashes, not the original canary
+  credentials or a reclassification of their existing dispositions.
+
+The exact ordered additions are records 319-321 in
+`quality/security-false-positive-dispositions.json`; their identity tuples,
+categories and required evidence are independently constrained by
+`scripts/verify_secrets_baseline.py` and source-bound tests in
+`tests/test_verify_secrets_baseline.py`. The existing policy-prefix singleton
+on the reserved verifier-test path is unchanged. Every other identity on that
+path remains rejected; neither the category nor the path receives a broad
+allowance. New entries cannot change path, detector, digest, category, owner,
+review date or approved expiry scope.
+
+The raw source checksum and historical fingerprint literals remain unchanged.
+The first 318 policy records, detect-secrets baseline319, Gitleaks25, all 78
+required context/app pairs, blocking CodeQL, hooks and coverage floors are
+preserved. No additional identity, inline pragma, broad exclusion, automatic
+approval or scanner bypass is authorized. This approval and candidate source do
+not establish a successful scan, test or hosted check; final-source evidence
+remains required.
+
+
+## Owner-approved two exact public Git-blob dispositions (2026-10-24)
+
+At 05:35 UTC the owner explicitly approved the two public Git-hash exceptions
+requested after the hosted detect-secrets failure. The ordered 321-record
+policy prefix is unchanged; only records 322-323 are appended, for exactly 323
+finite identities. Both are `Hex High Entropy String` findings in the existing
+`public_integrity_digest` category, owned by `egorribun`, reviewed on
+2026-10-24 and expiring on 2027-01-10:
+
+- `tests/helpers/migration_148642dd1207_trace.py`, assignment `SOURCE_GIT_BLOB`,
+  identifies the complete source bytes of
+  `alembic/versions/148642dd1207_fix_missing_tables.py`.
+- `tests/test_mfa_webauthn_tombstone.py`, assignment
+  `HISTORICAL_ORCHESTRATOR_BLOB`, identifies the complete source bytes of
+  `tests/test_migration_148642dd1207_orchestrator.py`.
+
+The exact detector fingerprints are recorded in the policy and independently
+in `tests/fixtures/public-git-blob-dispositions.json`. Source contracts compute
+the Git blob SHA-1 from the actual referred bytes and then the detect-secrets
+SHA-1 of the consumer's literal. No Git pin is changed or duplicated as a new
+test literal. The validator restricts both reserved paths and fingerprints,
+category, evidence, owner, review date and finite expiry. It remains
+filesystem-independent: removal of a consumer may leave a stale historical
+record, while a changed pin is a distinct finding requiring its own disposition.
+
+The retired-factor guard treats only the exact second record's
+`identity.path` as inactive scanner bookkeeping. Its detector fingerprint,
+path, type and category must all match; evidence, category and every other
+field remain scanned for active retired-factor references. Runtime and backend
+test guards remain in force. The independent JSON fixture avoids introducing
+a second backend-source exemption or obscuring the literal path.
+
+Baseline319, Gitleaks25, all 78 required context/app pairs, blocking CodeQL,
+hooks and quality floors are unchanged. No baseline addition, inline pragma,
+broad exclusion, reclassification, expiry extension or scanner bypass is
+authorized. No migration waiver is established by these scanner dispositions.
+Accepted audit scope remains 282/512; policy adoption is not a passing scan,
+test, hosted-check, full-CI or release result. Final-source validation remains
+required.
+
+
+## Exact public Git-blob rebindings for preference preservation (2026-10-24)
+
+Under the owner's authorization to apply analogous narrow, justified audit
+exceptions without another approval round, this update appends exactly two
+`public_integrity_digest` records for the reviewed preference-preservation
+repair. All 323 preceding records remain byte-for-byte unchanged; the total
+is 325. The additions retain owner `egorribun`, review date 2026-10-24 and
+expiry 2027-01-10, with the same exact `Hex High Entropy String` detector type.
+
+The two new identities bind `SOURCE_GIT_BLOB` in the migration trace helper
+to the reviewed migration source, and `HISTORICAL_ORCHESTRATOR_BLOB` in the
+retired-factor guard to the reviewed orchestrator test source. They are new
+records, not replacements for the two historical pins. The public Git blobs
+were fetched and independently rehashed using Git's byte-length header.
+Their detector fingerprints were computed with the pinned detect-secrets
+v1.5.0 SHA-1-of-UTF-8 algorithm. These are **computed expected findings**, not
+yet a claim that a hosted scanner emitted them or that a scan passed.
+
+The validator now admits only the four explicit historical/rebound
+path/type/fingerprint tuples on the two reserved consumer paths. No
+path-wide or category-wide allowance is added. The independent JSON fixture
+preserves its first two records, and policy tests preserve the complete
+323-record prefix before checking the exact two-record suffix. Source-binding
+tests derive the current literal and referred Git blob and require a matching
+approved identity; stale historical records do not force an old current pin.
+
+The retired-factor scanner-bookkeeping guard recognizes only the two exact
+historical/rebound identities for its own path, under the same category.
+Only `identity.path` is normalized; other identity fields, category, evidence
+and active retired-factor references remain checked. Negative tests exercise
+both records, changed scope and path/fingerprint transfer. The literal Git
+pin remains explicit; production migration changes are a separate candidate.
+
+Baseline319, Gitleaks25, all 78 required context/app pairs, blocking CodeQL,
+hooks, expiry caps and quality floors remain unchanged. This grants no Squawk
+waiver, broad exclusion, inline pragma, reclassification or scanner bypass.
+The accepted ledger remains 283/512. Hosted scanner output, source-bound tests
+and final-source required checks must establish their own results.
+
+
+## Two observed public source-metadata dispositions (2026-10-24)
+
+Under the owner's task-scoped authorization for analogous narrow, justified
+audit exceptions, this update appends exactly two records to the unchanged
+325-record prefix, for 327 dispositions. Both findings were actually reported
+on source `764b474318c9b0a226b070a30ff3dd4b61c9472f` by security job 120811736955 and baseline-verification
+job 120811862789. The records retain owner `egorribun`, review date 2026-10-24
+and expiry 2027-01-10.
+
+1. `frontend/scripts/generate-zod-root-lock-candidate.mjs:19` is an exact
+   `Hex High Entropy String` under `public_integrity_digest`. Its explicit
+   `EXPECTED_ZOD_SOURCE_SHA` literal is the public upstream commit referenced
+   by the official `colinhacks/zod` v4.6.7 tag. Hosted metadata job 120800858421
+   reports the same registry gitHead and a mature publication date. This
+   establishes a public source identifier and matching metadata, not
+   cryptographic package-publish provenance. The module is reused as a pure
+   helper by the staged generator, so the literal and its comparison remain.
+2. `tests/test_logging_pii_redaction_contract.py:176` is an exact
+   `Secret Keyword` under `source_contract_identifier`. The captured value
+   is the public signing-key name `csrf-signing-key`, not signing material.
+   It occurs in the benign `secret_name` metadata field and the expected
+   output of `test_sensitive_field_matching_preserves_related_nonsecret_metadata`.
+   Keeping this negative control prevents an overly broad token/secret-prefix
+   redactor from hiding useful metadata. Its second occurrence has the same
+   path/type/fingerprint identity, not another disposition.
+
+The pinned detect-secrets v1.5.0 Python quoted-colon keyword rule extracts the
+label, and `PotentialSecret.hash_secret` hashes the exact UTF-8 value with
+SHA-1. The public commit literal is hashed the same way. The independently
+computed fingerprints are stored as exact detector identity bytes in the
+policy, validator and test expectations; neither consumer value is altered,
+encoded, copied elsewhere to evade scanning, or covered by an inline pragma.
+
+A separate finite cohort reserves both paths and fingerprints and binds each
+to its existing category, evidence, owner, review date and expiry cap. The
+original 17-identity source-contract cohort remains unchanged; the effective
+category receives only the single new label identity. Source-binding tests
+bind the actual upstream-pin literal and the real redaction assertion. The
+required Node helper guards exercise the default upstream-pin comparison,
+including rejection of a different well-formed Git identifier.
+Changed values, transferred paths/types/categories, missing evidence, pending
+approval, expiry extensions and extra identities remain rejected. Historical
+records may become stale; no current value is automatically approved.
+
+Baseline319, Gitleaks25, all 78 required context/app pairs, blocking CodeQL,
+hooks, quality floors and existing expiries remain unchanged. No broad
+exclusion, baseline addition, reclassification or scanner bypass is introduced.
+The accepted ledger remains 283/512. Policy adoption does not establish a
+passing final-source scan, regression suite, full CI or release result.
+
+
+## Exact migration catalog-proof pin and coordinated scanner scope (2026-10-24)
+
+The same task-scoped owner authorization covers one additional reviewed public
+Git-blob identity for `SOURCE_GIT_BLOB` in
+`tests/helpers/migration_148642dd1207_trace.py`. The referenced migration blob
+is `cf93b261eeccfb2b136144fd34fa71a3fa557ecd`; all 100385 source bytes were
+independently rehashed with Git blob framing. Its exact detect-secrets v1.5.0
+SHA-1-of-UTF-8 fingerprint is
+`81b6af2e547f39bae2a9b534b9141d58f7d6c428`. This is a **computed expected
+finding**; unlike the two metadata findings above, it has not yet been
+confirmed by a hosted scan of the new consumer literal.
+
+The coordinated policy contains exactly 328 records: the entire published
+325-record prefix remains byte-for-byte unchanged, followed by the two observed
+metadata records above and this one public integrity-digest record. The new
+record retains owner `egorribun`, review date 2026-10-24 and expiry 2027-01-10.
+The independent Git-blob fixture appends only its fifth record; the validator
+adds only the fifth reserved path/type/digest tuple. Existing metadata and
+negative controls cover changed paths, detectors, fingerprints, categories,
+owners, dates, evidence, expiry, duplicate records and unapproved additions.
+The current-source binding derives the referred Git blob from actual bytes
+and requires an exact approved detector identity; old records may become stale.
+No historical record, consumer path, scanner category or expiry is widened.
+The production migration and its pin-only trace rebind are coordinated changes,
+not evidence of PostgreSQL GREEN or a Squawk exception.
+
+Separately, the coordinated Gitleaks inventory grows from 25 to exactly 26
+immutable historical fingerprints. Its sole addition is
+`75de40e472f1ef8fccedea286b0b5b456c29f1c5:tests/test_cwv_rum_security.py:generic-api-key:939`.
+The public historical source at that exact location is a verifier call argument
+expression, not a credential value. The original 25 fingerprints are unchanged.
+Independent inventory tests reject commit/path/rule/line drift, wildcard or
+global forms, duplicate or extra entries, and changes to the original set.
+No later copy of the expression or broader path receives an exception.
+Gitleaks26 is adopted only with its exact inventory and matching contract tests.
+
+Baseline319, all 78 required context/app pairs, blocking CodeQL, hooks, quality
+floors and prior expiry caps remain unchanged. No baseline entry, inline pragma,
+reclassification, automatic approval or broad scanner exclusion is authorized.
+The accepted ledger remains 283/512; these policy records do not close another
+audit item or establish a passing final-source scan, full CI or release result.
+The owner explicitly authorized publication of the audit results, CI references,
+exact hashes and exception identities, and retention of the already recorded
+archive metadata in STATUS, INDEX and this ADR. The archive itself, live secrets
+and private personal data are not part of this update; no permanent permission
+rule is created.
+
+
+## Exact orchestrator fixture-isolation Git-pin rebind (2026-10-24)
+
+Under the same owner authorization for narrow, justified public-hash audit
+exceptions, append exactly one `public_integrity_digest` disposition to the
+unchanged 328-record policy prefix, for exactly 329 records. It covers only
+`HISTORICAL_ORCHESTRATOR_BLOB` in
+`tests/test_mfa_webauthn_tombstone.py`, with detector type
+`Hex High Entropy String`, owner `egorribun`, review date 2026-10-24 and
+expiry 2027-01-10. All earlier records, categories and expiry dates remain
+unchanged.
+
+The reviewed public orchestrator blob is
+`069deb3c6984e1e9992b01f6ce4313ea3cc49a57` (18034 bytes); independently
+rehashing its complete Git blob framing reproduces that identity. The pinned
+detect-secrets v1.5.0 SHA-1-of-UTF-8 algorithm gives the exact finding identity
+`2057dcee41384aada06da79e9afb1d07194c9891`. This remains a **computed expected
+finding**, not a hosted scanner observation of the new pin.
+
+The source change follows the actual unit-test RED in job 120865063488:
+the standalone unavailable-inspector test reached preferences backfill before
+its intended later `has_table` failure. One additional test-local backfill
+stub restores that isolation while retaining the original expected exception
+and operation assertions. The production migration is unchanged by this
+fixture correction; the new test source still requires hosted GREEN.
+
+The independent JSON fixture appends only its sixth record. The metadata
+validator admits only the sixth exact path/type/fingerprint tuple, with the
+existing owner/date/evidence/expiry checks. Prefix tests preserve all 328
+prior records and isolate the one-record suffix. Current-source verification
+continues to derive the complete referred Git blob and its detector identity;
+old approved records may become stale but cannot approve a changed pin.
+
+The retirement guard adds only the third exact identity for its own scanner
+bookkeeping path. Only its matching `identity.path` is normalized; all other
+fields, evidence, categories and active runtime references remain scanned.
+All three own-path records receive the existing negative scope and reference
+controls. No path-wide exemption, extra backend-source allowance, wildcard,
+inline pragma, baseline addition, reclassification or automatic approval is
+introduced. Baseline319, Gitleaks26, all 78 required context/app pairs, blocking
+CodeQL, hooks and quality floors are unchanged. This policy update accepts no
+additional audit item and establishes neither full CI nor release readiness.

@@ -36,7 +36,7 @@ export default function Footer() {
 
   return (
     <footer
-      className="bg-footer @container relative overflow-hidden border-t border-border-subtle/(--opacity-medium) min-h-(--h-skeleton-row)"
+      className="bg-footer @container relative overflow-hidden border-t border-border-subtle/[calc(var(--opacity-medium)*100%)] min-h-(--h-skeleton-row)"
       role="contentinfo"
     >
       <div className="footer-accent-stripe" aria-hidden="true" />
@@ -118,7 +118,7 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle/(--opacity-medium) pt-8">
+        <div className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle/[calc(var(--opacity-medium)*100%)] pt-8">
           <p className="text-sm font-medium text-[var(--text-on-footer)] opacity-medium">
             {t("navigation:footer.copyright", { year: currentYear })}
           </p>

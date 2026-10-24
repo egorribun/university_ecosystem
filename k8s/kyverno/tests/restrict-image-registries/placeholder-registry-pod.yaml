@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: placeholder-registry-pod
+  namespace: university-ecosystem
+spec:
+  containers:
+    - name: app
+      image: registry.example.com/backend:v1.0.0

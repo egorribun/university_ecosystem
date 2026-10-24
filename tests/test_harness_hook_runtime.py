@@ -633,8 +633,10 @@ import post_tool_linter as hook
 hook.get_gate_state_path = lambda: pathlib.Path({str(state_path)!r})
 original_load = hook.load_gate_state
 
-def delayed_load(path, *, acquire_lock=True):
-    state = original_load(path, acquire_lock=acquire_lock)
+def delayed_load(path, *, acquire_lock=True, require_existing=False):
+    state = original_load(
+        path, acquire_lock=acquire_lock, require_existing=require_existing
+    )
     if not acquire_lock:
         # bound: widen the unlocked-read race window to verify writer serialization.
         time.sleep(0.1)

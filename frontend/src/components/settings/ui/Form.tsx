@@ -70,7 +70,7 @@ export const securityStatusChipClassName = cn(
   "font-bold tracking-tight px-3 py-1 rounded-full text-xs",
   "text-text-primary border-glass-border bg-glass-bg",
   "shadow-glass backdrop-blur-glass transition-all duration-base",
-  "dark:bg-glass-tint1 dark:border-white/(--opacity-subtle)"
+  "dark:bg-glass-tint1 dark:border-white/[calc(var(--opacity-subtle)*100%)]"
 )
 
 export { TextField } from "@/components/ui/TextField"
@@ -120,7 +120,7 @@ export function FormControlLabel({
       className={cn(
         "group inline-flex items-center gap-3 rounded-sm px-2 py-1.5",
         "cursor-pointer transition-all duration-base",
-        "hover:bg-(--primary-main)/(--opacity-faint) border border-transparent",
+        "hover:bg-(--primary-main)/[calc(var(--opacity-faint)*100%)] border border-transparent",
         className
       )}
       {...props}

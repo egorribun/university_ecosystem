@@ -295,19 +295,19 @@ export function AdminNotificationsFeature() {
     const allSelected = jobs.every((job) => selected.has(job.id))
 
     return (
-      <div className="mt-4 overflow-hidden rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
+      <div className="mt-4 overflow-hidden rounded-md border border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] shadow-glass">
         <div className="overflow-x-auto">
           <table
             className="w-full text-left border-collapse"
             aria-label={t("admin:notifications.table.aria") ?? "Dead-letter queue"}
           >
             <thead>
-              <tr className="border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim)">
+              <tr className="border-b border-glass-border/[calc(var(--opacity-subtle)*100%)] bg-(--bg-surface-hover)/[calc(var(--opacity-dim)*100%)]">
                 <th scope="col" className="px-4 py-3">
                   <label className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center">
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                      className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] text-brand focus:ring-brand/[calc(var(--opacity-soft)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
                       checked={allSelected}
                       onChange={handleSelectAll}
                       aria-label={t("admin:notifications.table.selectAll") ?? "Select all"}
@@ -358,22 +358,22 @@ export function AdminNotificationsFeature() {
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-glass-border/(--opacity-subtle)">
+            <tbody className="divide-y divide-glass-border/[calc(var(--opacity-subtle)*100%)]">
               {jobs.map((job) => {
                 const isSelected = selected.has(job.id)
                 return (
                   <tr
                     key={job.id}
                     className={cn(
-                      "transition-colors hover:bg-(--bg-surface-hover)/(--opacity-subtle)",
-                      isSelected && "bg-brand/(--opacity-subtle)"
+                      "transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-subtle)*100%)]",
+                      isSelected && "bg-brand/[calc(var(--opacity-subtle)*100%)]"
                     )}
                   >
                     <td className="px-4 py-3">
                       <label className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center">
                         <input
                           type="checkbox"
-                          className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                          className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] text-brand focus:ring-brand/[calc(var(--opacity-soft)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
                           checked={isSelected}
                           onChange={() => toggleSelect(job.id)}
                           aria-label={
@@ -412,7 +412,7 @@ export function AdminNotificationsFeature() {
                             purgeMutation.isPending ||
                             purgeConfirmationIds !== null
                           }
-                          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-brand hover:bg-brand/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-brand hover:bg-brand/[calc(var(--opacity-subtle)*100%)] rounded-lg transition-colors disabled:opacity-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
                           title={t("admin:notifications.actions.retry")}
                           aria-label={t("admin:notifications.actions.retry")}
                         >
@@ -426,7 +426,7 @@ export function AdminNotificationsFeature() {
                             purgeMutation.isPending ||
                             purgeConfirmationIds !== null
                           }
-                          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-error hover:bg-error/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2"
+                          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-error hover:bg-error/[calc(var(--opacity-subtle)*100%)] rounded-lg transition-colors disabled:opacity-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2"
                           title={t("admin:notifications.actions.purge")}
                           aria-label={t("admin:notifications.actions.purge")}
                         >
@@ -445,7 +445,7 @@ export function AdminNotificationsFeature() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-background/(--opacity-medium) py-8">
+    <div className="min-h-screen w-full bg-background/[calc(var(--opacity-medium)*100%)] py-8">
       <PageFadeIn>
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mb-8 flex flex-col gap-2">
@@ -530,7 +530,7 @@ export function AdminNotificationsFeature() {
                       return (
                         <div
                           key={topic}
-                          className="flex items-center gap-3 rounded-sm border border-glass-border/(--opacity-subtle) bg-(--bg-surface)/(--opacity-dim) px-4 py-3 transition-colors hover:bg-(--bg-surface)/(--opacity-soft)"
+                          className="flex items-center gap-3 rounded-sm border border-glass-border/[calc(var(--opacity-subtle)*100%)] bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)] px-4 py-3 transition-colors hover:bg-(--bg-surface)/[calc(var(--opacity-soft)*100%)]"
                         >
                           <input
                             type="checkbox"
@@ -543,7 +543,7 @@ export function AdminNotificationsFeature() {
                               )
                             }
                             disabled={topicsBusy}
-                            className="h-5 w-5 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft)"
+                            className="h-5 w-5 rounded border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] text-brand focus:ring-brand/[calc(var(--opacity-soft)*100%)]"
                           />
                           <label
                             htmlFor={`topic-${normalized}`}
@@ -597,7 +597,7 @@ export function AdminNotificationsFeature() {
                   onClick={handlePurgeSelected}
                   disabled={disableActions}
                   variant="outline"
-                  className="flex-1 border-error/(--opacity-dim) text-error hover:bg-error/(--opacity-subtle) sm:flex-initial"
+                  className="flex-1 border-error/[calc(var(--opacity-dim)*100%)] text-error hover:bg-error/[calc(var(--opacity-subtle)*100%)] sm:flex-initial"
                 >
                   <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
                   {t("admin:notifications.actions.purgeSelected")}

@@ -161,6 +161,12 @@ _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES = {
     ),
 }
 _FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS = {
+    "synthetic_achievement_url_test_fixture": (
+        "synthetic profile achievement URL test fixture",
+        "reserved example.test host",
+        "embedded-auth rejection coverage",
+        "not credential material",
+    ),
     "public_compose_inspection_test_sentinel": (
         "public Compose inspection test sentinel",
         "live-stand-inspection-placeholder",
@@ -180,12 +186,31 @@ _FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS = {
         "secret-related source identifier or required key-list expression",
         "not credential material",
     ),
+    "auth_validation_ui_copy": (
+        "English auth validation UI copy",
+        "user-visible password validation messages",
+        "not credential material",
+    ),
+    "aud253_private_env_mode_test_fixture": (
+        "AUD-253 private environment-file mode test fixture",
+        "not credential material",
+    ),
+    "aud495_cache_key_redaction_test_fixture": (
+        "AUD-495 cache-key log-redaction test fixture",
+        "synthetic canary used only by mocked backend tests",
+        "tests assert logger output omits the canary",
+        "not credential material",
+    ),
 }
 _FALSE_POSITIVE_EXACT_IDENTITY_CATEGORIES = frozenset(
     {
         "external_kubernetes_secret_reference",
         "source_contract_identifier",
         "public_compose_inspection_test_sentinel",
+        "synthetic_achievement_url_test_fixture",
+        "auth_validation_ui_copy",
+        "aud253_private_env_mode_test_fixture",
+        "aud495_cache_key_redaction_test_fixture",
     }
 )
 _FALSE_POSITIVE_CATEGORIES = (
@@ -412,6 +437,110 @@ _V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES = frozenset(
             (
                 *(248, 237, 176, 97, 148, 41, 246, 135, 86, 11),
                 *(12, 80, 246, 227, 80, 183, 82, 39, 146, 12),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                85,
+                158,
+                8,
+                17,
+                13,
+                217,
+                219,
+                104,
+                145,
+                111,
+                194,
+                19,
+                60,
+                251,
+                92,
+                240,
+                212,
+                85,
+                113,
+                116,
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                94,
+                40,
+                155,
+                35,
+                12,
+                205,
+                36,
+                191,
+                27,
+                93,
+                89,
+                252,
+                6,
+                36,
+                193,
+                174,
+                240,
+                78,
+                30,
+                64,
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                228,
+                251,
+                163,
+                207,
+                40,
+                164,
+                144,
+                11,
+                26,
+                225,
+                79,
+                240,
+                197,
+                199,
+                12,
+                121,
+                37,
+                113,
+                215,
+                216,
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                109,
+                237,
+                50,
+                137,
+                135,
+                161,
+                1,
+                220,
+                60,
+                104,
+                144,
+                173,
+                229,
+                20,
+                90,
+                76,
+                18,
+                192,
+                224,
+                154,
             ),
         ),
     }
@@ -714,6 +843,28 @@ _C6_CODE_FRAGMENT_IDENTITIES = frozenset(
         ),
     }
 )
+_PAGE_TITLE_ROUTE_IDENTIFIER_IDENTITIES = frozenset(
+    {
+        (
+            "frontend/src/components/ui/PageRouteSEO.tsx",
+            "Secret Keyword",
+            (
+                *(246, 11, 35, 176, 57, 187, 96, 181, 93, 29),
+                *(195, 205, 161, 83, 22, 254, 236, 136, 40, 118),
+            ),
+        ),
+        (
+            "frontend/src/components/ui/PageRouteSEO.tsx",
+            "Secret Keyword",
+            (
+                *(13, 39, 13, 74, 47, 213, 87, 245, 102, 242),
+                *(14, 180, 169, 34, 53, 125, 169, 142, 149, 34),
+            ),
+        ),
+    }
+)
+
+
 _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES = frozenset(
     {
         (
@@ -765,6 +916,7 @@ _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES = frozenset(
             ),
         ),
         *_C6_CODE_FRAGMENT_IDENTITIES,
+        *_PAGE_TITLE_ROUTE_IDENTIFIER_IDENTITIES,
     }
 )
 
@@ -781,13 +933,821 @@ _PUBLIC_COMPOSE_INSPECTION_TEST_SENTINEL_IDENTITIES = frozenset(
     }
 )
 
+_SYNTHETIC_ACHIEVEMENT_URL_TEST_FIXTURE_IDENTITIES = frozenset(
+    {
+        (
+            "frontend/src/components/profile/__tests__/profileUtils.closure.test.ts",
+            "Basic Auth Credentials",
+            (
+                *(157, 78, 30, 35, 189, 91, 114, 112, 70, 169),
+                *(227, 180, 183, 219, 87, 189, 141, 110, 230, 132),
+            ),
+        ),
+    }
+)
+
+
+_AUTH_VALIDATION_UI_COPY_IDENTITIES = frozenset(
+    {
+        (
+            "frontend/src/i18n/locales/en/auth.json",
+            "Secret Keyword",
+            (
+                *(62, 125, 86, 169, 88, 4, 255, 60, 50, 43),
+                *(151, 167, 231, 205, 186, 37, 220, 146, 9, 87),
+            ),
+        ),
+        (
+            "frontend/src/i18n/locales/en/auth.json",
+            "Secret Keyword",
+            (
+                *(81, 214, 154, 230, 4, 109, 42, 59, 226, 69),
+                *(68, 157, 91, 56, 22, 93, 93, 120, 222, 245),
+            ),
+        ),
+        (
+            "frontend/src/i18n/locales/en/auth.json",
+            "Secret Keyword",
+            (
+                *(214, 156, 59, 26, 197, 75, 231, 218, 54, 102),
+                *(217, 147, 123, 156, 120, 231, 195, 9, 214, 232),
+            ),
+        ),
+    }
+)
+
+_AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES = frozenset(
+    {
+        (
+            "tests/test_aud253_private_env_files.py",
+            "Base64 High Entropy String",
+            (
+                249,
+                234,
+                225,
+                154,
+                241,
+                219,
+                19,
+                25,
+                164,
+                195,
+                226,
+                60,
+                70,
+                145,
+                159,
+                13,
+                181,
+                232,
+                96,
+                104,
+            ),
+        ),
+        (
+            "tests/test_aud253_private_env_files.py",
+            "Base64 High Entropy String",
+            (
+                209,
+                97,
+                7,
+                76,
+                56,
+                168,
+                75,
+                219,
+                177,
+                81,
+                156,
+                145,
+                146,
+                126,
+                11,
+                18,
+                227,
+                102,
+                242,
+                240,
+            ),
+        ),
+        (
+            "tests/test_aud253_private_env_files.py",
+            "Base64 High Entropy String",
+            (
+                237,
+                247,
+                83,
+                211,
+                2,
+                60,
+                48,
+                7,
+                117,
+                85,
+                234,
+                204,
+                176,
+                92,
+                16,
+                249,
+                59,
+                248,
+                247,
+                232,
+            ),
+        ),
+        (
+            "tests/test_aud253_private_env_files.py",
+            "Base64 High Entropy String",
+            (
+                39,
+                64,
+                185,
+                186,
+                132,
+                70,
+                33,
+                101,
+                34,
+                113,
+                107,
+                165,
+                89,
+                20,
+                200,
+                218,
+                104,
+                254,
+                31,
+                74,
+            ),
+        ),
+        (
+            "tests/test_aud253_private_env_files.py",
+            "Base64 High Entropy String",
+            (
+                34,
+                37,
+                215,
+                151,
+                209,
+                211,
+                130,
+                49,
+                24,
+                25,
+                155,
+                23,
+                171,
+                12,
+                127,
+                17,
+                161,
+                125,
+                42,
+                47,
+            ),
+        ),
+    }
+)
+
+_TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES = frozenset(
+    {
+        (
+            "scripts/quality/validate_trivy_kyverno_fixture.py",
+            "Hex High Entropy String",
+            (
+                208,
+                194,
+                211,
+                202,
+                127,
+                191,
+                176,
+                34,
+                28,
+                45,
+                65,
+                104,
+                252,
+                218,
+                78,
+                167,
+                15,
+                212,
+                3,
+                158,
+            ),
+        ),
+        (
+            "scripts/quality/validate_trivy_kyverno_fixture.py",
+            "Hex High Entropy String",
+            (
+                224,
+                192,
+                166,
+                76,
+                174,
+                89,
+                98,
+                209,
+                14,
+                59,
+                156,
+                41,
+                28,
+                44,
+                108,
+                70,
+                149,
+                242,
+                195,
+                91,
+            ),
+        ),
+    }
+)
+
+_TRIVY_KYVERNO_PUBLIC_CHECKSUM_DIGESTS = frozenset(
+    identity[2] for identity in _TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+)
+_AUD253_PRIVATE_ENV_MODE_TEST_DIGESTS = frozenset(
+    identity[2] for identity in _AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES
+)
+_AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES = frozenset(
+    {
+        (
+            "tests/test_cache_object_keys_aud495.py",
+            "Secret Keyword",
+            (
+                158,
+                96,
+                27,
+                174,
+                156,
+                212,
+                227,
+                7,
+                93,
+                85,
+                133,
+                139,
+                237,
+                131,
+                255,
+                78,
+                75,
+                253,
+                255,
+                16,
+            ),
+        ),
+        (
+            "tests/test_cache_object_keys_aud495.py",
+            "Secret Keyword",
+            (
+                206,
+                224,
+                34,
+                26,
+                248,
+                78,
+                22,
+                250,
+                97,
+                128,
+                240,
+                96,
+                14,
+                161,
+                75,
+                225,
+                205,
+                151,
+                196,
+                143,
+            ),
+        ),
+    }
+)
+_AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_DIGESTS = frozenset(
+    identity[2] for identity in _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES
+)
+_AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_PATH = "tests/test_cache_object_keys_aud495.py"
+_AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY = (
+    "aud495_cache_key_redaction_test_fixture"
+)
+_TRIVY_KYVERNO_VALIDATOR_PATH = "scripts/quality/validate_trivy_kyverno_fixture.py"
+
+_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_PATH = "tests/test_verify_secrets_baseline.py"
+_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITY = (
+    _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_PATH,
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        121,
+        18,
+        205,
+        213,
+        192,
+        120,
+        136,
+        208,
+        61,
+        126,
+        251,
+        249,
+        119,
+        59,
+        133,
+        113,
+        22,
+        198,
+        10,
+        132,
+    ),
+)
+_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES = frozenset(
+    {_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITY}
+)
+_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_DIGESTS = frozenset(
+    {_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITY[2]}
+)
+_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_EVIDENCE_MARKERS = {
+    _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITY: (
+        "Public SHA-256 integrity digest of immutable 315-record disposition prefix",
+        "source-contract test guard in tests/test_verify_secrets_baseline.py",
+        "not credential material",
+    ),
+}
+
+_AUD350_PUBLIC_MIGRATION_DIGEST_IDENTITY = (
+    "tests/integration/test_aud350_stored_event_timestamp_migration.py",
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        75,
+        241,
+        247,
+        240,
+        201,
+        124,
+        150,
+        116,
+        118,
+        155,
+        103,
+        137,
+        228,
+        223,
+        153,
+        93,
+        208,
+        224,
+        145,
+        58,
+    ),
+)
+_AUD495_PUBLIC_FIRST_FINGERPRINT_IDENTITY = (
+    "tests/test_verify_secrets_baseline.py",
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        200,
+        36,
+        105,
+        58,
+        159,
+        122,
+        4,
+        140,
+        251,
+        170,
+        213,
+        164,
+        38,
+        210,
+        200,
+        58,
+        142,
+        211,
+        129,
+        137,
+    ),
+)
+_AUD495_PUBLIC_SECOND_FINGERPRINT_IDENTITY = (
+    "tests/test_verify_secrets_baseline.py",
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        73,
+        167,
+        128,
+        111,
+        78,
+        205,
+        84,
+        128,
+        139,
+        99,
+        249,
+        165,
+        3,
+        236,
+        79,
+        56,
+        147,
+        246,
+        140,
+        151,
+    ),
+)
+_AUD495_PUBLIC_HISTORICAL_FINGERPRINT_IDENTITIES = frozenset(
+    {
+        _AUD495_PUBLIC_FIRST_FINGERPRINT_IDENTITY,
+        _AUD495_PUBLIC_SECOND_FINGERPRINT_IDENTITY,
+    }
+)
+_OCT24_PUBLIC_DIGEST_CATEGORY_BY_IDENTITY = {
+    _AUD350_PUBLIC_MIGRATION_DIGEST_IDENTITY: "public_integrity_digest",
+    _AUD495_PUBLIC_FIRST_FINGERPRINT_IDENTITY: "independent_contract_fingerprint",
+    _AUD495_PUBLIC_SECOND_FINGERPRINT_IDENTITY: "independent_contract_fingerprint",
+}
+_OCT24_PUBLIC_DIGEST_BYTES = frozenset(
+    identity[2] for identity in _OCT24_PUBLIC_DIGEST_CATEGORY_BY_IDENTITY
+)
+_OCT24_PUBLIC_DIGEST_RESERVED_PATH_TYPES = frozenset(
+    (identity[0], identity[1]) for identity in _OCT24_PUBLIC_DIGEST_CATEGORY_BY_IDENTITY
+)
+_OCT24_PUBLIC_DIGEST_EVIDENCE_MARKERS = {
+    _AUD350_PUBLIC_MIGRATION_DIGEST_IDENTITY: (
+        "Public SHA-256 integrity digest of the frozen AUD-350 migration fixture",
+        "independent source-contract guard in "
+        "tests/integration/test_aud350_stored_event_timestamp_migration.py",
+        "not credential material",
+    ),
+    _AUD495_PUBLIC_FIRST_FINGERPRINT_IDENTITY: (
+        "Public detect-secrets SHA-1 identity of the first historical "
+        "AUD-495 cache-key canary",
+        "independent source-contract guard in tests/test_verify_secrets_baseline.py",
+        "original canary record retains its "
+        "aud495_cache_key_redaction_test_fixture category",
+        "not credential material",
+    ),
+    _AUD495_PUBLIC_SECOND_FINGERPRINT_IDENTITY: (
+        "Public detect-secrets SHA-1 identity of the second historical "
+        "AUD-495 cache-key canary",
+        "independent source-contract guard in tests/test_verify_secrets_baseline.py",
+        "original canary record retains its "
+        "aud495_cache_key_redaction_test_fixture category",
+        "not credential material",
+    ),
+}
+
+_TRIVY_KYVERNO_EXACT_EVIDENCE_MARKERS = {
+    (
+        "scripts/quality/validate_trivy_kyverno_fixture.py",
+        "Hex High Entropy String",
+        (
+            208,
+            194,
+            211,
+            202,
+            127,
+            191,
+            176,
+            34,
+            28,
+            45,
+            65,
+            104,
+            252,
+            218,
+            78,
+            167,
+            15,
+            212,
+            3,
+            158,
+        ),
+    ): (
+        "Public integrity checksum",
+        "public SHA-256 checksum of the pinned Kyverno fixture bytes",
+        "not credential material",
+    ),
+    (
+        "scripts/quality/validate_trivy_kyverno_fixture.py",
+        "Hex High Entropy String",
+        (
+            224,
+            192,
+            166,
+            76,
+            174,
+            89,
+            98,
+            209,
+            14,
+            59,
+            156,
+            41,
+            28,
+            44,
+            108,
+            70,
+            149,
+            242,
+            195,
+            91,
+        ),
+    ): (
+        "Public integrity checksum",
+        "public SHA-256 checksum of the complete candidate Trivy ignore policy",
+        "not credential material",
+    ),
+}
+
+_ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY = (
+    "frontend/scripts/generate-zod-root-lock-candidate.mjs",
+    "Hex High Entropy String",
+    (
+        93,
+        153,
+        98,
+        228,
+        62,
+        95,
+        145,
+        81,
+        122,
+        89,
+        127,
+        149,
+        156,
+        66,
+        233,
+        25,
+        253,
+        139,
+        106,
+        91,
+    ),
+)
+_LOGGING_PUBLIC_METADATA_LABEL_IDENTITY = (
+    "tests/test_logging_pii_redaction_contract.py",
+    "Secret Keyword",
+    (
+        241,
+        119,
+        30,
+        46,
+        101,
+        173,
+        30,
+        82,
+        73,
+        135,
+        104,
+        15,
+        34,
+        136,
+        138,
+        34,
+        211,
+        106,
+        94,
+        148,
+    ),
+)
+_PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY = {
+    _ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY: "public_integrity_digest",
+    _LOGGING_PUBLIC_METADATA_LABEL_IDENTITY: "source_contract_identifier",
+}
+_PUBLIC_SOURCE_METADATA_PATHS = frozenset(
+    identity[0] for identity in _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY
+)
+_PUBLIC_SOURCE_METADATA_DIGESTS = frozenset(
+    identity[2] for identity in _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY
+)
+_PUBLIC_SOURCE_METADATA_EVIDENCE_MARKERS = {
+    _ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY: (
+        "Public upstream Git commit identifier for colinhacks/zod v4.6.7",
+        "EXPECTED_ZOD_SOURCE_SHA in "
+        "frontend/scripts/generate-zod-root-lock-candidate.mjs",
+        "official Git tag and hosted mature registry metadata agree",
+        "used for exact registry source-identity comparison",
+        "not credential material",
+    ),
+    _LOGGING_PUBLIC_METADATA_LABEL_IDENTITY: (
+        "Public signing-key name csrf-signing-key in the secret_name metadata field",
+        "tests/test_logging_pii_redaction_contract.py::"
+        "test_sensitive_field_matching_preserves_related_nonsecret_metadata",
+        "negative control requires this identifier to survive real log redaction",
+        "not credential material",
+    ),
+}
+
 _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
+    "synthetic_achievement_url_test_fixture": (
+        _SYNTHETIC_ACHIEVEMENT_URL_TEST_FIXTURE_IDENTITIES
+    ),
     "public_compose_inspection_test_sentinel": (
         _PUBLIC_COMPOSE_INSPECTION_TEST_SENTINEL_IDENTITIES
     ),
     "external_kubernetes_secret_reference": _EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES,
-    "source_contract_identifier": _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES,
+    "source_contract_identifier": (
+        _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES
+        | {_LOGGING_PUBLIC_METADATA_LABEL_IDENTITY}
+    ),
+    "auth_validation_ui_copy": _AUTH_VALIDATION_UI_COPY_IDENTITIES,
+    "aud253_private_env_mode_test_fixture": (
+        _AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES
+    ),
+    "aud495_cache_key_redaction_test_fixture": (
+        _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES
+    ),
 }
+
+_PUBLIC_GIT_BLOB_IDENTITIES = frozenset(
+    {
+        (
+            "tests/helpers/migration_148642dd1207_trace.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                68,
+                206,
+                125,
+                127,
+                3,
+                60,
+                194,
+                207,
+                158,
+                109,
+                182,
+                148,
+                201,
+                31,
+                221,
+                196,
+                89,
+                5,
+                101,
+                163,
+            ),
+        ),
+        (
+            "tests/test_mfa_webauthn_tombstone.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                109,
+                67,
+                120,
+                143,
+                21,
+                122,
+                30,
+                20,
+                91,
+                168,
+                79,
+                9,
+                37,
+                165,
+                80,
+                183,
+                80,
+                124,
+                201,
+                40,
+            ),
+        ),
+        (
+            "tests/helpers/migration_148642dd1207_trace.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                78,
+                36,
+                66,
+                114,
+                42,
+                111,
+                201,
+                231,
+                78,
+                231,
+                157,
+                23,
+                62,
+                86,
+                214,
+                140,
+                152,
+                235,
+                118,
+                215,
+            ),
+        ),
+        (
+            "tests/test_mfa_webauthn_tombstone.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                120,
+                244,
+                112,
+                145,
+                78,
+                179,
+                236,
+                151,
+                175,
+                133,
+                0,
+                251,
+                201,
+                135,
+                203,
+                98,
+                231,
+                245,
+                249,
+                83,
+            ),
+        ),
+        (
+            "tests/helpers/migration_148642dd1207_trace.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                129,
+                182,
+                175,
+                46,
+                84,
+                127,
+                57,
+                186,
+                226,
+                169,
+                181,
+                52,
+                185,
+                20,
+                29,
+                88,
+                247,
+                214,
+                196,
+                40,
+            ),
+        ),
+        (
+            "tests/test_mfa_webauthn_tombstone.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                32,
+                87,
+                220,
+                238,
+                65,
+                56,
+                74,
+                173,
+                160,
+                109,
+                167,
+                158,
+                154,
+                251,
+                29,
+                7,
+                25,
+                76,
+                152,
+                145,
+            ),
+        ),
+    }
+)
+_PUBLIC_GIT_BLOB_DIGESTS = frozenset(
+    identity[2] for identity in _PUBLIC_GIT_BLOB_IDENTITIES
+)
+_PUBLIC_GIT_BLOB_PATHS = frozenset(
+    identity[0] for identity in _PUBLIC_GIT_BLOB_IDENTITIES
+)
+_PUBLIC_GIT_BLOB_EVIDENCE_MARKERS = {
+    "tests/helpers/migration_148642dd1207_trace.py": (
+        "Public Git SHA-1 integrity digest of "
+        "alembic/versions/148642dd1207_fix_missing_tables.py",
+        "source-bound five-site migration diagnostic assignment SOURCE_GIT_BLOB",
+        "Git blob framing binds all source bytes",
+        "not credential material",
+    ),
+    "tests/test_mfa_webauthn_tombstone.py": (
+        "Public Git SHA-1 integrity digest of "
+        "tests/test_migration_148642dd1207_orchestrator.py",
+        "source-bound historical migration reference guard assignment "
+        "HISTORICAL_ORCHESTRATOR_BLOB",
+        "Git blob framing binds all source bytes",
+        "not credential material",
+    ),
+}
+
 _FALSE_POSITIVE_IDENTITY_FIELDS = frozenset({"path", "type", "hashed_secret_bytes"})
 _FALSE_POSITIVE_RECORD_FIELDS = frozenset(
     {
@@ -1280,6 +2240,95 @@ def validate_false_positive_dispositions(
             finding_type,
             tuple(raw_digest_bytes),
         )
+        if tuple(raw_digest_bytes) in _AUD253_PRIVATE_ENV_MODE_TEST_DIGESTS and (
+            exact_source_identity
+            not in _AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES
+            or category != "aud253_private_env_mode_test_fixture"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-253 private env fixture identity changed scope"
+            )
+        if (
+            path == _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_PATH
+            and finding_type == "Secret Keyword"
+            and (
+                exact_source_identity
+                not in _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES
+                or category != _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY
+            )
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-495 cache-key fixture identity changed scope"
+            )
+        if tuple(
+            raw_digest_bytes
+        ) in _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_DIGESTS and (
+            exact_source_identity
+            not in _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES
+            or category != _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-495 cache-key fixture identity changed scope"
+            )
+
+        metadata_category = _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY.get(
+            exact_source_identity
+        )
+        if (
+            path in _PUBLIC_SOURCE_METADATA_PATHS
+            or tuple(raw_digest_bytes) in _PUBLIC_SOURCE_METADATA_DIGESTS
+        ) and (metadata_category is None or category != metadata_category):
+            raise BaselineArtifactError(
+                f"{artifact}: public source metadata identity changed scope"
+            )
+
+        if (
+            path in _PUBLIC_GIT_BLOB_PATHS
+            or tuple(raw_digest_bytes) in _PUBLIC_GIT_BLOB_DIGESTS
+        ) and (
+            exact_source_identity not in _PUBLIC_GIT_BLOB_IDENTITIES
+            or category != "public_integrity_digest"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: public Git blob identity changed scope"
+            )
+
+        oct24_category = _OCT24_PUBLIC_DIGEST_CATEGORY_BY_IDENTITY.get(
+            exact_source_identity
+        )
+        if (
+            tuple(raw_digest_bytes) in _OCT24_PUBLIC_DIGEST_BYTES
+            or (path, finding_type) in _OCT24_PUBLIC_DIGEST_RESERVED_PATH_TYPES
+        ) and (
+            exact_source_identity not in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES
+        ):
+            if oct24_category is None or category != oct24_category:
+                raise BaselineArtifactError(
+                    f"{artifact}: October 24 public digest identity changed scope"
+                )
+
+        if (
+            (
+                path == _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_PATH
+                and finding_type == _FALSE_POSITIVE_ALLOWED_TYPE
+                and exact_source_identity
+                not in _AUD495_PUBLIC_HISTORICAL_FINGERPRINT_IDENTITIES
+            )
+            or tuple(raw_digest_bytes) in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_DIGESTS
+        ) and (
+            exact_source_identity not in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES
+            or category != "public_integrity_digest"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: immutable policy-prefix digest identity changed scope"
+            )
+        if tuple(raw_digest_bytes) in _TRIVY_KYVERNO_PUBLIC_CHECKSUM_DIGESTS and (
+            exact_source_identity not in _TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+            or category != "public_integrity_digest"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: Trivy Kyverno checksum identity changed scope"
+            )
         if (
             exact_source_identity in _PUBLIC_COMPOSE_INSPECTION_TEST_SENTINEL_IDENTITIES
             and category != "public_compose_inspection_test_sentinel"
@@ -1294,8 +2343,40 @@ def validate_false_positive_dispositions(
             raise BaselineArtifactError(
                 f"{artifact}: exact source-contract identity changed category"
             )
+        if (
+            exact_source_identity in _SYNTHETIC_ACHIEVEMENT_URL_TEST_FIXTURE_IDENTITIES
+            and category != "synthetic_achievement_url_test_fixture"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: synthetic achievement URL fixture changed category"
+            )
+        if (
+            exact_source_identity in _AUTH_VALIDATION_UI_COPY_IDENTITIES
+            and category != "auth_validation_ui_copy"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: auth validation UI copy identity changed category"
+            )
         if category in _FALSE_POSITIVE_HEX_CATEGORIES:
             category_matches = finding_type == _FALSE_POSITIVE_ALLOWED_TYPE
+            if (
+                category == "public_integrity_digest"
+                and path == _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_PATH
+            ):
+                category_matches = (
+                    category_matches
+                    and exact_source_identity
+                    in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES
+                )
+            if (
+                category == "public_integrity_digest"
+                and path == _TRIVY_KYVERNO_VALIDATOR_PATH
+            ):
+                category_matches = (
+                    category_matches
+                    and exact_source_identity
+                    in _TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+                )
             if category == "independent_contract_fingerprint":
                 exact_v4_identity = (
                     path,
@@ -1303,7 +2384,10 @@ def validate_false_positive_dispositions(
                     tuple(raw_digest_bytes),
                 ) in _V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES
                 category_matches = category_matches and (
-                    path == _INDEPENDENT_CONTRACT_FINGERPRINT_PATH or exact_v4_identity
+                    path == _INDEPENDENT_CONTRACT_FINGERPRINT_PATH
+                    or exact_v4_identity
+                    or exact_source_identity
+                    in _AUD495_PUBLIC_HISTORICAL_FINGERPRINT_IDENTITIES
                 )
         elif category in _FALSE_POSITIVE_EXACT_IDENTITY_CATEGORIES:
             exact_identities = _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES.get(
@@ -1335,6 +2419,20 @@ def validate_false_positive_dispositions(
         ):
             raise BaselineArtifactError(f"{artifact}: evidence is invalid")
         required_evidence = _FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS.get(category, ())
+        required_evidence += _TRIVY_KYVERNO_EXACT_EVIDENCE_MARKERS.get(
+            exact_source_identity, ()
+        )
+        required_evidence += _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_EVIDENCE_MARKERS.get(
+            exact_source_identity, ()
+        )
+        required_evidence += _OCT24_PUBLIC_DIGEST_EVIDENCE_MARKERS.get(
+            exact_source_identity, ()
+        )
+        if exact_source_identity in _PUBLIC_GIT_BLOB_IDENTITIES:
+            required_evidence += _PUBLIC_GIT_BLOB_EVIDENCE_MARKERS[path]
+        required_evidence += _PUBLIC_SOURCE_METADATA_EVIDENCE_MARKERS.get(
+            exact_source_identity, ()
+        )
         if any(
             marker.casefold() not in evidence.casefold() for marker in required_evidence
         ):
@@ -1376,11 +2474,90 @@ def validate_false_positive_dispositions(
         ):
             raise BaselineArtifactError(f"{artifact}: date range is invalid")
 
+        if metadata_category is not None and (
+            owner != "egorribun"
+            or raw_reviewed != "2026-10-24"
+            or expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: public source metadata approval changed"
+            )
+
+        if exact_source_identity in _PUBLIC_GIT_BLOB_IDENTITIES and (
+            owner != "egorribun"
+            or raw_reviewed != "2026-10-24"
+            or expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: public Git blob approval metadata changed"
+            )
+
+        if oct24_category is not None and (
+            owner != "egorribun"
+            or raw_reviewed != "2026-10-24"
+            or expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: October 24 public digest approval metadata changed"
+            )
+
         if category == "public_compose_inspection_test_sentinel" and expires_on > date(
             2027, 1, 10
         ):
             raise BaselineArtifactError(
                 f"{artifact}: public Compose sentinel exceeds approved expiry"
+            )
+
+        if category == "synthetic_achievement_url_test_fixture" and expires_on > date(
+            2027, 1, 10
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: synthetic achievement URL fixture exceeds approved expiry"
+            )
+
+        if category == "auth_validation_ui_copy" and expires_on > date(2027, 1, 10):
+            raise BaselineArtifactError(
+                f"{artifact}: auth validation UI copy exceeds approved expiry"
+            )
+
+        if category == "aud253_private_env_mode_test_fixture" and expires_on > date(
+            2027, 1, 10
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-253 private env fixture exceeds approved expiry"
+            )
+
+        if (
+            category == _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY
+            and expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-495 cache-key fixture exceeds proposed expiry cap"
+            )
+
+        if (
+            exact_source_identity in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES
+            and expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: immutable policy-prefix digest exceeds proposed expiry"
+            )
+
+        if (
+            exact_source_identity in _TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+            and expires_on > date(2026, 11, 22)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: Trivy Kyverno checksum exceeds approved expiry"
+            )
+
+        if (
+            category == "source_contract_identifier"
+            and exact_source_identity in _PAGE_TITLE_ROUTE_IDENTIFIER_IDENTITIES
+            and expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: page title route identifier exceeds approved expiry"
             )
 
         finding = FindingIdentity(path, finding_type, hashed_secret, 1)

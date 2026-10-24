@@ -15,7 +15,9 @@ import type { UserState } from "@/types/Auth"
 import type { PaginatedResponse } from "@/types/Pagination"
 
 const apiRequests = vi.hoisted(() => ({ news: vi.fn() }))
-vi.mock("@/api/generated/sdk.gen", () => ({ newsListApiV1NewsGet: apiRequests.news }))
+vi.mock("@/api/generated/sdk.gen", () => ({
+  newsListApiV1NewsGet: apiRequests.news,
+}))
 
 import {
   anonymousNewsListQueryKey,
@@ -29,9 +31,37 @@ const generationStorageKey = "ecosystem.session.generation.v1"
 const filters = { language: "en", limit: 12 }
 const accountAKey = "news:list:account:account-a:en"
 const accountBKey = "news:list:account:account-b:en"
-const accountAItem = { id: "article-a", title: "Private A", is_liked: true } as NewsItem
-const accountBItem = { id: "article-b", title: "Private B", is_liked: false } as NewsItem
-const publicItem = { id: "article-public", title: "Public", is_liked: false } as NewsItem
+const accountAItem = {
+  id: "00000000-0000-4000-8000-000000000002",
+  title: "Private A",
+  content: "Private A article",
+  created_at: "2026-01-15T10:00:00.000Z",
+  image_url_optimized: null,
+  likes_count: 0,
+  comments_count: 0,
+  is_liked: true,
+} as NewsItem
+const accountBItem = {
+  id: "00000000-0000-4000-8000-000000000003",
+  title: "Private B",
+  content: "Private B article",
+  created_at: "2026-01-15T10:00:00.000Z",
+  image_url_optimized: null,
+  likes_count: 0,
+  comments_count: 0,
+  is_liked: false,
+} as NewsItem
+const publicItem = {
+  id: "00000000-0000-4000-8000-000000000001",
+  title: "Public",
+  content: "Public article",
+  created_at: "2026-01-15T10:00:00.000Z",
+  image_url_optimized: null,
+  likes_count: 0,
+  comments_count: 0,
+  is_liked: false,
+} as NewsItem
+
 const page = <T,>(items: T[]): PaginatedResponse<T> => ({
   items,
   total: items.length,
@@ -40,7 +70,10 @@ const page = <T,>(items: T[]): PaginatedResponse<T> => ({
   next_cursor: null,
   has_more: false,
 })
-const infinite = (item: NewsItem) => ({ pages: [page([item])], pageParams: [null] })
+const infinite = (item: NewsItem) => ({
+  pages: [page([item])],
+  pageParams: [null],
+})
 const publicResponse = () =>
   ({ ok: true, status: 200, json: async () => page([publicItem]) }) as Response
 const wrapperFor = (client: QueryClient) => {
@@ -57,7 +90,10 @@ const seedAccountA = () => {
   )
   acceptBrowserSessionGeneration()
   invalidateSessionEpoch()
-  useAuthStore.setState({ user: { id: "account-a" } as UserState, loading: false })
+  useAuthStore.setState({
+    user: { id: "account-a" } as UserState,
+    loading: false,
+  })
 }
 const publishGeneration = (nonce: string, hash: string | null) => {
   const newValue = JSON.stringify({ nonce, hash })
@@ -71,7 +107,9 @@ const publishGeneration = (nonce: string, hash: string | null) => {
   )
 }
 const makeClient = () =>
-  new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } })
+  new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+  })
 
 beforeEach(() => {
   window.localStorage.clear()
@@ -129,12 +167,65 @@ describe("anonymous news during a stale cross-tab session", () => {
     expect(client.getQueryCache().find({ queryKey: anonymousKey })?.meta?.persist).toBe(false)
     expect(apiRequests.news).not.toHaveBeenCalled()
     expect(fetchSpy).toHaveBeenCalledTimes(1)
-    expect(fetchSpy.mock.calls[0]?.[1]).toMatchObject({ credentials: "omit", cache: "no-store" })
+    expect(fetchSpy.mock.calls[0]?.[1]).toMatchObject({
+      credentials: "omit",
+      cache: "no-store",
+    })
     expect(accountRead.mock.calls.filter(([key]) => key === accountAKey)).toEqual([])
     expect(accountWrite.mock.calls.filter(([key]) => key === accountAKey)).toEqual([])
     accountRead.mockRestore()
     accountWrite.mockRestore()
     expect(window.localStorage.getItem(accountAKey)).toBe(JSON.stringify([accountAItem]))
+  })
+
+  it("finishes a pending credentialless stale feed in only its anonymous cache after generation acceptance", async () => {
+    apiRequests.news.mockResolvedValue({
+      status: 200,
+      data: page([accountAItem]),
+    })
+    let requestSignal: AbortSignal | undefined
+    let resolvePublicResponse: ((response: Response) => void) | undefined
+    const fetchSpy = vi.fn<typeof fetch>((_input, init) => {
+      requestSignal = init?.signal ?? undefined
+      return new Promise<Response>((resolve) => {
+        resolvePublicResponse = resolve
+      })
+    })
+    vi.stubGlobal("fetch", fetchSpy)
+    window.localStorage.setItem(
+      generationStorageKey,
+      JSON.stringify({ nonce: "generation-b", hash: "hash-b" })
+    )
+    expect(hasStaleBrowserSessionBinding()).toBe(true)
+
+    const client = makeClient()
+    const authenticatedKey = newsListQueryKey(filters)
+    const anonymousKey = anonymousNewsListQueryKey(filters)
+    const { result, rerender } = renderHook(() => useNewsListQuery(filters), {
+      wrapper: wrapperFor(client),
+    })
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce())
+    expect(result.current.queryKey).toEqual(anonymousKey)
+    expect(requestSignal?.aborted).toBe(false)
+
+    acceptBrowserSessionGeneration()
+    rerender()
+    await waitFor(() => expect(result.current.queryKey).toEqual(authenticatedKey))
+    expect(requestSignal?.aborted).toBe(false)
+    await waitFor(() => expect(apiRequests.news).toHaveBeenCalledOnce())
+
+    const resolve = resolvePublicResponse
+    if (!resolve) throw new Error("public News feed request was not pending")
+    resolve(
+      new Response(JSON.stringify(page([publicItem])), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    )
+    await waitFor(() => expect(client.getQueryData(anonymousKey)).toEqual(infinite(publicItem)))
+
+    expect(client.getQueryData(authenticatedKey)).toEqual(infinite(accountAItem))
+    expect(apiRequests.news).toHaveBeenCalledOnce()
   })
 
   it("uses the public cache and credentialless route when no account is confirmed", async () => {
@@ -216,7 +307,10 @@ describe("news session-epoch fences", () => {
     const anonymousKey = anonymousNewsListQueryKey(filters)
     client.setQueryData(accountKey, infinite(accountAItem))
 
-    const nextGeneration = JSON.stringify({ nonce: "generation-b", hash: "hash-b" })
+    const nextGeneration = JSON.stringify({
+      nonce: "generation-b",
+      hash: "hash-b",
+    })
     const originalGetItem = Storage.prototype.getItem
     const originalSetItem = Storage.prototype.setItem
     let published = false
@@ -398,7 +492,10 @@ describe("news session-epoch fences", () => {
     expect(apiRequests.news).toHaveBeenCalledOnce()
     expect(fetch).toHaveBeenCalledTimes(1)
     const anonymousCall = vi.mocked(fetch).mock.calls[0]
-    expect(anonymousCall?.[1]).toMatchObject({ credentials: "omit", cache: "no-store" })
+    expect(anonymousCall?.[1]).toMatchObject({
+      credentials: "omit",
+      cache: "no-store",
+    })
     expect(new Headers(anonymousCall?.[1]?.headers).has("Cookie")).toBe(false)
     expect(new Headers(anonymousCall?.[1]?.headers).has("Authorization")).toBe(false)
   })

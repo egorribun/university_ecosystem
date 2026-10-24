@@ -157,10 +157,31 @@ class BrokerMessageEvidence:
     envelope: object
 
 
+class BrokerProbePhase(StrEnum):
+    """Finite broker-probe boundaries; never private process or wire data."""
+
+    PRECHECK = "precheck"
+    RENDER = "render"
+    RUNTIME = "runtime"
+    RUNTIME_SNAPSHOT = "runtime_snapshot"
+    RUNTIME_CONFIG = "runtime_config"
+    RUNTIME_CONFIG_REQUEST = "runtime_config_request"
+    RUNTIME_CONFIG_PROCESS = "runtime_config_process"
+    RUNTIME_CONFIG_DECODE = "runtime_config_decode"
+    RUNTIME_CONFIG_REVALIDATION = "runtime_config_revalidation"
+    RUNTIME_RESTORED_STATE = "runtime_restored_state"
+    PRIVATE_EXEC = "private_exec"
+    DECODE = "decode"
+    POSTCHECK = "postcheck"
+
+
 @dataclass(frozen=True)
 class BrokerErrorEvidence:
     status: int | None
     error_code: int | None
+    failure_phase: BrokerProbePhase | None = field(
+        default=None, compare=False, repr=False
+    )
 
 
 type BrokerEvidence = BrokerMessageEvidence | BrokerErrorEvidence
@@ -201,6 +222,8 @@ class OutageCheckpoint(StrEnum):
     CREATE_DM_ONCE = "create_dm_once"
     READ_DM = "read_dm"
     PENDING_COUNT = "pending_count"
+    BROKER_PROBE = "broker_probe"
+    BROKER_RECEIPT = "broker_receipt"
     COORDINATOR_EXCEPTION = "coordinator_exception"
 
 
@@ -252,6 +275,9 @@ class OutageResult:
     stage: OutageStage
     checkpoint: OutageCheckpoint | None = field(default=None, compare=False)
     runtime_diagnostic: RuntimeObservationPhase | None = field(
+        default=None, compare=False, repr=False
+    )
+    broker_diagnostic: BrokerProbePhase | None = field(
         default=None, compare=False, repr=False
     )
 
@@ -565,6 +591,7 @@ class _Coordinator:
         self.stage = OutageStage.PREFLIGHT
         self.checkpoint: OutageCheckpoint | None = OutageCheckpoint.ACQUIRE_LOCK
         self.runtime_diagnostic: RuntimeObservationPhase | None = None
+        self.broker_diagnostic: BrokerProbePhase | None = None
 
     def _preflight(self) -> _Context:
         inventory = self.primary.child(45)
@@ -810,6 +837,8 @@ class _Coordinator:
         self.stage = OutageStage.BROKER
         receipt = self.primary.child(45)
         while True:
+            self.checkpoint = OutageCheckpoint.BROKER_PROBE
+            self.broker_diagnostic = None
             evidence = _call(
                 receipt,
                 self.ports.broker_last_message,
@@ -818,6 +847,8 @@ class _Coordinator:
                 f"chat.{context.chat_id}",
             )
             if isinstance(evidence, BrokerMessageEvidence):
+                self.broker_diagnostic = None
+                self.checkpoint = OutageCheckpoint.BROKER_RECEIPT
                 _require(
                     validate_broker_receipt(
                         message,
@@ -827,12 +858,18 @@ class _Coordinator:
                     )
                     is BrokerVerdict.VALID
                 )
+                self.checkpoint = None
                 return
+            if isinstance(evidence, BrokerErrorEvidence):
+                phase = evidence.failure_phase
+                if type(phase) is BrokerProbePhase:
+                    self.broker_diagnostic = phase
             _require(
                 isinstance(evidence, BrokerErrorEvidence)
                 and classify_broker_error(evidence.status, evidence.error_code)
                 is BrokerVerdict.MISSING
             )
+            self.broker_diagnostic = None
             self._wait(receipt)
 
     def run(self) -> OutageResult:
@@ -875,6 +912,7 @@ class _Coordinator:
                     self.stage = previous_stage
             _live(self.primary)
             self._delivery(context, message, event_id, retry_count)
+            self.checkpoint = None
             self.stage = OutageStage.FINAL_REVALIDATION
             self._complete_inventory(context, self.primary)
             accepted = True
@@ -910,6 +948,12 @@ class _Coordinator:
                 self.runtime_diagnostic
                 if self.stage is OutageStage.PREFLIGHT
                 and self.checkpoint is OutageCheckpoint.OBSERVE_RUNTIME
+                else None
+            ),
+            broker_diagnostic=(
+                self.broker_diagnostic
+                if self.stage is OutageStage.BROKER
+                and self.checkpoint is OutageCheckpoint.BROKER_PROBE
                 else None
             ),
         )

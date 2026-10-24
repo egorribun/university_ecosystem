@@ -1,3 +1,4 @@
+import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 /**
  * Render coverage tests (testing session 10) for the small, prop-driven navbar
  * pieces that prior sessions left untested: DesktopNav, NavbarLogo,
@@ -358,9 +359,10 @@ describe("MobileDrawerProfile", () => {
     expect(screen.getByText(testUser.full_name as string)).toBeInTheDocument()
     expect(screen.getByText("navigation:role.student")).toBeInTheDocument()
     const profileButton = screen.getByRole("button", { name: "navigation:aria.openProfile" })
-    expect(profileButton).toHaveStyle({
-      background: "linear-gradient(135deg, var(--quick-action-icon-bg), transparent 60%)",
-    })
+    expectInlineBackground(
+      profileButton,
+      "linear-gradient(135deg, var(--quick-action-icon-bg), transparent 60%)"
+    )
     await userEvent.click(profileButton)
     expect(onProfileClick).toHaveBeenCalledOnce()
   })
@@ -444,9 +446,7 @@ describe("MobileDrawerProfile", () => {
     })
     const image = screen.getByAltText("navigation:aria.profileAvatar")
     expect(image).toHaveAttribute("src", expect.stringContaining(`_v=${Date.parse(firstAvatar)}`))
-    expect(image.previousElementSibling).toHaveStyle({
-      background: "var(--drawer-accent-gradient)",
-    })
+    expectInlineBackground(image.previousElementSibling, "var(--drawer-accent-gradient)")
   })
 
   it("updates avatar cache metadata when user timestamps change", async () => {
@@ -523,9 +523,11 @@ describe("MobileDrawerQuickActions", () => {
         "cursor-pointer",
         "duration-0"
       )
-      expect(button.querySelector("span")).toHaveStyle({
-        backgroundColor: "var(--quick-action-icon-bg)",
-      })
+      expectInlineBackground(
+        button.querySelector("span"),
+        "var(--quick-action-icon-bg)",
+        "background-color"
+      )
     }
     await userEvent.click(searchButton)
     await userEvent.click(notificationButton)

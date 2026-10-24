@@ -253,7 +253,9 @@ describe("SearchDialog mutation contracts", () => {
     fireEvent.keyDown(input, { key: "ArrowDown" })
     fireEvent.keyDown(input, { key: "ArrowDown" })
     fireEvent.keyDown(input, { key: "ArrowDown" })
-    expect(screen.getByText("Two").closest("button")).toHaveClass("bg-brand/(--opacity-subtle)")
+    expect(screen.getByText("Two").closest("button")).toHaveClass(
+      "bg-brand/[calc(var(--opacity-subtle)*100%)]"
+    )
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" })
 
     fireEvent.keyDown(input, { key: "Enter" })

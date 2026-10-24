@@ -10,6 +10,7 @@ import {
 import type { RouterContext } from "@/router"
 import { MainLayout } from "@/components/layout/MainLayout"
 import { SeoReadinessProvider, usePageSeoReady } from "@/components/ui/SEO"
+import { PAGE_SEO_ROUTE_IDS } from "@/components/ui/PageRouteSEO"
 import { DeferredGlobalOverlays } from "@/components/layout/DeferredGlobalOverlays"
 import { BrandBootLoader } from "@/components/feedback/BrandBootLoader"
 import { BRAND_BOOT_LOADER_CSS } from "@/components/feedback/brandBootLoaderCss"
@@ -204,16 +205,6 @@ function getRootMetadataText(
   return (requestI18n ?? i18n).t(rootMetadataKey, { lng: language })
 }
 
-const PAGE_SEO_ROUTE_IDS: ReadonlySet<string> = new Set([
-  "/_auth/activity",
-  "/_auth/dashboard",
-  "/_auth/events/",
-  "/_auth/events/$id",
-  "/_auth/news/",
-  "/_auth/news/$id",
-  "/_auth/profile",
-  "/_auth/schedule",
-])
 const ACTIVITY_ROUTE_ID = "/_auth/activity"
 
 export const Route = createRootRouteWithContext<RouterContext>()({

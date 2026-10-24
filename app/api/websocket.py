@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.ws.auth import (
     update_last_seen as _update_last_seen,
@@ -189,104 +190,115 @@ async def websocket_chat(websocket: WebSocket) -> None:
         return  # close frame already sent inside connect()
 
     metrics.inc_ws_connections(path="/ws/chat")
-    last_seen = await _update_last_seen(session_jti)
-    await manager.broadcast_presence(
-        user.id,
-        True,
-        last_seen,
-        source=PRESENCE_SOURCE_CONNECT,
-        force=True,
-    )
-
     try:
-        dispatcher = MessageDispatcher(
-            manager,
-            container=getattr(websocket.app.state, "dishka_container", None),
+        last_seen = await _update_last_seen(session_jti)
+        await manager.broadcast_presence(
+            user.id,
+            True,
+            last_seen,
+            source=PRESENCE_SOURCE_CONNECT,
+            force=True,
         )
-        while True:
-            try:
-                text_data = await websocket.receive_text()
-                # Reject over-limit raw frames before parsing, matching ws-hub's
-                # 60 KiB ingress guard and avoiding unnecessary JSON work.
-                if len(text_data.encode("utf-8")) > CHAT_MAX_WEBSOCKET_FRAME_BYTES:
-                    logger.warning(
-                        "WS payload too large from user %s", user.id
-                    )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
-                    await websocket.close(code=1009, reason="Payload too large")
-                    return
 
-                # 1. Message Rate Limiting (Audit 6.3)
-                if not manager.check_rate_limit(websocket):
-                    logger.warning(
-                        "WS rate limit exceeded for user %s - dropping message",
-                        user.id,
-                    )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
-                    await websocket.send_json(
-                        {"type": "error", "message": "Rate limit exceeded"}
+        try:
+            dispatcher = MessageDispatcher(
+                manager,
+                container=getattr(websocket.app.state, "dishka_container", None),
+            )
+            while True:
+                try:
+                    text_data = await websocket.receive_text()
+                    # Reject over-limit raw frames before parsing, matching ws-hub's
+                    # 60 KiB ingress guard and avoiding unnecessary JSON work.
+                    if len(text_data.encode("utf-8")) > CHAT_MAX_WEBSOCKET_FRAME_BYTES:
+                        logger.warning(
+                            "WS payload too large from user %s", user.id
+                        )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                        await websocket.close(code=1009, reason="Payload too large")
+                        return
+
+                    # 1. Message Rate Limiting (Audit 6.3)
+                    if not manager.check_rate_limit(websocket):
+                        logger.warning(
+                            "WS rate limit exceeded for user %s - dropping message",
+                            user.id,
+                        )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                        await websocket.send_json(
+                            {"type": "error", "message": "Rate limit exceeded"}
+                        )
+                        await asyncio.sleep(0.1)
+                        continue
+
+                    data = orjson.loads(text_data)
+                    if not isinstance(data, dict):
+                        await websocket.send_json(
+                            {"type": "error", "message": "Invalid JSON"}
+                        )
+                        continue
+                    if not _is_websocket_payload_within_limits(text_data, data):
+                        logger.warning(
+                            "WS message content too large from user %s", user.id
+                        )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                        await websocket.close(code=1009, reason="Payload too large")
+                        return
+                except (
+                    json.JSONDecodeError,
+                    ValueError,
+                    orjson.JSONDecodeError,
+                ) as exc:
+                    # MOD-14-04 (audit 2026-03-23): Log malformed frames with a frame preview
+                    # so ops can distinguish bugs (e.g. wrong Content-Type) from active
+                    # fuzzing probes during incident investigation. The 200-char truncation
+                    # prevents log inflation from crafted large payloads.
+                    frame_preview = (
+                        text_data[:200] if isinstance(text_data, str) else "<non-text>"
                     )
-                    await asyncio.sleep(0.1)
-                    continue
-
-                data = orjson.loads(text_data)
-                if not isinstance(data, dict):
+                    logger.warning(
+                        "Malformed WebSocket frame from user %s: %s — "
+                        "frame preview: %r",
+                        getattr(user, "id", "unknown"),
+                        exc,
+                        frame_preview,
+                    )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
                     await websocket.send_json(
                         {"type": "error", "message": "Invalid JSON"}
                     )
                     continue
-                if not _is_websocket_payload_within_limits(text_data, data):
-                    logger.warning(
-                        "WS message content too large from user %s", user.id
-                    )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
-                    await websocket.close(code=1009, reason="Payload too large")
-                    return
-            except (json.JSONDecodeError, ValueError, orjson.JSONDecodeError) as exc:
-                # MOD-14-04 (audit 2026-03-23): Log malformed frames with a frame preview
-                # so ops can distinguish bugs (e.g. wrong Content-Type) from active
-                # fuzzing probes during incident investigation. The 200-char truncation
-                # prevents log inflation from crafted large payloads.
-                frame_preview = (
-                    text_data[:200] if isinstance(text_data, str) else "<non-text>"
-                )
-                logger.warning(
-                    "Malformed WebSocket frame from user %s: %s — frame preview: %r",
-                    getattr(user, "id", "unknown"),
-                    exc,
-                    frame_preview,
-                )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
-                await websocket.send_json({"type": "error", "message": "Invalid JSON"})
-                continue
 
-            await dispatcher.dispatch(websocket, user, session_jti, data)
+                await dispatcher.dispatch(websocket, user, session_jti, data)
 
-    except WebSocketDisconnect:
-        logger.info("WebSocket disconnected for user %s", user.id)
-    except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — WebSocket loop must not crash without cleanup (reviewed TD-27-04)
-        # Unexpected error in the WebSocket loop: log at ERROR so Sentry captures
-        # the full traceback. The connection is cleaned up regardless.
-        logger.exception("WebSocket unexpectedly closed for user %s", user.id)
+        except WebSocketDisconnect:
+            logger.info("WebSocket disconnected for user %s", user.id)
+        except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — WebSocket loop must not crash without cleanup (reviewed TD-27-04)
+            # Unexpected error in the WebSocket loop: log at ERROR so Sentry captures
+            # the full traceback. The connection is cleaned up regardless.
+            logger.exception("WebSocket unexpectedly closed for user %s", user.id)
     finally:
-        # Guaranteed execution of cleanup and presence state update to prevent Zombie Users
-        await manager.disconnect(websocket)
         try:
-            last_seen = await _update_last_seen(session_jti)
-        except (
-            OSError,
-            ConnectionError,
-        ):  # RZ-22-01: narrowed — DB/network errors during last_seen update
-            last_seen = datetime.now(UTC)
-        # A user can own several tabs/devices.  Closing one socket must not
-        # publish an offline transition while another socket remains active.
-        # Check after the awaited last-seen update so a reconnect completed
-        # during that I/O is reflected in the decision.
-        if not manager.is_online(user.id):
-            await manager.broadcast_presence(
-                user.id,
-                False,
-                last_seen,
-                source=PRESENCE_SOURCE_DISCONNECT,
-                force=True,
-            )
-        metrics.dec_ws_connections(path="/ws/chat")
+            # Always release registration before updating presence.
+            await manager.disconnect(websocket)
+            try:
+                last_seen = await _update_last_seen(session_jti)
+            except (
+                OSError,
+                ConnectionError,
+                SQLAlchemyError,
+            ):  # RZ-22-01: narrowed — DB/network errors during last_seen update
+                last_seen = datetime.now(UTC)
+            # A user can own several tabs/devices.  Closing one socket must not
+            # publish an offline transition while another socket remains active.
+            # Check after the awaited last-seen update so a reconnect completed
+            # during that I/O is reflected in the decision.
+            if not manager.is_online(user.id):
+                await manager.broadcast_presence(
+                    user.id,
+                    False,
+                    last_seen,
+                    source=PRESENCE_SOURCE_DISCONNECT,
+                    force=True,
+                )
+        finally:
+            metrics.dec_ws_connections(path="/ws/chat")
         logger.info("WebSocket cleanup for user %s", user.id)
 
 

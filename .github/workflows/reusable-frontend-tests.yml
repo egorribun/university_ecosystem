@@ -192,7 +192,7 @@ jobs:
 
       - name: Install wasm-pack
         if: ${{ inputs.wasm-artifact-id == '' && inputs.wasm-artifact-name == '' && inputs.wasm-artifact-digest == '' }}
-        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: wasm-pack@0.15.0
 
@@ -348,6 +348,9 @@ jobs:
           src/components/messenger/__tests__/ChatWindow.ime-edit.audit.test.tsx
           src/routes/__tests__/activity.search-validation.test.ts
           src/features/events/components/__tests__/EventsList.closure.test.tsx
+          src/api/hooks/__tests__/events.branches.test.tsx
+          src/features/events/__tests__/EventsFeature.query-error.audit.test.tsx
+          src/components/events/__tests__/EventEditDialog.test.tsx
           src/pages/__tests__/StoriesAdmin.test.tsx
           src/components/map/__tests__/MapSidebar.branches.test.tsx
           src/hooks/features/__tests__/useMessengerController.test.tsx
@@ -359,6 +362,12 @@ jobs:
           src/components/messenger/GroupInfoPanel.branches.test.tsx
           src/components/messenger/GroupInfoPanel.escape.integration.test.tsx
           src/components/pwa/__tests__/InstallPrompt.behavior.test.tsx
+          src/components/layout/__tests__/AuthPageLandmarks.test.tsx
+          src/components/profile/__tests__/profileUtils.closure.test.ts
+          src/pages/__tests__/ResetPassword.token-error.test.tsx
+          src/pages/__tests__/ForgotPassword.test.tsx
+          src/pages/__tests__/Register.test.tsx
+          src/pages/__tests__/Profile.behavior.test.tsx
           --reporter=verbose
         env:
           CI: "true"
@@ -783,6 +792,7 @@ jobs:
         shell: bash
         env:
           STATIC_GATE_LOG_DIR: ${{ runner.temp }}/frontend-static-gates
+          SOURCE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           rm -rf -- "$STATIC_GATE_LOG_DIR"
@@ -826,10 +836,11 @@ jobs:
           run_gate i18n npm run i18n:check &
           run_gate message_contract python ../scripts/generate_message_contract.py --check &
           run_gate knip npm run lint:knip &
+          run_gate react_compiler_compat timeout 120s node --test scripts/react-compiler-zod-compat.test.mjs &
           wait
 
           failed=0
-          for gate in typecheck eslint formatting i18n message_contract knip; do
+          for gate in typecheck eslint formatting i18n message_contract knip react_compiler_compat; do
             echo "::group::$gate"
             cat "$STATIC_GATE_LOG_DIR/$gate.log"
             echo "::endgroup::"
@@ -856,6 +867,8 @@ jobs:
       # this same bounded pair is exercised by the Linux E2E/browser builds.
       FRONTEND_BUILD_MAX_RSS_MB: "2048"
       FRONTEND_BUILD_MAX_OLD_SPACE_MB: "1536"
+      # Rolldown keeps native allocations across the client and SSR passes.
+      ROLLDOWN_WORKER_THREADS: "2"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

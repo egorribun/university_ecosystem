@@ -111,8 +111,9 @@ ENV FRONTEND_BUILD_UNMINIFIED=$FRONTEND_BUILD_UNMINIFIED
 ARG FRONTEND_REACT_DEV_MODE=""
 ENV FRONTEND_REACT_DEV_MODE=$FRONTEND_REACT_DEV_MODE
 COPY --from=deps /app/node_modules ./node_modules
-# Preserve the local lint adapter's pinned engine outside root node_modules.
+# Preserve file-linked lint adapter targets and any nested dependencies.
 COPY --from=deps /app/scripts/boundary-micromatch-compat ./scripts/boundary-micromatch-compat
+COPY --from=deps /app/scripts/react-compiler-zod-compat ./scripts/react-compiler-zod-compat
 COPY frontend ./
 # Copy pre-built WASM packages (FIX-44-02: prevents silent WASM build failure)
 COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg
@@ -173,6 +174,9 @@ RUN --mount=type=cache,target=/root/.npm \
 # The obsolete nginx runtime and `frontend/nginx.conf` were removed after the
 # SSR rollout. Edge routing is owned by `services/caddy/Caddyfile`.
 FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS runtime
+
+# npm is used in build/install stages only; the production entrypoint runs Node directly.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 WORKDIR /app
 RUN addgroup -S -g 10001 app \

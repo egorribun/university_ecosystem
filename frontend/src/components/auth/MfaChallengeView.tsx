@@ -38,7 +38,7 @@ export function MfaChallengeView({ activeEmail, mfa }: MfaChallengeViewProps) {
       <div className="relative z-navbar flex min-h-screen items-center justify-center px-4 py-12 pt-[max(3rem,var(--safe-area-top))] pb-[max(3rem,var(--safe-area-bottom))] sm:px-6 lg:px-8">
         <div className="w-full max-w-[42rem] rounded-4xl glass-high-fidelity p-8">
           <div className="flex flex-col items-center gap-6 text-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-glass-border-subtle bg-surface-hover/(--opacity-subtle) px-4 py-1 text-sm font-semibold tracking-wide text-text-primary">
+            <div className="inline-flex items-center gap-2 rounded-full border border-glass-border-subtle bg-surface-hover/[calc(var(--opacity-subtle)*100%)] px-4 py-1 text-sm font-semibold tracking-wide text-text-primary">
               <ShieldCheck className="h-4 w-4" aria-hidden="true" />
               {t("mfa.verifyTitle")}
             </div>
@@ -54,7 +54,7 @@ export function MfaChallengeView({ activeEmail, mfa }: MfaChallengeViewProps) {
               <div
                 role="alert"
                 aria-live="assertive"
-                className="w-full rounded-md border border-error-border/(--opacity-medium) bg-error-bg/(--opacity-dim) px-4 py-3 text-sm font-semibold text-error-text"
+                className="w-full rounded-md border border-error-border/[calc(var(--opacity-medium)*100%)] bg-error-bg/[calc(var(--opacity-dim)*100%)] px-4 py-3 text-sm font-semibold text-error-text"
               >
                 {generalMfaError}
               </div>
@@ -80,7 +80,7 @@ export function MfaChallengeView({ activeEmail, mfa }: MfaChallengeViewProps) {
                   placeholder="XXXX-XXXX-XXXX-XXXX"
                   autoComplete="one-time-code"
                   disabled={mfaBusy}
-                  className="w-full h-14 text-center text-xl font-mono tracking-widest rounded-2xl bg-(--bg-surface-raised)/(--opacity-medium) text-text-primary border-2 border-(--glass-border)/(--opacity-dim) focus:outline-none focus:border-(--brand-main) focus:ring-4 focus:ring-(--brand-main)/(--opacity-subtle) transition-all duration-base"
+                  className="w-full h-14 text-center text-xl font-mono tracking-widest rounded-2xl bg-(--bg-surface-raised)/[calc(var(--opacity-medium)*100%)] text-text-primary border-2 border-(--glass-border)/[calc(var(--opacity-dim)*100%)] focus:outline-none focus:border-(--brand-main) focus:ring-4 focus:ring-(--brand-main)/[calc(var(--opacity-subtle)*100%)] transition-all duration-base"
                   aria-label={t("mfa.recovery.inputLabel")}
                   value={recoveryCode}
                   onChange={(event) => setRecoveryCode(event.target.value)}
@@ -187,7 +187,7 @@ export function MfaChallengeView({ activeEmail, mfa }: MfaChallengeViewProps) {
                 ) : null}
 
                 {!otpChallenge && !emailChallenge && (
-                  <div className="w-full rounded-md border border-warning-border/(--opacity-medium) bg-warning-bg/(--opacity-subtle) px-4 py-3 text-sm font-semibold text-warning-text">
+                  <div className="w-full rounded-md border border-warning-border/[calc(var(--opacity-medium)*100%)] bg-warning-bg/[calc(var(--opacity-subtle)*100%)] px-4 py-3 text-sm font-semibold text-warning-text">
                     {t("mfa.noMethods")}
                   </div>
                 )}
@@ -199,7 +199,7 @@ export function MfaChallengeView({ activeEmail, mfa }: MfaChallengeViewProps) {
               onClick={() => window.location.reload()}
               variant="outline"
               size="sm"
-              className="rounded-full border-brand/(--opacity-medium) text-brand hover:bg-brand/(--opacity-subtle)"
+              className="rounded-full border-brand/[calc(var(--opacity-medium)*100%)] text-brand hover:bg-brand/[calc(var(--opacity-subtle)*100%)]"
               leadingIcon={<Zap className="h-4 w-4" aria-hidden="true" />}
             >
               {t("mfa.startOver")}

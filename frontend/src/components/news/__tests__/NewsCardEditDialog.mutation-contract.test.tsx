@@ -250,13 +250,11 @@ describe("NewsCardEditDialog mutation contracts", () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByText("Title is required")).toBeInTheDocument()
-      expect(screen.getByText("Content is required")).toBeInTheDocument()
-      expect(screen.getByText("Title (EN) must be less than 100 characters")).toBeInTheDocument()
-      expect(screen.getByText("Content (EN) must be less than 3000 characters")).toBeInTheDocument()
-      expect(
-        screen.getByText("Only .jpg, .jpeg, .png and .webp formats are supported.")
-      ).toBeInTheDocument()
+      expect(screen.getByText("news:form.validation.titleRequired")).toBeInTheDocument()
+      expect(screen.getByText("news:form.validation.contentRequired")).toBeInTheDocument()
+      expect(screen.getByText("news:form.validation.titleEnMaxLength")).toBeInTheDocument()
+      expect(screen.getByText("news:form.validation.contentEnMaxLength")).toBeInTheDocument()
+      expect(screen.getByText("news:form.validation.imageFormats")).toBeInTheDocument()
     })
 
     expect(title).toHaveClass("border-error-text/50")
@@ -264,7 +262,7 @@ describe("NewsCardEditDialog mutation contracts", () => {
     expect(titleEn).toHaveClass("border-error-text/50")
     expect(contentEn).toHaveClass("border-error-text/50")
     expect(photoButton).toHaveClass("border-error-text/50", "text-error-text")
-    expect(screen.getByText("Title is required")).toHaveClass(
+    expect(screen.getByText("news:form.validation.titleRequired")).toHaveClass(
       "text-error-text",
       "text-xs",
       "mt-1",

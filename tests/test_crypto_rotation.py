@@ -21,6 +21,7 @@ from app.auth.security import (
     argon2_hasher,
     decode_token,
 )
+from app.core.config import settings
 from app.core.csrf import (
     _build_signed_token,
     _compute_csrf_hmac,
@@ -80,11 +81,16 @@ class TestJWTKidRotation:
             "jwt_signing_active_secret": self._ACTIVE_SECRET,
             "algorithm": self._ALGORITHM,
             "jwt_audience": self._AUDIENCE,
+            "jwt_issuer": settings.jwt_issuer,
         }
 
     def test_valid_active_kid_accepted(self) -> None:
         """Token signed with the active kid and matching secret is accepted."""
-        token = self._mint_token(kid=self._ACTIVE_KID, secret=self._ACTIVE_SECRET)
+        token = self._mint_token(
+            kid=self._ACTIVE_KID,
+            secret=self._ACTIVE_SECRET,
+            extra_claims={"iss": settings.jwt_issuer},
+        )
         with patch("app.auth.security.settings", **self._settings_patch()):
             payload = decode_token(token)
         assert payload is not None
@@ -92,7 +98,11 @@ class TestJWTKidRotation:
 
     def test_valid_old_kid_accepted(self) -> None:
         """Token signed with an old (but still registered) kid is accepted."""
-        token = self._mint_token(kid=self._OLD_KID, secret=self._OLD_SECRET)
+        token = self._mint_token(
+            kid=self._OLD_KID,
+            secret=self._OLD_SECRET,
+            extra_claims={"iss": settings.jwt_issuer},
+        )
         with patch("app.auth.security.settings", **self._settings_patch()):
             payload = decode_token(token)
         assert payload is not None

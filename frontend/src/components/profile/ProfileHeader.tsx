@@ -89,7 +89,7 @@ export const ProfileHeader = ({
           className="absolute left-1/2 top-8 xs:top-10 sm:top-12 md:top-14 -translate-x-1/2 flex items-center justify-center p-0.5 sm:p-1"
           style={{ width: avatarSize, height: avatarSize }}
         >
-          <div className="relative w-full h-full rounded-full bg-white/(--opacity-subtle) overflow-hidden shadow-2xl ring-2 ring-white/(--opacity-medium) backdrop-blur-glass">
+          <div className="relative w-full h-full rounded-full bg-white/[calc(var(--opacity-subtle)*100%)] overflow-hidden shadow-2xl ring-2 ring-white/[calc(var(--opacity-medium)*100%)] backdrop-blur-glass">
             <SmartImage
               srcRaw={user?.avatar_url ?? undefined}
               fallback={DEFAULT_AVATAR}
@@ -110,7 +110,7 @@ export const ProfileHeader = ({
                 height: `${statusSize}px`,
               }}
             >
-              <div className="absolute inset-0 animate-online-pulse rounded-full bg-(--success-bg)/(--opacity-strong)" />
+              <div className="absolute inset-0 animate-online-pulse rounded-full bg-(--success-bg)/[calc(var(--opacity-strong)*100%)]" />
             </div>
           )}
         </div>
@@ -121,7 +121,7 @@ export const ProfileHeader = ({
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-white drop-shadow-lg">
               {user?.full_name}
             </h1>
-            <p className="text-sm sm:text-base text-white/(--opacity-hover) font-medium drop-shadow-md mt-1">
+            <p className="text-sm sm:text-base text-white/[calc(var(--opacity-hover)*100%)] font-medium drop-shadow-md mt-1">
               {user?.profile_detail?.status || t("profile:placeholders.status")}
             </p>
           </div>
@@ -160,7 +160,7 @@ export const ProfileHeader = ({
           leadingIcon={<EmailIcon className="shrink-0" />}
           onClick={onEmailClick}
           ref={emailButtonRef}
-          className="justify-start h-12 rounded-xl bg-glass-bg border-glass-border hover:bg-glass-tint1 hover:border-brand/(--opacity-soft)"
+          className="justify-start h-12 rounded-xl bg-glass-bg border-glass-border hover:bg-glass-tint1 hover:border-brand/[calc(var(--opacity-soft)*100%)]"
         >
           <span className="truncate text-sm font-medium">
             {user?.email || t("profile:placeholders.email")}
@@ -172,7 +172,7 @@ export const ProfileHeader = ({
             leadingIcon={<TelegramIcon className="shrink-0" />}
             onClick={onTelegramClick}
             ref={telegramButtonRef}
-            className="justify-start h-12 rounded-xl bg-glass-bg border-glass-border hover:bg-glass-tint1 hover:border-brand/(--opacity-soft)"
+            className="justify-start h-12 rounded-xl bg-glass-bg border-glass-border hover:bg-glass-tint1 hover:border-brand/[calc(var(--opacity-soft)*100%)]"
           >
             <span className="truncate text-sm font-medium">{user.profile_detail.telegram}</span>
           </Button>

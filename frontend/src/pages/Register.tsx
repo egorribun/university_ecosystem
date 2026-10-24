@@ -112,10 +112,12 @@ const Register = () => {
     } catch (error: unknown) {
       let errorMessage = t("auth:register.error")
       if (typeof error === "object" && error !== null && "response" in error) {
-        const axiosError = error as { response?: { data?: { detail?: string | string[] } } }
+        const axiosError = error as { response?: { data?: { detail?: unknown } } }
         const detail = axiosError.response?.data?.detail
         if (typeof detail === "string") errorMessage = detail
-        else if (Array.isArray(detail)) errorMessage = detail.join("; ")
+        else if (Array.isArray(detail) && detail.every((item) => typeof item === "string")) {
+          errorMessage = detail.join("; ")
+        }
       }
       setError("root", { message: errorMessage })
     }
@@ -148,7 +150,7 @@ const Register = () => {
 
   return (
     <div className="auth-theme min-h-screen bg-page text-text-primary">
-      <main className="auth-shell auth-shell--register" aria-labelledby="register-heading">
+      <section className="auth-shell auth-shell--register" aria-labelledby="register-heading">
         <div className="auth-card-matte w-full border border-border-subtle p-6 sm:p-10">
           <div className="mb-8 space-y-3">
             <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-brand">
@@ -185,7 +187,7 @@ const Register = () => {
                 />
                 {errors.full_name && (
                   <p id="register-name-error" role="alert" className="text-xs text-error-text">
-                    {errors.full_name.message}
+                    {t(errors.full_name.message || "auth:validation.nameMinLength")}
                   </p>
                 )}
               </div>
@@ -282,7 +284,7 @@ const Register = () => {
                 />
                 {errors.invite_code && (
                   <p id="register-invite-error" role="alert" className="text-xs text-error-text">
-                    {errors.invite_code.message}
+                    {t(errors.invite_code.message || "auth:validation.inviteCodeRequired")}
                   </p>
                 )}
               </div>
@@ -349,7 +351,7 @@ const Register = () => {
                   className={cn(
                     "badge-brand",
                     minLenOk
-                      ? "border-brand/(--opacity-medium) text-brand"
+                      ? "border-brand/[calc(var(--opacity-medium)*100%)] text-brand"
                       : "text-text-muted-subtle"
                   )}
                 >
@@ -359,7 +361,7 @@ const Register = () => {
                   className={cn(
                     "badge-brand",
                     matchOk
-                      ? "border-brand/(--opacity-medium) text-brand"
+                      ? "border-brand/[calc(var(--opacity-medium)*100%)] text-brand"
                       : "text-text-muted-subtle"
                   )}
                 >
@@ -373,7 +375,7 @@ const Register = () => {
               )}
               {errors.password && (
                 <p id="register-password-error" role="alert" className="text-xs text-error-text">
-                  {errors.password.message}
+                  {t(errors.password.message || "auth:validation.passwordMinLength")}
                 </p>
               )}
             </div>
@@ -429,7 +431,7 @@ const Register = () => {
                   role="alert"
                   className="text-xs text-error-text"
                 >
-                  {errors.confirmPassword.message}
+                  {t(errors.confirmPassword.message || "auth:validation.confirmPasswordRequired")}
                 </p>
               )}
             </div>
@@ -468,7 +470,7 @@ const Register = () => {
             </div>
           </form>
         </div>
-      </main>
+      </section>
     </div>
   )
 }

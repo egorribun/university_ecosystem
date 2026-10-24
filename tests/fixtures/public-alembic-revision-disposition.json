@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "records": [
+    {
+      "identity": {
+        "path": "tests/integration/test_migration_148642dd1207.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          174,
+          174,
+          131,
+          77,
+          96,
+          48,
+          11,
+          115,
+          251,
+          85,
+          202,
+          160,
+          255,
+          71,
+          89,
+          188,
+          236,
+          209,
+          111,
+          134
+        ]
+      },
+      "category": "public_alembic_revision_identifier",
+      "evidence": "Public Alembic revision identifier for the groups sequence successor; command.upgrade target in tests/integration/test_migration_148642dd1207.py::test_groups_successors_do_not_require_the_duplicate_id_index; exact public revision definition and down_revision identify the immediate successor of the audited groups cutover; not credential material. Observed by detect-secrets in hosted job 120891538662.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    }
+  ]
+}

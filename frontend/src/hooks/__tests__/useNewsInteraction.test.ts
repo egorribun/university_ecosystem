@@ -850,6 +850,176 @@ describe("useNewsInteraction — toggleLike", () => {
     }
   })
 
+  it("rolls back an offline like when its queue transaction aborts after request success", async () => {
+    const { qc, wrapper } = makeWrapper()
+    setupServer({ initial: baseInteractions, like: "offline" })
+    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    setOnline(false)
+
+    const requestSucceeded = deferred<void>()
+    const transactionAborted = deferred<void>()
+    const originalAdd = IDBObjectStore.prototype.add
+    const addSpy = vi.spyOn(IDBObjectStore.prototype, "add").mockImplementation(function (
+      this: IDBObjectStore,
+      ...args: Parameters<IDBObjectStore["add"]>
+    ) {
+      const request = originalAdd.apply(this, args)
+      if (this.name === STORE) {
+        request.addEventListener(
+          "success",
+          () => {
+            const transaction = request.transaction
+            requestSucceeded.resolve(undefined)
+            transaction?.addEventListener("abort", () => transactionAborted.resolve(undefined), {
+              once: true,
+            })
+            transaction?.abort()
+          },
+          { once: true }
+        )
+      }
+      return request
+    })
+
+    try {
+      act(() => result.current.toggleLike())
+      await requestSucceeded.promise
+      await transactionAborted.promise
+      await waitFor(() => {
+        expect(qc.getMutationCache().getAll()[0]?.state.status).not.toBe("pending")
+      })
+      expect(qc.getMutationCache().getAll()[0]?.state.status).toBe("error")
+
+      expect(result.current.isLiking).toBe(false)
+      expect(cachedInteractions(qc)).toEqual(baseInteractions)
+      expect(await readQueue()).toEqual([])
+    } finally {
+      addSpy.mockRestore()
+    }
+  })
+
+  it("rejects an offline queue write error and preserves earlier queued entries", async () => {
+    const db = await openServiceWorkerSchema()
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(STORE, "readwrite")
+        tx.oncomplete = () => resolve()
+        tx.onabort = () => reject(tx.error ?? new Error("Could not seed the queue"))
+        tx.objectStore(STORE).add({
+          id: 1,
+          url: "/already-queued",
+          payload: {},
+          method: "POST",
+          timestamp: 1,
+        })
+      })
+    } finally {
+      db.close()
+    }
+
+    const { qc, wrapper } = makeWrapper()
+    setupServer({ initial: baseInteractions, like: "offline" })
+    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    setOnline(false)
+
+    const transactionErrored = deferred<void>()
+    const originalAdd = IDBObjectStore.prototype.add
+    const addSpy = vi.spyOn(IDBObjectStore.prototype, "add").mockImplementation(function (
+      this: IDBObjectStore,
+      ...args: Parameters<IDBObjectStore["add"]>
+    ) {
+      const [value] = args
+      const request =
+        this.name === STORE && typeof value === "object" && value !== null
+          ? originalAdd.call(this, { ...value, id: 1 })
+          : originalAdd.apply(this, args)
+      if (this.name === STORE) {
+        request.addEventListener(
+          "error",
+          () => {
+            request.transaction?.addEventListener(
+              "error",
+              () => transactionErrored.resolve(undefined),
+              { once: true }
+            )
+          },
+          { once: true }
+        )
+      }
+      return request
+    })
+
+    try {
+      act(() => result.current.toggleLike())
+      await transactionErrored.promise
+      await waitFor(() => {
+        expect(qc.getMutationCache().getAll()[0]?.state.status).toBe("error")
+      })
+
+      expect(result.current.isLiking).toBe(false)
+      expect(cachedInteractions(qc)).toEqual(baseInteractions)
+      expect(await readQueue()).toEqual([
+        {
+          id: 1,
+          url: "/already-queued",
+          payload: {},
+          method: "POST",
+          timestamp: 1,
+        },
+      ])
+    } finally {
+      addSpy.mockRestore()
+    }
+  })
+  it("settles queued offline mutation when service-worker readiness never resolves", async () => {
+    let rejectPost!: (error: unknown) => void
+    const networkRequest = new Promise<never>((_resolve, reject) => {
+      rejectPost = reject
+    })
+    const postSpy = vi.spyOn(api, "post").mockImplementationOnce(() => networkRequest)
+    const { promise: neverReady } = deferred<never>()
+    const previousServiceWorker = Object.getOwnPropertyDescriptor(navigator, "serviceWorker")
+    const previousSyncManager = Object.getOwnPropertyDescriptor(window, "SyncManager")
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: { ready: neverReady },
+    })
+    Object.defineProperty(window, "SyncManager", {
+      configurable: true,
+      value: class SyncManager {},
+    })
+
+    try {
+      const { wrapper } = makeWrapper()
+      setupServer({ initial: baseInteractions })
+      const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      setOnline(false)
+
+      act(() => result.current.toggleLike())
+      await waitFor(() => expect(postSpy).toHaveBeenCalled())
+      expect(result.current.isLiking).toBe(true)
+      act(() => rejectPost(new Error("Network Error")))
+
+      await waitFor(() => expect(result.current.isLiking).toBe(false), { timeout: 1000 })
+      expect(await readQueue()).toHaveLength(1)
+    } finally {
+      postSpy.mockRestore()
+      if (previousServiceWorker) {
+        Object.defineProperty(navigator, "serviceWorker", previousServiceWorker)
+      } else {
+        Reflect.deleteProperty(navigator, "serviceWorker")
+      }
+      if (previousSyncManager) {
+        Object.defineProperty(window, "SyncManager", previousSyncManager)
+      } else {
+        Reflect.deleteProperty(window, "SyncManager")
+      }
+    }
+  })
+
   it("keeps the offline mutation when background-sync registration fails", async () => {
     const registrationError = new Error("sync denied")
     const register = vi.fn().mockRejectedValue(registrationError)

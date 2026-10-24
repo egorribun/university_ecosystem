@@ -39,7 +39,9 @@ describe("chatApi", () => {
     vi.mocked(client.post).mockResolvedValueOnce({ data: mockChat })
 
     const result = await chatApi.createChat("user1")
-    expect(client.post).toHaveBeenCalledWith("/chats", { participant_id: "user1" })
+    expect(client.post).toHaveBeenCalledWith("/chats", {
+      participant_id: "user1",
+    })
     expect(result).toEqual(mockChat)
   })
 
@@ -75,7 +77,9 @@ describe("chatApi", () => {
     vi.mocked(client.patch).mockResolvedValueOnce({ data: { status: "ok" } })
 
     await chatApi.renameChat("chat1", "New Name")
-    expect(client.patch).toHaveBeenCalledWith("/chats/chat1", { name: "New Name" })
+    expect(client.patch).toHaveBeenCalledWith("/chats/chat1", {
+      name: "New Name",
+    })
   })
 
   it("sendMessage handles FormData with files", async () => {
@@ -85,7 +89,13 @@ describe("chatApi", () => {
     const file = new File(["foo"], "foo.txt", { type: "text/plain" })
     const result = await chatApi.sendMessage("chat1", "hello", [file])
 
-    expect(client.post).toHaveBeenCalledWith("/chats/chat1/messages", expect.any(FormData))
+    expect(client.post).toHaveBeenCalledWith("/chats/chat1/messages", expect.any(FormData), {
+      headers: {
+        "Idempotency-Key": expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        ),
+      },
+    })
     expect(result).toEqual(mockMessage)
 
     const formData = vi.mocked(client.post).mock.calls[0]![1] as FormData
@@ -96,7 +106,9 @@ describe("chatApi", () => {
   })
 
   it("omits optional file and reply fields when they are not supplied", async () => {
-    vi.mocked(client.post).mockResolvedValueOnce({ data: { id: "msg-no-options" } })
+    vi.mocked(client.post).mockResolvedValueOnce({
+      data: { id: "msg-no-options" },
+    })
 
     await chatApi.sendMessage("chat1", "plain", [], "")
 
@@ -107,7 +119,9 @@ describe("chatApi", () => {
   })
 
   it("accepts an omitted file collection without reading its length", async () => {
-    vi.mocked(client.post).mockResolvedValueOnce({ data: { id: "msg-no-files" } })
+    vi.mocked(client.post).mockResolvedValueOnce({
+      data: { id: "msg-no-files" },
+    })
 
     await chatApi.sendMessage("chat1", "plain")
 
@@ -116,7 +130,9 @@ describe("chatApi", () => {
   })
 
   it("does not iterate an empty file collection", async () => {
-    vi.mocked(client.post).mockResolvedValueOnce({ data: { id: "msg-empty-files" } })
+    vi.mocked(client.post).mockResolvedValueOnce({
+      data: { id: "msg-empty-files" },
+    })
     await chatApi.sendMessage("chat1", "plain", [])
 
     const formData = vi.mocked(client.post).mock.calls[0]![1] as FormData
@@ -130,13 +146,17 @@ describe("chatApi", () => {
   })
 
   it("clearChat calls correct endpoint", async () => {
-    vi.mocked(client.post).mockResolvedValueOnce({ data: { chat_id: "chat1" } })
+    vi.mocked(client.post).mockResolvedValueOnce({
+      data: { chat_id: "chat1" },
+    })
     await chatApi.clearChat("chat1")
     expect(client.post).toHaveBeenCalledWith("/chats/chat1/clear")
   })
 
   it("deleteChat calls correct endpoint", async () => {
-    vi.mocked(client.delete).mockResolvedValueOnce({ data: { chat_id: "chat1" } })
+    vi.mocked(client.delete).mockResolvedValueOnce({
+      data: { chat_id: "chat1" },
+    })
     await chatApi.deleteChat("chat1")
     expect(client.delete).toHaveBeenCalledWith("/chats/chat1")
   })
@@ -166,7 +186,9 @@ describe("chatApi", () => {
     await chatApi.getMessages("chat1", undefined, 50, signal)
     await chatApi.getReactors("chat1", "msg1", "👍", signal)
 
-    expect(client.get).toHaveBeenNthCalledWith(1, "/chats?limit=20", { signal })
+    expect(client.get).toHaveBeenNthCalledWith(1, "/chats?limit=20", {
+      signal,
+    })
     expect(client.get).toHaveBeenNthCalledWith(2, "/chats/chat1", { signal })
     expect(client.get).toHaveBeenNthCalledWith(3, "/chats/chat1/messages?limit=50", { signal })
     expect(client.get).toHaveBeenNthCalledWith(
@@ -178,8 +200,10 @@ describe("chatApi", () => {
 
   it("sendMessage appends reply_to_message_id when replying (W207)", async () => {
     vi.mocked(client.post).mockResolvedValueOnce({ data: { id: "m2" } })
-    await chatApi.sendMessage("chat1", "re", undefined, "target-msg")
-    expect(client.post).toHaveBeenCalledWith("/chats/chat1/messages", expect.any(FormData))
+    await chatApi.sendMessage("chat1", "re", undefined, "target-msg", "retry-key-2")
+    expect(client.post).toHaveBeenCalledWith("/chats/chat1/messages", expect.any(FormData), {
+      headers: { "Idempotency-Key": "retry-key-2" },
+    })
     const formData = vi.mocked(client.post).mock.calls[0]![1] as FormData
     expect(formData.get("reply_to_message_id")).toBe("target-msg")
   })

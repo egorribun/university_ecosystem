@@ -439,6 +439,24 @@ def test_timeout_duration_and_required_policy_are_source_bound() -> None:
     assert any("required job has no required_events" in error for error in errors)
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "npm install $(printf '%s%s' --fetch-retries=0 1)",
+        "npm install $(\n  printf '%s%s' --fetch-retries=0 1\n)",
+        'const args = ["--fetch-retries=0", "1"].join("");',
+        'const args = [\n  "--fetch-retries=0",\n  "1"\n].join("");',
+        "const args = ['prefix --fetch-retries=0 suffix'];",
+        "const args = [`prefix\n --fetch-retries=0 \nsuffix`];",
+        ('const npm = (args) => args.join("");\nnpm(["--fetch-retries=0", "1"]);'),
+    ],
+)
+def test_apparent_zero_fetch_retries_in_dynamic_arguments_remain_fail_closed(
+    command: str,
+) -> None:
+    assert catalog_validator._is_retry_candidate({"steps": [{"run": command}]})
+
+
 def test_retry_like_source_cannot_be_hidden_as_no_retry() -> None:
     value = _catalog()
     workflows = value["workflows"]

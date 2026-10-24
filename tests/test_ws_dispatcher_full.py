@@ -99,6 +99,72 @@ class TestDispatchPing:
 
 
 # ---------------------------------------------------------------------------
+# heartbeat_ping handler
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchHeartbeat:
+    @pytest.mark.asyncio
+    async def test_heartbeat_ping_echoes_valid_nonce_without_presence_mutation(
+        self, ws_dispatcher, mock_websocket, mock_user, mock_conn_manager
+    ):
+        nonce = uuid.uuid4().hex
+        update_last_seen = AsyncMock()
+        with patch("app.api.ws.dispatcher.update_last_seen", update_last_seen):
+            await ws_dispatcher.dispatch(
+                mock_websocket,
+                mock_user,
+                "test-jti",
+                {"type": "heartbeat_ping", "nonce": nonce},
+            )
+
+        mock_websocket.send_json.assert_awaited_once_with(
+            {"type": "heartbeat_pong", "nonce": nonce}
+        )
+        update_last_seen.assert_not_awaited()
+        mock_conn_manager.broadcast_presence.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            pytest.param({"type": "heartbeat_ping"}, id="missing-nonce"),
+            pytest.param({"type": "heartbeat_ping", "nonce": None}, id="null-nonce"),
+            pytest.param(
+                {"type": "heartbeat_ping", "nonce": 123}, id="non-string-nonce"
+            ),
+            pytest.param(
+                {"type": "heartbeat_ping", "nonce": "0" * 31}, id="short-nonce"
+            ),
+            pytest.param(
+                {"type": "heartbeat_ping", "nonce": "0" * 33}, id="long-nonce"
+            ),
+            pytest.param(
+                {"type": "heartbeat_ping", "nonce": "A" * 32}, id="uppercase-nonce"
+            ),
+            pytest.param(
+                {"type": "heartbeat_ping", "nonce": "g" * 32}, id="non-hex-nonce"
+            ),
+            pytest.param(
+                {"type": "heartbeat_ping", "nonce": "0" * 31 + "\n"}, id="newline-nonce"
+            ),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_invalid_nonce_returns_static_error_without_echo_or_presence(
+        self, payload, ws_dispatcher, mock_websocket, mock_user, mock_conn_manager
+    ):
+        update_last_seen = AsyncMock()
+        with patch("app.api.ws.dispatcher.update_last_seen", update_last_seen):
+            await ws_dispatcher.dispatch(mock_websocket, mock_user, "test-jti", payload)
+
+        mock_websocket.send_json.assert_awaited_once_with(
+            {"type": "error", "message": "Invalid heartbeat nonce"}
+        )
+        update_last_seen.assert_not_awaited()
+        mock_conn_manager.broadcast_presence.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
 # read handler
 # ---------------------------------------------------------------------------
 

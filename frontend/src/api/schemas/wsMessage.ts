@@ -145,6 +145,20 @@ const PresenceSchema = v.object({
   last_seen: v.nullable(v.string()),
 })
 
+const HeartbeatNonceSchema = v.pipe(v.string(), v.regex(/^[0-9a-f]{32}$/))
+
+export const WsClientHeartbeatPingSchema = v.object({
+  type: v.literal("heartbeat_ping"),
+  nonce: HeartbeatNonceSchema,
+})
+
+export type WsClientHeartbeatPing = v.InferOutput<typeof WsClientHeartbeatPingSchema>
+
+const HeartbeatPongSchema = v.object({
+  type: v.literal("heartbeat_pong"),
+  nonce: HeartbeatNonceSchema,
+})
+
 // Wave 205 — REST-initiated server→client broadcasts (the author edited / soft-deleted
 // a message). The frame field is `message_id` (NOT `id`); the cache-update matches on
 // it. No self-echo guard needed: the author already updated optimistically and the
@@ -190,6 +204,7 @@ const ReplayCheckpointSchema = v.object({
 
 export const WsServerMessageSchema = v.variant("type", [
   PongSchema,
+  HeartbeatPongSchema,
   ErrorSchema,
   RateLimitExceededSchema,
   NewMessageSchema,

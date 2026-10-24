@@ -261,6 +261,7 @@ func TestOptional_DowngradeAndServiceUnavailable(t *testing.T) {
 		UserID: "student1",
 		Role:   "student",
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    DefaultJWTIssuer,
 			Audience:  jwt.ClaimStrings{DefaultJWTAudience},
 			ID:        "session-id-123",
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

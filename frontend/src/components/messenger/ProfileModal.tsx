@@ -54,7 +54,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-overlay flex items-center justify-center bg-overlay/(--opacity-strong) p-4 backdrop-blur-md"
+          className="fixed inset-0 z-overlay flex items-center justify-center bg-overlay/[calc(var(--opacity-strong)*100%)] p-4 backdrop-blur-md"
           role="presentation"
           onClick={onClose}
         >
@@ -71,11 +71,11 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
             onClick={(event) => event.stopPropagation()}
           >
             {/* Wave 183 SW4 — border-msg-border (undefined token) →
-                border-(--glass-border)/(--opacity-subtle) (verified existing
+                border-(--glass-border)/[calc(var(--opacity-subtle)*100%)] (verified existing
                 token in semantics.css). Pre-W183 the bare `border-msg-border`
                 class produced NO border (CSS variable `--msg-border` doesn't
                 exist), making the header→body separator invisible. */}
-            <div className="flex items-center justify-between border-b border-(--glass-border)/(--opacity-subtle) p-6 pb-4">
+            <div className="flex items-center justify-between border-b border-(--glass-border)/[calc(var(--opacity-subtle)*100%)] p-6 pb-4">
               <h3 id={titleId} className="sf-pro text-xl font-bold tracking-tight">
                 {user?.full_name || t("messenger:profile")}
               </h3>
@@ -87,14 +87,14 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                   rotation still fired for default-preference users. Scale
                   alone provides sufficient affordance. Also fixed invalid
                   Tailwind class `hover:bg-surface-hover` →
-                  `hover:bg-(--bg-surface-hover)/(--opacity-medium)`. */}
+                  `hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)]`. */}
               <m.button
                 type="button"
                 whileHover={prefersReducedMotion ? undefined : { scale: 1.08 }}
                 whileTap={prefersReducedMotion ? undefined : { scale: 0.92 }}
                 onClick={onClose}
                 aria-label={t("common:buttons.close")}
-                className="min-h-[44px] min-w-[44px] rounded-full p-2 flex items-center justify-center transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                className="min-h-[44px] min-w-[44px] rounded-full p-2 flex items-center justify-center transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
               >
                 <X className="h-5 w-5" aria-hidden="true" />
               </m.button>
@@ -103,7 +103,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
             <div className="p-8">
               {loading && (
                 <div className="flex flex-col items-center py-8">
-                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-t-brand border-brand/(--opacity-dim)"></div>
+                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-t-brand border-brand/[calc(var(--opacity-dim)*100%)]"></div>
                   <p className="mt-4 text-sm font-medium text-(--text-secondary)">
                     {t("messenger:loadingProfile")}
                   </p>
@@ -111,7 +111,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
               )}
 
               {error && (
-                <div className="rounded-sm bg-(--error-text)/(--opacity-subtle) p-4 text-center">
+                <div className="rounded-sm bg-(--error-text)/[calc(var(--opacity-subtle)*100%)] p-4 text-center">
                   <p className="text-sm font-semibold text-(--error-text)"> {error}</p>
                 </div>
               )}
@@ -140,8 +140,8 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 pb-2">
-                    <div className="rounded-md border border-subtle bg-(--bg-surface-hover)/(--opacity-medium) p-4">
-                      <p className="mb-1 text-xs font-bold uppercase tracking-widest text-(--text-secondary)/(--opacity-strong)">
+                    <div className="rounded-md border border-subtle bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] p-4">
+                      <p className="mb-1 text-xs font-bold uppercase tracking-widest text-(--text-secondary)/[calc(var(--opacity-strong)*100%)]">
                         {t("messenger:status")}
                       </p>
                       <span
@@ -165,7 +165,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                         href={user.avatar_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="rounded-md border border-(--primary-main)/(--opacity-subtle) bg-(--primary-main)/(--opacity-subtle) p-4 transition-colors hover:bg-(--primary-main)/(--opacity-subtle)"
+                        className="rounded-md border border-(--primary-main)/[calc(var(--opacity-subtle)*100%)] bg-(--primary-main)/[calc(var(--opacity-subtle)*100%)] p-4 transition-colors hover:bg-(--primary-main)/[calc(var(--opacity-subtle)*100%)]"
                       >
                         <p className="mb-1 text-xs font-bold uppercase tracking-widest text-brand">
                           {t("messenger:avatar")}

@@ -169,11 +169,13 @@ def test_redact_pii_masks_sensitive_transport_headers_case_insensitively():
 
 
 def test_redact_pii_normalizes_transport_key_styles_and_nested_values():
+    """Only native string field names are safe for both configured renderers."""
     event = {
         "X-Internal-Signature": "internal-signature",
         "csrfToken": "csrf-token",
         "nested": {"sessionId": "session-id", "recovery-code": "recovery-code"},
         7: "non-sensitive value",
+        "7": "native-string-field",
     }
     event["".join(("API", "Key"))] = "opaque"
     event["_".join(("client", "secret"))] = "opaque"
@@ -184,10 +186,20 @@ def test_redact_pii_normalizes_transport_key_styles_and_nested_values():
         "X-Internal-Signature": "[REDACTED]",
         "csrfToken": "[REDACTED]",
         "nested": {"sessionId": "[REDACTED]", "recovery-code": "[REDACTED]"},
-        7: "non-sensitive value",
+        "7": "native-string-field",
         "APIKey": "[REDACTED]",
         "client_secret": "[REDACTED]",
     }
+
+    assert redacted is not event
+    assert 7 not in redacted
+    assert event[7] == "non-sensitive value"
+    assert event["7"] == "native-string-field"
+    assert event["nested"] == {
+        "sessionId": "session-id",
+        "recovery-code": "recovery-code",
+    }
+    assert logging_mod._is_pii_field_name(7) is False
 
 
 def test_add_service_context_uses_configured_and_default_environment(monkeypatch):
@@ -318,11 +330,14 @@ def test_is_logger_enabled_preserves_false_results_for_both_logger_apis():
     stdlib_logger.isEnabledFor.assert_called_once_with(logging.WARNING)
 
 
-def test_orjson_serializer_uses_string_fallback_for_non_json_values():
+def test_orjson_serializer_does_not_render_unsupported_object_representations():
     class CustomValue:
         def __str__(self) -> str:
-            return "custom-value"
+            raise AssertionError("Logging must not call an unsupported __str__")
+
+        def __repr__(self) -> str:
+            raise AssertionError("Logging must not call an unsupported __repr__")
 
     assert logging_mod._orjson_serializer({"value": CustomValue()}) == (
-        '{"value":"custom-value"}'
+        '{"value":"[REDACTED]"}'
     )

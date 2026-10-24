@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 from sqlalchemy import select
 
 from app.core.config import settings
+from app.core.exceptions.domain import PermissionDenied
 from app.core.logging import get_stdlib_logger
 from app.core.observability import get_request_id
 from app.models.domain_events import StoredEvent
@@ -274,40 +275,61 @@ def auditable(
 
             try:
                 result = await func(self, *args, **kwargs)
+            except PermissionDenied:
+                # Rejected privileged actions are security events. Record only
+                # stable metadata; method arguments and exception details may
+                # contain personal or credential data.
+                bound_args = _get_signature(func).bind(self, *args, **kwargs)
+                actor = bound_args.arguments.get("current_user")
+                actor_id = getattr(actor, "id", actor) if actor is not None else None
+                denied_user_id = actor_id if actor_id is not None else user_id
+                denial_context: dict[str, Any] = {"action": str(event)}
+                if actor_id is not None and user_id is not None and actor_id != user_id:
+                    denial_context["subject_user_id"] = user_id
 
-                # Log SUCCESS
-
-                log_kwargs: dict[str, Any] = {}
-                if include_args:
-                    log_kwargs["args"] = kwargs
-                if include_result:
-                    # RZ-05: Redact the result string if it contains sensitive patterns
-                    # before logging to prevent accidental PII leakage from model __str__.
-                    res_str = str(result)
-                    # Simple heuristic: if any sensitive key is in the result string,
-                    # we might have a leak. For "Absolute Perfection", we ensure
-                    # result is logged via the same redaction engine if it was a dict,
-                    # but since it's a string, we at least scan for obvious tokens.
-                    if (
-                        any(
-                            k in res_str.lower()
-                            for k in ["password", "secret", "token", "jwt", "key"]
-                        )
-                        and "REDACTED" not in res_str
-                    ):
-                        log_kwargs["result"] = "***REDACTED_BY_SECURITY_POLICY***"
-                    else:
-                        log_kwargs["result"] = res_str
-
-                # Use self.audit if available, else fallback to global audit_service
                 auditor = getattr(self, "audit", audit_service)
-                auditor.log(event, request=request, user_id=user_id, **log_kwargs)
-
-                return result
+                auditor.log(
+                    SecurityEvent.ACCESS_DENIED,
+                    request=request,
+                    user_id=denied_user_id,
+                    reason="permission_denied",
+                    **denial_context,
+                )
+                raise
             except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — audit decorator must not alter exception propagation (reviewed TD-27-04)
                 # RZ-20-04: KEEP broad — audit decorator must not alter exception
                 # propagation. Re-raises unconditionally.
                 raise
+
+            # Log SUCCESS
+
+            log_kwargs: dict[str, Any] = {}
+            if include_args:
+                log_kwargs["args"] = kwargs
+            if include_result:
+                # RZ-05: Redact the result string if it contains sensitive patterns
+                # before logging to prevent accidental PII leakage from model __str__.
+                res_str = str(result)
+                # Simple heuristic: if any sensitive key is in the result string,
+                # we might have a leak. For "Absolute Perfection", we ensure
+                # result is logged via the same redaction engine if it was a dict,
+                # but since it's a string, we at least scan for obvious tokens.
+                if (
+                    any(
+                        k in res_str.lower()
+                        for k in ["password", "secret", "token", "jwt", "key"]
+                    )
+                    and "REDACTED" not in res_str
+                ):
+                    log_kwargs["result"] = "***REDACTED_BY_SECURITY_POLICY***"
+                else:
+                    log_kwargs["result"] = res_str
+
+            # Use self.audit if available, else fallback to global audit_service
+            auditor = getattr(self, "audit", audit_service)
+            auditor.log(event, request=request, user_id=user_id, **log_kwargs)
+
+            return result
 
         return wrapper  # type: ignore[return-value]
 

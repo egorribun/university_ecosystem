@@ -109,16 +109,33 @@ function openDatabase(): Promise<IDBDatabase> {
   })
 }
 
+async function registerNewsInteractionSync() {
+  if ("serviceWorker" in navigator && "SyncManager" in window) {
+    try {
+      const registration = await navigator.serviceWorker.ready
+      await registration.sync.register(NEWS_INTERACTION_SYNC_TAG)
+    } catch (e) {
+      logWarning("Failed to register background sync", { error: e })
+    }
+  }
+}
+
 async function queueInteraction(url: string, payload: unknown, method: string) {
   const db = await openDatabase()
   try {
     const tx = db.transaction(NEWS_INTERACTION_STORE, "readwrite")
     const store = tx.objectStore(NEWS_INTERACTION_STORE)
-    await new Promise<void>((resolve, reject) => {
+    const transactionDone = new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error ?? new Error("News interaction queue transaction failed"))
+      tx.onabort = () => reject(tx.error ?? new Error("News interaction queue transaction aborted"))
+    })
+    const requestDone = new Promise<void>((resolve, reject) => {
       const req = store.add({ url, payload, method, timestamp: Date.now() })
       req.onsuccess = () => resolve()
-      req.onerror = () => reject(req.error)
+      req.onerror = () => reject(req.error ?? new Error("News interaction queue write failed"))
     })
+    await Promise.all([requestDone, transactionDone])
   } finally {
     // Queue writes are short-lived. Close the connection after the request
     // settles so repeated offline interactions cannot accumulate handles and
@@ -126,15 +143,9 @@ async function queueInteraction(url: string, payload: unknown, method: string) {
     db.close()
   }
 
-  // Trigger SW sync if possible
-  if ("serviceWorker" in navigator && "SyncManager" in window) {
-    const registration = await navigator.serviceWorker.ready
-    try {
-      await registration.sync.register(NEWS_INTERACTION_SYNC_TAG)
-    } catch (e) {
-      logWarning("Failed to register background sync", { error: e })
-    }
-  }
+  // Sync registration is best effort; an unavailable worker must not keep a
+  // successfully queued offline mutation pending.
+  void registerNewsInteractionSync()
 }
 
 /**

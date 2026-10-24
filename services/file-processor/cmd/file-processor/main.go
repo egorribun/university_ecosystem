@@ -355,6 +355,14 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	// New-TemporalServiceToken). Closes W137 §Honesty #5 + W140 NEW #6.
 	opts := client.Options{
 		HostPort: cfg.TemporalHost,
+		ConnectionOptions: client.ConnectionOptions{
+			TLSDisabled: cfg.TemporalTLSDisabled,
+		},
+	}
+	// The Temporal SDK only auto-enables TLS for API-key credentials. Configure
+	// the transport explicitly so anonymous TLS deployments are also protected.
+	if !cfg.TemporalTLSDisabled {
+		opts.ConnectionOptions.TLS = &tls.Config{MinVersion: tls.VersionTLS13}
 	}
 
 	if cfg.TemporalAPIKeyFile != "" {
@@ -379,9 +387,6 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 				// Production K8s deployments keep TLS enabled; only the local
 				// plaintext Temporal dev server opts out through configuration.
 				opts.Credentials = client.NewAPIKeyStaticCredentials(token)
-				opts.ConnectionOptions = client.ConnectionOptions{
-					TLSDisabled: cfg.TemporalTLSDisabled,
-				}
 				logger.InfoContext(ctx, "Attached Temporal service token",
 					"token_chars", len(token),
 					"tls_enabled", !cfg.TemporalTLSDisabled,

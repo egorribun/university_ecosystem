@@ -47,3 +47,4 @@ This directory contains architectural decision records (ADRs) for the University
 45. [ADR-045: Mutation Hang Diagnostics Without a Kill Watchdog](ADR-045-mutation-hang-diagnostics-without-a-kill-watchdog.md)
 46. [ADR-046: Codebase Consolidation After the 2026-10 Architecture Audit](ADR-046-codebase-consolidation-audit.md)
 47. [ADR-047: Risk-Based Quality Policy for the MVP Release](ADR-047-risk-based-quality-policy.md)
+48. [ADR-048: Dev-only React Compiler Schema Compatibility Boundary](ADR-048-react-compiler-schema-compatibility.md)

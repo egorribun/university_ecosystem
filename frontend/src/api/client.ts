@@ -125,7 +125,9 @@ if (import.meta.env.VITE_LHCI === "true") {
   const networkAdapter = axios.getAdapter(api.defaults.adapter)
   const shouldUseE2ENetworkMocks = (config: AxiosRequestConfig) => {
     if (typeof window === "undefined") return false
-    const e2eWindow = window as Window & { __E2E_NETWORK_API_MOCKS__?: boolean }
+    const e2eWindow = window as Window & {
+      __E2E_NETWORK_API_MOCKS__?: boolean
+    }
     if (e2eWindow.__E2E_NETWORK_API_MOCKS__ !== true) return false
     const path = resolveRequestPath(config)
     return path.startsWith("/api/v1/chats") || path === "/api/v1/users"
@@ -279,6 +281,12 @@ export const ensureCsrfCookie = (): Promise<void> => {
   return _csrfBootstrapPromise
 }
 
+/** Timeout for the public News transport, which bypasses Axios. */
+const ANONYMOUS_NEWS_TIMEOUT_MS = 8_000
+
+export type AnonymousNewsPageResponse =
+  { ok: false; status: number } | { ok: true; status: number; data: unknown }
+
 /**
  * Fetch the public news list without ambient browser credentials.
  *
@@ -297,7 +305,7 @@ export const fetchAnonymousNewsPage = ({
   limit: number
   cursor?: string | null
   signal?: AbortSignal
-}): Promise<Response> => {
+}): Promise<AnonymousNewsPageResponse> => {
   if (typeof window === "undefined") {
     return Promise.reject(new Error("Anonymous news requests require a browser origin"))
   }
@@ -306,19 +314,65 @@ export const fetchAnonymousNewsPage = ({
   url.searchParams.set("limit", String(limit))
   if (cursor != null) url.searchParams.set("cursor", cursor)
 
-  return fetch(url, {
-    method: "GET",
-    mode: "same-origin",
-    credentials: "omit",
-    cache: "no-store",
-    headers: {
-      Accept: "application/json",
-      "Accept-Language": language,
-    },
-    signal,
-  })
-}
+  return (async () => {
+    const requestController = new AbortController()
+    const abortFromCaller = () => requestController.abort(signal?.reason)
+    let callerAbortListenerAttached = false
+    if (signal?.aborted) {
+      abortFromCaller()
+    } else if (signal) {
+      signal.addEventListener("abort", abortFromCaller, { once: true })
+      callerAbortListenerAttached = true
+    }
 
+    let rejectAbortedRequest: ((reason?: unknown) => void) | undefined
+    const abortedRequest = new Promise<never>((_resolve, reject) => {
+      rejectAbortedRequest = reject
+    })
+    const rejectOnAbort = () => rejectAbortedRequest?.(requestController.signal.reason)
+    requestController.signal.addEventListener("abort", rejectOnAbort, {
+      once: true,
+    })
+    if (requestController.signal.aborted) rejectOnAbort()
+
+    const timeoutId = setTimeout(() => {
+      requestController.abort(new DOMException("Anonymous news request timed out", "TimeoutError"))
+    }, ANONYMOUS_NEWS_TIMEOUT_MS)
+    const cleanup = () => {
+      clearTimeout(timeoutId)
+      requestController.signal.removeEventListener("abort", rejectOnAbort)
+      if (signal && callerAbortListenerAttached) {
+        signal.removeEventListener("abort", abortFromCaller)
+      }
+    }
+    const requestInit: RequestInit = {
+      method: "GET",
+      mode: "same-origin",
+      credentials: "omit",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Accept-Language": language,
+      },
+      signal: requestController.signal,
+    }
+
+    try {
+      const response = await Promise.race([fetch(url, requestInit), abortedRequest])
+      if (!response.ok) {
+        requestController.abort(
+          new DOMException("Unsuccessful anonymous news response body discarded", "AbortError")
+        )
+        return { ok: false, status: response.status }
+      }
+
+      const data = await Promise.race([response.json(), abortedRequest])
+      return { ok: true, status: response.status, data }
+    } finally {
+      cleanup()
+    }
+  })()
+}
 const ANONYMOUS_RESOURCE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu
 
 const anonymousApiUrl = (path: string): URL => {

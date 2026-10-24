@@ -219,16 +219,17 @@ def _startup_prelude_from_chart() -> str:
 
 
 def _posix_shell() -> str:
-    executable = shutil.which("sh")
-    if executable:
-        return executable
     if os.name == "nt":
+        # Prefer usr/bin so sibling POSIX utilities such as rm are available.
         for candidate in (
             Path("C:/Program Files/Git/usr/bin/sh.exe"),
             Path("C:/Program Files/Git/bin/sh.exe"),
         ):
             if candidate.is_file():
                 return str(candidate)
+    executable = shutil.which("sh")
+    if executable:
+        return executable
     raise AssertionError("a POSIX sh executable is required for the startup contract")
 
 
@@ -286,9 +287,11 @@ async def _run_startup_script(
     (package / "__init__.py").write_text(package_init, encoding="utf-8")
     observation = tmp_path / "python-import-observation"
     env = os.environ.copy()
-    env["PATH"] = (
-        str(Path(sys.executable).resolve().parent) + os.pathsep + env.get("PATH", "")
-    )
+    path_entries = [str(Path(sys.executable).resolve().parent)]
+    if os.name == "nt":
+        path_entries.append(str(Path(shell).resolve().parent))
+    path_entries.append(env.get("PATH", ""))
+    env["PATH"] = os.pathsep.join(path_entries)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["OUTBOX_TEST_MARKER_DIR"] = str(runtime_dir)
     env["OUTBOX_TEST_IMPORT_OBSERVATION"] = str(observation)

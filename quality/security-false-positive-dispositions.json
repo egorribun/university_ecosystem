@@ -8449,6 +8449,891 @@
       "reviewed_on": "2026-10-21",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/src/components/profile/__tests__/profileUtils.closure.test.ts",
+        "type": "Basic Auth Credentials",
+        "hashed_secret_bytes": [
+          157,
+          78,
+          30,
+          35,
+          189,
+          91,
+          114,
+          112,
+          70,
+          169,
+          227,
+          180,
+          183,
+          219,
+          87,
+          189,
+          141,
+          110,
+          230,
+          132
+        ]
+      },
+      "category": "synthetic_achievement_url_test_fixture",
+      "evidence": "Synthetic profile achievement URL test fixture on reserved example.test host; embedded-auth rejection coverage; not credential material. Owner approved this exact path, detector type and digest on 2026-10-22; no network request or operational login is performed.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-22",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          60, 242, 219, 98, 214, 242, 227, 149, 224, 164, 63, 253, 49, 155, 126,
+          56, 252, 82, 229, 121
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable GitHub source: https://github.com/egorribun/university_ecosystem/blob/7e5b4db013bdd858376ce51a6b5f17a828a8a719/.github/workflows/nightly-full-gate.yml. Its raw SHA-256 is recorded in tests/fixtures/full-backend-reusable-baseline.v4.yaml:8. The reviewed workflow diff is limited to immutable action pin references and their version comments; the source-binding contract remains enforced by tests/test_full_backend_reusable_contract.py. Not credential material. Owner approved exactly this identity on 2026-10-22.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-22",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          47, 171, 225, 48, 217, 12, 60, 214, 146, 152, 144, 11, 1, 144, 26, 16,
+          28, 85, 108, 230
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable GitHub source: https://github.com/egorribun/university_ecosystem/blob/7e5b4db013bdd858376ce51a6b5f17a828a8a719/.github/workflows/manual-mutation-evidence.yml. Its raw SHA-256 is recorded in tests/fixtures/full-backend-reusable-baseline.v4.yaml:9. The reviewed workflow diff is limited to immutable action pin references and their version comments; the source-binding contract remains enforced by tests/test_full_backend_reusable_contract.py. Not credential material. Owner approved exactly this identity on 2026-10-22.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-22",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          165, 3, 175, 175, 20, 107, 98, 94, 126, 52, 50, 1, 174, 172, 90, 92,
+          196, 166, 22, 165
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public immutable GitHub source: https://github.com/egorribun/university_ecosystem/blob/7e5b4db013bdd858376ce51a6b5f17a828a8a719/.github/workflows/reusable-full-backend-mutation.yml. Its raw SHA-256 is recorded in tests/fixtures/full-backend-reusable-baseline.v4.yaml:10. The reviewed workflow diff is limited to immutable action pin references and their version comments; the source-binding contract remains enforced by tests/test_full_backend_reusable_contract.py. Not credential material. Owner approved exactly this identity on 2026-10-22.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-22",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    }
+,
+    {
+      "identity": {
+        "path": "frontend/src/i18n/locales/en/auth.json",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          62,
+          125,
+          86,
+          169,
+          88,
+          4,
+          255,
+          60,
+          50,
+          43,
+          151,
+          167,
+          231,
+          205,
+          186,
+          37,
+          220,
+          146,
+          9,
+          87
+        ]
+      },
+      "category": "auth_validation_ui_copy",
+      "evidence": "English auth validation UI copy; user-visible password validation messages; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/src/i18n/locales/en/auth.json",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          81,
+          214,
+          154,
+          230,
+          4,
+          109,
+          42,
+          59,
+          226,
+          69,
+          68,
+          157,
+          91,
+          56,
+          22,
+          93,
+          93,
+          120,
+          222,
+          245
+        ]
+      },
+      "category": "auth_validation_ui_copy",
+      "evidence": "English auth validation UI copy; user-visible password validation messages; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/src/i18n/locales/en/auth.json",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          214,
+          156,
+          59,
+          26,
+          197,
+          75,
+          231,
+          218,
+          54,
+          102,
+          217,
+          147,
+          123,
+          156,
+          120,
+          231,
+          195,
+          9,
+          214,
+          232
+        ]
+      },
+      "category": "auth_validation_ui_copy",
+      "evidence": "English auth validation UI copy; user-visible password validation messages; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_aud253_private_env_files.py",
+        "type": "Base64 High Entropy String",
+        "hashed_secret_bytes": [
+          249, 234, 225, 154, 241, 219, 19, 25, 164, 195, 226, 60, 70, 145, 159,
+          13, 181, 232, 96, 104
+        ]
+      },
+      "category": "aud253_private_env_mode_test_fixture",
+      "evidence": "AUD-253 private environment-file mode test fixture; static AUD253_SYNTHETIC and AUD253_TARGET env-file content used only by the isolated PowerShell harness for temporary-file permission, write-failure and symlink-rejection assertions; not credential material. Source line 92: AUD253_SYNTHETIC generated fixture env content.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_aud253_private_env_files.py",
+        "type": "Base64 High Entropy String",
+        "hashed_secret_bytes": [
+          209, 97, 7, 76, 56, 168, 75, 219, 177, 81, 156, 145, 146, 126, 11,
+          18, 227, 102, 242, 240
+        ]
+      },
+      "category": "aud253_private_env_mode_test_fixture",
+      "evidence": "AUD-253 private environment-file mode test fixture; static AUD253_SYNTHETIC and AUD253_TARGET env-file content used only by the isolated PowerShell harness for temporary-file permission, write-failure and symlink-rejection assertions; not credential material. Source line 102: AUD253_SYNTHETIC live fixture env content.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_aud253_private_env_files.py",
+        "type": "Base64 High Entropy String",
+        "hashed_secret_bytes": [
+          237, 247, 83, 211, 2, 60, 48, 7, 117, 85, 234, 204, 176, 92, 16,
+          249, 59, 248, 247, 232
+        ]
+      },
+      "category": "aud253_private_env_mode_test_fixture",
+      "evidence": "AUD-253 private environment-file mode test fixture; static AUD253_SYNTHETIC and AUD253_TARGET env-file content used only by the isolated PowerShell harness for temporary-file permission, write-failure and symlink-rejection assertions; not credential material. Source line 144: AUD253_SYNTHETIC existing-file fixture content.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_aud253_private_env_files.py",
+        "type": "Base64 High Entropy String",
+        "hashed_secret_bytes": [
+          39, 64, 185, 186, 132, 70, 33, 101, 34, 113, 107, 165, 89, 20, 200,
+          218, 104, 254, 31, 74
+        ]
+      },
+      "category": "aud253_private_env_mode_test_fixture",
+      "evidence": "AUD-253 private environment-file mode test fixture; static AUD253_SYNTHETIC and AUD253_TARGET env-file content used only by the isolated PowerShell harness for temporary-file permission, write-failure and symlink-rejection assertions; not credential material. Source line 267: AUD253_SYNTHETIC existing-file write fixture content.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_aud253_private_env_files.py",
+        "type": "Base64 High Entropy String",
+        "hashed_secret_bytes": [
+          34, 37, 215, 151, 209, 211, 130, 49, 24, 25, 155, 23, 171, 12, 127,
+          17, 161, 125, 42, 47
+        ]
+      },
+      "category": "aud253_private_env_mode_test_fixture",
+      "evidence": "AUD-253 private environment-file mode test fixture; static AUD253_SYNTHETIC and AUD253_TARGET env-file content used only by the isolated PowerShell harness for temporary-file permission, write-failure and symlink-rejection assertions; not credential material. Source line 294: AUD253_TARGET symlink target fixture content.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "scripts/quality/validate_trivy_kyverno_fixture.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          208, 194, 211, 202, 127, 191, 176, 34, 28, 45, 65, 104, 252, 218, 78,
+          167, 15, 212, 3, 158
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public integrity checksum, not credential material; public SHA-256 checksum of the pinned Kyverno fixture bytes; exact source reference scripts/quality/validate_trivy_kyverno_fixture.py:18.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2026-11-22",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "scripts/quality/validate_trivy_kyverno_fixture.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          224, 192, 166, 76, 174, 89, 98, 209, 14, 59, 156, 41, 28, 44, 108,
+          70, 149, 242, 195, 91
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public integrity checksum, not credential material; public SHA-256 checksum of the complete candidate Trivy ignore policy; exact source reference scripts/quality/validate_trivy_kyverno_fixture.py:19.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2026-11-22",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/src/components/ui/PageRouteSEO.tsx",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          246, 11, 35, 176, 57, 187, 96, 181, 93, 29, 195, 205, 161, 83, 22,
+          254, 236, 136, 40, 118
+        ]
+      },
+      "category": "source_contract_identifier",
+      "evidence": "Fixed page-title route identifier mapped to a translation key; frontend/src/components/ui/PageRouteSEO.tsx:7; secret-related source identifier or required key-list expression; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/src/components/ui/PageRouteSEO.tsx",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          13, 39, 13, 74, 47, 213, 87, 245, 102, 242, 14, 180, 169, 34, 53,
+          125, 169, 142, 149, 34
+        ]
+      },
+      "category": "source_contract_identifier",
+      "evidence": "Fixed page-title route identifier mapped to a translation key; frontend/src/components/ui/PageRouteSEO.tsx:9; secret-related source identifier or required key-list expression; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          143, 120, 48, 192, 43, 11, 20, 246, 31, 253, 204, 224, 203, 218, 179,
+          79, 187, 212, 10, 41
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Current nightly workflow SHA-256 integrity digest; exact source binding at tests/fixtures/full-backend-reusable-baseline.v4.yaml:8 and tests/test_full_backend_reusable_contract.py::_baseline; raw workflow bytes are public source metadata, not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          85, 158, 8, 17, 13, 217, 219, 104, 145, 111, 194, 19, 60, 251, 92,
+          240, 212, 85, 113, 116
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent workflow-contract fingerprint for nightly_preserved_jobs.container-integration-cells; exact source binding at tests/fixtures/full-backend-reusable-baseline.v4.yaml:21 and tests/test_full_backend_reusable_contract.py::test_extraction_preserves_nightly_nonmutation_quality_lanes_and_manual_frontend; the current job is checked with only its approved setup-uv action-pin normalization; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          94, 40, 155, 35, 12, 205, 36, 191, 27, 93, 89, 252, 6, 36, 193,
+          174, 240, 78, 30, 64
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent workflow-contract fingerprint for nightly_preserved_jobs.load-and-chaos; exact source binding at tests/fixtures/full-backend-reusable-baseline.v4.yaml:24 and tests/test_full_backend_reusable_contract.py::test_extraction_preserves_nightly_nonmutation_quality_lanes_and_manual_frontend; the current job is checked with only its approved setup-uv action-pin normalization and records the MinIO alias update; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          228, 251, 163, 207, 40, 164, 144, 11, 26, 225, 79, 240, 197, 199, 12,
+          121, 37, 113, 215, 216
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent workflow-contract fingerprint for nightly_preserved_jobs.kyverno-test; exact source binding at tests/fixtures/full-backend-reusable-baseline.v4.yaml:25 and tests/test_full_backend_reusable_contract.py::test_extraction_preserves_nightly_nonmutation_quality_lanes_and_manual_frontend; current job fingerprint includes the checkout credential hardening; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          109, 237, 50, 137, 135, 161, 1, 220, 60, 104, 144, 173, 229, 20, 90,
+          76, 18, 192, 224, 154
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Independent workflow-contract fingerprint for nightly_preserved_jobs.miri; exact source binding at tests/fixtures/full-backend-reusable-baseline.v4.yaml:26 and tests/test_full_backend_reusable_contract.py::test_extraction_preserves_nightly_nonmutation_quality_lanes_and_manual_frontend; the current job is checked with the test's single explicit Rust toolchain-pin normalization; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_cache_object_keys_aud495.py",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          158,
+          96,
+          27,
+          174,
+          156,
+          212,
+          227,
+          7,
+          93,
+          85,
+          133,
+          139,
+          237,
+          131,
+          255,
+          78,
+          75,
+          253,
+          255,
+          16
+        ]
+      },
+      "category": "aud495_cache_key_redaction_test_fixture",
+      "evidence": "AUD-495 cache-key log-redaction test fixture; synthetic canary used only by mocked backend tests; tests assert logger output omits the canary; not credential material",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_cache_object_keys_aud495.py",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          206,
+          224,
+          34,
+          26,
+          248,
+          78,
+          22,
+          250,
+          97,
+          128,
+          240,
+          96,
+          14,
+          161,
+          75,
+          225,
+          205,
+          151,
+          196,
+          143
+        ]
+      },
+      "category": "aud495_cache_key_redaction_test_fixture",
+      "evidence": "AUD-495 cache-key log-redaction test fixture; synthetic canary used only by mocked backend tests; tests assert logger output omits the canary; not credential material",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-23",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_verify_secrets_baseline.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          121,
+          18,
+          205,
+          213,
+          192,
+          120,
+          136,
+          208,
+          61,
+          126,
+          251,
+          249,
+          119,
+          59,
+          133,
+          113,
+          22,
+          198,
+          10,
+          132
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public SHA-256 integrity digest of immutable 315-record disposition prefix; source-contract test guard in tests/test_verify_secrets_baseline.py; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/integration/test_aud350_stored_event_timestamp_migration.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          75,
+          241,
+          247,
+          240,
+          201,
+          124,
+          150,
+          116,
+          118,
+          155,
+          103,
+          137,
+          228,
+          223,
+          153,
+          93,
+          208,
+          224,
+          145,
+          58
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public SHA-256 integrity digest of the frozen AUD-350 migration fixture; independent source-contract guard in tests/integration/test_aud350_stored_event_timestamp_migration.py; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_verify_secrets_baseline.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          200,
+          36,
+          105,
+          58,
+          159,
+          122,
+          4,
+          140,
+          251,
+          170,
+          213,
+          164,
+          38,
+          210,
+          200,
+          58,
+          142,
+          211,
+          129,
+          137
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Public detect-secrets SHA-1 identity of the first historical AUD-495 cache-key canary; independent source-contract guard in tests/test_verify_secrets_baseline.py; original canary record retains its aud495_cache_key_redaction_test_fixture category; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_verify_secrets_baseline.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          73,
+          167,
+          128,
+          111,
+          78,
+          205,
+          84,
+          128,
+          139,
+          99,
+          249,
+          165,
+          3,
+          236,
+          79,
+          56,
+          147,
+          246,
+          140,
+          151
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Public detect-secrets SHA-1 identity of the second historical AUD-495 cache-key canary; independent source-contract guard in tests/test_verify_secrets_baseline.py; original canary record retains its aud495_cache_key_redaction_test_fixture category; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/helpers/migration_148642dd1207_trace.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          68,
+          206,
+          125,
+          127,
+          3,
+          60,
+          194,
+          207,
+          158,
+          109,
+          182,
+          148,
+          201,
+          31,
+          221,
+          196,
+          89,
+          5,
+          101,
+          163
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git SHA-1 integrity digest of alembic/versions/148642dd1207_fix_missing_tables.py; source-bound five-site migration diagnostic assignment SOURCE_GIT_BLOB; Git blob framing binds all source bytes; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_mfa_webauthn_tombstone.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          109,
+          67,
+          120,
+          143,
+          21,
+          122,
+          30,
+          20,
+          91,
+          168,
+          79,
+          9,
+          37,
+          165,
+          80,
+          183,
+          80,
+          124,
+          201,
+          40
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git SHA-1 integrity digest of tests/test_migration_148642dd1207_orchestrator.py; source-bound historical migration reference guard assignment HISTORICAL_ORCHESTRATOR_BLOB; Git blob framing binds all source bytes; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/helpers/migration_148642dd1207_trace.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          78,
+          36,
+          66,
+          114,
+          42,
+          111,
+          201,
+          231,
+          78,
+          231,
+          157,
+          23,
+          62,
+          86,
+          214,
+          140,
+          152,
+          235,
+          118,
+          215
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git SHA-1 integrity digest of alembic/versions/148642dd1207_fix_missing_tables.py; source-bound five-site migration diagnostic assignment SOURCE_GIT_BLOB; Git blob framing binds all source bytes; not credential material. Reviewed preference-preservation source rebind; detector identity computed from the public Git pin, awaiting hosted scan confirmation.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_mfa_webauthn_tombstone.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          120,
+          244,
+          112,
+          145,
+          78,
+          179,
+          236,
+          151,
+          175,
+          133,
+          0,
+          251,
+          201,
+          135,
+          203,
+          98,
+          231,
+          245,
+          249,
+          83
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git SHA-1 integrity digest of tests/test_migration_148642dd1207_orchestrator.py; source-bound historical migration reference guard assignment HISTORICAL_ORCHESTRATOR_BLOB; Git blob framing binds all source bytes; not credential material. Reviewed preference-preservation source rebind; detector identity computed from the public Git pin, awaiting hosted scan confirmation.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/scripts/generate-zod-root-lock-candidate.mjs",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          93,
+          153,
+          98,
+          228,
+          62,
+          95,
+          145,
+          81,
+          122,
+          89,
+          127,
+          149,
+          156,
+          66,
+          233,
+          25,
+          253,
+          139,
+          106,
+          91
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public upstream Git commit identifier for colinhacks/zod v4.6.7; EXPECTED_ZOD_SOURCE_SHA in frontend/scripts/generate-zod-root-lock-candidate.mjs; official Git tag and hosted mature registry metadata agree; used for exact registry source-identity comparison; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_logging_pii_redaction_contract.py",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          241,
+          119,
+          30,
+          46,
+          101,
+          173,
+          30,
+          82,
+          73,
+          135,
+          104,
+          15,
+          34,
+          136,
+          138,
+          34,
+          211,
+          106,
+          94,
+          148
+        ]
+      },
+      "category": "source_contract_identifier",
+      "evidence": "Public signing-key name csrf-signing-key in the secret_name metadata field of tests/test_logging_pii_redaction_contract.py::test_sensitive_field_matching_preserves_related_nonsecret_metadata; negative control requires this identifier to survive real log redaction; secret-related source identifier or required key-list expression; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/helpers/migration_148642dd1207_trace.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          129,
+          182,
+          175,
+          46,
+          84,
+          127,
+          57,
+          186,
+          226,
+          169,
+          181,
+          52,
+          185,
+          20,
+          29,
+          88,
+          247,
+          214,
+          196,
+          40
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git SHA-1 integrity digest of alembic/versions/148642dd1207_fix_missing_tables.py; source-bound five-site migration diagnostic assignment SOURCE_GIT_BLOB; Git blob framing binds all source bytes; not credential material. Reviewed exact NOT NULL catalog-predicate source rebind; detector identity computed from the public Git pin, awaiting hosted scan confirmation.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_mfa_webauthn_tombstone.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          32,
+          87,
+          220,
+          238,
+          65,
+          56,
+          74,
+          173,
+          160,
+          109,
+          167,
+          158,
+          154,
+          251,
+          29,
+          7,
+          25,
+          76,
+          152,
+          145
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git SHA-1 integrity digest of tests/test_migration_148642dd1207_orchestrator.py; source-bound historical migration reference guard assignment HISTORICAL_ORCHESTRATOR_BLOB; Git blob framing binds all source bytes; not credential material. Reviewed orchestrator fixture-isolation source rebind; detector identity computed from the public Git pin, awaiting hosted scan confirmation.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

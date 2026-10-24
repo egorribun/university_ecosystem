@@ -68,13 +68,13 @@ export function NewsComments({
     >
       {/* ── Section header ── */}
       <div className="flex items-center gap-3 mb-8">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) text-brand">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand/[calc(var(--opacity-subtle)*100%)] border border-brand/[calc(var(--opacity-dim)*100%)] text-brand">
           <CommentIcon size={20} />
         </div>
         <h2 id="comments-heading" className="text-xl sm:text-2xl font-extrabold text-text-primary">
           {t("news:sections.comments")}
         </h2>
-        <span className="px-2.5 py-0.5 rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) text-xs font-bold tabular-nums text-brand">
+        <span className="px-2.5 py-0.5 rounded-full bg-brand/[calc(var(--opacity-subtle)*100%)] border border-brand/[calc(var(--opacity-dim)*100%)] text-xs font-bold tabular-nums text-brand">
           {comments.length}
         </span>
       </div>
@@ -89,7 +89,7 @@ export function NewsComments({
           comments.map((comment) => (
             <div
               key={comment.id}
-              className="flex flex-col gap-2 p-4 rounded-xl bg-(--bg-matte-list) border border-glass-border/(--opacity-soft) transition-colors hover:border-glass-border"
+              className="flex flex-col gap-2 p-4 rounded-xl bg-(--bg-matte-list) border border-glass-border/[calc(var(--opacity-soft)*100%)] transition-colors hover:border-glass-border"
             >
               {/* Comment header */}
               <div className="flex items-center justify-between gap-2">
@@ -112,7 +112,7 @@ export function NewsComments({
                           setEditingCommentId(comment.id)
                           setEditingCommentText(comment.content)
                         }}
-                        className="p-1.5 rounded-lg hover:bg-(--bg-surface)/(--opacity-strong) text-(--text-secondary) hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
+                        className="p-1.5 rounded-lg hover:bg-(--bg-surface)/[calc(var(--opacity-strong)*100%)] text-(--text-secondary) hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/[calc(var(--opacity-medium)*100%)]"
                         title={t("news:actions.editComment")}
                         aria-label={t("news:actions.editComment")}
                       >
@@ -122,7 +122,7 @@ export function NewsComments({
                         type="button"
                         disabled={comment.id.startsWith(OPTIMISTIC_COMMENT_ID_PREFIX)}
                         onClick={() => setDeleteConfirmationId(comment.id)}
-                        className="p-1.5 rounded-lg hover:bg-(--error-text)/(--opacity-subtle) text-(--error-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)/(--opacity-medium)"
+                        className="p-1.5 rounded-lg hover:bg-(--error-text)/[calc(var(--opacity-subtle)*100%)] text-(--error-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)/[calc(var(--opacity-medium)*100%)]"
                         title={t("news:actions.deleteComment")}
                         aria-label={t("news:actions.deleteComment")}
                       >
@@ -155,7 +155,7 @@ export function NewsComments({
                           ? "text-(--error-text) font-bold"
                           : editingCommentText.length >= COMMENT_MAX_LENGTH * 0.8
                             ? "text-warning-text font-semibold"
-                            : "text-(--text-secondary)/(--opacity-medium)"
+                            : "text-(--text-secondary)/[calc(var(--opacity-medium)*100%)]"
                       )}
                     >
                       {editingCommentText.length}/{COMMENT_MAX_LENGTH}
@@ -186,7 +186,7 @@ export function NewsComments({
 
       {/* ── New comment form ── */}
       {user && (
-        <div className="flex flex-col gap-4 p-4 rounded-xl bg-(--bg-matte-list) border border-glass-border/(--opacity-soft)">
+        <div className="flex flex-col gap-4 p-4 rounded-xl bg-(--bg-matte-list) border border-glass-border/[calc(var(--opacity-soft)*100%)]">
           <Textarea
             value={commentText}
             onChange={(event) => setCommentText(event.target.value)}
@@ -203,7 +203,7 @@ export function NewsComments({
                   ? "text-(--error-text) font-bold"
                   : commentText.length >= COMMENT_MAX_LENGTH * 0.8
                     ? "text-warning-text font-semibold"
-                    : "text-(--text-secondary)/(--opacity-medium)"
+                    : "text-(--text-secondary)/[calc(var(--opacity-medium)*100%)]"
               )}
             >
               {commentText.length}/{COMMENT_MAX_LENGTH}

@@ -109,6 +109,7 @@ def test_migration_settings_use_release_environment_and_required_secrets(
 
     assert environment["ENVIRONMENT"]["value"] == values["global"]["environment"]
     assert environment["APP_PROCESS_ROLE"]["value"] == "api"
+    assert environment["RATE_LIMIT_STORAGE_BACKEND"]["value"] == "redis"
     assert environment["REVOCATION_REDIS_ACCESS_ENABLED"]["value"] == "true"
     assert environment["AUTO_CREATE_SCHEMA"]["value"] == "false"
     assert "CI" not in environment
@@ -153,6 +154,7 @@ def test_migration_settings_use_release_environment_and_required_secrets(
     connection_secret_keys = {
         "DATABASE_URL": values["connections"]["databaseURLKey"],
         "CACHE_REDIS_URL": values["connections"]["redisBackendURLKey"],
+        "RATE_LIMIT_STORAGE_URI": values["connections"]["rateLimitStorageURIKey"],
         "REVOCATION_REDIS_URL": values["connections"]["redisRevocationURLKey"],
         "NATS_AUTH_TOKEN": values["connections"]["natsAuthTokenKey"],
     }

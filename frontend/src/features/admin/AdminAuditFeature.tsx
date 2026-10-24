@@ -92,12 +92,12 @@ const Row = memo(function Row({ log }: { log: AuditLog }) {
 
   const getActionColor = (action: string) => {
     if (action.includes("delete"))
-      return "text-error bg-error/(--opacity-subtle) border-error/(--opacity-dim)"
+      return "text-error bg-error/[calc(var(--opacity-subtle)*100%)] border-error/[calc(var(--opacity-dim)*100%)]"
     if (action.includes("create") || action.includes("add"))
-      return "text-brand bg-brand/(--opacity-subtle) border-brand/(--opacity-dim)"
+      return "text-brand bg-brand/[calc(var(--opacity-subtle)*100%)] border-brand/[calc(var(--opacity-dim)*100%)]"
     if (action.includes("update") || action.includes("modify"))
-      return "text-warning bg-warning/(--opacity-subtle) border-warning/(--opacity-dim)"
-    return "text-(--text-secondary) bg-(--bg-surface-hover)/(--opacity-dim) border-glass-border/(--opacity-subtle)"
+      return "text-warning bg-warning/[calc(var(--opacity-subtle)*100%)] border-warning/[calc(var(--opacity-dim)*100%)]"
+    return "text-(--text-secondary) bg-(--bg-surface-hover)/[calc(var(--opacity-dim)*100%)] border-glass-border/[calc(var(--opacity-subtle)*100%)]"
   }
 
   return (
@@ -106,9 +106,9 @@ const Row = memo(function Row({ log }: { log: AuditLog }) {
         className={cn(
           "transition-colors group",
           signatureState === "invalid"
-            ? "bg-error/(--opacity-subtle) hover:bg-error/(--opacity-subtle)"
-            : "hover:bg-(--bg-surface-hover)/(--opacity-subtle)",
-          open && "bg-(--bg-surface-hover)/(--opacity-subtle)"
+            ? "bg-error/[calc(var(--opacity-subtle)*100%)] hover:bg-error/[calc(var(--opacity-subtle)*100%)]"
+            : "hover:bg-(--bg-surface-hover)/[calc(var(--opacity-subtle)*100%)]",
+          open && "bg-(--bg-surface-hover)/[calc(var(--opacity-subtle)*100%)]"
         )}
       >
         <td className="px-4 py-4">
@@ -141,7 +141,7 @@ const Row = memo(function Row({ log }: { log: AuditLog }) {
         </td>
         <td className="px-4 py-4">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/(--opacity-subtle) text-brand">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/[calc(var(--opacity-subtle)*100%)] text-brand">
               <User className="h-4 w-4" aria-hidden="true" />
             </div>
             <div className="flex flex-col min-w-0">
@@ -174,21 +174,21 @@ const Row = memo(function Row({ log }: { log: AuditLog }) {
           <div className="flex justify-center">
             {signatureVerified ? (
               <div
-                className="flex h-6 w-6 items-center justify-center rounded-full bg-brand/(--opacity-subtle) text-brand"
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-brand/[calc(var(--opacity-subtle)*100%)] text-brand"
                 title={signatureTitle}
               >
                 <ShieldCheck className="h-4 w-4" aria-hidden="true" />
               </div>
             ) : signatureState === "invalid" ? (
               <div
-                className="flex h-6 w-6 items-center justify-center rounded-full bg-error/(--opacity-subtle) text-error"
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-error/[calc(var(--opacity-subtle)*100%)] text-error"
                 title={signatureTitle}
               >
                 <ShieldAlert className="h-4 w-4" aria-hidden="true" />
               </div>
             ) : (
               <div
-                className="flex h-6 w-6 items-center justify-center rounded-full bg-(--bg-surface-hover)/(--opacity-dim) text-(--text-secondary)"
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-(--bg-surface-hover)/[calc(var(--opacity-dim)*100%)] text-(--text-secondary)"
                 title={signatureTitle}
               >
                 <Info className="h-4 w-4" aria-hidden="true" />
@@ -208,14 +208,14 @@ const Row = memo(function Row({ log }: { log: AuditLog }) {
                 transition={reducedMotion ? { duration: 0 } : { duration: 0.2 }}
                 className="overflow-hidden"
               >
-                <div className="mx-4 mb-4 mt-2 rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-6 shadow-sm">
+                <div className="mx-4 mb-4 mt-2 rounded-md border border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] p-6 shadow-sm">
                   <div className="mb-4 flex items-center gap-2 text-sm font-bold text-text-primary">
                     <Info className="h-4 w-4 text-brand" aria-hidden="true" />
                     <span>{t("audit.details.title")}</span>
                   </div>
 
                   <section
-                    className="mb-6 rounded-md border border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim) p-4"
+                    className="mb-6 rounded-md border border-glass-border/[calc(var(--opacity-subtle)*100%)] bg-(--bg-surface-hover)/[calc(var(--opacity-dim)*100%)] p-4"
                     aria-label={t("audit.details.signatureEvidence")}
                   >
                     <h3 className="text-sm font-bold text-text-primary">
@@ -304,7 +304,7 @@ const Row = memo(function Row({ log }: { log: AuditLog }) {
                         <Terminal className="h-3 w-3" aria-hidden="true" />
                         <span>{t("audit.details.executionContext")}</span>
                       </div>
-                      <div className="rounded-md border border-glass-border/(--opacity-subtle) bg-black/(--opacity-medium) p-4 font-mono text-xs text-brand-light">
+                      <div className="rounded-md border border-glass-border/[calc(var(--opacity-subtle)*100%)] bg-black/[calc(var(--opacity-medium)*100%)] p-4 font-mono text-xs text-brand-light">
                         <pre className="overflow-x-auto whitespace-pre-wrap">
                           {JSON.stringify(log.context, null, 2)}
                         </pre>
@@ -352,7 +352,7 @@ export function AdminAuditFeature() {
   const total = data?.total ?? 0
 
   return (
-    <div className="min-h-screen w-full bg-background/(--opacity-medium) py-12">
+    <div className="min-h-screen w-full bg-background/[calc(var(--opacity-medium)*100%)] py-12">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <m.div
           initial={reducedMotion ? false : { opacity: 0, y: -20 }}
@@ -384,7 +384,7 @@ export function AdminAuditFeature() {
           />
         </SectionCard>
 
-        <div className="overflow-hidden rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
+        <div className="overflow-hidden rounded-lg border border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] shadow-glass">
           {loading && logs.length === 0 ? (
             <div className="flex justify-center p-20">
               <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand border-t-transparent" />
@@ -406,7 +406,7 @@ export function AdminAuditFeature() {
                   aria-label={t("audit.table.aria")}
                 >
                   <thead>
-                    <tr className="border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim)">
+                    <tr className="border-b border-glass-border/[calc(var(--opacity-subtle)*100%)] bg-(--bg-surface-hover)/[calc(var(--opacity-dim)*100%)]">
                       <th scope="col" className="w-12 px-4 py-4">
                         <span className="sr-only">{t("audit.table.expandColumn")}</span>
                       </th>
@@ -442,7 +442,7 @@ export function AdminAuditFeature() {
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-glass-border/(--opacity-subtle)">
+                  <tbody className="divide-y divide-glass-border/[calc(var(--opacity-subtle)*100%)]">
                     <AnimatePresence mode="popLayout">
                       {logs.map((log) => (
                         <Row key={log.id} log={log} />
@@ -452,7 +452,7 @@ export function AdminAuditFeature() {
                 </table>
               </div>
 
-              <div className="flex items-center justify-between border-t border-glass-border/(--opacity-subtle) bg-(--bg-surface)/(--opacity-dim) px-6 py-4">
+              <div className="flex items-center justify-between border-t border-glass-border/[calc(var(--opacity-subtle)*100%)] bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)] px-6 py-4">
                 <div className="text-sm text-(--text-secondary)" aria-live="polite">
                   {t("audit.pagination.total", { count: total })}
                 </div>

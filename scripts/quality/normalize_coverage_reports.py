@@ -28,6 +28,9 @@ from validate_quality_contract import (
     validate_metric_at_legacy_baseline,
     validate_metric_with_exact_missing,
 )
+from validate_quality_contract import (
+    _effective_legacy_migration_records as _source_bound_legacy_migration_records,
+)
 
 DEFAULT_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 REPOSITORY_ROOT = DEFAULT_REPOSITORY_ROOT
@@ -2266,7 +2269,7 @@ def _load_python_source_tree(source: str) -> ast.Module | None:
 
 def _python_function_entry_line(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
-) -> int:
+) -> int | None:
     body = list(function.body)
     if body and isinstance(body[0], ast.Expr):
         value = body[0].value
@@ -2274,7 +2277,10 @@ def _python_function_entry_line(
             body.pop(0)
     while body and isinstance(body[0], (ast.Global, ast.Nonlocal)):
         body.pop(0)
-    return body[0].lineno if body else function.lineno
+    # The definition line runs when the module is imported, even if a
+    # docstring-only function is never called.  Such a function has no
+    # executable body line that can serve as evidence of invocation.
+    return body[0].lineno if body else None
 
 
 def _is_mutmut_generated_function(
@@ -2335,9 +2341,12 @@ def _derive_python_function_metric(
     ]
     if not functions:
         return _vacuous_metric("AST source contains no function definitions")
+    function_entry_lines = [
+        _python_function_entry_line(function) for function in functions
+    ]
     covered = sum(
-        line_hits.get(_python_function_entry_line(function), False)
-        for function in functions
+        entry_line is not None and line_hits.get(entry_line, False)
+        for entry_line in function_entry_lines
     )
     return _measured_metric(
         "derived",
@@ -3545,6 +3554,12 @@ def _legacy_migration_records(
     }
 
 
+def _effective_legacy_migration_records(
+    contract: dict[str, object],
+) -> tuple[list[str], dict[str, dict[str, object]]]:
+    return _source_bound_legacy_migration_records(contract, REPOSITORY_ROOT)
+
+
 def _exact_legacy_migration_missing(
     file_metrics: Mapping[str, dict[str, dict[str, object]]],
     records: Mapping[str, dict[str, object]],
@@ -3932,6 +3947,7 @@ def _aggregate_tier0(
     metric_statuses: dict[str, dict[str, frozenset[str]]],
     source_inventory: Mapping[str, Collection[str]] | None = None,
     legacy_migration_records: Mapping[str, dict[str, object]] | None = None,
+    legacy_source_binding_errors: Sequence[str] = (),
 ) -> dict[str, object]:
     legacy_records = legacy_migration_records or {}
     rules, rules_error = _load_tier0_rules()
@@ -3952,6 +3968,7 @@ def _aggregate_tier0(
     errors: list[str] = []
     if rules_error:
         errors.append(rules_error)
+    errors.extend(legacy_source_binding_errors)
     actual_inventory = {(component, path) for path, component in deduplicated}
     expected_inventory = _expected_tier0_sources(rules, source_inventory)
     for _, path in sorted(expected_inventory - actual_inventory):
@@ -3978,13 +3995,14 @@ def _aggregate_tier0(
             metric_floor = floors[component][metric_name]
             if (
                 component == "python"
-                and metric_name == "functions"
                 and path.startswith("alembic/versions/")
                 and path.endswith(".py")
-                and path not in legacy_records
             ):
-                # New migrations are Tier0 files even though the general
-                # Python function floor permits explicit unsupported reports.
+                # Unsupported migration evidence cannot use a component-floor
+                # allowance, even for an unchanged file with a measured
+                # no-decrease baseline.  Measured unchanged records are checked
+                # against their baseline below; all other migration metrics
+                # must satisfy the Tier 0 floor.
                 metric_floor = 100
             if status not in allowed_statuses:
                 errors.append(
@@ -4445,7 +4463,10 @@ def _build_manifest(
     components: dict[str, object] = {}
     missing_reports: list[dict[str, object]] = []
     validation_errors: list[str] = []
-    legacy_migration_records = _legacy_migration_records(invocation.contract)
+    (
+        legacy_source_binding_errors,
+        legacy_migration_records,
+    ) = _effective_legacy_migration_records(invocation.contract)
     for component in COMPONENTS:
         required_count = sum(
             declaration_component == component
@@ -4503,6 +4524,7 @@ def _build_manifest(
         invocation.metric_statuses,
         invocation.coverage_inventory,
         legacy_migration_records,
+        legacy_source_binding_errors,
     )
     tier0_errors = tier0["errors"]
     if isinstance(tier0_errors, list):

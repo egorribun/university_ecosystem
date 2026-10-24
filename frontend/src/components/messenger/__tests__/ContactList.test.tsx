@@ -1,3 +1,4 @@
+import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import { createEvent, render, screen, fireEvent } from "@testing-library/react"
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
 import { createElement, forwardRef, type ReactNode } from "react"
@@ -204,7 +205,7 @@ describe("ContactList — empty state (W183 SW1)", () => {
     )
 
     const iconContainer = container.querySelector(".messenger-card-matte")
-    expect(iconContainer).toHaveStyle({ background: "var(--messenger-card-bg)" })
+    expectInlineBackground(iconContainer, "var(--messenger-card-bg)")
     expect(iconContainer?.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
     expect(entrance).toHaveAttribute(
       "data-motion-animate",
@@ -431,7 +432,7 @@ describe("ContactList — empty state (W183 SW1)", () => {
     )
 
     const iconContainer = container.querySelector(".messenger-card-matte")
-    expect(iconContainer).toHaveStyle({ background: "var(--messenger-card-bg)" })
+    expectInlineBackground(iconContainer, "var(--messenger-card-bg)")
     expect(iconContainer?.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
 
     const retry = screen.getByRole("button", { name: /messenger:error.retry/ })
@@ -856,7 +857,7 @@ describe("ContactList — populated contacts", () => {
     const avatar = container.firstElementChild
     expect(avatar).toHaveClass("size-14", "rounded-full", "flex", "items-center")
     expect(avatar).toHaveAttribute("aria-hidden", "true")
-    expect(avatar).toHaveStyle({ background: "var(--messenger-send-bg)" })
+    expectInlineBackground(avatar, "var(--messenger-send-bg)")
     const icon = avatar?.querySelector("svg")
     expect(icon).toHaveAttribute("width", "28")
     expect(icon).toHaveAttribute("height", "28")
@@ -917,7 +918,7 @@ describe("ContactList — populated contacts", () => {
     const inactive = document.getElementById("messenger-contact-2")!
     expect(active).toHaveClass("messenger-active-chip", "focus-visible:ring-2")
     expect(inactive).toHaveClass(
-      "hover:bg-(--bg-surface-hover)/(--opacity-subtle)",
+      "hover:bg-(--bg-surface-hover)/[calc(var(--opacity-subtle)*100%)]",
       "focus-visible:ring-2"
     )
     expect(inactive).not.toHaveAttribute("aria-current")

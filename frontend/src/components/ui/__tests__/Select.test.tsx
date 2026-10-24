@@ -161,7 +161,7 @@ describe("Select — rendering & ARIA", () => {
     expect(closed.parentElement).toHaveClass("relative", "w-full")
     expect(closed.className).toContain("flex min-h-12 w-full")
     expect(closed.className).toContain("border-glass-border bg-glass-bg")
-    expect(closed.className).toContain("hover:border-brand/(--opacity-medium)")
+    expect(closed.className).toContain("hover:border-brand/[calc(var(--opacity-medium)*100%)]")
     expect(closed.className).toContain("focus:outline-none focus:ring-4")
     expect(closed.className).toContain("cursor-not-allowed opacity-medium grayscale")
     expect(closed.className).toContain("text-text-tertiary")
@@ -171,7 +171,9 @@ describe("Select — rendering & ARIA", () => {
     view.rerender(<Select id="sel" options={OPTIONS} value="apple" />)
     fireEvent.click(trigger())
     const opened = trigger()
-    expect(opened.className).toContain("border-brand ring-4 ring-brand/(--opacity-subtle)")
+    expect(opened.className).toContain(
+      "border-brand ring-4 ring-brand/[calc(var(--opacity-subtle)*100%)]"
+    )
     expect(opened.className).toContain("shadow-glow-primary")
     expect(opened.querySelector("svg")).toHaveClass("h-4", "w-4", "rotate-180")
     expect(screen.getByRole("listbox").className).toContain("absolute z-dropdown")
@@ -179,8 +181,12 @@ describe("Select — rendering & ARIA", () => {
     const options = screen.getAllByRole("option")
     expect(options[0]!.className).toContain("bg-brand text-inverse-text shadow-sm")
     fireEvent.mouseEnter(options[1]!)
-    expect(options[1]!.className).toContain("bg-brand/(--opacity-subtle) text-brand")
-    expect(options[2]!.className).toContain("text-text-primary hover:bg-brand/(--opacity-subtle)")
+    expect(options[1]!.className).toContain(
+      "bg-brand/[calc(var(--opacity-subtle)*100%)] text-brand"
+    )
+    expect(options[2]!.className).toContain(
+      "text-text-primary hover:bg-brand/[calc(var(--opacity-subtle)*100%)]"
+    )
 
     fireEvent.click(opened)
     expect(opened.querySelector("svg")).not.toHaveClass("rotate-180")

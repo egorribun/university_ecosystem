@@ -81,7 +81,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
             type="text"
             readOnly
             value={normalizedSecret}
-            className="w-full px-3 py-1.5 text-sm rounded-lg border border-(--text-primary)/(--opacity-dim) bg-(--bg-surface) text-text-primary font-mono tracking-wider text-center select-all cursor-text"
+            className="w-full px-3 py-1.5 text-sm rounded-lg border border-(--text-primary)/[calc(var(--opacity-dim)*100%)] bg-(--bg-surface) text-text-primary font-mono tracking-wider text-center select-all cursor-text"
           />
         </div>
         <div className="relative mt-5">
@@ -92,7 +92,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
             aria-label={t("mfa.totp.copySecret") ?? ""}
             className={`
               p-2 rounded-lg transition-colors
-              ${copied ? "text-success-text hover:bg-success-bg/(--opacity-subtle)" : "text-brand hover:bg-brand/(--opacity-subtle)"}
+              ${copied ? "text-success-text hover:bg-success-bg/[calc(var(--opacity-subtle)*100%)]" : "text-brand hover:bg-brand/[calc(var(--opacity-subtle)*100%)]"}
             `}
           >
             {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}

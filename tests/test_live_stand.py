@@ -5994,7 +5994,10 @@ def test_core_signed_resume_accepts_reallocated_published_port_values(
     original_fingerprint = owner.compose_resource_fingerprint
     assert original_fingerprint is not None
     changed_ports = dict(owner.published_ports)
-    changed_ports["CADDY_HTTP"] += 1000
+    occupied_ports = set(changed_ports.values())
+    changed_ports["CADDY_HTTP"] = next(
+        port for port in range(1024, 65536) if port not in occupied_ports
+    )
 
     incomplete = live_stand.update_stand_owner_ports(worktree, owner, changed_ports)
     rebound = live_stand._bind_stand_owner_compose_resources(worktree, incomplete)
@@ -6011,7 +6014,10 @@ def test_core_signed_resume_rejects_compose_mount_drift(
 ) -> None:
     worktree, owner = _prepare_core_owned_stand(monkeypatch, tmp_path)
     changed_ports = dict(owner.published_ports)
-    changed_ports["CADDY_HTTP"] += 1000
+    occupied_ports = set(changed_ports.values())
+    changed_ports["CADDY_HTTP"] = next(
+        port for port in range(1024, 65536) if port not in occupied_ports
+    )
     incomplete = live_stand.update_stand_owner_ports(worktree, owner, changed_ports)
     marker = worktree / live_stand.STAND_FILE
     marker_before = marker.read_bytes()

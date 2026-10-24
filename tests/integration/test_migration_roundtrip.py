@@ -225,6 +225,9 @@ def _rendered_migration_environment() -> dict[str, str]:
     }
     assert result["ENVIRONMENT"] == "staging"
     assert result["APP_PROCESS_ROLE"] == "api"
+    assert result["RATE_LIMIT_STORAGE_BACKEND"] == "redis"
+    assert "RATE_LIMIT_STORAGE_URI_FILE" in result
+    assert "RATE_LIMIT_STORAGE_URI" not in result
     assert "DATABASE_URL" not in result
     assert "SECRET_KEY" not in result
     assert "DATABASE_URL_FILE" in result
@@ -262,6 +265,8 @@ def _write_rendered_secret_files(
             contents = "redis://cache-fixture.invalid:6379/0"
         elif variable == "REVOCATION_REDIS_URL_FILE":
             contents = "redis://revocation-fixture.invalid:6379/0"
+        elif variable == "RATE_LIMIT_STORAGE_URI_FILE":
+            contents = "redis://rate-limit-fixture.invalid:6379/1"
         elif variable == "MFA_TOTP_ENCRYPTION_KEYS_FILE":
             active_key_id = environment["MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID"]
             encryption_key = Fernet.generate_key().decode("ascii")

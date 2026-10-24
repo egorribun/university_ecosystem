@@ -73,7 +73,21 @@ def test_chaos_configures_proxy_before_fail_closed_tests_and_keeps_reset_safety(
     assert "--request POST http://localhost:8474/proxies" in configure["run"]
 
     tests = next(step for step in steps if step.get("name") == "Run chaos tests")
-    assert shlex.split(tests["run"]) == [
+    assert (
+        tests["env"]["STORAGE_S3_ACCESS_KEY_ID"]
+        == job["services"]["minio"]["env"]["AWS_ACCESS_KEY_ID"]
+    )
+    assert (
+        tests["env"]["STORAGE_S3_SECRET_ACCESS_KEY"]
+        == job["services"]["minio"]["env"]["AWS_SECRET_ACCESS_KEY"]
+    )
+    run_lines = tests["run"].splitlines()
+    assert len(run_lines) == 3
+    assert run_lines[:2] == [
+        'export MINIO_ACCESS_KEY="$STORAGE_S3_ACCESS_KEY_ID"',
+        'export MINIO_SECRET_KEY="$STORAGE_S3_SECRET_ACCESS_KEY"',
+    ]
+    assert shlex.split(run_lines[2]) == [
         "uv",
         "run",
         "pytest",

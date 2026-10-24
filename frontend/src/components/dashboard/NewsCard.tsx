@@ -18,6 +18,7 @@ interface NewsCardProps {
   style?: CSSProperties
   "data-fade"?: string
   "data-pop"?: string
+  queryResult?: ReturnType<typeof useDashboardNews>
 }
 
 export function prepareOnKey(event: Pick<KeyboardEvent, "key">, callback: () => void): void {
@@ -30,17 +31,35 @@ export function prepareOnKey(event: Pick<KeyboardEvent, "key">, callback: () => 
   }
 }
 
-export const NewsCard = memo(function NewsCard({
+type NewsCardPresentationProps = Omit<NewsCardProps, "queryResult"> & {
+  queryResult: ReturnType<typeof useDashboardNews>
+}
+
+function NewsCardWithQuery(props: Omit<NewsCardProps, "queryResult">) {
+  const { language } = useLanguage()
+  const queryResult = useDashboardNews(language)
+  return <NewsCardContent {...props} queryResult={queryResult} />
+}
+
+export const NewsCard = memo(function NewsCard(props: NewsCardProps) {
+  const { queryResult, ...presentationProps } = props
+  if (queryResult) {
+    return <NewsCardContent {...presentationProps} queryResult={queryResult} />
+  }
+  return <NewsCardWithQuery {...presentationProps} />
+})
+
+const NewsCardContent = memo(function NewsCardContent({
   locale,
   className,
   style,
+  queryResult: dashboardNewsQuery,
   ...props
-}: NewsCardProps) {
+}: NewsCardPresentationProps) {
   const { t } = useTranslation(["dashboard", "common"])
   const { language } = useLanguage()
   const queryClient = useQueryClient()
 
-  const dashboardNewsQuery = useDashboardNews(language)
   const news: NewsItem[] = dashboardNewsQuery.data ?? []
   const loadingNews = dashboardNewsQuery.isLoading && news.length === 0
 

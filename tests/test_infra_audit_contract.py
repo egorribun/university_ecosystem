@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ntpath
 import os
 import shlex
 import shutil
@@ -14,6 +15,104 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "charts/university-ecosystem"
+
+
+def _windows_bash_path(path: str) -> str:
+    drive, tail = ntpath.splitdrive(path)
+    if len(drive) != 2 or drive[1] != ":":
+        return Path(path).as_posix()
+    return f"/{drive[0].lower()}{tail.replace(chr(92), '/')}"
+
+
+def _bash_path(path: Path) -> str:
+    resolved = str(path.resolve())
+    if os.name != "nt":
+        return Path(resolved).as_posix()
+    return _windows_bash_path(resolved)
+
+
+def _bash_candidates() -> list[str]:
+    if os.name != "nt":
+        bash = shutil.which("bash")
+        return [bash] if bash else []
+
+    candidates: list[Path] = []
+    git = shutil.which("git")
+    if git:
+        git_command_dir = Path(git).resolve().parent
+        candidates.extend(
+            (
+                git_command_dir / "bash.exe",
+                git_command_dir.parent / "bin" / "bash.exe",
+            )
+        )
+    for variable in ("ProgramFiles", "ProgramW6432"):
+        program_files = os.environ.get(variable)
+        if program_files:
+            candidates.append(Path(program_files) / "Git" / "bin" / "bash.exe")
+    local_programs = os.environ.get("LOCALAPPDATA")
+    if local_programs:
+        candidates.append(
+            Path(local_programs) / "Programs" / "Git" / "bin" / "bash.exe"
+        )
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if entry:
+            candidates.extend((Path(entry) / "bash.exe", Path(entry) / "bash"))
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        resolved = str(candidate.resolve())
+        key = os.path.normcase(resolved)
+        if key not in seen:
+            unique.append(resolved)
+            seen.add(key)
+    return unique
+
+
+def _find_compatible_bash(candidates: list[str] | None = None) -> str | None:
+    launched = False
+    for bash in _bash_candidates() if candidates is None else candidates:
+        try:
+            launch_probe = subprocess.run(  # noqa: S603 - fixed host-shell probe
+                [bash, "-c", "exit 0"],
+                check=False,
+                capture_output=True,
+                timeout=3,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if launch_probe.returncode != 0:
+            continue
+
+        launched = True
+        try:
+            path_probe = subprocess.run(  # noqa: S603 - fixed host-path probe
+                [
+                    bash,
+                    "-c",
+                    'test -f "$1" && test -x "$2"',
+                    "--",
+                    _bash_path(ROOT / "scripts/apply_raw_k8s.sh"),
+                    _bash_path(Path(sys.executable)),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=3,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if path_probe.returncode == 0:
+            return bash
+
+    if launched:
+        raise RuntimeError(
+            "a Bash executable launched but could not access host paths using "
+            "the selected path mapping"
+        )
+    return None
 
 
 def test_helm_frontend_and_gateway_have_bounded_autoscaling_contracts() -> None:
@@ -132,36 +231,14 @@ def test_raw_manifest_wrapper_renders_and_rejects_mutable_images(
 ) -> None:
     """Exercise the wrapper with hermetic envsubst/kubectl stand-ins through Bash."""
 
-    bash = shutil.which("bash")
+    bash = _find_compatible_bash()
     if not bash:
         # INFRA-03 @egorribun: Linux shell contract is exercised in CI.
         pytest.skip("bash is unavailable on this host")
-    try:
-        probe = subprocess.run(  # noqa: S603 - fixed interpreter probe
-            [bash, "-c", "exit 0"],
-            check=False,
-            capture_output=True,
-            timeout=3,
-        )
-    except (OSError, subprocess.SubprocessError):
-        # INFRA-03 @egorribun: Linux shell contract is exercised in CI.
-        pytest.skip("bash is not executable on this host")
-    if probe.returncode != 0:
-        # INFRA-03 @egorribun: Linux shell contract is exercised in CI.
-        pytest.skip("bash is not executable on this host")
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     capture = tmp_path / "kubectl-input.yaml"
-
-    def bash_path(path: Path) -> str:
-        resolved = str(path.resolve())
-        if os.name != "nt":
-            return Path(resolved).as_posix()
-        drive, tail = os.path.splitdrive(resolved)
-        if not drive:
-            return Path(resolved).as_posix()
-        return f"/{drive[0].lower()}{tail.replace(chr(92), '/')}"
 
     def write_python_stub(name: str, source: str) -> None:
         script = bin_dir / f"{name}.py"
@@ -169,8 +246,8 @@ def test_raw_manifest_wrapper_renders_and_rejects_mutable_images(
         executable = bin_dir / name
         executable.write_text(
             "#!/usr/bin/env bash\n"
-            f"exec {shlex.quote(bash_path(Path(sys.executable)))} "
-            f'{shlex.quote(bash_path(script))} "$@"\n',
+            f"exec {shlex.quote(_bash_path(Path(sys.executable)))} "
+            f'{shlex.quote(_bash_path(script))} "$@"\n',
             encoding="utf-8",
         )
         executable.chmod(0o755)
@@ -284,3 +361,87 @@ def test_helm_canonical_scope_is_recorded_in_adr_index() -> None:
     index = index_path.read_text(encoding="utf-8")
     assert "ADR-034" in index
     assert "Helm" in index
+
+
+def test_windows_bash_path_mapping_uses_git_drive_syntax() -> None:
+    assert (
+        _windows_bash_path(r"C:\Program Files\Git\bin\bash.exe")
+        == "/c/Program Files/Git/bin/bash.exe"
+    )
+
+
+def test_compatible_bash_selection_uses_next_candidate_after_path_probe_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidates = ["wsl-bash", "git-bash"]
+    calls: list[tuple[list[str], int | None]] = []
+
+    def fake_run(
+        command: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        timeout = kwargs.get("timeout")
+        calls.append((command, timeout if isinstance(timeout, int) else None))
+        if command[2] == "exit 0":
+            return subprocess.CompletedProcess(command, 0)
+        return subprocess.CompletedProcess(
+            command, 1 if command[0] == "wsl-bash" else 0
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert _find_compatible_bash(candidates) == "git-bash"
+    assert [(command[0], command[2]) for command, _ in calls] == [
+        ("wsl-bash", "exit 0"),
+        ("wsl-bash", 'test -f "$1" && test -x "$2"'),
+        ("git-bash", "exit 0"),
+        ("git-bash", 'test -f "$1" && test -x "$2"'),
+    ]
+    assert all(timeout == 3 for _, timeout in calls)
+    path_probe = calls[1][0]
+    assert path_probe[4] == _bash_path(ROOT / "scripts/apply_raw_k8s.sh")
+    assert path_probe[5] == _bash_path(Path(sys.executable))
+
+
+def test_compatible_bash_selection_returns_none_when_no_bash_can_launch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[list[str], int | None]] = []
+
+    def fake_run(
+        command: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        timeout = kwargs.get("timeout")
+        calls.append((command, timeout if isinstance(timeout, int) else None))
+        if command[0] == "unlaunchable-bash":
+            raise OSError("not executable")
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert _find_compatible_bash(["unlaunchable-bash", "not-bash"]) is None
+    assert len(calls) == 2
+    assert all(command[2] == "exit 0" for command, _ in calls)
+    assert all(timeout == 3 for _, timeout in calls)
+
+
+def test_compatible_bash_selection_fails_when_launched_bash_cannot_access_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[list[str], int | None]] = []
+
+    def fake_run(
+        command: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        timeout = kwargs.get("timeout")
+        calls.append((command, timeout if isinstance(timeout, int) else None))
+        return subprocess.CompletedProcess(command, 0 if command[2] == "exit 0" else 1)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="launched but could not access"):
+        _find_compatible_bash(["path-incompatible-bash"])
+    assert [command[2] for command, _ in calls] == [
+        "exit 0",
+        'test -f "$1" && test -x "$2"',
+    ]
+    assert all(timeout == 3 for _, timeout in calls)

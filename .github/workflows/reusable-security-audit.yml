@@ -104,6 +104,20 @@ jobs:
             "scripts/check_dependency_audit_report.py"
             "scripts/audit_dependencies.py"
             "scripts/ci/helm_dependency_build.py"
+            "frontend/scripts/generate-zod-root-lock-candidate.mjs"
+            "frontend/scripts/generate-zod-root-lock-candidate.test.mjs"
+            "frontend/scripts/generate-puppeteer-lock-candidate.mjs"
+            "frontend/scripts/generate-puppeteer-lock-candidate.test.mjs"
+            "frontend/scripts/browser-dependency-smoke.mjs"
+            "frontend/scripts/browser-dependency-smoke.test.mjs"
+            "frontend/scripts/generate-react-compiler-adapter-lock-candidate.mjs"
+            "frontend/scripts/generate-react-compiler-adapter-lock-candidate.test.mjs"
+            "frontend/scripts/react-compiler-zod-compat/index.cjs"
+            "frontend/scripts/react-compiler-zod-compat/package.json"
+            "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json"
+            "frontend/scripts/react-compiler-zod-compat.test.mjs"
+            "scripts/ci/probe_react_compiler_artifacts.py"
+            "tests/test_probe_react_compiler_artifacts.py"
             "scripts/quality/prepare_trivy_backend_values.py"
             "scripts/quality/create_checkov_oci_image_evidence.py"
             "scripts/quality/resolve_oci_platform_digest.py"
@@ -198,6 +212,20 @@ jobs:
             "scripts/check_dependency_audit_report.py"
             "scripts/audit_dependencies.py"
             "scripts/ci/helm_dependency_build.py"
+            "frontend/scripts/generate-zod-root-lock-candidate.mjs"
+            "frontend/scripts/generate-zod-root-lock-candidate.test.mjs"
+            "frontend/scripts/generate-puppeteer-lock-candidate.mjs"
+            "frontend/scripts/generate-puppeteer-lock-candidate.test.mjs"
+            "frontend/scripts/browser-dependency-smoke.mjs"
+            "frontend/scripts/browser-dependency-smoke.test.mjs"
+            "frontend/scripts/generate-react-compiler-adapter-lock-candidate.mjs"
+            "frontend/scripts/generate-react-compiler-adapter-lock-candidate.test.mjs"
+            "frontend/scripts/react-compiler-zod-compat/index.cjs"
+            "frontend/scripts/react-compiler-zod-compat/package.json"
+            "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json"
+            "frontend/scripts/react-compiler-zod-compat.test.mjs"
+            "scripts/ci/probe_react_compiler_artifacts.py"
+            "tests/test_probe_react_compiler_artifacts.py"
             "scripts/quality/prepare_trivy_backend_values.py"
             "scripts/quality/create_checkov_oci_image_evidence.py"
             "scripts/quality/resolve_oci_platform_digest.py"
@@ -286,6 +314,35 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ inputs.python-version }}
+
+      # Keep applied dependency generators retired; retain their fixture guards.
+      - name: Verify root Zod lock candidate guards
+        timeout-minutes: 1
+        run: node --test scripts/generate-zod-root-lock-candidate.test.mjs
+
+      - name: Verify staged compiler adapter lock guards
+        timeout-minutes: 1
+        run: node --test scripts/generate-react-compiler-adapter-lock-candidate.test.mjs
+
+      - name: Verify React compiler artifact probe guards
+        timeout-minutes: 1
+        working-directory: .
+        run: python -B tests/test_probe_react_compiler_artifacts.py
+
+      - name: Inspect mature React compiler artifacts without executing them
+        timeout-minutes: 8
+        working-directory: .
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: python -B scripts/ci/probe_react_compiler_artifacts.py
+
+      - name: Verify Puppeteer lock candidate guards
+        timeout-minutes: 1
+        run: node --test scripts/generate-puppeteer-lock-candidate.test.mjs
+
+      - name: Verify browser dependency smoke guards
+        timeout-minutes: 1
+        run: node --test scripts/browser-dependency-smoke.test.mjs
 
       - name: Install uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
@@ -468,6 +525,31 @@ jobs:
           skip-setup-trivy: true
           exit-code: "1"
 
+      - name: Verify the pinned Kyverno fixture before the Trivy configuration scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          version_output="$(trivy --version)"
+          if ! grep -Fxq 'Version: 0.75.0' <<<"$version_output"; then
+            echo "::error::The fixture preflight requires Trivy 0.75.0" >&2
+            exit 1
+          fi
+          fixture="k8s/kyverno/tests/disallow-host-access/host-access.yaml"
+          report="$RUNNER_TEMP/trivy-host-access-noignore.json"
+          [[ ! -e "$report" && ! -L "$report" ]]
+          trivy config \
+            --config security/trivy-university-config.yaml \
+            --ignorefile= \
+            --skip-dirs "charts/revocation-store,charts/university-ecosystem,charts/redis-compat" \
+            --severity "CRITICAL,HIGH" \
+            --format json \
+            --output "$report" \
+            "$fixture"
+          python3 scripts/quality/validate_trivy_kyverno_fixture.py \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --target "$fixture" \
+            --report "$report"
+
       - name: Run Trivy configuration scanner (IaC)
         id: trivy_config
         continue-on-error: true
@@ -607,7 +689,7 @@ jobs:
           exit-code: "1"
 
       - name: Upload Trivy filesystem scan results
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         continue-on-error: true
         with:
@@ -615,7 +697,7 @@ jobs:
           category: ".github/workflows/ci.yml:docker-security"
 
       - name: Upload Trivy config scan results
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         continue-on-error: true
         with:
@@ -623,7 +705,7 @@ jobs:
           category: "trivy-config"
 
       - name: Upload Trivy revocation-store results
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         continue-on-error: true
         with:
@@ -631,7 +713,7 @@ jobs:
           category: "trivy-revocation-config"
 
       - name: Upload Trivy university-ecosystem results
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         continue-on-error: true
         with:
@@ -639,7 +721,7 @@ jobs:
           category: "trivy-university-config"
 
       - name: Upload Trivy redis-compat results
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         continue-on-error: true
         with:

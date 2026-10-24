@@ -324,7 +324,7 @@ describe("Navbar", () => {
       "flex",
       "items-center",
       "justify-center",
-      "bg-nav/(--opacity-hover)"
+      "bg-nav/[calc(var(--opacity-hover)*100%)]"
     )
     expect(nav).not.toHaveClass("bg-(--pill-bg)", "bg-transparent")
   })

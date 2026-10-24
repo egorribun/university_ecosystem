@@ -77,6 +77,7 @@
 
 import { mkdir, readdir, readFile, rm } from "node:fs/promises"
 import { existsSync } from "node:fs"
+import { tmpdir } from "node:os"
 import path from "node:path"
 import process from "node:process"
 import { spawn } from "node:child_process"
@@ -169,7 +170,7 @@ function median(values) {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
 }
 
-async function runCommand(command, args, description, options = {}) {
+export async function runCommand(command, args, description, options = {}) {
   return new Promise((resolve, reject) => {
     const { executable, args: spawnArgs } = buildSafeCommandInvocation(command, args)
     const child = spawn(executable, spawnArgs, {
@@ -187,9 +188,18 @@ async function runCommand(command, args, description, options = {}) {
       child.stderr?.on("data", (d) => (stderr += d.toString()))
     }
 
-    child.on("exit", (code) => {
-      if (code === 0) resolve({ stdout, stderr })
-      else reject(new Error(`${description} exited with code ${code}\n${stderr}`))
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve({ stdout, stderr })
+        return
+      }
+
+      const error = new Error(`${description} exited with code ${code}\n${stderr}`)
+      error.command = command
+      error.exitCode = code
+      error.description = description
+      error.stderr = stderr
+      reject(error)
     })
     child.on("error", reject)
   })
@@ -231,7 +241,87 @@ async function clearLhrDir() {
   }
 }
 
-async function runLighthouse(url, runIndex) {
+const KNOWN_LIGHTHOUSE_TEMP_DIR = /^lighthouse\.[a-z0-9_-]{6,}$/iu
+
+function isDirectChildOfWindowsTempDir(candidatePath, tempDir) {
+  const extendedPrefix = "\\\\?\\"
+  const normalizedCandidate = candidatePath.startsWith(extendedPrefix)
+    ? candidatePath.slice(extendedPrefix.length)
+    : candidatePath
+  const normalizedTempDir = tempDir.startsWith(extendedPrefix)
+    ? tempDir.slice(extendedPrefix.length)
+    : tempDir
+
+  if (!path.win32.isAbsolute(normalizedCandidate) || !path.win32.isAbsolute(normalizedTempDir)) {
+    return false
+  }
+
+  const absoluteCandidate = path.win32.resolve(normalizedCandidate).toLowerCase()
+  const absoluteTempDir = path.win32.resolve(normalizedTempDir).toLowerCase()
+  const relativePath = path.win32.relative(absoluteTempDir, absoluteCandidate)
+  return (
+    !path.win32.isAbsolute(relativePath) &&
+    !relativePath.includes("\\") &&
+    !relativePath.includes("/") &&
+    KNOWN_LIGHTHOUSE_TEMP_DIR.test(relativePath)
+  )
+}
+
+function isKnownLighthouseCleanupFailure(
+  error,
+  { platform = process.platform, tempDir = tmpdir() } = {}
+) {
+  if (
+    platform !== "win32" ||
+    !error ||
+    typeof error !== "object" ||
+    error.command !== "npm" ||
+    error.exitCode !== 1 ||
+    typeof error.description !== "string" ||
+    !/^lighthouse https?:\/\/\S+ run [1-9]\d*$/u.test(error.description) ||
+    typeof error.stderr !== "string"
+  ) {
+    return false
+  }
+
+  const lines = error.stderr.split(/\r?\n/u).filter(Boolean)
+  const errorHeaders = lines.filter((line) =>
+    /^(?:Error(?:\[[^\]]+\])?|[A-Z]\w*Error):/u.test(line)
+  )
+  if (errorHeaders.length !== 1) return false
+
+  const cleanupMatch = errorHeaders[0].match(
+    /^Error: EPERM: operation not permitted, rmSync ['"]([^'"]+)['"]$/u
+  )
+  if (!cleanupMatch || !isDirectChildOfWindowsTempDir(cleanupMatch[1], tempDir)) return false
+
+  return lines.some((line) => /destroyTmp/iu.test(line) && /chrome-launcher/iu.test(line))
+}
+
+/**
+ * Recover only the known Windows chrome-launcher temp-directory cleanup error,
+ * and only when the surviving report contains every finite metric consumed by
+ * this wrapper. All other nonzero exits remain failures.
+ */
+export async function recoverLhrAfterKnownCleanupFailure(error, outputPath, options) {
+  if (!isKnownLighthouseCleanupFailure(error, options)) throw error
+
+  try {
+    await parseLhr(outputPath)
+  } catch (reportError) {
+    const detail = String(reportError)
+    throw new AggregateError(
+      [error, reportError],
+      `Known Lighthouse cleanup error left an invalid or incomplete LHR: ${detail}`,
+      { cause: reportError }
+    )
+  }
+
+  console.log(`  [run] known chrome-launcher cleanup error; complete LHR survived at ${outputPath}`)
+  return outputPath
+}
+
+export async function runLighthouse(url, runIndex, commandRunner = runCommand) {
   const urlName = urlToFilename(new URL(url).pathname)
   const outputPath = path.join(lhrDir, `lhr_${urlName}_run${runIndex}.json`)
 
@@ -266,19 +356,9 @@ async function runLighthouse(url, runIndex) {
   }
 
   try {
-    await runCommand("npm", args, `lighthouse ${url} run ${runIndex}`, { silent: true })
-  } catch (err) {
-    // Windows EPERM workaround — the LHR is on disk before destroyTmp fires.
-    // If the file exists despite the error, treat as recoverable.
-    if (existsSync(outputPath)) {
-      const fsPromises = await import("node:fs/promises")
-      const stat = await fsPromises.stat(outputPath)
-      if (stat.size > 1000) {
-        console.log(`  [run ${runIndex}] EPERM but LHR survived (${stat.size} bytes)`)
-        return outputPath
-      }
-    }
-    throw err
+    await commandRunner("npm", args, `lighthouse ${url} run ${runIndex}`, { silent: true })
+  } catch (error) {
+    return recoverLhrAfterKnownCleanupFailure(error, outputPath)
   }
   return outputPath
 }
@@ -295,8 +375,9 @@ async function runLighthouse(url, runIndex) {
  * The 7 paths above are the only LHR fields this wrapper reads. They have
  * been stable across Lighthouse 12.x → 13.x; if you bump Lighthouse to a
  * future major (14.x+), re-verify these paths still exist in a sample LHR
- * before merging the bump. Optional chaining + null-coalescing make the
- * wrapper resilient to a missing audit (returns null in summary table).
+ * before merging the bump. Required category scores and metric values must
+ * be present and finite; incomplete reports fail collection instead of
+ * producing empty summary cells.
  *
  * For OTHER LHR fields (network-requests, audits["unused-javascript"],
  * audits["image-delivery-insight"], etc.) the wrapper does NOT read them
@@ -319,18 +400,36 @@ export async function parseLhr(lhrPath) {
     !audits ||
     typeof audits !== "object" ||
     Array.isArray(audits) ||
-    requiredCategories.some((name) => !categories[name] || typeof categories[name] !== "object")
+    requiredCategories.some(
+      (name) =>
+        !categories[name] || typeof categories[name] !== "object" || Array.isArray(categories[name])
+    )
   ) {
     throw new Error(`Invalid Lighthouse result at ${lhrPath}`)
   }
+
+  const scores = requiredCategories.map((name) => categories[name].score)
+  const metricValues = [
+    audits["cumulative-layout-shift"]?.numericValue,
+    audits["largest-contentful-paint"]?.numericValue,
+    audits["total-blocking-time"]?.numericValue,
+  ]
+  if (
+    (lhr.runtimeError !== undefined && lhr.runtimeError !== null) ||
+    scores.some((score) => !Number.isFinite(score) || score < 0 || score > 1) ||
+    metricValues.some((value) => !Number.isFinite(value) || value < 0)
+  ) {
+    throw new Error(`Invalid Lighthouse result at ${lhrPath}`)
+  }
+
   return {
-    perf: categories.performance?.score ?? null,
-    a11y: categories.accessibility?.score ?? null,
-    bp: categories["best-practices"]?.score ?? null,
-    seo: categories.seo?.score ?? null,
-    cls: audits["cumulative-layout-shift"]?.numericValue ?? null,
-    lcp: audits["largest-contentful-paint"]?.numericValue ?? null,
-    tbt: audits["total-blocking-time"]?.numericValue ?? null,
+    perf: categories.performance.score,
+    a11y: categories.accessibility.score,
+    bp: categories["best-practices"].score,
+    seo: categories.seo.score,
+    cls: audits["cumulative-layout-shift"].numericValue,
+    lcp: audits["largest-contentful-paint"].numericValue,
+    tbt: audits["total-blocking-time"].numericValue,
   }
 }
 
@@ -345,7 +444,8 @@ export function assertCompleteLighthouseResults(results, expectedRuns = RUNS) {
   }
 
   const missing = []
-  const metricKeys = ["perf", "a11y", "bp", "seo", "cls", "lcp", "tbt"]
+  const scoreKeys = ["perf", "a11y", "bp", "seo"]
+  const valueKeys = ["cls", "lcp", "tbt"]
   for (const [urlPath, runs] of results) {
     if (!Array.isArray(runs)) {
       missing.push(`${urlPath}: invalid run collection`)
@@ -359,9 +459,15 @@ export function assertCompleteLighthouseResults(results, expectedRuns = RUNS) {
         result &&
         typeof result === "object" &&
         !Array.isArray(result) &&
-        metricKeys.every(
+        scoreKeys.every(
           (key) =>
-            Object.hasOwn(result, key) && (result[key] === null || typeof result[key] === "number")
+            Object.hasOwn(result, key) &&
+            Number.isFinite(result[key]) &&
+            result[key] >= 0 &&
+            result[key] <= 1
+        ) &&
+        valueKeys.every(
+          (key) => Object.hasOwn(result, key) && Number.isFinite(result[key]) && result[key] >= 0
         )
       if (!validResult) {
         missing.push(`${urlPath} run ${index + 1}`)

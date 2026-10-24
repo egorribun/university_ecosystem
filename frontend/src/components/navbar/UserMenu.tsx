@@ -57,8 +57,10 @@ export const UserMenu = ({
         aria-busy="true"
         aria-label={t("common:aria.loadingUserMenu")}
       >
-        <Skeleton className="rounded-full w-9 h-9 bg-brand/(--opacity-dim)" />
-        {!isCompact && <Skeleton className="w-24 h-5 rounded-md bg-brand/(--opacity-dim)" />}
+        <Skeleton className="rounded-full w-9 h-9 bg-brand/[calc(var(--opacity-dim)*100%)]" />
+        {!isCompact && (
+          <Skeleton className="w-24 h-5 rounded-md bg-brand/[calc(var(--opacity-dim)*100%)]" />
+        )}
       </div>
     )
   }
@@ -141,7 +143,7 @@ export const UserMenu = ({
             "size-11 shrink-0 transition-[transform,opacity,background-color]",
             dur,
             ease,
-            "hover:bg-(--bg-surface-hover)/(--opacity-soft)",
+            "hover:bg-(--bg-surface-hover)/[calc(var(--opacity-soft)*100%)]",
             !prefersReducedMotion && "hover:scale-105 active:scale-95"
           )}
           onClick={() => go("/settings")}

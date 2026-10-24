@@ -20,6 +20,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -38,6 +39,7 @@ var errRevocationStoreUnavailable = errors.New("session revocation store unavail
 const (
 	// DefaultJWTAudience must match app/core/config/mixins/jwt_settings.py.
 	DefaultJWTAudience            = "university-ecosystem-api"
+	DefaultJWTIssuer              = "university-ecosystem"
 	defaultJWKSRefreshInterval    = 5 * time.Minute
 	minJWKSRefreshInterval        = time.Second
 	maxJWKSRefreshInterval        = 24 * time.Hour
@@ -121,6 +123,7 @@ type rsaKeySnapshot struct {
 type JWTMiddleware struct {
 	secret   []byte
 	audience string
+	issuer   string
 	// jwksConfigured records that the deployment selected JWKS-backed RS256
 	// verification, even before the first successful refresh.  It must be set
 	// synchronously when the refresher starts so a transient JWKS outage cannot
@@ -276,9 +279,53 @@ func rsaKeySetsEqual(left, right rsaKeySet) bool {
 }
 
 // NewJWTMiddlewareWithConfig creates a new JWT middleware with custom L1 cache settings.
+// The default issuer matches the backend's local JWT_ISSUER setting.
 // rsaPublicKeyPEM is optional; when non-empty, RS256 tokens are accepted using
 // the given PEM-encoded RSA public key alongside HS256 tokens.
 func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *redis.Client, config L1CacheConfig, audiences ...string) *JWTMiddleware {
+	audience := DefaultJWTAudience
+	if len(audiences) > 1 {
+		panic("gateway: at most one JWT audience may be configured")
+	}
+	if len(audiences) == 1 {
+		audience = strings.TrimSpace(audiences[0])
+		if audience == "" {
+			panic("gateway: JWT audience must not be blank")
+		}
+	}
+
+	return NewJWTMiddlewareWithConfigAndIssuer(secret, rsaPublicKeyPEM, redisClient, config, audience, DefaultJWTIssuer)
+}
+
+// isJWTIssuerStripWhitespace matches the fixed whitespace set used by Python str.strip.
+func isJWTIssuerStripWhitespace(r rune) bool {
+	return r >= '\u0009' && r <= '\u000d' ||
+		r >= '\u001c' && r <= '\u0020' ||
+		r == '\u0085' || r == '\u00a0' || r == '\u1680' ||
+		r >= '\u2000' && r <= '\u200a' ||
+		r == '\u2028' || r == '\u2029' || r == '\u202f' ||
+		r == '\u205f' || r == '\u3000'
+}
+
+func trimJWTIssuerWhitespace(issuer string) string {
+	return strings.TrimFunc(issuer, isJWTIssuerStripWhitespace)
+}
+
+// NewJWTMiddlewareWithConfigAndIssuer creates a JWT middleware bound to the
+// audience and issuer explicitly supplied by gateway configuration.
+func NewJWTMiddlewareWithConfigAndIssuer(secret, rsaPublicKeyPEM string, redisClient *redis.Client, config L1CacheConfig, audience, issuer string) *JWTMiddleware {
+	audience = strings.TrimSpace(audience)
+	if audience == "" {
+		panic("gateway: JWT audience must not be blank")
+	}
+	issuer = trimJWTIssuerWhitespace(issuer)
+	if issuer == "" {
+		panic("gateway: JWT issuer must not be blank")
+	}
+	if utf8.RuneCountInString(issuer) > 512 || strings.IndexFunc(issuer, func(r rune) bool { return r < 0x20 }) >= 0 {
+		panic("gateway: JWT issuer contains invalid characters")
+	}
+
 	metricsRegistered.Do(func() {
 		prometheus.MustRegister(l1Hits, l1Misses, l1Evictions, redisErrors, revocationListenerDisconnects, l1ProbRefreshes)
 	})
@@ -293,20 +340,10 @@ func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *red
 		panic(fmt.Sprintf("gateway: invalid L1 cache configuration: %v", err))
 	}
 
-	audience := DefaultJWTAudience
-	if len(audiences) > 1 {
-		panic("gateway: at most one JWT audience may be configured")
-	}
-	if len(audiences) == 1 {
-		audience = strings.TrimSpace(audiences[0])
-		if audience == "" {
-			panic("gateway: JWT audience must not be blank")
-		}
-	}
-
 	m := &JWTMiddleware{
 		secret:   []byte(secret),
 		audience: audience,
+		issuer:   issuer,
 		redis:    redisClient,
 		l1cache:  cache,
 		l1TTL:    config.TTL, // PERF-31-02: store TTL for XFetch calculation
@@ -1027,6 +1064,7 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint
 			jwt.WithIssuedAt(),
 			jwt.WithExpirationRequired(),
 			jwt.WithAudience(m.audience),
+			jwt.WithIssuer(m.issuer),
 		)
 		token, err := parseJWTClaimsFunc(parser, tokenString, &Claims{}, m.keyFunc)
 
@@ -1144,6 +1182,7 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint
 			jwt.WithIssuedAt(),
 			jwt.WithExpirationRequired(),
 			jwt.WithAudience(m.audience),
+			jwt.WithIssuer(m.issuer),
 		)
 		token, err := parseJWTClaimsFunc(parser, tokenString, &Claims{}, m.keyFunc)
 

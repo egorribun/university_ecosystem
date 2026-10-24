@@ -72,6 +72,15 @@ function wrapper(client: QueryClient) {
   }
 }
 
+function campusWrapper(client: QueryClient, timeZone: string) {
+  return function CampusWrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={client}>
+        <CampusTimezoneProvider timeZone={timeZone}>{children}</CampusTimezoneProvider>
+      </QueryClientProvider>
+    )
+  }
+}
 function campusBoundaryClient(groupId: string): QueryClient {
   const client = newClient()
   const lessons: Lesson[] = [
@@ -993,7 +1002,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     } as UserState)
 
     const { result } = renderHook(() => useScheduleData(), {
-      wrapper: wrapper(client),
+      wrapper: campusWrapper(client, Intl.DateTimeFormat().resolvedOptions().timeZone),
     })
 
     await waitFor(() => expect(result.current.selectedGroup).toBe("group-today"))
@@ -1043,7 +1052,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     } as UserState)
 
     const { result } = renderHook(() => useScheduleData(), {
-      wrapper: wrapper(client),
+      wrapper: campusWrapper(client, Intl.DateTimeFormat().resolvedOptions().timeZone),
     })
 
     await waitFor(() => expect(result.current.selectedGroup).toBe("group-even"))
@@ -1432,6 +1441,169 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
         Reflect.deleteProperty(document, "visibilityState")
       }
       vi.useRealTimers()
+    }
+  })
+})
+
+describe("useScheduleData unavailable campus timezone", () => {
+  beforeEach(() => {
+    apiGetMock.mockReset()
+    useAuthMock.mockReset()
+    getDatabaseMock.mockReset()
+    getDatabaseMock.mockResolvedValue({
+      schedule: { bulkUpsert: vi.fn().mockResolvedValue(undefined) },
+    } as never)
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-10-18T21:30:00.000Z"))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    cleanup()
+    useAuthStore.setState({ user: null, loading: true })
+  })
+
+  it("keeps day and live clock state independent of the host zone while preserving schedule data", async () => {
+    async function observeHostZone(
+      hostDate: { year: number; month: number; day: number },
+      localDay: number,
+      localHour: number
+    ) {
+      const year = vi.spyOn(Date.prototype, "getFullYear").mockReturnValue(hostDate.year)
+      const month = vi.spyOn(Date.prototype, "getMonth").mockReturnValue(hostDate.month)
+      const date = vi.spyOn(Date.prototype, "getDate").mockReturnValue(hostDate.day)
+      const day = vi.spyOn(Date.prototype, "getDay").mockReturnValue(localDay)
+      const hours = vi.spyOn(Date.prototype, "getHours").mockReturnValue(localHour)
+      const minutes = vi.spyOn(Date.prototype, "getMinutes").mockReturnValue(30)
+      const groupId = "unknown-zone-" + localDay + "-" + localHour
+      const client = campusBoundaryClient(groupId)
+      const rendered = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+
+      try {
+        await waitFor(() => expect(rendered.result.current.selectedGroup).toBe(groupId))
+        return {
+          nowEpoch: rendered.result.current.nowTick.getTime(),
+          todayIdx: rendered.result.current.todayIdx,
+          hasToday: rendered.result.current.hasToday,
+          today: rendered.result.current.todayLessons.map((lesson) => lesson.id),
+          current: rendered.result.current.currentLesson?.id ?? null,
+          next: rendered.result.current.nextLesson?.id ?? null,
+          timeLeftText: rendered.result.current.timeLeftText,
+          currentParity: rendered.result.current.currentParity,
+          conflictedIds: [...rendered.result.current.conflictedIds],
+          schedule: rendered.result.current.schedule.map((lesson) => lesson.id),
+          rawSchedule: rendered.result.current.rawSchedule.map((lesson) => lesson.id),
+        }
+      } finally {
+        rendered.unmount()
+        year.mockRestore()
+        month.mockRestore()
+        date.mockRestore()
+        day.mockRestore()
+        hours.mockRestore()
+        minutes.mockRestore()
+      }
+    }
+
+    const utcHost = await observeHostZone({ year: 2026, month: 9, day: 18 }, 0, 21)
+    const moscowHost = await observeHostZone({ year: 2026, month: 9, day: 19 }, 1, 0)
+
+    expect(utcHost).toEqual(moscowHost)
+    expect(utcHost).toMatchObject({
+      nowEpoch: new Date("2026-10-18T21:30:00.000Z").getTime(),
+      todayIdx: -1,
+      hasToday: false,
+      today: [],
+      current: null,
+      next: null,
+      timeLeftText: "",
+      currentParity: null,
+      conflictedIds: [],
+      schedule: ["odd-early", "even-only", "odd-late"],
+      rawSchedule: ["odd-early", "even-only", "odd-late"],
+    })
+  })
+
+  it("shows both parities while automatic parity is unknown and honors explicit choices", async () => {
+    const groupId = "unknown-zone-manual-parity"
+    const client = campusBoundaryClient(groupId)
+    const rendered = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(rendered.result.current.selectedGroup).toBe(groupId))
+    expect(rendered.result.current.currentParity).toBeNull()
+    expect(rendered.result.current.schedule.map((lesson) => lesson.id)).toEqual([
+      "odd-early",
+      "even-only",
+      "odd-late",
+    ])
+
+    act(() => rendered.result.current.setCurrentParity("even"))
+    expect(rendered.result.current.currentParity).toBe("even")
+    expect(rendered.result.current.schedule.map((lesson) => lesson.id)).toEqual(["even-only"])
+
+    act(() => rendered.result.current.setCurrentParity("odd"))
+    expect(rendered.result.current.currentParity).toBe("odd")
+    expect(rendered.result.current.schedule.map((lesson) => lesson.id)).toEqual([
+      "odd-early",
+      "odd-late",
+    ])
+  })
+
+  it("restores campus day and live lesson state when the authoritative zone resolves", async () => {
+    let resolveConfig!: (response: Response) => void
+    const pendingConfig = new Promise<Response>((resolve) => {
+      resolveConfig = resolve
+    })
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockReturnValue(pendingConfig)
+    const groupId = "unknown-zone-recovery"
+    const client = campusBoundaryClient(groupId)
+    const timezoneWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <CampusTimezoneProvider timeZone={null}>{children}</CampusTimezoneProvider>
+      </QueryClientProvider>
+    )
+    const rendered = renderHook(() => useScheduleData(), { wrapper: timezoneWrapper })
+
+    try {
+      await waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce())
+      expect(rendered.result.current.nowTick.getTime()).toBe(
+        new Date("2026-10-18T21:30:00.000Z").getTime()
+      )
+      expect(rendered.result.current.currentParity).toBeNull()
+      expect(rendered.result.current.todayIdx).toBe(-1)
+      expect(rendered.result.current.hasToday).toBe(false)
+      expect(rendered.result.current.todayLessons).toEqual([])
+      expect(rendered.result.current.currentLesson).toBeNull()
+      expect(rendered.result.current.nextLesson).toBeNull()
+      expect(rendered.result.current.rawSchedule).toHaveLength(3)
+
+      await act(async () => {
+        resolveConfig(
+          new Response(JSON.stringify({ campus_timezone: "Europe/Moscow" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          })
+        )
+        await pendingConfig
+      })
+
+      await waitFor(() => {
+        expect(rendered.result.current.currentParity).toBe("odd")
+        expect(rendered.result.current.todayIdx).toBe(0)
+        expect(rendered.result.current.hasToday).toBe(true)
+        expect(rendered.result.current.todayLessons.map((lesson) => lesson.id)).toEqual([
+          "odd-early",
+          "odd-late",
+        ])
+        expect(rendered.result.current.currentLesson?.id).toBe("odd-early")
+        expect(rendered.result.current.nextLesson?.id).toBe("odd-late")
+      })
+      expect(rendered.result.current.nowTick.getTime()).toBe(
+        new Date("2026-10-18T21:30:00.000Z").getTime()
+      )
+    } finally {
+      rendered.unmount()
+      fetchSpy.mockRestore()
     }
   })
 })

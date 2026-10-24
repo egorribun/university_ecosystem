@@ -92,16 +92,17 @@ def test_log_event_preserves_redacted_payload_and_logging_contract(monkeypatch):
     redactor = MagicMock()
 
     def redact(_logger, _method_name, event):
-        event["email"] = "[REDACTED]"
+        return {**event, "email": "[REDACTED]"}
 
     redactor.side_effect = redact
     monkeypatch.setattr(email_mod, "_redact_pii", redactor)
 
     error = ValueError("boom")
+    extra = {"request_id": "req-42", "email": "student@example.org"}
     _log_event(
         logging.ERROR,
         "email.delivery.failed",
-        extra={"request_id": "req-42", "email": "student@example.org"},
+        extra=extra,
         exc_info=error,
     )
 
@@ -110,6 +111,8 @@ def test_log_event_preserves_redacted_payload_and_logging_contract(monkeypatch):
     assert redactor.call_args.args[0] is module_logger
     assert redactor.call_args.args[1] == "log"
     assert redactor.call_args.args[2]["event"] == "email.delivery.failed"
+    assert redactor.call_args.args[2]["email"] == "student@example.org"
+    assert extra == {"request_id": "req-42", "email": "student@example.org"}
     module_logger.log.assert_called_once_with(
         logging.ERROR,
         "email.delivery.failed",
@@ -141,7 +144,11 @@ def test_log_event_routing_handles_disabled_and_missing_flags(monkeypatch):
             return getattr(real_logging, name)
 
     monkeypatch.setattr(email_mod, "logging", LoggingProxy())
-    monkeypatch.setattr(email_mod, "_redact_pii", MagicMock())
+    monkeypatch.setattr(
+        email_mod,
+        "_redact_pii",
+        lambda _logger, _method_name, event: dict(event),
+    )
 
     _log_event(logging.WARNING, "disabled.logger")
 

@@ -41,3 +41,18 @@ misconfigurations:
     statement: >-
       SPIRE node and workload attestation requires the documented node-agent
       security context.
+
+  - id: KSV-0008
+    paths:
+      - k8s/kyverno/tests/disallow-host-access/host-access.yaml
+    expired_at: 2026-11-22
+    statement: >-
+      Kyverno negative-test fixture intentionally triggers a host-access
+      violation to verify policy enforcement.
+  - id: KSV-0024
+    paths:
+      - k8s/kyverno/tests/disallow-host-access/host-access.yaml
+    expired_at: 2026-11-22
+    statement: >-
+      Kyverno negative-test fixture intentionally triggers a host-access
+      violation to verify policy enforcement.

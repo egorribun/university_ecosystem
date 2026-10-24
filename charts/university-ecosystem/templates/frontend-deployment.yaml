@@ -58,6 +58,8 @@ spec:
             # browser requests remain relative and flow through the gateway.
             - name: BACKEND_ORIGIN
               value: "http://{{ include "university-ecosystem.componentName" (dict "root" . "component" "backend") }}:{{ .Values.backend.service.port }}"
+            - name: JWT_ISSUER
+              value: {{ required "global.jwtIssuer must be set" .Values.global.jwtIssuer | quote }}
           # TD-04 (audit Wave 12): explicit probe timing.
           startupProbe:
             httpGet:

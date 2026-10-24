@@ -2,10 +2,13 @@ package spicedb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 )
+
+var errPermissionEvaluationPanicked = errors.New("permission evaluation panicked")
 
 // Client defines the interface for SpiceDB ReBAC permission evaluation in Go services.
 type Client interface {
@@ -98,8 +101,19 @@ func EvaluateWithTimeout(ctx context.Context, fn func(context.Context) (bool, er
 
 	ch := make(chan res, 1)
 	go func() {
-		allowed, err := fn(evalCtx)
-		ch <- res{allowed: allowed, err: err}
+		result := res{}
+		completed := false
+		defer func() {
+			// Recover first so short-circuit evaluation cannot skip recovery.
+			// The completion sentinel also covers panic(nil) and runtime.Goexit.
+			// Discard panic values so callback details never escape.
+			if recover() != nil || !completed {
+				result = res{err: errPermissionEvaluationPanicked}
+			}
+			ch <- result
+		}()
+		result.allowed, result.err = fn(evalCtx)
+		completed = true
 	}()
 
 	select {

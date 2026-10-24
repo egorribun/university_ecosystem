@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rsa"
+	"crypto/tls"
 	"errors"
 	"io"
 	"log/slog"
@@ -590,6 +591,50 @@ func TestConnectTemporal_UsesConfiguredTransportSecurity(t *testing.T) {
 			}, discardLogger())
 			require.Error(t, err)
 			assert.Equal(t, testCase.tlsDisabled, captured.ConnectionOptions.TLSDisabled)
+			assert.NotNil(t, captured.Credentials, "configured API-key credentials must be preserved")
+		})
+	}
+}
+
+func TestConnectTemporal_ConfiguresTLSWithoutAPIKey(t *testing.T) {
+	cases := []struct {
+		name        string
+		environment string
+		tlsDisabled bool
+		wantTLS     bool
+	}{
+		{name: "production without API key", environment: "production", wantTLS: true},
+		{name: "staging without API key", environment: "staging", wantTLS: true},
+		{name: "development plaintext without API key", environment: "development", tlsDisabled: true},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			oldDial := dialTemporalFunc
+			t.Cleanup(func() { dialTemporalFunc = oldDial })
+			var captured client.Options
+			dialTemporalFunc = func(options client.Options) (client.Client, error) {
+				captured = options
+				return nil, errors.New("synthetic dial failure")
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			_, err := connectTemporal(ctx, &config.Config{
+				Environment:         testCase.environment,
+				TemporalHost:        "temporal:7233",
+				TemporalTLSDisabled: testCase.tlsDisabled,
+			}, discardLogger())
+			require.Error(t, err)
+			assert.Nil(t, captured.Credentials, "TLS without an API key must remain supported")
+			assert.Equal(t, testCase.tlsDisabled, captured.ConnectionOptions.TLSDisabled)
+			if testCase.wantTLS {
+				require.NotNil(t, captured.ConnectionOptions.TLS)
+				assert.Equal(t, uint16(tls.VersionTLS13), captured.ConnectionOptions.TLS.MinVersion)
+				assert.False(t, captured.ConnectionOptions.TLS.InsecureSkipVerify)
+			} else {
+				assert.Nil(t, captured.ConnectionOptions.TLS)
+			}
 		})
 	}
 }

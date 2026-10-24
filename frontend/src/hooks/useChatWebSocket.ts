@@ -17,7 +17,7 @@ import {
 // Auth token storage handled natively via cookies
 import { logError } from "@/app/logger"
 import { compareMessageOrder, messageEpochMicroseconds } from "@/utils/messageOrder"
-import { parseWsMessage } from "@/api/schemas/wsMessage"
+import { parseWsMessage, type WsClientHeartbeatPing } from "@/api/schemas/wsMessage"
 import api from "@/api/client"
 import { getDatabaseLazily } from "@/db/lazy"
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
@@ -45,6 +45,18 @@ const RECONNECT_MAX_DELAY_MS = 30000 // 30 seconds
 // backend running, first attempt typically succeeds, so this cap rarely
 // fires.
 const MAX_RECONNECT_ATTEMPTS = 10
+// A short-lived open socket is not proof of recovery. Restore the retry budget
+// only after one connection has remained usable for this stability window.
+const RECONNECT_STABLE_RESET_MS = 30_000
+const CLIENT_HEARTBEAT_INTERVAL_MS = 30_000
+const CLIENT_HEARTBEAT_ACK_TIMEOUT_MS = 10_000
+const CLIENT_HEARTBEAT_CLOSE_CODE = 4000
+const CLIENT_HEARTBEAT_CLOSE_REASON = "heartbeat_timeout"
+const REPLAY_UNAVAILABLE_CLOSE_CODE = 4002
+const REPLAY_UNAVAILABLE_CLOSE_REASON = "replay_unavailable"
+// The replay join limiter refills at one token per second with a burst of two.
+// Wait just over one refill before making one same-socket retry.
+const REPLAY_JOIN_RETRY_DELAY_MS = 1_050
 // Wave 183 SW3 — extract magic number into named constant (W181 SW1
 // convention). Typing indicator clears 3s after the last typing event from
 // a peer; if peer continues typing, the next event resets the timeout.
@@ -54,6 +66,13 @@ const LIVE_MESSAGE_CACHE_LIMIT = 200
 // enough to bridge ordinary reconnect replay windows while keeping hook memory
 // strictly bounded; LRU refresh protects IDs that are actively replayed.
 const LIVE_MESSAGE_DEDUP_LIMIT = 4096
+
+function createHeartbeatNonce(): string {
+  return Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)))
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("")
+}
+
 function joinFrame(userId: string | undefined, chatId: string) {
   const checkpoint = readAndTouchReplayCheckpoint(userId, chatId)
   return checkpoint === undefined
@@ -345,7 +364,9 @@ export function useChatWebSocket({
   }
 
   const wsRef = useRef<WebSocket | null>(null)
+  const heartbeatCleanupRef = useRef<(() => void) | null>(null)
   const socketAccountEpochRef = useRef(-1)
+  const socketOpenedAtRef = useRef<{ socket: WebSocket; openedAt: number } | null>(null)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const reconnectAttemptRef = useRef(0)
   // The controller of the ticket request in flight, if any.
@@ -424,11 +445,55 @@ export function useChatWebSocket({
 
   const cleanup = useConstant(() => () => {
     clearTimeout(reconnectTimeoutRef.current)
+    heartbeatCleanupRef.current?.()
+    heartbeatCleanupRef.current = null
+    socketOpenedAtRef.current = null
     typingUsersRef.current.forEach((user) => clearTimeout(user.timeout))
     const empty = new Map<string, TypingUser>()
     typingUsersRef.current = empty
     setTypingUsers(empty)
   })
+
+  const scheduleReconnect = useConstant(() => (closeCode: number) => {
+    // Normal completion and authentication failures remain terminal. Heartbeat
+    // timeouts and unavailable replay use retryable client-owned close codes.
+    if (closeCode === 1000 || closeCode === 4001 || closeCode === 4003) return
+    if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
+      logError("[ws] Max reconnect attempts reached; giving up. Manual reconnect required.", {
+        attempts: reconnectAttemptRef.current,
+        lastCode: closeCode,
+      })
+      return
+    }
+    const delay = calculateReconnectDelay(reconnectAttemptRef.current)
+    reconnectAttemptRef.current += 1
+    reconnectTimeoutRef.current = setTimeout(() => connectRef.current(), delay)
+  })
+
+  const finishOwnedTransport = useConstant(
+    () =>
+      (
+        ws: WebSocket,
+        closeCode: number,
+        closeTransport: boolean,
+        closeReason = CLIENT_HEARTBEAT_CLOSE_REASON
+      ) => {
+        if (wsRef.current !== ws) return
+        socketOpenedAtRef.current = null
+        wsRef.current = null
+        wsStore.setConnected(false)
+        cleanup()
+
+        if (closeTransport) {
+          try {
+            ws.close(closeCode, closeReason)
+          } catch {
+            // The socket may have failed between the watchdog check and close.
+          }
+        }
+        scheduleReconnect(closeCode)
+      }
+  )
 
   const connect = useCallback(() => {
     const accountEpoch = accountEpochRef.current
@@ -533,13 +598,136 @@ export function useChatWebSocket({
         wsRef.current = ws
         socketAccountEpochRef.current = accountEpoch
         const ownsTransport = () => ownsSession() && wsRef.current === ws
+        let pendingHeartbeatNonce: string | null = null
+        let heartbeatInterval: ReturnType<typeof setInterval> | undefined
+        let heartbeatAckTimeout: ReturnType<typeof setTimeout> | undefined
+        let heartbeatPaused = false
+        let heartbeatDisposed = false
+        let replayJoinRetryTimeout: ReturnType<typeof setTimeout> | undefined
+        let replayJoinRetryAttempted = false
+
+        const clearHeartbeatTimers = () => {
+          clearInterval(heartbeatInterval)
+          heartbeatInterval = undefined
+          clearTimeout(heartbeatAckTimeout)
+          heartbeatAckTimeout = undefined
+          pendingHeartbeatNonce = null
+        }
+
+        const disposeHeartbeat = () => {
+          heartbeatDisposed = true
+          document.removeEventListener("visibilitychange", handleVisibilityChange)
+          clearHeartbeatTimers()
+          clearTimeout(replayJoinRetryTimeout)
+          replayJoinRetryTimeout = undefined
+        }
+
+        const scheduleReplayJoinRetry = (room: string) => {
+          if (
+            replayJoinRetryAttempted ||
+            replayJoinRetryTimeout !== undefined ||
+            !currentUserId ||
+            activeRoomRef.current !== room
+          ) {
+            return
+          }
+          const checkpoint = peekReplayCheckpoint(currentUserId, room)
+          if (checkpoint === undefined) return
+
+          replayJoinRetryAttempted = true
+          replayJoinRetryTimeout = setTimeout(() => {
+            replayJoinRetryTimeout = undefined
+            // ownsTransport binds the retry to this socket's authenticated account epoch.
+            if (
+              !ownsTransport() ||
+              ws.readyState !== WebSocket.OPEN ||
+              activeRoomRef.current !== room
+            ) {
+              return
+            }
+            const currentCheckpoint = peekReplayCheckpoint(currentUserId, room)
+            if (
+              currentCheckpoint === undefined ||
+              currentCheckpoint.sequence !== checkpoint.sequence ||
+              currentCheckpoint.resumeToken !== checkpoint.resumeToken
+            ) {
+              return
+            }
+            try {
+              ws.send(
+                JSON.stringify({
+                  type: "join",
+                  room,
+                  resume_token: checkpoint.resumeToken,
+                })
+              )
+            } catch {
+              /* WS closed between the ownership check and send. */
+            }
+          }, REPLAY_JOIN_RETRY_DELAY_MS)
+        }
+
+        const sendHeartbeat = () => {
+          if (
+            heartbeatDisposed ||
+            heartbeatPaused ||
+            pendingHeartbeatNonce !== null ||
+            !ownsTransport() ||
+            ws.readyState !== WebSocket.OPEN
+          ) {
+            return
+          }
+
+          const nonce = createHeartbeatNonce()
+          const ping: WsClientHeartbeatPing = { type: "heartbeat_ping", nonce }
+          pendingHeartbeatNonce = nonce
+          heartbeatAckTimeout = setTimeout(() => {
+            if (heartbeatDisposed || !ownsTransport() || pendingHeartbeatNonce !== nonce) return
+            if (document.visibilityState === "hidden") {
+              heartbeatPaused = true
+              clearHeartbeatTimers()
+              return
+            }
+            finishOwnedTransport(ws, CLIENT_HEARTBEAT_CLOSE_CODE, true)
+          }, CLIENT_HEARTBEAT_ACK_TIMEOUT_MS)
+
+          try {
+            ws.send(JSON.stringify(ping))
+          } catch {
+            finishOwnedTransport(ws, CLIENT_HEARTBEAT_CLOSE_CODE, true)
+          }
+        }
+
+        const startHeartbeat = (sendImmediately: boolean) => {
+          if (heartbeatDisposed || heartbeatPaused || !ownsTransport()) return
+          if (heartbeatInterval === undefined) {
+            heartbeatInterval = setInterval(sendHeartbeat, CLIENT_HEARTBEAT_INTERVAL_MS)
+          }
+          if (sendImmediately) sendHeartbeat()
+        }
+
+        const handleVisibilityChange = () => {
+          if (document.visibilityState === "hidden") {
+            heartbeatPaused = true
+            clearHeartbeatTimers()
+            return
+          }
+          if (!heartbeatPaused || heartbeatDisposed || !ownsTransport()) return
+          heartbeatPaused = false
+          startHeartbeat(true)
+        }
 
         ws.onopen = () => {
           if (!ownsTransport()) return
           const isReconnect = lastConnectedAccountEpochRef.current === accountEpoch
           lastConnectedAccountEpochRef.current = accountEpoch
           wsStore.setConnected(true)
-          reconnectAttemptRef.current = 0
+          socketOpenedAtRef.current = { socket: ws, openedAt: Date.now() }
+
+          heartbeatPaused = document.visibilityState === "hidden"
+          document.addEventListener("visibilitychange", handleVisibilityChange)
+          heartbeatCleanupRef.current = disposeHeartbeat
+          startHeartbeat(false)
 
           // W204 SW4 — rejoin the active room on (re)connect. ws-hub room
           // membership is per-connection: a reconnect is a fresh Client with
@@ -567,10 +755,9 @@ export function useChatWebSocket({
             queryClient.invalidateQueries({ queryKey: ["chats"], refetchType: "active" })
           }
 
-          // ws-hub owns the transport heartbeat and sends WebSocket control
-          // ping frames. Browsers answer those automatically; an application
-          // JSON `{"type":"ping"}` is not a valid client command and would
-          // only be rejected at the hub's protocol boundary.
+          // ws-hub also owns WebSocket control ping frames, which browsers answer
+          // automatically. The application heartbeat uses a distinct typed JSON
+          // command so the client can detect silent transport blackholes.
         }
 
         ws.onmessage = (event) => {
@@ -602,6 +789,23 @@ export function useChatWebSocket({
             }
 
             switch (validated.type) {
+              case "heartbeat_pong": {
+                if (pendingHeartbeatNonce !== validated.nonce) break
+                clearTimeout(heartbeatAckTimeout)
+                heartbeatAckTimeout = undefined
+                pendingHeartbeatNonce = null
+                const openState = socketOpenedAtRef.current
+                if (
+                  openState?.socket === ws &&
+                  Date.now() - openState.openedAt >= RECONNECT_STABLE_RESET_MS
+                ) {
+                  // An open socket is only healthy after its matching heartbeat
+                  // ACK. Unacknowledged blackholes must retain the retry budget.
+                  reconnectAttemptRef.current = 0
+                }
+                break
+              }
+
               case "new_message": {
                 // Presence in the render cache, not the dedup memory, decides
                 // whether a frame still needs reconciling: a self-authored
@@ -858,7 +1062,28 @@ export function useChatWebSocket({
               }
 
               case "error":
-                if (validated.code === "invalid_resume_token" && validated.room !== undefined) {
+                if (validated.code === "replay_join_rate_limited" && validated.room !== undefined) {
+                  scheduleReplayJoinRetry(validated.room)
+                } else if (
+                  validated.code === "replay_unavailable" &&
+                  validated.room !== undefined &&
+                  validated.room === activeRoomRef.current &&
+                  currentUserId &&
+                  peekReplayCheckpoint(currentUserId, validated.room) !== undefined
+                ) {
+                  // Replay membership was rejected, so retry on a fresh socket
+                  // through the existing capped backoff. The active room's
+                  // saved signed cursor is left intact for the next join.
+                  finishOwnedTransport(
+                    ws,
+                    REPLAY_UNAVAILABLE_CLOSE_CODE,
+                    true,
+                    REPLAY_UNAVAILABLE_CLOSE_REASON
+                  )
+                } else if (
+                  validated.code === "invalid_resume_token" &&
+                  validated.room !== undefined
+                ) {
                   removeReplayCheckpoint(currentUserId, validated.room)
                   void queryClient.invalidateQueries({
                     queryKey: ["messages", validated.room],
@@ -899,34 +1124,7 @@ export function useChatWebSocket({
           // A late close from a superseded transport must not tear down the
           // connection state or timers belonging to the newer socket.
           if (!ownsTransport()) return
-          wsRef.current = null
-          wsStore.setConnected(false)
-          cleanup()
-
-          // Wave 183 SW3 — added MAX_RECONNECT_ATTEMPTS cap to prevent
-          // runaway retry loops. Pre-W183 retried indefinitely on every
-          // non-clean close, generating perpetual console errors when
-          // backend was unreachable for extended periods. Empirically
-          // observed in SW1 verification: 15+ attempts in 30s with no
-          // backend, 30+ console errors logged. With cap, total retry
-          // window is ~3 min (1s+2s+4s+8s+16s+30s×5) before giving up.
-          // After cap, WS stays disconnected; W183 SW6 will add a UI
-          // reconnect banner. Codes 1000 (normal close), 4001 (auth
-          // expired), 4003 (forbidden) already short-circuit retries.
-          if (event.code !== 1000 && event.code !== 4001 && event.code !== 4003) {
-            if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
-              logError(
-                "[ws] Max reconnect attempts reached; giving up. Manual reconnect required.",
-                { attempts: reconnectAttemptRef.current, lastCode: event.code }
-              )
-              return
-            }
-            const delay = calculateReconnectDelay(reconnectAttemptRef.current)
-            reconnectAttemptRef.current += 1
-            reconnectTimeoutRef.current = setTimeout(() => {
-              connectRef.current()
-            }, delay)
-          }
+          finishOwnedTransport(ws, event.code, false)
         }
 
         ws.onerror = (error) => {
@@ -937,7 +1135,7 @@ export function useChatWebSocket({
         logError("[WebSocket] Failed to connect:", e)
       }
     })() // end async IIFE — ticket fetch + WS connect
-  }, [enabled, currentUserId, cleanup, queryClient, wsStore])
+  }, [enabled, currentUserId, finishOwnedTransport, queryClient, wsStore])
 
   // Only refs, the constant cleanup and the provider's store are captured.
   const disconnect = useConstant(() => () => {

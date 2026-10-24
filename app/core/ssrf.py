@@ -23,6 +23,7 @@ _BLOCKED_NETWORKS: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = (
     ipaddress.ip_network("169.254.0.0/16"),  # link-local / AWS IMDS
     ipaddress.ip_network("100.64.0.0/10"),  # CGNAT (RFC 6598)
     ipaddress.ip_network("0.0.0.0/8"),  # "this" network
+    ipaddress.ip_network("::/128"),  # IPv6 unspecified
     ipaddress.ip_network("::1/128"),  # IPv6 loopback
     ipaddress.ip_network("fc00::/7"),  # IPv6 ULA
     ipaddress.ip_network("fe80::/10"),  # IPv6 link-local

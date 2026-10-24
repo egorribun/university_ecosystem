@@ -1,0 +1,330 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ephemeral-valid-pod
+  namespace: university-ecosystem
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+  ephemeralContainers:
+    - name: debug
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop: ["ALL"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ephemeral-root-override-pod
+  namespace: university-ecosystem
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+  ephemeralContainers:
+    - name: debug
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: false
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop: ["ALL"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ephemeral-unconfined-override-pod
+  namespace: university-ecosystem
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+  ephemeralContainers:
+    - name: debug
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        seccompProfile:
+          type: Unconfined
+        capabilities:
+          drop: ["ALL"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ephemeral-host-network-legacy-pod
+  namespace: university-ecosystem
+spec:
+  hostNetwork: true
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+  ephemeralContainers:
+    - name: debug
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop: ["ALL"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ephemeral-privilege-escalation-pod
+  namespace: university-ecosystem
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+  ephemeralContainers:
+    - name: debug
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: true
+        readOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop: ["ALL"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ephemeral-capabilities-pod
+  namespace: university-ecosystem
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+  ephemeralContainers:
+    - name: debug
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop: ["NET_RAW"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ephemeral-writable-root-pod
+  namespace: university-ecosystem
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+  ephemeralContainers:
+    - name: debug
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: false
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop: ["ALL"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ephemeral-unapproved-image-pod
+  namespace: university-ecosystem
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+  ephemeralContainers:
+    - name: debug
+      image: ghcr.io/untrusted/debug:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop: ["ALL"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ephemeral-cached-image-pod
+  namespace: university-ecosystem
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+  ephemeralContainers:
+    - name: debug
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: IfNotPresent
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop: ["ALL"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ephemeral-latest-image-pod
+  namespace: university-ecosystem
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: ghcr.io/egorribun/university_ecosystem/backend:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+  ephemeralContainers:
+    - name: debug
+      image: ghcr.io/egorribun/university_ecosystem/backend:latest
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop: ["ALL"]

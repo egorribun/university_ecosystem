@@ -24,6 +24,7 @@ import (
 	tclog "github.com/testcontainers/testcontainers-go/log"
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 	"github.com/university-ecosystem/gateway/internal/config"
+	"github.com/university-ecosystem/gateway/middleware"
 )
 
 // startRedisContainer spins up pinned Redis 7.4.11-alpine for Gateway integration tests.
@@ -55,6 +56,7 @@ func generateTestJWT(t *testing.T, secret []byte, userID, role, jti string) stri
 	t.Helper()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":       userID,
+		"iss":       middleware.DefaultJWTIssuer,
 		"aud":       "university-ecosystem-api",
 		"role":      role,
 		"jti":       jti,

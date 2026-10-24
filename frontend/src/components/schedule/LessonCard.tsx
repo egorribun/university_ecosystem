@@ -203,7 +203,7 @@ export const LessonCard = memo(function LessonCard({
             e.stopPropagation()
             onDelete()
           }}
-          className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded bg-surface/(--opacity-strong) text-text-secondary opacity-0 shadow-sm transition-all duration-fast hover:bg-error hover:text-[var(--sched-on-accent)] group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-brand"
+          className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded bg-surface/[calc(var(--opacity-strong)*100%)] text-text-secondary opacity-0 shadow-sm transition-all duration-fast hover:bg-error hover:text-[var(--sched-on-accent)] group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-brand"
         >
           <DeleteIcon size={11} aria-hidden="true" />
         </button>

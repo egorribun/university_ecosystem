@@ -1,3 +1,4 @@
+import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import { createElement } from "react"
 import { act, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -368,7 +369,7 @@ describe("EventsCard", () => {
 
       const todayToggle = screen.getByRole("button", { name: "dashboard:scope.today" })
       const scopeGroup = todayToggle.parentElement!
-      expect(scopeGroup).toHaveStyle({ background: "var(--dash-btn-bg)" })
+      expectInlineBackground(scopeGroup, "var(--dash-btn-bg)")
       expect(todayToggle).toHaveClass("rounded-md", "bg-brand", "shadow-sm")
       expect(screen.getByRole("button", { name: "dashboard:scope.week" })).toHaveClass(
         "rounded-md",

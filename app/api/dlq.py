@@ -14,7 +14,7 @@ from typing import Annotated, Any
 from dishka import FromComponent
 from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 
 # Imported at runtime rather than under TYPE_CHECKING: Dishka resolves an
@@ -73,7 +73,7 @@ class DLQStatusResponse(BaseModel):
 class DLQReplayRequest(BaseModel):
     """Request model for manual DLQ replay trigger."""
 
-    batch_size: int = 20
+    batch_size: int = Field(default=20, ge=1)
     force: bool = False
     target: str = "all"  # "all", "in_memory", or "db"
 
@@ -525,7 +525,7 @@ async def requeue_outbox_failure(
 @inject
 async def cleanup_dlq(
     db: FromDishka[AsyncDatabaseSession],
-    older_than_days: int = 7,
+    older_than_days: int = Query(default=7, ge=0),
     _: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> dict[str, Any]:
     """

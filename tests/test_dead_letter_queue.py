@@ -158,10 +158,15 @@ async def test_mark_job_completed(dlq, mock_session):
     job = MagicMock()
     job.status = JobStatus.RETRYING
     job.job_type = "email"
+    job_hash = compute_job_hash("email", {})
+    job.job_hash = job_hash
+    job.retry_count = 2
 
     await dlq.mark_job_completed(job)
 
     assert job.status == JobStatus.COMPLETED
+    assert job.job_hash == job_hash
+    assert job.retry_count == 2
     mock_session.flush.assert_called_once()
     mock_session.commit.assert_not_called()
 

@@ -317,7 +317,7 @@ export default function Dashboard() {
               >
                 <WidgetErrorBoundary widgetName="NewsCard" showFallback>
                   <SkeletonMorph loaded={newsLoaded} skeleton={<NewsCardSkeleton />}>
-                    <NewsCard locale={locale} />
+                    <NewsCard locale={locale} queryResult={newsQuery} />
                   </SkeletonMorph>
                 </WidgetErrorBoundary>
               </div>

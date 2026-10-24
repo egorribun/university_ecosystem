@@ -582,7 +582,7 @@ export default function LivePushToasts() {
             {/* Glass sheen overlay */}
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 bg-linear-to-br from-white/(--opacity-faint) via-transparent to-transparent"
+              className="pointer-events-none absolute inset-0 bg-linear-to-br from-white/[calc(var(--opacity-faint)*100%)] via-transparent to-transparent"
             />
 
             <div className={cn("shrink-0 mt-0.5 relative z-base", severityIconColor)}>
@@ -614,14 +614,14 @@ export default function LivePushToasts() {
             <m.button
               type="button"
               onClick={() => handleClose()}
-              className="group/btn relative z-base flex h-7 w-7 min-h-11 min-w-11 items-center justify-center rounded-full bg-linear-to-tr from-white/(--opacity-faint) to-white/(--opacity-subtle) text-(--text-secondary) transition-all duration-base hover:scale-110 hover:shadow-premium active:scale-95"
+              className="group/btn relative z-base flex h-7 w-7 min-h-11 min-w-11 items-center justify-center rounded-full bg-linear-to-tr from-white/[calc(var(--opacity-faint)*100%)] to-white/[calc(var(--opacity-subtle)*100%)] text-(--text-secondary) transition-all duration-base hover:scale-110 hover:shadow-premium active:scale-95"
               aria-label={t("common:buttons.close")}
             >
               <X className="h-3.5 w-3.5 opacity-hover transition-opacity group-hover/btn:opacity-100" />
             </m.button>
 
             {/* Progress Bar — gradient style */}
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 overflow-hidden rounded-b-xl bg-white/(--opacity-faint)">
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 overflow-hidden rounded-b-xl bg-white/[calc(var(--opacity-faint)*100%)]">
               <m.div
                 className={cn("absolute bottom-0 left-0 h-0.5 opacity-heavy", severityIconColor)}
                 style={{ background: "linear-gradient(to right, currentColor, transparent)" }}

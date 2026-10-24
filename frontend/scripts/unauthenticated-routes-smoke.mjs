@@ -15,11 +15,12 @@
  *                          redirects to /forgot-password depending on route
  *                          guard; either is acceptable for SSR-shell smoke)
  *
- * Three-layer theme initialization:
- * Apply Cookie + localStorage(via addInitScript) + emulateMedia BEFORE
- * page.goto so both SSR initial render AND client hydration converge on
- * the same theme. Default theme = "light" (unauth visitors typically don't
- * have a stored preference yet). Dark theme runs are gated by THEME env.
+ * Theme initialization:
+ * Apply the explicit theme cookie + localStorage before page.goto so SSR and
+ * client hydration use the selected theme. On /reset-password only, emulate
+ * the opposite system scheme to prove the dark utility follows the explicit
+ * user selection rather than prefers-color-scheme. Other route health checks
+ * retain their matching system/theme setup.
  *
  * ## Usage
  *
@@ -33,10 +34,11 @@
  *
  * ## Exit codes
  *
- *   0: all 4 routes return HTTP 200 + 0 hydration errors
+ *   0: all 4 routes return HTTP 200 + 0 hydration errors + theme probe passed
  *   1: 1+ routes returned non-200 status OR navigation error
  *   2: 1+ routes had hydration errors detected (React #418-#427 family OR
  *      "hydrat" / "Hydration" / "did not match" substring match)
+ *   3: 1+ routes had runtime/network or explicit theme-style assertion errors
  */
 
 import { mkdir, writeFile } from "node:fs/promises"
@@ -50,6 +52,11 @@ import {
   requestFailureRecord,
   responseRecord,
 } from "./visual-smoke-contract.mjs"
+import {
+  initializeSmokeTheme,
+  isThemeVariantProbeRoute,
+  verifyThemeVariant,
+} from "./unauthenticated-routes-theme.mjs"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -112,27 +119,10 @@ async function smokePublicRoute(page, routePath, theme, outDir) {
   page.on("response", responseHandler)
   page.on("requestfailed", requestFailedHandler)
 
-  // Initialize all three theme sources before page.goto so both
-  // SSR initial render AND client hydration converge on the correct theme.
-  // A cookie drives SSR, localStorage drives client state, and emulateMedia
-  // covers system-preference reads. A single source cannot guarantee parity.
-  const cookieDomain = new URL(ORIGIN).hostname
-  await page.context().addCookies([
-    {
-      name: "ue-mode",
-      value: theme,
-      domain: cookieDomain,
-      path: "/",
-    },
-  ])
-  await page.addInitScript((themeName) => {
-    try {
-      localStorage.setItem("ue-mode", themeName)
-    } catch {
-      // ignore Safari private-browsing failures (RZ-31-03)
-    }
-  }, theme)
-  await page.emulateMedia({ colorScheme: theme })
+  // Keep the SSR cookie and client localStorage at the explicit theme.
+  // The helper uses the opposite OS scheme only for the /reset-password
+  // utility probe, so the other three route-health checks remain unchanged.
+  await initializeSmokeTheme(page, { origin: ORIGIN, routePath, theme })
 
   const targetUrl = `${ORIGIN}${routePath}`
   let httpStatus = null
@@ -155,13 +145,30 @@ async function smokePublicRoute(page, routePath, theme, outDir) {
     if (process.env.UNAUTHENTICATED_SMOKE_CAPTURE_SCREENSHOTS === "true") {
       try {
         const screenshotPath = path.join(outDir, `${safeFilename(routePath)}_${theme}.png`)
-        await page.screenshot({ path: screenshotPath, fullPage: false, timeout: 15_000 })
+        await page.screenshot({
+          path: screenshotPath,
+          fullPage: false,
+          timeout: 15_000,
+        })
       } catch (screenshotErr) {
         console.warn(`  screenshot capture failed: ${screenshotErr.message?.slice(0, 100)}`)
       }
     }
   } catch (err) {
     navError = err
+  }
+
+  let themeVariantCheck = null
+  let themeVariantError = null
+  if (isThemeVariantProbeRoute(routePath)) {
+    try {
+      if (navError || httpStatus !== 200) {
+        throw new Error("Theme variant probe requires a successful /reset-password navigation")
+      }
+      themeVariantCheck = await verifyThemeVariant(page, theme)
+    } catch (err) {
+      themeVariantError = err instanceof Error ? err.message : String(err)
+    }
   }
 
   page.off("console", consoleHandler)
@@ -189,6 +196,8 @@ async function smokePublicRoute(page, routePath, theme, outDir) {
         finalUrl,
         httpStatus,
         navigationError: navError?.message ?? null,
+        themeVariantCheck,
+        themeVariantError,
         consoleMessages,
         networkResponseCount: networkResponses.length,
         networkResponses,
@@ -213,6 +222,8 @@ async function smokePublicRoute(page, routePath, theme, outDir) {
     sampleNetworkErrors: nonSuccessfulResponses.slice(0, 3),
     sampleNetworkFailures: networkFailures.slice(0, 3),
     navError: navError?.message ?? null,
+    themeVariantCheck,
+    themeVariantError,
   }
 }
 
@@ -285,6 +296,14 @@ async function main() {
     console.log(
       `  ${glyph} http=${result.httpStatus} final=${result.finalUrl ? new URL(result.finalUrl).pathname : "n/a"} console_err=${result.consoleErrorCount} hydr_err=${result.hydrationErrorCount} net_err=${result.networkErrorCount} net_resp=${result.networkResponseCount}`
     )
+    if (result.themeVariantCheck) {
+      const check = result.themeVariantCheck
+      console.log(
+        `  ✓ dark utility follows explicit ${check.explicitTheme} theme (system=${check.systemColorScheme}, alpha=${check.backgroundAlpha.toFixed(3)}, luminance=${check.backgroundLuminance.toFixed(3)})`
+      )
+    } else if (result.themeVariantError) {
+      console.error(`  ✗ dark utility theme assertion failed: ${result.themeVariantError}`)
+    }
   }
 
   await browser.close()
@@ -293,7 +312,9 @@ async function main() {
 
   const failed = summaries.filter((s) => s.httpStatus !== 200)
   const hydrationIssues = summaries.filter((s) => s.hydrationErrorCount > 0)
-  const runtimeIssues = summaries.filter((s) => s.consoleErrorCount > 0 || s.networkErrorCount > 0)
+  const runtimeIssues = summaries.filter(
+    (s) => s.consoleErrorCount > 0 || s.networkErrorCount > 0 || s.themeVariantError
+  )
 
   if (failed.length > 0) {
     console.error(
@@ -307,12 +328,12 @@ async function main() {
   }
   if (runtimeIssues.length > 0) {
     console.error(
-      `\n✗ ${runtimeIssues.length}/${summaries.length} routes had console/page/network errors`
+      `\n✗ ${runtimeIssues.length}/${summaries.length} routes had console/page/network or theme assertion errors`
     )
     process.exit(3)
   }
   console.log(
-    `\n✓ All ${summaries.length} unauthed routes returned 200 + 0 hydration errors through Caddy → Node SSR → backend chain (theme=${THEME})`
+    `\n✓ All ${summaries.length} unauthed routes returned 200 + 0 hydration errors through Caddy → Node SSR → backend chain; explicit-theme dark utility probe passed (theme=${THEME})`
   )
   console.log(`✓ Unauthenticated route smoke completed successfully`)
 }

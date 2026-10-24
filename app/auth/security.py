@@ -670,11 +670,13 @@ def decode_token(token: str) -> dict[str, Any] | None:
                     # Previously only exp/iat/sub/jti were required; a token without
                     # an aud claim would be accepted even when audience validation is
                     # configured. Now any token missing aud is explicitly rejected.
-                    "require": ["exp", "iat", "sub", "jti", "aud"],
+                    # AUD-354: Require the configured issuer claim as well.
+                    "require": ["exp", "iat", "sub", "jti", "aud", "iss"],
                 },
                 # Direct access to settings field — never use getattr fallback.
                 # (RZ-NEW-003: getattr fallback hides misconfiguration at startup.)
                 audience=settings.jwt_audience,
+                issuer=settings.jwt_issuer,
             )
             return payload if isinstance(payload, dict) else dict(payload)
         except JWTError:

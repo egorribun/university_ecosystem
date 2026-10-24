@@ -9863,6 +9863,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "nats-outage":
             try:
                 from scripts.owned_nats_coordinator import (
+                    BrokerProbePhase,
                     OutageCheckpoint,
                     OutageOutcome,
                     OutageResult,
@@ -9888,12 +9889,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                     and type(result.checkpoint) is not OutageCheckpoint
                 )
                 or (
+                    result.outcome is OutageOutcome.ACCEPTED
+                    and result.checkpoint is not None
+                )
+                or (
                     result.runtime_diagnostic is not None
                     and (
                         type(result.runtime_diagnostic) is not RuntimeObservationPhase
                         or result.outcome is not OutageOutcome.FAILED
                         or result.stage is not OutageStage.PREFLIGHT
                         or result.checkpoint is not OutageCheckpoint.OBSERVE_RUNTIME
+                    )
+                )
+                or (
+                    result.broker_diagnostic is not None
+                    and (
+                        type(result.broker_diagnostic) is not BrokerProbePhase
+                        or result.outcome is not OutageOutcome.FAILED
+                        or result.stage is not OutageStage.BROKER
+                        or result.checkpoint is not OutageCheckpoint.BROKER_PROBE
                     )
                 )
             ):
@@ -9912,10 +9926,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                     if result.runtime_diagnostic is None
                     else f" runtime_diagnostic={result.runtime_diagnostic.value}"
                 )
+                broker_diagnostic = (
+                    ""
+                    if result.broker_diagnostic is None
+                    else f" broker_diagnostic={result.broker_diagnostic.value}"
+                )
                 raise StandError(
                     "owned NATS acceptance failed "
                     f"outcome={result.outcome.value} stage={result.stage.value}"
-                    f"{checkpoint}{diagnostic}"
+                    f"{checkpoint}{diagnostic}{broker_diagnostic}"
                 )
         elif args.command == "up":
             up(args.ref, stack=args.stack)

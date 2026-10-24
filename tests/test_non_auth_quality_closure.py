@@ -598,6 +598,8 @@ def _settings_values() -> dict[str, object]:
         "database_url": "sqlite+aiosqlite:///:memory:",
         "algorithm": "RS256",
         "revocation_redis_url": "redis://revocation.internal:6380/0",
+        "rate_limit_storage_backend": "redis",
+        "rate_limit_storage_uri": "redis://localhost",
         # Keep unrelated production guards valid so these cases reach the CWV
         # validation paths under test. All credentials are ephemeral test keys.
         "smtp_host": "relay.aud471.invalid",
@@ -679,6 +681,7 @@ def test_settings_reject_every_partial_cwv_trust_binding(
 
 def test_cwv_validator_rejects_non_staging_environment_after_other_guards() -> None:
     configured = Settings(**_settings_values())
+    assert configured.rate_limit_storage_backend == "redis"
     configured.environment = "production"
     with pytest.raises(ValueError, match="staging environment"):
         configured._validate_cwv_rum_settings()

@@ -1225,7 +1225,7 @@ def test_staging_render_rejects_inline_nats_auth_material(override: str) -> None
         (
             "--set-string",
             "global.imageTag=mutable-tag",
-            "global.imageTag must be the exact 40- or 64-character lowercase Git SHA",
+            "global.imageTag must be the exact 40-character lowercase Git SHA",
         ),
         (
             "--set-string",

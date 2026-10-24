@@ -218,7 +218,7 @@ describe("Input survivor contracts", () => {
       "custom-input",
       "border-error-text",
       "focus:border-error-text",
-      "focus:ring-error-text/(--opacity-subtle)",
+      "focus:ring-error-text/[calc(var(--opacity-subtle)*100%)]",
       "w-auto",
       "px-5",
       "py-4",
@@ -348,7 +348,7 @@ describe("Card and GlassCard survivor contracts", () => {
       "absolute",
       "inset-0",
       "bg-linear-to-br",
-      "from-white/(--opacity-subtle)",
+      "from-white/[calc(var(--opacity-subtle)*100%)]",
       "via-transparent",
       "to-transparent",
       "opacity-medium"

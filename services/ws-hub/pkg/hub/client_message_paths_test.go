@@ -17,6 +17,7 @@ import (
 	"github.com/quic-go/webtransport-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/time/rate"
 )
 
 type scriptedPullSubscription struct {
@@ -782,6 +783,7 @@ func TestClientHandleJoin_RateLimitsReplayConsumerChurn(t *testing.T) {
 	}
 	oldFetch := fetchPullMessagesFunc
 	oldUnsubscribe := unsubscribePullFunc
+	oldLimiterFactory := newReplayJoinLimiterFunc
 	var replayDone sync.WaitGroup
 	// The limiter permits exactly two replay workers in this scenario.  Wait
 	// for both deferred unsubscribe callbacks before restoring the package-level
@@ -793,7 +795,11 @@ func TestClientHandleJoin_RateLimitsReplayConsumerChurn(t *testing.T) {
 		replayDone.Wait()
 		fetchPullMessagesFunc = oldFetch
 		unsubscribePullFunc = oldUnsubscribe
+		newReplayJoinLimiterFunc = oldLimiterFactory
 	})
+	newReplayJoinLimiterFunc = func() *rate.Limiter {
+		return rate.NewLimiter(rate.Every(time.Hour), 2)
+	}
 	fetchPullMessagesFunc = func(*nats.Subscription, int, ...nats.PullOpt) ([]*nats.Msg, error) {
 		return nil, nats.ErrTimeout
 	}
@@ -815,7 +821,159 @@ func TestClientHandleJoin_RateLimitsReplayConsumerChurn(t *testing.T) {
 	assert.Equal(t, int32(2), pullCalls.Load(), "join flood must stay within the limiter burst")
 	assert.Equal(t, beforeLimited+1, testutil.ToFloat64(ReplayJoinRateLimitedTotal))
 	client.mu.Lock()
-	assert.True(t, client.Rooms["room-3"], "a rate-limited third join must still establish live membership")
+	assert.False(t, client.Rooms["room-3"], "a rate-limited resume join must not become live-only membership")
+	client.mu.Unlock()
+	var frame map[string]any
+	require.NoError(t, json.Unmarshal(<-client.Send, &frame))
+	assert.Equal(t, "replay_join_rate_limited", frame["code"])
+	assert.Equal(t, "room-3", frame["room"])
+}
+
+func TestClientHandleJoin_RateLimitedResumeCanRetryTheSameCursor(t *testing.T) {
+	h := setupTestHub()
+	enableSecureReplayForTest(h)
+	var pullCalls atomic.Int32
+	var subscriptionIDs sync.Map
+	var fetchCounts sync.Map
+	h.js = &scriptedPullSubscription{pull: func(string, string, ...nats.SubOpt) (*nats.Subscription, error) {
+		subscription := &nats.Subscription{}
+		subscriptionIDs.Store(subscription, pullCalls.Add(1))
+		return subscription, nil
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	client := &Client{
+		ID: "retryable-replay", UserID: "retryable-user", Hub: h,
+		Rooms: make(map[string]bool), Send: make(chan []byte, 8), ctx: ctx, cancel: cancel,
+	}
+	oldLimiterFactory := newReplayJoinLimiterFunc
+	oldFetch := fetchPullMessagesFunc
+	oldAck := ackOfflineMessageFunc
+	oldUnsubscribe := unsubscribePullFunc
+	t.Cleanup(func() {
+		cancel()
+		h.replayWG.Wait()
+		newReplayJoinLimiterFunc = oldLimiterFactory
+		fetchPullMessagesFunc = oldFetch
+		ackOfflineMessageFunc = oldAck
+		unsubscribePullFunc = oldUnsubscribe
+	})
+	newReplayJoinLimiterFunc = func() *rate.Limiter {
+		return rate.NewLimiter(rate.Every(time.Hour), 2)
+	}
+	fetchPullMessagesFunc = func(subscription *nats.Subscription, _ int, _ ...nats.PullOpt) ([]*nats.Msg, error) {
+		idValue, exists := subscriptionIDs.Load(subscription)
+		if !exists {
+			return nil, errors.New("unknown replay subscription")
+		}
+		if idValue.(int32) != 3 {
+			return nil, nats.ErrTimeout
+		}
+		countValue, _ := fetchCounts.LoadOrStore(subscription, &atomic.Int32{})
+		if countValue.(*atomic.Int32).Add(1) != 1 {
+			return nil, nats.ErrTimeout
+		}
+		message := replayMessage(8)
+		message.Subject = "chat.room-3"
+		message.Data = []byte(`{"type":"new_message","room":"room-3","payload":{"chat_id":"room-3","n":8}}`)
+		return []*nats.Msg{message}, nil
+	}
+	ackOfflineMessageFunc = func(*nats.Msg) error { return nil }
+	unsubscribePullFunc = func(*nats.Subscription) error { return nil }
+
+	for sequence := uint64(1); sequence <= 2; sequence++ {
+		room := fmt.Sprintf("room-%d", sequence)
+		client.handleJoin(client.ctx, Message{
+			Type: "join", Room: room,
+			Payload: resumeJoinPayload(t, h, client.UserID, room, sequence),
+		})
+	}
+	require.Eventually(t, func() bool { return pullCalls.Load() == 2 }, time.Second, 10*time.Millisecond)
+
+	room := "room-3"
+	payload := resumeJoinPayload(t, h, client.UserID, room, 7)
+	client.handleJoin(client.ctx, Message{Type: "join", Room: room, Payload: payload})
+	client.mu.Lock()
+	joinedAfterLimit := client.Rooms[room]
+	client.mu.Unlock()
+	assert.False(t, joinedAfterLimit, "the rejected resume cursor must not be committed as live-only membership")
+	var rateLimitFrame map[string]any
+	require.NoError(t, json.Unmarshal(<-client.Send, &rateLimitFrame))
+	assert.Equal(t, "replay_join_rate_limited", rateLimitFrame["code"])
+	assert.Equal(t, room, rateLimitFrame["room"])
+
+	client.replayMu.Lock()
+	client.replayJoinLimiter = rate.NewLimiter(rate.Inf, 1)
+	client.replayMu.Unlock()
+	client.handleJoin(client.ctx, Message{Type: "join", Room: room, Payload: payload})
+	require.Eventually(t, func() bool { return pullCalls.Load() == 3 }, time.Second, 10*time.Millisecond)
+	var replayed map[string]any
+	select {
+	case raw := <-client.Send:
+		require.NoError(t, json.Unmarshal(raw, &replayed))
+	case <-time.After(time.Second):
+		t.Fatal("retrying the same signed cursor did not deliver replay")
+	}
+	assert.Equal(t, room, replayed["room"])
+	assert.Equal(t, true, replayed["replayed"])
+	assert.Equal(t, float64(8), replayed["seq"])
+}
+
+func TestClientHandleJoin_RejectsUnavailableResumeWithoutLiveOnlyJoin(t *testing.T) {
+	h := setupTestHub()
+	enableSecureReplayForTest(h)
+	h.chatReplayAvailable.Store(false)
+	var pullCalls atomic.Int32
+	h.js = &scriptedPullSubscription{pull: func(string, string, ...nats.SubOpt) (*nats.Subscription, error) {
+		pullCalls.Add(1)
+		return &nats.Subscription{}, nil
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	client := &Client{
+		ID: "unavailable-replay", UserID: "unavailable-user", Hub: h,
+		Rooms: make(map[string]bool), Send: make(chan []byte, 4), ctx: ctx, cancel: cancel,
+	}
+	oldFetch := fetchPullMessagesFunc
+	oldUnsubscribe := unsubscribePullFunc
+	t.Cleanup(func() {
+		cancel()
+		h.replayWG.Wait()
+		fetchPullMessagesFunc = oldFetch
+		unsubscribePullFunc = oldUnsubscribe
+	})
+	fetchPullMessagesFunc = func(*nats.Subscription, int, ...nats.PullOpt) ([]*nats.Msg, error) {
+		return nil, nats.ErrTimeout
+	}
+	unsubscribePullFunc = func(*nats.Subscription) error { return nil }
+
+	room := "replay-unavailable-room"
+	payload := resumeJoinPayload(t, h, client.UserID, room, 12)
+	client.handleJoin(client.ctx, Message{Type: "join", Room: room, Payload: payload})
+	client.mu.Lock()
+	joinedAfterUnavailable := client.Rooms[room]
+	client.mu.Unlock()
+	assert.False(t, joinedAfterUnavailable, "a resume request without replay storage must not become live-only membership")
+	var unavailableFrame map[string]any
+	select {
+	case raw := <-client.Send:
+		require.NoError(t, json.Unmarshal(raw, &unavailableFrame))
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("resume request without replay storage must return an explicit retryable error")
+	}
+	assert.Equal(t, "replay_unavailable", unavailableFrame["code"])
+	assert.Equal(t, room, unavailableFrame["room"])
+	assert.Zero(t, pullCalls.Load())
+
+	client.handleJoin(client.ctx, Message{Type: "join", Room: "live-only-room"})
+	client.mu.Lock()
+	assert.True(t, client.Rooms["live-only-room"], "ordinary live joins remain available without a resume token")
+	client.mu.Unlock()
+	assert.Empty(t, client.Send, "a no-token live join must not receive a replay-availability error")
+
+	h.chatReplayAvailable.Store(true)
+	client.handleJoin(client.ctx, Message{Type: "join", Room: room, Payload: payload})
+	require.Eventually(t, func() bool { return pullCalls.Load() == 1 }, time.Second, 10*time.Millisecond)
+	client.mu.Lock()
+	assert.True(t, client.Rooms[room], "the same signed cursor remains usable when replay becomes available")
 	client.mu.Unlock()
 }
 

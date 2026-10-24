@@ -36,17 +36,18 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
-        resources: [pods]
+        resources: [pods, pods/ephemeralcontainers]
   variables:
     - name: allContainers
       expression: >-
         object.spec.containers + object.spec.?initContainers.orValue([]) +
         object.spec.?ephemeralContainers.orValue([])
+    - name: podRunAsNonRoot
+      expression: object.spec.?securityContext.?runAsNonRoot.orValue(false)
   validations:
     - expression: >-
-        object.spec.?securityContext.?runAsNonRoot.orValue(false) ||
         variables.allContainers.all(container,
-          container.?securityContext.?runAsNonRoot.orValue(false))
+          container.?securityContext.?runAsNonRoot.orValue(variables.podRunAsNonRoot))
       message: Pod or every container must set runAsNonRoot to true
 
 ---
@@ -72,7 +73,7 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
-        resources: [pods]
+        resources: [pods, pods/ephemeralcontainers]
   variables:
     - name: allContainers
       expression: >-
@@ -107,7 +108,7 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
-        resources: [pods]
+        resources: [pods, pods/ephemeralcontainers]
   variables:
     - name: allContainers
       expression: >-
@@ -143,7 +144,7 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
-        resources: [pods]
+        resources: [pods, pods/ephemeralcontainers]
   variables:
     - name: allContainers
       expression: >-
@@ -153,10 +154,9 @@ spec:
       expression: object.spec.?securityContext.?seccompProfile.?type.orValue('')
   validations:
     - expression: >-
-        variables.podSeccompType in ['RuntimeDefault', 'Localhost'] ||
         variables.allContainers.all(container,
-          container.?securityContext.?seccompProfile.?type.orValue('') in
-            ['RuntimeDefault', 'Localhost'])
+          container.?securityContext.?seccompProfile.?type.orValue(
+            variables.podSeccompType) in ['RuntimeDefault', 'Localhost'])
       message: Pod or every container must use the RuntimeDefault or Localhost seccomp profile
 
 ---
@@ -182,7 +182,7 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
-        resources: [pods]
+        resources: [pods, pods/ephemeralcontainers]
   variables:
     - name: allContainers
       expression: >-
@@ -218,19 +218,25 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
-        resources: [pods]
+        resources: [pods, pods/ephemeralcontainers]
   variables:
     - name: allContainers
       expression: >-
         object.spec.containers + object.spec.?initContainers.orValue([]) +
         object.spec.?ephemeralContainers.orValue([])
   validations:
+    # Keep the first-party boundary at the repository path and the finite image
+    # names published by build-release-images.yml. Other publishers require an
+    # administrator-reviewed policy change; workload data cannot add trust.
     - expression: >-
         variables.allContainers.all(container,
-          container.image.startsWith('registry.example.com/') ||
-          container.image.startsWith('ghcr.io/') ||
+          container.image.matches('^ghcr[.]io/egorribun/university_ecosystem/(backend|frontend|gateway|ws-hub|file-processor)(:[^/@]+)?(@sha256:[0-9a-f]{64})?$') ||
+          container.image == 'ghcr.io/open-feature/flagd:v0.17.0@sha256:c9f21380dfe51d3ad662a116bc350c7692dead7a8d1e640aa0f6b40cd3d966df' ||
+          container.image == 'docker.io/redis@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499' ||
+          container.image == 'docker.io/oliver006/redis_exporter@sha256:6ca518a72f30f7f576ef92963de1b91d3c3f5fd3aeac949f878bfda183587820' ||
+          container.image == 'docker.io/nats@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4' ||
           container.image.matches('^docker[.]io/bitnami/(redis|redis-exporter|nats)@sha256:[0-9a-f]{64}$'))
-      message: Images must come from an approved registry or an explicitly pinned Bitnami dependency
+      message: Images must match an approved publisher/image identity or a pinned Bitnami dependency
 
 ---
 apiVersion: policies.kyverno.io/v1
@@ -259,8 +265,7 @@ spec:
   variables:
     - name: allContainers
       expression: >-
-        object.spec.containers + object.spec.?initContainers.orValue([]) +
-        object.spec.?ephemeralContainers.orValue([])
+        object.spec.containers + object.spec.?initContainers.orValue([])
   validations:
     - expression: >-
         variables.allContainers.all(container,
@@ -291,7 +296,7 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
-        resources: [pods]
+        resources: [pods, pods/ephemeralcontainers]
   variables:
     - name: allContainers
       expression: >-
@@ -324,7 +329,7 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
-        resources: [pods]
+        resources: [pods, pods/ephemeralcontainers]
   variables:
     - name: allContainers
       expression: >-
@@ -336,3 +341,43 @@ spec:
           container.image.matches('^.+(@sha256:[a-f0-9]{64}|:[^/:@]+)$') &&
           !container.image.matches('(?i)^.+:latest$'))
       message: Every image must use an explicit non-empty tag or immutable sha256 digest
+
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: disallow-host-access
+  annotations:
+    policies.kyverno.io/title: Disallow Host Namespace and Filesystem Access
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: high
+spec:
+  failurePolicy: Fail
+  validationActions: [Deny, Audit]
+  evaluation:
+    admission: { enabled: true }
+    background: { enabled: true }
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: university-ecosystem
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods, pods/ephemeralcontainers]
+  variables:
+    - name: allContainers
+      expression: >-
+        object.spec.containers + object.spec.?initContainers.orValue([]) +
+        object.spec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: >-
+        object.spec.?hostNetwork.orValue(false) == false &&
+        object.spec.?hostPID.orValue(false) == false &&
+        object.spec.?hostIPC.orValue(false) == false &&
+        object.spec.?volumes.orValue([]).all(volume, !has(volume.hostPath)) &&
+        variables.allContainers.all(container,
+          container.?ports.orValue([]).all(port,
+            port.?hostPort.orValue(0) == 0))
+      message: Host namespaces, hostPath volumes, and host ports are not allowed

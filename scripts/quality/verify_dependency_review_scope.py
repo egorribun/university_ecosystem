@@ -860,6 +860,8 @@ def verify_policy_scope(current_text: str) -> None:
         or scalars.get("vulnerability-check") != "true"
     ):
         raise ValueError("license-check and vulnerability-check must remain enabled")
+    if sections.get("allow-ghsas", []):
+        raise ValueError("global GHSA allowlist must remain empty")
     if LICENSE_REF in sections.get("allow-licenses", []):
         raise ValueError(
             "the unresolved OpenTelemetry marker must not enter global allow-licenses"
@@ -888,12 +890,17 @@ def verify_policy_delta(base_text: str, current_text: str) -> None:
             "dependency review scalar policy changed outside the reviewed exception"
         )
     for key in (set(base_sections) | set(current_sections)) - {
-        "allow-dependencies-licenses"
+        "allow-dependencies-licenses",
+        "allow-ghsas",
     }:
         if base_sections.get(key, []) != current_sections.get(key, []):
             raise ValueError(
                 f"dependency review policy list changed unexpectedly: {key}"
             )
+    old_ghsas = Counter(base_sections.get("allow-ghsas", []))
+    new_ghsas = Counter(current_sections.get("allow-ghsas", []))
+    if new_ghsas - old_ghsas:
+        raise ValueError("GHSA allowlist additions are prohibited")
     old = Counter(base_sections.get("allow-dependencies-licenses", []))
     new = Counter(current_sections.get("allow-dependencies-licenses", []))
     if (new - old) - PURL_ADDITIONS:

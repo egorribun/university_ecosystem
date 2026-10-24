@@ -12,6 +12,7 @@ import {
   type UseSuspenseQueryResult,
 } from "@tanstack/react-query"
 import { useMemo, useSyncExternalStore } from "react"
+import * as v from "valibot"
 
 import { allEventsApiV1EventsGet, myEventsApiV1EventsMyGet } from "@/api/generated/sdk.gen"
 import type { AllEventsApiV1EventsGetData } from "@/api/generated/types.gen"
@@ -543,6 +544,19 @@ type EventDetailQueryKey = readonly ["events", "detail", string, ResolvedLang]
 
 export type UseEventDetailQueryResult = UseQueryResult<Event, Error>
 
+const EventDetailResponseSchema = v.looseObject({
+  id: v.pipe(v.string(), v.minLength(1)),
+  title: v.string(),
+  created_at: v.string(),
+  created_by: v.unknown(),
+  starts_at: v.string(),
+  ends_at: v.string(),
+  is_active: v.boolean(),
+})
+
+const isEventDetailPayload = (value: unknown): value is Event =>
+  v.safeParse(EventDetailResponseSchema, value).success
+
 /**
  * Pure query options factory for a single event id and normalized language. Used by both:
  *
@@ -568,8 +582,21 @@ export const eventDetailQueryOptions = (id: string, language: ResolvedLang) => (
       path: { event_id: id },
       query: { lang: language },
       signal,
+      throwOnError: true,
+      validateStatus: (status: number) => status >= 200 && status < 300,
     })
-    return response.data as Event
+    const status = ensureNumericResponseStatus(
+      response.status,
+      "Unexpected event detail response status"
+    )
+    if (status < 200 || status >= 300) {
+      throw new Error("Unexpected event detail response status")
+    }
+
+    if (!isEventDetailPayload(response.data)) {
+      throw new Error("Invalid event detail response")
+    }
+    return response.data
   },
   staleTime: 60_000,
   retry: 1,

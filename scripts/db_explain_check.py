@@ -213,6 +213,31 @@ def _extract_usable_explain_plan(plan_json: object) -> dict[str, Any] | None:
     return plan
 
 
+async def _calibrate_statistics(conn: Any, target_tables: list[str]) -> None:
+    """Keep both synthetic catalog updates within one recoverable savepoint."""
+    async with conn.begin_nested():
+        await conn.execute(
+            text(
+                "UPDATE pg_class SET relpages = 1000, reltuples = 100000, "
+                "relallvisible = 1000 "
+                "WHERE relname = ANY(CAST(:table_names AS text[]))"
+            ),
+            {"table_names": target_tables},
+        )
+        await conn.execute(
+            text(
+                "UPDATE pg_class SET relpages = 100, reltuples = 100000 "
+                "WHERE oid IN ("
+                "  SELECT indexrelid FROM pg_index WHERE indrelid IN ("
+                "    SELECT oid FROM pg_class "
+                "    WHERE relname = ANY(CAST(:table_names AS text[]))"
+                "  )"
+                ")"
+            ),
+            {"table_names": target_tables},
+        )
+
+
 async def run_explain_analysis(
     engine,
     queries: list[str],
@@ -229,39 +254,6 @@ async def run_explain_analysis(
         _SAFE_TABLE_RE.fullmatch(table) is None for table in target_tables
     ):
         raise ValueError("target tables must be non-empty safe SQL identifiers")
-
-    # Calibrate statistics: artificially inflate table size to ensure planner cost decisions
-    # are realistic (avoiding Seq Scans due to table emptiness in test DB)
-    logger.info("Calibrating table statistics for planning simulation...")
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(
-                text(
-                    "UPDATE pg_class SET relpages = 1000, reltuples = 100000, "
-                    "relallvisible = 1000 "
-                    "WHERE relname = ANY(CAST(:table_names AS text[]))"
-                ),
-                {"table_names": target_tables},
-            )
-            await conn.execute(
-                text(
-                    "UPDATE pg_class SET relpages = 100, reltuples = 100000 "
-                    "WHERE oid IN ("
-                    "  SELECT indexrelid FROM pg_index WHERE indrelid IN ("
-                    "    SELECT oid FROM pg_class "
-                    "    WHERE relname = ANY(CAST(:table_names AS text[]))"
-                    "  )"
-                    ")"
-                ),
-                {"table_names": target_tables},
-            )
-            logger.info("Table and index statistics successfully updated.")
-    except Exception as error:
-        logger.warning(
-            f"Could not calibrate table statistics: {error}. Continuing with default statistics."
-        )
-        if fail_on_analysis_error:
-            has_violations = True
 
     for raw_query in queries:
         try:
@@ -303,6 +295,23 @@ async def run_explain_analysis(
                     # synthetic placeholders from executing DML or DML CTEs.
                     # Add timeout to explain query to prevent hangs
                     await conn.execute(text("SET statement_timeout = '15s'"))
+                    # AUD-504: calibration and EXPLAIN share this rollback-only
+                    # transaction. A savepoint restores both catalog updates if
+                    # calibration fails, so optional analysis can use defaults.
+                    logger.info(
+                        "Calibrating table statistics for planning simulation..."
+                    )
+                    try:
+                        await _calibrate_statistics(conn, target_tables)
+                        logger.info("Table and index statistics successfully updated.")
+                    except Exception as error:
+                        logger.warning(
+                            "Could not calibrate table statistics: %s. "
+                            "Continuing with default statistics.",
+                            error,
+                        )
+                        if fail_on_analysis_error:
+                            has_violations = True
                     plan_json_str = await explain_plan(conn, clean_query)
                     await transaction.rollback()
 
@@ -420,7 +429,10 @@ async def main():
         queries,
         target_tables,
         args.max_cost,
-        fail_on_analysis_error=args.fail_on_seq_scan,
+        # Preserve analysis failures in the result even for the optional mode,
+        # so that it cannot print PASSED after an incomplete plan check. The CLI
+        # flag controls whether that result changes the process exit status.
+        fail_on_analysis_error=True,
     )
 
     await engine.dispose()
@@ -442,8 +454,16 @@ async def main():
     # claim a pass after them.
     if has_violations:
         logger.warning(
-            "DB Performance Gate reported violations in optional mode; "
+            "DB Performance Gate reported violations or analysis failures "
+            "in optional mode; "
             "pass --fail-on-seq-scan to enforce them."
+        )
+        return
+
+    if checked_count == 0:
+        logger.warning(
+            "DB Performance Gate: No eligible target queries were checked in optional mode; "
+            "no pass was established."
         )
         return
 

@@ -8,6 +8,7 @@ import os
 import re
 import uuid
 from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -36,6 +37,7 @@ import app.core.database as database
 import app.services.event_handlers as event_handlers
 import app.services.notifications.delivery as notifications_delivery
 import app.services.notifications.schedule_reminders as schedule_reminders_module
+import app.services.webpush as webpush_module
 import app.workers.notifications as notifications_worker
 import app.workers.outbox as outbox_module
 from alembic import command
@@ -49,7 +51,7 @@ from app.core.events import (
 from app.models import Group, Schedule
 from app.models.domain_events import StoredEvent
 from app.models.news import News
-from app.models.notifications import Notification
+from app.models.notifications import Notification, NotificationDelivery, PushSubscription
 from app.repositories.event_repository import EventRepository
 from app.repositories.news_repository import NewsRepository
 from tests.integration.owned_postgres import _LoopbackMigrationPostgres
@@ -694,3 +696,300 @@ async def test_scheduler_ticks_commit_one_campus_reminder_and_outbox(
     assert "05.01 · 03:00" in notifications[0].body
     assert len(outbox_events) == 1
     assert outbox_events[0].payload["notification_ids"] == [str(notifications[0].id)]
+
+
+@pytest.fixture
+def _owned_push_runtime(
+    postgres_app_database: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[None]:
+    """Keep canonical result processing on this fixture's owned database."""
+    monkeypatch.setattr(notifications_delivery, "_is_push_configured", lambda: True)
+    monkeypatch.setattr(webpush_module, "_Session", None)
+    monkeypatch.setattr(webpush_module, "_sync_engine", None)
+    monkeypatch.setattr(
+        webpush_module,
+        "_sync_url_cache",
+        postgres_app_database.url.set(drivername="postgresql+psycopg"),
+    )
+    try:
+        yield
+    finally:
+        # These globals were isolated above; never dispose the pre-existing engine.
+        webpush_module.cleanup()
+
+
+async def _create_delivery_outbox_batch(
+    db_session: AsyncSession, user_ids: list[uuid.UUID]
+) -> tuple[StoredEvent, dict[uuid.UUID, uuid.UUID]]:
+    created = await notifications_delivery.create_notifications_for_users(
+        db_session,
+        title="Durable news",
+        body="Delivery replay",
+        type="news.new",
+        url="/news",
+        user_ids=user_ids,
+        topic="news.published",
+        push_via_outbox_only=True,
+    )
+    assert created == len(user_ids)
+    await db_session.commit()
+    request = (
+        await db_session.scalars(
+            select(StoredEvent).where(
+                StoredEvent.event_type == NotificationsRequested.EVENT_TYPE
+            )
+        )
+    ).one()
+    notifications = list((await db_session.scalars(select(Notification))).all())
+    assert len(notifications) == len(user_ids)
+    identifiers = {row.user_id: row.id for row in notifications}
+    assert set(identifiers) == set(user_ids)
+    await db_session.commit()
+    return request, identifiers
+
+
+async def test_delivery_outbox_concurrent_sessions_send_successful_pair_once(
+    db_session,
+    user_factory,
+    push_subscription_factory,
+    _owned_push_runtime,
+    monkeypatch,
+):
+    """Dropping the notification row lock must allow a detectable duplicate send."""
+    _require_postgres()
+    user = await user_factory()
+    subscription = await push_subscription_factory(user)
+    subscription_id = subscription.id
+    request, identifiers = await _create_delivery_outbox_batch(db_session, [user.id])
+    notification_id = identifiers[user.id]
+    duplicate = StoredEvent(
+        event_type=NotificationsRequested.EVENT_TYPE,
+        aggregate_type="NotificationBatch",
+        aggregate_id=str(uuid.uuid4()),
+        payload={
+            **request.payload,
+            "notification_ids": list(request.payload["notification_ids"]),
+        },
+    )
+    db_session.add(duplicate)
+    await db_session.commit()
+
+    bus = EventBus()
+    bus.subscribe(
+        NotificationsRequested.EVENT_TYPE, event_handlers.handle_notifications_requested
+    )
+    monkeypatch.setattr(outbox_module, "event_bus", bus)
+    worker = outbox_module.OutboxWorker()
+
+    session_pids: asyncio.Queue[int] = asyncio.Queue()
+    real_session_factory = database.async_session
+
+    @asynccontextmanager
+    async def observed_sessions() -> AsyncIterator[AsyncSession]:
+        async with real_session_factory() as session:
+            pid = await session.scalar(text("SELECT pg_backend_pid()"))
+            assert isinstance(pid, int)
+            session_pids.put_nowait(pid)
+            yield session
+
+    monkeypatch.setattr(event_handlers, "async_session", observed_sessions)
+    first_send_started = asyncio.Event()
+    release_first_send = asyncio.Event()
+    provider_calls: list[tuple[uuid.UUID, str]] = []
+
+    async def fake_provider(subscription, payload):
+        provider_calls.append((subscription.id, payload["data"]["notificationId"]))
+        if len(provider_calls) == 1:
+            first_send_started.set()
+            await release_first_send.wait()
+        return webpush_module.WebPushResult(
+            subscription_id=subscription.id,
+            endpoint=subscription.endpoint,
+            user_id=subscription.user_id,
+            status="sent",
+            status_code=201,
+        )
+
+    monkeypatch.setattr(webpush_module, "_send_push_async", fake_provider)
+    tasks: list[asyncio.Task[None]] = []
+    try:
+        async with asyncio.timeout(8):
+            tasks.append(asyncio.create_task(worker._dispatch_event(request)))
+            await asyncio.wait_for(first_send_started.wait(), timeout=3)
+            first_pid = await asyncio.wait_for(session_pids.get(), timeout=3)
+            tasks.append(asyncio.create_task(worker._dispatch_event(duplicate)))
+            second_pid = await asyncio.wait_for(session_pids.get(), timeout=3)
+            assert first_pid != second_pid
+
+            observed_block = False
+            # Observe the real PG wait, not merely that a coroutine was scheduled.
+            # The query-count cap and deadline are both mandatory; no timing sleeps.
+            async with asyncio.timeout(5):
+                async with database.async_session() as observer:
+                    for _ in range(100):
+                        blockers = await observer.scalar(
+                            text("SELECT pg_blocking_pids(:waiting_pid)"),
+                            {"waiting_pid": second_pid},
+                        )
+                        if blockers and first_pid in blockers:
+                            observed_block = True
+                            break
+                        assert len(provider_calls) == 1, (
+                            "Concurrent replay sent before the first journal committed"
+                        )
+                        assert not tasks[1].done(), (
+                            "Replay completed before the first journal commit"
+                        )
+            assert observed_block, "PostgreSQL did not report the row-lock wait"
+            assert not release_first_send.is_set()
+            assert provider_calls == [(subscription_id, str(notification_id))]
+            release_first_send.set()
+        await asyncio.wait_for(asyncio.gather(*tasks), timeout=10)
+    finally:
+        release_first_send.set()
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        async with asyncio.timeout(15):
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async with database.async_session() as reader:
+        deliveries = list((await reader.scalars(select(NotificationDelivery))).all())
+        assert len(deliveries) == 1
+        delivery = deliveries[0]
+        actual_delivery = (
+            delivery.notification_id,
+            delivery.subscription_id,
+            delivery.channel,
+            delivery.status,
+            delivery.status_code,
+        )
+        expected_delivery = (notification_id, subscription_id, "webpush", "sent", 201)
+        assert actual_delivery == expected_delivery
+        assert delivery.delivered_at is not None
+        journal_identity = (delivery.id, delivery.attempted_at)
+        notification = (
+            await reader.scalars(
+                select(Notification).where(Notification.id == notification_id)
+            )
+        ).one()
+        assert notification.read is False
+        subscription_row = await reader.get(PushSubscription, subscription_id)
+        assert subscription_row is not None
+        assert subscription_row.last_seen_at is not None
+
+    # A new handler session must read the committed journal, not an identity map.
+    async with asyncio.timeout(15):
+        await worker._dispatch_event(request)
+    assert provider_calls == [(subscription_id, str(notification_id))]
+    async with database.async_session() as reader:
+        delivery = (await reader.scalars(select(NotificationDelivery))).one()
+        assert (delivery.id, delivery.attempted_at) == journal_identity
+
+
+async def test_delivery_outbox_partial_failure_commits_before_recipient_retry(
+    db_session,
+    user_factory,
+    push_subscription_factory,
+    _owned_push_runtime,
+    monkeypatch,
+):
+    """Losing partial commits or replay filtering must resend the successful pair."""
+    _require_postgres()
+    first_user = await user_factory()
+    second_user = await user_factory()
+    first_subscription = await push_subscription_factory(first_user)
+    second_subscription = await push_subscription_factory(second_user)
+    first_subscription_id = first_subscription.id
+    second_subscription_id = second_subscription.id
+    request, identifiers = await _create_delivery_outbox_batch(
+        db_session, [first_user.id, second_user.id]
+    )
+    request_id = request.id
+    provider_calls: list[uuid.UUID] = []
+
+    async def fake_provider(subscription, payload):
+        expected_id = identifiers[subscription.user_id]
+        assert payload["data"]["notificationId"] == str(expected_id)
+        provider_calls.append(subscription.id)
+        failed = (
+            subscription.id == second_subscription_id
+            and provider_calls.count(second_subscription_id) == 1
+        )
+        return webpush_module.WebPushResult(
+            subscription_id=subscription.id,
+            endpoint=subscription.endpoint,
+            user_id=subscription.user_id,
+            status="error" if failed else "sent",
+            status_code=503 if failed else 201,
+            error="provider unavailable" if failed else None,
+        )
+
+    monkeypatch.setattr(webpush_module, "_send_push_async", fake_provider)
+    bus = EventBus()
+    bus.subscribe("user.created", event_handlers.handle_user_created)
+    bus.subscribe(
+        NotificationsRequested.EVENT_TYPE, event_handlers.handle_notifications_requested
+    )
+    monkeypatch.setattr(outbox_module, "event_bus", bus)
+    worker = outbox_module.OutboxWorker(batch_size=100)
+    async with asyncio.timeout(20):
+        await worker.process_batch()
+
+    async with database.async_session() as reader:
+        pending = await reader.get(StoredEvent, request_id)
+        assert pending is not None
+        assert pending.processed_at is None
+        assert pending.error_count == 1
+        deliveries = list((await reader.scalars(select(NotificationDelivery))).all())
+        assert len(deliveries) == 2
+        by_subscription = {row.subscription_id: row for row in deliveries}
+        assert set(by_subscription) == {first_subscription_id, second_subscription_id}
+        assert by_subscription[first_subscription_id].status == "sent"
+        assert by_subscription[first_subscription_id].delivered_at is not None
+        assert by_subscription[second_subscription_id].status == "error"
+        assert by_subscription[second_subscription_id].delivered_at is None
+        assert by_subscription[second_subscription_id].status_code == 503
+        journal_identities = {
+            row.subscription_id: (row.id, row.attempted_at) for row in deliveries
+        }
+    assert provider_calls.count(first_subscription_id) == 1
+    assert provider_calls.count(second_subscription_id) == 1
+
+    async with asyncio.timeout(20):
+        await worker.process_batch()
+
+    async with database.async_session() as reader:
+        processed = await reader.get(StoredEvent, request_id)
+        assert processed is not None
+        assert processed.processed_at is not None
+        assert processed.error_count == 1
+        deliveries = list((await reader.scalars(select(NotificationDelivery))).all())
+        assert len(deliveries) == 2
+        persisted_identities = {
+            row.subscription_id: (row.id, row.attempted_at) for row in deliveries
+        }
+        assert persisted_identities == journal_identities
+        assert all(
+            row.channel == "webpush"
+            and row.status == "sent"
+            and row.status_code == 201
+            and row.delivered_at is not None
+            for row in deliveries
+        )
+        assert all(
+            not notification.read
+            for notification in (await reader.scalars(select(Notification))).all()
+        )
+        subscriptions = list((await reader.scalars(select(PushSubscription))).all())
+        assert len(subscriptions) == 2
+        assert all(row.last_seen_at is not None for row in subscriptions)
+    assert provider_calls.count(first_subscription_id) == 1
+    assert provider_calls.count(second_subscription_id) == 2
+
+    async with asyncio.timeout(15):
+        await worker._dispatch_event(request)
+    async with asyncio.timeout(20):
+        assert await worker.process_batch() == 0
+    assert provider_calls.count(first_subscription_id) == 1
+    assert provider_calls.count(second_subscription_id) == 2

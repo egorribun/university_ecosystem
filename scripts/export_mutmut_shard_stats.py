@@ -14,7 +14,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import stat
 import sys
+import tempfile
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -642,9 +645,69 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
         raise ValueError(f"unable to write JSON evidence to {path}: {exc}") from exc
 
 
+def _invalidate_stats_output(path: Path) -> None:
+    """Remove only the current stats entry before any export work begins."""
+    try:
+        output_stat = path.lstat()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise ValueError(f"unable to inspect stats output {path}: {exc}") from exc
+
+    is_symlink = stat.S_ISLNK(output_stat.st_mode)
+    if not is_symlink and not stat.S_ISREG(output_stat.st_mode):
+        raise ValueError(f"stats output must be a regular file: {path}")
+
+    try:
+        path.unlink()
+    except OSError as exc:
+        raise ValueError(f"unable to remove stats output {path}: {exc}") from exc
+    if is_symlink:
+        raise ValueError(f"stats output must not be a symlink: {path}")
+
+
+def _write_stats_json_atomically(path: Path, payload: Mapping[str, Any]) -> None:
+    """Publish current stats with one same-directory atomic replacement."""
+    temporary_path: Path | None = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+            temporary_file.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+        os.replace(temporary_path, path)
+    except OSError as exc:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError as cleanup_error:
+                exc.add_note(
+                    f"unable to remove temporary stats file {temporary_path}: "
+                    f"{cleanup_error}"
+                )
+        raise ValueError(
+            f"unable to atomically write JSON stats to {path}: {exc}"
+        ) from exc
+
+
 def main() -> None:
     """Export trustworthy mutation evidence or fail before its score can be used."""
     args = _parse_args()
+    try:
+        _invalidate_stats_output(args.output)
+    except ValueError as exc:
+        raise SystemExit(
+            f"ERROR: unable to prepare trustworthy mutmut stats: {exc}"
+        ) from exc
     try:
         selected_mutants = (
             load_selected_mutants(args.selected_file)
@@ -739,7 +802,7 @@ def main() -> None:
         ) from exc
 
     try:
-        _write_json(args.output, stats)
+        _write_stats_json_atomically(args.output, stats)
     except ValueError as exc:
         raise SystemExit(
             f"ERROR: unable to write trustworthy mutmut stats: {exc}"

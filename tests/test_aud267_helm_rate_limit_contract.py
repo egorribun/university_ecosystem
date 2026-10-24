@@ -211,3 +211,112 @@ def test_rate_limit_connection_key_must_be_nonempty() -> None:
     # Helm reports schema violations by JSON pointer path.
     assert result.returncode != 0
     assert "/connections/rateLimitStorageURIKey" in result.stderr
+
+
+def _shared_settings_workload(
+    resources: list[dict[str, Any]], workload: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    resource = next(
+        item
+        for item in resources
+        if item.get("kind") == ("Job" if workload == "migration" else "Deployment")
+        and item.get("metadata", {})
+        .get("labels", {})
+        .get("app.kubernetes.io/component")
+        == workload
+    )
+    pod_spec = resource["spec"]["template"]["spec"]
+    container = pod_spec["containers"][0]
+    names = [item["name"] for item in container["env"]]
+    assert len(names) == len(set(names)), f"{workload} env contains duplicate names"
+    return pod_spec, container
+
+
+@pytest.mark.parametrize("workload", ["migration", "outbox-worker"])
+@pytest.mark.parametrize(
+    "key_name", ["rate-limit-storage-uri", "python-rate-limit-uri"]
+)
+def test_shared_settings_workloads_project_dedicated_rate_limit_secret(
+    workload: str, key_name: str
+) -> None:
+    overrides = (
+        ("--set-string", f"connections.rateLimitStorageURIKey={key_name}")
+        if key_name != "rate-limit-storage-uri"
+        else ()
+    )
+    resources = _render_staging(
+        *overrides,
+        release_name="shared-settings-rate-limit-contract",
+    )
+    pod_spec, container = _shared_settings_workload(resources, workload)
+    env = {item["name"]: item for item in container["env"]}
+
+    assert env["ENVIRONMENT"]["value"] == "staging"
+    assert env["RATE_LIMIT_STORAGE_BACKEND"] == {
+        "name": "RATE_LIMIT_STORAGE_BACKEND",
+        "value": "redis",
+    }
+    assert env["RATE_LIMIT_STORAGE_URI_FILE"] == {
+        "name": "RATE_LIMIT_STORAGE_URI_FILE",
+        "value": f"/run/secrets/university-connections/{key_name}",
+    }
+    assert "RATE_LIMIT_STORAGE_URI" not in env
+    connection_volume = next(
+        volume
+        for volume in pod_spec["volumes"]
+        if volume.get("secret", {}).get("secretName") == "university-connections"
+    )
+    projected_keys = {item["key"] for item in connection_volume["secret"]["items"]}
+    expected_keys = {
+        "database-url",
+        "redis-backend-url",
+        "nats-auth-token",
+        key_name,
+        "redis-revocation-url" if workload == "migration" else "nats-url",
+    }
+    assert projected_keys == expected_keys
+    assert pod_spec["automountServiceAccountToken"] is False
+    if workload == "migration":
+        assert env["APP_PROCESS_ROLE"]["value"] == "api"
+        assert env["REVOCATION_REDIS_ACCESS_ENABLED"]["value"] == "true"
+        assert "redis-revocation-url" in projected_keys
+        assert "REVOCATION_REDIS_URL_FILE" in env
+        assert "serviceAccountName" not in pod_spec
+    else:
+        assert env["APP_PROCESS_ROLE"]["value"] == "outbox-worker"
+        assert env["REVOCATION_REDIS_ACCESS_ENABLED"]["value"] == "false"
+        assert "redis-revocation-url" not in projected_keys
+        assert "REVOCATION_REDIS_URL_FILE" not in env
+        assert "REVOCATION_REDIS_URL" not in env
+        assert pod_spec["serviceAccountName"] == (
+            "shared-settings-rate-limit-contract-outbox-worker"
+        )
+
+
+def test_outbox_env_cannot_override_shared_rate_limit_store_contract() -> None:
+    overrides: list[str] = []
+    names = (
+        "RATE_LIMIT_STORAGE_BACKEND",
+        "RATE_LIMIT_STORAGE_URI",
+        "RATE_LIMIT_STORAGE_URI_FILE",
+        "rate_limit_storage_backend",
+        "rate_limit_storage_uri",
+        "rate_limit_storage_uri_file",
+        "rAtE_LiMiT_sToRaGe_BaCkEnD",
+        "rAtE_LiMiT_sToRaGe_uRi",
+        "rAtE_LiMiT_sToRaGe_uRi_fIlE",
+    )
+    for name in names:
+        overrides.extend(("--set-string", f"outboxWorker.env.{name}=untrusted"))
+    overrides.extend(("--set-string", "outboxWorker.env.CUSTOM_FEATURE_FLAG=retained"))
+    resources = _render_development(*overrides)
+    _, container = _shared_settings_workload(resources, "outbox-worker")
+    env = {item["name"]: item for item in container["env"]}
+
+    assert env["RATE_LIMIT_STORAGE_BACKEND"]["value"] == "redis"
+    assert env["RATE_LIMIT_STORAGE_URI_FILE"]["value"] == (
+        "/run/secrets/university-connections/rate-limit-storage-uri"
+    )
+    assert "RATE_LIMIT_STORAGE_URI" not in env
+    assert not any(name in env for name in names[3:])
+    assert env["CUSTOM_FEATURE_FLAG"]["value"] == "retained"

@@ -25,7 +25,10 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   allEventsApiV1EventsGet: requests.events,
   myEventsApiV1EventsMyGet: vi.fn(),
 }))
-vi.mock("@/api/news", () => ({ fetchNewsItem: vi.fn() }))
+vi.mock("@/api/news", () => ({
+  fetchNewsItem: vi.fn(),
+  parseNewsList: (data: unknown) => data as NewsItem[],
+}))
 vi.mock("@/hooks/auth/useProfileSync", () => ({ fetchCurrentUser: vi.fn() }))
 vi.mock("@/push/subscribe", () => ({
   hasPushConsent: () => false,

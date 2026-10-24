@@ -365,15 +365,19 @@ describe("settings session isolation", () => {
     }
   )
 
-  it("rejects a profile refresh for a different identity before caching it", async () => {
+  it("warns after a committed delete when profile refresh returns another identity", async () => {
+    mocks.delete.mockResolvedValueOnce({ data: {} })
     mocks.fetchCurrentUser.mockResolvedValue(account("account-b"))
     const { result, queryClient, setSnackbar } = renderSettings()
     await act(() => result.current.avatar.remove())
+    expect(mocks.delete).toHaveBeenCalledOnce()
+    expect(mocks.delete).toHaveBeenCalledWith("/users/me/avatar")
+    expect(mocks.fetchCurrentUser).toHaveBeenCalledOnce()
     expect(mocks.setUser).not.toHaveBeenCalled()
     expect(queryClient.getQueryData(["users", "me"])).toBeUndefined()
     expect(setSnackbar).toHaveBeenCalledWith({
-      text: "settings:media.avatar.deleteFailed",
-      severity: "error",
+      text: "settings:media.avatar.savedRefreshFailed",
+      severity: "warning",
     })
   })
 

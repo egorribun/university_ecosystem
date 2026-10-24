@@ -498,6 +498,7 @@ def upgrade() -> None:
         existing_type=sa.TIMESTAMP(),
         type_=sa.DateTime(timezone=True),
         existing_nullable=False,
+        postgresql_using="created_at AT TIME ZONE 'UTC'",
     )
     op.alter_column(
         "user_preferences",

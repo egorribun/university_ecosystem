@@ -449,7 +449,8 @@ exclude-newer = "7 days"
 # Owner-approved exact security exceptions; global seven-day cooldown remains.
 # Remove Pillow after 2026-10-23T22:18:10Z; certifi after 2026-10-27T02:24:17Z.
 # Remove virtualenv after 2026-10-24T16:09:43Z.
-exclude-newer-package = { certifi = "2026-10-20T02:24:17Z", pillow = "2026-10-16T22:18:10Z", virtualenv = "2026-10-17T16:09:43Z" }
+# Remove Brotli after 2026-10-29T14:00:13Z.
+exclude-newer-package = { brotli = "2026-10-22T14:00:13Z", certifi = "2026-10-20T02:24:17Z", pillow = "2026-10-16T22:18:10Z", virtualenv = "2026-10-17T16:09:43Z" }
 environments = [
     "sys_platform == 'win32'",
     "sys_platform == 'linux'",
@@ -461,6 +462,8 @@ constraint-dependencies = [
     "certifi==2026.10.19",  # GHSA-6q48-6c7w-9gw2; bounded emergency release
     "pillow==13.0.0",  # Nine October advisories; bounded emergency release
     "virtualenv==21.14.9",  # GHSA-c978-59m8-c77v; bounded emergency release
+    "brotli==1.2.1",  # PYSEC-2026-4322; temporary exact emergency release
+    "brotli>=1.2.1,<2",  # durable floor for the fixed Brotli decoder
     "h2>=4.4.1,<5",  # fixes the h2 advisory in httpx's HTTP/2 transport
     "urllib3>=2.8.0,<2.9",  # PY-P1-01: patched 2.8+ line; urllib3 v3 breaks transport APIs
 ]

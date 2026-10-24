@@ -151,6 +151,34 @@ const seedGroup = (chatId = "group-1") => {
   })
 }
 
+const seedRetryReplyTarget = () => {
+  seedChat("chat-1")
+  mocks.chatApi.getMessages.mockResolvedValue({
+    items: [
+      {
+        id: "msg-target",
+        chat_id: "chat-1",
+        sender_id: "peer",
+        content: "quote me",
+        created_at: new Date().toISOString(),
+        read_status: false,
+        sender: { full_name: "Peer Name", avatar_url: "/peer.png" },
+      },
+      {
+        id: "msg-target-2",
+        chat_id: "chat-1",
+        sender_id: "peer",
+        content: "another quote",
+        created_at: new Date(Date.now() - 60_000).toISOString(),
+        read_status: false,
+        sender: { full_name: "Peer Name", avatar_url: "/peer.png" },
+      },
+    ],
+    has_more: false,
+    next_cursor: null,
+  })
+}
+
 // ---------- Setup ----------
 
 beforeEach(async () => {
@@ -295,6 +323,29 @@ describe("useMessengerController — branch top-up", () => {
 
       await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledWith("offline-chat"))
       expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
+    })
+
+    it("refetches the open chat messages after a socket disconnect and reconnect", async () => {
+      seedChat("reconnected-chat")
+      const { HookWrapper } = createQueryHarness()
+      const { result, rerender } = renderHook(() => useMessengerController(), {
+        wrapper: HookWrapper,
+      })
+
+      await waitFor(() => expect(result.current.selectedChatId).toBe("reconnected-chat"))
+      await waitFor(() => expect(mocks.chatApi.getMessages).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledWith("reconnected-chat"))
+
+      mocks.isConnectedRef.current = false
+      rerender()
+      await waitFor(() => expect(mocks.sendLeave).toHaveBeenCalledWith("reconnected-chat"))
+
+      mocks.isConnectedRef.current = true
+      rerender()
+
+      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect(mocks.chatApi.getMessages).toHaveBeenCalledTimes(2))
+      expect(mocks.chatApi.getMessages.mock.calls[1]?.[0]).toBe("reconnected-chat")
     })
   })
 
@@ -530,6 +581,14 @@ describe("useMessengerController — branch top-up", () => {
       expect(result.current.replyingTo).toBeNull()
     })
 
+    it("does not start a reply when no chat is selected", () => {
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+
+      act(() => result.current.handleStartReply("msg-target"))
+
+      expect(result.current.replyingTo).toBeNull()
+    })
+
     it("handleCancelReply clears replyingTo", async () => {
       seedReplyTarget()
       const { result } = renderHook(() => useMessengerController(), { wrapper })
@@ -723,6 +782,348 @@ describe("useMessengerController — branch top-up", () => {
     expect(keys[1]).toEqual(expect.any(String))
     expect(keys[1]).not.toBe("")
     expect(keys[1]).not.toBe(keys[0])
+  })
+
+  describe("send retry idempotency", () => {
+    it("reuses the retry key while the acting account is unavailable", async () => {
+      seedChat("chat-1")
+      mocks.authUserRef.current = null
+      mocks.chatApi.sendMessage.mockRejectedValueOnce(new Error("connection timed out"))
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+
+      await act(async () => {
+        await result.current.handleSendMessage("same draft", [])
+      })
+      await act(async () => {
+        await result.current.handleSendMessage("same draft", [])
+      })
+
+      const keys = mocks.chatApi.sendMessage.mock.calls.map((call) => call[4])
+      expect(keys).toHaveLength(2)
+      expect(keys[1]).toBe(keys[0])
+    })
+    type DeferredSendResponse = {
+      id: string
+      chat_id: string
+      sender_id: string
+      content: string
+      created_at: string
+      read_status: boolean
+      attachments: never[]
+    }
+    const makeSendResponse = (
+      id: string,
+      chatId: string,
+      content: string
+    ): DeferredSendResponse => ({
+      id,
+      chat_id: chatId,
+      sender_id: "current-user-id",
+      content,
+      created_at: new Date().toISOString(),
+      read_status: false,
+      attachments: [],
+    })
+
+    it("reuses the key for an unchanged failed reply with the same attachment", async () => {
+      seedRetryReplyTarget()
+      const file = new File(["attachment"], "notes.txt", { type: "text/plain" })
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.messages.find((message) => message.id === "msg-target")).toBeTruthy()
+      )
+      act(() => result.current.handleStartReply("msg-target"))
+      mocks.chatApi.sendMessage.mockRejectedValueOnce(new Error("connection timed out"))
+
+      let failed: boolean | undefined
+      await act(async () => {
+        failed = await result.current.handleSendMessage("retry draft", [file])
+      })
+      expect(failed).toBe(false)
+      expect(result.current.replyingTo?.id).toBe("msg-target")
+
+      let retried: boolean | undefined
+      await act(async () => {
+        retried = await result.current.handleSendMessage("retry draft", [file])
+      })
+      expect(retried).toBe(true)
+
+      const calls = mocks.chatApi.sendMessage.mock.calls
+      expect(calls[0]).toEqual(["chat-1", "retry draft", [file], "msg-target", expect.any(String)])
+      expect(calls[1]).toEqual(["chat-1", "retry draft", [file], "msg-target", calls[0]?.[4]])
+      expect(calls[1]?.[4]).toBe(calls[0]?.[4])
+      expect(result.current.replyingTo).toBeNull()
+    })
+
+    it("changes the key when attachment order or the reply reference changes", async () => {
+      seedRetryReplyTarget()
+      const firstFile = new File(["first"], "first.txt", { type: "text/plain" })
+      const secondFile = new File(["second"], "second.txt", { type: "text/plain" })
+      mocks.chatApi.sendMessage.mockRejectedValue(new Error("connection timed out"))
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(
+          result.current.messages.find((message) => message.id === "msg-target-2")
+        ).toBeTruthy()
+      )
+
+      act(() => result.current.handleStartReply("msg-target"))
+      await act(async () => {
+        await result.current.handleSendMessage("same draft", [firstFile, secondFile])
+      })
+      await act(async () => {
+        await result.current.handleSendMessage("same draft", [secondFile, firstFile])
+      })
+      act(() => result.current.handleStartReply("msg-target-2"))
+      await act(async () => {
+        await result.current.handleSendMessage("same draft", [secondFile, firstFile])
+      })
+
+      const calls = mocks.chatApi.sendMessage.mock.calls
+      expect(calls[0]?.[3]).toBe("msg-target")
+      expect(calls[1]?.[3]).toBe("msg-target")
+      expect(calls[2]?.[3]).toBe("msg-target-2")
+      const keys = calls.map((call) => call[4])
+      expect(new Set(keys).size).toBe(3)
+    })
+
+    it("replaces a failed payload key so A-to-B-to-A cannot revive A's old key", async () => {
+      seedChat("chat-1")
+      mocks.chatApi.sendMessage.mockRejectedValue(new Error("connection timed out"))
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      await act(async () => {
+        await result.current.handleSendMessage("draft A", [])
+      })
+      await act(async () => {
+        await result.current.handleSendMessage("edited draft B", [])
+      })
+      await act(async () => {
+        await result.current.handleSendMessage("draft A", [])
+      })
+
+      const keys = mocks.chatApi.sendMessage.mock.calls.map((call) => call[4])
+      expect(keys).toHaveLength(3)
+      expect(keys[0]).not.toBe(keys[1])
+      expect(keys[1]).not.toBe(keys[2])
+      expect(keys[0]).not.toBe(keys[2])
+    })
+
+    it("allocates a fresh key after a send is confirmed successful", async () => {
+      seedChat("chat-1")
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      await act(async () => {
+        await result.current.handleSendMessage("confirmed draft", [])
+      })
+      await act(async () => {
+        await result.current.handleSendMessage("confirmed draft", [])
+      })
+
+      const keys = mocks.chatApi.sendMessage.mock.calls.map((call) => call[4])
+      expect(keys).toHaveLength(2)
+      expect(keys[0]).not.toBe(keys[1])
+    })
+
+    it("forgets retry keys when the acting user or chat changes away and back", async () => {
+      seedChat("chat-1")
+      mocks.chatApi.sendMessage.mockRejectedValue(new Error("connection timed out"))
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+
+      await act(async () => {
+        await result.current.handleSendMessage("same draft", [])
+      })
+      const firstKey = mocks.chatApi.sendMessage.mock.calls[0]?.[4]
+
+      mocks.paramsRef.current = { chatId: "chat-2" }
+      rerender()
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-2"))
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      rerender()
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+      await act(async () => {
+        await result.current.handleSendMessage("same draft", [])
+      })
+      const afterChatSwitchKey = mocks.chatApi.sendMessage.mock.calls[1]?.[4]
+      expect(afterChatSwitchKey).not.toBe(firstKey)
+
+      mocks.authUserRef.current = { ...mocks.testUser, id: "other-user-id" }
+      rerender()
+      await waitFor(() => expect(mocks.authUserRef.current?.id).toBe("other-user-id"))
+      mocks.authUserRef.current = mocks.testUser
+      rerender()
+      await waitFor(() => expect(mocks.authUserRef.current?.id).toBe("current-user-id"))
+      await act(async () => {
+        await result.current.handleSendMessage("same draft", [])
+      })
+      const afterAccountSwitchKey = mocks.chatApi.sendMessage.mock.calls[2]?.[4]
+      expect(afterAccountSwitchKey).not.toBe(afterChatSwitchKey)
+    })
+
+    it("does not clear a newer reply selection when an earlier reply send succeeds", async () => {
+      seedRetryReplyTarget()
+      const resolveSends: Array<(response: DeferredSendResponse) => void> = []
+      mocks.chatApi.sendMessage.mockImplementation(
+        () => new Promise<DeferredSendResponse>((resolve) => resolveSends.push(resolve))
+      )
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(
+          result.current.messages.find((message) => message.id === "msg-target-2")
+        ).toBeTruthy()
+      )
+
+      act(() => result.current.handleStartReply("msg-target"))
+      let firstSend: Promise<boolean> | undefined
+      act(() => {
+        firstSend = result.current.handleSendMessage("in-flight reply", [])
+      })
+      await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(1))
+
+      act(() => result.current.handleStartReply("msg-target-2"))
+      await act(async () => {
+        resolveSends[0]?.(makeSendResponse("server-in-flight-reply", "chat-1", "in-flight reply"))
+        await firstSend
+      })
+
+      expect(result.current.replyingTo?.id).toBe("msg-target-2")
+    })
+
+    it("clears the reply target when the selected chat changes", async () => {
+      seedRetryReplyTarget()
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.messages.find((message) => message.id === "msg-target")).toBeTruthy()
+      )
+
+      act(() => result.current.handleStartReply("msg-target"))
+      expect(result.current.replyingTo?.id).toBe("msg-target")
+
+      mocks.paramsRef.current = { chatId: "chat-2" }
+      rerender()
+
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-2"))
+      expect(result.current.replyingTo).toBeNull()
+      await act(async () => {
+        await result.current.handleSendMessage("chat two draft", [])
+      })
+      expect(mocks.chatApi.sendMessage).toHaveBeenCalledWith(
+        "chat-2",
+        "chat two draft",
+        [],
+        undefined,
+        expect.any(String)
+      )
+    })
+
+    it("clears the reply target when the acting account changes, including after switching back", async () => {
+      seedRetryReplyTarget()
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.messages.find((message) => message.id === "msg-target")).toBeTruthy()
+      )
+
+      act(() => result.current.handleStartReply("msg-target"))
+      const cancelFromPreviousAccount = result.current.handleCancelReply
+      mocks.authUserRef.current = { ...mocks.testUser, id: "other-user-id" }
+      rerender()
+
+      await waitFor(() => expect(result.current.replyingTo).toBeNull())
+      act(() => result.current.handleStartReply("msg-target"))
+      expect(result.current.replyingTo).toMatchObject({ id: "msg-target", text: "quote me" })
+      act(() => cancelFromPreviousAccount())
+      expect(result.current.replyingTo).toMatchObject({ id: "msg-target", text: "quote me" })
+
+      mocks.authUserRef.current = mocks.testUser
+      rerender()
+      await waitFor(() => expect(mocks.authUserRef.current?.id).toBe("current-user-id"))
+      expect(result.current.replyingTo).toBeNull()
+    })
+
+    it("does not let an old-account completion clear a same-id reply selected in the new account", async () => {
+      seedRetryReplyTarget()
+      const resolveSends: Array<(response: DeferredSendResponse) => void> = []
+      mocks.chatApi.sendMessage.mockImplementation(
+        () => new Promise<DeferredSendResponse>((resolve) => resolveSends.push(resolve))
+      )
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.messages.find((message) => message.id === "msg-target")).toBeTruthy()
+      )
+
+      act(() => result.current.handleStartReply("msg-target"))
+      let firstSend: Promise<boolean> | undefined
+      act(() => {
+        firstSend = result.current.handleSendMessage("account transition reply", [])
+      })
+      await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(1))
+
+      await act(async () => {
+        mocks.authUserRef.current = { ...mocks.testUser, id: "other-user-id" }
+        rerender()
+      })
+      await waitFor(() => expect(result.current.replyingTo).toBeNull())
+      act(() => result.current.handleStartReply("msg-target"))
+      expect(result.current.replyingTo).toMatchObject({ id: "msg-target", text: "quote me" })
+
+      await act(async () => {
+        resolveSends[0]?.(
+          makeSendResponse("old-account-send", "chat-1", "account transition reply")
+        )
+        await firstSend
+      })
+
+      expect(result.current.replyingTo).toMatchObject({ id: "msg-target", text: "quote me" })
+    })
+
+    it("keeps the new chat retry key when an earlier chat send resolves", async () => {
+      seedChat("chat-1")
+      const resolveSends: Array<(response: DeferredSendResponse) => void> = []
+      mocks.chatApi.sendMessage.mockImplementation(
+        () => new Promise<DeferredSendResponse>((resolve) => resolveSends.push(resolve))
+      )
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+
+      let firstSend: Promise<boolean> | undefined
+      act(() => {
+        firstSend = result.current.handleSendMessage("same draft", [])
+      })
+      await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(1))
+
+      mocks.paramsRef.current = { chatId: "chat-2" }
+      rerender()
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-2"))
+
+      let secondSend: Promise<boolean> | undefined
+      act(() => {
+        secondSend = result.current.handleSendMessage("same draft", [])
+      })
+      await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(2))
+      const secondKey = mocks.chatApi.sendMessage.mock.calls[1]?.[4]
+
+      await act(async () => {
+        resolveSends[0]?.(makeSendResponse("server-first-chat-send", "chat-1", "same draft"))
+        await firstSend
+      })
+
+      let retriedSecond: Promise<boolean> | undefined
+      act(() => {
+        retriedSecond = result.current.handleSendMessage("same draft", [])
+      })
+      await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(3))
+      expect(mocks.chatApi.sendMessage.mock.calls[2]?.[4]).toBe(secondKey)
+
+      await act(async () => {
+        resolveSends[1]?.(makeSendResponse("server-second-chat-send", "chat-2", "same draft"))
+        resolveSends[2]?.(makeSendResponse("server-second-chat-retry", "chat-2", "same draft"))
+        await Promise.all([secondSend, retriedSecond])
+      })
+    })
   })
 
   describe("forward (842-864, 444-460)", () => {
@@ -1266,6 +1667,190 @@ describe("useMessengerController — branch top-up", () => {
 
       act(() => result.current.handleCloseProfile())
       expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+    })
+
+    it("keeps the profile modal closed when its request resolves after close", async () => {
+      seedChat()
+      let resolveProfile!: (response: { data: { id: string; full_name: string } }) => void
+      const profileRequest = new Promise<{ data: { id: string; full_name: string } }>((resolve) => {
+        resolveProfile = resolve
+      })
+      mocks.apiClient.get.mockReturnValue(profileRequest)
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      act(() => result.current.handleViewProfile())
+      expect(result.current.isProfileLoading).toBe(true)
+
+      act(() => result.current.handleCloseProfile())
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+
+      await act(async () => {
+        resolveProfile({ data: { id: "peer", full_name: "Peer" } })
+        await profileRequest
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+    })
+
+    it("ignores a pending profile result after the selected chat changes", async () => {
+      seedChat()
+      let resolveProfile!: (response: { data: { id: string; full_name: string } }) => void
+      const profileRequest = new Promise<{ data: { id: string; full_name: string } }>((resolve) => {
+        resolveProfile = resolve
+      })
+      mocks.apiClient.get.mockReturnValue(profileRequest)
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      act(() => result.current.handleViewProfile())
+      expect(result.current.isProfileLoading).toBe(true)
+
+      mocks.paramsRef.current = { chatId: "chat-2" }
+      rerender()
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-2"))
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+
+      await act(async () => {
+        resolveProfile({ data: { id: "peer", full_name: "Peer" } })
+        await profileRequest
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+    })
+
+    it("ignores a pending profile result after the selected chat loses its peer", async () => {
+      seedChat()
+      let resolveOldPeer!: (response: { data: { id: string; full_name: string } }) => void
+      const oldPeerRequest = new Promise<{ data: { id: string; full_name: string } }>((resolve) => {
+        resolveOldPeer = resolve
+      })
+      mocks.apiClient.get.mockReturnValueOnce(oldPeerRequest)
+
+      const { queryClient, HookWrapper } = createQueryHarness()
+      const { result } = renderHook(() => useMessengerController(), { wrapper: HookWrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      act(() => result.current.handleViewProfile())
+      expect(mocks.apiClient.get).toHaveBeenNthCalledWith(1, "/users/peer")
+      expect(result.current.isProfileLoading).toBe(true)
+
+      act(() => {
+        queryClient.setQueryData(["chats"], {
+          items: [
+            {
+              id: "chat-1",
+              participants: [{ id: "current-user-id" }],
+              unread_count: 0,
+            },
+          ],
+          has_more: false,
+          next_cursor: null,
+        })
+      })
+
+      await waitFor(() =>
+        expect(result.current.getOtherParticipant(result.current.activeChat!)).toBeUndefined()
+      )
+      expect(result.current.activeChat?.id).toBe("chat-1")
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+
+      await act(async () => {
+        resolveOldPeer({ data: { id: "peer", full_name: "Old Peer" } })
+        await oldPeerRequest
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+
+      act(() => result.current.handleViewProfile())
+      expect(mocks.apiClient.get).toHaveBeenCalledTimes(1)
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+    })
+
+    it("ignores a stale profile rejection after the authenticated user changes", async () => {
+      seedChat()
+      let rejectProfile!: (reason: Error) => void
+      const profileRequest = new Promise<{ data: { id: string; full_name: string } }>(
+        (_, reject) => {
+          rejectProfile = reject
+        }
+      )
+      mocks.apiClient.get.mockReturnValue(profileRequest)
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      act(() => result.current.handleViewProfile())
+      expect(result.current.isProfileLoading).toBe(true)
+
+      mocks.authUserRef.current = { ...mocks.testUser, id: "new-account-id" }
+      rerender()
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+
+      await act(async () => {
+        rejectProfile(new Error("old profile request failed"))
+        await profileRequest.catch(() => undefined)
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+    })
+
+    it("does not let an older overlapping request clear the newest request's loading state", async () => {
+      seedChat()
+      let resolveFirst!: (response: { data: { id: string; full_name: string } }) => void
+      let resolveSecond!: (response: { data: { id: string; full_name: string } }) => void
+      const firstRequest = new Promise<{ data: { id: string; full_name: string } }>((resolve) => {
+        resolveFirst = resolve
+      })
+      const secondRequest = new Promise<{ data: { id: string; full_name: string } }>((resolve) => {
+        resolveSecond = resolve
+      })
+      mocks.apiClient.get.mockReturnValueOnce(firstRequest).mockReturnValueOnce(secondRequest)
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      act(() => result.current.handleViewProfile())
+      act(() => result.current.handleViewProfile())
+      expect(result.current.isProfileLoading).toBe(true)
+
+      await act(async () => {
+        resolveFirst({ data: { id: "older-peer", full_name: "Older Peer" } })
+        await firstRequest
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(true)
+
+      await act(async () => {
+        resolveSecond({ data: { id: "peer", full_name: "Peer" } })
+        await secondRequest
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toEqual({ id: "peer", full_name: "Peer" })
       expect(result.current.isProfileLoading).toBe(false)
       expect(result.current.profileError).toBeNull()
     })

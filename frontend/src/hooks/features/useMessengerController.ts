@@ -30,6 +30,7 @@ import client from "@/api/client"
 import { chatDisplayInfo } from "@/components/messenger/chatDisplay"
 import type { User } from "@/types/User"
 import type { Message as UiMessage, Contact } from "@/components/messenger"
+import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
 
 // dayjs.extend(utc) removed in favor of native Intl utility
 
@@ -114,6 +115,40 @@ const mergeHydratedMessagePage = (
   return { ...fetched, items }
 }
 
+type SendPayloadIdentity = {
+  accountId: string | null
+  chatId: string
+  content: string
+  replyToMessageId: string | null
+  files: readonly File[]
+}
+
+type RetryableSendAttempt = {
+  identity: SendPayloadIdentity
+  idempotencyKey: string
+}
+
+type ScopedReplyTarget = {
+  accountId: string | null
+  chatId: string
+  id: string
+  senderName: string | null
+  isMe: boolean
+  text: string
+}
+
+const hasSameSendPayload = (left: SendPayloadIdentity, right: SendPayloadIdentity): boolean =>
+  left.accountId === right.accountId &&
+  left.chatId === right.chatId &&
+  left.content === right.content &&
+  left.replyToMessageId === right.replyToMessageId &&
+  left.files.length === right.files.length &&
+  left.files.every((file, index) => {
+    // File bytes and metadata are immutable, so ordered object identity is the
+    // exact attachment payload identity.
+    return file === right.files[index]
+  })
+
 // Wave 206 — API reaction aggregate shape (snake_case, as carried on @/api/chat
 // Message.reactions). The optimistic toggle below operates on this shape in the
 // ["messages", chatId] cache; the transform maps it to the camelCase UI shape.
@@ -151,6 +186,7 @@ const toggleReactionAggregate = (
 export const useMessengerController = () => {
   const { t, i18n } = useTranslation(["messenger", "common"])
   const { user } = useAuth()
+  const accountId = user?.id ?? null
   // W145 SW2 — `as` cast removed; TanStack v1 `useParams({ strict: false })`
   // returns the union of all route params, so destructured `chatId` is
   // `string | undefined` natively. Matches NewsDetail.tsx + EventDetail.tsx +
@@ -173,15 +209,33 @@ export const useMessengerController = () => {
   // Wave 207 — reply/quote compose state. Set by handleStartReply when the user
   // taps "reply" on a bubble; the MessageInput chip renders it; the send handler
   // threads reply_to_message_id + builds the optimistic message's replyTo;
-  // cleared on send + on cancel. `isMe` is the ORIGINAL (quoted) message's isMe —
+  // cleared on confirmed send success + on cancel, and scoped to the current
+  // account/chat. `isMe` is the ORIGINAL (quoted) message's isMe —
   // copied into the optimistic replyTo so the "You" vs name label resolves
   // identically to a server-fetched reply.
-  const [replyingTo, setReplyingTo] = useState<{
-    id: string
-    senderName: string | null
-    isMe: boolean
-    text: string
-  } | null>(null)
+  const [replyingToState, setReplyingToState] = useState<ScopedReplyTarget | null>(null)
+  const replyingTo =
+    replyingToState?.accountId === accountId && replyingToState.chatId === selectedChatId
+      ? {
+          id: replyingToState.id,
+          senderName: replyingToState.senderName,
+          isMe: replyingToState.isMe,
+          text: replyingToState.text,
+        }
+      : null
+  const retryableSendAttemptRef = useRef<RetryableSendAttempt | null>(null)
+
+  useEffect(() => {
+    // A retry key belongs to the active account and chat scope. Clearing on
+    // every scope transition also prevents an A-to-B-to-A switch from reviving
+    // an earlier attempt that happens to have the same payload again.
+    retryableSendAttemptRef.current = null
+    setReplyingToState((current) =>
+      current && (current.accountId !== accountId || current.chatId !== selectedChatId)
+        ? null
+        : current
+    )
+  }, [accountId, selectedChatId])
 
   // Wave 211 — forward compose state. The id of the message being forwarded
   // (null = ForwardModal closed). Set by handleStartForward when the user taps
@@ -193,6 +247,7 @@ export const useMessengerController = () => {
   const [profileUser, setProfileUser] = useState<User | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
+  const profileRequestIdRef = useRef(0)
 
   // Dialog State
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -907,9 +962,37 @@ export const useMessengerController = () => {
     return () => sendLeave(selectedChatId)
   }, [selectedChatId, isConnected, sendJoin, sendLeave])
 
+  // A room leave clears the socket hook's active-room ref. When the socket
+  // reconnects, join the room effect above restores live delivery; also refresh
+  // the open history so frames missed while disconnected are recovered.
+  const previousConnectionRef = useRef(isConnected)
+  useEffect(() => {
+    const reconnected = !previousConnectionRef.current && isConnected
+    previousConnectionRef.current = isConnected
+    if (reconnected && selectedChatId) void refetchMessages()
+  }, [selectedChatId, isConnected, refetchMessages])
+
   const handleSendMessage = (text: string, files: File[]): Promise<boolean> => {
     if (!selectedChatId) return Promise.resolve(false)
 
+    const replyToMessageId = replyingTo ? replyingTo.id : null
+    const identity: SendPayloadIdentity = {
+      accountId,
+      chatId: selectedChatId,
+      content: text,
+      replyToMessageId,
+      // Snapshot order and object identity; the caller may keep its mutable
+      // File[] while the failed draft remains available for retry.
+      files: [...files],
+    }
+    let sendAttempt = retryableSendAttemptRef.current
+    if (!sendAttempt || !hasSameSendPayload(sendAttempt.identity, identity)) {
+      sendAttempt = { identity, idempotencyKey: crypto.randomUUID() }
+      retryableSendAttemptRef.current = sendAttempt
+    }
+
+    // This id is only for the optimistic UI row. The server idempotency key
+    // above stays stable when an unchanged failed payload is retried.
     const tempId = crypto.randomUUID()
     const now = new Date()
 
@@ -961,10 +1044,22 @@ export const useMessengerController = () => {
             chatId: selectedChatId,
             content: text,
             files,
-            replyToMessageId: replyingTo?.id,
-            idempotencyKey: tempId,
+            replyToMessageId: replyToMessageId ?? undefined,
+            idempotencyKey: sendAttempt.idempotencyKey,
             optimisticBlobUrls,
           })
+          if (retryableSendAttemptRef.current === sendAttempt) {
+            retryableSendAttemptRef.current = null
+            if (replyToMessageId) {
+              setReplyingToState((current) =>
+                current?.accountId === sendAttempt.identity.accountId &&
+                current.chatId === sendAttempt.identity.chatId &&
+                current.id === replyToMessageId
+                  ? null
+                  : current
+              )
+            }
+          }
           resolve(true)
         } catch {
           // React Query's onError owns cleanup. Consuming the rejection keeps the
@@ -974,9 +1069,8 @@ export const useMessengerController = () => {
         }
       })
     })
-    // Wave 207 — clear the reply context once the send is dispatched (the chip
-    // disappears; the optimistic bubble already carries its own replyTo copy).
-    setReplyingTo(null)
+    // Keep the reply target until confirmed success. A failed send leaves the
+    // composer draft in place, so its retry must retain the same reply payload.
     return delivered
   }
 
@@ -987,19 +1081,26 @@ export const useMessengerController = () => {
   // senderName are carried so the chip + optimistic bubble label resolve identically.
   const handleStartReply = useCallback(
     (messageId: string) => {
+      if (!selectedChatId) return
       const target = transformedMessages.find((m) => m.id === messageId)
       if (!target || target.deletedAt) return
-      setReplyingTo({
+      setReplyingToState({
+        accountId,
+        chatId: selectedChatId,
         id: target.id,
         senderName: target.senderName!,
         isMe: target.isMe,
         text: target.text,
       })
     },
-    [transformedMessages]
+    [accountId, selectedChatId, transformedMessages]
   )
 
-  const handleCancelReply = useCallback(() => setReplyingTo(null), [])
+  const handleCancelReply = useCallback(() => {
+    setReplyingToState((current) =>
+      current?.accountId === accountId && current.chatId === selectedChatId ? null : current
+    )
+  }, [accountId, selectedChatId])
 
   // Wave 211 — forward handlers. handleStartForward opens the ForwardModal for a
   // message (resolved from transformedMessages — server-confirmed truth, not an
@@ -1036,6 +1137,22 @@ export const useMessengerController = () => {
     },
     [user?.id]
   )
+
+  const profileScopeKey = JSON.stringify([
+    selectedChatId,
+    user?.id ?? null,
+    activeChat ? (getOtherParticipant(activeChat)?.id ?? null) : null,
+  ])
+  const profileScopeRef = useRef(profileScopeKey)
+
+  useIsomorphicLayoutEffect(() => {
+    if (profileScopeRef.current === profileScopeKey) return
+    profileScopeRef.current = profileScopeKey
+    profileRequestIdRef.current += 1
+    setProfileUser(null)
+    setIsProfileLoading(false)
+    setProfileError(null)
+  }, [profileScopeKey])
 
   const handleCreateChat = (participantId: string) => {
     createChatMutation.mutate(participantId)
@@ -1178,16 +1295,40 @@ export const useMessengerController = () => {
     setShowChatMenu(false)
     const other = activeChat && getOtherParticipant(activeChat)
     if (!other) return
+    const requestId = ++profileRequestIdRef.current
+    const requestScopeKey = profileScopeKey
     setIsProfileLoading(true)
     setProfileError(null)
     client
       .get<User>(`/users/${other.id}`)
-      .then((response) => setProfileUser(response.data))
-      .catch(() => setProfileError(t("messenger:profileLoadError")))
-      .finally(() => setIsProfileLoading(false))
+      .then((response) => {
+        if (
+          profileRequestIdRef.current === requestId &&
+          profileScopeRef.current === requestScopeKey
+        ) {
+          setProfileUser(response.data)
+        }
+      })
+      .catch(() => {
+        if (
+          profileRequestIdRef.current === requestId &&
+          profileScopeRef.current === requestScopeKey
+        ) {
+          setProfileError(t("messenger:profileLoadError"))
+        }
+      })
+      .finally(() => {
+        if (
+          profileRequestIdRef.current === requestId &&
+          profileScopeRef.current === requestScopeKey
+        ) {
+          setIsProfileLoading(false)
+        }
+      })
   }
 
   const handleCloseProfile = () => {
+    profileRequestIdRef.current += 1
     setProfileUser(null)
     setIsProfileLoading(false)
     setProfileError(null)

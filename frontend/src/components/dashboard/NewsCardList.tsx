@@ -72,7 +72,7 @@ export const NewsCardList = memo(function NewsCardList({
             </div>
             <span
               aria-hidden="true"
-              className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-matte) bg-(--bg-matte-list) text-text-primary opacity-0 transition-all duration-base group-hover:opacity-100 group-hover:border-brand group-hover:bg-brand/(--opacity-faint) group-hover:text-brand"
+              className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--border-matte) bg-(--bg-matte-list) text-text-primary opacity-0 transition-all duration-base group-hover:opacity-100 group-hover:border-brand group-hover:bg-brand/[calc(var(--opacity-faint)*100%)] group-hover:text-brand"
             >
               <ArrowRight aria-hidden="true" className="h-4 w-4" />
             </span>

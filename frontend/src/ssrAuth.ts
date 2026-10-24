@@ -104,30 +104,100 @@ export function _setJwtVerifyOverrideForTests(
   jwtVerifyOverride = fn
 }
 
+const DEFAULT_JWT_ISSUER = "university-ecosystem"
+
+/** Python str.strip() whitespace, excluding U+FEFF and including NEL/FS-US. */
+const PYTHON_STRIP_EDGE_WHITESPACE = new Set([
+  "\u0009",
+  "\u000A",
+  "\u000B",
+  "\u000C",
+  "\u000D",
+  "\u001C",
+  "\u001D",
+  "\u001E",
+  "\u001F",
+  "\u0020",
+  "\u0085",
+  "\u00A0",
+  "\u1680",
+  "\u2000",
+  "\u2001",
+  "\u2002",
+  "\u2003",
+  "\u2004",
+  "\u2005",
+  "\u2006",
+  "\u2007",
+  "\u2008",
+  "\u2009",
+  "\u200A",
+  "\u2028",
+  "\u2029",
+  "\u202F",
+  "\u205F",
+  "\u3000",
+])
+
+type SsrNodeProcessLike = {
+  env?: Record<string, string | undefined>
+}
+
+/**
+ * Resolve the issuer that backend access tokens must carry.
+ *
+ * The deployed frontend receives the same runtime JWT_ISSUER value as the
+ * backend. An omitted value uses the backend settings default outside
+ * production; an explicitly blank value and any unconfigured production
+ * process fail closed.
+ */
+function normalizeJwtIssuer(value: string): string | null {
+  const characters = Array.from(value)
+  let start = 0
+  let end = characters.length
+  while (start < end && PYTHON_STRIP_EDGE_WHITESPACE.has(characters[start]!)) start++
+  while (end > start && PYTHON_STRIP_EDGE_WHITESPACE.has(characters[end - 1]!)) end--
+
+  if (start === end) return null
+  const normalizedCharacters = characters.slice(start, end)
+  if (normalizedCharacters.length > 512) return null
+  if (normalizedCharacters.some((character) => character.charCodeAt(0) < 0x20)) return null
+  return normalizedCharacters.join("")
+}
+function resolveJwtIssuer(): string | null {
+  const runtimeProcess = Object(
+    (globalThis as typeof globalThis & { process?: SsrNodeProcessLike }).process
+  ) as SsrNodeProcessLike
+  const runtimeEnv = Object(runtimeProcess.env) as Record<string, unknown>
+  const configuredIssuer = runtimeEnv.JWT_ISSUER
+  if (typeof configuredIssuer === "string") return normalizeJwtIssuer(configuredIssuer)
+  if (runtimeEnv.NODE_ENV === "production") return null
+  return DEFAULT_JWT_ISSUER
+}
+
 /**
  * Validate the JWT extracted from the cookie. Returns auth state on success,
- * SSR_AUTH_UNAUTH on any failure (signature, expiry, claim mismatch).
+ * SSR_AUTH_UNAUTH on any failure (signature, expiry, or claim mismatch).
  *
- * Audience check matches backend's `app/core/config/mixins/jwt_settings.py:32`
- * default `university-ecosystem-api`. Override at deploy time via
- * VITE_JWT_AUDIENCE env var if backend is configured with a different audience.
- *
- * Required claims match backend's `app/auth/security.py:641` decode_token:
- * exp, iat, sub, jti, aud — jose's `jwtVerify` enforces exp + aud automatically;
- * sub validation done explicitly below.
+ * The audience follows the backend's `jwt_audience` setting. The issuer comes
+ * from the backend's runtime `JWT_ISSUER`; its local default is kept in sync
+ * with `app/core/config/mixins/jwt_settings.py`. jose verifies exp, audience,
+ * and issuer; subject validation remains explicit below.
  */
 export async function validateJwt(token: string): Promise<SsrAuthState> {
+  const issuer = resolveJwtIssuer()
+  if (!issuer) return SSR_AUTH_UNAUTH
   const audience = import.meta.env.VITE_JWT_AUDIENCE || "university-ecosystem-api"
   let result: JwtVerifyResult = null
   try {
     result = jwtVerifyOverride
       ? await jwtVerifyOverride(token)
-      : await jwtVerify(token, getJwks(), { audience })
+      : await jwtVerify(token, getJwks(), { audience, issuer })
   } catch {
     // A rejected verification leaves `result` null, i.e. unauthenticated.
   }
   const payload = result?.payload
-  if (!payload) return SSR_AUTH_UNAUTH
+  if (!payload || payload.iss !== issuer) return SSR_AUTH_UNAUTH
   if (typeof payload.sub !== "string" || !payload.sub) return SSR_AUTH_UNAUTH
   const role = typeof payload.role === "string" ? payload.role : "student"
   return { isAuth: true, user: { role }, loading: false }

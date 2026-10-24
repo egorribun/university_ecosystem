@@ -517,7 +517,12 @@ def _require_checkpoint_contract() -> type[StrEnum]:
     result = OutageResult(OutageOutcome.FAILED, OutageStage.PREFLIGHT)
     assert hasattr(result, "checkpoint"), "missing optional result checkpoint"
     assert result.checkpoint is None
-    expected = {*_PREFLIGHT_CHECKPOINT_OPERATIONS, "coordinator_exception"}
+    expected = {
+        *_PREFLIGHT_CHECKPOINT_OPERATIONS,
+        "coordinator_exception",
+        "broker_probe",
+        "broker_receipt",
+    }
     assert {entry.value for entry in checkpoint_type} == expected
     assert replace(result, checkpoint=checkpoint_type("acquire_lock")) == result
     return checkpoint_type
@@ -744,6 +749,43 @@ def test_main_renders_only_typed_preflight_checkpoint(
     )
 
 
+def test_main_renders_broker_receipt_checkpoint_without_private_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from scripts.owned_nats_coordinator import (
+        BrokerMessageEvidence,
+        OutageCheckpoint,
+    )
+
+    underlying = _install_checkpoint_fake_ports(monkeypatch, tmp_path)
+    private_marker = "private-broker-envelope-must-not-leak"
+    underlying.broker = BrokerMessageEvidence(
+        subject="chat.invalid",
+        sequence=1,
+        envelope={"private": private_marker},
+    )
+    result = cli.run_owned_nats_outage("/", in_place=True)
+    assert result.outcome is OutageOutcome.FAILED
+    assert result.stage is OutageStage.BROKER
+    assert result.checkpoint is OutageCheckpoint.BROKER_RECEIPT
+
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *_a, **_k: result)
+    assert (
+        live_stand.main(["nats-outage", "--in-place", "--state-dir", "/private/state"])
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "live_stand: owned NATS acceptance failed outcome=failed stage=broker "
+        "checkpoint=broker_receipt\n"
+    )
+    assert private_marker not in captured.out + captured.err
+
+
 @pytest.mark.parametrize("accepted", [False, True])
 def test_main_default_checkpoint_preserves_legacy_result_contract(
     monkeypatch: pytest.MonkeyPatch,
@@ -941,6 +983,143 @@ def test_main_refuses_runtime_diagnostic_outside_matching_failure(
     )
 
 
+def test_main_rejects_accepted_result_with_stale_checkpoint(monkeypatch, capsys):
+    from scripts.owned_nats_coordinator import OutageCheckpoint
+
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    result = OutageResult(
+        OutageOutcome.ACCEPTED,
+        OutageStage.COMPLETE,
+        OutageCheckpoint.BROKER_PROBE,
+    )
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *_a, **_k: result)
+
+    assert (
+        live_stand.main(["nats-outage", "--in-place", "--state-dir", "/private/state"])
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "live_stand: owned NATS acceptance failed reason=invalid_result\n"
+    )
+
+
+def test_main_formats_only_exact_broker_probe_diagnostic(monkeypatch, capsys):
+    from scripts.owned_nats_coordinator import (
+        BrokerProbePhase,
+        OutageCheckpoint,
+    )
+
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    result = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.BROKER,
+        OutageCheckpoint.BROKER_PROBE,
+        broker_diagnostic=BrokerProbePhase.DECODE,
+    )
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *_args, **_kwargs: result)
+    arguments = ["nats-outage", "--in-place", "--state-dir", "/private/state"]
+
+    assert live_stand.main(arguments) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "live_stand: owned NATS acceptance failed outcome=failed stage=broker "
+        "checkpoint=broker_probe broker_diagnostic=decode\n"
+    )
+
+    for phase in BrokerProbePhase:
+        annotated = replace(result, broker_diagnostic=phase)
+        monkeypatch.setattr(
+            cli, "run_owned_nats_outage", lambda *_a, _r=annotated, **_k: _r
+        )
+        assert live_stand.main(arguments) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == (
+            "live_stand: owned NATS acceptance failed outcome=failed stage=broker "
+            f"checkpoint=broker_probe broker_diagnostic={phase.value}\n"
+        )
+
+    class OtherPhase(StrEnum):
+        DECODE = "decode"
+
+    for invalid in ("decode", OtherPhase.DECODE, 3, True, _PrivateOutageValue()):
+        malformed = replace(result, broker_diagnostic=invalid)
+        monkeypatch.setattr(
+            cli, "run_owned_nats_outage", lambda *_a, _r=malformed, **_k: _r
+        )
+        assert live_stand.main(arguments) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == (
+            "live_stand: owned NATS acceptance failed reason=invalid_result\n"
+        )
+
+
+def test_main_rejects_broker_diagnostic_outside_matching_failure(monkeypatch, capsys):
+    from scripts.owned_nats_coordinator import (
+        BrokerProbePhase,
+        OutageCheckpoint,
+    )
+
+    results = (
+        OutageResult(
+            OutageOutcome.ACCEPTED,
+            OutageStage.COMPLETE,
+            broker_diagnostic=BrokerProbePhase.PRECHECK,
+        ),
+        OutageResult(
+            OutageOutcome.FAILED,
+            OutageStage.BROKER,
+            OutageCheckpoint.BROKER_RECEIPT,
+            broker_diagnostic=BrokerProbePhase.POSTCHECK,
+        ),
+    )
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    arguments = ["nats-outage", "--in-place", "--state-dir", "/private/state"]
+    for result in results:
+        monkeypatch.setattr(
+            cli, "run_owned_nats_outage", lambda *_a, _r=result, **_k: _r
+        )
+        assert live_stand.main(arguments) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == (
+            "live_stand: owned NATS acceptance failed reason=invalid_result\n"
+        )
+
+
+def test_broker_diagnostic_field_is_private_and_not_semantic():
+    from dataclasses import fields
+
+    from scripts.owned_nats_coordinator import (
+        BrokerProbePhase,
+        OutageCheckpoint,
+    )
+
+    result = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.BROKER,
+        OutageCheckpoint.BROKER_PROBE,
+    )
+    schema = {item.name: item for item in fields(result)}
+    assert set(schema) == {
+        "outcome",
+        "stage",
+        "checkpoint",
+        "runtime_diagnostic",
+        "broker_diagnostic",
+    }
+    assert result.broker_diagnostic is None
+    assert schema["broker_diagnostic"].compare is False
+    assert schema["broker_diagnostic"].repr is False
+    annotated = replace(result, broker_diagnostic=BrokerProbePhase.DECODE)
+    assert annotated == result
+    assert repr(annotated) == repr(result)
+
+
 def test_real_lazy_facade_forwards_finite_runtime_failure(
     monkeypatch, tmp_path, capsys
 ):
@@ -976,7 +1155,13 @@ def test_runtime_diagnostic_field_is_private_and_not_semantic():
         OutageCheckpoint.OBSERVE_RUNTIME,
     )
     schema = {item.name: item for item in fields(result)}
-    assert set(schema) == {"outcome", "stage", "checkpoint", "runtime_diagnostic"}
+    assert set(schema) == {
+        "outcome",
+        "stage",
+        "checkpoint",
+        "runtime_diagnostic",
+        "broker_diagnostic",
+    }
     assert result.runtime_diagnostic is None
     assert schema["runtime_diagnostic"].compare is False
     assert schema["runtime_diagnostic"].repr is False

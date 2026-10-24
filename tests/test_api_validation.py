@@ -363,6 +363,83 @@ def test_raise_validation_error_tolerates_arbitrary_kwargs(
         raise_validation_error(message_key, locale, **extra_kwargs)
 
 
+@pytest.mark.parametrize("interpolation_value", ["", "value"])
+def test_raise_validation_error_preserves_key_interpolation(
+    monkeypatch: pytest.MonkeyPatch, interpolation_value: str
+) -> None:
+    """A positional message key leaves ``key`` available for formatting."""
+    from app.core.localization import formatting
+
+    translation_key = "test.validation.key_interpolation"
+    monkeypatch.setitem(
+        formatting.TRANSLATIONS,
+        translation_key,
+        {"en": "Value: {key}"},
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        raise_validation_error(translation_key, "en", key=interpolation_value)
+
+    assert exc_info.value.detail == f"Value: {interpolation_value}"
+
+
+def test_translate_accepts_positional_and_legacy_keyword_translation_keys() -> None:
+    from app.core.localization.formatting import translate
+
+    expected = "Notification"
+    assert translate("notifications.default_title") == expected
+    assert translate(key="notifications.default_title") == expected
+
+
+def test_translate_accepts_translation_key_interpolation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.localization import formatting
+
+    translation_id = "test.translation_key.interpolation"
+    monkeypatch.setitem(
+        formatting.TRANSLATIONS,
+        translation_id,
+        {"en": "Value: {translation_key}"},
+    )
+
+    assert (
+        formatting.translate(
+            translation_id, locale="en", translation_key="interpolation"
+        )
+        == "Value: interpolation"
+    )
+
+
+def test_raise_validation_error_accepts_translation_key_interpolation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A positional message key allows every identifier kwarg to interpolate."""
+    from app.core.localization import formatting
+
+    translation_id = "test.validation.translation_key_interpolation"
+    monkeypatch.setitem(
+        formatting.TRANSLATIONS,
+        translation_id,
+        {"en": "Value: {translation_key}"},
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        raise_validation_error(translation_id, "en", translation_key="interpolation")
+
+    assert exc_info.value.detail == "Value: interpolation"
+
+
+def test_translate_without_identifier_preserves_required_key_error() -> None:
+    from app.core.localization.formatting import translate
+
+    with pytest.raises(
+        TypeError,
+        match=r"A translation key is required",
+    ):
+        translate()
+
+
 # ── 4. Surrogate pairs and null bytes do not crash helpers ───────────────────
 #
 # Lone surrogates would normally trip Python's str.format(); the localization

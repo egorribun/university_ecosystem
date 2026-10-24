@@ -85,7 +85,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
           <p
             id="login-email-error"
             role={errors.email ? "alert" : undefined}
-            className="text-xs text-text-secondary/(--opacity-hover)"
+            className="text-xs text-text-secondary/[calc(var(--opacity-hover)*100%)]"
           >
             {errors.email ? t(errors.email.message || "auth:messages.invalidFormat") : " "}
           </p>
@@ -94,7 +94,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
               type="button"
               onClick={applySuggestion}
               disabled={controlsDisabled}
-              className="inline-flex items-center gap-2 rounded-full border border-border-focus/(--opacity-strong) px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-brand transition hover:bg-brand-subtle"
+              className="inline-flex items-center gap-2 rounded-full border border-border-focus/[calc(var(--opacity-strong)*100%)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-brand transition hover:bg-brand-subtle"
             >
               <Sparkles className="h-4 w-4" aria-hidden="true" />
               {t("auth:messages.emailSuggestion", { suggestion: emailSuggestion })}
@@ -187,7 +187,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
             </label>
           </div>
 
-          <div className="rounded-xl border border-warning-border/(--opacity-medium) bg-warning-bg/(--opacity-subtle) p-3">
+          <div className="rounded-xl border border-warning-border/[calc(var(--opacity-medium)*100%)] bg-warning-bg/[calc(var(--opacity-subtle)*100%)] p-3">
             <div className="flex min-h-11 items-center gap-3 text-sm font-semibold text-text-primary">
               <Controller
                 control={control}

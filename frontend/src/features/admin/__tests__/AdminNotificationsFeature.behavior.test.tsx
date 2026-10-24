@@ -556,7 +556,7 @@ describe("Admin dead-letter queue actions", () => {
     const first = within(firstRow).getByRole("checkbox", {
       name: `Select job ${queue.items[0]!.id}`,
     })
-    const selectedBackground = "bg-brand/(--opacity-subtle)"
+    const selectedBackground = "bg-brand/[calc(var(--opacity-subtle)*100%)]"
     expect(firstRow).not.toHaveClass(selectedBackground)
     expect(secondRow).not.toHaveClass(selectedBackground)
 

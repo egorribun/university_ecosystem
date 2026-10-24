@@ -92,10 +92,10 @@ describe("Register page", () => {
   it("presents one centered registration form with a concise university identity", async () => {
     await renderRegister()
 
-    const main = screen.getByRole("main", { name: tAuth("register.title") })
-    expect(main).toHaveClass("auth-shell")
-    expect(main.querySelectorAll("form")).toHaveLength(1)
-    expect(main.querySelectorAll(".auth-card-matte")).toHaveLength(1)
+    const region = screen.getByRole("region", { name: tAuth("register.title") })
+    expect(region).toHaveClass("auth-shell")
+    expect(region.querySelectorAll("form")).toHaveLength(1)
+    expect(region.querySelectorAll(".auth-card-matte")).toHaveLength(1)
     expect(screen.getByText(tAuth("register.hero.badge"))).toBeInTheDocument()
     expect(
       screen.getByRole("heading", { level: 1, name: tAuth("register.title") })
@@ -481,6 +481,33 @@ describe("Register page", () => {
     expect(await screen.findByText("Name is invalid; Email is invalid")).toBeInTheDocument()
   })
 
+  it("uses a translated fallback for Pydantic validation error objects", async () => {
+    const detail = [
+      {
+        type: "string_too_short",
+        loc: ["body", "password"],
+        msg: "String should have at least 8 characters",
+        input: "short",
+        ctx: { min_length: 8 },
+      },
+    ]
+    server.use(http.post("*/auth/register", () => HttpResponse.json({ detail }, { status: 422 })))
+
+    const user = userEvent.setup()
+    await renderRegister()
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.name"))), "Test User")
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.email"))), "user@example.com")
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.password"))), "password123")
+    await user.type(
+      screen.getByLabelText(matchText(tAuth("fields.confirmPassword"))),
+      "password123"
+    )
+    await user.click(screen.getByRole("button", { name: tAuth("actions.signUp") }))
+
+    const alert = await screen.findByRole("alert")
+    expect(alert.textContent).toBe(tAuth("register.error"))
+  })
+
   it("uses the generic translated error when an object has no response detail", async () => {
     const post = vi.spyOn(api, "post").mockRejectedValueOnce({ response: {} })
     const user = userEvent.setup()
@@ -676,6 +703,29 @@ describe("Register behaviour details", () => {
         await screen.findByText(tAuth("register.passwordStrengthLevel.excellent"))
       ).toBeInTheDocument()
     } finally {
+      if (selectedLanguage === undefined) delete window.__UE_SELECTED_LANG__
+      else window.__UE_SELECTED_LANG__ = selectedLanguage
+    }
+  })
+})
+
+describe("registration validation locale regression", () => {
+  it("renders field validation in the active Russian language provider", async () => {
+    const selectedLanguage = window.__UE_SELECTED_LANG__
+    window.__UE_SELECTED_LANG__ = "ru"
+    try {
+      const user = userEvent.setup()
+      await renderRegister()
+      const name = screen.getByLabelText(matchText(tAuth("fields.name")))
+      await user.type(name, "A")
+      await user.tab()
+      await waitFor(() => expect(name).toHaveAttribute("aria-invalid", "true"))
+      expect(document.querySelector("#register-name-error")?.textContent).toBe(
+        "Имя должно содержать не менее 2 символов"
+      )
+    } finally {
+      cleanup()
+      await i18n.changeLanguage("en")
       if (selectedLanguage === undefined) delete window.__UE_SELECTED_LANG__
       else window.__UE_SELECTED_LANG__ = selectedLanguage
     }

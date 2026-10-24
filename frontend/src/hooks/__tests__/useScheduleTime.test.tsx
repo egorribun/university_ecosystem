@@ -1,7 +1,18 @@
 import { renderHook, act } from "@testing-library/react"
+import type { ReactNode } from "react"
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest"
 import { useScheduleTime } from "../useScheduleTime"
+import { CampusTimezoneProvider } from "@/contexts/CampusTimezoneContext"
 import type { Lesson } from "@/components/schedule/scheduleUtils"
+
+const localCampusTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+function renderScheduleTime<Result>(callback: () => Result) {
+  return renderHook(callback, {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <CampusTimezoneProvider timeZone={localCampusTimezone}>{children}</CampusTimezoneProvider>
+    ),
+  })
+}
 
 // Mock useTranslation
 vi.mock("react-i18next", () => ({
@@ -58,7 +69,7 @@ describe("useScheduleTime", () => {
     const date = new Date(2026, 3, 26, 9, 30)
     vi.setSystemTime(date)
 
-    const { result } = renderHook(() => useScheduleTime(mockLessons, true))
+    const { result } = renderScheduleTime(() => useScheduleTime(mockLessons, true))
 
     expect(result.current.currentLesson?.subject).toBe("Math")
     expect(result.current.nextLesson?.subject).toBe("Physics")
@@ -73,7 +84,7 @@ describe("useScheduleTime", () => {
       { ...mockLessons[1]!, start_time: "10:30", end_time: "11:30" },
     ]
 
-    const { result } = renderHook(() => useScheduleTime(adjacentLessons, true))
+    const { result } = renderScheduleTime(() => useScheduleTime(adjacentLessons, true))
 
     expect(result.current.currentLesson?.subject).toBe("Math")
     expect(result.current.nextLesson?.subject).toBe("Physics")
@@ -83,7 +94,7 @@ describe("useScheduleTime", () => {
     const date = new Date(2026, 3, 26, 10, 45)
     vi.setSystemTime(date)
 
-    const { result } = renderHook(() => useScheduleTime(mockLessons, true))
+    const { result } = renderScheduleTime(() => useScheduleTime(mockLessons, true))
 
     expect(result.current.currentLesson).toBeNull()
     expect(result.current.nextLesson?.subject).toBe("Physics")
@@ -94,7 +105,7 @@ describe("useScheduleTime", () => {
   it("returns no next lesson while the final lesson is in progress", () => {
     vi.setSystemTime(new Date(2026, 3, 26, 11, 30))
 
-    const { result } = renderHook(() => useScheduleTime(mockLessons, true))
+    const { result } = renderScheduleTime(() => useScheduleTime(mockLessons, true))
 
     expect(result.current.currentLesson?.subject).toBe("Physics")
     expect(result.current.nextLesson).toBeNull()
@@ -105,7 +116,7 @@ describe("useScheduleTime", () => {
     const date = new Date(2026, 3, 26, 9, 29, 59)
     vi.setSystemTime(date)
 
-    const { result } = renderHook(() => useScheduleTime(mockLessons, true))
+    const { result } = renderScheduleTime(() => useScheduleTime(mockLessons, true))
     expect(result.current.nowTick.getMinutes()).toBe(29)
 
     act(() => {
@@ -119,7 +130,7 @@ describe("useScheduleTime", () => {
     const date = new Date(2026, 3, 26, 9, 29, 5)
     vi.setSystemTime(date)
 
-    const { result } = renderHook(() => useScheduleTime(mockLessons, true))
+    const { result } = renderScheduleTime(() => useScheduleTime(mockLessons, true))
 
     act(() => {
       vi.advanceTimersByTime(30_000)
@@ -140,7 +151,7 @@ describe("useScheduleTime", () => {
         configurable: true,
         get: () => visibility,
       })
-      const rendered = renderHook(() => useScheduleTime(mockLessons, true))
+      const rendered = renderScheduleTime(() => useScheduleTime(mockLessons, true))
       unmount = rendered.unmount
       expect(rendered.result.current.nowTick.getTime()).toBe(before.getTime())
 
@@ -169,7 +180,7 @@ describe("useScheduleTime", () => {
       configurable: true,
     })
 
-    const { result } = renderHook(() => useScheduleTime(mockLessons, true))
+    const { result } = renderScheduleTime(() => useScheduleTime(mockLessons, true))
 
     act(() => {
       vi.advanceTimersByTime(60000)
@@ -195,7 +206,7 @@ describe("useScheduleTime", () => {
   it("returns empty values when hasToday is false", () => {
     vi.setSystemTime(new Date(2026, 3, 26, 9, 30))
 
-    const { result } = renderHook(() => useScheduleTime(mockLessons, false))
+    const { result } = renderScheduleTime(() => useScheduleTime(mockLessons, false))
     expect(result.current.currentLesson).toBeNull()
     expect(result.current.nextLesson).toBeNull()
     expect(result.current.currentProgress).toBe(0)
@@ -209,7 +220,7 @@ describe("useScheduleTime", () => {
       end_time: "10:45",
     }
 
-    const { result } = renderHook(() => useScheduleTime([longLesson], true))
+    const { result } = renderScheduleTime(() => useScheduleTime([longLesson], true))
 
     expect(result.current.currentLesson?.id).toBe("long")
     expect(result.current.timeLeftShort).toBe("1h 45m")
@@ -224,7 +235,7 @@ describe("useScheduleTime", () => {
       end_time: "09:20",
     }
 
-    const { result } = renderHook(() => useScheduleTime([shortLesson], true))
+    const { result } = renderScheduleTime(() => useScheduleTime([shortLesson], true))
 
     expect(result.current.currentLesson?.id).toBe("short")
     expect(result.current.timeLeftShort).toBe("15m")
@@ -240,7 +251,7 @@ describe("useScheduleTime", () => {
       end_time: "not-a-time",
     }
 
-    const { result } = renderHook(() => useScheduleTime([malformed], true))
+    const { result } = renderScheduleTime(() => useScheduleTime([malformed], true))
 
     expect(result.current.currentLesson).toBeNull()
     expect(result.current.nextLesson).toBeNull()
@@ -257,7 +268,7 @@ describe("useScheduleTime", () => {
       { ...mockLessons[0]!, id: "inverted", start_time: "10:00", end_time: "09:00" },
     ]
 
-    const { result } = renderHook(() => useScheduleTime(invalidLessons, true))
+    const { result } = renderScheduleTime(() => useScheduleTime(invalidLessons, true))
 
     expect(result.current.currentLesson).toBeNull()
     expect(result.current.nextLesson).toBeNull()
@@ -268,7 +279,7 @@ describe("useScheduleTime", () => {
   it("returns empty countdowns when today has lessons but none are current or next", () => {
     vi.setSystemTime(new Date(2026, 3, 26, 13, 0))
 
-    const { result } = renderHook(() => useScheduleTime(mockLessons, true))
+    const { result } = renderScheduleTime(() => useScheduleTime(mockLessons, true))
 
     expect(result.current.currentLesson).toBeNull()
     expect(result.current.nextLesson).toBeNull()

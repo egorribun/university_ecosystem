@@ -37,12 +37,12 @@ const FONT_PRELOAD_PATTERN = /^(inter-cyrillic-wght-normal-|outfit-latin-wght-no
 const NOT_FOUND_SCRIPT_TAG = '<script type="module" src="/not-found-i18n.js" defer></script>'
 
 function findShellHtml(cwd) {
-  // Prefer Nitro's canonical output, then support the active Vite fallback.
+  // Prefer the canonical current Vite output, then support legacy outputs.
   const candidates = [
-    path.join(cwd, ".output", "public", "_shell.html"),
-    path.join(cwd, ".output", "public", "index.html"),
     path.join(cwd, "dist", "client", "_shell.html"),
     path.join(cwd, "dist", "client", "index.html"),
+    path.join(cwd, ".output", "public", "_shell.html"),
+    path.join(cwd, ".output", "public", "index.html"),
     path.join(cwd, "dist", "_shell.html"),
     path.join(cwd, "dist", "index.html"),
   ]

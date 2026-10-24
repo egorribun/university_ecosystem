@@ -64,8 +64,10 @@ const makeEvent = (id: string, title = `Event ${id}`): Event =>
     id,
     title,
     created_at: "2026-01-15T10:00:00.000Z",
+    created_by: "teacher-1",
     starts_at: "2026-01-20T10:00:00.000Z",
     ends_at: "2026-01-20T12:00:00.000Z",
+    is_active: true,
   }) as unknown as Event
 
 const okPage = (items: Event[], next_cursor: string | null = null) => ({
@@ -1249,23 +1251,83 @@ describe("useSuspenseMyEventsQuery (events.ts:385-417)", () => {
   })
 })
 
-// ── eventDetailQueryOptions.queryFn dynamic import (events.ts:445-451) ────────
-describe("eventDetailQueryOptions.queryFn (events.ts:445-451)", () => {
+// ── eventDetailQueryOptions.queryFn dynamic import (events.ts:563-603) ────────
+describe("eventDetailQueryOptions.queryFn (events.ts:563-603)", () => {
   it("dynamically imports the SDK and returns response.data", async () => {
-    const ev = makeEvent("detail-1", "Detail title")
+    const ev = {
+      ...makeEvent("detail-1", "Detail title"),
+      about: "Optional API field",
+      api_extension: { version: 2 },
+    } as Event & { api_extension: { version: number } }
     getEventMock.mockResolvedValue({ status: 200, data: ev })
 
     const opts = eventDetailQueryOptions("detail-1", "en")
     const controller = new AbortController()
     const out = await opts.queryFn({ signal: controller.signal })
 
-    expect(out).toEqual(ev)
+    expect(out).toBe(ev)
+    expect(out.about).toBe("Optional API field")
+    expect((out as Event & { api_extension: { version: number } }).api_extension).toBe(
+      ev.api_extension
+    )
     expect(getEventMock).toHaveBeenCalledWith(
       expect.objectContaining({
         path: { event_id: "detail-1" },
         query: { lang: "en" },
         signal: controller.signal,
+        throwOnError: true,
+        validateStatus: expect.any(Function),
       })
+    )
+  })
+
+  it.each([404, 503])(
+    "preserves an HTTP %s Axios error for the query error state",
+    async (status) => {
+      const failure = returnedSdkAxiosError(status)
+      getEventMock.mockRejectedValue(failure)
+
+      const opts = eventDetailQueryOptions("detail-failure", "en")
+
+      await expect(opts.queryFn({ signal: undefined })).rejects.toBe(failure)
+      expect(getEventMock).toHaveBeenCalledWith(expect.objectContaining({ throwOnError: true }))
+    }
+  )
+
+  it("rejects a successful response without a complete event detail payload", async () => {
+    getEventMock.mockResolvedValue({ status: 200, data: {} })
+
+    const opts = eventDetailQueryOptions("detail-empty", "en")
+
+    await expect(opts.queryFn({ signal: undefined })).rejects.toThrow(
+      "Invalid event detail response"
+    )
+  })
+
+  it("requires created_by while preserving null as a valid value", async () => {
+    const missingCreatedBy = { ...makeEvent("detail-missing-creator") }
+    delete (missingCreatedBy as Partial<Event>).created_by
+    getEventMock.mockResolvedValue({ status: 200, data: missingCreatedBy })
+
+    const opts = eventDetailQueryOptions("detail-creator", "en")
+
+    await expect(opts.queryFn({ signal: undefined })).rejects.toThrow(
+      "Invalid event detail response"
+    )
+
+    const nullableCreator = { ...makeEvent("detail-null-creator"), created_by: null } as Event
+    getEventMock.mockResolvedValue({ status: 200, data: nullableCreator })
+
+    await expect(opts.queryFn({ signal: undefined })).resolves.toBe(nullableCreator)
+  })
+
+  it("rejects a non-2xx response even if a client resolves it", async () => {
+    getEventMock.mockResolvedValue({ status: 404, data: { detail: "Not found" } })
+
+    const opts = eventDetailQueryOptions("detail-non-2xx", "en")
+
+    await expect(opts.queryFn({ signal: undefined })).rejects.toThrow(
+      "Unexpected event detail response status"
     )
   })
 })

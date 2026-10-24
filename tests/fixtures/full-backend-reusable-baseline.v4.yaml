@@ -5,9 +5,9 @@ origin_source_files:
   manual: 63a8c260372e99e4fb674d4f502610066fccc96bb4a04ea0913c2af04d3bb834 # v3 raw workflow bytes at origin_commit
   reusable_full_backend_mutation: dda3b12833f6f0a1e2cd9766c8e04f56bb6cc7a04f4192af56c2c8732b65d053 # v3 raw workflow bytes at origin_commit
 source_files:
-  nightly: 84876328d56cca262bf581281acf72340ab0e7794d62a0a9f4356811c30758ee # reviewed raw workflow content digest; no current-commit claim
-  manual: 60da491940d8abfa727c7217a815185c58f6bc1aa529c6cde3cd39703e47ca05 # reviewed raw workflow content digest; no current-commit claim
-  reusable_full_backend_mutation: 59d656a16367fcbe56e0de24ccd58679a5a5b9590116ca457bd035eadd1c7cfe # reviewed raw workflow content digest; no current-commit claim
+  nightly: 032e7dba97aeb6f14d81388d2c1eab61711ac2c4403e92997d84af7c4ba880d0 # raw workflow digest; includes credential-persistence and MinIO env updates
+  manual: 600fb0e798f3fabc5c07e3f9cdc897ff2b8726acec479ba2fd2eefb164c2f199 # reviewed raw workflow content digest; no current-commit claim
+  reusable_full_backend_mutation: 5e056447baafe3e5a404aa6976dce544d0770efed61c2b7fe6eb7f01440897fa # reviewed raw workflow content digest; no current-commit claim
 nightly_trigger_sha256: fdc20c3df799579edad1d3c520a3678d50fbc3359d50c2bffe8a2db8f4708a19 # parsed workflow trigger map excluding workflow_dispatch
 manual_trigger_sha256: 4d6782fb2ff21d58c80606ed26167383f075b97d0783a61489fb7e90e5b5b125 # parsed workflow trigger map
 nightly_preserved_jobs:
@@ -18,12 +18,12 @@ nightly_preserved_jobs:
   backend-full: d209f3a544cafc57f417b265008216f87f3477af9c35269dd98773bb9ae5a673 #  -- public Git or workflow content digest
   backend-integration: f85f81fe703fb7fbb7a2601d97fe361a1694c6840be49b494c5f599ae5c1b1c1 #  -- public Git or workflow content digest
   go-integration: 0ae30c84e67c76d2eb9242696dae04c50054299e07e8d9a7568e0f6d59c75928 #  -- public Git or workflow content digest
-  container-integration-cells: 9203ff22fe6ac0eeb659051bec38dc7c5534c58a60e0123139af85b15ca90685 #  -- public Git or workflow content digest
+  container-integration-cells: a80a51e9cb52056f5287f06010526f83d5f437a6032632a2c84598991b066f6e # refreshed for checkout persist-credentials=false
   e2e-wasm-build: 28d00aa9d36f6c5ab67eccdb33138df4fc57c71d67c4ecdc92444d0425ca5695 #  -- public Git or workflow content digest
   browser-matrix: 129aa036114a7b88b36d013c8f2b94926eed5b25904f2cb5fffc79d557b6dc0a #  -- public Git or workflow content digest
-  load-and-chaos: 112d78abb16018feb303cce1a4c55c6afa80514ffb1f68ce926a9367a533f078 #  -- public Git or workflow content digest
-  kyverno-test: 909ede74caa9ea4cba3d77033cc74be333e298b7e542fdf534ff12e30d272c52 #  -- public Git or workflow content digest
-  miri: 68dbeb525c2af2866800a2c771019a52fe459dd82e9314c0d9f723a6434ae237 #  -- public Git or workflow content digest
+  load-and-chaos: 965ae7823da5e88fd534557fb8f84e9930b346f3c32f40ca5609943ec85ec7dc # refreshed for explicit MinIO credential aliases
+  kyverno-test: 75f05745d1775459fc927626d8fd7dff21f5154ecd254ce3a50e7cbe60b6ae38 # refreshed for checkout persist-credentials=false
+  miri: c785bc7b838e22671534d957ef1e192535cdccf9deee092b802061717ec0c31b # refreshed for checkout credential hardening after toolchain normalization
 manual_preserved_jobs:
   manual-frontend-mutation-preflight: bdcf337a18180011297d50c75fabd42a0fa290c73f6e33b1ea3744a7ef895d3f # normalized after removing the asserted typecheck-only delta; updated artifact action pin
   manual-frontend-mutation-shards: 083381d77df892b169de7c4d8d9bc220f30306420cf011ed7279d91c92c16e59 # updated immutable artifact action pins

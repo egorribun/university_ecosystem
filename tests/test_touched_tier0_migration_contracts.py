@@ -427,3 +427,13 @@ def test_news_media_upgrade_fails_closed_on_catalog_drift_before_writes(
         migration.upgrade()
 
     assert operations.schema_writes == [], case
+
+
+def test_merge_noop_migration_upgrade_and_downgrade_are_covered() -> None:
+    migration = _load_revision(
+        "202509010001_merge_push_topics_and_email_heads.py",
+        "merge_noop_migration_coverage_contract",
+    )
+
+    assert migration.upgrade() is None
+    assert migration.downgrade() is None

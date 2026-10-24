@@ -27,10 +27,10 @@ export const AchievementsSection = ({
           <m.div
             key={ach.key}
             whileHover={{ y: -2 }}
-            className="flex items-start gap-3 p-4 rounded-2xl bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-subtle) hover:border-brand/(--opacity-soft) hover:bg-(--bg-surface)/(--opacity-medium) transition-all cursor-pointer group"
+            className="flex items-start gap-3 p-4 rounded-2xl bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)] border border-glass-border/[calc(var(--opacity-subtle)*100%)] hover:border-brand/[calc(var(--opacity-soft)*100%)] hover:bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] transition-all cursor-pointer group"
             onClick={() => onAchievementClick(ach)}
           >
-            <div className="h-10 w-10 shrink-0 rounded-xl bg-brand/(--opacity-subtle) flex items-center justify-center text-brand group-hover:bg-brand group-hover:text-[var(--text-inverse)] transition-colors">
+            <div className="h-10 w-10 shrink-0 rounded-xl bg-brand/[calc(var(--opacity-subtle)*100%)] flex items-center justify-center text-brand group-hover:bg-brand group-hover:text-[var(--text-inverse)] transition-colors">
               <Shield className="h-5 w-5" />
             </div>
             <div className="min-w-0">

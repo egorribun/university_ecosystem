@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 GITLEAKS_IGNORE_PATH = REPOSITORY_ROOT / ".gitleaksignore"
 APPROVED_FINGERPRINTS = (
@@ -36,16 +38,32 @@ APPROVED_FINGERPRINTS = (
 )
 
 
-def test_gitleaks_ignore_contains_only_exact_approved_fingerprints() -> None:
+# One observed historical code-expression false positive. This does not approve
+# another commit, path, rule or line, including later copies of the same code.
+CODE_EXPRESSION_FINGERPRINT = (
+    "75de40e472f1ef8fccedea286b0b5b456c29f1c5:"
+    "tests/test_cwv_rum_security.py:generic-api-key:939"
+)
+
+
+def _assert_exact_approved_fingerprints(path: Path) -> None:
     """Keep exceptions bound to immutable commit, path, rule, and line."""
 
-    assert GITLEAKS_IGNORE_PATH.is_file()
-    fingerprints = GITLEAKS_IGNORE_PATH.read_text(encoding="utf-8").splitlines()
+    assert path.is_file()
+    fingerprints = path.read_text(encoding="utf-8").splitlines()
+    expected = sorted((*APPROVED_FINGERPRINTS, CODE_EXPRESSION_FINGERPRINT))
 
-    assert len(fingerprints) == 25
-    assert fingerprints == sorted(APPROVED_FINGERPRINTS)
+    assert len(APPROVED_FINGERPRINTS) == 25
+    assert CODE_EXPRESSION_FINGERPRINT not in APPROVED_FINGERPRINTS
+    assert len(fingerprints) == 26
+    assert fingerprints == expected
     assert len(set(fingerprints)) == len(fingerprints)
-    assert set(fingerprints) == set(APPROVED_FINGERPRINTS)
+    assert set(fingerprints) == set(expected)
+    assert [
+        fingerprint
+        for fingerprint in fingerprints
+        if fingerprint != CODE_EXPRESSION_FINGERPRINT
+    ] == list(APPROVED_FINGERPRINTS)
     assert all(
         re.fullmatch(
             r"[0-9a-f]{40}:[A-Za-z0-9._/-]+:generic-api-key:[1-9][0-9]*",
@@ -53,3 +71,90 @@ def test_gitleaks_ignore_contains_only_exact_approved_fingerprints() -> None:
         )
         for fingerprint in fingerprints
     )
+
+
+def test_gitleaks_ignore_contains_only_exact_approved_fingerprints() -> None:
+    _assert_exact_approved_fingerprints(GITLEAKS_IGNORE_PATH)
+
+
+def test_exact_26_identity_inventory_accepts_only_the_reviewed_addition(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / ".gitleaksignore"
+    fingerprints = sorted((*APPROVED_FINGERPRINTS, CODE_EXPRESSION_FINGERPRINT))
+    path.write_text("\n".join(fingerprints) + "\n", encoding="utf-8")
+
+    _assert_exact_approved_fingerprints(path)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "commit",
+        "path",
+        "rule",
+        "line",
+        "global_fingerprint",
+        "wildcard_commit",
+        "wildcard_path",
+        "wildcard_rule",
+        "wildcard_line",
+        "path_backslash",
+        "duplicate",
+        "unapproved_extra",
+        "missing_original",
+        "changed_original",
+        "reordered",
+        "blank_line",
+    ],
+)
+def test_disposition_guard_rejects_scope_and_original_inventory_drift(
+    tmp_path: Path, mutation: str
+) -> None:
+    fingerprints = sorted((*APPROVED_FINGERPRINTS, CODE_EXPRESSION_FINGERPRINT))
+    parts = CODE_EXPRESSION_FINGERPRINT.split(":")
+    replacement = None
+    field_changes = {
+        "commit": (0, "0" * 40),
+        "path": (1, "tests/unapproved_case.py"),
+        "rule": (2, "unapproved-rule"),
+        "line": (3, "940"),
+        "wildcard_commit": (0, "*"),
+        "wildcard_path": (1, "tests/*"),
+        "wildcard_rule": (2, "*"),
+        "wildcard_line": (3, "*"),
+    }
+    if mutation in field_changes:
+        index, value = field_changes[mutation]
+        parts[index] = value
+        replacement = ":".join(parts)
+    elif mutation == "global_fingerprint":
+        replacement = ":".join(parts[1:])
+    elif mutation == "path_backslash":
+        parts[1] = parts[1].replace("/", "\\")
+        replacement = ":".join(parts)
+    elif mutation == "duplicate":
+        fingerprints.append(CODE_EXPRESSION_FINGERPRINT)
+    elif mutation == "unapproved_extra":
+        parts[3] = "940"
+        fingerprints.append(":".join(parts))
+    elif mutation == "missing_original":
+        fingerprints.remove(APPROVED_FINGERPRINTS[0])
+    elif mutation == "changed_original":
+        original = APPROVED_FINGERPRINTS[0].split(":")
+        original[3] = "22"
+        fingerprints[fingerprints.index(APPROVED_FINGERPRINTS[0])] = ":".join(original)
+    elif mutation == "reordered":
+        fingerprints.reverse()
+    elif mutation == "blank_line":
+        fingerprints.append("")
+
+    if replacement is not None:
+        fingerprints[fingerprints.index(CODE_EXPRESSION_FINGERPRINT)] = replacement
+    if mutation != "reordered":
+        fingerprints.sort()
+    path = tmp_path / ".gitleaksignore"
+    path.write_text("\n".join(fingerprints) + "\n", encoding="utf-8")
+
+    with pytest.raises(AssertionError):
+        _assert_exact_approved_fingerprints(path)

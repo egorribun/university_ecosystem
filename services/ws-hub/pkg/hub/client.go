@@ -388,12 +388,48 @@ func (c *Client) handleIncomingMessage(ctx context.Context, msg Message, data []
 		c.handleJoin(ctx, msg)
 	case "leave":
 		c.handleLeave(msg)
+	case "heartbeat_ping":
+		c.handleHeartbeatPing(data)
 	default:
 		// RZ-27-05: Log unknown message types for protocol drift detection.
 		UnknownMsgTypeTotal.Inc()
 		c.Hub.Logger.WarnContext(ctx, "Unknown message type",
 			"client_id", c.ID, "type", msg.Type)
 	}
+}
+
+func (c *Client) handleHeartbeatPing(data []byte) {
+	var request struct {
+		Nonce string `json:"nonce"`
+	}
+	if err := json.Unmarshal(data, &request); err != nil || !isValidHeartbeatNonce(request.Nonce) {
+		_ = safeSend(c.Send, []byte(`{"type":"error","code":"invalid_heartbeat_nonce","detail":"heartbeat nonce must be 32 lowercase hexadecimal characters"}`))
+		return
+	}
+
+	// The validator restricts this value to 32 ASCII lowercase hex bytes, so
+	// it cannot contain JSON quotes, escapes, or control characters. Directly
+	// composing this fixed frame is safe and keeps the pong size bounded.
+	const pongPrefix = `{"type":"heartbeat_pong","nonce":"`
+	const pongSuffix = `"}`
+	frame := make([]byte, 0, len(pongPrefix)+len(request.Nonce)+len(pongSuffix))
+	frame = append(frame, pongPrefix...)
+	frame = append(frame, request.Nonce...)
+	frame = append(frame, pongSuffix...)
+	_ = safeSend(c.Send, frame)
+}
+
+func isValidHeartbeatNonce(nonce string) bool {
+	if len(nonce) != 32 {
+		return false
+	}
+	for index := 0; index < len(nonce); index++ {
+		character := nonce[index]
+		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 type joinPayload struct {
@@ -433,14 +469,15 @@ func mergeTopLevelJoinReplay(msg *Message, data []byte) {
 }
 
 type roomJoinDecision struct {
-	resumeToken   string
-	legacyCursor  bool
-	replayEnabled bool
-	replayLimited bool
-	replaySeq     uint64
-	replayCtx     context.Context
-	replayState   *roomReplayState
-	tokenErr      error
+	resumeToken       string
+	legacyCursor      bool
+	replayEnabled     bool
+	replayLimited     bool
+	replayUnavailable bool
+	replaySeq         uint64
+	replayCtx         context.Context
+	replayState       *roomReplayState
+	tokenErr          error
 }
 
 func (c *Client) handleJoin(ctx context.Context, msg Message) {
@@ -464,7 +501,7 @@ func (c *Client) prepareAuthorizedRoomJoin(
 	decision *roomJoinDecision,
 ) bool {
 	parseRoomJoinPayload(msg.Payload, decision)
-	if decision.resumeToken == "" || !c.Hub.chatReplayAvailable.Load() {
+	if decision.resumeToken == "" {
 		c.cancelRoomReplay(msg.Room)
 		return true
 	}
@@ -474,12 +511,19 @@ func (c *Client) prepareAuthorizedRoomJoin(
 		c.UserID,
 		msg.Room,
 	)
+	if !c.Hub.chatReplayAvailable.Load() {
+		c.cancelRoomReplay(msg.Room)
+		if decision.tokenErr == nil {
+			decision.replayUnavailable = true
+			return false
+		}
+	}
 	if decision.tokenErr != nil {
 		return true
 	}
 	if !c.allowReplayJoin(msg.Room) {
 		decision.replayLimited = true
-		return true
+		return false
 	}
 	decision.replayCtx, decision.replayState = c.prepareRoomReplay(ctx, msg.Room)
 	return false
@@ -511,6 +555,10 @@ func (c *Client) finishAuthorizedRoomJoin(
 	msg Message,
 	decision *roomJoinDecision,
 ) {
+	if decision.replayUnavailable {
+		c.sendReplayJoinError(msg.Room, "replay_unavailable", "chat history replay is temporarily unavailable")
+		return
+	}
 	if decision.replayEnabled {
 		if decision.tokenErr != nil {
 			c.sendReplayJoinError(msg.Room, "invalid_resume_token", "resume token is invalid or expired")
@@ -1247,10 +1295,12 @@ func (c *Client) handleLeave(msg Message) {
 
 // allowedMessageTypes is the client-to-hub command catalog. Chat mutations,
 // read receipts, and typing are backend-owned; clients may only join or leave
-// rooms. This prevents an untrusted payload from impersonating a server event.
+// rooms and send a validated local heartbeat ping. This prevents an untrusted
+// payload from impersonating a server event.
 var allowedMessageTypes = map[string]bool{
-	"join":  true,
-	"leave": true,
+	"join":           true,
+	"leave":          true,
+	"heartbeat_ping": true,
 }
 
 func isAllowedMessageType(t string) bool {

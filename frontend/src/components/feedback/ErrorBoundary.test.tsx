@@ -102,6 +102,9 @@ describe("ErrorBoundary", () => {
     expect(glow?.getAttribute("style")).toContain(
       `background-image: ${ERROR_BOUNDARY_RADIAL_BACKGROUND}`
     )
+    expect(ERROR_BOUNDARY_RADIAL_BACKGROUND).toContain(
+      "color-mix(in srgb, var(--primary-main) calc(var(--opacity-subtle) * 100%), transparent)"
+    )
     expect(logError).toHaveBeenCalledWith(
       "ErrorBoundary caught an error:",
       expect.objectContaining({

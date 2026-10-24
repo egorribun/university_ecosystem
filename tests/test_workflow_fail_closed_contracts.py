@@ -95,6 +95,8 @@ _POWERSHELL_DOCKER_PULL = re.compile(
 )
 _DOCKER_RUN_OPTIONS_WITH_VALUE = {
     "--add-host",
+    "--cap-add",
+    "--cap-drop",
     "--cidfile",
     "--cpus",
     "--entrypoint",
@@ -109,6 +111,7 @@ _DOCKER_RUN_OPTIONS_WITH_VALUE = {
     "--pids-limit",
     "--platform",
     "--publish",
+    "--security-opt",
     "--tmpfs",
     "--user",
     "--volume",
@@ -855,6 +858,11 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
             "docker-security-scan",
             "Upload Trivy results to GitHub Security tab",
         ),
+        (
+            "ci.yml",
+            "docker-security-scan-additional",
+            "Upload Trivy results to GitHub Security tab",
+        ),
         ("contract-validation.yml", "spectral-lint", "Run Spectral lint"),
         (
             "contract-validation.yml",
@@ -1167,6 +1175,30 @@ def test_reusable_backend_image_pull_loop_keeps_all_four_audited_pins() -> None:
             "pgvector/pgvector:pg17",
         )
     )
+
+
+@pytest.mark.parametrize("command", ["run", "create"])
+@pytest.mark.parametrize(
+    "options",
+    [
+        "--cap-add NET_BIND_SERVICE",
+        "--cap-add=NET_BIND_SERVICE",
+        "--cap-drop ALL",
+        "--cap-drop=ALL",
+        "--security-opt no-new-privileges",
+        "--security-opt=no-new-privileges",
+        "--cap-drop ALL --security-opt no-new-privileges --read-only",
+    ],
+)
+def test_docker_security_option_values_do_not_hide_the_real_image(
+    command: str, options: str
+) -> None:
+    pinned = EXPECTED_EXTERNAL_IMAGES["redis:7-alpine"]
+    assert list(_docker_cli_images(f"docker {command} {options} {pinned}")) == [pinned]
+    images = list(_docker_cli_images(f"docker {command} {options} redis:7-alpine"))
+    assert images == ["redis:7-alpine"]
+    with pytest.raises(AssertionError, match="unpinned static image"):
+        _assert_pinned(images[0], source="security-option-regression")
 
 
 def test_all_static_external_workflow_images_are_digest_pinned() -> None:
@@ -1590,6 +1622,47 @@ def test_reusable_trivy_scans_upload_evidence_then_fail_closed() -> None:
     assert 'if [[ "$outcome" != "success" ]]' in reassert["run"]
 
 
+def test_matrix_trivy_images_upload_bounded_sarif_without_weakening_gate() -> None:
+    workflow = _workflow(CI)
+    job_id = "docker-security-scan-additional"
+    job = workflow["jobs"][job_id]
+    matrix_images = [
+        entry["image_name"] for entry in job["strategy"]["matrix"]["include"]
+    ]
+    assert matrix_images == ["frontend", "gateway", "ws-hub", "file-processor", "caddy"]
+    assert len(matrix_images) == len(set(matrix_images))
+
+    scan = _step(job, "Run Trivy vulnerability scanner")
+    sarif_path = "trivy-${{ matrix.image_name }}.sarif"
+    assert scan["with"]["output"] == sarif_path
+    assert scan["with"]["severity"] == "CRITICAL,HIGH"
+    assert scan["with"]["limit-severities-for-sarif"] is True
+    assert scan["with"]["exit-code"] == "1"
+    assert "continue-on-error" not in scan
+    assert "continue-on-error" not in job
+
+    artifact = _step(job, "Upload Trivy SARIF diagnostic artifact")
+    assert artifact["uses"] == (
+        "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+    )
+    assert artifact["if"] == (
+        "always() && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''"
+    )
+    assert "continue-on-error" not in artifact
+    assert artifact["with"] == {
+        "name": "trivy-image-${{ matrix.image_name }}-sarif",
+        "path": sarif_path,
+        "retention-days": 14,
+        "if-no-files-found": "error",
+    }
+    assert job["steps"].index(scan) < job["steps"].index(artifact)
+
+    ci_success = workflow["jobs"]["ci-success"]
+    assert job_id in ci_success["needs"]
+    gate_run = _step(ci_success, "Check all jobs passed")["run"]
+    assert f'"{job_id}|${{{{ needs.{job_id}.result }}}}"' in gate_run
+
+
 def test_trivy_oci_export_precedes_helm_dependency_mutation_and_preflight(
     tmp_path: Path,
 ) -> None:
@@ -1883,3 +1956,20 @@ def test_q4_heavy_scans_are_scheduled_manual_and_default_branch_guarded() -> Non
         names = {check["name"] for check in event["required_checks"]}
         assert "SQLMap Scan" not in names
         assert "TruffleHog Scan" not in names
+
+
+def test_trivy_diagnostic_is_failure_only_and_preserves_scan_permissions() -> None:
+    job = _workflow(CI)["jobs"]["docker-security-scan-additional"]
+    step = _step(job, "Summarize Trivy vulnerability metadata")
+    scan = _step(job, "Run Trivy vulnerability scanner")
+    assert step["if"] == (
+        "always() && steps.trivy_scan.outcome == 'failure' && "
+        "hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''"
+    )
+    assert step["env"] == {"SARIF_PATH": "trivy-${{ matrix.image_name }}.sarif"}
+    assert "continue-on-error" not in step
+    assert job["steps"].index(scan) < job["steps"].index(step)
+    assert job["permissions"] == {"security-events": "write", "contents": "read"}
+    assert step["run"] == (
+        'python3 scripts/quality/report_trivy_metadata.py "$SARIF_PATH"'
+    )

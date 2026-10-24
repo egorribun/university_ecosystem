@@ -195,8 +195,8 @@ describe("ReactionPill integration contracts", () => {
     expect(button).toHaveAttribute("aria-pressed", "true")
     expect(button).toHaveAttribute("aria-label", "messenger:reactions.tally")
     expect(button).toHaveClass(
-      "border-(--color-violet-500)/(--opacity-medium)",
-      "bg-(--color-violet-500)/(--opacity-soft)",
+      "border-(--color-violet-500)/[calc(var(--opacity-medium)*100%)]",
+      "bg-(--color-violet-500)/[calc(var(--opacity-soft)*100%)]",
       "text-(--text-primary)"
     )
     expect(container.querySelector("[data-reaction-ui]")).toBe(button)

@@ -557,6 +557,7 @@ def test_secret_preflight_contract_matches_rendered_workload_references() -> Non
         "outbox-worker": {
             connections["databaseURLKey"],
             connections["redisBackendURLKey"],
+            connections["rateLimitStorageURIKey"],
             connections["natsURLKey"],
             connections["natsAuthTokenKey"],
         },
@@ -566,10 +567,13 @@ def test_secret_preflight_contract_matches_rendered_workload_references() -> Non
     for component, expected_application_keys in workload_contracts.items():
         pod_spec, container = _deployment_pod_and_container(resources, component)
         if component == "outbox-worker":
-            assert not any(
-                item["name"].startswith("RATE_LIMIT_STORAGE_")
-                for item in container["env"]
+            environment = {item["name"]: item for item in container["env"]}
+            assert environment["RATE_LIMIT_STORAGE_BACKEND"]["value"] == "redis"
+            assert environment["RATE_LIMIT_STORAGE_URI_FILE"]["value"] == (
+                f"/run/secrets/{connection_secret}/"
+                f"{connections['rateLimitStorageURIKey']}"
             )
+            assert "RATE_LIMIT_STORAGE_URI" not in environment
         assert _secret_volume_names(pod_spec) == {
             "secret-application",
             "secret-connections",

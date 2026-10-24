@@ -1,0 +1,15 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: resource-limits-after-ephemeral-debugger
+policies:
+  - ../../../cluster-policies.yaml
+resources:
+  - resources.yaml
+variables: values.yaml
+results:
+  - policy: require-resource-limits
+    isValidatingPolicy: true
+    resources: [university-ecosystem/ordinary-update-after-debugger]
+    kind: Pod
+    result: pass

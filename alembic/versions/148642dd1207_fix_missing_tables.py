@@ -8,7 +8,6 @@ Create Date: 2026-01-18 22:30:50.324424
 
 from collections.abc import Sequence
 from contextlib import contextmanager
-import re
 from typing import Any
 
 import sqlalchemy as sa
@@ -116,12 +115,6 @@ def ensure_partitioned(table_name: str, create_sql: str, partition_key: str) -> 
     op.execute(f"DROP TABLE {table_name}_old")  # nosemgrep
 
 
-def _normalize_constraint_definition(definition: str) -> str:
-    """Normalize PostgreSQL's rendered CHECK expression for exact comparison."""
-
-    return re.sub(r"[\s()\"]+", "", definition).upper()
-
-
 def _ensure_postgresql_not_null_check(
     table: str,
     constraint_name: str,
@@ -132,8 +125,9 @@ def _ensure_postgresql_not_null_check(
     A same-name constraint may have been left by an operator or a partially
     applied deployment.  Reusing it without checking its expression would
     allow a weaker predicate to masquerade as the migration's NOT NULL
-    contract.  PostgreSQL's catalog is authoritative; offline rendering still
-    emits the additive ``NOT VALID`` statement for review.
+    contract. Compare catalog column identity and the deparsed expression
+    without case folding or stripping identifier quotes. Validation state is
+    separate from this proof; offline rendering still emits ``NOT VALID``.
     """
 
     add_sql = (
@@ -152,22 +146,35 @@ def _ensure_postgresql_not_null_check(
     row = bind.execute(
         sa.text(
             """
-            SELECT c.contype, c.convalidated, pg_get_constraintdef(c.oid)
-            FROM pg_constraint AS c
-            WHERE c.conrelid = to_regclass(:table_name)
+            SELECT c.contype,
+                   c.conkey = ARRAY[a.attnum] AS matches_column,
+                   NOT c.connoinherit
+                   AND pg_catalog.pg_get_expr(c.conbin, c.conrelid) =
+                       pg_catalog.format('(%I IS NOT NULL)', :column_name)
+                   AS matches_predicate
+            FROM pg_catalog.pg_constraint AS c
+            LEFT JOIN pg_catalog.pg_attribute AS a
+              ON a.attrelid = c.conrelid
+             AND a.attname = :column_name
+             AND NOT a.attisdropped
+            WHERE c.conrelid = pg_catalog.to_regclass(:table_name)
               AND c.conname = :constraint_name
             """
         ),
-        {"table_name": table, "constraint_name": constraint_name},
+        {
+            "table_name": table,
+            "constraint_name": constraint_name,
+            "column_name": column,
+        },
     ).first()
     if row is not None:
-        actual_type, _validated, definition = row
+        actual_type, matches_column, matches_predicate = row
         if isinstance(actual_type, bytes):
             actual_type = actual_type.decode("ascii")
-        expected = _normalize_constraint_definition(f"CHECK ({column} IS NOT NULL)")
         if (
             actual_type != "c"
-            or _normalize_constraint_definition(str(definition)) != expected
+            or matches_column is not True
+            or matches_predicate is not True
         ):
             raise RuntimeError(
                 f"Existing constraint {constraint_name!r} on {table!r} "
@@ -334,7 +341,9 @@ def _postgresql_groups_id_upgrade(inspector: Any) -> None:
         )
     )
     _ensure_postgresql_not_null_check("groups", _GROUPS_ID_SHADOW_CHECK, "id__integer")
-    op.execute("ALTER TABLE groups VALIDATE CONSTRAINT ck_groups_id_shadow_not_null")
+    # The source preflight and exact backfill proof already cover every row
+    # under the transaction's ACCESS EXCLUSIVE lock. Keep this transient check
+    # enforcing writes without rescanning a column that the cutover drops.
 
     # Preserve any child FKs while the referenced key is replaced.  Child
     # columns are converted to INTEGER and restored against the new id below.
@@ -740,11 +749,198 @@ def _postgresql_signing_key_check(inspector: Any) -> None:
     op.execute("ALTER TABLE active_sessions ALTER COLUMN signing_key SET NOT NULL")
 
 
+def _backfill_spotify_integrations() -> None:
+    """Preserve legacy Spotify state before its user columns are removed."""
+    if context.is_offline_mode():
+        return
+
+    bind = op.get_bind()
+    if bind is None:
+        return
+
+    inspector = sa.inspect(bind)
+    if not inspector.has_table("users") or not inspector.has_table(
+        "spotify_integrations"
+    ):
+        return
+
+    users_column_names = {column["name"] for column in inspector.get_columns("users")}
+    if "id" not in users_column_names:
+        raise RuntimeError("Cannot backfill Spotify integrations without users.id")
+
+    legacy_mapping = (
+        ("spotify_user_id", "spotify_user_id"),
+        ("spotify_access_token", "access_token"),
+        ("spotify_refresh_token", "refresh_token"),
+        ("spotify_token_expires_at", "token_expires_at"),
+        ("spotify_scope", "scope"),
+        ("spotify_display_name", "display_name"),
+        ("spotify_last_checked_at", "last_checked_at"),
+        ("spotify_last_track_id", "last_track_id"),
+        ("spotify_last_track_name", "last_track_name"),
+        ("spotify_last_artist_name", "last_artist_name"),
+        ("spotify_last_album_name", "last_album_name"),
+        ("spotify_last_track_url", "last_track_url"),
+        ("spotify_last_album_image_url", "last_album_image_url"),
+    )
+    available_mapping = tuple(
+        (source_name, target_name)
+        for source_name, target_name in legacy_mapping
+        if source_name in users_column_names
+    )
+    available_flag_columns = tuple(
+        source_name
+        for source_name in ("spotify_is_connected", "spotify_is_playing")
+        if source_name in users_column_names
+    )
+    available_state_columns = (
+        *(source_name for source_name, _ in available_mapping),
+        *available_flag_columns,
+    )
+    if not available_state_columns:
+        return
+
+    metadata = sa.MetaData()
+    users = sa.Table("users", metadata, autoload_with=bind)
+    integrations = sa.Table("spotify_integrations", metadata, autoload_with=bind)
+    target_column_names = (
+        "user_id",
+        *(target_name for _, target_name in legacy_mapping),
+        "is_connected",
+        "is_playing",
+    )
+    missing_target_columns = set(target_column_names).difference(integrations.c.keys())
+    if missing_target_columns:
+        missing = ", ".join(sorted(missing_target_columns))
+        raise RuntimeError(
+            "Cannot backfill Spotify integrations; target columns are missing: "
+            f"{missing}"
+        )
+
+    values = [users.c.id]
+    for source_name, target_name in legacy_mapping:
+        if source_name in users_column_names:
+            values.append(users.c[source_name])
+        else:
+            values.append(sa.cast(sa.null(), integrations.c[target_name].type))
+    credential_checks = tuple(
+        sa.and_(
+            users.c[source_name].is_not(None),
+            users.c[source_name] != "",
+        )
+        for source_name in ("spotify_access_token", "spotify_refresh_token")
+        if source_name in users_column_names
+    )
+    derived_is_connected = (
+        sa.or_(*credential_checks) if credential_checks else sa.false()
+    )
+    is_connected = (
+        sa.func.coalesce(users.c.spotify_is_connected, derived_is_connected)
+        if "spotify_is_connected" in users_column_names
+        else derived_is_connected
+    )
+    is_playing = (
+        sa.func.coalesce(users.c.spotify_is_playing, sa.false())
+        if "spotify_is_playing" in users_column_names
+        else sa.false()
+    )
+    values.extend((is_connected, is_playing))
+
+    has_legacy_state = sa.or_(
+        *(users.c[source_name].is_not(None) for source_name in available_state_columns)
+    )
+    destination_exists = sa.exists(
+        sa.select(1)
+        .select_from(integrations)
+        .where(integrations.c.user_id == users.c.id)
+        .correlate(users)
+    )
+    source_rows = (
+        sa.select(*values)
+        .select_from(users)
+        .where(has_legacy_state, sa.not_(destination_exists))
+    )
+
+    if bind.dialect.name == "postgresql":
+        statement = (
+            postgresql.insert(integrations)
+            .from_select(target_column_names, source_rows)
+            .on_conflict_do_nothing(index_elements=[integrations.c.user_id])
+        )
+    elif bind.dialect.name == "sqlite":
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+        statement = (
+            sqlite_insert(integrations)
+            .from_select(target_column_names, source_rows)
+            .on_conflict_do_nothing(index_elements=[integrations.c.user_id])
+        )
+    else:
+        # The NOT EXISTS predicate preserves already-present rows. On a race,
+        # the primary-key violation aborts the migration instead of overwriting.
+        statement = sa.insert(integrations).from_select(
+            target_column_names, source_rows
+        )
+
+    bind.execute(statement)
+
+
+def _backfill_user_preferences() -> None:
+    """Copy surviving quiet-hour settings without replacing destination rows."""
+    if context.is_offline_mode():
+        return
+
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    legacy_columns = {column["name"] for column in inspector.get_columns("users")}
+    fields = ("dnd_enabled", "dnd_start", "dnd_end", "timezone")
+    if not legacy_columns.intersection(fields):
+        return
+
+    metadata = sa.MetaData()
+    users = sa.Table("users", metadata, autoload_with=bind)
+    preferences = sa.Table("user_preferences", metadata, autoload_with=bind)
+    values = [users.c.id]
+    for name in fields:
+        if name in legacy_columns:
+            values.append(users.c[name])
+        elif name == "dnd_enabled":
+            values.append(sa.false())
+        else:
+            values.append(sa.cast(sa.null(), preferences.c[name].type))
+
+    destination_exists = sa.exists(
+        sa.select(1)
+        .select_from(preferences)
+        .where(preferences.c.user_id == users.c.id)
+        .correlate(users)
+    )
+    source_rows = (
+        sa.select(*values).select_from(users).where(sa.not_(destination_exists))
+    )
+    target_columns = ("user_id", *fields)
+    if bind.dialect.name == "postgresql":
+        statement = (
+            postgresql.insert(preferences)
+            .from_select(target_columns, source_rows)
+            .on_conflict_do_nothing(index_elements=[preferences.c.user_id])
+        )
+    else:
+        # A competing insert on another dialect fails the surrounding
+        # transaction rather than replacing an existing preference row.
+        statement = sa.insert(preferences).from_select(target_columns, source_rows)
+    bind.execute(statement)
+
+
 def upgrade() -> None:
     """Upgrade schema."""
     SKIPPED_TABLES.clear()
     bind = op.get_bind()
     is_postgresql = bind.dialect.name == "postgresql"
+    # Bound reflection and DDL without changing the migration transaction.
+    if is_postgresql:
+        op.execute(sa.text("SET LOCAL lock_timeout = '10s'"))
+        op.execute(sa.text("SET LOCAL statement_timeout = '60s'"))
     try:
         inspector = sa.inspect(bind)
     except (sa.exc.NoInspectionAvailable, NameError):
@@ -1334,6 +1530,8 @@ def upgrade() -> None:
             unique=False,
         )
 
+    _backfill_spotify_integrations()
+
     safe_create_table(
         "trusted_devices",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -1376,6 +1574,8 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("user_id"),
     )
+    _backfill_user_preferences()
+
     safe_create_table(
         "webauthn_credentials",
         sa.Column("id", sa.Integer(), nullable=False),

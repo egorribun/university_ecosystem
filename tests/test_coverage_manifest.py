@@ -547,10 +547,10 @@ def _aggregate_legacy_migration_fixture(
     legacy_baseline_covered: int = 8,
     changed_covered: int = 10,
     changed_function_metric: dict[str, object] | None = None,
+    changed_path: str = "alembic/versions/new_revision.py",
 ) -> tuple[object, dict[str, object]]:
     normalizer = _normalizer_module()
     legacy_path = "alembic/versions/legacy_revision.py"
-    changed_path = "alembic/versions/new_revision.py"
     metrics_by_path = {
         legacy_path: {
             "lines": normalizer._measured_metric("native", legacy_covered, 10),
@@ -649,6 +649,297 @@ def _aggregate_legacy_migration_fixture(
             baseline,
         )
     return normalizer, result
+
+
+def _normalizer_source_bound_aggregate_case(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    changed_metric: str | None = None,
+    changed_evidence: str | None = None,
+    omit_changed: bool = False,
+    source_binding_error: str | None = None,
+) -> tuple[
+    object,
+    dict[str, object],
+    dict[str, dict[str, object]],
+    str,
+    dict[str, dict[str, dict[str, object]]],
+    list[str],
+    dict[str, object],
+]:
+    normalizer = _normalizer_module()
+    contract = json.loads(QUALITY_CONTRACT_PATH.read_text(encoding="utf-8"))
+    declared_records = normalizer._legacy_migration_records(contract)
+    changed_path = "alembic/versions/148642dd1207_fix_missing_tables.py"
+    assert len(declared_records) == 131
+    assert changed_path in declared_records
+    effective_records = {
+        path: record
+        for path, record in declared_records.items()
+        if path != changed_path
+    }
+    source_errors = [] if source_binding_error is None else [source_binding_error]
+
+    def source_binding(
+        _contract: dict[str, object], _repository_root: Path
+    ) -> tuple[list[str], dict[str, dict[str, object]]]:
+        return source_errors, {} if source_errors else effective_records
+
+    monkeypatch.setattr(
+        normalizer, "_source_bound_legacy_migration_records", source_binding
+    )
+    bound_errors, active_records = normalizer._effective_legacy_migration_records(
+        contract
+    )
+    assert len(declared_records) == 131
+    assert len(active_records) == (0 if source_errors else 130)
+    assert bound_errors == source_errors
+
+    file_metrics: dict[str, dict[str, dict[str, object]]] = {}
+    for path, record in declared_records.items():
+        if omit_changed and path == changed_path:
+            continue
+        metrics: dict[str, dict[str, object]] = {}
+        for metric_name in normalizer.METRICS:
+            baseline = record["metrics"][metric_name]
+            status = baseline["status"]
+            derivation = baseline.get("derivation")
+            if path == changed_path and metric_name == changed_metric:
+                if changed_evidence == "unsupported":
+                    metrics[metric_name] = normalizer._unmeasured_metric(
+                        "unsupported", reason_code="fixture_counter_unavailable"
+                    )
+                    continue
+                if changed_evidence == "99_percent":
+                    metrics[metric_name] = normalizer._measured_metric(
+                        status,
+                        99,
+                        100,
+                        derivation=derivation,
+                    )
+                    continue
+            if path == changed_path:
+                metrics[metric_name] = normalizer._measured_metric(
+                    status,
+                    100,
+                    100,
+                    derivation=derivation,
+                )
+            elif baseline["total"] == 0:
+                metrics[metric_name] = normalizer._vacuous_metric(derivation)
+            else:
+                metrics[metric_name] = normalizer._measured_metric(
+                    status,
+                    baseline["covered"],
+                    baseline["total"],
+                    derivation=derivation,
+                )
+        file_metrics[path] = metrics
+
+    report_metrics: dict[str, dict[str, object]] = {}
+    for metric_name in normalizer.METRICS:
+        values = [metrics[metric_name] for metrics in file_metrics.values()]
+        if metric_name == "functions":
+            report_metrics[metric_name] = normalizer._unmeasured_metric(
+                "unsupported", reason_code="fixture_python_xml_has_no_function_counter"
+            )
+            continue
+        if any(value["status"] == "unsupported" for value in values):
+            report_metrics[metric_name] = normalizer._unmeasured_metric(
+                "unsupported", reason_code="fixture_counter_unavailable"
+            )
+            continue
+        covered = sum(int(value["covered"]) for value in values)
+        total = sum(int(value["total"]) for value in values)
+        if total == 0:
+            report_metrics[metric_name] = normalizer._vacuous_metric(
+                normalizer.TIER0_AGGREGATE_DERIVATION
+            )
+        else:
+            report_metrics[metric_name] = normalizer._measured_metric(
+                "derived"
+                if any(value["status"] == "derived" for value in values)
+                else "native",
+                covered,
+                total,
+                derivation=normalizer.TIER0_AGGREGATE_DERIVATION,
+            )
+    report = normalizer._ParsedReport(
+        component="python",
+        report_format="source-bound-fixture",
+        path=Path("coverage.xml"),
+        metrics=report_metrics,
+        file_metrics=file_metrics,
+        sha256="0" * 64,
+    )
+    reports_by_component = defaultdict(list)
+    reports_by_component["python"].append(report)
+    floors = {
+        component: {metric: 100 for metric in normalizer.METRICS}
+        for component in normalizer.COMPONENTS
+    }
+    # Preserve the generic component floor. Tier 0 supplies the migration floor.
+    floors["python"]["functions"] = 0
+    metric_statuses = {
+        component: {
+            metric: frozenset({"native", "derived", "unsupported"})
+            for metric in normalizer.METRICS
+        }
+        for component in normalizer.COMPONENTS
+    }
+    monkeypatch.setattr(normalizer, "_load_tier0_rules", lambda: (["fixture"], None))
+    monkeypatch.setattr(normalizer, "_tier0_rule_matches", lambda _path, _rule: True)
+    monkeypatch.setattr(
+        normalizer,
+        "_tier0_source_requires_coverage",
+        lambda component, _path: component == "python",
+    )
+    source_inventory = {
+        "python": tuple(declared_records),
+    }
+    _, component_errors, _ = normalizer._component_entry(
+        "python",
+        [report],
+        floors["python"],
+        metric_statuses["python"],
+        supplied_count=1,
+        required_count=1,
+        evidence_errors=[],
+        legacy_migration_records=active_records,
+    )
+    tier0 = normalizer._aggregate_tier0(
+        reports_by_component,
+        floors,
+        metric_statuses,
+        source_inventory,
+        active_records,
+        bound_errors,
+    )
+    return (
+        normalizer,
+        declared_records,
+        active_records,
+        changed_path,
+        file_metrics,
+        component_errors,
+        tier0,
+    )
+
+
+def test_normalizer_uses_effective_legacy_subset_for_residuals_and_aggregate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        normalizer,
+        declared,
+        effective,
+        changed_path,
+        file_metrics,
+        component_errors,
+        tier0,
+    ) = _normalizer_source_bound_aggregate_case(monkeypatch)
+
+    assert len(declared) == 131
+    assert len(effective) == 130
+    assert set(declared) - set(effective) == {changed_path}
+    assert component_errors == []
+    assert tier0["status"] == "ready"
+    assert tier0["errors"] == []
+
+    changed_historical_misses = sum(
+        baseline["total"] - baseline["covered"]
+        for baseline in declared[changed_path]["metrics"].values()
+        if baseline["total"] > baseline["covered"]
+    )
+    assert changed_historical_misses > 0
+    for metric_name in normalizer.METRICS:
+        residual = sum(
+            record["metrics"][metric_name]["total"]
+            - record["metrics"][metric_name]["covered"]
+            for record in effective.values()
+        )
+        assert (
+            normalizer._exact_legacy_migration_missing(
+                file_metrics, effective, metric_name
+            )
+            == residual
+        )
+        aggregate_metric = tier0["coverage"][metric_name]
+        assert aggregate_metric["total"] - aggregate_metric["covered"] == residual
+
+
+@pytest.mark.parametrize(
+    "metric_name", ("lines", "statements", "branches", "functions")
+)
+def test_normalizer_changed_listed_migration_rejects_99_percent(
+    monkeypatch: pytest.MonkeyPatch, metric_name: str
+) -> None:
+    *_, changed_path, _file_metrics, component_errors, tier0 = (
+        _normalizer_source_bound_aggregate_case(
+            monkeypatch,
+            changed_metric=metric_name,
+            changed_evidence="99_percent",
+        )
+    )
+
+    if metric_name != "functions":
+        assert component_errors
+    assert tier0["status"] == "failed"
+    assert any(
+        f"{changed_path} (python).{metric_name} is below 100%" in error
+        for error in tier0["errors"]
+    )
+
+
+@pytest.mark.parametrize(
+    "metric_name", ("lines", "statements", "branches", "functions")
+)
+def test_normalizer_changed_listed_migration_rejects_unsupported_evidence(
+    monkeypatch: pytest.MonkeyPatch, metric_name: str
+) -> None:
+    *_, changed_path, _file_metrics, _component_errors, tier0 = (
+        _normalizer_source_bound_aggregate_case(
+            monkeypatch,
+            changed_metric=metric_name,
+            changed_evidence="unsupported",
+        )
+    )
+
+    assert tier0["status"] == "failed"
+    assert any(
+        f"{changed_path} (python).{metric_name} is unsupported but its floor is 100"
+        in error
+        for error in tier0["errors"]
+    )
+
+
+def test_normalizer_changed_listed_migration_missing_evidence_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    *_, changed_path, _file_metrics, _component_errors, tier0 = (
+        _normalizer_source_bound_aggregate_case(
+            monkeypatch,
+            omit_changed=True,
+        )
+    )
+
+    assert tier0["status"] == "failed"
+    assert any(
+        f"Tier0 source inventory is missing evidence for {changed_path}" in error
+        for error in tier0["errors"]
+    )
+
+
+def test_normalizer_source_binding_errors_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    *_, tier0 = _normalizer_source_bound_aggregate_case(
+        monkeypatch,
+        source_binding_error="approved source archive unavailable",
+    )
+
+    assert tier0["status"] == "failed"
+    assert "approved source archive unavailable" in tier0["errors"]
 
 
 def _deeply_nested_json_object(depth: int = DEEP_JSON_DEPTH) -> str:
@@ -1079,6 +1370,19 @@ def test_nonbaseline_migration_functions_require_measured_evidence() -> None:
         "new_revision.py (python).functions is unsupported but its floor is 100"
         in error
         for error in rejected["errors"]
+    )
+
+    below_floor = normalizer._measured_metric("derived", 1, 2)
+    _, changed_noop_gap = _aggregate_legacy_migration_fixture(
+        changed_function_metric=below_floor,
+        changed_path=(
+            "alembic/versions/202509010001_merge_push_topics_and_email_heads.py"
+        ),
+    )
+    assert any(
+        "202509010001_merge_push_topics_and_email_heads.py (python).functions "
+        "is below 100%" in error
+        for error in changed_noop_gap["errors"]
     )
 
     derived_zero = normalizer._vacuous_metric(
@@ -1569,6 +1873,89 @@ def test_python_function_derivation_ignores_ellipsis_protocol_stubs(
     assert metric is not None
     assert metric["covered"] == metric["total"] == 1
     assert metric["percent"] == 100.0
+
+
+def test_python_function_derivation_keeps_docstring_only_denominator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import runpy
+
+    from coverage import Coverage
+
+    normalizer = _normalizer_module()
+    source_path = tmp_path / "app" / "docstring_only.py"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text(
+        "def documented_only() -> None:\n"
+        '    """A function with no executable body."""\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(normalizer, "REPOSITORY_ROOT", tmp_path)
+
+    coverage = Coverage(data_file=None, include=[str(source_path)], config_file=False)
+    coverage.start()
+    runpy.run_path(str(source_path))
+    coverage.stop()
+    executed = coverage.get_data().lines(str(source_path))
+    assert executed == [1]
+
+    metric = normalizer._derive_python_function_metric(
+        "app/docstring_only.py", {line: True for line in executed}
+    )
+
+    assert metric is not None
+    assert (metric["covered"], metric["total"], metric["percent"]) == (
+        0,
+        1,
+        0.0,
+    )
+
+
+def test_merge_migration_noop_functions_are_exercised_by_coverage_suite() -> None:
+    import runpy
+
+    from coverage import Coverage
+
+    normalizer = _normalizer_module()
+    migration_path = (
+        REPOSITORY_ROOT
+        / "alembic"
+        / "versions"
+        / "202509010001_merge_push_topics_and_email_heads.py"
+    )
+
+    def measured_metric(*, call_functions: bool) -> dict[str, object]:
+        coverage = Coverage(
+            data_file=None, include=[str(migration_path)], config_file=False
+        )
+        coverage.start()
+        namespace = runpy.run_path(str(migration_path))
+        if call_functions:
+            assert namespace["upgrade"]() is None
+            assert namespace["downgrade"]() is None
+        coverage.stop()
+        executed = coverage.get_data().lines(str(migration_path))
+        assert executed is not None
+        metric = normalizer._derive_python_function_metric(
+            "alembic/versions/202509010001_merge_push_topics_and_email_heads.py",
+            {line: True for line in executed},
+        )
+        assert metric is not None
+        return metric
+
+    uncalled = measured_metric(call_functions=False)
+    called = measured_metric(call_functions=True)
+    assert (uncalled["covered"], uncalled["total"], uncalled["percent"]) == (
+        0,
+        2,
+        0.0,
+    )
+    assert (called["covered"], called["total"], called["percent"]) == (
+        2,
+        2,
+        100.0,
+    )
 
 
 def test_python_branch_derivation_matches_coverage_py_try_semantics(

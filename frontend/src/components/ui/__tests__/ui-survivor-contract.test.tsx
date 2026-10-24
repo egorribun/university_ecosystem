@@ -128,10 +128,10 @@ describe("Checkbox survivor contract", () => {
       "bg-glass-bg",
       "backdrop-blur-glass",
       "shadow-glass",
-      "hover:border-brand/(--opacity-medium)",
+      "hover:border-brand/[calc(var(--opacity-medium)*100%)]",
       "hover:bg-glass-tint1",
       "peer-focus-visible:ring-4",
-      "peer-focus-visible:ring-brand/(--opacity-dim)",
+      "peer-focus-visible:ring-brand/[calc(var(--opacity-dim)*100%)]",
       "custom-checkbox"
     )
 
@@ -144,7 +144,7 @@ describe("Checkbox survivor contract", () => {
     expect(input).toHaveProperty("indeterminate", true)
     expect(input.parentElement?.querySelector("div")).toHaveClass(
       "border-brand",
-      "bg-brand/(--opacity-dim)",
+      "bg-brand/[calc(var(--opacity-dim)*100%)]",
       "shadow-glow-primary"
     )
     expect(input.parentElement?.querySelector("svg path")).toHaveAttribute("d", "M5 12h14")
@@ -337,7 +337,7 @@ describe("ContentCard and RadioGroup survivor contracts", () => {
       "border-2",
       "transition-all",
       "border-brand",
-      "bg-brand/(--opacity-subtle)",
+      "bg-brand/[calc(var(--opacity-subtle)*100%)]",
       "shadow-glow-primary"
     )
     expect(unselectedVisual).toHaveClass(
@@ -345,13 +345,13 @@ describe("ContentCard and RadioGroup survivor contracts", () => {
       "bg-glass-bg",
       "backdrop-blur-glass",
       "shadow-glass",
-      "hover:border-brand/(--opacity-medium)",
+      "hover:border-brand/[calc(var(--opacity-medium)*100%)]",
       "hover:bg-glass-tint1",
       "peer-focus-visible:shadow-focus"
     )
     expect(unselectedVisual).not.toHaveClass(
       "border-brand",
-      "bg-brand/(--opacity-subtle)",
+      "bg-brand/[calc(var(--opacity-subtle)*100%)]",
       "shadow-glow-primary"
     )
     expect(disabledTarget).toHaveClass("cursor-not-allowed", "opacity-medium", "grayscale")
@@ -480,7 +480,7 @@ describe("MediaSlot survivor contract", () => {
     expect(defaultWrapper?.querySelector("svg")).toHaveClass(
       "h-12",
       "w-12",
-      "text-text-primary/(--opacity-dim)"
+      "text-text-primary/[calc(var(--opacity-dim)*100%)]"
     )
   })
 
@@ -991,7 +991,9 @@ describe("NotificationRelevanceScore survivor contract", () => {
       expect(dots).toHaveLength(3)
       expect(dots.map((dot) => dot.classList.contains(activeColor))).toEqual(activeDots)
       expect(
-        dots.map((dot) => dot.classList.contains("bg-(--text-tertiary)/(--opacity-faint)"))
+        dots.map((dot) =>
+          dot.classList.contains("bg-(--text-tertiary)/[calc(var(--opacity-faint)*100%)]")
+        )
       ).toEqual(activeDots.map((active) => !active))
     }
   )

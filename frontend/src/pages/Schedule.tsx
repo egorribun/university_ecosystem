@@ -328,7 +328,7 @@ function ScheduleContent() {
               <FadeSection delay="var(--motion-duration-base)">
                 {/* ── All lessons filtered out — show reset action (FIX-65-05) ── */}
                 {allFilteredOut && (
-                  <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-500/(--opacity-dim) bg-amber-500/(--opacity-subtle) px-4 py-3 text-sm text-text-secondary">
+                  <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-500/[calc(var(--opacity-dim)*100%)] bg-amber-500/[calc(var(--opacity-subtle)*100%)] px-4 py-3 text-sm text-text-secondary">
                     <span>{t("schedule:empty.allFiltered")}</span>
                     <button
                       type="button"
@@ -341,7 +341,7 @@ function ScheduleContent() {
                 )}
                 {/* Error banner (FIX-67-06) */}
                 {scheduleError && !isLoading && (
-                  <div className="mb-4 flex items-center gap-3 rounded-xl border border-error/(--opacity-dim) bg-error/(--opacity-subtle) px-4 py-3 text-sm text-text-secondary">
+                  <div className="mb-4 flex items-center gap-3 rounded-xl border border-error/[calc(var(--opacity-dim)*100%)] bg-error/[calc(var(--opacity-subtle)*100%)] px-4 py-3 text-sm text-text-secondary">
                     <span>{t("schedule:error.loadFailed")}</span>
                     <button
                       type="button"
@@ -440,9 +440,11 @@ function ScheduleContent() {
                 offset: weekOffset > 0 ? `+${weekOffset}` : String(weekOffset),
               })}
           .{" "}
-          {t(`schedule:parity.${scheduleData.currentParity}`, {
-            defaultValue: scheduleData.currentParity,
-          })}
+          {scheduleData.currentParity === null
+            ? t("schedule:parity.all")
+            : t(`schedule:parity.${scheduleData.currentParity}`, {
+                defaultValue: scheduleData.currentParity,
+              })}
         </div>
 
         <Snackbar

@@ -25,11 +25,11 @@ export function useScheduleTime(todayLessons: Lesson[], hasToday: boolean, exter
   const timeZone = useCampusTimezone()
   const minutesNow = useMemo(() => {
     const clock = getCampusClockParts(nowTick, timeZone)
-    return clock ? clock.hour * 60 + clock.minute : nowTick.getHours() * 60 + nowTick.getMinutes()
+    return clock ? clock.hour * 60 + clock.minute : null
   }, [nowTick, timeZone])
 
   const currentLesson = useMemo(() => {
-    if (!hasToday) return null
+    if (!hasToday || minutesNow === null) return null
     return (
       todayLessons.find((l) => {
         const bounds = getLessonBounds(l)
@@ -39,8 +39,8 @@ export function useScheduleTime(todayLessons: Lesson[], hasToday: boolean, exter
   }, [todayLessons, minutesNow, hasToday])
 
   const nextLesson = useMemo(() => {
-    if (!hasToday) return null
-    if (currentLesson) {
+    if (!hasToday || minutesNow === null) return null
+    if (currentLesson && minutesNow !== null) {
       const endM = getLessonBounds(currentLesson)!.end
       return (
         todayLessons.find((l) => {
@@ -73,13 +73,13 @@ export function useScheduleTime(todayLessons: Lesson[], hasToday: boolean, exter
 
   const timeLeftText = useMemo(() => {
     let text = ""
-    if (currentLesson) {
+    if (currentLesson && minutesNow !== null) {
       const end = getLessonBounds(currentLesson)!.end
       const left = Math.max(0, end - minutesNow)
       const h = Math.floor(left / 60)
       const m = left % 60
       text = t("schedule:timeLeft.current", { duration: formatDuration(h, m) })
-    } else if (nextLesson) {
+    } else if (nextLesson && minutesNow !== null) {
       const start = getLessonBounds(nextLesson)!.start
       const left = Math.max(0, start - minutesNow)
       const h = Math.floor(left / 60)
@@ -92,10 +92,10 @@ export function useScheduleTime(todayLessons: Lesson[], hasToday: boolean, exter
   // Wave 71b: compact duration — "7ч 22м" / "22м" for badge display
   const timeLeftShort = useMemo(() => {
     let mins = 0
-    if (currentLesson) {
+    if (currentLesson && minutesNow !== null) {
       const end = getLessonBounds(currentLesson)!.end
       mins = Math.max(0, end - minutesNow)
-    } else if (nextLesson) {
+    } else if (nextLesson && minutesNow !== null) {
       const start = getLessonBounds(nextLesson)!.start
       mins = Math.max(0, start - minutesNow)
     }
@@ -109,7 +109,7 @@ export function useScheduleTime(todayLessons: Lesson[], hasToday: boolean, exter
   }, [currentLesson, nextLesson, minutesNow, t])
 
   const currentProgress = useMemo(() => {
-    if (!currentLesson) return 0
+    if (!currentLesson || minutesNow === null) return 0
     const { start, end } = getLessonBounds(currentLesson)!
     const span = end - start
     const passed = Math.min(Math.max(minutesNow - start, 0), span)

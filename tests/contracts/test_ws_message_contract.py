@@ -33,14 +33,48 @@ FRONTEND_WS_HOOK = REPOSITORY_ROOT / "frontend/src/hooks/useChatWebSocket.ts"
 WS_HUB_CLIENT_SOURCE = REPOSITORY_ROOT / "services/ws-hub/pkg/hub/client.go"
 
 
-def _frontend_server_message_types() -> frozenset[str]:
-    """Read the discriminated-union catalog from the Valibot source.
+def _frontend_object_schema_body(source: str, schema_name: str) -> str:
+    """Return one Valibot object schema body by its TypeScript identifier."""
+    declaration = re.search(
+        rf"^(?:export\s+)?const\s+{re.escape(schema_name)}\s*=\s*"
+        r"v\.object\(\{(?P<body>.*?)(?=^(?:export\s+)?const\s+|\Z)",
+        source,
+        flags=re.DOTALL | re.MULTILINE,
+    )
+    assert declaration is not None, f"Valibot object schema {schema_name} is missing"
+    return declaration.group("body")
 
-    Keeping this derived from the runtime schema prevents the contract test from
-    becoming a second, stale registry whenever a frame is added or removed.
+
+def _frontend_schema_type(source: str, schema_name: str) -> str:
+    """Read the literal discriminator from one named Valibot object schema."""
+    body = _frontend_object_schema_body(source, schema_name)
+    type_field = re.search(
+        r"\btype\s*:\s*v\.literal\(\s*['\"]([a-z_]+)['\"]\s*\)",
+        body,
+    )
+    assert type_field is not None, f"Schema {schema_name} must declare a literal type"
+    return type_field.group(1)
+
+
+def _frontend_server_message_types() -> frozenset[str]:
+    """Read only the schemas referenced by the server-to-client union.
+
+    Client-side schemas live in the same TypeScript file, but are not incoming
+    server frames and must not be inferred as members of this discriminated union.
     """
     source = FRONTEND_WS_SCHEMA.read_text(encoding="utf-8")
-    return frozenset(re.findall(r"v\.literal\([\"']([a-z_]+)[\"']\)", source))
+    server_union = re.search(
+        r"export const WsServerMessageSchema = v\.variant\(\s*['\"]type['\"]"
+        r"\s*,\s*\[(?P<schemas>.*?)\]\s*\)",
+        source,
+        flags=re.DOTALL,
+    )
+    assert server_union is not None, "Frontend server message union is missing"
+    schema_names = re.findall(
+        r"\b([A-Za-z][A-Za-z0-9]*Schema)\b", server_union.group("schemas")
+    )
+    assert schema_names, "Frontend server message union must list schemas"
+    return frozenset(_frontend_schema_type(source, name) for name in schema_names)
 
 
 def _ws_hub_client_message_types() -> frozenset[str]:
@@ -137,6 +171,7 @@ WS_MESSAGE_REQUIRED_FIELDS: dict[str, set[str]] = {
     "reaction_changed": {"type", "chat_id", "message_id", "user_id", "emoji", "action"},
     "replay_checkpoint": {"type", "chat_id"},
     "rate_limit_exceeded": {"type"},
+    "heartbeat_pong": {"type", "nonce"},
 }
 
 
@@ -281,14 +316,34 @@ def test_backend_contract_ignores_generated_mutmut_variant_bodies(tmp_path: Path
 
 
 def test_ws_hub_inbound_allowlist_has_no_server_receipt_commands():
-    """ws-hub accepts transport commands only; REST owns read receipts."""
-    assert WS_HUB_CLIENT_MESSAGE_TYPES == frozenset({"join", "leave"})
+    """ws-hub accepts room commands and a local heartbeat, not server frames."""
+    assert WS_HUB_CLIENT_MESSAGE_TYPES == frozenset({"join", "leave", "heartbeat_ping"})
+    assert "heartbeat_pong" not in WS_HUB_CLIENT_MESSAGE_TYPES
     assert "read" not in WS_HUB_CLIENT_MESSAGE_TYPES
     assert "typing" not in WS_HUB_CLIENT_MESSAGE_TYPES
 
 
+def test_heartbeat_nonce_frames_keep_client_and_server_directions_explicit():
+    """Client ping stays outside the server union; server pong requires nonce."""
+    schema_source = FRONTEND_WS_SCHEMA.read_text(encoding="utf-8")
+    assert _frontend_schema_type(schema_source, "WsClientHeartbeatPingSchema") == (
+        "heartbeat_ping"
+    )
+    assert (
+        _frontend_schema_type(schema_source, "HeartbeatPongSchema") == "heartbeat_pong"
+    )
+    assert "heartbeat_ping" not in WS_SERVER_MESSAGE_TYPES
+    assert "heartbeat_pong" in WS_SERVER_MESSAGE_TYPES
+
+    nonce_field = re.compile(r"(?m)^\s*nonce:\s*HeartbeatNonceSchema,\s*$")
+    for schema_name in ("WsClientHeartbeatPingSchema", "HeartbeatPongSchema"):
+        assert nonce_field.search(
+            _frontend_object_schema_body(schema_source, schema_name)
+        )
+
+
 def test_transport_direction_is_explicitly_split():
-    """REST owns receipts/typing and ws-hub owns the control heartbeat."""
+    """REST owns receipts/typing; ws-hub accepts only local heartbeat pings."""
     assert "read" in WS_SERVER_MESSAGE_TYPES
     hook_source = FRONTEND_WS_HOOK.read_text(encoding="utf-8")
     assert not re.search(r"sendRead|type\s*:\s*['\"]read['\"]", hook_source)

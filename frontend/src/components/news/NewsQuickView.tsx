@@ -66,7 +66,7 @@ export function NewsQuickView({
           {...motion}
           className={`absolute left-0 right-0 z-floating pointer-events-none ${getNewsQuickViewPlacement(position)}`}
         >
-          <div className="glass-layer-floating glass-noise rounded-xl p-4 shadow-premium-lift border border-glass-border/(--opacity-soft) max-w-[24rem] mx-auto">
+          <div className="glass-layer-floating glass-noise rounded-xl p-4 shadow-premium-lift border border-glass-border/[calc(var(--opacity-soft)*100%)] max-w-[24rem] mx-auto">
             {/* Category + date */}
             <div className="flex items-center gap-2 mb-2">
               {category && <NewsCategoryBadge category={category} size="sm" />}

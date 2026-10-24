@@ -69,7 +69,7 @@ export function NewsTableOfContents({ headings }: NewsTableOfContentsProps) {
   return (
     <nav
       className={cn(
-        "news-toc rounded-xl border border-glass-border/(--opacity-soft) overflow-hidden transition-all duration-base",
+        "news-toc rounded-xl border border-glass-border/[calc(var(--opacity-soft)*100%)] overflow-hidden transition-all duration-base",
         isDesktop ? "glass-layer-surface glass-noise" : "glass-layer-surface"
       )}
       aria-label={t("news:toc.label")}
@@ -80,7 +80,7 @@ export function NewsTableOfContents({ headings }: NewsTableOfContentsProps) {
         onClick={() => !isDesktop && setCollapsed(!collapsed)}
         className={cn(
           "flex w-full items-center gap-2 px-4 py-3 text-sm font-bold text-text-primary transition-colors",
-          !isDesktop && "hover:bg-(--bg-surface)/(--opacity-hover)"
+          !isDesktop && "hover:bg-(--bg-surface)/[calc(var(--opacity-hover)*100%)]"
         )}
         aria-expanded={isExpanded}
         disabled={isDesktop}
@@ -118,8 +118,8 @@ export function NewsTableOfContents({ headings }: NewsTableOfContentsProps) {
                   "w-full text-left rounded-lg px-3 py-1.5 text-sm leading-snug transition-colors",
                   heading.level === 3 && "pl-6",
                   activeId === heading.id
-                    ? "bg-brand/(--opacity-subtle) text-brand font-semibold"
-                    : "text-(--text-secondary) hover:text-text-primary hover:bg-(--bg-surface)/(--opacity-hover)"
+                    ? "bg-brand/[calc(var(--opacity-subtle)*100%)] text-brand font-semibold"
+                    : "text-(--text-secondary) hover:text-text-primary hover:bg-(--bg-surface)/[calc(var(--opacity-hover)*100%)]"
                 )}
               >
                 {heading.text}
