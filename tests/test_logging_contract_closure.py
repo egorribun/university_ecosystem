@@ -318,11 +318,14 @@ def test_is_logger_enabled_preserves_false_results_for_both_logger_apis():
     stdlib_logger.isEnabledFor.assert_called_once_with(logging.WARNING)
 
 
-def test_orjson_serializer_uses_string_fallback_for_non_json_values():
+def test_orjson_serializer_does_not_render_unsupported_object_representations():
     class CustomValue:
         def __str__(self) -> str:
-            return "custom-value"
+            raise AssertionError("Logging must not call an unsupported __str__")
+
+        def __repr__(self) -> str:
+            raise AssertionError("Logging must not call an unsupported __repr__")
 
     assert logging_mod._orjson_serializer({"value": CustomValue()}) == (
-        '{"value":"custom-value"}'
+        '{"value":"[REDACTED]"}'
     )

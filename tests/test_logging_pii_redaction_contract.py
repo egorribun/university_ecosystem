@@ -66,7 +66,7 @@ def test_the_shortest_email_is_redacted_inside_structures() -> None:
     assert _redact_nested("a@b.cc", seen=set()) == REDACTED
 
 
-def test_nested_mappings_lists_and_tuples_are_redacted_in_place() -> None:
+def test_nested_mappings_lists_and_tuples_are_redacted_without_mutation() -> None:
     payload: dict[str, Any] = {
         "user": {
             "password": "hunter2",  # pragma: allowlist secret
@@ -76,16 +76,27 @@ def test_nested_mappings_lists_and_tuples_are_redacted_in_place() -> None:
         "pair": ("a@b.cc", 5),
         "nested_pair": (("a@b.cc",), 5),
     }
+    original = deepcopy(payload)
+    user = payload["user"]
+    items = payload["items"]
+    inner_items = items[0]
 
     result = _redact_nested(payload, seen=set())
 
-    assert result is payload
-    assert payload == {
+    assert result is not payload
+    assert result == {
         "user": {"password": REDACTED, "note": f"mail {REDACTED}"},
         "items": [[f"call {REDACTED}"], {"token": REDACTED}],
         "pair": (REDACTED, 5),
         "nested_pair": ((REDACTED,), 5),
     }
+    assert payload == original
+    assert payload["user"] is user
+    assert payload["items"] is items
+    assert payload["items"][0] is inner_items
+    assert result["user"] is not user
+    assert result["items"] is not items
+    assert result["items"][0] is not inner_items
 
 
 def test_shared_values_are_redacted_every_time_they_appear() -> None:
@@ -101,13 +112,21 @@ def test_shared_values_are_redacted_every_time_they_appear() -> None:
         "t2": shared_tuple,
     }
 
-    _redact_nested(payload, seen=set())
+    result = _redact_nested(payload, seen=set())
 
-    assert payload["d2"] is shared_dict
-    assert shared_dict == {"note": REDACTED}
-    assert payload["l2"] is shared_list
-    assert shared_list == [REDACTED]
-    assert payload["t1"] == payload["t2"] == (REDACTED,)
+    assert result["d1"] == result["d2"] == {"note": REDACTED}
+    assert result["l1"] == result["l2"] == [REDACTED]
+    assert result["t1"] == result["t2"] == (REDACTED,)
+    assert result["d1"] is not shared_dict
+    assert result["d2"] is not shared_dict
+    assert result["l1"] is not shared_list
+    assert result["l2"] is not shared_list
+    assert payload["d1"] is payload["d2"] is shared_dict
+    assert shared_dict == {"note": "a@b.cc"}
+    assert payload["l1"] is payload["l2"] is shared_list
+    assert shared_list == ["a@b.cc"]
+    assert payload["t1"] is payload["t2"] is shared_tuple
+    assert shared_tuple == ("a@b.cc",)
 
 
 def test_cycles_are_replaced_instead_of_recursing_forever() -> None:
@@ -118,6 +137,8 @@ def test_cycles_are_replaced_instead_of_recursing_forever() -> None:
 
     assert _redact_nested(cyclic_dict, seen=set()) == {"note": "ok", "self": REDACTED}
     assert _redact_nested(cyclic_list, seen=set()) == ["ok", REDACTED]
+    assert cyclic_dict["self"] is cyclic_dict
+    assert cyclic_list[1] is cyclic_list
 
 
 def test_event_dict_redaction_covers_fields_values_and_self_references() -> None:
@@ -127,16 +148,24 @@ def test_event_dict_redaction_covers_fields_values_and_self_references() -> None
         "context": {"refreshToken": "r", "detail": "call 555-123-4567"},
     }
     event["loop"] = event
+    original_authorization = event["Authorization"]
 
     result = _redact_pii(None, "info", event)
 
-    assert result is event
-    assert event == {
+    assert result is not event
+    assert result == {
         "event": f"login for {REDACTED}",
         "Authorization": REDACTED,
         "context": {"refreshToken": REDACTED, "detail": f"call {REDACTED}"},
         "loop": REDACTED,
     }
+    assert event["event"] == "login for a@b.cc"
+    assert event["Authorization"] == original_authorization
+    assert event["context"] == {
+        "refreshToken": "r",
+        "detail": "call 555-123-4567",
+    }
+    assert event["loop"] is event
 
 
 @pytest.mark.parametrize(

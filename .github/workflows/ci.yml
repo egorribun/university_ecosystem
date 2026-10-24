@@ -2081,7 +2081,14 @@ jobs:
             tests/test_cwv_rum_security.py \
             tests/test_gitleaks_hygiene_contract.py \
             tests/test_websocket_closure.py \
-            tests/test_migration_148642dd1207_safety.py -v \
+            tests/test_migration_148642dd1207_safety.py \
+            tests/test_logging_object_redaction_contract.py \
+            tests/test_logging_contract_closure.py \
+            tests/test_logging_core.py \
+            tests/test_logging_test_isolation.py \
+            tests/test_email_utils.py \
+            tests/test_email_utils_full.py \
+            tests/test_utils_email.py -v \
             --tb=short --durations=20 -n 2 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \

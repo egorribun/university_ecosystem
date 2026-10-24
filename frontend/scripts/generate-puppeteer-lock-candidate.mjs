@@ -162,6 +162,8 @@ export function assertPuppeteerSourceLock(lock) {
   for (const [path, version] of [
     ["node_modules/body-parser", "1.20.9"],
     ["node_modules/undici", "8.12.2"],
+    ["node_modules/modern-tar", "0.8.5"],
+    ["node_modules/@puppeteer/browsers/node_modules/string-width", "8.2.2"],
     ["node_modules/lighthouse", "13.5.0"],
     [REMOVED, "3.25.76"],
   ]) {
@@ -187,13 +189,22 @@ export function preparePuppeteerManifest(manifest) {
     assert(depth <= 16)
     assert(overrides && typeof overrides === "object" && !Array.isArray(overrides))
     for (const [key, value] of Object.entries(overrides)) {
-      assert(!/^puppeteer-core(?:@|$)/.test(key))
+      for (const name of ["puppeteer-core", "@puppeteer/browsers"]) {
+        assert(key !== name && !key.startsWith(name + "@"))
+      }
       if (value && typeof value === "object") checkOverrides(value, depth + 1)
     }
   }
   checkOverrides(manifest.overrides ?? {})
   const temporary = structuredClone(manifest)
-  temporary.overrides = { ...temporary.overrides, "puppeteer-core@25.11.0": "25.13.0" }
+  temporary.overrides = {
+    ...temporary.overrides,
+    "puppeteer-core@25.11.0": "25.13.0",
+    "@puppeteer/browsers@3.2.4": {
+      "modern-tar@0.8.5": "0.8.5",
+      "string-width@8.2.2": "8.2.2",
+    },
+  }
   return temporary
 }
 
@@ -444,7 +455,11 @@ export async function runPuppeteerGenerator() {
     const parsed = JSON.parse(candidate)
     stage = "whole-lock scope verification"
     try {
-      assertPuppeteerLockScope(lock, parsed, releases.map((item) => item.data))
+      assertPuppeteerLockScope(
+        lock,
+        parsed,
+        releases.map((item) => item.data)
+      )
     } catch {
       const diagnostic = JSON.stringify(diagnoseLockScope(lock, parsed))
       assert(Buffer.byteLength(diagnostic) <= 16384)

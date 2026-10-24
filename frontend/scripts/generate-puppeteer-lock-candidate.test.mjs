@@ -40,13 +40,7 @@ const TRANSPORT = [
 const clone = (value) => JSON.parse(JSON.stringify(value))
 const bytesFor = (name) => Buffer.from("synthetic archive fixture for " + name)
 const archiveFor = (name, version) =>
-  "https://registry.npmjs.org/" +
-  name +
-  "/-/" +
-  name.split("/").at(-1) +
-  "-" +
-  version +
-  ".tgz"
+  "https://registry.npmjs.org/" + name + "/-/" + name.split("/").at(-1) + "-" + version + ".tgz"
 
 function metadata(target) {
   const bytes = bytesFor(target.name)
@@ -129,6 +123,15 @@ function fixture() {
       "node_modules/ws": { version: "8.22.0" },
       "node_modules/devtools-protocol": { version: "0.0.1687809", dev: true },
       "node_modules/modern-tar": { version: "0.8.5", dev: true },
+      "node_modules/@puppeteer/browsers/node_modules/string-width": {
+        version: "8.2.2",
+        dev: true,
+      },
+      "node_modules/@puppeteer/browsers/node_modules/cliui/node_modules/string-width": {
+        version: "7.2.0",
+        dev: true,
+      },
+      "node_modules/msw/node_modules/string-width": { version: "8.3.0", dev: true },
       "node_modules/@puppeteer/browsers/node_modules/yargs": {
         version: "18.2.0",
         dev: true,
@@ -149,7 +152,11 @@ function fixture() {
       ...lockRecord(releases[index]),
       version: target.from,
       resolved: archiveFor(target.name, target.from),
-      integrity: "sha512-" + createHash("sha512").update("old " + target.name).digest("base64"),
+      integrity:
+        "sha512-" +
+        createHash("sha512")
+          .update("old " + target.name)
+          .digest("base64"),
     }
   }
   source.packages["node_modules/puppeteer-core"].dependencies = {
@@ -329,6 +336,10 @@ test("wrong source versions, runtime flags and consumer ranges fail closed", () 
     (lock) => (lock.packages["node_modules/undici"].version = "8.11.0"),
     (lock) => (lock.packages["node_modules/body-parser"].dev = false),
     (lock) => (lock.packages["node_modules/undici"].dev = false),
+    (lock) => (lock.packages["node_modules/modern-tar"].version = "0.8.6"),
+    (lock) => {
+      lock.packages["node_modules/@puppeteer/browsers/node_modules/string-width"].version = "8.3.0"
+    },
     (lock) => (lock.packages["node_modules/puppeteer-core"].version = "25.12.0"),
     (lock) => (lock.packages["node_modules/chromium-bidi"].dev = false),
     (lock) => (lock.packages[REMOVED].version = "3.25.75"),
@@ -343,7 +354,7 @@ test("wrong source versions, runtime flags and consumer ranges fail closed", () 
   }
 })
 
-test("temporary targeting changes only one exact override and never mutates source", () => {
+test("temporary targeting freezes browser descendants without mutating source", () => {
   const manifest = {
     name: "synthetic-frontend",
     devDependencies: { lighthouse: "13.5.0" },
@@ -352,7 +363,14 @@ test("temporary targeting changes only one exact override and never mutates sour
   const before = clone(manifest)
   assert.deepEqual(preparePuppeteerManifest(manifest), {
     ...before,
-    overrides: { ...before.overrides, "puppeteer-core@25.11.0": "25.13.0" },
+    overrides: {
+      ...before.overrides,
+      "puppeteer-core@25.11.0": "25.13.0",
+      "@puppeteer/browsers@3.2.4": {
+        "modern-tar@0.8.5": "0.8.5",
+        "string-width@8.2.2": "8.2.2",
+      },
+    },
   })
   assert.deepEqual(manifest, before)
 })
@@ -370,6 +388,9 @@ test("direct dependencies and existing Puppeteer override policies are not repla
     { "puppeteer-core": "25.11.0" },
     { "puppeteer-core@25.11.0": "25.13.0" },
     { lighthouse: { "puppeteer-core": "25.11.0" } },
+    { "@puppeteer/browsers": "3.2.4" },
+    { "@puppeteer/browsers@3.2.4": { "modern-tar": "0.8.5" } },
+    { lighthouse: { "@puppeteer/browsers": "3.2.4" } },
   ]) {
     assert.throws(() => preparePuppeteerManifest({ overrides }))
   }
@@ -395,6 +416,15 @@ test("whole-lock validation preserves unrelated package records and root metadat
     (lock) => (lock.packages["node_modules/body-parser"].version = "1.20.8"),
     (lock) => (lock.packages["node_modules/undici"].version = "8.11.0"),
     (lock) => (lock.packages["node_modules/devtools-protocol"].version = "0.0.1696802"),
+    (lock) => (lock.packages["node_modules/modern-tar"].version = "0.8.6"),
+    (lock) => {
+      lock.packages["node_modules/@puppeteer/browsers/node_modules/string-width"].version = "8.3.0"
+    },
+    (lock) => (lock.packages["node_modules/msw/node_modules/string-width"].version = "8.2.2"),
+    (lock) => {
+      const path = "node_modules/@puppeteer/browsers/node_modules/cliui/node_modules/string-width"
+      lock.packages[path].version = "8.2.2"
+    },
     (lock) => delete lock.packages["node_modules/eslint-plugin-react-compiler/node_modules/zod"],
     (lock) => (lock.packages["node_modules/unrelated"] = { version: "1.0.0" }),
     (lock) => delete lock.packages["node_modules/modern-tar"],
