@@ -85,7 +85,36 @@ function lockFixture() {
         license: "MIT",
         funding: { url: "https://github.com/sponsors/colinhacks" },
       },
-      "node_modules/chromium-bidi/node_modules/zod": { version: "3.25.76", dev: true },
+      "node_modules/@puppeteer/browsers": {
+        version: "3.2.4",
+        dev: true,
+        dependencies: { "modern-tar": "^0.8.5", yargs: "^18.0.0" },
+      },
+      "node_modules/chromium-bidi": {
+        version: "157.0.8090-0",
+        dev: true,
+        dependencies: { mitt: "^3.0.1", zod: "^4.6.5" },
+        peerDependencies: { "devtools-protocol": "*" },
+      },
+      "node_modules/puppeteer-core": {
+        version: "25.13.0",
+        dev: true,
+        dependencies: {
+          "@puppeteer/browsers": "3.2.4",
+          "chromium-bidi": "157.0.8090-0",
+          "devtools-protocol": "0.0.1696802",
+          "typed-query-selector": "^2.12.3",
+          "webdriver-bidi-protocol": "1.0.1",
+          ws: "^8.21.3",
+        },
+      },
+      "node_modules/puppeteer-core/node_modules/devtools-protocol": {
+        version: "0.0.1696802",
+        dev: true,
+      },
+      "node_modules/typed-query-selector": { version: "2.12.3", dev: true },
+      "node_modules/webdriver-bidi-protocol": { version: "1.0.1", dev: true },
+      "node_modules/devtools-protocol": { version: "0.0.1687809", dev: true },
       "node_modules/eslint-plugin-react-compiler": {
         version: "19.1.0-rc.2",
         dev: true,
@@ -186,8 +215,8 @@ test("staging rejects premature consumer overrides or a different compiler", () 
   }
 })
 
-test("source prerequisites require patched root and preserve both old consumer nodes", () => {
-  assertStagedSourcePrerequisites(lockFixture())
+test("source prerequisites require the patched Puppeteer graph and legacy compiler only", () => {
+  assert.doesNotThrow(() => assertStagedSourcePrerequisites(lockFixture()))
   for (const [path, field, value] of [
     ["node_modules/body-parser", "version", "1.20.8"],
     ["node_modules/body-parser", "dev", false],
@@ -195,8 +224,13 @@ test("source prerequisites require patched root and preserve both old consumer n
     ["node_modules/undici", "dev", false],
     ["node_modules/zod", "version", "4.6.5"],
     ["node_modules/zod", "dev", true],
-    ["node_modules/chromium-bidi/node_modules/zod", "version", "4.6.7"],
-    ["node_modules/chromium-bidi/node_modules/zod", "dev", false],
+    ["node_modules/@puppeteer/browsers", "version", "3.2.3"],
+    ["node_modules/chromium-bidi", "version", "14.0.0"],
+    ["node_modules/chromium-bidi", "dependencies", { mitt: "^3.0.1", zod: "^3.25.76" }],
+    ["node_modules/puppeteer-core", "version", "25.12.0"],
+    ["node_modules/puppeteer-core/node_modules/devtools-protocol", "version", "0.0.1692709"],
+    ["node_modules/typed-query-selector", "version", "2.12.2"],
+    ["node_modules/webdriver-bidi-protocol", "version", "1.0.0"],
     ["node_modules/eslint-plugin-react-compiler/node_modules/zod", "version", "4.6.7"],
     ["node_modules/eslint-plugin-react-compiler", "version", "19.1.0-rc.3"],
     ["node_modules/eslint-plugin-react-compiler", "dev", false],
@@ -207,12 +241,24 @@ test("source prerequisites require patched root and preserve both old consumer n
     assert.throws(() => assertStagedSourcePrerequisites(lock))
   }
   for (const path of [
+    "node_modules/@puppeteer/browsers",
+    "node_modules/chromium-bidi",
+    "node_modules/puppeteer-core",
+    "node_modules/puppeteer-core/node_modules/devtools-protocol",
+    "node_modules/typed-query-selector",
+    "node_modules/webdriver-bidi-protocol",
     "node_modules/eslint-plugin-react-compiler",
     "node_modules/eslint-plugin-react-compiler/node_modules/zod",
   ]) {
-    const lock = lockFixture()
-    delete lock.packages[path].dev
-    assert.throws(() => assertStagedSourcePrerequisites(lock))
+    for (const value of [false, undefined]) {
+      const lock = lockFixture()
+      if (value === undefined) delete lock.packages[path].dev
+      else lock.packages[path].dev = value
+      assert.throws(() => assertStagedSourcePrerequisites(lock))
+    }
+    const missing = lockFixture()
+    delete missing.packages[path]
+    assert.throws(() => assertStagedSourcePrerequisites(missing))
   }
   for (const key of [
     "node_modules/react-compiler-zod-compat",
@@ -227,10 +273,19 @@ test("source prerequisites require patched root and preserve both old consumer n
   }
 })
 
+test("source prerequisites reject a restored bidi Zod3 subtree", () => {
+  const lock = lockFixture()
+  lock.packages["node_modules/chromium-bidi/node_modules/zod"] = {
+    version: "3.25.76",
+    dev: true,
+  }
+  assert.throws(() => assertStagedSourcePrerequisites(lock))
+})
+
 test("whole-lock scope accepts only the staged three-node dev graph and preserves input", () => {
   const original = lockFixture()
   const before = JSON.stringify(original)
-  assertStagedLockScope(original, candidateFixture(), release)
+  assert.doesNotThrow(() => assertStagedLockScope(original, candidateFixture(), release))
   assert.equal(JSON.stringify(original), before)
 })
 
@@ -262,7 +317,7 @@ test("whole-lock scope rejects existing-value and top-level metadata changes", (
   for (const [path, field, value] of [
     ["node_modules/zod", "version", "4.6.8"],
     ["node_modules/zod", "integrity", "different"],
-    ["node_modules/chromium-bidi/node_modules/zod", "version", "4.6.7"],
+    ["node_modules/chromium-bidi", "dependencies", { mitt: "^3.0.1", zod: "^3.25.76" }],
     ["node_modules/eslint-plugin-react-compiler/node_modules/zod", "version", "4.6.7"],
     ["node_modules/body-parser", "version", "1.20.8"],
     ["node_modules/undici", "version", "8.10.2"],
@@ -436,10 +491,16 @@ function installedFixture() {
     version: "3.25.76",
   })
   put(alias + "/package.json", { name: "zod", version: "4.6.7" })
+  put("node_modules/chromium-bidi/package.json", {
+    name: "chromium-bidi",
+    version: "157.0.8090-0",
+    dependencies: { mitt: "^3.0.1", zod: "^4.6.5" },
+  })
   for (const path of [
     local + "/index.cjs",
     alias + "/index.js",
     "node_modules/zod/index.js",
+    "node_modules/chromium-bidi/index.js",
     "node_modules/eslint-plugin-react-compiler/index.js",
     "node_modules/eslint-plugin-react-compiler/node_modules/zod/index.js",
   ]) {
@@ -480,17 +541,65 @@ test("full graph resolves the adapter and alias without executing library code",
   }
 })
 
-test("production graph rejects the adapter, compiler and patched alias", () => {
+test("full graph binds bidi metadata to the patched root without executing code", () => {
+  const { root, put } = installedFixture()
+  try {
+    assert.doesNotThrow(() => assertInstalledGraph(root, "full"))
+    for (const changed of [
+      {
+        name: "other",
+        version: "157.0.8090-0",
+        dependencies: { mitt: "^3.0.1", zod: "^4.6.5" },
+      },
+      {
+        name: "chromium-bidi",
+        version: "14.0.0",
+        dependencies: { mitt: "^3.0.1", zod: "^4.6.5" },
+      },
+      {
+        name: "chromium-bidi",
+        version: "157.0.8090-0",
+        dependencies: { mitt: "^3.0.1", zod: "^3.25.76" },
+      },
+    ]) {
+      put("node_modules/chromium-bidi/package.json", changed)
+      assert.throws(() => assertInstalledGraph(root, "full"))
+      put("node_modules/chromium-bidi/package.json", {
+        name: "chromium-bidi",
+        version: "157.0.8090-0",
+        dependencies: { mitt: "^3.0.1", zod: "^4.6.5" },
+      })
+    }
+    const nested = "node_modules/chromium-bidi/node_modules/zod"
+    for (const version of ["3.25.76", "4.6.7"]) {
+      put(nested + "/package.json", { name: "zod", version })
+      assert.throws(() => assertInstalledGraph(root, "full"))
+      rmSync(join(root, nested), { recursive: true })
+    }
+    mkdirSync(join(root, "node_modules/chromium-bidi/node_modules"), { recursive: true })
+    symlinkSync(join(root, "node_modules/zod"), join(root, nested), "dir")
+    assert.throws(() => assertInstalledGraph(root, "full"))
+    rmSync(join(root, nested))
+    rmSync(join(root, "node_modules/chromium-bidi"), { recursive: true })
+    assert.throws(() => assertInstalledGraph(root, "full"))
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test("production graph rejects the adapter, compiler, bidi and patched alias", () => {
   const { root, put } = installedFixture()
   try {
     assert.throws(() => assertInstalledGraph(root, "production"))
     rmSync(join(root, "node_modules/react-compiler-zod-compat"))
     rmSync(join(root, "node_modules/eslint-plugin-react-compiler"), { recursive: true })
     rmSync(join(root, alias), { recursive: true })
+    rmSync(join(root, "node_modules/chromium-bidi"), { recursive: true })
     assertInstalledGraph(root, "production")
     for (const path of [
       "node_modules/react-compiler-zod-compat",
       "node_modules/eslint-plugin-react-compiler",
+      "node_modules/chromium-bidi",
       alias,
       local + "/node_modules/patched-zod",
     ]) {

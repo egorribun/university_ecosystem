@@ -1463,6 +1463,86 @@ _TRIVY_KYVERNO_EXACT_EVIDENCE_MARKERS = {
     ),
 }
 
+_ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY = (
+    "frontend/scripts/generate-zod-root-lock-candidate.mjs",
+    "Hex High Entropy String",
+    (
+        93,
+        153,
+        98,
+        228,
+        62,
+        95,
+        145,
+        81,
+        122,
+        89,
+        127,
+        149,
+        156,
+        66,
+        233,
+        25,
+        253,
+        139,
+        106,
+        91,
+    ),
+)
+_LOGGING_PUBLIC_METADATA_LABEL_IDENTITY = (
+    "tests/test_logging_pii_redaction_contract.py",
+    "Secret Keyword",
+    (
+        241,
+        119,
+        30,
+        46,
+        101,
+        173,
+        30,
+        82,
+        73,
+        135,
+        104,
+        15,
+        34,
+        136,
+        138,
+        34,
+        211,
+        106,
+        94,
+        148,
+    ),
+)
+_PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY = {
+    _ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY: "public_integrity_digest",
+    _LOGGING_PUBLIC_METADATA_LABEL_IDENTITY: "source_contract_identifier",
+}
+_PUBLIC_SOURCE_METADATA_PATHS = frozenset(
+    identity[0] for identity in _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY
+)
+_PUBLIC_SOURCE_METADATA_DIGESTS = frozenset(
+    identity[2] for identity in _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY
+)
+_PUBLIC_SOURCE_METADATA_EVIDENCE_MARKERS = {
+    _ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY: (
+        "Public upstream Git commit identifier for colinhacks/zod v4.6.7",
+        "EXPECTED_ZOD_SOURCE_SHA in "
+        "frontend/scripts/generate-zod-root-lock-candidate.mjs",
+        "official Git tag and hosted mature registry metadata agree",
+        "used for exact registry source-identity comparison",
+        "not credential material",
+    ),
+    _LOGGING_PUBLIC_METADATA_LABEL_IDENTITY: (
+        "Public signing-key name csrf-signing-key in the secret_name metadata field",
+        "tests/test_logging_pii_redaction_contract.py::"
+        "test_sensitive_field_matching_preserves_related_nonsecret_metadata",
+        "negative control requires this identifier to survive real log redaction",
+        "not credential material",
+    ),
+}
+
 _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
     "synthetic_achievement_url_test_fixture": (
         _SYNTHETIC_ACHIEVEMENT_URL_TEST_FIXTURE_IDENTITIES
@@ -1471,7 +1551,10 @@ _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
         _PUBLIC_COMPOSE_INSPECTION_TEST_SENTINEL_IDENTITIES
     ),
     "external_kubernetes_secret_reference": _EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES,
-    "source_contract_identifier": _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES,
+    "source_contract_identifier": (
+        _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES
+        | {_LOGGING_PUBLIC_METADATA_LABEL_IDENTITY}
+    ),
     "auth_validation_ui_copy": _AUTH_VALIDATION_UI_COPY_IDENTITIES,
     "aud253_private_env_mode_test_fixture": (
         _AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES
@@ -1585,6 +1668,32 @@ _PUBLIC_GIT_BLOB_IDENTITIES = frozenset(
                 245,
                 249,
                 83,
+            ),
+        ),
+        (
+            "tests/helpers/migration_148642dd1207_trace.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                129,
+                182,
+                175,
+                46,
+                84,
+                127,
+                57,
+                186,
+                226,
+                169,
+                181,
+                52,
+                185,
+                20,
+                29,
+                88,
+                247,
+                214,
+                196,
+                40,
             ),
         ),
     }
@@ -2136,6 +2245,17 @@ def validate_false_positive_dispositions(
                 f"{artifact}: AUD-495 cache-key fixture identity changed scope"
             )
 
+        metadata_category = _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY.get(
+            exact_source_identity
+        )
+        if (
+            path in _PUBLIC_SOURCE_METADATA_PATHS
+            or tuple(raw_digest_bytes) in _PUBLIC_SOURCE_METADATA_DIGESTS
+        ) and (metadata_category is None or category != metadata_category):
+            raise BaselineArtifactError(
+                f"{artifact}: public source metadata identity changed scope"
+            )
+
         if (
             path in _PUBLIC_GIT_BLOB_PATHS
             or tuple(raw_digest_bytes) in _PUBLIC_GIT_BLOB_DIGESTS
@@ -2284,6 +2404,9 @@ def validate_false_positive_dispositions(
         )
         if exact_source_identity in _PUBLIC_GIT_BLOB_IDENTITIES:
             required_evidence += _PUBLIC_GIT_BLOB_EVIDENCE_MARKERS[path]
+        required_evidence += _PUBLIC_SOURCE_METADATA_EVIDENCE_MARKERS.get(
+            exact_source_identity, ()
+        )
         if any(
             marker.casefold() not in evidence.casefold() for marker in required_evidence
         ):
@@ -2324,6 +2447,15 @@ def validate_false_positive_dispositions(
             or expires_on - reviewed_on > timedelta(days=90)
         ):
             raise BaselineArtifactError(f"{artifact}: date range is invalid")
+
+        if metadata_category is not None and (
+            owner != "egorribun"
+            or raw_reviewed != "2026-10-24"
+            or expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: public source metadata approval changed"
+            )
 
         if exact_source_identity in _PUBLIC_GIT_BLOB_IDENTITIES and (
             owner != "egorribun"

@@ -11,7 +11,7 @@ from contextvars import Context
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from io import StringIO
-from types import MappingProxyType, SimpleNamespace
+from types import MappingProxyType, SimpleNamespace, TracebackType
 from typing import Any
 from uuid import UUID
 
@@ -61,6 +61,23 @@ class _UnrenderableStringKey(str):
 
     def __eq__(self, other: object) -> bool:
         raise AssertionError("Logging must not compare unsupported control names")
+
+
+class _ClassPropertyProbe(_Unrenderable):
+    def __init__(self, reported_class: type[Any] | None = None) -> None:
+        self.reported_class = reported_class
+        self.class_reads = 0
+
+    @property
+    def __class__(self) -> type[Any]:
+        self.class_reads += 1
+        if self.reported_class is None:
+            raise AssertionError("Logging must not read an instance __class__ property")
+        return self.reported_class
+
+
+class _ExcInfoTuple(tuple[Any, ...]):
+    """A genuine tuple subtype accepted by standard logging."""
 
 
 class _PrivateModel(BaseModel):
@@ -261,7 +278,15 @@ def test_repeated_logs_copy_shared_payloads_before_both_renderers(
 
 
 @pytest.mark.parametrize(
-    "kind", ["true", "false", "exception", "tuple", "tuple-without-traceback"]
+    "kind",
+    [
+        "true",
+        "false",
+        "exception",
+        "tuple",
+        "tuple-without-traceback",
+        "tuple-subclass",
+    ],
 )
 def test_redaction_preserves_top_level_exception_and_formatter_controls(
     kind: str,
@@ -279,6 +304,7 @@ def test_redaction_preserves_top_level_exception_and_formatter_controls(
         "exception": exc_info[1],
         "tuple": exc_info,
         "tuple-without-traceback": (ValueError, exc_info[1], None),
+        "tuple-subclass": _ExcInfoTuple(exc_info),
     }[kind]
     event = {
         "event": "event",
@@ -669,3 +695,68 @@ def test_non_native_mapping_keys_never_reach_configured_renderers(
             "status": "public-diagnostic",
             "password": REDACTED,
         }
+
+
+def test_opaque_payload_classification_does_not_read_instance_class_property() -> None:
+    value = _ClassPropertyProbe()
+
+    result = logging_mod._redact_nested(value, seen=set())
+
+    assert value.class_reads == 0
+    assert type(result) is str
+    assert result == REDACTED
+    assert value.reported_class is None
+    event = {"event": "public-diagnostic", "payload": value}
+
+    copied = logging_mod._redact_pii(None, "info", event)
+
+    assert value.class_reads == 0
+    assert copied == {"event": "public-diagnostic", "payload": REDACTED}
+    assert copied is not event
+    assert event["payload"] is value
+
+
+@pytest.mark.parametrize(
+    ("field_name", "tuple_position", "reported_class"),
+    [
+        ("_record", None, logging.LogRecord),
+        ("_from_structlog", None, bool),
+        ("exc_info", None, ValueError),
+        ("exc_info", None, tuple),
+        ("exc_info", 0, type),
+        ("exc_info", 1, ValueError),
+        ("exc_info", 2, TracebackType),
+    ],
+    ids=[
+        "counterfeit-record",
+        "counterfeit-origin",
+        "counterfeit-exception",
+        "counterfeit-exception-tuple",
+        "counterfeit-exception-type",
+        "counterfeit-exception-value",
+        "counterfeit-traceback",
+    ],
+)
+def test_class_spoofed_controls_are_discarded_without_instance_property_reads(
+    field_name: str,
+    tuple_position: int | None,
+    reported_class: type[Any],
+) -> None:
+    probe = _ClassPropertyProbe(reported_class)
+    value: Any = probe
+    if tuple_position is not None:
+        members: list[Any] = [ValueError, ValueError("safe diagnostic failure"), None]
+        members[tuple_position] = probe
+        value = tuple(members)
+    event = {"event": "public-diagnostic", "count": 7, field_name: value}
+
+    result = logging_mod._redact_pii(None, "error", event)
+
+    assert probe.class_reads == 0
+    assert field_name not in result
+    assert result == {"event": "public-diagnostic", "count": 7}
+    assert result is not event
+    assert event[field_name] is value
+    assert event["event"] == "public-diagnostic"
+    assert event["count"] == 7
+    assert probe.reported_class is reported_class

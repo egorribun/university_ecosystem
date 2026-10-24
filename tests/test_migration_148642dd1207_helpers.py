@@ -100,16 +100,31 @@ def sqlite_operations(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.parametrize(
-    ("expression", "normalized"),
+    "row",
     [
-        ('CHECK (("signing_key" IS NOT NULL))', "CHECKSIGNING_KEYISNOTNULL"),
-        (" check ( signing_key is not null ) ", "CHECKSIGNING_KEYISNOTNULL"),
+        ("c", False, True),
+        ("c", None, True),
+        ("c", True, None),
     ],
+    ids=["wrong_column", "missing_column_proof", "missing_predicate_proof"],
 )
-def test_constraint_normalization_ignores_pg_rendering_whitespace_and_quotes(
-    expression: str, normalized: str
+def test_not_null_check_rejects_unproven_catalog_identity(
+    monkeypatch: pytest.MonkeyPatch, row: tuple[str, bool | None, bool | None]
 ) -> None:
-    assert migration._normalize_constraint_definition(expression) == normalized
+    operation = _CaptureOp(_ConstraintBind(row))
+    monkeypatch.setattr(migration, "op", operation)
+    monkeypatch.setattr(
+        migration,
+        "context",
+        SimpleNamespace(is_offline_mode=lambda: False),
+    )
+    with pytest.raises(
+        RuntimeError, match="does not match the required NOT NULL check"
+    ):
+        migration._ensure_postgresql_not_null_check(
+            "active_sessions", "ck_signing", "signing_key"
+        )
+    assert operation.executed == []
 
 
 def test_safe_create_table_creates_missing_table_and_skips_existing_schema(
@@ -374,10 +389,10 @@ class _ConstraintBind:
         return _Result(self.row)
 
 
-def test_not_null_check_accepts_exact_unvalidated_postgres_check_without_ddl(
+def test_not_null_check_accepts_exact_catalog_proof_without_ddl(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    bind = _ConstraintBind((b"c", False, 'CHECK ((("signing_key" IS NOT NULL)))'))
+    bind = _ConstraintBind((b"c", True, True))
     operation = _CaptureOp(bind)
     monkeypatch.setattr(migration, "op", operation)
     monkeypatch.setattr(
@@ -392,19 +407,27 @@ def test_not_null_check_accepts_exact_unvalidated_postgres_check_without_ddl(
     assert bind.queries[0][1] == {
         "table_name": "active_sessions",
         "constraint_name": "ck_signing",
+        "column_name": "signing_key",
     }
+    query = _sql(bind.queries[0][0])
+    assert "c.conkey = ARRAY[a.attnum]" in query
+    assert "a.attname = :column_name" in query
+    assert "NOT a.attisdropped" in query
+    assert "NOT c.connoinherit" in query
+    assert "pg_catalog.pg_get_expr(c.conbin, c.conrelid)" in query
+    assert "pg_catalog.format('(%I IS NOT NULL)', :column_name)" in query
     assert operation.executed == []
 
 
 @pytest.mark.parametrize(
     "row",
     [
-        ("f", True, "CHECK (signing_key IS NOT NULL)"),
-        ("c", True, "CHECK (signing_key IS NULL)"),
+        ("f", True, True),
+        ("c", True, False),
     ],
 )
 def test_not_null_check_rejects_same_name_wrong_catalog_contract(
-    monkeypatch: pytest.MonkeyPatch, row: tuple[str, bool, str]
+    monkeypatch: pytest.MonkeyPatch, row: tuple[str, bool, bool]
 ) -> None:
     operation = _CaptureOp(_ConstraintBind(row))
     monkeypatch.setattr(migration, "op", operation)

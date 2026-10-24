@@ -136,6 +136,40 @@
       "reviewed_on": "2026-10-24",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/helpers/migration_148642dd1207_trace.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          129,
+          182,
+          175,
+          46,
+          84,
+          127,
+          57,
+          186,
+          226,
+          169,
+          181,
+          52,
+          185,
+          20,
+          29,
+          88,
+          247,
+          214,
+          196,
+          40
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git SHA-1 integrity digest of alembic/versions/148642dd1207_fix_missing_tables.py; source-bound five-site migration diagnostic assignment SOURCE_GIT_BLOB; Git blob framing binds all source bytes; not credential material. Reviewed exact NOT NULL catalog-predicate source rebind; detector identity computed from the public Git pin, awaiting hosted scan confirmation.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

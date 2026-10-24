@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import { spawnSync } from "node:child_process"
+import { readFileSync } from "node:fs"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 import {
@@ -364,4 +365,19 @@ test("module import is inert while direct execution fails closed before network 
   assert.equal(imported.status, 0)
   assert.equal(imported.stdout, "")
   assert.equal(imported.stderr, "")
+})
+
+test("default source validation rejects a different well-formed Git commit", () => {
+  const source = readFileSync(
+    new URL("./generate-zod-root-lock-candidate.mjs", import.meta.url),
+    "utf8"
+  )
+  const pins = [...source.matchAll(/^const EXPECTED_ZOD_SOURCE_SHA = "([0-9a-f]{40})"$/gm)]
+  assert.equal(pins.length, 1)
+  const release = metadata()
+  release.gitHead = pins[0][1]
+  assert.equal(validateRegistryMetadata(release, "zod", "4.6.7", now).data, release)
+  const changed = structuredClone(release)
+  changed.gitHead = release.gitHead === "0".repeat(40) ? "1".repeat(40) : "0".repeat(40)
+  assert.throws(() => validateRegistryMetadata(changed, "zod", "4.6.7", now))
 })

@@ -2085,7 +2085,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 325
+    assert len(policy["records"]) == 328
     records = [
         record
         for record in policy["records"]
@@ -3081,7 +3081,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         )
     )
     records = policy["records"]
-    assert len(records) == 325
+    assert len(records) == 328
     prefix = records[:315]
     encoded_prefix = json.dumps(
         prefix, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -3483,7 +3483,7 @@ def test_oct24_public_digest_policy_preserves_all_318_prior_records() -> None:
         _AUD495_IMMUTABLE_315_PREFIX_SHA256
     )
     assert records[315:318] == _OCT24_ORIGINAL_SUFFIX
-    assert len(records) == 325
+    assert len(records) == 328
     assert records[318:321] == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS
 
 
@@ -3673,9 +3673,9 @@ def test_public_git_blob_policy_preserves_all_321_prior_records() -> None:
     )
     # These existing independent guards compose the immutable 321-record prefix.
     test_oct24_public_digest_policy_preserves_all_318_prior_records()
-    assert len(policy["records"]) == 325
+    assert len(policy["records"]) == 328
     assert policy["records"][321:323] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:2]
-    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 4
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 5
 
 
 def test_public_git_blob_rebind_policy_preserves_all_323_prior_records() -> None:
@@ -3686,12 +3686,12 @@ def test_public_git_blob_rebind_policy_preserves_all_323_prior_records() -> None
         )
     )
     test_public_git_blob_policy_preserves_all_321_prior_records()
-    assert policy["records"][323:] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:]
-    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:]) == 2
+    assert policy["records"][323:325] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:4]
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:4]) == 2
     assert [
         record["identity"]["path"] for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:2]
     ] == [
-        record["identity"]["path"] for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:]
+        record["identity"]["path"] for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:4]
     ]
     assert {
         tuple(record["identity"]["hashed_secret_bytes"])
@@ -3699,7 +3699,7 @@ def test_public_git_blob_rebind_policy_preserves_all_323_prior_records() -> None
     }.isdisjoint(
         {
             tuple(record["identity"]["hashed_secret_bytes"])
-            for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:]
+            for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:4]
         }
     )
 
@@ -3887,3 +3887,361 @@ def test_public_git_blob_reserved_path_rejects_other_fingerprint(
         verifier.validate_false_positive_dispositions(
             _disposition_document(changed), today=verifier.date(2026, 10, 24)
         )
+
+
+_OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS = [
+    {
+        "identity": {
+            "path": "frontend/scripts/generate-zod-root-lock-candidate.mjs",
+            "type": "Hex High Entropy String",
+            "hashed_secret_bytes": [
+                93,
+                153,
+                98,
+                228,
+                62,
+                95,
+                145,
+                81,
+                122,
+                89,
+                127,
+                149,
+                156,
+                66,
+                233,
+                25,
+                253,
+                139,
+                106,
+                91,
+            ],
+        },
+        "category": "public_integrity_digest",
+        "evidence": (
+            "Public upstream Git commit identifier for colinhacks/zod v4.6.7; "
+            "EXPECTED_ZOD_SOURCE_SHA in "
+            "frontend/scripts/generate-zod-root-lock-candidate.mjs; official Git "
+            "tag and hosted mature registry metadata agree; used for exact "
+            "registry source-identity comparison; not credential material."
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-10-24",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    },
+    {
+        "identity": {
+            "path": "tests/test_logging_pii_redaction_contract.py",
+            "type": "Secret Keyword",
+            "hashed_secret_bytes": [
+                241,
+                119,
+                30,
+                46,
+                101,
+                173,
+                30,
+                82,
+                73,
+                135,
+                104,
+                15,
+                34,
+                136,
+                138,
+                34,
+                211,
+                106,
+                94,
+                148,
+            ],
+        },
+        "category": "source_contract_identifier",
+        "evidence": (
+            "Public signing-key name csrf-signing-key in the secret_name metadata "
+            "field of "
+            "tests/test_logging_pii_redaction_contract.py::"
+            "test_sensitive_field_matching_preserves_related_nonsecret_metadata; "
+            "negative control requires this identifier to survive real log "
+            "redaction; secret-related source identifier or required key-list "
+            "expression; not credential material."
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-10-24",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    },
+]
+
+
+def test_observed_public_metadata_policy_preserves_all_325_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_public_git_blob_rebind_policy_preserves_all_323_prior_records()
+    assert len(policy["records"]) == 328
+    assert policy["records"][325:327] == _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS
+    assert len(_OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS) == 2
+
+
+def _zod_public_source_fingerprint(source: str) -> tuple[int, ...]:
+    values = re.findall(
+        r'^const EXPECTED_ZOD_SOURCE_SHA = "([0-9a-f]{40})"$',
+        source,
+        flags=re.MULTILINE,
+    )
+    assert len(values) == 1
+    # Default-argument and comparison behavior is exercised by the required
+    # Node helper guards; this Python check binds the scanner literal identity.
+    return tuple(
+        hashlib.sha1(values[0].encode("ascii"), usedforsecurity=False).digest()
+    )
+
+
+def _public_metadata_label_from_source(source: str) -> str:
+    functions = [
+        node
+        for node in ast.parse(source).body
+        if isinstance(node, ast.FunctionDef)
+        and node.name
+        == "test_sensitive_field_matching_preserves_related_nonsecret_metadata"
+    ]
+    assert len(functions) == 1
+    assignments = [
+        node
+        for node in functions[0].body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "event"
+            for target in node.targets
+        )
+    ]
+    assert len(assignments) == 1
+    event = ast.literal_eval(assignments[0].value)
+    assert isinstance(event, dict) and "secret_name" in event
+    assertions = [
+        node.test
+        for node in functions[0].body
+        if isinstance(node, ast.Assert)
+        and isinstance(node.test, ast.Compare)
+        and isinstance(node.test.left, ast.Call)
+        and isinstance(node.test.left.func, ast.Name)
+        and node.test.left.func.id == "_redact_pii"
+    ]
+    assert len(assertions) == 1
+    comparison = assertions[0]
+    assert len(comparison.ops) == 1 and isinstance(comparison.ops[0], ast.Eq)
+    assert len(comparison.comparators) == 1
+    expected = ast.literal_eval(comparison.comparators[0])
+    call = comparison.left
+    assert len(call.args) == 3 and not call.keywords
+    assert isinstance(call.args[0], ast.Constant) and call.args[0].value is None
+    assert isinstance(call.args[1], ast.Constant) and call.args[1].value == "info"
+    assert isinstance(call.args[2], ast.Name) and call.args[2].id == "event"
+    assert event == expected
+    value = event["secret_name"]
+    assert isinstance(value, str) and value
+    return value
+
+
+def _public_metadata_label_fingerprint(source: str) -> tuple[int, ...]:
+    value = _public_metadata_label_from_source(source)
+    return tuple(hashlib.sha1(value.encode("utf-8"), usedforsecurity=False).digest())
+
+
+@pytest.mark.parametrize(
+    ("record", "fingerprint"),
+    [
+        (_OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS[0], _zod_public_source_fingerprint),
+        (
+            _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS[1],
+            _public_metadata_label_fingerprint,
+        ),
+    ],
+)
+def test_observed_public_metadata_current_source_has_an_exact_approved_identity(
+    record: dict[str, Any], fingerprint: Any
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    path = root / record["identity"]["path"]
+    if not path.exists():
+        # Historical dispositions may become stale when a consumer is removed.
+        return
+    digest = fingerprint(path.read_text(encoding="utf-8"))
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert any(
+        row["identity"]
+        == {
+            "path": record["identity"]["path"],
+            "type": record["identity"]["type"],
+            "hashed_secret_bytes": list(digest),
+        }
+        and row["category"] == record["category"]
+        for row in policy["records"]
+    )
+
+
+def test_zod_public_source_binding_rejects_changed_or_duplicate_pin() -> None:
+    root = Path(__file__).resolve().parents[1]
+    record = _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS[0]
+    path = root / record["identity"]["path"]
+    if not path.exists():
+        return
+    source = path.read_text(encoding="utf-8")
+    original = _zod_public_source_fingerprint(source)
+    value = re.findall(
+        r'^const EXPECTED_ZOD_SOURCE_SHA = "([0-9a-f]{40})"$',
+        source,
+        flags=re.MULTILINE,
+    )[0]
+    changed = source.replace(value, "0" * len(value), 1)
+    assert _zod_public_source_fingerprint(changed) != original
+    declaration = next(
+        line for line in source.splitlines() if line.startswith("const EXPECTED_")
+    )
+    with pytest.raises(AssertionError):
+        _zod_public_source_fingerprint(source + "\n" + declaration + "\n")
+
+
+def test_public_metadata_label_binding_rejects_changed_value_or_lost_control() -> None:
+    root = Path(__file__).resolve().parents[1]
+    record = _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS[1]
+    path = root / record["identity"]["path"]
+    if not path.exists():
+        return
+    source = path.read_text(encoding="utf-8")
+    label = _public_metadata_label_from_source(source)
+    original = _public_metadata_label_fingerprint(source)
+    changed = source.replace(label, "different-public-label")
+    assert _public_metadata_label_fingerprint(changed) != original
+    for changed in (
+        source.replace(label, "different-public-label", 1),
+        source.replace('"secret_name"', '"csrf_hmac_secret"'),
+        source.replace(
+            'assert _redact_pii(None, "info", event) ==',
+            "assert event ==",
+        ),
+    ):
+        with pytest.raises(AssertionError):
+            _public_metadata_label_from_source(changed)
+
+
+@pytest.mark.parametrize("record", _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS)
+def test_observed_public_metadata_accepts_exact_record_without_source(
+    record: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    identity = record["identity"]
+    expected = verifier.FindingIdentity(
+        identity["path"],
+        identity["type"],
+        bytes(identity["hashed_secret_bytes"]).hex(),
+        1,
+    )
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(copy.deepcopy(record)),
+        today=verifier.date(2026, 10, 24),
+    ) == {expected}
+
+
+@pytest.mark.parametrize("record", _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS)
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "path_swap",
+        "detector",
+        "digest",
+        "category",
+        "owner",
+        "review_date",
+        "evidence",
+        "pending",
+        "expiry_extension",
+    ],
+)
+def test_observed_public_metadata_rejects_changed_scope_or_approval(
+    record: dict[str, Any], mutation: str
+) -> None:
+    changed = copy.deepcopy(record)
+    if mutation == "path":
+        changed["identity"]["path"] = "tests/unapproved_public_metadata.py"
+    elif mutation == "path_swap":
+        changed["identity"]["path"] = next(
+            row["identity"]["path"]
+            for row in _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS
+            if row["identity"]["path"] != record["identity"]["path"]
+        )
+    elif mutation == "detector":
+        changed["identity"]["type"] = "Base64 High Entropy String"
+    elif mutation == "digest":
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "category":
+        changed["category"] = "documented_crypto_test_vector"
+    elif mutation == "owner":
+        changed["owner"] = "Different Reviewer"
+    elif mutation == "review_date":
+        changed["reviewed_on"] = "2026-10-23"
+    elif mutation == "evidence":
+        changed["evidence"] = "public metadata; not credential material"
+    elif mutation == "pending":
+        changed["approval_status"] = "pending_owner_review"
+    else:
+        assert mutation == "expiry_extension"
+        changed["expires_on"] = "2027-01-11"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+        )
+
+
+@pytest.mark.parametrize("record", _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS)
+def test_observed_public_metadata_rejects_expiry_duplicate_and_extra_identity(
+    record: dict[str, Any],
+) -> None:
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record)),
+            today=verifier.date(2027, 1, 11),
+        )
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
+            today=verifier.date(2026, 10, 24),
+        )
+    extra = copy.deepcopy(record)
+    extra["identity"]["hashed_secret_bytes"] = list(range(20))
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record), extra),
+            today=verifier.date(2026, 10, 24),
+        )
+
+
+def test_public_git_blob_catalog_proof_preserves_all_327_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_observed_public_metadata_policy_preserves_all_325_prior_records()
+    assert len(policy["records"]) == 328
+    assert policy["records"][327:] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:]
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:]) == 1
+    rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4]
+    assert rebound["identity"]["path"] == (
+        "tests/helpers/migration_148642dd1207_trace.py"
+    )
+    assert tuple(rebound["identity"]["hashed_secret_bytes"]) not in {
+        tuple(record["identity"]["hashed_secret_bytes"])
+        for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:4]
+    }

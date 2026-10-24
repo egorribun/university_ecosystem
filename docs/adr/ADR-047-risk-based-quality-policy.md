@@ -618,3 +618,102 @@ hooks, expiry caps and quality floors remain unchanged. This grants no Squawk
 waiver, broad exclusion, inline pragma, reclassification or scanner bypass.
 The accepted ledger remains 283/512. Hosted scanner output, source-bound tests
 and final-source required checks must establish their own results.
+
+
+## Two observed public source-metadata dispositions (2026-10-24)
+
+Under the owner's task-scoped authorization for analogous narrow, justified
+audit exceptions, this update appends exactly two records to the unchanged
+325-record prefix, for 327 dispositions. Both findings were actually reported
+on source `764b474318c9b0a226b070a30ff3dd4b61c9472f` by security job 120811736955 and baseline-verification
+job 120811862789. The records retain owner `egorribun`, review date 2026-10-24
+and expiry 2027-01-10.
+
+1. `frontend/scripts/generate-zod-root-lock-candidate.mjs:19` is an exact
+   `Hex High Entropy String` under `public_integrity_digest`. Its explicit
+   `EXPECTED_ZOD_SOURCE_SHA` literal is the public upstream commit referenced
+   by the official `colinhacks/zod` v4.6.7 tag. Hosted metadata job 120800858421
+   reports the same registry gitHead and a mature publication date. This
+   establishes a public source identifier and matching metadata, not
+   cryptographic package-publish provenance. The module is reused as a pure
+   helper by the staged generator, so the literal and its comparison remain.
+2. `tests/test_logging_pii_redaction_contract.py:176` is an exact
+   `Secret Keyword` under `source_contract_identifier`. The captured value
+   is the public signing-key name `csrf-signing-key`, not signing material.
+   It occurs in the benign `secret_name` metadata field and the expected
+   output of `test_sensitive_field_matching_preserves_related_nonsecret_metadata`.
+   Keeping this negative control prevents an overly broad token/secret-prefix
+   redactor from hiding useful metadata. Its second occurrence has the same
+   path/type/fingerprint identity, not another disposition.
+
+The pinned detect-secrets v1.5.0 Python quoted-colon keyword rule extracts the
+label, and `PotentialSecret.hash_secret` hashes the exact UTF-8 value with
+SHA-1. The public commit literal is hashed the same way. The independently
+computed fingerprints are stored as exact detector identity bytes in the
+policy, validator and test expectations; neither consumer value is altered,
+encoded, copied elsewhere to evade scanning, or covered by an inline pragma.
+
+A separate finite cohort reserves both paths and fingerprints and binds each
+to its existing category, evidence, owner, review date and expiry cap. The
+original 17-identity source-contract cohort remains unchanged; the effective
+category receives only the single new label identity. Source-binding tests
+bind the actual upstream-pin literal and the real redaction assertion. The
+required Node helper guards exercise the default upstream-pin comparison,
+including rejection of a different well-formed Git identifier.
+Changed values, transferred paths/types/categories, missing evidence, pending
+approval, expiry extensions and extra identities remain rejected. Historical
+records may become stale; no current value is automatically approved.
+
+Baseline319, Gitleaks25, all 78 required context/app pairs, blocking CodeQL,
+hooks, quality floors and existing expiries remain unchanged. No broad
+exclusion, baseline addition, reclassification or scanner bypass is introduced.
+The accepted ledger remains 283/512. Policy adoption does not establish a
+passing final-source scan, regression suite, full CI or release result.
+
+
+## Exact migration catalog-proof pin and coordinated scanner scope (2026-10-24)
+
+The same task-scoped owner authorization covers one additional reviewed public
+Git-blob identity for `SOURCE_GIT_BLOB` in
+`tests/helpers/migration_148642dd1207_trace.py`. The referenced migration blob
+is `cf93b261eeccfb2b136144fd34fa71a3fa557ecd`; all 100385 source bytes were
+independently rehashed with Git blob framing. Its exact detect-secrets v1.5.0
+SHA-1-of-UTF-8 fingerprint is
+`81b6af2e547f39bae2a9b534b9141d58f7d6c428`. This is a **computed expected
+finding**; unlike the two metadata findings above, it has not yet been
+confirmed by a hosted scan of the new consumer literal.
+
+The coordinated policy contains exactly 328 records: the entire published
+325-record prefix remains byte-for-byte unchanged, followed by the two observed
+metadata records above and this one public integrity-digest record. The new
+record retains owner `egorribun`, review date 2026-10-24 and expiry 2027-01-10.
+The independent Git-blob fixture appends only its fifth record; the validator
+adds only the fifth reserved path/type/digest tuple. Existing metadata and
+negative controls cover changed paths, detectors, fingerprints, categories,
+owners, dates, evidence, expiry, duplicate records and unapproved additions.
+The current-source binding derives the referred Git blob from actual bytes
+and requires an exact approved detector identity; old records may become stale.
+No historical record, consumer path, scanner category or expiry is widened.
+The production migration and its pin-only trace rebind are coordinated changes,
+not evidence of PostgreSQL GREEN or a Squawk exception.
+
+Separately, the coordinated Gitleaks inventory grows from 25 to exactly 26
+immutable historical fingerprints. Its sole addition is
+`75de40e472f1ef8fccedea286b0b5b456c29f1c5:tests/test_cwv_rum_security.py:generic-api-key:939`.
+The public historical source at that exact location is a verifier call argument
+expression, not a credential value. The original 25 fingerprints are unchanged.
+Independent inventory tests reject commit/path/rule/line drift, wildcard or
+global forms, duplicate or extra entries, and changes to the original set.
+No later copy of the expression or broader path receives an exception.
+Gitleaks26 is adopted only with its exact inventory and matching contract tests.
+
+Baseline319, all 78 required context/app pairs, blocking CodeQL, hooks, quality
+floors and prior expiry caps remain unchanged. No baseline entry, inline pragma,
+reclassification, automatic approval or broad scanner exclusion is authorized.
+The accepted ledger remains 283/512; these policy records do not close another
+audit item or establish a passing final-source scan, full CI or release result.
+The owner explicitly authorized publication of the audit results, CI references,
+exact hashes and exception identities, and retention of the already recorded
+archive metadata in STATUS, INDEX and this ADR. The archive itself, live secrets
+and private personal data are not part of this update; no permanent permission
+rule is created.

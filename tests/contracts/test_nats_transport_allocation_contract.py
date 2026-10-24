@@ -179,9 +179,9 @@ def test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_univers
 
 # Ordered argv population from 1a3954e99f06bf7b1660ad2df609a84b022daefa.
 # Preserve all 136 original selectors, including intentional file/node overlaps.
-# Thirteen explicit selections follow that unchanged prefix: existing audit
-# regressions, safe Gitleaks diagnostics, WebSocket/migration safety and the
-# complete logging/email compatibility cohort. Scheduling must not shrink scope.
+# Twenty-four explicit selections follow that unchanged prefix: existing audit
+# regressions, Gitleaks diagnostics, WebSocket/migration safety, logging/email
+# compatibility and the named inventory regressions. Do not shrink this scope.
 _CONSUMER_SELECTORS = (
     "tests/contracts/",
     "tests/test_live_stand_cleanup_profile_contract.py",
@@ -332,6 +332,17 @@ _CONSUMER_SELECTORS = (
     "tests/test_email_utils.py",
     "tests/test_email_utils_full.py",
     "tests/test_utils_email.py",
+    "tests/test_quality_inventory.py::test_aud508_dynamic_skip_syntax_is_detected",
+    "tests/test_quality_inventory.py::test_aud508_skip_exemptions_require_real_comment_evidence",
+    "tests/test_quality_inventory.py::test_aud509_source_matching_requires_exact_module_relationships",
+    "tests/test_quality_inventory.py::test_aud509_go_test_matches_its_same_package_without_a_sibling_name",
+    "tests/test_quality_inventory.py::test_aud509_go_external_test_requires_exact_package_ownership",
+    "tests/test_quality_inventory.py::test_aud509_imports_match_only_the_exact_inventoried_module",
+    "tests/test_quality_inventory.py::test_aud509_typescript_import_must_resolve_to_an_inventoried_module",
+    "tests/test_quality_inventory.py::test_aud509_relative_python_import_resolves_inside_its_package",
+    "tests/test_quality_inventory.py::test_aud509_python_name_match_prefers_exact_and_rejects_ambiguity",
+    "tests/test_quality_inventory.py::test_aud508_non_python_skip_scanner_ignores_comments_and_strings",
+    "tests/test_quality_inventory.py::test_aud508_non_python_skip_accepts_tracking_comments",
 )
 _DISPATCH_PROBE = """\
 import json

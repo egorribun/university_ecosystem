@@ -9198,6 +9198,108 @@
       "reviewed_on": "2026-10-24",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "frontend/scripts/generate-zod-root-lock-candidate.mjs",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          93,
+          153,
+          98,
+          228,
+          62,
+          95,
+          145,
+          81,
+          122,
+          89,
+          127,
+          149,
+          156,
+          66,
+          233,
+          25,
+          253,
+          139,
+          106,
+          91
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public upstream Git commit identifier for colinhacks/zod v4.6.7; EXPECTED_ZOD_SOURCE_SHA in frontend/scripts/generate-zod-root-lock-candidate.mjs; official Git tag and hosted mature registry metadata agree; used for exact registry source-identity comparison; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_logging_pii_redaction_contract.py",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          241,
+          119,
+          30,
+          46,
+          101,
+          173,
+          30,
+          82,
+          73,
+          135,
+          104,
+          15,
+          34,
+          136,
+          138,
+          34,
+          211,
+          106,
+          94,
+          148
+        ]
+      },
+      "category": "source_contract_identifier",
+      "evidence": "Public signing-key name csrf-signing-key in the secret_name metadata field of tests/test_logging_pii_redaction_contract.py::test_sensitive_field_matching_preserves_related_nonsecret_metadata; negative control requires this identifier to survive real log redaction; secret-related source identifier or required key-list expression; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/helpers/migration_148642dd1207_trace.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          129,
+          182,
+          175,
+          46,
+          84,
+          127,
+          57,
+          186,
+          226,
+          169,
+          181,
+          52,
+          185,
+          20,
+          29,
+          88,
+          247,
+          214,
+          196,
+          40
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git SHA-1 integrity digest of alembic/versions/148642dd1207_fix_missing_tables.py; source-bound five-site migration diagnostic assignment SOURCE_GIT_BLOB; Git blob framing binds all source bytes; not credential material. Reviewed exact NOT NULL catalog-predicate source rebind; detector identity computed from the public Git pin, awaiting hosted scan confirmation.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

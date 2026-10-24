@@ -8,7 +8,6 @@ Create Date: 2026-01-18 22:30:50.324424
 
 from collections.abc import Sequence
 from contextlib import contextmanager
-import re
 from typing import Any
 
 import sqlalchemy as sa
@@ -116,12 +115,6 @@ def ensure_partitioned(table_name: str, create_sql: str, partition_key: str) -> 
     op.execute(f"DROP TABLE {table_name}_old")  # nosemgrep
 
 
-def _normalize_constraint_definition(definition: str) -> str:
-    """Normalize PostgreSQL's rendered CHECK expression for exact comparison."""
-
-    return re.sub(r"[\s()\"]+", "", definition).upper()
-
-
 def _ensure_postgresql_not_null_check(
     table: str,
     constraint_name: str,
@@ -132,8 +125,9 @@ def _ensure_postgresql_not_null_check(
     A same-name constraint may have been left by an operator or a partially
     applied deployment.  Reusing it without checking its expression would
     allow a weaker predicate to masquerade as the migration's NOT NULL
-    contract.  PostgreSQL's catalog is authoritative; offline rendering still
-    emits the additive ``NOT VALID`` statement for review.
+    contract. Compare catalog column identity and the deparsed expression
+    without case folding or stripping identifier quotes. Validation state is
+    separate from this proof; offline rendering still emits ``NOT VALID``.
     """
 
     add_sql = (
@@ -152,22 +146,35 @@ def _ensure_postgresql_not_null_check(
     row = bind.execute(
         sa.text(
             """
-            SELECT c.contype, c.convalidated, pg_get_constraintdef(c.oid)
-            FROM pg_constraint AS c
-            WHERE c.conrelid = to_regclass(:table_name)
+            SELECT c.contype,
+                   c.conkey = ARRAY[a.attnum] AS matches_column,
+                   NOT c.connoinherit
+                   AND pg_catalog.pg_get_expr(c.conbin, c.conrelid) =
+                       pg_catalog.format('(%I IS NOT NULL)', :column_name)
+                   AS matches_predicate
+            FROM pg_catalog.pg_constraint AS c
+            LEFT JOIN pg_catalog.pg_attribute AS a
+              ON a.attrelid = c.conrelid
+             AND a.attname = :column_name
+             AND NOT a.attisdropped
+            WHERE c.conrelid = pg_catalog.to_regclass(:table_name)
               AND c.conname = :constraint_name
             """
         ),
-        {"table_name": table, "constraint_name": constraint_name},
+        {
+            "table_name": table,
+            "constraint_name": constraint_name,
+            "column_name": column,
+        },
     ).first()
     if row is not None:
-        actual_type, _validated, definition = row
+        actual_type, matches_column, matches_predicate = row
         if isinstance(actual_type, bytes):
             actual_type = actual_type.decode("ascii")
-        expected = _normalize_constraint_definition(f"CHECK ({column} IS NOT NULL)")
         if (
             actual_type != "c"
-            or _normalize_constraint_definition(str(definition)) != expected
+            or matches_column is not True
+            or matches_predicate is not True
         ):
             raise RuntimeError(
                 f"Existing constraint {constraint_name!r} on {table!r} "
@@ -334,7 +341,9 @@ def _postgresql_groups_id_upgrade(inspector: Any) -> None:
         )
     )
     _ensure_postgresql_not_null_check("groups", _GROUPS_ID_SHADOW_CHECK, "id__integer")
-    op.execute("ALTER TABLE groups VALIDATE CONSTRAINT ck_groups_id_shadow_not_null")
+    # The source preflight and exact backfill proof already cover every row
+    # under the transaction's ACCESS EXCLUSIVE lock. Keep this transient check
+    # enforcing writes without rescanning a column that the cutover drops.
 
     # Preserve any child FKs while the referenced key is replaced.  Child
     # columns are converted to INTEGER and restored against the new id below.

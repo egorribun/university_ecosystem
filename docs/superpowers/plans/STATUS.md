@@ -5,6 +5,50 @@
 
 
 
+## Согласованный finite scanner scope и текущие ограничения, 2026-10-24
+
+Этот раздел задаёт текущий checkpoint; последующие разделы сохраняют результаты
+на указанных в них исходных SHA и не заменяют проверку текущей ветки.
+
+Ledger остаётся **283/512 (55,3%)**. Этот пакет содержит ровно **328**
+detect-secrets dispositions и **26** исторических Gitleaks fingerprints;
+baseline319, все 78 required context/app pairs, blocking CodeQL, hooks и
+quality floors сохранены. Прежние 325 policy records сохранены побайтно;
+добавлены только две фактически обнаруженные public-metadata identities и
+один вычисленный fingerprint нового проверенного migration pin. Все три
+новые записи имеют owner egorribun, review date 2026-10-24 и expiry2027-01-10.
+[Точный scope и ограничения](../../adr/ADR-047-risk-based-quality-policy.md#exact-migration-catalog-proof-pin-and-coordinated-scanner-scope-2026-10-24).
+
+Security job120811736955 и baseline job120811862789 на764b474 сообщили
+публичный upstream Git pin root-Zod helper и label csrf-signing-key в
+negative control logging test. Официальный tag Zod4.6.7 и registry metadata
+согласованы; это не cryptographic publish provenance. Оба исходных значения
+сохранены. Третий record относится только к новому SOURCE_GIT_BLOB trace helper:
+публичные migration bytes и detect-secrets SHA-1 пересчитаны независимо,
+но hosted scan нового pin и PostgreSQL GREEN исправления ещё не получены.
+Изменённые значения и иные identities по-прежнему блокируются.
+
+Gitleaks26 включает только один новый исторический commit/path/rule/line
+fingerprint для code expression в tests/test_cwv_rum_security.py:939 на75de40e.
+Прежние25 неизменны; inventory и matching negative tests принимаются вместе.
+Это не разрешение на будущие копии выражения или path-wide suppression.
+Новые policy/source-binding tests и оба scanner lanes требуют final-source
+выполнения; наличие disposition само по себе не означает GREEN.
+
+На20d4cba опубликован узкий Puppeteer lock delta и удалены только два
+устаревших live-generator CLI steps; pure helpers, guards, provenance probe
+и npm audit сохранены. Это graph-only evidence: compiler Zod3 остаётся,
+AUD-451/AUD-452 не закрыты, полный normal CI ещё не принят. Scoped source proof
+159 logging tests и16 WebSocket cases наda67477 не переносится автоматически
+на новый source и не закрывает все findings. Новые AUD-508/AUD-509 regressions
+также ожидают runtime verification. Migration repair, полная приёмка CI,
+release, merge и deployment не объявляются успешными.
+
+Владелец явно разрешил публичные audit results, CI links, точные hashes и
+exception IDs, а также сохранение уже записанных archive metadata в этих
+документах. Сам архив, действующие секреты и приватные персональные данные
+не добавляются; постоянное правило разрешений не создаётся.
+
 ## Поведенческий RED и минимальные исправления AUD-359/AUD-446, 2026-10-24
 
 Ledger остаётся **283/512**. Source75de40e / merge
@@ -675,7 +719,7 @@ Actual focused AUD-174 на bef8: два browser PASS и `redaction=verified pro
 
 ## Неизменные границы
 
-Detect-secrets baseline — 319 identities; действующая политика содержит 325 finite owner-approved dispositions. Остальные counts в исторических checkpoint-записях относятся к указанным там source. Отдельное Gitleaks-разрешение ограничено 25 точными историческими fingerprints. Все 78 required context/app pairs, blocking CodeQL, hooks и finite131 migration exception до 2026-11-13 сохраняются. Changed/unmatched identities остаются блокирующими. Q1/Q4 migration действует; Q2/Q3 — v1.1; глобальный mutation score не повышается ради MVP.
+Detect-secrets baseline — 319 identities; действующая политика содержит 328 finite owner-approved dispositions. Остальные counts в исторических checkpoint-записях относятся к указанным там source. Отдельное Gitleaks-разрешение ограничено 26 точными историческими fingerprints. Все 78 required context/app pairs, blocking CodeQL, hooks и finite131 migration exception до 2026-11-13 сохраняются. Changed/unmatched identities остаются блокирующими. Q1/Q4 migration действует; Q2/Q3 — v1.1; глобальный mutation score не повышается ради MVP.
 
 Перед тяжёлым прогоном: RAM ≤75% / free ≥8 GiB; остановка при RAM ≥85% / free <4 GiB. Отдельное исключение для одиночных Linux screenshots: ≤80% / ≥6 GiB, container ≤1 GiB / 2 CPU. Удалять только доказанно принадлежащие работе ресурсы; чужие процессы и prune не трогать.
 
