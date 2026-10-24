@@ -307,6 +307,9 @@ jobs:
         with:
           python-version: ${{ inputs.python-version }}
 
+      # Retain historical candidate guards and shared validators, but do not
+      # rerun one-shot generators whose source preconditions no longer match this lock.
+      # Compiler adapter staging must be regenerated from the new source graph.
       - name: Verify root Zod lock candidate guards
         timeout-minutes: 1
         run: node --test scripts/generate-zod-root-lock-candidate.test.mjs
@@ -314,12 +317,6 @@ jobs:
       - name: Verify staged compiler adapter lock guards
         timeout-minutes: 1
         run: node --test scripts/generate-react-compiler-adapter-lock-candidate.test.mjs
-
-      - name: Generate isolated staged compiler adapter lock candidate
-        timeout-minutes: 8
-        env:
-          SOURCE_SHA: ${{ github.sha }}
-        run: node scripts/generate-react-compiler-adapter-lock-candidate.mjs
 
       - name: Verify React compiler artifact probe guards
         timeout-minutes: 1
@@ -336,14 +333,6 @@ jobs:
       - name: Verify Puppeteer lock candidate guards
         timeout-minutes: 1
         run: node --test scripts/generate-puppeteer-lock-candidate.test.mjs
-
-      - name: Generate isolated Puppeteer lock candidate
-        timeout-minutes: 8
-        env:
-          SOURCE_SHA: ${{ github.sha }}
-        # Emit a verified metadata-only candidate; never modify the checkout.
-        # The preceding guards and the ordinary dependency audit remain blocking.
-        run: node scripts/generate-puppeteer-lock-candidate.mjs
 
       - name: Install uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
