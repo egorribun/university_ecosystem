@@ -106,10 +106,7 @@ export function validateRegistryMetadata(
 export function verifyArchiveBytes(meta, bytes, limit) {
   assert(Number.isSafeInteger(limit) && limit > 0 && limit <= 16 * 1024 * 1024)
   assert(Buffer.isBuffer(bytes) && bytes.length > 0 && bytes.length <= limit)
-  assert.equal(
-    "sha512-" + createHash("sha512").update(bytes).digest("base64"),
-    meta.dist.integrity
-  )
+  assert.equal("sha512-" + createHash("sha512").update(bytes).digest("base64"), meta.dist.integrity)
   assert.equal(createHash("sha1").update(bytes).digest("hex"), meta.dist.shasum)
 }
 
@@ -239,8 +236,7 @@ export async function runZodGenerator() {
       assert(!result.error && !result.signal && result.status === 0)
       return result.stdout
     }
-    git = (args, postflight = false) =>
-      command("/usr/bin/git", args, workspace, 10_000, postflight)
+    git = (args, postflight = false) => command("/usr/bin/git", args, workspace, 10_000, postflight)
     assert.equal(git(["rev-parse", "HEAD"]).trim(), process.env.SOURCE_SHA)
     assert.equal(git(["status", "--porcelain=v1", "--untracked-files=all"]), "")
     assert(!existsSync(join(frontend, "node_modules")), "Run before npm ci")

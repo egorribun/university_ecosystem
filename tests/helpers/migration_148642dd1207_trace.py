@@ -20,7 +20,7 @@ MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "alembic/versions/148642dd1207_fix_missing_tables.py"
 )
-SOURCE_GIT_BLOB = "77bad4a114acaea57cab444948d0e5801a3864b1"
+SOURCE_GIT_BLOB = "58a8fb7e839de203a50ed87d8156077750a30fba"
 _SITE_SPECS = (
     (
         "groups_drop_id",

@@ -12,9 +12,12 @@ from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 import jwt
 import pytest
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives.asymmetric import rsa
+from fastapi import HTTPException
 from sqlalchemy import UniqueConstraint
 
 import app.services.cwv as cwv_module
+from app.api import cwv as cwv_api
 from app.core.config import Settings
 from app.models.cwv import CwvObservation
 from app.services import cwv_retention
@@ -34,6 +37,7 @@ from app.services.cwv import (
     verify_envelope,
 )
 from app.services.cwv_retention import cleanup_stale_cwv_observations
+from tests.conftest import call_injected
 
 NOW = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)
 SHA = "a" * 40
@@ -837,3 +841,249 @@ def test_staging_settings_reject_invalid_ttl_origin_and_tester_cohort() -> None:
                 "cwv_manual_tester_user_ids": ("00000000-0000-0000-0000-000000000001"),
             }
         )
+
+
+@pytest.fixture
+def oidc_export_identity(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+    """Use real JWT validation with only the external JWKS fetch replaced."""
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    workflow_ref = (
+        "acme/university/.github/workflows/"
+        "cwv-field-certification.yml@refs/heads/main"
+    )
+    subject = "repo:acme/university:environment:staging"
+    now = datetime.now(UTC)
+    claims = {
+        "iss": "https://token.actions.githubusercontent.com",
+        "aud": "university-cwv-exporter",
+        "sub": subject,
+        "repository": "acme/university",
+        "ref": "refs/heads/main",
+        "environment": "staging",
+        "event_name": "workflow_dispatch",
+        "workflow_ref": workflow_ref,
+        "sha": SHA,
+        "iat": int((now - timedelta(seconds=1)).timestamp()),
+        "exp": int((now + timedelta(minutes=5)).timestamp()),
+    }
+    public_jwk = jwt.algorithms.RSAAlgorithm.to_jwk(
+        private_key.public_key(), as_dict=True
+    )
+    public_jwk.update({"kid": "aud-446-test-key", "use": "sig", "alg": "RS256"})
+    jwks = jwt.PyJWKClient(
+        "https://token.actions.githubusercontent.com/.well-known/jwks",
+        cache_keys=True,
+        cache_jwk_set=True,
+        lifespan=300,
+    )
+    monkeypatch.setattr(jwks, "fetch_data", Mock(return_value={"keys": [public_jwk]}))
+    monkeypatch.setattr(cwv_module, "_GITHUB_JWKS_CLIENT", jwks)
+    monkeypatch.setattr(cwv_api, "_binding", lambda: _binding())
+    monkeypatch.setattr(
+        cwv_api,
+        "settings",
+        SimpleNamespace(
+            cwv_export_oidc_enabled=True,
+            cwv_export_oidc_repository="acme/university",
+            cwv_export_oidc_workflow_ref=workflow_ref,
+            cwv_export_oidc_subject=subject,
+            cwv_deployed_at=NOW,
+        ),
+    )
+    return SimpleNamespace(
+        verifier=GithubActionsOidcVerifier(
+            enabled=True,
+            repository="acme/university",
+            workflow_ref=workflow_ref,
+            subject=subject,
+        ),
+        token=jwt.encode(
+            claims,
+            private_key,
+            algorithm="RS256",
+            headers={"kid": "aud-446-test-key"},
+        ),
+        private_key=private_key,
+        claims=claims,
+        jwks=jwks,
+    )
+
+
+async def _aud446_export_report(token: str, db: MagicMock) -> dict[str, object]:
+    return await call_injected(
+        cwv_api.export_cwv_report,
+        release_sha=SHA,
+        frontend_image_digest=DIGEST,
+        deployment_run_id=123,
+        deployment_run_attempt=2,
+        authorization=f"Bearer {token}",
+        provides={"AsyncDatabaseSession": db},
+    )
+
+
+def test_oidc_jwks_connection_failure_is_distinct_from_invalid_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    oidc_export_identity: SimpleNamespace,
+) -> None:
+    upstream_error = jwt.PyJWKClientConnectionError(
+        "private-upstream-detail: JWKS connection refused"
+    )
+    monkeypatch.setattr(
+        oidc_export_identity.jwks,
+        "fetch_data",
+        Mock(side_effect=upstream_error),
+    )
+
+    with pytest.raises(cwv_module.CwvError) as error_info:
+        oidc_export_identity.verifier.verify(
+            oidc_export_identity.token, expected_sha=SHA
+        )
+
+    # This assertion fails on the original CwvEnvelopeError without preventing
+    # collection of the independent API regression below.
+    assert error_info.type.__name__ == "CwvIdentityUnavailableError"
+    assert not isinstance(error_info.value, (CwvEnvelopeError, CwvConfigurationError))
+    assert str(error_info.value) == "CWV exporter identity verification unavailable"
+    assert error_info.value.__cause__ is upstream_error
+
+
+@pytest.mark.asyncio
+async def test_cwv_export_jwks_connection_failure_returns_generic_503_without_db(
+    monkeypatch: pytest.MonkeyPatch,
+    oidc_export_identity: SimpleNamespace,
+) -> None:
+    monkeypatch.setattr(
+        oidc_export_identity.jwks,
+        "fetch_data",
+        Mock(
+            side_effect=jwt.PyJWKClientConnectionError(
+                "private-upstream-detail: JWKS connection refused"
+            )
+        ),
+    )
+    db = MagicMock(
+        execute=AsyncMock(side_effect=AssertionError("unverified export read DB"))
+    )
+
+    with pytest.raises(HTTPException) as error_info:
+        await _aud446_export_report(oidc_export_identity.token, db)
+
+    assert error_info.value.status_code == 503
+    assert error_info.value.detail == "CWV exporter unavailable"
+    assert db.mock_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure",
+    ["invalid-signature", "malformed-token", "claim-mismatch", "unknown-key"],
+)
+async def test_cwv_export_invalid_identity_remains_401_without_db(
+    failure: str,
+    oidc_export_identity: SimpleNamespace,
+) -> None:
+    token = oidc_export_identity.token
+    if failure == "invalid-signature":
+        header, payload, signature = token.split(".")
+        corrupted = bytearray(base64.urlsafe_b64decode(signature + "=="))
+        corrupted[0] ^= 1
+        signature = base64.urlsafe_b64encode(corrupted).rstrip(b"=").decode("ascii")
+        token = f"{header}.{payload}.{signature}"
+    elif failure == "malformed-token":
+        token = "not-a-jwt"
+    elif failure == "claim-mismatch":
+        token = jwt.encode(
+            {**oidc_export_identity.claims, "sha": "c" * 40},
+            oidc_export_identity.private_key,
+            algorithm="RS256",
+            headers={"kid": "aud-446-test-key"},
+        )
+    elif failure == "unknown-key":
+        token = jwt.encode(
+            oidc_export_identity.claims,
+            oidc_export_identity.private_key,
+            algorithm="RS256",
+            headers={"kid": "unknown-test-key"},
+        )
+    db = MagicMock(
+        execute=AsyncMock(side_effect=AssertionError("unverified export read DB"))
+    )
+
+    with pytest.raises(HTTPException) as error_info:
+        await _aud446_export_report(token, db)
+
+    assert error_info.value.status_code == 401
+    assert error_info.value.detail == "Invalid exporter identity"
+    assert db.mock_calls == []
+
+
+@pytest.mark.asyncio
+async def test_cwv_export_disabled_oidc_policy_remains_503_without_db(
+    monkeypatch: pytest.MonkeyPatch,
+    oidc_export_identity: SimpleNamespace,
+) -> None:
+    monkeypatch.setattr(cwv_api.settings, "cwv_export_oidc_enabled", False)
+    monkeypatch.setattr(
+        oidc_export_identity.jwks,
+        "fetch_data",
+        Mock(side_effect=AssertionError("disabled exporter fetched JWKS")),
+    )
+    db = MagicMock(
+        execute=AsyncMock(side_effect=AssertionError("disabled export read DB"))
+    )
+
+    with pytest.raises(HTTPException) as error_info:
+        await _aud446_export_report(oidc_export_identity.token, db)
+
+    assert error_info.value.status_code == 503
+    assert error_info.value.detail == "CWV exporter unavailable"
+    assert db.mock_calls == []
+
+
+@pytest.mark.asyncio
+async def test_cwv_export_valid_signed_identity_still_returns_evidence(
+    oidc_export_identity: SimpleNamespace,
+) -> None:
+    row = SimpleNamespace(
+        metric="LCP",
+        unit="ms",
+        value=1000.0,
+        metric_id="test-metric",
+        collector_id="test-collector",
+        navigation_id="test-navigation",
+        session_id="test-session",
+        device_class="desktop",
+        route_group="core",
+        observed_at=NOW,
+        release_sha=SHA,
+        frontend_image_digest=DIGEST,
+    )
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [row]
+    db = MagicMock(execute=AsyncMock(return_value=result))
+
+    report = await _aud446_export_report(oidc_export_identity.token, db)
+
+    assert report["schema_version"] == 1
+    assert report["release_sha"] == SHA
+    assert report["frontend_image_digest"] == DIGEST
+    assert report["environment"] == "staging"
+    assert report["observations"] == [
+        {
+            "metric": "LCP",
+            "unit": "ms",
+            "value": 1000.0,
+            "metric_id": "test-metric",
+            "collector_id": "test-collector",
+            "navigation_id": "test-navigation",
+            "session_id": "test-session",
+            "device_class": "desktop",
+            "route_group": "core",
+            "observed_at": "2026-08-25T12:00:00Z",
+            "release_sha": SHA,
+            "frontend_image_digest": DIGEST,
+            "automated": False,
+            "final": True,
+        }
+    ]
+    db.execute.assert_awaited_once()

@@ -876,6 +876,53 @@ def _backfill_spotify_integrations() -> None:
     bind.execute(statement)
 
 
+def _backfill_user_preferences() -> None:
+    """Copy surviving quiet-hour settings without replacing destination rows."""
+    if context.is_offline_mode():
+        return
+
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    legacy_columns = {column["name"] for column in inspector.get_columns("users")}
+    fields = ("dnd_enabled", "dnd_start", "dnd_end", "timezone")
+    if not legacy_columns.intersection(fields):
+        return
+
+    metadata = sa.MetaData()
+    users = sa.Table("users", metadata, autoload_with=bind)
+    preferences = sa.Table("user_preferences", metadata, autoload_with=bind)
+    values = [users.c.id]
+    for name in fields:
+        if name in legacy_columns:
+            values.append(users.c[name])
+        elif name == "dnd_enabled":
+            values.append(sa.false())
+        else:
+            values.append(sa.cast(sa.null(), preferences.c[name].type))
+
+    destination_exists = sa.exists(
+        sa.select(1)
+        .select_from(preferences)
+        .where(preferences.c.user_id == users.c.id)
+        .correlate(users)
+    )
+    source_rows = (
+        sa.select(*values).select_from(users).where(sa.not_(destination_exists))
+    )
+    target_columns = ("user_id", *fields)
+    if bind.dialect.name == "postgresql":
+        statement = (
+            postgresql.insert(preferences)
+            .from_select(target_columns, source_rows)
+            .on_conflict_do_nothing(index_elements=[preferences.c.user_id])
+        )
+    else:
+        # A competing insert on another dialect fails the surrounding
+        # transaction rather than replacing an existing preference row.
+        statement = sa.insert(preferences).from_select(target_columns, source_rows)
+    bind.execute(statement)
+
+
 def upgrade() -> None:
     """Upgrade schema."""
     SKIPPED_TABLES.clear()
@@ -1518,6 +1565,8 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("user_id"),
     )
+    _backfill_user_preferences()
+
     safe_create_table(
         "webauthn_credentials",
         sa.Column("id", sa.Integer(), nullable=False),

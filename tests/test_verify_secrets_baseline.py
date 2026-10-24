@@ -2085,7 +2085,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 323
+    assert len(policy["records"]) == 325
     records = [
         record
         for record in policy["records"]
@@ -3081,7 +3081,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         )
     )
     records = policy["records"]
-    assert len(records) == 323
+    assert len(records) == 325
     prefix = records[:315]
     encoded_prefix = json.dumps(
         prefix, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -3483,7 +3483,7 @@ def test_oct24_public_digest_policy_preserves_all_318_prior_records() -> None:
         _AUD495_IMMUTABLE_315_PREFIX_SHA256
     )
     assert records[315:318] == _OCT24_ORIGINAL_SUFFIX
-    assert len(records) == 323
+    assert len(records) == 325
     assert records[318:321] == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS
 
 
@@ -3673,9 +3673,35 @@ def test_public_git_blob_policy_preserves_all_321_prior_records() -> None:
     )
     # These existing independent guards compose the immutable 321-record prefix.
     test_oct24_public_digest_policy_preserves_all_318_prior_records()
-    assert len(policy["records"]) == 323
-    assert policy["records"][321:] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS
-    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 2
+    assert len(policy["records"]) == 325
+    assert policy["records"][321:323] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:2]
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 4
+
+
+def test_public_git_blob_rebind_policy_preserves_all_323_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_public_git_blob_policy_preserves_all_321_prior_records()
+    assert policy["records"][323:] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:]
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:]) == 2
+    assert [
+        record["identity"]["path"] for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:2]
+    ] == [
+        record["identity"]["path"] for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:]
+    ]
+    assert {
+        tuple(record["identity"]["hashed_secret_bytes"])
+        for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:2]
+    }.isdisjoint(
+        {
+            tuple(record["identity"]["hashed_secret_bytes"])
+            for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:]
+        }
+    )
 
 
 def _public_git_blob_source_identity(
@@ -3722,6 +3748,8 @@ def test_public_git_blob_current_pin_has_an_exact_approved_identity(
     if not consumer.exists():
         # Removed consumers may leave valid historical records, as with baseline.
         return
+    # The fixture row supplies only the stable consumer path here: the current
+    # literal may match any separately approved historical or rebound identity.
     digest = _public_git_blob_source_identity(
         consumer.read_text(encoding="utf-8"),
         assignment_name,
@@ -3787,6 +3815,7 @@ def test_public_git_blob_validator_accepts_exact_historical_record_without_sourc
     "mutation",
     [
         "path",
+        "path_swap",
         "detector",
         "digest",
         "category",
@@ -3803,6 +3832,12 @@ def test_public_git_blob_validator_rejects_changed_scope_or_metadata(
     changed = copy.deepcopy(record)
     if mutation == "path":
         changed["identity"]["path"] = "tests/unapproved_public_digest.py"
+    elif mutation == "path_swap":
+        changed["identity"]["path"] = next(
+            row["identity"]["path"]
+            for row in _PUBLIC_GIT_BLOB_APPROVED_RECORDS
+            if row["identity"]["path"] != record["identity"]["path"]
+        )
     elif mutation == "detector":
         changed["identity"]["type"] = "Secret Keyword"
     elif mutation == "digest":

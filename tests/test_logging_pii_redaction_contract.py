@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import json
+import logging
+from io import StringIO
 from typing import Any
 
 import pytest
 
+import app.core.logging as logging_mod
 from app.core.logging import (
     _normalize_field_name,
     _redact_free_text,
@@ -129,3 +133,108 @@ def test_event_dict_redaction_covers_fields_values_and_self_references() -> None
         "context": {"refreshToken": REDACTED, "detail": f"call {REDACTED}"},
         "loop": REDACTED,
     }
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "reset_token",
+        "reset-token",
+        "resetToken",
+        "ResetToken",
+        "RESET_TOKEN",
+        "csrf_hmac_secret",
+        "csrf-hmac-secret",
+        "csrfHmacSecret",
+        "CsrfHmacSecret",
+        "CSRF_HMAC_SECRET",
+    ],
+)
+def test_account_recovery_and_csrf_fields_are_redacted_at_every_depth(
+    field_name: str,
+) -> None:
+    """AUD-359: credential-bearing fields must not fall back to text matching."""
+    event = {
+        field_name: "synthetic-value",
+        "details": [{"nested": {field_name: "synthetic-value"}}],
+    }
+
+    assert _redact_pii(None, "info", event) == {
+        field_name: REDACTED,
+        "details": [{"nested": {field_name: REDACTED}}],
+    }
+
+
+def test_sensitive_field_matching_preserves_related_nonsecret_metadata() -> None:
+    """AUD-359: fixing exact names must not mask all token/secret-prefixed keys."""
+    event = {
+        "event": "security configuration inspected",
+        "reset_token_count": 7,
+        "reset_token_expiry_minutes": 45,
+        "csrf_hmac_secret_configured": True,
+        "token_type": "Bearer",
+        "secret_name": "csrf-signing-key",
+        "details": {
+            "resetTokenCount": 7,
+            "csrfHmacSecretConfigured": True,
+            "status": "configured",
+        },
+    }
+
+    assert _redact_pii(None, "info", event) == {
+        "event": "security configuration inspected",
+        "reset_token_count": 7,
+        "reset_token_expiry_minutes": 45,
+        "csrf_hmac_secret_configured": True,
+        "token_type": "Bearer",
+        "secret_name": "csrf-signing-key",
+        "details": {
+            "resetTokenCount": 7,
+            "csrfHmacSecretConfigured": True,
+            "status": "configured",
+        },
+    }
+
+
+@pytest.mark.usefixtures("preserve_logging_configuration")
+@pytest.mark.parametrize("json_output", [True, False], ids=["json", "console"])
+@pytest.mark.parametrize("field_name", ["reset_token", "csrf_hmac_secret"])
+def test_account_recovery_and_csrf_values_never_reach_log_renderers(
+    monkeypatch: pytest.MonkeyPatch,
+    json_output: bool,
+    field_name: str,
+) -> None:
+    """Exercise the real configured processor chain and its emitted output."""
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    root = logging.getLogger()
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+    monkeypatch.setattr(logging_mod, "_configured", False)
+    sensitive_value = "synthetic-value"
+
+    try:
+        logging_mod.configure_logging(json_output=json_output)
+        logger = logging_mod.get_logger("audit-359-regression").bind(
+            **{field_name: sensitive_value}
+        )
+        logger.info(
+            "security configuration inspected",
+            details={"items": [{field_name: sensitive_value}]},
+            status="public-diagnostic",
+        )
+        output = stream.getvalue()
+    finally:
+        root.removeHandler(handler)
+        handler.close()
+
+    assert "security configuration inspected" in output
+    assert "public-diagnostic" in output
+    assert field_name in output
+    assert sensitive_value not in output
+    assert output.count(REDACTED) == 2
+    if json_output:
+        rendered = json.loads(output)
+        assert rendered[field_name] == REDACTED
+        assert rendered["details"] == {"items": [{field_name: REDACTED}]}
+        assert rendered["status"] == "public-diagnostic"

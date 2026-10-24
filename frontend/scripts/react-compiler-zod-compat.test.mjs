@@ -213,7 +213,10 @@ function captureSchemaErrors(z) {
       formatted: formatter.fromZodError(result.error).message,
     }
   })
-  const callback = z.function().args(z.string()).parse(() => null)
+  const callback = z
+    .function()
+    .args(z.string())
+    .parse(() => null)
   assert.throws(
     () => callback(42),
     (error) => {
@@ -288,10 +291,15 @@ function verifyRecursiveRecords(z) {
     z.object({ kind: z.literal("leaf"), value: z.string() }),
     z.object({
       kind: z.literal("object"),
-      properties: z.record(z.string(), z.lazy(() => tree)).refine(
-        (record) => Object.keys(record).every((key) => ["default", "*", "value"].includes(key)),
-        "invalid property"
-      ),
+      properties: z
+        .record(
+          z.string(),
+          z.lazy(() => tree)
+        )
+        .refine(
+          (record) => Object.keys(record).every((key) => ["default", "*", "value"].includes(key)),
+          "invalid property"
+        ),
     }),
   ])
   const input = {
@@ -317,7 +325,10 @@ function verifyArraysAndMinima(z) {
     flag: null,
     count: 2,
   })
-  for (const input of [{ values: [1], count: 1 }, { values: [], count: 0 }]) {
+  for (const input of [
+    { values: [1], count: 1 },
+    { values: [], count: 0 },
+  ]) {
     const result = schema.safeParse(input)
     assert.equal(result.success, false)
     assert.equal(typeof result.error.toString(), "string")
@@ -372,7 +383,10 @@ test("adapter array upper bounds reject before element refinements", () => {
   const result = adapter.z.array(item).max(1).safeParse(["a", "b"])
   assert.equal(result.success, false)
   assert.equal(calls, 0)
-  assert.deepEqual(result.error.issues.map(({ code }) => code), ["too_big"])
+  assert.deepEqual(
+    result.error.issues.map(({ code }) => code),
+    ["too_big"]
+  )
 })
 
 test("adapter map upper bounds reject before key and value refinements", () => {
@@ -382,8 +396,19 @@ test("adapter map upper bounds reject before key and value refinements", () => {
     calls += 1
     return true
   })
-  const result = adapter.z.map(item, item).max(1).safeParse(new Map([["a", "b"], ["c", "d"]]))
+  const result = adapter.z
+    .map(item, item)
+    .max(1)
+    .safeParse(
+      new Map([
+        ["a", "b"],
+        ["c", "d"],
+      ])
+    )
   assert.equal(result.success, false)
   assert.equal(calls, 0)
-  assert.deepEqual(result.error.issues.map(({ code }) => code), ["too_big"])
+  assert.deepEqual(
+    result.error.issues.map(({ code }) => code),
+    ["too_big"]
+  )
 })

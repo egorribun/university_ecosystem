@@ -215,9 +215,10 @@ def _install(
         SimpleNamespace(is_offline_mode=lambda: False),
     )
     monkeypatch.setattr(migration.sa, "inspect", lambda _bind: inspector)
-    # The backfill has its own PG-backed behavioral suite; this harness records
-    # the migration's orchestration calls without pretending to emulate data.
+    # The backfills have their own PG-backed behavioral suites; this harness
+    # records orchestration calls without pretending to emulate database data.
     monkeypatch.setattr(migration, "_backfill_spotify_integrations", lambda: None)
+    monkeypatch.setattr(migration, "_backfill_user_preferences", lambda: None)
     migration.SKIPPED_TABLES.clear()
     return migration, ops, inspector
 

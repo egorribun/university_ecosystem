@@ -20,7 +20,7 @@ ALLOWED_RETIREMENT_CONTRACTS = {
 # Historical migration fixture only, not an active factor or a file exclusion.
 # Re-review this exact Git blob binding after ANY orchestrator source change.
 HISTORICAL_ORCHESTRATOR_TEST = Path("tests/test_migration_148642dd1207_orchestrator.py")
-HISTORICAL_ORCHESTRATOR_BLOB = "8d263dac2d57d0adee95b012f915f2ad6e688bf7"
+HISTORICAL_ORCHESTRATOR_BLOB = "bc1d59f56b3005d7cff125510ccea00561178c38"
 # This map contains file-level pytest telemetry, not active product/security
 # declarations. Its keys intentionally include immutable tombstone test
 # filenames so the scheduler can retain their measured cost without making
@@ -65,32 +65,60 @@ def _active_scanner_policy_content(policy: dict[str, object]) -> str:
             if (
                 isinstance(identity, dict)
                 and identity
-                == {
-                    "path": "tests/test_mfa_webauthn_tombstone.py",
-                    "type": "Hex High Entropy String",
-                    "hashed_secret_bytes": [
-                        109,
-                        67,
-                        120,
-                        143,
-                        21,
-                        122,
-                        30,
-                        20,
-                        91,
-                        168,
-                        79,
-                        9,
-                        37,
-                        165,
-                        80,
-                        183,
-                        80,
-                        124,
-                        201,
-                        40,
-                    ],
-                }
+                in (
+                    {
+                        "path": "tests/test_mfa_webauthn_tombstone.py",
+                        "type": "Hex High Entropy String",
+                        "hashed_secret_bytes": [
+                            109,
+                            67,
+                            120,
+                            143,
+                            21,
+                            122,
+                            30,
+                            20,
+                            91,
+                            168,
+                            79,
+                            9,
+                            37,
+                            165,
+                            80,
+                            183,
+                            80,
+                            124,
+                            201,
+                            40,
+                        ],
+                    },
+                    {
+                        "path": "tests/test_mfa_webauthn_tombstone.py",
+                        "type": "Hex High Entropy String",
+                        "hashed_secret_bytes": [
+                            120,
+                            244,
+                            112,
+                            145,
+                            78,
+                            179,
+                            236,
+                            151,
+                            175,
+                            133,
+                            0,
+                            251,
+                            201,
+                            135,
+                            203,
+                            98,
+                            231,
+                            245,
+                            249,
+                            83,
+                        ],
+                    },
+                )
                 and record.get("category") == "public_integrity_digest"
             ):
                 # Only the exact inactive identity path is scanner bookkeeping.
@@ -343,14 +371,16 @@ def test_source_bound_history_does_not_exempt_a_new_symlink_alias(
         test_backend_tests_have_no_retired_factor_references()
 
 
-@pytest.fixture
-def public_git_blob_disposition_record() -> dict[str, object]:
+@pytest.fixture(params=(0, 1))
+def public_git_blob_disposition_record(
+    request: pytest.FixtureRequest,
+) -> dict[str, object]:
     fixture = ROOT / "tests" / "fixtures" / "public-git-blob-dispositions.json"
     records = json.loads(fixture.read_text(encoding="utf-8"))["records"]
     own_path = Path(__file__).resolve().relative_to(ROOT).as_posix()
     matches = [row for row in records if row["identity"]["path"] == own_path]
-    assert len(matches) == 1
-    return copy.deepcopy(matches[0])
+    assert len(matches) == 2
+    return copy.deepcopy(matches[request.param])
 
 
 def _write_scanner_policy_fixture(
@@ -423,9 +453,7 @@ def test_runtime_guard_still_rejects_an_active_retired_factor(
 ) -> None:
     runtime = tmp_path / "app"
     runtime.mkdir()
-    (runtime / "active_factor.py").write_text(
-        "FACTOR = 'webauthn'\n", encoding="utf-8"
-    )
+    (runtime / "active_factor.py").write_text("FACTOR = 'webauthn'\n", encoding="utf-8")
     monkeypatch.setitem(globals(), "ROOT", tmp_path)
     monkeypatch.setitem(globals(), "RUNTIME_ROOTS", (runtime,))
     with pytest.raises(AssertionError):

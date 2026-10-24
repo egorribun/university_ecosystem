@@ -9130,6 +9130,74 @@
       "reviewed_on": "2026-10-24",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/helpers/migration_148642dd1207_trace.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          78,
+          36,
+          66,
+          114,
+          42,
+          111,
+          201,
+          231,
+          78,
+          231,
+          157,
+          23,
+          62,
+          86,
+          214,
+          140,
+          152,
+          235,
+          118,
+          215
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git SHA-1 integrity digest of alembic/versions/148642dd1207_fix_missing_tables.py; source-bound five-site migration diagnostic assignment SOURCE_GIT_BLOB; Git blob framing binds all source bytes; not credential material. Reviewed preference-preservation source rebind; detector identity computed from the public Git pin, awaiting hosted scan confirmation.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_mfa_webauthn_tombstone.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          120,
+          244,
+          112,
+          145,
+          78,
+          179,
+          236,
+          151,
+          175,
+          133,
+          0,
+          251,
+          201,
+          135,
+          203,
+          98,
+          231,
+          245,
+          249,
+          83
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git SHA-1 integrity digest of tests/test_migration_148642dd1207_orchestrator.py; source-bound historical migration reference guard assignment HISTORICAL_ORCHESTRATOR_BLOB; Git blob framing binds all source bytes; not credential material. Reviewed preference-preservation source rebind; detector identity computed from the public Git pin, awaiting hosted scan confirmation.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

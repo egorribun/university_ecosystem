@@ -9,6 +9,7 @@ import runpy
 import shlex
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
 import yaml
@@ -73,6 +74,97 @@ def test_consumer_creates_temp_parent_before_pytest() -> None:
     prepare = lines.index('mkdir -p "$(dirname "$trace_root")"')
     invoke = lines.index("uv run pytest -q -s --tb=short \\")
     assert root < prepare < invoke
+
+
+@pytest.fixture
+def artifact_selection(monkeypatch):
+    # Keep selector fixtures outside pytest's evidence root so they cannot
+    # masquerade as the real PostgreSQL test's artifact pair.
+    with TemporaryDirectory(prefix="aud148-selection-") as directory:
+        base = Path(directory)
+        root = base / "evidence with spaces"
+        root.mkdir()
+        _, _, _, diagnostic = _steps()
+        body = diagnostic["run"].split("<<'SELECT_AUD148'\n", 1)[1]
+        body = body.split("\nSELECT_AUD148\n", 1)[0]
+        script = base / "selector.py"
+        script.write_text(body, encoding="utf-8")
+        manifest = base / "selected"
+        monkeypatch.setattr(sys, "argv", [str(script), str(root), str(manifest)])
+        yield script, root, manifest
+
+
+def _artifact_pair(directory):
+    directory.mkdir()
+    paths = (
+        directory / "148642dd1207.expanded.sql",
+        directory / "148642dd1207.trace.json",
+    )
+    for path in paths:
+        path.write_text("synthetic selector fixture\n", encoding="utf-8")
+    return paths
+
+
+@pytest.mark.parametrize("current_alias", [False, True])
+def test_artifact_selection_accepts_one_physical_pair_despite_pytest_alias(
+    artifact_selection, current_alias
+) -> None:
+    script, root, manifest = artifact_selection
+    paths = _artifact_pair(root / "test_expanded_ddl_inventory_ma0")
+    if current_alias:
+        (root / "test_expanded_ddl_inventory_macurrent").symlink_to(
+            paths[0].parent, target_is_directory=True
+        )
+
+    runpy.run_path(str(script), run_name="__main__")
+
+    assert manifest.read_bytes().split(b"\0") == [
+        str(paths[0]).encode(),
+        str(paths[1]).encode(),
+        b"",
+    ]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "missing_pair",
+        "missing_sql",
+        "missing_json",
+        "two_real_pairs",
+        "split_pair",
+        "directory_symlink_only",
+        "file_symlink",
+    ],
+)
+def test_artifact_selection_rejects_missing_duplicate_or_aliased_evidence(
+    artifact_selection, case
+) -> None:
+    script, root, manifest = artifact_selection
+    if case != "missing_pair":
+        paths = _artifact_pair(root / "real")
+        if case == "missing_sql":
+            paths[0].unlink()
+        elif case == "missing_json":
+            paths[1].unlink()
+        elif case == "two_real_pairs":
+            _artifact_pair(root / "second")
+        elif case == "split_pair":
+            second = root / "second"
+            second.mkdir()
+            paths[1].rename(second / paths[1].name)
+        elif case == "directory_symlink_only":
+            outside = root.parent / "outside"
+            paths[0].parent.rename(outside)
+            (root / "alias").symlink_to(outside, target_is_directory=True)
+        else:
+            outside = root.parent / "outside.sql"
+            paths[0].rename(outside)
+            paths[0].symlink_to(outside)
+
+    with pytest.raises(SystemExit, match="AUD148"):
+        runpy.run_path(str(script), run_name="__main__")
+    assert not manifest.exists()
 
 
 def _git_blob(data):

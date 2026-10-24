@@ -578,3 +578,43 @@ authorized. No migration waiver is established by these scanner dispositions.
 Accepted audit scope remains 282/512; policy adoption is not a passing scan,
 test, hosted-check, full-CI or release result. Final-source validation remains
 required.
+
+
+## Exact public Git-blob rebindings for preference preservation (2026-10-24)
+
+Under the owner's authorization to apply analogous narrow, justified audit
+exceptions without another approval round, this update appends exactly two
+`public_integrity_digest` records for the reviewed preference-preservation
+repair. All 323 preceding records remain byte-for-byte unchanged; the total
+is 325. The additions retain owner `egorribun`, review date 2026-10-24 and
+expiry 2027-01-10, with the same exact `Hex High Entropy String` detector type.
+
+The two new identities bind `SOURCE_GIT_BLOB` in the migration trace helper
+to the reviewed migration source, and `HISTORICAL_ORCHESTRATOR_BLOB` in the
+retired-factor guard to the reviewed orchestrator test source. They are new
+records, not replacements for the two historical pins. The public Git blobs
+were fetched and independently rehashed using Git's byte-length header.
+Their detector fingerprints were computed with the pinned detect-secrets
+v1.5.0 SHA-1-of-UTF-8 algorithm. These are **computed expected findings**, not
+yet a claim that a hosted scanner emitted them or that a scan passed.
+
+The validator now admits only the four explicit historical/rebound
+path/type/fingerprint tuples on the two reserved consumer paths. No
+path-wide or category-wide allowance is added. The independent JSON fixture
+preserves its first two records, and policy tests preserve the complete
+323-record prefix before checking the exact two-record suffix. Source-binding
+tests derive the current literal and referred Git blob and require a matching
+approved identity; stale historical records do not force an old current pin.
+
+The retired-factor scanner-bookkeeping guard recognizes only the two exact
+historical/rebound identities for its own path, under the same category.
+Only `identity.path` is normalized; other identity fields, category, evidence
+and active retired-factor references remain checked. Negative tests exercise
+both records, changed scope and path/fingerprint transfer. The literal Git
+pin remains explicit; production migration changes are a separate candidate.
+
+Baseline319, Gitleaks25, all 78 required context/app pairs, blocking CodeQL,
+hooks, expiry caps and quality floors remain unchanged. This grants no Squawk
+waiver, broad exclusion, inline pragma, reclassification or scanner bypass.
+The accepted ledger remains 283/512. Hosted scanner output, source-bound tests
+and final-source required checks must establish their own results.

@@ -5,6 +5,42 @@
 
 
 
+## Транзакционные предпочтения и следующий RED cohort, 2026-10-24
+
+Ledger остаётся **283/512 (55,3%)**. На 2bc65c3 Contract завершился 1555 + 366
+PASS, inventory — PASS с 28 harness tests. Политика323 принята проверками;
+единственная новая unmatched identity — публичный Git pin временного root-Zod
+генератора. Он не подавляется: генератор удаляется только после применения
+проверенного npm-produced lock-кандидата, запись которого пока ожидает
+подтверждения инструмента. Текущий lock здесь не меняется.
+
+Девять guards root-Zod прошли; npm подтвердил зрелую 4.6.7, upstream Git SHA,
+оба archive digests и точную трёхполевую замену одного root record. Это ещё не
+устранение всех Zod3 consumers. React Compiler baseline содержит 37 fixtures
+и пять legacy controls PASS; восемь assertion RED относятся к stub адаптера.
+Два точных Prettier postimages генератора и пять hunks baseline test, а также
+единственный Ruff hunk tombstone применены без изменения поведения.
+
+В этой серии публикуется сохранение surviving legacy user preferences перед
+удалением колонок в 148642dd1207. Существующие destination rows выигрывают;
+optional NULL, false и midnight сохраняются, несовместимый NULL dnd_enabled
+должен откатывать миграцию. Production fix имеет независимое source review,
+но PostgreSQL GREEN нового кода ещё требуется. Два пересмотренных публичных
+source pins оформлены отдельными exact dispositions в политике325; прежние323
+records неизменны. Их fingerprints вычислены независимо, но новый scanner
+результат ещё не получен. Более ранняя 202511240001 остаётся отдельным вопросом.
+
+На 6082 focused migration cohort дал 37 PASS, затем consumer отказал при
+поиске SQL/JSON пары. Физический обход файлов теперь игнорирует pytest current
+symlinks, не ослабляя требование одной пары из одного каталога; девять regression
+cases ещё ждут hosted execution. Это не Squawk exception и не replay SQL.
+
+Consumer cohort сохраняет исходные136 selectors и добавляет три явных
+назначения: существующая проверка AUD-388, tests-first AUD-359 и AUD-446.
+Новые tests должны сначала воспроизвести logging/JWKS defects; соответствующие
+production исправления ещё не применены. Два workers, loadfile, budgets,
+filters, policy cohort и failure propagation сохранены.
+
 ## Подтверждённая изоляция калибровки AUD-504, 2026-10-24
 
 Принятый ledger: **283/512 (55,3%)**, 229 ID не принято. Добавлен только
@@ -26,6 +62,24 @@ unsupported-shell guard и создания pytest temp parent; root Zod generat
 содержит tests-first guards, не обновлённый lock. Light/dark Caddy browser smoke
 run 40067042826 PASS на этом exact source. Main CI run 40067042977 начался;
 его новые результаты и дальнейшие изменения требуют отдельной верификации.
+
+## Точные Git-pin dispositions для preference repair, 2026-10-24
+
+По разрешению владельца применять аналогичные узкие обоснованные исключения
+подготовлены ещё ровно две public_integrity_digest identities для проверенных
+Git-pin rebindings migration trace и historical reference guard. Policy325
+сохраняет прежние 323 записи побайтно; baseline319 и Gitleaks25 неизменны,
+expiry новых записей — 2027-01-10. [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#exact-public-git-blob-rebindings-for-preference-preservation-2026-10-24)
+фиксирует конечные path/type/fingerprint tuples и ограничения.
+
+Публичные source blobs независимо пересчитаны, как и ожидаемые detect-secrets
+fingerprints. Это **вычисленные expected findings**, ещё не наблюдавшийся
+hosted scanner result. Старые записи сохранены как history; текущий pin
+проверяется против фактических source bytes и точного approved identity.
+Изменённый/неизвестный pin по-прежнему блокирует, автоматического допуска нет.
+Новые metadata/source/negative tests ещё требуют hosted выполнения. Migration
+repair и его source pins собираются отдельно; это не Squawk waiver и не GREEN.
+Accepted ledger остаётся **283/512**, полный CI и release не приняты.
 
 ## Историческое продолжение после CI 1a3954e, 2026-10-24
 
@@ -587,7 +641,7 @@ Actual focused AUD-174 на bef8: два browser PASS и `redaction=verified pro
 
 ## Неизменные границы
 
-Detect-secrets baseline — 319 identities; действующая политика содержит 323 finite owner-approved dispositions. Остальные counts в исторических checkpoint-записях относятся к указанным там source. Отдельное Gitleaks-разрешение ограничено 25 точными историческими fingerprints. Все 78 required context/app pairs, blocking CodeQL, hooks и finite131 migration exception до 2026-11-13 сохраняются. Changed/unmatched identities остаются блокирующими. Q1/Q4 migration действует; Q2/Q3 — v1.1; глобальный mutation score не повышается ради MVP.
+Detect-secrets baseline — 319 identities; действующая политика содержит 325 finite owner-approved dispositions. Остальные counts в исторических checkpoint-записях относятся к указанным там source. Отдельное Gitleaks-разрешение ограничено 25 точными историческими fingerprints. Все 78 required context/app pairs, blocking CodeQL, hooks и finite131 migration exception до 2026-11-13 сохраняются. Changed/unmatched identities остаются блокирующими. Q1/Q4 migration действует; Q2/Q3 — v1.1; глобальный mutation score не повышается ради MVP.
 
 Перед тяжёлым прогоном: RAM ≤75% / free ≥8 GiB; остановка при RAM ≥85% / free <4 GiB. Отдельное исключение для одиночных Linux screenshots: ≤80% / ≥6 GiB, container ≤1 GiB / 2 CPU. Удалять только доказанно принадлежащие работе ресурсы; чужие процессы и prune не трогать.
 

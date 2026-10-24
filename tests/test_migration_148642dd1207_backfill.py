@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -529,3 +529,276 @@ def test_backfill_postgresql_and_generic_dialects_generate_safe_insert_forms(
             monkeypatch.setattr(sa_inspection, "inspect", original_inspect)
             monkeypatch.setattr(migration.sa, "inspect", original_package_inspect)
     engine.dispose()
+
+
+_PREFERENCE_TYPES = {
+    "dnd_enabled": sa.Boolean(),
+    "dnd_start": sa.Time(),
+    "dnd_end": sa.Time(),
+    "timezone": sa.String(length=64),
+}
+
+
+def _preference_tables(
+    engine: Any,
+    *,
+    user_fields: tuple[str, ...] = tuple(_PREFERENCE_TYPES),
+) -> tuple[sa.Table, sa.Table]:
+    metadata = sa.MetaData()
+    users = sa.Table(
+        "users",
+        metadata,
+        sa.Column("id", sa.Integer(), primary_key=True),
+        *(sa.Column(name, _PREFERENCE_TYPES[name]) for name in user_fields),
+    )
+    preferences = sa.Table(
+        "user_preferences",
+        metadata,
+        sa.Column("user_id", sa.Integer(), primary_key=True),
+        *(
+            sa.Column(name, dtype, nullable=name != "dnd_enabled")
+            for name, dtype in _PREFERENCE_TYPES.items()
+        ),
+    )
+    metadata.create_all(engine)
+    return users, preferences
+
+
+def test_preferences_backfill_preserves_values_and_stays_in_caller_transaction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration = _load_migration()
+    engine = sa.create_engine("sqlite+pysqlite:///:memory:")
+    try:
+        users, preferences = _preference_tables(engine)
+        with engine.begin() as connection:
+            connection.execute(
+                users.insert(),
+                [
+                    {
+                        "id": 11,
+                        "dnd_enabled": True,
+                        "dnd_start": time(23, 45, 30, 123456),
+                        "dnd_end": time(6, 15, 1, 654321),
+                        "timezone": "Asia/Kathmandu",
+                    },
+                    {
+                        "id": 12,
+                        "dnd_enabled": False,
+                        "dnd_start": time(0),
+                        "dnd_end": time(0),
+                        "timezone": "Europe/Istanbul",
+                    },
+                    {
+                        "id": 13,
+                        "dnd_enabled": True,
+                        "dnd_start": time(22),
+                        "dnd_end": time(7),
+                        "timezone": "America/St_Johns",
+                    },
+                ],
+            )
+            connection.execute(
+                preferences.insert(),
+                {"user_id": 13, "dnd_enabled": False},
+            )
+
+        with engine.connect() as connection:
+            transaction = connection.begin()
+            _install(
+                monkeypatch,
+                migration,
+                SimpleNamespace(is_offline_mode=lambda: False),
+                _Ops(connection),
+            )
+            migration._backfill_user_preferences()
+            migration._backfill_user_preferences()
+            assert connection.execute(
+                sa.select(preferences).order_by(preferences.c.user_id)
+            ).all() == [
+                (
+                    11,
+                    True,
+                    time(23, 45, 30, 123456),
+                    time(6, 15, 1, 654321),
+                    "Asia/Kathmandu",
+                ),
+                (12, False, time(0), time(0), "Europe/Istanbul"),
+                (13, False, None, None, None),
+            ]
+            transaction.rollback()
+
+        with engine.connect() as connection:
+            assert connection.execute(sa.select(preferences)).all() == [
+                (13, False, None, None, None)
+            ]
+            assert (
+                connection.execute(
+                    sa.select(sa.func.count()).select_from(users)
+                ).scalar_one()
+                == 3
+            )
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("legacy_field", "value", "expected"),
+    [
+        ("dnd_enabled", False, (21, False, None, None, None)),
+        (
+            "dnd_start",
+            time(0, 0, 0, 1),
+            (21, False, time(0, 0, 0, 1), None, None),
+        ),
+        ("dnd_end", time(0), (21, False, None, time(0), None)),
+        ("timezone", "Asia/Kathmandu", (21, False, None, None, "Asia/Kathmandu")),
+        ("timezone", None, (21, False, None, None, None)),
+    ],
+)
+def test_preferences_backfill_keeps_each_surviving_legacy_field(
+    monkeypatch: pytest.MonkeyPatch,
+    legacy_field: str,
+    value: Any,
+    expected: tuple[Any, ...],
+) -> None:
+    migration = _load_migration()
+    engine = sa.create_engine("sqlite+pysqlite:///:memory:")
+    try:
+        users, preferences = _preference_tables(engine, user_fields=(legacy_field,))
+        with engine.begin() as connection:
+            connection.execute(users.insert(), {"id": 21, legacy_field: value})
+            _install(
+                monkeypatch,
+                migration,
+                SimpleNamespace(is_offline_mode=lambda: False),
+                _Ops(connection),
+            )
+            migration._backfill_user_preferences()
+            assert connection.execute(sa.select(preferences)).one() == expected
+    finally:
+        engine.dispose()
+
+
+def test_preferences_backfill_leaves_normal_parent_without_legacy_columns_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration = _load_migration()
+    engine = sa.create_engine("sqlite+pysqlite:///:memory:")
+    try:
+        users, preferences = _preference_tables(engine, user_fields=())
+        with engine.begin() as connection:
+            connection.execute(users.insert(), {"id": 31})
+            _install(
+                monkeypatch,
+                migration,
+                SimpleNamespace(is_offline_mode=lambda: False),
+                _Ops(connection),
+            )
+            migration._backfill_user_preferences()
+            assert connection.execute(sa.select(preferences)).all() == []
+            assert connection.execute(sa.select(users.c.id)).all() == [(31,)]
+    finally:
+        engine.dispose()
+
+
+def test_preferences_backfill_does_not_reflect_an_offline_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration = _load_migration()
+
+    def unexpected_bind() -> Any:
+        raise AssertionError("offline preference backfill requested a connection")
+
+    _install(
+        monkeypatch,
+        migration,
+        SimpleNamespace(is_offline_mode=lambda: True),
+        SimpleNamespace(get_bind=unexpected_bind),
+    )
+    migration._backfill_user_preferences()
+
+
+def test_preferences_backfill_emits_postgresql_conflict_preserving_insert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Inspect the emitted PostgreSQL statement; PG data proof is integration."""
+    migration = _load_migration()
+    engine = sa.create_engine("sqlite+pysqlite:///:memory:")
+    try:
+        _preference_tables(engine)
+        with engine.begin() as connection:
+            proxy = _DialectProxy(connection, "postgresql")
+            original_inspect = sa_inspection.inspect
+
+            def inspect_proxy(subject: Any, *args: Any, **kwargs: Any) -> Any:
+                return original_inspect(
+                    connection if subject is proxy else subject, *args, **kwargs
+                )
+
+            monkeypatch.setattr(sa_inspection, "inspect", inspect_proxy)
+            monkeypatch.setattr(migration.sa, "inspect", inspect_proxy)
+            _install(
+                monkeypatch,
+                migration,
+                SimpleNamespace(is_offline_mode=lambda: False),
+                _Ops(proxy),
+            )
+            migration._backfill_user_preferences()
+
+            assert len(proxy.statements) == 1
+            compiled = str(
+                proxy.statements[0].compile(
+                    dialect=postgresql.dialect(),
+                    compile_kwargs={"literal_binds": True},
+                )
+            ).upper()
+            assert "INSERT INTO USER_PREFERENCES" in compiled
+            assert "NOT (EXISTS" in compiled
+            assert "ON CONFLICT (USER_ID) DO NOTHING" in compiled
+    finally:
+        engine.dispose()
+
+
+def test_preferences_backfill_rejects_present_null_enabled_and_rolls_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Do not silently convert an existing NULL boolean into a default value."""
+    migration = _load_migration()
+    engine = sa.create_engine("sqlite+pysqlite:///:memory:")
+    try:
+        users, preferences = _preference_tables(engine, user_fields=("dnd_enabled",))
+        with engine.begin() as connection:
+            connection.execute(
+                users.insert(),
+                [
+                    {"id": 41, "dnd_enabled": False},
+                    {"id": 42, "dnd_enabled": None},
+                    {"id": 43, "dnd_enabled": True},
+                ],
+            )
+            connection.execute(
+                preferences.insert(), {"user_id": 43, "dnd_enabled": False}
+            )
+        with pytest.raises(sa.exc.IntegrityError, match="dnd_enabled"):
+            with engine.begin() as connection:
+                connection.execute(
+                    preferences.insert(), {"user_id": 44, "dnd_enabled": False}
+                )
+                _install(
+                    monkeypatch,
+                    migration,
+                    SimpleNamespace(is_offline_mode=lambda: False),
+                    _Ops(connection),
+                )
+                migration._backfill_user_preferences()
+
+        with engine.connect() as connection:
+            assert connection.execute(
+                sa.select(preferences).order_by(preferences.c.user_id)
+            ).all() == [(43, False, None, None, None)]
+            assert connection.execute(
+                sa.select(users).order_by(users.c.id)
+            ).all() == [(41, False), (42, None), (43, True)]
+    finally:
+        engine.dispose()

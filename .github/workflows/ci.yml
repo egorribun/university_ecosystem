@@ -1026,19 +1026,35 @@ jobs:
           fi
           echo "AUD148_FOCUSED_TESTS_END"
           if [ "$pytest_status" -ne 0 ]; then exit "$pytest_status"; fi
-          shopt -s globstar nullglob
-          sql_files=("$trace_root"/**/148642dd1207.expanded.sql)
-          json_files=("$trace_root"/**/148642dd1207.trace.json)
-          if [ "${#sql_files[@]}" -ne 1 ] || [ "${#json_files[@]}" -ne 1 ]; then
-            echo "::error::Expected exactly one AUD148 SQL/evidence pair"
-            exit 1
-          fi
-          sql_file="${sql_files[0]}"
-          json_file="${json_files[0]}"
-          if [ "$json_file" != "${sql_file%.expanded.sql}.trace.json" ]; then
-            echo "::error::AUD148 SQL and JSON are not from the same test"
-            exit 1
-          fi
+          artifact_paths="$(mktemp)"
+          uv run python - "$trace_root" "$artifact_paths" <<'SELECT_AUD148'
+          import sys
+          from pathlib import Path
+
+          def fail_walk(error):
+              raise error
+
+
+          root = Path(sys.argv[1])
+          names = ("148642dd1207.expanded.sql", "148642dd1207.trace.json")
+          matches = {name: [] for name in names}
+          for directory, _, filenames in root.walk(on_error=fail_walk, follow_symlinks=False):
+              for name in names:
+                  path = directory / name
+                  if name in filenames and path.is_file() and not path.is_symlink():
+                      matches[name].append(path)
+          if any(len(matches[name]) != 1 for name in names):
+              raise SystemExit("AUD148 expected exactly one physical SQL/evidence pair")
+          sql_path, evidence_path = (matches[name][0] for name in names)
+          if sql_path.parent != evidence_path.parent:
+              raise SystemExit("AUD148 SQL and JSON are not from the same test")
+          Path(sys.argv[2]).write_bytes(
+              b"\0".join(str(path).encode() for path in (sql_path, evidence_path)) + b"\0"
+          )
+          SELECT_AUD148
+          mapfile -d '' -t evidence_files < "$artifact_paths"
+          sql_file="${evidence_files[0]}"
+          json_file="${evidence_files[1]}"
           AUD148_CHECKOUT_SHA="$(git rev-parse HEAD)"
           AUD148_SQUAWK_VERSION="$(squawk --version)"
           AUD148_SQUAWK_BINARY_SHA256="$(sha256sum "$(command -v squawk)" | cut -d ' ' -f 1)"
@@ -2053,7 +2069,10 @@ jobs:
             tests/test_live_stand.py::test_live_caddy_disjoint_second_read_failure_preserves_cleanup \
             tests/test_live_stand.py::test_live_caddy_capture_deadline_cannot_be_rebased_during_reader_admission \
             tests/test_live_stand.py::test_live_caddy_probe_reads_one_union_window_from_reverified_pinned_container \
-            tests/test_live_stand.py::test_live_caddy_probe_brackets_one_union_read_within_the_shared_deadline -v \
+            tests/test_live_stand.py::test_live_caddy_probe_brackets_one_union_read_within_the_shared_deadline \
+            tests/test_health_api_closure.py::test_healthz_brief_cache_hit_filters_full_payload \
+            tests/test_logging_pii_redaction_contract.py \
+            tests/test_cwv_rum_security.py -v \
             --tb=short --durations=20 -n 2 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \

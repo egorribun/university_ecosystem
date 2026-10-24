@@ -32,6 +32,13 @@ def test_source_binding_rejects_any_changed_migration_bytes() -> None:
         trace.reviewed_sites(SOURCE + b"\n")
 
 
+def test_source_binding_covers_preference_copy_outside_nested_ddl_sites() -> None:
+    changed = SOURCE.replace(b"    _backfill_user_preferences()\n", b"    pass\n")
+    assert changed != SOURCE
+    with pytest.raises(trace.TraceContractError, match="source changed"):
+        trace.reviewed_sites(changed)
+
+
 @pytest.mark.parametrize(
     ("mutation", "message"),
     [

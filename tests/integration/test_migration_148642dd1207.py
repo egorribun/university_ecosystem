@@ -819,6 +819,40 @@ def test_upgrade_backfills_missing_preferences_without_overwriting_existing_rows
         _assert_legacy_preferences_removed(connection)
 
 
+def test_null_legacy_enabled_aborts_upgrade_without_losing_preferences(
+    legacy_preferences_config: Config,
+    spotify_scenario_urls: dict[str, str],
+) -> None:
+    """An incompatible legacy NULL must abort, not be replaced or discarded."""
+    with psycopg.connect(spotify_scenario_urls["sync"]) as connection:
+        connection.execute("ALTER TABLE users ALTER COLUMN dnd_enabled DROP NOT NULL")
+        connection.execute("UPDATE users SET dnd_enabled = NULL WHERE id = 930002")
+        original = connection.execute(
+            "SELECT id, dnd_enabled, dnd_start, dnd_end, timezone "
+            "FROM users ORDER BY id"
+        ).fetchall()
+
+    with pytest.raises(sa.exc.IntegrityError, match="dnd_enabled"):
+        command.upgrade(legacy_preferences_config, "148642dd1207")
+
+    with psycopg.connect(spotify_scenario_urls["sync"]) as connection:
+        assert connection.execute(
+            "SELECT version_num FROM alembic_version"
+        ).fetchone() == ("f7aa476e968a",)
+        assert connection.execute(
+            "SELECT to_regclass('public.user_preferences')"
+        ).fetchone() == (None,)
+        assert connection.execute(
+            "SELECT data_type FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'groups' "
+            "AND column_name = 'id'"
+        ).fetchone() == ("character varying",)
+        assert connection.execute(
+            "SELECT id, dnd_enabled, dnd_start, dnd_end, timezone "
+            "FROM users ORDER BY id"
+        ).fetchall() == original
+
+
 # This diagnostic is deliberately test-only. It does not alter the production
 # renderer, scanner configuration, migration, or exception policy.
 _TRACE_TABLE_DDL = """
