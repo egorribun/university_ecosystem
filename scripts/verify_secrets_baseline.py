@@ -1696,6 +1696,32 @@ _PUBLIC_GIT_BLOB_IDENTITIES = frozenset(
                 40,
             ),
         ),
+        (
+            "tests/test_mfa_webauthn_tombstone.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                32,
+                87,
+                220,
+                238,
+                65,
+                56,
+                74,
+                173,
+                160,
+                109,
+                167,
+                158,
+                154,
+                251,
+                29,
+                7,
+                25,
+                76,
+                152,
+                145,
+            ),
+        ),
     }
 )
 _PUBLIC_GIT_BLOB_DIGESTS = frozenset(

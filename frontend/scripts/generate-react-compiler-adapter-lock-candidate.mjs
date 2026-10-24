@@ -68,23 +68,25 @@ export function assertStagedSourcePrerequisites(lock) {
     ["node_modules/body-parser", "1.20.9"],
     ["node_modules/undici", "8.12.2"],
     ["node_modules/eslint-plugin-react-compiler", "19.1.0-rc.2"],
-    ["node_modules/chromium-bidi/node_modules/zod", "3.25.76"],
+    ["node_modules/@puppeteer/browsers", "3.2.4"],
+    ["node_modules/chromium-bidi", "157.0.8090-0"],
+    ["node_modules/puppeteer-core", "25.13.0"],
+    ["node_modules/puppeteer-core/node_modules/devtools-protocol", "0.0.1696802"],
+    ["node_modules/typed-query-selector", "2.12.3"],
+    ["node_modules/webdriver-bidi-protocol", "1.0.1"],
     ["node_modules/eslint-plugin-react-compiler/node_modules/zod", "3.25.76"],
   ]) {
-    assert.equal(lock.packages[path].version, version)
+    assert.equal(lock.packages[path]?.version, version)
     assert.equal(lock.packages[path].dev, true)
   }
+  assert.equal(lock.packages["node_modules/chromium-bidi"].dependencies?.zod, "^4.6.5")
   assert.equal(lock.packages["node_modules/zod"].version, "4.6.7")
   assert(!Object.hasOwn(lock.packages["node_modules/zod"], "dev"))
   assert.deepEqual(
     Object.keys(lock.packages)
       .filter((path) => /(?:^|\/)node_modules\/zod$/.test(path))
       .sort(),
-    [
-      "node_modules/chromium-bidi/node_modules/zod",
-      "node_modules/eslint-plugin-react-compiler/node_modules/zod",
-      "node_modules/zod",
-    ]
+    ["node_modules/eslint-plugin-react-compiler/node_modules/zod", "node_modules/zod"]
   )
   for (const path of [LINK, LOCAL, ALIAS, LOCAL + "/node_modules/patched-zod"]) {
     assert(!Object.hasOwn(lock.packages, path))
@@ -150,11 +152,26 @@ export function assertInstalledGraph(frontend, mode) {
   assert.equal(root.version, "4.6.7")
   assert(!existsSync(join(frontend, LOCAL, "node_modules/patched-zod")))
   if (mode === "production") {
-    for (const path of [LINK, ALIAS, "node_modules/eslint-plugin-react-compiler"]) {
+    for (const path of [
+      LINK,
+      ALIAS,
+      "node_modules/eslint-plugin-react-compiler",
+      "node_modules/chromium-bidi",
+    ]) {
       assert(!existsSync(join(frontend, path)))
     }
     return
   }
+  const bidiPath = join(frontend, "node_modules/chromium-bidi/package.json")
+  assert.equal(realpathSync(bidiPath), bidiPath)
+  const bidi = JSON.parse(readFileSync(bidiPath))
+  assert.equal(bidi.name, "chromium-bidi")
+  assert.equal(bidi.version, "157.0.8090-0")
+  assert.equal(bidi.dependencies?.zod, "^4.6.5")
+  assert(!existsSync(join(frontend, "node_modules/chromium-bidi/node_modules/zod")))
+  const bidiEnginePath = createRequire(bidiPath).resolve("zod/package.json")
+  assert.equal(bidiEnginePath, join(frontend, "node_modules/zod/package.json"))
+  assert.equal(realpathSync(bidiEnginePath), bidiEnginePath)
   const local = join(frontend, LOCAL)
   assert.equal(realpathSync(join(frontend, LINK)), local)
   assert.equal(realpathSync(local), local)

@@ -2085,7 +2085,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 328
+    assert len(policy["records"]) == 329
     records = [
         record
         for record in policy["records"]
@@ -3081,7 +3081,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         )
     )
     records = policy["records"]
-    assert len(records) == 328
+    assert len(records) == 329
     prefix = records[:315]
     encoded_prefix = json.dumps(
         prefix, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -3483,7 +3483,7 @@ def test_oct24_public_digest_policy_preserves_all_318_prior_records() -> None:
         _AUD495_IMMUTABLE_315_PREFIX_SHA256
     )
     assert records[315:318] == _OCT24_ORIGINAL_SUFFIX
-    assert len(records) == 328
+    assert len(records) == 329
     assert records[318:321] == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS
 
 
@@ -3673,9 +3673,9 @@ def test_public_git_blob_policy_preserves_all_321_prior_records() -> None:
     )
     # These existing independent guards compose the immutable 321-record prefix.
     test_oct24_public_digest_policy_preserves_all_318_prior_records()
-    assert len(policy["records"]) == 328
+    assert len(policy["records"]) == 329
     assert policy["records"][321:323] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:2]
-    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 5
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 6
 
 
 def test_public_git_blob_rebind_policy_preserves_all_323_prior_records() -> None:
@@ -3983,7 +3983,7 @@ def test_observed_public_metadata_policy_preserves_all_325_prior_records() -> No
         )
     )
     test_public_git_blob_rebind_policy_preserves_all_323_prior_records()
-    assert len(policy["records"]) == 328
+    assert len(policy["records"]) == 329
     assert policy["records"][325:327] == _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS
     assert len(_OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS) == 2
 
@@ -4234,9 +4234,9 @@ def test_public_git_blob_catalog_proof_preserves_all_327_prior_records() -> None
         )
     )
     test_observed_public_metadata_policy_preserves_all_325_prior_records()
-    assert len(policy["records"]) == 328
-    assert policy["records"][327:] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:]
-    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:]) == 1
+    assert len(policy["records"]) == 329
+    assert policy["records"][327:328] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4]
     assert rebound["identity"]["path"] == (
         "tests/helpers/migration_148642dd1207_trace.py"
@@ -4244,4 +4244,25 @@ def test_public_git_blob_catalog_proof_preserves_all_327_prior_records() -> None
     assert tuple(rebound["identity"]["hashed_secret_bytes"]) not in {
         tuple(record["identity"]["hashed_secret_bytes"])
         for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:4]
+    }
+
+
+def test_public_git_blob_fixture_rebind_preserves_all_328_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_public_git_blob_catalog_proof_preserves_all_327_prior_records()
+    assert len(policy["records"]) == 329
+    assert policy["records"][328:] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:]
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:]) == 1
+    rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5]
+    assert rebound["identity"]["path"] == (
+        _PUBLIC_GIT_BLOB_APPROVED_RECORDS[1]["identity"]["path"]
+    )
+    assert tuple(rebound["identity"]["hashed_secret_bytes"]) not in {
+        tuple(record["identity"]["hashed_secret_bytes"])
+        for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:5]
     }

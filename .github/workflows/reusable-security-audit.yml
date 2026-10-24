@@ -108,6 +108,8 @@ jobs:
             "frontend/scripts/generate-zod-root-lock-candidate.test.mjs"
             "frontend/scripts/generate-puppeteer-lock-candidate.mjs"
             "frontend/scripts/generate-puppeteer-lock-candidate.test.mjs"
+            "frontend/scripts/browser-dependency-smoke.mjs"
+            "frontend/scripts/browser-dependency-smoke.test.mjs"
             "frontend/scripts/generate-react-compiler-adapter-lock-candidate.mjs"
             "frontend/scripts/generate-react-compiler-adapter-lock-candidate.test.mjs"
             "frontend/scripts/react-compiler-zod-compat/index.cjs"
@@ -212,6 +214,8 @@ jobs:
             "frontend/scripts/generate-zod-root-lock-candidate.test.mjs"
             "frontend/scripts/generate-puppeteer-lock-candidate.mjs"
             "frontend/scripts/generate-puppeteer-lock-candidate.test.mjs"
+            "frontend/scripts/browser-dependency-smoke.mjs"
+            "frontend/scripts/browser-dependency-smoke.test.mjs"
             "frontend/scripts/generate-react-compiler-adapter-lock-candidate.mjs"
             "frontend/scripts/generate-react-compiler-adapter-lock-candidate.test.mjs"
             "frontend/scripts/react-compiler-zod-compat/index.cjs"
@@ -307,9 +311,9 @@ jobs:
         with:
           python-version: ${{ inputs.python-version }}
 
-      # Retain historical candidate guards and shared validators, but do not
-      # rerun one-shot generators whose source preconditions no longer match this lock.
-      # Compiler adapter staging must be regenerated from the new source graph.
+      # Keep the applied Puppeteer generator retired. Compiler staging validates
+      # the current graph before producing a fresh, isolated candidate; its
+      # candidate is never applied by this diagnostic job.
       - name: Verify root Zod lock candidate guards
         timeout-minutes: 1
         run: node --test scripts/generate-zod-root-lock-candidate.test.mjs
@@ -317,6 +321,12 @@ jobs:
       - name: Verify staged compiler adapter lock guards
         timeout-minutes: 1
         run: node --test scripts/generate-react-compiler-adapter-lock-candidate.test.mjs
+
+      - name: Generate isolated staged compiler adapter lock candidate
+        timeout-minutes: 8
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: node scripts/generate-react-compiler-adapter-lock-candidate.mjs
 
       - name: Verify React compiler artifact probe guards
         timeout-minutes: 1
@@ -333,6 +343,10 @@ jobs:
       - name: Verify Puppeteer lock candidate guards
         timeout-minutes: 1
         run: node --test scripts/generate-puppeteer-lock-candidate.test.mjs
+
+      - name: Verify browser dependency smoke guards
+        timeout-minutes: 1
+        run: node --test scripts/browser-dependency-smoke.test.mjs
 
       - name: Install uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0

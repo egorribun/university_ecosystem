@@ -2099,7 +2099,8 @@ jobs:
             tests/test_quality_inventory.py::test_aud509_relative_python_import_resolves_inside_its_package \
             tests/test_quality_inventory.py::test_aud509_python_name_match_prefers_exact_and_rejects_ambiguity \
             tests/test_quality_inventory.py::test_aud508_non_python_skip_scanner_ignores_comments_and_strings \
-            tests/test_quality_inventory.py::test_aud508_non_python_skip_accepts_tracking_comments -v \
+            tests/test_quality_inventory.py::test_aud508_non_python_skip_accepts_tracking_comments \
+            tests/test_quality_inventory.py -v \
             --tb=short --durations=20 -n 2 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \

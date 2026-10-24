@@ -601,6 +601,7 @@ def test_upgrade_with_unavailable_inspector_exposes_later_unconditional_lookup(
     )
     monkeypatch.setattr(migration.sa, "inspect", lambda _bind: None)
     monkeypatch.setattr(migration, "_backfill_spotify_integrations", lambda: None)
+    monkeypatch.setattr(migration, "_backfill_user_preferences", lambda: None)
 
     with pytest.raises(AttributeError, match="has_table"):
         migration.upgrade()

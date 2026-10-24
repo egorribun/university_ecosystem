@@ -170,6 +170,40 @@
       "reviewed_on": "2026-10-24",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_mfa_webauthn_tombstone.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          32,
+          87,
+          220,
+          238,
+          65,
+          56,
+          74,
+          173,
+          160,
+          109,
+          167,
+          158,
+          154,
+          251,
+          29,
+          7,
+          25,
+          76,
+          152,
+          145
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git SHA-1 integrity digest of tests/test_migration_148642dd1207_orchestrator.py; source-bound historical migration reference guard assignment HISTORICAL_ORCHESTRATOR_BLOB; Git blob framing binds all source bytes; not credential material. Reviewed orchestrator fixture-isolation source rebind; detector identity computed from the public Git pin, awaiting hosted scan confirmation.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-24",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

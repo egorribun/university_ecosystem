@@ -5,49 +5,61 @@
 
 
 
-## Согласованный finite scanner scope и текущие ограничения, 2026-10-24
+## Текущая source-bound приёмка шести находок, 2026-10-24
 
 Этот раздел задаёт текущий checkpoint; последующие разделы сохраняют результаты
-на указанных в них исходных SHA и не заменяют проверку текущей ветки.
+своих SHA и исторические counts, а не заменяют проверку текущей ветки.
 
-Ledger остаётся **283/512 (55,3%)**. Этот пакет содержит ровно **328**
-detect-secrets dispositions и **26** исторических Gitleaks fingerprints;
-baseline319, все 78 required context/app pairs, blocking CodeQL, hooks и
-quality floors сохранены. Прежние 325 policy records сохранены побайтно;
-добавлены только две фактически обнаруженные public-metadata identities и
-один вычисленный fingerprint нового проверенного migration pin. Все три
-новые записи имеют owner egorribun, review date 2026-10-24 и expiry2027-01-10.
-[Точный scope и ограничения](../../adr/ADR-047-risk-based-quality-policy.md#exact-migration-catalog-proof-pin-and-coordinated-scanner-scope-2026-10-24).
+Принятый ledger — **289/512 (56,4%)**, **223 ID не принято**. Добавлены только
+**AUD-359, AUD-388, AUD-443, AUD-446, AUD-451 и AUD-453**, все прежние 283 ID
+сохранены. [Точные границы, RED/GREEN, Git blobs и полный список](../../audits/AUDIT-2026-10.md#hosted-six-finding-scoped-closure-checkpoint-2026-10-24).
+AUD-388 — подтверждённый already-fixed source; остальные пять имеют
+поведенческий RED/GREEN. Это не full-CI или release acceptance.
 
-Security job120811736955 и baseline job120811862789 на764b474 сообщили
-публичный upstream Git pin root-Zod helper и label csrf-signing-key в
-negative control logging test. Официальный tag Zod4.6.7 и registry metadata
-согласованы; это не cryptographic publish provenance. Оба исходных значения
-сохранены. Третий record относится только к новому SOURCE_GIT_BLOB trace helper:
-публичные migration bytes и detect-secrets SHA-1 пересчитаны независимо,
-но hosted scan нового pin и PostgreSQL GREEN исправления ещё не получены.
-Изменённые значения и иные identities по-прежнему блокируются.
+Проверенный source — `b2edc989c51d7502e24f16e8ee99e548be6c4aea`;
+merge `6352979043411c02f2c898246397d1068868ed64` имеет то же дерево
+`6d37c2ea091998afa6edacf11c282fb0e61830bb`.
+[Contract 120864514925](https://github.com/egorribun/university_ecosystem/actions/runs/40091236608/job/120864514925)
+повторно исполнил named health/CWV/WebSocket и logging field-name cases.
+Consumer: **1972 PASS / 65 FAIL** по AUD-452/object/isolation; отдельный
+policy cohort: **438 PASS**. Эти failures не скрыты и не закрыты этим ledger.
 
-Gitleaks26 включает только один новый исторический commit/path/rule/line
-fingerprint для code expression в tests/test_cwv_rum_security.py:939 на75de40e.
-Прежние25 неизменны; inventory и matching negative tests принимаются вместе.
-Это не разрешение на будущие копии выражения или path-wide suppression.
-Новые policy/source-binding tests и оба scanner lanes требуют final-source
-выполнения; наличие disposition само по себе не означает GREEN.
+CLI прошёл все 23 новых leaf cases и 14 существующих tests, `-race`,
+100% statement coverage, threshold, provenance и upload
+[artifact 12559715405](https://github.com/egorribun/university_ecosystem/actions/runs/40091236608/artifacts/12559715405);
+[lint 120865767825](https://github.com/egorribun/university_ecosystem/actions/runs/40091236608/job/120865767825)
+дал zero issues. AUD-451 принят только для help/usage/default metadata.
 
-На20d4cba опубликован узкий Puppeteer lock delta и удалены только два
-устаревших live-generator CLI steps; pure helpers, guards, provenance probe
-и npm audit сохранены. Это graph-only evidence: compiler Zod3 остаётся,
-AUD-451/AUD-452 не закрыты, полный normal CI ещё не принят. Scoped source proof
-159 logging tests и16 WebSocket cases наda67477 не переносится автоматически
-на новый source и не закрывает все findings. Новые AUD-508/AUD-509 regressions
-также ожидают runtime verification. Migration repair, полная приёмка CI,
-release, merge и deployment не объявляются успешными.
+В проверенном evidence source действовали **328** exact detect-secrets dispositions, **26**
+исторических Gitleaks fingerprints и baseline **319**; 78 context/app pairs,
+blocking CodeQL, hooks и quality floors не изменены.
+[Baseline scanner 120864857998](https://github.com/egorribun/university_ecosystem/actions/runs/40091236608/job/120864857998)
+и [Gitleaks 40091236578](https://github.com/egorribun/university_ecosystem/actions/runs/40091236578)
+прошли на указанном source. Новые или изменённые identities по-прежнему
+блокируются; документационная публикация требует собственных final-source checks.
+
+Текущая публикуемая политика содержит **329** точных записей: все 328 сохранены,
+добавлен только пересчитанный публичный pin однострочной изоляции orchestrator
+fixture. [Граница rebind](../../adr/ADR-047-risk-based-quality-policy.md#exact-orchestrator-fixture-isolation-git-pin-rebind-2026-10-24).
+Новый fingerprint вычислен независимо; его hosted scan и исправленный unit test
+ещё требуют проверки. Baseline319 и Gitleaks26 не меняются.
+
+Migration checkpoint: [63 focused PostgreSQL PASS](https://github.com/egorribun/university_ecosystem/actions/runs/40091236608/job/120865063245)
+и все 17 cases `tests/integration/test_migration_148642dd1207.py`
+[PASS в integration 120865063554](https://github.com/egorribun/university_ecosystem/actions/runs/40091236608/job/120865063554).
+Original 15 и expanded 26 Squawk findings остаются blocking; общий migration
+finding не принят. Compiler Zod3 остаётся уязвимым; dependency cleanup не закрыт.
+
+Следующий объём: AUD-452 immutable/object-safe logging и isolation; полная
+проверка inventory-модуля после 17 named AUD-508/AUD-509 PASS; миграционные
+Squawk findings и compiler dependency repair. AUD-508/AUD-509 остаются вне
+ledger. Полный normal CI, release, merge и deployment не объявляются GREEN.
 
 Владелец явно разрешил публичные audit results, CI links, точные hashes и
 exception IDs, а также сохранение уже записанных archive metadata в этих
 документах. Сам архив, действующие секреты и приватные персональные данные
 не добавляются; постоянное правило разрешений не создаётся.
+
 
 ## Поведенческий RED и минимальные исправления AUD-359/AUD-446, 2026-10-24
 
@@ -719,7 +731,7 @@ Actual focused AUD-174 на bef8: два browser PASS и `redaction=verified pro
 
 ## Неизменные границы
 
-Detect-secrets baseline — 319 identities; действующая политика содержит 328 finite owner-approved dispositions. Остальные counts в исторических checkpoint-записях относятся к указанным там source. Отдельное Gitleaks-разрешение ограничено 26 точными историческими fingerprints. Все 78 required context/app pairs, blocking CodeQL, hooks и finite131 migration exception до 2026-11-13 сохраняются. Changed/unmatched identities остаются блокирующими. Q1/Q4 migration действует; Q2/Q3 — v1.1; глобальный mutation score не повышается ради MVP.
+Detect-secrets baseline — 319 identities; действующая политика содержит 329 finite owner-approved dispositions. Остальные counts в исторических checkpoint-записях относятся к указанным там source. Отдельное Gitleaks-разрешение ограничено 26 точными историческими fingerprints. Все 78 required context/app pairs, blocking CodeQL, hooks и finite131 migration exception до 2026-11-13 сохраняются. Changed/unmatched identities остаются блокирующими. Q1/Q4 migration действует; Q2/Q3 — v1.1; глобальный mutation score не повышается ради MVP.
 
 Перед тяжёлым прогоном: RAM ≤75% / free ≥8 GiB; остановка при RAM ≥85% / free <4 GiB. Отдельное исключение для одиночных Linux screenshots: ≤80% / ≥6 GiB, container ≤1 GiB / 2 CPU. Удалять только доказанно принадлежащие работе ресурсы; чужие процессы и prune не трогать.
 

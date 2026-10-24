@@ -614,3 +614,56 @@ def test_live_contract_command_runs_real_playwright_deadline_adapter() -> None:
     assert (
         frontend / "tests/e2e/playwright-deadline-adapter.runtime.spec.ts"
     ).is_file()
+
+
+def test_browser_dependency_smoke_is_pr_only_bounded_and_precedes_docker() -> None:
+    _, workflow = _workflow()
+    steps = workflow["jobs"]["live-acceptance"]["steps"]
+    smoke_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("id") == "browser-dependency-smoke"
+    )
+    browser_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Install locked Chromium and Linux browser dependencies"
+    )
+    state_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Select unique owned Core state directory"
+    )
+    smoke = steps[smoke_index]
+    assert browser_index < smoke_index < state_index
+    assert smoke["if"] == "${{ github.event_name == 'pull_request' }}"
+    assert smoke["working-directory"] == "frontend"
+    assert smoke["timeout-minutes"] == 3
+    assert smoke["run"] == "node scripts/browser-dependency-smoke.mjs"
+    assert smoke["env"] == {
+        "SOURCE_SHA": "${{ github.sha }}",
+        "SMOKE_RUN_ID": "${{ github.run_id }}",
+        "SMOKE_RUN_ATTEMPT": "${{ github.run_attempt }}",
+    }
+    assert not smoke.get("continue-on-error", False)
+    upload = steps[smoke_index + 1]
+    assert upload["if"] == "${{ success() && github.event_name == 'pull_request' }}"
+    assert upload["uses"] == "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+    artifact = (
+        "browser-dependency-smoke-${{ github.run_id }}-"
+        "${{ github.run_attempt }}-${{ github.sha }}"
+    )
+    assert upload["with"] == {
+        "name": artifact,
+        "path": "${{ runner.temp }}/" + artifact + ".json",
+        "if-no-files-found": "error",
+        "overwrite": False,
+        "retention-days": 7,
+    }
+    assert not upload.get("continue-on-error", False)
+    for name, job in workflow["jobs"].items():
+        if name != "live-acceptance":
+            assert all(
+                "browser-dependency-smoke" not in step.get("run", "")
+                for step in job.get("steps", [])
+            )

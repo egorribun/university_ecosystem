@@ -717,3 +717,46 @@ exact hashes and exception identities, and retention of the already recorded
 archive metadata in STATUS, INDEX and this ADR. The archive itself, live secrets
 and private personal data are not part of this update; no permanent permission
 rule is created.
+
+
+## Exact orchestrator fixture-isolation Git-pin rebind (2026-10-24)
+
+Under the same owner authorization for narrow, justified public-hash audit
+exceptions, append exactly one `public_integrity_digest` disposition to the
+unchanged 328-record policy prefix, for exactly 329 records. It covers only
+`HISTORICAL_ORCHESTRATOR_BLOB` in
+`tests/test_mfa_webauthn_tombstone.py`, with detector type
+`Hex High Entropy String`, owner `egorribun`, review date 2026-10-24 and
+expiry 2027-01-10. All earlier records, categories and expiry dates remain
+unchanged.
+
+The reviewed public orchestrator blob is
+`069deb3c6984e1e9992b01f6ce4313ea3cc49a57` (18034 bytes); independently
+rehashing its complete Git blob framing reproduces that identity. The pinned
+detect-secrets v1.5.0 SHA-1-of-UTF-8 algorithm gives the exact finding identity
+`2057dcee41384aada06da79e9afb1d07194c9891`. This remains a **computed expected
+finding**, not a hosted scanner observation of the new pin.
+
+The source change follows the actual unit-test RED in job 120865063488:
+the standalone unavailable-inspector test reached preferences backfill before
+its intended later `has_table` failure. One additional test-local backfill
+stub restores that isolation while retaining the original expected exception
+and operation assertions. The production migration is unchanged by this
+fixture correction; the new test source still requires hosted GREEN.
+
+The independent JSON fixture appends only its sixth record. The metadata
+validator admits only the sixth exact path/type/fingerprint tuple, with the
+existing owner/date/evidence/expiry checks. Prefix tests preserve all 328
+prior records and isolate the one-record suffix. Current-source verification
+continues to derive the complete referred Git blob and its detector identity;
+old approved records may become stale but cannot approve a changed pin.
+
+The retirement guard adds only the third exact identity for its own scanner
+bookkeeping path. Only its matching `identity.path` is normalized; all other
+fields, evidence, categories and active runtime references remain scanned.
+All three own-path records receive the existing negative scope and reference
+controls. No path-wide exemption, extra backend-source allowance, wildcard,
+inline pragma, baseline addition, reclassification or automatic approval is
+introduced. Baseline319, Gitleaks26, all 78 required context/app pairs, blocking
+CodeQL, hooks and quality floors are unchanged. This policy update accepts no
+additional audit item and establishes neither full CI nor release readiness.

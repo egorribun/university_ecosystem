@@ -470,10 +470,16 @@ def test_frontend_typecheck_runs_once_in_a_required_static_gate() -> None:
         "run_gate i18n npm run i18n:check &",
         "run_gate message_contract python ../scripts/generate_message_contract.py --check &",
         "run_gate knip npm run lint:knip &",
+        "run_gate react_compiler_compat timeout 120s node --test "
+        "scripts/react-compiler-zod-compat.test.mjs &",
     ):
         assert run.count(invocation) == 1
     assert "run_gate deadcode " not in run
     assert "run_gate depcheck " not in run
-    assert run.count("run_gate ") == 6
+    assert run.count("run_gate ") == 7
+    assert (
+        "for gate in typecheck eslint formatting i18n message_contract knip "
+        "react_compiler_compat; do"
+    ) in run
     assert "wait" in run
     assert 'exit "$failed"' in run
