@@ -8,7 +8,7 @@ clear_history, delete_chat), and _make_idempotency_key.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -28,6 +28,12 @@ from app.services.chat.command_service import (
 def _mock_uow():
     uow = MagicMock()
     uow.chats = MagicMock()
+    uow.chats.get_send_receipt = AsyncMock(return_value=None)
+    uow.chats.create_send_receipt = AsyncMock(
+        return_value=datetime.now(UTC) + timedelta(hours=24)
+    )
+    uow.chats.prune_expired_send_receipts = AsyncMock(return_value=0)
+    uow.chats.send_receipt_remaining_seconds = AsyncMock(return_value=86400)
     uow.session = AsyncMock()
     uow.commit = AsyncMock()
     uow.rollback = AsyncMock()

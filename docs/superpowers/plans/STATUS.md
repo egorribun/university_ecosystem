@@ -5,6 +5,44 @@
 
 
 
+## AUD-262: durable-receipt prototype, 2026-10-25
+
+**AUD-262 остаётся OPEN; ledger — 303/512.**
+
+[Observed PostgreSQL run](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121096797464)
+на source `6ba0de220b497126f51d31b84653a2d1b5d35cb8`, tested merge
+`3c11b7bfe95aeaf720b445765c5a39b5894582bb`, дал первоначальные
+**3 semantic RED / 2 controls PASS**, без setup errors/skips:
+каждый RED обнаружил 2 Messages и 2 MessageSent вместо 1/1.
+Это доказательство исходного дефекта, не выполнение нового prototype.
+
+Добавлены [план и prototype durable receipts](2026-10-25-aud262-durable-chat-send-receipts.md):
+атомарная запись с сообщением/outbox, primary lookup после авторизации
+до Redis, фиксированное DB-clock окно 24 часа и scoped RLS.
+Статическая проверка выявила cross-key lock inversion; исправленный порядок —
+exact-key claim перед SKIP LOCKED cleanup.
+
+Lifecycle cohort содержит 24 unit и 27 PostgreSQL cases по ручному подсчёту,
+не результату pytest. Отдельный test-owned ordering control требует реального
+`40P01`; это проверка чувствительности oracle, не observed old-production RED.
+Новый implementation и control ещё не имеют runtime GREEN.
+
+Schema, inventory и rollback contracts согласованы на head `202610250001`:
+42 Python-only classifications, 127 effective defaults и 47 tables.
+Единственная новая точная classification — inherited UUID7
+`chat_send_receipts.id`; это не scanner waiver и не ослабление coverage.
+MOD-03 теперь fail-closed: явно проверяет refusal и неизменность applied revision,
+а не скрывает ошибку downgrade последующей успешной командой.
+
+Перед приёмкой необходимы final-source CI, исходные пять regressions,
+совместимость прежнего cohort, расширенные lifecycle/RLS/schema проверки,
+100% покрытия новой миграции и действующие quality gates.
+Protective downgrade boundary — новое ограничение, не расширение восьми
+исторических dispositions. Scoped cleanup ограничен 100 строками;
+inactive physical retention остаётся OPEN, historical/mixed writers —
+вне durable guarantee. Policy337, baseline319, Gitleaks26, required78,
+coverage thresholds и исходные пять regression tests не меняются.
+
 ## Compiler archive foundation, 2026-10-25
 
 [Producer 121113577192](https://github.com/egorribun/university_ecosystem/actions/runs/40174667081/job/121113577192)

@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = ROOT / "scripts" / "quality" / "migration_downgrade_policy.py"
 MIGRATIONS_DIR = ROOT / "alembic" / "versions"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "ci.yml"
+BACKEND_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "reusable-backend-tests.yml"
 
 
 def _load_policy_module() -> ModuleType:
@@ -422,15 +423,24 @@ def test_repository_migrations_have_a_valid_fail_closed_downgrade_plan() -> None
 
     plan = policy.build_downgrade_plan(MIGRATIONS_DIR)
     expected_reason = (
+        "Dropping chat send receipts can discard committed idempotency history "
+        "and permit duplicate messages"
+    )
+
+    assert plan.head_revision == "202610250001"
+    assert plan.safe_target == "202610250001"
+    assert plan.boundary_revision == "202610250001"
+    assert plan.boundary_parent == "202610200001"
+    assert plan.boundary_reason == expected_reason
+
+    quarantine = policy._parse_migration(
+        MIGRATIONS_DIR / "202610200001_add_quarantine_storage_ledger.py"
+    )
+    assert quarantine.parents == ("202610120002",)
+    assert quarantine.irreversible_reason == (
         "Quarantine reservation ledger is irreversible: dropping it would release "
         "quota charges for objects that may still exist"
     )
-
-    assert plan.head_revision == "202610200001"
-    assert plan.safe_target == "202610200001"
-    assert plan.boundary_revision == "202610200001"
-    assert plan.boundary_parent == "202610120002"
-    assert plan.boundary_reason == expected_reason
 
 
 def test_all_postgres_gates_exercise_safe_range_and_declared_boundary() -> None:
@@ -448,6 +458,55 @@ def test_all_postgres_gates_exercise_safe_range_and_declared_boundary() -> None:
         assert "migration_downgrade_policy.py assert-boundary" in combined
         assert "alembic downgrade base" not in combined
         assert 'downgrade "$SAFE_DOWNGRADE_TARGET"' in combined
+
+
+def test_reusable_postgres_gate_checks_refusal_without_masking_failures() -> None:
+    workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["integration-tests"]["steps"]
+    planners = [
+        step for step in steps if step.get("id") == "integration-migration-policy"
+    ]
+    gates = [
+        step
+        for step in steps
+        if step.get("name") == "Test migration downgrade safety (MOD-03)"
+    ]
+    assert len(planners) == len(gates) == 1
+    planner, gate = planners[0], gates[0]
+    assert steps.index(planner) < steps.index(gate)
+    for step in (planner, gate):
+        assert step["shell"] == "bash"
+        assert step["run"].startswith("set -euo pipefail\n")
+        assert not step.get("continue-on-error", False)
+        assert "|| true" not in step["run"]
+    assert 'migration_downgrade_policy.py plan >> "$GITHUB_OUTPUT"' in planner["run"]
+    assert gate["env"]["SAFE_DOWNGRADE_TARGET"] == (
+        "${{ steps.integration-migration-policy.outputs.safe_target }}"
+    )
+
+    run = gate["run"]
+    commands = [
+        'uv run --frozen --no-sync alembic downgrade "$SAFE_DOWNGRADE_TARGET"',
+        'before_boundary="$(uv run --frozen --no-sync alembic current)"',
+        'test -n "$before_boundary"',
+        "uv run --frozen --no-sync python "
+        "scripts/quality/migration_downgrade_policy.py assert-boundary",
+        'after_boundary="$(uv run --frozen --no-sync alembic current)"',
+        'if [[ "$before_boundary" != "$after_boundary" ]]; then',
+        'echo "Declared boundary probe changed the applied migration revision" >&2',
+        "exit 1",
+    ]
+    positions = [run.index(command) for command in commands]
+    assert positions == sorted(positions)
+    assert run.count("uv run --frozen --no-sync alembic upgrade head") == 2
+    assert run.rindex("alembic upgrade head") > positions[-1]
+    assert "alembic downgrade -1" not in run
+    assert "alembic downgrade base" not in run
+    assert "Migration round-trip succeeded" not in run
+    assert (
+        "Supported migration range and declared refusal verified; "
+        "protected boundary was not crossed"
+    ) in run
 
 
 def test_postgres_migration_gates_pin_python_before_uv() -> None:
@@ -512,11 +571,19 @@ def test_adr_rollback_boundary_matches_source_derived_plan() -> None:
     ) in section
     assert (
         "the separate boundary probe must reject crossing to "
-        f"{plan.boundary_parent} with the declared quarantine-ledger reason"
+        f"{plan.boundary_parent} with the declared chat-receipt reason"
+    ) in section
+    assert plan.boundary_reason is not None
+    assert plan.boundary_reason in section
+    assert (
+        "A verified refusal is not a successful rollback across the boundary."
     ) in section
     assert (
-        "The original owner decision does not make either later data-loss "
-        "barrier reversible."
+        "The chat-receipt boundary is a new design constraint for AUD-262, "
+        "not an extension of the eight historical owner-approved dispositions below."
+    ) in section
+    assert (
+        "The original owner decision does not make later data-loss barriers reversible."
     ) in section
 
 
@@ -610,7 +677,12 @@ def test_historical_rollback_scope_is_below_mfa_barriers_in_source_graph() -> No
         assert historical_revisions <= ancestors(barrier.revision)
 
     head_history = ancestors(plan.head_revision) | {plan.head_revision}
-    for revision in ("202608250001", "202608250002", "202610120001"):
+    for revision in (
+        "202608250001",
+        "202608250002",
+        "202610120001",
+        "202610200001",
+    ):
         assert revision in head_history
         assert revisions[revision].irreversible_reason is not None
     assert plan.boundary_revision == plan.head_revision

@@ -480,13 +480,31 @@ jobs:
               shell: pwsh
               run: uv run alembic upgrade head
 
-            - name: Test migration downgrade safety (MOD-03)
-              shell: pwsh
+            - name: Resolve integration migration downgrade policy
+              id: integration-migration-policy
+              shell: bash
               run: |
-                  uv run alembic upgrade head
-                  uv run alembic downgrade -1
-                  uv run alembic upgrade head
-                  echo "Migration round-trip succeeded"
+                  set -euo pipefail
+                  uv run --frozen --no-sync python scripts/quality/migration_downgrade_policy.py plan >> "$GITHUB_OUTPUT"
+
+            - name: Test migration downgrade safety (MOD-03)
+              shell: bash
+              env:
+                  SAFE_DOWNGRADE_TARGET: ${{ steps.integration-migration-policy.outputs.safe_target }}
+              run: |
+                  set -euo pipefail
+                  uv run --frozen --no-sync alembic upgrade head
+                  uv run --frozen --no-sync alembic downgrade "$SAFE_DOWNGRADE_TARGET"
+                  before_boundary="$(uv run --frozen --no-sync alembic current)"
+                  test -n "$before_boundary"
+                  uv run --frozen --no-sync python scripts/quality/migration_downgrade_policy.py assert-boundary
+                  after_boundary="$(uv run --frozen --no-sync alembic current)"
+                  if [[ "$before_boundary" != "$after_boundary" ]]; then
+                    echo "Declared boundary probe changed the applied migration revision" >&2
+                    exit 1
+                  fi
+                  uv run --frozen --no-sync alembic upgrade head
+                  echo "Supported migration range and declared refusal verified; protected boundary was not crossed"
 
             - name: Wait for Mailpit
               shell: bash

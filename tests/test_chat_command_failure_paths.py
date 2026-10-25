@@ -27,7 +27,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import fakeredis.aioredis
@@ -57,6 +57,12 @@ def _attachment_reference_result(urls: list[str]) -> MagicMock:
 def _mock_uow():
     uow = MagicMock()
     uow.chats = MagicMock()
+    uow.chats.get_send_receipt = AsyncMock(return_value=None)
+    uow.chats.create_send_receipt = AsyncMock(
+        return_value=datetime.now(UTC) + timedelta(hours=24)
+    )
+    uow.chats.prune_expired_send_receipts = AsyncMock(return_value=0)
+    uow.chats.send_receipt_remaining_seconds = AsyncMock(return_value=86400)
     uow.session = AsyncMock()
     uow.commit = AsyncMock()
     uow.rollback = AsyncMock()
@@ -488,6 +494,12 @@ async def test_send_message_ambiguous_commit_keeps_pending_lease_with_real_uow(
     _patch_ws(monkeypatch)
     session = AsyncMock(spec=AsyncSession)
     uow = uow_from_session(session)
+    uow.chats.get_send_receipt = AsyncMock(return_value=None)
+    uow.chats.create_send_receipt = AsyncMock(
+        return_value=datetime.now(UTC) + timedelta(hours=24)
+    )
+    uow.chats.prune_expired_send_receipts = AsyncMock(return_value=0)
+    uow.chats.send_receipt_remaining_seconds = AsyncMock(return_value=86400)
     user = _mock_user()
     chat = _mock_chat(user.id)
     uow.chats.get_by_id = AsyncMock(return_value=chat)

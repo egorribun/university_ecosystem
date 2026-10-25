@@ -63,13 +63,21 @@ an irreversible downgrade and raise before changing schema.
 
 The current migration graph also contains irreversible revision 202610120001.
 Its parent, 202610010001, retains the unused tables and their data on both upgrade
-and downgrade. The newest irreversible revision is 202610200001, whose parent
-is 202610120002. The existing migration_downgrade_policy.py planner selects
-202610200001 as the safe target. This currently equals head, so the safe-range
-downgrade is a no-op; the separate boundary probe must reject crossing to
-202610120002 with the declared quarantine-ledger reason before upgrading to
-head again. The original owner decision does not make either later data-loss
-barrier reversible.
+and downgrade. Revision 202610200001 retains its quarantine-ledger boundary,
+whose parent is 202610120002.
+
+The newest irreversible revision is 202610250001, whose parent is 202610200001.
+The existing migration_downgrade_policy.py planner selects 202610250001 as the
+safe target. This currently equals head, so the safe-range downgrade is a no-op;
+the separate boundary probe must reject crossing to 202610200001 with the
+declared chat-receipt reason: "Dropping chat send receipts can discard committed
+idempotency history and permit duplicate messages". The reusable backend gate
+checks that the applied revision is unchanged after the refusal, before upgrading
+to head again. A verified refusal is not a successful rollback across the boundary.
+
+The chat-receipt boundary is a new design constraint for AUD-262, not an
+extension of the eight historical owner-approved dispositions below. The original
+owner decision does not make later data-loss barriers reversible.
 
 If recovery requires a schema below an irreversible boundary, restore a
 consistent backup/restore set rather than invoking older Alembic downgrade
@@ -115,6 +123,7 @@ References: [owner decision and original findings](../audits/AUDIT-2026-10.md),
 [202610120001](../../alembic/versions/202610120001_dnd_wall_clock_time.py),
 [202610120002](../../alembic/versions/202610120002_add_news_media_asset_ownership.py),
 [202610200001](../../alembic/versions/202610200001_add_quarantine_storage_ledger.py),
+[202610250001](../../alembic/versions/202610250001_add_chat_send_receipts.py),
 [downgrade policy](../../scripts/quality/migration_downgrade_policy.py),
 [CI migration gate](../../.github/workflows/ci.yml),
 [PostgreSQL round-trip test](../../tests/integration/test_migration_roundtrip.py).
@@ -417,6 +426,23 @@ and 126 effective defaults (85 both, 41 Python-only and 0 server-only), with
 owned by `backend-platform`; it creates no new exception category. These are
 source/model inventory counts, not deployed PostgreSQL catalog evidence. The
 historical phase snapshots above remain unchanged.
+
+## 2026-10-25: durable chat-send receipt inventory update
+
+Revision `202610250001` adds `chat_send_receipts`. Its identifier inherits
+the existing UUIDv7 mixin; `completed_at` and `expires_at` are supplied
+explicitly by the application and have no Python or server defaults. The
+source-derived expected inventory becomes 47 tables and 127 effective defaults
+(85 both, 42 Python-only and 0 server-only). The 102 source-level default
+declarations and their counts remain unchanged because the UUIDv7 declaration
+is inherited rather than duplicated in the new model.
+
+The policy names only `chat_send_receipts.id` under the existing inherited
+UUIDv7 classification and existing `backend-platform` reason. This adds no new
+exception category or waiver. The historical phase snapshots and the 2026-10-20
+inventory evidence above remain unchanged. Current-SHA inventory, schema-drift,
+migration, PostgreSQL and required-check evidence must still be collected; these
+source expectations are not a passing check or deployed-catalog certification.
 
 ## Related Decisions
 

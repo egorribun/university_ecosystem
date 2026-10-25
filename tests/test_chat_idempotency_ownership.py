@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -15,6 +15,7 @@ from fakeredis._socket import _base
 from fastapi import HTTPException
 
 from app.deps import cache as cache_module
+from app.repositories.chat_repository import SendReceiptState
 from app.services.chat import command_service
 from app.services.chat.command_service import (
     ChatMessageDispatcher,
@@ -69,6 +70,49 @@ def dispatcher(user, chat_id, created, *, upload=None):
         return next(
             (dto(message) for message in created if message.id == message_id), None
         )
+
+    def receipt_now():
+        return datetime.fromtimestamp(_base.time.time(), UTC)
+
+    async def receipt_lookup(scope_chat, scope_user, key_digest):
+        for message in created:
+            stored = getattr(message, "_test_send_receipt", None)
+            if stored is not None and stored[:3] == (
+                scope_chat,
+                scope_user,
+                key_digest,
+            ):
+                return SendReceiptState(message.id, stored[3], receipt_now())
+        return None
+
+    async def create_receipt(scope_chat, scope_user, key_digest, message_id):
+        expires_at = receipt_now() + timedelta(hours=24)
+        for message in created:
+            stored = getattr(message, "_test_send_receipt", None)
+            if stored is not None and stored[:3] == (
+                scope_chat,
+                scope_user,
+                key_digest,
+            ):
+                del message._test_send_receipt
+            if message.id == message_id:
+                message._test_send_receipt = (
+                    scope_chat,
+                    scope_user,
+                    key_digest,
+                    expires_at,
+                )
+        return expires_at
+
+    async def remaining_seconds(expires_at):
+        return max(0, int((expires_at - receipt_now()).total_seconds()))
+
+    # This test-only repository double shares receipt state through the same
+    # created-message collection. PostgreSQL acceptance proves SQL atomicity.
+    repo.get_send_receipt = AsyncMock(side_effect=receipt_lookup)
+    repo.create_send_receipt = AsyncMock(side_effect=create_receipt)
+    repo.prune_expired_send_receipts = AsyncMock(return_value=0)
+    repo.send_receipt_remaining_seconds = AsyncMock(side_effect=remaining_seconds)
 
     repo.get_last_messages = AsyncMock(side_effect=last)
     repo.get_message_by_id = AsyncMock(side_effect=by_id)

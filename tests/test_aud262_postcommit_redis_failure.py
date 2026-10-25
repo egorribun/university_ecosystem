@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import fakeredis.aioredis
 import pytest
-from fastapi import HTTPException
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import ResponseError
 from redis.exceptions import TimeoutError as RedisTimeoutError
@@ -101,16 +100,19 @@ async def test_postcommit_completion_failure_keeps_database_result(
         assert pending["status"] == "pending"
         assert 0 < await cache.ttl(key) <= 300
 
-        with pytest.raises(HTTPException) as retry:
-            await dispatcher.send_message(
-                chat.id,
-                user,
-                "message",
-                [],
-                "en",
-                idempotency_key=client_key,
-            )
-        assert retry.value.status_code == 409
+        replay = await dispatcher.send_message(
+            chat.id,
+            user,
+            "ignored retry payload",
+            [],
+            "en",
+            idempotency_key=client_key,
+        )
+        original_id = await db_session.scalar(
+            select(Message.id).where(Message.chat_id == chat.id)
+        )
+        assert replay.id == original_id
+        assert replay.content == "message"
 
         persisted_after_retry = await db_session.scalar(
             select(func.count()).select_from(Message).where(Message.chat_id == chat.id)
