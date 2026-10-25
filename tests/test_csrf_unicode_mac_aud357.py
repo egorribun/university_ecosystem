@@ -86,6 +86,69 @@ async def test_non_ascii_double_submit_values_return_403(
     assert response.status_code == 403
 
 
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ("nonce.\u00e9", "nonce.ascii"),
+        ("nonce.ascii", "nonce.\u00e9"),
+        ("nonce.\u00e9", "nonce.\u00e9"),
+    ],
+    ids=("left-non-ascii", "right-non-ascii", "both-non-ascii"),
+)
+def test_ascii_digest_rejects_non_ascii_without_comparing(
+    monkeypatch: pytest.MonkeyPatch,
+    left: str,
+    right: str,
+) -> None:
+    comparisons: list[tuple[str, str]] = []
+
+    def unexpected_compare(left: str, right: str) -> bool:
+        comparisons.append((left, right))
+        pytest.fail("Non-ASCII values must be rejected before compare_digest")
+
+    private_secrets = SimpleNamespace(
+        compare_digest=unexpected_compare,
+        token_hex=csrf_module.secrets.token_hex,
+        token_urlsafe=csrf_module.secrets.token_urlsafe,
+    )
+    monkeypatch.setattr(csrf_module, "secrets", private_secrets)
+
+    assert csrf_module._compare_digest_ascii(left, right) is False
+    assert comparisons == []
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "expected"),
+    [
+        ("nonce.ascii", "nonce.ascii", True),
+        ("nonce.ascii", "nonce.other", False),
+    ],
+    ids=("equal-ascii", "unequal-ascii"),
+)
+def test_ascii_digest_delegates_ascii_values_to_constant_time_comparison(
+    monkeypatch: pytest.MonkeyPatch,
+    left: str,
+    right: str,
+    expected: bool,
+) -> None:
+    original_compare_digest = csrf_module.secrets.compare_digest
+    comparisons: list[tuple[str, str]] = []
+
+    def record_compare(left: str, right: str) -> bool:
+        comparisons.append((left, right))
+        return original_compare_digest(left, right)
+
+    private_secrets = SimpleNamespace(
+        compare_digest=record_compare,
+        token_hex=csrf_module.secrets.token_hex,
+        token_urlsafe=csrf_module.secrets.token_urlsafe,
+    )
+    monkeypatch.setattr(csrf_module, "secrets", private_secrets)
+
+    assert csrf_module._compare_digest_ascii(left, right) is expected
+    assert comparisons == [(left, right)]
+
+
 def test_signed_token_verifier_rejects_non_ascii_mac() -> None:
     malformed = f"nonce.{'a' * 63}\u00e9"
 

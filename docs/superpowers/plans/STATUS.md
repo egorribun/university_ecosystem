@@ -5,6 +5,70 @@
 
 
 
+## Текущий checkpoint: AUD-197 и AUD-343, 2026-10-25
+
+Принятый ledger — **303/512 (59,2%)**, **209 ID не принято**.
+[Датированная приёмка и полный список](../../audits/AUDIT-2026-10.md#hosted-aud-197-and-aud-343-scoped-closure-checkpoint-2026-10-25)
+сохраняют все прежние 301 ID и добавляют только **AUD-197** и **AUD-343**.
+Восемь unsupported historical rollback entries остаются owner-approved
+dispositions, не исправлениями downgrade. **AUD-262 остаётся OPEN**.
+
+Проверенный source — `d27dd6a753fa2b02e128343b307c85e2f2cdc469`;
+tested merge `63d9cf6dda3be6fce4d30d75302a44d849105011` имеет тот же tree
+`a41ce87b9107f7a926276c39de705a1a05cd7a31`.
+[Full PostgreSQL](https://github.com/egorribun/university_ecosystem/actions/runs/40136751915/job/121000819835)
+дал **322 PASS / 9 SKIP**: все 22 notification-outbox cases и пять AUD-343
+cases прошли. Отдельная группа дала **13 PASS / 0 SKIP**, а
+[focused tenant/handler/grade cohort](https://github.com/egorribun/university_ecosystem/actions/runs/40136751915/job/121000819690)
+— **46/46 PASS**. Эти пересекающиеся результаты не суммируются как уникальные
+tests. AUD-197 принят для same-task/durable-delivery replay, включая grade
+rollback/fresh retry, не для нового HTTP assignment или provider exactly-once
+в crash window до journal commit. AUD-343 принят для helper-level PostgreSQL
+savepoint fallback с сохранением outer work, не HTTP/auth/tenant/deploy proof.
+
+[Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/40136751915/job/121000198809)
+дал **2742 consumer PASS / 590 policy PASS**. Все четыре полных backend unit
+shards завершились: **20140 PASS / 295 SKIP**.
+[Shard0](https://github.com/egorribun/university_ecosystem/actions/runs/40136751915/job/121000819844)
+дал 4845/45, [shard1](https://github.com/egorribun/university_ecosystem/actions/runs/40136751915/job/121000819781)
+— 4298/168, [shard2](https://github.com/egorribun/university_ecosystem/actions/runs/40136751915/job/121005654539)
+— 6133/53, [shard3](https://github.com/egorribun/university_ecosystem/actions/runs/40136751915/job/121007644600)
+— 4864/29 (PASS/SKIP). Preliminary 847+240 не включены в сумму.
+
+[Coverage & Quality Policy Gate](https://github.com/egorribun/university_ecosystem/actions/runs/40136751915/job/121013367482)
+завершился FAILURE: aggregate differential coverage **369/370** changed lines,
+не 100%; отсутствует `app/core/csrf.py:141`. Provenance, test-universe и
+coverage combination прошли, но downstream canonical evidence/normalization/
+receipt upload были SKIPPED. Прямой тест non-ASCII branch и его canonical
+collection требуют отдельной проверки; порог не снижается.
+
+[Owned Live](https://github.com/egorribun/university_ecosystem/actions/runs/40136751869/job/121001273549)
+прошёл: 275 Node contracts, browser contract и 38 browser PASS / 2 SKIP;
+NATS, cleanup и receipt12577723273 SUCCESS. Frontend unit shards/aggregate,
+format, 17 staged compiler parity и build прошли. Migration81 и DB gate86+2
+сохраняют scoped GREEN, но raw Squawk14/25 и strict compiler npm-ls отказ
+остаются blocking. Полный CI, aggregate coverage/floors и release не приняты.
+
+Следующая tests-first партия не меняет production dispatcher, schema или
+dependency graph:
+- Пять real-PG durable-chat cases используют существующий dispatcher и
+  независимые sessions. Ожидаются **3 assertion RED / 2 controls PASS**, но
+  фактического результата ещё нет. Rollback control учитывает retained
+  300-second pending lease; overlap не зависит от позиции будущего DB guard.
+  Отдельный шаг после full integration требует все пять named PASS и
+  сохраняет nonzero exit. Expected RED не превращается в GREEN.
+- 24 archive guards проверяют четыре first-party facade files, offline/
+  no-script command, safe gzip/tar, source/hash/provenance и cleanup. Пока
+  добавлен только importable fail-closed stub: ожидаются **23 assertion RED /
+  1 inert-entrypoint PASS**, ещё не наблюдавшиеся. Реальный pack CLI не
+  запускается, archive не создан, remote dependency не добавлена. Два exact
+  paths добавлены во все три protective inventories; прежние 48 guards и
+  required gates не ослаблены.
+
+Policy337, baseline319, Gitleaks26, 78 required context/app pairs и blocking
+CodeQL сохранены. Исторические результаты ниже привязаны к своим SHA, а не
+автоматически к новому коммиту.
+
 ## Hosted validation cb0f939, 2026-10-25
 
 На `cb0f939e9908f41415e4cfdf04d409348b81d689` проверялся merge
@@ -138,7 +202,7 @@ migrate-passwords check. Это не исторический rollback/restore p
 нашёл один MD051: slash в AUD-198 heading не совпал с тремя ссылками.
 Heading нормализован к `news-event`; ссылки, ledger и acceptance scope не меняются.
 
-## Текущий checkpoint: scoped AUD-198 и rollback dispositions, 2026-10-24
+## Исторический checkpoint: scoped AUD-198 и rollback dispositions, 2026-10-24
 
 Принятый ledger — **301/512 (58,8%)**, **211 ID не принято**. Сохранены все
 прежние 300 ID; добавлен только **AUD-198** для проверенного active news/event

@@ -541,6 +541,7 @@ jobs:
                   PY
 
             - name: Verify chat commit and notification fallback PostgreSQL regressions
+              id: aud262343_postgres
               shell: bash
               timeout-minutes: 5
               run: |
@@ -698,6 +699,58 @@ jobs:
                     "--ignore=tests/test_schemathesis_api.py"
                   )
                   uv run pytest @pytestArgs
+
+            - name: Verify durable chat replay PostgreSQL regressions
+              if: ${{ !cancelled() && steps.aud262343_postgres.outcome == 'success' }}
+              shell: bash
+              timeout-minutes: 5
+              run: |
+                  set -euo pipefail
+                  probe_root="$(mktemp -d "$RUNNER_TEMP/aud262-durable-postgres.XXXXXX")"
+                  trap 'rm -rf -- "$probe_root"' EXIT
+                  pytest_status=0
+                  uv run --frozen --no-sync pytest \
+                    tests/test_aud262_durable_replay_postgres.py \
+                    -n 0 -v --tb=short --show-capture=no --no-cov --maxfail=0 \
+                    -p no:cacheprovider --junitxml="$probe_root/junit.xml" \
+                    --basetemp="$probe_root/basetemp" \
+                    > "$probe_root/pytest.log" 2>&1 || pytest_status=$?
+                  tail -n 160 "$probe_root/pytest.log"
+                  if ! python3 - "$probe_root/junit.xml" <<'PY'
+                  import sys
+                  from xml.etree import ElementTree
+
+                  cases = list(ElementTree.parse(sys.argv[1]).getroot().iter("testcase"))
+                  prefix = "tests/test_aud262_durable_replay_postgres.py::"
+                  expected = {
+                      prefix + "test_committed_send_replays_after_pending_state_loss[deleted]",
+                      prefix + "test_committed_send_replays_after_pending_state_loss[expired]",
+                      prefix + "test_overlapping_sends_survive_redis_lease_loss",
+                      prefix + "test_live_pending_lease_rejects_overlapping_send",
+                      prefix + "test_rolled_back_send_succeeds_after_pending_lease_expiry",
+                  }
+                  actual = {
+                      case.attrib["classname"].replace(".", "/")
+                      + ".py::"
+                      + case.attrib["name"]
+                      for case in cases
+                  }
+                  if (
+                      len(cases) != 5
+                      or actual != expected
+                      or any(
+                          case.find(status) is not None
+                          for case in cases
+                          for status in ("failure", "error", "skipped")
+                      )
+                  ):
+                      raise SystemExit("Required durable PostgreSQL cohort did not pass all 5 cases")
+                  print("PostgreSQL AUD-262 durable cohort: 5 expected passes, zero skips")
+                  PY
+                  then
+                    [ "$pytest_status" -ne 0 ] || pytest_status=1
+                  fi
+                  exit "$pytest_status"
 
             - name: Upload test results
               uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
