@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -389,47 +388,58 @@ func TestAUD512RecoveredPanicAndTermErrorAreNotLogged(t *testing.T) {
 		"a TERM error remains observable and schedules the existing bounded retry")
 }
 
+func aud512PanicNilForCompatibilityTest() {
+	panic(nil)
+}
+
 func TestAUD512PanicNilIsTerminatedWithPanicNilCompatibility(t *testing.T) {
-	const childFlag = "AUD512_PANIC_NIL_CHILD"
-	if os.Getenv(childFlag) == "1" {
-		hubJSONUnmarshalFunc = func([]byte, any) error { panic(nil) }
-		termCalls := 0
-		nakCalls := 0
-		jetStreamTermFunc = func(*nats.Msg) error { termCalls++; return nil }
-		jetStreamNakFunc = func(*nats.Msg, time.Duration) error { nakCalls++; return nil }
-
-		h := newNatsTestHub(&mockAuthClient{allowed: true}, "internal-secret", 10)
-		h.Logger = nil
-		h.handleNotifications(context.Background())(&nats.Msg{
-			Subject: "notifications." + aud511TestUserID,
-			Data:    []byte("{}"),
-		})
-		if termCalls != 1 || nakCalls != 0 {
-			t.Fatalf("panic(nil) callback: TERM calls = %d, NAK calls = %d; want 1 and 0", termCalls, nakCalls)
+	settings := strings.Split(os.Getenv("GODEBUG"), ",")
+	filteredSettings := make([]string, 0, len(settings)+1)
+	for _, setting := range settings {
+		name, _, _ := strings.Cut(setting, "=")
+		if setting != "" && name != "panicnil" {
+			filteredSettings = append(filteredSettings, setting)
 		}
-		fmt.Println("AUD512_PANIC_NIL_CALLBACK_TERM_OK")
-		return
 	}
+	filteredSettings = append(filteredSettings, "panicnil=1")
+	t.Setenv("GODEBUG", strings.Join(filteredSettings, ","))
 
-	childCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(childCtx, os.Args[0],
-		"-test.run=^TestAUD512PanicNilIsTerminatedWithPanicNilCompatibility$", "-test.v")
-	childEnv := make([]string, 0, len(os.Environ())+2)
-	for _, entry := range os.Environ() {
-		key, _, _ := strings.Cut(entry, "=")
-		if strings.EqualFold(key, "GODEBUG") || strings.EqualFold(key, childFlag) {
-			continue
-		}
-		childEnv = append(childEnv, entry)
+	var recovered any
+	completed := false
+	func() {
+		defer func() { recovered = recover() }()
+		aud512PanicNilForCompatibilityTest()
+		completed = true
+	}()
+	require.False(t, completed, "panic(nil) must unwind the callback")
+	require.Nil(t, recovered, "GODEBUG panicnil=1 must restore nil from recover")
+
+	oldUnmarshal := hubJSONUnmarshalFunc
+	oldTerm := jetStreamTermFunc
+	oldNak := jetStreamNakFunc
+	t.Cleanup(func() {
+		hubJSONUnmarshalFunc = oldUnmarshal
+		jetStreamTermFunc = oldTerm
+		jetStreamNakFunc = oldNak
+	})
+	hubJSONUnmarshalFunc = func([]byte, any) error {
+		aud512PanicNilForCompatibilityTest()
+		return nil
 	}
-	cmd.Env = append(childEnv, "GODEBUG=panicnil=1", childFlag+"=1")
-	output, err := cmd.CombinedOutput()
-	if errors.Is(childCtx.Err(), context.DeadlineExceeded) {
-		t.Fatalf("panic(nil) subprocess exceeded 10-second timeout: %s", output)
-	}
-	require.NoError(t, err, "panic(nil) subprocess failed: %s", output)
-	require.Contains(t, string(output), "AUD512_PANIC_NIL_CALLBACK_TERM_OK")
+	termCalls := 0
+	nakCalls := 0
+	jetStreamTermFunc = func(*nats.Msg) error { termCalls++; return nil }
+	jetStreamNakFunc = func(*nats.Msg, time.Duration) error { nakCalls++; return nil }
+
+	h := newNatsTestHub(&mockAuthClient{allowed: true}, "internal-secret", 10)
+	t.Cleanup(h.Stop)
+	h.Logger = nil
+	h.handleNotifications(context.Background())(&nats.Msg{
+		Subject: "notifications." + aud511TestUserID,
+		Data:    []byte("{}"),
+	})
+	assert.Equal(t, 1, termCalls, "panic(nil) must be handled even when recover returns nil")
+	assert.Zero(t, nakCalls, "a successful TERM does not schedule another delivery")
 }
 
 func TestAUD512NormalCallbackEarlyReturnsDoNotTerminateMessages(t *testing.T) {

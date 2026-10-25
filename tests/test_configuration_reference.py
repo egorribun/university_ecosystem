@@ -89,3 +89,13 @@ def test_file_scanner_environment_example_matches_supported_settings() -> None:
     assert "EVENT_FILE_SCANNER_ALLOW_ON_UNAVAILABLE" not in example
     assert Settings.model_fields["event_file_scanner_enabled"].default is False
     assert "event_file_scanner_allow_on_unavailable" not in Settings.model_fields
+
+
+def test_env_example_omits_unconsumed_spicedb_settings() -> None:
+    assignments = _env_assignments()
+
+    assert not {
+        "SPICEDB_HOST",
+        "SPICEDB_PORT",
+        "SPICEDB_PG_SSLMODE",
+    }.intersection(assignments)

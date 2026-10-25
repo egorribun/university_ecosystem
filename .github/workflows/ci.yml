@@ -283,56 +283,166 @@ jobs:
 
       - name: "MOD-30-01: Enforce lazy=noload on SQLAlchemy relationships"
         run: |
-          # All relationships in app/models/ must have explicit lazy= parameter
-          # to prevent N+1 queries.  See CLAUDE.md: "ALL relationships must have
-          # explicit lazy=\"noload\"".  Use '# noload-exempt: <reason>' for
-          # justified exceptions (e.g., lazy="joined" for 1:1).
-          #
-          # Multi-line aware: reads full relationship(...) calls across lines.
-          python3 -c "
-          import re, sys, pathlib
+          python3 - <<'PY'
+          import ast
+          import io
+          import pathlib
+          import re
+          import sys
+          import tokenize
+
+          def dotted_name(node):
+              if isinstance(node, ast.Name):
+                  return node.id
+              if isinstance(node, ast.Attribute):
+                  parent = dotted_name(node.value)
+                  return f'{parent}.{node.attr}' if parent else None
+              return None
+
+          def is_relationship_function(expression, names, modules):
+              if isinstance(expression, ast.Name) and expression.id in names:
+                  return True
+              name = dotted_name(expression)
+              return name is not None and any(
+                  name == f'{module}.relationship' for module in modules
+              )
+
+          def is_relationship_module(expression, modules):
+              return dotted_name(expression) in modules
+
+          def references_relationship(expression, names, modules):
+              for child in ast.walk(expression):
+                  if is_relationship_function(child, names, modules):
+                      return True
+              return False
+
+          def assignment_targets(target):
+              if isinstance(target, ast.Name):
+                  return (target.id,)
+              return ()
+
+          def add_static_aliases(tree, names, modules):
+              assignments = []
+              for item in ast.walk(tree):
+                  if isinstance(item, ast.Assign):
+                      assignments.extend(
+                          (name, item.value)
+                          for target in item.targets
+                          for name in assignment_targets(target)
+                      )
+                  elif isinstance(item, ast.AnnAssign) and item.value is not None:
+                      assignments.extend(
+                          (name, item.value) for name in assignment_targets(item.target)
+                      )
+              changed = True
+              while changed:
+                  changed = False
+                  for name, value in assignments:
+                      if is_relationship_module(value, modules) and name not in modules:
+                          modules.add(name)
+                          changed = True
+                      elif (
+                          references_relationship(value, names, modules)
+                          and name not in names
+                      ):
+                          names.add(name)
+                          changed = True
+
+          def has_exemption(call, lazy_keyword, comments, relationship_calls):
+              allowed_lines = {call.end_lineno, lazy_keyword.end_lineno}
+              for token in comments:
+                  line = token.start[0]
+                  if line not in allowed_lines or not re.match(
+                      r'#\s*noload-exempt:\s*\S', token.string
+                  ):
+                      continue
+                  calls_on_line = [
+                      candidate
+                      for candidate in relationship_calls
+                      if candidate.lineno <= line <= candidate.end_lineno
+                  ]
+                  if len(calls_on_line) == 1 and calls_on_line[0] is call:
+                      return True
+              return False
 
           models = pathlib.Path('app/models')
-          # Match relationship( ... ) spanning multiple lines
-          pat = re.compile(r'relationship\s*\(', re.MULTILINE)
+          if not models.is_dir():
+              print('::error::app/models directory is missing (MOD-30-01)')
+              sys.exit(2)
           violations = []
-          for f in sorted(models.rglob('*.py')):
-              if '__pycache__' in str(f):
-                  continue
-              text = f.read_text(encoding='utf-8')
-              lines = text.splitlines(keepends=True)
-              # Build line offset map
-              offsets = []
-              pos = 0
-              for line in lines:
-                  offsets.append(pos)
-                  pos += len(line)
-              for m in pat.finditer(text):
-                  start = m.start()
-                  # Find matching closing paren (handle nesting)
-                  depth, i = 1, m.end()
-                  while i < len(text) and depth > 0:
-                      if text[i] == '(':
-                          depth += 1
-                      elif text[i] == ')':
-                          depth -= 1
-                      i += 1
-                  block = text[start:i]
-                  # Line number (1-based)
-                  lineno = next(j + 1 for j in range(len(offsets) - 1, -1, -1) if offsets[j] <= start)
-                  if 'lazy=' in block or '# noload-exempt' in block:
+          for path in sorted(models.rglob('*.py')):
+              source = path.read_text(encoding='utf-8')
+              tree = ast.parse(source, filename=str(path))
+              relationship_names = {'relationship'}
+              relationship_modules = set()
+              for item in ast.walk(tree):
+                  if isinstance(item, ast.ImportFrom):
+                      if item.module == 'sqlalchemy.orm':
+                          relationship_names.update(
+                              alias.asname or alias.name
+                              for alias in item.names
+                              if alias.name == 'relationship'
+                          )
+                      elif item.module == 'sqlalchemy':
+                          relationship_modules.update(
+                              alias.asname or alias.name
+                              for alias in item.names
+                              if alias.name == 'orm'
+                          )
+                  elif isinstance(item, ast.Import):
+                      for alias in item.names:
+                          if alias.name == 'sqlalchemy.orm':
+                              relationship_modules.add(alias.asname or alias.name)
+                          elif alias.name == 'sqlalchemy':
+                              relationship_modules.add(
+                                  f'{alias.asname or alias.name}.orm'
+                              )
+              add_static_aliases(tree, relationship_names, relationship_modules)
+              comments = [
+                  token
+                  for token in tokenize.generate_tokens(io.StringIO(source).readline)
+                  if token.type == tokenize.COMMENT
+              ]
+              relationship_calls = [
+                  item
+                  for item in ast.walk(tree)
+                  if isinstance(item, ast.Call)
+                  and is_relationship_function(
+                      item.func, relationship_names, relationship_modules
+                  )
+              ]
+              for item in relationship_calls:
+                  lazy_keyword = next(
+                      (keyword for keyword in item.keywords if keyword.arg == 'lazy'),
+                      None,
+                  )
+                  lazy = lazy_keyword.value if lazy_keyword is not None else None
+                  if isinstance(lazy, ast.Constant) and lazy.value == 'noload':
                       continue
-                  violations.append(f'{f}:{lineno}:    {lines[lineno-1].rstrip()}')
-          if violations:
-              print('::error::Relationships without explicit lazy= found (MOD-30-01):')
-              print('\n'.join(violations))
-              print()
-              print('All relationships MUST have lazy=\"noload\" (see CLAUDE.md).')
-              print(\"Add '# noload-exempt: <reason>' for justified exceptions.\")
-              sys.exit(1)
-          print('OK: all relationships have explicit lazy= parameter')
-          "
+                  if lazy_keyword is not None and has_exemption(
+                      item, lazy_keyword, comments, relationship_calls
+                  ):
+                      continue
+                  if lazy_keyword is None:
+                      reason = 'missing an explicit lazy= argument'
+                  else:
+                      reason = (
+                          'lazy= must be literal "noload" or use a unique inline '#
+                          'noload-exempt reason'
+                      )
+                  violations.append(f'{path}:{item.lineno}: {reason}')
 
+          if violations:
+              print('::error::Invalid SQLAlchemy relationship lazy policy (MOD-30-01):')
+              print('\n'.join(violations))
+              print('All relationships MUST use lazy="noload".')
+              print('Exceptions require explicit lazy= and a unique inline exemption reason.')
+              sys.exit(1)
+          print(
+              'OK: all SQLAlchemy relationships use lazy="noload" or a documented '
+              'exemption'
+          )
+          PY
       - name: Validate docker compose configuration
         shell: pwsh
         run: |

@@ -414,8 +414,7 @@ func (h *Hub) runNATSCallbackWithPanicRecovery(
 ) {
 	completed := false
 	defer func() {
-		_ = recover()
-		if !completed {
+		if recovered := recover(); !completed || recovered != nil {
 			h.handleNATSCallbackPanic(ctx, msg, callback)
 		}
 	}()

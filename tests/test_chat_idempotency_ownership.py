@@ -49,7 +49,7 @@ def dispatcher(user, chat_id, created, *, upload=None):
     repo.create_message = AsyncMock(side_effect=create)
 
     def dto(message):
-        item = MagicMock(replied_to=None)
+        item = MagicMock(replied_to=None, deleted_at=None)
         item.model_dump.return_value = dict(
             id=message.id,
             chat_id=chat_id,

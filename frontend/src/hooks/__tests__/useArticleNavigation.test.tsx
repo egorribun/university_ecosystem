@@ -1,9 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { type PropsWithChildren } from "react"
-import { describe, expect, it } from "vitest"
-import { newsListQueryKey } from "@/api/hooks/news"
+import { describe, expect, it, vi } from "vitest"
+import { newsListQueryKey, useAnonymousReadMode } from "@/api/hooks/news"
 import { type NewsItem } from "@/api/news"
+import { acceptBrowserSessionGeneration, getBrowserSessionGeneration } from "@/stores/sessionEpoch"
+import { renderToStaticMarkup } from "react-dom/server"
 import { useArticleNavigation } from "../useArticleNavigation"
 
 const makeArticle = (id: string, title: string) => ({ id, title }) as unknown as NewsItem
@@ -24,6 +26,15 @@ const makeWrapper = (queryClient: QueryClient) => {
 }
 
 const articleListKey = newsListQueryKey({ language: "en", limit: 12 })
+
+function ServerNavigationProbe() {
+  const navigation = useArticleNavigation("current")
+  return (
+    <output>
+      {navigation.prevId ?? "none"}|{navigation.nextId ?? "none"}
+    </output>
+  )
+}
 
 describe("useArticleNavigation", () => {
   it("returns empty navigation when the current article is absent from cached pages", () => {
@@ -127,6 +138,93 @@ describe("useArticleNavigation", () => {
 
     expect(renderCount).toBe(initialRenderCount)
     expect(result.current).toEqual({ prevId: null, nextId: null, prevTitle: null, nextTitle: null })
+  })
+  it("hides cached neighbors when a remote session change rerenders the reader", () => {
+    const generationKey = "ecosystem.session.generation.v1"
+    const originalGeneration = window.localStorage.getItem(generationKey)
+    acceptBrowserSessionGeneration()
+    const staleNonce =
+      getBrowserSessionGeneration() === "aud441-stale-generation"
+        ? "aud441-stale-generation-2"
+        : "aud441-stale-generation"
+    const queryClient = makeClient()
+    queryClient.setQueryData(articleListKey, {
+      pages: [
+        {
+          items: [
+            makeArticle("previous", "Previous"),
+            makeArticle("current", "Current"),
+            makeArticle("next", "Next"),
+          ],
+        },
+      ],
+    })
+    let unmount: (() => void) | undefined
+
+    try {
+      const hook = renderHook(
+        () => {
+          useAnonymousReadMode()
+          return useArticleNavigation("current")
+        },
+        { wrapper: makeWrapper(queryClient) }
+      )
+      unmount = hook.unmount
+      expect(hook.result.current).toEqual({
+        prevId: "previous",
+        nextId: "next",
+        prevTitle: "Previous",
+        nextTitle: "Next",
+      })
+
+      window.localStorage.setItem(generationKey, JSON.stringify({ nonce: staleNonce, hash: null }))
+      act(() => {
+        window.dispatchEvent(new StorageEvent("storage", { key: generationKey }))
+      })
+
+      expect(hook.result.current).toEqual({
+        prevId: null,
+        nextId: null,
+        prevTitle: null,
+        nextTitle: null,
+      })
+    } finally {
+      unmount?.()
+      if (originalGeneration === null) {
+        window.localStorage.removeItem(generationKey)
+      } else {
+        window.localStorage.setItem(generationKey, originalGeneration)
+      }
+      acceptBrowserSessionGeneration()
+    }
+  })
+
+  it("uses the QueryClient cache through the server snapshot when window is absent", () => {
+    const queryClient = makeClient()
+    queryClient.setQueryData(articleListKey, {
+      pages: [
+        {
+          items: [
+            makeArticle("previous", "Previous"),
+            makeArticle("current", "Current"),
+            makeArticle("next", "Next"),
+          ],
+        },
+      ],
+    })
+
+    vi.stubGlobal("window", undefined)
+    try {
+      const markup = renderToStaticMarkup(
+        <QueryClientProvider client={queryClient}>
+          <ServerNavigationProbe />
+        </QueryClientProvider>
+      )
+
+      expect(markup).toBe("<output>previous|next</output>")
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
   it("updates neighbors when news-list data arrives and changes after render", async () => {
     const queryClient = makeClient()

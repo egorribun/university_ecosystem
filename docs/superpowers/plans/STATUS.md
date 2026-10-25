@@ -5,19 +5,44 @@
 ## Текущее возобновление аудита, 2026-10-25
 
 Работа идёт по актуальному поручению владельца: `egorribun`, один checkout,
-PR #1343, root управляет интеграцией. Источник принятого hosted evidence —
-`c90e6163`; начальный checkout был чистым. Принято **315/512 (61,5%)**,
-осталось 197 ID. [Последняя scoped приёмка](../../audits/AUDIT-2026-10.md#hosted-defaults-http-boundaries-and-helm-identity-closure-2026-10-25)
-сохраняет прежние 310 ID и добавляет только AUD-267/357/358/488/493 по
-96 named JUnit PASS без skip/failure/error. Предыдущая приёмка трёх ID по
-20-case cohort сохранена. Датированные pause-разделы ниже — история, а не
+PR #1343, root управляет интеграцией. Независимый пакет из 25 путей опубликован
+в `36f2db43e1b95e5c18c6a740725ebb80605c0385`, tree
+`e4934611c7a519ffade1e9dffac3feb16b27603e`; локальная и удалённая ветки
+после публикации совпали, checkout был чистым. Источник уже принятого hosted
+evidence включает `c90e6163` и новую source-bound приёмку `36f2db43`.
+Принято **319/512 (62,3%)**, осталось 193 ID.
+[Последняя scoped приёмка](../../audits/AUDIT-2026-10.md#hosted-reactive-navigation-and-offline-ui-closure-2026-10-25)
+сохраняет все 315 прежних ID и добавляет только AUD-440/441/494/498 по
+81 exact named hosted PASS; четыре production-файла имеют 100% всех
+coverage-метрик. Root сверил ZIP hashes, XML cases и Git blobs. Прежние
+приёмки 96 и 20 cases сохранены в своих source-bound границах. Датированные pause-разделы ниже — история, а не
 текущее указание остановиться.
 
-CI этого источника не принят: проверены все страницы терминального снимка
+Исторический CI источника `c90e6163` не принят: проверены все страницы терминального снимка
 141 checks и 136 jobs. Checks: 108 SUCCESS / 27 SKIPPED / один NEUTRAL /
 пять FAILURE / ноль pending. Четыре причины: JSX ReDoS в CodeQL, Node audit
 (nested Zod 3 и strict compiler graph), Alembic dependent-index cases и
 receipt cleanup (102 вместо 100). CI Success — агрегирующий FAIL.
+
+Для нового `36f2db43` проверены все страницы 134 checks и 127 jobs в 25 runs:
+на промежуточном снимке checks — 105 SUCCESS / 21 SKIPPED / четыре FAILURE /
+один NEUTRAL / три IN_PROGRESS. Actual tested merge —
+`e7b22abb3580c1e222b57b8042479f06886a1c78`, tree совпадает с опубликованным.
+CodeQL и Contract Tests завершились успешно. Отказы: прежний Node compiler
+graph (audit step SKIPPED), ws-hub errcheck на `_ = recover()`, backend
+integration dependent-index case и Alembic Squawk/два dependent-index cases.
+DB Migration Gate прошёл; Alembic job в целом не прошёл. Backend unit shards
+и Owned Live Core на этом снимке ещё работали; общий CI не green. Эти счётчики
+не являются терминальным снимком и не добавляют принятых ID.
+
+Последующее завершение Owned Live Core `40219947473/121249146728` на том же
+tested merge подтвердило E2E, NATS outage и stand stop SUCCESS. Metadata-only
+artifact `12610050379` связывает эти lifecycle outcomes, но не содержит
+actual peer/forwarded-chain или two-client/spoof результатов. AUD-164/167
+остаются открытыми. Required ws-hub lint использует repository-root config;
+отдельная более строгая локальная module-config проверка не заменяет этот
+required gate и её прежние `pkg/config` test findings не объявляются новыми
+hosted failures.
 
 Текущий пакет содержит линейный JSX matcher, уточнение no-pickle gate,
 receipt cleanup с материализацией не более 100 locked IDs, сокрытие вложений
@@ -48,8 +73,13 @@ compiler graph ещё не исправлен. Приватный кандида
 root-reference прошёл обычный npm ci, typecheck, lint и строгий isolated
 consumer graph; две HIGH-находки исчезли, прежние восемь low/moderate и
 шесть peer-проблем полного дерева сохранены как отдельные ограничения.
-Archive и legacy baseline не менялись; Docker transfer и независимое ревью
-кандидата ещё не завершены. Embedded Babel/Zod risk проверяется отдельно.
+Archive и legacy baseline не менялись; независимое code review кандидата
+пройдено, actual Docker transfer и unchanged CLI на clean Linux checkout
+ещё не подтверждены. В exact Babel artifact найден embedded Zod 4.1.11;
+замена внешнего graph не меняет эти bytes. Достижимость из текущих обычных
+application inputs не установлена; caller-controlled compiler options и
+экспортированный test helper имеют путь к parser. Это отдельный незакрытый
+риск, не исправление или scanner dismissal.
 Policy337, baseline319, Gitleaks26, required78, blocking CodeQL,
 hooks и floors сохранены. Публикация требует итоговых hooks/scans, cleanup,
 проверки diff и ожидаемого HEAD; новый SHA требует собственных hosted checks.
@@ -62,8 +92,9 @@ Semgrep потребовал убрать промежуточный списо�
 владельцу. До решения policy337 не расширена; три reviewed DDL postimages,
 diff и PostgreSQL-доказательства сохранены приватно. В checkout/index эти три
 файла оставлены на неизменных опубликованных версиях. Независимый пакет
-проходит отдельную публикацию; финальный интегрированный scan и новые hosted
-checks обязательны для каждого нового SHA.
+опубликован отдельно: полный captured scan дал 567 findings / 0 unmatched
+с policy337, без новых исключений. Финальный интегрированный scan и новые
+hosted checks обязательны для каждого следующего SHA.
 
 P1 AUD-164/167 остаются открытыми: условное поведение текущего кода проверено
 через реальные limiter/handler boundaries с synthetic peers, но c90 Owned
@@ -71,6 +102,27 @@ Live Core не содержит actual peer/SSR inventory или named two-clien
 результатов. AUD-169 имеет согласованные двусторонние Helm selectors/ports
 и два PASS существующих контрактов; actual NetworkPolicy reachability не
 проверена. Эти пробелы не заменяются общей зелёной меткой Core.
+
+Следующий локальный follow-up пока не опубликован: errcheck исправлен без
+подавления правил; panicnil regression выполняется в процессе с проверкой
+фактического nil recovery и остановкой Hub до восстановления GODEBUG.
+Root-повтор: Hub 100% statements / 27,368s и required root-config Go lint
+0 issues. Для article navigation добавлены session-generation/SSR controls:
+7 PASS, изолированный hook coverage 100% по всем четырём метрикам. CSRF
+comparison-тесты теперь проходят через production middleware, а не только
+stdlib: вместе с Unicode-модулем 15 PASS. В `.env.example` удалены три
+SpiceDB ключа без потребителей; configuration reference — 5 PASS. Реальное
+Settings уже игнорировало неподдерживаемый scanner fail-open flag, поэтому
+новый runtime security fix этим не заявлен; scanner source не менялся.
+MOD-30-01 заменён AST-проверкой literal noload и уникального exemption reason,
+с bounded static aliases: 385 contract PASS, после стандартного форматирования
+15 focused PASS, actionlint PASS. Новые IDs этим follow-up не принимаются.
+Приватный Node-кандидат имеет семь новых блокирующих scanner identities;
+они не добавлены в policy337. Отдельный DDL checksum также остаётся pending.
+Обычный hook обновил только номера строк двух прежних findings в `ci.yml`
+и `generated_at` baseline после расширения gate. Все 319 identities, triage
+и прочие поля сохранены; это metadata maintenance, не новая disposition или
+scanner exemption. Baseline повторно staged по contributor standards.
 
 ## Publication and safe-pause checkpoint, 2026-10-25
 
@@ -3749,3 +3801,24 @@ Actual CSS oracle v5 в Chrome156 подтвердил все четыре со�
 Расширенный frontend V8 cohort завершился 446 PASS / 11 FAIL из 457 tests: 14 suites PASS / три FAIL, 23,80s. Семь отказов относятся к SSR issuer harness; три новых теста имеют подтверждённые ошибки вызова/ожиданий. Один тест выявил реальную гонку useLessonNotes: edit нового ключа до завершения load может потерять pending write. Исправления и повтор остаются приватными; coverage100 не заявляется, прежние V6/V8 отчёты сохранены.
 
 Gateway issuer v4 сохраняет все 17 source hashes v3 и добавляет actual setupRouter regression; source review и canonical integration ещё завершаются. AUD-350 v5 PG tests только collected: ревью выявило неверное ожидание UTC offset после SET LOCAL TIME ZONE America/Los_Angeles; actual v5 PG proof отсутствует. Общий PG runner AUD-197/262/343 до исправления resource/cleanup guards запускать нельзя. Новый Caddy entrypoint требует полноценного coverage producer и отдельного owner review изменения quality contract. Нижняя граница остаётся 277/512; policy317, baseline319, Gitleaks25, 78 contexts и blocking CodeQL сохранены.
+
+
+## Terminal CI and four scoped frontend closures, 2026-10-25
+
+На source `36f2db43` завершён снимок всех 143 checks: 109 SUCCESS / 27 SKIPPED /
+шесть FAILURE / один NEUTRAL / ноль IN_PROGRESS. Пять component failures —
+Node compiler graph, Hub errcheck, migration integration, Alembic/Squawk и
+четыре unit-fixture ReplyPreview errors в shard 0; шестой FAIL — CI Success.
+Backend shards 1/2/3 прошли (5378/6456/4316 PASS), их diff-cover был SKIPPED.
+Root применил только явный deleted_at=None в live DTO mock: без изменения
+production validation/assertions, 12 ownership и два deleted-replay tests PASS.
+Локальные follow-up исправления ещё требуют собственной публикации и CI.
+
+Приняты только AUD-440/441/494/498: 319/512, 193 остаются. AUD-499 удержан:
+15 named PASS и patch coverage100 не заменяют full-source branch floor100;
+обнаружены три непокрытые fallback branches в news.ts. AUD-246 имеет 75
+hosted PASS, но полный Python coverage/gate ещё не установлен. AUD-262 имеет
+44 named PostgreSQL PASS на новом repository blob, включая прежний cleanup
+102→100, однако общий integration job упал на отдельном migration case.
+Новых closures этих двух IDs здесь нет. Owned Live Core/NATS/cleanup прошли,
+actual proxy-peer цепочка этим не подтверждена. Policy337 и все gates сохранены.
