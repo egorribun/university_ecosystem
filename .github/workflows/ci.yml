@@ -2262,7 +2262,7 @@ jobs:
             exit 1
           fi
 
-      - name: Verify AUD339 and AUD341 named regressions
+      - name: Verify scoped audit named regressions
         if: ${{ !cancelled() }}
         shell: bash
         timeout-minutes: 2
@@ -2273,7 +2273,7 @@ jobs:
           WORKFLOW_EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          probe_root="$(mktemp -d "$RUNNER_TEMP/aud339341.XXXXXXXX")"
+          probe_root="$(mktemp -d "$RUNNER_TEMP/audit-cohort.XXXXXXXX")"
           trap 'rm -rf -- "$probe_root"' EXIT
           mkdir -p "$probe_root/tmp"
           export TMPDIR="$probe_root/tmp" TMP="$probe_root/tmp" TEMP="$probe_root/tmp"
@@ -2292,6 +2292,18 @@ jobs:
               "app/api/users.py",
               "tests/test_aud339_semantic_search_etag.py",
               "tests/test_users_me_replica_routing.py",
+              "app/core/ssrf.py",
+              "app/auth/security.py",
+              "app/core/config/mixins/jwt_settings.py",
+              "app/core/config/mixins/csp_settings.py",
+              "app/core/policies/csp.py",
+              "app/core/security_headers.py",
+              "SECURITY.md",
+              "quality/frontend-csp-defaults.json",
+              "tests/test_aud362_ssrf_ipv6_unspecified.py",
+              "tests/test_aud354_jwt_issuer.py",
+              "tests/test_security_headers.py",
+              "tests/test_csp_settings_closure.py",
           )
           EXPECTED = {
               (
@@ -2305,6 +2317,74 @@ jobs:
               (
                   "tests.test_users_me_replica_routing",
                   "test_users_me_audit_write_uses_primary_with_distinct_read_component",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_public_https_validator_rejects_unspecified_ipv6_literal",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_sync_validator_rejects_unspecified_ipv6_literal_without_dns",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_async_validator_rejects_unspecified_ipv6_literal_without_dns",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_resolver_rejects_unspecified_ipv6_literal_without_dns",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_sync_and_resolver_reject_unspecified_ipv6_dns_answers",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_async_validator_rejects_unspecified_ipv6_dns_answer",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_global_ipv6_remains_allowed",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_async_validator_allows_global_ipv6_literal",
+              ),
+              (
+                  "tests.test_aud354_jwt_issuer",
+                  "test_decode_token_requires_issuer_claim",
+              ),
+              (
+                  "tests.test_aud354_jwt_issuer",
+                  "test_decode_token_rejects_foreign_issuer",
+              ),
+              (
+                  "tests.test_aud354_jwt_issuer",
+                  "test_decode_token_rejects_missing_issuer_for_previous_key",
+              ),
+              (
+                  "tests.test_aud354_jwt_issuer",
+                  "test_decode_token_accepts_expected_issuer_for_active_and_previous_keys",
+              ),
+              (
+                  "tests.test_aud354_jwt_issuer",
+                  "test_minted_token_uses_configured_issuer_and_active_key",
+              ),
+              (
+                  "tests.test_security_headers",
+                  "test_security_headers_production_mode",
+              ),
+              (
+                  "tests.test_security_headers",
+                  "test_security_headers_development_report_only",
+              ),
+              (
+                  "tests.test_security_headers",
+                  "test_security_headers_credentialless_coep",
+              ),
+              (
+                  "tests.test_csp_settings_closure",
+                  "test_production_csp_defaults_match_shared_frontend_contract",
               ),
           }
 
@@ -2353,26 +2433,26 @@ jobs:
           current = identity()
           if sys.argv[2] == "before":
               (root / "source.json").write_text(json.dumps(current, sort_keys=True))
-              print("AUD339/AUD341 source identity: " + json.dumps(current, sort_keys=True))
+              print("Scoped audit source identity: " + json.dumps(current, sort_keys=True))
           else:
               if current != json.loads((root / "source.json").read_text()):
                   raise SystemExit("Source identity changed during the cohort")
               report = root / "junit.xml"
               if not report.is_file() or not 0 < report.stat().st_size <= 1_048_576:
-                  raise SystemExit("Missing or oversized AUD339/AUD341 JUnit report")
+                  raise SystemExit("Missing or oversized Scoped audit JUnit report")
               document = ElementTree.parse(report)
               suites = list(document.getroot().iter("testsuite"))
-              totals = {"tests": "3", "failures": "0", "errors": "0", "skipped": "0"}
+              totals = {"tests": "20", "failures": "0", "errors": "0", "skipped": "0"}
               if len(suites) != 1 or any(suites[0].get(key) != value for key, value in totals.items()):
-                  raise SystemExit("AUD339/AUD341 JUnit totals are not exactly three passes")
+                  raise SystemExit("Scoped audit JUnit totals are not exactly twenty passes")
               cases = list(document.getroot().iter("testcase"))
               observed = [(case.get("classname"), case.get("name")) for case in cases]
-              if len(observed) != 3 or set(observed) != EXPECTED:
-                  raise SystemExit("AUD339/AUD341 JUnit identities are missing, extra or duplicated")
+              if len(observed) != 20 or set(observed) != EXPECTED:
+                  raise SystemExit("Scoped audit JUnit identities are missing, extra or duplicated")
               if any(list(document.getroot().iter(tag)) for tag in ("failure", "error", "skipped")):
-                  raise SystemExit("AUD339/AUD341 cohort contains failure, error or skip")
-              print("AUD339/AUD341 verified named PASS: " + json.dumps(sorted(observed)))
-              print("AUD339/AUD341 postflight source identity unchanged")
+                  raise SystemExit("Scoped audit cohort contains failure, error or skip")
+              print("Scoped audit verified named PASS: " + json.dumps(sorted(observed)))
+              print("Scoped audit postflight source identity unchanged")
           PY
           uv run --frozen --no-sync python "$probe_root/verify.py" "$probe_root" before
           pytest_status=0
@@ -2381,6 +2461,23 @@ jobs:
             'tests/test_aud339_semantic_search_etag.py::test_semantic_search_cyrillic_etag_is_ascii_and_covers_inputs[news]' \
             'tests/test_aud339_semantic_search_etag.py::test_semantic_search_cyrillic_etag_is_ascii_and_covers_inputs[events]' \
             tests/test_users_me_replica_routing.py::test_users_me_audit_write_uses_primary_with_distinct_read_component \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_public_https_validator_rejects_unspecified_ipv6_literal \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_sync_validator_rejects_unspecified_ipv6_literal_without_dns \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_async_validator_rejects_unspecified_ipv6_literal_without_dns \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_resolver_rejects_unspecified_ipv6_literal_without_dns \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_sync_and_resolver_reject_unspecified_ipv6_dns_answers \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_async_validator_rejects_unspecified_ipv6_dns_answer \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_global_ipv6_remains_allowed \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_async_validator_allows_global_ipv6_literal \
+            tests/test_aud354_jwt_issuer.py::test_decode_token_requires_issuer_claim \
+            tests/test_aud354_jwt_issuer.py::test_decode_token_rejects_foreign_issuer \
+            tests/test_aud354_jwt_issuer.py::test_decode_token_rejects_missing_issuer_for_previous_key \
+            tests/test_aud354_jwt_issuer.py::test_decode_token_accepts_expected_issuer_for_active_and_previous_keys \
+            tests/test_aud354_jwt_issuer.py::test_minted_token_uses_configured_issuer_and_active_key \
+            tests/test_security_headers.py::test_security_headers_production_mode \
+            tests/test_security_headers.py::test_security_headers_development_report_only \
+            tests/test_security_headers.py::test_security_headers_credentialless_coep \
+            tests/test_csp_settings_closure.py::test_production_csp_defaults_match_shared_frontend_contract \
             -n 0 -v --tb=short --show-capture=no --no-cov --maxfail=0 \
             -p no:cacheprovider --basetemp="$probe_root/basetemp" \
             --junitxml="$probe_root/junit.xml" \

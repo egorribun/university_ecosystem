@@ -1987,9 +1987,7 @@ def test_groups_index_drop_uses_fresh_locked_dependency(
                         with EnvironmentContext(config, scripts) as environment:
                             environment.configure(connection=connection)
                             with Operations.context(environment.get_context()):
-                                revision.module._postgresql_groups_id_upgrade(
-                                    inspector
-                                )
+                                revision.module._postgresql_groups_id_upgrade(inspector)
                                 assert connection.in_transaction()
                 finally:
                     for name, listener, _ in reversed(listeners):
@@ -2012,11 +2010,14 @@ def test_groups_index_drop_uses_fresh_locked_dependency(
             assert connection.execute(
                 "SELECT to_regclass('public.ix_groups_id')"
             ).fetchone() == (None,)
-            assert connection.execute(
-                "SELECT attname FROM pg_attribute "
-                "WHERE attrelid = 'public.groups'::regclass AND NOT attisdropped "
-                "AND attname IN ('id__integer', 'id__varchar')"
-            ).fetchall() == []
+            assert (
+                connection.execute(
+                    "SELECT attname FROM pg_attribute "
+                    "WHERE attrelid = 'public.groups'::regclass AND NOT attisdropped "
+                    "AND attname IN ('id__integer', 'id__varchar')"
+                ).fetchall()
+                == []
+            )
             # This is the real key helper, not a full revision run or stamping.
             assert connection.execute(
                 "SELECT version_num FROM alembic_version"
