@@ -1,4 +1,4 @@
-import { cleanup, renderHook } from "@testing-library/react"
+import { cleanup, render, renderHook } from "@testing-library/react"
 import { renderToString } from "react-dom/server"
 import type { PropsWithChildren } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -72,6 +72,55 @@ describe("useScheduleTime campus timezone boundary", () => {
 })
 
 describe("useScheduleTime SSR/client parity", () => {
+  it("renders identical campus clock state on server and client despite different host clock fields", () => {
+    const serverEpoch = new Date("2026-04-26T06:30:00.000Z")
+    const clientEpoch = new Date(serverEpoch.getTime())
+    const snapshotOf = (value: ReturnType<typeof useScheduleTime>) => ({
+      epoch: value.nowTick.getTime(),
+      current: value.currentLesson?.id ?? null,
+      next: value.nextLesson?.id ?? null,
+      timeLeftText: value.timeLeftText,
+      timeLeftShort: value.timeLeftShort,
+      progress: value.currentProgress,
+    })
+
+    function ScheduleTimeOutput({ now }: { now: Date }) {
+      return (
+        <output data-state={JSON.stringify(snapshotOf(useScheduleTime([lesson], true, now)))} />
+      )
+    }
+
+    function ScheduleSnapshot({ now }: { now: Date }) {
+      return (
+        <CampusTimezoneProvider timeZone="Europe/Istanbul">
+          <ScheduleTimeOutput now={now} />
+        </CampusTimezoneProvider>
+      )
+    }
+
+    const hostHours = vi.spyOn(Date.prototype, "getHours").mockReturnValue(9)
+    const hostMinutes = vi.spyOn(Date.prototype, "getMinutes").mockReturnValue(30)
+    const serverMarkup = renderToString(<ScheduleSnapshot now={serverEpoch} />)
+
+    hostHours.mockReturnValue(11)
+    hostMinutes.mockReturnValue(30)
+    const { container } = render(<ScheduleSnapshot now={clientEpoch} />)
+
+    expect(container.innerHTML).toBe(serverMarkup)
+    expect(
+      JSON.parse(container.querySelector("output")?.getAttribute("data-state") ?? "null")
+    ).toEqual({
+      epoch: serverEpoch.getTime(),
+      current: "monday-lesson",
+      next: null,
+      timeLeftText: "schedule:timeLeft.current",
+      timeLeftShort: "1schedule:time.hoursShort",
+      progress: 33,
+    })
+    expect(hostHours).not.toHaveBeenCalled()
+    expect(hostMinutes).not.toHaveBeenCalled()
+  })
+
   it("renders the same no-zone clock state on server and client despite different host clocks", () => {
     const epoch = new Date("2026-04-26T06:30:00.000Z")
     const snapshotOf = (value: ReturnType<typeof useScheduleTime>) => ({

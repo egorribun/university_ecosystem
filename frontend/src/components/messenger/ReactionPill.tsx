@@ -94,7 +94,11 @@ export function ReactionPill({
   const { getReferenceProps, getFloatingProps } = useInteractions([hover, focus, dismiss, role])
 
   // Fetch reactors only while the popover is open + we know which chat.
-  const { data: reactors = [], isLoading } = useQuery({
+  const {
+    data: reactors = [],
+    isError,
+    isLoading,
+  } = useQuery({
     ...reactorsQueryOptions(chatId ?? "", messageId, emoji),
     enabled: isOpen && !!chatId,
   })
@@ -171,6 +175,10 @@ export function ReactionPill({
             {isLoading ? (
               <p className="px-1 py-1 text-sm text-(--text-secondary)">
                 {t("messenger:reactions.reactorsLoading")}
+              </p>
+            ) : isError ? (
+              <p role="alert" className="px-1 py-1 text-sm text-(--text-secondary)">
+                {t("messenger:reactions.reactorsError")}
               </p>
             ) : reactors.length === 0 ? (
               <p className="px-1 py-1 text-sm text-(--text-secondary)">

@@ -24,6 +24,9 @@ const persistedItem = {
   content: "Cached article",
   created_at: "2026-01-15T10:00:00.000Z",
   image_url_optimized: null,
+  likes_count: 0,
+  comments_count: 0,
+  is_liked: false,
 } as NewsItem
 const invalidPage = {
   items: [{ id: "not-a-uuid", title: "Malformed article" }],
@@ -89,6 +92,60 @@ describe("news list response validation", () => {
     expect(client.getQueryState(newsListQueryKey(filters))?.status).toBe("error")
   })
 
+  it("preserves the offline snapshot when an empty 2xx body is not a page", async () => {
+    const key = "news:list:account:feed-test-user:en"
+    const snapshot = [persistedItem]
+    window.localStorage.setItem(key, JSON.stringify(snapshot))
+    apiRequests.authenticated.mockResolvedValue({ status: 200, data: [] })
+
+    const client = makeClient()
+    const { result } = renderHook(() => useNewsListQuery(filters), {
+      wrapper: wrapperFor(client),
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+
+    expect(result.current.error).toBeInstanceOf(ApiResponseValidationError)
+    expect(result.current.news).toEqual(snapshot)
+    expect(window.localStorage.getItem(key)).toBe(JSON.stringify(snapshot))
+    expect(client.getQueryState(newsListQueryKey(filters))?.status).toBe("error")
+  })
+
+  it("ignores malformed persisted snapshots after an offline request failure", async () => {
+    const key = "news:list:account:feed-test-user:en"
+    const snapshot = [{ id: "not-a-uuid", title: "Malformed cached headline" }]
+    window.localStorage.setItem(key, JSON.stringify(snapshot))
+    apiRequests.authenticated.mockRejectedValue(new Error("network unavailable"))
+
+    const client = makeClient()
+    const { result } = renderHook(() => useNewsListQuery(filters), {
+      wrapper: wrapperFor(client),
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+
+    expect(result.current.news).toEqual([])
+    expect(result.current.isPlaceholderData).toBe(false)
+    expect(window.localStorage.getItem(key)).toBe(JSON.stringify(snapshot))
+    expect(client.getQueryState(newsListQueryKey(filters))?.status).toBe("error")
+  })
+
+  it("does not use an empty persisted snapshot as offline news", async () => {
+    const key = "news:list:account:feed-test-user:en"
+    window.localStorage.setItem(key, JSON.stringify([]))
+    apiRequests.authenticated.mockRejectedValue(new Error("network unavailable"))
+
+    const client = makeClient()
+    const { result } = renderHook(() => useNewsListQuery(filters), {
+      wrapper: wrapperFor(client),
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+
+    expect(result.current.news).toEqual([])
+    expect(result.current.isPlaceholderData).toBe(false)
+    expect(window.localStorage.getItem(key)).toBe("[]")
+  })
   it("accepts a valid empty page in the backend wire shape for authenticated requests", async () => {
     apiRequests.authenticated.mockResolvedValue({
       status: 200,

@@ -6,6 +6,8 @@ import type { ReactNode } from "react"
 import { ReactionPill } from "@/components/messenger/ReactionPill"
 import { reactorsQueryKey, reactorsQueryOptions } from "@/api/hooks/messenger"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
+import enMessenger from "@/i18n/locales/en/messenger.json"
+import ruMessenger from "@/i18n/locales/ru/messenger.json"
 
 /**
  * Wave 207 SW9 (coverage follow-up) — ReactionPill unit tests.
@@ -338,5 +340,56 @@ describe("ReactionPill long-press gesture and reactor list", () => {
       .getAllByRole("listitem")
       .map((item) => item.querySelector("img")?.getAttribute("src"))
     expect(avatars).toEqual(["https://cdn.example.test/alice.png", AVATAR_PLACEHOLDER_URL])
+  })
+})
+
+describe("reactor API result states", () => {
+  it("shows an accessible error instead of empty after API failures", async () => {
+    getReactors.mockReset()
+    vi.useFakeTimers()
+    try {
+      getReactors
+        .mockRejectedValueOnce(new Error("network unavailable"))
+        .mockRejectedValueOnce(new Error("network unavailable"))
+        .mockRejectedValueOnce(new Error("network unavailable"))
+
+      renderPill()
+      fireEvent.focus(screen.getByRole("button"))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000)
+      })
+
+      expect(getReactors).toHaveBeenCalledTimes(3)
+      expect(typeof enMessenger.reactions.reactorsError).toBe("string")
+      expect(enMessenger.reactions.reactorsError.trim()).not.toBe("")
+      expect(typeof ruMessenger.reactions.reactorsError).toBe("string")
+      expect(ruMessenger.reactions.reactorsError.trim()).not.toBe("")
+      const tooltip = screen.getByRole("tooltip")
+      expect(screen.getByRole("alert")).toHaveTextContent("messenger:reactions.reactorsError")
+      expect(screen.queryByText("messenger:reactions.reactorsEmpty")).not.toBeInTheDocument()
+      expect(tooltip).toContainElement(screen.getByRole("alert"))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("shows an empty state only for an empty API response", async () => {
+    getReactors.mockReset()
+    getReactors.mockResolvedValueOnce([])
+    renderPill()
+    fireEvent.focus(screen.getByRole("button"))
+
+    expect(await screen.findByText("messenger:reactions.reactorsEmpty")).toBeInTheDocument()
+    expect(getReactors).toHaveBeenCalledTimes(1)
+  })
+
+  it("shows users from a successful API response", async () => {
+    getReactors.mockReset()
+    getReactors.mockResolvedValueOnce([{ user_id: "u2", name: "Bob", avatar_url: null }])
+    renderPill()
+    fireEvent.focus(screen.getByRole("button"))
+
+    expect(await screen.findByText("Bob")).toBeInTheDocument()
+    expect(getReactors).toHaveBeenCalledTimes(1)
   })
 })

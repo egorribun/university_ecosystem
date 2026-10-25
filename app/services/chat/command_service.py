@@ -255,6 +255,8 @@ class ChatMessageDispatcher:
         )
         if message is None:
             _idempotency_in_progress()
+        if message.deleted_at is not None:
+            message = message.model_copy(update={"attachments": []})
         return MessageResponse(
             **message.model_dump(exclude={"replied_to"}),
             reply_to=ReplyPreview.from_message(message.replied_to),

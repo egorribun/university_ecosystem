@@ -2,8 +2,75 @@
 
 Обновлено: 2026-10-25 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Текущее возобновление аудита, 2026-10-25
 
+Работа идёт по актуальному поручению владельца: `egorribun`, один checkout,
+PR #1343, root управляет интеграцией. Источник принятого hosted evidence —
+`c90e6163`; начальный checkout был чистым. Принято **315/512 (61,5%)**,
+осталось 197 ID. [Последняя scoped приёмка](../../audits/AUDIT-2026-10.md#hosted-defaults-http-boundaries-and-helm-identity-closure-2026-10-25)
+сохраняет прежние 310 ID и добавляет только AUD-267/357/358/488/493 по
+96 named JUnit PASS без skip/failure/error. Предыдущая приёмка трёх ID по
+20-case cohort сохранена. Датированные pause-разделы ниже — история, а не
+текущее указание остановиться.
 
+CI этого источника не принят: проверены все страницы терминального снимка
+141 checks и 136 jobs. Checks: 108 SUCCESS / 27 SKIPPED / один NEUTRAL /
+пять FAILURE / ноль pending. Четыре причины: JSX ReDoS в CodeQL, Node audit
+(nested Zod 3 и strict compiler graph), Alembic dependent-index cases и
+receipt cleanup (102 вместо 100). CI Success — агрегирующий FAIL.
+
+Текущий пакет содержит линейный JSX matcher, уточнение no-pickle gate,
+receipt cleanup с материализацией не более 100 locked IDs, сокрытие вложений
+удалённого сообщения при replay, ограниченные
+revocation markers и TERM после NATS callback panic, включая `panic(nil)`.
+Frontend: campus-timezone regression, валидация persisted news cache,
+реактивная навигация по статьям, отдельное сообщение ошибки reactors RU/EN и
+Axios path-encoding regression. Эти новые изменения не засчитаны в ledger.
+
+Локальные доказательства: ws-hub — 618 named tests/subcases, 0 FAIL/SKIP,
+100% statements, native Windows без race; Linux race ещё обязателен.
+Actual PostgreSQL 17.11 воспроизвёл cleanup 102 → 100 со scope controls.
+Для отдельного DDL кандидата 13 exact PostgreSQL cases PASS; private fixture binding
+проверен, незапланированных запусков в принятом прогоне 0, контейнер удалён.
+Предыдущие неудачные попытки harness не считаются PASS. No-pickle: 75 cases,
+554 statements / 302 branches, 100%; общий диагностический subset двух
+quality-checkers дал 374 PASS, но coverage 92% не достигла floor 100%.
+Это не общий coverage gate; full/final-source validation ещё обязательна.
+Итоговый локальный frontend-набор: 12 файлов / 152 PASS; Python-набор
+no-pickle/CSRF/body-limit/receipt: 97 PASS. После перехода подсчёта DELETE
+RETURNING на однопроходный iterator — 3 cleanup и 24 SQLite lifecycle PASS.
+Прежние локальные проверки сохраняются в своих границах и не суммируются
+с пересекающимися наборами как уникальные cases.
+
+AUD-498 имеет 44/44 с обычным validator и discriminating RED controls;
+browser delivery и полный coverage этим не подтверждены. Опубликованный
+compiler graph ещё не исправлен. Приватный кандидат с переносимым archive
+root-reference прошёл обычный npm ci, typecheck, lint и строгий isolated
+consumer graph; две HIGH-находки исчезли, прежние восемь low/moderate и
+шесть peer-проблем полного дерева сохранены как отдельные ограничения.
+Archive и legacy baseline не менялись; Docker transfer и независимое ревью
+кандидата ещё не завершены. Embedded Babel/Zod risk проверяется отдельно.
+Policy337, baseline319, Gitleaks26, required78, blocking CodeQL,
+hooks и floors сохранены. Публикация требует итоговых hooks/scans, cleanup,
+проверки diff и ожидаемого HEAD; новый SHA требует собственных hosted checks.
+Независимый пакет из 25 путей прошёл обычные pre-commit и pre-push hooks:
+lint-staged, Ruff, detect-secrets, Gitleaks, Bandit, mypy, Semgrep и typecheck.
+Semgrep потребовал убрать промежуточный список при подсчёте RETURNING;
+повторный обычный hook прошёл, без исключений. Detect-secrets оставляет
+блокирующим новый публичный Git checksum в отдельном migration trace кандидате.
+Точное приватное предложение прошло 604 теста и независимое ревью, направлено
+владельцу. До решения policy337 не расширена; три reviewed DDL postimages,
+diff и PostgreSQL-доказательства сохранены приватно. В checkout/index эти три
+файла оставлены на неизменных опубликованных версиях. Независимый пакет
+проходит отдельную публикацию; финальный интегрированный scan и новые hosted
+checks обязательны для каждого нового SHA.
+
+P1 AUD-164/167 остаются открытыми: условное поведение текущего кода проверено
+через реальные limiter/handler boundaries с synthetic peers, но c90 Owned
+Live Core не содержит actual peer/SSR inventory или named two-client/spoof
+результатов. AUD-169 имеет согласованные двусторонние Helm selectors/ports
+и два PASS существующих контрактов; actual NetworkPolicy reachability не
+проверена. Эти пробелы не заменяются общей зелёной меткой Core.
 
 ## Publication and safe-pause checkpoint, 2026-10-25
 

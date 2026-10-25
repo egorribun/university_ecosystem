@@ -61,6 +61,22 @@ type roomMembershipKey struct {
 
 type roomMembershipEpoch struct{ marker byte }
 
+type roomRevocationPublication struct {
+	publishedAt    time.Time
+	streamSequence uint64
+}
+
+type pendingRoomRevocation struct {
+	streamSequence uint64
+	expiresAt      time.Time
+	sticky         bool
+}
+
+const (
+	pendingRoomRevocationTTL             = 125 * time.Second
+	pendingRoomRevocationCleanupInterval = 30 * time.Second
+)
+
 type roomMembershipLockEntry struct {
 	mu                sync.Mutex
 	references        int
@@ -237,9 +253,11 @@ type Hub struct {
 	// references keep each per-key barrier alive until those operations finish.
 	roomMembershipLocks roomMembershipLockRegistry
 	// pendingRoomRevocations keep joins denied after an authorization refresh
-	// fails. The signed JetStream event remains unacked until the refresh works.
+	// fails. Refresh-capable clients retain markers only through the event's
+	// publish-time grace window; clients without an authoritative refresher keep
+	// a sticky fail-closed marker until a successful refresh clears it.
 	pendingRoomRevocationsMu sync.RWMutex
-	pendingRoomRevocations   map[roomMembershipKey]struct{}
+	pendingRoomRevocations   map[roomMembershipKey]pendingRoomRevocation
 	// subscribeCacheInvalidations is a package-test seam; production leaves it
 	// nil so revocations always use the durable JetStream stream below.
 	subscribeCacheInvalidations func(nats.MsgHandler, ...nats.SubOpt) (*nats.Subscription, error)
@@ -386,6 +404,58 @@ func safeTerm(msg *nats.Msg) error {
 		return nil
 	}
 	return jetStreamTermFunc(msg)
+}
+
+func (h *Hub) runNATSCallbackWithPanicRecovery(
+	ctx context.Context,
+	msg *nats.Msg,
+	callback string,
+	body func(),
+) {
+	completed := false
+	defer func() {
+		_ = recover()
+		if !completed {
+			h.handleNATSCallbackPanic(ctx, msg, callback)
+		}
+	}()
+
+	body()
+	completed = true
+}
+
+func natsCallbackLogIdentity(callback string) (string, string) {
+	switch callback {
+	case "chat":
+		return "chat", "chat.*"
+	case "notifications":
+		return "notifications", "notifications.*"
+	case "cache.invalidate":
+		return "cache.invalidate", "cache.invalidate"
+	case "control":
+		return "control", "ws_hub.control"
+	default:
+		return "unknown", ""
+	}
+}
+
+func (h *Hub) handleNATSCallbackPanic(ctx context.Context, msg *nats.Msg, callback string) {
+	callbackName, subject := natsCallbackLogIdentity(callback)
+	if h.Logger != nil {
+		h.Logger.ErrorContext(ctx, "Recovered panic in NATS callback",
+			"callback", callbackName, "subject", subject)
+	}
+
+	if err := safeTerm(msg); err != nil {
+		if errors.Is(err, nats.ErrMsgNotBound) || errors.Is(err, nats.ErrNotJSMessage) {
+			return
+		}
+		if h.Logger != nil {
+			h.Logger.WarnContext(ctx, "Could not TERM NATS message after callback panic; retry NAK attempted",
+				"callback", callbackName, "subject", subject)
+		}
+		safeNakWithDelay(msg, 5*time.Second)
+	}
 }
 
 func (h *Hub) issueResumeToken(userID, room, stream string, sequence uint64) (string, error) {
@@ -1399,34 +1469,33 @@ func (h *Hub) handleCoreChat(appCtx context.Context) nats.MsgHandler {
 }
 
 func (h *Hub) handleChatDelivery(appCtx context.Context, requireSequence bool) nats.MsgHandler {
-	const natsCallbackTimeout = 30 * time.Second
 	return func(msg *nats.Msg) {
-		defer func() {
-			if r := recover(); r != nil {
-				h.Logger.ErrorContext(appCtx, "NATS chat callback panic recovered",
-					"panic", r, "subject", msg.Subject)
-			}
-		}()
-
-		select {
-		case <-appCtx.Done():
-			return
-		default:
-		}
-
-		msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
-		defer cancel()
-		msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
-		_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.Chat",
-			trace.WithAttributes(
-				semconv.MessagingSystemKey.String("nats"),
-				semconv.MessagingOperationTypeKey.String("receive"),
-				semconv.MessagingDestinationNameKey.String("chat.*"),
-			),
-		)
-		defer span.End()
-		h.processChatDelivery(msgCtx, msg, requireSequence)
+		h.runNATSCallbackWithPanicRecovery(appCtx, msg, "chat", func() {
+			h.handleChatDeliveryCallback(appCtx, msg, requireSequence)
+		})
 	}
+}
+
+func (h *Hub) handleChatDeliveryCallback(appCtx context.Context, msg *nats.Msg, requireSequence bool) {
+	const natsCallbackTimeout = 30 * time.Second
+	select {
+	case <-appCtx.Done():
+		return
+	default:
+	}
+
+	msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
+	defer cancel()
+	msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
+	_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.Chat",
+		trace.WithAttributes(
+			semconv.MessagingSystemKey.String("nats"),
+			semconv.MessagingOperationTypeKey.String("receive"),
+			semconv.MessagingDestinationNameKey.String("chat.*"),
+		),
+	)
+	defer span.End()
+	h.processChatDelivery(msgCtx, msg, requireSequence)
 }
 
 func (h *Hub) processChatDelivery(ctx context.Context, msg *nats.Msg, requireSequence bool) {
@@ -1529,61 +1598,60 @@ func notificationUserIDFromSubject(subject string) (string, bool) {
 }
 
 func (h *Hub) handleNotifications(appCtx context.Context) nats.MsgHandler {
-	const natsCallbackTimeout = 30 * time.Second
 	return func(msg *nats.Msg) {
-		defer func() {
-			if r := recover(); r != nil {
-				h.Logger.ErrorContext(appCtx, "NATS notifications callback panic recovered",
-					"panic", r, "subject", msg.Subject)
-			}
-		}()
+		h.runNATSCallbackWithPanicRecovery(appCtx, msg, "notifications", func() {
+			h.handleNotificationsCallback(appCtx, msg)
+		})
+	}
+}
 
-		select {
-		case <-appCtx.Done():
-			return
-		default:
-		}
+func (h *Hub) handleNotificationsCallback(appCtx context.Context, msg *nats.Msg) {
+	const natsCallbackTimeout = 30 * time.Second
+	select {
+	case <-appCtx.Done():
+		return
+	default:
+	}
 
-		msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
-		defer cancel()
-		msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
-		_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.Notifications",
-			trace.WithAttributes(
-				semconv.MessagingSystemKey.String("nats"),
-				semconv.MessagingOperationTypeKey.String("receive"),
-				semconv.MessagingDestinationNameKey.String("notifications.*"),
-			),
-		)
-		defer span.End()
+	msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
+	defer cancel()
+	msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
+	_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.Notifications",
+		trace.WithAttributes(
+			semconv.MessagingSystemKey.String("nats"),
+			semconv.MessagingOperationTypeKey.String("receive"),
+			semconv.MessagingDestinationNameKey.String("notifications.*"),
+		),
+	)
+	defer span.End()
 
-		msgID := ""
-		if msg.Header != nil {
-			msgID = msg.Header.Get("Nats-Msg-Id")
-		}
-		if msgID != "" && h.dedupCache != nil {
-			if _, ok := h.dedupCache.Get(msgID); ok {
-				JetStreamDedupHitsTotal.Inc()
-				safeAck(msg)
-				return
-			}
-		}
-
-		wsMsg, valid := h.decodeNotification(msgCtx, msg)
-		if !valid {
-			return
-		}
-		select {
-		case h.Broadcast <- wsMsg:
-			if msgID != "" && h.dedupCache != nil {
-				h.dedupCache.Add(msgID, time.Now())
-			}
+	msgID := ""
+	if msg.Header != nil {
+		msgID = msg.Header.Get("Nats-Msg-Id")
+	}
+	if msgID != "" && h.dedupCache != nil {
+		if _, ok := h.dedupCache.Get(msgID); ok {
+			JetStreamDedupHitsTotal.Inc()
 			safeAck(msg)
-		default:
-			BroadcastDropsTotal.Inc()
-			h.Logger.WarnContext(msgCtx, "Broadcast channel full, dropping NATS notification",
-				"subject", msg.Subject)
-			safeNakWithDelay(msg, 5*time.Second)
+			return
 		}
+	}
+
+	wsMsg, valid := h.decodeNotification(msgCtx, msg)
+	if !valid {
+		return
+	}
+	select {
+	case h.Broadcast <- wsMsg:
+		if msgID != "" && h.dedupCache != nil {
+			h.dedupCache.Add(msgID, time.Now())
+		}
+		safeAck(msg)
+	default:
+		BroadcastDropsTotal.Inc()
+		h.Logger.WarnContext(msgCtx, "Broadcast channel full, dropping NATS notification",
+			"subject", msg.Subject)
+		safeNakWithDelay(msg, 5*time.Second)
 	}
 }
 
@@ -1617,37 +1685,34 @@ type cacheInvalidationPayload struct {
 }
 
 func (h *Hub) handleCacheInvalidation(appCtx context.Context) nats.MsgHandler {
-	const natsCallbackTimeout = 30 * time.Second
 	return func(msg *nats.Msg) {
-		defer h.recoverCacheInvalidationPanic(appCtx, msg)
-
-		select {
-		case <-appCtx.Done():
-			return
-		default:
-		}
-
-		msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
-		defer cancel()
-		msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
-		msgCtx, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.CacheInvalidate",
-			trace.WithAttributes(
-				semconv.MessagingSystemKey.String("nats"),
-				semconv.MessagingOperationTypeKey.String("receive"),
-				semconv.MessagingDestinationNameKey.String("cache.invalidate"),
-			),
-		)
-		defer span.End()
-
-		h.processCacheInvalidationMessage(msgCtx, msg, span)
+		h.runNATSCallbackWithPanicRecovery(appCtx, msg, "cache.invalidate", func() {
+			h.handleCacheInvalidationCallback(appCtx, msg)
+		})
 	}
 }
 
-func (h *Hub) recoverCacheInvalidationPanic(ctx context.Context, msg *nats.Msg) {
-	if recovered := recover(); recovered != nil {
-		h.Logger.ErrorContext(ctx, "NATS cache.invalidate callback panic recovered",
-			"panic", recovered, "subject", msg.Subject)
+func (h *Hub) handleCacheInvalidationCallback(appCtx context.Context, msg *nats.Msg) {
+	const natsCallbackTimeout = 30 * time.Second
+	select {
+	case <-appCtx.Done():
+		return
+	default:
 	}
+
+	msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
+	defer cancel()
+	msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
+	msgCtx, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.CacheInvalidate",
+		trace.WithAttributes(
+			semconv.MessagingSystemKey.String("nats"),
+			semconv.MessagingOperationTypeKey.String("receive"),
+			semconv.MessagingDestinationNameKey.String("cache.invalidate"),
+		),
+	)
+	defer span.End()
+
+	h.processCacheInvalidationMessage(msgCtx, msg, span)
 }
 
 func (h *Hub) processCacheInvalidationMessage(ctx context.Context, msg *nats.Msg, span trace.Span) {
@@ -1727,6 +1792,19 @@ func (h *Hub) rejectCacheInvalidation(ctx context.Context, msg *nats.Msg) {
 	}
 }
 
+func roomRevocationPublicationFromMessage(msg *nats.Msg) roomRevocationPublication {
+	if msg != nil {
+		if metadata, err := msg.Metadata(); err == nil &&
+			metadata.Sequence.Stream > 0 && !metadata.Timestamp.IsZero() {
+			return roomRevocationPublication{
+				publishedAt:    metadata.Timestamp,
+				streamSequence: metadata.Sequence.Stream,
+			}
+		}
+	}
+	return roomRevocationPublication{publishedAt: time.Now()}
+}
+
 func (h *Hub) applyCacheInvalidation(
 	ctx context.Context,
 	msg *nats.Msg,
@@ -1734,7 +1812,8 @@ func (h *Hub) applyCacheInvalidation(
 	payload cacheInvalidationPayload,
 ) bool {
 	if payload.Data.EvictRoom {
-		if err := h.evictRoomMembership(ctx, payload.Data.UserID, payload.Data.RoomID); err != nil {
+		publication := roomRevocationPublicationFromMessage(msg)
+		if err := h.evictRoomMembershipAt(ctx, payload.Data.UserID, payload.Data.RoomID, publication); err != nil {
 			h.Logger.ErrorContext(ctx, "Room membership revocation could not be confirmed; retrying",
 				"room_id", payload.Data.RoomID, "user_id", payload.Data.UserID, "err", err)
 			span.RecordError(err)
@@ -1754,17 +1833,27 @@ func (h *Hub) roomMembershipLock(userID, roomID string) *roomMembershipLock {
 const roomMembershipWriteDrainTimeout = 10 * time.Second
 
 func (h *Hub) evictRoomMembership(ctx context.Context, userID, roomID string) error {
+	return h.evictRoomMembershipAt(ctx, userID, roomID,
+		roomRevocationPublication{publishedAt: time.Now()})
+}
+
+func (h *Hub) evictRoomMembershipAt(
+	ctx context.Context,
+	userID string,
+	roomID string,
+	publication roomRevocationPublication,
+) error {
 	lock, epoch, drained, err := h.beginRoomMembershipRevocation(ctx, userID, roomID)
 	if err != nil {
 		return err
 	}
 	defer lock.release()
 
-	if err := h.drainRoomMembershipWrites(ctx, lock, epoch, userID, roomID, drained); err != nil {
+	if err := h.drainRoomMembershipWrites(ctx, lock, epoch, userID, roomID, drained, publication); err != nil {
 		return err
 	}
 	allowed, authErr, canRefresh := h.refreshRoomAuthorizationForRevocation(ctx, userID, roomID)
-	h.finishRoomMembershipRevocation(lock, epoch, userID, roomID, allowed, authErr)
+	h.finishRoomMembershipRevocationAt(lock, epoch, userID, roomID, allowed, authErr, canRefresh, publication)
 	if authErr != nil {
 		if !canRefresh {
 			return authErr
@@ -1812,6 +1901,7 @@ func (h *Hub) drainRoomMembershipWrites(
 	userID string,
 	roomID string,
 	drained <-chan struct{},
+	publication roomRevocationPublication,
 ) error {
 	if drained == nil {
 		return nil
@@ -1823,7 +1913,7 @@ func (h *Hub) drainRoomMembershipWrites(
 		return nil
 	case <-drainCtx.Done():
 		drainErr := drainCtx.Err()
-		h.failClosedRoomMembershipDrain(lock, epoch, userID, roomID)
+		h.failClosedRoomMembershipDrainAt(lock, epoch, userID, roomID, publication)
 		return fmt.Errorf("wait for in-flight room writes: %w", drainErr)
 	}
 }
@@ -1834,13 +1924,29 @@ func (h *Hub) failClosedRoomMembershipDrain(
 	userID string,
 	roomID string,
 ) {
+	h.failClosedRoomMembershipDrainAt(
+		lock,
+		epoch,
+		userID,
+		roomID,
+		roomRevocationPublication{publishedAt: time.Now()},
+	)
+}
+
+func (h *Hub) failClosedRoomMembershipDrainAt(
+	lock *roomMembershipLock,
+	epoch *roomMembershipEpoch,
+	userID string,
+	roomID string,
+	publication roomRevocationPublication,
+) {
 	lock.Lock()
 	entry := lock.entry
 	current := entry.revocationEpoch == epoch
 	if current {
 		entry.drainFailedClosed.Store(true)
 		entry.mutationPending = true
-		h.markRoomRevocationPending(userID, roomID)
+		h.markRoomRevocationPending(userID, roomID, publication, !h.roomAuthorizationRefresherAvailable())
 	}
 	lock.unlockRetained()
 	if current {
@@ -1877,6 +1983,11 @@ func (h *Hub) refreshRoomAuthorizationForRevocation(
 	return allowed, authErr, true
 }
 
+func (h *Hub) roomAuthorizationRefresherAvailable() bool {
+	_, ok := h.authClient.(RoomAuthorizationRefresher)
+	return ok
+}
+
 func (h *Hub) finishRoomMembershipRevocation(
 	lock *roomMembershipLock,
 	epoch *roomMembershipEpoch,
@@ -1885,13 +1996,35 @@ func (h *Hub) finishRoomMembershipRevocation(
 	allowed bool,
 	authErr error,
 ) {
+	h.finishRoomMembershipRevocationAt(
+		lock,
+		epoch,
+		userID,
+		roomID,
+		allowed,
+		authErr,
+		h.roomAuthorizationRefresherAvailable(),
+		roomRevocationPublication{publishedAt: time.Now()},
+	)
+}
+
+func (h *Hub) finishRoomMembershipRevocationAt(
+	lock *roomMembershipLock,
+	epoch *roomMembershipEpoch,
+	userID string,
+	roomID string,
+	allowed bool,
+	authErr error,
+	canRefresh bool,
+	publication roomRevocationPublication,
+) {
 	lock.Lock()
 	entry := lock.entry
 	current := entry.revocationEpoch == epoch
 	removeMembership := current && (authErr != nil || !allowed)
 	if current {
 		if authErr != nil {
-			h.markRoomRevocationPending(userID, roomID)
+			h.markRoomRevocationPending(userID, roomID, publication, !canRefresh)
 		} else {
 			h.clearRoomRevocationPending(userID, roomID)
 		}
@@ -1946,13 +2079,56 @@ func (h *Hub) removeRoomMemberWithoutWriteLock(userID, roomID string) {
 	}
 }
 
-func (h *Hub) markRoomRevocationPending(userID, roomID string) {
+func (h *Hub) markRoomRevocationPending(
+	userID string,
+	roomID string,
+	publication roomRevocationPublication,
+	sticky bool,
+) {
+	now := time.Now()
+	if publication.publishedAt.IsZero() {
+		publication.publishedAt = now
+	}
+	marker := pendingRoomRevocation{
+		streamSequence: publication.streamSequence,
+		expiresAt:      publication.publishedAt.Add(pendingRoomRevocationTTL),
+		sticky:         sticky,
+	}
+	if sticky {
+		marker.expiresAt = time.Time{}
+	}
+
+	key := roomMembershipKey{userID: userID, roomID: roomID}
 	h.pendingRoomRevocationsMu.Lock()
 	defer h.pendingRoomRevocationsMu.Unlock()
+	h.pruneExpiredRoomRevocationsLocked(now)
 	if h.pendingRoomRevocations == nil {
-		h.pendingRoomRevocations = make(map[roomMembershipKey]struct{})
+		h.pendingRoomRevocations = make(map[roomMembershipKey]pendingRoomRevocation)
 	}
-	h.pendingRoomRevocations[roomMembershipKey{userID: userID, roomID: roomID}] = struct{}{}
+
+	current, exists := h.pendingRoomRevocations[key]
+	if exists {
+		if current.sticky {
+			return
+		}
+		if sticky {
+			h.pendingRoomRevocations[key] = marker
+			return
+		}
+		if publication.streamSequence == 0 || publication.streamSequence <= current.streamSequence {
+			return
+		}
+		if !marker.expiresAt.After(now) {
+			return
+		}
+		if marker.expiresAt.Before(current.expiresAt) {
+			marker.expiresAt = current.expiresAt
+		}
+	}
+	if !sticky && !marker.expiresAt.After(now) {
+		return
+	}
+	h.pendingRoomRevocations[key] = marker
 }
 
 func (h *Hub) clearRoomRevocationPending(userID, roomID string) {
@@ -1962,10 +2138,36 @@ func (h *Hub) clearRoomRevocationPending(userID, roomID string) {
 }
 
 func (h *Hub) isRoomRevocationPending(userID, roomID string) bool {
-	h.pendingRoomRevocationsMu.RLock()
-	defer h.pendingRoomRevocationsMu.RUnlock()
-	_, pending := h.pendingRoomRevocations[roomMembershipKey{userID: userID, roomID: roomID}]
-	return pending
+	key := roomMembershipKey{userID: userID, roomID: roomID}
+	now := time.Now()
+	h.pendingRoomRevocationsMu.Lock()
+	defer h.pendingRoomRevocationsMu.Unlock()
+	marker, pending := h.pendingRoomRevocations[key]
+	if !pending {
+		return false
+	}
+	if !marker.sticky && !now.Before(marker.expiresAt) {
+		delete(h.pendingRoomRevocations, key)
+		return false
+	}
+	return true
+}
+
+func (h *Hub) pruneExpiredRoomRevocations(now time.Time) int {
+	h.pendingRoomRevocationsMu.Lock()
+	defer h.pendingRoomRevocationsMu.Unlock()
+	return h.pruneExpiredRoomRevocationsLocked(now)
+}
+
+func (h *Hub) pruneExpiredRoomRevocationsLocked(now time.Time) int {
+	removed := 0
+	for key, marker := range h.pendingRoomRevocations {
+		if !marker.sticky && !now.Before(marker.expiresAt) {
+			delete(h.pendingRoomRevocations, key)
+			removed++
+		}
+	}
+	return removed
 }
 
 type controlPayload struct {
@@ -1979,84 +2181,83 @@ type controlPayload struct {
 }
 
 func (h *Hub) handleControlMessage(appCtx context.Context) nats.MsgHandler {
-	const natsCallbackTimeout = 30 * time.Second
 	return func(msg *nats.Msg) {
-		defer func() {
-			if r := recover(); r != nil {
-				h.Logger.ErrorContext(appCtx, "NATS control callback panic recovered",
-					"panic", r, "subject", msg.Subject)
-			}
-		}()
+		h.runNATSCallbackWithPanicRecovery(appCtx, msg, "control", func() {
+			h.handleControlMessageCallback(appCtx, msg)
+		})
+	}
+}
 
-		select {
-		case <-appCtx.Done():
-			return
-		default:
+func (h *Hub) handleControlMessageCallback(appCtx context.Context, msg *nats.Msg) {
+	const natsCallbackTimeout = 30 * time.Second
+	select {
+	case <-appCtx.Done():
+		return
+	default:
+	}
+
+	msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
+	defer cancel()
+	msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
+	_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.Control",
+		trace.WithAttributes(
+			semconv.MessagingSystemKey.String("nats"),
+			semconv.MessagingOperationTypeKey.String("receive"),
+			semconv.MessagingDestinationNameKey.String("ws_hub.control"),
+		),
+	)
+	defer span.End()
+
+	var payload controlPayload
+	if err := hubJSONUnmarshalFunc(msg.Data, &payload); err != nil {
+		h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS control message dropped",
+			"subject", msg.Subject, "size", len(msg.Data), "err", err)
+		return
+	}
+
+	if h.internalSecret == "" {
+		h.Logger.WarnContext(msgCtx, "ws-hub: internalSecret empty, dropping control event",
+			"user_id", payload.Data.UserID)
+		return
+	}
+
+	dataBytes, err := hubJSONMarshalFunc(payload.Data)
+	if err != nil {
+		h.Logger.ErrorContext(msgCtx, "Failed to marshal control payload data for HMAC verification", "err", err)
+		return
+	}
+
+	hFunc := hmac.New(sha256.New, []byte(h.internalSecret))
+	if _, err := hmacWriteFunc(hFunc, dataBytes); err != nil {
+		h.Logger.ErrorContext(msgCtx, "Failed to write data to HMAC", "err", err)
+		return
+	}
+	expectedSigBytes := hFunc.Sum(nil)
+
+	payloadSigBytes, decodeErr := hex.DecodeString(payload.Signature)
+	if decodeErr != nil || !hmac.Equal(payloadSigBytes, expectedSigBytes) {
+		h.Logger.WarnContext(msgCtx, "Invalid internal NATS control signature — dropping event",
+			"action", payload.Data.Action, "user_id", payload.Data.UserID)
+		return
+	}
+
+	h.Logger.InfoContext(msgCtx, "Received valid NATS control event",
+		"action", payload.Data.Action, "user_id", payload.Data.UserID, "reason", payload.Data.Reason)
+
+	if h.authClient != nil {
+		h.authClient.Invalidate(payload.Data.UserID, "")
+	}
+
+	if payload.Data.Action == "disconnect" || payload.Data.Reason == "access_revoked" {
+		reason := payload.Data.Reason
+		if reason == "" || reason == "access_revoked" {
+			reason = "Access Revoked"
 		}
-
-		msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
-		defer cancel()
-		msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
-		_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.Control",
-			trace.WithAttributes(
-				semconv.MessagingSystemKey.String("nats"),
-				semconv.MessagingOperationTypeKey.String("receive"),
-				semconv.MessagingDestinationNameKey.String("ws_hub.control"),
-			),
-		)
-		defer span.End()
-
-		var payload controlPayload
-		if err := hubJSONUnmarshalFunc(msg.Data, &payload); err != nil {
-			h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS control message dropped",
-				"subject", msg.Subject, "size", len(msg.Data), "err", err)
-			return
-		}
-
-		if h.internalSecret == "" {
-			h.Logger.WarnContext(msgCtx, "ws-hub: internalSecret empty, dropping control event",
-				"user_id", payload.Data.UserID)
-			return
-		}
-
-		dataBytes, err := hubJSONMarshalFunc(payload.Data)
-		if err != nil {
-			h.Logger.ErrorContext(msgCtx, "Failed to marshal control payload data for HMAC verification", "err", err)
-			return
-		}
-
-		hFunc := hmac.New(sha256.New, []byte(h.internalSecret))
-		if _, err := hmacWriteFunc(hFunc, dataBytes); err != nil {
-			h.Logger.ErrorContext(msgCtx, "Failed to write data to HMAC", "err", err)
-			return
-		}
-		expectedSigBytes := hFunc.Sum(nil)
-
-		payloadSigBytes, decodeErr := hex.DecodeString(payload.Signature)
-		if decodeErr != nil || !hmac.Equal(payloadSigBytes, expectedSigBytes) {
-			h.Logger.WarnContext(msgCtx, "Invalid internal NATS control signature — dropping event",
-				"action", payload.Data.Action, "user_id", payload.Data.UserID)
-			return
-		}
-
-		h.Logger.InfoContext(msgCtx, "Received valid NATS control event",
-			"action", payload.Data.Action, "user_id", payload.Data.UserID, "reason", payload.Data.Reason)
-
-		if h.authClient != nil {
-			h.authClient.Invalidate(payload.Data.UserID, "")
-		}
-
-		if payload.Data.Action == "disconnect" || payload.Data.Reason == "access_revoked" {
-			reason := payload.Data.Reason
-			if reason == "" || reason == "access_revoked" {
-				reason = "Access Revoked"
-			}
-			//nolint:contextcheck
-			h.DisconnectUser(payload.Data.UserID, 4401, reason)
-			SessionsRevokedTotal.Inc()
-		} else {
-			h.Logger.WarnContext(msgCtx, "Unknown control action ignored", "action", payload.Data.Action)
-		}
+		//nolint:contextcheck
+		h.DisconnectUser(payload.Data.UserID, 4401, reason)
+		SessionsRevokedTotal.Inc()
+	} else {
+		h.Logger.WarnContext(msgCtx, "Unknown control action ignored", "action", payload.Data.Action)
 	}
 }
 
@@ -2168,10 +2369,14 @@ func (h *Hub) StartLimiterCleanup(ctx context.Context) {
 		}
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
+		revocationTicker := time.NewTicker(min(interval, pendingRoomRevocationCleanupInterval))
+		defer revocationTicker.Stop()
 		for {
 			select {
 			case <-cleanupCtx.Done():
 				return
+			case <-revocationTicker.C:
+				h.pruneExpiredRoomRevocations(time.Now())
 			case <-ticker.C:
 				h.mu.RLock()
 				active := make(map[string]struct{}, len(h.Clients))

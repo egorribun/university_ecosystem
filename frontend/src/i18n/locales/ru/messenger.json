@@ -91,6 +91,7 @@
     "tally": "Переключить реакцию {{emoji}}, {{count}}",
     "whoReacted": "Отреагировали {{emoji}}",
     "reactorsLoading": "Загрузка…",
+    "reactorsError": "Не удалось загрузить список реакций.",
     "reactorsEmpty": "Пока никого"
   },
   "reply": "Ответить",

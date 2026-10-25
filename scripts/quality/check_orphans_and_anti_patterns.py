@@ -186,10 +186,41 @@ def _skip_javascript_regex(content: str, start: int) -> int:
     return len(content)
 
 
-_JSX_OPENING_TAG = re.compile(
-    r"<((?:[A-Za-z_$]|[^\x00-\x7f\s])"
-    r"(?:[\w$.:-]|[^\x00-\x7f\s])*)(?=[\s/><])"
-)
+def _jsx_name_start_char(char: str) -> bool:
+    return (
+        char in "_$"
+        or "A" <= char <= "Z"
+        or "a" <= char <= "z"
+        or (not char.isascii() and not char.isspace())
+    )
+
+
+def _jsx_name_continue_char(char: str) -> bool:
+    return (
+        char.isalnum() or char in "_$.:-" or (not char.isascii() and not char.isspace())
+    )
+
+
+def _match_jsx_opening_tag(content: str, start: int) -> tuple[str, int] | None:
+    """Read a JSX opening name in one forward-only pass."""
+    name_start = start + 1
+    if (
+        start < 0
+        or start >= len(content)
+        or content[start] != "<"
+        or name_start >= len(content)
+        or not _jsx_name_start_char(content[name_start])
+    ):
+        return None
+
+    index = name_start + 1
+    while index < len(content) and _jsx_name_continue_char(content[index]):
+        index += 1
+    if index == len(content) or not (
+        content[index].isspace() or content[index] in "/><"
+    ):
+        return None
+    return content[name_start:index], index
 
 
 def _skip_jsx_string(content: str, start: int, nesting: int = 0) -> int | None:
@@ -313,11 +344,10 @@ def _skip_jsx_element(content: str, start: int, nesting: int = 0) -> int | None:
         name = ""
         index = start + 2
     else:
-        opening = _JSX_OPENING_TAG.match(content, start)
+        opening = _match_jsx_opening_tag(content, start)
         if opening is None:
             return None
-        name = opening.group(1)
-        index = opening.end()
+        name, index = opening
         if content[index] == "<":
             arguments_end = _skip_jsx_type_arguments(content, index, nesting + 1)
             if arguments_end is None:

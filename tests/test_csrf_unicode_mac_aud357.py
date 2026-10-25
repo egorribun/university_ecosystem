@@ -253,3 +253,48 @@ async def test_rotation_does_not_refresh_malformed_anonymous_nonce_cookie() -> N
     assert len(set_cookies) == 1
     assert b"csrf_token=" in set_cookies[0]
     assert b"_csrf_anon_nonce=" not in set_cookies[0]
+
+
+@pytest.mark.asyncio
+async def test_non_ascii_csrf_header_is_rejected_without_500() -> None:
+    downstream_calls: list[str] = []
+    sent: list[dict[str, Any]] = []
+
+    async def downstream(scope: Any, receive: Any, send: Any) -> None:
+        downstream_calls.append(scope["path"])
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message: dict[str, Any]) -> None:
+        sent.append(message)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/mut",
+        "raw_path": b"/mut",
+        "query_string": b"",
+        "root_path": "",
+        "headers": [
+            (b"host", b"test"),
+            (b"cookie", f"{CSRF_COOKIE_NAME}=ascii-token".encode("ascii")),
+            (CSRF_HEADER_NAME.encode("ascii"), b"\xff"),
+        ],
+        "client": ("127.0.0.1", 1234),
+        "server": ("test", 80),
+    }
+
+    middleware = CSRFMiddleware(downstream, csrf_hmac_secret="x" * 32)
+    await middleware(scope, receive, send)
+
+    response_start = next(
+        message for message in sent if message["type"] == "http.response.start"
+    )
+    assert response_start["status"] == 403
+    assert downstream_calls == []

@@ -179,10 +179,18 @@ const readPersistedNewsPage = (
 ): PaginatedResponse<NewsItem> | null => {
   if (typeof window === "undefined" || !owner || getCurrentConfirmedUserId() !== owner) return null
   // Never adopt the legacy shared entry: its is_liked values have no owner.
-  const items = new StorageItem<NewsItem[]>(
+  const persistedItems = new StorageItem<unknown>(
     `news:list:account:${encodeURIComponent(owner)}:${language}`
   ).get()
-  if (!Array.isArray(items) || items.length === 0) return null
+  if (!Array.isArray(persistedItems) || persistedItems.length === 0) return null
+
+  let items: NewsItem[]
+  try {
+    items = parseNewsList(persistedItems)
+  } catch {
+    // localStorage is an untrusted cache; malformed snapshots are not offline data.
+    return null
+  }
   return {
     items,
     total: items.length,

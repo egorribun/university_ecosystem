@@ -203,6 +203,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         if limit < 1:
             raise ValueError("Receipt cleanup limit must be positive")
         await self._set_message_rls_user(user_id)
+        max_rows = min(limit, 100)
         candidates = (
             select(ChatSendReceipt.id)
             .where(
@@ -211,13 +212,18 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
                 ChatSendReceipt.expires_at <= self._send_receipt_clock(),
             )
             .order_by(ChatSendReceipt.expires_at, ChatSendReceipt.id)
-            .limit(min(limit, 100))
+            .limit(max_rows)
             .with_for_update(skip_locked=True)
         )
+        candidate_result = await self.db.scalars(candidates)
+        candidate_ids = list(candidate_result.all())[:max_rows]
+        if not candidate_ids:
+            return 0
+
         result = await self.db.execute(
             delete(ChatSendReceipt)
             .where(
-                ChatSendReceipt.id.in_(candidates),
+                ChatSendReceipt.id.in_(candidate_ids),
                 ChatSendReceipt.chat_id == chat_id,
                 ChatSendReceipt.user_id == user_id,
                 ChatSendReceipt.expires_at <= self._send_receipt_clock(),
@@ -225,7 +231,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             .returning(ChatSendReceipt.id)
             .execution_options(synchronize_session=False)
         )
-        return len(result.scalars().all())
+        return sum(1 for _ in result.scalars())
 
     async def send_receipt_remaining_seconds(self, expires_at: datetime) -> int:
         """Never let a cache TTL outlive the fixed authoritative DB window."""

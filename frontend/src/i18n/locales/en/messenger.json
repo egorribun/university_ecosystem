@@ -91,6 +91,7 @@
     "tally": "Toggle {{emoji}} reaction, {{count}}",
     "whoReacted": "Reacted with {{emoji}}",
     "reactorsLoading": "Loading…",
+    "reactorsError": "Couldn't load the reaction list.",
     "reactorsEmpty": "No one yet"
   },
   "reply": "Reply",
