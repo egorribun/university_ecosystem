@@ -1,24 +1,32 @@
 # Статус выпуска MVP v1.0.0
 
-Обновлено: 2026-10-25 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+Обновлено: 2026-10-26 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
-## Текущее возобновление аудита, 2026-10-25
+## Текущее продолжение аудита, 2026-10-26
 
 Работа идёт по актуальному поручению владельца: `egorribun`, один checkout,
-PR #1343, root управляет интеграцией. Независимый пакет из 25 путей опубликован
-в `36f2db43e1b95e5c18c6a740725ebb80605c0385`, tree
-`e4934611c7a519ffade1e9dffac3feb16b27603e`; локальная и удалённая ветки
-после публикации совпали, checkout был чистым. Источник уже принятого hosted
-evidence включает `c90e6163` и новую source-bound приёмку `36f2db43`.
-Принято **320/512 (62,5%)**, осталось 192 ID.
-[Последняя scoped приёмка](../../audits/AUDIT-2026-10.md#hosted-no-pickle-gate-closure-2026-10-25)
-сохраняет все 319 прежних ID и добавляет только AUD-246: 75 named hosted
-PASS на неизменных blobs и прямой scanner gate на `62780169` — 353 файла,
-0 violations, 0 allowed. Metrics scripts остаются unsupported по неизменному
-контракту; отсутствие app coverage для этого script не является его gate.
-Предыдущие четыре frontend closures по 81 PASS и 100% target-file метрик,
-а также приёмки 96 и 20 cases сохранены в своих source-bound границах. Датированные pause-разделы ниже — история, а не
-текущее указание остановиться.
+PR #1343; root управляет Git и интеграцией. Последний опубликованный пакет —
+`01187cd72a4afba22edbca94041d72974655d419`, tree
+`3c2fd86431ac00578e3352dbc83470fdc26fc5bb`; обычные commit/push hooks прошли,
+равенство remote и чистота checkout после публикации проверены.
+Принято **321/512 (62,7%)**, осталось 191 ID.
+[Последняя scoped приёмка](../../audits/AUDIT-2026-10.md#hosted-persisted-news-restoration-closure-2026-10-26)
+сохраняет все 320 прежних ID и добавляет только AUD-499. На собственном source
+01187 hosted frontend дал 9 927 PASS / 0 fail/skip; изменённые suites — 61 PASS,
+15 прежних named cases и новые queue/restore controls также прошли. news.ts
+и queryClient.ts имеют 100% line/statement/branch/function. Root и независимый
+reviewer сверили ZIP, XML, provenance и Git blobs. Общий CI остаётся не принят.
+
+AUD-312 принят только в рабочий код для root QA, не в ledger: новые v2 domain
+signatures связывают actor_id и весь metadata с HMAC; неподдерживаемые markers
+fail closed, unmarked historical rows остаются в прежнем payload-only формате.
+Частные cohorts 314 и 59 PASS пересекаются и не суммируются как уникальные;
+merged target coverage — 513/513 statements, 208/208 branches. Rust FFI в этих
+проверках mocked; native integration и own-SHA hosted evidence не заявлены.
+Root на каноническом checkout подтвердил 65 PASS, Ruff check/format и строгий
+mypy по всем 353 app-файлам. Итоговый scan и обычные publication hooks ещё
+требуются; AUD-312 не включён в принятый ledger.
+Датированные pause-разделы ниже — история, а не текущее указание остановиться.
 
 Исторический CI источника `c90e6163` не принят: проверены все страницы терминального снимка
 141 checks и 136 jobs. Checks: 108 SUCCESS / 27 SKIPPED / один NEUTRAL /
@@ -46,13 +54,14 @@ actual peer/forwarded-chain или two-client/spoof результатов. AUD-
 required gate и её прежние `pkg/config` test findings не объявляются новыми
 hosted failures.
 
-Текущий пакет содержит линейный JSX matcher, уточнение no-pickle gate,
+Исходный локальный пакет содержал линейный JSX matcher, уточнение no-pickle gate,
 receipt cleanup с материализацией не более 100 locked IDs, сокрытие вложений
 удалённого сообщения при replay, ограниченные
 revocation markers и TERM после NATS callback panic, включая `panic(nil)`.
 Frontend: campus-timezone regression, валидация persisted news cache,
 реактивная навигация по статьям, отдельное сообщение ошибки reactors RU/EN и
-Axios path-encoding regression. Эти новые изменения не засчитаны в ledger.
+Axios path-encoding regression. Эти локальные результаты сами по себе не увеличивали ledger; последующие hosted
+приёмки перечислены выше.
 
 Локальные доказательства: ws-hub — 618 named tests/subcases, 0 FAIL/SKIP,
 100% statements, native Windows без race; Linux race ещё обязателен.
@@ -141,15 +150,16 @@ Node audit шаг после strict graph failure не выполнялся; mig
 сохраняют known dependent-index failures. Полный CI не принят; частные кандидаты
 и локальные PASS не заменяют эти gates.
 
-### Следующий пакет AUD-499 и ресурсная проверка Node
+### Пакет AUD-499 и незавершённая проверка Node
 
-AUD-499 пока не принят. В текущем рабочем пакете restore-фильтр отбрасывает
+AUD-499 принят по собственному hosted evidence 01187 (см. scoped приёмку выше).
+В опубликованном пакете restore-фильтр отбрасывает
 только повреждённые news infinite-query snapshots до hydrate; 304 проверяет
 cached page и owner-bound snapshot. Root подтвердил обычный cohort из 15 suites:
 214 PASS, typecheck, целевые ESLint/Prettier и штатный frontend build. Четыре
 principal policy-модуля дали 789 PASS без изменения проверок. Частный
 V8 receipt даёт обоим изменённым source files 100% line/statement/branch/function;
-это ещё не hosted evidence нового source SHA. Пять платформенных WASM-артефактов,
+эти target-file метрики затем подтверждены hosted evidence 01187. Пять WASM-артефактов,
 повторно созданных build, сохранены приватно и восстановлены до исходных
 опубликованных bytes; проверка source provenance после восстановления прошла.
 
@@ -1554,9 +1564,9 @@ Actual focused AUD-174 на bef8: два browser PASS и `redaction=verified pro
 4. Продолжить [NATS spec](../specs/2026-10-18-owned-nats-outbox-acceptance.md), [outage plan](2026-10-19-owned-nats-outage.md) и [Docker observation](2026-10-20-owned-nats-docker-observation.md). SQL имеет ограниченный actual PG proof; HTTP/broker/composite/pin factory — private contracts. Lease-bootstrap и адаптеры интегрированы после исправления optional-map/JSON projection и замены четырёх credential-shaped test literals на свежие synthetic values. Root native cohort: 610 PASS; actual stopped-container projection PASS. Минимальный CLI интегрирован и проверен: root 143 PASS, независимое ревью без blockers. Workflow wiring интегрирован; root 150 обычных тестов, полный launcher/Caddy cohort 2088 PASS и isolated Linux cohort 619 PASS. Actual outage ещё не выполнялся.
 5. Закрывать оставшиеся AUD IDs, причину отказа Go prefetch и AUD-015 Cyrillic PDF export с именованными source-bound доказательствами. Тематические планы: [UI lifecycle](2026-10-19-ui-lifecycle-reconciliation.md), [cleanup/timing](2026-10-20-runtime-cleanup-timing.md), [quality entrypoints](2026-10-20-quality-entrypoints.md).
 
-## Неизменные границы
+## Исторические границы контрольной точки
 
-Detect-secrets baseline — 319 identities; действующая политика содержит 329 finite owner-approved dispositions. Остальные counts в исторических checkpoint-записях относятся к указанным там source. Отдельное Gitleaks-разрешение ограничено 26 точными историческими fingerprints. Все 78 required context/app pairs, blocking CodeQL, hooks и finite131 migration exception до 2026-11-13 сохраняются. Changed/unmatched identities остаются блокирующими. Q1/Q4 migration действует; Q2/Q3 — v1.1; глобальный mutation score не повышается ради MVP.
+На указанной исторической контрольной точке detect-secrets baseline содержал 319 identities, а policy — 329 finite owner-approved dispositions. Текущие inventories определены в AGENTS.md и ADR-047. Остальные counts в исторических checkpoint-записях относятся к указанным там source. Отдельное Gitleaks-разрешение ограничено 26 точными историческими fingerprints. Все 78 required context/app pairs, blocking CodeQL, hooks и finite131 migration exception до 2026-11-13 сохраняются. Changed/unmatched identities остаются блокирующими. Q1/Q4 migration действует; Q2/Q3 — v1.1; глобальный mutation score не повышается ради MVP.
 
 Перед тяжёлым прогоном: RAM ≤75% / free ≥8 GiB; остановка при RAM ≥85% / free <4 GiB. Отдельное исключение для одиночных Linux screenshots: ≤80% / ≥6 GiB, container ≤1 GiB / 2 CPU. Удалять только доказанно принадлежащие работе ресурсы; чужие процессы и prune не трогать.
 

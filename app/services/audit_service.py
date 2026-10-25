@@ -383,6 +383,8 @@ _AUDIT_LOG_JSON_ARRAY_V1_FIELDS = (
     "created_at",
 )
 _ZERO_HASH = "0" * 64
+_DOMAIN_EVENT_SIGNATURE_VERSION_KEY = "_audit_signature_version"
+_DOMAIN_EVENT_SIGNATURE_VERSION = 2
 
 
 def _is_unchained_outbox_row(event: Any) -> bool:
@@ -776,16 +778,55 @@ class SecureAuditService:
         event_type: str,
         payload: dict[str, Any],
         version: int = 1,
+        *,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """Produce canonical JSON representation of event data for HMAC hashing."""
-        ordered_data = {
+        ordered_data: dict[str, Any] = {
             "aggregate_id": str(aggregate_id),
             "aggregate_type": str(aggregate_type),
             "event_type": str(event_type),
             "payload": payload,
             "version": version,
         }
+        if metadata is not None:
+            ordered_data["metadata"] = metadata
         return json.dumps(ordered_data, sort_keys=True, separators=(",", ":"))
+
+    @staticmethod
+    def _event_signature_metadata(metadata: Any) -> dict[str, Any] | None:
+        """Select the metadata covered by an event signature.
+
+        Missing markers identify historical signatures that used the original
+        payload-only format. Their metadata, including actor_id, is not
+        authenticated. A present marker must be a supported v2 integer, and
+        malformed metadata never falls back to the legacy format.
+        """
+        if metadata is None:
+            return None
+        if not isinstance(metadata, dict):
+            raise ValueError("event signature metadata must be an object")
+        if _DOMAIN_EVENT_SIGNATURE_VERSION_KEY not in metadata:
+            return None
+        signature_version = metadata[_DOMAIN_EVENT_SIGNATURE_VERSION_KEY]
+        if (
+            type(signature_version) is not int
+            or signature_version != _DOMAIN_EVENT_SIGNATURE_VERSION
+        ):
+            raise ValueError("unsupported event signature version")
+        return metadata
+
+    def _canonicalize_stored_event(self, event: Any) -> str:
+        """Canonicalize a stored event using its declared signature scheme."""
+        metadata = self._event_signature_metadata(getattr(event, "metadata_", None))
+        return self.canonicalize_event_payload(
+            aggregate_type=event.aggregate_type,
+            aggregate_id=event.aggregate_id,
+            event_type=event.event_type,
+            payload=event.payload,
+            version=event.version,
+            metadata=metadata,
+        )
 
     def compute_event_hash(
         self,
@@ -845,12 +886,18 @@ class SecureAuditService:
             now = now.replace(tzinfo=UTC)
         now_iso = now.isoformat()
 
+        event_metadata = {
+            "actor_id": str(actor_id) if actor_id else None,
+            _DOMAIN_EVENT_SIGNATURE_VERSION_KEY: _DOMAIN_EVENT_SIGNATURE_VERSION,
+        }
+        signature_metadata = self._event_signature_metadata(event_metadata)
         canonical = self.canonicalize_event_payload(
             aggregate_type=aggregate_type,
             aggregate_id=agg_id_str,
             event_type=event_type,
             payload=payload,
             version=version,
+            metadata=signature_metadata,
         )
         event_hash = self.compute_event_hash(prev_hash, canonical, now_iso)
 
@@ -869,7 +916,7 @@ class SecureAuditService:
             aggregate_id=agg_id_str,
             aggregate_id_uuid=agg_id_uuid,
             payload=payload,
-            metadata_={"actor_id": str(actor_id) if actor_id else None},
+            metadata_=event_metadata,
             version=version,
             sequence_number=next_seq,
             prev_hash=prev_hash,
@@ -976,14 +1023,15 @@ class SecureAuditService:
                 for (agg_type, agg_id), agg_events in events_by_aggregate.items():
                     initial_prev_hash = agg_events[0].prev_hash
                     chain_tuples = []
-                    for event in agg_events:
-                        canonical = self.canonicalize_event_payload(
-                            aggregate_type=event.aggregate_type,
-                            aggregate_id=event.aggregate_id,
-                            event_type=event.event_type,
-                            payload=event.payload,
-                            version=event.version,
-                        )
+                    for event_index, event in enumerate(agg_events):
+                        try:
+                            canonical = self._canonicalize_stored_event(event)
+                        except (TypeError, ValueError):
+                            return (
+                                False,
+                                str(event.id),
+                                f"Invalid event signature metadata at index {event_index}",
+                            )
                         dt = event.created_at
                         if dt.tzinfo is None:
                             dt = dt.replace(tzinfo=UTC)
@@ -1026,13 +1074,14 @@ class SecureAuditService:
                         f"Chain discontinuity at index {idx} (event {event.id}): expected prev_hash {current_prev_hash}, got {event.prev_hash}",
                     )
 
-                canonical = self.canonicalize_event_payload(
-                    aggregate_type=event.aggregate_type,
-                    aggregate_id=event.aggregate_id,
-                    event_type=event.event_type,
-                    payload=event.payload,
-                    version=event.version,
-                )
+                try:
+                    canonical = self._canonicalize_stored_event(event)
+                except (TypeError, ValueError):
+                    return (
+                        False,
+                        str(event.id),
+                        f"Invalid event signature metadata at index {idx}",
+                    )
                 dt = event.created_at
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=UTC)
