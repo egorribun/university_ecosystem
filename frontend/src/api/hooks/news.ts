@@ -143,22 +143,31 @@ const parsePaginatedNewsResponse = (
     has_more: page.has_more,
   }
 }
+const createEmptyPaginatedNewsPage = (fallbackLimit: number): PaginatedResponse<NewsItem> => ({
+  items: [],
+  total: 0,
+  limit: fallbackLimit,
+  cursor: null,
+  next_cursor: null,
+  has_more: false,
+})
+
 const ensurePaginatedResponse = (
   payload: PaginatedResponse<NewsItem> | null | undefined,
   fallbackLimit: number
-): PaginatedResponse<NewsItem> => {
-  if (!payload) {
-    return {
-      items: [],
-      total: 0,
-      limit: fallbackLimit,
-      cursor: null,
-      next_cursor: null,
-      has_more: false,
-    }
+): PaginatedResponse<NewsItem> | null => {
+  if (!payload) return null
+
+  const rawItems = Array.isArray(payload.items) ? payload.items : null
+  if (!rawItems) return null
+
+  let items: NewsItem[]
+  try {
+    items = parseNewsList(rawItems)
+  } catch {
+    return null
   }
 
-  const items = Array.isArray(payload.items) ? payload.items : []
   const total = typeof payload.total === "number" ? payload.total : items.length
   const limit = typeof payload.limit === "number" ? payload.limit : fallbackLimit
 
@@ -312,9 +321,13 @@ const createNewsListQueryFn =
     if (response.status === 304) {
       const cached =
         queryClient.getQueryData<InfiniteData<PaginatedResponse<NewsItem>, string | null>>(queryKey)
-      return ensurePaginatedResponse(
-        cached?.pages?.[0] ?? readPersistedNewsPage(normalized.language, normalized.limit, owner),
-        normalized.limit
+      const cachedPage = ensurePaginatedResponse(cached?.pages?.[0], normalized.limit)
+      if (cachedPage) return cachedPage
+
+      const persistedPage = readPersistedNewsPage(normalized.language, normalized.limit, owner)
+      return (
+        ensurePaginatedResponse(persistedPage, normalized.limit) ??
+        createEmptyPaginatedNewsPage(normalized.limit)
       )
     }
 
@@ -472,7 +485,18 @@ export const useNewsListQuery = (
     // arrives. Do not expose its previously warm list through this observer.
     select: (data) => {
       if (!anonymous && !isCurrentSession()) return { pages: [], pageParams: [] }
-      return data
+      const fallbackData = persistedPage
+        ? { pages: [persistedPage], pageParams: [null] }
+        : { pages: [], pageParams: [] }
+      if (!Array.isArray(data.pages)) return fallbackData
+
+      const pages: PaginatedResponse<NewsItem>[] = []
+      for (const page of data.pages) {
+        const normalizedPage = ensurePaginatedResponse(page, normalized.limit)
+        if (!normalizedPage) return fallbackData
+        pages.push(normalizedPage)
+      }
+      return { ...data, pages }
     },
   })
 

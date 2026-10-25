@@ -318,6 +318,59 @@ const withoutSensitiveQueries = (client: PersistedClient): PersistedClient => ({
   },
 })
 
+const isExactNewsListQueryKey = (queryKey: readonly unknown[]): boolean => {
+  if (queryKey.length !== 3) return false
+  if (queryKey[0] !== "news") return false
+  if (queryKey[1] !== "list" && queryKey[1] !== "anonymous-list") return false
+
+  const filters = queryKey[2]
+  if (!isObjectRecord(filters)) return false
+  return (
+    typeof filters.language === "string" &&
+    typeof filters.limit === "number" &&
+    Number.isInteger(filters.limit) &&
+    filters.limit >= 1
+  )
+}
+
+const isOptionalString = (value: unknown): boolean =>
+  value === undefined || value === null || typeof value === "string"
+
+const hasSafeNewsListInfiniteData = (value: unknown): boolean => {
+  if (!isObjectRecord(value)) return false
+  const { pages, pageParams } = value
+  if (!Array.isArray(pages) || !Array.isArray(pageParams) || pages.length !== pageParams.length)
+    return false
+  if (
+    !Array.from(pageParams).every(
+      (pageParam) => pageParam === null || typeof pageParam === "string"
+    )
+  )
+    return false
+
+  return Array.from(pages).every(
+    (page) =>
+      isObjectRecord(page) &&
+      Array.isArray(page.items) &&
+      isOptionalString(page.cursor) &&
+      isOptionalString(page.next_cursor) &&
+      (page.has_more === undefined || typeof page.has_more === "boolean")
+  )
+}
+
+const withoutMalformedNewsListQueries = (client: PersistedClient): PersistedClient => ({
+  ...client,
+  clientState: {
+    ...client.clientState,
+    queries: client.clientState.queries.filter(
+      (query) =>
+        !isExactNewsListQueryKey(query.queryKey) || hasSafeNewsListInfiniteData(query.state.data)
+    ),
+  },
+})
+
+const sanitizePersistedClient = (client: PersistedClient): PersistedClient =>
+  withoutMalformedNewsListQueries(withoutSensitiveQueries(client))
 const ownerFromStorageKey = (key: string): string | undefined => {
   const prefix = "reactQuery:v2:"
   // sanitizeStoredSnapshots filters to this prefix before calling the helper.
@@ -347,7 +400,7 @@ async function sanitizeStoredSnapshots(owns: () => boolean): Promise<void> {
         await del(key)
         continue
       }
-      const sanitized = withoutSensitiveQueries(saved)
+      const sanitized = sanitizePersistedClient(saved)
       if (sanitized.clientState.queries.length !== saved.clientState.queries.length) {
         await set(key, sanitized)
       }
@@ -392,7 +445,7 @@ export const idbPersister: Persister = {
     const saved = await get<PersistedClient>(scopedKey(owner))
     if (!owns() || !saved || !hasPersistedClientShape(saved) || !belongsToOwner(saved, owner))
       return undefined
-    const sanitized = withoutSensitiveQueries(saved)
+    const sanitized = sanitizePersistedClient(saved)
     if (sanitized.clientState.queries.length !== saved.clientState.queries.length) {
       const write = persistenceQueue.then(async () => {
         if (owns()) await set(scopedKey(owner), sanitized)

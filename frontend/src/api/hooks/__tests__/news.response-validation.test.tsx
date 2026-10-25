@@ -1,4 +1,10 @@
-import { QueryClient, QueryClientProvider, type InfiniteData } from "@tanstack/react-query"
+import {
+  dehydrate,
+  hydrate,
+  QueryClient,
+  QueryClientProvider,
+  type InfiniteData,
+} from "@tanstack/react-query"
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import type { PropsWithChildren } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -49,6 +55,27 @@ const infinite = (items: NewsItem[]): InfiniteData<PaginatedResponse<NewsItem>, 
   pages: [page(items)],
   pageParams: [null],
 })
+const hydrateNewsData = (
+  client: QueryClient,
+  queryKey: ReturnType<typeof newsListQueryKey>,
+  data: unknown
+) => {
+  const source = makeClient()
+  source.setQueryData(queryKey, infinite([persistedItem]))
+  const state = dehydrate(source)
+  const query = state.queries.find(
+    (entry) => JSON.stringify(entry.queryKey) === JSON.stringify(queryKey)
+  )
+  if (!query) throw new Error("Dehydrated news query was not created")
+  query.state.data = data
+  hydrate(client, state)
+}
+
+const hydrateNewsPage = (
+  client: QueryClient,
+  queryKey: ReturnType<typeof newsListQueryKey>,
+  pageData: unknown
+) => hydrateNewsData(client, queryKey, { pages: [pageData], pageParams: [null] })
 const wrapperFor = (client: QueryClient) => {
   function QueryClientWrapper({ children }: PropsWithChildren) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -145,6 +172,112 @@ describe("news list response validation", () => {
     expect(result.current.news).toEqual([])
     expect(result.current.isPlaceholderData).toBe(false)
     expect(window.localStorage.getItem(key)).toBe("[]")
+  })
+  it("uses the validated offline snapshot instead of malformed hydrated articles", () => {
+    const key = newsListQueryKey(filters)
+    const snapshot = [persistedItem]
+    window.localStorage.setItem("news:list:account:feed-test-user:en", JSON.stringify(snapshot))
+
+    const client = makeClient()
+    hydrateNewsPage(client, key, {
+      items: [{ id: "not-a-uuid", title: "Malformed cached article" }],
+      total: "invalid-total",
+      limit: "invalid-limit",
+      cursor: null,
+      next_cursor: null,
+      has_more: false,
+    })
+
+    const { result } = renderHook(() => useNewsListQuery(filters, { enabled: false }), {
+      wrapper: wrapperFor(client),
+    })
+
+    expect(result.current.news).toEqual(snapshot)
+    expect(result.current.pagination?.items).toEqual(snapshot)
+    expect(window.localStorage.getItem("news:list:account:feed-test-user:en")).toBe(
+      JSON.stringify(snapshot)
+    )
+  })
+
+  it("uses the validated offline snapshot for a malformed hydrated page collection", () => {
+    const key = newsListQueryKey(filters)
+    const storageKey = "news:list:account:feed-test-user:en"
+    const snapshot = [persistedItem]
+    window.localStorage.setItem(storageKey, JSON.stringify(snapshot))
+
+    const client = makeClient()
+    hydrateNewsData(client, key, { pages: "malformed-pages", pageParams: [] })
+
+    const { result } = renderHook(() => useNewsListQuery(filters, { enabled: false }), {
+      wrapper: wrapperFor(client),
+    })
+
+    expect(result.current.news).toEqual(snapshot)
+    expect(result.current.pagination?.items).toEqual(snapshot)
+    expect(window.localStorage.getItem(storageKey)).toBe(JSON.stringify(snapshot))
+  })
+  it("keeps the validated offline snapshot when a malformed hydrated page gets a 304", async () => {
+    const key = newsListQueryKey(filters)
+    const snapshot = [persistedItem]
+    const storageKey = "news:list:account:feed-test-user:en"
+    window.localStorage.setItem(storageKey, JSON.stringify(snapshot))
+
+    const client = makeClient()
+    hydrateNewsPage(client, key, {
+      items: "malformed-cache-items",
+      total: "invalid-total",
+      limit: "invalid-limit",
+      cursor: null,
+      next_cursor: null,
+      has_more: false,
+    })
+    apiRequests.authenticated.mockResolvedValue({ status: 304, data: undefined })
+
+    const { result } = renderHook(
+      () => useNewsListQuery(filters, { enabled: false, staleTime: 0 }),
+      { wrapper: wrapperFor(client) }
+    )
+
+    await act(async () => {
+      await result.current.refetch()
+    })
+
+    expect(result.current.isSuccess).toBe(true)
+    expect(result.current.news).toEqual(snapshot)
+    expect(result.current.pagination?.items).toEqual(snapshot)
+    expect(window.localStorage.getItem(storageKey)).toBe(JSON.stringify(snapshot))
+  })
+
+  it("normalizes malformed hydrated pagination metadata on a 304", async () => {
+    const key = newsListQueryKey(filters)
+    const client = makeClient()
+    hydrateNewsPage(client, key, {
+      items: [persistedItem],
+      total: "invalid-total",
+      limit: "invalid-limit",
+      cursor: null,
+      next_cursor: null,
+      has_more: false,
+    })
+    apiRequests.authenticated.mockResolvedValue({ status: 304, data: undefined })
+
+    const { result } = renderHook(
+      () => useNewsListQuery(filters, { enabled: false, staleTime: 0 }),
+      { wrapper: wrapperFor(client) }
+    )
+
+    await act(async () => {
+      await result.current.refetch()
+    })
+
+    expect(result.current.pagination).toMatchObject({
+      items: [persistedItem],
+      total: 1,
+      limit: 12,
+      cursor: null,
+      next_cursor: null,
+      has_more: false,
+    })
   })
   it("accepts a valid empty page in the backend wire shape for authenticated requests", async () => {
     apiRequests.authenticated.mockResolvedValue({

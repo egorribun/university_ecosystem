@@ -11,6 +11,7 @@ import { useAuthStore } from "@/stores/useAuthStore"
 import { ENCRYPTED_CACHE_PLACEHOLDER_USER_ID, SSR_STUB_USER_ID } from "@/stores/authIdentity"
 import { testUser } from "@/tests/mocks/handlers"
 import type { UserState } from "@/types/Auth"
+import { anonymousNewsListQueryKey, newsListQueryKey } from "@/api/hooks/news"
 
 // Keep real IndexedDB transactions and structured cloning. Only the delivery of
 // an operation's result is held, so account transitions can occur while the
@@ -80,6 +81,27 @@ function snapshot(owner: string, profileKey: QueryKey = ["users", "me"]): Persis
   return saved
 }
 
+function appendQueryData(
+  saved: PersistedClient,
+  queryKey: QueryKey,
+  data: unknown,
+  meta?: Record<string, unknown>
+): PersistedClient {
+  const source = createQueryClient()
+  if (meta) source.setQueryDefaults(queryKey, { meta })
+  source.setQueryData(queryKey, data)
+  const query = dehydrate(source).queries[0]
+  if (!query) throw new Error("Expected a dehydrated query")
+  source.clear()
+
+  return {
+    ...saved,
+    clientState: {
+      ...saved.clientState,
+      queries: [...saved.clientState.queries, query],
+    },
+  }
+}
 function withDuplicateProfileWitnesses(
   saved: PersistedClient,
   witnessIds: readonly (string | null)[]
@@ -275,12 +297,18 @@ describe("profile persistence boundaries", () => {
       { ...valid, clientState: { ...valid.clientState, queries: null } },
       {
         ...valid,
-        clientState: { ...valid.clientState, queries: [null, ...valid.clientState.queries] },
+        clientState: {
+          ...valid.clientState,
+          queries: [null, ...valid.clientState.queries],
+        },
       },
       { ...valid, clientState: { ...valid.clientState, mutations: null } },
       {
         ...valid,
-        clientState: { ...valid.clientState, mutations: [null, ...valid.clientState.mutations] },
+        clientState: {
+          ...valid.clientState,
+          mutations: [null, ...valid.clientState.mutations],
+        },
       },
       {
         ...valid,
@@ -291,7 +319,10 @@ describe("profile persistence boundaries", () => {
       },
       {
         ...valid,
-        clientState: { ...valid.clientState, mutations: [{ state: {}, meta: [] }] },
+        clientState: {
+          ...valid.clientState,
+          mutations: [{ state: {}, meta: [] }],
+        },
       },
     ]
 
@@ -405,7 +436,9 @@ describe("profile persistence boundaries", () => {
     ).toEqual(["offline schedule A"])
 
     // Exercise the defensive boundary even if a caller dehydrates every query.
-    const inclusiveSnapshot = dehydrate(source, { shouldDehydrateQuery: () => true })
+    const inclusiveSnapshot = dehydrate(source, {
+      shouldDehydrateQuery: () => true,
+    })
     expect(inclusiveSnapshot.queries.some((query) => query.queryKey[0] === "auth")).toBe(true)
     await idbPersister.persistClient({
       timestamp: Date.now(),
@@ -432,6 +465,177 @@ describe("profile persistence boundaries", () => {
     source.clear()
   })
 
+  it("rejects malformed news list states before hydrate and preserves valid owner data", async () => {
+    publishAccount("A")
+    setQueryCacheIdentity("A")
+    acceptBrowserSessionGeneration()
+
+    const validEmptyKey = newsListQueryKey({ language: "en", limit: 12 })
+    const emptyCollectionKey = newsListQueryKey({
+      language: "no-pages",
+      limit: 12,
+    })
+    const validCursorKey = newsListQueryKey({ language: "cursor", limit: 12 })
+    const validEmptyData = {
+      pages: [{ items: [], cursor: null, next_cursor: null, has_more: false }],
+      pageParams: [null],
+    }
+    const validCursorData = {
+      pages: [{ items: [], cursor: "page-1", next_cursor: "page-2" }],
+      pageParams: ["page-1"],
+    }
+    const emptyCollectionData = { pages: [], pageParams: [] }
+    const uncheckedItemsKey = newsListQueryKey({
+      language: "unchecked-items",
+      limit: 12,
+    })
+    const uncheckedItemsData = {
+      pages: [
+        {
+          items: [{ id: "malformed-article" }],
+          total: "invalid-total",
+          limit: "invalid-limit",
+          cursor: null,
+          next_cursor: null,
+          has_more: false,
+        },
+      ],
+      pageParams: [null],
+    }
+    const malformedQueries = [
+      {
+        key: newsListQueryKey({ language: "primitive", limit: 12 }),
+        data: "malformed-data",
+      },
+      { key: newsListQueryKey({ language: "null", limit: 12 }), data: null },
+      {
+        key: newsListQueryKey({ language: "pages", limit: 12 }),
+        data: { pages: "malformed-pages", pageParams: [] },
+      },
+      {
+        key: anonymousNewsListQueryKey({ language: "params", limit: 12 }),
+        data: { pages: [{ items: [] }], pageParams: "malformed-page-params" },
+      },
+      {
+        key: newsListQueryKey({ language: "mismatch", limit: 12 }),
+        data: { pages: [{ items: [] }], pageParams: [] },
+      },
+      {
+        key: newsListQueryKey({ language: "null-page", limit: 12 }),
+        data: { pages: [null], pageParams: [null] },
+      },
+      {
+        key: newsListQueryKey({ language: "items", limit: 12 }),
+        data: { pages: [{ items: "malformed-items" }], pageParams: [null] },
+      },
+      {
+        key: newsListQueryKey({ language: "bad-next-cursor", limit: 12 }),
+        data: {
+          pages: [{ items: [], next_cursor: { cursor: "bad" } }],
+          pageParams: [null],
+        },
+      },
+      {
+        key: newsListQueryKey({ language: "has-more", limit: 12 }),
+        data: { pages: [{ items: [], has_more: "bad" }], pageParams: [null] },
+      },
+      {
+        key: newsListQueryKey({ language: "param-value", limit: 12 }),
+        data: { pages: [{ items: [] }], pageParams: [{}] },
+      },
+      {
+        key: newsListQueryKey({ language: "sparse-pages", limit: 12 }),
+        data: { pages: Array(1), pageParams: [null] },
+      },
+      {
+        key: newsListQueryKey({ language: "sparse-params", limit: 12 }),
+        data: { pages: [{ items: [] }], pageParams: Array(1) },
+      },
+    ] as const
+    const nearMisses = [
+      {
+        key: ["news", "list", "not-normalized"],
+        data: "preserve non-list key",
+      },
+      {
+        key: ["news", "list", { language: 3, limit: 12 }],
+        data: "preserve invalid language type",
+      },
+      {
+        key: ["news", "list", "en", 12],
+        data: "preserve non-exact key length",
+      },
+      {
+        key: ["news", "list", { language: "en", limit: "12" }],
+        data: "preserve invalid limit type",
+      },
+      {
+        key: ["news", "list", { language: "en", limit: 0 }],
+        data: "preserve non-positive limit",
+      },
+      {
+        key: ["news", "list", { language: "en", limit: 1.5 }],
+        data: "preserve non-integer limit",
+      },
+      { key: ["news", "detail", "article-id"], data: "preserve detail query" },
+      {
+        key: ["schedule", "list", "owner-A"],
+        data: "preserve unrelated query",
+      },
+    ] as const
+
+    let saved = snapshot("A")
+    for (const query of malformedQueries) saved = appendQueryData(saved, query.key, query.data)
+    for (const query of nearMisses) saved = appendQueryData(saved, query.key, query.data)
+    saved = appendQueryData(saved, emptyCollectionKey, emptyCollectionData)
+    saved = appendQueryData(saved, validEmptyKey, validEmptyData, {
+      persist: true,
+      source: "news-list",
+    })
+    saved = appendQueryData(saved, validCursorKey, validCursorData)
+    saved = appendQueryData(saved, uncheckedItemsKey, uncheckedItemsData)
+    await set(accountKey("A"), saved)
+
+    const restored = await idbPersister.restoreClient()
+    expect(restored).toBeDefined()
+    const queryIds = restored!.clientState.queries.map((query) => JSON.stringify(query.queryKey))
+    for (const malformed of malformedQueries) {
+      expect(queryIds).not.toContain(JSON.stringify(malformed.key))
+    }
+    for (const retained of nearMisses) {
+      expect(queryIds).toContain(JSON.stringify(retained.key))
+    }
+    expect(queryIds).toContain(JSON.stringify(emptyCollectionKey))
+    expect(queryIds).toContain(JSON.stringify(validCursorKey))
+    expect(queryIds).toContain(JSON.stringify(uncheckedItemsKey))
+    expect(
+      restored!.clientState.queries.find(
+        (query) => JSON.stringify(query.queryKey) === JSON.stringify(validEmptyKey)
+      )?.meta
+    ).toEqual({ persist: true, source: "news-list" })
+    expect(
+      restored!.clientState.queries.find(
+        (query) => JSON.stringify(query.queryKey) === JSON.stringify(validEmptyKey)
+      )?.state.data
+    ).toEqual(validEmptyData)
+    expect(
+      restored!.clientState.queries.find((query) => query.queryKey[0] === "schedule")?.state.data
+    ).toEqual(["schedule for A"])
+
+    const stored = await get<PersistedClient>(accountKey("A"))
+    expect(stored).toBeDefined()
+    expect(stored!.clientState.queries.map((query) => JSON.stringify(query.queryKey))).toEqual(
+      queryIds
+    )
+    const target = createQueryClient()
+    hydrate(target, restored!.clientState)
+    expect(target.getQueryData(emptyCollectionKey)).toEqual(emptyCollectionData)
+    expect(target.getQueryData(uncheckedItemsKey)).toEqual(uncheckedItemsData)
+    for (const malformed of malformedQueries) {
+      expect(target.getQueryData(malformed.key)).toBeUndefined()
+    }
+    target.clear()
+  })
   it("sanitizes a dormant legacy v2 profile before restoring offline state", async () => {
     publishAccount("A")
     setQueryCacheIdentity("A")
@@ -608,6 +812,22 @@ describe("profile persistence boundaries", () => {
     expect(await get<PersistedClient>(key)).toEqual(sanitized)
   })
 
+  it("continues queued persistence after an IndexedDB save rejects", async () => {
+    publishAccount("A")
+    setQueryCacheIdentity("A")
+    acceptBrowserSessionGeneration()
+    const key = accountKey("A")
+    const failure = new Error("IndexedDB write unavailable")
+
+    io.writeError = failure
+    await expect(idbPersister.persistClient(snapshot("A"))).rejects.toBe(failure)
+    expect(await get<PersistedClient>(key)).toBeUndefined()
+
+    io.writeError = undefined
+    const nextSnapshot = snapshot("A")
+    await expect(idbPersister.persistClient(nextSnapshot)).resolves.toBeUndefined()
+    expect(await get<PersistedClient>(key)).toEqual(withoutCurrentUserProfile(nextSnapshot))
+  })
   it("does not write a restore-time sanitized snapshot after its owner changes", async () => {
     publishAccount("A")
     setQueryCacheIdentity("A")

@@ -10,12 +10,14 @@ PR #1343, root управляет интеграцией. Независимый
 `e4934611c7a519ffade1e9dffac3feb16b27603e`; локальная и удалённая ветки
 после публикации совпали, checkout был чистым. Источник уже принятого hosted
 evidence включает `c90e6163` и новую source-bound приёмку `36f2db43`.
-Принято **319/512 (62,3%)**, осталось 193 ID.
-[Последняя scoped приёмка](../../audits/AUDIT-2026-10.md#hosted-reactive-navigation-and-offline-ui-closure-2026-10-25)
-сохраняет все 315 прежних ID и добавляет только AUD-440/441/494/498 по
-81 exact named hosted PASS; четыре production-файла имеют 100% всех
-coverage-метрик. Root сверил ZIP hashes, XML cases и Git blobs. Прежние
-приёмки 96 и 20 cases сохранены в своих source-bound границах. Датированные pause-разделы ниже — история, а не
+Принято **320/512 (62,5%)**, осталось 192 ID.
+[Последняя scoped приёмка](../../audits/AUDIT-2026-10.md#hosted-no-pickle-gate-closure-2026-10-25)
+сохраняет все 319 прежних ID и добавляет только AUD-246: 75 named hosted
+PASS на неизменных blobs и прямой scanner gate на `62780169` — 353 файла,
+0 violations, 0 allowed. Metrics scripts остаются unsupported по неизменному
+контракту; отсутствие app coverage для этого script не является его gate.
+Предыдущие четыре frontend closures по 81 PASS и 100% target-file метрик,
+а также приёмки 96 и 20 cases сохранены в своих source-bound границах. Датированные pause-разделы ниже — история, а не
 текущее указание остановиться.
 
 Исторический CI источника `c90e6163` не принят: проверены все страницы терминального снимка
@@ -103,7 +105,8 @@ Live Core не содержит actual peer/SSR inventory или named two-clien
 и два PASS существующих контрактов; actual NetworkPolicy reachability не
 проверена. Эти пробелы не заменяются общей зелёной меткой Core.
 
-Следующий локальный follow-up пока не опубликован: errcheck исправлен без
+Follow-up опубликован обычными Git hooks в `62780169c713947acdd3a71c60b63cbd207306d5`
+(tree `641b5c741fc26d51e1b7adaa706e4874c275406d`): errcheck исправлен без
 подавления правил; panicnil regression выполняется в процессе с проверкой
 фактического nil recovery и остановкой Hub до восстановления GODEBUG.
 Root-повтор: Hub 100% statements / 27,368s и required root-config Go lint
@@ -123,6 +126,41 @@ MOD-30-01 заменён AST-проверкой literal noload и уникаль
 и `generated_at` baseline после расширения gate. Все 319 identities, triage
 и прочие поля сохранены; это metadata maintenance, не новая disposition или
 scanner exemption. Baseline повторно staged по contributor standards.
+
+### Терминальный CI опубликованного follow-up
+
+Для `62780169` на 2026-10-25 20:35:32 UTC проверены обе страницы checks
+(100 + 43) и все 25 Actions job pages: 143 checks — 111 SUCCESS,
+27 SKIPPED, 4 FAILURE, 1 NEUTRAL; 138 jobs — 107 SUCCESS, 27 SKIPPED,
+4 FAILURE; активных нет. Actual tested merge `7a715e24f38c352c27e4a6bd12059833c6778300`
+имеет тот же tree `641b5c741fc26d51e1b7adaa706e4874c275406d`.
+Все четыре Python unit shards завершились SUCCESS; ws-hub lint/tests,
+frontend, Contract Tests и Owned Live Core/NATS также прошли. Остались
+FAIL Node audit, Alembic Migrations, integration shard-0 и агрегатор CI Success.
+Node audit шаг после strict graph failure не выполнялся; migration/integration
+сохраняют known dependent-index failures. Полный CI не принят; частные кандидаты
+и локальные PASS не заменяют эти gates.
+
+### Следующий пакет AUD-499 и ресурсная проверка Node
+
+AUD-499 пока не принят. В текущем рабочем пакете restore-фильтр отбрасывает
+только повреждённые news infinite-query snapshots до hydrate; 304 проверяет
+cached page и owner-bound snapshot. Root подтвердил обычный cohort из 15 suites:
+214 PASS, typecheck, целевые ESLint/Prettier и штатный frontend build. Четыре
+principal policy-модуля дали 789 PASS без изменения проверок. Частный
+V8 receipt даёт обоим изменённым source files 100% line/statement/branch/function;
+это ещё не hosted evidence нового source SHA. Пять платформенных WASM-артефактов,
+повторно созданных build, сохранены приватно и восстановлены до исходных
+опубликованных bytes; проверка source provenance после восстановления прошла.
+
+Четвёртый частный Node Docker transfer `r20261025-dc5d6ab77742` использовал
+неизменный Git source `62780169` плюс восемь проверенных candidate overlays.
+Сборки wasm-builder/deps/prod-deps и readback dev/prod graph прошли; runtime
+не завершён: защитный stop сработал при RAM 85,13% / free 4,73 GiB. Итоговый
+execution-report содержит `succeeded: false`, cleanup errors отсутствуют;
+это не Docker transfer PASS. Per-RUN limits не доказывают ограничение памяти
+операций COPY в default BuildKit. Повторный запуск до решения ресурсной причины
+не назначен. Shared cache, default builder и чужие ресурсы не очищались.
 
 ## Publication and safe-pause checkpoint, 2026-10-25
 
@@ -3822,3 +3860,13 @@ hosted PASS, но полный Python coverage/gate ещё не установл
 102→100, однако общий integration job упал на отдельном migration case.
 Новых closures этих двух IDs здесь нет. Owned Live Core/NATS/cleanup прошли,
 actual proxy-peer цепочка этим не подтверждена. Policy337 и все gates сохранены.
+
+
+## Current no-pickle source-bound acceptance, 2026-10-25
+
+AUD-246 принят после повторной проверки применимости coverage policy и прямого
+hosted scanner step. Текущая граница — 320/512 (62,5%), осталось 192 ID.
+Общий Python CI и release по этой приёмке не объявляются. Новые приватные
+AUD-499 cache-restore и AUD-352 cookie-transition кандидаты не приняты;
+неутверждённые scanner identities остаются блокирующими. Baseline319 identities,
+policy337, Gitleaks26, required78, CodeQL и hooks сохранены.
