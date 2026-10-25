@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from dataclasses import FrozenInstanceError
@@ -34,7 +35,14 @@ def test_receipt_digest_is_stable_scoped_and_unaffected_by_cache_secret(
     user_id = uuid.UUID("00000000-0000-0000-0000-000000000002")
     key = "retry:ключ"
     digest = command_service._make_send_receipt_digest(chat_id, user_id, key)
-    assert digest == "e226a725c554c186eb4a638b1eec3b9cfb5c136b9bbd8293803fbf82365632d7"
+    # Pin the framed input independently of the production UUID/UTF-8 encoding.
+    framed_input = (
+        b"university-ecosystem:chat-send-receipt:v1\0"
+        b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01"
+        b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02"
+        b"retry:\xd0\xba\xd0\xbb\xd1\x8e\xd1\x87"
+    )
+    assert digest == hashlib.sha256(framed_input).hexdigest()
     assert len(digest) == 64
     assert set(digest) <= set("0123456789abcdef")
     for secret in ("", "rotation-before", "rotation-after"):

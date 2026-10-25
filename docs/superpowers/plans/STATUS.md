@@ -5,6 +5,18 @@
 
 
 
+## Receipt digest oracle correction, 2026-10-25
+
+[Security/types job 121130482575](https://github.com/egorribun/university_ecosystem/actions/runs/40180339822/job/121130482575)
+на source `10b1c96d` сообщил mypy hook PASS и один detect-secrets finding:
+фиксированный контрольный digest в receipt unit test. Job затем был cancelled;
+это не полный security PASS. Тест теперь независимо задаёт literal framed
+input bytes и вычисляет ожидаемый SHA-256 стандартной библиотекой.
+Проверка domain/UUID byte order/UTF-8, scope и HMAC rotation сохранена;
+opaque expected-digest literal удалён, не разбит или перекодирован.
+Production code, scanner settings и inventories не меняются.
+Hosted повторная проверка ещё требуется; ledger остаётся **303/512**.
+
 ## Hosted test repair and bounded evidence cohorts, 2026-10-25
 
 [Fast pre-commit job 121130482512](https://github.com/egorribun/university_ecosystem/actions/runs/40180339822/job/121130482512)
