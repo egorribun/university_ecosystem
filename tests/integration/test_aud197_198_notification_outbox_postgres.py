@@ -1956,7 +1956,10 @@ async def _assert_grade_commit_and_replay(
             audit = by_type["GRADE_ASSIGNED"]
             assert audit.aggregate_id == str(grade_id)
             assert audit.payload["student_id"] == str(student_id)
-            assert audit.metadata_ == {"actor_id": str(teacher_id)}
+            assert audit.metadata_ == {
+                "actor_id": str(teacher_id),
+                "_audit_signature_version": 2,
+            }
             assert audit.hash is not None and len(audit.hash) == 64
             request = by_type[NotificationsRequested.EVENT_TYPE]
             assert request.payload["notification_ids"] == [str(notification_id)]

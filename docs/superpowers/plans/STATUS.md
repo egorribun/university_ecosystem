@@ -5,27 +5,49 @@
 ## Текущее продолжение аудита, 2026-10-26
 
 Работа идёт по актуальному поручению владельца: `egorribun`, один checkout,
-PR #1343; root управляет Git и интеграцией. Последний опубликованный пакет —
-`01187cd72a4afba22edbca94041d72974655d419`, tree
-`3c2fd86431ac00578e3352dbc83470fdc26fc5bb`; обычные commit/push hooks прошли,
+PR #1343; root управляет Git и интеграцией. Последний опубликованный source —
+`7f14457d71a9bb1bda6b18cf8d134bc347f05684`, tree
+`de05a6cceaff182b13eab8deff334e004e9f0611`; обычные commit/push hooks прошли,
 равенство remote и чистота checkout после публикации проверены.
-Принято **321/512 (62,7%)**, осталось 191 ID.
-[Последняя scoped приёмка](../../audits/AUDIT-2026-10.md#hosted-persisted-news-restoration-closure-2026-10-26)
-сохраняет все 320 прежних ID и добавляет только AUD-499. На собственном source
-01187 hosted frontend дал 9 927 PASS / 0 fail/skip; изменённые suites — 61 PASS,
-15 прежних named cases и новые queue/restore controls также прошли. news.ts
-и queryClient.ts имеют 100% line/statement/branch/function. Root и независимый
-reviewer сверили ZIP, XML, provenance и Git blobs. Общий CI остаётся не принят.
+Принято **325/512 (63,5%)**, осталось 187 ID.
+[Последняя scoped приёмка](../../audits/AUDIT-2026-10.md#hosted-totp-clock-reconnect-and-event-signature-closures-2026-10-26)
+сохраняет все 321 прежних ID и добавляет только AUD-175/221/232/312 после
+независимой сверки raw hosted ZIP/XML/coverage и текущих Git blobs.
 
-AUD-312 принят только в рабочий код для root QA, не в ledger: новые v2 domain
-signatures связывают actor_id и весь metadata с HMAC; неподдерживаемые markers
-fail closed, unmarked historical rows остаются в прежнем payload-only формате.
-Частные cohorts 314 и 59 PASS пересекаются и не суммируются как уникальные;
-merged target coverage — 513/513 statements, 208/208 branches. Rust FFI в этих
-проверках mocked; native integration и own-SHA hosted evidence не заявлены.
-Root на каноническом checkout подтвердил 65 PASS, Ruff check/format и строгий
-mypy по всем 353 app-файлам. Итоговый scan и обычные publication hooks ещё
-требуются; AUD-312 не включён в принятый ledger.
+AUD-175: pending TOTP удаляется при reset, confirmed factor сохраняется;
+доказательство service/ORM с RecordingBackend, без Redis/HTTP и подтверждения
+production DB dialect. AUD-221: campus-zone SSR/client parity для общего
+заданного instant, без actual browser/deployed route. AUD-232: onopen больше
+не сбрасывает retry budget; stable matching ACK делает это внутри одного
+account/continuous-online интервала, отдельные account/online resets сохранены.
+AUD-312: собственный source 7f144 дал 59 closure + 6 time-travel PASS и
+513/513 statements, 208/208 arcs. Новые v2 HMAC связывают actor_id и metadata;
+unmarked historical actor metadata остаётся unauthenticated, Rust FFI mocked.
+Подробные scope limits и source-specific receipts сохранены в аудите.
+
+Предыдущая приёмка AUD-499 сохраняется: собственный source 01187 дал 9 927
+hosted frontend PASS / 0 fail/skip, изменённые suites — 61 PASS; news.ts и
+queryClient.ts имеют 100% всех четырёх метрик. Общий CI не принят: известные
+Node graph, migration и integration failures остаются отдельными блокировками.
+Каждый следующий SHA требует собственных required-check evidence.
+Терминальный снимок 7f144: 143 checks, 138 jobs в 25 runs, active 0.
+Все четыре Python unit shards завершились SUCCESS. Четыре отказа: Node audit,
+Alembic Migrations, integration shard 0 и CI Success. В integration —
+1 FAIL / 39 PASS, test_grade_committed_assignment_delivery_replay_sends_once;
+Alembic также сообщает два outbox replay и два dependent-index failures,
+плюс 10 Squawk findings. Причина grade replay failure — устаревшее exact
+ожидание metadata без нового v2 marker. В этом пакете exact dictionary
+обновлён до actor_id + _audit_signature_version=2; delivery/replay assertions
+сохранены полностью. Отказ происходил до их выполнения: исправленный
+PostgreSQL-сценарий ещё требует fresh CI, runtime PASS не заявлен.
+Прежние scoped evidence не объявляются текущим общим GREEN.
+
+Приватные кандидаты не засчитываются: session coordination, compositional
+chat rollback, registration parity, safe email retry и SQL EXPLAIN проходят
+отдельные review/runtime этапы. SQL EXPLAIN v4 дал обычный unit-модуль
+86 PASS / 0 error/skip, но actual PostgreSQL ещё не проверен.
+Policy337, baseline319, Gitleaks26, required78, blocking CodeQL, hooks и
+floors сохранены; новые scanner identities ожидают отдельного решения.
 Датированные pause-разделы ниже — история, а не текущее указание остановиться.
 
 Исторический CI источника `c90e6163` не принят: проверены все страницы терминального снимка
