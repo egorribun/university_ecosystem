@@ -1854,3 +1854,177 @@ def test_groups_successors_do_not_require_the_duplicate_id_index(
                 "FROM users u JOIN groups g ON g.id = u.group_id "
                 "WHERE u.email = 'index-control@example.test'"
             ).fetchall() == [("first", "uuid")]
+
+
+@pytest.mark.parametrize(
+    ("integer_key", "cached_column", "current_column", "expected_drops"),
+    [
+        pytest.param(False, "id", "id", 0, id="legacy-dependent"),
+        pytest.param(False, None, None, 0, id="legacy-absent"),
+        pytest.param(False, "name", "name", 1, id="legacy-nondependent"),
+        pytest.param(False, "id", "name", 1, id="legacy-stale-nondependent"),
+        pytest.param(False, "name", "id", 0, id="legacy-stale-dependent"),
+        pytest.param(True, "id", "id", 1, id="integer-dependent"),
+        pytest.param(True, None, None, 0, id="integer-absent"),
+        pytest.param(True, "name", "name", 1, id="integer-nondependent"),
+        pytest.param(True, "id", "name", 1, id="integer-stale-nondependent"),
+    ],
+)
+def test_groups_index_drop_uses_fresh_locked_dependency(
+    migration_postgres,
+    monkeypatch: pytest.MonkeyPatch,
+    integer_key: bool,
+    cached_column: str | None,
+    current_column: str | None,
+    expected_drops: int,
+) -> None:
+    """Omit only an index that the real legacy-column drop already removes."""
+    with _owned_migration_scenario(migration_postgres) as urls:
+        config = _prepare_ddl_inventory(
+            urls,
+            monkeypatch,
+            integer_key=integer_key,
+            duplicate_index=cached_column is not None,
+        )
+        if cached_column == "name":
+            with psycopg.connect(urls["sync"]) as setup:
+                setup.execute("DROP INDEX ix_groups_id")
+                setup.execute("CREATE INDEX ix_groups_id ON groups (name)")
+
+        source = ddl_trace.MIGRATION_PATH.read_bytes()
+        assert ddl_trace.git_blob_id(source) == ddl_trace.SOURCE_GIT_BLOB
+        scripts = ScriptDirectory.from_config(config)
+        revision = scripts.get_revision("148642dd1207")
+        assert revision is not None
+        recorder = ddl_trace.ExpandedDdlTrace(source, instrument=False)
+        observations = []
+        reflection = {"active": False, "queries": 0}
+        engine = sa.create_engine(urls["alembic"])
+        try:
+            with engine.connect() as connection:
+                inspector = sa.inspect(connection)
+                cached = {
+                    index["name"]: index for index in inspector.get_indexes("groups")
+                }
+                if cached_column is None:
+                    assert "ix_groups_id" not in cached
+                else:
+                    assert cached["ix_groups_id"]["column_names"] == [cached_column]
+                connection.commit()
+
+                # This is committed fixture setup, not a migration autocommit.
+                # Retain the real Inspector cache across a same-name replacement.
+                if cached_column != current_column:
+                    assert current_column is not None
+                    with psycopg.connect(urls["sync"]) as setup:
+                        setup.execute("DROP INDEX ix_groups_id")
+                        setup.execute(
+                            sql.SQL("CREATE INDEX ix_groups_id ON groups ({})").format(
+                                sql.Identifier(current_column)
+                            )
+                        )
+
+                inspector_type = type(inspector)
+                original_get_indexes = inspector_type.get_indexes
+
+                def observe_indexes(current, table_name, *args, **kwargs):
+                    if table_name != "groups":
+                        return original_get_indexes(
+                            current, table_name, *args, **kwargs
+                        )
+                    assert current.bind is connection
+                    before = reflection["queries"]
+                    reflection["active"] = True
+                    try:
+                        indexes = original_get_indexes(
+                            current, table_name, *args, **kwargs
+                        )
+                    finally:
+                        reflection["active"] = False
+                    pid = connection.connection.driver_connection.info.backend_pid
+                    with psycopg.connect(urls["sync"], connect_timeout=5) as observer:
+                        observer.execute("SET LOCAL statement_timeout = '2s'")
+                        locked = observer.execute(
+                            "SELECT EXISTS (SELECT 1 FROM pg_locks "
+                            "WHERE pid = %s AND relation = 'public.groups'::regclass "
+                            "AND mode = 'AccessExclusiveLock' AND granted)",
+                            (pid,),
+                        ).fetchone()[0]
+                    observations.append(
+                        (
+                            reflection["queries"] > before,
+                            locked,
+                            [
+                                index["column_names"]
+                                for index in indexes
+                                if index["name"] == "ix_groups_id"
+                            ],
+                        )
+                    )
+                    return indexes
+
+                def observe_cursor(
+                    current, cursor, statement, parameters, context, many
+                ):
+                    if reflection["active"]:
+                        reflection["queries"] += 1
+                    return recorder.before_cursor_execute(
+                        current, cursor, statement, parameters, context, many
+                    )
+
+                # Observation only: reflection results and DDL are never replaced.
+                monkeypatch.setattr(inspector_type, "get_indexes", observe_indexes)
+                listeners = (
+                    ("begin", recorder.on_begin, {}),
+                    ("commit", recorder.on_commit, {}),
+                    ("rollback", recorder.on_rollback, {}),
+                    ("before_cursor_execute", observe_cursor, {"retval": True}),
+                )
+                for name, listener, options in listeners:
+                    event.listen(connection, name, listener, **options)
+                try:
+                    with connection.begin():
+                        with EnvironmentContext(config, scripts) as environment:
+                            environment.configure(connection=connection)
+                            with Operations.context(environment.get_context()):
+                                revision.module._postgresql_groups_id_upgrade(
+                                    inspector
+                                )
+                                assert connection.in_transaction()
+                finally:
+                    for name, listener, _ in reversed(listeners):
+                        event.remove(connection, name, listener)
+        finally:
+            engine.dispose()
+
+        kinds = [event["kind"] for event in recorder.events]
+        assert kinds.count("begin") == kinds.count("commit") == 1
+        assert "rollback" not in kinds
+        statements = [
+            event["sql"] for event in recorder.events if event["kind"] == "cursor"
+        ]
+        with psycopg.connect(urls["sync"]) as connection:
+            _assert_groups_primary_key(connection)
+            _assert_group_fixture_foreign_keys(connection)
+            assert connection.execute(
+                "SELECT id, name FROM groups ORDER BY id"
+            ).fetchall() == [(1, "first"), (2, "second")]
+            assert connection.execute(
+                "SELECT to_regclass('public.ix_groups_id')"
+            ).fetchone() == (None,)
+            assert connection.execute(
+                "SELECT attname FROM pg_attribute "
+                "WHERE attrelid = 'public.groups'::regclass AND NOT attisdropped "
+                "AND attname IN ('id__integer', 'id__varchar')"
+            ).fetchall() == []
+            # This is the real key helper, not a full revision run or stamping.
+            assert connection.execute(
+                "SELECT version_num FROM alembic_version"
+            ).fetchone() == ("f7aa476e968a",)
+            _assert_groups_key_dml(connection)
+
+        assert statements.count("DROP INDEX IF EXISTS ix_groups_id") == expected_drops
+        if not integer_key and current_column == "id":
+            assert (True, True, [["id"]]) in observations, (
+                "Omitting the drop requires fresh catalog SQL under the group lock"
+            )

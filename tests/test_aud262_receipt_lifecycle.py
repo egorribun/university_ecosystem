@@ -21,8 +21,10 @@ import app.services.chat.command_service as command_service
 from app.models import Chat, Message
 from app.models.chat_send_receipt import ChatSendReceipt
 from app.repositories.chat_repository import ChatRepository, SendReceiptState
+from tests import test_chat_idempotency_ownership as _idempotency_tests
 from tests.test_chat_idempotency_ownership import dispatcher
-from tests.test_chat_idempotency_ownership import redis as redis
+
+redis = _idempotency_tests.redis
 
 
 def test_receipt_digest_is_stable_scoped_and_unaffected_by_cache_secret(
@@ -229,10 +231,14 @@ async def test_invalid_prune_limit_does_not_mutate_expired_receipt(
     assert state.expires_at < state.observed_at
     assert await repository.send_receipt_remaining_seconds(state.expires_at) == 0
     remaining_ids = (
-        await db_session.execute(
-            select(ChatSendReceipt.id).where(ChatSendReceipt.chat_id == chat.id)
+        (
+            await db_session.execute(
+                select(ChatSendReceipt.id).where(ChatSendReceipt.chat_id == chat.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert remaining_ids == [row.id]
 
 

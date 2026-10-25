@@ -139,8 +139,7 @@ async def _identity(state: SimpleNamespace, user_id: UUID | str) -> None:
     await connection.execute(sa.text(f'SET LOCAL ROLE "{state.role}"'))
     bypass = await connection.scalar(
         sa.text(
-            "SELECT rolsuper OR rolbypassrls FROM pg_roles "
-            "WHERE rolname = current_user"
+            "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user"
         )
     )
     assert bypass is False
@@ -294,8 +293,7 @@ async def test_receipt_rls_revokes_owner_access_after_membership_removal(
     await state.connection.execute(sa.text("RESET ROLE"))
     await state.connection.execute(
         sa.text(
-            "DELETE FROM chat_participants "
-            "WHERE chat_id = :chat AND user_id = :user"
+            "DELETE FROM chat_participants WHERE chat_id = :chat AND user_id = :user"
         ),
         {"chat": state.chat, "user": state.owner},
     )

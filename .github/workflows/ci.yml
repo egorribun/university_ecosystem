@@ -1026,6 +1026,7 @@ jobs:
             tests/integration/test_migration_148642dd1207.py::test_stale_shadow_value_aborts_before_fk_capture_with_exact_rollback \
             tests/integration/test_migration_148642dd1207.py::test_shadow_cutover_omits_only_transient_validation_after_null_backfill \
             tests/integration/test_migration_148642dd1207.py::test_groups_cutover_uses_only_the_exact_primary_key_index \
+            tests/integration/test_migration_148642dd1207.py::test_groups_index_drop_uses_fresh_locked_dependency \
             tests/integration/test_migration_148642dd1207.py::test_groups_index_cutover_failure_restores_exact_catalog_and_data \
             tests/integration/test_migration_148642dd1207.py::test_groups_key_helper_round_trip_restores_legacy_index_and_foreign_keys \
             tests/integration/test_migration_148642dd1207.py::test_groups_successors_do_not_require_the_duplicate_id_index \
@@ -2258,6 +2259,137 @@ jobs:
           policy_status="$(cat "$policy_root/status")"
           if [[ "$policy_status" != "0" ]]; then
             echo "::error::Exact-disposition pytest exited with status $policy_status."
+            exit 1
+          fi
+
+      - name: Verify AUD339 and AUD341 named regressions
+        if: ${{ !cancelled() }}
+        shell: bash
+        timeout-minutes: 2
+        env:
+          EXPECTED_TESTED_SHA: ${{ github.sha }}
+          SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          probe_root="$(mktemp -d "$RUNNER_TEMP/aud339341.XXXXXXXX")"
+          trap 'rm -rf -- "$probe_root"' EXIT
+          mkdir -p "$probe_root/tmp"
+          export TMPDIR="$probe_root/tmp" TMP="$probe_root/tmp" TEMP="$probe_root/tmp"
+          cat > "$probe_root/verify.py" <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          PATHS = (
+              "app/api/news.py",
+              "app/api/events.py",
+              "app/api/users.py",
+              "tests/test_aud339_semantic_search_etag.py",
+              "tests/test_users_me_replica_routing.py",
+          )
+          EXPECTED = {
+              (
+                  "tests.test_aud339_semantic_search_etag",
+                  "test_semantic_search_cyrillic_etag_is_ascii_and_covers_inputs[news]",
+              ),
+              (
+                  "tests.test_aud339_semantic_search_etag",
+                  "test_semantic_search_cyrillic_etag_is_ascii_and_covers_inputs[events]",
+              ),
+              (
+                  "tests.test_users_me_replica_routing",
+                  "test_users_me_audit_write_uses_primary_with_distinct_read_component",
+              ),
+          }
+
+
+          def git(*args):
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+
+          def identity():
+              tested = os.environ["EXPECTED_TESTED_SHA"]
+              source = os.environ["SOURCE_HEAD_SHA"]
+              if any(re.fullmatch(r"[0-9a-f]{40}", value) is None for value in (tested, source)):
+                  raise SystemExit("Invalid immutable source identity")
+              if git("rev-parse", "HEAD") != tested:
+                  raise SystemExit("Checkout differs from expected tested commit")
+              if os.environ["WORKFLOW_EVENT"] == "pull_request":
+                  parents = [
+                      line.split()[1]
+                      for line in git("cat-file", "-p", "HEAD").split("\n\n", 1)[0].splitlines()
+                      if line.startswith("parent ")
+                  ]
+                  if len(parents) != 2 or parents[1] != source:
+                      raise SystemExit("Tested merge does not have the expected source parent")
+              elif source != tested:
+                  raise SystemExit("Push source differs from tested commit")
+              if subprocess.call(["git", "diff", "--quiet", "--no-ext-diff", "HEAD", "--"]):
+                  raise SystemExit("Tracked checkout changed during evidence collection")
+              blobs = {}
+              for path in PATHS:
+                  blob = git("rev-parse", f"HEAD:{path}")
+                  if git("hash-object", "--", path) != blob:
+                      raise SystemExit("Evidence source file differs from its Git blob")
+                  blobs[path] = blob
+              return {
+                  "source_head_sha": source,
+                  "tested_commit_sha": tested,
+                  "tested_tree_sha": git("rev-parse", "HEAD^{tree}"),
+                  "workflow_sha": os.environ["WORKFLOW_SHA"],
+                  "run_id": os.environ["GITHUB_RUN_ID"],
+                  "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+                  "blobs": blobs,
+              }
+
+
+          root = Path(sys.argv[1])
+          current = identity()
+          if sys.argv[2] == "before":
+              (root / "source.json").write_text(json.dumps(current, sort_keys=True))
+              print("AUD339/AUD341 source identity: " + json.dumps(current, sort_keys=True))
+          else:
+              if current != json.loads((root / "source.json").read_text()):
+                  raise SystemExit("Source identity changed during the cohort")
+              report = root / "junit.xml"
+              if not report.is_file() or not 0 < report.stat().st_size <= 1_048_576:
+                  raise SystemExit("Missing or oversized AUD339/AUD341 JUnit report")
+              document = ElementTree.parse(report)
+              suites = list(document.getroot().iter("testsuite"))
+              totals = {"tests": "3", "failures": "0", "errors": "0", "skipped": "0"}
+              if len(suites) != 1 or any(suites[0].get(key) != value for key, value in totals.items()):
+                  raise SystemExit("AUD339/AUD341 JUnit totals are not exactly three passes")
+              cases = list(document.getroot().iter("testcase"))
+              observed = [(case.get("classname"), case.get("name")) for case in cases]
+              if len(observed) != 3 or set(observed) != EXPECTED:
+                  raise SystemExit("AUD339/AUD341 JUnit identities are missing, extra or duplicated")
+              if any(list(document.getroot().iter(tag)) for tag in ("failure", "error", "skipped")):
+                  raise SystemExit("AUD339/AUD341 cohort contains failure, error or skip")
+              print("AUD339/AUD341 verified named PASS: " + json.dumps(sorted(observed)))
+              print("AUD339/AUD341 postflight source identity unchanged")
+          PY
+          uv run --frozen --no-sync python "$probe_root/verify.py" "$probe_root" before
+          pytest_status=0
+          timeout --signal=TERM --kill-after=5s 90s \
+            uv run --frozen --no-sync pytest \
+            'tests/test_aud339_semantic_search_etag.py::test_semantic_search_cyrillic_etag_is_ascii_and_covers_inputs[news]' \
+            'tests/test_aud339_semantic_search_etag.py::test_semantic_search_cyrillic_etag_is_ascii_and_covers_inputs[events]' \
+            tests/test_users_me_replica_routing.py::test_users_me_audit_write_uses_primary_with_distinct_read_component \
+            -n 0 -v --tb=short --show-capture=no --no-cov --maxfail=0 \
+            -p no:cacheprovider --basetemp="$probe_root/basetemp" \
+            --junitxml="$probe_root/junit.xml" \
+            > "$probe_root/pytest.log" 2>&1 || pytest_status=$?
+          tail -n 120 "$probe_root/pytest.log"
+          verification_status=0
+          uv run --frozen --no-sync python "$probe_root/verify.py" "$probe_root" after \
+            || verification_status=$?
+          if (( pytest_status != 0 || verification_status != 0 )); then
             exit 1
           fi
 

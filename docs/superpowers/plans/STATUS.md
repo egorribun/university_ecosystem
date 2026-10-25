@@ -5,6 +5,36 @@
 
 
 
+## Hosted test repair and bounded evidence cohorts, 2026-10-25
+
+[Fast pre-commit job 121130482512](https://github.com/egorribun/university_ecosystem/actions/runs/40180339822/job/121130482512)
+на source `10b1c96d9fa2bb781a1070aa138397f75ab3a95d`, checkout
+`8813904eca0ab591bc8655f2c800f5c27658ad85`, остановился на 22 Ruff F811
+fixture-import shadowing errors и двух formatter files. Backend/PG fan-out
+не выполнился; runtime GREEN для durable receipts не установлен.
+Исправления ограничены привязкой тех же fixture objects через module aliases
+и точными hosted formatter hunks. Production receipt/model/migration bytes,
+assertions и gates не меняются; suppressions не добавлены.
+
+В существующем Contract Tests job добавлен отдельный bounded cohort:
+два исходных Cyrillic ETag cases AUD-339 и HTTP primary-audit case AUD-341.
+Проверяются ровно три JUnit identities без failure/error/skip и неизменная
+source/checkout/tree/blob identity. Исходные tests, selectors и 10-minute job
+cap сохранены; named PASS ещё требуется, ledger не увеличивается.
+
+Для historical groups-key migration добавлены девять tests-first real-PG
+cases: dependent/absent/nondependent index, integer path и stale reflection
+в обоих legacy направлениях. Проверка требует fresh catalog SQL под уже
+удерживаемой групповой блокировкой перед пропуском redundant DROP.
+Migration bytes, прежние tests и восемь historical dispositions не менялись.
+Ожидаются, но ещё не наблюдались, два новых assertion RED и семь controls PASS.
+Это не снижение lock duration или устранение Squawk warnings; исходные
+14 original / 25 expanded warnings остаются последним наблюдённым результатом.
+
+Ledger **303/512**, AUD-262 OPEN; policy337, baseline319, Gitleaks26, required78
+и coverage thresholds сохранены. First committed archive readback и
+final-source CI ещё требуются; full CI/release/deployment GREEN не заявляются.
+
 ## AUD-262: durable-receipt prototype, 2026-10-25
 
 **AUD-262 остаётся OPEN; ledger — 303/512.**

@@ -24,6 +24,7 @@ from app.models.chat_send_receipt import ChatSendReceipt
 from app.repositories.chat_repository import ChatRepository
 from app.repositories.unit_of_work import uow_from_session
 from app.services.chat.attachment_service import ChatAttachmentService
+from tests import test_aud262_durable_replay_postgres as _durable_replay_tests
 from tests.test_aud262_durable_replay_postgres import (
     _WAIT_SECONDS,
     _counts,
@@ -37,9 +38,8 @@ from tests.test_aud262_durable_replay_postgres import (
 from tests.test_aud262_durable_replay_postgres import (
     pytestmark as pytestmark,
 )
-from tests.test_aud262_durable_replay_postgres import (
-    redis_state as redis_state,
-)
+
+redis_state = _durable_replay_tests.redis_state
 
 
 class MemoryUploads:
