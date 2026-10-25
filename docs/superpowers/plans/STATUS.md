@@ -5,6 +5,32 @@
 
 
 
+## Compiler archive foundation, 2026-10-25
+
+[Producer 121113577192](https://github.com/egorribun/university_ecosystem/actions/runs/40174667081/job/121113577192)
+на head `3dfefdc53eb745098e8e02f867389d6e06a796d0`, tested merge
+`665b889ddbf5eacca07141ba883d43d7bd3635aa` и общем tree
+`a964c2160d3587923de4880961ce3a38a9f19a4c` подтвердил **26/26 guards PASS**
+и live pack PASS. Два offline/script-disabled pack дали одинаковые **2853 bytes**;
+четыре payload files составляют 5504 bytes. Source/config/Git immutability и
+cleanup прошли до вывода candidate. Независимая проверка decoded bytes, Git blob hash
+и четырёх immutable source hashes подтвердила тот же результат.
+
+[First-party foundation](../../testing/react-compiler-facade-integration.md#first-party-archive-foundation-2026-10-25)
+добавляет только этот source archive, точные protective inventories и
+блокирующую минутную проверку bytes/hash/Git identity/payload в checkout.
+Первая hosted readback-проверка нового commit ещё требуется. В архиве нет
+compiler bundle или engine code; original compiler и все четыре package
+source files не менялись. Manifest/lock не переключены, moving-branch URL
+не допускается как будущий dependency pin.
+
+Последующий старый final generator всё ещё отказал на strict npm ls из-за
+relative-file edge. Успех упаковки не означает исправление graph, universal
+peer compatibility, Docker/production transfer или embedded Babel risk.
+Ledger **303/512**, policy337, baseline319, Gitleaks26, required78 и все
+coverage thresholds остаются без изменений. Дополнительная приёмка находок
+или full CI/release GREEN здесь не заявляются.
+
 ## Hosted validation 6ba0de2, 2026-10-25
 
 Source `6ba0de220b497126f51d31b84653a2d1b5d35cb8` проверялся как merge

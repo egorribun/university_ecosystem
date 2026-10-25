@@ -1,5 +1,45 @@
 # React Compiler facade integration evidence
 
+## First-party archive foundation (2026-10-25)
+
+The [tracked source archive](../../frontend/vendor/react-compiler-zod-compat-1.0.0.tgz)
+is an intentionally versioned, reproducible first-party source package, not an
+opaque compiler or engine bundle. It contains only the four readable package
+files. It is not yet activated as the legacy compiler dependency.
+
+[Hosted producer job 121113577192](https://github.com/egorribun/university_ecosystem/actions/runs/40174667081/job/121113577192)
+passed all **26 archive guards** and the live two-pack recipe. Producer head
+was `3dfefdc53eb745098e8e02f867389d6e06a796d0`; actual checkout was merge
+`665b889ddbf5eacca07141ba883d43d7bd3635aa`, with identical source tree
+`a964c2160d3587923de4880961ce3a38a9f19a4c`.
+Both packs produced the same **2853 bytes**, using Linux x64,
+Node v24.21.0 and npm11.17.0 with scripts disabled and offline packing.
+The four payloads total **5504 bytes**. Source/configuration/Git postflight
+and temporary-workspace cleanup succeeded before candidate output.
+
+Archive SHA-256: `3887a71e809e5c427392ee521eec91296bffae536aa11f8bd04863922a193ff5`.
+Git blob SHA-1: `c67aa6c38e78bc2c96ccf5c3f8e30edebcaa5666`.
+The candidate bytes and all four source hashes were independently compared
+with the immutable Git sources before this foundation entry was prepared.
+
+A blocking checkout readback step now checks the committed blob identity,
+regular-file size, both hashes and four-source payload equality before
+repacking. Its first hosted result on the foundation commit is still required;
+the producer's success does not stand in for that checkout check.
+The exact artifact path is protected in all three existing policy inventories.
+No wildcard exclusion, peer-range change, lifecycle execution or graph update
+is introduced.
+
+A subsequent dependency candidate must use an immutable commit-qualified
+archive URL, not the moving branch URL. The recipe, tests and four packaged
+source files are unchanged from the verified producer. Adding this source
+archive alone does not prove strict npm graph validity, final native compiler
+resolution, production exclusion, Docker transfer, parity or vulnerability
+closure. The later relative-file generator in the producer job still failed
+strict npm ls independently; the tracked application manifest/lock remain
+staged and the separate embedded Babel compiler risk remains open.
+
+
 ## Scope and status
 
 [ADR-048](../adr/ADR-048-react-compiler-schema-compatibility.md) governs the
@@ -10,8 +50,8 @@ here rather than in the four-file package payload.
 
 At source `6ba0de220b497126f51d31b84653a2d1b5d35cb8`, the tracked manifest
 and lock retain the staged local facade. The actual legacy compiler consumer
-still uses its original Zod 3 dependency. No final consumer graph or archive
-foundation is accepted by this record. The root Zod 4.6.7 lock record remains
+still uses its original Zod 3 dependency. At that checkpoint no final consumer graph or archive
+foundation had been accepted. The root Zod 4.6.7 lock record remains
 production-classified; a development-only facade is not proof that the whole
 project has no production Zod dependency.
 
@@ -21,14 +61,14 @@ do not override npm's `ELSPROBLEMS` invalid-edge result for
 `file:../../scripts/react-compiler-zod-compat`. Do not waive that result,
 spoof the facade's identity or add a relative-symlink workaround.
 
-The next foundation candidate is limited to a reproducible first-party
+The foundation procedure is limited to a reproducible first-party
 archive: exactly `package.json`, `index.cjs`, `LICENSE` and `README.md`,
 packed twice by pinned npm 11.17.0 with scripts disabled and offline packing.
 The recipe must verify bounded gzip/tar structure, every source byte,
 archive hashes and npm summary, source/configuration/Git immutability and
-temporary-workspace cleanup before emitting candidate bytes. The intended
+temporary-workspace cleanup before emitting candidate bytes. The source
 artifact path is `frontend/vendor/react-compiler-zod-compat-1.0.0.tgz`,
-outside the package's files list. This document does not publish that archive.
+outside the package's files list. Tracking this archive does not activate it in the dependency graph.
 
 A later, separate dependency candidate may use the exact immutable
 same-repository HTTPS archive URL only after a reviewed foundation commit.

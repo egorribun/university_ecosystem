@@ -116,6 +116,7 @@ jobs:
             "frontend/scripts/generate-react-compiler-final-lock-candidate.test.mjs"
             "frontend/scripts/pack-react-compiler-zod-compat.mjs"
             "frontend/scripts/pack-react-compiler-zod-compat.test.mjs"
+            "frontend/vendor/react-compiler-zod-compat-1.0.0.tgz"
             "frontend/scripts/react-compiler-zod-compat/index.cjs"
             "frontend/scripts/react-compiler-zod-compat/package.json"
             "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json"
@@ -228,6 +229,7 @@ jobs:
             "frontend/scripts/generate-react-compiler-final-lock-candidate.test.mjs"
             "frontend/scripts/pack-react-compiler-zod-compat.mjs"
             "frontend/scripts/pack-react-compiler-zod-compat.test.mjs"
+            "frontend/vendor/react-compiler-zod-compat-1.0.0.tgz"
             "frontend/scripts/react-compiler-zod-compat/index.cjs"
             "frontend/scripts/react-compiler-zod-compat/package.json"
             "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json"
@@ -359,6 +361,92 @@ jobs:
       - name: Verify compiler facade archive guards
         timeout-minutes: 1
         run: node --test scripts/pack-react-compiler-zod-compat.test.mjs
+
+      - name: Verify committed compiler facade archive
+        timeout-minutes: 1
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict"
+          import { execFileSync } from "node:child_process"
+          import { createHash } from "node:crypto"
+          import { lstatSync, readFileSync, realpathSync } from "node:fs"
+          import { join, resolve } from "node:path"
+          import {
+            inspectFacadeArchive,
+            readFacadeSources,
+          } from "./scripts/pack-react-compiler-zod-compat.mjs"
+
+          let stage = "source identity"
+          try {
+            const workspace = realpathSync(process.env.GITHUB_WORKSPACE)
+            assert.equal(realpathSync(process.cwd()), join(workspace, "frontend"))
+            const git = (revision) =>
+              execFileSync("/usr/bin/git", ["rev-parse", "--verify", revision], {
+                cwd: workspace,
+                encoding: "utf8",
+                stdio: ["ignore", "pipe", "pipe"],
+                timeout: 5000,
+                maxBuffer: 1024,
+                env: {
+                  PATH: "/usr/bin:/bin",
+                  GIT_CONFIG_NOSYSTEM: "1",
+                  GIT_CONFIG_GLOBAL: "/dev/null",
+                },
+              }).trim()
+            const sourceSha = git("HEAD")
+            const sourceTree = git("HEAD^{tree}")
+            assert.match(sourceSha, /^[0-9a-f]{40}$/)
+            assert.match(sourceTree, /^[0-9a-f]{40}$/)
+            assert.equal(sourceSha, process.env.SOURCE_SHA)
+
+            stage = "artifact metadata"
+            const artifactPath = "frontend/vendor/react-compiler-zod-compat-1.0.0.tgz"
+            const path = join(workspace, artifactPath)
+            assert.equal(realpathSync(path), path)
+            const stat = lstatSync(path)
+            assert(stat.isFile() && !stat.isSymbolicLink())
+            assert.equal(stat.size, 2853)
+            const bytes = readFileSync(path)
+            assert.equal(bytes.length, 2853)
+
+            stage = "artifact hashes"
+            const expectedArchiveSha256 =
+              "3887a71e809e5c427392ee521eec91296bffae536aa11f8bd04863922a193ff5"
+            const expectedGitBlobSha1 = "c67aa6c38e78bc2c96ccf5c3f8e30edebcaa5666"
+            const archiveSha256 = createHash("sha256").update(bytes).digest("hex")
+            const gitBlobSha1 = createHash("sha1")
+              .update("blob " + bytes.length + "\0")
+              .update(bytes)
+              .digest("hex")
+            assert.equal(archiveSha256, expectedArchiveSha256)
+            assert.equal(gitBlobSha1, expectedGitBlobSha1)
+            assert.equal(git("HEAD:" + artifactPath), expectedGitBlobSha1)
+
+            stage = "source payload verification"
+            const sources = readFacadeSources(resolve("scripts/react-compiler-zod-compat"))
+            const inspected = inspectFacadeArchive(bytes, sources)
+            assert.equal(inspected.sha256, expectedArchiveSha256)
+            const report = {
+              kind: "react-compiler-facade-foundation-readback",
+              sourceSha,
+              sourceTree,
+              producerHeadSha: "3dfefdc53eb745098e8e02f867389d6e06a796d0",
+              artifactPath,
+              bytes: inspected.bytes,
+              sha256: inspected.sha256,
+              gitBlobSha1,
+              sourceFiles: inspected.files,
+            }
+            const output = JSON.stringify(report)
+            assert(Buffer.byteLength(output) <= 4096)
+            console.log("REACT_COMPILER_FACADE_FOUNDATION_READBACK " + output)
+          } catch {
+            console.error("Committed facade archive rejected at stage: " + stage)
+            process.exitCode = 1
+          }
+          NODE
 
       - name: Generate compiler facade archive candidate
         timeout-minutes: 3
