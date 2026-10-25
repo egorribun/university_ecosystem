@@ -1,14 +1,7 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import {
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs"
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -516,4 +509,22 @@ test("foundation entrypoint fails closed without output and import remains inert
   assert.equal(imported.status, 0)
   assert.equal(imported.stdout, "")
   assert.equal(imported.stderr, "")
+})
+
+test("archive inspector rejects an empty second gzip member despite identical payload", () => {
+  const files = sources()
+  const first = archive(files)
+  const concatenated = Buffer.concat([first, gzipSync(Buffer.alloc(0))])
+  assert.deepEqual(gunzipSync(concatenated), gunzipSync(first))
+  assert.throws(() => inspectFacadeArchive(concatenated, files))
+})
+
+test("archive inspector rejects trailing garbage after the gzip member", () => {
+  const files = sources()
+  const first = archive(files)
+  const padded = Buffer.concat([first, Buffer.alloc(8)])
+  assert.deepEqual(gunzipSync(padded), gunzipSync(first))
+  for (const trailing of [padded, Buffer.concat([first, Buffer.from("trailing garbage")])]) {
+    assert.throws(() => inspectFacadeArchive(trailing, files))
+  }
 })

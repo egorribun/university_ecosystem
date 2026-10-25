@@ -360,6 +360,12 @@ jobs:
         timeout-minutes: 1
         run: node --test scripts/pack-react-compiler-zod-compat.test.mjs
 
+      - name: Generate compiler facade archive candidate
+        timeout-minutes: 3
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: node scripts/pack-react-compiler-zod-compat.mjs
+
       - name: Generate final compiler consumer lock candidate
         timeout-minutes: 8
         env:

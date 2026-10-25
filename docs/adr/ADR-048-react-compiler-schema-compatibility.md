@@ -92,3 +92,8 @@ boundary when a validated official replacement preserves the existing gate.
 - [Artifact probe source](../../scripts/ci/probe_react_compiler_artifacts.py)
 - [Legacy baseline and assertion RED](https://github.com/egorribun/university_ecosystem/actions/runs/40069691438/job/120802074003)
 - [Frontend standards](../../frontend/AGENTS.md)
+
+Phase-specific integration and archive-foundation records are maintained in
+[React Compiler facade integration evidence](../testing/react-compiler-facade-integration.md),
+outside the stable package payload. Those records do not supersede this ADR's
+scope, ownership, sunset or final-source acceptance requirements.

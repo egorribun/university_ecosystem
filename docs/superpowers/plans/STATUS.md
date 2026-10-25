@@ -5,6 +5,60 @@
 
 
 
+## Hosted validation 6ba0de2, 2026-10-25
+
+Source `6ba0de220b497126f51d31b84653a2d1b5d35cb8` проверялся как merge
+`3c11b7bfe95aeaf720b445765c5a39b5894582bb` с тем же tree
+`c7abb35af06d423994b7a892904a87c8557ccd23`. Ledger остаётся **303/512**;
+новые находки этим checkpoint не принимаются.
+
+Все четыре canonical backend unit shards завершились: **20145 PASS / 300 SKIP**.
+[Shard0](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121096797386)
+дал 5340/41, [shard1](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121096797480)
+— 4055/169, [shard2](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121100304950)
+— 6339/43, [shard3](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121102556172)
+— 4411/47 (PASS/SKIP). Preliminary 847+240 исключены.
+Canonical coverage shard3 подтверждает выполнение `app/core/csrf.py:141`;
+отдельный metadata diagnostic не нужен. Это не новый aggregate PASS:
+[Coverage & Quality Policy Gate](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121106737702)
+и backend aggregate jobs были SKIPPED из-за failed dependencies.
+
+[Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121095950251)
+дали **2742 consumer PASS / 590 policy PASS**.
+[PostgreSQL job](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121096797464)
+подтвердил прежние **13 PASS** и full integration **322 PASS / 9 SKIP**.
+Отдельный уже опубликованный durable-chat tests-first step дал **3 assertion
+FAIL / 2 controls PASS**, без setup errors/skips: ожидаемый отказ при реальном
+повторном сохранении после потери Redis state. Production path не менялся,
+AUD-262 не принят.
+
+[Node archive guards](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121096775309)
+дали actual **23 AssertionError / 1 inert-entrypoint PASS** из 24 случаев;
+import/setup ошибок не было, прежние final-lock guards дали **48 PASS**.
+Final candidate generation после RED была SKIPPED, а не успешна.
+[Frontend static](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121097061367)
+нашёл один formatter hunk: node:fs import нового archive-test module.
+Исправлен именно этот layout, без изменения исходных 24 проверок.
+
+Следующая implementation candidate ограничена first-party archive recipe.
+26 guards сохраняют прежние 24 и добавляют empty second gzip member /
+trailing garbage-or-zero-padding controls. Новый трёхминутный live-pack step
+запускается только после guard GREEN; внутренний work deadline — две минуты
+с резервом для source postflight и cleanup. Существующие 25-minute job budget,
+48 final guards, восьмиминутный final generator, peer ranges и обычный audit
+не ослаблены. Два offline/script-disabled pack должны дать одинаковые bytes;
+bounded gzip/tar, все четыре source files, npm metadata/hash, source/config/Git
+immutability и cleanup проверяются до вывода candidate.
+
+Packaged README теперь описывает стабильный API/identity/limits; изменяемая
+integration history вынесена из package payload. `private: true` означает
+npm publication flag, не приватность публичного artifact. Root Zod4.6.7
+production-classified record не объявляется development-only или удалённым.
+Archive ещё не создан/не опубликован; manifest/lock и original compiler bundle
+не меняются. Hosted 26-case GREEN, pack evidence и последующая отдельная
+strict-graph/native/Docker/parity приёмка остаются необходимыми.
+Policy337, baseline319, Gitleaks26, required78 и ledger303 сохранены.
+
 ## Текущий checkpoint: AUD-197 и AUD-343, 2026-10-25
 
 Принятый ledger — **303/512 (59,2%)**, **209 ID не принято**.
