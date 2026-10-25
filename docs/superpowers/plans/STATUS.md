@@ -5,6 +5,73 @@
 
 
 
+## Publication and safe-pause checkpoint, 2026-10-25
+
+По указанию владельца публикуется только проверенный пакет ниже, после чего
+автономная работа приостанавливается. Исходная ветка — `egorribun`,
+code checkpoint — `705a67fb80431d7cfeeba609167f14067120566a`.
+Он публикует formatter repair и расширенный cohort; его hosted CI ещё не принят.
+На `85723684` detect-secrets и mypy прошли; generated model-default inventory
+и downgrade-policy contracts прошли. Receipt-specific PostgreSQL/runtime и
+migration coverage были SKIPPED за SQL-test formatting gate, не PASS.
+Точный formatter postimage применён без изменения assertions или migration.
+Новые 20 named cases ещё требуют hosted результата на опубликованном source.
+Сложный compiler archive transport draft и дальнейшая graph integration
+не включены: это отдельная незавершённая работа, не принятый dependency fix.
+Ни merge, ни deployment, ни force-push не выполняются.
+После публикации новые действия требуют отдельного указания владельца.
+
+## Easy-first audit checkpoint, 2026-10-25
+
+Принятая нижняя граница — **307/512 (60,0%)**, **205 ID не принято**.
+[Новая scoped приёмка](../../audits/AUDIT-2026-10.md#hosted-easy-first-four-finding-closure-checkpoint-2026-10-25)
+сохраняет все прежние 303 ID и добавляет только AUD-315, AUD-339, AUD-341 и AUD-507.
+Это сверка уже исправленных, неизменных исходников с конкретным hosted evidence,
+не новая production implementation. Приоритет продолжения — простые находки
+и готовые исправления с недостающим доказательством.
+
+AUD-315: ADR-010 корректно отделяет historical five-policy record от текущих
+десяти CEL policies; [Kyverno job 121112657364](https://github.com/egorribun/university_ecosystem/actions/runs/40174667081/job/121112657364)
+дал **72 PASS / 0 FAIL**, включая expected hostPath rejection и позитивные controls.
+AUD-507: [Go job 121116142414](https://github.com/egorribun/university_ecosystem/actions/runs/40174667081/job/121116142414)
+дал три named callback/nil-panic PASS под race detector и 100.0% statements;
+[lint 121116142423](https://github.com/egorribun/university_ecosystem/actions/runs/40174667081/job/121116142423)
+не нашёл проблем. Source `3dfefdc5`, tested merge `665b889d`,
+tree `a964c216`; relevant blobs не менялись на `85723684`.
+Нет утверждений о live admission, runtime.Goexit, полном CI или деплое.
+
+AUD-339/341: [Contract job 121135391370](https://github.com/egorribun/university_ecosystem/actions/runs/40181770847/job/121135391370)
+на `85723684` дал exact **3 named PASS**, zero fail/error/skip и неизменную
+pre/postflight identity. Consumer/policy cohorts: **2743 PASS / 590 PASS**.
+Приёмка ограничена ASCII semantic ETags и HTTP primary-audit wiring;
+не заявлены external-provider search, deployed read replica/failover или auth proof.
+
+На source `85723684a50e7acfed2f1493eeaf45833a157312`, actual merge
+`37c34df4f89ffc3627d3fd90f91724890ebd4f4b`, tree
+`64387adeb8ed2f67a2e11a1f51da2e0c586a7afe`,
+[Node job 121135624927](https://github.com/egorribun/university_ecosystem/actions/runs/40181770847/job/121135624927)
+подтвердил **26 archive guards PASS**, committed bytes/hash/payload readback
+и повторную воспроизводимую упаковку. Archive — 2853 bytes,
+Git blob `c67aa6c38e78bc2c96ccf5c3f8e30edebcaa5666`; source immutability
+и cleanup подтверждены. Сам Node job остаётся FAILURE на прежнем relative-file
+strict npm ls; downstream audit SKIPPED. Graph не переключён; сложная
+compiler integration отложена, не принята.
+
+[Fast pre-commit 121135391146](https://github.com/egorribun/university_ecosystem/actions/runs/40181770847/job/121135391146)
+обнаружил только два Ruff-format hunks в новом SQL integration test.
+Применён точный formatter postimage, без изменений девяти cases/assertions
+или migration bytes. Alembic/PG fan-out был SKIPPED, поэтому actual SQL RED
+и durable-receipt runtime GREEN ещё не установлены.
+
+Следующий strict named cohort расширен с трёх до **20** исходных cases:
+AUD-339/341 сохраняются; добавлены восемь AUD-362, пять AUD-354 и четыре
+header/default controls для AUD-314. Все exact identities, source bindings,
+нулевые skips/errors и прежние 90-second/2-minute/10-minute budgets сохранены.
+Это подготовленная расширенная проверка, не новый 20-case PASS и не приёмка
+AUD-314/354/362. Исходные три AUD-339/341 уже имеют отдельный observed PASS.
+AUD-262 остаётся OPEN. Policy337, baseline319, Gitleaks26, required78,
+blocking CodeQL и coverage thresholds не меняются.
+
 ## Receipt digest oracle correction, 2026-10-25
 
 [Security/types job 121130482575](https://github.com/egorribun/university_ecosystem/actions/runs/40180339822/job/121130482575)

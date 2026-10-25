@@ -1,5 +1,25 @@
 # React Compiler facade integration evidence
 
+## Hosted foundation validation (2026-10-25)
+
+[Node job 121135624927](https://github.com/egorribun/university_ecosystem/actions/runs/40181770847/job/121135624927)
+checked source `85723684a50e7acfed2f1493eeaf45833a157312` as actual merge
+`37c34df4f89ffc3627d3fd90f91724890ebd4f4b`, tree
+`64387adeb8ed2f67a2e11a1f51da2e0c586a7afe`.
+All **26 archive guards** passed with zero failures/skips/cancellations.
+The committed checkout readback and live two-pack recipe both passed:
+2853 bytes, SHA-256
+`3887a71e809e5c427392ee521eec91296bffae536aa11f8bd04863922a193ff5`,
+Git blob `c67aa6c38e78bc2c96ccf5c3f8e30edebcaa5666`, and the same four
+payload hashes as the producer below. Reproduction, source immutability and
+temporary cleanup are true; packageGraphChanged is false.
+
+The whole Node job still failed at the separate existing final generator's
+strict npm ls relative-file edge; downstream dependency audit was skipped.
+These foundation passes do not accept the final graph. Graph integration is
+deferred while simpler audit findings are completed; the tracked manifest/lock
+and original compiler bundle remain unchanged.
+
 ## First-party archive foundation (2026-10-25)
 
 The [tracked source archive](../../frontend/vendor/react-compiler-zod-compat-1.0.0.tgz)
@@ -22,10 +42,10 @@ Git blob SHA-1: `c67aa6c38e78bc2c96ccf5c3f8e30edebcaa5666`.
 The candidate bytes and all four source hashes were independently compared
 with the immutable Git sources before this foundation entry was prepared.
 
-A blocking checkout readback step now checks the committed blob identity,
+The blocking checkout readback step checks the committed blob identity,
 regular-file size, both hashes and four-source payload equality before
-repacking. Its first hosted result on the foundation commit is still required;
-the producer's success does not stand in for that checkout check.
+repacking. Its first hosted result is recorded above; the producer's success
+alone does not stand in for that checkout check.
 The exact artifact path is protected in all three existing policy inventories.
 No wildcard exclusion, peer-range change, lifecycle execution or graph update
 is introduced.
