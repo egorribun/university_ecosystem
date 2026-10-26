@@ -83,7 +83,10 @@ describe("registerServiceWorker", () => {
       postMessage: vi.fn(),
     }
     const mockWaiting = {
+      state: "installing",
       postMessage: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
     }
     const mockInstalling = {
       state: "installing",
@@ -93,7 +96,7 @@ describe("registerServiceWorker", () => {
 
     const mockRegistration: any = {
       active: mockActive,
-      waiting: mockWaiting,
+      waiting: null,
       installing: mockInstalling,
       addEventListener: vi.fn(),
       ready: Promise.resolve(),
@@ -178,13 +181,10 @@ describe("registerServiceWorker", () => {
 
     // Simulate updatefound with a new installing sw
     let stateChangeHandler: any = null
-    const installingSw = {
-      state: "installing",
-      addEventListener: vi.fn().mockImplementation((event, cb) => {
-        if (event === "statechange") stateChangeHandler = cb
-      }),
-      removeEventListener: vi.fn(),
-    }
+    const installingSw = mockWaiting
+    installingSw.addEventListener = vi.fn().mockImplementation((event, cb) => {
+      if (event === "statechange") stateChangeHandler = cb
+    })
     mockRegistration.installing = installingSw
     updateFoundHandler()
 
@@ -194,8 +194,10 @@ describe("registerServiceWorker", () => {
     stateChangeHandler()
     expect(installingSw.removeEventListener).not.toHaveBeenCalled()
 
-    // Simulate installing SW state transitioning to "installed"
+    // Simulate installing SW state transitioning to "installed". The same
+    // worker object becomes the registration's waiting worker.
     installingSw.state = "installed"
+    mockRegistration.waiting = installingSw
     stateChangeHandler()
 
     // Verifies window.dispatchEvent was called with update details
@@ -214,13 +216,228 @@ describe("registerServiceWorker", () => {
     await customEventCall.detail.update()
     expect(mockWaiting.postMessage).toHaveBeenCalledTimes(1)
 
-    // Verify controllerchange listener reloads window
+    // A choice in this tab authorizes only the prompted worker's activation.
     expect(swListeners["controllerchange"]).toBeDefined()
-    mockServiceWorkerContainer.controller = { postMessage: vi.fn() }
+    expect(window.location.reload).not.toHaveBeenCalled()
+    mockServiceWorkerContainer.controller = mockWaiting
     swListeners["controllerchange"]()
     expect(window.location.reload).toHaveBeenCalledTimes(1)
     swListeners["controllerchange"]()
     expect(window.location.reload).toHaveBeenCalledTimes(1)
+  })
+
+  it("retries registration after an initialization failure", async () => {
+    const mockRegistration: any = {
+      active: { postMessage: vi.fn() },
+      addEventListener: vi.fn(),
+      ready: Promise.resolve(),
+    }
+    const swListeners: Record<string, any> = {}
+    const mockServiceWorkerContainer = {
+      controller: null,
+      ready: Promise.resolve(mockRegistration),
+      register: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("Network Error"))
+        .mockResolvedValueOnce(mockRegistration),
+      addEventListener: vi.fn().mockImplementation((event, listener) => {
+        swListeners[event] = listener
+      }),
+    }
+    vi.stubGlobal("navigator", {
+      serviceWorker: mockServiceWorkerContainer,
+      onLine: true,
+    })
+
+    let failedAttempt!: Promise<ServiceWorkerRegistration | null>
+    const firstResult = await withExpectedConsole(
+      "error",
+      "Service worker registration failed",
+      () => {
+        failedAttempt = registerServiceWorker("/retry-sw.js")
+        return failedAttempt
+      }
+    )
+    expect(firstResult).toBeNull()
+
+    const retryAttempt = registerServiceWorker("/retry-sw.js")
+    expect(retryAttempt).not.toBe(failedAttempt)
+    await expect(retryAttempt).resolves.toBe(mockRegistration)
+    expect(mockServiceWorkerContainer.register).toHaveBeenCalledTimes(2)
+    expect(mockServiceWorkerContainer.addEventListener).toHaveBeenCalledOnce()
+    expect(mockRegistration.addEventListener).toHaveBeenCalledOnce()
+    expect(swListeners["controllerchange"]).toEqual(expect.any(Function))
+  })
+
+  it("keeps other path tasks cached when one registration path fails", async () => {
+    const defaultRegistration: any = {
+      active: { postMessage: vi.fn() },
+      waiting: null,
+      addEventListener: vi.fn(),
+    }
+    const retriedCustomRegistration: any = {
+      active: { postMessage: vi.fn() },
+      waiting: null,
+      addEventListener: vi.fn(),
+    }
+    const swListeners: Record<string, any> = {}
+    const mockServiceWorkerContainer = {
+      controller: null,
+      ready: Promise.resolve(defaultRegistration),
+      register: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("Network Error"))
+        .mockResolvedValueOnce(defaultRegistration)
+        .mockResolvedValueOnce(retriedCustomRegistration),
+      addEventListener: vi.fn().mockImplementation((event, listener) => {
+        swListeners[event] = listener
+      }),
+    }
+    vi.stubGlobal("navigator", {
+      serviceWorker: mockServiceWorkerContainer,
+      onLine: true,
+    })
+
+    let failedCustomPathTask!: Promise<ServiceWorkerRegistration | null>
+    let defaultPathTask!: Promise<ServiceWorkerRegistration | null>
+    const failureResult = await withExpectedConsole(
+      "error",
+      "Service worker registration failed",
+      () => {
+        failedCustomPathTask = registerServiceWorker("/custom-sw.js")
+        defaultPathTask = registerServiceWorker()
+        return failedCustomPathTask
+      }
+    )
+    expect(failureResult).toBeNull()
+    expect(failedCustomPathTask).not.toBe(defaultPathTask)
+    await expect(defaultPathTask).resolves.toBe(defaultRegistration)
+
+    const retainedDefaultPathTask = registerServiceWorker()
+    expect(retainedDefaultPathTask).toBe(defaultPathTask)
+    await expect(retainedDefaultPathTask).resolves.toBe(defaultRegistration)
+    expect(mockServiceWorkerContainer.register).toHaveBeenCalledTimes(2)
+    expect(mockServiceWorkerContainer.addEventListener).toHaveBeenCalledOnce()
+    expect(defaultRegistration.addEventListener).toHaveBeenCalledOnce()
+
+    const retriedCustomPathTask = registerServiceWorker("/custom-sw.js")
+    expect(retriedCustomPathTask).not.toBe(failedCustomPathTask)
+    await expect(retriedCustomPathTask).resolves.toBe(retriedCustomRegistration)
+    expect(mockServiceWorkerContainer.register).toHaveBeenCalledTimes(3)
+    expect(mockServiceWorkerContainer.register).toHaveBeenNthCalledWith(1, "/custom-sw.js", {
+      scope: "/",
+      updateViaCache: "none",
+    })
+    expect(mockServiceWorkerContainer.register).toHaveBeenNthCalledWith(2, "/sw.js", {
+      scope: "/",
+      updateViaCache: "none",
+    })
+    expect(mockServiceWorkerContainer.register).toHaveBeenNthCalledWith(3, "/custom-sw.js", {
+      scope: "/",
+      updateViaCache: "none",
+    })
+    expect(mockServiceWorkerContainer.addEventListener).toHaveBeenCalledTimes(2)
+    expect(defaultRegistration.addEventListener).toHaveBeenCalledOnce()
+    expect(retriedCustomRegistration.addEventListener).toHaveBeenCalledOnce()
+  })
+
+  it("registers the default path separately from an in-flight custom path", async () => {
+    const customRegistration: any = {
+      active: { postMessage: vi.fn() },
+      waiting: null,
+      addEventListener: vi.fn(),
+    }
+    const defaultRegistration: any = {
+      active: { postMessage: vi.fn() },
+      waiting: null,
+      addEventListener: vi.fn(),
+    }
+    const mockServiceWorkerContainer = {
+      controller: null,
+      ready: Promise.resolve(customRegistration),
+      register: vi
+        .fn()
+        .mockResolvedValueOnce(customRegistration)
+        .mockResolvedValueOnce(defaultRegistration),
+      addEventListener: vi.fn(),
+    }
+    vi.stubGlobal("navigator", {
+      serviceWorker: mockServiceWorkerContainer,
+      onLine: true,
+    })
+
+    const customPathTask = registerServiceWorker("/custom-sw.js")
+    const duplicateCustomPathTask = registerServiceWorker("/custom-sw.js")
+    const defaultPathTask = registerServiceWorker()
+
+    expect(duplicateCustomPathTask).toBe(customPathTask)
+    expect(defaultPathTask).not.toBe(customPathTask)
+    await expect(customPathTask).resolves.toBe(customRegistration)
+    await expect(defaultPathTask).resolves.toBe(defaultRegistration)
+    expect(mockServiceWorkerContainer.register).toHaveBeenCalledTimes(2)
+    expect(mockServiceWorkerContainer.register).toHaveBeenNthCalledWith(1, "/custom-sw.js", {
+      scope: "/",
+      updateViaCache: "none",
+    })
+    expect(mockServiceWorkerContainer.register).toHaveBeenNthCalledWith(2, "/sw.js", {
+      scope: "/",
+      updateViaCache: "none",
+    })
+  })
+
+  it("shares service-worker setup across duplicate registration calls in one document", async () => {
+    const controller = { postMessage: vi.fn() }
+    const waitingWorker = {
+      state: "installed",
+      postMessage: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }
+    const mockRegistration: any = {
+      active: { postMessage: vi.fn() },
+      waiting: waitingWorker,
+      addEventListener: vi.fn(),
+      ready: Promise.resolve(),
+    }
+    const swListeners: Record<string, any> = {}
+    const mockServiceWorkerContainer = {
+      controller,
+      ready: Promise.resolve(mockRegistration),
+      register: vi.fn().mockResolvedValue(mockRegistration),
+      addEventListener: vi.fn().mockImplementation((event, listener) => {
+        swListeners[event] = listener
+      }),
+    }
+    vi.stubGlobal("navigator", {
+      serviceWorker: mockServiceWorkerContainer,
+      onLine: true,
+    })
+
+    const firstCall = registerServiceWorker("/custom-sw.js")
+    const secondCall = registerServiceWorker("/custom-sw.js")
+    expect(secondCall).toBe(firstCall)
+    await expect(Promise.all([firstCall, secondCall])).resolves.toEqual([
+      mockRegistration,
+      mockRegistration,
+    ])
+    expect(mockServiceWorkerContainer.register).toHaveBeenCalledOnce()
+    expect(mockRegistration.addEventListener).toHaveBeenCalledOnce()
+    expect(mockServiceWorkerContainer.addEventListener).toHaveBeenCalledOnce()
+
+    const updateEvent = dispatchEventSpy.mock.calls
+      .map((call: unknown[]) => call[0] as Event)
+      .find((event: Event) => event.type === PWA_REFRESH_EVENT) as
+      CustomEvent<{ update: () => Promise<void> }> | undefined
+    expect(updateEvent).toBeInstanceOf(CustomEvent)
+
+    // Deliver the same transition more than once after both callers shared setup.
+    mockRegistration.waiting = null
+    mockServiceWorkerContainer.controller = waitingWorker
+    swListeners["controllerchange"]()
+    await updateEvent!.detail.update()
+    swListeners["controllerchange"]()
+    await updateEvent!.detail.update()
+    expect(window.location.reload).toHaveBeenCalledOnce()
   })
 
   it("handles online status when controller is absent but active SW exists", async () => {
@@ -338,7 +555,7 @@ describe("registerServiceWorker", () => {
     expect(registerSync).toHaveBeenCalledWith("sync-offline-mutations")
   })
 
-  it("reloads after a controller replacement even if window.name matches the mock API sentinel", async () => {
+  it("does not reload a tab that did not accept the update, regardless of window.name", async () => {
     const swListeners: Record<string, any> = {}
     const mockRegistration: any = {
       ready: Promise.resolve(),
@@ -360,10 +577,10 @@ describe("registerServiceWorker", () => {
 
     mockServiceWorkerContainer.controller = { postMessage: vi.fn() }
     swListeners["controllerchange"]()
-    expect(window.location.reload).toHaveBeenCalledTimes(1)
+    expect(window.location.reload).not.toHaveBeenCalled()
   })
 
-  it("ignores the first controller claim but reloads after a later worker update", async () => {
+  it("ignores the first controller claim and waits for local update approval", async () => {
     const swListeners: Record<string, any> = {}
     const mockRegistration: any = {
       active: { postMessage: vi.fn() },
@@ -391,10 +608,160 @@ describe("registerServiceWorker", () => {
     mockServiceWorkerContainer.controller = { postMessage: vi.fn() } as unknown as ServiceWorker
     swListeners["controllerchange"]()
 
+    expect(window.location.reload).not.toHaveBeenCalled()
+  })
+
+  it("keeps an already-open tab until it accepts after another tab activates the update", async () => {
+    const waitingWorker = { postMessage: vi.fn() }
+    const mockRegistration: any = {
+      active: { postMessage: vi.fn() },
+      waiting: waitingWorker,
+      addEventListener: vi.fn(),
+      ready: Promise.resolve(),
+    }
+    const swListeners: Record<string, any> = {}
+    const mockServiceWorkerContainer = {
+      controller: { postMessage: vi.fn() },
+      ready: Promise.resolve(mockRegistration),
+      register: vi.fn().mockResolvedValue(mockRegistration),
+      addEventListener: vi.fn().mockImplementation((event, listener) => {
+        swListeners[event] = listener
+      }),
+    }
+    vi.stubGlobal("navigator", {
+      serviceWorker: mockServiceWorkerContainer,
+      onLine: true,
+    })
+
+    await registerServiceWorker()
+    const updateEvent = dispatchEventSpy.mock.calls.find(
+      (call: unknown[]) => (call[0] as Event).type === PWA_REFRESH_EVENT
+    )?.[0] as CustomEvent<{ update: () => Promise<void> }> | undefined
+    expect(updateEvent).toBeInstanceOf(CustomEvent)
+
+    // The worker was activated by another tab. This tab stays on its current
+    // document until its own visible update action is chosen.
+    mockRegistration.waiting = null
+    mockServiceWorkerContainer.controller = waitingWorker
+    swListeners["controllerchange"]()
+    expect(window.location.reload).not.toHaveBeenCalled()
+
+    await updateEvent!.detail.update()
+    expect(window.location.reload).toHaveBeenCalledOnce()
+    await updateEvent!.detail.update()
     expect(window.location.reload).toHaveBeenCalledOnce()
   })
 
-  it("reloads after an update when the first claim event was missed while waiting for ready", async () => {
+  it("waits for a queued controllerchange after this tab accepts the activating worker", async () => {
+    const waitingWorker = { state: "installed", postMessage: vi.fn() }
+    const mockRegistration: any = {
+      active: { postMessage: vi.fn() },
+      waiting: waitingWorker,
+      addEventListener: vi.fn(),
+      ready: Promise.resolve(),
+    }
+    const swListeners: Record<string, any> = {}
+    const mockServiceWorkerContainer = {
+      controller: { postMessage: vi.fn() },
+      ready: Promise.resolve(mockRegistration),
+      register: vi.fn().mockResolvedValue(mockRegistration),
+      addEventListener: vi.fn().mockImplementation((event, listener) => {
+        swListeners[event] = listener
+      }),
+    }
+    vi.stubGlobal("navigator", {
+      serviceWorker: mockServiceWorkerContainer,
+      onLine: true,
+    })
+
+    await registerServiceWorker()
+    const updateEvent = dispatchEventSpy.mock.calls.find(
+      (call: unknown[]) => (call[0] as Event).type === PWA_REFRESH_EVENT
+    )?.[0] as CustomEvent<{ update: () => Promise<void> }> | undefined
+    expect(updateEvent).toBeInstanceOf(CustomEvent)
+
+    // Activation has started and cleared waiting, but this tab's queued event
+    // has not run yet. Its click records consent without reloading prematurely.
+    waitingWorker.state = "activating"
+    mockRegistration.waiting = null
+    mockServiceWorkerContainer.controller = waitingWorker
+    await updateEvent!.detail.update()
+    expect(waitingWorker.postMessage).not.toHaveBeenCalled()
+    expect(window.location.reload).not.toHaveBeenCalled()
+
+    swListeners["controllerchange"]()
+    expect(window.location.reload).toHaveBeenCalledOnce()
+    swListeners["controllerchange"]()
+    await updateEvent!.detail.update()
+    expect(window.location.reload).toHaveBeenCalledOnce()
+  })
+
+  it("does not let a stale W1 prompt reload after W2 controls the page", async () => {
+    const firstWaitingWorker = { postMessage: vi.fn() }
+    const mockRegistration: any = {
+      active: { postMessage: vi.fn() },
+      waiting: firstWaitingWorker,
+      addEventListener: vi.fn(),
+      ready: Promise.resolve(),
+    }
+    const swListeners: Record<string, any> = {}
+    const mockServiceWorkerContainer = {
+      controller: { postMessage: vi.fn() },
+      ready: Promise.resolve(mockRegistration),
+      register: vi.fn().mockResolvedValue(mockRegistration),
+      addEventListener: vi.fn().mockImplementation((event, listener) => {
+        swListeners[event] = listener
+      }),
+    }
+    vi.stubGlobal("navigator", {
+      serviceWorker: mockServiceWorkerContainer,
+      onLine: true,
+    })
+
+    await registerServiceWorker()
+    const updateEvents = () =>
+      dispatchEventSpy.mock.calls
+        .map((call: unknown[]) => call[0] as Event)
+        .filter((event: Event) => event.type === PWA_REFRESH_EVENT) as Array<
+        CustomEvent<{ update: () => Promise<void> }>
+      >
+    const firstUpdateEvent = updateEvents()[0]
+    expect(firstUpdateEvent).toBeInstanceOf(CustomEvent)
+    if (!firstUpdateEvent) {
+      throw new Error("Expected first service worker update event")
+    }
+
+    // W1 becomes the controller and its event is handled, but this tab has not
+    // accepted W1. Its consent state now records controllerchange for W1.
+    mockRegistration.waiting = null
+    mockServiceWorkerContainer.controller = firstWaitingWorker
+    swListeners["controllerchange"]()
+    expect(window.location.reload).not.toHaveBeenCalled()
+
+    // W2 becomes current before this tab handles the queued controllerchange.
+    // Clicking the still-visible W1 prompt must not use W1's sticky eligibility.
+    const secondWorker = { postMessage: vi.fn() }
+    mockServiceWorkerContainer.controller = secondWorker
+    await firstUpdateEvent.detail.update()
+    expect(window.location.reload).not.toHaveBeenCalled()
+
+    // The queued event creates independent consent state for W2. W2 still needs
+    // this tab's own prompt action before a reload is allowed.
+    swListeners["controllerchange"]()
+    expect(window.location.reload).not.toHaveBeenCalled()
+    const secondUpdateEvent = updateEvents()[1]
+    expect(secondUpdateEvent).toBeInstanceOf(CustomEvent)
+    if (!secondUpdateEvent) {
+      throw new Error("Expected second service worker update event")
+    }
+    await secondUpdateEvent.detail.update()
+    expect(window.location.reload).toHaveBeenCalledOnce()
+    await secondUpdateEvent.detail.update()
+    swListeners["controllerchange"]()
+    expect(window.location.reload).toHaveBeenCalledOnce()
+  })
+
+  it("does not reload without update approval when the first claim event was missed while waiting for ready", async () => {
     let resolveReady!: (registration: any) => void
     const ready = new Promise<any>((resolve) => {
       resolveReady = resolve
@@ -432,10 +799,10 @@ describe("registerServiceWorker", () => {
     controller = { postMessage: vi.fn() } as unknown as ServiceWorker
     mockServiceWorkerContainer.dispatchEvent(new Event("controllerchange"))
 
-    expect(window.location.reload).toHaveBeenCalledOnce()
+    expect(window.location.reload).not.toHaveBeenCalled()
   })
 
-  it("ignores a queued initial claim delivered after the listener is attached", async () => {
+  it("ignores a queued initial claim and does not reload after an unaccepted update", async () => {
     let resolveReady!: (registration: any) => void
     const ready = new Promise<any>((resolve) => {
       resolveReady = resolve
@@ -472,7 +839,7 @@ describe("registerServiceWorker", () => {
 
     controller = { postMessage: vi.fn() } as unknown as ServiceWorker
     mockServiceWorkerContainer.dispatchEvent(new Event("controllerchange"))
-    expect(window.location.reload).toHaveBeenCalledOnce()
+    expect(window.location.reload).not.toHaveBeenCalled()
   })
 
   it("returns null and logs when register throws an error", async () => {

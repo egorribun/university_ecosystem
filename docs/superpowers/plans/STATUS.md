@@ -2,6 +2,28 @@
 
 Обновлено: 2026-10-26 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Текущая source-bound приёмка — a701, 2026-10-26
+
+Для source checkpoint a701d24af33e2740792ef5b08c26667118ae67a6 принятая нижняя граница составляет **331/512 (64,6%)**: сохранены все прежние 329 ID и добавлены только AUD-430 и AUD-505. Остаются непринятыми 181 ID. Подробности, доказательства и границы приёмки приведены в [датированном дополнении аудита](../../audits/AUDIT-2026-10.md#scoped-aud-430-and-aud-505-acceptance-on-a701-2026-10-26).
+
+AUD-430 ограничен проверкой настроенных KEK lengths 16/24/32 и негативным случаем с 25-байтовым ключом; это не исчерпывающий перебор конечных значений ключей. В scope AUD-505 до metadata export инвалидируется только текущий stats file; при ошибке экспорта он остаётся отсутствующим, а история сохраняется. Проверены текущие manual/reusable evidence gates, но полный запуск 128 mutation shards не заявляется. Недопустимая хронология для AUD-505 не утверждается. Две независимые пары проверки готовы; целевые source, test и workflow blobs совпадают с a701, а hosted JUnit получен из того же source.
+
+Обычный principal pytest batch выполнен на незакоммиченном локальном workspace snapshot на базе a701: 935 PASS, 0 FAIL/ERROR/SKIP и пустой stderr (138,16 с pytest; 140,86 с процессом). В эти 935 входят 48 email OTP и 27 export cases; это подмножества того же batch, не отдельные прогоны. Результат 935 тестов не приписывается точному committed SHA a701. Целевые source, test и workflow blobs для принятых findings совпадают с a701, поэтому 75 целевых тестов и hosted JUnit source-bound к a701. Это локальное тестовое свидетельство не заменяет hosted required checks. Датированный снимок CI a701 ниже содержит 4 отказа; полного зелёного CI, merge или готовности к release эта scoped-приёмка не подтверждает. Изменения Auth/PWA/tests остаются за границами этой scoped-приёмки. Также не приняты непрерывность аутентификации в текущей вкладке, согласие каждой вкладки на PWA-обновление, поведение news sessions и дополнительные проверки восстановления chat receipts; для этих пунктов не добавлены audit IDs или приёмка покрытия.
+
+## Исторический hosted CI checkpoint — a701, 2026-10-26 15:16 UTC
+
+На момент полного снимка CI PR #1343 оставался открытым и не объединённым. Зафиксированный HEAD — a701d24af33e2740792ef5b08c26667118ae67a6 (tree 5465e78939fb1c3c5b723de2fd918d883fb83431, родитель 979eb060f43b9423f819e70cca00610591cf3b26); refs оставались стабильными с 15:16:32 до 15:16:49 UTC. На момент capture нижняя граница была **329/512 (64,3%)**, 183 ID оставались непринятыми; этот snapshot не добавлял audit ID. Более поздняя scoped-приёмка того же source описана выше и не меняет результаты CI.
+
+Терминальный снимок включает 143 checks: 114 success, 24 skipped, 1 neutral,
+4 failure, 0 active; 25 runs и 138 jobs. Четыре отказа: [Caddy image scan](https://github.com/egorribun/university_ecosystem/actions/runs/40337315887/job/121625146554) — CVE-2026-92392 в curl/libcurl, решение владельца по cooldown ожидается; [Alembic Migrations](https://github.com/egorribun/university_ecosystem/actions/runs/40337315887/job/121625146816) — 37 Squawk warnings, ожидается решение владельца архитектуры; [Coverage & Quality Policy Gate](https://github.com/egorribun/university_ecosystem/actions/runs/40337315887/job/121656687207) — 8 изменённых строк не покрыты, покрытие 98%, реальный отказ гейта; производный aggregate [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/40337315887/job/121657400703). Снимок не подтверждает прохождение всех проверок, объединение PR или готовность к выпуску.
+
+Policy346, baseline319, Gitleaks26, все 78 required context/app pairs,
+blocking CodeQL, hooks и пороги качества не менялись. Работы по сохранению
+непрерывности аутентификации в текущей вкладке, получению согласия каждой
+открытой вкладки на применение PWA-обновления и дополнительным проверкам
+восстановления квитанций chat-команд остаются pending. Этот снимок их не
+закрывает, не добавляет audit IDs и не подтверждает приёмку покрытия.
+
 ## Scoped AUD-461 acceptance — source-bound evidence (2026-10-26)
 
 На source checkpoint 979eb060f43b9423f819e70cca00610591cf3b26 узкая

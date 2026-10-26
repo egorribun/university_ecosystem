@@ -437,3 +437,39 @@ def test_merge_noop_migration_upgrade_and_downgrade_are_covered() -> None:
 
     assert migration.upgrade() is None
     assert migration.downgrade() is None
+
+
+def test_groups_key_offline_rendering_does_not_emit_uninspected_index_drop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Offline rendering must not emit a drop for an uninspected index."""
+    from io import StringIO
+
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy.dialects import postgresql
+
+    migration = _load_revision(
+        "148642dd1207_fix_missing_tables.py",
+        "groups_key_offline_index_contract_test",
+    )
+    output = StringIO()
+    migration_context = MigrationContext.configure(
+        dialect=postgresql.dialect(),
+        opts={"as_sql": True, "output_buffer": output},
+    )
+
+    monkeypatch.setattr(migration.context, "is_offline_mode", lambda: True)
+    with Operations.context(migration_context):
+        migration._postgresql_groups_id_upgrade(None)
+
+    normalized_sql = " ".join(output.getvalue().split()).upper()
+    assert (
+        "ALTER TABLE GROUPS ADD COLUMN IF NOT EXISTS ID__INTEGER INTEGER"
+        in normalized_sql
+    )
+    assert "DROP INDEX IF EXISTS IX_GROUPS_ID" not in normalized_sql
+    assert (
+        "ALTER TABLE GROUPS ADD CONSTRAINT GROUPS_PKEY "
+        "PRIMARY KEY USING INDEX GROUPS_PKEY_IDX"
+    ) in normalized_sql

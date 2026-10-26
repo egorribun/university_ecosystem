@@ -141,8 +141,51 @@ test("live PWA shell acceptance exercises the real worker without server mutatio
   )
   assert.doesNotMatch(
     spec,
-    /useMockApi|page\.route|routeWebSocket|page\.request|\.fill\(|\.click\(/u
+    /useMockApi|page\.route|routeWebSocket|page\.request|context\.request|\.(?:submit|requestSubmit)\s*\(/u,
+    "the live scenario does not mock request handling, call request APIs, or submit a form"
   )
+  assert.doesNotMatch(
+    spec,
+    /\.(?:post|put|delete|patch)\s*\(/u,
+    "the live scenario does not issue application mutation methods"
+  )
+  assert.equal(
+    [...spec.matchAll(/\bfetch\s*\(/gu)].length,
+    1,
+    "the sole fetch is the existing real asset-route fetch"
+  )
+  assert.match(spec, /const response = await route\.fetch\(\)/u)
+  assert.equal(
+    [...spec.matchAll(/context\.route\(/gu)].length,
+    1,
+    "the sole browser route remains the app-bundle marker asset route"
+  )
+  assert.equal(
+    [...spec.matchAll(/\.fill\(/gu)].length,
+    1,
+    "the peer login draft is the only form field filled"
+  )
+  assert.match(
+    spec,
+    /const peerEmailInput = peerPage\.getByRole\("textbox", \{\s*name: "E-mail"\s*\}\)[\s\S]*?await peerEmailInput\.fill\(peerDraft\)/u,
+    "the one filled field is the peer draft whose retention is checked"
+  )
+  assert.equal(
+    [...spec.matchAll(/\.click\(/gu)].length,
+    2,
+    "only the two per-page update-consent buttons are clicked"
+  )
+  assert.match(spec, /await updateReloadButton\(page\)\.click\(\)/u)
+  assert.match(spec, /await updateReloadButton\(peerPage\)\.click\(\)/u)
+  assert.match(
+    spec,
+    /system:installPrompt\.reload[\s\S]*?const UPDATE_RELOAD_BUTTON_NAME = "Reload"[\s\S]*?getByRole\("button", \{\s*name: UPDATE_RELOAD_BUTTON_NAME,\s*exact: true\s*\}\)/u,
+    "consent clicks target the locale-pinned real translated button"
+  )
+  assert.match(spec, /context\.addCookies\(\[\{\s*name: "ue:language",\s*value: "en"/u)
+  assert.match(spec, /localStorage\.setItem\("ue:language",\s*"en"\)/u)
+  assert.match(spec, /await prepareUpdatePage\(page\)[\s\S]*?await page\.goto/u)
+  assert.match(spec, /await prepareUpdatePage\(peerPage\)[\s\S]*?await peerPage\.goto/u)
 
   assert.match(precaching, /new NetworkOnly\(/u)
   assert.match(precaching, /handlerDidError/u)
@@ -259,18 +302,91 @@ test("live PWA update replaces the active precache and proves the new app bundle
   assert.match(spec, /url\.pathname !== appBundlePath/u)
   assert.match(spec, /pwa-build-marker/u)
   assert.match(spec, /controllerchange/u)
+  assert.match(spec, /const previousController = serviceWorker\.controller/u)
+  assert.match(spec, /if \(!previousController\)\s*\{\s*throw new Error/u)
+  assert.match(
+    spec,
+    /const onControllerChange = \(\) => \{\s*const currentController = serviceWorker\.controller\s*if \(!currentController \|\| currentController === previousController\) return\s*serviceWorker\.removeEventListener\("controllerchange", onControllerChange\)\s*resolve\(\)\s*\}/u,
+    "the observer ignores null or same-controller events and resolves only after identity changes"
+  )
+  assert.match(spec, /serviceWorker\.addEventListener\("controllerchange", onControllerChange\)/u)
+  assert.match(spec, /const peerPage = await context\.newPage\(\)/u)
   const updateStartIndex = spec.indexOf("await activeRegistration.update()")
   const bundleAssertionIndex = spec.indexOf("expect(bundleUpdateResponses).toBeGreaterThan(0)")
+  const pageOneConsentIndex = spec.indexOf("await updateReloadButton(page).click()")
+  const identityArmIndex = spec.indexOf(
+    "await armDifferentServiceWorkerControllerBarrier(peerPage)"
+  )
+  const identityWaitIndex = spec.indexOf("await peerNewController", pageOneConsentIndex)
+  const peerPromptVisibleIndex = spec.indexOf(
+    "await expect(updateReloadButton(peerPage)).toBeVisible()",
+    identityWaitIndex
+  )
+  const peerUrlRetainedIndex = spec.indexOf(
+    "await expect(peerPage).toHaveURL(peerInitialUrl)",
+    peerPromptVisibleIndex
+  )
+  const peerDraftRetainedIndex = spec.indexOf(
+    "await expect(peerEmailInput).toHaveValue(peerDraft)",
+    peerUrlRetainedIndex
+  )
+  const peerTimeOriginRetainedIndex = spec.indexOf(
+    "expect(await peerPage.evaluate(() => performance.timeOrigin)).toBe(peerInitialTimeOrigin)",
+    peerDraftRetainedIndex
+  )
+  const peerNoNavigationIndex = spec.indexOf(
+    "expect(peerMainFrameNavigations).toBe(0)",
+    peerTimeOriginRetainedIndex
+  )
+  const peerConsentIndex = spec.indexOf(
+    "await updateReloadButton(peerPage).click()",
+    peerNoNavigationIndex
+  )
+  const peerPostReloadNavigationIndex = spec.indexOf(
+    "expect(peerMainFrameNavigations).toBe(1)",
+    peerConsentIndex
+  )
+  assert.ok(
+    identityArmIndex >= 0 &&
+      identityArmIndex < pageOneConsentIndex &&
+      pageOneConsentIndex < identityWaitIndex &&
+      identityWaitIndex < peerPromptVisibleIndex &&
+      peerPromptVisibleIndex < peerUrlRetainedIndex &&
+      peerUrlRetainedIndex < peerDraftRetainedIndex &&
+      peerDraftRetainedIndex < peerTimeOriginRetainedIndex &&
+      peerTimeOriginRetainedIndex < peerNoNavigationIndex &&
+      peerNoNavigationIndex < peerConsentIndex &&
+      peerConsentIndex < peerPostReloadNavigationIndex,
+    "the peer's different-controller event precedes its unchanged-document checks and own consent click"
+  )
   const activationWaitSource = spec.slice(updateStartIndex, bundleAssertionIndex)
   assert.match(
     activationWaitSource,
     /await expect\s*\.poll\([\s\S]*?CONTROLLER_CHANGE_COUNT[\s\S]*?\.toBeGreaterThan\(0\)/u,
     "the bundle response is asserted after the existing controllerchange readiness signal"
   )
+  const diagnosticTryStartIndex = spec.lastIndexOf("try {", bundleAssertionIndex)
+  const diagnosticCatchStartIndex = spec.indexOf("} catch (assertionFailure)", bundleAssertionIndex)
+  assert.ok(
+    diagnosticTryStartIndex >= updateStartIndex && diagnosticCatchStartIndex > bundleAssertionIndex,
+    "controllerchange and bundle acceptance remain inside the diagnostic try/catch"
+  )
+  const diagnosticTrySource = spec.slice(diagnosticTryStartIndex, diagnosticCatchStartIndex)
   assert.match(
-    spec,
-    /try\s*\{\s*await expect\s*\.poll\([\s\S]*?CONTROLLER_CHANGE_COUNT[\s\S]*?\.toBeGreaterThan\(0\)\s*expect\(bundleUpdateResponses\)\.toBeGreaterThan\(0\)\s*\}\s*catch\s*\(assertionFailure\)[\s\S]*?PWA_BUNDLE_ROUTE_DIAG/u,
-    "controllerchange and bundle failures share the bounded diagnostic and original rethrow path"
+    diagnosticTrySource,
+    /await expect\s*\.poll\([\s\S]*?CONTROLLER_CHANGE_COUNT[\s\S]*?\.toBeGreaterThan\(0\)[\s\S]*?expect\(bundleUpdateResponses\)\.toBeGreaterThan\(0\)[\s\S]*?const pageControllerChangeCount\s*=\s*await page\.evaluate\([\s\S]*?CONTROLLER_CHANGE_COUNT[\s\S]*?expect\(pageControllerChangeCount\)\.toBeGreaterThan\(0\)/u,
+    "both controller counters and the bundle response remain strict assertions within that guard"
+  )
+  const diagnosticThrowIndex = spec.indexOf("throw assertionFailure", diagnosticCatchStartIndex)
+  assert.ok(diagnosticThrowIndex > diagnosticCatchStartIndex)
+  const diagnosticCatchSource = spec.slice(
+    diagnosticCatchStartIndex,
+    diagnosticThrowIndex + "throw assertionFailure".length
+  )
+  assert.match(
+    diagnosticCatchSource,
+    /PWA_BUNDLE_ROUTE_DIAG[\s\S]*?emitPwaUpdateLifecycleDiagnostic[\s\S]*?throw assertionFailure/u,
+    "failure diagnostics still emit and rethrow the original assertion"
   )
   assert.match(spec, /await activeRegistration\.update\(\)/u)
   assert.match(spec, /setOffline\(true\)[\s\S]*?setOffline\(false\)[\s\S]*?setOffline\(true\)/u)
@@ -283,7 +399,36 @@ test("live PWA update replaces the active precache and proves the new app bundle
   assert.doesNotMatch(spec, /routeWebSocket|page\.request|useMockApi/u)
 
   assert.match(serviceWorkerRegistration, /updateViaCache:\s*["']none["']/u)
-  assert.match(serviceWorkerRegistration, /controllerchange[\s\S]*?window\.location\.reload\(\)/u)
+  assert.match(
+    serviceWorkerRegistration,
+    /const updateConsents = new WeakMap<ServiceWorker, UpdateConsent>\(\)\s*let reloadRequested = false\s*const updateConsentFor = \(worker: ServiceWorker\): UpdateConsent => \{\s*const existing = updateConsents\.get\(worker\)\s*if \(existing\) return existing\s*const consent: UpdateConsent = \{\s*accepted: false,\s*controllerChanged: false,\s*notified: false,\s*\}\s*updateConsents\.set\(worker, consent\)\s*return consent\s*\}/u,
+    "new consent state is unaccepted and bound to that worker on cache miss"
+  )
+  assert.match(
+    serviceWorkerRegistration,
+    /const reloadAfterAcceptedUpdate = \(worker: ServiceWorker, consent: UpdateConsent\) => \{\s*if \(reloadRequested \|\| !consent\.accepted \|\| !consent\.controllerChanged\) return\s*if \(serviceWorkerContainer\.controller !== worker\) return\s*reloadRequested = true\s*window\.location\.reload\(\)\s*\}/u,
+    "reload requires this page's consent and controller change to that same worker"
+  )
+  assert.equal(
+    [...serviceWorkerRegistration.matchAll(/window\.location\.reload\(\)/gu)].length,
+    1,
+    "the gated update helper remains the only registration reload path"
+  )
+  assert.match(
+    serviceWorkerRegistration,
+    /const showUpdateAvailable = \(worker: ServiceWorker\) => \{\s*const consent = updateConsentFor\(worker\)[\s\S]*?const detail: ServiceWorkerUpdateEventDetail = \{\s*update: async \(\) => \{[\s\S]*?consent\.accepted = true[\s\S]*?reloadAfterAcceptedUpdate\(worker, consent\)\s*\}/u,
+    "the prompted worker's own consent state is accepted before its per-page reload helper runs"
+  )
+  assert.equal(
+    [...serviceWorkerRegistration.matchAll(/consent\.accepted\s*=\s*true/gu)].length,
+    1,
+    "only the prompted update callback can accept the worker"
+  )
+  assert.match(
+    serviceWorkerRegistration,
+    /let observedController = serviceWorkerContainer\.controller\s*serviceWorkerContainer\.addEventListener\("controllerchange", \(\) => \{\s*if \(reloadRequested\) return\s*const currentController = serviceWorkerContainer\.controller\s*if \(currentController === observedController\) return\s*const previousController = observedController\s*observedController = currentController\s*if \(!previousController \|\| !currentController\) return\s*const consent = updateConsentFor\(currentController\)\s*consent\.controllerChanged = true\s*showUpdateAvailable\(currentController\)\s*reloadAfterAcceptedUpdate\(currentController, consent\)\s*\}\)/u,
+    "controller activation is paired with consent by the exact worker identity"
+  )
   assert.match(serviceWorker, /self\.skipWaiting\(\)/u)
   assert.match(precaching, /cleanupOutdatedCaches\(\)/u)
 })
