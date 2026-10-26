@@ -2,6 +2,22 @@
 
 Обновлено: 2026-10-26 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Scoped AUD-461 acceptance — source-bound evidence (2026-10-26)
+
+На source checkpoint 979eb060f43b9423f819e70cca00610591cf3b26 узкая
+приёмка повышает нижнюю границу до **329/512 (64,3%)**: сохранены прежние 328
+ID и добавлен только AUD-461; остаются непринятыми 183. Приёмка ограничена
+NULL-folding/SeqScan false-negative. Подробности и границы приведены в
+[аудите](../../audits/AUDIT-2026-10.md#scoped-aud-461-null-folding-and-seqscan-closure-2026-10-26).
+
+Hosted explain-check на source f22c52819cbea63851ec563f45ffed023c85ceb3
+завершился SUCCESS: [job 121566219335, run 40321185604](https://github.com/egorribun/university_ecosystem/actions/runs/40321185604/job/121566219335),
+80 queries checked. Root сверил три целевых source blobs между f22 и 979 и
+независимо подтвердил локальные PostgreSQL 17.11/asyncpg 0.32.0 проверки:
+3 PASS, без FAIL/ERROR/SKIP. Policy346, baseline319, Gitleaks26, all 78 required context/app pairs, blocking CodeQL, hooks и quality floors не менялись. Это не подтверждает all-required-checks для 979,
+полный CI или release readiness. Для source 979 required hosted checks
+остаются pending.
+
 ## Датированный source-bound evidence snapshot — 9c, 2026-10-26 11:54 UTC
 
 Этот блок фиксирует evidence для опубликованного source
@@ -90,7 +106,7 @@ Tier 0 all-metrics и не hosted check.
 Ранее локальные Node R7/R8 checks на guarded integration-candidate source set: R7 passed 84/85 contract tests, then failed on one stale explicit-COPY assertion that ignored FROM deps inheritance; its npm and policy audits were not reached. R8 VerifyInstalled passed all six stages, including 85/85 Node contract tests and exit-0 npm/policy audits. npm audit recorded one low and two moderate advisories (zero high/critical); policy audit found no unapproved advisories or missing overrides. R8 did not invoke npm ci and preserved the installed tree. Проверка после запуска R8 подтвердила совпадение с манифестом 23 хешей исходных файлов и 14 контрольных хешей; временные ресурсы были очищены. This bounded result does not establish a fresh install, normal npm CI, frontend acceptance or hosted checks.
 
 Локальная Go CI close-order проверка привязана к 103 скомпилированным исходным файлам и совпавшим кандидатным postimages. Шесть обязательных именованных race-тестов и четыре focused subcases дали 10 PASS; default full race run завершился 782 PASS именованных тестов и subcases в четырёх пакетах, без FAIL/SKIP; те же шесть обязательных тестов присутствовали в полном прогоне. Filtered weighted Go statement coverage — 3 093/3 093 (100%). Root подтвердил отсутствие принадлежащего прогону контейнера после проверки. Это локальное техническое доказательство не добавляет audit ID: метка AUD-337 в отдельном Go CI regression не означает новую приёмку исходного frontend AUD-337. Required hosted checks для resulting SHA остаются pending. Receipt: root-go-v341-race-782-verification-20261026.json.
-AUD-461 SQL имеет отдельные 90 unit + 2 PostgreSQL PASS и один baseline-identical DLQ warning, но остаётся OPEN.
+AUD-461: прежние 90 unit + 2 PostgreSQL PASS и baseline-identical DLQ warning сами по себе не закрывали finding. Узкая source-bound приёмка NULL-folding/SeqScan приведена в [датированном дополнении к аудиту](../../audits/AUDIT-2026-10.md#scoped-aud-461-null-folding-and-seqscan-closure-2026-10-26).
 Auth supplement v237 native TSC exited 0 with empty stderr, but the separate private Vitest run had 57 tests: 6 PASS and 51 FAIL, plus 4 unhandled-rejection errors and 2 PromiseRejectionHandledWarning warnings. The Auth work remains privately blocked; TSC success does not establish correctness. Independent read-only triage is assigned. No Auth source was added to the canonical checkout and no audit ID was accepted.
 Полные canonical tests, final scanner, hooks и required hosted checks для resulting SHA, normal npm CI/frontend validation, hosted Go integration и release readiness остаются pending.
 Приватные review/runtime кандидаты и pause-разделы ниже остаются историей; они

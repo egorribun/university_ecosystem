@@ -355,14 +355,67 @@ func TestAUD337BatchDisconnectPathsPreserveRequestedCloseCode(t *testing.T) {
 func TestAUD337HeartbeatPingUsesNonblockingSendQueue(t *testing.T) {
 	t.Run("full queue drops pong", func(t *testing.T) {
 		h, revocationChecks := newAUD337Hub()
-		client, conn := startAUD337Client(t, h, 1, false)
+		checkedSessionJTIs := make(chan string, 2)
+		h.sessionRevocationCheck = func(_ context.Context, sessionJTI string) error {
+			revocationChecks.Add(1)
+			select {
+			case checkedSessionJTIs <- sessionJTI:
+			default:
+			}
+			return nil
+		}
+
+		serverConn, conn := newConnPair(t)
+		client := newClientOn(h, serverConn, "aud337-client", "aud337-user")
+		client.Send = make(chan []byte, 1)
 		client.Send <- []byte("sentinel")
+		client.setupConnection()
+		t.Cleanup(client.cancel)
 
 		sendAUD337Text(t, conn, `{"type":"heartbeat_ping","nonce":"`+aud337ValidNonce()+`"}`)
-		require.Eventually(t, func() bool { return revocationChecks.Load() == 1 }, 2*time.Second, 10*time.Millisecond)
+		processed := make(chan bool, 1)
+		go func() {
+			processed <- client.processNextMessage(client.ctx)
+		}()
+
+		// Revocation authorization runs before the heartbeat handler. Waiting for
+		// processNextMessage to return proves its safeSend attempt has completed.
+		select {
+		case continueReading := <-processed:
+			require.True(t, continueReading, "a valid heartbeat ping should be processed")
+		case <-time.After(2 * time.Second):
+			if err := conn.Close(); err != nil {
+				t.Errorf("close client socket while settling the processor: %v", err)
+			}
+			if err := serverConn.Close(); err != nil {
+				t.Errorf("close server socket while settling the processor: %v", err)
+			}
+			// Free the full queue only in failure cleanup, so a regressed blocking
+			// send cannot leave the owned processor goroutine behind.
+			select {
+			case <-client.Send:
+			default:
+			}
+			select {
+			case <-processed:
+			case <-time.After(2 * time.Second):
+				t.Fatal("processNextMessage did not settle after closing the test sockets")
+			}
+			t.Fatal("processNextMessage did not finish within the bounded nonblocking window")
+		}
+
+		require.EqualValues(t, 1, revocationChecks.Load(), "the valid heartbeat must perform one session check")
+		require.Len(t, checkedSessionJTIs, 1, "the heartbeat must authorize exactly one retained session")
+		require.Equal(t, "test-aud337-client", <-checkedSessionJTIs)
+		require.Equal(t, 1, len(client.Send), "the queue must remain full until safeSend has returned")
 		require.Equal(t, "sentinel", string(<-client.Send), "full queue must retain its original item")
 		require.Empty(t, client.Send, "failed enqueue must not block or append a pong")
 		assertAUD337NoData(t, conn)
+		assert.Empty(t, client.Rooms, "heartbeat must not change client room membership")
+		h.mu.RLock()
+		assert.Empty(t, h.Rooms, "heartbeat must not change hub room membership")
+		h.mu.RUnlock()
+		assert.Nil(t, h.Nats, "heartbeat must remain local")
 	})
 
 	t.Run("closed queue does not panic or write directly", func(t *testing.T) {
