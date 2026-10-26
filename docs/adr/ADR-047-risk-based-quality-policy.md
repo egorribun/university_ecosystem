@@ -1028,3 +1028,25 @@ Integrated canonical tests, the final scanner run and required checks on the
 published source remain mandatory. This policy record closes no audit item.
 Baseline319, Gitleaks26, all 78 required context/app pairs, blocking CodeQL,
 hooks and coverage floors are unchanged.
+
+## Owner-approved scoped decisions (2026-10-27)
+
+### Forward-only migration preparation
+
+The owner authorized development and checks for a staged, forward-recoverable migration design because the applied status of `148642dd1207` is unknown. Keep that historical revision immutable and use additive forward revisions only. Phase commits and forward recovery are allowed for development. Cutover requires either draining old writers or a designed and tested compatibility period. This approval does not authorize a merge, release, deployment, scanner exception, warning suppression, or any claim of global rollback or zero downtime; it does not itself clear existing Squawk findings.
+
+### Exact Caddy dependency cooldown
+
+The owner authorized the early security update to exactly `curl=8.23.0-r0` and `libcurl=8.23.0-r0` in the project Caddy runtime. Every other dependency cooldown rule remains unchanged. Builds, installed-version checks, compatibility tests and the blocking image scan remain required; no scanner waiver or deployment is authorized.
+
+### AUD-247 public integrity digest
+
+The owner approved one exact append-only `public_integrity_digest` after the existing 346-record prefix; the approved integration bundle yields 347 records. Its identity is the single appended entry in [the disposition policy](../../quality/security-false-positive-dispositions.json), for `tests/test_security_hardening_workflow_contract.py` and detector type `Hex High Entropy String`. The exact digest and evidence remain authoritative in that record and its finite validator; this decision permits no other identity. The record is owned by `egorribun`, evidence review date 2026-10-26, owner approval date 2026-10-27, expiry 2027-01-10. It becomes effective only with the exact source-bound validator, test and policy integration and final-source checks; it grants no other disposition and closes no audit or coverage item.
+
+The evidence phrase “binary was not executed” is scoped to the private release-asset review. It does not claim the checksum-bound binary was absent from CI: root-verified hosted records report the same checksum and CI execution after hash verification. The release asset remains mutable.
+
+### One Ruff S603 call
+
+The owner authorized exactly one inline `# noqa: S603` on the `subprocess.run` call in `_run_coverage_worker` at `tests/test_coverage_manifest.py:2012`. That call uses the fixed `sys.executable` with `-B`, `-I` and `-X utf8`, invokes the repository-owned static `_COVERAGE_ISOLATION_WORKER` via `-c`, uses the explicit constrained worker environment, and does not invoke a shell. The authorization covers only that call and does not allow a file/module-level suppression, Ruff configuration change, or any other S603 exception. The source annotation is limited to the reviewed call. Final-source Ruff, tests, scanner checks and required hosted results remain mandatory.
+
+These decisions preserve the 319-entry detect-secrets baseline, the 26 Gitleaks fingerprints, all 78 required CI context/app pairs, blocking CodeQL, hooks and coverage floors. Policy records and owner approvals do not replace final-source tests, scans or required hosted checks.

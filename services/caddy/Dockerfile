@@ -47,8 +47,8 @@ RUN apk update \
       libssl3=3.5.9-r0 \
       c-ares=1.34.8-r0 \
       brotli-libs=1.2.1-r0 \
-      libcurl=8.22.0-r0 \
-      curl=8.22.0-r0 \
+      libcurl=8.23.0-r0 \
+      curl=8.23.0-r0 \
     && addgroup -S caddy \
     && adduser -S -D -H -G caddy caddy \
     && chown -R caddy:caddy /data /config /etc/caddy

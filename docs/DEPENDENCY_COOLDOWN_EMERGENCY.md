@@ -423,3 +423,17 @@ visual/admin remain manual and their exact-source runtime results are not
 inferred from source review or unrelated jobs. No trigger, permissions,
 timeout budget, advisory waiver or release/deployment authorization is added.
 The original finite Brotli exception and its expiry are unchanged.
+
+## Exact Caddy curl/libcurl exception, 2026-10-27
+
+The owner authorized the early security update to exactly `curl=8.23.0-r0`
+and `libcurl=8.23.0-r0` in `services/caddy/Dockerfile` for PR #1343, with
+matching startup-contract expectations. Other package and image pins and the
+general seven-day cooldown remain unchanged. No publication-age or expiry
+timestamp is inferred from this decision.
+
+This authorization does not establish a passing build, installed-version
+check, compatibility test or Trivy result; those checks remain mandatory for
+the final source. The earlier finite Brotli exception remains separate. See
+[ADR-047](adr/ADR-047-risk-based-quality-policy.md#exact-caddy-dependency-cooldown)
+for the bounded owner decision.

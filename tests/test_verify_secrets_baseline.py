@@ -2088,7 +2088,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 346
+    assert len(policy["records"]) == 347
     records = [
         record
         for record in policy["records"]
@@ -3084,7 +3084,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         )
     )
     records = policy["records"]
-    assert len(records) == 346
+    assert len(records) == 347
     prefix = records[:315]
     encoded_prefix = json.dumps(
         prefix, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -3486,7 +3486,7 @@ def test_oct24_public_digest_policy_preserves_all_318_prior_records() -> None:
         _AUD495_IMMUTABLE_315_PREFIX_SHA256
     )
     assert records[315:318] == _OCT24_ORIGINAL_SUFFIX
-    assert len(records) == 346
+    assert len(records) == 347
     assert records[318:321] == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS
 
 
@@ -3676,7 +3676,7 @@ def test_public_git_blob_policy_preserves_all_321_prior_records() -> None:
     )
     # These existing independent guards compose the immutable 321-record prefix.
     test_oct24_public_digest_policy_preserves_all_318_prior_records()
-    assert len(policy["records"]) == 346
+    assert len(policy["records"]) == 347
     assert policy["records"][321:323] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:2]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 10
 
@@ -4024,7 +4024,7 @@ def test_observed_public_metadata_policy_preserves_all_325_prior_records() -> No
         )
     )
     test_public_git_blob_rebind_policy_preserves_all_323_prior_records()
-    assert len(policy["records"]) == 346
+    assert len(policy["records"]) == 347
     assert policy["records"][325:327] == _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS
     assert len(_OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS) == 2
 
@@ -4275,7 +4275,7 @@ def test_public_git_blob_catalog_proof_preserves_all_327_prior_records() -> None
         )
     )
     test_observed_public_metadata_policy_preserves_all_325_prior_records()
-    assert len(policy["records"]) == 346
+    assert len(policy["records"]) == 347
     assert policy["records"][327:328] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4]
@@ -4296,7 +4296,7 @@ def test_public_git_blob_fixture_rebind_preserves_all_328_prior_records() -> Non
         )
     )
     test_public_git_blob_catalog_proof_preserves_all_327_prior_records()
-    assert len(policy["records"]) == 346
+    assert len(policy["records"]) == 347
     assert policy["records"][328:329] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5]
@@ -4425,7 +4425,7 @@ def test_public_alembic_revision_policy_preserves_all_329_prior_records() -> Non
         )
     )
     test_public_git_blob_fixture_rebind_preserves_all_328_prior_records()
-    assert len(policy["records"]) == 346
+    assert len(policy["records"]) == 347
     assert policy["records"][329:330] == [_PUBLIC_ALEMBIC_REVISION_RECORD]
 
 
@@ -4630,7 +4630,7 @@ def test_public_git_blob_index_rebind_preserves_all_330_prior_records() -> None:
         )
     )
     test_public_alembic_revision_policy_preserves_all_329_prior_records()
-    assert len(policy["records"]) == 346
+    assert len(policy["records"]) == 347
     assert policy["records"][330:331] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6]
@@ -4651,7 +4651,7 @@ def test_public_git_blob_index_assertion_preserves_all_331_prior_records() -> No
         )
     )
     test_public_git_blob_index_rebind_preserves_all_330_prior_records()
-    assert len(policy["records"]) == 346
+    assert len(policy["records"]) == 347
     assert policy["records"][331:332] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7]
@@ -4750,7 +4750,7 @@ def test_public_compiler_golden_policy_preserves_all_332_prior_records() -> None
         )
     )
     test_public_git_blob_index_assertion_preserves_all_331_prior_records()
-    assert len(policy["records"]) == 346
+    assert len(policy["records"]) == 347
     assert policy["records"][332:336] == _PUBLIC_COMPILER_GOLDEN_RECORDS
 
 
@@ -5153,7 +5153,7 @@ def test_node_compiler_policy_appends_seven_and_preserves_337_prefix() -> None:
         )
     )
     records = policy["records"]
-    assert len(records) == 346
+    assert len(records) == 347
     prefix = json.dumps(
         records[:337], sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
@@ -5392,7 +5392,7 @@ def test_live_private_field_policy_preserves_all_336_prior_records() -> None:
         )
     )
     test_public_compiler_golden_policy_preserves_all_332_prior_records()
-    assert len(policy["records"]) == 346
+    assert len(policy["records"]) == 347
     assert policy["records"][336:337] == [_LIVE_PRIVATE_FIELD_RECORD]
 
 
@@ -5569,7 +5569,7 @@ def test_public_git_blob_sourcebinding_rebind_appends_one_exact_identity() -> No
         )
     )
     test_live_private_field_policy_preserves_all_336_prior_records()
-    assert len(policy["records"]) == 346
+    assert len(policy["records"]) == 347
     record = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[8]
     assert policy["records"][337:338] == [record]
     assert record["identity"]["path"] == (
@@ -5588,3 +5588,139 @@ def test_public_git_blob_sourcebinding_rebind_appends_one_exact_identity() -> No
         (root / "alembic/versions/148642dd1207_fix_missing_tables.py").read_bytes(),
     )
     assert digest == tuple(record["identity"]["hashed_secret_bytes"])
+
+
+def _aud247_squawk_public_checksum_record() -> dict[str, Any]:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    identity = verifier._AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY
+    matches = [
+        record
+        for record in policy["records"]
+        if record["identity"]["path"] == identity[0]
+        and record["identity"]["type"] == identity[1]
+        and tuple(record["identity"]["hashed_secret_bytes"]) == identity[2]
+    ]
+    assert len(matches) == 1
+    return copy.deepcopy(matches[0])
+
+
+def test_aud247_squawk_public_checksum_identity_matches_source_literal() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source_path = root / "tests/test_security_hardening_workflow_contract.py"
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
+    checksum_assignment = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "SQUAWK_SHA256"
+            for target in node.targets
+        )
+    )
+    assert isinstance(checksum_assignment.value, ast.Constant)
+    checksum = checksum_assignment.value.value
+    assert isinstance(checksum, str)
+    source_identity = (
+        "tests/test_security_hardening_workflow_contract.py",
+        "Hex High Entropy String",
+        tuple(hashlib.sha1(checksum.encode("ascii"), usedforsecurity=False).digest()),
+    )
+    assert source_identity == verifier._AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY
+
+
+def test_aud247_squawk_public_checksum_accepts_only_exact_approved_record() -> None:
+    record = _aud247_squawk_public_checksum_record()
+    expected = verifier.FindingIdentity(
+        record["identity"]["path"],
+        record["identity"]["type"],
+        bytes(record["identity"]["hashed_secret_bytes"]).hex(),
+        1,
+    )
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(record), today=verifier.date(2026, 10, 26)
+    ) == {expected}
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "detector",
+        "category",
+        "evidence",
+        "owner",
+        "review_date",
+        "pending",
+        "expiry_extension",
+    ],
+)
+def test_aud247_squawk_public_checksum_rejects_changed_scope_or_review(
+    mutation: str,
+) -> None:
+    changed = _aud247_squawk_public_checksum_record()
+    if mutation == "path":
+        changed["identity"]["path"] = "tests/unrelated_contract.py"
+    elif mutation == "detector":
+        changed["identity"]["type"] = "Secret Keyword"
+    elif mutation == "category":
+        changed["category"] = "documented_crypto_test_vector"
+    elif mutation == "evidence":
+        changed["evidence"] = "public checksum; not credential material"
+    elif mutation == "owner":
+        changed["owner"] = "Different Reviewer"
+    elif mutation == "review_date":
+        changed["reviewed_on"] = "2026-10-25"
+    elif mutation == "pending":
+        changed["approval_status"] = "pending_owner_review"
+    else:
+        assert mutation == "expiry_extension"
+        changed["expires_on"] = "2027-01-11"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 26)
+        )
+
+
+def test_aud247_squawk_public_checksum_rejects_expiry_and_duplicate() -> None:
+    record = _aud247_squawk_public_checksum_record()
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record)),
+            today=verifier.date(2027, 1, 11),
+        )
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
+            today=verifier.date(2026, 10, 26),
+        )
+
+
+def test_aud247_guard_preserves_existing_same_path_type_identities() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    identity = verifier._AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY
+    same_path_type = [
+        record
+        for record in policy["records"]
+        if record["identity"]["path"] == identity[0]
+        and record["identity"]["type"] == identity[1]
+    ]
+    target_records = [
+        record
+        for record in same_path_type
+        if tuple(record["identity"]["hashed_secret_bytes"]) == identity[2]
+    ]
+    assert len(target_records) <= 1
+    assert len(same_path_type) == 10 + len(target_records)
+    assert verifier.validate_false_positive_dispositions(
+        policy, today=verifier.date(2026, 10, 26)
+    )

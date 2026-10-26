@@ -1029,16 +1029,55 @@ jobs:
       # MOD-NEW-008 (audit 2026-03-19): Integrate Squawk to automatically lint
       # Alembic migrations. Blocks destructive statements (DROP COLUMN, ALTER TYPE)
       # ensuring Zero-Downtime Deployment (ZDD) compatibility.
-      - name: Install Squawk Linter
-        uses: jaxxstorm/action-install-gh-release@25e24d2d23ae098373794ef1d6faecb48ee52da8 # v3.0.0
-        with:
-          repo: sbdchd/squawk
-          tag: v2.67.0
-          asset-name: squawk-linux-x64 # Specify explicit binary name
-          cache: enable
-          extension-matching: disable
-          rename-to: squawk
-          chmod: 0755
+      - name: Download and verify Squawk Linter
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          if [[ "${RUNNER_OS:-}" != "Linux" || "${RUNNER_ARCH:-}" != "X64" ]]; then
+            echo "::error::Squawk v2.67.0 asset is supported only on Linux x64" >&2
+            exit 1
+          fi
+          if [[ "$(/usr/bin/uname -s)" != "Linux" || "$(/usr/bin/uname -m)" != "x86_64" ]]; then
+            echo "::error::Runner platform does not match the Squawk v2.67.0 Linux x64 asset" >&2
+            exit 1
+          fi
+          if [[ -z "${RUNNER_TEMP:-}" || "$RUNNER_TEMP" != /* ]]; then
+            echo "::error::RUNNER_TEMP must be an absolute path" >&2
+            exit 1
+          fi
+
+          expected_sha256="03efe0e666b63bf33e2493693ee0aa9dbed07cbdcd20f7a8292245c1da9d790a"
+          asset_url="https://github.com/sbdchd/squawk/releases/download/v2.67.0/squawk-linux-x64"
+          if [[ ! "$expected_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Pinned Squawk SHA-256 is malformed" >&2
+            exit 1
+          fi
+
+          download_dir="$RUNNER_TEMP/university-ecosystem-tools/squawk/v2.67.0/linux-x64"
+          binary_path="$download_dir/squawk-linux-x64"
+          partial_path="$binary_path.partial"
+          if [[ -e "$download_dir" || -L "$download_dir" ]]; then
+            echo "::error::Refusing to reuse an existing Squawk download directory" >&2
+            exit 1
+          fi
+          /usr/bin/mkdir --parents -- "$download_dir"
+          /usr/bin/curl --fail --silent --show-error --location \
+            --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            --max-redirs 5 --output "$partial_path" "$asset_url"
+          if [[ ! -f "$partial_path" || -L "$partial_path" || ! -s "$partial_path" ]]; then
+            echo "::error::Squawk release asset is missing or is not a regular nonempty file" >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$expected_sha256" "$partial_path" |
+            /usr/bin/sha256sum --check --strict
+          /usr/bin/chmod 0755 -- "$partial_path"
+          /usr/bin/mv -- "$partial_path" "$binary_path"
+          if [[ ! -f "$binary_path" || -L "$binary_path" || ! -x "$binary_path" ]]; then
+            echo "::error::Downloaded Squawk asset is missing or is not executable" >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$expected_sha256" "$binary_path" |
+            /usr/bin/sha256sum --check --strict
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -1067,6 +1106,14 @@ jobs:
           ENVIRONMENT: testing
         run: |
           set -euo pipefail
+          squawk_binary_path="${RUNNER_TEMP:?RUNNER_TEMP is required}/university-ecosystem-tools/squawk/v2.67.0/linux-x64/squawk-linux-x64"
+          expected_sha256="03efe0e666b63bf33e2493693ee0aa9dbed07cbdcd20f7a8292245c1da9d790a"
+          if [[ ! -f "$squawk_binary_path" || -L "$squawk_binary_path" || ! -x "$squawk_binary_path" ]]; then
+            echo "::error::Verified Squawk executable is missing or is not executable" >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$expected_sha256" "$squawk_binary_path" |
+            /usr/bin/sha256sum --check --strict
           echo "Linting changed Alembic migrations for ZDD safety..."
           base_sha="${{ github.event.pull_request.base.sha }}"
           if [ -z "$base_sha" ]; then base_sha="HEAD~1"; fi
@@ -1093,7 +1140,9 @@ jobs:
             echo "Checking $migration ($down_revision -> $revision)"
             sql_file="$sql_dir/$revision.sql"
             uv run python -m scripts.quality.render_live_alembic_sql "$migration" "$sql_file"
-            squawk "${squawk_args[@]}" "$sql_file"
+            printf '%s  %s\n' "$expected_sha256" "$squawk_binary_path" |
+              /usr/bin/sha256sum --check --strict
+            "$squawk_binary_path" "${squawk_args[@]}" "$sql_file"
           done <<< "$changed_files"
 
       - name: Collect bounded 148642dd1207 DDL evidence
@@ -1183,9 +1232,17 @@ jobs:
           mapfile -d '' -t evidence_files < "$artifact_paths"
           sql_file="${evidence_files[0]}"
           json_file="${evidence_files[1]}"
+          squawk_binary_path="${RUNNER_TEMP:?RUNNER_TEMP is required}/university-ecosystem-tools/squawk/v2.67.0/linux-x64/squawk-linux-x64"
+          expected_sha256="03efe0e666b63bf33e2493693ee0aa9dbed07cbdcd20f7a8292245c1da9d790a"
+          if [[ ! -f "$squawk_binary_path" || -L "$squawk_binary_path" || ! -x "$squawk_binary_path" ]]; then
+            echo "::error::Verified Squawk executable is missing or is not executable" >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$expected_sha256" "$squawk_binary_path" |
+            /usr/bin/sha256sum --check --strict
           AUD148_CHECKOUT_SHA="$(git rev-parse HEAD)"
-          AUD148_SQUAWK_VERSION="$(squawk --version)"
-          AUD148_SQUAWK_BINARY_SHA256="$(sha256sum "$(command -v squawk)" | cut -d ' ' -f 1)"
+          AUD148_SQUAWK_BINARY_SHA256="$(/usr/bin/sha256sum -- "$squawk_binary_path" | /usr/bin/cut -d ' ' -f 1)"
+          AUD148_SQUAWK_VERSION="$("$squawk_binary_path" --version)"
           export AUD148_CHECKOUT_SHA AUD148_SQUAWK_VERSION AUD148_SQUAWK_BINARY_SHA256
           squawk_args=(
             --exclude prefer-robust-stmts --exclude prefer-text-field
@@ -1273,7 +1330,9 @@ jobs:
           PY
           lint_log="$(mktemp)"
           lint_status=0
-          squawk "${squawk_args[@]}" "$sql_file" > "$lint_log" 2>&1 || lint_status=$?
+          printf '%s  %s\n' "$expected_sha256" "$squawk_binary_path" |
+            /usr/bin/sha256sum --check --strict
+          "$squawk_binary_path" "${squawk_args[@]}" "$sql_file" > "$lint_log" 2>&1 || lint_status=$?
           echo "AUD148_EXPANDED_SQUAWK_BEGIN"
           if ! print_bounded "$lint_log" 131072; then
             [ "$lint_status" -ne 0 ] || lint_status=1

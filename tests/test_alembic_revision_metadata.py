@@ -493,4 +493,4 @@ def test_squawk_lints_live_rendered_sql_without_index_fk_or_timeout_exclusions()
     assert "_emit_news_media_asset_ddl" not in step
     for rule in _SQUAWK_RULES_THAT_MUST_LINT:
         assert f"--exclude {rule}" not in step
-    assert 'squawk "${squawk_args[@]}" "$sql_file"' in step
+    assert '"$squawk_binary_path" "${squawk_args[@]}" "$sql_file"' in step

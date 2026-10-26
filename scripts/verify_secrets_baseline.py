@@ -1324,6 +1324,41 @@ _AUD350_PUBLIC_MIGRATION_DIGEST_IDENTITY = (
         58,
     ),
 )
+_AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY = (
+    "tests/test_security_hardening_workflow_contract.py",
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        116,
+        79,
+        1,
+        159,
+        42,
+        240,
+        146,
+        15,
+        51,
+        94,
+        143,
+        149,
+        179,
+        231,
+        153,
+        242,
+        31,
+        254,
+        116,
+        173,
+    ),
+)
+_AUD247_SQUAWK_PUBLIC_CHECKSUM_EVIDENCE_MARKERS = (
+    "Public Squawk v2.67.0 SHA-256 checksum literal",
+    "literal in tests/test_security_hardening_workflow_contract.py as SQUAWK_SHA256",
+    "GitHub release asset API digest and local checksum agree",
+    "release asset is mutable",
+    "binary was not executed",
+    "not credential material",
+)
+
 _AUD495_PUBLIC_FIRST_FINGERPRINT_IDENTITY = (
     "tests/test_verify_secrets_baseline.py",
     _FALSE_POSITIVE_ALLOWED_TYPE,
@@ -2856,6 +2891,13 @@ def validate_false_positive_dispositions(
             finding_type,
             tuple(raw_digest_bytes),
         )
+        if tuple(raw_digest_bytes) == _AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY[2] and (
+            exact_source_identity != _AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY
+            or category != "public_integrity_digest"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-247 Squawk checksum identity changed scope"
+            )
         if tuple(raw_digest_bytes) in _AUD253_PRIVATE_ENV_MODE_TEST_DIGESTS and (
             exact_source_identity
             not in _AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES
@@ -3068,6 +3110,11 @@ def validate_false_positive_dispositions(
         required_evidence += _OCT24_PUBLIC_DIGEST_EVIDENCE_MARKERS.get(
             exact_source_identity, ()
         )
+        required_evidence += (
+            _AUD247_SQUAWK_PUBLIC_CHECKSUM_EVIDENCE_MARKERS
+            if exact_source_identity == _AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY
+            else ()
+        )
         if exact_source_identity in _PUBLIC_GIT_BLOB_IDENTITIES:
             required_evidence += _PUBLIC_GIT_BLOB_EXACT_EVIDENCE_MARKERS.get(
                 exact_source_identity, _PUBLIC_GIT_BLOB_EVIDENCE_MARKERS[path]
@@ -3161,6 +3208,15 @@ def validate_false_positive_dispositions(
         ):
             raise BaselineArtifactError(
                 f"{artifact}: October 24 public digest approval metadata changed"
+            )
+
+        if exact_source_identity == _AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY and (
+            owner != "egorribun"
+            or raw_reviewed != "2026-10-26"
+            or expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-247 Squawk checksum approval metadata changed"
             )
 
         if (

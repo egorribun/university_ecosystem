@@ -39,3 +39,25 @@ export function consumePendingPushEducation(userId: string): boolean {
 export type ServiceWorkerUpdateEventDetail = {
   update: () => Promise<void>
 }
+
+let pendingServiceWorkerUpdate: ServiceWorkerUpdateEventDetail | null = null
+
+export function dispatchServiceWorkerUpdate(detail: ServiceWorkerUpdateEventDetail): void {
+  if (typeof window === "undefined") return
+  pendingServiceWorkerUpdate = detail
+  window.dispatchEvent(
+    new CustomEvent<ServiceWorkerUpdateEventDetail>(PWA_REFRESH_EVENT, { detail })
+  )
+}
+
+export function getPendingServiceWorkerUpdate(): ServiceWorkerUpdateEventDetail | null {
+  return pendingServiceWorkerUpdate
+}
+
+export function clearPendingServiceWorkerUpdate(
+  detail: ServiceWorkerUpdateEventDetail | null
+): void {
+  if (pendingServiceWorkerUpdate === detail) {
+    pendingServiceWorkerUpdate = null
+  }
+}

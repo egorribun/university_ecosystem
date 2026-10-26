@@ -1875,14 +1875,192 @@ def test_python_function_derivation_ignores_ellipsis_protocol_stubs(
     assert metric["percent"] == 100.0
 
 
+_COVERAGE_ISOLATION_WORKER = r"""from __future__ import annotations
+
+import contextlib
+import io
+import json
+import os
+from pathlib import Path
+import runpy
+import subprocess
+import sys
+
+from coverage import Coverage
+
+
+def _child_environment() -> dict[str, str]:
+    return {key: os.environ[key] for key in ("SYSTEMROOT", "WINDIR") if key in os.environ}
+
+
+def _emit(record: dict[str, object]) -> None:
+    print(json.dumps(record, allow_nan=False, sort_keys=True, separators=(",", ":")))
+
+
+def _measure(source_path: Path, call_functions: bool) -> dict[str, object]:
+    coverage = Coverage(
+        data_file=None, include=[str(source_path)], config_file=False
+    )
+    coverage.start()
+    function_results: dict[str, object] = {}
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            namespace = runpy.run_path(str(source_path))
+            if call_functions:
+                function_results = {
+                    "upgrade_result": namespace["upgrade"](),
+                    "downgrade_result": namespace["downgrade"](),
+                }
+    finally:
+        coverage.stop()
+    executed = coverage.get_data().lines(str(source_path))
+    if executed is None:
+        raise RuntimeError("coverage produced no executed-line data")
+    return {
+        "schema": "coverage-measurement-v1",
+        "executed_lines": sorted(executed),
+        **function_results,
+    }
+
+
+def _outer_control(
+    branch_path: Path, measurement_path: str, worker_source: str
+) -> dict[str, object]:
+    coverage = Coverage(
+        data_file=None, branch=True, include=[str(branch_path)], config_file=False
+    )
+    coverage.start()
+    measurement = None
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            namespace = runpy.run_path(str(branch_path))
+        true_result = namespace["choose"](True)
+        if measurement_path != "-":
+            child = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    "-I",
+                    "-X",
+                    "utf8",
+                    "-c",
+                    worker_source,
+                    "measure",
+                    measurement_path,
+                    "0",
+                    worker_source,
+                ],
+                env=_child_environment(),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="strict",
+                timeout=30,
+                check=True,
+            )
+            if child.stderr:
+                raise RuntimeError("isolated measurement worker wrote to stderr")
+            if len(child.stdout.encode("utf-8")) > 8192:
+                raise RuntimeError("isolated measurement worker output exceeded the bound")
+            measurement = json.loads(child.stdout)
+            measured_lines = measurement.get("executed_lines")
+            if (
+                measurement.get("schema") != "coverage-measurement-v1"
+                or not isinstance(measured_lines, list)
+                or len(measured_lines) > 4096
+                or not all(type(line) is int and line > 0 for line in measured_lines)
+            ):
+                raise RuntimeError("isolated measurement worker output schema mismatch")
+        false_result = namespace["choose"](False)
+    finally:
+        coverage.stop()
+    data = coverage.get_data()
+    executed = data.lines(str(branch_path))
+    arcs = data.arcs(str(branch_path))
+    if executed is None or arcs is None:
+        raise RuntimeError("outer coverage produced incomplete branch data")
+    return {
+        "schema": "outer-trace-control-v1",
+        "true_result": true_result,
+        "false_result": false_result,
+        "lines": sorted(executed),
+        "arcs": [list(arc) for arc in sorted(arcs)],
+        "measurement": measurement,
+    }
+
+
+if sys.argv[1] == "measure":
+    _emit(_measure(Path(sys.argv[2]), sys.argv[3] == "1"))
+else:
+    _emit(_outer_control(Path(sys.argv[2]), sys.argv[3], sys.argv[-1]))
+"""
+
+
+def _coverage_worker_environment() -> dict[str, str]:
+    return {
+        key: os.environ[key] for key in ("SYSTEMROOT", "WINDIR") if key in os.environ
+    }
+
+
+def _run_coverage_worker(
+    tmp_path: Path,
+    expected_schema: str,
+    mode: str,
+    source_path: str,
+    option: str,
+) -> dict[str, object]:
+    completed = subprocess.run(  # noqa: S603
+        [
+            sys.executable,
+            "-B",
+            "-I",
+            "-X",
+            "utf8",
+            "-c",
+            _COVERAGE_ISOLATION_WORKER,
+            mode,
+            source_path,
+            option,
+            _COVERAGE_ISOLATION_WORKER,
+        ],
+        cwd=tmp_path,
+        env=_coverage_worker_environment(),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="strict",
+        timeout=60,
+        check=True,
+    )
+    assert completed.stderr == ""
+    assert len(completed.stdout.encode("utf-8")) <= 8192
+    record = json.loads(completed.stdout)
+    assert isinstance(record, dict)
+    assert record.get("schema") == expected_schema
+    lines_key = (
+        "executed_lines" if expected_schema == "coverage-measurement-v1" else "lines"
+    )
+    lines = record.get(lines_key)
+    assert isinstance(lines, list)
+    assert len(lines) <= 4096
+    assert all(type(line) is int and line > 0 for line in lines)
+    if expected_schema == "outer-trace-control-v1":
+        arcs = record.get("arcs")
+        assert isinstance(arcs, list)
+        assert len(arcs) <= 8192
+        assert all(
+            isinstance(arc, list)
+            and len(arc) == 2
+            and all(type(line) is int for line in arc)
+            for arc in arcs
+        )
+    return record
+
+
 def test_python_function_derivation_keeps_docstring_only_denominator(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import runpy
-
-    from coverage import Coverage
-
     normalizer = _normalizer_module()
     source_path = tmp_path / "app" / "docstring_only.py"
     source_path.parent.mkdir(parents=True)
@@ -1893,11 +2071,14 @@ def test_python_function_derivation_keeps_docstring_only_denominator(
     )
     monkeypatch.setattr(normalizer, "REPOSITORY_ROOT", tmp_path)
 
-    coverage = Coverage(data_file=None, include=[str(source_path)], config_file=False)
-    coverage.start()
-    runpy.run_path(str(source_path))
-    coverage.stop()
-    executed = coverage.get_data().lines(str(source_path))
+    measurement = _run_coverage_worker(
+        tmp_path,
+        "coverage-measurement-v1",
+        "measure",
+        str(source_path),
+        "0",
+    )
+    executed = measurement["executed_lines"]
     assert executed == [1]
 
     metric = normalizer._derive_python_function_metric(
@@ -1912,11 +2093,9 @@ def test_python_function_derivation_keeps_docstring_only_denominator(
     )
 
 
-def test_merge_migration_noop_functions_are_exercised_by_coverage_suite() -> None:
-    import runpy
-
-    from coverage import Coverage
-
+def test_merge_migration_noop_functions_are_exercised_by_coverage_suite(
+    tmp_path: Path,
+) -> None:
     normalizer = _normalizer_module()
     migration_path = (
         REPOSITORY_ROOT
@@ -1926,16 +2105,17 @@ def test_merge_migration_noop_functions_are_exercised_by_coverage_suite() -> Non
     )
 
     def measured_metric(*, call_functions: bool) -> dict[str, object]:
-        coverage = Coverage(
-            data_file=None, include=[str(migration_path)], config_file=False
+        measurement = _run_coverage_worker(
+            tmp_path,
+            "coverage-measurement-v1",
+            "measure",
+            str(migration_path),
+            "1" if call_functions else "0",
         )
-        coverage.start()
-        namespace = runpy.run_path(str(migration_path))
         if call_functions:
-            assert namespace["upgrade"]() is None
-            assert namespace["downgrade"]() is None
-        coverage.stop()
-        executed = coverage.get_data().lines(str(migration_path))
+            assert measurement["upgrade_result"] is None
+            assert measurement["downgrade_result"] is None
+        executed = measurement["executed_lines"]
         assert executed is not None
         metric = normalizer._derive_python_function_metric(
             "alembic/versions/202509010001_merge_push_topics_and_email_heads.py",
@@ -1956,6 +2136,45 @@ def test_merge_migration_noop_functions_are_exercised_by_coverage_suite() -> Non
         2,
         100.0,
     )
+
+
+def test_isolated_coverage_measurement_preserves_outer_false_branch(
+    tmp_path: Path,
+) -> None:
+    branch_path = tmp_path / "outer_branch.py"
+    branch_path.write_text(
+        "def choose(flag):\n    if flag:\n        return 'yes'\n    return 'no'\n",
+        encoding="utf-8",
+    )
+    measurement_path = tmp_path / "inner_subject.py"
+    measurement_path.write_text("sentinel = 1\n", encoding="utf-8")
+
+    baseline = _run_coverage_worker(
+        tmp_path,
+        "outer-trace-control-v1",
+        "outer-control",
+        str(branch_path),
+        "-",
+    )
+    assert baseline["measurement"] is None
+    isolated = _run_coverage_worker(
+        tmp_path,
+        "outer-trace-control-v1",
+        "outer-control",
+        str(branch_path),
+        str(measurement_path),
+    )
+
+    assert baseline["true_result"] == isolated["true_result"] == "yes"
+    assert baseline["false_result"] == isolated["false_result"] == "no"
+    assert baseline["lines"] == isolated["lines"]
+    assert baseline["arcs"] == isolated["arcs"]
+    assert 4 in isolated["lines"]
+    assert [2, 4] in isolated["arcs"]
+    assert isolated["measurement"] == {
+        "schema": "coverage-measurement-v1",
+        "executed_lines": [1],
+    }
 
 
 def test_python_branch_derivation_matches_coverage_py_try_semantics(

@@ -37,7 +37,7 @@ def test_consumer_keeps_original_gate_context_budget_and_scanner_rules() -> None
     assert job["timeout-minutes"] == 15
     assert steps.index(diagnostic) == steps.index(original) + 1
     assert original["name"] == "Lint Postgres Migrations (Squawk)"
-    assert 'squawk "${squawk_args[@]}" "$sql_file"' in original["run"]
+    assert '"$squawk_binary_path" "${squawk_args[@]}" "$sql_file"' in original["run"]
     assert _squawk_args(diagnostic["run"]) == _squawk_args(original["run"])
     assert "continue-on-error" not in job
     assert "continue-on-error" not in original

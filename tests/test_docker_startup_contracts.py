@@ -2812,8 +2812,8 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
         "libssl3=3.5.9-r0",
         "c-ares=1.34.8-r0",
         "brotli-libs=1.2.1-r0",
-        "libcurl=8.22.0-r0",
-        "curl=8.22.0-r0",
+        "libcurl=8.23.0-r0",
+        "curl=8.23.0-r0",
     ):
         assert package in runtime_stage
     assert "apk upgrade" not in dockerfile

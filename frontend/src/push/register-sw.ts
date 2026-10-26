@@ -1,6 +1,6 @@
 import {
-  PWA_REFRESH_EVENT,
   dispatchServiceWorkerBootstrap,
+  dispatchServiceWorkerUpdate,
   type ServiceWorkerUpdateEventDetail,
 } from "@/app/pwaEvents"
 import { createTrustedScriptURL } from "@/utils/trustedTypes"
@@ -120,9 +120,7 @@ async function registerServiceWorkerOnce(
           reloadAfterAcceptedUpdate(worker, consent)
         },
       }
-      window.dispatchEvent(
-        new CustomEvent<ServiceWorkerUpdateEventDetail>(PWA_REFRESH_EVENT, { detail })
-      )
+      dispatchServiceWorkerUpdate(detail)
     }
 
     const registerBackgroundSync = () => {

@@ -38,6 +38,28 @@ SLSA_VERIFIER_SHA256 = (
 )
 KUBECONFORM_SHA256 = "9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883"
 K6_SHA256 = "39c3117b6af817592dcd0ce4242105c0a7af10948c2a425306f0be8f7a8a8ab1"
+SQUAWK_SHA256 = "03efe0e666b63bf33e2493693ee0aa9dbed07cbdcd20f7a8292245c1da9d790a"
+SQUAWK_RELEASE_URL = (
+    "https://github.com/sbdchd/squawk/releases/download/v2.67.0/squawk-linux-x64"
+)
+SQUAWK_BINARY_DIRECTORY = "university-ecosystem-tools/squawk/v2.67.0/linux-x64"
+SQUAWK_BINARY_SUFFIX = f"{SQUAWK_BINARY_DIRECTORY}/squawk-linux-x64"
+SQUAWK_RUNNER = "ubuntu-24.04"
+SQUAWK_VERIFY_SHELL = "/bin/bash --noprofile --norc -e -o pipefail {0}"
+SQUAWK_EXCLUSIONS = (
+    "prefer-robust-stmts",
+    "prefer-text-field",
+    "prefer-bigint-over-int",
+    "prefer-identity",
+    "prefer-timestamp-tz",
+    "disallowed-unique-constraint",
+    "require-enum-value-ordering",
+)
+SQUAWK_AUD148_CONDITION = (
+    "${{ !cancelled() &&\n"
+    "    (steps.migration-squawk.outcome == 'success' ||\n"
+    "     steps.migration-squawk.outcome == 'failure') }}"
+)
 TRIVY_SHA256 = "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f"
 CRD_CATALOG_COMMIT = "866b2653a5334db9aed20ad74701e20fd464471b"  # pragma: allowlist secret -- immutable schema revision
 
@@ -50,6 +72,250 @@ def _workflow(path: Path) -> dict[str, Any]:
 
 def _step(job: dict[str, Any], name: str) -> dict[str, Any]:
     return next(step for step in job["steps"] if step.get("name") == name)
+
+
+def _squawk_exclusions(run: Any) -> tuple[str, ...] | None:
+    if not isinstance(run, str):
+        return None
+    match = re.search(r"squawk_args=\((.*?)\)", run, re.DOTALL)
+    if match is None:
+        return None
+    normalized = " ".join(match.group(1).split())
+    expected = " ".join(f"--exclude {rule}" for rule in SQUAWK_EXCLUSIONS)
+    return SQUAWK_EXCLUSIONS if normalized == expected else None
+
+
+def _has_standalone_squawk_checks(run: Any, target: str, expected_count: int) -> bool:
+    if not isinstance(run, str):
+        return False
+    input_line = f'printf \'%s  %s\\n\' "$expected_sha256" "${target}" |'
+    pattern = re.compile(
+        r"(?m)^[ \t]*"
+        + re.escape(input_line)
+        + r"\r?\n[ \t]*/usr/bin/sha256sum --check --strict[ \t]*$"
+    )
+    return len(pattern.findall(run)) == expected_count
+
+
+def _has_pinned_squawk_integrity_contract(job: Any) -> bool:
+    if not isinstance(job, dict):
+        return False
+    if (
+        job.get("name") != "Alembic Migrations"
+        or job.get("runs-on") != SQUAWK_RUNNER
+        or job.get("needs") != "pre-commit-check"
+        or job.get("timeout-minutes") != 15
+        or "if" in job
+        or "strategy" in job
+        or "continue-on-error" in job
+    ):
+        return False
+    steps = job.get("steps")
+    if not isinstance(steps, list):
+        return False
+    names = [step.get("name") for step in steps if isinstance(step, dict)]
+    if "Install Squawk Linter" in names:
+        return False
+
+    def named_step(name: str) -> dict[str, Any] | None:
+        found = [
+            step
+            for step in steps
+            if isinstance(step, dict) and step.get("name") == name
+        ]
+        return found[0] if len(found) == 1 else None
+
+    verifier = named_step("Download and verify Squawk Linter")
+    setup_python = named_step("Set up Python")
+    lint = named_step("Lint Postgres Migrations (Squawk)")
+    diagnostic = named_step("Collect bounded 148642dd1207 DDL evidence")
+    if any(step is None for step in (verifier, setup_python, lint, diagnostic)):
+        return False
+    assert verifier is not None and lint is not None and diagnostic is not None
+    if not (
+        names.index("Download and verify Squawk Linter")
+        < names.index("Set up Python")
+        < names.index("Lint Postgres Migrations (Squawk)")
+    ):
+        return False
+    for step in (verifier, lint):
+        if "if" in step or "continue-on-error" in step:
+            return False
+    if "uses" in verifier or verifier.get("shell") != SQUAWK_VERIFY_SHELL:
+        return False
+    if lint.get("id") != "migration-squawk" or "continue-on-error" in diagnostic:
+        return False
+    if diagnostic.get("if") != SQUAWK_AUD148_CONDITION:
+        return False
+
+    verify_run = verifier.get("run")
+    lint_run = lint.get("run")
+    diagnostic_run = diagnostic.get("run")
+    if not all(isinstance(run, str) for run in (verify_run, lint_run, diagnostic_run)):
+        return False
+    assert isinstance(verify_run, str)
+    assert isinstance(lint_run, str)
+    assert isinstance(diagnostic_run, str)
+
+    expected_sha = f'expected_sha256="{SQUAWK_SHA256}"'
+    asset_url = f'asset_url="{SQUAWK_RELEASE_URL}"'
+    binary_assignment = (
+        'squawk_binary_path="${RUNNER_TEMP:?RUNNER_TEMP is required}/'
+        f'{SQUAWK_BINARY_SUFFIX}"'
+    )
+    checksum_input = 'printf \'%s  %s\\n\' "$expected_sha256" "$squawk_binary_path"'
+    verify_requirements = (
+        "set -euo pipefail",
+        'if [[ "${RUNNER_OS:-}" != "Linux" || "${RUNNER_ARCH:-}" != "X64" ]]; then',
+        "$(/usr/bin/uname -s)",
+        "$(/usr/bin/uname -m)",
+        'if [[ -z "${RUNNER_TEMP:-}" || "$RUNNER_TEMP" != /* ]]; then',
+        expected_sha,
+        asset_url,
+        f'download_dir="$RUNNER_TEMP/{SQUAWK_BINARY_DIRECTORY}"',
+        'binary_path="$download_dir/squawk-linux-x64"',
+        'partial_path="$binary_path.partial"',
+        'if [[ -e "$download_dir" || -L "$download_dir" ]]; then',
+        "/usr/bin/curl --fail --silent --show-error --location",
+        "--proto '=https' --proto-redir '=https' --tlsv1.2",
+        '--max-redirs 5 --output "$partial_path" "$asset_url"',
+        'if [[ ! -f "$partial_path" || '
+        '-L "$partial_path" || ! -s "$partial_path" ]]; then',
+        "/usr/bin/sha256sum --check --strict",
+        'printf \'%s  %s\\n\' "$expected_sha256" "$partial_path" |',
+        'printf \'%s  %s\\n\' "$expected_sha256" "$binary_path" |',
+        '/usr/bin/chmod 0755 -- "$partial_path"',
+    )
+    if not all(fragment in verify_run for fragment in verify_requirements):
+        return False
+    if re.search(r"(?<!/)curl\b|(?<!/)sha256sum\b", verify_run):
+        return False
+    if not (
+        _has_standalone_squawk_checks(verify_run, "partial_path", 1)
+        and _has_standalone_squawk_checks(verify_run, "binary_path", 1)
+    ):
+        return False
+    partial_input = 'printf \'%s  %s\\n\' "$expected_sha256" "$partial_path" |'
+    final_input = 'printf \'%s  %s\\n\' "$expected_sha256" "$binary_path" |'
+    partial_index = verify_run.find(partial_input)
+    partial_checker = verify_run.find(
+        "/usr/bin/sha256sum --check --strict", partial_index
+    )
+    chmod_index = verify_run.find('/usr/bin/chmod 0755 -- "$partial_path"')
+    move_index = verify_run.find('/usr/bin/mv -- "$partial_path" "$binary_path"')
+    final_index = verify_run.find(final_input)
+    final_checker = verify_run.find("/usr/bin/sha256sum --check --strict", final_index)
+    if not (
+        0
+        <= partial_index
+        < partial_checker
+        < chmod_index
+        < move_index
+        < final_index
+        < final_checker
+    ):
+        return False
+
+    if not all(fragment in lint_run for fragment in (binary_assignment, expected_sha)):
+        return False
+    lint_invocation = '"$squawk_binary_path" "${squawk_args[@]}" "$sql_file"'
+    lint_call_index = lint_run.find(lint_invocation)
+    lint_render_index = lint_run.find(
+        "uv run python -m scripts.quality.render_live_alembic_sql"
+    )
+    lint_input_index = lint_run.rfind(checksum_input + " |", 0, lint_call_index)
+    lint_checker_index = lint_run.find(
+        "/usr/bin/sha256sum --check --strict", lint_input_index
+    )
+    if (
+        "set -euo pipefail" not in lint_run
+        or lint_call_index < 0
+        or not (
+            0
+            <= lint_render_index
+            < lint_input_index
+            < lint_checker_index
+            < lint_call_index
+        )
+        or lint_run.count("/usr/bin/sha256sum --check --strict") < 2
+        or lint_run.count(checksum_input) < 2
+        or not _has_standalone_squawk_checks(lint_run, "squawk_binary_path", 2)
+        or lint_invocation not in lint_run
+        or _squawk_exclusions(lint_run) != SQUAWK_EXCLUSIONS
+        or "command -v squawk" in lint_run
+        or 'squawk "${squawk_args[@]}"' in lint_run
+    ):
+        return False
+
+    diag_version = 'AUD148_SQUAWK_VERSION="$("$squawk_binary_path" --version)"'
+    diag_hash = (
+        'AUD148_SQUAWK_BINARY_SHA256="$(/usr/bin/sha256sum -- '
+        '"$squawk_binary_path" | /usr/bin/cut'
+    )
+    if not all(
+        fragment in diagnostic_run
+        for fragment in (binary_assignment, expected_sha, diag_version, diag_hash)
+    ):
+        return False
+    diag_call_index = diagnostic_run.find(lint_invocation)
+    version_input_index = diagnostic_run.find(checksum_input + " |")
+    version_checker_index = diagnostic_run.find(
+        "/usr/bin/sha256sum --check --strict", version_input_index
+    )
+    version_hash_index = diagnostic_run.find(diag_hash)
+    version_index = diagnostic_run.find(diag_version)
+    diag_input_index = diagnostic_run.rfind(checksum_input + " |", 0, diag_call_index)
+    diag_checker_index = diagnostic_run.find(
+        "/usr/bin/sha256sum --check --strict", diag_input_index
+    )
+    diagnostic_lint_log_index = diagnostic_run.find('lint_log="$(mktemp)"')
+    if (
+        "set -euo pipefail" not in diagnostic_run
+        or not (
+            0
+            <= version_input_index
+            < version_checker_index
+            < version_hash_index
+            < version_index
+        )
+        or not (
+            0
+            <= diagnostic_lint_log_index
+            < diag_input_index
+            < diag_checker_index
+            < diag_call_index
+        )
+        or diagnostic_run.count("/usr/bin/sha256sum --check --strict") < 2
+        or diagnostic_run.count(checksum_input) < 2
+        or not _has_standalone_squawk_checks(diagnostic_run, "squawk_binary_path", 2)
+        or lint_invocation not in diagnostic_run
+        or _squawk_exclusions(diagnostic_run) != SQUAWK_EXCLUSIONS
+        or "command -v squawk" in diagnostic_run
+        or 'squawk "${squawk_args[@]}"' in diagnostic_run
+    ):
+        return False
+    return True
+
+
+def _job_with_step_update(
+    job: dict[str, Any], name: str, updates: dict[str, Any]
+) -> dict[str, Any]:
+    changed_steps = []
+    for step in job["steps"]:
+        if step.get("name") == name:
+            changed_steps.append({**step, **updates})
+        else:
+            changed_steps.append(step)
+    return {**job, "steps": changed_steps}
+
+
+def _suppress_squawk_checksum(run: str, occurrence: int) -> str:
+    command = "/usr/bin/sha256sum --check --strict"
+    matches = list(re.finditer(re.escape(command), run))
+    if not 0 <= occurrence < len(matches):
+        raise AssertionError("requested Squawk checksum occurrence is missing")
+    match = matches[occurrence]
+    return run[: match.end()] + " || true" + run[match.end() :]
 
 
 def test_ci_scanner_bootstraps_are_version_pinned_and_checksum_verified() -> None:
@@ -520,3 +786,169 @@ def test_npm_failure_metadata_is_diagnostic_only_and_keeps_audit_blocking() -> N
         assert f"{field}: scalar(" in run
     assert "console.log(result.stdout)" not in run
     assert "--fix" not in run
+
+
+def test_squawk_integrity_contract_rejects_weakening_controls() -> None:
+    """Pin the Linux x64 asset, trusted checker, consumers, and blocking guard."""
+    job = _workflow(CI)["jobs"]["alembic-migrations"]
+    assert _has_pinned_squawk_integrity_contract(job)
+
+    verifier = _step(job, "Download and verify Squawk Linter")
+    verify_run = verifier["run"]
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Download and verify Squawk Linter",
+            {"run": verify_run.replace(SQUAWK_SHA256, "0" * 64, 1)},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Download and verify Squawk Linter",
+            {"run": verify_run.replace("/usr/bin/sha256sum", "sha256sum", 1)},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Download and verify Squawk Linter",
+            {"run": verify_run.replace("/usr/bin/curl", "curl", 1)},
+        )
+    )
+    lint = _step(job, "Lint Postgres Migrations (Squawk)")
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Lint Postgres Migrations (Squawk)",
+            {"run": lint["run"].replace(SQUAWK_SHA256, "0" * 64, 1)},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Lint Postgres Migrations (Squawk)",
+            {"run": lint["run"].replace("/usr/bin/sha256sum", "sha256sum", 1)},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Lint Postgres Migrations (Squawk)",
+            {
+                "run": lint["run"].replace(
+                    'squawk_binary_path="${RUNNER_TEMP:?RUNNER_TEMP is required}/'
+                    + SQUAWK_BINARY_SUFFIX
+                    + '"',
+                    'squawk_binary_path="$(command -v squawk)"',
+                    1,
+                )
+            },
+        )
+    )
+    diagnostic = _step(job, "Collect bounded 148642dd1207 DDL evidence")
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Collect bounded 148642dd1207 DDL evidence",
+            {"run": diagnostic["run"].replace(SQUAWK_SHA256, "0" * 64, 1)},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Collect bounded 148642dd1207 DDL evidence",
+            {"run": diagnostic["run"].replace("/usr/bin/sha256sum", "sha256sum", 1)},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Collect bounded 148642dd1207 DDL evidence",
+            {
+                "run": diagnostic["run"].replace(
+                    'squawk_binary_path="${RUNNER_TEMP:?RUNNER_TEMP is required}/'
+                    + SQUAWK_BINARY_SUFFIX
+                    + '"',
+                    'squawk_binary_path="$(command -v squawk)"',
+                    1,
+                )
+            },
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Collect bounded 148642dd1207 DDL evidence",
+            {"if": diagnostic["if"] + " && false"},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Collect bounded 148642dd1207 DDL evidence",
+            {"if": "false"},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Download and verify Squawk Linter",
+            {"if": "false"},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Download and verify Squawk Linter",
+            {"continue-on-error": True},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract({**job, "if": "false"})
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Lint Postgres Migrations (Squawk)",
+            {"if": "false"},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Lint Postgres Migrations (Squawk)",
+            {"continue-on-error": True},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Download and verify Squawk Linter",
+            {"run": _suppress_squawk_checksum(verify_run, 0)},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Lint Postgres Migrations (Squawk)",
+            {"run": _suppress_squawk_checksum(lint["run"], 1)},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Collect bounded 148642dd1207 DDL evidence",
+            {"run": _suppress_squawk_checksum(diagnostic["run"], 1)},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract({**job, "continue-on-error": True})
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job,
+            "Collect bounded 148642dd1207 DDL evidence",
+            {"continue-on-error": True},
+        )
+    )
+    assert not _has_pinned_squawk_integrity_contract({**job, "runs-on": "macos-15"})
+    assert not _has_pinned_squawk_integrity_contract(
+        {**job, "strategy": {"matrix": {"os": ["ubuntu-24.04", "macos-15"]}}}
+    )

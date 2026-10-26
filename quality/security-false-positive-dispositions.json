@@ -9912,6 +9912,40 @@
       "reviewed_on": "2026-10-26",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_security_hardening_workflow_contract.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          116,
+          79,
+          1,
+          159,
+          42,
+          240,
+          146,
+          15,
+          51,
+          94,
+          143,
+          149,
+          179,
+          231,
+          153,
+          242,
+          31,
+          254,
+          116,
+          173
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Squawk v2.67.0 SHA-256 checksum literal in tests/test_security_hardening_workflow_contract.py as SQUAWK_SHA256; GitHub release asset API digest and local checksum agree according to the private official-metadata receipt; release asset is mutable; binary was not executed; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-26",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

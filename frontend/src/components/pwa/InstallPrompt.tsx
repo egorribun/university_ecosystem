@@ -5,7 +5,9 @@ import { usePushPreferences, type NotificationToast } from "@/hooks/usePushPrefe
 import {
   PWA_REFRESH_EVENT,
   PUSH_EDUCATION_REQUEST_EVENT,
+  clearPendingServiceWorkerUpdate,
   consumePendingPushEducation,
+  getPendingServiceWorkerUpdate,
   type ServiceWorkerUpdateEventDetail,
 } from "@/app/pwaEvents"
 import { useTranslation } from "react-i18next"
@@ -113,7 +115,7 @@ export default function InstallPrompt() {
   } | null>(null)
   const installSuppressUntilRef = useRef<number>(0)
   const pushSuppressUntilRef = useRef<{ userId: string; until: number } | null>(null)
-  const pendingUpdateRef = useRef<ServiceWorkerUpdateEventDetail["update"] | null>(null)
+  const pendingUpdateRef = useRef<ServiceWorkerUpdateEventDetail | null>(null)
 
   const isEligible = useMemo(() => !isInstallPromptStandalone(), [])
   const appName = t("navigation:brandName")
@@ -136,14 +138,19 @@ export default function InstallPrompt() {
   } = usePushPreferences({ onNotify: handleFeedback })
 
   useEffect(() => {
-    const handleServiceWorkerUpdate = (event: Event) => {
-      const customEvent = event as CustomEvent<ServiceWorkerUpdateEventDetail>
-      pendingUpdateRef.current = customEvent.detail.update
+    const showServiceWorkerUpdate = (detail: ServiceWorkerUpdateEventDetail) => {
+      pendingUpdateRef.current = detail
       setUpdateToastOpen(true)
       announce(t("system:installPrompt.updateAvailable"))
     }
+    const handleServiceWorkerUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent<ServiceWorkerUpdateEventDetail>
+      showServiceWorkerUpdate(customEvent.detail)
+    }
 
     window.addEventListener(PWA_REFRESH_EVENT, handleServiceWorkerUpdate)
+    const pendingUpdate = getPendingServiceWorkerUpdate()
+    if (pendingUpdate) showServiceWorkerUpdate(pendingUpdate)
 
     return () => {
       window.removeEventListener(PWA_REFRESH_EVENT, handleServiceWorkerUpdate)
@@ -268,13 +275,18 @@ export default function InstallPrompt() {
   }, [])
 
   const handleUpdateReload = useCallback(() => {
-    const update = pendingUpdateRef.current
-    if (!update) return
+    const detail = pendingUpdateRef.current
+    if (!detail?.update) return
+    clearPendingServiceWorkerUpdate(detail)
+    pendingUpdateRef.current = null
     setUpdateToastOpen(false)
-    void update()
+    void detail.update()
   }, [])
 
   const handleCloseUpdateToast = useCallback(() => {
+    const detail = pendingUpdateRef.current
+    clearPendingServiceWorkerUpdate(detail)
+    pendingUpdateRef.current = null
     setUpdateToastOpen(false)
   }, [])
 
