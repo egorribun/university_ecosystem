@@ -161,9 +161,7 @@ export function prepareStrictFormatterPlacementManifest(manifest) {
   return candidate
 }
 
-export function prepareAbsoluteArchiveGenerationManifest(manifest, archivePath) {
-  assert.equal(sourceManifestPhase(manifest), SOURCE_PHASE.ALREADY_FINAL)
-  assert.deepEqual(manifest.overrides?.[CONSUMER], FINAL_OVERRIDE)
+function prepareArchiveGenerationManifest(manifest, archivePath) {
   assert.equal(typeof archivePath, "string")
   assert(isAbsolute(archivePath) && resolve(archivePath) === archivePath)
   assert.equal(realpathSync(archivePath), archivePath)
@@ -173,6 +171,18 @@ export function prepareAbsoluteArchiveGenerationManifest(manifest, archivePath) 
   const candidate = structuredClone(manifest)
   candidate.overrides[CONSUMER].zod = "file:" + archivePath.replaceAll("\\", "/")
   return candidate
+}
+
+export function prepareAbsoluteArchiveGenerationManifest(manifest, archivePath) {
+  assert.equal(sourceManifestPhase(manifest), SOURCE_PHASE.ALREADY_FINAL)
+  assert.deepEqual(manifest.overrides?.[CONSUMER], FINAL_OVERRIDE)
+  return prepareArchiveGenerationManifest(manifest, archivePath)
+}
+
+export function prepareStrictFormatterAbsoluteArchiveGenerationManifest(manifest, archivePath) {
+  // Validate the source project first, then create only the known strict peer-proof fixture.
+  const strictManifest = prepareStrictFormatterPlacementManifest(manifest)
+  return prepareArchiveGenerationManifest(strictManifest, archivePath)
 }
 
 function archiveLockRecord() {
@@ -1692,8 +1702,8 @@ export async function runFinalCompilerGenerator() {
           assert(!existsSync(join(strict, ".npmrc")))
           const strictGenerationManifestBytes = Buffer.from(
             JSON.stringify(
-              prepareAbsoluteArchiveGenerationManifest(
-                JSON.parse(strictManifest),
+              prepareStrictFormatterAbsoluteArchiveGenerationManifest(
+                candidateManifest,
                 realpathSync(join(strict, ARCHIVE))
               ),
               null,

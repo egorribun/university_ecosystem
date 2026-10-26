@@ -99,14 +99,23 @@ async def test_calibration_is_private_to_analysis_and_never_persisted(
     planned = []
     original_explain = db_explain_check.explain_plan
 
-    async def observe_explain(connection, query):
+    async def observe_explain(
+        connection,
+        query,
+        *,
+        standard_conforming_strings: bool | None = None,
+    ):
         observations.append(
             (
                 await _catalog_stats(connection, table),
                 await _catalog_stats(observer, table),
             )
         )
-        plan = await original_explain(connection, query)
+        plan = await original_explain(
+            connection,
+            query,
+            standard_conforming_strings=standard_conforming_strings,
+        )
         planned.append(query)
         return plan
 
@@ -184,14 +193,23 @@ async def test_partial_calibration_error_restores_defaults_and_still_plans(
             return "SELECT 1 / 0 WHERE CAST($1 AS text[]) IS NOT NULL", parameters
         return statement, parameters
 
-    async def observe_explain(connection, query):
+    async def observe_explain(
+        connection,
+        query,
+        *,
+        standard_conforming_strings: bool | None = None,
+    ):
         observations.append(
             (
                 await _catalog_stats(connection, table),
                 await _catalog_stats(observer, table),
             )
         )
-        plan = await original_explain(connection, query)
+        plan = await original_explain(
+            connection,
+            query,
+            standard_conforming_strings=standard_conforming_strings,
+        )
         planned.append(query)
         return plan
 

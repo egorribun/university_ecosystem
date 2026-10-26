@@ -32,6 +32,7 @@ import {
   orchestrateFinalCandidateStages,
   prepareAbsoluteArchiveGenerationManifest,
   prepareFinalManifest,
+  prepareStrictFormatterAbsoluteArchiveGenerationManifest,
   prepareStrictFormatterPlacementManifest,
   prepareStrictManifest,
   strictPeerEnvironment,
@@ -925,7 +926,31 @@ test("absolute archive paths are generation-only and never mutate the portable m
     "file:" + path.resolve(archivePath).replaceAll("\\", "/")
   )
   assert.deepEqual(generation.devDependencies, portable.devDependencies)
+
+  const strictFixture = prepareStrictFormatterPlacementManifest(portable)
+  const strictGeneration = prepareStrictFormatterAbsoluteArchiveGenerationManifest(
+    portable,
+    archivePath
+  )
+  assert.equal(
+    strictGeneration.overrides["eslint-plugin-react-compiler@>=19.1.0-rc.2 <=19.1.0-rc.2"].zod,
+    "file:" + path.resolve(archivePath).replaceAll("\\", "/")
+  )
+  assert.deepEqual(strictGeneration.devDependencies, strictFixture.devDependencies)
+  assert.equal(strictGeneration.devDependencies.zod, "4.6.7")
+  assert.equal(strictGeneration.devDependencies["zod-validation-error"], "4.0.2")
+  assert.equal(Object.hasOwn(portable.devDependencies, "zod"), false)
+  assert.throws(() => prepareAbsoluteArchiveGenerationManifest(strictFixture, archivePath), {
+    name: "AssertionError",
+  })
+  const invalidProject = structuredClone(portable)
+  invalidProject.devDependencies.zod = "4.6.7"
+  assert.throws(
+    () => prepareStrictFormatterAbsoluteArchiveGenerationManifest(invalidProject, archivePath),
+    { name: "AssertionError" }
+  )
   assert.deepEqual(portable, snapshot)
+
   // Array joining preserves the traversal segment; path.join() would normalize it.
   const noncanonicalArchivePath = [
     TEST_FRONTEND,
@@ -945,6 +970,10 @@ test("absolute archive paths are generation-only and never mutate the portable m
     assert.throws(() => prepareAbsoluteArchiveGenerationManifest(portable, invalid), {
       name: "AssertionError",
     })
+    assert.throws(
+      () => prepareStrictFormatterAbsoluteArchiveGenerationManifest(portable, invalid),
+      { name: "AssertionError" }
+    )
   }
 })
 

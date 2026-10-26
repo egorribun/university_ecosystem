@@ -2,15 +2,19 @@
 
 Обновлено: 2026-10-26 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
-## Текущая опубликованная контрольная точка, 2026-10-26
+## Датированный source-bound evidence snapshot — 9c, 2026-10-26 11:54 UTC
 
-PR #1343 открыт и не объединён. Опубликованный HEAD —
-`9c74a4ad34d0e8f3ac26372e12ef1a7d177480da`, дерево
-`914ee3c311d809eb7a62072432e717812a53754d`. Принятая нижняя граница —
-**328/512 (64,1%)**, осталось 184 ID: последняя source-bound приёмка на
-предыдущем checkpoint `0f86541180e8ef003145265df793d49536a78939` добавила
-только AUD-183/368/379 к 325 прежним ID. На 9c новых ID не принято; AUD-231
-и AUD-461 остаются открытыми.
+Этот блок фиксирует evidence для опубликованного source
+`9c74a4ad34d0e8f3ac26372e12ef1a7d177480da` (tree
+`914ee3c311d809eb7a62072432e717812a53754d`), включая all-pages hosted capture
+11:54:20–11:54:39 UTC. Это датированный checkpoint, а не утверждение о текущем
+branch HEAD. На момент capture PR #1343 был открыт и не объединён; текущие refs
+доступны по [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343)
+и [ветке egorribun](https://github.com/egorribun/university_ecosystem/tree/egorribun).
+Принятая нижняя граница — **328/512 (64,1%)**, осталось 184 ID: последняя
+source-bound приёмка на предыдущем checkpoint
+`0f86541180e8ef003145265df793d49536a78939` добавила только AUD-183/368/379 к
+325 прежним ID. На 9c новых ID не принято; AUD-231 и AUD-461 остаются открытыми.
 
 В опубликованном source 9c действует policy346: прежний упорядоченный префикс
 337 и девять ранее одобренных владельцем точных integrity dispositions
@@ -38,7 +42,8 @@ archive foundation (2026-10-25)`; `tests/test_markdown_links.py` требует�
 не green и merge/release не подтверждены.
 
 Прежние 0f865 snapshots, policy337 и candidate-local результаты ниже —
-исторические source-bound evidence; они не описывают текущий hosted статус 9c.
+исторические source-bound evidence; они не заменяют датированный 9c snapshot
+или более поздние проверки f22.
 
 AUD-183: `chat.ts` передаёт Idempotency-Key и сохраняет caller retry key.
 Выбран ровно один frontend JUnit PASS; coverage 64/64 lines, 67/67 statements,
@@ -52,9 +57,11 @@ suppression из policy delta. Live Dependency Review action не заявлен
 
 Исторические all-pages snapshots опубликованного source 0f86541180e8ef003145265df793d49536a78939 / tree f25ae8ab62479de590b4c0bec95aebd11bee4750: в 02:30 UTC было 145 checks и 5 failures; более поздний peer snapshot того же source — 149 checks (115 SUCCESS, 27 SKIPPED, 1 NEUTRAL, 6 FAILURE, 0 active) и 31 runs / 144 jobs (111 PASS, 27 SKIP, 6 FAIL). Эти результаты относятся только к 0f865 и не заменяют приведённый выше terminal snapshot 9c.
 
-Следующие результаты R1/R2, PG36, Alembic V4, Node R7/R8 и Go — scoped local evidence; они не заменяют hosted snapshot 9c выше. Для следующего локального hotfix-кандидата поверх 9c прошли Linux Node 24.21.0 — 56/56, native Node — 85/85, обычный pytest SQL/Knip — 102/102, полный lint:knip и Ruff. Linux и native Node наборы пересекаются; их нельзя суммировать как уникальные тесты. Эти результаты не относятся к неизменённому опубликованному 9c и не добавляют audit ID. Первый SQL-прогон с 12 FAIL сохранён: test helper не учитывал overrides возвращаемого плана; исправленный helper сохраняет все отрицательные проверки. Final-source scan, hooks и hosted проверки следующего SHA ещё обязательны.
+Результаты R1/R2, PG36, Alembic V4, Node R7/R8 и Go — scoped local evidence; они не заменяют датированный 9c snapshot выше. В hotfix set, введённом после 9c и опубликованном в successor `f22c52819cbea63851ec563f45ffed023c85ceb3` (tree `f8cc3e955f2cb3b0a3f294684d87e711b2fbcc63`), Linux Node 24.21.0 прошёл 56/56, native Node — 85/85; 56 тестов пересекаются. Две отдельные pytest cohorts дали 102/102 SQL/Knip и 74/74 Dockerfile (6), Markdown links (9) и workflow (59). Полный lint:knip и Ruff прошли. Пересекающиеся Node cases нельзя суммировать; эти scoped результаты не принимают audit IDs. Первый SQL-прогон с 12 FAIL сохранён: test helper не учитывал overrides возвращаемого плана; исправленный helper сохраняет все отрицательные проверки. Final-source gates всё ещё применяются к каждому следующему SHA.
 
-Тот же hotfix-кандидат с явной nil-проверкой прошёл pinned Go 1.26.10: 10 focused и 782 full race named cases, 0 FAIL/SKIP; filtered statement coverage 3 093/3 093. SQL SHOW-mode R5 прошёл три точных PostgreSQL-теста на 17.11/170011 с asyncpg 0.32.0, без FAIL/ERROR/SKIP и с пустым stderr. Единственное стартовое DLQ warning побайтно совпало с прежним PG-прогоном; оно не подавлялось. Root независимо подтвердил source bindings и отсутствие обоих owned containers, сохранил принадлежащие PG-прогону 793 байта query-log tail и восстановил прежний файл. Receipts: root-go-9c-nilguard-race-verification-20261026.json и root-sql-show-mode-r5-pg3-verification-20261026.json. Это локальные результаты; AUD-461 и остальные ID не закрыты ими.
+В том же hotfix set, позднее опубликованном в f22, pinned Go 1.26.10 прошёл: 10 focused и 782 full race named cases, 0 FAIL/SKIP; filtered statement coverage 3 093/3 093. SQL SHOW-mode R5 прошёл три точных PostgreSQL-теста на 17.11/170011 с asyncpg 0.32.0, без FAIL/ERROR/SKIP и с пустым stderr. Единственное стартовое DLQ warning побайтно совпало с прежним PG-прогоном; оно не подавлялось. Root независимо подтвердил source bindings и отсутствие обоих owned containers, сохранил принадлежащие PG-прогону 793 байта query-log tail и восстановил прежний файл. Receipts: root-go-9c-nilguard-race-verification-20261026.json и root-sql-show-mode-r5-pg3-verification-20261026.json. Это локальные результаты; AUD-461 и остальные ID не закрыты ими.
+
+В наблюдаемой CI-валидации f22 Node-проверка остановилась на подготовке generator fixture, до фактического `npm audit`; результат npm audit отсутствует. Пять CodeQL analyses завершились SUCCESS. Полный набор required checks для f22 остаётся pending; это не all-green или audit-ID приёмка.
 
 Локальный R1 cohort остался RED: 1 082 PASS, 3 FAIL, 32 ERROR из 1 117; конкретные имена отказов и
 причины 32 setup errors указаны в AUDIT checkpoint. Receipts:
