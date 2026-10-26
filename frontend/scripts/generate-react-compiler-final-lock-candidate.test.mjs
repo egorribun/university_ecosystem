@@ -1,22 +1,36 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
+import * as path from "node:path"
 import { join } from "node:path"
 import test from "node:test"
+import { isDeepStrictEqual } from "node:util"
 import { fileURLToPath } from "node:url"
 import {
   assertFinalInstalledGraph,
   assertFinalLockScope,
   assertFinalNpmCommand,
   assertFinalSourcePrerequisites,
-  assertLocalOverrideTarget,
+  assertArchiveOverrideTarget,
   assertOverrideSelectorControl,
   assertStrictLock,
+  classifyFinalSourcePhase,
+  FINAL_CANDIDATE_ORCHESTRATION_STAGES,
   finalNpmCommand,
   inspectInstalledEngineLicense,
   inspectOverrideSelector,
+  orchestrateFinalCandidateStages,
+  prepareAbsoluteArchiveGenerationManifest,
   prepareFinalManifest,
   prepareStrictFormatterPlacementManifest,
   prepareStrictManifest,
@@ -24,17 +38,33 @@ import {
   strictVerificationPhase,
   summarizeStrictListFailure,
   summarizeStrictNpmFailure,
+  SOURCE_PHASE,
   validateFormatterMetadata,
 } from "./generate-react-compiler-final-lock-candidate.mjs"
 
 const LOCAL = "scripts/react-compiler-zod-compat"
+const LEGACY = "react-compiler-zod-compat"
+const LEGACY_SPEC = "file:./" + LOCAL
+const FACADE = "@university-ecosystem/react-compiler-zod-compat"
+const ARCHIVE = "vendor/react-compiler-zod-compat-1.0.0.tgz"
+const ARCHIVE_SPEC = "file:./" + ARCHIVE
+const LINK = "node_modules/" + FACADE
+const CONSUMER = "eslint-plugin-react-compiler@>=19.1.0-rc.2 <=19.1.0-rc.2"
+const TEST_FRONTEND = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
+const FACADE_SOURCE = Object.fromEntries(
+  ["package.json", "index.cjs", "LICENSE", "README.md"].map((name) => [
+    name,
+    readFileSync(path.join(TEST_FRONTEND, LOCAL, name)),
+  ])
+)
+const ARCHIVE_BYTES = readFileSync(path.join(TEST_FRONTEND, ARCHIVE))
 const COMPILER = "node_modules/eslint-plugin-react-compiler"
 const OLD_ENGINE = COMPILER + "/node_modules/zod"
 const FORMATTER = "node_modules/zod-validation-error"
 const HOOKS_FORMATTER = "node_modules/eslint-plugin-react-hooks/node_modules/zod-validation-error"
 const FINAL_OVERRIDE = Object.freeze({
   ".": "$eslint-plugin-react-compiler",
-  zod: "file:../../scripts/react-compiler-zod-compat",
+  zod: "$" + FACADE,
   "zod-validation-error": Object.freeze({ ".": "4.0.2", zod: "4.6.7" }),
 })
 const TRANSPORT = [
@@ -73,7 +103,7 @@ function manifest() {
       eslint: "^10.12.0",
       "eslint-plugin-react-compiler": "^19.1.0-rc.2",
       "eslint-plugin-react-hooks": "^7.1.1",
-      "react-compiler-zod-compat": "file:./" + LOCAL,
+      [FACADE]: ARCHIVE_SPEC,
     },
     overrides: {
       undici: ">=8.10.2",
@@ -81,6 +111,13 @@ function manifest() {
       "eslint-plugin-boundaries@7.2.0": { micromatch: "$micromatch" },
     },
   }
+}
+
+function legacyManifest() {
+  const source = manifest()
+  delete source.devDependencies[FACADE]
+  source.devDependencies[LEGACY] = LEGACY_SPEC
+  return source
 }
 
 function sourceLock() {
@@ -135,10 +172,10 @@ function sourceLock() {
       ),
       "node_modules/zod": rootZod,
       "node_modules/patched-zod": { name: "zod", ...rootZod, dev: true },
-      "node_modules/react-compiler-zod-compat": { resolved: LOCAL, link: true },
-      [LOCAL]: {
-        name: "@university-ecosystem/react-compiler-zod-compat",
+      [LINK]: {
         version: "1.0.0",
+        resolved: "file:" + ARCHIVE,
+        integrity: sri(ARCHIVE_BYTES),
         dev: true,
         license: "MIT",
         dependencies: { "patched-zod": "npm:zod@4.6.7" },
@@ -168,9 +205,41 @@ function sourceLock() {
   return lock
 }
 
+function legacySourceLock() {
+  const source = sourceLock()
+  delete source.packages[""].devDependencies[FACADE]
+  source.packages[""].devDependencies[LEGACY] = LEGACY_SPEC
+  delete source.packages[LINK]
+  source.packages["node_modules/" + LEGACY] = { resolved: LOCAL, link: true }
+  source.packages[LOCAL] = {
+    name: FACADE,
+    version: "1.0.0",
+    dev: true,
+    license: "MIT",
+    dependencies: { "patched-zod": "npm:zod@4.6.7" },
+  }
+  return source
+}
+
 function expectedFinalLock() {
   const candidate = sourceLock()
-  candidate.packages[OLD_ENGINE] = { resolved: LOCAL, link: true }
+  candidate.packages[OLD_ENGINE] = { name: FACADE, ...structuredClone(candidate.packages[LINK]) }
+  candidate.packages[FORMATTER] = structuredClone(candidate.packages[HOOKS_FORMATTER])
+  delete candidate.packages[HOOKS_FORMATTER]
+  return candidate
+}
+
+function expectedLegacyFinalLock() {
+  const candidate = legacySourceLock()
+  delete candidate.packages[""].devDependencies[LEGACY]
+  candidate.packages[""].devDependencies[FACADE] = ARCHIVE_SPEC
+  delete candidate.packages["node_modules/" + LEGACY]
+  delete candidate.packages[LOCAL]
+  candidate.packages[LINK] = structuredClone(sourceLock().packages[LINK])
+  candidate.packages[OLD_ENGINE] = {
+    name: FACADE,
+    ...structuredClone(candidate.packages[LINK]),
+  }
   candidate.packages[FORMATTER] = structuredClone(candidate.packages[HOOKS_FORMATTER])
   delete candidate.packages[HOOKS_FORMATTER]
   return candidate
@@ -187,7 +256,7 @@ function strictLock() {
       eslint: "10.12.0",
       "eslint-plugin-react-compiler": "19.1.0-rc.2",
       "eslint-plugin-react-hooks": "7.1.1",
-      "react-compiler-zod-compat": "file:./" + LOCAL,
+      [FACADE]: ARCHIVE_SPEC,
       zod: "4.6.7",
     },
   }
@@ -195,8 +264,7 @@ function strictLock() {
   return candidate
 }
 
-function formatterMetadata() {
-  const record = sourceLock().packages[HOOKS_FORMATTER]
+function formatterMetadata(record = sourceLock().packages[HOOKS_FORMATTER]) {
   return {
     name: "zod-validation-error",
     version: "4.0.2",
@@ -215,6 +283,27 @@ function formatterMetadata() {
     },
     time: { "4.0.2": "2026-10-16T00:00:00Z" },
   }
+}
+
+function registryMetadata(name, version, { gitHead, integrity } = {}) {
+  const archive = Buffer.from("synthetic registry metadata fixture: " + name + "@" + version)
+  const value = {
+    name,
+    version,
+    dist: {
+      tarball: "https://registry.npmjs.org/" + name + "/-/" + name + "-" + version + ".tgz",
+      integrity: integrity ?? sri(archive),
+      shasum: createHash("sha1").update(archive).digest("hex"),
+    },
+    time: { [version]: "2026-10-16T00:00:00Z" },
+  }
+  if (name === "zod") {
+    value.license = "MIT"
+    value.repository = { type: "git", url: "git+https://github.com/colinhacks/zod.git" }
+    value.gitHead = gitHead
+    value.dependencies = {}
+  }
+  return value
 }
 
 function withDirectory(run) {
@@ -241,24 +330,13 @@ function writePackage(
 function installedFixture(root, mode = "full") {
   const lock = expectedFinalLock()
   writePackage(root, "node_modules/zod", { name: "zod", version: "4.6.7", main: "index.cjs" })
-  if (mode === "production") {
-    writePackage(root, LOCAL, {
-      name: "@university-ecosystem/react-compiler-zod-compat",
-      version: "1.0.0",
-      main: "index.cjs",
-    })
-    return {}
+  mkdirSync(join(root, LOCAL), { recursive: true })
+  for (const [name, bytes] of Object.entries(FACADE_SOURCE)) {
+    writeFileSync(join(root, LOCAL, name), bytes)
   }
-  writePackage(root, LOCAL, {
-    name: "@university-ecosystem/react-compiler-zod-compat",
-    version: "1.0.0",
-    private: true,
-    description: "The legacy schema API used only by the pinned React Compiler ESLint gate",
-    main: "index.cjs",
-    files: ["index.cjs", "LICENSE", "README.md"],
-    license: "MIT",
-    dependencies: { "patched-zod": "npm:zod@4.6.7" },
-  })
+  mkdirSync(join(root, "vendor"), { recursive: true })
+  writeFileSync(join(root, ARCHIVE), ARCHIVE_BYTES)
+  if (mode === "production") return {}
   writePackage(root, "node_modules/patched-zod", {
     name: "zod",
     version: "4.6.7",
@@ -293,8 +371,18 @@ function installedFixture(root, mode = "full") {
     })
   }
   mkdirSync(join(root, COMPILER, "node_modules"), { recursive: true })
-  symlinkSync(join(root, LOCAL), join(root, OLD_ENGINE), "dir")
-  symlinkSync(join(root, LOCAL), join(root, "node_modules/react-compiler-zod-compat"), "dir")
+  const installedFacade = {
+    name: FACADE,
+    version: "1.0.0",
+    private: true,
+    description: "The legacy schema API used only by the pinned React Compiler ESLint gate",
+    main: "index.cjs",
+    files: ["index.cjs", "LICENSE", "README.md"],
+    license: "MIT",
+    dependencies: { "patched-zod": "npm:zod@4.6.7" },
+  }
+  writePackage(root, LINK, installedFacade)
+  writePackage(root, OLD_ENGINE, installedFacade)
   return {
     compilerBundleSha256: createHash("sha256").update(compilerEntry).digest("hex"),
     compilerDependencies: lock.packages[COMPILER].dependencies,
@@ -327,8 +415,8 @@ test("existing consumer or global engine overrides cannot be silently replaced",
 
 test("final manifest requires the staged private dev dependency and pinned consumer", () => {
   for (const mutate of [
-    (value) => delete value.devDependencies["react-compiler-zod-compat"],
-    (value) => (value.dependencies["react-compiler-zod-compat"] = "file:./" + LOCAL),
+    (value) => delete value.devDependencies[FACADE],
+    (value) => (value.dependencies[FACADE] = ARCHIVE_SPEC),
     (value) => (value.devDependencies["eslint-plugin-react-compiler"] = "^20"),
     (value) => (value.packageManager = "npm@11.19.0"),
     (value) => (value.overrides["eslint-plugin-react-hooks"] = { "zod-validation-error": "3" }),
@@ -346,13 +434,234 @@ test("source graph accepts the existing honest staged package without mutation",
   assert.deepEqual(original, snapshot)
 })
 
+test("c90 legacy links promote through the exact complete seven-record lock delta", () => {
+  const originalManifest = legacyManifest()
+  const originalLock = legacySourceLock()
+  const sourceSnapshot = structuredClone(originalLock)
+  const candidateManifest = prepareFinalManifest(originalManifest)
+  const candidateLock = expectedLegacyFinalLock()
+  assert.equal(classifyFinalSourcePhase(originalManifest, originalLock), SOURCE_PHASE.LEGACY_LINK)
+  assert.equal(assertFinalSourcePrerequisites(originalLock, SOURCE_PHASE.LEGACY_LINK), true)
+  assert.equal(
+    assertFinalLockScope(
+      originalLock,
+      candidateLock,
+      formatterMetadata(),
+      SOURCE_PHASE.LEGACY_LINK
+    ),
+    true
+  )
+  assert.deepEqual(candidateLock, expectedFinalLock())
+  assert.deepEqual(originalLock, sourceSnapshot)
+  assert.equal(candidateManifest.devDependencies[FACADE], ARCHIVE_SPEC)
+  assert(!Object.hasOwn(candidateManifest.devDependencies, LEGACY))
+  assert.deepEqual(originalLock.packages[""].devDependencies, originalManifest.devDependencies)
+})
+
+test("staged archive graph retains the exact three-record promotion path", () => {
+  const originalManifest = manifest()
+  const originalLock = sourceLock()
+  const candidate = expectedFinalLock()
+  assert.equal(
+    classifyFinalSourcePhase(originalManifest, originalLock),
+    SOURCE_PHASE.STAGED_ARCHIVE
+  )
+  assert.equal(assertFinalLockScope(originalLock, candidate, formatterMetadata()), true)
+})
+
+test("already-final graph requires exact source identity and zero lock delta", () => {
+  const finalManifest = prepareFinalManifest(manifest())
+  const finalLock = expectedFinalLock()
+  assert.equal(classifyFinalSourcePhase(finalManifest, finalLock), SOURCE_PHASE.ALREADY_FINAL)
+  assert.equal(assertFinalSourcePrerequisites(finalLock, SOURCE_PHASE.ALREADY_FINAL), true)
+  assert.equal(
+    assertFinalLockScope(
+      finalLock,
+      structuredClone(finalLock),
+      formatterMetadata(),
+      SOURCE_PHASE.ALREADY_FINAL
+    ),
+    true
+  )
+  for (const mutate of [
+    (value) => (value.packages["node_modules/unrelated"].version = "2.0.0"),
+    (value) => (value.packages[OLD_ENGINE].version = "1.0.1"),
+    (value) => (value.packages[FORMATTER].version = "4.0.3"),
+  ]) {
+    const candidate = structuredClone(finalLock)
+    mutate(candidate)
+    assert.throws(
+      () =>
+        assertFinalLockScope(finalLock, candidate, formatterMetadata(), SOURCE_PHASE.ALREADY_FINAL),
+      {
+        name: "AssertionError",
+      }
+    )
+  }
+})
+
+const orchestrationPhaseCases = [
+  {
+    name: "c90 legacy link",
+    sourcePhase: SOURCE_PHASE.LEGACY_LINK,
+    sourceManifest: legacyManifest(),
+    sourceLock: legacySourceLock(),
+    candidateLock: expectedLegacyFinalLock(),
+    formatterPath: HOOKS_FORMATTER,
+    deltaCount: 7,
+  },
+  {
+    name: "staged archive",
+    sourcePhase: SOURCE_PHASE.STAGED_ARCHIVE,
+    sourceManifest: manifest(),
+    sourceLock: sourceLock(),
+    candidateLock: expectedFinalLock(),
+    formatterPath: HOOKS_FORMATTER,
+    deltaCount: 3,
+  },
+  {
+    name: "already-final graph",
+    sourcePhase: SOURCE_PHASE.ALREADY_FINAL,
+    sourceManifest: prepareFinalManifest(manifest()),
+    sourceLock: expectedFinalLock(),
+    candidateLock: expectedFinalLock(),
+    formatterPath: FORMATTER,
+    deltaCount: 0,
+  },
+]
+
+for (const scenario of orchestrationPhaseCases) {
+  test(
+    "synthetic " + scenario.name + " orchestration uses its formatter record through postflight",
+    async () => {
+      const { sourcePhase, sourceManifest, sourceLock, candidateLock, formatterPath, deltaCount } =
+        scenario
+      assert.equal(classifyFinalSourcePhase(sourceManifest, sourceLock), sourcePhase)
+      if (sourcePhase === SOURCE_PHASE.ALREADY_FINAL) {
+        assert.equal(sourceLock.packages[HOOKS_FORMATTER], undefined)
+      }
+
+      const calls = []
+      const licenseEvidence = {
+        packageName: "zod",
+        version: "4.6.7",
+        license: "MIT",
+        licenseSha256: "b".repeat(64),
+      }
+      const archiveEvidence = (metadata, path) => ({
+        verified: true,
+        bytes: 1,
+        integrity: metadata.dist.integrity,
+        sha256: "a".repeat(64),
+        path: "synthetic-archive-fixture/" + path,
+      })
+      const emittedPatch = deltaCount === 0 ? "" : "synthetic-" + sourcePhase + "-lock-patch"
+      const state = await orchestrateFinalCandidateStages({
+        sourcePhase,
+        sourceLock,
+        now: NOW,
+        runStage: async (stage, current) => {
+          calls.push(stage)
+          if (stage === "toolMetadata") return registryMetadata("npm", "11.17.0")
+          if (stage === "toolArchive") {
+            return archiveEvidence(current.toolMetadata.data, "npm.tgz")
+          }
+          if (stage === "toolInstall") return { cli: "synthetic-pinned-npm-cli" }
+          if (stage === "engineMetadata") {
+            return registryMetadata("zod", "4.6.7", {
+              gitHead: "b500a2ee95134f81d74da7911d7378dd2853d042",
+              integrity: sourceLock.packages["node_modules/zod"].integrity,
+            })
+          }
+          if (stage === "engineArchive") {
+            return archiveEvidence(current.engine.data, "zod.tgz")
+          }
+          if (stage === "formatterMetadata") {
+            assert.equal(current.formatterSourcePath, formatterPath)
+            assert.strictEqual(current.formatterSourceRecord, sourceLock.packages[formatterPath])
+            return formatterMetadata(current.formatterSourceRecord)
+          }
+          if (stage === "formatterArchive") {
+            return archiveEvidence(current.formatter.data, "formatter.tgz")
+          }
+          if (stage === "overrideSelector") return selectorDiagnostic()
+          if (stage === "candidateLockGeneration") {
+            const bytes = Buffer.from(JSON.stringify(candidateLock))
+            return {
+              path: "synthetic-" + sourcePhase + "/package-lock.json",
+              bytes,
+              candidate: structuredClone(candidateLock),
+            }
+          }
+          if (stage === "candidateLockScope") return true
+          if (stage === "fullGraphInstallAndVerify") {
+            return { verified: true, licenseEvidence }
+          }
+          if (stage === "productionGraphInstallAndVerify") return { verified: true }
+          if (stage === "strictPeerProof") {
+            return {
+              verified: true,
+              strictNpmListVerified: true,
+              strictLockBytes: Buffer.from("synthetic strict fixture lock"),
+              licenseEvidence,
+            }
+          }
+          if (stage === "sourceSnapshotPostflight") return true
+          if (stage === "candidateDiff") return emittedPatch
+          assert.fail("Unexpected synthetic orchestration stage: " + stage)
+        },
+      })
+
+      assert.deepEqual(calls, FINAL_CANDIDATE_ORCHESTRATION_STAGES)
+      assert.deepEqual(state.completedStages, FINAL_CANDIDATE_ORCHESTRATION_STAGES)
+      assert.equal(state.formatterSourcePath, formatterPath)
+      assert.strictEqual(state.formatterSourceRecord, sourceLock.packages[formatterPath])
+      assert.equal(state.cli, "synthetic-pinned-npm-cli")
+      assert.equal(state.candidateLockScopeVerified, true)
+      assert.equal(state.fullGraphInstallVerified, true)
+      assert.equal(state.productionGraphInstallVerified, true)
+      assert.equal(state.strictPeerProof.strictNpmListVerified, true)
+      assert.equal(state.sourceSnapshotPostflightVerified, true)
+      assert.equal(state.patch, emittedPatch)
+      assert.equal(state.patch.length > 0, deltaCount > 0)
+      const changedPackagePaths = new Set([
+        ...Object.keys(sourceLock.packages),
+        ...Object.keys(candidateLock.packages),
+      ])
+      assert.equal(
+        [...changedPackagePaths].filter(
+          (path) => !isDeepStrictEqual(sourceLock.packages[path], candidateLock.packages[path])
+        ).length,
+        deltaCount
+      )
+    }
+  )
+}
+test("source phase classifier rejects mixed and broadened dependency shapes", () => {
+  for (const mutate of [
+    (value) => (value.devDependencies[FACADE] = ARCHIVE_SPEC),
+    (value) => (value.devDependencies[LEGACY] = "file:./scripts/other-compat"),
+    (value) => (value.overrides[CONSUMER] = { zod: "*" }),
+    (value) => (value.overrides["eslint-plugin-react-compiler@*"] = FINAL_OVERRIDE),
+  ]) {
+    const source = legacyManifest()
+    mutate(source)
+    assert.throws(() => prepareFinalManifest(source), { name: "AssertionError" })
+  }
+  const sourceLockValue = legacySourceLock()
+  sourceLockValue.packages[LOCAL].dependencies["patched-zod"] = "npm:zod@3.25.76"
+  assert.throws(() => assertFinalSourcePrerequisites(sourceLockValue, SOURCE_PHASE.LEGACY_LINK), {
+    name: "AssertionError",
+  })
+})
+
 test("source graph rejects changed engines, consumer versions and unexpected old Zod", () => {
   for (const mutate of [
     (value) => (value.packages[COMPILER].version = "19.1.0-rc.3"),
     (value) => (value.packages["node_modules/zod"].version = "4.6.5"),
     (value) => (value.packages["node_modules/patched-zod"].version = "3.25.76"),
-    (value) => (value.packages[LOCAL].version = "3.25.76"),
-    (value) => (value.packages[LOCAL].dev = false),
+    (value) => (value.packages[OLD_ENGINE].version = "3.25.77"),
+    (value) => (value.packages[LINK].dev = false),
     (value) => (value.packages["node_modules/extra/node_modules/zod"] = { version: "3.25.76" }),
     (value) => (value.packages["node_modules/puppeteer-core"].version = "25.12.0"),
     (value) => (value.packages["node_modules/chromium-bidi"].dependencies.zod = "^3"),
@@ -596,7 +905,7 @@ test("strict fixture pins real current ESLint and consumers instead of downgradi
       eslint: "10.12.0",
       "eslint-plugin-react-compiler": "19.1.0-rc.2",
       "eslint-plugin-react-hooks": "7.1.1",
-      "react-compiler-zod-compat": "file:./" + LOCAL,
+      [FACADE]: ARCHIVE_SPEC,
       zod: "4.6.7",
     },
     overrides: {
@@ -604,6 +913,28 @@ test("strict fixture pins real current ESLint and consumers instead of downgradi
       "eslint-plugin-react-hooks": { "zod-validation-error": "4.0.2" },
     },
   })
+})
+
+test("absolute archive paths are generation-only and never mutate the portable manifest", () => {
+  const portable = prepareFinalManifest(manifest())
+  const snapshot = structuredClone(portable)
+  const archivePath = join(TEST_FRONTEND, ARCHIVE)
+  const generation = prepareAbsoluteArchiveGenerationManifest(portable, archivePath)
+  assert.equal(
+    generation.overrides["eslint-plugin-react-compiler@>=19.1.0-rc.2 <=19.1.0-rc.2"].zod,
+    "file:" + path.resolve(archivePath).replaceAll("\\", "/")
+  )
+  assert.deepEqual(generation.devDependencies, portable.devDependencies)
+  assert.deepEqual(portable, snapshot)
+  for (const invalid of [
+    ARCHIVE_SPEC,
+    join(TEST_FRONTEND, "package.json"),
+    TEST_FRONTEND + "\\vendor\\..\\vendor\\react-compiler-zod-compat-1.0.0.tgz",
+  ]) {
+    assert.throws(() => prepareAbsoluteArchiveGenerationManifest(portable, invalid), {
+      name: "AssertionError",
+    })
+  }
 })
 
 test("root formatter pin is confined to the isolated fixture", () => {
@@ -673,7 +1004,7 @@ test("strict proof rejects changed peers, selected versions and artifact replace
     (value) => (value.packages[FORMATTER].peerDependencies.zod = "*"),
     (value) => (value.packages[FORMATTER].integrity = sri("different formatter")),
     (value) => (value.packages[OLD_ENGINE] = { version: "3.25.76" }),
-    (value) => (value.packages[LOCAL].dependencies["patched-zod"] = "npm:zod@3.25.76"),
+    (value) => (value.packages[OLD_ENGINE].dependencies["patched-zod"] = "npm:zod@3.25.76"),
   ]) {
     const project = expectedFinalLock()
     const strict = strictLock()
@@ -700,17 +1031,13 @@ test("production graph rejects each installed development compatibility consumer
   for (const [path, name, version] of [
     ["patched-zod", "zod", "4.6.7"],
     ["eslint-plugin-react-compiler", "eslint-plugin-react-compiler", "19.1.0-rc.2"],
-    ["react-compiler-zod-compat", "@university-ecosystem/react-compiler-zod-compat", "1.0.0"],
+    [FACADE, FACADE, "1.0.0"],
     ["zod-validation-error", "zod-validation-error", "4.0.2"],
     ["eslint-plugin-react-hooks", "eslint-plugin-react-hooks", "7.1.1"],
   ]) {
     withDirectory((root) => {
       installedFixture(root, "production")
-      if (path === "react-compiler-zod-compat") {
-        symlinkSync(join(root, LOCAL), join(root, "node_modules", path), "dir")
-      } else {
-        writePackage(root, "node_modules/" + path, { name, version, main: "index.cjs" })
-      }
+      writePackage(root, "node_modules/" + path, { name, version, main: "index.cjs" })
       assert.throws(() => assertFinalInstalledGraph(root, "production", {}), {
         name: "AssertionError",
       })
@@ -723,7 +1050,7 @@ test("consumer resolution rejects the original vulnerable engine and a replaceme
     withDirectory((root) => {
       const controls = installedFixture(root)
       if (change === "old-engine") {
-        rmSync(join(root, OLD_ENGINE))
+        rmSync(join(root, OLD_ENGINE), { recursive: true })
         writePackage(root, OLD_ENGINE, { name: "zod", version: "3.25.76", main: "index.cjs" })
       } else {
         writeFileSync(join(root, COMPILER, "index.cjs"), "// changed compiler artifact\n")
@@ -870,7 +1197,7 @@ function selectorToolFixture(root, attached = true) {
         "].find(key => overrides[key])",
       "    assert.equal(overrides[this.key].zod, this.key === " +
         JSON.stringify(exact) +
-        " ? '$react-compiler-zod-compat' : 'file:../../scripts/react-compiler-zod-compat')",
+        " ? '$react-compiler-zod-compat' : '$@university-ecosystem/react-compiler-zod-compat')",
       "    this.rule = { key: this.key }",
       "  }",
       "  getEdgeRule(edge) {",
@@ -945,9 +1272,10 @@ function selectorToolFixture(root, attached = true) {
       "const assert = require('node:assert/strict')",
       "const { resolve } = require('node:path')",
       "module.exports = { resolve(name, spec, where) {",
-      "  assert.equal(name, 'zod')",
+      "  assert(['zod', '@university-ecosystem/react-compiler-zod-compat'].includes(name))",
       "  assert.equal(spec.startsWith('file:'), true)",
-      "  return { type: 'directory', fetchSpec: resolve(where, spec.slice(5)) }",
+      "  const fetchSpec = resolve(where, spec.slice(5))",
+      "  return { type: fetchSpec.endsWith('.tgz') ? 'file' : 'directory', fetchSpec }",
       "} }",
       "",
     ].join("\n")
@@ -1005,13 +1333,14 @@ function selectorDiagnostic(attached = true) {
       parser: "npm-package-arg",
       parserVersion: "13.0.2",
       rawSpec: "^3.22.4",
-      baselineSpec: "file:./scripts/react-compiler-zod-compat",
-      baselineTarget: COMPILER + "/" + LOCAL,
-      selectedSpec: "file:../../scripts/react-compiler-zod-compat",
-      selectedTarget: LOCAL,
+      baselineSpec: "file:../../scripts/react-compiler-zod-compat",
+      baselineTarget: LOCAL,
+      selectedSpec: ARCHIVE_SPEC,
+      selectedTarget: ARCHIVE,
+      targetType: "file",
       targetCanonical: true,
     },
-    candidateAccepted: false,
+    candidateAccepted: true,
   }
 }
 
@@ -1052,11 +1381,13 @@ test("singleton selector controls reject wider versions, lost evidence and alter
     (value) => (value.directDependency.missingReferenceError = null),
     (value) => (value.localDependency.parserVersion = "13.0.1"),
     (value) => (value.localDependency.rawSpec = "*"),
-    (value) => (value.localDependency.baselineTarget = LOCAL),
-    (value) => (value.localDependency.selectedTarget = COMPILER + "/" + LOCAL),
-    (value) => (value.localDependency.selectedSpec = "file:../scripts/react-compiler-zod-compat"),
+    (value) => (value.localDependency.baselineTarget = COMPILER + "/" + LOCAL),
+    (value) => (value.localDependency.selectedTarget = LOCAL),
+    (value) =>
+      (value.localDependency.selectedSpec = "file:../vendor/react-compiler-zod-compat-1.0.0.tgz"),
+    (value) => (value.localDependency.targetType = "directory"),
     (value) => (value.localDependency.targetCanonical = false),
-    (value) => (value.candidateAccepted = true),
+    (value) => (value.candidateAccepted = false),
   ]) {
     const report = selectorDiagnostic()
     mutate(report)
@@ -1113,28 +1444,28 @@ test("selector diagnostic rejects changed tool versions and external resolution"
   }
 })
 
-test("local override targets require the exact canonical adapter and compiler placement", () => {
+test("archive override target is portable and rejects unrelated paths or symlinks", () => {
   withDirectory((root) => {
     const frontend = join(root, "frontend")
     installedFixture(frontend)
     const consumer = join(frontend, COMPILER)
-    const target = join(frontend, LOCAL)
-    assert.equal(assertLocalOverrideTarget(frontend, consumer, target), true)
+    const target = join(frontend, ARCHIVE)
+    assert.equal(assertArchiveOverrideTarget(frontend, consumer, target), true)
     for (const [parent, destination] of [
       [join(frontend, "node_modules/other-consumer"), target],
-      [consumer, join(frontend, COMPILER, LOCAL)],
-      [consumer, join(frontend, "node_modules", LOCAL)],
-      [consumer, join(root, "outside")],
+      [consumer, join(frontend, COMPILER, ARCHIVE)],
+      [consumer, join(frontend, "node_modules", ARCHIVE)],
+      [consumer, join(root, "outside.tgz")],
     ]) {
-      assert.throws(() => assertLocalOverrideTarget(frontend, parent, destination), {
+      assert.throws(() => assertArchiveOverrideTarget(frontend, parent, destination), {
         name: "AssertionError",
       })
     }
-    const outside = join(root, "outside")
-    mkdirSync(outside)
-    rmSync(target, { recursive: true })
-    symlinkSync(outside, target, "dir")
-    assert.throws(() => assertLocalOverrideTarget(frontend, consumer, target), {
+    const outside = join(root, "outside.tgz")
+    writeFileSync(outside, ARCHIVE_BYTES)
+    rmSync(target)
+    symlinkSync(outside, target, "file")
+    assert.throws(() => assertArchiveOverrideTarget(frontend, consumer, target), {
       name: "AssertionError",
     })
   })

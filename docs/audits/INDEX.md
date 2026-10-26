@@ -10,7 +10,8 @@ release claims require fresh evidence under the master plan.
   operational checkpoint; every release claim still requires fresh exact-SHA
   evidence.
 - [Historical safe pause checkpoint, 2026-10-24](../superpowers/plans/STATUS.md#контрольная-точка-безопасной-паузы-2026-10-24) — the accepted count at that checkpoint was 280/512; its private PostgreSQL evidence and then-pending integrations are retained as history, not current hosted outcomes.
-- [Current accepted audit lower bound: 325/512 (63.5%)](AUDIT-2026-10.md#hosted-totp-clock-reconnect-and-event-signature-closures-2026-10-26) — preserves all 321 prior IDs and adds only AUD-175/221/232/312 after raw hosted evidence and source-blob verification. TOTP service/ORM, shared-instant campus clock, bounded reconnect and new v2 event signatures have explicit scope limits; 187 IDs remain unaccepted. Full CI/release remain pending.
+- [Current accepted audit lower bound: 328/512 (64.1%)](AUDIT-2026-10.md#hosted-chat-idempotency-graphql-depth-middleware-and-dependency-review-scope-closures-2026-10-26) — preserves 325 prior IDs and adds only AUD-183/368/379; their public CI proof and limits are detailed in the audit checkpoint. Local R2 Python and migration 148642dd1207 PG36 V2.2 results are scoped technical evidence and add no audit IDs. The peer snapshot at this 0f865 evidence checkpoint has 149 checks (115 SUCCESS, 27 SKIPPED, 1 NEUTRAL, 6 FAILURE, 0 active) across 31 runs and 144 jobs (111 PASS, 27 SKIP, 6 FAIL). 184 remain unaccepted; final integrated-source checks and release remain pending.
+- [Historical accepted audit checkpoint: 325/512 (63.5%)](AUDIT-2026-10.md#hosted-totp-clock-reconnect-and-event-signature-closures-2026-10-26) — preserves all 321 prior IDs and adds only AUD-175/221/232/312 after raw hosted evidence and source-blob verification. TOTP service/ORM, shared-instant campus clock, bounded reconnect and new v2 event signatures have explicit scope limits; 187 IDs remained unaccepted. Full CI/release remained pending.
 - [Historical persisted-news checkpoint: 321/512 (62.7%)](AUDIT-2026-10.md#hosted-persisted-news-restoration-closure-2026-10-26) — preserves all 320 prior IDs and adds only AUD-499 from source-bound hosted frontend results: 9,927 PASS overall, 61 changed-suite PASS, 15 exact prior cases and both queue controls; news.ts and queryClient.ts have 100% of all four metrics. 191 IDs remain unaccepted; full CI/release remain pending.
 - [Historical no-pickle checkpoint: 320/512 (62.5%)](AUDIT-2026-10.md#hosted-no-pickle-gate-closure-2026-10-25) — preserves all 319 prior IDs and adds only AUD-246: 75 named hosted PASS with unchanged source blobs and the current 353-file direct scanner PASS. Script metrics are unsupported under the unchanged contract. 192 IDs remain unaccepted; full CI/release remain pending.
 - [Historical four-frontend checkpoint: 319/512 (62.3%)](AUDIT-2026-10.md#hosted-reactive-navigation-and-offline-ui-closure-2026-10-25) — added only AUD-440/441/494/498 from 81 exact hosted PASS with all target-file metrics at 100%; AUD-499 remained held for three branch arcs.
@@ -40,12 +41,16 @@ release claims require fresh evidence under the master plan.
   determine the current published SHA and hosted checks; final-source gates remain
   required. The dated 18-, 7-, and 2-identity approvals brought the scope to
   252; the subsequent nine-identity Go source-contract approval extended the
-  historical scope to 261. The current approved scope is 337, including the
-  [two cache-key canaries](AUDIT-2026-10.md#owner-approved-two-exact-aud-495-cache-key-canaries-2026-10-23)
+  historical scope to 261. At the published 0f865 evidence checkpoint, the
+  approved scope was 337, including the [two cache-key canaries](AUDIT-2026-10.md#owner-approved-two-exact-aud-495-cache-key-canaries-2026-10-23)
   and [one public integrity digest](AUDIT-2026-10.md#owner-approved-one-exact-aud-495-public-integrity-digest-2026-10-24);
   the three additional public integrity/fingerprint identities approved on
   2026-10-24 are recorded in [ADR-047](../adr/ADR-047-risk-based-quality-policy.md)
-  and the existing [337-record policy](../../quality/security-false-positive-dispositions.json).
+  and the policy snapshot from that checkpoint at
+  [policy file at source 0f865](https://github.com/egorribun/university_ecosystem/blob/0f86541180e8ef003145265df793d49536a78939/quality/security-false-positive-dispositions.json). The incoming
+  integration source set separately records 346 dispositions (337 plus nine
+  owner-approved records); its resulting SHA still requires final-source checks
+  ([integration checkpoint](AUDIT-2026-10.md#integration-batch-at-the-0f865-evidence-checkpoint-no-additional-audit-closure)).
   The [two exact public Git-blob identities](../adr/ADR-047-risk-based-quality-policy.md#owner-approved-two-exact-public-git-blob-dispositions-2026-10-24)
   approved at 05:35 UTC on 2026-10-24 preserve the first 321 records and expire
   on 2027-01-10. Their policy/test candidate does not establish a passing scan
@@ -83,7 +88,7 @@ release claims require fresh evidence under the master plan.
   after their observed 33-failure / 531-pass tests-first policy cohort.
   The [exact V2 invalid-private-field sentinel](../adr/ADR-047-risk-based-quality-policy.md#exact-v2-invalid-private-field-sentinel-disposition-2026-10-24)
   preserves all 336 records and adds only one existing-category identity,
-  for the current total of 337, after its observed 6-failure / 584-pass policy
+  for that checkpoint total of 337, after its observed 6-failure / 584-pass policy
   cohort. All 26 source/scope guards remain; source2208db1e subsequently passed
   all 590 policy cases and the raw scanner, as recorded in current STATUS.
   New source changes still require their own tests/scans. Records alone do not
@@ -277,6 +282,8 @@ link-check result does not establish the current documentation state.
   reusable input for an explicitly assigned review.
 - [Machine-enforced quality contract](../../quality/quality-contract.json) —
   mandatory quality gates.
+- [October audit checkpoint](AUDIT-2026-10.md) — current accepted count, local integration
+  results and pending gates.
 
 ## Historical reports
 

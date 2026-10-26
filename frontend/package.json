@@ -211,7 +211,7 @@
     "workbox-routing": "^7.4.0",
     "workbox-strategies": "^7.4.0",
     "workbox-window": "^7.3.0",
-    "react-compiler-zod-compat": "file:./scripts/react-compiler-zod-compat"
+    "@university-ecosystem/react-compiler-zod-compat": "file:./vendor/react-compiler-zod-compat-1.0.0.tgz"
   },
   "description": "",
   "lint-staged": {
@@ -250,7 +250,15 @@
     "eslint-plugin-boundaries@7.2.0": {
       "micromatch": "$micromatch"
     },
-    "js-yaml@<5": "4.3.2"
+    "js-yaml@<5": "4.3.2",
+    "eslint-plugin-react-compiler@>=19.1.0-rc.2 <=19.1.0-rc.2": {
+      ".": "$eslint-plugin-react-compiler",
+      "zod": "$@university-ecosystem/react-compiler-zod-compat",
+      "zod-validation-error": {
+        ".": "4.0.2",
+        "zod": "4.6.7"
+      }
+    }
   },
   "allowScripts": {
     "core-js": false,

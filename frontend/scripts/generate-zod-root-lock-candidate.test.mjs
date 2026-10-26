@@ -3,6 +3,8 @@ import { createHash } from "node:crypto"
 import { spawnSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import test from "node:test"
+import { tmpdir } from "node:os"
+import { basename, dirname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import {
   assertNpmCommand,
@@ -29,7 +31,11 @@ const transport = [
   "--ignore-scripts",
   "--min-release-age=7",
 ]
-const paths = { prefix: "/tmp/zod-test/tool", archive: "/tmp/zod-test/npm-11.17.0.tgz" }
+const fixtureRoot = resolve(tmpdir(), "zod-test")
+const paths = {
+  prefix: resolve(fixtureRoot, "tool"),
+  archive: resolve(fixtureRoot, "npm-11.17.0.tgz"),
+}
 
 function metadata(name = "zod", published = new Date(now - age).toISOString()) {
   const version = name === "zod" ? "4.6.7" : "11.17.0"
@@ -112,10 +118,22 @@ test("targeted npm operations prohibit broad update and mutable transport argume
   }
   assert.throws(() => npmCommand("auditFix"))
   assert.throws(() => npmCommand("toolInstall", { ...paths, prefix: "relative/tool" }))
+  const nonCanonicalPrefix = dirname(paths.prefix) + sep + "." + sep + basename(paths.prefix)
+  const nonCanonicalArchive = dirname(paths.archive) + sep + "." + sep + basename(paths.archive)
+  assert.throws(() => npmCommand("toolInstall", { ...paths, prefix: nonCanonicalPrefix }))
+  assert.throws(() => npmCommand("toolInstall", { ...paths, archive: nonCanonicalArchive }))
   assert.throws(() =>
-    npmCommand("toolInstall", { ...paths, archive: "/tmp/other/npm-11.17.0.tgz" })
+    npmCommand("toolInstall", {
+      ...paths,
+      archive: join(dirname(paths.archive), "other", basename(paths.archive)),
+    })
   )
-  assert.throws(() => npmCommand("toolInstall", { ...paths, archive: "/tmp/zod-test/other.tgz" }))
+  assert.throws(() =>
+    npmCommand("toolInstall", {
+      ...paths,
+      archive: join(dirname(paths.archive), "other.tgz"),
+    })
+  )
 })
 
 test("argv guard rejects retry aliases, bypass flags and additional update targets", () => {

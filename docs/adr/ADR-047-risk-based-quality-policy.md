@@ -1000,3 +1000,31 @@ This record adds no accepted audit ID; ledger292 remains unchanged. Fresh
 590-case policy and raw scanner results are required on the final source.
 No additional migration closure, full CI, release or deployment success is
 claimed.
+
+## Nine exact owner-approved integrity dispositions (2026-10-26)
+
+Three separate owner decisions authorize exactly nine appended identities:
+one migration-source Git checksum, seven Node compiler-facade integrity
+identities, and one updated migration-orchestrator Git checksum. The ordered
+337-record prefix is unchanged; the active finite policy now contains 346
+records. The new suffix contains six `public_integrity_digest` identities
+and three `public_package_integrity_metadata` identities, all within their
+existing categories. The exact paths, detector types and finding digests
+are recorded in `quality/security-false-positive-dispositions.json`.
+
+The first eight additions retain review date 2026-10-25; the final Git-pin
+addition is reviewed on 2026-10-26. All nine expire on 2027-01-10. Existing
+records, their expiry dates, origin metadata and historical fingerprints
+are preserved. Source-bound validator checks and the finite Git-blob fixture
+bind the additions to the reviewed artifacts; changed identities and category
+transplants remain blocking. The retired-factor consumer masks only the
+additional exact approved identity and tests path, type, digest and category
+near misses. This adds no path-wide permission or scanner bypass.
+
+The bounded private verification passed 625 tests using all 69 declared input
+files: the full disposition-policy module and two selected retired-factor
+consumer tests. This is not a full canonical MFA or final-source result.
+Integrated canonical tests, the final scanner run and required checks on the
+published source remain mandatory. This policy record closes no audit item.
+Baseline319, Gitleaks26, all 78 required context/app pairs, blocking CodeQL,
+hooks and coverage floors are unchanged.

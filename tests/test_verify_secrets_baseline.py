@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import ast
+import base64
 import copy
 import hashlib
 import importlib.util
+import io
 import json
 import re
 import shutil
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -2085,7 +2088,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 337
+    assert len(policy["records"]) == 346
     records = [
         record
         for record in policy["records"]
@@ -3081,7 +3084,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         )
     )
     records = policy["records"]
-    assert len(records) == 337
+    assert len(records) == 346
     prefix = records[:315]
     encoded_prefix = json.dumps(
         prefix, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -3136,7 +3139,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         for path, finding_type, digest in expected_identities
     }
     validated = verifier.validate_false_positive_dispositions(
-        policy, today=verifier.date(2026, 10, 24)
+        policy, today=verifier.date(2026, 10, 26)
     )
     assert expected_findings <= validated
     assert (
@@ -3151,7 +3154,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         record["approval_status"] = "pending_owner_review"
     with pytest.raises(verifier.BaselineArtifactError, match="not approved"):
         verifier.validate_false_positive_dispositions(
-            pending, today=verifier.date(2026, 10, 24)
+            pending, today=verifier.date(2026, 10, 25)
         )
 
 
@@ -3483,7 +3486,7 @@ def test_oct24_public_digest_policy_preserves_all_318_prior_records() -> None:
         _AUD495_IMMUTABLE_315_PREFIX_SHA256
     )
     assert records[315:318] == _OCT24_ORIGINAL_SUFFIX
-    assert len(records) == 337
+    assert len(records) == 346
     assert records[318:321] == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS
 
 
@@ -3673,9 +3676,9 @@ def test_public_git_blob_policy_preserves_all_321_prior_records() -> None:
     )
     # These existing independent guards compose the immutable 321-record prefix.
     test_oct24_public_digest_policy_preserves_all_318_prior_records()
-    assert len(policy["records"]) == 337
+    assert len(policy["records"]) == 346
     assert policy["records"][321:323] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:2]
-    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 8
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 10
 
 
 def test_public_git_blob_rebind_policy_preserves_all_323_prior_records() -> None:
@@ -3772,6 +3775,44 @@ def test_public_git_blob_current_pin_has_an_exact_approved_identity(
     )
 
 
+def test_public_git_blob_orchestrator_rebind_rejects_near_misses() -> None:
+    record = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[9]
+    mutations = []
+    wrong_path = copy.deepcopy(record)
+    wrong_path["identity"]["path"] += ".changed"
+    mutations.append(wrong_path)
+    wrong_type = copy.deepcopy(record)
+    wrong_type["identity"]["type"] = "Base Auth Credentials"
+    mutations.append(wrong_type)
+    wrong_digest = copy.deepcopy(record)
+    wrong_digest["identity"]["hashed_secret_bytes"][0] ^= 1
+    mutations.append(wrong_digest)
+    wrong_category = copy.deepcopy(record)
+    wrong_category["category"] = "source_contract_identifier"
+    mutations.append(wrong_category)
+    weak_evidence = copy.deepcopy(record)
+    weak_evidence["evidence"] = weak_evidence["evidence"].replace(
+        "HISTORICAL_ORCHESTRATOR_BLOB", "OTHER_SOURCE_PIN"
+    )
+    mutations.append(weak_evidence)
+    pending = copy.deepcopy(record)
+    pending["approval_status"] = "pending"
+    mutations.append(pending)
+    placeholder_owner = copy.deepcopy(record)
+    placeholder_owner["owner"] = "PENDING_OWNER_REVIEW"
+    mutations.append(placeholder_owner)
+    extended_expiry = copy.deepcopy(record)
+    extended_expiry["expires_on"] = "2027-01-11"
+    mutations.append(extended_expiry)
+
+    for changed in mutations:
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(changed),
+                today=verifier.date(2026, 10, 26),
+            )
+
+
 def test_public_git_blob_binding_rejects_source_literal_or_assignment_drift() -> None:
     source = b"reviewed source\n"
     header = f"blob {len(source)}\0".encode("ascii")
@@ -3806,7 +3847,7 @@ def test_public_git_blob_validator_accepts_exact_historical_record_without_sourc
     )
     assert verifier.validate_false_positive_dispositions(
         _disposition_document(copy.deepcopy(record)),
-        today=verifier.date(2026, 10, 24),
+        today=verifier.date(2026, 10, 26),
     ) == {expected}
 
 
@@ -3857,7 +3898,7 @@ def test_public_git_blob_validator_rejects_changed_scope_or_metadata(
         changed["expires_on"] = "2027-01-11"
     with pytest.raises(verifier.BaselineArtifactError):
         verifier.validate_false_positive_dispositions(
-            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+            _disposition_document(changed), today=verifier.date(2026, 10, 25)
         )
 
 
@@ -3873,7 +3914,7 @@ def test_public_git_blob_validator_rejects_expired_or_duplicate_record(
     with pytest.raises(verifier.BaselineArtifactError):
         verifier.validate_false_positive_dispositions(
             _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
-            today=verifier.date(2026, 10, 24),
+            today=verifier.date(2026, 10, 25),
         )
 
 
@@ -3885,7 +3926,7 @@ def test_public_git_blob_reserved_path_rejects_other_fingerprint(
     changed["identity"]["hashed_secret_bytes"] = list(range(20))
     with pytest.raises(verifier.BaselineArtifactError):
         verifier.validate_false_positive_dispositions(
-            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+            _disposition_document(changed), today=verifier.date(2026, 10, 25)
         )
 
 
@@ -3983,7 +4024,7 @@ def test_observed_public_metadata_policy_preserves_all_325_prior_records() -> No
         )
     )
     test_public_git_blob_rebind_policy_preserves_all_323_prior_records()
-    assert len(policy["records"]) == 337
+    assert len(policy["records"]) == 346
     assert policy["records"][325:327] == _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS
     assert len(_OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS) == 2
 
@@ -4234,7 +4275,7 @@ def test_public_git_blob_catalog_proof_preserves_all_327_prior_records() -> None
         )
     )
     test_observed_public_metadata_policy_preserves_all_325_prior_records()
-    assert len(policy["records"]) == 337
+    assert len(policy["records"]) == 346
     assert policy["records"][327:328] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4]
@@ -4255,7 +4296,7 @@ def test_public_git_blob_fixture_rebind_preserves_all_328_prior_records() -> Non
         )
     )
     test_public_git_blob_catalog_proof_preserves_all_327_prior_records()
-    assert len(policy["records"]) == 337
+    assert len(policy["records"]) == 346
     assert policy["records"][328:329] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5]
@@ -4384,7 +4425,7 @@ def test_public_alembic_revision_policy_preserves_all_329_prior_records() -> Non
         )
     )
     test_public_git_blob_fixture_rebind_preserves_all_328_prior_records()
-    assert len(policy["records"]) == 337
+    assert len(policy["records"]) == 346
     assert policy["records"][329:330] == [_PUBLIC_ALEMBIC_REVISION_RECORD]
 
 
@@ -4589,7 +4630,7 @@ def test_public_git_blob_index_rebind_preserves_all_330_prior_records() -> None:
         )
     )
     test_public_alembic_revision_policy_preserves_all_329_prior_records()
-    assert len(policy["records"]) == 337
+    assert len(policy["records"]) == 346
     assert policy["records"][330:331] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6]
@@ -4610,7 +4651,7 @@ def test_public_git_blob_index_assertion_preserves_all_331_prior_records() -> No
         )
     )
     test_public_git_blob_index_rebind_preserves_all_330_prior_records()
-    assert len(policy["records"]) == 337
+    assert len(policy["records"]) == 346
     assert policy["records"][331:332] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7]
@@ -4709,7 +4750,7 @@ def test_public_compiler_golden_policy_preserves_all_332_prior_records() -> None
         )
     )
     test_public_git_blob_index_assertion_preserves_all_331_prior_records()
-    assert len(policy["records"]) == 337
+    assert len(policy["records"]) == 346
     assert policy["records"][332:336] == _PUBLIC_COMPILER_GOLDEN_RECORDS
 
 
@@ -4841,6 +4882,381 @@ def test_public_compiler_golden_source_binding_rejects_changed_metadata(
         )
     with pytest.raises(AssertionError):
         _assert_public_compiler_golden_source_binding(golden, lock)
+
+
+_NODE_REACT_COMPILER_POLICY_PREFIX_SHA256 = (
+    68,
+    67,
+    36,
+    254,
+    182,
+    104,
+    208,
+    67,
+    219,
+    29,
+    107,
+    147,
+    163,
+    226,
+    1,
+    79,
+    19,
+    210,
+    186,
+    161,
+    103,
+    31,
+    39,
+    40,
+    77,
+    63,
+    248,
+    203,
+    0,
+    126,
+    108,
+    229,
+)
+
+
+def _node_react_compiler_source_rows(
+    root: Path,
+) -> list[tuple[str, str, str, str]]:
+    generator = (
+        root / "frontend/scripts/generate-react-compiler-final-lock-candidate.mjs"
+    ).read_text(encoding="utf-8")
+    candidate_test = (
+        root / "frontend/scripts/generate-react-compiler-final-lock-candidate.test.mjs"
+    ).read_text(encoding="utf-8")
+    facade_test = (
+        root / "frontend/scripts/react-compiler-zod-compat.test.mjs"
+    ).read_text(encoding="utf-8")
+    observations = json.loads(
+        (
+            root / "frontend/scripts/react-compiler-zod-compat.postgraph-errors.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    def capture(pattern: str, source: str) -> str:
+        match = re.search(pattern, source)
+        assert match is not None
+        return match.group(1)
+
+    archive_sri = capture(r'const ARCHIVE_INTEGRITY =\s*\n\s*"([^"]+)"', generator)
+    archive_sha256 = capture(r'const ARCHIVE_SHA256 = "([0-9a-f]{64})"', generator)
+    git_head = capture(r'gitHead:\s*"([0-9a-f]{40})"', candidate_test)
+    facade_sri = capture(r'const FACADE_INTEGRITY =\s*\n\s*"([^"]+)"', facade_test)
+    facade_sha256 = capture(r'const FACADE_SHA256 = "([0-9a-f]{64})"', facade_test)
+    formatter = observations["formatter"]
+    return [
+        (
+            "frontend/scripts/generate-react-compiler-final-lock-candidate.mjs",
+            "Base64 High Entropy String",
+            archive_sri,
+            "public_package_integrity_metadata",
+        ),
+        (
+            "frontend/scripts/generate-react-compiler-final-lock-candidate.mjs",
+            "Hex High Entropy String",
+            archive_sha256,
+            "public_integrity_digest",
+        ),
+        (
+            "frontend/scripts/generate-react-compiler-final-lock-candidate.test.mjs",
+            "Hex High Entropy String",
+            git_head,
+            "public_integrity_digest",
+        ),
+        (
+            "frontend/scripts/react-compiler-zod-compat.postgraph-errors.json",
+            "Hex High Entropy String",
+            formatter["entrySha256"],
+            "public_integrity_digest",
+        ),
+        (
+            "frontend/scripts/react-compiler-zod-compat.postgraph-errors.json",
+            "Base64 High Entropy String",
+            formatter["integrity"],
+            "public_package_integrity_metadata",
+        ),
+        (
+            "frontend/scripts/react-compiler-zod-compat.test.mjs",
+            "Base64 High Entropy String",
+            facade_sri,
+            "public_package_integrity_metadata",
+        ),
+        (
+            "frontend/scripts/react-compiler-zod-compat.test.mjs",
+            "Hex High Entropy String",
+            facade_sha256,
+            "public_integrity_digest",
+        ),
+    ]
+
+
+def _node_react_compiler_source_identity_categories(
+    root: Path,
+) -> dict[tuple[str, str, tuple[int, ...]], str]:
+    return {
+        (
+            path,
+            finding_type,
+            tuple(hashlib.sha1(value.encode("utf-8"), usedforsecurity=False).digest()),
+        ): category
+        for path, finding_type, value, category in _node_react_compiler_source_rows(
+            root
+        )
+    }
+
+
+def _node_react_compiler_reviewed_record(
+    identity: tuple[str, str, tuple[int, ...]], category: str
+) -> dict[str, Any]:
+    """Build an ephemeral validator fixture, not a policy approval."""
+    record = _reviewed_exact_disposition(*identity, category)
+    record["evidence"] = "; ".join(
+        verifier._NODE_REACT_COMPILER_PUBLIC_METADATA_EVIDENCE_MARKERS[identity]
+    )
+    record["owner"] = "egorribun"
+    record["reviewed_on"] = "2026-10-25"
+    return record
+
+
+def _node_react_compiler_record_identity(
+    record: dict[str, Any],
+) -> tuple[str, str, tuple[int, ...]]:
+    identity = record["identity"]
+    return (
+        identity["path"],
+        identity["type"],
+        tuple(identity["hashed_secret_bytes"]),
+    )
+
+
+def _node_react_compiler_record_evidence_markers(
+    record: dict[str, Any],
+) -> tuple[str, ...]:
+    return verifier._NODE_REACT_COMPILER_PUBLIC_METADATA_EVIDENCE_MARKERS[
+        _node_react_compiler_record_identity(record)
+    ]
+
+
+def test_node_react_compiler_public_metadata_is_source_bound_and_exact() -> None:
+    root = Path(__file__).resolve().parents[1]
+    expected = _node_react_compiler_source_identity_categories(root)
+    assert len(expected) == 7
+    assert expected == (
+        verifier._NODE_REACT_COMPILER_PUBLIC_METADATA_CATEGORY_BY_IDENTITY
+    )
+    assert verifier._NODE_REACT_COMPILER_DIGEST_COLLISION_EXCEPTIONS == {
+        verifier._ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY
+    }
+    assert {
+        (identity[0], identity[1])
+        for identity, category in expected.items()
+        if category == "public_package_integrity_metadata"
+    } <= verifier._FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES[
+        "public_package_integrity_metadata"
+    ]
+
+    generator = (
+        root / "frontend/scripts/generate-react-compiler-final-lock-candidate.mjs"
+    ).read_text(encoding="utf-8")
+    facade_test = (
+        root / "frontend/scripts/react-compiler-zod-compat.test.mjs"
+    ).read_text(encoding="utf-8")
+    candidate_test = (
+        root / "frontend/scripts/generate-react-compiler-final-lock-candidate.test.mjs"
+    ).read_text(encoding="utf-8")
+    observations = json.loads(
+        (
+            root / "frontend/scripts/react-compiler-zod-compat.postgraph-errors.json"
+        ).read_text(encoding="utf-8")
+    )
+    lock = json.loads((root / "frontend/package-lock.json").read_text(encoding="utf-8"))
+
+    def capture(pattern: str, source: str) -> str:
+        match = re.search(pattern, source)
+        assert match is not None
+        return match.group(1)
+
+    archive_sri = capture(r'const ARCHIVE_INTEGRITY =\s*\n\s*"([^"]+)"', generator)
+    archive_sha256 = capture(r'const ARCHIVE_SHA256 = "([0-9a-f]{64})"', generator)
+    facade_sri = capture(r'const FACADE_INTEGRITY =\s*\n\s*"([^"]+)"', facade_test)
+    facade_sha256 = capture(r'const FACADE_SHA256 = "([0-9a-f]{64})"', facade_test)
+    archive = (
+        root / "frontend/vendor/react-compiler-zod-compat-1.0.0.tgz"
+    ).read_bytes()
+    assert hashlib.sha256(archive).hexdigest() == archive_sha256 == facade_sha256
+    computed_sri = "sha512-" + base64.b64encode(
+        hashlib.sha512(archive).digest()
+    ).decode("ascii")
+    assert computed_sri == archive_sri == facade_sri
+    local_package = lock["packages"][
+        "node_modules/@university-ecosystem/react-compiler-zod-compat"
+    ]
+    assert local_package["version"] == "1.0.0"
+    assert local_package["resolved"] == (
+        "file:vendor/react-compiler-zod-compat-1.0.0.tgz"
+    )
+    assert local_package["integrity"] == computed_sri
+
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as package:
+        members = [member for member in package.getmembers() if member.isfile()]
+        assert {member.name for member in members} == {
+            "package/LICENSE",
+            "package/README.md",
+            "package/index.cjs",
+            "package/package.json",
+        }
+        for member in members:
+            relative = Path(member.name.removeprefix("package/"))
+            payload = package.extractfile(member)
+            assert payload is not None
+            assert (
+                payload.read()
+                == (
+                    root / "frontend/scripts/react-compiler-zod-compat" / relative
+                ).read_bytes()
+            )
+
+    formatter = observations["formatter"]
+    locked_formatter = lock["packages"]["node_modules/zod-validation-error"]
+    assert formatter["name"] == "zod-validation-error"
+    assert formatter["version"] == locked_formatter["version"] == "4.0.2"
+    assert formatter["resolved"] == locked_formatter["resolved"]
+    assert formatter["integrity"] == locked_formatter["integrity"]
+    assert ".update(readFileSync(formatterEntryPath))" in facade_test
+    assert (
+        "assert.equal(formatterEntrySha256, "
+        "postgraphSchemaObservations.formatter.entrySha256)"
+    ) in facade_test
+
+    fixture_git_head = re.search(r'gitHead:\s*"([0-9a-f]{40})"', candidate_test)
+    source_generator = (
+        root / "frontend/scripts/generate-zod-root-lock-candidate.mjs"
+    ).read_text(encoding="utf-8")
+    expected_git_head = re.search(
+        r'EXPECTED_ZOD_SOURCE_SHA\s*=\s*"([0-9a-f]{40})"', source_generator
+    )
+    assert fixture_git_head is not None and expected_git_head is not None
+    assert fixture_git_head.group(1) == expected_git_head.group(1)
+
+
+# Conditional integration guard for the post-owner-approval policy state.
+def test_node_compiler_policy_appends_seven_and_preserves_337_prefix() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    records = policy["records"]
+    assert len(records) == 346
+    prefix = json.dumps(
+        records[:337], sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(prefix).digest() == bytes(
+        _NODE_REACT_COMPILER_POLICY_PREFIX_SHA256
+    )
+
+    expected = _node_react_compiler_source_identity_categories(root)
+    suffix = records[338:345]
+    actual = {
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            tuple(record["identity"]["hashed_secret_bytes"]),
+        ): record["category"]
+        for record in suffix
+    }
+    assert actual == expected
+    assert all(record["approval_status"] == "approved" for record in suffix)
+    assert all(record["owner"] == "egorribun" for record in suffix)
+    assert all(record["reviewed_on"] == "2026-10-25" for record in suffix)
+    assert all(record["expires_on"] <= "2027-01-10" for record in suffix)
+    assert all(
+        all(
+            marker.casefold() in record["evidence"].casefold()
+            for marker in _node_react_compiler_record_evidence_markers(record)
+        )
+        for record in suffix
+    )
+    validated = verifier.validate_false_positive_dispositions(
+        policy, today=verifier.date(2026, 10, 26)
+    )
+    expected_findings = {
+        verifier.FindingIdentity(path, finding_type, bytes(digest).hex(), 1)
+        for path, finding_type, digest in expected
+    }
+    assert expected_findings <= validated
+
+
+def test_node_react_compiler_policy_rejects_near_misses_and_pending_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    expected = _node_react_compiler_source_identity_categories(root)
+    today = verifier.date(2026, 10, 25)
+    for identity, category in expected.items():
+        valid = _node_react_compiler_reviewed_record(identity, category)
+        finding = verifier.FindingIdentity(
+            identity[0], identity[1], bytes(identity[2]).hex(), 1
+        )
+        assert verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(valid)), today=today
+        ) == {finding}
+
+        mutations = []
+        changed_path = copy.deepcopy(valid)
+        changed_path["identity"]["path"] = "tests/unreviewed-node-metadata.py"
+        mutations.append(changed_path)
+        changed_type = copy.deepcopy(valid)
+        changed_type["identity"]["type"] = "Secret Keyword"
+        mutations.append(changed_type)
+        changed_digest = copy.deepcopy(valid)
+        changed_digest["identity"]["hashed_secret_bytes"][0] ^= 1
+        mutations.append(changed_digest)
+        changed_category = copy.deepcopy(valid)
+        changed_category["category"] = (
+            "public_integrity_digest"
+            if category == "public_package_integrity_metadata"
+            else "public_package_integrity_metadata"
+        )
+        mutations.append(changed_category)
+        missing_evidence = copy.deepcopy(valid)
+        missing_evidence["evidence"] = "not credential material"
+        mutations.append(missing_evidence)
+        owner_placeholder = copy.deepcopy(valid)
+        owner_placeholder["owner"] = "PENDING_OWNER_REVIEW"
+        mutations.append(owner_placeholder)
+        future_review = copy.deepcopy(valid)
+        future_review["reviewed_on"] = "2026-10-26"
+        mutations.append(future_review)
+        excessive_expiry = copy.deepcopy(valid)
+        excessive_expiry["reviewed_on"] = "2026-10-25"
+        excessive_expiry["expires_on"] = "2027-01-11"
+        mutations.append(excessive_expiry)
+        pending = copy.deepcopy(valid)
+        pending["approval_status"] = "pending_owner_review"
+        mutations.append(pending)
+        unknown_digest_at_reserved_path = copy.deepcopy(valid)
+        unknown_digest_at_reserved_path["identity"]["hashed_secret_bytes"][0] ^= 1
+        mutations.append(unknown_digest_at_reserved_path)
+        moved_digest = copy.deepcopy(valid)
+        moved_digest["identity"]["path"] = "tests/unreviewed-node-metadata.py"
+        mutations.append(moved_digest)
+
+        for changed in mutations:
+            with pytest.raises(verifier.BaselineArtifactError):
+                verifier.validate_false_positive_dispositions(
+                    _disposition_document(changed), today=today
+                )
+
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(copy.deepcopy(valid), copy.deepcopy(valid)),
+                today=today,
+            )
 
 
 _LIVE_PRIVATE_FIELD_RECORD = json.loads(
@@ -4976,7 +5392,7 @@ def test_live_private_field_policy_preserves_all_336_prior_records() -> None:
         )
     )
     test_public_compiler_golden_policy_preserves_all_332_prior_records()
-    assert len(policy["records"]) == 337
+    assert len(policy["records"]) == 346
     assert policy["records"][336:337] == [_LIVE_PRIVATE_FIELD_RECORD]
 
 
@@ -5143,3 +5559,32 @@ def test_live_private_field_source_binding_rejects_changed_usage(
     changed = ast.unparse(ast.fix_missing_locations(tree))
     with pytest.raises(AssertionError):
         _live_private_field_fixture_nodes(changed)
+
+
+def test_public_git_blob_sourcebinding_rebind_appends_one_exact_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_live_private_field_policy_preserves_all_336_prior_records()
+    assert len(policy["records"]) == 346
+    record = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[8]
+    assert policy["records"][337:338] == [record]
+    assert record["identity"]["path"] == (
+        "tests/helpers/migration_148642dd1207_trace.py"
+    )
+    assert "five-site" not in record["evidence"].casefold()
+    assert "working tree based on c90e6163" in record["evidence"]
+    assert (
+        record["identity"]["path"],
+        record["identity"]["type"],
+        tuple(record["identity"]["hashed_secret_bytes"]),
+    ) == verifier._PUBLIC_GIT_BLOB_SOURCEBINDING_REBIND_IDENTITY
+    digest = _public_git_blob_source_identity(
+        (root / record["identity"]["path"]).read_text(encoding="utf-8"),
+        "SOURCE_GIT_BLOB",
+        (root / "alembic/versions/148642dd1207_fix_missing_tables.py").read_bytes(),
+    )
+    assert digest == tuple(record["identity"]["hashed_secret_bytes"])

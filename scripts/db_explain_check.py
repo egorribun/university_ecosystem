@@ -10,15 +10,32 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 # Set up logging with a clear format
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("db_perf_gate")
 
+
+class UnsupportedPlaceholderError(ValueError):
+    """Raised when SQL text cannot be safely classified for rewriting.
+
+    The analyzer fails closed instead of guessing how a marker or quote behaves.
+    """
+
+
+class IneligibleQueryError(ValueError):
+    """Raised for transaction-control statements intentionally skipped by the gate."""
+
+
 _SAFE_TABLE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
 _EXPLAINABLE_STATEMENT_RE = re.compile(
     r"^(?:SELECT|WITH|INSERT|UPDATE|DELETE)\b", re.IGNORECASE
+)
+_INELIGIBLE_TRANSACTION_RE = re.compile(
+    r"^(?:BEGIN|START\s+TRANSACTION|COMMIT|END|ROLLBACK|ABORT|SAVEPOINT|RELEASE)\b",
+    re.IGNORECASE,
 )
 
 
@@ -31,52 +48,365 @@ def normalize_explainable_query(query: str) -> str:
     """
 
     normalized = query.strip()
-    if normalized.endswith(";"):
-        normalized = normalized[:-1].rstrip()
-    if (
-        not normalized
-        or "\x00" in normalized
-        or ";" in normalized
-        or _EXPLAINABLE_STATEMENT_RE.match(normalized) is None
-    ):
+    if not normalized or "\x00" in normalized:
+        raise ValueError("query is not a single explainable DML statement")
+
+    separators = [
+        start
+        for kind, start, _, _ in _sql_placeholder_tokens(normalized)
+        if kind == "separator"
+    ]
+    if separators:
+        if len(separators) != 1 or separators[0] != len(normalized.rstrip()) - 1:
+            raise ValueError("query contains multiple SQL statements")
+        normalized = normalized[: separators[0]].rstrip()
+
+    if _INELIGIBLE_TRANSACTION_RE.match(normalized) is not None:
+        raise IneligibleQueryError("transaction-control statement is not analyzed")
+    if _EXPLAINABLE_STATEMENT_RE.match(normalized) is None:
         raise ValueError("query is not a single explainable DML statement")
     return normalized
 
 
+_QMARK_BIND_KEYWORDS = {
+    "AS",
+    "AND",
+    "BETWEEN",
+    "BY",
+    "ELSE",
+    "FROM",
+    "ILIKE",
+    "IN",
+    "IS",
+    "LIKE",
+    "LIMIT",
+    "NOT",
+    "OFFSET",
+    "OR",
+    "RETURNING",
+    "SELECT",
+    "SET",
+    "THEN",
+    "VALUES",
+    "WHEN",
+    "WHERE",
+}
+
+_QMARK_CLAUSE_KEYWORDS = _QMARK_BIND_KEYWORDS | {
+    "GROUP",
+    "HAVING",
+    "ORDER",
+    "UNION",
+}
+
+_SQL_OPERATOR_CHARS = frozenset("~!@#%^&|`?+-*/<>=")
+_QUESTION_MARK = "?"
+_KNOWN_QMARK_OPERATORS = {"@?", "?|", "?&"}
+
+
+def _previous_non_whitespace(query: str, position: int) -> int:
+    previous = position - 1
+    while previous >= 0 and query[previous].isspace():
+        previous -= 1
+    return previous
+
+
+def _operator_token_at(query: str, position: int) -> str:
+    start = position
+    while start > 0 and query[start - 1] in _SQL_OPERATOR_CHARS:
+        start -= 1
+    end = position + 1
+    while end < len(query) and query[end] in _SQL_OPERATOR_CHARS:
+        end += 1
+    return query[start:end]
+
+
+def _previous_operator_token(query: str, position: int) -> str | None:
+    previous = _previous_non_whitespace(query, position)
+    if previous < 0 or query[previous] not in _SQL_OPERATOR_CHARS:
+        return None
+
+    start = previous
+    while start > 0 and query[start - 1] in _SQL_OPERATOR_CHARS:
+        start -= 1
+    token = query[start : previous + 1]
+    return None if token.endswith("*/") else token
+
+
+def _is_sql_operand_before(query: str, position: int) -> bool:
+    previous = _previous_non_whitespace(query, position)
+    if previous < 0:
+        return False
+
+    character = query[previous]
+    if character in ")]'\"":
+        return True
+    if not (character.isalnum() or character in "_$"):
+        return False
+
+    previous_word = re.search(
+        r"([A-Za-z_][A-Za-z0-9_]*)$",
+        query[: previous + 1],
+    )
+    return (
+        previous_word is None
+        or previous_word.group(1).upper() not in _QMARK_BIND_KEYWORDS
+    )
+
+
+def _starts_sql_operand_after(query: str, position: int) -> bool:
+    following = position + 1
+    while following < len(query) and query[following].isspace():
+        following += 1
+    if following >= len(query):
+        return False
+
+    character = query[following]
+    if character.isalpha() or character == "_":
+        following_word = re.match(r"[A-Za-z_][A-Za-z0-9_]*", query[following:])
+        return (
+            following_word is not None
+            and following_word.group(0).upper() not in _QMARK_CLAUSE_KEYWORDS
+        )
+
+    return character.isdigit() or character in "'\"$:?([+-"
+
+
+def _is_qmark_placeholder(
+    query: str,
+    position: int,
+    operator_positions: set[int],
+    bind_positions: set[int],
+) -> bool:
+    """Classify qmark binds and PostgreSQL JSON operators without guessing."""
+    operator_token = _operator_token_at(query, position)
+    if operator_token in _KNOWN_QMARK_OPERATORS:
+        operator_positions.add(position)
+        return False
+    if operator_token != _QUESTION_MARK:
+        raise UnsupportedPlaceholderError(
+            "question mark appears in an unsupported SQL operator token"
+        )
+
+    previous = _previous_non_whitespace(query, position)
+    if previous < 0:
+        return True
+
+    previous_character = query[previous]
+    if previous in operator_positions:
+        return True
+    if previous in bind_positions:
+        if _starts_sql_operand_after(query, position):
+            operator_positions.add(position)
+            return False
+        raise UnsupportedPlaceholderError(
+            "question mark follows a bind but has no operator right operand"
+        )
+    if previous_character in "([,":
+        return True
+
+    if _previous_operator_token(query, position) is not None:
+        return True
+
+    previous_word = re.search(
+        r"([A-Za-z_][A-Za-z0-9_]*)$",
+        query[:position].rstrip(),
+    )
+    if (
+        previous_word is not None
+        and previous_word.group(1).upper() in _QMARK_BIND_KEYWORDS
+    ):
+        return True
+
+    if _is_sql_operand_before(query, position) and _starts_sql_operand_after(
+        query, position
+    ):
+        operator_positions.add(position)
+        return False
+
+    raise UnsupportedPlaceholderError(
+        "question mark is neither a bind marker nor a supported PostgreSQL operator"
+    )
+
+
+def _sql_placeholder_tokens(
+    query: str,
+) -> list[tuple[str, int, int, int | str | None]]:
+    """Find bind markers and separators outside SQL strings and comments."""
+    tokens: list[tuple[str, int, int, int | str | None]] = []
+    operator_positions: set[int] = set()
+    bind_positions: set[int] = set()
+    index = 0
+
+    while index < len(query):
+        if query.startswith("--", index):
+            line_end = query.find("\n", index + 2)
+            index = len(query) if line_end < 0 else line_end + 1
+            continue
+
+        if query.startswith("/*", index):
+            index += 2
+            depth = 1
+            while index < len(query) and depth:
+                if query.startswith("/*", index):
+                    depth += 1
+                    index += 2
+                elif query.startswith("*/", index):
+                    depth -= 1
+                    index += 2
+                else:
+                    index += 1
+            continue
+
+        if query[index] == "'":
+            escape_string = (
+                index > 0
+                and query[index - 1] in "eE"
+                and (
+                    index < 2
+                    or not (query[index - 2].isalnum() or query[index - 2] == "_")
+                )
+            )
+            index += 1
+            while index < len(query):
+                if escape_string and query[index] == "\\":
+                    index += 2
+                elif not escape_string and query[index] == "\\":
+                    raise UnsupportedPlaceholderError(
+                        "ordinary string with backslash is ambiguous without "
+                        "standard_conforming_strings evidence"
+                    )
+                elif query[index] == "'":
+                    if index + 1 < len(query) and query[index + 1] == "'":
+                        index += 2
+                    else:
+                        index += 1
+                        break
+                else:
+                    index += 1
+            continue
+
+        if query[index] == ";":
+            tokens.append(("separator", index, index + 1, None))
+            index += 1
+            continue
+
+        if query[index] == '"':
+            index += 1
+            while index < len(query):
+                if query[index] == '"':
+                    if index + 1 < len(query) and query[index + 1] == '"':
+                        index += 2
+                    else:
+                        index += 1
+                        break
+                else:
+                    index += 1
+            continue
+
+        if query[index] == "$":
+            identifier_suffix = index > 0 and (
+                query[index - 1].isalnum() or query[index - 1] in "_$"
+            )
+            dollar_quote = (
+                None
+                if identifier_suffix
+                else re.match(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$", query[index:])
+            )
+            if dollar_quote is not None:
+                delimiter = dollar_quote.group(0)
+                closing = query.find(delimiter, index + len(delimiter))
+                index = len(query) if closing < 0 else closing + len(delimiter)
+                continue
+
+            positional = (
+                None if identifier_suffix else re.match(r"\$(\d+)", query[index:])
+            )
+            if positional is not None:
+                end = index + len(positional.group(0))
+                tokens.append(("positional", index, end, int(positional.group(1))))
+                index = end
+                continue
+
+        if (
+            query[index] == ":"
+            and (index == 0 or query[index - 1] != ":")
+            and index + 1 < len(query)
+            and (query[index + 1].isalpha() or query[index + 1] == "_")
+        ):
+            end = index + 2
+            while end < len(query) and (query[end].isalnum() or query[end] == "_"):
+                end += 1
+            tokens.append(("named", index, end, query[index + 1 : end]))
+            index = end
+            continue
+
+        if query[index] == "?":
+            if _is_qmark_placeholder(query, index, operator_positions, bind_positions):
+                tokens.append(("anonymous", index, index + 1, None))
+                bind_positions.add(index)
+            index += 1
+            continue
+
+        index += 1
+
+    return tokens
+
+
+def _is_vector_distance_placeholder(query: str, position: int) -> bool:
+    return query[:position].rstrip().endswith("<=>")
+
+
 def substitute_placeholders(query: str) -> str:
-    """Replace database query parameter placeholders with dummy values.
+    """Normalize bind markers to PostgreSQL parameters for generic EXPLAIN.
 
-    This function replaces postgres placeholders ($1, $2, ...) and named
-    placeholders (:param) with safe defaults or NULLs, and handles
-    pgvector distance operators properly.
+    Named and anonymous binds become numbered parameters, so a bound NULL cannot
+    fold a filter into a constant-false predicate. Vector-distance binds retain
+    the existing valid synthetic vector literal.
     """
-    # Replace vector similarity query placeholders with a valid 1536-dim vector
-    query = re.sub(
-        r"<=>\s*\$\d+",
-        "<=> array_fill(0::real, ARRAY[1536])::vector",
-        query,
-        flags=re.IGNORECASE,
-    )
-    query = re.sub(
-        r"<=>\s*(?<!:):\w+",
-        "<=> array_fill(0::real, ARRAY[1536])::vector",
-        query,
-        flags=re.IGNORECASE,
-    )
-    query = re.sub(
-        r"<=>\s*\?",
-        "<=> array_fill(0::real, ARRAY[1536])::vector",
-        query,
-        flags=re.IGNORECASE,
-    )
+    tokens = _sql_placeholder_tokens(query)
+    slots: dict[tuple[str, int | str | None], int] = {}
+    next_slot = 1
 
-    # Named and anonymous placeholders become NULL. Postgres $n placeholders stay
-    # bound and are planned generically: a NULL literal folds `col = NULL` into a
-    # constant-false filter, so the gate could not see the scan it must catch (AUD-461).
-    query = re.sub(r"(?<!:):\w+", "NULL", query)
-    query = query.replace("?", "NULL")
+    for kind, start, _, value in tokens:
+        if kind == "separator":
+            continue
+        if _is_vector_distance_placeholder(query, start):
+            continue
+        key = (kind, value if kind != "anonymous" else start)
+        if key not in slots:
+            slots[key] = next_slot
+            next_slot += 1
 
-    return query
+    vector_literal = "array_fill(0::real, ARRAY[1536])::vector"
+    parts: list[str] = []
+    previous_end = 0
+    for kind, start, end, value in tokens:
+        parts.append(query[previous_end:start])
+        if kind == "separator":
+            parts.append(query[start:end])
+            previous_end = end
+            continue
+        if _is_vector_distance_placeholder(query, start):
+            parts.append(vector_literal)
+        else:
+            key = (kind, value if kind != "anonymous" else start)
+            parts.append(f"${slots[key]}")
+        previous_end = end
+    parts.append(query[previous_end:])
+    return "".join(parts)
+
+
+def _sql_parameter_count(query: str) -> int:
+    """Return the highest live positional bind number outside SQL literals."""
+    return max(
+        (
+            int(value)
+            for kind, _, _, value in _sql_placeholder_tokens(query)
+            if kind == "positional" and isinstance(value, int)
+        ),
+        default=0,
+    )
 
 
 def _plan_statement_name(query: str) -> str:
@@ -86,30 +416,38 @@ def _plan_statement_name(query: str) -> str:
 async def explain_plan(conn: Any, query: str) -> object:
     """Plan one statement without executing it and return the JSON plan.
 
-    Binding NULL to a $n placeholder folds the filter into a constant that is
-    never true, so the scan the gate must see disappears (AUD-461).
-    EXPLAIN (GENERIC_PLAN) does not avoid that on bound parameters, so $n
-    statements are prepared and planned under force_generic_plan instead.
+    Bind markers are normalized to $n and planned under force_generic_plan.
+    Generic plans do not use the synthetic NULL arguments to fold predicates,
+    so the planner can still expose scans that the gate must catch (AUD-461).
     """
-    parameter_count = max(
-        (int(number) for number in re.findall(r"\$(\d+)", query)), default=0
-    )
+    parameter_count = _sql_parameter_count(query)
     if parameter_count == 0:
         result = await conn.exec_driver_sql(f"EXPLAIN (FORMAT JSON) {query}")
         return result.scalar()
 
-    # SET LOCAL is transactional. PREPARE is not, so the statement is removed by
-    # name after a successful EXPLAIN; DEALLOCATE ALL would also drop asyncpg's
-    # cached statements on the pooled session.
+    # PREPARE is session-scoped, while a failed EXPLAIN aborts its transaction.
+    # A savepoint restores the outer transaction before the finally block removes
+    # this named statement; DEALLOCATE ALL would drop asyncpg's cached statements.
     statement_name = _plan_statement_name(query)
     await conn.execute(text("SET LOCAL plan_cache_mode = force_generic_plan"))
-    await conn.exec_driver_sql(f"PREPARE {statement_name} AS {query}")
-    arguments = ", ".join("NULL" for _ in range(parameter_count))
-    result = await conn.exec_driver_sql(
-        f"EXPLAIN (FORMAT JSON) EXECUTE {statement_name}({arguments})"
-    )
-    plan = result.scalar()
-    await conn.exec_driver_sql(f"DEALLOCATE {statement_name}")
+    prepare_attempted = False
+    try:
+        async with conn.begin_nested():
+            prepare_attempted = True
+            await conn.exec_driver_sql(f"PREPARE {statement_name} AS {query}")
+            arguments = ", ".join("NULL" for _ in range(parameter_count))
+            result = await conn.exec_driver_sql(
+                f"EXPLAIN (FORMAT JSON) EXECUTE {statement_name}({arguments})"
+            )
+            plan = result.scalar()
+    finally:
+        if prepare_attempted:
+            try:
+                await conn.exec_driver_sql(f"DEALLOCATE {statement_name}")
+            except DBAPIError as cleanup_error:
+                # A savepoint rollback may already have removed PREPARE.
+                if getattr(cleanup_error.orig, "sqlstate", None) != "26000":
+                    raise
     return plan
 
 
@@ -260,9 +598,28 @@ async def run_explain_analysis(
             clean_query = normalize_explainable_query(
                 substitute_placeholders(raw_query)
             )
+        except IneligibleQueryError as error:
+            logger.info("Skipping ineligible transaction-control query: %s", error)
+            continue
+        except UnsupportedPlaceholderError as error:
+            query_id = hashlib.sha256(raw_query.encode()).hexdigest()[:12]
+            logger.warning(
+                "Skipping query with unsupported SQL syntax %s: %s",
+                query_id,
+                error,
+            )
+            if fail_on_analysis_error and any(
+                table in raw_query.lower() for table in target_tables
+            ):
+                has_violations = True
+            continue
         except ValueError as error:
             query_id = hashlib.sha256(raw_query.encode()).hexdigest()[:12]
             logger.warning("Skipping unsafe query %s: %s", query_id, error)
+            if fail_on_analysis_error and any(
+                table in raw_query.lower() for table in target_tables
+            ):
+                has_violations = True
             continue
 
         # We only need to check queries that target or mention our key tables

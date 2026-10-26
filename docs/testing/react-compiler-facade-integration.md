@@ -1,6 +1,18 @@
 # React Compiler facade integration evidence
 
-## Hosted foundation validation (2026-10-25)
+## React Compiler integration at the 0f865 evidence checkpoint (2026-10-26)
+
+R7 on the guarded 23-path source set passed 84/85 Node contract tests, then failed on a stale assertion requiring explicit COPY despite builder inheritance from FROM deps; audits were not reached. R8 VerifyInstalled corrected the assertion and passed all six stages, including 85/85 Node contracts and successful npm and policy audits. npm audit recorded one low and two moderate advisories (zero high/critical); policy audit found no unapproved advisories or missing overrides. R8 did not invoke npm ci; it preserved the installed tree, and R8 postflight matched all 23 guarded paths and 14 controls with certain cleanup. This is bounded installed-tree evidence, not fresh-install, normal npm CI, frontend or hosted acceptance.
+
+The tested parent source for this integration batch is published 0f86541180e8ef003145265df793d49536a78939. The incoming batch changes frontend/package.json and the lock to propose a root development dependency on the local facade and route the legacy compiler Zod edge through it. The tracked archive is unchanged; its public artifact identity is recorded in the historical foundation records below. The resulting source SHA and required-check evidence remain pending at this checkpoint.
+
+Earlier Node7 evidence was partial. Parent run r20261026-6efdc9da4af9 failed, although deps and prod-deps build and mount readbacks passed. Runtime continuation r20261026-dd8f730245d2 passed 10/10 Linux tests, source-file readbacks, runtime-absence checks and cleanup. The retained records are node-production-candidate-adoption-manifest.json, composed-evidence-receipt.json and root-node-v3-runtime-verification-20261026.json. The validated context used frontend.Dockerfile; a separate policy-workspace copy was not used.
+
+The runtime command was node --test /tmp/rc-zod-audit/generate-zod-root-lock-candidate.test.mjs. Docker cleanup retained the deprecated --time warning; docker --context default container stop --help shows the supported --timeout spelling. The earlier private R5 install completed npm ci; the fresh graph reported 4.6.7 and the local facade was installed. npm ls succeeded, but the R5 wrapper then failed because its optional problems field was absent and did not reach contract/policy checks; R8’s separate installed-tree results are summarized above. The R5 result does not establish complete graph, normal npm CI, frontend CI or release acceptance. The R2 Python, PG36 V2.2 and local full Alembic V4 results are recorded in the current audit checkpoint; they do not validate the Node graph or frontend build.
+
+The historical producer receipts and original hosted links below are retained. They establish the earlier archive foundation, not acceptance of this integration batch.
+
+## Historical hosted foundation validation (2026-10-25)
 
 [Node job 121135624927](https://github.com/egorribun/university_ecosystem/actions/runs/40181770847/job/121135624927)
 checked source `85723684a50e7acfed2f1493eeaf45833a157312` as actual merge
@@ -20,7 +32,7 @@ These foundation passes do not accept the final graph. Graph integration is
 deferred while simpler audit findings are completed; the tracked manifest/lock
 and original compiler bundle remain unchanged.
 
-## First-party archive foundation (2026-10-25)
+## Historical first-party archive foundation (2026-10-25)
 
 The [tracked source archive](../../frontend/vendor/react-compiler-zod-compat-1.0.0.tgz)
 is an intentionally versioned, reproducible first-party source package, not an
@@ -60,7 +72,7 @@ strict npm ls independently; the tracked application manifest/lock remain
 staged and the separate embedded Babel compiler risk remains open.
 
 
-## Scope and status
+## Historical scope and status (earlier source revisions)
 
 [ADR-048](../adr/ADR-048-react-compiler-schema-compatibility.md) governs the
 development-only compatibility boundary. The stable packaged
@@ -96,7 +108,7 @@ Registry publication, releases, credentials, compiler-bundle vendoring and
 unreviewed graph changes are not part of this foundation. The manifest's
 `private: true` flag prevents npm publication, not public-repository access.
 
-## Preserved staged integration record
+## Historical preserved staged integration record
 
 The following record was moved from the packaged README at source
 `6ba0de220b497126f51d31b84653a2d1b5d35cb8`. It describes the staged
@@ -133,7 +145,7 @@ Docker builder-transfer tests remain required. The adapter is not copied into
 the runtime image. The old Babel compiler's separately embedded pre-fix code
 remains a distinct unresolved source-to-sink assessment.
 
-## Source-bound checks
+## Historical source-bound checks
 
 - [Frozen legacy baseline](../../frontend/scripts/react-compiler-zod-compat/legacy-baseline.json)
 - [Facade and compiler parity tests](../../frontend/scripts/react-compiler-zod-compat.test.mjs)

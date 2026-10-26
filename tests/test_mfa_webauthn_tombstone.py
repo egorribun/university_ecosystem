@@ -4,9 +4,12 @@ import ast
 import copy
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import pytest
+
+from scripts import verify_secrets_baseline as verifier
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_ROOTS = (ROOT / "app",)
@@ -20,7 +23,7 @@ ALLOWED_RETIREMENT_CONTRACTS = {
 # Historical migration fixture only, not an active factor or a file exclusion.
 # Re-review this exact Git blob binding after ANY orchestrator source change.
 HISTORICAL_ORCHESTRATOR_TEST = Path("tests/test_migration_148642dd1207_orchestrator.py")
-HISTORICAL_ORCHESTRATOR_BLOB = "91b50f0f764540206c9c5838f7b38ab0038b6773"
+HISTORICAL_ORCHESTRATOR_BLOB = "29f6a9ba67d8f10a09b054242a7daeccfd7b0a7b"
 # This map contains file-level pytest telemetry, not active product/security
 # declarations. Its keys intentionally include immutable tombstone test
 # filenames so the scheduler can retain their measured cost without making
@@ -170,6 +173,32 @@ def _active_scanner_policy_content(policy: dict[str, object]) -> str:
                             10,
                         ],
                     },
+                    {
+                        "path": "tests/test_mfa_webauthn_tombstone.py",
+                        "type": "Hex High Entropy String",
+                        "hashed_secret_bytes": [
+                            109,
+                            246,
+                            200,
+                            201,
+                            38,
+                            194,
+                            24,
+                            95,
+                            0,
+                            19,
+                            55,
+                            55,
+                            242,
+                            153,
+                            216,
+                            45,
+                            114,
+                            223,
+                            180,
+                            240,
+                        ],
+                    },
                 )
                 and record.get("category") == "public_integrity_digest"
             ):
@@ -177,6 +206,60 @@ def _active_scanner_policy_content(policy: dict[str, object]) -> str:
                 # Category, evidence and every other field remain fully visible.
                 identity["path"] = "<inactive scanner identity path>"
     return json.dumps(active_policy).lower()
+
+
+def test_active_scanner_policy_masks_new_pin_only_for_exact_identity() -> None:
+    record = {
+        "identity": {
+            "path": "tests/test_mfa_webauthn_tombstone.py",
+            "type": "Hex High Entropy String",
+            "hashed_secret_bytes": [
+                109,
+                246,
+                200,
+                201,
+                38,
+                194,
+                24,
+                95,
+                0,
+                19,
+                55,
+                55,
+                242,
+                153,
+                216,
+                45,
+                114,
+                223,
+                180,
+                240,
+            ],
+        },
+        "category": "public_integrity_digest",
+    }
+    policy = {"records": [record]}
+    masked = _active_scanner_policy_content(policy)
+    assert "<inactive scanner identity path>" in masked
+    assert "webauthn" not in masked
+
+    near_misses = []
+    changed_path = copy.deepcopy(policy)
+    changed_path["records"][0]["identity"]["path"] += ".unreviewed"
+    near_misses.append(changed_path)
+    changed_type = copy.deepcopy(policy)
+    changed_type["records"][0]["identity"]["type"] = "Base Auth Credentials"
+    near_misses.append(changed_type)
+    changed_digest = copy.deepcopy(policy)
+    changed_digest["records"][0]["identity"]["hashed_secret_bytes"][0] ^= 1
+    near_misses.append(changed_digest)
+    changed_category = copy.deepcopy(policy)
+    changed_category["records"][0]["category"] = "source_contract_identifier"
+    near_misses.append(changed_category)
+    for near_miss in near_misses:
+        visible = _active_scanner_policy_content(near_miss)
+        assert "tests/test_mfa_webauthn_tombstone.py" in visible
+        assert "webauthn" in visible
 
 
 def _active_backend_test_content(path: Path, raw_content: bytes) -> str:
@@ -423,7 +506,7 @@ def test_source_bound_history_does_not_exempt_a_new_symlink_alias(
         test_backend_tests_have_no_retired_factor_references()
 
 
-@pytest.fixture(params=(0, 1, 2, 3))
+@pytest.fixture(params=(0, 1, 2, 3, 4))
 def public_git_blob_disposition_record(
     request: pytest.FixtureRequest,
 ) -> dict[str, object]:
@@ -431,8 +514,99 @@ def public_git_blob_disposition_record(
     records = json.loads(fixture.read_text(encoding="utf-8"))["records"]
     own_path = Path(__file__).resolve().relative_to(ROOT).as_posix()
     matches = [row for row in records if row["identity"]["path"] == own_path]
-    assert len(matches) == 4
+    assert len(matches) == 5
     return copy.deepcopy(matches[request.param])
+
+
+def _approved_historical_orchestrator_pin_record() -> dict[str, object]:
+    fixture_path = ROOT / "tests" / "fixtures" / "public-git-blob-dispositions.json"
+    fixture_records = json.loads(fixture_path.read_text(encoding="utf-8"))["records"]
+    current_path = Path(__file__).resolve().relative_to(ROOT).as_posix()
+    matches = [
+        record
+        for record in fixture_records
+        if record["identity"]["path"] == current_path
+        and record["reviewed_on"] == "2026-10-26"
+        and record["category"] == "public_integrity_digest"
+        and "HISTORICAL_ORCHESTRATOR_BLOB" in record["evidence"]
+    ]
+    assert len(fixture_records) == 10
+    assert len(matches) == 1
+    return copy.deepcopy(matches[0])
+
+
+def _historical_orchestrator_pin_digest() -> tuple[int, ...]:
+    consumer = Path(__file__).read_text(encoding="utf-8")
+    assignments = [
+        node
+        for node in ast.parse(consumer).body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "HISTORICAL_ORCHESTRATOR_BLOB"
+            for target in node.targets
+        )
+    ]
+    assert len(assignments) == 1
+    value = ast.literal_eval(assignments[0].value)
+    assert isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value)
+    source = (ROOT / HISTORICAL_ORCHESTRATOR_TEST).read_bytes()
+    header = f"blob {len(source)}\0".encode("ascii")
+    assert value == hashlib.sha1(header + source, usedforsecurity=False).hexdigest()
+    return tuple(hashlib.sha1(value.encode("ascii"), usedforsecurity=False).digest())
+
+
+def test_public_git_blob_orchestrator_rebind_appends_one_exact_identity() -> None:
+    policy = json.loads(
+        (ROOT / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    record = _approved_historical_orchestrator_pin_record()
+    assert len(policy["records"]) == 346
+    assert policy["records"][345:346] == [record]
+    assert (
+        record["identity"]["path"]
+        == Path(__file__).resolve().relative_to(ROOT).as_posix()
+    )
+    assert record["identity"]["type"] == "Hex High Entropy String"
+    assert record["category"] == "public_integrity_digest"
+    assert record["owner"] == "egorribun"
+    assert record["reviewed_on"] == "2026-10-26"
+    assert record["expires_on"] == "2027-01-10"
+    assert record["approval_status"] == "approved"
+    assert "Public Git SHA-1 integrity digest of " in record["evidence"]
+    assert "HISTORICAL_ORCHESTRATOR_BLOB" in record["evidence"]
+    assert "Git blob framing binds all source bytes" in record["evidence"]
+    assert "not credential material" in record["evidence"]
+    assert tuple(record["identity"]["hashed_secret_bytes"]) == (
+        _historical_orchestrator_pin_digest()
+    )
+    assert tuple(record["identity"]["hashed_secret_bytes"]) == tuple(
+        verifier._PUBLIC_GIT_BLOB_ORCHESTRATOR_SOURCE_REBIND_IDENTITY[2]
+    )
+    assert verifier.validate_false_positive_dispositions(
+        {"schema_version": 1, "records": [record]},
+        today=verifier.date(2026, 10, 26),
+    ) == {
+        verifier.FindingIdentity(
+            record["identity"]["path"],
+            record["identity"]["type"],
+            bytes(record["identity"]["hashed_secret_bytes"]).hex(),
+            1,
+        )
+    }
+
+
+def test_new_orchestrator_public_git_blob_record_rejects_future_review_date() -> None:
+    record = _approved_historical_orchestrator_pin_record()
+    assert tuple(record["identity"]["hashed_secret_bytes"]) == (
+        _historical_orchestrator_pin_digest()
+    )
+    with pytest.raises(verifier.BaselineArtifactError, match="date range is invalid"):
+        verifier.validate_false_positive_dispositions(
+            {"schema_version": 1, "records": [copy.deepcopy(record)]},
+            today=verifier.date(2026, 10, 25),
+        )
 
 
 def _write_scanner_policy_fixture(

@@ -1321,6 +1321,10 @@ func (h *Hub) scheduleClientEviction(client *Client) {
 		if runCtx != nil {
 			// Stop joins Run before closeActiveClients; only cancel here so a
 			// pending broadcast cannot serialize shutdown on this socket.
+			// Reserve the eventual 1001 close before cancellation. If ReadPump
+			// cleanup unregisters this client before the shutdown snapshot, its
+			// deferred close still fulfills the reservation.
+			client.reserveControlFrameClose(1001, "server shutting down")
 			client.cancelConnection()
 			client.cancelAllRoomReplays()
 			return
@@ -2285,9 +2289,10 @@ func (h *Hub) DisconnectUser(userID string, closeCode int, reason string) {
 	h.Logger.InfoContext(context.Background(), "Disconnecting active user sessions",
 		"user_id", userID, "count", len(targets), "code", closeCode, "reason", reason)
 
-	cancelClientWork(targets)
-	closeClientTransportsInParallel(targets, func(client *Client) {
+	closeClientTransportsInParallelWithAfterDispatch(targets, closeCode, reason, func(client *Client) {
 		client.closeTransportWithControlFrame(closeCode, reason)
+	}, func() {
+		cancelClientWork(targets)
 	})
 	for _, client := range targets {
 		h.unregisterClient(client.ctx, client)
@@ -2327,9 +2332,10 @@ func (h *Hub) disconnectSessionContext(ctx context.Context, jti string, closeCod
 		client.sessionRevoked.Store(true)
 		client.sessionGate.Unlock()
 	}
-	cancelClientWork(targets)
-	closeClientTransportsInParallel(targets, func(client *Client) {
+	closeClientTransportsInParallelWithAfterDispatch(targets, closeCode, reason, func(client *Client) {
 		client.closeTransportWithControlFrame(closeCode, reason)
+	}, func() {
+		cancelClientWork(targets)
 	})
 	for _, client := range targets {
 		h.unregisterClient(ctx, client)
@@ -2456,9 +2462,10 @@ func (h *Hub) closeActiveClients(ctx context.Context) {
 		clients = append(clients, client)
 	}
 	h.mu.RUnlock()
-	cancelClientWork(clients)
-	closeClientTransportsInParallel(clients, func(client *Client) {
+	closeClientTransportsInParallelWithAfterDispatch(clients, 1001, "server shutting down", func(client *Client) {
 		client.closeTransportWithControlFrame(1001, "server shutting down")
+	}, func() {
+		cancelClientWork(clients)
 	})
 	for _, client := range clients {
 		h.handleUnregister(ctx, client)
@@ -2477,8 +2484,48 @@ const maxParallelClientCloses = 16
 // closeClientTransportsInParallel bounds helper goroutines while preventing one
 // socket holding writeMu from serializing the rest of a teardown fanout.
 func closeClientTransportsInParallel(clients []*Client, closeClient func(*Client)) {
+	closeClientTransportsInParallelCore(clients, 0, "", closeClient, false, nil)
+}
+
+// closeClientTransportsInParallelWithAfterDispatch reserves each control close
+// before starting bounded workers. It runs afterDispatch after all work is
+// queued, but before joining workers, so cancellation cannot let a WritePump's
+// deferred plain close consume the requested control-frame close.
+func closeClientTransportsInParallelWithAfterDispatch(
+	clients []*Client,
+	closeCode int,
+	reason string,
+	closeClient func(*Client),
+	afterDispatch func(),
+) {
+	closeClientTransportsInParallelCore(clients, closeCode, reason, closeClient, true, afterDispatch)
+}
+
+func closeClientTransportsInParallelCore(
+	clients []*Client,
+	closeCode int,
+	reason string,
+	closeClient func(*Client),
+	reserveControlFrame bool,
+	afterDispatch func(),
+) {
+	if reserveControlFrame {
+		for _, client := range clients {
+			client.reserveControlFrameClose(closeCode, reason)
+		}
+	}
+
 	workerCount := min(len(clients), maxParallelClientCloses)
-	jobs := make(chan *Client)
+	if workerCount == 0 {
+		if afterDispatch != nil {
+			afterDispatch()
+		}
+		return
+	}
+
+	// Buffer the bounded fanout so a set of writeMu-blocked workers cannot
+	// prevent cancellation from running after the close requests are queued.
+	jobs := make(chan *Client, len(clients))
 	var workers sync.WaitGroup
 	for worker := 0; worker < workerCount; worker++ {
 		workers.Add(1)
@@ -2492,6 +2539,9 @@ func closeClientTransportsInParallel(clients []*Client, closeClient func(*Client
 		jobs <- client
 	}
 	close(jobs)
+	if afterDispatch != nil {
+		afterDispatch()
+	}
 	workers.Wait()
 }
 

@@ -13,9 +13,9 @@ import {
 } from "node:fs"
 import { get } from "node:https"
 import { createRequire } from "node:module"
-import { dirname, isAbsolute, join, relative, resolve } from "node:path"
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
-import { stripVTControlCharacters } from "node:util"
+import { isDeepStrictEqual, stripVTControlCharacters } from "node:util"
 import {
   NPM_TRANSPORT_ARGS,
   assertNpmCommand,
@@ -28,10 +28,20 @@ import {
   assertImmutableCheckout,
   diagnoseLockScope,
 } from "./generate-react-compiler-adapter-lock-candidate.mjs"
+import { inspectFacadeArchive, readFacadeSources } from "./pack-react-compiler-zod-compat.mjs"
 
 const LOCAL = "scripts/react-compiler-zod-compat"
+const LEGACY = "react-compiler-zod-compat"
+const LEGACY_SPEC = "file:./" + LOCAL
+const FACADE = "@university-ecosystem/react-compiler-zod-compat"
+const ARCHIVE = "vendor/react-compiler-zod-compat-1.0.0.tgz"
+const ARCHIVE_SPEC = "file:./" + ARCHIVE
+const ARCHIVE_INTEGRITY =
+  "sha512-4M74nZuqffHkW97CJJq1q3dIyFNdwkv9ydjCtkyd43o/pwZMAVJlijqY5Scl+MudxRRBara/XqXY9HdqsT7cUg=="
+const ARCHIVE_SHA256 = "3887a71e809e5c427392ee521eec91296bffae536aa11f8bd04863922a193ff5"
 const ALIAS = "node_modules/patched-zod"
-const LINK = "node_modules/react-compiler-zod-compat"
+const LINK = "node_modules/" + FACADE
+const OLD_LINK = "node_modules/react-compiler-zod-compat"
 const COMPILER = "node_modules/eslint-plugin-react-compiler"
 const OLD_ENGINE = COMPILER + "/node_modules/zod"
 const FORMATTER = "node_modules/zod-validation-error"
@@ -41,24 +51,51 @@ const ENGINE = "node_modules/zod"
 const EXACT_CONSUMER = "eslint-plugin-react-compiler@19.1.0-rc.2"
 const SINGLETON_RANGE = ">=19.1.0-rc.2 <=19.1.0-rc.2"
 const CONSUMER = "eslint-plugin-react-compiler@" + SINGLETON_RANGE
+export const SOURCE_PHASE = Object.freeze({
+  LEGACY_LINK: "c90-legacy-link",
+  STAGED_ARCHIVE: "staged-archive",
+  ALREADY_FINAL: "already-final",
+})
 const FINAL_OVERRIDE = Object.freeze({
   ".": "$eslint-plugin-react-compiler",
-  zod: "file:../../scripts/react-compiler-zod-compat",
+  zod: "$" + FACADE,
   "zod-validation-error": Object.freeze({ ".": "4.0.2", zod: "4.6.7" }),
 })
+
 const HOOKS_PEER = "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0-0 || ^9.0.0 || ^10.0.0"
 const FORMATTER_PEER = "^3.25.0 || ^4.0.0"
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex")
 
-function assertSourceManifest(manifest) {
+function sourceManifestPhase(manifest) {
   assert.equal(manifest.private, true)
   assert.equal(manifest.packageManager, "npm@11.17.0")
   assert.equal(manifest.devDependencies?.eslint, "^10.12.0")
   assert.equal(manifest.devDependencies?.["eslint-plugin-react-compiler"], "^19.1.0-rc.2")
   assert.equal(manifest.devDependencies?.["eslint-plugin-react-hooks"], "^7.1.1")
-  assert.equal(manifest.devDependencies?.["react-compiler-zod-compat"], "file:./" + LOCAL)
+  const hasLegacy = Object.hasOwn(manifest.devDependencies ?? {}, LEGACY)
+  const hasFacade = Object.hasOwn(manifest.devDependencies ?? {}, FACADE)
+  const hasConsumerOverride = Object.hasOwn(manifest.overrides ?? {}, CONSUMER)
+  let phase
+  if (
+    hasLegacy &&
+    manifest.devDependencies[LEGACY] === LEGACY_SPEC &&
+    !hasFacade &&
+    !hasConsumerOverride
+  ) {
+    phase = SOURCE_PHASE.LEGACY_LINK
+  } else if (!hasLegacy && hasFacade && manifest.devDependencies[FACADE] === ARCHIVE_SPEC) {
+    if (hasConsumerOverride) {
+      assert.deepEqual(manifest.overrides[CONSUMER], FINAL_OVERRIDE)
+      phase = SOURCE_PHASE.ALREADY_FINAL
+    } else {
+      phase = SOURCE_PHASE.STAGED_ARCHIVE
+    }
+  } else {
+    assert.fail("Unknown React Compiler dependency source phase")
+  }
   for (const section of ["dependencies", "optionalDependencies", "peerDependencies"]) {
-    assert(!Object.hasOwn(manifest[section] ?? {}, "react-compiler-zod-compat"))
+    assert(!Object.hasOwn(manifest[section] ?? {}, FACADE))
+    assert(!Object.hasOwn(manifest[section] ?? {}, LEGACY))
   }
   for (const section of [
     "dependencies",
@@ -73,20 +110,29 @@ function assertSourceManifest(manifest) {
   assert.deepEqual(manifest.overrides?.["eslint-plugin-react-hooks"], {
     "zod-validation-error": "4.0.2",
   })
+  for (const key of Object.keys(manifest.overrides ?? {})) {
+    assert(!/^zod(?:@|$)/.test(key))
+    if (/^eslint-plugin-react-compiler(?:@|$)/.test(key)) {
+      assert.equal(key, CONSUMER)
+      assert.equal(phase, SOURCE_PHASE.ALREADY_FINAL)
+    }
+  }
+  return phase
 }
 
 export function prepareFinalManifest(manifest) {
-  assertSourceManifest(manifest)
-  for (const name of Object.keys(manifest.overrides ?? {})) {
-    assert(!/^(?:zod|eslint-plugin-react-compiler)(?:@|$)/.test(name))
-  }
+  const phase = sourceManifestPhase(manifest)
   const candidate = structuredClone(manifest)
+  if (phase === SOURCE_PHASE.LEGACY_LINK) {
+    delete candidate.devDependencies[LEGACY]
+    candidate.devDependencies[FACADE] = ARCHIVE_SPEC
+  }
   candidate.overrides[CONSUMER] = structuredClone(FINAL_OVERRIDE)
   return candidate
 }
 
 export function prepareStrictManifest(manifest) {
-  assertSourceManifest(manifest)
+  assert.equal(sourceManifestPhase(manifest), SOURCE_PHASE.ALREADY_FINAL)
   assert.deepEqual(manifest.overrides[CONSUMER], FINAL_OVERRIDE)
   return {
     name: "react-compiler-peer-proof",
@@ -97,7 +143,7 @@ export function prepareStrictManifest(manifest) {
       eslint: "10.12.0",
       "eslint-plugin-react-compiler": "19.1.0-rc.2",
       "eslint-plugin-react-hooks": "7.1.1",
-      "react-compiler-zod-compat": "file:./" + LOCAL,
+      [FACADE]: ARCHIVE_SPEC,
       zod: "4.6.7",
     },
     overrides: {
@@ -115,15 +161,37 @@ export function prepareStrictFormatterPlacementManifest(manifest) {
   return candidate
 }
 
-export function assertFinalSourcePrerequisites(lock) {
+export function prepareAbsoluteArchiveGenerationManifest(manifest, archivePath) {
+  assert.equal(sourceManifestPhase(manifest), SOURCE_PHASE.ALREADY_FINAL)
+  assert.deepEqual(manifest.overrides?.[CONSUMER], FINAL_OVERRIDE)
+  assert.equal(typeof archivePath, "string")
+  assert(isAbsolute(archivePath) && resolve(archivePath) === archivePath)
+  assert.equal(realpathSync(archivePath), archivePath)
+  const bytes = regularBytes(archivePath, 64 * 1024)
+  assert.equal(digest(bytes), ARCHIVE_SHA256)
+  assert.equal("sha512-" + createHash("sha512").update(bytes).digest("base64"), ARCHIVE_INTEGRITY)
+  const candidate = structuredClone(manifest)
+  candidate.overrides[CONSUMER].zod = "file:" + archivePath.replaceAll("\\", "/")
+  return candidate
+}
+
+function archiveLockRecord() {
+  return {
+    version: "1.0.0",
+    resolved: "file:" + ARCHIVE,
+    integrity: ARCHIVE_INTEGRITY,
+    dev: true,
+    license: "MIT",
+    dependencies: { "patched-zod": "npm:zod@4.6.7" },
+  }
+}
+
+function assertSharedSourceLock(lock) {
   assert.equal(lock.lockfileVersion, 3)
   for (const [path, version] of [
     ["node_modules/body-parser", "1.20.9"],
     ["node_modules/undici", "8.12.2"],
     [COMPILER, "19.1.0-rc.2"],
-    [OLD_ENGINE, "3.25.76"],
-    [FORMATTER, "3.5.4"],
-    [HOOKS_FORMATTER, "4.0.2"],
     [HOOKS, "7.1.1"],
     ["node_modules/eslint", "10.12.0"],
     ["node_modules/@puppeteer/browsers", "3.2.4"],
@@ -143,21 +211,27 @@ export function assertFinalSourcePrerequisites(lock) {
     ...lock.packages[ENGINE],
     dev: true,
   })
-  assert.deepEqual(lock.packages[LINK], { resolved: LOCAL, link: true })
-  assert.deepEqual(lock.packages[LOCAL], {
-    name: adapterManifest().name,
-    version: "1.0.0",
-    dev: true,
-    license: "MIT",
-    dependencies: { "patched-zod": "npm:zod@4.6.7" },
-  })
-  assert.equal(lock.packages[""].devDependencies["react-compiler-zod-compat"], "file:./" + LOCAL)
   assert.equal(lock.packages["node_modules/chromium-bidi"].dependencies.zod, "^4.6.5")
   assert.equal(lock.packages[COMPILER].dependencies.zod, "^3.22.4")
   assert.equal(lock.packages[COMPILER].dependencies["zod-validation-error"], "^3.0.3")
   assert.equal(lock.packages[COMPILER].peerDependencies.eslint, ">=7")
   assert.equal(lock.packages[HOOKS].peerDependencies.eslint, HOOKS_PEER)
+}
+
+function assertStagedSourcePrerequisites(lock) {
+  assertSharedSourceLock(lock)
+  assert.equal(lock.packages[OLD_ENGINE].version, "3.25.76")
+  assert.equal(lock.packages[OLD_ENGINE].dev, true)
+  assert.equal(lock.packages[FORMATTER].version, "3.5.4")
+  assert.equal(lock.packages[FORMATTER].dev, true)
+  assert.equal(lock.packages[HOOKS_FORMATTER].version, "4.0.2")
+  assert.equal(lock.packages[HOOKS_FORMATTER].dev, true)
   assert.equal(lock.packages[HOOKS_FORMATTER].peerDependencies.zod, FORMATTER_PEER)
+  assert.deepEqual(lock.packages[LINK], archiveLockRecord())
+  assert.equal(lock.packages[""].devDependencies[FACADE], ARCHIVE_SPEC)
+  assert(!Object.hasOwn(lock.packages[""].devDependencies, LEGACY))
+  assert(!Object.hasOwn(lock.packages, OLD_LINK))
+  assert(!Object.hasOwn(lock.packages, LOCAL))
   assert.deepEqual(
     Object.keys(lock.packages)
       .filter((path) => /(?:^|\/)node_modules\/zod$/.test(path))
@@ -166,6 +240,93 @@ export function assertFinalSourcePrerequisites(lock) {
   )
   assert(!Object.hasOwn(lock.packages, LOCAL + "/node_modules/patched-zod"))
   return true
+}
+
+function legacyLockAsStaged(lock) {
+  const staged = structuredClone(lock)
+  delete staged.packages[""].devDependencies[LEGACY]
+  staged.packages[""].devDependencies[FACADE] = ARCHIVE_SPEC
+  delete staged.packages[OLD_LINK]
+  delete staged.packages[LOCAL]
+  staged.packages[LINK] = archiveLockRecord()
+  return staged
+}
+
+function assertLegacyLinkSourcePrerequisites(lock) {
+  assertSharedSourceLock(lock)
+  assert.equal(lock.packages[OLD_ENGINE].version, "3.25.76")
+  assert.equal(lock.packages[OLD_ENGINE].dev, true)
+  assert.equal(lock.packages[FORMATTER].version, "3.5.4")
+  assert.equal(lock.packages[FORMATTER].dev, true)
+  assert.equal(lock.packages[HOOKS_FORMATTER].version, "4.0.2")
+  assert.equal(lock.packages[HOOKS_FORMATTER].dev, true)
+  assert.equal(lock.packages[HOOKS_FORMATTER].peerDependencies.zod, FORMATTER_PEER)
+  assert.equal(lock.packages[""].devDependencies[LEGACY], LEGACY_SPEC)
+  assert(!Object.hasOwn(lock.packages[""].devDependencies, FACADE))
+  assert.deepEqual(lock.packages[OLD_LINK], { resolved: LOCAL, link: true })
+  assert.deepEqual(lock.packages[LOCAL], {
+    name: FACADE,
+    version: "1.0.0",
+    dev: true,
+    license: "MIT",
+    dependencies: { "patched-zod": "npm:zod@4.6.7" },
+  })
+  assert(!Object.hasOwn(lock.packages, LINK))
+  return assertStagedSourcePrerequisites(legacyLockAsStaged(lock))
+}
+
+function assertAlreadyFinalSourcePrerequisites(lock) {
+  assertSharedSourceLock(lock)
+  assert.deepEqual(lock.packages[LINK], archiveLockRecord())
+  assert.deepEqual(lock.packages[OLD_ENGINE], {
+    name: FACADE,
+    ...archiveLockRecord(),
+  })
+  assert.equal(lock.packages[""].devDependencies[FACADE], ARCHIVE_SPEC)
+  assert(!Object.hasOwn(lock.packages[""].devDependencies, LEGACY))
+  assert(!Object.hasOwn(lock.packages, OLD_LINK))
+  assert(!Object.hasOwn(lock.packages, LOCAL))
+  assert.equal(lock.packages[FORMATTER].version, "4.0.2")
+  assert.equal(lock.packages[FORMATTER].dev, true)
+  assert.equal(lock.packages[FORMATTER].peerDependencies.zod, FORMATTER_PEER)
+  assert(!Object.hasOwn(lock.packages, HOOKS_FORMATTER))
+  assert.deepEqual(
+    Object.keys(lock.packages)
+      .filter((path) => /(?:^|\/)node_modules\/zod$/.test(path))
+      .sort(),
+    [OLD_ENGINE, ENGINE]
+  )
+  assert(!Object.hasOwn(lock.packages, LOCAL + "/node_modules/patched-zod"))
+  return true
+}
+
+export function assertFinalSourcePrerequisites(lock, phase = SOURCE_PHASE.STAGED_ARCHIVE) {
+  assert(Object.values(SOURCE_PHASE).includes(phase))
+  if (phase === SOURCE_PHASE.LEGACY_LINK) return assertLegacyLinkSourcePrerequisites(lock)
+  if (phase === SOURCE_PHASE.STAGED_ARCHIVE) return assertStagedSourcePrerequisites(lock)
+  return assertAlreadyFinalSourcePrerequisites(lock)
+}
+
+export function classifyFinalSourcePhase(manifest, lock) {
+  const phase = sourceManifestPhase(manifest)
+  assertFinalSourcePrerequisites(lock, phase)
+  const root = lock.packages[""]
+  assert.equal(root.name, manifest.name)
+  assert.equal(root.version, manifest.version)
+  assert.deepEqual(root.dependencies, manifest.dependencies)
+  assert.deepEqual(root.devDependencies, manifest.devDependencies)
+  return phase
+}
+
+export function assertFacadeArchive(frontend) {
+  assert.equal(realpathSync(frontend), frontend)
+  const files = readFacadeSources(join(frontend, LOCAL))
+  const bytes = regularBytes(join(frontend, ARCHIVE), 64 * 1024)
+  const evidence = inspectFacadeArchive(bytes, files)
+  assert.equal(evidence.sha256, ARCHIVE_SHA256)
+  const integrity = "sha512-" + createHash("sha512").update(bytes).digest("base64")
+  assert.equal(integrity, ARCHIVE_INTEGRITY)
+  return { bytes: bytes.length, sha256: evidence.sha256, integrity }
 }
 
 export function validateFormatterMetadata(data, record, now = Date.now()) {
@@ -200,14 +361,182 @@ export function validateFormatterMetadata(data, record, now = Date.now()) {
   return { data, published, timestamp }
 }
 
-export function assertFinalLockScope(original, candidate, formatter) {
-  assertFinalSourcePrerequisites(original)
-  validateFormatterMetadata(formatter, original.packages[HOOKS_FORMATTER])
+function assertLockDeltaPaths(original, candidate, expectedPaths) {
+  const paths = new Set([...Object.keys(original.packages), ...Object.keys(candidate.packages)])
+  const changed = [...paths]
+    .filter((path) => !isDeepStrictEqual(original.packages[path], candidate.packages[path]))
+    .sort()
+  assert.deepEqual(changed, [...expectedPaths].sort())
+}
+
+export function assertFinalLockScope(original, candidate, formatter, phase) {
+  phase ??= Object.values(SOURCE_PHASE).find((value) => {
+    try {
+      assertFinalSourcePrerequisites(original, value)
+      return true
+    } catch {
+      return false
+    }
+  })
+  assert(Object.values(SOURCE_PHASE).includes(phase), "Unknown source lock phase")
+  assertFinalSourcePrerequisites(original, phase)
+  const formatterRecord =
+    phase === SOURCE_PHASE.ALREADY_FINAL
+      ? original.packages[FORMATTER]
+      : original.packages[HOOKS_FORMATTER]
+  validateFormatterMetadata(formatter, formatterRecord)
   const expected = structuredClone(original)
-  expected.packages[OLD_ENGINE] = { resolved: LOCAL, link: true }
-  expected.packages[FORMATTER] = structuredClone(original.packages[HOOKS_FORMATTER])
-  delete expected.packages[HOOKS_FORMATTER]
+  let changedPaths
+  if (phase === SOURCE_PHASE.LEGACY_LINK) {
+    delete expected.packages[""].devDependencies[LEGACY]
+    expected.packages[""].devDependencies[FACADE] = ARCHIVE_SPEC
+    expected.packages[LINK] = archiveLockRecord()
+    expected.packages[OLD_ENGINE] = { name: FACADE, ...archiveLockRecord() }
+    delete expected.packages[OLD_LINK]
+    delete expected.packages[LOCAL]
+    expected.packages[FORMATTER] = structuredClone(original.packages[HOOKS_FORMATTER])
+    delete expected.packages[HOOKS_FORMATTER]
+    changedPaths = ["", LINK, OLD_ENGINE, OLD_LINK, LOCAL, FORMATTER, HOOKS_FORMATTER]
+  } else if (phase === SOURCE_PHASE.STAGED_ARCHIVE) {
+    expected.packages[OLD_ENGINE] = {
+      name: FACADE,
+      ...structuredClone(original.packages[LINK]),
+    }
+    expected.packages[FORMATTER] = structuredClone(original.packages[HOOKS_FORMATTER])
+    delete expected.packages[HOOKS_FORMATTER]
+    changedPaths = [OLD_ENGINE, FORMATTER, HOOKS_FORMATTER]
+  } else {
+    changedPaths = []
+  }
   assert.deepEqual(candidate, expected)
+  assertLockDeltaPaths(original, candidate, changedPaths)
+  return true
+}
+
+export const FINAL_CANDIDATE_ORCHESTRATION_STAGES = Object.freeze([
+  "toolMetadata",
+  "toolArchive",
+  "toolInstall",
+  "engineMetadata",
+  "engineArchive",
+  "formatterMetadata",
+  "formatterArchive",
+  "overrideSelector",
+  "candidateLockGeneration",
+  "candidateLockScope",
+  "fullGraphInstallAndVerify",
+  "productionGraphInstallAndVerify",
+  "strictPeerProof",
+  "sourceSnapshotPostflight",
+  "candidateDiff",
+])
+
+export function formatterRecordForSourcePhase(lock, phase) {
+  assert(Object.values(SOURCE_PHASE).includes(phase))
+  const path = phase === SOURCE_PHASE.ALREADY_FINAL ? FORMATTER : HOOKS_FORMATTER
+  const record = lock.packages[path]
+  assert(record && record.version === "4.0.2")
+  return { path, record }
+}
+
+export async function orchestrateFinalCandidateStages({
+  sourcePhase,
+  sourceLock,
+  runStage,
+  now = Date.now(),
+}) {
+  assert(Object.values(SOURCE_PHASE).includes(sourcePhase))
+  assertFinalSourcePrerequisites(sourceLock, sourcePhase)
+  assert.equal(typeof runStage, "function")
+  const formatterSource = formatterRecordForSourcePhase(sourceLock, sourcePhase)
+  const state = {
+    sourcePhase,
+    sourceLock,
+    formatterSourcePath: formatterSource.path,
+    formatterSourceRecord: formatterSource.record,
+    completedStages: [],
+  }
+  for (const stage of FINAL_CANDIDATE_ORCHESTRATION_STAGES) {
+    state.currentStage = stage
+    const value = await runStage(stage, state)
+    if (stage === "toolMetadata") {
+      state.toolMetadata = validateRegistryMetadata(value, "npm", "11.17.0", now)
+    } else if (stage === "toolArchive") {
+      assertArchiveStageEvidence(value, state.toolMetadata.data, "npm tool")
+      state.toolArchive = value
+    } else if (stage === "toolInstall") {
+      assert(value && typeof value.cli === "string" && value.cli.length > 0)
+      state.cli = value.cli
+      state.toolInstall = value
+    } else if (stage === "engineMetadata") {
+      state.engine = validateRegistryMetadata(value, "zod", "4.6.7", now)
+      assert.equal(state.engine.data.dist.tarball, sourceLock.packages[ENGINE].resolved)
+      assert.equal(state.engine.data.dist.integrity, sourceLock.packages[ENGINE].integrity)
+      assert.equal(state.engine.data.license, sourceLock.packages[ENGINE].license)
+      assert.deepEqual(state.engine.data.dependencies ?? {}, {})
+    } else if (stage === "engineArchive") {
+      assertArchiveStageEvidence(value, state.engine.data, "patched engine")
+      state.engineArchive = value
+    } else if (stage === "formatterMetadata") {
+      state.formatter = validateFormatterMetadata(value, state.formatterSourceRecord, now)
+    } else if (stage === "formatterArchive") {
+      assertArchiveStageEvidence(value, state.formatter.data, "formatter")
+      state.formatterArchive = value
+    } else if (stage === "overrideSelector") {
+      state.selectorDiagnostic = assertOverrideSelectorControl(value)
+    } else if (stage === "candidateLockGeneration") {
+      assert(value && Buffer.isBuffer(value.bytes))
+      assert(value.candidate && typeof value.candidate === "object")
+      assert(typeof value.path === "string" && value.path.length > 0)
+      state.candidateLock = value.candidate
+      state.candidateLockBytes = value.bytes
+      state.candidateLockPath = value.path
+    } else if (stage === "candidateLockScope") {
+      try {
+        assertFinalLockScope(sourceLock, state.candidateLock, state.formatter.data, sourcePhase)
+      } catch {
+        const diagnostic = JSON.stringify(diagnoseLockScope(sourceLock, state.candidateLock))
+        assert(Buffer.byteLength(diagnostic) <= 16384)
+        console.error("FINAL_COMPILER_REJECTED_SCOPE " + diagnostic)
+        throw new Error("Rejected generated lock scope")
+      }
+      state.candidateLockScopeVerified = true
+    } else if (stage === "fullGraphInstallAndVerify") {
+      assert(value && value.verified === true)
+      assert(value.licenseEvidence && typeof value.licenseEvidence === "object")
+      state.licenseEvidence = value.licenseEvidence
+      state.fullGraphInstallVerified = true
+    } else if (stage === "productionGraphInstallAndVerify") {
+      assert(value && value.verified === true)
+      state.productionGraphInstallVerified = true
+    } else if (stage === "strictPeerProof") {
+      assert(value && value.verified === true)
+      assert(Buffer.isBuffer(value.strictLockBytes))
+      assert(value.strictNpmListVerified === true)
+      assert.deepEqual(value.licenseEvidence, state.licenseEvidence)
+      state.strictLockBytes = value.strictLockBytes
+      state.strictPeerProof = value
+    } else if (stage === "sourceSnapshotPostflight") {
+      assert.equal(value, true)
+      state.sourceSnapshotPostflightVerified = true
+    } else if (stage === "candidateDiff") {
+      assert.equal(typeof value, "string")
+      if (sourcePhase === SOURCE_PHASE.ALREADY_FINAL) assert.equal(Buffer.byteLength(value), 0)
+      else assert(Buffer.byteLength(value) > 0)
+      assert(Buffer.byteLength(value) <= 16384)
+      state.patch = value
+    }
+    state.completedStages.push(stage)
+  }
+  return state
+}
+
+function assertArchiveStageEvidence(evidence, metadata, description) {
+  assert(evidence && evidence.verified === true, description + " archive was not verified")
+  assert(Number.isSafeInteger(evidence.bytes) && evidence.bytes > 0)
+  assert.equal(evidence.integrity, metadata.dist.integrity)
+  assert.match(evidence.sha256 ?? "", /^[0-9a-f]{64}$/)
+  assert.equal(typeof evidence.path, "string")
   return true
 }
 
@@ -576,7 +905,7 @@ export function assertStrictLock(strict, project, rootFormatterPinned = false) {
     eslint: "10.12.0",
     "eslint-plugin-react-compiler": "19.1.0-rc.2",
     "eslint-plugin-react-hooks": "7.1.1",
-    "react-compiler-zod-compat": "file:./" + LOCAL,
+    [FACADE]: ARCHIVE_SPEC,
     zod: "4.6.7",
   }
   if (rootFormatterPinned) expectedDevDependencies["zod-validation-error"] = "4.0.2"
@@ -589,7 +918,6 @@ export function assertStrictLock(strict, project, rootFormatterPinned = false) {
     ENGINE,
     ALIAS,
     LINK,
-    LOCAL,
     OLD_ENGINE,
   ]) {
     assert.deepEqual(
@@ -604,9 +932,11 @@ export function assertStrictLock(strict, project, rootFormatterPinned = false) {
   assert.equal(strict.packages[HOOKS].peerDependencies.eslint, HOOKS_PEER)
   assert.equal(strict.packages[FORMATTER].version, "4.0.2")
   assert.equal(strict.packages[FORMATTER].peerDependencies.zod, FORMATTER_PEER)
-  assert.equal(strict.packages[LOCAL].version, "1.0.0")
-  assert.equal(strict.packages[LOCAL].dependencies["patched-zod"], "npm:zod@4.6.7")
-  assert.deepEqual(strict.packages[OLD_ENGINE], { resolved: LOCAL, link: true })
+  assert.equal(strict.packages[LINK].version, "1.0.0")
+  assert.equal(strict.packages[LINK].dependencies["patched-zod"], "npm:zod@4.6.7")
+  assert.equal(strict.packages[OLD_ENGINE].name, FACADE)
+  assert(!Object.hasOwn(strict.packages, OLD_LINK))
+  assert(!Object.hasOwn(strict.packages, LOCAL))
   assert(!Object.hasOwn(strict.packages, HOOKS_FORMATTER))
   assert.deepEqual(
     Object.keys(strict.packages)
@@ -650,18 +980,19 @@ export function inspectInstalledEngineLicense(frontend) {
   }
 }
 
-export function assertLocalOverrideTarget(frontend, consumer, target) {
+export function assertArchiveOverrideTarget(frontend, consumer, target) {
   assert.equal(realpathSync(frontend), frontend)
   assert.equal(consumer, join(frontend, COMPILER))
-  assert.equal(target, join(frontend, LOCAL))
-  assert.equal(realpathSync(target), target)
-  assert.deepEqual(packageMetadata(join(target, "package.json")), adapterManifest())
+  assert.equal(target, join(frontend, ARCHIVE))
+  const bytes = regularBytes(target, 64 * 1024)
+  assert.equal(digest(bytes), ARCHIVE_SHA256)
+  assert.equal("sha512-" + createHash("sha512").update(bytes).digest("base64"), ARCHIVE_INTEGRITY)
   return true
 }
 
 export function inspectOverrideSelector(toolRoot, manifest, frontend) {
   assert.equal(realpathSync(toolRoot), toolRoot)
-  assertSourceManifest(manifest)
+  sourceManifestPhase(manifest)
   assert.deepEqual(manifest.overrides[CONSUMER], FINAL_OVERRIDE)
   const npmPath = join(toolRoot, "package.json")
   const npmMetadata = packageMetadata(npmPath)
@@ -683,7 +1014,7 @@ export function inspectOverrideSelector(toolRoot, manifest, frontend) {
   }
   assert.equal(realpathSync(frontend), frontend)
   const npaPath = toolRequire.resolve("npm-package-arg")
-  assert(npaPath.startsWith(packages["npm-package-arg"].path + "/"))
+  assert(npaPath.startsWith(packages["npm-package-arg"].path + sep))
   regularBytes(npaPath, 128 * 1024)
   const buildPath = join(packages["@npmcli/arborist"].path, "lib/arborist/build-ideal-tree.js")
   regularBytes(buildPath, 128 * 1024)
@@ -694,7 +1025,7 @@ export function inspectOverrideSelector(toolRoot, manifest, frontend) {
     join(packages["npm-package-arg"].path, "package.json")
   )
   const semverPath = toolRequire.resolve("semver")
-  assert(semverPath.startsWith(packages.semver.path + "/"))
+  assert(semverPath.startsWith(packages.semver.path + sep))
   regularBytes(semverPath, 128 * 1024)
   const overridePath = join(packages["@npmcli/arborist"].path, "lib/override-set.js")
   regularBytes(overridePath, 128 * 1024)
@@ -733,7 +1064,8 @@ export function inspectOverrideSelector(toolRoot, manifest, frontend) {
   }
   const selectedIdentity = (rule) => identity(selected, rule, CONSUMER)
   // Node and Edge model this one direct dependency in memory; no tree is loaded
-  // from disk and no installer runs. The reference must preserve its raw spec.
+  // from disk and no installer runs. The root package reference must preserve
+  // the compiler's declared version range and point at the tracked archive.
   const directRoot = (override) =>
     new Node({
       path: frontend,
@@ -743,7 +1075,7 @@ export function inspectOverrideSelector(toolRoot, manifest, frontend) {
         version: "1.0.0",
         devDependencies: {
           [name]: range,
-          "react-compiler-zod-compat": manifest.devDependencies["react-compiler-zod-compat"],
+          [FACADE]: manifest.devDependencies[FACADE],
         },
         overrides: { [CONSUMER]: structuredClone(override) },
       },
@@ -758,25 +1090,34 @@ export function inspectOverrideSelector(toolRoot, manifest, frontend) {
   assert.throws(() => directRoot(withoutReference).assertRootOverrides(), {
     code: "EOVERRIDE",
   })
-  const localDependency = (override) => {
-    const consumer = new Node({
+  const consumer = (override) => {
+    const instance = new Node({
       parent: directRoot(override),
       pkg: { name, version, dependencies: { zod: "^3.22.4" } },
     })
-    assert.equal(consumer.path, join(frontend, COMPILER))
-    const dependency = consumer.edgesOut.get("zod")
+    assert.equal(instance.path, join(frontend, COMPILER))
+    const dependency = instance.edgesOut.get("zod")
     assert(dependency instanceof Edge)
     assert.equal(dependency.rawSpec, "^3.22.4")
-    const parsed = npa.resolve(dependency.name, dependency.spec, dependency.from.path)
-    assert.equal(parsed.type, "directory")
-    return { consumer, dependency, target: parsed.fetchSpec }
+    return { instance, dependency }
   }
-  const originalReference = structuredClone(FINAL_OVERRIDE)
-  originalReference.zod = "$react-compiler-zod-compat"
-  const misplaced = localDependency(originalReference)
-  const corrected = localDependency(FINAL_OVERRIDE)
-  assert.equal(misplaced.target, join(frontend, COMPILER, LOCAL))
-  assertLocalOverrideTarget(frontend, corrected.consumer.path, corrected.target)
+  const relativeDirectory = consumer({
+    ...FINAL_OVERRIDE,
+    zod: "file:../../scripts/react-compiler-zod-compat",
+  })
+  const relativeParsed = npa.resolve(
+    "zod",
+    relativeDirectory.dependency.spec,
+    relativeDirectory.instance.path
+  )
+  assert.equal(relativeParsed.type, "directory")
+  assert.equal(relativeParsed.fetchSpec, join(frontend, LOCAL))
+  const resolvedRoot = npa.resolve(FACADE, manifest.devDependencies[FACADE], frontend)
+  assert.equal(resolvedRoot.type, "file")
+  assert.equal(resolvedRoot.fetchSpec, join(frontend, ARCHIVE))
+  const selectedConsumer = consumer(FINAL_OVERRIDE)
+  assert.equal(selectedConsumer.dependency.spec, ARCHIVE_SPEC)
+  assertArchiveOverrideTarget(frontend, selectedConsumer.instance.path, resolvedRoot.fetchSpec)
   const versionChecks = [
     "19.1.0-rc.1",
     "19.1.0-rc.2",
@@ -822,14 +1163,15 @@ export function inspectOverrideSelector(toolRoot, manifest, frontend) {
     localDependency: {
       parser: "npm-package-arg",
       parserVersion: packages["npm-package-arg"].version,
-      rawSpec: corrected.dependency.rawSpec,
-      baselineSpec: misplaced.dependency.spec,
-      baselineTarget: relative(frontend, misplaced.target),
-      selectedSpec: corrected.dependency.spec,
-      selectedTarget: relative(frontend, corrected.target),
+      rawSpec: selectedConsumer.dependency.rawSpec,
+      baselineSpec: relativeDirectory.dependency.spec,
+      baselineTarget: relative(frontend, relativeParsed.fetchSpec).split(sep).join("/"),
+      selectedSpec: selectedConsumer.dependency.spec,
+      selectedTarget: relative(frontend, resolvedRoot.fetchSpec).split(sep).join("/"),
+      targetType: resolvedRoot.type,
       targetCanonical: true,
     },
-    candidateAccepted: false,
+    candidateAccepted: true,
   }
   assert(Buffer.byteLength(JSON.stringify(result)) <= 2048)
   return result
@@ -882,13 +1224,14 @@ export function assertOverrideSelectorControl(report) {
       parser: "npm-package-arg",
       parserVersion: "13.0.2",
       rawSpec: "^3.22.4",
-      baselineSpec: "file:./scripts/react-compiler-zod-compat",
-      baselineTarget: COMPILER + "/" + LOCAL,
-      selectedSpec: "file:../../scripts/react-compiler-zod-compat",
-      selectedTarget: LOCAL,
+      baselineSpec: "file:../../scripts/react-compiler-zod-compat",
+      baselineTarget: LOCAL,
+      selectedSpec: ARCHIVE_SPEC,
+      selectedTarget: ARCHIVE,
+      targetType: "file",
       targetCanonical: true,
     },
-    candidateAccepted: false,
+    candidateAccepted: true,
   })
   return true
 }
@@ -900,24 +1243,27 @@ export function assertFinalInstalledGraph(frontend, mode, controls) {
   const root = packageMetadata(rootPath)
   assert.equal(root.name, "zod")
   assert.equal(root.version, "4.6.7")
+  assertFacadeArchive(frontend)
   assert(!existsSync(join(frontend, LOCAL, "node_modules/patched-zod")))
   if (mode === "production") {
-    for (const path of [ALIAS, LINK, COMPILER, FORMATTER, HOOKS]) {
+    for (const path of [ALIAS, LINK, COMPILER, FORMATTER, HOOKS, OLD_LINK]) {
       assert(!lstatSync(join(frontend, path), { throwIfNoEntry: false }))
     }
     return true
   }
+
   const local = join(frontend, LOCAL)
   assert.equal(realpathSync(local), local)
-  assert.equal(realpathSync(join(frontend, LINK)), local)
-  assert.equal(realpathSync(join(frontend, OLD_ENGINE)), local)
-  const localPath = join(local, "package.json")
-  assert.deepEqual(packageMetadata(localPath), adapterManifest())
-  const enginePath = createRequire(localPath).resolve("patched-zod/package.json")
+  assert.deepEqual(packageMetadata(join(local, "package.json")), adapterManifest())
+  const facadePath = join(frontend, LINK, "package.json")
+  const facade = packageMetadata(facadePath)
+  assert.deepEqual(facade, adapterManifest())
+  const enginePath = createRequire(facadePath).resolve("patched-zod/package.json")
   assert.equal(enginePath, join(frontend, ALIAS, "package.json"))
   const engine = packageMetadata(enginePath)
   assert.equal(engine.name, "zod")
   assert.equal(engine.version, "4.6.7")
+
   const compilerPath = join(frontend, COMPILER, "package.json")
   const compiler = packageMetadata(compilerPath)
   assert.equal(compiler.name, "eslint-plugin-react-compiler")
@@ -925,9 +1271,16 @@ export function assertFinalInstalledGraph(frontend, mode, controls) {
   assert.deepEqual(compiler.dependencies, controls.compilerDependencies)
   assert.equal(compiler.peerDependencies.eslint, ">=7")
   const compilerRequire = createRequire(compilerPath)
-  assert.equal(realpathSync(compilerRequire.resolve("zod/package.json")), localPath)
+  const nestedFacadePath = compilerRequire.resolve("zod/package.json")
+  assert.equal(nestedFacadePath, join(frontend, OLD_ENGINE, "package.json"))
+  const nestedFacade = packageMetadata(nestedFacadePath)
+  assert.deepEqual(nestedFacade, adapterManifest())
+  assert.equal(
+    createRequire(nestedFacadePath).resolve("patched-zod/package.json"),
+    join(frontend, ALIAS, "package.json")
+  )
   const compilerEntry = compilerRequire.resolve("./")
-  assert(compilerEntry.startsWith(join(frontend, COMPILER) + "/"))
+  assert(compilerEntry.startsWith(join(frontend, COMPILER) + sep))
   assert.match(controls.compilerBundleSha256 ?? "", /^[0-9a-f]{64}$/)
   assert.equal(digest(regularBytes(compilerEntry, 8 * 1024 * 1024)), controls.compilerBundleSha256)
   const formatterPath = join(frontend, FORMATTER, "package.json")
@@ -960,6 +1313,7 @@ export async function runFinalCompilerGenerator() {
   const copied = []
   let git
   let sourceTree
+  let sourcePhase
   let report
   let patch
   let candidateManifestBytes
@@ -1059,22 +1413,33 @@ export async function runFinalCompilerGenerator() {
       configBytes.toString(),
       "legacy-peer-deps=true\nengine-strict=true\nmin-release-age=7\nstrict-allow-scripts=true\n"
     )
-    assertFinalSourcePrerequisites(lock)
+    sourcePhase = classifyFinalSourcePhase(manifest, lock)
+    assertFacadeArchive(frontend)
     const candidateManifest = prepareFinalManifest(manifest)
     candidateManifestBytes = Buffer.from(JSON.stringify(candidateManifest, null, 2) + "\n")
     const localDirectories = []
+    const localFiles = []
     for (const section of ["dependencies", "devDependencies", "optionalDependencies"]) {
-      for (const value of Object.values(manifest[section] ?? {})) {
-        if (typeof value === "string" && value.startsWith("file:")) {
-          localDirectories.push(value.slice(5).replace(/^\.\//, ""))
-        }
+      for (const value of Object.values(candidateManifest[section] ?? {})) {
+        if (typeof value !== "string" || !value.startsWith("file:")) continue
+        const rel = value.slice(5).replace(/^\.\//, "")
+        const path = join(frontend, rel)
+        const stat = lstatSync(path, { throwIfNoEntry: false })
+        assert(stat && !stat.isSymbolicLink())
+        if (stat.isDirectory()) localDirectories.push(rel)
+        else if (stat.isFile()) localFiles.push(rel)
+        else assert.fail("Unsupported local package input")
       }
     }
     assert.deepEqual(localDirectories.sort(), [
       "scripts/boundary-micromatch-compat",
-      LOCAL,
       "wasm-sanitizer/pkg",
     ])
+    assert.deepEqual(localFiles.sort(), [ARCHIVE])
+    // The unpacked source remains an explicit integrity input even though the
+    // npm graph consumes only its already-reviewed archive.
+    localDirectories.push(LOCAL)
+    localDirectories.sort()
     stage = "bounded isolated source inputs"
     let copiedBytes = 0
     for (const directory of localDirectories) {
@@ -1098,13 +1463,25 @@ export async function runFinalCompilerGenerator() {
         copied.push({ path, rel, bytes })
       }
     }
+    for (const rel of localFiles) {
+      remaining(1)
+      const names = git(["ls-files", "-z", "--", "frontend/" + rel])
+        .split("\0")
+        .filter(Boolean)
+      assert.deepEqual(names, ["frontend/" + rel])
+      const path = join(frontend, rel)
+      const bytes = regularBytes(path, 64 * 1024)
+      copiedBytes += bytes.length
+      assert(copiedBytes <= 64 * 1024 * 1024 && copied.length < 1024)
+      copied.push({ path, rel, bytes })
+    }
     function mirror(name, rootManifest, rootLock, strict = false) {
       const target = join(scratch, name)
       mkdirSync(target)
       const files = [
         ["package.json", rootManifest],
         ...copied
-          .filter((item) => !strict || item.rel.startsWith(LOCAL + "/"))
+          .filter((item) => !strict || item.rel.startsWith(LOCAL + "/") || item.rel === ARCHIVE)
           .map((item) => [item.rel, item.bytes]),
       ]
       if (rootLock) files.push(["package-lock.json", rootLock])
@@ -1117,6 +1494,17 @@ export async function runFinalCompilerGenerator() {
       return target
     }
     const generation = mirror("generation", candidateManifestBytes, lockBytes)
+    const generationManifestBytes = Buffer.from(
+      JSON.stringify(
+        prepareAbsoluteArchiveGenerationManifest(
+          candidateManifest,
+          realpathSync(join(generation, ARCHIVE))
+        ),
+        null,
+        2
+      ) + "\n"
+    )
+    writeFileSync(join(generation, "package.json"), generationManifestBytes)
     const bootstrap = realpathSync(join(dirname(process.execPath), "npm"))
     assert.equal(
       bootstrap,
@@ -1165,178 +1553,250 @@ export async function runFinalCompilerGenerator() {
       })
       verifyArchiveBytes(meta, bytes, limit)
       writeFileSync(destination, bytes, { flag: "wx", mode: 0o600 })
+      return {
+        verified: true,
+        bytes: bytes.length,
+        integrity: meta.dist.integrity,
+        sha256: digest(bytes),
+        path: destination,
+      }
     }
 
-    stage = "npm tool metadata and archive verification"
-    const toolMetadata = validateRegistryMetadata(
-      JSON.parse(npm(bootstrap, "toolMetadata", generation)),
-      "npm",
-      "11.17.0"
-    )
-    const toolArchive = join(scratch, "npm-11.17.0.tgz")
-    await verifiedArchive(toolMetadata.data, toolArchive, 16 * 1024 * 1024)
-    stage = "isolated npm tool installation"
-    const toolPrefix = join(scratch, "tool")
-    mkdirSync(toolPrefix)
-    npm(bootstrap, "toolInstall", scratch, { prefix: toolPrefix, archive: toolArchive })
-    const cli = realpathSync(join(toolPrefix, "node_modules/npm/bin/npm-cli.js"))
-    assert(cli.startsWith(toolPrefix + "/"))
-    assert.equal(npm(cli, "version", generation).trim(), "11.17.0")
-
-    stage = "mature patched engine metadata and archive verification"
-    const engine = validateRegistryMetadata(
-      JSON.parse(npm(cli, "targetMetadata", generation)),
-      "zod",
-      "4.6.7"
-    )
-    assert.equal(engine.data.dist.tarball, lock.packages[ENGINE].resolved)
-    assert.equal(engine.data.dist.integrity, lock.packages[ENGINE].integrity)
-    assert.equal(engine.data.license, lock.packages[ENGINE].license)
-    assert.deepEqual(engine.data.dependencies ?? {}, {})
-    await verifiedArchive(engine.data, join(scratch, "zod-4.6.7.tgz"), 4 * 1024 * 1024)
-    stage = "mature formatter metadata and archive verification"
-    const formatter = validateFormatterMetadata(
-      JSON.parse(
-        command(
-          process.execPath,
-          [cli, "view", "zod-validation-error@4.0.2", "--json", ...NPM_TRANSPORT_ARGS],
-          generation
-        )
-      ),
-      lock.packages[HOOKS_FORMATTER]
-    )
-    await verifiedArchive(
-      formatter.data,
-      join(scratch, "zod-validation-error-4.0.2.tgz"),
-      4 * 1024 * 1024
-    )
-
-    stage = "pinned npm override selector diagnostic"
-    const selectorDiagnostic = inspectOverrideSelector(
-      dirname(dirname(cli)),
-      candidateManifest,
-      generation
-    )
-    console.log("FINAL_COMPILER_OVERRIDE_DIAGNOSTIC " + JSON.stringify(selectorDiagnostic))
-    assertOverrideSelectorControl(selectorDiagnostic)
-
-    stage = "isolated final consumer lock generation"
-    npm(cli, "generateLock", generation)
-    const candidatePath = join(generation, "package-lock.json")
-    const candidateBytes = regularBytes(candidatePath, 4 * 1024 * 1024)
-    const candidate = JSON.parse(candidateBytes)
-    stage = "whole-lock scope verification"
-    try {
-      assertFinalLockScope(lock, candidate, formatter.data)
-    } catch {
-      const diagnostic = JSON.stringify(diagnoseLockScope(lock, candidate))
-      assert(Buffer.byteLength(diagnostic) <= 16384)
-      console.error("FINAL_COMPILER_REJECTED_SCOPE " + diagnostic)
-      throw new Error("Rejected generated lock scope")
-    }
-    assert(!existsSync(join(generation, "node_modules")))
-    assert.deepEqual(readFileSync(join(generation, "package.json")), candidateManifestBytes)
-    assert.deepEqual(readFileSync(join(generation, ".npmrc")), configBytes)
-    assert.deepEqual(readFileSync(join(generation, LOCAL, "package.json")), localManifestBytes)
-
-    let licenseEvidence
-    for (const [name, operation, mode] of [
-      ["full", "fullGraph", "full"],
-      ["production", "productionGraph", "production"],
-    ]) {
-      stage = name + " project-configured graph installation"
-      const target = mirror(name, candidateManifestBytes, candidateBytes)
-      npm(cli, operation, target)
-      stage = name + " project-configured physical graph verification"
-      assertFinalInstalledGraph(target, mode, controls)
-      if (mode === "full") licenseEvidence = inspectInstalledEngineLicense(target)
-      assert.deepEqual(readFileSync(join(target, "package.json")), candidateManifestBytes)
-      assert.deepEqual(readFileSync(join(target, "package-lock.json")), candidateBytes)
-      assert.deepEqual(readFileSync(join(target, ".npmrc")), configBytes)
-      assert.deepEqual(readFileSync(join(target, LOCAL, "package.json")), localManifestBytes)
-    }
-
-    stage = "isolated strict root-formatter fixture preparation"
-    const strictPaths = {
-      home: join(scratch, "strict-home"),
-      cache: join(scratch, "strict-cache"),
-      userconfig: join(scratch, "strict-user.npmrc"),
-      globalconfig: join(scratch, "strict-global.npmrc"),
-    }
-    mkdirSync(strictPaths.home)
-    mkdirSync(strictPaths.cache)
-    for (const path of [strictPaths.userconfig, strictPaths.globalconfig]) {
-      writeFileSync(path, "", { flag: "wx", mode: 0o400 })
-    }
-    const strictEnvironment = strictPeerEnvironment(npmEnv, strictPaths)
-    const strictManifest = Buffer.from(
-      JSON.stringify(prepareStrictFormatterPlacementManifest(candidateManifest), null, 2) + "\n"
-    )
-    const strict = mirror("strict", strictManifest, null, true)
-    assert(!existsSync(join(strict, ".npmrc")))
-    stage = "isolated strict root-formatter lock generation"
-    npm(cli, "strictGenerate", strict, strictPaths, strictEnvironment)
-    const strictLockBytes = regularBytes(join(strict, "package-lock.json"), 4 * 1024 * 1024)
-    assertStrictLock(JSON.parse(strictLockBytes), candidate, true)
-    stage = "isolated strict root-formatter installation"
-    npm(cli, "strictInstall", strict, strictPaths, strictEnvironment)
-    stage = strictVerificationPhase("native")
-    assertFinalInstalledGraph(strict, "full", controls)
-    stage = strictVerificationPhase("license")
-    assert.deepEqual(inspectInstalledEngineLicense(strict), licenseEvidence)
-    stage = strictVerificationPhase("npmList")
-    const strictListingOutput = npm(cli, "strictList", strict, strictPaths, strictEnvironment)
-    stage = strictVerificationPhase("json")
-    const strictListing = JSON.parse(strictListingOutput)
-    stage = strictVerificationPhase("identity")
-    assert.equal(strictListing.name, "react-compiler-peer-proof")
-    assert.equal(strictListing.version, "1.0.0")
-    stage = strictVerificationPhase("problems")
-    assert.deepEqual(strictListing.problems ?? [], [])
-    stage = strictVerificationPhase("fixture")
-    assert.deepEqual(readFileSync(join(strict, "package.json")), strictManifest)
-    assert.deepEqual(readFileSync(join(strict, "package-lock.json")), strictLockBytes)
-    assert(!existsSync(join(strict, ".npmrc")))
-    stage = strictVerificationPhase("configuration")
-    for (const path of [
-      userConfig,
-      globalConfig,
-      strictPaths.userconfig,
-      strictPaths.globalconfig,
-    ]) {
-      assert.equal(readFileSync(path).length, 0)
-    }
-    stage = strictVerificationPhase("source")
-    for (const item of copied) assert.deepEqual(readFileSync(item.path), item.bytes)
-
-    stage = "bounded generated candidate diff"
-    function diff(before, after, path) {
-      const result = spawnSync(
-        "/usr/bin/git",
-        ["diff", "--no-index", "--no-ext-diff", "--no-color", "--", before, after],
-        {
-          cwd: workspace,
-          env: npmEnv,
-          encoding: "utf8",
-          shell: false,
-          timeout: remaining(10_000),
-          maxBuffer: 32 * 1024,
+    const pipeline = await orchestrateFinalCandidateStages({
+      sourcePhase,
+      sourceLock: lock,
+      runStage: async (name, state) => {
+        if (name === "toolMetadata") {
+          stage = "npm tool metadata and archive verification"
+          return JSON.parse(npm(bootstrap, "toolMetadata", generation))
         }
-      )
-      assert(!result.error && !result.signal && result.status === 1)
-      return result.stdout
-        .replace(/^diff --git .*$/m, "diff --git a/" + path + " b/" + path)
-        .replace(/^--- .*$/m, "--- a/" + path)
-        .replace(/^\+\+\+ .*$/m, "+++ b/" + path)
-    }
-    patch =
-      diff(snapshots[0].path, join(generation, "package.json"), "frontend/package.json") +
-      diff(snapshots[1].path, candidatePath, "frontend/package-lock.json")
-    assert(Buffer.byteLength(patch) > 0 && Buffer.byteLength(patch) <= 16384)
+        if (name === "toolArchive") {
+          const path = join(scratch, "npm-11.17.0.tgz")
+          return await verifiedArchive(state.toolMetadata.data, path, 16 * 1024 * 1024)
+        }
+        if (name === "toolInstall") {
+          stage = "isolated npm tool installation"
+          const toolPrefix = join(scratch, "tool")
+          mkdirSync(toolPrefix)
+          npm(bootstrap, "toolInstall", scratch, {
+            prefix: toolPrefix,
+            archive: join(scratch, "npm-11.17.0.tgz"),
+          })
+          const cli = realpathSync(join(toolPrefix, "node_modules/npm/bin/npm-cli.js"))
+          assert(cli.startsWith(toolPrefix + sep))
+          assert.equal(npm(cli, "version", generation).trim(), "11.17.0")
+          return { cli }
+        }
+        if (name === "engineMetadata") {
+          stage = "mature patched engine metadata and archive verification"
+          return JSON.parse(npm(state.cli, "targetMetadata", generation))
+        }
+        if (name === "engineArchive") {
+          const path = join(scratch, "zod-4.6.7.tgz")
+          return await verifiedArchive(state.engine.data, path, 4 * 1024 * 1024)
+        }
+        if (name === "formatterMetadata") {
+          stage = "mature formatter metadata and archive verification"
+          return JSON.parse(
+            command(
+              process.execPath,
+              [state.cli, "view", "zod-validation-error@4.0.2", "--json", ...NPM_TRANSPORT_ARGS],
+              generation
+            )
+          )
+        }
+        if (name === "formatterArchive") {
+          const path = join(scratch, "zod-validation-error-4.0.2.tgz")
+          return await verifiedArchive(state.formatter.data, path, 4 * 1024 * 1024)
+        }
+        if (name === "overrideSelector") {
+          stage = "pinned npm override selector diagnostic"
+          const diagnostic = inspectOverrideSelector(
+            dirname(dirname(state.cli)),
+            candidateManifest,
+            generation
+          )
+          console.log("FINAL_COMPILER_OVERRIDE_DIAGNOSTIC " + JSON.stringify(diagnostic))
+          return diagnostic
+        }
+        if (name === "candidateLockGeneration") {
+          stage = "isolated final consumer lock generation"
+          npm(state.cli, "generateLock", generation)
+          const path = join(generation, "package-lock.json")
+          const bytes = regularBytes(path, 4 * 1024 * 1024)
+          const candidate = JSON.parse(bytes)
+          assert(!existsSync(join(generation, "node_modules")))
+          writeFileSync(join(generation, "package.json"), candidateManifestBytes)
+          assert.deepEqual(readFileSync(join(generation, "package.json")), candidateManifestBytes)
+          assert.deepEqual(readFileSync(join(generation, ".npmrc")), configBytes)
+          assert.deepEqual(
+            readFileSync(join(generation, LOCAL, "package.json")),
+            localManifestBytes
+          )
+          return { path, bytes, candidate }
+        }
+        if (name === "candidateLockScope") {
+          stage = "whole-lock scope verification"
+          return true
+        }
+        if (name === "fullGraphInstallAndVerify") {
+          stage = "full project-configured graph installation"
+          const target = mirror("full", candidateManifestBytes, state.candidateLockBytes)
+          npm(state.cli, "fullGraph", target)
+          stage = "full project-configured physical graph verification"
+          assertFinalInstalledGraph(target, "full", controls)
+          const licenseEvidence = inspectInstalledEngineLicense(target)
+          assert.deepEqual(readFileSync(join(target, "package.json")), candidateManifestBytes)
+          assert.deepEqual(
+            readFileSync(join(target, "package-lock.json")),
+            state.candidateLockBytes
+          )
+          assert.deepEqual(readFileSync(join(target, ".npmrc")), configBytes)
+          assert.deepEqual(readFileSync(join(target, LOCAL, "package.json")), localManifestBytes)
+          return { verified: true, licenseEvidence }
+        }
+        if (name === "productionGraphInstallAndVerify") {
+          stage = "production project-configured graph installation"
+          const target = mirror("production", candidateManifestBytes, state.candidateLockBytes)
+          npm(state.cli, "productionGraph", target)
+          stage = "production project-configured physical graph verification"
+          assertFinalInstalledGraph(target, "production", controls)
+          assert.deepEqual(readFileSync(join(target, "package.json")), candidateManifestBytes)
+          assert.deepEqual(
+            readFileSync(join(target, "package-lock.json")),
+            state.candidateLockBytes
+          )
+          assert.deepEqual(readFileSync(join(target, ".npmrc")), configBytes)
+          assert.deepEqual(readFileSync(join(target, LOCAL, "package.json")), localManifestBytes)
+          return { verified: true }
+        }
+        if (name === "strictPeerProof") {
+          stage = "isolated strict root-formatter fixture preparation"
+          const strictPaths = {
+            home: join(scratch, "strict-home"),
+            cache: join(scratch, "strict-cache"),
+            userconfig: join(scratch, "strict-user.npmrc"),
+            globalconfig: join(scratch, "strict-global.npmrc"),
+          }
+          mkdirSync(strictPaths.home)
+          mkdirSync(strictPaths.cache)
+          for (const path of [strictPaths.userconfig, strictPaths.globalconfig]) {
+            writeFileSync(path, "", { flag: "wx", mode: 0o400 })
+          }
+          const strictEnvironment = strictPeerEnvironment(npmEnv, strictPaths)
+          const strictManifest = Buffer.from(
+            JSON.stringify(prepareStrictFormatterPlacementManifest(candidateManifest), null, 2) +
+              "\n"
+          )
+          const strict = mirror("strict", strictManifest, null, true)
+          assert(!existsSync(join(strict, ".npmrc")))
+          const strictGenerationManifestBytes = Buffer.from(
+            JSON.stringify(
+              prepareAbsoluteArchiveGenerationManifest(
+                JSON.parse(strictManifest),
+                realpathSync(join(strict, ARCHIVE))
+              ),
+              null,
+              2
+            ) + "\n"
+          )
+          writeFileSync(join(strict, "package.json"), strictGenerationManifestBytes)
+          stage = "isolated strict root-formatter lock generation"
+          npm(state.cli, "strictGenerate", strict, strictPaths, strictEnvironment)
+          const strictLockBytes = regularBytes(join(strict, "package-lock.json"), 4 * 1024 * 1024)
+          assertStrictLock(JSON.parse(strictLockBytes), state.candidateLock, true)
+          writeFileSync(join(strict, "package.json"), strictManifest)
+          assert.deepEqual(readFileSync(join(strict, "package.json")), strictManifest)
+          stage = "isolated strict root-formatter installation"
+          npm(state.cli, "strictInstall", strict, strictPaths, strictEnvironment)
+          stage = strictVerificationPhase("native")
+          assertFinalInstalledGraph(strict, "full", controls)
+          stage = strictVerificationPhase("license")
+          assert.deepEqual(inspectInstalledEngineLicense(strict), state.licenseEvidence)
+          stage = strictVerificationPhase("npmList")
+          const strictListingOutput = npm(
+            state.cli,
+            "strictList",
+            strict,
+            strictPaths,
+            strictEnvironment
+          )
+          stage = strictVerificationPhase("json")
+          const strictListing = JSON.parse(strictListingOutput)
+          stage = strictVerificationPhase("identity")
+          assert.equal(strictListing.name, "react-compiler-peer-proof")
+          assert.equal(strictListing.version, "1.0.0")
+          stage = strictVerificationPhase("problems")
+          assert.deepEqual(strictListing.problems ?? [], [])
+          stage = strictVerificationPhase("fixture")
+          assert.deepEqual(readFileSync(join(strict, "package.json")), strictManifest)
+          assert.deepEqual(readFileSync(join(strict, "package-lock.json")), strictLockBytes)
+          assert(!existsSync(join(strict, ".npmrc")))
+          stage = strictVerificationPhase("configuration")
+          for (const path of [
+            userConfig,
+            globalConfig,
+            strictPaths.userconfig,
+            strictPaths.globalconfig,
+          ]) {
+            assert.equal(readFileSync(path).length, 0)
+          }
+          return {
+            verified: true,
+            strictNpmListVerified: true,
+            strictLockBytes,
+            licenseEvidence: state.licenseEvidence,
+          }
+        }
+        if (name === "sourceSnapshotPostflight") {
+          stage = strictVerificationPhase("source")
+          for (const item of copied) assert.deepEqual(readFileSync(item.path), item.bytes)
+          return true
+        }
+        if (name === "candidateDiff") {
+          stage = "bounded generated candidate diff"
+          function diff(before, after, path) {
+            const result = spawnSync(
+              "/usr/bin/git",
+              ["diff", "--no-index", "--no-ext-diff", "--no-color", "--", before, after],
+              {
+                cwd: workspace,
+                env: npmEnv,
+                encoding: "utf8",
+                shell: false,
+                timeout: remaining(10_000),
+                maxBuffer: 32 * 1024,
+              }
+            )
+            assert(!result.error && !result.signal && (result.status === 0 || result.status === 1))
+            if (result.status === 0) return ""
+            return result.stdout
+              .replace(/^diff --git .*$/m, "diff --git a/" + path + " b/" + path)
+              .replace(/^--- .*$/m, "--- a/" + path)
+              .replace(/^\+\+\+ .*$/m, "+++ b/" + path)
+          }
+          return (
+            diff(snapshots[0].path, join(generation, "package.json"), "frontend/package.json") +
+            diff(snapshots[1].path, state.candidateLockPath, "frontend/package-lock.json")
+          )
+        }
+        assert.fail("Unknown final candidate orchestration stage: " + name)
+      },
+    })
+    const {
+      toolMetadata,
+      engine,
+      formatter,
+      licenseEvidence,
+      strictLockBytes,
+      candidateLockBytes: candidateBytes,
+    } = pipeline
+    patch = pipeline.patch
     report = {
       kind: "react-compiler-final-lock-candidate",
       sourceSha: process.env.SOURCE_SHA,
       sourceTree,
+      sourcePhase,
       node: process.version,
       npm: "11.17.0",
       bootstrapNpm: "11.19.0",
@@ -1365,8 +1825,19 @@ export async function runFinalCompilerGenerator() {
       },
       engineLicense: licenseEvidence,
       licenseEvidenceScope: "physical package metadata and LICENSE bytes; not scanner disposition",
-      changedPackagePaths: [OLD_ENGINE, FORMATTER],
-      removedPackagePaths: [HOOKS_FORMATTER],
+      changedPackagePaths:
+        sourcePhase === SOURCE_PHASE.LEGACY_LINK
+          ? ["", LINK, OLD_ENGINE, OLD_LINK, LOCAL, FORMATTER, HOOKS_FORMATTER]
+          : sourcePhase === SOURCE_PHASE.STAGED_ARCHIVE
+            ? [OLD_ENGINE, FORMATTER, HOOKS_FORMATTER]
+            : [],
+      removedPackagePaths:
+        sourcePhase === SOURCE_PHASE.LEGACY_LINK
+          ? [OLD_LINK, LOCAL, HOOKS_FORMATTER]
+          : sourcePhase === SOURCE_PHASE.STAGED_ARCHIVE
+            ? [HOOKS_FORMATTER]
+            : [],
+      zeroLockDeltaVerified: sourcePhase === SOURCE_PHASE.ALREADY_FINAL,
       consumerOverrideAdded: true,
       globalZodOverrideAdded: false,
       fullGraphInstallVerified: true,
@@ -1406,6 +1877,8 @@ export async function runFinalCompilerGenerator() {
       candidateManifestSha256: digest(candidateManifestBytes),
       originalLockSha256: digest(lockBytes),
       candidateLockSha256: digest(candidateBytes),
+      sourceManifestSha256: digest(manifestBytes),
+      sourceLockSha256: digest(lockBytes),
       strictLockSha256: digest(strictLockBytes),
       projectNpmrcSha256: digest(configBytes),
       npmToolPublished: toolMetadata.published,

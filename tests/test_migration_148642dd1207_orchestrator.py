@@ -63,6 +63,12 @@ class _Inspector:
         self.active_session_unique = active_session_unique
         self.user_group_fk = user_group_fk
         self.index_names = set(re.findall(r"['\"](ix_[A-Za-z0-9_]+)['\"]", source))
+        self.groups_index_catalog: list[dict[str, Any]] = (
+            [{"name": name} for name in sorted(self.index_names)] if all_indexes else []
+        )
+        self._groups_index_cache: list[dict[str, Any]] | None = None
+        self.index_events: list[str] = []
+        self.timeline: list[tuple[str, str]] | None = None
         self.user_columns = {
             "id",
             "group_id",
@@ -115,10 +121,25 @@ class _Inspector:
             return [{"name": name, "type": sa.Integer()} for name in names]
         return []
 
-    def get_indexes(self, table: str) -> list[dict[str, str]]:
+    def get_indexes(self, table: str) -> list[dict[str, Any]]:
+        if table == "groups":
+            self.index_events.append("get_indexes")
+            if self.timeline is not None:
+                self.timeline.append(("inspect", "get_indexes"))
+            if self._groups_index_cache is None:
+                self._groups_index_cache = [
+                    dict(index) for index in self.groups_index_catalog
+                ]
+            return [dict(index) for index in self._groups_index_cache]
         if not self.all_indexes:
             return []
         return [{"name": name} for name in sorted(self.index_names)]
+
+    def clear_cache(self) -> None:
+        self.index_events.append("clear_cache")
+        self._groups_index_cache = None
+        if self.timeline is not None:
+            self.timeline.append(("inspect", "clear_cache"))
 
     def get_foreign_keys(self, table: str) -> list[dict[str, str]]:
         if table == "users" and self.user_group_fk:
@@ -163,6 +184,7 @@ class _Ops:
     def __init__(self, bind: _Bind) -> None:
         self.bind = bind
         self.events: list[tuple[str, str, tuple[Any, ...], dict[str, Any]]] = []
+        self.timeline: list[tuple[str, str]] = []
 
     def get_bind(self) -> _Bind:
         return self.bind
@@ -172,6 +194,7 @@ class _Ops:
 
     def execute(self, statement: Any, *args: Any, **kwargs: Any) -> None:
         self.events.append(("op", "execute", (statement, *args), kwargs))
+        self.timeline.append(("sql", str(statement)))
 
     def batch_alter_table(self, table: str, *args: Any, **kwargs: Any) -> _BatchContext:
         return _BatchContext(_Batch(self.events, table))
@@ -208,6 +231,7 @@ def _install(
         active_session_unique=active_session_unique,
         user_group_fk=user_group_fk,
     )
+    inspector.timeline = ops.timeline
     monkeypatch.setattr(migration, "op", ops)
     monkeypatch.setattr(
         migration,
@@ -387,6 +411,43 @@ def test_upgrade_postgresql_legacy_group_cutover_without_existing_group_index(
     assert "DROP COLUMN ID" in sql
     assert "PRIMARY KEY USING INDEX GROUPS_PKEY_IDX" in sql
     assert "CREATE INDEX IF NOT EXISTS IX_GROUPS_ID" not in sql
+
+
+def test_postgresql_groups_index_refresh_clears_stale_cache_after_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration, ops, inspector = _install(
+        monkeypatch,
+        dialect="postgresql",
+        all_indexes=False,
+        groups_id_integer=False,
+        all_user_columns=True,
+    )
+
+    inspector.groups_index_catalog = [{"name": "ix_groups_id", "column_names": ["id"]}]
+    assert inspector.get_indexes("groups")[0]["column_names"] == ["id"]
+    inspector.groups_index_catalog = [
+        {"name": "ix_groups_id", "column_names": ["name"]}
+    ]
+    inspector.index_events.clear()
+    ops.timeline.clear()
+
+    migration._postgresql_groups_id_upgrade(inspector)
+
+    assert inspector.index_events == ["clear_cache", "get_indexes"]
+    timeline = ops.timeline
+    lock_read = next(
+        index
+        for index, event in enumerate(timeline)
+        if event[0] == "sql" and "pg_advisory_xact_lock" in event[1]
+    )
+    faculty_add = timeline.index(
+        ("sql", "ALTER TABLE groups ADD COLUMN IF NOT EXISTS faculty VARCHAR")
+    )
+    cache_clear = timeline.index(("inspect", "clear_cache"))
+    refreshed_read = timeline.index(("inspect", "get_indexes"), cache_clear + 1)
+    assert lock_read < faculty_add < cache_clear < refreshed_read
+    assert "DROP INDEX IF EXISTS IX_GROUPS_ID" in _executed_sql(ops)
 
 
 def test_upgrade_non_postgresql_preserves_existing_group_columns(

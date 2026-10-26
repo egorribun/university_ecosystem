@@ -1625,8 +1625,10 @@ def test_groups_cutover_uses_only_the_exact_primary_key_index(
         statements = [
             event["sql"] for event in recorder.events if event["kind"] == "cursor"
         ]
+        # A legacy key's dependent index is removed with the dropped column;
+        # only the already-integer path needs an explicit index drop.
         assert statements.count("DROP INDEX IF EXISTS ix_groups_id") == int(
-            duplicate_index
+            duplicate_index and integer_key
         )
         if not integer_key:
             assert (

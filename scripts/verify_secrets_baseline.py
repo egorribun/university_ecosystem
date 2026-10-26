@@ -112,6 +112,18 @@ _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES = {
                 "frontend/src/assets/fonts/inter-latin-cyrillic-400.provenance.json",
                 "Base64 High Entropy String",
             ),
+            (
+                "frontend/scripts/generate-react-compiler-final-lock-candidate.mjs",
+                "Base64 High Entropy String",
+            ),
+            (
+                "frontend/scripts/react-compiler-zod-compat.test.mjs",
+                "Base64 High Entropy String",
+            ),
+            (
+                "frontend/scripts/react-compiler-zod-compat.postgraph-errors.json",
+                "Base64 High Entropy String",
+            ),
         }
     ),
     "public_totp_algorithm_alphabet": frozenset(
@@ -1677,6 +1689,270 @@ _LIVE_REGISTRATION_PRIVATE_FIELD_IDENTITY = (
         185,
     ),
 )
+_NODE_REACT_COMPILER_ARCHIVE_SRI_IDENTITY = (
+    "frontend/scripts/generate-react-compiler-final-lock-candidate.mjs",
+    "Base64 High Entropy String",
+    (
+        174,
+        154,
+        194,
+        84,
+        247,
+        11,
+        223,
+        254,
+        122,
+        239,
+        5,
+        80,
+        53,
+        205,
+        193,
+        169,
+        67,
+        199,
+        156,
+        111,
+    ),
+)
+
+_NODE_REACT_COMPILER_ARCHIVE_SHA256_IDENTITY = (
+    "frontend/scripts/generate-react-compiler-final-lock-candidate.mjs",
+    "Hex High Entropy String",
+    (
+        26,
+        49,
+        114,
+        186,
+        43,
+        22,
+        174,
+        128,
+        61,
+        43,
+        160,
+        193,
+        36,
+        137,
+        56,
+        96,
+        11,
+        165,
+        146,
+        11,
+    ),
+)
+
+_NODE_REACT_COMPILER_TEST_ZOD_GITHEAD_IDENTITY = (
+    "frontend/scripts/generate-react-compiler-final-lock-candidate.test.mjs",
+    "Hex High Entropy String",
+    (
+        93,
+        153,
+        98,
+        228,
+        62,
+        95,
+        145,
+        81,
+        122,
+        89,
+        127,
+        149,
+        156,
+        66,
+        233,
+        25,
+        253,
+        139,
+        106,
+        91,
+    ),
+)
+
+_NODE_REACT_COMPILER_FORMATTER_ENTRY_SHA256_IDENTITY = (
+    "frontend/scripts/react-compiler-zod-compat.postgraph-errors.json",
+    "Hex High Entropy String",
+    (
+        91,
+        251,
+        135,
+        233,
+        63,
+        145,
+        132,
+        241,
+        227,
+        80,
+        8,
+        3,
+        247,
+        78,
+        120,
+        46,
+        55,
+        215,
+        134,
+        186,
+    ),
+)
+
+_NODE_REACT_COMPILER_FORMATTER_SRI_IDENTITY = (
+    "frontend/scripts/react-compiler-zod-compat.postgraph-errors.json",
+    "Base64 High Entropy String",
+    (
+        232,
+        220,
+        217,
+        217,
+        137,
+        28,
+        61,
+        234,
+        124,
+        90,
+        29,
+        103,
+        27,
+        149,
+        12,
+        28,
+        176,
+        93,
+        104,
+        29,
+    ),
+)
+
+_NODE_REACT_COMPILER_FACADE_SRI_IDENTITY = (
+    "frontend/scripts/react-compiler-zod-compat.test.mjs",
+    "Base64 High Entropy String",
+    (
+        174,
+        154,
+        194,
+        84,
+        247,
+        11,
+        223,
+        254,
+        122,
+        239,
+        5,
+        80,
+        53,
+        205,
+        193,
+        169,
+        67,
+        199,
+        156,
+        111,
+    ),
+)
+
+_NODE_REACT_COMPILER_FACADE_SHA256_IDENTITY = (
+    "frontend/scripts/react-compiler-zod-compat.test.mjs",
+    "Hex High Entropy String",
+    (
+        26,
+        49,
+        114,
+        186,
+        43,
+        22,
+        174,
+        128,
+        61,
+        43,
+        160,
+        193,
+        36,
+        137,
+        56,
+        96,
+        11,
+        165,
+        146,
+        11,
+    ),
+)
+_NODE_REACT_COMPILER_PUBLIC_METADATA_CATEGORY_BY_IDENTITY = {
+    _NODE_REACT_COMPILER_ARCHIVE_SRI_IDENTITY: "public_package_integrity_metadata",
+    _NODE_REACT_COMPILER_ARCHIVE_SHA256_IDENTITY: "public_integrity_digest",
+    _NODE_REACT_COMPILER_TEST_ZOD_GITHEAD_IDENTITY: "public_integrity_digest",
+    _NODE_REACT_COMPILER_FORMATTER_ENTRY_SHA256_IDENTITY: "public_integrity_digest",
+    _NODE_REACT_COMPILER_FORMATTER_SRI_IDENTITY: "public_package_integrity_metadata",
+    _NODE_REACT_COMPILER_FACADE_SRI_IDENTITY: "public_package_integrity_metadata",
+    _NODE_REACT_COMPILER_FACADE_SHA256_IDENTITY: "public_integrity_digest",
+}
+_NODE_REACT_COMPILER_PUBLIC_METADATA_PATHS = frozenset(
+    identity[0]
+    for identity in _NODE_REACT_COMPILER_PUBLIC_METADATA_CATEGORY_BY_IDENTITY
+)
+_NODE_REACT_COMPILER_PUBLIC_METADATA_DIGESTS = frozenset(
+    identity[2]
+    for identity in _NODE_REACT_COMPILER_PUBLIC_METADATA_CATEGORY_BY_IDENTITY
+)
+# The same public zod v4.6.7 commit identifier is already approved at its existing
+# generator path; retain that exact historic identity while reserving this digest.
+_NODE_REACT_COMPILER_DIGEST_COLLISION_EXCEPTIONS = frozenset(
+    {_ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY}
+)
+_NODE_REACT_COMPILER_PUBLIC_METADATA_EVIDENCE_MARKERS = {
+    _NODE_REACT_COMPILER_ARCHIVE_SRI_IDENTITY: (
+        "Public first-party package SHA-512 SRI",
+        "ARCHIVE_INTEGRITY",
+        "file:vendor/react-compiler-zod-compat-1.0.0.tgz",
+        "verified archive bytes",
+        "candidate lock metadata",
+        "not credential material",
+    ),
+    _NODE_REACT_COMPILER_ARCHIVE_SHA256_IDENTITY: (
+        "Public first-party archive SHA-256",
+        "ARCHIVE_SHA256",
+        "frontend/vendor/react-compiler-zod-compat-1.0.0.tgz",
+        "four archived payload files match source",
+        "not credential material",
+    ),
+    _NODE_REACT_COMPILER_TEST_ZOD_GITHEAD_IDENTITY: (
+        "Public Git commit identifier for zod@4.6.7 registry metadata",
+        "EXPECTED_ZOD_SOURCE_SHA",
+        "official v4.6.7 tag",
+        "deterministic registryMetadata test fixture",
+        "not credential material",
+    ),
+    _NODE_REACT_COMPILER_FORMATTER_ENTRY_SHA256_IDENTITY: (
+        "Public SHA-256 of package/v4/index.js",
+        "zod-validation-error@4.0.2",
+        "official npm tarball",
+        "formatterEntryPath test",
+        "not credential material",
+    ),
+    _NODE_REACT_COMPILER_FORMATTER_SRI_IDENTITY: (
+        "Public npm SHA-512 integrity",
+        "zod-validation-error@4.0.2",
+        "official registry metadata",
+        "downloaded tarball bytes match",
+        "not credential material",
+    ),
+    _NODE_REACT_COMPILER_FACADE_SRI_IDENTITY: (
+        "Public first-party package SHA-512 SRI",
+        "FACADE_INTEGRITY",
+        "file:vendor/react-compiler-zod-compat-1.0.0.tgz",
+        "verified archive bytes",
+        "candidate lock metadata",
+        "not credential material",
+    ),
+    _NODE_REACT_COMPILER_FACADE_SHA256_IDENTITY: (
+        "Public first-party archive SHA-256",
+        "FACADE_SHA256",
+        "frontend/vendor/react-compiler-zod-compat-1.0.0.tgz",
+        "four archived payload files match source",
+        "not credential material",
+    ),
+}
+
 _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY = {
     _LIVE_REGISTRATION_PRIVATE_FIELD_IDENTITY: "ci_test_contract_sentinel",
     _ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY: "public_integrity_digest",
@@ -1777,6 +2053,59 @@ _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
         _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES
     ),
 }
+
+_PUBLIC_GIT_BLOB_SOURCEBINDING_REBIND_IDENTITY = (
+    "tests/helpers/migration_148642dd1207_trace.py",
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        164,
+        0,
+        65,
+        251,
+        120,
+        113,
+        88,
+        100,
+        53,
+        123,
+        197,
+        89,
+        175,
+        34,
+        4,
+        26,
+        104,
+        189,
+        125,
+        80,
+    ),
+)
+_PUBLIC_GIT_BLOB_ORCHESTRATOR_SOURCE_REBIND_IDENTITY = (
+    "tests/test_mfa_webauthn_tombstone.py",
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        109,
+        246,
+        200,
+        201,
+        38,
+        194,
+        24,
+        95,
+        0,
+        19,
+        55,
+        55,
+        242,
+        153,
+        216,
+        45,
+        114,
+        223,
+        180,
+        240,
+    ),
+)
 
 _PUBLIC_GIT_BLOB_IDENTITIES = frozenset(
     {
@@ -1988,6 +2317,8 @@ _PUBLIC_GIT_BLOB_IDENTITIES = frozenset(
                 10,
             ),
         ),
+        _PUBLIC_GIT_BLOB_SOURCEBINDING_REBIND_IDENTITY,
+        _PUBLIC_GIT_BLOB_ORCHESTRATOR_SOURCE_REBIND_IDENTITY,
     }
 )
 _PUBLIC_GIT_BLOB_DIGESTS = frozenset(
@@ -2014,6 +2345,25 @@ _PUBLIC_GIT_BLOB_EVIDENCE_MARKERS = {
     ),
 }
 
+_PUBLIC_GIT_BLOB_EXACT_EVIDENCE_MARKERS = {
+    _PUBLIC_GIT_BLOB_SOURCEBINDING_REBIND_IDENTITY: (
+        "Public Git SHA-1 integrity digest of "
+        "alembic/versions/148642dd1207_fix_missing_tables.py",
+        "working tree based on c90e6163",
+        "Git blob framing binds all source bytes",
+        "not credential material",
+    ),
+    _PUBLIC_GIT_BLOB_ORCHESTRATOR_SOURCE_REBIND_IDENTITY: (
+        "Public Git SHA-1 integrity digest of "
+        "tests/test_migration_148642dd1207_orchestrator.py",
+        "source-bound historical migration reference guard assignment "
+        "HISTORICAL_ORCHESTRATOR_BLOB",
+        "Git blob framing binds all source bytes",
+        "not credential material",
+    ),
+}
+
+
 _FALSE_POSITIVE_IDENTITY_FIELDS = frozenset({"path", "type", "hashed_secret_bytes"})
 _FALSE_POSITIVE_RECORD_FIELDS = frozenset(
     {
@@ -2032,7 +2382,7 @@ _FALSE_POSITIVE_RECORD_LIMIT = 512
 _FALSE_POSITIVE_EVIDENCE_LIMIT = 1000
 _FALSE_POSITIVE_OWNER_LIMIT = 120
 _FALSE_POSITIVE_PLACEHOLDER_OWNERS = frozenset(
-    {"", "owner", "pending", "tbd", "unknown", "n/a", "todo"}
+    {"", "owner", "pending", "pending_owner_review", "tbd", "unknown", "n/a", "todo"}
 )
 _DISPOSITION_WILDCARDS = frozenset("*?[]")
 
@@ -2537,13 +2887,37 @@ def validate_false_positive_dispositions(
                 f"{artifact}: AUD-495 cache-key fixture identity changed scope"
             )
 
+        node_metadata_category = (
+            _NODE_REACT_COMPILER_PUBLIC_METADATA_CATEGORY_BY_IDENTITY.get(
+                exact_source_identity
+            )
+        )
+        if (
+            path in _NODE_REACT_COMPILER_PUBLIC_METADATA_PATHS
+            or tuple(raw_digest_bytes) in _NODE_REACT_COMPILER_PUBLIC_METADATA_DIGESTS
+        ) and (
+            node_metadata_category is None
+            and exact_source_identity
+            not in _NODE_REACT_COMPILER_DIGEST_COLLISION_EXCEPTIONS
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: Node React Compiler metadata identity changed scope"
+            )
+        if node_metadata_category is not None and category != node_metadata_category:
+            raise BaselineArtifactError(
+                f"{artifact}: Node React Compiler metadata category changed"
+            )
+
         metadata_category = _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY.get(
             exact_source_identity
         )
         if (
             path in _PUBLIC_SOURCE_METADATA_PATHS
             or tuple(raw_digest_bytes) in _PUBLIC_SOURCE_METADATA_DIGESTS
-        ) and (metadata_category is None or category != metadata_category):
+        ) and (
+            (metadata_category is None or category != metadata_category)
+            and (node_metadata_category is None or category != node_metadata_category)
+        ):
             raise BaselineArtifactError(
                 f"{artifact}: public source metadata identity changed scope"
             )
@@ -2695,8 +3069,13 @@ def validate_false_positive_dispositions(
             exact_source_identity, ()
         )
         if exact_source_identity in _PUBLIC_GIT_BLOB_IDENTITIES:
-            required_evidence += _PUBLIC_GIT_BLOB_EVIDENCE_MARKERS[path]
+            required_evidence += _PUBLIC_GIT_BLOB_EXACT_EVIDENCE_MARKERS.get(
+                exact_source_identity, _PUBLIC_GIT_BLOB_EVIDENCE_MARKERS[path]
+            )
         required_evidence += _PUBLIC_SOURCE_METADATA_EVIDENCE_MARKERS.get(
+            exact_source_identity, ()
+        )
+        required_evidence += _NODE_REACT_COMPILER_PUBLIC_METADATA_EVIDENCE_MARKERS.get(
             exact_source_identity, ()
         )
         if any(
@@ -2716,6 +3095,14 @@ def validate_false_positive_dispositions(
             or any(ord(character) < 32 or ord(character) == 127 for character in owner)
         ):
             raise BaselineArtifactError(f"{artifact}: owner metadata is invalid")
+        if (
+            exact_source_identity
+            in _NODE_REACT_COMPILER_PUBLIC_METADATA_CATEGORY_BY_IDENTITY
+            and owner.casefold() == "pending_owner_review"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: Node React Compiler owner review is pending"
+            )
         if record.get("approval_status") != "approved":
             raise BaselineArtifactError(f"{artifact}: record is not approved")
 
@@ -2751,7 +3138,16 @@ def validate_false_positive_dispositions(
 
         if exact_source_identity in _PUBLIC_GIT_BLOB_IDENTITIES and (
             owner != "egorribun"
-            or raw_reviewed != "2026-10-24"
+            or raw_reviewed
+            != (
+                "2026-10-25"
+                if exact_source_identity
+                == _PUBLIC_GIT_BLOB_SOURCEBINDING_REBIND_IDENTITY
+                else "2026-10-26"
+                if exact_source_identity
+                == _PUBLIC_GIT_BLOB_ORCHESTRATOR_SOURCE_REBIND_IDENTITY
+                else "2026-10-24"
+            )
             or expires_on > date(2027, 1, 10)
         ):
             raise BaselineArtifactError(
@@ -2765,6 +3161,19 @@ def validate_false_positive_dispositions(
         ):
             raise BaselineArtifactError(
                 f"{artifact}: October 24 public digest approval metadata changed"
+            )
+
+        if (
+            exact_source_identity
+            in _NODE_REACT_COMPILER_PUBLIC_METADATA_CATEGORY_BY_IDENTITY
+            and (
+                owner != "egorribun"
+                or raw_reviewed != "2026-10-25"
+                or expires_on > date(2027, 1, 10)
+            )
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: Node React Compiler approval metadata changed"
             )
 
         if category == "public_compose_inspection_test_sentinel" and expires_on > date(

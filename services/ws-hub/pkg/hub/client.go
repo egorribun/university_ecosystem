@@ -45,16 +45,23 @@ type Client struct {
 	// sessionGate serializes a revocation with an in-flight authorized action.
 	// It is never acquired while Hub.mu is held: DisconnectSession snapshots
 	// clients first, releases Hub.mu, and only then calls RevokeSession.
-	sessionGate         sync.RWMutex
-	sessionRevoked      atomic.Bool
-	sessionCheckMu      sync.Mutex
-	sessionCheckedUntil time.Time
-	writeMu             sync.Mutex
-	transportCloseOnce  sync.Once
-	replayMu            sync.Mutex
-	replays             map[string]*roomReplayState
-	replayJoinLimiter   *rate.Limiter
-	closeOnce           sync.Once
+	sessionGate           sync.RWMutex
+	sessionRevoked        atomic.Bool
+	sessionCheckMu        sync.Mutex
+	sessionCheckedUntil   time.Time
+	writeMu               sync.Mutex
+	transportCloseStateMu sync.Mutex
+	transportCloseStarted bool
+	// A deferred plain close must fulfill this request so read cleanup can close
+	// a client even if shutdown already removed it from the Hub snapshot.
+	controlCloseRequested bool
+	controlCloseCode      int
+	controlCloseReason    string
+	transportCloseOnce    sync.Once
+	replayMu              sync.Mutex
+	replays               map[string]*roomReplayState
+	replayJoinLimiter     *rate.Limiter
+	closeOnce             sync.Once
 	// registrationWG bridges Run-loop admission and synchronous shutdown fallback.
 	// registrationStarted is one-shot; registrationAdmitted tracks gauge ownership.
 	registrationWG       sync.WaitGroup
@@ -1562,9 +1569,12 @@ func (c *Client) leaveRoomLocked(room string) {
 // Disconnect sends a WebSocket close control frame with the specified close code and reason,
 // then enqueues the client into Hub.Unregister for clean channel/room teardown.
 func (c *Client) Disconnect(closeCode int, reason string) {
+	// Write the requested close frame before canceling any transport work.
+	// Otherwise a writer or replay cleanup can consume transportCloseOnce with
+	// a plain close and hide the requested policy/shutdown code.
+	c.closeTransportWithControlFrame(closeCode, reason)
 	c.cancelConnection()
 	c.cancelAllRoomReplays()
-	c.closeTransportWithControlFrame(closeCode, reason)
 
 	if c.Hub != nil {
 		c.Hub.unregisterClient(c.ctx, c)
@@ -1577,7 +1587,27 @@ func (c *Client) cancelConnection() {
 	}
 }
 
+func (c *Client) reserveControlFrameClose(closeCode int, reason string) {
+	c.transportCloseStateMu.Lock()
+	if !c.transportCloseStarted && !c.controlCloseRequested {
+		c.controlCloseRequested = true
+		c.controlCloseCode = closeCode
+		c.controlCloseReason = reason
+	}
+	c.transportCloseStateMu.Unlock()
+}
+
 func (c *Client) closeTransportWithControlFrame(closeCode int, reason string) {
+	c.transportCloseStateMu.Lock()
+	if !c.controlCloseRequested {
+		c.controlCloseRequested = true
+		c.controlCloseCode = closeCode
+		c.controlCloseReason = reason
+	}
+	c.transportCloseStarted = true
+	closeCode = c.controlCloseCode
+	reason = c.controlCloseReason
+	c.transportCloseStateMu.Unlock()
 	c.transportCloseOnce.Do(func() {
 		c.writeMu.Lock()
 		defer c.writeMu.Unlock()
@@ -1599,6 +1629,16 @@ func (c *Client) closeTransportWithControlFrame(closeCode int, reason string) {
 }
 
 func (c *Client) closeTransport(logMessage string) {
+	c.transportCloseStateMu.Lock()
+	if c.controlCloseRequested {
+		closeCode := c.controlCloseCode
+		reason := c.controlCloseReason
+		c.transportCloseStateMu.Unlock()
+		c.closeTransportWithControlFrame(closeCode, reason)
+		return
+	}
+	c.transportCloseStarted = true
+	c.transportCloseStateMu.Unlock()
 	c.transportCloseOnce.Do(func() {
 		c.writeMu.Lock()
 		defer c.writeMu.Unlock()

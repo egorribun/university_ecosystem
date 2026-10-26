@@ -4,15 +4,62 @@
 
 ## Текущее продолжение аудита, 2026-10-26
 
-Работа идёт по актуальному поручению владельца: `egorribun`, один checkout,
-PR #1343; root управляет Git и интеграцией. Последний опубликованный source —
-`7f14457d71a9bb1bda6b18cf8d134bc347f05684`, tree
-`de05a6cceaff182b13eab8deff334e004e9f0611`; обычные commit/push hooks прошли,
-равенство remote и чистота checkout после публикации проверены.
-Принято **325/512 (63,5%)**, осталось 187 ID.
-[Последняя scoped приёмка](../../audits/AUDIT-2026-10.md#hosted-totp-clock-reconnect-and-event-signature-closures-2026-10-26)
-сохраняет все 321 прежних ID и добавляет только AUD-175/221/232/312 после
-независимой сверки raw hosted ZIP/XML/coverage и текущих Git blobs.
+Доказательства этой контрольной точки привязаны к опубликованному коммиту
+`0f86541180e8ef003145265df793d49536a78939` и дереву
+`f25ae8ab62479de590b4c0bec95aebd11bee4750`; тестовый merge
+`5945bff1e58a5f8f75c0d8ef2e44f651b68acbb0` имеет то же дерево. На этой
+контрольной точке интеграционный кандидат включал Node7, DDL1, policy346 и
+изменения AUD-461 SQL. Итоговый SHA кандидата и required-check evidence для
+него ещё не были получены.
+Принято **328/512 (64,1%)**, осталось 184 ID. [Последняя scoped
+приёмка](../../audits/AUDIT-2026-10.md#hosted-chat-idempotency-graphql-depth-middleware-and-dependency-review-scope-closures-2026-10-26)
+добавила только AUD-183/368/379 к 325 прежним ID по root receipt file `root-183-368-379-acceptance-20261026.json`.
+Ни AUD-231, ни AUD-461 не добавлены.
+
+AUD-183: `chat.ts` передаёт Idempotency-Key и сохраняет caller retry key.
+Выбран ровно один frontend JUnit PASS; coverage 64/64 lines, 67/67 statements,
+20/20 branches, 20/20 functions. Scope — mocked request construction; caller
+сохраняет один key для logical retry.
+AUD-368: выбранные девять Go PASS ограничены unsupported methods, OPTIONS и
+oversized body; coverage 35/35 segments / 60/60 statements. Это middleware
+evidence, не deployed service.
+AUD-379: выбраны ровно четыре Python JUnit guards PASS, включая удаление GHSA
+suppression из policy delta. Live Dependency Review action не заявлен.
+
+Ранее all-pages snapshot 02:30 UTC на опубликованном source 0f86541180e8ef003145265df793d49536a78939 / tree f25ae8ab62479de590b4c0bec95aebd11bee4750 дал 145 checks и 5 failures. Более свежий peer snapshot того же source: 149 checks — 115 SUCCESS, 27 SKIPPED, 1 NEUTRAL, 6 FAILURE, 0 active; 31 runs / 144 jobs — 111 PASS, 27 SKIP, 6 FAIL. Он остаётся hosted RED и не проверяет локальный integration candidate.
+
+Локальный R1 cohort остался RED: 1 082 PASS, 3 FAIL, 32 ERROR из 1 117; конкретные имена отказов и
+причины 32 setup errors указаны в AUDIT checkpoint. Receipts:
+policy346-canonical-quality13-run-20261026-a1/junit.xml, failure-summary.json, result.json,
+run-command.json. R2 на том же 13-module integration snapshot завершился 1 125 PASS, 0 FAIL/ERROR/SKIP за
+172,48 секунды. Команда: python -m pytest -c pyproject.toml -n 0 на 13 модулях; полный target list и
+изолированные пути есть в run-command.json. Receipts:
+policy346-canonical-quality13-run-20261026-r2/junit.xml, pytest.stdout.log, run-result.json,
+run-command.json и root-canonical-r2-1125-verification-20261026.json. В run-result отсутствует
+числовой exit code.
+
+Нормальный pytest с canonical pyproject.toml и plugins выполнил полный файл tests/test_workflow_fail_closed_contracts.py на опубликованном HEAD: 59 PASS, 0 FAIL/ERROR/SKIP за 11,08 секунды, stderr пустой. Это закрывает только local AST-only gap; hosted all-context evidence не получено, audit ID не добавлен. Receipt: root-workflow-contracts59-normal-pytest-20261026.json.
+
+Migration 148642dd1207 PG36 V2.2: run edfdd4141e7446fabf05ee4092842f14, 36/36 PASS, 0
+FAIL/ERROR/SKIP, 34,54 секунды, process exit 0; details in evidence.json. V2.1 harness RED остаётся в
+run-summary.json; V2.2 исправил numeric-version mismatch. Отдельный source-bound full Alembic V4
+run d95ab4523c02496ba5322178ef68cb99 прошёл 9/9 workflow steps, 0 skipped, с exit 0 на свежей
+PostgreSQL 17.11/170011 базе: downgrade/boundary 202610250001, один head, финальный alembic check
+PASS. Root подтвердил отсутствие owned container и отсутствие warning lines в stderr; receipt
+root-alembic-full-closure-v4-verification-20261026.json. Ранее V2 closure driver дал RED из-за
+str-to-bytes ошибки на bootstrap stdin; V4 исправил кодирование. Это local runtime closure, не
+Tier 0 all-metrics и не hosted check.
+
+На этом 0f865 evidence checkpoint published/tested source имеет policy337; incoming integration source set records policy346 (337 plus nine owner-approved dispositions). Its resulting SHA requires its own final tests, scan, hooks and hosted checks.
+
+Node R7 on the guarded 23-path source set passed 84/85 contract tests, then failed on one stale explicit-COPY assertion that ignored FROM deps inheritance; its npm and policy audits were not reached. R8 VerifyInstalled passed all six stages, including 85/85 Node contract tests and exit-0 npm/policy audits. npm audit recorded one low and two moderate advisories (zero high/critical); policy audit found no unapproved advisories or missing overrides. R8 did not invoke npm ci and preserved the installed tree. Проверка после запуска R8 подтвердила совпадение с манифестом 23 хешей исходных файлов и 14 контрольных хешей; временные ресурсы были очищены. This bounded result does not establish a fresh install, normal npm CI, frontend acceptance or hosted checks.
+
+Локальная Go CI close-order проверка привязана к 103 скомпилированным исходным файлам и совпавшим кандидатным postimages. Шесть обязательных именованных race-тестов и четыре focused subcases дали 10 PASS; default full race run завершился 782 PASS именованных тестов и subcases в четырёх пакетах, без FAIL/SKIP; те же шесть обязательных тестов присутствовали в полном прогоне. Filtered weighted Go statement coverage — 3 093/3 093 (100%). Root подтвердил отсутствие принадлежащего прогону контейнера после проверки. Это локальное техническое доказательство не добавляет audit ID: метка AUD-337 в отдельном Go CI regression не означает новую приёмку исходного frontend AUD-337. Required hosted checks для resulting SHA остаются pending. Receipt: root-go-v341-race-782-verification-20261026.json.
+AUD-461 SQL имеет отдельные 90 unit + 2 PostgreSQL PASS и один baseline-identical DLQ warning, но остаётся OPEN.
+Auth supplement v237 native TSC exited 0 with empty stderr, but the separate private Vitest run had 57 tests: 6 PASS and 51 FAIL, plus 4 unhandled-rejection errors and 2 PromiseRejectionHandledWarning warnings. The Auth work remains privately blocked; TSC success does not establish correctness. Independent read-only triage is assigned. No Auth source was added to the canonical checkout and no audit ID was accepted.
+Полные canonical tests, final scanner, hooks и required hosted checks для resulting SHA, normal npm CI/frontend validation, hosted Go integration и release readiness остаются pending.
+Приватные review/runtime кандидаты и pause-разделы ниже остаются историей; они
+не изменяют принятый счётчик без отдельной source-bound приёмки.
 
 AUD-175: pending TOTP удаляется при reset, confirmed factor сохраняется;
 доказательство service/ORM с RecordingBackend, без Redis/HTTP и подтверждения
@@ -46,8 +93,10 @@ PostgreSQL-сценарий ещё требует fresh CI, runtime PASS не з
 chat rollback, registration parity, safe email retry и SQL EXPLAIN проходят
 отдельные review/runtime этапы. SQL EXPLAIN v4 дал обычный unit-модуль
 86 PASS / 0 error/skip, но actual PostgreSQL ещё не проверен.
-Policy337, baseline319, Gitleaks26, required78, blocking CodeQL, hooks и
-floors сохранены; новые scanner identities ожидают отдельного решения.
+На опубликованном evidence checkpoint 0f865 зафиксированы policy337,
+baseline319, Gitleaks26, required78, blocking CodeQL, hooks и floors; incoming
+integration source set отдельно records policy346. Новые scanner identities
+ожидают отдельного решения, а resulting SHA требует собственных проверок.
 Датированные pause-разделы ниже — история, а не текущее указание остановиться.
 
 Исторический CI источника `c90e6163` не принят: проверены все страницы терминального снимка
@@ -113,8 +162,8 @@ Archive и legacy baseline не менялись; независимое code re
 application inputs не установлена; caller-controlled compiler options и
 экспортированный test helper имеют путь к parser. Это отдельный незакрытый
 риск, не исправление или scanner dismissal.
-Policy337, baseline319, Gitleaks26, required78, blocking CodeQL,
-hooks и floors сохранены. Публикация требует итоговых hooks/scans, cleanup,
+На published-source checkpoint 0f865 оставались policy337, baseline319,
+Gitleaks26, required78, blocking CodeQL, hooks и floors. Публикация требует итоговых hooks/scans, cleanup,
 проверки diff и ожидаемого HEAD; новый SHA требует собственных hosted checks.
 Независимый пакет из 25 путей прошёл обычные pre-commit и pre-push hooks:
 lint-staged, Ruff, detect-secrets, Gitleaks, Bandit, mypy, Semgrep и typecheck.
@@ -122,11 +171,11 @@ Semgrep потребовал убрать промежуточный списо�
 повторный обычный hook прошёл, без исключений. Detect-secrets оставляет
 блокирующим новый публичный Git checksum в отдельном migration trace кандидате.
 Точное приватное предложение прошло 604 теста и независимое ревью, направлено
-владельцу. До решения policy337 не расширена; три reviewed DDL postimages,
+владельцу. В том pre-decision checkpoint policy337 не была расширена; три reviewed DDL postimages,
 diff и PostgreSQL-доказательства сохранены приватно. В checkout/index эти три
 файла оставлены на неизменных опубликованных версиях. Независимый пакет
 опубликован отдельно: полный captured scan дал 567 findings / 0 unmatched
-с policy337, без новых исключений. Финальный интегрированный scan и новые
+по published checkpoint policy337, без новых исключений. Финальный интегрированный scan и новые
 hosted checks обязательны для каждого следующего SHA.
 
 P1 AUD-164/167 остаются открытыми: условное поведение текущего кода проверено

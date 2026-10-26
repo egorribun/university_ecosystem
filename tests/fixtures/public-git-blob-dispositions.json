@@ -272,6 +272,74 @@
       "reviewed_on": "2026-10-24",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/helpers/migration_148642dd1207_trace.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          164,
+          0,
+          65,
+          251,
+          120,
+          113,
+          88,
+          100,
+          53,
+          123,
+          197,
+          89,
+          175,
+          34,
+          4,
+          26,
+          104,
+          189,
+          125,
+          80
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git SHA-1 integrity digest of alembic/versions/148642dd1207_fix_missing_tables.py; working tree based on c90e6163; migration Git blob d762c45c9248c14eccf57ac8e9e2dae8867777c1; source SHA-256 cafa6d22ea382b34f2e80e42cb844a0156f1a8d8d5ec9a4fdbfc8f30e608ce12; Git blob framing binds all source bytes; not credential material. detect-secrets 1.5.0 reported this exact Hex High Entropy String identity at line 23 in root-audit-20261025/current_scan_wave_final.json.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-25",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_mfa_webauthn_tombstone.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          109,
+          246,
+          200,
+          201,
+          38,
+          194,
+          24,
+          95,
+          0,
+          19,
+          55,
+          55,
+          242,
+          153,
+          216,
+          45,
+          114,
+          223,
+          180,
+          240
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public Git SHA-1 integrity digest of tests/test_migration_148642dd1207_orchestrator.py; source-bound historical migration reference guard assignment HISTORICAL_ORCHESTRATOR_BLOB; Git blob framing binds all source bytes; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-26",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

@@ -269,15 +269,22 @@ def _postgresql_groups_id_upgrade(inspector: Any) -> None:
 
     _lock_postgresql_groups_id(op.get_bind())
 
-    existing_indexes = (
-        {index["name"] for index in inspector.get_indexes("groups")}
-        if inspector is not None
-        else set()
-    )
-
     # IF NOT EXISTS keeps this phase safe to retry after a cancelled deploy.
+    # ALTER TABLE holds the groups lock until the transaction ends, so the
+    # subsequent index refresh and dependency decision see a stable catalog.
     op.execute("ALTER TABLE groups ADD COLUMN IF NOT EXISTS course INTEGER")
     op.execute("ALTER TABLE groups ADD COLUMN IF NOT EXISTS faculty VARCHAR")
+
+    if inspector is not None:
+        # The lock makes the catalog view stable for the cutover. Discard any
+        # pre-lock Inspector cache so index cleanup follows the actual locked
+        # dependency on the legacy id column.
+        inspector.clear_cache()
+        existing_indexes = {
+            index["name"]: index for index in inspector.get_indexes("groups")
+        }
+    else:
+        existing_indexes = {}
 
     if _groups_id_is_integer(inspector):
         if "ix_groups_id" in existing_indexes:
@@ -350,7 +357,10 @@ def _postgresql_groups_id_upgrade(inspector: Any) -> None:
     _capture_groups_foreign_keys()
     _convert_captured_fk_columns("INTEGER")
     op.execute("ALTER TABLE groups DROP CONSTRAINT IF EXISTS groups_pkey")
-    if "ix_groups_id" in existing_indexes:
+    groups_id_index = existing_indexes.get("ix_groups_id")
+    if groups_id_index is not None and "id" not in (
+        groups_id_index.get("column_names") or ()
+    ):
         op.execute("DROP INDEX IF EXISTS ix_groups_id")
     # Squawk's ban-drop-column rule is aimed at unplanned destructive schema
     # edits.  This guarded, transactional drop is the deliberate final step of

@@ -34,6 +34,17 @@ func startAUD337Client(
 	sendBuffer int,
 	startWriter bool,
 ) (*Client, *websocket.Conn) {
+	client, conn, _ := startAUD337ClientWithBeforePumps(t, h, sendBuffer, startWriter, nil)
+	return client, conn
+}
+
+func startAUD337ClientWithBeforePumps(
+	t *testing.T,
+	h *Hub,
+	sendBuffer int,
+	startWriter bool,
+	beforePumps func(*Client, <-chan struct{}),
+) (*Client, *websocket.Conn, <-chan struct{}) {
 	t.Helper()
 
 	runCtx, cancelRun := context.WithCancel(context.Background())
@@ -59,13 +70,17 @@ func startAUD337Client(
 		return h.Clients[client.ID] == client
 	}, 2*time.Second, 10*time.Millisecond, "Hub.Run should register the real transport client")
 
+	writeDone := make(chan struct{})
+	if beforePumps != nil {
+		beforePumps(client, writeDone)
+	}
+
 	readDone := make(chan struct{})
 	go func() {
 		defer close(readDone)
 		client.ReadPump(client.ctx)
 	}()
 
-	writeDone := make(chan struct{})
 	if startWriter {
 		go func() {
 			defer close(writeDone)
@@ -95,7 +110,23 @@ func startAUD337Client(
 		}
 	})
 
-	return client, clientConn
+	return client, clientConn, writeDone
+}
+
+func installAUD337WriterCancelBarrier(
+	t *testing.T,
+	client *Client,
+	writerDone <-chan struct{},
+) {
+	originalCancel := client.cancel
+	client.cancel = func() {
+		originalCancel()
+		select {
+		case <-writerDone:
+		case <-time.After(2 * time.Second):
+			t.Error("WritePump did not finish after cancellation")
+		}
+	}
 }
 
 func sendAUD337Text(t *testing.T, conn *websocket.Conn, payload string) {
@@ -246,7 +277,9 @@ func TestAUD337HeartbeatPingFailClosesAfterRevocationCheck(t *testing.T) {
 		revocationChecks.Add(1)
 		return errors.New("revocation backend denied")
 	}
-	client, conn := startAUD337Client(t, h, 8, true)
+	client, conn, _ := startAUD337ClientWithBeforePumps(t, h, 8, true, func(client *Client, writerDone <-chan struct{}) {
+		installAUD337WriterCancelBarrier(t, client, writerDone)
+	})
 
 	sendAUD337Text(t, conn, `{"type":"heartbeat_ping","nonce":"`+aud337ValidNonce()+`"}`)
 	require.Eventually(t, func() bool { return client.sessionRevoked.Load() }, 2*time.Second, 10*time.Millisecond)
@@ -258,6 +291,65 @@ func TestAUD337HeartbeatPingFailClosesAfterRevocationCheck(t *testing.T) {
 	h.mu.RLock()
 	require.Empty(t, h.Rooms)
 	h.mu.RUnlock()
+}
+
+func TestAUD337BatchDisconnectPathsPreserveRequestedCloseCode(t *testing.T) {
+	tests := []struct {
+		name       string
+		closeCode  int
+		disconnect func(*Hub, *Client)
+	}{
+		{
+			name:      "session revocation",
+			closeCode: websocket.ClosePolicyViolation,
+			disconnect: func(h *Hub, client *Client) {
+				h.disconnectSessionContext(context.Background(), client.SessionJTI, websocket.ClosePolicyViolation, "Session revoked")
+			},
+		},
+		{
+			name:      "user disconnect",
+			closeCode: websocket.ClosePolicyViolation,
+			disconnect: func(h *Hub, client *Client) {
+				h.DisconnectUser(client.UserID, websocket.ClosePolicyViolation, "Session revoked")
+			},
+		},
+		{
+			name:      "hub shutdown",
+			closeCode: websocket.CloseGoingAway,
+			disconnect: func(h *Hub, _ *Client) {
+				h.closeActiveClients(context.Background())
+			},
+		},
+		{
+			name:      "shutdown after stopped eviction",
+			closeCode: websocket.CloseGoingAway,
+			disconnect: func(h *Hub, client *Client) {
+				h.stopped.Store(true)
+				h.scheduleClientEviction(client)
+				h.closeActiveClients(context.Background())
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, _ := newAUD337Hub()
+			client, conn, _ := startAUD337ClientWithBeforePumps(t, h, 8, true, func(client *Client, writerDone <-chan struct{}) {
+				client.SessionJTI = "aud337-session-jti"
+				installAUD337WriterCancelBarrier(t, client, writerDone)
+			})
+
+			tt.disconnect(h, client)
+
+			require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+			_, _, err := conn.ReadMessage()
+			require.Error(t, err)
+			require.True(t, websocket.IsCloseError(err, tt.closeCode), "client must receive the requested close code")
+			h.mu.RLock()
+			require.Empty(t, h.Rooms)
+			h.mu.RUnlock()
+		})
+	}
 }
 
 func TestAUD337HeartbeatPingUsesNonblockingSendQueue(t *testing.T) {
