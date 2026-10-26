@@ -2,7 +2,21 @@
 
 Обновлено: 2026-10-26 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
-## Текущая source-bound приёмка — 90eef, 2026-10-26
+## Техническая контрольная точка — ffb7 и исправление PWA-прокси, 2026-10-26
+
+Этот блок фиксирует результаты опубликованного source ffb7 и исправление тестового PWA-прокси, включённое в эти исходники. Проверки ffb7 не переносятся на новый SHA. Принятая нижняя граница остаётся **332/512 (64,8%)**, 180 ID остаются непринятыми; AUD-161 по-прежнему основан на прежней source-bound приёмке 90eef.
+
+На опубликованном ffb7 Linux [contract job 121770883494](https://github.com/egorribun/university_ecosystem/actions/runs/40379302516/job/121770883494) завершился за 8:01 при 10-минутном лимите: 2 763 PASS за 408,83 с, отдельный policy batch — 621 PASS за 189,35 с; все 10 POSIX orchestration cases прошли. Это ограниченное contract evidence, а не полный CI.
+
+Терминальный all-pages snapshot ffb7 от 19:41:41 до 19:43:04 UTC зафиксировал 145 checks (116 success, 24 skipped, 1 neutral, 4 failure), 27 runs и 140 jobs; active checks нет. Четыре отказа: [Caddy scan](https://github.com/egorribun/university_ecosystem/actions/runs/40379302516/job/121772664501) с двумя HIGH findings, включая CVE-2026-92392; [Alembic Migrations](https://github.com/egorribun/university_ecosystem/actions/runs/40379302516/job/121772664062) с 37 Squawk warnings; [Coverage Gate](https://github.com/egorribun/university_ecosystem/actions/runs/40379302516/job/121801303986) с шестью непокрытыми изменёнными строками — websocket.py:234,237,282,287; csrf.py:141; logging.py:160 — при 98%; и производный [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/40379302516/job/121801965082). Решения владельцев по Caddy и Squawk остаются pending; это не полный зелёный CI.
+
+На опубликованном ffb7 целевой Windows browser run с Playwright 1.64.1 / Chromium revision 1248 прошёл offline-shell на desktop и mobile, но два update checks не прошли вход через proxy до проверки обновления service worker. Прямой SSR завершил hydration; через proxy браузер блокировал script origin по Trusted Types, что и вызвало отказ hydration. Сырой SSR HTML содержал email-поле и label.
+
+Двухфайловое исправление передаёт SSR доверенный Host самого тестового proxy, сохраняя фиксированный loopback-адрес назначения и проверки подмены. Оно прошло два независимых ревью, 6/6 Node contracts, полный TypeScript и frontend lint без предупреждений. Отдельная проверка в браузере подтвердила HTTP 200 и завершённую hydration при прямом входе и через исправленный proxy без ошибки Trusted Types. Это не подтверждает полный PWA E2E, принятие service-worker update или hosted CI для итогового source и не добавляет audit ID. Непрерывность auth в текущей вкладке, per-tab PWA update consent, news sessions и chat receipts остаются pending.
+
+Policy346, baseline319, Gitleaks26, required78, blocking CodeQL, hooks и quality floors не менялись.
+
+## Историческая source-bound приёмка — 90eef, 2026-10-26
 
 Для source commit 90eef40bf1efb00cd59d95bc6605e5dcd7777c65 принятая нижняя граница составляет **332/512 (64,8%)**: сохранены все прежние 331 ID и добавлен только AUD-161 для docstring-only function denominator. Остаются непринятыми 180 ID. Подробности scope и проверки приведены в [датированном дополнении аудита](../../audits/AUDIT-2026-10.md#scoped-aud-161-docstring-only-function-denominator-closure-2026-10-26).
 

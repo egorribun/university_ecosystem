@@ -282,7 +282,7 @@ test("live PWA update replaces the active precache and proves the new app bundle
     "proxy validates the numeric destination port before opening a socket"
   )
   assertProxySource(
-    /requestHeaders\.host = upstreamOrigin\.host[\s\S]*?httpRequest\(\s*["']http:\/\/127\.0\.0\.1["']\s*,\s*\{\s*hostname:\s*["']127\.0\.0\.1["']\s*,\s*port:\s*upstreamPort\s*,\s*method:\s*request\.method\s*,\s*path:\s*`\$\{upstreamTarget\.pathname\}\$\{upstreamTarget\.search\}`\s*,\s*headers:\s*requestHeaders/u,
+    /requestHeaders\.host = proxyOrigin\.host[\s\S]*?httpRequest\(\s*["']http:\/\/127\.0\.0\.1["']\s*,\s*\{\s*hostname:\s*["']127\.0\.0\.1["']\s*,\s*port:\s*upstreamPort\s*,\s*method:\s*request\.method\s*,\s*path:\s*`\$\{upstreamTarget\.pathname\}\$\{upstreamTarget\.search\}`\s*,\s*headers:\s*requestHeaders/u,
     "proxy fixes the socket authority and forwards only the validated request path"
   )
   assert.doesNotMatch(updateProxy, /httpRequest\(\s*upstreamTarget/u)
@@ -485,23 +485,22 @@ async function closeTransportServer(server) {
   })
 }
 
-function requestRawProxyTarget(proxyOrigin, requestTarget) {
+function requestRawProxyTarget(proxyOrigin, requestTarget, headers) {
   const target = new URL(proxyOrigin)
   return new Promise((resolve, reject) => {
-    const request = httpRequest(
-      {
-        protocol: target.protocol,
-        hostname: target.hostname,
-        port: target.port,
-        method: "GET",
-        path: requestTarget,
-      },
-      (response) => {
-        response.resume()
-        response.once("end", () => resolve(response.statusCode ?? 0))
-        response.once("error", reject)
-      }
-    )
+    const requestOptions = {
+      protocol: target.protocol,
+      hostname: target.hostname,
+      port: target.port,
+      method: "GET",
+      path: requestTarget,
+    }
+    if (headers !== undefined) requestOptions.headers = headers
+    const request = httpRequest(requestOptions, (response) => {
+      response.resume()
+      response.once("end", () => resolve(response.statusCode ?? 0))
+      response.once("error", reject)
+    })
     request.once("error", reject)
     request.end()
   })
@@ -561,6 +560,7 @@ test(
       originServer = await listenOnValidatedLoopbackPort(upstream)
       proxy = await startPwaUpdateProxy(new EventEmitter(), originServer.origin)
       assert.equal(new URL(proxy.origin).hostname, "localhost")
+      const proxyHost = new URL(proxy.origin).host
       proxy.setWorkerResponseTransform((source) =>
         source.replace(originalWorkerSource, transformedWorkerSource)
       )
@@ -585,7 +585,7 @@ test(
       assert.deepEqual(forwarded[0], {
         method: "GET",
         url: "/transport-probe?probe=1",
-        host: originServer.host,
+        host: proxyHost,
         cookie: syntheticHeaders.cookie,
         origin: syntheticHeaders.origin,
         csrf: syntheticHeaders["x-csrf-token"],
@@ -620,6 +620,19 @@ test(
       assert.equal(forwarded[2].method, "GET")
       assert.equal(forwarded[2].url, "/sw.js")
 
+      const beforeHostHeaderProbe = forwarded.length
+      assert.equal(
+        await requestRawProxyTarget(proxy.origin, "/host-header-probe", {
+          host: "attacker.invalid",
+        }),
+        200
+      )
+      assert.equal(
+        forwarded[beforeHostHeaderProbe]?.host,
+        proxyHost,
+        "an inbound Host header cannot control the upstream request Host"
+      )
+
       const beforeAuthorityAttacks = forwarded.length
       assert.equal(
         await requestRawProxyTarget(proxy.origin, "http://example.invalid/private"),
@@ -641,7 +654,7 @@ test(
       assert.deepEqual(forwarded[beforeAuthorityAttacks], {
         method: "GET",
         url: "/%2f%2fexample.invalid/private",
-        host: originServer.host,
+        host: proxyHost,
         cookie: undefined,
         origin: undefined,
         csrf: undefined,
