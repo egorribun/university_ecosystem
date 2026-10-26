@@ -7803,13 +7803,12 @@ def test_in_place_source_current_rejects_ignored_app_source(
         ("status", "--porcelain", "--untracked-files=normal"),
     ]
     ignored_source_query = git_calls[2]
-    assert ignored_source_query[:7] == (
+    assert ignored_source_query[:6] == (
         "ls-files",
         "--others",
         "--ignored",
         "--exclude-standard",
-        "--directory",
-        "--no-empty-directory",
+        "-z",
         "--",
     )
     assert set(live_stand.IN_PLACE_BUILD_SOURCE_PATHS).issubset(ignored_source_query)
@@ -7826,6 +7825,93 @@ def test_in_place_source_guard_exclusions_match_dockerignore_rules() -> None:
     for pattern in live_stand.IN_PLACE_DOCKERIGNORE_EXCLUSIONS:
         dockerignore_rule = pattern[:-2] if pattern.endswith("/**") else pattern
         assert dockerignore_rule in rules, pattern
+
+
+@pytest.mark.parametrize(
+    ("git_output", "must_reject"),
+    [
+        pytest.param(
+            "tests/.pytest_tmp/fixture/.git/objects/pack-entry\0",
+            False,
+            id="outside-ignored-nested-git-path-is-filtered",
+        ),
+        pytest.param(
+            ".pytest_tmp/fixture/.git/objects/pack-entry\0",
+            False,
+            id="root-test-fixture-is-outside-copy-roots",
+        ),
+        pytest.param(
+            "frontend/vitest-report.xml\0",
+            True,
+            id="ignored-copy-root-report-still-rejected",
+        ),
+        pytest.param(
+            "frontend/résumé module\nreport.ts\0",
+            True,
+            id="unicode-space-and-newline-path-is-not-split-as-lines",
+        ),
+        pytest.param(
+            "tests/.pytest_tmp/fixture/.git/objects/pack-entry\0"
+            "frontend/vitest-report.xml\0",
+            True,
+            id="outside-nested-repo-does-not-hide-real-source-path",
+        ),
+        pytest.param(
+            "APP/local_settings.py\0",
+            os.path.normcase("APP") == os.path.normcase("app"),
+            id="case-variant-source-root-follows-platform-semantics",
+        ),
+        pytest.param(
+            "frontend-extra/vitest-report.xml\0"
+            "app-extra/local_settings.py\0"
+            "services/pkg-extra/file.go\0",
+            False,
+            id="root-prefix-lookalikes-are-outside-copy-roots",
+        ),
+        pytest.param("", False, id="empty-output-is-allowed"),
+        pytest.param("\0", False, id="empty-nul-record-is-allowed"),
+    ],
+)
+def test_in_place_source_guard_filters_nul_paths_to_exact_copy_roots(
+    monkeypatch: pytest.MonkeyPatch,
+    git_output: str,
+    must_reject: bool,
+) -> None:
+    git_calls: list[tuple[str, ...]] = []
+
+    def fake_git(*args: str) -> str:
+        git_calls.append(args)
+        if args and args[0] == "ls-files":
+            return git_output
+        pytest.fail(f"unexpected git command: {args}")
+
+    monkeypatch.setattr(live_stand, "_git", fake_git)
+
+    if must_reject:
+        with pytest.raises(live_stand.StandError, match="ignored untracked files"):
+            live_stand._assert_no_ignored_in_place_build_sources()
+    else:
+        live_stand._assert_no_ignored_in_place_build_sources()
+
+    assert len(git_calls) == 1
+    ignored_source_query = git_calls[0]
+    assert ignored_source_query[:6] == (
+        "ls-files",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "-z",
+        "--",
+    )
+    root_paths_end = 6 + len(live_stand.IN_PLACE_BUILD_SOURCE_PATHS)
+    assert (
+        ignored_source_query[6:root_paths_end] == live_stand.IN_PLACE_BUILD_SOURCE_PATHS
+    )
+    assert ignored_source_query[root_paths_end:] == tuple(
+        f":(exclude,glob){path}" for path in live_stand.IN_PLACE_DOCKERIGNORE_EXCLUSIONS
+    )
+    assert "--directory" not in ignored_source_query
+    assert "--no-empty-directory" not in ignored_source_query
 
 
 @pytest.mark.parametrize(

@@ -2,7 +2,17 @@
 
 Обновлено: 2026-10-26 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
-## Текущая source-bound приёмка — a701, 2026-10-26
+## Текущая source-bound приёмка — 90eef, 2026-10-26
+
+Для source commit 90eef40bf1efb00cd59d95bc6605e5dcd7777c65 принятая нижняя граница составляет **332/512 (64,8%)**: сохранены все прежние 331 ID и добавлен только AUD-161 для docstring-only function denominator. Остаются непринятыми 180 ID. Подробности scope и проверки приведены в [датированном дополнении аудита](../../audits/AUDIT-2026-10.md#scoped-aud-161-docstring-only-function-denominator-closure-2026-10-26).
+
+AUD-161 ограничен одним случаем: docstring-only Python function остаётся в function denominator, но объявление def, исполненное при импорте, не делает её покрытой; без исполняемого тела метрика для функции равна covered=0, total=1, percent=0.0. Точный regression test test_python_function_derivation_keeps_docstring_only_denominator прошёл один раз (0,448 с); два файла AUD-161 — normalizer и regression test — совпадают с committed source 90eef. Это не распространяется на все derived metrics, Tier 0 файлы или aggregate coverage.
+
+Обычный principal pytest batch выполнен на незакоммиченном рабочем snapshot на базе 90eef вместе с reviewed двухфайловым live-stand guard: 2 070 PASS, 0 FAIL/ERROR/SKIP, stderr пустой; 93,11 с, guard завершился с кодом 0. Точный AUD-161 test входит в эти 2 070 один раз. Остальные 2 069 live-stand cases проверяют операционную работу guard; они не являются тестами или дополнительной приёмкой AUD-161. Весь batch не приписывается точному committed SHA 90eef; source/test файлы самого AUD-161 совпадают с ним.
+
+Известное состояние hosted CI для source 90eef остаётся незелёным: Contract Tests отменён по 10-минутному timeout, Caddy scan сообщает о двух HIGH findings, а Alembic Migrations — о 37 Squawk warnings. Эта узкая приёмка не закрывает эти проверки и не подтверждает full CI, merge/release или Tier 0 all-metrics. Policy346, baseline319 и Gitleaks26 не менялись. Незакоммиченные изменения Auth/PWA/tests и работы по непрерывности аутентификации, согласию каждой вкладки на PWA-обновление, news sessions и chat receipts остаются за границами приёмки; новых ID и coverage acceptance для них нет.
+
+## Историческая source-bound приёмка — a701, 2026-10-26
 
 Для source checkpoint a701d24af33e2740792ef5b08c26667118ae67a6 принятая нижняя граница составляет **331/512 (64,6%)**: сохранены все прежние 329 ID и добавлены только AUD-430 и AUD-505. Остаются непринятыми 181 ID. Подробности, доказательства и границы приёмки приведены в [датированном дополнении аудита](../../audits/AUDIT-2026-10.md#scoped-aud-430-and-aud-505-acceptance-on-a701-2026-10-26).
 

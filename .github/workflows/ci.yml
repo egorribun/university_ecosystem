@@ -2100,7 +2100,7 @@ jobs:
           # Keep the full consumer and exact-disposition populations in this
           # required job, but overlap their independent pytest processes. Each
           # process gets its own basetemp, temp/database root, log, and JUnit file.
-          # Bound the consumer to two file-grouped xdist workers: conftest owns
+          # Bound the consumer to three file-grouped xdist workers: conftest owns
           # each worker database, query log, and temporary Pact directory. Keep
           # module-scoped Pact fixtures together without changing any selectors.
           # The positional expansions in each single-quoted -c script belong to
@@ -2300,7 +2300,7 @@ jobs:
             tests/test_outbox_worker.py::test_durable_outbox_handler_failure_retries_without_pii \
             tests/test_grades_api.py \
             tests/test_notifications_delivery_coverage.py -v \
-            --tb=short --durations=20 -n 2 --dist loadfile \
+            --tb=short --durations=20 -n 3 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \
             --basetemp="$1" \

@@ -477,7 +477,7 @@ def _assert_contract_dispatch(
         "--tb=short",
         "--durations=20",
         "-n",
-        "2",
+        "3",
         "--dist",
         "loadfile",
         "-p",
@@ -535,21 +535,21 @@ def test_contract_runner_bounds_workers_preserves_population_and_propagates_fail
 @pytest.mark.parametrize(
     "old,new,reason",
     [
-        ("-n 2 --dist loadfile", "", "consumer dispatch options changed"),
-        ("-n 2 --dist loadfile", "-n 0", "consumer dispatch options changed"),
+        ("-n 3 --dist loadfile", "", "consumer dispatch options changed"),
+        ("-n 3 --dist loadfile", "-n 0", "consumer dispatch options changed"),
         (
-            "-n 2 --dist loadfile",
+            "-n 3 --dist loadfile",
             "-n auto --dist loadfile",
             "consumer dispatch options changed",
         ),
         (
-            "-n 2 --dist loadfile",
             "-n 3 --dist loadfile",
+            "-n 4 --dist loadfile",
             "consumer dispatch options changed",
         ),
         (
-            "-n 2 --dist loadfile",
-            "-n 2 --dist load",
+            "-n 3 --dist loadfile",
+            "-n 3 --dist load",
             "consumer dispatch options changed",
         ),
         (

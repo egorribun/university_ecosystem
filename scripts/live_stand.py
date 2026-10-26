@@ -4434,13 +4434,30 @@ def _assert_no_ignored_in_place_build_sources() -> None:
         "--others",
         "--ignored",
         "--exclude-standard",
-        "--directory",
-        "--no-empty-directory",
+        "-z",
         "--",
         *IN_PLACE_BUILD_SOURCE_PATHS,
         *(f":(exclude,glob){path}" for path in IN_PLACE_DOCKERIGNORE_EXCLUSIONS),
     )
-    if ignored_sources:
+    source_roots = tuple(
+        os.path.normcase(path.rstrip("/")).replace(os.path.sep, "/")
+        for path in IN_PLACE_BUILD_SOURCE_PATHS
+    )
+
+    def is_in_place_source_path(path: str) -> bool:
+        normalized_path = os.path.normcase(path).replace(os.path.sep, "/")
+        return any(
+            normalized_path == source_root
+            or normalized_path.startswith(f"{source_root}/")
+            for source_root in source_roots
+        )
+
+    ignored_build_sources = (
+        path
+        for path in ignored_sources.split("\0")
+        if path and is_in_place_source_path(path)
+    )
+    if next(ignored_build_sources, None) is not None:
         raise StandError(
             "in-place source checkout contains ignored untracked files in Docker COPY paths"
         )
