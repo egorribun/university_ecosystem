@@ -6,6 +6,9 @@ import { URL } from "node:url"
 import test from "node:test"
 const { replacePrecacheRevision } = await import("./pwa-precache-revision.ts")
 
+const primaryClickNavigationBarrierPattern =
+  /await Promise\.all\(\[\s*page\.waitForEvent\("framenavigated", \{\s*predicate: \(frame\) => frame === page\.mainFrame\(\),\s*timeout: 15_000,\s*\}\),\s*updateReloadButton\(page\)\.click\(\),?\s*\]\)/u
+
 const specUrl = new URL("./pwa-offline-shell.live.spec.ts", import.meta.url)
 const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
 const globalSetupUrl = new URL("../../scripts/playwright-live-global-setup.mjs", import.meta.url)
@@ -175,7 +178,11 @@ test("live PWA shell acceptance exercises the real worker without server mutatio
     2,
     "only the two per-page update-consent buttons are clicked"
   )
-  assert.match(spec, /await updateReloadButton\(page\)\.click\(\)/u)
+  assert.match(
+    spec,
+    primaryClickNavigationBarrierPattern,
+    "the primary main-frame navigation wait is armed with the real consent click"
+  )
   assert.match(spec, /await updateReloadButton\(peerPage\)\.click\(\)/u)
   assert.match(
     spec,
@@ -311,9 +318,189 @@ test("live PWA update replaces the active precache and proves the new app bundle
   )
   assert.match(spec, /serviceWorker\.addEventListener\("controllerchange", onControllerChange\)/u)
   assert.match(spec, /const peerPage = await context\.newPage\(\)/u)
+  const updateTestStartIndex = spec.indexOf(
+    'test("updates the active service worker online and serves the new precached bundle offline"'
+  )
+  const updatePageBaselineIndex = spec.indexOf("const updatePageInitialUrl = page.url()")
+  const updatePageInitialTimeOriginIndex = spec.indexOf(
+    "const updatePageInitialTimeOrigin = await page.evaluate(() => performance.timeOrigin)",
+    updateTestStartIndex
+  )
+  const updatePageNavigationCounterIndex = spec.indexOf(
+    "let updatePageMainFrameNavigations = 0",
+    updatePageInitialTimeOriginIndex
+  )
+  const updatePageNavigationListenerIndex = spec.indexOf(
+    'page.on("framenavigated", (frame) => {',
+    updatePageNavigationCounterIndex
+  )
+  const updatePageNavigationCounterHandlerIndex = spec.indexOf(
+    "if (frame === page.mainFrame()) updatePageMainFrameNavigations += 1",
+    updatePageNavigationListenerIndex
+  )
   const updateStartIndex = spec.indexOf("await activeRegistration.update()")
+  const updatePromptIndex = spec.indexOf("await waitForPwaLiveUpdatePrompt(page)", updateStartIndex)
+  const updatePromptVisibleIndex = spec.indexOf(
+    "await expect(updateReloadButton(page)).toBeVisible()",
+    updatePromptIndex
+  )
+  const waitingWorkerIndex = spec.indexOf(
+    "Boolean((await navigator.serviceWorker.ready).waiting)",
+    updatePromptVisibleIndex
+  )
+  const workerResponseAssertionIndex = spec.indexOf(
+    "expect(workerUpdateResponses).toBeGreaterThan(0)",
+    waitingWorkerIndex
+  )
+  const preConsentUrlIndex = spec.indexOf(
+    "await expect(page).toHaveURL(updatePageInitialUrl)",
+    workerResponseAssertionIndex
+  )
+  const preConsentTimeOriginIndex = spec.indexOf(
+    "expect(await page.evaluate(() => performance.timeOrigin)).toBe(updatePageInitialTimeOrigin)",
+    preConsentUrlIndex
+  )
+  const preConsentNoNavigationIndex = spec.indexOf(
+    "expect(updatePageMainFrameNavigations).toBe(0)",
+    preConsentTimeOriginIndex
+  )
+  const pageOneConsentIndex = spec.indexOf(
+    "updateReloadButton(page).click()",
+    preConsentNoNavigationIndex
+  )
+  const pageOnePromiseAllStartIndex = spec.lastIndexOf("await Promise.all([", pageOneConsentIndex)
+  const pageOneNavigationWaitIndex = spec.indexOf(
+    'page.waitForEvent("framenavigated", {',
+    pageOnePromiseAllStartIndex
+  )
+  const pageOnePromiseAllEndIndex = spec.indexOf("])", pageOneConsentIndex)
+  const pageOneHydrationIndex = spec.indexOf(
+    "await page.waitForFunction(() => window.__APP_HYDRATED === true)",
+    pageOneConsentIndex
+  )
+  const pageOneReloadUrlIndex = spec.indexOf(
+    "await expect(page).toHaveURL(/\\/forgot-password$/u)",
+    pageOneHydrationIndex
+  )
+  const pageOneNavigationCountIndex = spec.indexOf(
+    "expect(updatePageMainFrameNavigations).toBe(1)",
+    pageOneReloadUrlIndex
+  )
   const bundleAssertionIndex = spec.indexOf("expect(bundleUpdateResponses).toBeGreaterThan(0)")
-  const pageOneConsentIndex = spec.indexOf("await updateReloadButton(page).click()")
+  const updateTestEndIndex = spec.indexOf("\n  })", updateTestStartIndex)
+  const updateTestSource = spec.slice(updateTestStartIndex, updateTestEndIndex)
+  const primaryPageNavigationWaitCount = [
+    ...updateTestSource.matchAll(/page\.waitForEvent\("framenavigated",/gu),
+  ].length
+  const peerControllerArmIndex = spec.indexOf(
+    "await armDifferentServiceWorkerControllerBarrier(peerPage)",
+    preConsentNoNavigationIndex
+  )
+  const primaryFlowIndices = [
+    updateTestStartIndex,
+    updatePageBaselineIndex,
+    updatePageInitialTimeOriginIndex,
+    updatePageNavigationCounterIndex,
+    updatePageNavigationListenerIndex,
+    updatePageNavigationCounterHandlerIndex,
+    updateStartIndex,
+    updatePromptIndex,
+    updatePromptVisibleIndex,
+    waitingWorkerIndex,
+    workerResponseAssertionIndex,
+    preConsentUrlIndex,
+    preConsentTimeOriginIndex,
+    preConsentNoNavigationIndex,
+    peerControllerArmIndex,
+    pageOnePromiseAllStartIndex,
+    pageOneNavigationWaitIndex,
+    pageOneConsentIndex,
+    pageOnePromiseAllEndIndex,
+    pageOneHydrationIndex,
+    pageOneReloadUrlIndex,
+    pageOneNavigationCountIndex,
+    bundleAssertionIndex,
+    updateTestEndIndex,
+  ]
+  assert.ok(
+    primaryFlowIndices.every((index) => index >= 0),
+    "every primary-page update and consent barrier marker exists"
+  )
+  assert.ok(
+    updateTestStartIndex < updatePageBaselineIndex &&
+      updatePageBaselineIndex < updatePageInitialTimeOriginIndex &&
+      updatePageInitialTimeOriginIndex < updatePageNavigationCounterIndex &&
+      updatePageNavigationCounterIndex < updatePageNavigationListenerIndex &&
+      updatePageNavigationListenerIndex < updatePageNavigationCounterHandlerIndex &&
+      updatePageNavigationCounterHandlerIndex < updateStartIndex &&
+      updateStartIndex < updatePromptIndex &&
+      updatePromptIndex < updatePromptVisibleIndex &&
+      updatePromptVisibleIndex < waitingWorkerIndex &&
+      waitingWorkerIndex < workerResponseAssertionIndex &&
+      workerResponseAssertionIndex < preConsentUrlIndex &&
+      preConsentUrlIndex < preConsentTimeOriginIndex &&
+      preConsentTimeOriginIndex < preConsentNoNavigationIndex &&
+      preConsentNoNavigationIndex < peerControllerArmIndex &&
+      peerControllerArmIndex < pageOnePromiseAllStartIndex &&
+      pageOnePromiseAllStartIndex < pageOneNavigationWaitIndex &&
+      pageOneNavigationWaitIndex < pageOneConsentIndex &&
+      pageOneConsentIndex < pageOnePromiseAllEndIndex &&
+      pageOnePromiseAllEndIndex < pageOneHydrationIndex &&
+      pageOneHydrationIndex < pageOneReloadUrlIndex &&
+      pageOneReloadUrlIndex < pageOneNavigationCountIndex &&
+      pageOneNavigationCountIndex < bundleAssertionIndex &&
+      bundleAssertionIndex < updateTestEndIndex,
+    "prompt and pre-consent identity checks precede the click-scoped waiter and post-consent reload"
+  )
+  assert.equal(
+    primaryPageNavigationWaitCount,
+    1,
+    "the update test has exactly one primary-page navigation waiter"
+  )
+  const primaryWaitSourceBeforeConsent = spec.slice(
+    updateTestStartIndex,
+    pageOnePromiseAllStartIndex
+  )
+  const primaryNavigationWaitSourcePattern = /page\.waitForEvent\("framenavigated",/u
+  assert.doesNotMatch(
+    primaryWaitSourceBeforeConsent,
+    primaryNavigationWaitSourcePattern,
+    "the primary navigation deadline is not armed before the click-scoped group"
+  )
+  const earlyNavigationWaitMutation = primaryWaitSourceBeforeConsent.replace(
+    "const updatePageInitialUrl = page.url()",
+    'const earlyNavigationWait = page.waitForEvent("framenavigated", {})\n      const updatePageInitialUrl = page.url()'
+  )
+  assert.notEqual(earlyNavigationWaitMutation, primaryWaitSourceBeforeConsent)
+  assert.throws(
+    () => assert.doesNotMatch(earlyNavigationWaitMutation, primaryNavigationWaitSourcePattern),
+    (error) => error?.name === "AssertionError",
+    "the early-wait negative control is rejected by the no-early-wait guard"
+  )
+  const primaryConsentBarrierSource = spec.slice(
+    pageOnePromiseAllStartIndex,
+    pageOnePromiseAllEndIndex + 2
+  )
+  const unawaitedPrimaryConsentBarrierSource = primaryConsentBarrierSource.replace(
+    "await Promise.all(",
+    "Promise.all("
+  )
+  assert.notEqual(unawaitedPrimaryConsentBarrierSource, primaryConsentBarrierSource)
+  assert.doesNotMatch(
+    unawaitedPrimaryConsentBarrierSource,
+    primaryClickNavigationBarrierPattern,
+    "the contract rejects an unawaited navigation-and-consent group"
+  )
+  const primaryConsentBarrierWithoutClick = primaryConsentBarrierSource.replace(
+    "updateReloadButton(page).click(),",
+    ""
+  )
+  assert.notEqual(primaryConsentBarrierWithoutClick, primaryConsentBarrierSource)
+  assert.doesNotMatch(
+    primaryConsentBarrierWithoutClick,
+    primaryClickNavigationBarrierPattern,
+    "the contract requires the real primary-page consent click"
+  )
   const identityArmIndex = spec.indexOf(
     "await armDifferentServiceWorkerControllerBarrier(peerPage)"
   )
@@ -345,6 +532,22 @@ test("live PWA update replaces the active precache and proves the new app bundle
   const peerPostReloadNavigationIndex = spec.indexOf(
     "expect(peerMainFrameNavigations).toBe(1)",
     peerConsentIndex
+  )
+  const peerFlowIndices = [
+    identityArmIndex,
+    pageOneConsentIndex,
+    identityWaitIndex,
+    peerPromptVisibleIndex,
+    peerUrlRetainedIndex,
+    peerDraftRetainedIndex,
+    peerTimeOriginRetainedIndex,
+    peerNoNavigationIndex,
+    peerConsentIndex,
+    peerPostReloadNavigationIndex,
+  ]
+  assert.ok(
+    peerFlowIndices.every((index) => index >= 0),
+    "every peer consent sequence marker exists"
   )
   assert.ok(
     identityArmIndex >= 0 &&

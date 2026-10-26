@@ -399,6 +399,13 @@ test.describe("PWA offline app shell on the live stack", () => {
       await expect(page).toHaveURL(/\/forgot-password$/u)
       await context.setOffline(false)
 
+      const updatePageInitialUrl = page.url()
+      const updatePageInitialTimeOrigin = await page.evaluate(() => performance.timeOrigin)
+      let updatePageMainFrameNavigations = 0
+      page.on("framenavigated", (frame) => {
+        if (frame === page.mainFrame()) updatePageMainFrameNavigations += 1
+      })
+
       const peerPage = await context.newPage()
       await prepareUpdatePage(peerPage)
       await peerPage.goto(new URL("/login", updateProxy.origin).toString(), {
@@ -474,10 +481,6 @@ test.describe("PWA offline app shell on the live stack", () => {
         armPwaLiveUpdatePromptBarrier(page),
         armPwaLiveUpdatePromptBarrier(peerPage),
       ])
-      const updateReload = page.waitForEvent("framenavigated", {
-        predicate: (frame) => frame === page.mainFrame(),
-        timeout: 15_000,
-      })
       await page.evaluate(async () => {
         const activeRegistration = await navigator.serviceWorker.ready
         await activeRegistration.update()
@@ -488,13 +491,22 @@ test.describe("PWA offline app shell on the live stack", () => {
         await page.evaluate(async () => Boolean((await navigator.serviceWorker.ready).waiting))
       ).toBe(true)
       expect(workerUpdateResponses).toBeGreaterThan(0)
+      await expect(page).toHaveURL(updatePageInitialUrl)
+      expect(await page.evaluate(() => performance.timeOrigin)).toBe(updatePageInitialTimeOrigin)
+      expect(updatePageMainFrameNavigations).toBe(0)
 
       await armDifferentServiceWorkerControllerBarrier(peerPage)
       const peerNewController = waitForDifferentServiceWorkerController(peerPage)
-      await updateReloadButton(page).click()
-      await updateReload
+      await Promise.all([
+        page.waitForEvent("framenavigated", {
+          predicate: (frame) => frame === page.mainFrame(),
+          timeout: 15_000,
+        }),
+        updateReloadButton(page).click(),
+      ])
       await page.waitForFunction(() => window.__APP_HYDRATED === true)
       await expect(page).toHaveURL(/\/forgot-password$/u)
+      expect(updatePageMainFrameNavigations).toBe(1)
       await peerNewController
       await waitForPwaLiveUpdatePrompt(peerPage)
 
