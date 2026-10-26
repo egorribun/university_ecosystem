@@ -41,6 +41,11 @@ func TestAUD337StoppedEvictionReadCleanupClosesReservedTransportBeforeShutdownFa
 		client.Conn = tracked
 	})
 
+	if tracked == nil {
+		t.Fatal("the close tracking session was not installed before pumps started")
+		return
+	}
+
 	h.stopped.Store(true)
 	h.scheduleClientEviction(client)
 	require.ErrorIs(t, client.ctx.Err(), context.Canceled, "stopped eviction should cancel the client work")

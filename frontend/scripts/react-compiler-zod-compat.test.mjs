@@ -745,7 +745,8 @@ test("the scoped facade is pinned, honestly named and development-only", () => {
   assert.equal(privateEngineRecord.dev, true)
   assert.equal(privateEngineRecord.integrity, rootEngineRecord.integrity)
 
-  const installedRootFacadePath = require.resolve(`${FACADE_NAME}/package.json`)
+  const installedRootFacadePath =
+    require.resolve("@university-ecosystem/react-compiler-zod-compat/package.json")
   const installedRootFacade = require(installedRootFacadePath)
   assert.deepEqual(installedRootFacade, sourceManifest)
   const installedRootFacadeRequire = createRequire(installedRootFacadePath)

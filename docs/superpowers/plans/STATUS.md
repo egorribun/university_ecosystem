@@ -2,19 +2,43 @@
 
 Обновлено: 2026-10-26 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
-## Текущее продолжение аудита, 2026-10-26
+## Текущая опубликованная контрольная точка, 2026-10-26
 
-Доказательства этой контрольной точки привязаны к опубликованному коммиту
-`0f86541180e8ef003145265df793d49536a78939` и дереву
-`f25ae8ab62479de590b4c0bec95aebd11bee4750`; тестовый merge
-`5945bff1e58a5f8f75c0d8ef2e44f651b68acbb0` имеет то же дерево. На этой
-контрольной точке интеграционный кандидат включал Node7, DDL1, policy346 и
-изменения AUD-461 SQL. Итоговый SHA кандидата и required-check evidence для
-него ещё не были получены.
-Принято **328/512 (64,1%)**, осталось 184 ID. [Последняя scoped
-приёмка](../../audits/AUDIT-2026-10.md#hosted-chat-idempotency-graphql-depth-middleware-and-dependency-review-scope-closures-2026-10-26)
-добавила только AUD-183/368/379 к 325 прежним ID по root receipt file `root-183-368-379-acceptance-20261026.json`.
-Ни AUD-231, ни AUD-461 не добавлены.
+PR #1343 открыт и не объединён. Опубликованный HEAD —
+`9c74a4ad34d0e8f3ac26372e12ef1a7d177480da`, дерево
+`914ee3c311d809eb7a62072432e717812a53754d`. Принятая нижняя граница —
+**328/512 (64,1%)**, осталось 184 ID: последняя source-bound приёмка на
+предыдущем checkpoint `0f86541180e8ef003145265df793d49536a78939` добавила
+только AUD-183/368/379 к 325 прежним ID. На 9c новых ID не принято; AUD-231
+и AUD-461 остаются открытыми.
+
+В опубликованном source 9c действует policy346: прежний упорядоченный префикс
+337 и девять ранее одобренных владельцем точных integrity dispositions
+([ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#nine-exact-owner-approved-integrity-dispositions-2026-10-26)).
+Source-bound локальный scan на 9c использовал 27 plugins и дал 575 findings
+в 222 finding files, 0 unmatched; verifier завершился с exit 0, baseline не
+менялся. Baseline319, Gitleaks26, required78, blocking CodeQL, hooks и floors
+сохранены. Обычные commit/push hooks и pre-push TypeScript прошли; root сверил
+remote HEAD и 31 post-commit hash.
+
+Датированный all-pages snapshot PR #1343 для опубликованного source 9c
+(2026-10-26 11:54 UTC; capture 11:54:20–11:54:39 UTC) завершился:
+146 checks — 108 SUCCESS, 27 SKIPPED, 1 NEUTRAL, 10 FAILURE, 0 active;
+28 workflow runs / 141 jobs. В 10 failed checks входит derived aggregate CI
+Success; остальные девять отказов — unit shards 2 и 3, Trivy Image Scan - caddy
+(CVE-2026-92392 в curl/libcurl), Alembic Migrations, Security Audit / Node.js
+Dependency Audit, Frontend Tests / Lint & Format, Contract Tests, Nilaway Scan и
+explain-check. Shard 3 повторил unscoped package KeyError. Shard 2 упал на двух
+контрактах: WASM Dockerfile assertion требует отсутствующий `FROM base AS
+builder`, а markdown-link assertion сообщил о неверном STATUS anchor. В этом
+предложении ссылка ведёт на существующий heading `Historical first-party
+archive foundation (2026-10-25)`; `tests/test_markdown_links.py` требуется в
+следующем unit batch. Полный Alembic job log содержит 37 Squawk warnings;
+оставшиеся migration DB steps были skipped. Снимок terminal, но required checks
+не green и merge/release не подтверждены.
+
+Прежние 0f865 snapshots, policy337 и candidate-local результаты ниже —
+исторические source-bound evidence; они не описывают текущий hosted статус 9c.
 
 AUD-183: `chat.ts` передаёт Idempotency-Key и сохраняет caller retry key.
 Выбран ровно один frontend JUnit PASS; coverage 64/64 lines, 67/67 statements,
@@ -26,7 +50,11 @@ evidence, не deployed service.
 AUD-379: выбраны ровно четыре Python JUnit guards PASS, включая удаление GHSA
 suppression из policy delta. Live Dependency Review action не заявлен.
 
-Ранее all-pages snapshot 02:30 UTC на опубликованном source 0f86541180e8ef003145265df793d49536a78939 / tree f25ae8ab62479de590b4c0bec95aebd11bee4750 дал 145 checks и 5 failures. Более свежий peer snapshot того же source: 149 checks — 115 SUCCESS, 27 SKIPPED, 1 NEUTRAL, 6 FAILURE, 0 active; 31 runs / 144 jobs — 111 PASS, 27 SKIP, 6 FAIL. Он остаётся hosted RED и не проверяет локальный integration candidate.
+Исторические all-pages snapshots опубликованного source 0f86541180e8ef003145265df793d49536a78939 / tree f25ae8ab62479de590b4c0bec95aebd11bee4750: в 02:30 UTC было 145 checks и 5 failures; более поздний peer snapshot того же source — 149 checks (115 SUCCESS, 27 SKIPPED, 1 NEUTRAL, 6 FAILURE, 0 active) и 31 runs / 144 jobs (111 PASS, 27 SKIP, 6 FAIL). Эти результаты относятся только к 0f865 и не заменяют приведённый выше terminal snapshot 9c.
+
+Следующие результаты R1/R2, PG36, Alembic V4, Node R7/R8 и Go — scoped local evidence; они не заменяют hosted snapshot 9c выше. Для следующего локального hotfix-кандидата поверх 9c прошли Linux Node 24.21.0 — 56/56, native Node — 85/85, обычный pytest SQL/Knip — 102/102, полный lint:knip и Ruff. Linux и native Node наборы пересекаются; их нельзя суммировать как уникальные тесты. Эти результаты не относятся к неизменённому опубликованному 9c и не добавляют audit ID. Первый SQL-прогон с 12 FAIL сохранён: test helper не учитывал overrides возвращаемого плана; исправленный helper сохраняет все отрицательные проверки. Final-source scan, hooks и hosted проверки следующего SHA ещё обязательны.
+
+Тот же hotfix-кандидат с явной nil-проверкой прошёл pinned Go 1.26.10: 10 focused и 782 full race named cases, 0 FAIL/SKIP; filtered statement coverage 3 093/3 093. SQL SHOW-mode R5 прошёл три точных PostgreSQL-теста на 17.11/170011 с asyncpg 0.32.0, без FAIL/ERROR/SKIP и с пустым stderr. Единственное стартовое DLQ warning побайтно совпало с прежним PG-прогоном; оно не подавлялось. Root независимо подтвердил source bindings и отсутствие обоих owned containers, сохранил принадлежащие PG-прогону 793 байта query-log tail и восстановил прежний файл. Receipts: root-go-9c-nilguard-race-verification-20261026.json и root-sql-show-mode-r5-pg3-verification-20261026.json. Это локальные результаты; AUD-461 и остальные ID не закрыты ими.
 
 Локальный R1 cohort остался RED: 1 082 PASS, 3 FAIL, 32 ERROR из 1 117; конкретные имена отказов и
 причины 32 setup errors указаны в AUDIT checkpoint. Receipts:
@@ -50,9 +78,9 @@ root-alembic-full-closure-v4-verification-20261026.json. Ранее V2 closure d
 str-to-bytes ошибки на bootstrap stdin; V4 исправил кодирование. Это local runtime closure, не
 Tier 0 all-metrics и не hosted check.
 
-На этом 0f865 evidence checkpoint published/tested source имеет policy337; incoming integration source set records policy346 (337 plus nine owner-approved dispositions). Its resulting SHA requires its own final tests, scan, hooks and hosted checks.
+Исторически published source 0f865 имел policy337; integration candidate с policy346 (337 плюс девять owner-approved dispositions) впоследствии опубликован как 9c. Текущий scan и hosted статус 9c приведены выше.
 
-Node R7 on the guarded 23-path source set passed 84/85 contract tests, then failed on one stale explicit-COPY assertion that ignored FROM deps inheritance; its npm and policy audits were not reached. R8 VerifyInstalled passed all six stages, including 85/85 Node contract tests and exit-0 npm/policy audits. npm audit recorded one low and two moderate advisories (zero high/critical); policy audit found no unapproved advisories or missing overrides. R8 did not invoke npm ci and preserved the installed tree. Проверка после запуска R8 подтвердила совпадение с манифестом 23 хешей исходных файлов и 14 контрольных хешей; временные ресурсы были очищены. This bounded result does not establish a fresh install, normal npm CI, frontend acceptance or hosted checks.
+Ранее локальные Node R7/R8 checks на guarded integration-candidate source set: R7 passed 84/85 contract tests, then failed on one stale explicit-COPY assertion that ignored FROM deps inheritance; its npm and policy audits were not reached. R8 VerifyInstalled passed all six stages, including 85/85 Node contract tests and exit-0 npm/policy audits. npm audit recorded one low and two moderate advisories (zero high/critical); policy audit found no unapproved advisories or missing overrides. R8 did not invoke npm ci and preserved the installed tree. Проверка после запуска R8 подтвердила совпадение с манифестом 23 хешей исходных файлов и 14 контрольных хешей; временные ресурсы были очищены. This bounded result does not establish a fresh install, normal npm CI, frontend acceptance or hosted checks.
 
 Локальная Go CI close-order проверка привязана к 103 скомпилированным исходным файлам и совпавшим кандидатным postimages. Шесть обязательных именованных race-тестов и четыре focused subcases дали 10 PASS; default full race run завершился 782 PASS именованных тестов и subcases в четырёх пакетах, без FAIL/SKIP; те же шесть обязательных тестов присутствовали в полном прогоне. Filtered weighted Go statement coverage — 3 093/3 093 (100%). Root подтвердил отсутствие принадлежащего прогону контейнера после проверки. Это локальное техническое доказательство не добавляет audit ID: метка AUD-337 в отдельном Go CI regression не означает новую приёмку исходного frontend AUD-337. Required hosted checks для resulting SHA остаются pending. Receipt: root-go-v341-race-782-verification-20261026.json.
 AUD-461 SQL имеет отдельные 90 unit + 2 PostgreSQL PASS и один baseline-identical DLQ warning, но остаётся OPEN.
@@ -401,7 +429,7 @@ coverage thresholds и исходные пять regression tests не меня�
 cleanup прошли до вывода candidate. Независимая проверка decoded bytes, Git blob hash
 и четырёх immutable source hashes подтвердила тот же результат.
 
-[First-party foundation](../../testing/react-compiler-facade-integration.md#first-party-archive-foundation-2026-10-25)
+[First-party foundation](../../testing/react-compiler-facade-integration.md#historical-first-party-archive-foundation-2026-10-25)
 добавляет только этот source archive, точные protective inventories и
 блокирующую минутную проверку bytes/hash/Git identity/payload в checkout.
 Первая hosted readback-проверка нового commit ещё требуется. В архиве нет

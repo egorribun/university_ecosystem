@@ -25,6 +25,14 @@ class UnsupportedPlaceholderError(ValueError):
     """
 
 
+class StandardConformingStringsRequiredError(UnsupportedPlaceholderError):
+    """Raised when ordinary-string parsing needs verified PostgreSQL mode."""
+
+
+class StandardConformingStringsUnavailableError(ValueError):
+    """Raised when PostgreSQL did not return a verified on/off string mode."""
+
+
 class IneligibleQueryError(ValueError):
     """Raised for transaction-control statements intentionally skipped by the gate."""
 
@@ -39,7 +47,9 @@ _INELIGIBLE_TRANSACTION_RE = re.compile(
 )
 
 
-def normalize_explainable_query(query: str) -> str:
+def normalize_explainable_query(
+    query: str, *, standard_conforming_strings: bool | None = None
+) -> str:
     """Return one bounded SQL statement suitable for planner-only EXPLAIN.
 
     Query logs are diagnostic input, not a trusted SQL channel. DDL, empty
@@ -53,7 +63,9 @@ def normalize_explainable_query(query: str) -> str:
 
     separators = [
         start
-        for kind, start, _, _ in _sql_placeholder_tokens(normalized)
+        for kind, start, _, _ in _sql_placeholder_tokens(
+            normalized, standard_conforming_strings=standard_conforming_strings
+        )
         if kind == "separator"
     ]
     if separators:
@@ -230,7 +242,7 @@ def _is_qmark_placeholder(
 
 
 def _sql_placeholder_tokens(
-    query: str,
+    query: str, *, standard_conforming_strings: bool | None = None
 ) -> list[tuple[str, int, int, int | str | None]]:
     """Find bind markers and separators outside SQL strings and comments."""
     tokens: list[tuple[str, int, int, int | str | None]] = []
@@ -272,10 +284,12 @@ def _sql_placeholder_tokens(
                 if escape_string and query[index] == "\\":
                     index += 2
                 elif not escape_string and query[index] == "\\":
-                    raise UnsupportedPlaceholderError(
-                        "ordinary string with backslash is ambiguous without "
-                        "standard_conforming_strings evidence"
-                    )
+                    if standard_conforming_strings is None:
+                        raise StandardConformingStringsRequiredError(
+                            "ordinary string with backslash is ambiguous without "
+                            "standard_conforming_strings evidence"
+                        )
+                    index += 1 if standard_conforming_strings else 2
                 elif query[index] == "'":
                     if index + 1 < len(query) and query[index + 1] == "'":
                         index += 2
@@ -357,14 +371,18 @@ def _is_vector_distance_placeholder(query: str, position: int) -> bool:
     return query[:position].rstrip().endswith("<=>")
 
 
-def substitute_placeholders(query: str) -> str:
+def substitute_placeholders(
+    query: str, *, standard_conforming_strings: bool | None = None
+) -> str:
     """Normalize bind markers to PostgreSQL parameters for generic EXPLAIN.
 
     Named and anonymous binds become numbered parameters, so a bound NULL cannot
     fold a filter into a constant-false predicate. Vector-distance binds retain
     the existing valid synthetic vector literal.
     """
-    tokens = _sql_placeholder_tokens(query)
+    tokens = _sql_placeholder_tokens(
+        query, standard_conforming_strings=standard_conforming_strings
+    )
     slots: dict[tuple[str, int | str | None], int] = {}
     next_slot = 1
 
@@ -397,12 +415,16 @@ def substitute_placeholders(query: str) -> str:
     return "".join(parts)
 
 
-def _sql_parameter_count(query: str) -> int:
+def _sql_parameter_count(
+    query: str, *, standard_conforming_strings: bool | None = None
+) -> int:
     """Return the highest live positional bind number outside SQL literals."""
     return max(
         (
             int(value)
-            for kind, _, _, value in _sql_placeholder_tokens(query)
+            for kind, _, _, value in _sql_placeholder_tokens(
+                query, standard_conforming_strings=standard_conforming_strings
+            )
             if kind == "positional" and isinstance(value, int)
         ),
         default=0,
@@ -413,14 +435,34 @@ def _plan_statement_name(query: str) -> str:
     return "db_perf_gate_" + hashlib.sha256(query.encode()).hexdigest()[:12]
 
 
-async def explain_plan(conn: Any, query: str) -> object:
+async def _read_standard_conforming_strings(conn: Any) -> bool:
+    """Read and validate the mode from the connection used for planning."""
+    result = await conn.exec_driver_sql("SHOW standard_conforming_strings")
+    setting = result.scalar_one()
+    if setting == "on":
+        return True
+    if setting == "off":
+        return False
+    raise StandardConformingStringsUnavailableError(
+        "SHOW standard_conforming_strings must return exactly 'on' or 'off'"
+    )
+
+
+async def explain_plan(
+    conn: Any,
+    query: str,
+    *,
+    standard_conforming_strings: bool | None = None,
+) -> object:
     """Plan one statement without executing it and return the JSON plan.
 
     Bind markers are normalized to $n and planned under force_generic_plan.
     Generic plans do not use the synthetic NULL arguments to fold predicates,
     so the planner can still expose scans that the gate must catch (AUD-461).
     """
-    parameter_count = _sql_parameter_count(query)
+    parameter_count = _sql_parameter_count(
+        query, standard_conforming_strings=standard_conforming_strings
+    )
     if parameter_count == 0:
         result = await conn.exec_driver_sql(f"EXPLAIN (FORMAT JSON) {query}")
         return result.scalar()
@@ -594,6 +636,9 @@ async def run_explain_analysis(
         raise ValueError("target tables must be non-empty safe SQL identifiers")
 
     for raw_query in queries:
+        query_id = hashlib.sha256(raw_query.encode()).hexdigest()[:12]
+        requires_standard_conforming_strings = False
+        clean_query: str | None = None
         try:
             clean_query = normalize_explainable_query(
                 substitute_placeholders(raw_query)
@@ -601,8 +646,16 @@ async def run_explain_analysis(
         except IneligibleQueryError as error:
             logger.info("Skipping ineligible transaction-control query: %s", error)
             continue
+        except StandardConformingStringsRequiredError as error:
+            requires_standard_conforming_strings = True
+            if not any(table in raw_query.lower() for table in target_tables):
+                logger.warning(
+                    "Skipping query with unsupported SQL syntax %s: %s",
+                    query_id,
+                    error,
+                )
+                continue
         except UnsupportedPlaceholderError as error:
-            query_id = hashlib.sha256(raw_query.encode()).hexdigest()[:12]
             logger.warning(
                 "Skipping query with unsupported SQL syntax %s: %s",
                 query_id,
@@ -614,7 +667,6 @@ async def run_explain_analysis(
                 has_violations = True
             continue
         except ValueError as error:
-            query_id = hashlib.sha256(raw_query.encode()).hexdigest()[:12]
             logger.warning("Skipping unsafe query %s: %s", query_id, error)
             if fail_on_analysis_error and any(
                 table in raw_query.lower() for table in target_tables
@@ -622,36 +674,118 @@ async def run_explain_analysis(
                 has_violations = True
             continue
 
-        # We only need to check queries that target or mention our key tables
-        # to save time and reduce noise.
-        mentions_target_table = any(
-            table in clean_query.lower() for table in target_tables
-        )
-        if not mentions_target_table:
-            continue
+        if not requires_standard_conforming_strings:
+            if clean_query is None:
+                logger.warning(
+                    "Query %s could not be normalized before planning",
+                    query_id,
+                )
+                has_violations = True
+                continue
+            # We only need to check queries that target or mention our key tables
+            # to save time and reduce noise.
+            mentions_target_table = any(
+                table in clean_query.lower() for table in target_tables
+            )
+            if not mentions_target_table:
+                continue
 
-        # Skip table-wide write operations without WHERE clauses (e.g. test cleanup)
-        clean_query_lower = clean_query.lower().strip()
-        if (
-            clean_query_lower.startswith("delete")
-            or clean_query_lower.startswith("update")
-        ) and "where" not in clean_query_lower:
-            continue
+            # Skip table-wide write operations without WHERE clauses (e.g. test cleanup)
+            clean_query_lower = clean_query.lower().strip()
+            if (
+                clean_query_lower.startswith("delete")
+                or clean_query_lower.startswith("update")
+            ) and "where" not in clean_query_lower:
+                continue
 
-        checked_count += 1
-        query_id = hashlib.sha256(raw_query.encode()).hexdigest()[:12]
-        logger.info("Analyzing query %s", query_id)
+            checked_count += 1
+            logger.info("Analyzing query %s", query_id)
 
         try:
-            # Scope planner settings and timeout to this query analysis.
+            # For ambiguous ordinary strings, read the actual server mode on the
+            # same connection and transaction that will run EXPLAIN.
             async with engine.connect() as conn:
                 async with conn.begin() as transaction:
+                    # Bound mode discovery and EXPLAIN with the existing
+                    # per-query timeout.
+                    await conn.execute(text("SET statement_timeout = '15s'"))
+                    standard_conforming_strings: bool | None = None
+                    if requires_standard_conforming_strings:
+                        standard_conforming_strings = (
+                            await _read_standard_conforming_strings(conn)
+                        )
+                        try:
+                            clean_query = normalize_explainable_query(
+                                substitute_placeholders(
+                                    raw_query,
+                                    standard_conforming_strings=(
+                                        standard_conforming_strings
+                                    ),
+                                ),
+                                standard_conforming_strings=(
+                                    standard_conforming_strings
+                                ),
+                            )
+                        except IneligibleQueryError as error:
+                            logger.info(
+                                "Skipping ineligible transaction-control query: %s",
+                                error,
+                            )
+                            await transaction.rollback()
+                            continue
+                        except UnsupportedPlaceholderError as error:
+                            logger.warning(
+                                "Skipping query with unsupported SQL syntax %s: %s",
+                                query_id,
+                                error,
+                            )
+                            if fail_on_analysis_error and any(
+                                table in raw_query.lower() for table in target_tables
+                            ):
+                                has_violations = True
+                            await transaction.rollback()
+                            continue
+                        except ValueError as error:
+                            logger.warning(
+                                "Skipping unsafe query %s: %s", query_id, error
+                            )
+                            if fail_on_analysis_error and any(
+                                table in raw_query.lower() for table in target_tables
+                            ):
+                                has_violations = True
+                            await transaction.rollback()
+                            continue
+
+                        if clean_query is None:
+                            raise ValueError(
+                                "query normalization did not produce an explainable query"
+                            )
+                        mentions_target_table = any(
+                            table in clean_query.lower() for table in target_tables
+                        )
+                        if not mentions_target_table:
+                            await transaction.rollback()
+                            continue
+
+                        clean_query_lower = clean_query.lower().strip()
+                        if (
+                            clean_query_lower.startswith("delete")
+                            or clean_query_lower.startswith("update")
+                        ) and "where" not in clean_query_lower:
+                            await transaction.rollback()
+                            continue
+
+                        checked_count += 1
+                        logger.info("Analyzing query %s", query_id)
+                    elif clean_query is None:
+                        raise ValueError(
+                            "query normalization did not produce an explainable query"
+                        )
+
                     # Enforce index usage by disabling sequential scans in this session
                     await conn.execute(text("SET LOCAL enable_seqscan = off"))
                     # Query logs omit bind values; planner-only EXPLAIN keeps
                     # synthetic placeholders from executing DML or DML CTEs.
-                    # Add timeout to explain query to prevent hangs
-                    await conn.execute(text("SET statement_timeout = '15s'"))
                     # AUD-504: calibration and EXPLAIN share this rollback-only
                     # transaction. A savepoint restores both catalog updates if
                     # calibration fails, so optional analysis can use defaults.
@@ -669,7 +803,11 @@ async def run_explain_analysis(
                         )
                         if fail_on_analysis_error:
                             has_violations = True
-                    plan_json_str = await explain_plan(conn, clean_query)
+                    plan_json_str = await explain_plan(
+                        conn,
+                        clean_query,
+                        standard_conforming_strings=standard_conforming_strings,
+                    )
                     await transaction.rollback()
 
             if fail_on_analysis_error:
@@ -720,7 +858,9 @@ async def run_explain_analysis(
 
         except Exception as error:
             logger.warning(
-                "Could not execute EXPLAIN for query %s: %s", query_id, error
+                "Could not read query string mode or execute EXPLAIN for query %s: %s",
+                query_id,
+                error,
             )
             if fail_on_analysis_error:
                 has_violations = True

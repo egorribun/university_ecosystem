@@ -450,8 +450,8 @@ async def test_run_explain_analysis_binds_calibration_and_uses_planner_only_expl
         for awaited in query_connection.execute.await_args_list
         if str(awaited.args[0]).startswith("SET ")
     ] == [
-        "SET LOCAL enable_seqscan = off",
         "SET statement_timeout = '15s'",
+        "SET LOCAL enable_seqscan = off",
         "SET LOCAL plan_cache_mode = force_generic_plan",
     ]
     engine.begin.assert_not_called()
@@ -530,6 +530,8 @@ def _make_analysis_engine(
     explain_error: Exception | None = None,
     calibration_error: Exception | None = None,
     plan: object | None = None,
+    standard_conforming_strings: str | None = "on",
+    standard_conforming_strings_error: Exception | None = None,
 ) -> tuple[MagicMock, MagicMock, MagicMock]:
     plan_result = MagicMock()
     plan_result.scalar.return_value = (
@@ -537,21 +539,35 @@ def _make_analysis_engine(
         if plan is not None
         else [{"Plan": {"Node Type": "Index Scan", "Total Cost": 1.0}}]
     )
+    show_result = MagicMock()
+    show_result.scalar_one.return_value = standard_conforming_strings
+
+    statement_events: list[str] = []
 
     async def execute(statement, parameters=None):
+        statement_events.append(str(statement))
         if calibration_error is not None and "pg_index" in str(statement):
             raise calibration_error
 
+    async def execute_driver_sql(statement: str, *args: object, **kwargs: object):
+        statement_events.append(statement)
+        if statement == "SHOW standard_conforming_strings":
+            if standard_conforming_strings_error is not None:
+                raise standard_conforming_strings_error
+            return show_result
+        if explain_error is not None:
+            raise explain_error
+        return query_connection.exec_driver_sql.return_value
+
     query_connection = MagicMock()
+    query_connection.statement_events = statement_events
     query_connection.execute = AsyncMock(side_effect=execute)
+    query_connection.exec_driver_sql = AsyncMock(return_value=plan_result)
+    query_connection.exec_driver_sql.side_effect = execute_driver_sql
     savepoint_context = MagicMock()
     savepoint_context.__aenter__ = AsyncMock(return_value=MagicMock())
     savepoint_context.__aexit__ = AsyncMock(return_value=False)
     query_connection.begin_nested.return_value = savepoint_context
-    if explain_error is None:
-        query_connection.exec_driver_sql = AsyncMock(return_value=plan_result)
-    else:
-        query_connection.exec_driver_sql = AsyncMock(side_effect=explain_error)
 
     transaction = MagicMock()
     transaction.rollback = AsyncMock()
@@ -898,6 +914,102 @@ async def test_usable_index_plan_passes_strict_analysis() -> None:
     assert violations is False
     assert checked == 1
     query_connection.exec_driver_sql.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("standard_conforming_strings", "raw_query"),
+    [
+        ("on", r"SELECT * FROM users WHERE note = 'C:\' AND id = :user_id"),
+        ("off", r"SELECT * FROM users WHERE note = 'it\'s ?' AND id = :user_id"),
+    ],
+    ids=("standard-strings-on", "standard-strings-off"),
+)
+async def test_cli_reads_standard_conforming_strings_before_parsing_ambiguous_literal(
+    monkeypatch: pytest.MonkeyPatch,
+    standard_conforming_strings: str,
+    raw_query: str,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["db_explain_check.py", "--fail-on-seq-scan", "--tables", "users"],
+    )
+    engine, query_connection, _ = _make_analysis_engine(
+        standard_conforming_strings=standard_conforming_strings
+    )
+    expected_query = raw_query.replace(":user_id", "$1")
+
+    with (
+        monkeypatch.context() as database_url,
+        patch.object(db_explain_check, "create_async_engine", return_value=engine),
+        patch.object(
+            db_explain_check,
+            "extract_queries_from_logs",
+            return_value=[raw_query],
+        ),
+    ):
+        database_url.setenv("DATABASE_URL", "postgresql+asyncpg://db/perf")
+        await db_explain_check.main()
+
+    statement_name = db_explain_check._plan_statement_name(expected_query)
+    assert query_connection.statement_events[:2] == [
+        "SET statement_timeout = '15s'",
+        "SHOW standard_conforming_strings",
+    ]
+    assert query_connection.exec_driver_sql.await_args_list == [
+        call("SHOW standard_conforming_strings"),
+        call(f"PREPARE {statement_name} AS {expected_query}"),
+        call(f"EXPLAIN (FORMAT JSON) EXECUTE {statement_name}(NULL)"),
+        call(f"DEALLOCATE {statement_name}"),
+    ]
+    engine.dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("setting", "show_error"),
+    [("unknown", None), (None, RuntimeError("SHOW failed"))],
+    ids=("invalid-setting", "show-error"),
+)
+async def test_cli_fails_closed_when_standard_conforming_strings_is_unverified(
+    monkeypatch: pytest.MonkeyPatch,
+    setting: str | None,
+    show_error: Exception | None,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["db_explain_check.py", "--fail-on-seq-scan", "--tables", "users"],
+    )
+    engine, query_connection, _ = _make_analysis_engine(
+        standard_conforming_strings=setting,
+        standard_conforming_strings_error=show_error,
+    )
+    raw_query = r"SELECT * FROM users WHERE note = 'C:\' AND id = :user_id"
+
+    with (
+        monkeypatch.context() as database_url,
+        patch.object(db_explain_check, "create_async_engine", return_value=engine),
+        patch.object(
+            db_explain_check,
+            "extract_queries_from_logs",
+            return_value=[raw_query],
+        ),
+        pytest.raises(SystemExit) as exit_info,
+    ):
+        database_url.setenv("DATABASE_URL", "postgresql+asyncpg://db/perf")
+        await db_explain_check.main()
+
+    assert exit_info.value.code == 1
+    assert query_connection.statement_events[:2] == [
+        "SET statement_timeout = '15s'",
+        "SHOW standard_conforming_strings",
+    ]
+    assert query_connection.exec_driver_sql.await_args_list == [
+        call("SHOW standard_conforming_strings")
+    ]
+    engine.dispose.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -926,10 +926,21 @@ test("absolute archive paths are generation-only and never mutate the portable m
   )
   assert.deepEqual(generation.devDependencies, portable.devDependencies)
   assert.deepEqual(portable, snapshot)
+  // Array joining preserves the traversal segment; path.join() would normalize it.
+  const noncanonicalArchivePath = [
+    TEST_FRONTEND,
+    "vendor",
+    "..",
+    "vendor",
+    path.basename(ARCHIVE),
+  ].join(path.sep)
+  assert.equal(path.isAbsolute(noncanonicalArchivePath), true)
+  assert.notEqual(path.resolve(noncanonicalArchivePath), noncanonicalArchivePath)
+
   for (const invalid of [
     ARCHIVE_SPEC,
     join(TEST_FRONTEND, "package.json"),
-    TEST_FRONTEND + "\\vendor\\..\\vendor\\react-compiler-zod-compat-1.0.0.tgz",
+    noncanonicalArchivePath,
   ]) {
     assert.throws(() => prepareAbsoluteArchiveGenerationManifest(portable, invalid), {
       name: "AssertionError",

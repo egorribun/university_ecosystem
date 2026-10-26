@@ -93,14 +93,20 @@ def test_compiler_adapter_uses_its_own_manifest_without_disabling_checks() -> No
 
     assert knip["workspaces"][adapter] == {}
     manifest = json.loads(_read_frontend(f"{adapter}/package.json"))
-    assert manifest["name"] == "@university-ecosystem/react-compiler-zod-compat"
+    package_name = "@university-ecosystem/react-compiler-zod-compat"
+    package_tarball = "vendor/react-compiler-zod-compat-1.0.0.tgz"
+
+    assert manifest["name"] == package_name
+    assert manifest["version"] == "1.0.0"
     assert manifest["private"] is True
     assert manifest["dependencies"] == {"patched-zod": "npm:zod@4.6.7"}
-    assert (
-        package["devDependencies"]["react-compiler-zod-compat"] == f"file:./{adapter}"
-    )
+    assert package["devDependencies"][package_name] == f"file:./{package_tarball}"
+    assert (FRONTEND / package_tarball).is_file()
     for section in ("dependencies", "optionalDependencies", "peerDependencies"):
-        assert "react-compiler-zod-compat" not in package.get(section, {})
+        dependencies = package.get(section, {})
+        assert package_name not in dependencies
+        assert "react-compiler-zod-compat" not in dependencies
+    assert "react-compiler-zod-compat" not in package.get("devDependencies", {})
     assert (FRONTEND / adapter / manifest["main"]).is_file()
 
 
