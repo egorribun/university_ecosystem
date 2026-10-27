@@ -2,7 +2,10 @@ import { expect, ownedSessionOrigin, test } from "./fixtures"
 import type { Page, Request } from "@playwright/test"
 import { startPwaUpdateProxy } from "./pwa-update-proxy"
 import { replacePrecacheRevision } from "./pwa-precache-revision"
-import { readPrecachedModuleAppBundleEvidence } from "./pwa-app-bundle-evidence"
+import {
+  createPwaBuildMarkerScript,
+  readPrecachedModuleAppBundleEvidence,
+} from "./pwa-app-bundle-evidence"
 
 const CONTROLLER_CHANGE_COUNT = "__pwa_update_controllerchange_count"
 const PWA_UPDATE_LIFECYCLE_DIAG_PREFIX = "PWA_UPDATE_LIFECYCLE_DIAG "
@@ -445,7 +448,7 @@ test.describe("PWA offline app shell on the live stack", () => {
 
         const response = await route.fetch()
         const source = await response.text()
-        const markerScript = `\n;(() => { const marker = document.createElement("output"); marker.id = "pwa-build-marker"; marker.dataset.pwaBuildMarker = ${JSON.stringify(marker)}; marker.textContent = ${JSON.stringify(marker)}; marker.style.cssText = "position:fixed;top:0;left:0;z-index:2147483647;background:#fff;color:#000;padding:4px"; document.body.append(marker); })();\n`
+        const markerScript = createPwaBuildMarkerScript(marker)
         bundleUpdateResponses += 1
         await route.fulfill({
           response,
@@ -549,10 +552,9 @@ test.describe("PWA offline app shell on the live stack", () => {
       await peerPage.waitForFunction(() => window.__APP_HYDRATED === true)
       await expect(peerPage).toHaveURL(/\/login$/u)
       expect(peerMainFrameNavigations).toBe(1)
-      await expect(peerPage.locator("#pwa-build-marker")).toHaveAttribute(
-        "data-pwa-build-marker",
-        marker
-      )
+      expect(
+        await peerPage.evaluate(() => Reflect.get(window, "__UE_PWA_TEST_BUILD_MARKER__"))
+      ).toBe(marker)
 
       const newBundleCacheEntries = await readBundleCacheEvidence(page, appBundlePath, marker)
       const newBundleCacheKeys = newBundleCacheEntries.map((entry) => entry.requestUrl)
@@ -576,8 +578,7 @@ test.describe("PWA offline app shell on the live stack", () => {
       )
       await assertStaticSpaDocumentResponse(updatedOfflineResponse)
       await page.waitForFunction(() => window.__APP_HYDRATED === true)
-      await expect(page.locator("#pwa-build-marker")).toHaveAttribute(
-        "data-pwa-build-marker",
+      expect(await page.evaluate(() => Reflect.get(window, "__UE_PWA_TEST_BUILD_MARKER__"))).toBe(
         marker
       )
       await expect(page).toHaveURL(/\/forgot-password$/u)

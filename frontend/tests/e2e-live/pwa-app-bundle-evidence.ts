@@ -1,3 +1,11 @@
+export function publishPwaBuildMarker(marker: string): void {
+  Reflect.set(window, "__UE_PWA_TEST_BUILD_MARKER__", marker)
+}
+
+export function createPwaBuildMarkerScript(marker: string): string {
+  return `\n;(${publishPwaBuildMarker.toString()})(${JSON.stringify(marker)});\n`
+}
+
 export async function readPrecachedModuleAppBundleEvidence() {
   const bundleScripts = [...document.scripts]
     .filter((script) => script.type === "module" && script.src !== "")

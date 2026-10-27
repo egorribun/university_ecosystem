@@ -6,7 +6,8 @@ import { URL } from "node:url"
 import { runInNewContext } from "node:vm"
 import test from "node:test"
 const { replacePrecacheRevision } = await import("./pwa-precache-revision.ts")
-const { readPrecachedModuleAppBundleEvidence } = await import("./pwa-app-bundle-evidence.ts")
+const { createPwaBuildMarkerScript, readPrecachedModuleAppBundleEvidence } =
+  await import("./pwa-app-bundle-evidence.ts")
 
 const primaryClickNavigationBarrierPattern =
   /await Promise\.all\(\[\s*page\.waitForEvent\("framenavigated", \{\s*predicate: \(frame\) => frame === page\.mainFrame\(\),\s*timeout: 15_000,\s*\}\),\s*updateReloadButton\(page\)\.click\(\),?\s*\]\)/u
@@ -97,6 +98,29 @@ test("selects the same-origin precached module bundle instead of an earlier clas
     null,
     "a precached classic script cannot stand in for a missing precached module bundle"
   )
+})
+
+test("keeps the executed bundle marker across a static document mount", () => {
+  const marker = "pwa-build-marker-contract"
+  const pageWindow = Object.create(null)
+  const body = {
+    childNodes: [{ id: "root" }, { id: "unowned-output" }],
+    append() {
+      assert.fail("the bundle marker must not be appended to React-owned body content")
+    },
+    clearForStaticDocumentMount() {
+      this.childNodes.length = 0
+    },
+  }
+
+  runInNewContext(createPwaBuildMarkerScript(marker), {
+    document: { body },
+    window: pageWindow,
+  })
+  body.clearForStaticDocumentMount()
+
+  assert.equal(Reflect.get(pageWindow, "__UE_PWA_TEST_BUILD_MARKER__"), marker)
+  assert.deepEqual(body.childNodes, [])
 })
 
 test("rewrites only the selected generated Workbox precache record", () => {
@@ -371,6 +395,12 @@ test("live PWA update replaces the active precache and proves the new app bundle
   assertProxySource(/MAX_WORKER_SCRIPT_BYTES/u, "worker transformation remains size bounded")
   assert.match(spec, /url\.pathname !== appBundlePath/u)
   assert.match(spec, /pwa-build-marker/u)
+  assert.match(spec, /createPwaBuildMarkerScript\(marker\)/u)
+  assert.match(
+    spec,
+    /Reflect\.get\(window, "__UE_PWA_TEST_BUILD_MARKER__"\)/u,
+    "both updated-page checks read the exact marker from the executing bundle"
+  )
   assert.match(spec, /controllerchange/u)
   assert.match(spec, /const previousController = serviceWorker\.controller/u)
   assert.match(spec, /if \(!previousController\)\s*\{\s*throw new Error/u)

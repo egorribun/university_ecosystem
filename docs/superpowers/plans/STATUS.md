@@ -2,29 +2,41 @@
 
 Обновлено: 2026-10-27 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
-## Проверенная контрольная точка — source 218 и следующий пакет, 2026-10-27
+## Текущая локальная контрольная точка — source d43 (не опубликован), 2026-10-27
 
-Принятая нижняя граница остаётся **332/512 (64,8%)**; 180 ID остаются непринятыми. Новых audit ID нет. На момент снимка PR #1343 был открыт и не объединён; опубликованный HEAD — `218eedba99d122682a085144fd4f5a6ccdf55624`, tree — `8ba863b383ea0751af2922fcd2dc6bc11d16e994`. Ниже раздельно описаны опубликованный source и последующий локальный снимок. Актуальный HEAD определяют Git и [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343); локальные PASS не увеличивают число принятых ID.
+Принятая нижняя граница остаётся **332/512 (64,8%)**; 180 ID не приняты. Новых audit ID нет. На момент этого датированного снимка PR #1343 оставался открыт и не объединён, а опубликованный remote HEAD был 218eedba99d122682a085144fd4f5a6ccdf55624. Локальный чистый commit d43c3ed7bb152a443a1725e96063ccc94e4dd040 (tree a6227c857c75c4f8a240a47902ff23b3eb52e8a0, parent 218) ещё не был опубликован. Приведённый ниже hosted CI относится только к 218; hosted checks для d43 на момент снимка не было. [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343) показывает опубликованный source.
+
+Локальная проверка d43 прошла обычные hooks. Auth11/R2 дал 31 suite, 597 PASS, 0 failure/error/skip; четыре production target имеют 100% строк, statements, ветвей и функций, а full TypeScript, ESLint и форматирование прошли. PWA selector-fixture дал 7 Node PASS, 0 skip; full TypeScript/ESLint и форматирование прошли. В metadata-only refresh detect-secrets baseline изменились четыре ссылки line_number и generated_at; все 319 нормализованных identity остались неизменными. Финальный scan d43 под policy347: 27 plugins, 576 findings, 222 files, 0 unmatched. Эти локальные результаты не добавляют audit ID.
+
+Текущий PWA4 browser E2E на локальном source d43 дал 2 offline PASS и 2 update FAIL: оба update-сценария остановились на ожидании финального offline marker в строке 579. Диагностика подтвердила, что этот DOM marker отсутствует после вызова React.createRoot(document), очищающего body; SSR и shell подтверждены как один bundle index-DsRgWf7H. Предшествующие assertions по consent, peer tab и cache прошли. AUD-184 остаётся непринятым. Трёхфайловая поправка fixture сохраняет execution marker в window вместо DOM и получила два независимых static review. После интеграции в следующую локальную workspace прошли 8 Node-контрактов, full TypeScript, ESLint и Prettier для трёх файлов; stderr 0. Проверки consent, peer tab, cache и offline сохранены. Повторный browser run на новом коммите ещё обязателен; production-код эта поправка не меняет.
+
+Предыдущий browser trace опубликованного 218 имел 2 offline PASS и 2 update RED при bundleUpdateResponses=0. Статическая проверка public shell/service worker показала precached classic theme-init.js перед module /assets/index-BdI8C6Li.js; d43 selector fixture теперь выбирает precached same-origin module и проходит Node-контракт. Этот фикс не устранил текущий PWA4 browser failure выше.
+
+После browser run подписанный teardown завершился PASS в 01:51:13 UTC. Независимая проверка в 01:53:12 UTC подтвердила отсутствие owned project containers, networks и volumes; builder остановлен.
+
+## Терминальный hosted CI snapshot — опубликованный source 218, 2026-10-27 01:28:12–01:31:27 UTC
+
+All-pages snapshot точного опубликованного source 218/tree 8ba863b383ea0751af2922fcd2dc6bc11d16e994 завершён: 143 checks, 25 runs и 138 jobs; checks — 114 success, 24 skipped, 1 neutral, 3 failure и 1 cancelled, активных checks нет. Все **78/78 required context/app pairs** присутствуют; CodeQL завершился success. Это terminal evidence только для 218, не для d43.
+
+- [Coverage & Quality Policy Gate](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121942058239) завершился failure на Normalize coverage evidence: две Alembic function-цели ниже 100%, frontend branches/functions/statements ниже 100%, Python branch residual — 1 537 вместо 1 536, Tier 0 function residual — 151 вместо 148.
+
+- [Alembic Migrations](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121921661523) завершился failure: шаг 9 Squawk выдал 13 warnings, шаг 10 bounded DDL evidence — 24 предупреждения; шаг 11 tenant-context acceptance прошёл, шаги 12–17 пропущены.
+
+- [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121942407251) — производный failure, а не отдельное доказательство причины. All-green и release readiness не подтверждены.
+
+## Исторические локальные проверки опубликованного source 218
 
 На опубликованном source 218 прошли обычные hooks, commit/push и post-commit проверки. Докоммитная Python-проверка исходников, вошедших в 218, дала **1 238 уникальных PASS**: 1 233 в основном прогоне и ещё пять Git-тестов после повторного запуска с коротким basetemp из-за `Filename too long`. Все 125 PWA unit-тестов прошли; для `pwaEvents.ts`, `register-sw.ts` и `InstallPrompt.tsx` подтверждены 100% строк, statements, ветвей и функций. Core build прошёл; установлены `curl` и `libcurl` версии `8.23.0-r0`. Финальный 27-plugin scan под policy347 зарегистрировал 576 findings в 222 файлах, 0 unmatched. Hosted [Trivy Image Scan — caddy](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121921661489) успешно завершил все рабочие шаги.
 
-Два offline PWA-сценария на опубликованном 218 прошли; два update-сценария завершились RED на шаге 528 при `bundleUpdateResponses=0`. Replay prompt, первое согласие и проверка отсутствия автоматической перезагрузки соседней вкладки продвинулись. Диагностика public `_shell` и service worker показала, что precached classic `theme-init.js` расположен до module `/assets/index-BdI8C6Li.js`: first-match selector выбирал classic script, а route перехватывал только `/assets`. Исправление selector fixture перенесено в незакоммиченную workspace и прошло локальную проверку ниже; новый browser E2E ещё ожидается. AUD-184 не принят.
+На опубликованном source 218 два offline PWA-сценария прошли; два update-сценария завершились RED на шаге 528 при bundleUpdateResponses=0. Этот source-bound результат предшествует d43 и не заменяет текущую браузерную проверку выше.
 
-## Локальная проверка следующего пакета на базе source 218
+## Предыдущий nonterminal hosted CI capture того же source 218 — 2026-10-27 00:29:47–00:32:31 UTC
 
-Auth11/R2 прошёл в 11-file workspace: 31 suite, 597 PASS, 0 skip; четыре production target имеют 100% строк, statements, ветвей и функций. Full TypeScript и ESLint, а также Prettier для 11 файлов прошли. Root guard зафиксировал stderr 0, exit 0 и стабильный HEAD/tree без дочерних процессов. В более раннем 597-case прогоне один тест не прошёл lint/format; после замены двух внешних констант в dependency array тестового useLayoutEffect на `[]` и форматирования финальный прогон прошёл. Оба отчёта сохранены.
-
-Затем в ту же workspace интегрировали трёхфайловую PWA selector-fixture поправку. Node: 7 PASS / 0 skip; full TypeScript, full ESLint и форматирование всех 14 файлов прошли, stderr 0. Auth11 production-file hashes не изменились. На момент этой локальной проверки пакет состоял из 14 изменённых файлов на базе HEAD 218 и ещё не был зафиксирован. Браузерная проверка исправленного сценария остаётся отдельным обязательным этапом; эти unit/contract результаты её не заменяют. Auth11/R2 и PWA3 не добавляют audit ID. Подписанная очистка стенда source 218 и независимая проверка ранее подтвердили отсутствие проектных контейнеров, сетей, volumes и probe-контейнеров; builder остановлен.
-
-## Датированный hosted CI snapshot — опубликованный source 218, 2026-10-27 00:29:47–00:32:31 UTC
-
-All-pages snapshot для точного опубликованного source 218 содержит 138 checks, 25 runs и 133 jobs и остаётся нетерминальным: 110 checks success, 23 skipped, 1 neutral, 1 failure, 1 cancelled, 2 in progress. Из 78 required context/app pairs обнаружены 76; Coverage Gate и aggregate CI Success на момент capture ещё не появились. CodeQL pair успешен. [Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121920176765) завершился success за 7:56; результаты трёх отчётных cohort — 2 763 PASS за 405,27 с, 633 PASS за 193,35 с и 20 PASS за 4,62 с — указаны раздельно и не суммируются как уникальные тесты. [Trivy Caddy](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121921661489) также успешен.
-
-[Проверка Alembic](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121921661523) завершилась failure: шаги 9 Squawk и 10 bounded DDL evidence выдали соответственно 13 и 24 отчётных предупреждения и завершились failure; шаг 11 tenant-context acceptance прошёл, шаги 12–17 пропущены. Два backend Python shard оставались in progress. Финальная Coverage Gate, aggregate coverage, all-green и release readiness не подтверждены.
+Предыдущий all-pages capture был нетерминальным: 138 checks, 25 runs, 133 jobs, два backend shard ещё выполнялись и было видно 76/78 required pairs. Этот промежуточный снимок сохранён как история; его неполный статус заменён терминальным capture выше.
 
 ## Промежуточный nonterminal capture того же source 218 — 2026-10-27 00:03:03–00:09:10 UTC
 
-All-pages снимок PR #1343 для точного source 218 собран 2026-10-27 00:03:03–00:09:10 UTC и не терминален: 121 check, 25 runs и 117 jobs. В checks на момент capture: 89 success, 16 skipped, 1 cancelled, 13 in progress и 2 queued. Required CodeQL pair завершился успешно; [Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121920176765) и [Alembic Migrations](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121921661523) оставались активны. В Alembic шаги 9 (Squawk: 37 warnings) и 10 (сбор ограниченного DDL evidence) завершились failure; дальнейшие DB-шаги ещё не выполнены. Поэтому all-green и aggregate coverage пока не подтверждены.
+All-pages снимок PR #1343 для точного source 218 собран 2026-10-27 00:03:03–00:09:10 UTC и не терминален: 121 check, 25 runs и 117 jobs. В checks на момент capture: 89 success, 16 skipped, 1 cancelled, 13 in progress и 2 queued. Required CodeQL pair завершился успешно; [Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121920176765) и [Alembic Migrations](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121921661523) оставались активны. В Alembic шаг 9 (Squawk: 13 warnings) и шаг 10 (сбор ограниченного DDL evidence: 24 warnings) завершились failure; дальнейшие DB-шаги ещё не выполнены. Поэтому all-green и aggregate coverage пока не подтверждены.
 
 ## Исторические проверки до source 218
 
