@@ -952,3 +952,26 @@ def test_squawk_integrity_contract_rejects_weakening_controls() -> None:
     assert not _has_pinned_squawk_integrity_contract(
         {**job, "strategy": {"matrix": {"os": ["ubuntu-24.04", "macos-15"]}}}
     )
+
+
+def test_npm_audit_uses_the_compiler_archive_bootstrap_node_version() -> None:
+    """The audit runner must satisfy the existing archive producer preflight."""
+
+    workflow = _workflow(SECURITY_AUDIT)
+    triggers = workflow.get("on", workflow.get(True))
+    assert triggers["workflow_call"]["inputs"]["node-version"]["default"] == "24.21.0"
+    setup = _step(workflow["jobs"]["npm-audit"], "Set up Node.js")
+    assert setup["with"]["node-version"] == "${{ inputs.node-version }}"
+
+    callers = [
+        (path, name, job)
+        for path in WORKFLOWS.glob("*.yml")
+        for name, job in _workflow(path).get("jobs", {}).items()
+        if job.get("uses") == "./.github/workflows/reusable-security-audit.yml"
+    ]
+    assert callers, "the security audit must remain part of CI"
+    for path, name, job in callers:
+        assert job.get("with", {}).get("node-version", "24.21.0") == "24.21.0", (
+            path.name,
+            name,
+        )

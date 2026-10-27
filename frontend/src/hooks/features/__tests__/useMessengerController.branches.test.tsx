@@ -1,6 +1,6 @@
 import { renderHook, waitFor, act } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest"
 import type { ReactNode } from "react"
 
 /**
@@ -2573,4 +2573,187 @@ describe("useMessengerController — branch top-up", () => {
       expect(cached?.items.filter((message) => message.id === serverMessage.id)).toHaveLength(1)
     })
   })
+
+  describe("AUD-156 — failed edit draft recovery", () => {
+    beforeEach(() => {
+      mocks.chatApi.editMessage.mockReset().mockResolvedValue({ status: "ok" })
+    })
+
+    const startPendingEdit = async () => {
+      seedChat("chat-1")
+      mocks.chatApi.getMessages.mockResolvedValue({
+        items: [
+          {
+            id: "msg-1",
+            chat_id: "chat-1",
+            sender_id: "current-user-id",
+            content: "original",
+            created_at: "2026-10-27T12:00:00Z",
+            read_status: false,
+            attachments: [],
+          },
+          {
+            id: "msg-2",
+            chat_id: "chat-1",
+            sender_id: "current-user-id",
+            content: "newer original",
+            created_at: "2026-10-27T12:01:00Z",
+            read_status: false,
+            attachments: [],
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      let rejectEdit!: (reason: Error) => void
+      const pendingEdit = new Promise<never>((_resolve, reject) => {
+        rejectEdit = reject
+      })
+      const pendingEditHandled = pendingEdit.then(
+        () => undefined,
+        () => undefined
+      )
+      mocks.chatApi.editMessage.mockReturnValueOnce(pendingEdit)
+      const { queryClient, HookWrapper } = createQueryHarness()
+      let unmountHook: (() => void) | undefined
+      onTestFinished(async () => {
+        try {
+          await act(async () => {
+            try {
+              unmountHook?.()
+            } finally {
+              // Release only this helper's deferred request, even if setup failed.
+              rejectEdit(new Error("controlled edit cleanup"))
+              await pendingEditHandled
+            }
+          })
+          await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+        } finally {
+          queryClient.clear()
+        }
+      })
+      const { result, rerender, unmount } = renderHook(() => useMessengerController(), {
+        wrapper: HookWrapper,
+      })
+      unmountHook = unmount
+      await waitFor(() =>
+        expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+          "original"
+        )
+      )
+
+      const draft = "  revised first line\nsecond line  "
+      act(() => result.current.handleEditMessage("msg-1", "original"))
+      act(() => result.current.setEditingMessageContent(draft))
+      await act(async () => {
+        result.current.handleSaveEdit("msg-1")
+      })
+      await waitFor(() => {
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledWith("chat-1", "msg-1", draft.trim())
+        expect(queryClient.isMutating()).toBe(1)
+        expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+          draft.trim()
+        )
+      })
+      // Keep the existing optimistic-close behavior while the request is pending.
+      expect(result.current.editingMessageId).toBeNull()
+      expect(result.current.editingMessageContent).toBe("")
+
+      const failEdit = async () => {
+        await act(async () => {
+          rejectEdit(new Error("controlled edit failure"))
+        })
+        // Await settlement so an unchanged editor cannot pass before onError runs.
+        await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+      }
+      return { result, rerender, queryClient, draft, failEdit }
+    }
+
+    it("restores the exact failed draft and editor, then permits a successful retry", async () => {
+      const { result, queryClient, draft, failEdit } = await startPendingEdit()
+      await failEdit()
+
+      await waitFor(() => {
+        expect(result.current.editingMessageId).toBe("msg-1")
+        expect(result.current.editingMessageContent).toBe(draft)
+        expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+          "original"
+        )
+      })
+      await act(async () => {
+        result.current.handleSaveEdit("msg-1")
+      })
+      await waitFor(() => {
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)
+        expect(queryClient.isMutating()).toBe(0)
+      })
+      expect(mocks.chatApi.editMessage).toHaveBeenLastCalledWith("chat-1", "msg-1", draft.trim())
+      expect(result.current.editingMessageId).toBeNull()
+      expect(result.current.editingMessageContent).toBe("")
+    })
+
+    it.each(["msg-1", "msg-2"])(
+      "does not replace a newer unsaved edit of %s when the earlier request fails",
+      async (messageId) => {
+        const { result, failEdit } = await startPendingEdit()
+        act(() => result.current.handleEditMessage(messageId, "newer original"))
+        act(() => result.current.setEditingMessageContent("newer unsaved draft"))
+        await failEdit()
+
+        expect(result.current.editingMessageId).toBe(messageId)
+        expect(result.current.editingMessageContent).toBe("newer unsaved draft")
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
+      }
+    )
+
+    it("does not resurrect the failed draft after a newer editor was explicitly cancelled", async () => {
+      const { result, failEdit } = await startPendingEdit()
+      act(() => result.current.handleEditMessage("msg-1", "newer original"))
+      act(() => result.current.setEditingMessageContent("discard this newer draft"))
+      act(() => result.current.handleCancelEdit())
+      await failEdit()
+
+      expect(result.current.editingMessageId).toBeNull()
+      expect(result.current.editingMessageContent).toBe("")
+    })
+
+    it.each([
+      { scope: "chat", returnToSource: false },
+      { scope: "chat", returnToSource: true },
+      { scope: "account", returnToSource: false },
+      { scope: "account", returnToSource: true },
+    ])(
+      "does not revive a failed edit after a $scope transition (return: $returnToSource)",
+      async ({ scope, returnToSource }) => {
+        const { result, rerender, failEdit } = await startPendingEdit()
+        if (scope === "chat") {
+          mocks.paramsRef.current = { chatId: "chat-2" }
+        } else {
+          mocks.authUserRef.current = { ...mocks.testUser, id: "other-account" }
+        }
+        rerender()
+        await waitFor(() => {
+          expect(result.current.selectedChatId).toBe(scope === "chat" ? "chat-2" : "chat-1")
+          expect(result.current.currentUserId).toBe(
+            scope === "account" ? "other-account" : "current-user-id"
+          )
+        })
+        if (returnToSource) {
+          mocks.paramsRef.current = { chatId: "chat-1" }
+          mocks.authUserRef.current = mocks.testUser
+          rerender()
+          await waitFor(() => {
+            expect(result.current.selectedChatId).toBe("chat-1")
+            expect(result.current.currentUserId).toBe("current-user-id")
+          })
+        }
+        await failEdit()
+
+        expect(result.current.editingMessageId).toBeNull()
+        expect(result.current.editingMessageContent).toBe("")
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
+      }
+    )
+  })
+
 })

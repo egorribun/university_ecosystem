@@ -3338,3 +3338,130 @@ describe("useProfileSync crypto failure paths", () => {
     await expect(signPayload(payload, mockSigningKey)).resolves.toBe("")
   })
 })
+
+it.each([PROFILE_CACHE_STORAGE_KEY, PROFILE_CACHE_VERSION_KEY])(
+  "retains a newer %s storage snapshot when unchanged bootstrap verification finishes first",
+  async (eventKey) => {
+    acceptBrowserSessionGeneration()
+    const firstPayload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: {
+        id: "noop-bootstrap-first",
+        full_name: "Unchanged bootstrap snapshot",
+        group_id: null,
+        avatar_url: null,
+        cover_url: null,
+        is_active: true,
+        spotify_connected: false,
+      } as CachedUserSnapshot,
+    }
+    const secondPayload: CacheSignaturePayload = {
+      ...firstPayload,
+      data: {
+        ...(firstPayload.data as CachedUserSnapshot),
+        id: "noop-bootstrap-second",
+        full_name: "Newer cross-tab snapshot",
+      },
+    }
+    const serialize = (payload: CacheSignaturePayload) =>
+      JSON.stringify({ ...payload, signature: signSync(payload, mockSigningKey) })
+    const firstEnvelope = serialize(firstPayload)
+    const secondEnvelope = serialize(secondPayload)
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, firstEnvelope)
+    markCurrentCacheVersion()
+
+    const subtle = window.crypto.subtle
+    const verify = subtle.verify.bind(subtle)
+    const createVerificationGate = () => {
+      let signalStarted!: () => void
+      let release!: () => void
+      const started = new Promise<void>((resolve) => {
+        signalStarted = resolve
+      })
+      const released = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      let completion: Promise<boolean> | undefined
+      return {
+        started,
+        implementation: (...args: Parameters<typeof verify>) => {
+          completion = (async () => {
+            const valid = await verify(...args)
+            signalStarted()
+            await released
+            return valid
+          })()
+          return completion
+        },
+        finish: async () => {
+          release()
+          await completion
+        },
+      }
+    }
+    const initial = createVerificationGate()
+    const peer = createVerificationGate()
+    const verification = vi
+      .spyOn(subtle, "verify")
+      .mockImplementationOnce(initial.implementation)
+      .mockImplementationOnce(peer.implementation)
+    const drainContinuations = () =>
+      new Promise<void>((resolve) => {
+        const channel = new MessageChannel()
+        channel.port1.onmessage = () => {
+          channel.port1.close()
+          channel.port2.close()
+          resolve()
+        }
+        channel.port2.postMessage("profile-cache-read-continuations-settled")
+      })
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)
+    const view = renderProfileSync({ queryClient, signingKey: mockSigningKey })
+    try {
+      await act(async () => {
+        await initial.started
+      })
+      expect(view.result.current.user?.id).toBe("noop-bootstrap-first")
+      localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, secondEnvelope)
+      await act(async () => {
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: eventKey,
+            newValue:
+              eventKey === PROFILE_CACHE_STORAGE_KEY
+                ? secondEnvelope
+                : String(PROFILE_CACHE_SCHEMA_VERSION),
+            storageArea: localStorage,
+          })
+        )
+        await peer.started
+      })
+      expect(verification).toHaveBeenCalledTimes(2)
+      await act(async () => {
+        await initial.finish()
+        await drainContinuations()
+      })
+      expect(view.result.current.user?.id).toBe("noop-bootstrap-first")
+      await act(async () => {
+        await peer.finish()
+        await drainContinuations()
+      })
+      expect(view.result.current.user).toMatchObject({
+        id: "noop-bootstrap-second",
+        full_name: "Newer cross-tab snapshot",
+      })
+      expect(useAuthStore.getState().user).toEqual(view.result.current.user)
+      expect(queryClient.getQueryData(currentUserQueryKey)).toEqual(view.result.current.user)
+      expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(secondEnvelope)
+    } finally {
+      view.unmount()
+      await act(async () => {
+        await Promise.all([initial.finish(), peer.finish()])
+        await drainContinuations()
+      })
+      queryClient.clear()
+    }
+  }
+)

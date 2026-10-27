@@ -16,7 +16,7 @@ on:
         description: "Node.js version for npm audit"
         required: false
         type: string
-        default: "24"
+        default: "24.21.0"
       run-pip-audit:
         description: "Run pip-audit for Python dependencies"
         required: false

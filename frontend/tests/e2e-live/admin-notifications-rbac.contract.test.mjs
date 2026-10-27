@@ -252,12 +252,16 @@ test("notification queue contracts lead from the admin route to a server-protect
     /beforeLoad: \(\{ context \}\) =>\s*evaluateAdminGuard\(\s*import\.meta\.env\.SSR\s*\?\s*\{\s*user: context\.auth\.isAuth \? context\.auth\.user : null,\s*loading: context\.auth\.loading,\s*\}\s*:\s*useAuthStore\.getState\(\)\s*\)/u,
     "SSR request context and client auth state both enforce the admin role"
   )
-  requireMatch(feature, /adminDeadLetterQueueQueryOptions\(\)/u, "page fetches the live queue")
+  requireMatch(
+    feature,
+    /adminDeadLetterQueueQueryOptions\(\{\s*limit: ADMIN_DEAD_LETTER_PAGE_SIZE,\s*offset: deadLetterOffset,?\s*\}\)/u,
+    "page fetches the live queue with its bounded page size and current offset"
+  )
   requireMatch(feature, /admin:notifications\.title/u, "page renders the localized admin title")
   requireMatch(
     query,
-    /return fetchDeadLetterQueue\(undefined, signal\)/u,
-    "query uses the production API helper"
+    /return fetchDeadLetterQueue\(params, signal\)/u,
+    "query forwards the requested page and abort signal to the production API helper"
   )
   requireMatch(
     api,
