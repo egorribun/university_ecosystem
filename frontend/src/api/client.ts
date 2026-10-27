@@ -77,13 +77,6 @@ const captureRequestSession = (): (() => boolean) => {
   return () => epoch === getSessionEpoch() && generation === getBrowserSessionGeneration()
 }
 
-const assertCurrentRequestSession = (config: InternalAxiosRequestConfig): void => {
-  const ownsSession = (config as ApiRequestConfig).__sessionIsCurrent
-  if (typeof ownsSession === "function" && !ownsSession()) {
-    throw new axios.CanceledError(SESSION_CHANGED_CANCEL_MESSAGE, config)
-  }
-}
-
 const api = axios.create({
   baseURL: import.meta.env.DEV ? devBase : prodBase,
   withCredentials: true,
@@ -576,6 +569,22 @@ const isFailedRotationAuthRecoveryRequest = (config: InternalAxiosRequestConfig)
   )
 }
 
+const assertCurrentRequestSession = (config: InternalAxiosRequestConfig): void => {
+  if (
+    !isSsrRuntime &&
+    hasStaleBrowserSessionBinding() &&
+    !isSessionBootstrapRequest(config) &&
+    !isFailedRotationAuthRecoveryRequest(config)
+  ) {
+    throw new axios.CanceledError(SESSION_CHANGED_CANCEL_MESSAGE, config)
+  }
+
+  const ownsSession = (config as ApiRequestConfig).__sessionIsCurrent
+  if (typeof ownsSession === "function" && !ownsSession()) {
+    throw new axios.CanceledError(SESSION_CHANGED_CANCEL_MESSAGE, config)
+  }
+}
+
 api.interceptors.request.use(async (config) => {
   const candidate = config as InternalAxiosRequestConfig & ApiRequestConfig
 
@@ -605,16 +614,9 @@ api.interceptors.request.use(async (config) => {
   // A newly-started request from an old tab otherwise captures the remote
   // generation and can dispatch with that tab's browser-wide authentication
   // cookie. Keep only the two read-only requests required to identify and
-  // establish the current profile. Missing generation retains live-network
-  // auth behavior when browser storage is unavailable.
-  if (
-    !isSsrRuntime &&
-    hasStaleBrowserSessionBinding() &&
-    !isSessionBootstrapRequest(config) &&
-    !isFailedRotationAuthRecoveryRequest(config)
-  ) {
-    throw new axios.CanceledError(SESSION_CHANGED_CANCEL_MESSAGE, config)
-  }
+  // establish the current profile. Missing generation without an unresolved
+  // failed-rotation receipt retains live-network auth behavior.
+  if (!isSsrRuntime) assertCurrentRequestSession(config)
 
   // Mutation dedup: reject duplicate in-flight requests with the same Idempotency-Key.
   if (config.method && ["post", "put", "patch", "delete"].includes(config.method)) {

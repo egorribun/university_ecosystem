@@ -183,7 +183,15 @@ const lockedError = (retryAfter?: string): AxiosError => {
   return err
 }
 
+const resetBrowserSessionState = () => {
+  localStorage.clear()
+  rotateBrowserSession()
+  localStorage.clear()
+  acceptBrowserSessionGeneration()
+}
+
 beforeEach(() => {
+  resetBrowserSessionState()
   vi.clearAllMocks()
   mocks.i18n.resolvedLanguage = "en"
   mocks.i18n.language = "en"
@@ -196,7 +204,9 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.unstubAllEnvs()
+  resetBrowserSessionState()
 })
 
 // ---------------------------------------------------------------------------
@@ -303,6 +313,102 @@ describe("login", () => {
     expect(w.updatePendingMfa).toHaveBeenCalledWith(null)
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: SPOTIFY_REAUTH_EVENT }))
     dispatch.mockRestore()
+  })
+
+  it("keeps login online when rotation storage fails for the exact current snapshot", async () => {
+    const key = "ecosystem.session.generation.v1"
+    const previous = localStorage.getItem(key)
+    const original = JSON.stringify({ nonce: "owned-generation", hash: "profile-owned" })
+    localStorage.setItem(key, original)
+    acceptBrowserSessionGeneration()
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem").mockImplementationOnce(() => {
+      throw new DOMException("blocked", "SecurityError")
+    })
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValueOnce({
+      status: 200,
+      data: { user: fullUser({ id: "new-account" }), session: { signing_key: "new-key" } },
+    })
+    const { result } = renderApi(w)
+
+    try {
+      await act(async () => {
+        await result.current.login("new@example.com", "password")
+      })
+
+      expect(mocks.apiPost).toHaveBeenCalledWith(
+        "/auth/login",
+        expect.any(URLSearchParams),
+        expect.anything()
+      )
+      expect(w.setUser).toHaveBeenCalledWith(expect.objectContaining({ id: "new-account" }))
+      expect(w.updateSessionSigningKey).toHaveBeenCalledWith("new-key")
+      expect(localStorage.getItem(key)).toBe(original)
+    } finally {
+      storageWrite.mockRestore()
+      if (previous === null) localStorage.removeItem(key)
+      else localStorage.setItem(key, previous)
+      acceptBrowserSessionGeneration()
+    }
+  })
+
+  it("blocks login and reports a session-change error when storage is unreadable", async () => {
+    const storageRead = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError")
+    })
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem")
+    const w = makeWires()
+    const { result } = renderApi(w)
+
+    try {
+      await expect(
+        act(async () => {
+          await result.current.login("new@example.com", "password")
+        })
+      ).rejects.toThrow("login.sessionChanged")
+      expect(mocks.apiPost).not.toHaveBeenCalled()
+      expect(storageWrite).not.toHaveBeenCalled()
+      expect(w.setAuthOperation).not.toHaveBeenCalled()
+    } finally {
+      storageWrite.mockRestore()
+      storageRead.mockRestore()
+    }
+  })
+
+  it("allows a stale tab login only after verified fresh-generation takeover", async () => {
+    const key = "ecosystem.session.generation.v1"
+    const previous = localStorage.getItem(key)
+    localStorage.setItem(key, JSON.stringify({ nonce: "tab-a", hash: "profile-a" }))
+    acceptBrowserSessionGeneration()
+    localStorage.setItem(key, JSON.stringify({ nonce: "tab-b", hash: "profile-b" }))
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValueOnce({
+      status: 200,
+      data: { user: fullUser({ id: "login-account" }), session: { signing_key: "new-key" } },
+    })
+    const { result } = renderApi(w)
+
+    try {
+      await act(async () => {
+        await result.current.login("new@example.com", "password")
+      })
+
+      expect(mocks.apiPost).toHaveBeenCalledWith(
+        "/auth/login",
+        expect.any(URLSearchParams),
+        expect.anything()
+      )
+      expect(w.setUser).toHaveBeenCalledWith(expect.objectContaining({ id: "login-account" }))
+      expect(JSON.parse(localStorage.getItem(key) ?? "null")).toEqual({
+        nonce: expect.any(String),
+        hash: null,
+      })
+      expect(JSON.parse(localStorage.getItem(key) ?? "null").nonce).not.toBe("tab-b")
+    } finally {
+      if (previous === null) localStorage.removeItem(key)
+      else localStorage.setItem(key, previous)
+      acceptBrowserSessionGeneration()
+    }
   })
 
   it("does not request Spotify reauthorization for an unconnected login profile", async () => {
@@ -1084,6 +1190,92 @@ describe("submitMfaChallenge", () => {
       expect(mocks.prefetchDashboardEvents).toHaveBeenCalledWith(expect.anything())
     })
     expect(mocks.prefetchEventsListQuery).not.toHaveBeenCalled()
+  })
+
+  it("keeps unauthenticated MFA online while retaining the server key after a failed rotation", async () => {
+    const key = "ecosystem.session.generation.v1"
+    const previous = localStorage.getItem(key)
+    const original = JSON.stringify({ nonce: "owned-generation", hash: "profile-owned" })
+    localStorage.setItem(key, original)
+    acceptBrowserSessionGeneration()
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem").mockImplementationOnce(() => {
+      throw new DOMException("blocked", "SecurityError")
+    })
+    const w = makeWires({ pendingMfa: { reason: "login" } as PendingMfaState })
+    mocks.apiPost.mockResolvedValueOnce({
+      status: 200,
+      data: { user: fullUser({ id: "mfa-account" }), session: { signing_key: "mfa-key" } },
+    })
+    const { result } = renderApi(w)
+
+    try {
+      await act(async () => {
+        await result.current.submitMfaChallenge({ code: "123456", challengeToken: "ct" })
+      })
+
+      expect(mocks.apiPost).toHaveBeenCalledWith(
+        "/auth/mfa/verify",
+        expect.objectContaining({ code: "123456", challenge_token: "ct" }),
+        expect.anything()
+      )
+      expect(w.setUser).toHaveBeenCalledWith(expect.objectContaining({ id: "mfa-account" }))
+      expect(w.updateSessionSigningKey).toHaveBeenCalledWith("mfa-key")
+      expect(localStorage.getItem(key)).toBe(original)
+    } finally {
+      storageWrite.mockRestore()
+      if (previous === null) localStorage.removeItem(key)
+      else localStorage.setItem(key, previous)
+      acceptBrowserSessionGeneration()
+    }
+  })
+
+  it("blocks unauthenticated MFA from an invalid generation without sending the request", async () => {
+    const key = "ecosystem.session.generation.v1"
+    const previous = localStorage.getItem(key)
+    localStorage.setItem(key, "not-json")
+    acceptBrowserSessionGeneration()
+    const w = makeWires({ pendingMfa: { reason: "login" } as PendingMfaState })
+    const { result } = renderApi(w)
+
+    try {
+      await expect(
+        act(async () => {
+          await result.current.submitMfaChallenge({ code: "123456", challengeToken: "ct" })
+        })
+      ).rejects.toThrow("login.sessionChanged")
+      expect(mocks.apiPost).not.toHaveBeenCalled()
+      expect(w.setAuthOperation).not.toHaveBeenCalled()
+      expect(w.updateSessionSigningKey).not.toHaveBeenCalled()
+    } finally {
+      if (previous === null) localStorage.removeItem(key)
+      else localStorage.setItem(key, previous)
+      acceptBrowserSessionGeneration()
+    }
+  })
+  it("does not let a stale unauthenticated MFA challenge replace a successor session", async () => {
+    const key = "ecosystem.session.generation.v1"
+    const previous = localStorage.getItem(key)
+    localStorage.setItem(key, JSON.stringify({ nonce: "tab-a", hash: "profile-a" }))
+    acceptBrowserSessionGeneration()
+    localStorage.setItem(key, JSON.stringify({ nonce: "tab-b", hash: "profile-b" }))
+    const w = makeWires({ pendingMfa: { reason: "login" } as PendingMfaState })
+    const { result } = renderApi(w)
+
+    try {
+      await expect(
+        act(async () => {
+          await result.current.submitMfaChallenge({ code: "123456", challengeToken: "old-ct" })
+        })
+      ).rejects.toThrow("login.sessionChanged")
+      expect(mocks.apiPost).not.toHaveBeenCalled()
+      expect(localStorage.getItem(key)).toContain("tab-b")
+      expect(w.setAuthOperation).not.toHaveBeenCalled()
+      expect(w.setUser).not.toHaveBeenCalled()
+    } finally {
+      if (previous === null) localStorage.removeItem(key)
+      else localStorage.setItem(key, previous)
+      acceptBrowserSessionGeneration()
+    }
   })
 
   it("does not request Spotify reauthorization for an unconnected login MFA profile", async () => {

@@ -3,8 +3,10 @@ import { Buffer } from "node:buffer"
 import { readFile } from "node:fs/promises"
 import { clearTimeout as clearNodeTimeout, setTimeout as setNodeTimeout } from "node:timers"
 import { URL } from "node:url"
+import { runInNewContext } from "node:vm"
 import test from "node:test"
 const { replacePrecacheRevision } = await import("./pwa-precache-revision.ts")
+const { readPrecachedModuleAppBundleEvidence } = await import("./pwa-app-bundle-evidence.ts")
 
 const primaryClickNavigationBarrierPattern =
   /await Promise\.all\(\[\s*page\.waitForEvent\("framenavigated", \{\s*predicate: \(frame\) => frame === page\.mainFrame\(\),\s*timeout: 15_000,\s*\}\),\s*updateReloadButton\(page\)\.click\(\),?\s*\]\)/u
@@ -17,6 +19,7 @@ const workboxConfigUrl = new URL("../../scripts/workbox-config.mjs", import.meta
 const serviceWorkerRegistrationUrl = new URL("../../src/push/register-sw.ts", import.meta.url)
 const serviceWorkerUrl = new URL("../../src/sw.ts", import.meta.url)
 const updateProxyUrl = new URL("./pwa-update-proxy.ts", import.meta.url)
+const appBundleEvidenceUrl = new URL("./pwa-app-bundle-evidence.ts", import.meta.url)
 
 const [
   spec,
@@ -27,6 +30,7 @@ const [
   serviceWorkerRegistration,
   serviceWorker,
   updateProxy,
+  appBundleEvidence,
 ] = await Promise.all([
   readFile(specUrl, "utf8"),
   readFile(configUrl, "utf8"),
@@ -36,11 +40,64 @@ const [
   readFile(serviceWorkerRegistrationUrl, "utf8"),
   readFile(serviceWorkerUrl, "utf8"),
   readFile(updateProxyUrl, "utf8"),
+  readFile(appBundleEvidenceUrl, "utf8"),
 ])
 
 function assertProxySource(pattern, message) {
   assert.ok(pattern.test(updateProxy), message)
 }
+
+test("selects the same-origin precached module bundle instead of an earlier classic script", async () => {
+  const appOrigin = "http://localhost:30231"
+  const appBundlePath = "/assets/index-BdI8C6Li.js"
+  const appBundleUrl = new URL(appBundlePath, appOrigin).toString()
+  const cachedRequestUrls = [
+    new URL("/theme-init.js", appOrigin).toString(),
+    appBundleUrl,
+    "https://cdn.invalid/assets/external.js",
+  ]
+  const pageContext = {
+    document: {
+      scripts: [
+        { type: "", src: new URL("/theme-init.js", appOrigin).toString() },
+        { type: "module", src: appBundleUrl },
+        { type: "module", src: new URL("/assets/not-cached.js", appOrigin).toString() },
+        { type: "module", src: "https://cdn.invalid/assets/external.js" },
+      ],
+    },
+    location: { origin: appOrigin },
+    caches: {
+      async keys() {
+        return ["workbox-precache-test", "runtime-cache"]
+      },
+      async open(cacheName) {
+        assert.equal(cacheName, "workbox-precache-test")
+        return {
+          async keys() {
+            return cachedRequestUrls.map((url) => ({ url }))
+          },
+        }
+      },
+    },
+    URL,
+  }
+  const pageCallbackSource = "(" + readPrecachedModuleAppBundleEvidence.toString() + ")"
+  const pageCallback = runInNewContext(pageCallbackSource, pageContext)
+
+  const evidence = await pageCallback()
+  assert.equal(evidence.appBundlePath, appBundlePath)
+  assert.ok(
+    evidence.precacheEntries.some((entry) => entry.path === "/theme-init.js"),
+    "the earlier classic script remains present in the real precache evidence"
+  )
+
+  cachedRequestUrls.splice(1, 1)
+  assert.equal(
+    (await pageCallback()).appBundlePath,
+    null,
+    "a precached classic script cannot stand in for a missing precached module bundle"
+  )
+})
 
 test("rewrites only the selected generated Workbox precache record", () => {
   const siblingEntry = '{"revision":"sibling-revision","url":"assets/route-chunk.js"}'
@@ -209,6 +266,12 @@ test("live PWA update replaces the active precache and proves the new app bundle
     /updates the active service worker online and serves the new precached bundle offline/u
   )
   assert.match(spec, /replacePrecacheRevision/u)
+  assert.match(spec, /page\.evaluate\(readPrecachedModuleAppBundleEvidence\)/u)
+  assert.ok(appBundleEvidence.includes('script.type === "module"'))
+  assert.ok(appBundleEvidence.includes('script.pathname.startsWith("/assets/")'))
+  assert.ok(
+    appBundleEvidence.includes("entry.origin === location.origin && entry.path === script.pathname")
+  )
   assert.match(spec, /import \{ replacePrecacheRevision \} from ["']\.\/pwa-precache-revision["']/u)
   assert.match(spec, /startPwaUpdateProxy\(context,\s*ownedSessionOrigin\(\)\)/u)
   assert.match(spec, /setWorkerResponseTransform/u)

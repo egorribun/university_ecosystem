@@ -265,11 +265,18 @@ const createNewsListQueryFn =
     normalized: NormalizedNewsListFilters,
     queryKey: NewsListQueryKey,
     owner: string | null,
-    anonymous = false
+    anonymous = false,
+    capturedSessionEpoch = typeof window === "undefined" ? null : getSessionEpoch()
   ) =>
   async (queryContext: { pageParam?: string | null; signal?: AbortSignal }) => {
     const { pageParam } = queryContext
     if (anonymous) {
+      const assertUnchangedLocalEpoch = () => {
+        if (capturedSessionEpoch !== null && getSessionEpoch() !== capturedSessionEpoch) {
+          throw new DOMException("Session changed", "AbortError")
+        }
+      }
+      assertUnchangedLocalEpoch()
       // Anonymous reads cover both an unconfirmed account and a stale session
       // generation observed from another tab. The transport omits cookies and
       // avoids Axios even if a successor account cookie exists.
@@ -282,6 +289,7 @@ const createNewsListQueryFn =
         cursor: pageParam,
         signal: hasStaleBrowserSessionBinding() ? undefined : queryContext.signal,
       })
+      assertUnchangedLocalEpoch()
       if (!response.ok) throw new Error(`News request failed with status ${response.status}`)
       return parsePaginatedNewsResponse(response.data, normalized.limit)
     }

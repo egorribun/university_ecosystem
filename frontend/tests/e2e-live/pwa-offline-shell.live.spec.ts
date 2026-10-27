@@ -2,6 +2,7 @@ import { expect, ownedSessionOrigin, test } from "./fixtures"
 import type { Page, Request } from "@playwright/test"
 import { startPwaUpdateProxy } from "./pwa-update-proxy"
 import { replacePrecacheRevision } from "./pwa-precache-revision"
+import { readPrecachedModuleAppBundleEvidence } from "./pwa-app-bundle-evidence"
 
 const CONTROLLER_CHANGE_COUNT = "__pwa_update_controllerchange_count"
 const PWA_UPDATE_LIFECYCLE_DIAG_PREFIX = "PWA_UPDATE_LIFECYCLE_DIAG "
@@ -351,31 +352,7 @@ test.describe("PWA offline app shell on the live stack", () => {
         CONTROLLER_CHANGE_COUNT
       )
 
-      const initialEvidence = await page.evaluate(async () => {
-        const bundlePaths = [...document.scripts]
-          .map((script) => (script.src ? new URL(script.src).pathname : null))
-          .filter((pathname): pathname is string => pathname?.endsWith(".js") ?? false)
-        const precacheNames = (await caches.keys()).filter((name) =>
-          name.startsWith("workbox-precache")
-        )
-        const precacheEntries = (
-          await Promise.all(
-            precacheNames.map(async (cacheName) => {
-              const cache = await caches.open(cacheName)
-              return (await cache.keys()).map((request) => ({
-                cacheName,
-                requestUrl: request.url,
-                path: new URL(request.url).pathname,
-              }))
-            })
-          )
-        ).flat()
-        const appBundlePath = bundlePaths.find((path) =>
-          precacheEntries.some((entry) => entry.path === path)
-        )
-
-        return { appBundlePath: appBundlePath ?? null, precacheEntries }
-      })
+      const initialEvidence = await page.evaluate(readPrecachedModuleAppBundleEvidence)
 
       expect(initialEvidence.appBundlePath).not.toBeNull()
       const appBundlePath = initialEvidence.appBundlePath!
