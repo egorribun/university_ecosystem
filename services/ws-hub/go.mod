@@ -32,7 +32,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/lestrrat-go/httprc/v3 v3.0.6
 	github.com/moby/moby/api v1.56.1
-	github.com/quic-go/quic-go v0.63.0
+	github.com/quic-go/quic-go v0.64.1
 	github.com/quic-go/webtransport-go v0.13.0
 	github.com/sony/gobreaker/v2 v2.4.0
 	github.com/testcontainers/testcontainers-go v0.44.0
