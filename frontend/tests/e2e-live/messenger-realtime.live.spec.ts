@@ -256,6 +256,7 @@ test.describe("live messenger delivery", () => {
       viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 },
     })
 
+    const senderStyleFailures: unknown[] = []
     try {
       const receiverPage = await receiverContext.newPage()
       const message = `live-ws-${crypto.randomUUID()}`
@@ -408,6 +409,152 @@ test.describe("live messenger delivery", () => {
       await expect(messageLog.getByText(editedContent, { exact: true })).toBeVisible()
       await expect(messageLog.getByText(message, { exact: true })).toHaveCount(0)
 
+      try {
+        for (const language of ["ru", "en"] as const) {
+          await page.context().addCookies([
+            { name: "ue:language", value: language, url: LIVE_BASE_URL },
+            { name: "ue-mode", value: "system", url: LIVE_BASE_URL },
+          ])
+          await page.evaluate((selectedLanguage) => {
+            localStorage.setItem("ue:language", selectedLanguage)
+            localStorage.setItem("ue-mode", "system")
+          }, language)
+          await page.goto(`/messenger/${chatId}`)
+          await expect(page.locator("html")).toHaveAttribute("lang", language)
+
+          for (const scheme of ["light", "dark"] as const) {
+            await page.emulateMedia({ colorScheme: scheme })
+            await expect
+              .poll(() => page.locator("html").evaluate((html) => html.dataset.colorScheme))
+              .toBe(scheme)
+
+            const localizedSenderLog = page.getByRole("log", {
+              name: language === "ru" ? "Сообщения чата" : "Chat messages",
+              exact: true,
+            })
+            const editedRow = localizedSenderLog
+              .getByText(editedContent, { exact: true })
+              .locator(
+                "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
+              )
+            const bubble = editedRow.locator(".messenger-bubble-sent")
+            await expect(bubble).toBeVisible()
+            await expect(editedRow.locator(".text-micro.font-medium.lowercase")).toHaveText(
+              language === "ru" ? "(изменено)" : "(edited)"
+            )
+            await page.mouse.move(0, 0)
+            await page.evaluate(() => {
+              const activeElement = document.activeElement
+              if (activeElement instanceof HTMLElement) activeElement.blur()
+            })
+            await bubble.evaluate(async (element) => {
+              const row = element.closest(".group") ?? element
+              const opacityTransitions = row
+                .getAnimations({ subtree: true })
+                .filter((animation) => {
+                  const transition = animation as Animation & { transitionProperty?: string }
+                  return (
+                    animation.playState === "running" && transition.transitionProperty === "opacity"
+                  )
+                })
+              await Promise.all(
+                opacityTransitions.map((animation) => animation.finished.catch(() => undefined))
+              )
+            })
+            const rendered = await bubble.evaluate((element) => {
+              const effective = (target: Element | null) => {
+                if (!target) return null
+                let opacity = 1
+                for (
+                  let current: Element | null = target;
+                  current;
+                  current = current.parentElement
+                ) {
+                  const layer = Number.parseFloat(window.getComputedStyle(current).opacity)
+                  if (!Number.isFinite(layer)) return null
+                  opacity *= layer
+                }
+                return {
+                  color: window.getComputedStyle(target).color,
+                  opacity,
+                }
+              }
+              const status = element.querySelector('[role="img"]')
+              return {
+                backgroundImage: window.getComputedStyle(element).backgroundImage,
+                body: effective(element.querySelector("p.wrap-break-word")),
+                timestamp: effective(element.querySelector(".text-micro.font-bold.uppercase")),
+                edited: effective(element.querySelector(".text-micro.font-medium.lowercase")),
+                status: effective(status?.querySelector("svg") ?? null),
+                statusLabel: status?.getAttribute("aria-label") ?? null,
+                actions: [...element.querySelectorAll<HTMLButtonElement>("button[aria-label]")].map(
+                  (button) => {
+                    const icon = button.querySelector("svg")
+                    const sample = effective(icon ?? button)
+                    return {
+                      label: button.getAttribute("aria-label"),
+                      color: sample?.color ?? "",
+                      opacity: sample?.opacity ?? 0,
+                    }
+                  }
+                ),
+              }
+            })
+            expect(rendered.backgroundImage).toMatch(/linear-gradient/iu)
+            for (const sample of [
+              rendered.body,
+              rendered.timestamp,
+              rendered.edited,
+              rendered.status,
+            ]) {
+              expect(sample).not.toBeNull()
+              expect(sample?.color).toBe("rgb(255, 255, 255)")
+              expect(sample?.opacity).toBeCloseTo(1, 3)
+            }
+            expect(rendered.statusLabel).toMatch(
+              language === "ru"
+                ? /^(Отправлено|Прочитано получателем)$/u
+                : /^(Sent|Read by recipient)$/u
+            )
+            const actionLabels =
+              language === "ru"
+                ? ["Ответить", "Переслать", "Изменить сообщение", "Удалить сообщение"]
+                : ["Reply", "Forward", "Edit message", "Delete message"]
+            expect(rendered.actions.map(({ label }) => label).sort()).toEqual(
+              [...actionLabels].sort()
+            )
+            for (const action of rendered.actions) {
+              expect(action.color).toBe("rgb(255, 255, 255)")
+              expect(action.opacity).toBeGreaterThanOrEqual(0.8)
+            }
+          }
+        }
+      } catch (error) {
+        senderStyleFailures.push(error)
+      } finally {
+        try {
+          await page.context().addCookies([
+            { name: "ue:language", value: "ru", url: LIVE_BASE_URL },
+            { name: "ue-mode", value: "system", url: LIVE_BASE_URL },
+          ])
+          await page.evaluate(() => {
+            localStorage.setItem("ue:language", "ru")
+            localStorage.setItem("ue-mode", "system")
+          })
+          await page.emulateMedia({ colorScheme: "light" })
+          await page.goto(`/messenger/${chatId}`)
+        } catch (restorationError) {
+          senderStyleFailures.push(restorationError)
+        }
+      }
+
+      if (senderStyleFailures.length === 1) throw senderStyleFailures[0]
+      if (senderStyleFailures.length > 1) {
+        throw new AggregateError(
+          senderStyleFailures,
+          "Messenger style verification and state restoration failed"
+        )
+      }
       const receivedEditedMessageRow = messageLog
         .getByText(editedContent, { exact: true })
         .locator(
@@ -1113,6 +1260,151 @@ test.describe("live messenger delivery", () => {
         "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
       )
       await expect(receiverReplyRow.getByText(parentContent, { exact: true })).toBeVisible()
+
+      const styleFailures: unknown[] = []
+      try {
+        for (const language of ["ru", "en"] as const) {
+          await page.context().addCookies([
+            { name: "ue:language", value: language, url: LIVE_BASE_URL },
+            { name: "ue-mode", value: "system", url: LIVE_BASE_URL },
+          ])
+          await page.evaluate((selectedLanguage) => {
+            localStorage.setItem("ue:language", selectedLanguage)
+            localStorage.setItem("ue-mode", "system")
+          }, language)
+          await page.goto(`/messenger/${activeChatId}`)
+          await expect(page.locator("html")).toHaveAttribute("lang", language)
+
+          for (const scheme of ["light", "dark"] as const) {
+            await page.emulateMedia({ colorScheme: scheme })
+            await expect
+              .poll(() => page.locator("html").evaluate((html) => html.dataset.colorScheme))
+              .toBe(scheme)
+
+            const localizedSenderLog = page.getByRole("log", {
+              name: language === "ru" ? "Сообщения чата" : "Chat messages",
+              exact: true,
+            })
+            const localizedReplyRow = localizedSenderLog
+              .getByText(replyContent, { exact: true })
+              .locator(
+                "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
+              )
+            const bubble = localizedReplyRow.locator(".messenger-bubble-sent")
+            await expect(bubble).toBeVisible()
+            await expect(localizedReplyRow.locator(".border-l-2 p")).toHaveCount(2)
+            await page.mouse.move(0, 0)
+            await page.evaluate(() => {
+              const activeElement = document.activeElement
+              if (activeElement instanceof HTMLElement) activeElement.blur()
+            })
+            await bubble.evaluate(async (element) => {
+              const row = element.closest(".group") ?? element
+              const opacityTransitions = row
+                .getAnimations({ subtree: true })
+                .filter((animation) => {
+                  const transition = animation as Animation & { transitionProperty?: string }
+                  return (
+                    animation.playState === "running" && transition.transitionProperty === "opacity"
+                  )
+                })
+              await Promise.all(
+                opacityTransitions.map((animation) => animation.finished.catch(() => undefined))
+              )
+            })
+            const rendered = await bubble.evaluate((element) => {
+              const effective = (target: Element | null) => {
+                if (!target) return null
+                let opacity = 1
+                for (
+                  let current: Element | null = target;
+                  current;
+                  current = current.parentElement
+                ) {
+                  const layer = Number.parseFloat(window.getComputedStyle(current).opacity)
+                  if (!Number.isFinite(layer)) return null
+                  opacity *= layer
+                }
+                return {
+                  color: window.getComputedStyle(target).color,
+                  opacity,
+                }
+              }
+              const status = element.querySelector('[role="img"]')
+              return {
+                backgroundImage: window.getComputedStyle(element).backgroundImage,
+                body: effective(element.querySelector("p.wrap-break-word")),
+                timestamp: effective(element.querySelector(".text-micro.font-bold.uppercase")),
+                reply: [...element.querySelectorAll(".border-l-2 p")].map(effective),
+                status: effective(status?.querySelector("svg") ?? null),
+                statusLabel: status?.getAttribute("aria-label") ?? null,
+                actions: [...element.querySelectorAll<HTMLButtonElement>("button[aria-label]")].map(
+                  (button) => {
+                    const icon = button.querySelector("svg")
+                    const sample = effective(icon ?? button)
+                    return {
+                      label: button.getAttribute("aria-label"),
+                      color: sample?.color ?? "",
+                      opacity: sample?.opacity ?? 0,
+                    }
+                  }
+                ),
+              }
+            })
+            expect(rendered.backgroundImage).toMatch(/linear-gradient/iu)
+            for (const sample of [
+              rendered.body,
+              rendered.timestamp,
+              rendered.status,
+              ...rendered.reply,
+            ]) {
+              expect(sample).not.toBeNull()
+              expect(sample?.color).toBe("rgb(255, 255, 255)")
+              expect(sample?.opacity).toBeCloseTo(1, 3)
+            }
+            expect(rendered.statusLabel).toMatch(
+              language === "ru"
+                ? /^(Отправлено|Прочитано получателем)$/u
+                : /^(Sent|Read by recipient)$/u
+            )
+            const actionLabels =
+              language === "ru"
+                ? ["Ответить", "Переслать", "Изменить сообщение", "Удалить сообщение"]
+                : ["Reply", "Forward", "Edit message", "Delete message"]
+            expect(rendered.actions.map(({ label }) => label).sort()).toEqual(
+              [...actionLabels].sort()
+            )
+            for (const action of rendered.actions) {
+              expect(action.color).toBe("rgb(255, 255, 255)")
+              expect(action.opacity).toBeGreaterThanOrEqual(0.8)
+            }
+          }
+        }
+      } catch (error) {
+        styleFailures.push(error)
+      } finally {
+        try {
+          await page.context().addCookies([
+            { name: "ue:language", value: "ru", url: LIVE_BASE_URL },
+            { name: "ue-mode", value: "system", url: LIVE_BASE_URL },
+          ])
+          await page.evaluate(() => {
+            localStorage.setItem("ue:language", "ru")
+            localStorage.setItem("ue-mode", "system")
+          })
+          await page.emulateMedia({ colorScheme: "light" })
+          await page.goto(`/messenger/${activeChatId}`)
+        } catch (error) {
+          styleFailures.push(error)
+        }
+      }
+      if (styleFailures.length === 1) throw styleFailures[0]
+      if (styleFailures.length > 1) {
+        throw new AggregateError(
+          styleFailures,
+          "Messenger style verification and state restoration failed"
+        )
+      }
     } finally {
       try {
         if (senderLog && chatId && replyMessage) {
@@ -1312,6 +1604,154 @@ test.describe("live messenger delivery", () => {
         .filter({ hasText: sourceContent })
       await expect(receiverForwardRow).toHaveCount(1)
       await expect(receiverForwardRow.getByText(sourceContent, { exact: true })).toBeVisible()
+
+      const styleFailures: unknown[] = []
+      try {
+        for (const language of ["ru", "en"] as const) {
+          await page.context().addCookies([
+            { name: "ue:language", value: language, url: LIVE_BASE_URL },
+            { name: "ue-mode", value: "system", url: LIVE_BASE_URL },
+          ])
+          await page.evaluate((selectedLanguage) => {
+            localStorage.setItem("ue:language", selectedLanguage)
+            localStorage.setItem("ue-mode", "system")
+          }, language)
+          await page.goto(`/messenger/${activeChatId}`)
+          await expect(page.locator("html")).toHaveAttribute("lang", language)
+
+          for (const scheme of ["light", "dark"] as const) {
+            await page.emulateMedia({ colorScheme: scheme })
+            await expect
+              .poll(() => page.locator("html").evaluate((html) => html.dataset.colorScheme))
+              .toBe(scheme)
+
+            const localizedSenderLog = page.getByRole("log", {
+              name: language === "ru" ? "Сообщения чата" : "Chat messages",
+              exact: true,
+            })
+            const attributionText =
+              language === "ru" ? `Переслано от ${senderName}` : `Forwarded from ${senderName}`
+            const localizedForwardRow = localizedSenderLog
+              .getByText(attributionText, { exact: true })
+              .locator(
+                "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
+              )
+              .filter({ hasText: sourceContent })
+            await expect(localizedForwardRow).toHaveCount(1)
+            const bubble = localizedForwardRow.locator(".messenger-bubble-sent")
+            await expect(bubble).toBeVisible()
+            await page.mouse.move(0, 0)
+            await page.evaluate(() => {
+              const activeElement = document.activeElement
+              if (activeElement instanceof HTMLElement) activeElement.blur()
+            })
+            await bubble.evaluate(async (element) => {
+              const row = element.closest(".group") ?? element
+              const opacityTransitions = row
+                .getAnimations({ subtree: true })
+                .filter((animation) => {
+                  const transition = animation as Animation & { transitionProperty?: string }
+                  return (
+                    animation.playState === "running" && transition.transitionProperty === "opacity"
+                  )
+                })
+              await Promise.all(
+                opacityTransitions.map((animation) => animation.finished.catch(() => undefined))
+              )
+            })
+            const rendered = await bubble.evaluate((element) => {
+              const effective = (target: Element | null) => {
+                if (!target) return null
+                let opacity = 1
+                for (
+                  let current: Element | null = target;
+                  current;
+                  current = current.parentElement
+                ) {
+                  const layer = Number.parseFloat(window.getComputedStyle(current).opacity)
+                  if (!Number.isFinite(layer)) return null
+                  opacity *= layer
+                }
+                return {
+                  color: window.getComputedStyle(target).color,
+                  opacity,
+                }
+              }
+              const status = element.querySelector('[role="img"]')
+              return {
+                backgroundImage: window.getComputedStyle(element).backgroundImage,
+                body: effective(element.querySelector("p.wrap-break-word")),
+                timestamp: effective(element.querySelector(".text-micro.font-bold.uppercase")),
+                forwarded: effective(element.querySelector(".italic")),
+                status: effective(status?.querySelector("svg") ?? null),
+                statusLabel: status?.getAttribute("aria-label") ?? null,
+                actions: [...element.querySelectorAll<HTMLButtonElement>("button[aria-label]")].map(
+                  (button) => {
+                    const icon = button.querySelector("svg")
+                    const sample = effective(icon ?? button)
+                    return {
+                      label: button.getAttribute("aria-label"),
+                      color: sample?.color ?? "",
+                      opacity: sample?.opacity ?? 0,
+                    }
+                  }
+                ),
+              }
+            })
+            expect(rendered.backgroundImage).toMatch(/linear-gradient/iu)
+            for (const sample of [
+              rendered.body,
+              rendered.timestamp,
+              rendered.forwarded,
+              rendered.status,
+            ]) {
+              expect(sample).not.toBeNull()
+              expect(sample?.color).toBe("rgb(255, 255, 255)")
+              expect(sample?.opacity).toBeCloseTo(1, 3)
+            }
+            expect(rendered.statusLabel).toMatch(
+              language === "ru"
+                ? /^(Отправлено|Прочитано получателем)$/u
+                : /^(Sent|Read by recipient)$/u
+            )
+            const actionLabels =
+              language === "ru"
+                ? ["Ответить", "Переслать", "Изменить сообщение", "Удалить сообщение"]
+                : ["Reply", "Forward", "Edit message", "Delete message"]
+            expect(rendered.actions.map(({ label }) => label).sort()).toEqual(
+              [...actionLabels].sort()
+            )
+            for (const action of rendered.actions) {
+              expect(action.color).toBe("rgb(255, 255, 255)")
+              expect(action.opacity).toBeGreaterThanOrEqual(0.8)
+            }
+          }
+        }
+      } catch (error) {
+        styleFailures.push(error)
+      } finally {
+        try {
+          await page.context().addCookies([
+            { name: "ue:language", value: "ru", url: LIVE_BASE_URL },
+            { name: "ue-mode", value: "system", url: LIVE_BASE_URL },
+          ])
+          await page.evaluate(() => {
+            localStorage.setItem("ue:language", "ru")
+            localStorage.setItem("ue-mode", "system")
+          })
+          await page.emulateMedia({ colorScheme: "light" })
+          await page.goto(`/messenger/${activeChatId}`)
+        } catch (error) {
+          styleFailures.push(error)
+        }
+      }
+      if (styleFailures.length === 1) throw styleFailures[0]
+      if (styleFailures.length > 1) {
+        throw new AggregateError(
+          styleFailures,
+          "Messenger style verification and state restoration failed"
+        )
+      }
     } finally {
       try {
         if (senderLog && chatId && forwardedMessage) {

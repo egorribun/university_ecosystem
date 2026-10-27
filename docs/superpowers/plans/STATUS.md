@@ -2,6 +2,11 @@
 
 Обновлено: 2026-10-27 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Scoped AUD-301 local acceptance — published source d8f897f, 2026-10-27
+
+Source-bound accepted lower bound: **337/512 (65.8%)**, with 175 IDs unaccepted. This preserves the prior 336 IDs and adds only AUD-301. The page, event hook and two test blobs are unchanged in current `61458cdd`; the [dated audit entry](../../audits/AUDIT-2026-10.md#scoped-aud-301-local-acceptance-on-published-source-d8f897f-2026-10-27) records exact hashes, nine named JUnit cases and receipt scope.
+
+The evidence is local and finding-scoped. The R11 run included 18 frontend working-tree pins; the four AUD-301 targets were clean and matched published d8f897f. The d8 PR snapshot remains non-green, so this makes no hosted-validation, full-CI, merge or release claim.
 ## Scoped AUD-511 and AUD-329 source-bound acceptance — d8f897f, 2026-10-27
 
 Source-bound lower bound: **336/512 (65.6%)**, with 176 IDs unaccepted. This adds only AUD-511 and AUD-329 to the prior 334 accepted IDs. See the [dated audit entry](../../audits/AUDIT-2026-10.md#scoped-aud-511-and-aud-329-acceptance-on-source-d8f897f-2026-10-27) for exact source hashes and scope.
