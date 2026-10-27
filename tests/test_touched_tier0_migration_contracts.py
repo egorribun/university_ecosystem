@@ -185,6 +185,9 @@ class _MigrationOperations:
     def create_index(self, *args: Any, **kwargs: Any) -> None:
         self.schema_writes.append(("create_index", args, kwargs))
 
+    def drop_table(self, *args: Any, **kwargs: Any) -> None:
+        self.schema_writes.append(("drop_table", args, kwargs))
+
 
 def _bind_news_migration(
     monkeypatch: pytest.MonkeyPatch,
@@ -279,6 +282,132 @@ def test_news_media_migration_accepts_exact_existing_catalog_without_writes(
     assert any(
         "FROM pg_catalog.pg_constraint" in statement for statement in bind.statements
     )
+
+
+def test_news_media_upgrade_emits_expected_ddl_when_table_is_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bind = _CatalogBind()
+    migration, operations = _bind_news_migration(monkeypatch, bind=bind)
+    inspector_calls: list[tuple[str, str | None]] = []
+
+    def has_table(table: str, schema: str | None = None) -> bool:
+        inspector_calls.append((table, schema))
+        return False
+
+    monkeypatch.setattr(
+        migration.sa,
+        "inspect",
+        lambda _bind: SimpleNamespace(has_table=has_table),
+    )
+
+    migration.upgrade()
+
+    assert inspector_calls == [("news_media_assets", "synthetic_schema")]
+    assert operations.get_bind_calls == 1
+    assert bind.statements == ["SELECT current_schema()"]
+    assert [kind for kind, _args, _kwargs in operations.schema_writes] == [
+        "execute",
+        "execute",
+        "create_table",
+        "create_index",
+    ]
+    execute_statements = [
+        str(args[0])
+        for kind, args, _kwargs in operations.schema_writes
+        if kind == "execute"
+    ]
+    assert execute_statements == [
+        "SET LOCAL lock_timeout = '10s'",
+        "SET LOCAL statement_timeout = '60s'",
+    ]
+
+    create_table_kind, create_table_args, create_table_kwargs = (
+        operations.schema_writes[2]
+    )
+    assert create_table_kind == "create_table"
+    assert create_table_kwargs == {}
+    assert create_table_args[0] == "news_media_assets"
+    # Alembic binds emitted constraints to their Table before DDL compilation.
+    table = sa.Table(create_table_args[0], sa.MetaData(), *create_table_args[1:])
+    columns = {column.name: column for column in table.columns}
+    assert tuple(columns) == (
+        "id",
+        "storage_url",
+        "owner_user_id",
+        "news_id",
+        "created_at",
+    )
+    assert isinstance(columns["id"].type, sa.UUID)
+    assert columns["id"].nullable is False
+    assert columns["id"].server_default is None
+    assert isinstance(columns["storage_url"].type, sa.String)
+    assert columns["storage_url"].type.length == 2048
+    assert columns["storage_url"].nullable is False
+    assert columns["storage_url"].server_default is None
+    assert isinstance(columns["owner_user_id"].type, sa.UUID)
+    assert columns["owner_user_id"].nullable is True
+    assert columns["owner_user_id"].server_default is None
+    assert isinstance(columns["news_id"].type, sa.UUID)
+    assert columns["news_id"].nullable is True
+    assert columns["news_id"].server_default is None
+    assert isinstance(columns["created_at"].type, sa.DateTime)
+    assert columns["created_at"].type.timezone is True
+    assert columns["created_at"].nullable is False
+    assert str(columns["created_at"].server_default.arg) == "now()"
+
+    constraints = list(table.constraints)
+    assert len(constraints) == 5
+    primary_keys = [
+        item for item in constraints if isinstance(item, sa.PrimaryKeyConstraint)
+    ]
+    assert len(primary_keys) == 1
+    assert tuple(column.name for column in primary_keys[0].columns) == ("id",)
+    unique_constraints = [
+        item for item in constraints if isinstance(item, sa.UniqueConstraint)
+    ]
+    assert {
+        (item.name, tuple(column.name for column in item.columns))
+        for item in unique_constraints
+    } == {
+        ("uq_news_media_asset_storage_url", ("storage_url",)),
+        ("uq_news_media_asset_news_id", ("news_id",)),
+    }
+    foreign_keys = [
+        item for item in constraints if isinstance(item, sa.ForeignKeyConstraint)
+    ]
+    assert {
+        (
+            tuple(item.column_keys),
+            tuple(element.target_fullname for element in item.elements),
+            item.ondelete,
+        )
+        for item in foreign_keys
+    } == {
+        (("owner_user_id",), ("users.id",), "SET NULL"),
+        (("news_id",), ("news.id",), "SET NULL"),
+    }
+
+    create_index_kind, index_args, index_kwargs = operations.schema_writes[3]
+    assert create_index_kind == "create_index"
+    assert index_kwargs == {}
+    assert index_args == (
+        "ix_news_media_assets_owner_user_id",
+        "news_media_assets",
+        ["owner_user_id"],
+    )
+
+
+def test_news_media_downgrade_retains_assets_without_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration, operations = _bind_news_migration(monkeypatch)
+
+    result = migration.downgrade()
+
+    assert result is None
+    assert operations.get_bind_calls == 0
+    assert operations.schema_writes == []
 
 
 def _bad_catalog_cases() -> list[tuple[str, Callable[[_CatalogInspector], None], str]]:
