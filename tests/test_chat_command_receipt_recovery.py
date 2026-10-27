@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from collections import deque
 from datetime import UTC, datetime, timedelta
@@ -63,6 +64,18 @@ def _dispatcher(
     )
     sender = ChatMessageDispatcher(uow, attachment_service, MagicMock())
     return sender, uow, created, chat
+
+
+def _other_unique_constraint_violation() -> IntegrityError:
+    driver_error = RuntimeError("duplicate key violates messages_pkey")
+    for name, value in (
+        ("sqlstate", "23505"),
+        ("constraint_name", "messages_pkey"),
+        ("table_name", "messages"),
+        ("schema_name", "public"),
+    ):
+        setattr(driver_error, name, value)
+    return IntegrityError("INSERT", {}, driver_error)
 
 
 def _receipt_conflict() -> IntegrityError:
@@ -238,4 +251,57 @@ async def test_receipt_conflict_replays_live_winner_after_fresh_membership_check
     cache_key = command_service._make_idempotency_key(
         chat_id, user_id, "receipt-collision"
     )
+    assert await redis.get(cache_key) is None
+
+
+async def test_nonreceipt_unique_violation_propagates_after_rollback_and_releases_lease(
+    redis,
+) -> None:
+    user_id, chat_id = uuid.uuid4(), uuid.uuid4()
+    sender, uow, created, _ = _dispatcher(user_id, chat_id)
+    idempotency_key = "unrelated-unique-constraint"
+    cache_key = command_service._make_idempotency_key(chat_id, user_id, idempotency_key)
+    original_error = _other_unique_constraint_violation()
+    pending_values: list[str] = []
+
+    async def fail_with_unrelated_constraint(*_args) -> None:
+        pending_value = await redis.get(cache_key)
+        assert pending_value is not None
+        if isinstance(pending_value, bytes):
+            pending_value = pending_value.decode("utf-8")
+        pending_values.append(pending_value)
+        assert json.loads(pending_value)["status"] == "pending"
+        raise original_error
+
+    sender.repository.create_send_receipt = AsyncMock(
+        side_effect=fail_with_unrelated_constraint
+    )
+
+    with pytest.raises(IntegrityError) as caught:
+        await sender.send_message(
+            chat_id,
+            SimpleNamespace(id=user_id),
+            "must roll back",
+            [],
+            "en",
+            idempotency_key=idempotency_key,
+        )
+
+    assert caught.value is original_error
+    assert len(created) == 1
+    assert pending_values and json.loads(pending_values[0])["status"] == "pending"
+    sender.repository.create_send_receipt.assert_awaited_once()
+    sender.repository.get_send_receipt.assert_awaited_once_with(
+        chat_id,
+        user_id,
+        command_service._make_send_receipt_digest(chat_id, user_id, idempotency_key),
+    )
+    sender.repository.get_by_id.assert_awaited_once_with(chat_id)
+    sender.repository.check_participant.assert_awaited_once_with(chat_id, user_id)
+    sender.repository.set_message_rls_user.assert_not_awaited()
+    sender.repository.get_message_by_id.assert_not_awaited()
+    sender.repository.prune_expired_send_receipts.assert_not_awaited()
+    sender.repository.update_timestamp_by_id.assert_not_awaited()
+    uow.commit.assert_not_awaited()
+    uow.rollback.assert_awaited_once()
     assert await redis.get(cache_key) is None

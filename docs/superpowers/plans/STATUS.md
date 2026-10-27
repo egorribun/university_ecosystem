@@ -2,6 +2,12 @@
 
 Обновлено: 2026-10-27 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Chat receipt coverage: local diagnostic on b8c — 2026-10-27
+
+Принятая граница остаётся **334/512 (65,2%)**; 178 ID не приняты. Полный обычный pytest-модуль [`tests/test_chat_command_receipt_recovery.py`](../../../tests/test_chat_command_receipt_recovery.py) на локальной базе `b8c37c039e0c59ba3c2da25d6dfae2dfe2444478` прошёл **4 PASS, 0 FAIL/ERROR/SKIP**, stderr пустой. Тестовые bytes: raw SHA-256 `b562d8925f165d3ffce52eeedd260d56e3deca71ac3b1b610dc4790a891d26fa`; production source [`app/services/chat/command_service.py`](../../../app/services/chat/command_service.py) не менялся и остаётся на Git blob `003d35aa8849c6a7ab8e0a8ab64fe2b6240b34fe`. Подробная граница — в [технической записи](../../audits/AUDIT-2026-10.md#chat-receipt-coverage-diagnostic-on-base-b8c-not-accepted-2026-10-27).
+
+Диагностическая сверка пяти ранее снятых hosted raw coverage DB с локальным прогоном уменьшила missing count с 1 537 до ожидаемого legacy residual 1 536. Все 131 per-file report dictionaries остались идентичны; в `command_service.py` покрыты 559/559 строк и statements и 206/206 branches, пропусков вне legacy residual нет. При этом глобальный coverage JSON завершился с кодом 2 из-за сохранённого legacy residual при неизменном 100% floor. Это смешанная диагностика, не hosted validation или global quality-gate PASS для `b8c`. Проверка нового test postimage на published source ещё ожидается; три owner decisions остаются pending, ни одно не применено.
+
 ## Техническая контрольная точка source 6760 — 2026-10-27
 
 Принятая нижняя граница остаётся **334/512 (65,2%)**; 178 ID не приняты. AUD-511 не добавляет новый ID. Тест в [Go-файле ws-hub](../../../services/ws-hub/pkg/hub/aud511_512_revocation_marker_test.go) прошёл в обычном и race-режиме: TestAUD511NoSocketRevocationMarkerExpiresWithoutUserReturn. Точные raw SHA-256 и Git blob приведены в [технической записи AUD-511](../../audits/AUDIT-2026-10.md#aud-511-local-go-verification-on-source-6760-not-accepted-2026-10-27).
