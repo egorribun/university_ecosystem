@@ -176,8 +176,37 @@ test("live notification queue RBAC exercises the seeded admin and both non-admin
   )
   assert.doesNotMatch(
     spec,
-    /page\.request\.(?:put|patch|delete)\(|\.click\(\)|page\.route\(|routeWebSocket\(/u,
-    "the acceptance uses no browser action, data mutation, or authorization mock"
+    /page\.request\.(?:put|patch|delete)\(|page\.route\(|routeWebSocket\(/u,
+    "the acceptance uses no data mutation or authorization mock"
+  )
+  assert.equal(
+    [...spec.matchAll(/\.click\s*\(/gu)].length,
+    2,
+    "the only admin clicks are the two read-only pagination controls"
+  )
+  for (const name of ["nextPage", "previousPage"]) {
+    assert.equal(
+      adminScenario.split(name + ".click()").length - 1,
+      1,
+      "each read-only pagination control is clicked exactly once"
+    )
+  }
+  assert.ok(
+    adminScenario.includes(
+      'const previousPage = page.getByRole("button", { name: /^(Go to previous page|Назад)$/u })'
+    ),
+    "previousPage is the native previous-page control"
+  )
+  assert.ok(
+    adminScenario.includes(
+      'const nextPage = page.getByRole("button", { name: /^(Go to next page|Вперед)$/u })'
+    ),
+    "nextPage is the native next-page control"
+  )
+  assert.doesNotMatch(
+    spec.slice(nonAdminStart),
+    /\.click\(/u,
+    "role-denial scenarios never click mutation controls"
   )
   assert.equal(
     [...spec.matchAll(/page\.request\.post\(/gu)].length,
@@ -316,22 +345,30 @@ test("notification queue contracts lead from the admin route to a server-protect
   )
 })
 
-test("the live queue records are seeded idempotently by the owned demo-seed command", () => {
+test("owned demo seeding retains separate worker dead-letter fixtures", () => {
   requireMatch(
     fixtures,
     /admin:\s*\{[\s\S]*?password: requireLiveAdminPassword\(\)/u,
     "admin password is injected from the owned stand"
   )
-  requireMatch(seed, /DEAD_LETTER_JOBS = \[/u, "demo admin seed defines queue records")
+  requireMatch(
+    seed,
+    /DEAD_LETTER_JOBS = \[/u,
+    "demo admin seed defines separate worker dead-letter records"
+  )
   const jobsStart = seed.indexOf("DEAD_LETTER_JOBS = [")
   const helpersStart = seed.indexOf("# Helpers", jobsStart)
   const jobDefinitions = seed.slice(jobsStart, helpersStart)
   assert.equal([...jobDefinitions.matchAll(/"job_type":/gmu)].length, 4)
-  requireMatch(seed, /async def seed_dead_letter_jobs\(db\)/u, "seed provides queue fixtures")
+  requireMatch(
+    seed,
+    /async def seed_dead_letter_jobs\(db\)/u,
+    "seed retains worker dead-letter fixtures"
+  )
   requireMatch(
     seed,
     /DeadLetterJob\.job_hash == job_hash[\s\S]*?if existing:[\s\S]*?continue/u,
-    "seed reruns do not duplicate queue rows"
+    "seed reruns do not duplicate worker dead-letter rows"
   )
   requireMatch(
     stand,

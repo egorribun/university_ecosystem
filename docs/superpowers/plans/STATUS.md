@@ -2,6 +2,62 @@
 
 Обновлено: 2026-10-28 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Five scoped hosted closures — source 40bc1fbc, 2026-10-27 UTC
+
+Accepted lower bound: **342/512 (66.8%)**; **170 IDs remain unaccepted**.
+This preserves all 337 prior IDs and adds only **AUD-051, AUD-156, AUD-184,
+AUD-230 and AUD-464**. The [dated audit decision](../../audits/AUDIT-2026-10.md#scoped-hosted-acceptance-on-source-40bc1fbc-2026-10-27)
+records original finding scopes, exact Git blobs, job links and evidence limits.
+
+- **051:** both named chat/message complete-key pagination regressions passed
+  on real PostgreSQL. These are not comment-persistence tests.
+- **156:** send refusal retains its composer draft; failed edits restore the
+  exact draft only while their edit generation and chat/account remain current.
+  Hook/unit tests passed; overlapping cache rollback (AUD-155) is still open.
+- **184:** exact-source owned desktop/mobile Chromium proved two-tab update
+  consent and preserved the unconsented peer's dirty draft. Core passed
+  42 browser cases / two existing skips, Caddy redaction, NATS and owned cleanup.
+- **230:** removal of the destructive tenant-column loop plus real PostgreSQL
+  proof that all nine columns and populated users assignment survive the tested
+  revision edge. No all-nine populated-data/RLS or production rollback claim.
+- **464:** three stale explicit CVE exclusions were removed rather than renewed;
+  the applicable exact-source container security scan passed.
+
+Source `40bc1fbc59b43fbc3dd2101292a9eadf02fcdb1c` and tested PR merge
+`bc2fcfcbed46e4123b284e9bd7814adf173dc157` share tree
+`d96397a3251b1391c20a997b2d6af63e5563b348`.
+[Core 40597853829](https://github.com/egorribun/university_ecosystem/actions/runs/40597853829)
+finished successfully; [Matrix 40597853823](https://github.com/egorribun/university_ecosystem/actions/runs/40597853823)
+was cancelled by external branch updates. Its completed frontend shards and
+aggregate passed; the merged diagnostic counted 16,503 branch arms with zero
+uncovered/unlocated. Canonical all-metrics artifact contents were not separately
+decoded. Real PostgreSQL and applicable dependency scans passed. Inventory
+rejected the unbound dnspython test file; Alembic kept 37 blocking Squawk
+warnings. Backend unit/coverage aggregates did not finish; CI Success failed.
+
+Five external Dependabot merges (#1349–1353) advanced the branch to
+`04f258ce619ab75c94f27b1c4a1cd733a1aa3a10`, changing Actions/npm/Go dependencies.
+They were preserved during conflict-free reconciliation. No 40bc result is
+inherited as current-head validation under the changed locks.
+
+The next test-first packet uses existing jobs and cases: real `uv.lock` binding
+for the dnspython runtime guards (no orphan waiver), fast consumer-contract
+selection of those guards, bounded ordinary Squawk capture contracts, the
+remaining malformed color-mix probes and actual admin DLQ Next/Previous
+acceptance. Its expected RED is not yet an observed result. The DLQ precondition
+specifically exposes missing owned notification-queue fixtures, not a proved
+pagination implementation defect. Capture implementation and CSS/fixture fixes
+follow semantic RED and review; raw Squawk dispositions remain unapproved.
+
+AUD-155 edit-only reconciliation is being reviewed separately, including
+serializable mutation ownership and query-incarnation boundaries. No speculative
+receipt framework is integrated. AUD-164/AUD-167 trusted-peer/two-client/spoof
+proof and AUD-169 actual CNI reachability remain external operational gaps.
+
+Policy 347, baseline 319, Gitleaks 26, all 78 required contexts/apps, blocking
+CodeQL, hooks, deadlines and coverage floors are unchanged. No full-CI,
+all-metrics, merge, deployment or release-readiness claim is made.
+
 ## GitHub-only continuation — 2026-10-27 UTC
 
 Accepted lower bound remains **337/512 (65.8%)**; **175 IDs remain unaccepted**.

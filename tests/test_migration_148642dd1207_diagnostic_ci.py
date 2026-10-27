@@ -14,6 +14,8 @@ from tempfile import TemporaryDirectory
 import pytest
 import yaml
 
+from scripts.quality.read_alembic_revision import read_revision_metadata
+
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml"
 
 
@@ -408,3 +410,248 @@ def test_tenant_context_diagnostic_is_separate_bounded_and_fail_closed() -> None
     assert "OWNED_TENANT_CONTEXT_TESTS_END" in run
     assert "--capture=no" not in run
     assert "continue-on-error" not in tenant
+
+
+def _ordinary_capture_body(run):
+    opening = "<<'AUD148_ORDINARY'\n"
+    closing = "\nAUD148_ORDINARY\n"
+    assert opening in run, (
+        "Ordinary source-bound Squawk capture is missing: add the bounded "
+        "AUD148_ORDINARY heredoc before the unchanged raw gate."
+    )
+    tail = run.split(opening, 1)[1]
+    assert closing in tail, "Ordinary capture heredoc is not terminated."
+    body = tail.split(closing, 1)[0]
+    assert body.strip(), "Ordinary capture heredoc must not be empty."
+    return body
+
+
+def _ordinary_capture_fixture(tmp_path, monkeypatch):
+    _, _, original, _ = _steps()
+    script = tmp_path / "ordinary_consumer.py"
+    script.write_text(_ordinary_capture_body(original["run"]), encoding="utf-8")
+    migration_name = "alembic/versions/148642dd1207_fix_missing_tables.py"
+    names = (
+        migration_name,
+        "alembic/env.py",
+        "alembic.ini",
+        "scripts/quality/render_live_alembic_sql.py",
+        "scripts/quality/read_alembic_revision.py",
+        ".github/workflows/ci.yml",
+        ".squawk.toml",
+        "pyproject.toml",
+        "uv.lock",
+    )
+    sources = {
+        name: ("# synthetic source: " + name + "\n").encode("utf-8") for name in names
+    }
+    sources[migration_name] = (
+        b'revision = "148642dd1207"\n'
+        b'down_revision = "f7aa476e968a"\n'
+        b'raise AssertionError("migration must not execute")\n'
+    )
+    for name, content in sources.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    # The real metadata reader parses the migration without importing it.
+    assert read_revision_metadata(tmp_path / migration_name) == (
+        "148642dd1207",
+        "f7aa476e968a",
+    )
+    sql_path = tmp_path / "ordinary capture.sql"
+    sql_path.write_bytes(
+        (
+            "BEGIN;\r\n"
+            "-- ::warning::not a workflow command\n"
+            'CREATE TABLE "quoted name" ("λ" TEXT);\n'
+            "COMMIT;\n"
+        ).encode("utf-8")
+    )
+    environment = {
+        "AUD148_CHECKOUT_SHA": "a" * 40,
+        "GITHUB_SHA": "a" * 40,
+        "AUD148_PR_HEAD_SHA": "b" * 40,
+        "GITHUB_RUN_ID": "123",
+        "GITHUB_RUN_ATTEMPT": "1",
+        "GITHUB_JOB": "alembic-migrations",
+        "AUD148_SQUAWK_VERSION": "squawk 2.67.0",
+        "AUD148_SQUAWK_BINARY_SHA256": "c" * 64,
+        "SECRET_KEY": "not for publication " + "s" * 12,
+        "DATABASE_URL": "postgresql://capture@localhost/private_capture",
+        "UNRELATED_PRIVATE_CONTEXT": "not for publication " + "u" * 12,
+    }
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(script), str(sql_path), *_squawk_args(original["run"])],
+    )
+    return script, sql_path, sources, environment
+
+
+def test_ordinary_capture_precedes_the_unchanged_raw_squawk_gate() -> None:
+    job, steps, original, diagnostic = _steps()
+    run = original["run"]
+    _ordinary_capture_body(run)
+    renderer_call = (
+        "uv run python -m scripts.quality.render_live_alembic_sql "
+        '"$migration" "$sql_file"'
+    )
+    scanner_call = '"$squawk_binary_path" "${squawk_args[@]}" "$sql_file"'
+    renderer_position = run.index(renderer_call)
+    capture_position = run.index("<<'AUD148_ORDINARY'")
+    scanner_position = run.index(scanner_call)
+    assert renderer_position < capture_position < scanner_position
+    before_capture = run[renderer_position:capture_position]
+    assert (
+        'if [[ "$migration" == '
+        '"alembic/versions/148642dd1207_fix_missing_tables.py"'
+    ) in before_capture
+    assert '"$revision" == "148642dd1207"' in before_capture
+    assert "/usr/bin/sha256sum --check --strict" in before_capture
+    assert "git diff --quiet HEAD --" in before_capture
+    assert run.count(scanner_call) == 1
+    assert run.rstrip().endswith(
+        scanner_call + '\ndone <<< "$changed_files"'
+    ), "Raw Squawk must remain the final loop command under set -e."
+    assert "set -euo pipefail" in run
+    assert "|| true" not in run
+    assert "continue-on-error" not in original
+    assert "continue-on-error" not in job
+    assert original["env"]["AUD148_PR_HEAD_SHA"] == (
+        "${{ github.event.pull_request.head.sha }}"
+    )
+    assert _squawk_args(run) == _squawk_args(diagnostic["run"])
+    assert job["name"] == "Alembic Migrations"
+    assert job["timeout-minutes"] == 15
+    assert steps.index(diagnostic) == steps.index(original) + 1
+    assert diagnostic["run"].rstrip().endswith('exit "$lint_status"')
+
+
+@pytest.mark.parametrize("pr_head", ["b" * 40, ""])
+def test_ordinary_capture_preserves_exact_sql_and_allowlisted_provenance(
+    pr_head, tmp_path, monkeypatch, capsys
+) -> None:
+    script, sql_path, sources, environment = _ordinary_capture_fixture(
+        tmp_path, monkeypatch
+    )
+    monkeypatch.setenv("AUD148_PR_HEAD_SHA", pr_head)
+    sql_bytes = sql_path.read_bytes()
+
+    runpy.run_path(str(script), run_name="__main__")
+
+    output = capsys.readouterr().out
+    opening = "AUD148_ORDINARY_CAPTURE_BEGIN\n"
+    closing = "\nAUD148_ORDINARY_CAPTURE_END\n"
+    assert output.startswith(opening)
+    assert output.endswith(closing)
+    metadata = json.loads(output[len(opening) : -len(closing)])
+    assert metadata == {
+        "status": "diagnostic-only-not-an-exception",
+        "scenario": "ordinary-parent-live",
+        "checkout_sha": environment["AUD148_CHECKOUT_SHA"],
+        "workflow_sha": environment["GITHUB_SHA"],
+        "pr_head_sha": pr_head or None,
+        "workflow_run_id": environment["GITHUB_RUN_ID"],
+        "workflow_run_attempt": environment["GITHUB_RUN_ATTEMPT"],
+        "producer_job": "alembic-migrations",
+        "migration_path": "alembic/versions/148642dd1207_fix_missing_tables.py",
+        "revision": "148642dd1207",
+        "down_revision": "f7aa476e968a",
+        "source_blobs": {name: _git_blob(content) for name, content in sources.items()},
+        "squawk_version": environment["AUD148_SQUAWK_VERSION"],
+        "squawk_binary_sha256": environment["AUD148_SQUAWK_BINARY_SHA256"],
+        "squawk_args": sys.argv[2:],
+        "sql_file": str(sql_path),
+        "sql_bytes": len(sql_bytes),
+        "sql_sha256": hashlib.sha256(sql_bytes).hexdigest(),
+        "sql": sql_bytes.decode("utf-8"),
+        "scanner_result": "not-yet-executed",
+    }
+    assert metadata["sql"].encode("utf-8") == sql_bytes
+    assert sql_path.read_bytes() == sql_bytes
+    assert len(output.encode("utf-8")) < 131072
+    assert not any(line.startswith("::") for line in output.splitlines())
+    assert "migration must not execute" not in output
+    for name in ("SECRET_KEY", "DATABASE_URL", "UNRELATED_PRIVATE_CONTEXT"):
+        assert environment[name] not in output
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "sql_missing",
+        "sql_symlink",
+        "sql_limit",
+        "sql_utf8",
+        "output_limit",
+        "source_missing",
+        "source_symlink",
+        "secret_key",
+        "database_url",
+        "revision",
+        "parent",
+        "source_sha",
+        "source_mismatch",
+        "run_id",
+        "attempt",
+        "job",
+        "scanner_version",
+        "scanner_digest",
+    ],
+)
+def test_ordinary_capture_rejects_invalid_inputs_before_logging(
+    case, tmp_path, monkeypatch, capsys
+) -> None:
+    script, sql_path, _, environment = _ordinary_capture_fixture(tmp_path, monkeypatch)
+    environment_changes = {
+        "source_sha": ("AUD148_CHECKOUT_SHA", "g" * 40),
+        "source_mismatch": ("GITHUB_SHA", "b" * 40),
+        "run_id": ("GITHUB_RUN_ID", None),
+        "attempt": ("GITHUB_RUN_ATTEMPT", "01"),
+        "job": ("GITHUB_JOB", "another-job"),
+        "scanner_version": ("AUD148_SQUAWK_VERSION", "squawk 2.67.1"),
+        "scanner_digest": ("AUD148_SQUAWK_BINARY_SHA256", "g" * 64),
+    }
+    if case in environment_changes:
+        name, value = environment_changes[case]
+        if value is None:
+            monkeypatch.delenv(name)
+        else:
+            monkeypatch.setenv(name, value)
+    elif case in {"sql_missing", "source_missing"}:
+        target = sql_path if case == "sql_missing" else tmp_path / ".squawk.toml"
+        target.unlink()
+    elif case in {"sql_symlink", "source_symlink"}:
+        target = sql_path if case == "sql_symlink" else tmp_path / ".squawk.toml"
+        physical = tmp_path / (case + ".target")
+        target.rename(physical)
+        target.symlink_to(physical)
+    elif case == "sql_limit":
+        sql_path.write_bytes(b"x" * 65537)
+    elif case == "sql_utf8":
+        sql_path.write_bytes(b"\xff")
+    elif case == "output_limit":
+        # Valid input size, but JSON escaping exceeds the output cap.
+        sql_path.write_bytes(b'"' * 65536)
+    elif case in {"secret_key", "database_url"}:
+        sql_path.write_text(
+            "BEGIN;\n-- " + environment[case.upper()] + "\nCOMMIT;\n",
+            encoding="utf-8",
+        )
+    else:
+        assert case in {"revision", "parent"}
+        migration = tmp_path / "alembic/versions/148642dd1207_fix_missing_tables.py"
+        source = migration.read_text(encoding="utf-8")
+        old_value = "148642dd1207" if case == "revision" else "f7aa476e968a"
+        migration.write_text(
+            source.replace(old_value, "unexpected_revision"),
+            encoding="utf-8",
+        )
+
+    with pytest.raises(SystemExit, match="AUD148 ordinary capture:"):
+        runpy.run_path(str(script), run_name="__main__")
+    assert capsys.readouterr().out == ""

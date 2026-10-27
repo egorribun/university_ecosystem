@@ -240,6 +240,7 @@ LIVE_CADDY_PROBE_SPEC = "tests/e2e-live/zzz-aud174-prehydration-caddy-log.live.s
 LIVE_CADDY_PROBE_PROJECTS = ("desktop", "mobile")
 LIVE_E2E_SMOKE_FILES = (
     "tests/e2e-live/auth-roles.live.spec.ts",
+    "tests/e2e-live/admin-notifications-rbac.live.spec.ts",
     "tests/e2e-live/password-reset.live.spec.ts",
     "tests/e2e-live/pwa-offline-shell.live.spec.ts",
     "tests/e2e-live/search-dialog-keyboard.live.spec.ts",

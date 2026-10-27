@@ -1,4 +1,8 @@
-"""Runtime guards for the approved dnspython security update."""
+"""Runtime guards bound to the approved dnspython dependency lock."""
+
+import tomllib
+from importlib.metadata import version
+from pathlib import Path
 
 import dns.exception
 import dns.message
@@ -7,6 +11,15 @@ import dns.resolver
 import dns.rrset
 import pytest
 from email_validator import validate_email
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_dnspython_runtime_matches_the_reviewed_lock() -> None:
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    packages = [package for package in lock["package"] if package["name"] == "dnspython"]
+    assert len(packages) == 1
+    assert packages[0]["version"] == version("dnspython") == "2.9.0"
 
 
 def _compression_chain(hops: int) -> bytes:

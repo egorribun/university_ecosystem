@@ -2193,6 +2193,7 @@ jobs:
             tests/test_security_hardening_workflow_contract.py::test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_locked \
             tests/test_quality_configuration.py::test_virtualenv_security_floor_is_dev_only_and_locked \
             tests/test_dependency_audit_contract.py::test_storybook_security_floor_and_aligned_lock \
+            tests/test_dnspython_security.py \
             tests/test_cli_infra_closure.py tests/test_check_mypy_budget.py \
             tests/test_periodic_task_metrics.py \
             tests/test_security_hardening_workflow_contract.py::test_npm_failure_metadata_is_diagnostic_only_and_keeps_audit_blocking \

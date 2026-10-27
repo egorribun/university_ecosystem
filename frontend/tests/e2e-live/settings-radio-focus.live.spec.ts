@@ -60,7 +60,9 @@ async function readSemanticTokens(page: Page, scheme: "light" | "dark") {
     host.setAttribute("aria-hidden", "true")
     host.style.cssText =
       "position:fixed;left:-10000px;top:0;width:1px;height:1px;pointer-events:none"
-    document.body.append(host)
+    const dashboard = document.querySelector(".dashboard-theme")
+    const scope = dashboard ?? document.body
+    scope.append(host)
     try {
       const read = (property: string, value: string) => {
         const probe = document.createElement("div")
@@ -80,6 +82,23 @@ async function readSemanticTokens(page: Page, scheme: "light" | "dark") {
         `${geometry} ${mix(color, percentage)}`
       const gradient = (direction: string, stops: string[]) =>
         `linear-gradient(${direction}, ${stops.join(", ")})`
+      const radial = (color: string, percentage: number, fade: number) =>
+        `radial-gradient(120% 180% at -10% -20%, ${mix(color, percentage)}, transparent ${fade}%)`
+      const navLight = [
+        radial("var(--color-blue-400)", 50, 58),
+        gradient("112deg", [
+          "var(--bg-surface) 0%",
+          "color-mix(in srgb, var(--bg-surface) 96%, var(--color-black) 4%) 100%",
+        ]),
+      ].join(", ")
+      const navDark = [
+        radial("var(--color-sky-400)", 20, 58),
+        gradient("112deg", ["var(--color-slate-950) 0%", "var(--color-slate-900) 100%"]),
+      ].join(", ")
+      const footerLight = [
+        radial("var(--color-blue-400)", 15, 60),
+        gradient("112deg", ["var(--primary-main) 0%", "var(--primary-hover) 100%"]),
+      ].join(", ")
       const cases = [
         {
           name: "bg-surface-tint",
@@ -154,6 +173,15 @@ async function readSemanticTokens(page: Page, scheme: "light" | "dark") {
           property: "background-color",
           expected: mix(dark ? "var(--color-black)" : "white", dark ? 30 : 5),
         },
+        {
+          name: "glass-bg-high",
+          property: "background-color",
+          expected: mix("white", 20),
+        },
+        { name: "grad-nav-light", property: "background-image", expected: navLight },
+        { name: "grad-nav-dark", property: "background-image", expected: navDark },
+        { name: "bg-footer-light", property: "background-image", expected: footerLight },
+        { name: "bg-footer-dark", property: "background-image", expected: navDark },
       ]
       return {
         cohort: cases.map(({ name, property, expected }) => ({
@@ -162,6 +190,10 @@ async function readSemanticTokens(page: Page, scheme: "light" | "dark") {
           actual: read(property, `var(--${name})`),
           expected: read(property, expected),
         })),
+        dashboardOrb: dashboard ? read("background-color", "var(--dash-hero-orb)") : null,
+        dashboardOrbExpected: dashboard
+          ? read("background-color", mix("var(--color-sky-400)", dark ? 18 : 15))
+          : null,
         panel: read("background-color", "var(--bg-panel)"),
         panelExpected: read(
           "background-color",
@@ -228,6 +260,24 @@ test("Semantic tokens preserve percentage alpha in both themes", async ({ page }
         }
         expect.soft(probe.actual, label).toBe(probe.expected)
       }
+    }
+
+    // Dashboard CSS is lazy-loaded. Observe its real route scope rather than
+    // adding a theme class or stylesheet to the Settings document.
+    await page.goto("/dashboard")
+    await page.waitForFunction(() => window.__APP_HYDRATED === true)
+    await expect(page.locator(".dashboard-theme")).toBeVisible()
+    for (const scheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" })
+      await expect(page.locator("html")).toHaveAttribute("data-color-scheme", scheme)
+      await expect(page.locator("body")).toHaveAttribute("data-color-scheme", scheme)
+      const tokens = await readSemanticTokens(page, scheme)
+      const label = `${scheme} dash-hero-orb percentage`
+      expect(tokens.opacity, label).toBe("0.2")
+      expect(tokens.dashboardOrbExpected, label).not.toBeNull()
+      expect(tokens.dashboardOrbExpected, label).not.toBe("")
+      expect(tokens.dashboardOrbExpected, label).not.toBe("rgba(0, 0, 0, 0)")
+      expect.soft(tokens.dashboardOrb, label).toBe(tokens.dashboardOrbExpected)
     }
   } finally {
     await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" })

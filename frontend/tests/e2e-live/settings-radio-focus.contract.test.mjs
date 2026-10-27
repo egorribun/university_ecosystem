@@ -76,6 +76,30 @@ test("semantic tokens use production CSS without changing saved theme", async ()
   assert.match(spec, /expect\.soft\(tokens\.panel,[^\n]+\.toBe\(tokens\.panelExpected\)/u)
   assert.match(spec, /expect\.soft\(tokens\.glass,[^\n]+\.toBe\(tokens\.glassExpected\)/u)
   assert.match(spec, /expect\.soft\(tokens\.glow,[^\n]+\.toBe\(tokens\.glowExpected\)/u)
+  for (const token of [
+    "glass-bg-high",
+    "grad-nav-light",
+    "grad-nav-dark",
+    "bg-footer-light",
+    "bg-footer-dark",
+  ]) {
+    assert.ok(spec.includes(`name: "${token}"`), `Remaining token ${token} must be compared`)
+  }
+  assert.match(spec, /expected: mix\("white", 20\)/u)
+  assert.match(spec, /radial\("var\(--color-blue-400\)", 50, 58\)/u)
+  assert.match(spec, /radial\("var\(--color-sky-400\)", 20, 58\)/u)
+  assert.match(spec, /radial\("var\(--color-blue-400\)", 15, 60\)/u)
+  assert.match(spec, /const dashboard = document\.querySelector\("\.dashboard-theme"\)/u)
+  assert.match(spec, /const scope = dashboard \?\? document\.body/u)
+  assert.match(spec, /scope\.append\(host\)/u)
+  assert.match(spec, /await page\.goto\("\/dashboard"\)/u)
+  assert.match(spec, /page\.locator\("\.dashboard-theme"\)\)\.toBeVisible\(\)/u)
+  assert.match(spec, /read\("background-color", "var\(--dash-hero-orb\)"\)/u)
+  assert.match(spec, /mix\("var\(--color-sky-400\)", dark \? 18 : 15\)/u)
+  assert.match(
+    spec,
+    /expect\.soft\(tokens\.dashboardOrb, label\)\.toBe\(tokens\.dashboardOrbExpected\)/u
+  )
   assert.match(spec, /finally\s*\{\s*probe\.remove\(\)/u)
   assert.match(spec, /finally\s*\{\s*host\.remove\(\)/u)
   assert.doesNotMatch(
