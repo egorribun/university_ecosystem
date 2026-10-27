@@ -1209,10 +1209,13 @@ export const useProfileSync = (
           signingKey === sessionSigningKeyRef.current
         const cached = await readCachedUserAsync(signingKey, isCurrent)
         if (isCurrent() && cached) {
-          applyUserState(cached, {
-            persist: false,
-            expectedRevision: revision,
-          })
+          // An unchanged bootstrap must not retire a newer cross-tab cache read.
+          if (!areDeepEqual(cached, userStateRef.current)) {
+            applyUserState(cached, {
+              persist: false,
+              expectedRevision: revision,
+            })
+          }
           // A verified cache snapshot is safe to render immediately.  The
           // auto-fetch effect continues in the background, while this
           // transition prevents route guards from treating the restored

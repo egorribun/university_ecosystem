@@ -2615,12 +2615,12 @@ describe("useMessengerController — branch top-up", () => {
       )
       mocks.chatApi.editMessage.mockReturnValueOnce(pendingEdit)
       const { queryClient, HookWrapper } = createQueryHarness()
-      let unmountHook: (() => void) | undefined
+      const cleanup: { unmount?: () => void } = {}
       onTestFinished(async () => {
         try {
           await act(async () => {
             try {
-              unmountHook?.()
+              cleanup.unmount?.()
             } finally {
               // Release only this helper's deferred request, even if setup failed.
               rejectEdit(new Error("controlled edit cleanup"))
@@ -2635,7 +2635,7 @@ describe("useMessengerController — branch top-up", () => {
       const { result, rerender, unmount } = renderHook(() => useMessengerController(), {
         wrapper: HookWrapper,
       })
-      unmountHook = unmount
+      cleanup.unmount = unmount
       await waitFor(() =>
         expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
           "original"
@@ -2755,5 +2755,4 @@ describe("useMessengerController — branch top-up", () => {
       }
     )
   })
-
 })

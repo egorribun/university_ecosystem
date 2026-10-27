@@ -3917,7 +3917,7 @@
       "events": [
         {
           "event": "workflow_call",
-          "guard": "{\"inputs\":{\"node-version\":{\"default\":\"24\",\"description\":\"Node.js version for npm audit\",\"required\":false,\"type\":\"string\"},\"python-version\":{\"default\":\"3.14\",\"description\":\"Python version for pip-audit\",\"required\":false,\"type\":\"string\"},\"run-npm-audit\":{\"default\":true,\"description\":\"Run npm audit for Node.js dependencies\",\"required\":false,\"type\":\"boolean\"},\"run-pip-audit\":{\"default\":true,\"description\":\"Run pip-audit for Python dependencies\",\"required\":false,\"type\":\"boolean\"}}}"
+          "guard": "{\"inputs\":{\"node-version\":{\"default\":\"24.21.0\",\"description\":\"Node.js version for npm audit\",\"required\":false,\"type\":\"string\"},\"python-version\":{\"default\":\"3.14\",\"description\":\"Python version for pip-audit\",\"required\":false,\"type\":\"string\"},\"run-npm-audit\":{\"default\":true,\"description\":\"Run npm audit for Node.js dependencies\",\"required\":false,\"type\":\"boolean\"},\"run-pip-audit\":{\"default\":true,\"description\":\"Run pip-audit for Python dependencies\",\"required\":false,\"type\":\"boolean\"}}}"
         }
       ],
       "jobs": {

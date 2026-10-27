@@ -205,6 +205,15 @@ export const useMessengerController = () => {
   // Wave 205 SW6 — inline-edit state: which message is being edited + its draft.
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingMessageContent, setEditingMessageContent] = useState("")
+  const editAttemptGenerationRef = useRef(0)
+
+  useIsomorphicLayoutEffect(() => {
+    // Scope transitions, including A-to-B-to-A, retire pending draft recovery.
+    editAttemptGenerationRef.current += 1
+    return () => {
+      editAttemptGenerationRef.current += 1
+    }
+  }, [accountId, selectedChatId])
 
   // Wave 207 — reply/quote compose state. Set by handleStartReply when the user
   // taps "reply" on a bubble; the MessageInput chip renders it; the send handler
@@ -1236,24 +1245,38 @@ export const useMessengerController = () => {
 
   // Wave 205 SW6 — inline message edit + soft-delete handlers.
   const handleEditMessage = (messageId: string, currentText: string) => {
+    editAttemptGenerationRef.current += 1
     setEditingMessageId(messageId)
     setEditingMessageContent(currentText)
   }
 
   const handleCancelEdit = () => {
+    editAttemptGenerationRef.current += 1
     setEditingMessageId(null)
     setEditingMessageContent("")
   }
 
   const handleSaveEdit = (messageId: string) => {
     if (!selectedChatId) return
-    const content = editingMessageContent.trim()
+    const draft = editingMessageContent
+    const content = draft.trim()
+    const attemptGeneration = ++editAttemptGenerationRef.current
     // Close the editor immediately (optimistic — the mutation's onMutate already
     // updates the bubble). Empty edit = no-op (deletion is a separate action).
     setEditingMessageId(null)
     setEditingMessageContent("")
     if (content) {
-      editMessageMutation.mutate({ chatId: selectedChatId, messageId, content })
+      editMessageMutation.mutate(
+        { chatId: selectedChatId, messageId, content },
+        {
+          onError: () => {
+            // Never overwrite a newer edit, explicit cancellation, or retired scope.
+            if (editAttemptGenerationRef.current !== attemptGeneration) return
+            setEditingMessageId(messageId)
+            setEditingMessageContent(draft)
+          },
+        }
+      )
     }
   }
 
