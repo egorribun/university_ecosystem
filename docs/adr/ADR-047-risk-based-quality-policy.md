@@ -1050,3 +1050,13 @@ The evidence phrase “binary was not executed” is scoped to the private relea
 The owner authorized exactly one inline `# noqa: S603` on the `subprocess.run` call in `_run_coverage_worker` at `tests/test_coverage_manifest.py:2012`. That call uses the fixed `sys.executable` with `-B`, `-I` and `-X utf8`, invokes the repository-owned static `_COVERAGE_ISOLATION_WORKER` via `-c`, uses the explicit constrained worker environment, and does not invoke a shell. The authorization covers only that call and does not allow a file/module-level suppression, Ruff configuration change, or any other S603 exception. The source annotation is limited to the reviewed call. Final-source Ruff, tests, scanner checks and required hosted results remain mandatory.
 
 These decisions preserve the 319-entry detect-secrets baseline, the 26 Gitleaks fingerprints, all 78 required CI context/app pairs, blocking CodeQL, hooks and coverage floors. Policy records and owner approvals do not replace final-source tests, scans or required hosted checks.
+
+## Proposed, not approved: historical-148 offline migration scope
+
+The [historical148 Squawk proposal](../superpowers/plans/2026-10-27-historical-148-squawk-proposal.md)
+records exact historical observations, maintenance risks and a proposed finite
+source-bound validator contract. It is **not approved or active**. Complete
+ordinary capture and the exact validator/tests/consumer diff require review before
+any narrow owner decision. Historical migration bytes, raw gates, coverage policy
+and required checks remain unchanged. No migration execution, deployment, merge
+or scanner disposition is authorized by this proposal.

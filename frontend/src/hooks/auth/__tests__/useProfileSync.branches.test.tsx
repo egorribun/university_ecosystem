@@ -3402,10 +3402,12 @@ it.each([PROFILE_CACHE_STORAGE_KEY, PROFILE_CACHE_VERSION_KEY])(
     }
     const initial = createVerificationGate()
     const peer = createVerificationGate()
+    const unchanged = createVerificationGate()
     const verification = vi
       .spyOn(subtle, "verify")
       .mockImplementationOnce(initial.implementation)
       .mockImplementationOnce(peer.implementation)
+      .mockImplementationOnce(unchanged.implementation)
     const drainContinuations = () =>
       new Promise<void>((resolve) => {
         const channel = new MessageChannel()
@@ -3455,10 +3457,38 @@ it.each([PROFILE_CACHE_STORAGE_KEY, PROFILE_CACHE_VERSION_KEY])(
       expect(useAuthStore.getState().user).toEqual(view.result.current.user)
       expect(queryClient.getQueryData(currentUserQueryKey)).toEqual(view.result.current.user)
       expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(secondEnvelope)
+
+      // An already-applied peer snapshot is a true reducer no-op: it must
+      // neither replace the profile nor publish a new current-user revision.
+      const committedUser = view.result.current.user
+      const storedUser = useAuthStore.getState().user
+      const cachedUser = queryClient.getQueryData(currentUserQueryKey)
+      const publishProfile = vi.spyOn(queryClient, "setQueryData")
+      await act(async () => {
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: eventKey,
+            newValue:
+              eventKey === PROFILE_CACHE_STORAGE_KEY
+                ? secondEnvelope
+                : String(PROFILE_CACHE_SCHEMA_VERSION),
+            storageArea: localStorage,
+          })
+        )
+        await unchanged.started
+        await unchanged.finish()
+        await drainContinuations()
+      })
+      expect(verification).toHaveBeenCalledTimes(3)
+      expect(view.result.current.user).toBe(committedUser)
+      expect(useAuthStore.getState().user).toBe(storedUser)
+      expect(queryClient.getQueryData(currentUserQueryKey)).toBe(cachedUser)
+      expect(publishProfile).not.toHaveBeenCalled()
+      expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(secondEnvelope)
     } finally {
       view.unmount()
       await act(async () => {
-        await Promise.all([initial.finish(), peer.finish()])
+        await Promise.all([initial.finish(), peer.finish(), unchanged.finish()])
         await drainContinuations()
       })
       queryClient.clear()

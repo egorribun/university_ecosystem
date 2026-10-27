@@ -1,6 +1,68 @@
 # Статус выпуска MVP v1.0.0
 
-Обновлено: 2026-10-27 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+Обновлено: 2026-10-28 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+
+## GitHub-only continuation — 2026-10-27 UTC
+
+Accepted lower bound remains **337/512 (65.8%)**; **175 IDs remain unaccepted**.
+The checkpoints below distinguish behavioral/scanner receipts from registry
+acceptance and full release verification.
+
+- [88509ed](https://github.com/egorribun/university_ecosystem/commit/88509ed)
+  established semantic RED for two verified-profile bootstrap/storage orderings
+  and failed-edit draft recovery. The actual Node dependency audit passed after
+  aligning its runtime with the existing approved compiler archive bootstrap.
+- [b6e8f6c](https://github.com/egorribun/university_ecosystem/commit/b6e8f6c)
+  fixed the ordering race and generation-owned draft recovery, plus strict catalog
+  and test lint/format drift. All four frontend unit shards, their aggregate,
+  frontend lint/format/build, Contract Tests and Inventory passed in
+  [matrix run 40589554046](https://github.com/egorribun/university_ecosystem/actions/runs/40589554046).
+  **This is not all-metrics coverage acceptance:** the aggregate enforces merged
+  provenance and differential line coverage; its diagnostic still identified one
+  uncovered auth branch arm at `useProfileSync.ts:1169`. The next regression
+  exercises an unchanged verified peer snapshot through the public storage path
+  without changing production logic or lowering coverage floors.
+- [b6 Core](https://github.com/egorribun/university_ecosystem/actions/runs/40589553721/job/122490638240)
+  passed 280 source contracts, one deadline-adapter test and 38 browser cases with
+  two existing skips; Caddy redaction, NATS outage and owned cleanup passed.
+  That smoke selection did **not** execute PWA4 or DLQ page-two browser acceptance.
+  Artifact metadata and generating log inputs were inspected; the receipt ZIP
+  contents were not independently decoded through the GitHub-only route.
+- Scoped b6 review found passing send/edit refusal behavior for AUD-156, the named
+  populated-users tenant migration case for AUD-230, and retirement of the three
+  explicit stale CVE suppressions for AUD-464. These are acceptance candidates,
+  not new accepted IDs here. They do not establish AUD-155 rollback safety,
+  populated-data proof for every tenant table, or an all-vulnerability clean scan.
+- The owner approved only dnspython 2.8.0 to 2.9.0 with lock synchronization/tests.
+  [GHSA-45c3-73f7-pv4m](https://github.com/rthalley/dnspython/security/advisories/GHSA-45c3-73f7-pv4m)
+  explains the new Python/SBOM RED. Pinned uv generated a canonical one-package
+  candidate under the unchanged seven-day cooldown in
+  [job 122491247608](https://github.com/egorribun/university_ecosystem/actions/runs/40589554046/job/122491247608),
+  restored the original source lock and kept the audit blocking.
+- [84b6c281](https://github.com/egorribun/university_ecosystem/commit/84b6c281)
+  integrates that exact lock stanza, removes the temporary generator and adds DNS
+  pointer-boundary plus real email-validator/DNS-wire tests without network I/O.
+  The dedicated parser RED on 2.8.0 was source-predicted, not executed; the actual
+  vulnerability scanner RED was observed. Unrelated dependencies, cooldown and
+  advisory policy are unchanged.
+- The same source adds two existing AUD-051 keyset regressions to real PostgreSQL
+  integration and the four existing PWA offline/update browser cases to owned Core
+  smoke, preserving existing selectors and budgets. New exact-source
+  [matrix CI](https://github.com/egorribun/university_ecosystem/actions/runs/40596755158)
+  and [Core acceptance](https://github.com/egorribun/university_ecosystem/actions/runs/40596754947)
+  remain pending at this checkpoint. No b6 result is inherited as a new-SHA PASS.
+- The [historical148 Squawk proposal](2026-10-27-historical-148-squawk-proposal.md)
+  records 37 occurrences, 24 rule/statement groups and 20 SQL statements. It is
+  **not approved or active**. Complete ordinary capture and the exact future
+  validator/tests/consumer diff remain prerequisites. Historical migration bytes,
+  raw gates and transaction boundaries are unchanged.
+- AUD-164/AUD-167 require actual trusted-peer/two-client/spoof evidence; AUD-169
+  requires actual CNI reachability. Static renders and generic Core smoke do not
+  close those operational gaps. No deployment is authorized by this continuation.
+
+No all-green, full-coverage, merge, deployment or release claim is made.
+Policy 347, baseline 319, Gitleaks 26, all 78 required context/app pairs, blocking
+CodeQL, hooks and coverage floors remain unchanged.
 
 ## Scoped AUD-301 local acceptance — published source d8f897f, 2026-10-27
 
