@@ -208,6 +208,58 @@ func TestAUD511PeriodicCleanupReclaimsExpiredMarkersWithoutUserReturn(t *testing
 		"the scheduled cleanup must reclaim an expired marker even if the user never rejoins")
 }
 
+func TestAUD511NoSocketRevocationMarkerExpiresWithoutUserReturn(t *testing.T) {
+	auth := &membershipRecordingAuthClient{
+		memberships: map[[2]string]bool{{aud511TestUserID, aud511TestRoomID}: true},
+		refreshErr:  errors.New("temporary authorization refresh failure"),
+	}
+	h := newNatsTestHub(auth, "", 10)
+	h.limiterCleanupInterval = 10 * time.Millisecond
+
+	publication := roomRevocationPublication{
+		publishedAt:    time.Now().Add(-pendingRoomRevocationTTL + time.Second),
+		streamSequence: 81,
+	}
+	err := h.evictRoomMembershipAt(
+		context.Background(),
+		aud511TestUserID,
+		aud511TestRoomID,
+		publication,
+	)
+	require.Error(t, err, "a transient refresh failure is not treated as success")
+
+	h.mu.RLock()
+	roomSocketCount := len(h.Rooms[aud511TestRoomID])
+	h.mu.RUnlock()
+	require.Zero(t, roomSocketCount, "the revoked user has no socket to return on")
+
+	marker := aud511PendingMarker(t, h)
+	require.False(t, marker.sticky, "a refresh-capable auth client keeps a finite marker")
+	require.True(
+		t,
+		marker.expiresAt.After(time.Now()),
+		"the marker remains pending until its publish-time expiry",
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	h.StartLimiterCleanup(ctx)
+	t.Cleanup(func() {
+		cancel()
+		h.limiterCleanupWG.Wait()
+	})
+
+	assert.Eventually(t, func() bool {
+		h.pendingRoomRevocationsMu.RLock()
+		defer h.pendingRoomRevocationsMu.RUnlock()
+		_, exists := h.pendingRoomRevocations[roomMembershipKey{
+			userID: aud511TestUserID,
+			roomID: aud511TestRoomID,
+		}]
+		return !exists
+	}, 3*time.Second, 10*time.Millisecond,
+		"scheduled expiry cleanup reclaims the marker without a socket return")
+}
+
 func TestAUD511CanceledEvictionDoesNotCreatePendingMarker(t *testing.T) {
 	h := newNatsTestHub(&membershipRecordingAuthClient{}, "", 10)
 	barrier := h.roomMembershipLock(aud511TestUserID, aud511TestRoomID)
