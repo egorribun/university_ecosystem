@@ -277,7 +277,6 @@ jobs:
         run: uv export --frozen --no-hashes --no-dev --no-emit-workspace > /tmp/requirements.txt
 
       - name: Run Python known-vulnerability allowlist gate
-        id: python-audit
         shell: bash
         run: |
           # OSV's batch endpoint avoids a flaky N+1 request pattern while the
@@ -298,70 +297,6 @@ jobs:
             --report /tmp/pip-audit.json \
             --scanner-status "$pip_audit_status" \
             --allowlist security/audit-allowlist.yaml
-
-
-      # Temporary, owner-approved dnspython-only candidate. Remove with the lock update.
-      # The failing audit remains blocking; this step only emits canonical lock metadata.
-      - name: Generate approved dnspython lock candidate
-        if: ${{ failure() && steps.python-audit.outcome == 'failure' }}
-        timeout-minutes: 3
-        shell: bash
-        env:
-          SOURCE_SHA: ${{ github.sha }}
-        run: |
-          uv run --frozen --no-sync python - <<'PY'
-          import os
-          import re
-          import subprocess
-          import tomllib
-          from pathlib import Path
-
-          source = os.environ["SOURCE_SHA"]
-          if not re.fullmatch(r"[0-9a-f]{40}", source):
-              raise RuntimeError("candidate requires an immutable source SHA")
-          project = tomllib.loads(Path("pyproject.toml").read_text())
-          if project["tool"]["uv"]["required-version"] != "==0.12.23":
-              raise RuntimeError("candidate requires the approved uv version")
-          if project["tool"]["uv"]["exclude-newer"] != "7 days":
-              raise RuntimeError("candidate must preserve the normal cooldown")
-          path = Path("uv.lock")
-          original = path.read_bytes()
-          try:
-              subprocess.run(
-                  ["uv", "lock", "--upgrade-package", "dnspython==2.9.0"],
-                  check=True,
-                  timeout=120,
-              )
-              subprocess.run(["uv", "lock", "--check"], check=True, timeout=30)
-              candidate = path.read_text()
-              before = tomllib.loads(original.decode())
-              after = tomllib.loads(candidate)
-              old = [p for p in before["package"] if p["name"] == "dnspython"]
-              new = [p for p in after["package"] if p["name"] == "dnspython"]
-              if len(old) != 1 or len(new) != 1:
-                  raise RuntimeError("candidate must contain one dnspython package")
-              if old[0]["version"] != "2.8.0" or new[0]["version"] != "2.9.0":
-                  raise RuntimeError("candidate exceeds the approved version change")
-              before["package"].remove(old[0])
-              after["package"].remove(new[0])
-              if before != after:
-                  raise RuntimeError("candidate changed unrelated lock metadata")
-              blocks = re.findall(
-                  r'(?ms)^\[\[package\]\]\nname = "dnspython"\n.*?(?=^\[\[package\]\]|\Z)',
-                  candidate,
-              )
-              if len(blocks) != 1 or len(blocks[0]) > 8192:
-                  raise RuntimeError("candidate stanza is missing or unexpectedly large")
-              stanza = blocks[0].rstrip()
-          finally:
-              path.write_bytes(original)
-          if path.read_bytes() != original:
-              raise RuntimeError("candidate generation did not restore the source lock")
-          print(f"dnspython candidate source: {source}")
-          print("BEGIN APPROVED DNSPYTHON LOCK CANDIDATE")
-          print(stanza)
-          print("END APPROVED DNSPYTHON LOCK CANDIDATE")
-          PY
 
   npm-audit:
     name: Node.js Dependency Audit

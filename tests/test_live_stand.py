@@ -5029,6 +5029,7 @@ def test_live_playwright_focused_scope_is_fixed_and_diagnostic_only(
             (
                 "tests/e2e-live/auth-roles.live.spec.ts",
                 "tests/e2e-live/password-reset.live.spec.ts",
+                "tests/e2e-live/pwa-offline-shell.live.spec.ts",
                 "tests/e2e-live/search-dialog-keyboard.live.spec.ts",
                 "tests/e2e-live/settings-radio-focus.live.spec.ts",
                 live_stand.LIVE_CADDY_PROBE_SPEC,
