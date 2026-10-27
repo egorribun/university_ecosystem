@@ -58,6 +58,7 @@ import {
   useEventDetailQuery,
   useEventNavigation,
 } from "@/api/hooks/events"
+import { useMapEvents } from "@/hooks/useMapEvents"
 
 const makeEvent = (id: string, title = `Event ${id}`): Event =>
   ({
@@ -254,6 +255,56 @@ describe("lastEventPage (events.ts:251)", () => {
 })
 
 // ── useEventsListQuery: malformed-payload rejection + cursor (149-151) + 304 ─
+describe("useMapEvents cursor pagination", () => {
+  it("coalesces same-turn requests for an in-flight cursor page", async () => {
+    const cursorRequests: string[] = []
+    let releaseNextPage: () => void = () => undefined
+    const pendingNextPage = new Promise<void>((resolve) => {
+      releaseNextPage = () => resolve()
+    })
+    let markNextPageStarted: () => void = () => undefined
+    const nextPageStarted = new Promise<void>((resolve) => {
+      markNextPageStarted = () => resolve()
+    })
+
+    allEventsMock.mockImplementation(async (...args: unknown[]) => {
+      const request = args[0] as { query?: { cursor?: string | null } }
+      const cursor = request.query?.cursor ?? null
+      if (cursor === "page-2") {
+        cursorRequests.push(cursor)
+        markNextPageStarted()
+        await pendingNextPage
+        return okPage([makeEvent("page-2")], null)
+      }
+      return okPage([makeEvent("page-1")], "page-2")
+    })
+
+    const queryClient = freshClient()
+    const { result, unmount } = renderHook(() => useMapEvents(), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    try {
+      await waitFor(() => expect(result.current.hasMoreEvents).toBe(true))
+      const loadMoreEvents = result.current.loadMoreEvents
+      act(() => {
+        loadMoreEvents()
+        loadMoreEvents()
+      })
+
+      await nextPageStarted
+      expect(cursorRequests).toEqual(["page-2"])
+
+      releaseNextPage()
+      await waitFor(() => expect(result.current.hasMoreEvents).toBe(false))
+    } finally {
+      releaseNextPage()
+      unmount()
+      queryClient.clear()
+    }
+  })
+})
+
 describe("useEventsListQuery queryFn branches", () => {
   it.each([
     ["null payload", null],

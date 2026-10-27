@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { ChangeEvent } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import { useTranslation } from "react-i18next"
 import { RotateCcw, Trash2, Loader2 } from "lucide-react"
@@ -18,8 +18,12 @@ import {
 // queryKey to factory. queryKey shape PRESERVED EXACTLY for cache identity.
 // Closes W150 §Honesty #3 deferral for the AdminNotifications page.
 import {
+  ADMIN_DEAD_LETTER_MAX_OFFSET,
+  ADMIN_DEAD_LETTER_PAGE_SIZE,
   adminDeadLetterQueueQueryKey,
   adminDeadLetterQueueQueryOptions,
+  getAdminDeadLetterPageCount,
+  hasNextAdminDeadLetterPage,
 } from "@/api/hooks/adminNotifications"
 import PageFadeIn from "@/components/motion/PageFadeIn"
 import { ReleaseAnnouncementCard } from "./components/ReleaseAnnouncementCard"
@@ -73,6 +77,7 @@ export function AdminNotificationsFeature() {
   const { formatDate } = useLocaleFormatters()
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [deadLetterOffset, setDeadLetterOffset] = useState(0)
   const [purgeConfirmationIds, setPurgeConfirmationIds] = useState<string[] | null>(null)
   const purgeConfirmationLock = useRef(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -102,7 +107,13 @@ export function AdminNotificationsFeature() {
     []
   )
 
-  const listQuery = useQuery(adminDeadLetterQueueQueryOptions())
+  const listQuery = useQuery({
+    ...adminDeadLetterQueueQueryOptions({
+      limit: ADMIN_DEAD_LETTER_PAGE_SIZE,
+      offset: deadLetterOffset,
+    }),
+    placeholderData: keepPreviousData,
+  })
   const jobs = listQuery.data?.items ?? []
   const currentJobIds = new Set(jobs.map((job) => job.id))
   const selectedIds = Array.from(selected).filter((id) => currentJobIds.has(id))
@@ -260,8 +271,20 @@ export function AdminNotificationsFeature() {
   const isLoading = listQuery.isLoading
   const hasError = listQuery.isError
   const total = listQuery.data?.total ?? 0
+  const pageCount = getAdminDeadLetterPageCount(total)
+  const currentPage = Math.floor(deadLetterOffset / ADMIN_DEAD_LETTER_PAGE_SIZE) + 1
+  const maxBrowsableJobs = ADMIN_DEAD_LETTER_MAX_OFFSET + ADMIN_DEAD_LETTER_PAGE_SIZE
+
+  useEffect(() => {
+    const lastOffset = Math.min(
+      ADMIN_DEAD_LETTER_MAX_OFFSET,
+      Math.max(0, (pageCount - 1) * ADMIN_DEAD_LETTER_PAGE_SIZE)
+    )
+    if (deadLetterOffset > lastOffset) setDeadLetterOffset(lastOffset)
+  }, [deadLetterOffset, pageCount])
 
   const disableActions =
+    listQuery.isFetching ||
     selectedIds.length === 0 ||
     retryMutation.isPending ||
     purgeMutation.isPending ||
@@ -309,6 +332,7 @@ export function AdminNotificationsFeature() {
                       type="checkbox"
                       className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] text-brand focus:ring-brand/[calc(var(--opacity-soft)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
                       checked={allSelected}
+                      disabled={listQuery.isFetching}
                       onChange={handleSelectAll}
                       aria-label={t("admin:notifications.table.selectAll") ?? "Select all"}
                     />
@@ -375,6 +399,7 @@ export function AdminNotificationsFeature() {
                           type="checkbox"
                           className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] text-brand focus:ring-brand/[calc(var(--opacity-soft)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
                           checked={isSelected}
+                          disabled={listQuery.isFetching}
                           onChange={() => toggleSelect(job.id)}
                           aria-label={
                             t("admin:notifications.table.selectRow", { id: job.id }) ?? "Select"
@@ -408,6 +433,7 @@ export function AdminNotificationsFeature() {
                           type="button"
                           onClick={() => retryMutation.mutate([job.id])}
                           disabled={
+                            listQuery.isFetching ||
                             retryMutation.isPending ||
                             purgeMutation.isPending ||
                             purgeConfirmationIds !== null
@@ -422,6 +448,7 @@ export function AdminNotificationsFeature() {
                           type="button"
                           onClick={() => handlePurgeRow(job.id)}
                           disabled={
+                            listQuery.isFetching ||
                             retryMutation.isPending ||
                             purgeMutation.isPending ||
                             purgeConfirmationIds !== null
@@ -611,7 +638,53 @@ export function AdminNotificationsFeature() {
               </Alert>
             )}
 
+            {total > maxBrowsableJobs && (
+              <Alert severity="warning" className="mt-4">
+                {t("admin:notifications.paginationLimitReached", {
+                  available: maxBrowsableJobs,
+                  total,
+                })}
+              </Alert>
+            )}
             {renderContent()}
+            {total > ADMIN_DEAD_LETTER_PAGE_SIZE && (
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <span aria-live="polite">
+                  {t("common:pagination.pageOf", { current: currentPage, total: pageCount })}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelected(new Set())
+                      setDeadLetterOffset((offset) =>
+                        Math.max(0, offset - ADMIN_DEAD_LETTER_PAGE_SIZE)
+                      )
+                    }}
+                    disabled={deadLetterOffset === 0 || listQuery.isFetching}
+                  >
+                    {t("common:pagination.prevPage")}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelected(new Set())
+                      setDeadLetterOffset((offset) =>
+                        Math.min(ADMIN_DEAD_LETTER_MAX_OFFSET, offset + ADMIN_DEAD_LETTER_PAGE_SIZE)
+                      )
+                    }}
+                    disabled={
+                      !hasNextAdminDeadLetterPage(deadLetterOffset, jobs.length, total) ||
+                      listQuery.isFetching
+                    }
+                  >
+                    {t("common:pagination.nextPage")}
+                  </Button>
+                </div>
+              </div>
+            )}
           </SectionCard>
         </div>
       </PageFadeIn>

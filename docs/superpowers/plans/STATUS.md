@@ -2,6 +2,24 @@
 
 Обновлено: 2026-10-27 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Scoped AUD-511 and AUD-329 source-bound acceptance — d8f897f, 2026-10-27
+
+Source-bound lower bound: **336/512 (65.6%)**, with 176 IDs unaccepted. This adds only AUD-511 and AUD-329 to the prior 334 accepted IDs. See the [dated audit entry](../../audits/AUDIT-2026-10.md#scoped-aud-511-and-aud-329-acceptance-on-source-d8f897f-2026-10-27) for exact source hashes and scope.
+
+PR #1343 head `d8f897f214d963ad635338ddad48ddf2f388836f` and tested merge `01fe578aaa62def64be3571bc76d92d4f2f27f1b` share tree `89be08502ef7c42370a6810c5595685923f074bd`. The ws-hub Go unit/race job passed 783 tests; its named AUD-511 expiry regression, lint and integration jobs succeeded. The exact AUD-329 quiesce test module passed 19/19 Windows cases with a real ACL fixture and 19/19 exact hosted Linux testcase nodes.
+
+The terminal snapshot `ci-refresh.final-20261027T1026Z.json` (SHA-256 `a1804edf0d51e1bf83576694ab7ccc9fed8f34949d4fe36e7438c3df3401b437`) records 141 checks (110 success, 27 skipped, 3 failed, 1 neutral, 0 active), 22 workflow runs (19 success, 2 skipped, 1 failed), and 137 all-attempt jobs (106 success, 27 skipped, 4 failed). Unauthenticated Routes Smoke attempt 2 succeeded (job 122115979256); the earlier attempt-1 artifact-upload failure (`ETIMEDOUT`) is historical. The three failed checks are Alembic Migrations (37 Squawk issues), Python shard 2 (`ProcessLookupError` reading `/proc/21612/stat` in the Gitleaks helper test), and aggregate CI Success. Full PR CI remains non-green.
+
+No final frontend proof is claimed. The current frontend working snapshot remains unaccepted and is outside published `d8f897f` source evidence. Policy 347, baseline 319, Gitleaks 26, required 78, blocking CodeQL, hooks and coverage floors are unchanged.
+
+
+## Frontend pagination and sent metadata: local verification, 2026-10-27
+
+На рабочем frontend-снимке из 18 изменённых файлов поверх d8f897f прошли 202 целевых теста и полный прогон: **10 038 PASS, 0 failures/errors/skips**, 577 authored files; строки 20 004/20 004, statements 22 407/22 407, branches 16 499/16 499, functions 5 124/5 124. Полные TypeScript, ESLint и Prettier, а также пять Node hydration contracts прошли на тех же исходниках. Frozen manifest SHA-256: e2e36d4b1babcb6caea278f5d67044ec8f744da7da3f620271cfb339e8a83981; merge-result.json: 9754e51c602931116040504615b94cbc6d269c0ccb4eacd5b637cd3593832410. Четыре исходных shard-отчёта сохранены; глобальный floor 100% не менялся.
+
+Регрессия карты проверена возвратом прежнего вызова: без cancelRefetch: false получились два запроса одного cursor и ровно один упавший тест из 202; после восстановления исправления все 202 прошли. Штатные отрицательные offline/storage-сценарии проверены по точным логам и assertions. Единственный неатрибутированный jsdom navigation diagnostic совпадает с прежним R8; подавлений не добавлено и отсутствие любых diagnostics не заявляется. Это локальное frontend-доказательство, без приёмки новых audit ID, hosted validation, живого браузерного контраста или release readiness. Подробности — в [технической записи аудита](../../audits/AUDIT-2026-10.md#frontend-pagination-and-sent-metadata-local-verification-2026-10-27).
+
+
 ## Chat receipt coverage: local diagnostic on b8c — 2026-10-27
 
 Принятая граница остаётся **334/512 (65,2%)**; 178 ID не приняты. Полный обычный pytest-модуль [`tests/test_chat_command_receipt_recovery.py`](../../../tests/test_chat_command_receipt_recovery.py) на локальной базе `b8c37c039e0c59ba3c2da25d6dfae2dfe2444478` прошёл **4 PASS, 0 FAIL/ERROR/SKIP**, stderr пустой. Тестовые bytes: raw SHA-256 `b562d8925f165d3ffce52eeedd260d56e3deca71ac3b1b610dc4790a891d26fa`; production source [`app/services/chat/command_service.py`](../../../app/services/chat/command_service.py) не менялся и остаётся на Git blob `003d35aa8849c6a7ab8e0a8ab64fe2b6240b34fe`. Подробная граница — в [технической записи](../../audits/AUDIT-2026-10.md#chat-receipt-coverage-diagnostic-on-base-b8c-not-accepted-2026-10-27).

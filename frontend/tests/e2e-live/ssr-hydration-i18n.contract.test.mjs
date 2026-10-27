@@ -71,6 +71,15 @@ test("live dashboard acceptance covers real RU/EN SSR hydration without raw keys
   assert.match(spec, /window\.localStorage\.setItem\(["']ue:language["']/u)
   assert.match(spec, /window\.__APP_HYDRATED\s*===\s*true/u)
   assert.match(spec, /data-ssr-auth/u)
+  assert.match(spec, /function readNewsSearchPlaceholder\(markup: string \| null\)/u)
+  assert.match(
+    spec,
+    /NEWS_SEARCH_PLACEHOLDER_CATALOGS[\s\S]*?enNews\.search\.placeholder[\s\S]*?ruNews\.search\.placeholder/u
+  )
+  assert.match(
+    spec,
+    /expect\(readNewsSearchPlaceholder\(newsServerMarkup \?\? null\)\)\.toBe\(\s*NEWS_SEARCH_PLACEHOLDER_CATALOGS\[language\]/u
+  )
   assert.match(spec, /serverLanguage/u)
   assert.match(spec, /hydrationDiagnostics/u)
   assert.match(spec, /rawTranslationKeys\.server/u)
@@ -134,6 +143,14 @@ const dashboardCatalogUrls = {
   en: new URL("../../src/i18n/locales/en/dashboard.json", import.meta.url),
   ru: new URL("../../src/i18n/locales/ru/dashboard.json", import.meta.url),
 }
+
+const newsCatalogUrls = {
+  en: new URL("../../src/i18n/locales/en/news.json", import.meta.url),
+  ru: new URL("../../src/i18n/locales/ru/news.json", import.meta.url),
+}
+
+const i18nConfigUrl = new URL("../../src/i18n/config.ts", import.meta.url)
+const i18nMetadataUrl = new URL("../../src/i18n/metadata.ts", import.meta.url)
 
 async function readJson(url) {
   return JSON.parse(await readFile(url, "utf8"))
@@ -285,4 +302,40 @@ test("shared SEO metadata extraction preserves values and counts for a root head
       'meta[name="twitter:image"]': 1,
     },
   })
+})
+
+test("SSR locale probe catches ordinary fallback that raw-key scanning misses", async () => {
+  const [enNews, ruNews, i18nConfig, i18nMetadata] = await Promise.all([
+    readJson(newsCatalogUrls.en),
+    readJson(newsCatalogUrls.ru),
+    readFile(i18nConfigUrl, "utf8"),
+    readFile(i18nMetadataUrl, "utf8"),
+  ])
+  assert.match(i18nConfig, /fallbackLng,/u)
+  assert.match(i18nMetadata, /fallbackLng.*"ru"/u)
+
+  const catalogs = { en: enNews, ru: ruNews }
+  const missingEnglishPlaceholder = globalThis.structuredClone(catalogs)
+  delete missingEnglishPlaceholder.en.search.placeholder
+  const fallbackInstance = createInstance()
+  await fallbackInstance.init({
+    lng: "en",
+    fallbackLng: "ru",
+    supportedLngs: ["en", "ru"],
+    load: "currentOnly",
+    resources: {
+      en: { news: missingEnglishPlaceholder.en },
+      ru: { news: missingEnglishPlaceholder.ru },
+    },
+    ns: ["news"],
+    defaultNS: "common",
+    initAsync: false,
+    returnNull: false,
+    interpolation: { escapeValue: false },
+  })
+
+  const fallbackPlaceholder = fallbackInstance.t("news:search.placeholder")
+  assert.equal(fallbackPlaceholder, ruNews.search.placeholder)
+  assert.equal(fallbackPlaceholder.includes(":"), false)
+  assert.notEqual(fallbackPlaceholder, enNews.search.placeholder)
 })

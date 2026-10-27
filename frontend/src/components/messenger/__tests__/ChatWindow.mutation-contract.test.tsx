@@ -4,6 +4,9 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Message } from "@/components/messenger/types"
 
+const opacityClasses = (element: Element) =>
+  [...element.classList].filter((className) => className.startsWith("opacity-"))
+
 /**
  * This suite intentionally keeps the motion props observable.  The shared
  * framer-motion test double strips those props because most render tests only
@@ -600,10 +603,18 @@ describe("ChatWindow motion and layout mutation contract", () => {
       "text-[var(--text-inverse)]"
     )
 
+    const sentAttachmentSize = sentLink.querySelector(".text-micro")!
+    expect(sentAttachmentSize).toHaveClass(
+      "text-micro",
+      "font-medium",
+      "text-[color:var(--text-inverse)]"
+    )
+    expect(sentAttachmentSize).not.toHaveClass("opacity-medium")
     const receivedLink = container.querySelector<HTMLAnchorElement>(
       'a[href="https://example.test/received.pdf"]'
     )!
     expect(receivedLink).toHaveClass("bg-(--bg-surface-raised)/[calc(var(--opacity-medium)*100%)]")
+    expect(receivedLink.querySelector(".text-micro")).toHaveClass("opacity-medium")
     expect(receivedLink.querySelector("div")).toHaveClass(
       "p-2",
       "rounded-lg",
@@ -621,7 +632,19 @@ describe("ChatWindow motion and layout mutation contract", () => {
       "border-(--text-inverse)/[calc(var(--opacity-medium)*100%)]",
       "bg-(--text-inverse)/[calc(var(--opacity-faint)*100%)]"
     )
-    expect(sentReply.querySelector("p")).toHaveClass("font-semibold", "text-[var(--text-inverse)]")
+    expect(sentReply.querySelector("p")).toHaveClass(
+      "text-micro",
+      "font-semibold",
+      "text-[color:var(--text-inverse)]"
+    )
+    const sentReplyCopy = sentReply.querySelectorAll("p")[1]!
+    expect(sentReplyCopy).toHaveClass(
+      "line-clamp-2",
+      "text-sm",
+      "leading-snug",
+      "text-[color:var(--text-inverse)]"
+    )
+    expect(sentReplyCopy).not.toHaveClass("opacity-medium")
 
     const deletedReply = screen.getByText("messenger:replyTo.deletedOriginal").parentElement!
     expect(deletedReply).toHaveClass(
@@ -774,6 +797,8 @@ describe("ChatWindow motion and layout mutation contract", () => {
   })
 
   it("keeps sent/received row alignment and forwarded-header styling distinct", () => {
+    const onStartReply = vi.fn()
+    const onForward = vi.fn()
     const { container } = render(
       <ChatWindow
         messages={[
@@ -790,6 +815,8 @@ describe("ChatWindow motion and layout mutation contract", () => {
             forwardedFromName: "Bob",
           }),
         ]}
+        onStartReply={onStartReply}
+        onForward={onForward}
       />
     )
 
@@ -809,18 +836,35 @@ describe("ChatWindow motion and layout mutation contract", () => {
       "flex",
       "items-center",
       "gap-1",
+      "text-micro",
       "font-semibold",
-      "text-[var(--text-inverse)]",
-      "opacity-medium"
+      "text-[color:var(--text-inverse)]"
     )
+    expect(forwardedHeaders[0]!).not.toHaveClass("opacity-medium")
     expect(forwardedHeaders[1]).toHaveClass(
       "mb-1.5",
       "flex",
       "items-center",
       "gap-1",
+      "text-micro",
       "font-semibold",
       "text-(--brand-main)"
     )
+    for (const label of [
+      "messenger:reply",
+      "messenger:forward",
+      "messenger:editMessage",
+      "messenger:deleteMessage",
+    ]) {
+      const action = sentRow.querySelector<HTMLButtonElement>('button[aria-label="' + label + '"]')!
+      expect(opacityClasses(action)).toEqual(["opacity-hover"])
+    }
+    for (const label of ["messenger:reply", "messenger:forward"]) {
+      const action = receivedRow.querySelector<HTMLButtonElement>(
+        'button[aria-label="' + label + '"]'
+      )!
+      expect(opacityClasses(action)).toEqual(["opacity-medium"])
+    }
     expect(forwardedHeaders[0]!.querySelector("svg")).toHaveClass("size-3", "shrink-0")
     expect(forwardedHeaders[0]!.querySelector("svg")).toHaveAttribute("aria-hidden", "true")
   })
@@ -897,6 +941,10 @@ describe("ChatWindow motion and layout mutation contract", () => {
     expect(readStatus.querySelector(".lucide-check")).toBeNull()
     expect(sentStatus.querySelector(".lucide-check")).toBeInTheDocument()
     expect(sentStatus.querySelector(".lucide-check-check")).toBeNull()
+    expect(opacityClasses(readStatus.parentElement!)).toEqual([])
+    expect(opacityClasses(sentStatus.parentElement!)).toEqual([])
+    expect(opacityClasses(readStatus.querySelector(".lucide-check-check")!)).toEqual([])
+    expect(opacityClasses(sentStatus.querySelector(".lucide-check")!)).toEqual([])
     expect(
       container.querySelectorAll('[role="img"][aria-label^="messenger:aria.message"]').length
     ).toBe(2)
@@ -932,7 +980,9 @@ describe("ChatWindow motion and layout mutation contract", () => {
     const receivedEdited = receivedRow.querySelector("span.text-micro")!
     expect(ownEdited).toHaveTextContent("messenger:edited")
     expect(ownEdited).toHaveAttribute("title", 'messenger:messageEditedAt|{"time":"15:00"}')
-    expect(ownEdited).toHaveStyle({ color: "var(--primary-subtle)" })
+    expect(ownEdited).toHaveStyle({ color: "var(--text-inverse)" })
+    expect(opacityClasses(ownEdited.parentElement!)).toEqual([])
+    expect(opacityClasses(receivedEdited.parentElement!)).toEqual(["opacity-hover"])
     expect(receivedEdited).toHaveTextContent("messenger:edited")
     expect(receivedEdited).toHaveAttribute("title", 'messenger:messageEditedAt|{"time":"15:02"}')
     expect(receivedEdited).toHaveStyle({ color: "var(--text-secondary)" })
@@ -942,7 +992,7 @@ describe("ChatWindow motion and layout mutation contract", () => {
     expect([...ownTimestamps].some((element) => element.textContent === "15:01")).toBe(true)
     expect([...receivedTimestamps].some((element) => element.textContent === "15:03")).toBe(true)
     expect([...ownTimestamps].find((element) => element.textContent === "15:01")).toHaveStyle({
-      color: "var(--primary-subtle)",
+      color: "var(--text-inverse)",
     })
     expect([...receivedTimestamps].find((element) => element.textContent === "15:03")).toHaveStyle({
       color: "var(--text-secondary)",
@@ -1262,17 +1312,25 @@ describe("ChatWindow motion and layout mutation contract", () => {
       "line-clamp-2",
       "text-sm",
       "leading-snug",
-      "text-[var(--text-inverse)]",
-      "opacity-medium"
+      "text-[color:var(--text-inverse)]"
     )
+    expect(sentReply).not.toHaveClass("opacity-medium")
     expect(receivedReply).toHaveClass(
       "line-clamp-2",
       "text-sm",
       "leading-snug",
       "text-(--text-secondary)"
     )
-    expect(screen.getByText("Bob")).toHaveClass("text-[var(--text-inverse)]")
-    expect(screen.getByText("Dana")).toHaveClass("text-(--brand-main)")
+    expect(screen.getByText("Bob")).toHaveClass(
+      "text-micro",
+      "font-semibold",
+      "text-[color:var(--text-inverse)]"
+    )
+    expect(screen.getByText("Dana")).toHaveClass(
+      "text-micro",
+      "font-semibold",
+      "text-(--brand-main)"
+    )
   })
 
   it("keeps tombstone and inline-edit corner styles side-aware", () => {

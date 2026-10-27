@@ -9,8 +9,8 @@ interface GroupAvatarProps {
 
 /**
  * Wave 211 G4 — the avatar glyph for a group chat (no per-user photo). A Users
- * icon centered in the messenger violet→pink gradient circle (the same
- * `--messenger-send-bg` the send button uses, so groups read as "on-theme").
+ * icon centered in the messenger violet→pink gradient circle using the shared
+ * `--messenger-send-bg` token, so groups read as "on-theme".
  *
  * The gradient is theme-INDEPENDENT (violet-400 → pink-400 are fixed primitives,
  * identical in light + dark), so the glyph is a CONSTANT `--color-white` — the

@@ -20,6 +20,11 @@ const PAGE_TITLE_CATALOGS = {
   news: { en: enNews.pageTitle, ru: ruNews.pageTitle },
 } satisfies Record<TitleLandmark, Record<Language, string>>
 
+const NEWS_SEARCH_PLACEHOLDER_CATALOGS = {
+  en: enNews.search.placeholder,
+  ru: ruNews.search.placeholder,
+} satisfies Record<Language, string>
+
 const PAGE_DESCRIPTION_CATALOGS = {
   activity: { en: enActivity.pageDescription, ru: ruActivity.pageDescription },
   dashboard: { en: enNavigation.brandDescription, ru: ruNavigation.brandDescription },
@@ -87,6 +92,16 @@ function expectedDocumentTitle(language: Language, landmark: TitleLandmark): str
 
 function readDocumentTitle(markup: string | null): string | null {
   return extractSeoMetadata(markup)?.title ?? null
+}
+
+function readNewsSearchPlaceholder(markup: string | null): string | null {
+  if (markup === null) return null
+  const root = new JSDOM(markup).window.document.querySelector("#root")
+  return (
+    root
+      ?.querySelector<HTMLInputElement>(".news-theme header input[placeholder]")
+      ?.getAttribute("placeholder") ?? null
+  )
 }
 
 function readHeadSnapshot(markup: string | null) {
@@ -313,6 +328,9 @@ async function assertDashboardHydratesAndNavigatesInLanguage(
     expect(newsResponse?.headers()["content-type"] ?? "").toContain("text/html")
     const newsServerMarkup = await newsResponse?.text()
     expect(newsServerMarkup).toBeTruthy()
+    expect(readNewsSearchPlaceholder(newsServerMarkup ?? null)).toBe(
+      NEWS_SEARCH_PLACEHOLDER_CATALOGS[language]
+    )
     const newsServerLanguage = newsServerMarkup?.match(/<html\b[^>]*\blang=["'](ru|en)["']/u)?.[1]
     expect(newsServerLanguage).toBe(language)
     expect(readDocumentTitle(newsServerMarkup ?? null)).toBe(

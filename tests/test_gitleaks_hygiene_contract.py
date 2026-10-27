@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import os
 import selectors
@@ -12,6 +13,7 @@ import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 import yaml
@@ -772,9 +774,62 @@ def _linux_process_identity(pid: int) -> tuple[str, int, int] | None:
     status_path = Path("/proc") / str(pid) / "stat"
     try:
         fields = status_path.read_text(encoding="ascii").rsplit(") ", 1)[1].split()
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
         return None
     return fields[0], int(fields[2]), int(fields[19])
+
+
+@pytest.mark.parametrize(
+    ("error_type", "error_number"),
+    [
+        (FileNotFoundError, errno.ENOENT),
+        (ProcessLookupError, errno.ESRCH),
+    ],
+)
+def test_linux_process_identity_treats_disappeared_proc_stat_as_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[OSError],
+    error_number: int,
+) -> None:
+    """A process may disappear between PID observation and its procfs read."""
+    pid = 42_424_242
+    status_path = Path("/proc") / str(pid) / "stat"
+
+    original_read_text = Path.read_text
+    target_reads: list[Path] = []
+
+    def read_disappeared_process_stat(path: Path, *args: Any, **kwargs: Any) -> str:
+        if path != status_path:
+            return original_read_text(path, *args, **kwargs)
+        target_reads.append(path)
+        raise error_type(error_number, "process disappeared", str(status_path))
+
+    monkeypatch.setattr(Path, "read_text", read_disappeared_process_stat)
+
+    assert _linux_process_identity(pid) is None
+    assert target_reads == [status_path]
+
+
+def test_linux_process_identity_propagates_unrelated_proc_stat_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid = 42_424_242
+    status_path = Path("/proc") / str(pid) / "stat"
+
+    original_read_text = Path.read_text
+    target_reads: list[Path] = []
+
+    def deny_process_stat(path: Path, *args: Any, **kwargs: Any) -> str:
+        if path != status_path:
+            return original_read_text(path, *args, **kwargs)
+        target_reads.append(path)
+        raise PermissionError(errno.EACCES, "synthetic procfs denial", str(status_path))
+
+    monkeypatch.setattr(Path, "read_text", deny_process_stat)
+
+    with pytest.raises(PermissionError):
+        _linux_process_identity(pid)
+    assert target_reads == [status_path]
 
 
 def _assert_scan_timeout_contract(
