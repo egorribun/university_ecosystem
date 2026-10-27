@@ -10,6 +10,7 @@ import { server } from "@/tests/mocks/server"
 import { testUser } from "@/tests/mocks/handlers"
 import i18n from "../../i18n/config"
 import { createTestQueryClient, renderWithRouter } from "@/tests/helpers/renderWithRouter"
+import { acceptBrowserSessionGeneration } from "@/stores/sessionEpoch"
 import { useAuthStore } from "@/stores/useAuthStore"
 
 // Login's successful path warms the dashboard in the background.  Keep the
@@ -95,6 +96,7 @@ const renderLogin = async (options: RenderLoginOptions = {}) => {
 describe("Login page", () => {
   beforeEach(() => {
     localStorage.clear()
+    acceptBrowserSessionGeneration()
     localStorage.setItem("ue:language", "en")
   })
 

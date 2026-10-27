@@ -29,13 +29,14 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 async function loadActivityPdfFont(fontUrl: string): Promise<ArrayBuffer> {
   const controller = new AbortController()
-  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  let rejectTimeout!: (reason: Error) => void
   const timeout = new Promise<never>((_resolve, reject) => {
-    timeoutId = setTimeout(() => {
-      reject(new Error("Activity PDF font load timed out"))
-      controller.abort()
-    }, IMAGE_LOAD_TIMEOUT_MS)
+    rejectTimeout = reject
   })
+  const timeoutId = setTimeout(() => {
+    rejectTimeout(new Error("Activity PDF font load timed out"))
+    controller.abort()
+  }, IMAGE_LOAD_TIMEOUT_MS)
   const request = async () => {
     const response = await fetch(fontUrl, { signal: controller.signal })
     if (controller.signal.aborted) throw new Error("Activity PDF font load timed out")
@@ -46,7 +47,7 @@ async function loadActivityPdfFont(fontUrl: string): Promise<ArrayBuffer> {
   try {
     return await Promise.race([request(), timeout])
   } finally {
-    if (timeoutId !== undefined) clearTimeout(timeoutId)
+    clearTimeout(timeoutId)
   }
 }
 

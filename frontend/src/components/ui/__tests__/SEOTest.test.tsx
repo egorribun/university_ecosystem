@@ -1,7 +1,11 @@
-import { act, render, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 import i18n from "@/i18n/config"
-import { SEO } from "../SEO"
+import { SEO, SeoReadinessProvider, usePageSeoReady } from "../SEO"
+import {
+  registerSeoReadinessInstance,
+  unregisterSeoReadinessInstance,
+} from "../seoReadinessRegistry"
 
 describe("SEO Component", () => {
   it("renders with title only", () => {
@@ -115,5 +119,57 @@ describe("SEO Component", () => {
       "content",
       "website"
     )
+  })
+})
+
+function SeoReadinessProbe() {
+  const ready = usePageSeoReady()
+  return <output data-testid="seo-readiness">{ready ? "ready" : "not-ready"}</output>
+}
+
+describe("SEO readiness registry", () => {
+  it("keeps duplicate registration idempotent", () => {
+    const empty = new Set<string>()
+    const registered = registerSeoReadinessInstance(empty, "page")
+
+    expect(registered).not.toBe(empty)
+    expect([...registered]).toEqual(["page"])
+    expect([...empty]).toEqual([])
+    const beforeDuplicateRegistration = [...registered]
+    const duplicateRegistration = registerSeoReadinessInstance(registered, "page")
+    expect(duplicateRegistration).toBe(registered)
+    expect([...duplicateRegistration]).toEqual(beforeDuplicateRegistration)
+  })
+
+  it("keeps absent unregistration idempotent and removes registered instances immutably", () => {
+    const current = new Set(["root", "page"])
+
+    const beforeAbsentUnregister = [...current]
+    const absentUnregister = unregisterSeoReadinessInstance(current, "absent")
+    expect(absentUnregister).toBe(current)
+    expect([...absentUnregister]).toEqual(beforeAbsentUnregister)
+    const next = unregisterSeoReadinessInstance(current, "page")
+    expect(next).not.toBe(current)
+    expect([...next]).toEqual(["root"])
+    expect([...current]).toEqual(["root", "page"])
+  })
+
+  it("updates provider readiness when an SEO instance mounts and unmounts", () => {
+    const { rerender } = render(
+      <SeoReadinessProvider>
+        <SeoReadinessProbe />
+        <SEO title="Lifecycle" />
+      </SeoReadinessProvider>
+    )
+
+    expect(screen.getByTestId("seo-readiness")).toHaveTextContent("ready")
+
+    rerender(
+      <SeoReadinessProvider>
+        <SeoReadinessProbe />
+      </SeoReadinessProvider>
+    )
+
+    expect(screen.getByTestId("seo-readiness")).toHaveTextContent("not-ready")
   })
 })

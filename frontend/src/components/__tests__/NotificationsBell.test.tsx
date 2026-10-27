@@ -762,6 +762,92 @@ describe("NotificationsBell", () => {
     }
   })
 
+  it("swallows mark-read failures for unread notifications without a link", async () => {
+    const state = baseState()
+    state.data = [
+      {
+        id: "unlinked-rejection",
+        title: "Unlinked update",
+        body: "No destination",
+        created_at: "2024-01-01T00:00:00Z",
+        read: false,
+      },
+    ]
+    const markRead = vi.fn().mockRejectedValue(new Error("mark-read failed"))
+    state.markRead = markRead
+    useNotificationsMock.mockReturnValue(state)
+
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+
+    const link = screen.getByText("Unlinked update").closest("a")
+    expect(link).toHaveAttribute("href", "#")
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true })
+    await act(async () => {
+      fireEvent(link!, click)
+      await Promise.resolve()
+    })
+
+    expect(click.defaultPrevented).toBe(true)
+    expect(markRead).toHaveBeenCalledTimes(1)
+    expect(markRead).toHaveBeenCalledWith("unlinked-rejection")
+    expect(link).toBeInTheDocument()
+  })
+
+  it("preserves modified navigation when marking an unread link fails", async () => {
+    const state = baseState()
+    state.data = [
+      {
+        id: "modified-link-rejection",
+        title: "Linked update",
+        body: "Open the destination",
+        created_at: "2024-01-01T00:00:00Z",
+        read: false,
+        link: "/news/modified-link-rejection",
+      },
+    ]
+    const markRead = vi.fn().mockRejectedValue(new Error("mark-read failed"))
+    state.markRead = markRead
+    useNotificationsMock.mockReturnValue(state)
+
+    const attemptedNavigations: string[] = []
+    const emulateBrowserDefaultNavigation = (event: MouseEvent) => {
+      if (event.defaultPrevented || !(event.target instanceof Element)) return
+      const link = event.target.closest("a[href]")
+      if (!link) return
+
+      attemptedNavigations.push(link.getAttribute("href")!)
+      event.preventDefault()
+    }
+    document.addEventListener("click", emulateBrowserDefaultNavigation)
+
+    const user = userEvent.setup()
+    try {
+      render(<NotificationsBell />)
+      await user.click(screen.getByRole("button", { name: "Open notifications" }))
+
+      const link = screen.getByText("Linked update").closest("a")
+      const modifiedClick = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: true,
+      })
+      await act(async () => {
+        fireEvent(link!, modifiedClick)
+        await Promise.resolve()
+      })
+
+      expect(modifiedClick.defaultPrevented).toBe(true)
+      expect(attemptedNavigations).toEqual(["/news/modified-link-rejection"])
+      expect(markRead).toHaveBeenCalledTimes(1)
+      expect(markRead).toHaveBeenCalledWith("modified-link-rejection")
+      expect(link).toBeInTheDocument()
+    } finally {
+      document.removeEventListener("click", emulateBrowserDefaultNavigation)
+    }
+  })
+
   it("uses the localized new-notifications label for the unread badge", async () => {
     const state = baseState()
     state.unreadCount = 2

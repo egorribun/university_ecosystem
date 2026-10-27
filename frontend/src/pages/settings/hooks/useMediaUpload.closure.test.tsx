@@ -30,6 +30,7 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: mocks.t }),
 }))
 
+import { rotateBrowserSession } from "@/stores/sessionEpoch"
 import { useAvatarUpload } from "@/pages/settings/hooks/useAvatarUpload"
 import { useCoverUpload } from "@/pages/settings/hooks/useCoverUpload"
 import enSettings from "../../../i18n/locales/en/settings.json"
@@ -365,6 +366,35 @@ describe.each([
       })
       expect(result.current.busy).toBe(false)
     })
+    it("does not report avatar-delete errors after session ownership expires", async () => {
+      rotateBrowserSession()
+      let rejectDelete!: (error: Error) => void
+      mocks.api.delete.mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectDelete = reject
+          })
+      )
+      const setSnackbar = vi.fn()
+      const { result } = renderHook(() => useAvatarUpload(setSnackbar))
+
+      let removePromise!: Promise<void>
+      act(() => {
+        removePromise = result.current.remove()
+      })
+      await waitFor(() => expect(mocks.api.delete).toHaveBeenCalledOnce())
+      rotateBrowserSession()
+
+      await act(async () => {
+        rejectDelete(new Error("avatar delete failed after session change"))
+        await removePromise
+      })
+
+      expect(mocks.api.delete).toHaveBeenCalledOnce()
+      expect(mocks.fetchQuery).not.toHaveBeenCalled()
+      expect(setSnackbar).not.toHaveBeenCalled()
+    })
+
     it("warns when an upload commits but refresh returns no profile", async () => {
       const setSnackbar = vi.fn()
       mocks.fetchQuery.mockResolvedValueOnce(null)

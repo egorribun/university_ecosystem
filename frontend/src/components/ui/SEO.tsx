@@ -10,6 +10,10 @@ import {
   type ReactNode,
 } from "react"
 import { useTranslation } from "react-i18next"
+import {
+  registerSeoReadinessInstance,
+  unregisterSeoReadinessInstance,
+} from "./seoReadinessRegistry"
 
 interface SeoReadinessContextValue {
   hasPageSeo: boolean
@@ -27,18 +31,10 @@ const SeoReadinessContext = createContext<SeoReadinessContextValue>({
 export function SeoReadinessProvider({ children }: { children: ReactNode }) {
   const [instances, setInstances] = useState<ReadonlySet<string>>(() => new Set())
   const register = useCallback((instanceId: string) => {
-    setInstances((current) => {
-      if (current.has(instanceId)) return current
-      return new Set(current).add(instanceId)
-    })
+    setInstances((current) => registerSeoReadinessInstance(current, instanceId))
   }, [])
   const unregister = useCallback((instanceId: string) => {
-    setInstances((current) => {
-      if (!current.has(instanceId)) return current
-      const next = new Set(current)
-      next.delete(instanceId)
-      return next
-    })
+    setInstances((current) => unregisterSeoReadinessInstance(current, instanceId))
   }, [])
   const value = useMemo(
     () => ({ hasPageSeo: instances.size > 0, register, unregister }),

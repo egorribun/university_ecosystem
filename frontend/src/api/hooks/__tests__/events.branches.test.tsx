@@ -760,24 +760,42 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
   })
 
   it("returns no placeholder when the storage adapter throws", async () => {
-    const getItemSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-      throw new Error("storage unavailable")
+    const cacheKey = "events:list:account:feed-test-user:ru:all"
+    const originalGetItem = Storage.prototype.getItem
+    const getItemSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(function (
+      this: Storage,
+      key: string
+    ) {
+      if (key === cacheKey) throw new Error("storage unavailable")
+      return originalGetItem.call(this, key)
     })
-    allEventsMock.mockResolvedValue(okPage([], null))
+    let resolveEvents: ((response: unknown) => void) | undefined
+    allEventsMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveEvents = resolve
+      })
+    )
 
     try {
       const queryClient = freshClient()
       const { result } = await withExpectedConsole(
         "warn",
-        '[Storage] Failed to parse key "events:list:account:feed-test-user:ru:all"',
-        () =>
-          renderHook(() => useEventsListQuery({ language: "ru" }), {
+        `[Storage] Failed to parse key "${cacheKey}"`,
+        () => {
+          const rendered = renderHook(() => useEventsListQuery({ language: "ru" }), {
             wrapper: makeWrapper(queryClient),
           })
+          expect(rendered.result.current.data).toBeUndefined()
+          expect(rendered.result.current.isPlaceholderData).toBe(false)
+          return rendered
+        }
       )
+      if (!resolveEvents) throw new Error("Events request was not initialized")
+      resolveEvents(okPage([], null))
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
       expect(result.current.events).toEqual([])
     } finally {
+      resolveEvents?.(okPage([], null))
       getItemSpy.mockRestore()
     }
   })

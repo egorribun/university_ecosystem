@@ -2,7 +2,15 @@
 
 Обновлено: 2026-10-27 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
-## Текущая локальная контрольная точка — source eab3 и следующая backend workspace, 2026-10-27
+## Локальная приёмка пакета исправлений, 2026-10-27
+
+Scoped-приёмка сохраняет все прежние 332 принятых ID и добавляет только AUD-431 и AUD-457: **334/512 (65,2%)**, 178 ID остаются непринятыми. Исходная контрольная точка — committed source 55f8; область приёмки привязана к трём точным целевым Git blobs, перечисленным в следующем разделе аудита. Оба закрытия ограничены тестами и наблюдением; они не меняют production-поведение и не доказывают доставку push-событий приложением.
+
+Финальный frontend run дал **10 023 PASS, 0 FAIL/ERROR/SKIP** по точной нормализованной инвентаризации из 577 authored files. Line, statement, function и branch coverage — **100%**: 19 982/19 982, 22 383/22 383, 5 116/5 116 и 16 469/16 469. Полные TypeScript, ESLint, Prettier и 79 quality-markdown checks прошли; final scan 27 plugins сообщил 576 findings в 222 files и 0 unmatched. Auth — 13 PASS, LivePush — 6 PASS, Profile — 380 PASS по семи модулям.
+
+Последний полный hosted snapshot относится к опубликованному source 218 и содержит три failed checks; полного hosted результата для этого пакета здесь нет. Browser PWA4 после eab3 не проверен. Эта scoped-приёмка не утверждает зелёный hosted CI, merge или release. Policy347, baseline319, Gitleaks26, 78 required pairs, blocking CodeQL, hooks и quality floors не менялись; новое исключение для Squawk tooling не заявляется.
+
+## Предыдущая локальная контрольная точка — source eab3 и следующая backend workspace, 2026-10-27
 
 Принятая нижняя граница остаётся **332/512 (64,8%)**; 180 ID не приняты. Новых audit ID нет. На момент этого датированного снимка опубликованный remote PR #1343 всё ещё указывал на 218eedba99d122682a085144fd4f5a6ccdf55624. Локальный committed HEAD eab3f19b348772ba4de02d18df386bcd0828c60c (tree 161e9cba58fdae0780facc51689696729a2f107f, parent d43c3ed7bb152a443a1725e96063ccc94e4dd040) — второй unpublished commit. Следующая backend workspace содержит три изменённых backend файла поверх eab3 и ещё не закоммичена. Hosted CI ниже относится только к опубликованному 218; для eab3 и backend workspace новых hosted checks нет. [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343) показывает опубликованный источник.
 

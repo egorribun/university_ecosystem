@@ -174,12 +174,13 @@ export function ExportDropdown({
       id: "gcal",
       icon: FileDown,
       label: t("schedule:export.googleCalendar"),
-      onClick: () => {
-        if (!googleCalendarUrl) return
-        // Prepare a draft for the first eligible lesson of the filtered selected week.
-        window.open(googleCalendarUrl, "_blank", "noopener")
-        setOpen(false)
-      },
+      onClick: googleCalendarUrl
+        ? () => {
+            // Prepare a draft for the first eligible lesson of the filtered selected week.
+            window.open(googleCalendarUrl, "_blank", "noopener")
+            setOpen(false)
+          }
+        : undefined,
       disabled: !googleCalendarUrl,
     },
   ]

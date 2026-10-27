@@ -610,6 +610,72 @@ describe("ChatWindow — reactions picker outside-click / Escape close (W206)", 
     fireEvent.click(addBtn)
     expect(screen.queryByRole("button", { name: pickerEmoji })).toBeFalsy()
   })
+
+  it("does not restore focus to a detached trigger on Escape", () => {
+    const message = makeMessage({ id: "rx-detached-escape", text: "react", reactions: [] })
+    const onToggleReaction = vi.fn()
+    const { rerender } = render(
+      <ChatWindow messages={[message]} onToggleReaction={onToggleReaction} />,
+      { wrapper }
+    )
+    const trigger = screen.getByRole("button", { name: "messenger:reactions.add" })
+    const focusSpy = vi.spyOn(trigger, "focus")
+
+    fireEvent.click(trigger)
+    expect(trigger).toHaveAttribute("aria-expanded", "true")
+
+    // A parent history refresh can remove the message while its picker is open.
+    // The key listener remains mounted and must not focus the detached button.
+    rerender(<ChatWindow messages={[]} onToggleReaction={onToggleReaction} />)
+    expect(trigger.isConnected).toBe(false)
+
+    fireEvent.keyDown(document, { key: "Escape" })
+    expect(focusSpy).not.toHaveBeenCalled()
+
+    rerender(<ChatWindow messages={[message]} onToggleReaction={onToggleReaction} />)
+    expect(screen.getByRole("button", { name: "messenger:reactions.add" })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    )
+  })
+
+  it("does not restore focus after editing detaches the open picker trigger", () => {
+    const message = makeMessage({
+      id: "rx-detached-edit",
+      text: "react",
+      isMe: true,
+      reactions: [],
+    })
+    const onToggleReaction = vi.fn()
+    const { rerender } = render(
+      <ChatWindow messages={[message]} onToggleReaction={onToggleReaction} />,
+      { wrapper }
+    )
+    const trigger = screen.getByRole("button", { name: "messenger:reactions.add" })
+    const focusSpy = vi.spyOn(trigger, "focus")
+    const pickerEmoji = 'messenger:reactions.react|{"emoji":"👍"}'
+
+    fireEvent.click(trigger)
+    expect(screen.getByRole("button", { name: pickerEmoji })).toBeTruthy()
+
+    // The parent's edit-state update removes the footer trigger while the
+    // already-open picker remains mounted for this in-flight interaction.
+    rerender(
+      <ChatWindow
+        messages={[message]}
+        editingMessageId={message.id}
+        editingMessageContent={message.text}
+        onToggleReaction={onToggleReaction}
+      />
+    )
+    expect(trigger.isConnected).toBe(false)
+    expect(screen.getByRole("textbox")).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: pickerEmoji }))
+    expect(onToggleReaction).toHaveBeenCalledWith(message.id, "👍")
+    expect(focusSpy).not.toHaveBeenCalled()
+    expect(screen.queryByRole("button", { name: pickerEmoji })).toBeFalsy()
+  })
 })
 
 describe("ChatWindow — defensive motion and message-state branches", () => {

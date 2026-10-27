@@ -891,6 +891,137 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     }).not.toThrow()
   })
 
+  it("treats a synchronously removed schedule query as an unresolved update scope", async () => {
+    const groupId = "group-scope-remove"
+    const groups: ScheduleGroup[] = [{ id: groupId, name: "Scope Remove" }]
+    const lessons: Lesson[] = [
+      {
+        id: "lesson-scope-remove",
+        group_id: groupId,
+        weekday: "monday",
+        start_time: "09:00",
+        end_time: "10:00",
+        subject: "Scope remove lesson",
+        parity: "both",
+      },
+    ]
+    const client = newClient()
+    const scheduleKey = pageScheduleQueryOptions(groupId).queryKey
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
+    client.setQueryDefaults(scheduleKey, { initialData: lessons })
+    setAuthFixture({ id: "u-scope-remove", role: "student", group_id: groupId } as UserState)
+
+    const cache = client.getQueryCache()
+    const queryHash = client.defaultQueryOptions(pageScheduleQueryOptions(groupId)).queryHash
+    let matchingAddedEvents = 0
+    let absentDuringAddedEvent = false
+    const unsubscribe: (() => void) | undefined = cache.subscribe((event) => {
+      if (event.type !== "added" || event.query.queryHash !== queryHash) return
+      matchingAddedEvents += 1
+      cache.remove(event.query)
+      absentDuringAddedEvent = cache.get(queryHash) === undefined
+      unsubscribe?.()
+    })
+
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
+    await waitFor(() => {
+      expect(result.current.selectedGroup).toBe(groupId)
+      expect(result.current.rawSchedule).toEqual(lessons)
+      expect(matchingAddedEvents).toBe(1)
+      expect(absentDuringAddedEvent).toBe(true)
+      expect(cache.find({ queryKey: scheduleKey, exact: true })).toBeDefined()
+    })
+
+    const addedLesson: Lesson = { ...lessons[0]!, id: "lesson-added-after-scope-remove" }
+    type ApplyScheduleUpdateResult = ReturnType<typeof result.current.applyScheduleUpdate>
+    const receiptCapture: { value: ApplyScheduleUpdateResult } = { value: undefined }
+    act(() => {
+      receiptCapture.value = result.current.applyScheduleUpdate((previous) => [
+        ...previous,
+        addedLesson,
+      ])
+    })
+    const receipt = receiptCapture.value
+
+    expect(receipt?.schedule).toEqual([...lessons, addedLesson])
+    expect(receipt?.isCurrent()).toBe(false)
+    expect(client.getQueryData(scheduleKey)).toEqual([...lessons, addedLesson])
+    unsubscribe?.()
+  })
+
+  it("returns no receipt when QueryClient structural sharing yields no data", async () => {
+    const groupId = "group-structural-sharing"
+    const groups: ScheduleGroup[] = [{ id: groupId, name: "Structural Sharing" }]
+    const lessons: Lesson[] = [
+      {
+        id: "lesson-structural-sharing",
+        group_id: groupId,
+        weekday: "tuesday",
+        start_time: "11:00",
+        end_time: "12:00",
+        subject: "Structural sharing lesson",
+        parity: "both",
+      },
+    ]
+    const client = newClient()
+    const scheduleKey = pageScheduleQueryOptions(groupId).queryKey
+    let structuralSharingCalls = 0
+    client.setQueryDefaults(scheduleKey, {
+      structuralSharing: (_oldData, newData) => {
+        structuralSharingCalls += 1
+        return structuralSharingCalls <= 2 ? newData : undefined
+      },
+    })
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
+    client.setQueryData(scheduleKey, lessons)
+    expect(structuralSharingCalls).toBe(1)
+    expect(client.getQueryData<Lesson[]>(scheduleKey)).toEqual(lessons)
+    setAuthFixture({
+      id: "u-structural-sharing",
+      role: "student",
+      group_id: groupId,
+    } as UserState)
+
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
+    await waitFor(() => {
+      expect(result.current.selectedGroup).toBe(groupId)
+      expect(result.current.rawSchedule).toEqual(lessons)
+    })
+    expect(structuralSharingCalls).toBe(1)
+
+    const acceptedLesson: Lesson = { ...lessons[0]!, id: "lesson-positive-control" }
+    type ApplyScheduleUpdateResult = ReturnType<typeof result.current.applyScheduleUpdate>
+    const positiveReceiptCapture: { value: ApplyScheduleUpdateResult } = { value: undefined }
+    act(() => {
+      positiveReceiptCapture.value = result.current.applyScheduleUpdate((previous) => [
+        ...previous,
+        acceptedLesson,
+      ])
+    })
+    const positiveReceipt = positiveReceiptCapture.value
+    expect(structuralSharingCalls).toBe(2)
+    expect(positiveReceipt?.schedule).toEqual([...lessons, acceptedLesson])
+    expect(positiveReceipt?.isCurrent()).toBe(true)
+    expect(client.getQueryData(scheduleKey)).toEqual([...lessons, acceptedLesson])
+
+    const declinedLesson: Lesson = { ...lessons[0]!, id: "lesson-declined-control" }
+    const declinedReceiptCapture: { value: ApplyScheduleUpdateResult } = { value: undefined }
+    act(() => {
+      declinedReceiptCapture.value = result.current.applyScheduleUpdate((previous) => [
+        ...previous,
+        declinedLesson,
+      ])
+    })
+    const declinedReceipt = declinedReceiptCapture.value
+    expect(structuralSharingCalls).toBe(3)
+    expect(declinedReceipt).toBeUndefined()
+    expect(client.getQueryData(scheduleKey)).toBeUndefined()
+  })
+
   it("normalizes falsy persistence fields and skips today calculations on Sunday", async () => {
     vi.useFakeTimers({ toFake: ["Date"] })
     vi.setSystemTime(new Date("2026-08-09T12:00:00.000Z"))
