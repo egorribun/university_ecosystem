@@ -13,7 +13,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/prometheus/client_golang v1.25.0
-	github.com/quic-go/quic-go v0.63.0
+	github.com/quic-go/quic-go v0.64.1
 	github.com/redis/go-redis/extra/redisprometheus/v9 v9.23.0
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/spiffe/go-spiffe/v2 v2.9.0
