@@ -21,9 +21,10 @@ const state = vi.hoisted(() => ({
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
   useSearch: () => state.search,
-  useNavigate: () => (options: { search: (previous: Record<string, string>) => typeof state.search }) => {
-    state.search = options.search(state.search)
-  },
+  useNavigate:
+    () => (options: { search: (previous: Record<string, string>) => typeof state.search }) => {
+      state.search = options.search(state.search)
+    },
 }))
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: state.user }) }))
 vi.mock("@/contexts/LanguageContext", () => ({ useLanguage: () => ({ language: state.language }) }))
@@ -39,11 +40,19 @@ vi.mock("@/hooks/useEventsKeyboardNav", () => ({
 vi.mock("@/components/events/EventsBackdrop", () => ({ EventsBackdrop: () => null }))
 vi.mock("../components/EventFormDialog", () => ({ EventFormDialog: () => null }))
 vi.mock("../components/EventsShortcutsOverlay", () => ({ EventsShortcutsOverlay: () => null }))
-vi.mock("@/components/error", () => ({ FeatureErrorBoundary: ({ children }: { children: React.ReactNode }) => children }))
+vi.mock("@/components/error", () => ({
+  FeatureErrorBoundary: ({ children }: { children: React.ReactNode }) => children,
+}))
 vi.mock("@/components/events/EventCard/EventCard", () => ({
-  default: ({ id, participant_count, qrStorage }: { id: string; participant_count: number; qrStorage: string }) => (
-    <div data-testid="card">{`${id}:${participant_count}:${qrStorage}`}</div>
-  ),
+  default: ({
+    id,
+    participant_count,
+    qrStorage,
+  }: {
+    id: string
+    participant_count: number
+    qrStorage: string
+  }) => <div data-testid="card">{`${id}:${participant_count}:${qrStorage}`}</div>,
 }))
 vi.mock("../components/EventsHeader", () => ({
   EventsHeader: (props: {
@@ -52,9 +61,15 @@ vi.mock("../components/EventsHeader", () => ({
     onSortChange: (sort: "popular") => void
   }) => (
     <div>
-      <span data-testid="total">{props.eventsCount === undefined ? "unknown" : props.eventsCount}</span>
-      <button type="button" onClick={() => props.onCategoryChange("seminar")}>category</button>
-      <button type="button" onClick={() => props.onSortChange("popular")}>popular</button>
+      <span data-testid="total">
+        {props.eventsCount === undefined ? "unknown" : props.eventsCount}
+      </span>
+      <button type="button" onClick={() => props.onCategoryChange("seminar")}>
+        category
+      </button>
+      <button type="button" onClick={() => props.onSortChange("popular")}>
+        popular
+      </button>
     </div>
   ),
 }))
@@ -102,8 +117,25 @@ function installPages(requests: URL[]) {
 
 function renderFeature() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const view = render(<QueryClientProvider client={client}><EventsFeature /></QueryClientProvider>)
-  return { ...view, client, rerenderFeature: () => view.rerender(<QueryClientProvider client={client}><EventsFeature /></QueryClientProvider>), dispose: () => { view.unmount(); client.clear() } }
+  const view = render(
+    <QueryClientProvider client={client}>
+      <EventsFeature />
+    </QueryClientProvider>
+  )
+  return {
+    ...view,
+    client,
+    rerenderFeature: () =>
+      view.rerender(
+        <QueryClientProvider client={client}>
+          <EventsFeature />
+        </QueryClientProvider>
+      ),
+    dispose: () => {
+      view.unmount()
+      client.clear()
+    },
+  }
 }
 
 beforeEach(async () => {
@@ -130,7 +162,9 @@ describe("AUD-260 My Events integration", () => {
     const requests: URL[] = []
     installPages(requests)
     const view = renderFeature()
-    await waitFor(() => expect(screen.getByText("event-1:1:memory")).toBeInTheDocument(), { timeout: 1_500 })
+    await waitFor(() => expect(screen.getByText("event-1:1:memory")).toBeInTheDocument(), {
+      timeout: 1_500,
+    })
     expect(screen.getAllByTestId("card")).toHaveLength(12)
     expect(screen.getByTestId("total")).toHaveTextContent("unknown")
     expect(requests).toHaveLength(1)
@@ -144,7 +178,13 @@ describe("AUD-260 My Events integration", () => {
     await waitFor(() => expect(screen.getByText("event-13:13:memory")).toBeInTheDocument())
     fireEvent.click(screen.getByRole("button", { name: enCommon.pagination.firstPage }))
     await waitFor(() => expect(screen.getByText("event-1:1:memory")).toBeInTheDocument())
-    expect(requests.map((url) => url.searchParams.get("cursor"))).toEqual([null, "page-2", "page-3", "page-2", null])
+    expect(requests.map((url) => url.searchParams.get("cursor"))).toEqual([
+      null,
+      "page-2",
+      "page-3",
+      "page-2",
+      null,
+    ])
     view.dispose()
   })
 
@@ -152,17 +192,28 @@ describe("AUD-260 My Events integration", () => {
     const requests: URL[] = []
     installPages(requests)
     const view = renderFeature()
-    await waitFor(() => expect(screen.getByText("event-1:1:memory")).toBeInTheDocument(), { timeout: 1_500 })
+    await waitFor(() => expect(screen.getByText("event-1:1:memory")).toBeInTheDocument(), {
+      timeout: 1_500,
+    })
     fireEvent.click(screen.getByRole("button", { name: enCommon.pagination.nextPage }))
     await waitFor(() => expect(screen.getByText("event-13:13:memory")).toBeInTheDocument())
     fireEvent.click(screen.getByRole("button", { name: "category" }))
     view.rerenderFeature()
-    await waitFor(() => expect(requests.some((url) => url.searchParams.get("category") === "seminar")).toBe(true))
-    expect(requests.filter((url) => url.searchParams.get("category") === "seminar").every((url) => url.searchParams.get("cursor") === null)).toBe(true)
+    await waitFor(() =>
+      expect(requests.some((url) => url.searchParams.get("category") === "seminar")).toBe(true)
+    )
+    expect(
+      requests
+        .filter((url) => url.searchParams.get("category") === "seminar")
+        .every((url) => url.searchParams.get("cursor") === null)
+    ).toBe(true)
     fireEvent.click(screen.getByRole("button", { name: "popular" }))
     view.rerenderFeature()
     await waitFor(() => expect(screen.getByText("event-2:37:memory")).toBeInTheDocument())
-    expect(screen.getAllByTestId("card").map((card) => card.textContent)).toEqual(["event-2:37:memory", "event-1:8:memory"])
+    expect(screen.getAllByTestId("card").map((card) => card.textContent)).toEqual([
+      "event-2:37:memory",
+      "event-1:8:memory",
+    ])
     expect(requests.at(-1)?.searchParams.get("sort")).toBe("popular")
     view.dispose()
   })
@@ -172,13 +223,17 @@ describe("AUD-260 My Events integration", () => {
     const requests: URL[] = []
     installPages(requests)
     const view = renderFeature()
-    await waitFor(() => expect(screen.getByText("event-1:1:memory")).toBeInTheDocument(), { timeout: 1_500 })
+    await waitFor(() => expect(screen.getByText("event-1:1:memory")).toBeInTheDocument(), {
+      timeout: 1_500,
+    })
     state.clock += 60_000
     view.rerenderFeature()
     fireEvent.click(screen.getByRole("button", { name: enCommon.pagination.nextPage }))
     await waitFor(() => expect(screen.getByText("event-13:13:memory")).toBeInTheDocument())
     expect(requests[0]?.searchParams.get("upcoming_after")).toBe("2026-10-28T12:00:00.000Z")
-    expect(requests[1]?.searchParams.get("upcoming_after")).toBe(requests[0]?.searchParams.get("upcoming_after"))
+    expect(requests[1]?.searchParams.get("upcoming_after")).toBe(
+      requests[0]?.searchParams.get("upcoming_after")
+    )
     view.dispose()
   })
 

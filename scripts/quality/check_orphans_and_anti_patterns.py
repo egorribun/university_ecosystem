@@ -11,6 +11,7 @@ import re
 import sys
 import tokenize
 from collections.abc import Sequence
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -19,6 +20,58 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 ISSUE_PATTERN = re.compile(
     r"\b(QUALITY|TD|FIX|RZ|MOD|DESIGN|CQ|INFRA|A11Y)-\d+(\w+)?\b", re.IGNORECASE
 )
+
+_AUDIT_REGISTRY_HEADING = "## 7. Реестр открытых находок"
+_AUDIT_ID_PATTERN = re.compile(r"(?<![\w-])AUD-[0-9]{3}(?![\w-])")
+
+
+@lru_cache(maxsize=8)
+def _registered_audit_ids(repository_root: Path) -> frozenset[str]:
+    """Read one fail-closed registry snapshot per root during an inventory run."""
+    try:
+        registry = repository_root / "docs" / "audits" / "AUDIT-2026-10.md"
+        lines = registry.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        return frozenset()
+
+    starts = [
+        index for index, line in enumerate(lines) if line == _AUDIT_REGISTRY_HEADING
+    ]
+    if len(starts) != 1:
+        return frozenset()
+    start = starts[0] + 1
+    end = next(
+        (index for index in range(start, len(lines)) if lines[index].startswith("## ")),
+        None,
+    )
+    if end is None:
+        return frozenset()
+    # The authority prefix is plain Markdown, not fenced or commented examples.
+    if any(
+        line.lstrip().startswith(("```", "~~~")) or "<!--" in line or "-->" in line
+        for line in lines[:end]
+    ):
+        return frozenset()
+
+    registered: set[str] = set()
+    for line in lines[start:end]:
+        if line.startswith("|"):
+            fields = line.split("|")
+            identifier = fields[1].strip()
+            description = fields[2].strip() if len(fields) > 2 else ""
+        elif line.startswith("- "):
+            fields = line[2:].split(maxsplit=1)
+            identifier = fields[0] if fields else ""
+            description = fields[1].strip() if len(fields) > 1 else ""
+        else:
+            continue
+        if not identifier.lower().startswith("aud"):
+            continue
+        if _AUDIT_ID_PATTERN.fullmatch(identifier) is None or not description:
+            return frozenset()
+        registered.add(identifier)
+    return frozenset(registered)
+
 
 # Focused test markers
 FOCUSED_TEST_PATTERNS = [
@@ -2096,9 +2149,13 @@ def _dynamic_skip_sites(file_path: Path, content: str) -> list[tuple[int, str]]:
 
 def _has_skip_tracking_comment(line: int, comments: dict[int, list[str]]) -> bool:
     evidence = "\n".join(comments.get(line, []) + comments.get(line - 1, []))
-    return (
-        ISSUE_PATTERN.search(evidence) is not None
-        and OWNER_PATTERN.search(evidence) is not None
+    if OWNER_PATTERN.search(evidence) is None:
+        return False
+    if ISSUE_PATTERN.search(evidence) is not None:
+        return True
+    return any(
+        match.group() in _registered_audit_ids(REPOSITORY_ROOT)
+        for match in _AUDIT_ID_PATTERN.finditer(evidence)
     )
 
 
@@ -2454,6 +2511,7 @@ def _inventory_validation_error(manifest: object) -> str | None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    _registered_audit_ids.cache_clear()
     args = _parse_arguments(argv)
 
     if not args.inventory.exists():

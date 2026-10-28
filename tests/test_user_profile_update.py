@@ -983,9 +983,7 @@ async def test_forgot_password_queues_only_encrypted_reset_link(
     captured: dict[str, object] = {}
 
     class FakeTask:
-        async def kiq(
-            self, to_email, link, full_name, locale, *, encrypted_link=False
-        ):
+        async def kiq(self, to_email, link, full_name, locale, *, encrypted_link=False):
             captured["to_email"] = to_email
             captured["link"] = link
             captured["full_name"] = full_name

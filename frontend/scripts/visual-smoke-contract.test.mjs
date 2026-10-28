@@ -328,7 +328,10 @@ test("Events localized heading ignores the nested count badge while preserving v
   const headingMarkup = eventsHeader.match(/<h1\b[\s\S]*?<\/h1>/u)?.[0] ?? ""
   assert.match(headingMarkup, /\{t\("events:pageTitle"\)\}/u)
   assert.match(headingMarkup, /\{eventsCount != null && \([\s\S]*?<span[\s\S]*?\{eventsCount\}/u)
-  assert.match(eventsFeature, /<EventsHeader[\s\S]*?eventsCount=\{filteredEvents\.length\}/u)
+  assert.match(
+    eventsFeature,
+    /<EventsHeader[\s\S]*?eventsCount=\{tab === "my" \? undefined : filteredEvents\.length\}/u
+  )
 
   const start = audit.indexOf("function authenticatedEventsStateInPage(locale) {")
   const end = audit.indexOf("\nexport function isAuthenticatedEventsCaptureReady", start)
@@ -512,7 +515,7 @@ test("selected Events and Schedule readiness selectors remain source-bound", asy
   ])
   assert.match(
     eventsList,
-    /id="events-tabpanel"[\s\S]*?aria-busy=\{isInitialLoading \|\| undefined\}/u
+    /id="events-tabpanel"[\s\S]*?aria-busy=\{isInitialLoading \|\| \(tab === "my" && isFetching\) \|\| undefined\}/u
   )
   assert.match(eventCard, /data-testid="event-card"/u)
   assert.match(schedule, /<SkeletonMorph loaded=\{!isLoading\}/u)

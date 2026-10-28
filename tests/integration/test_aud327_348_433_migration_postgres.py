@@ -161,6 +161,7 @@ def _assert_initially_empty(connection: sa.Connection) -> None:
 @pytest.fixture(scope="module")
 def ephemeral_postgres() -> Iterator[sa.Engine]:
     if os.environ.get("AUD148_POSTGRES_ENABLED") != "1":
+        # AUD-327 AUD-348 AUD-433 @egorribun: requires an owned PostgreSQL slot.
         pytest.skip("Explicitly enabled owned PostgreSQL evidence slot required")
     url = os.environ.get("MIGRATION_ROUNDTRIP_DATABASE_URL", "")
     container_id = os.environ.get("AUD148_POSTGRES_CONTAINER_ID", "")

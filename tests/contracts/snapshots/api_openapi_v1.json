@@ -9994,6 +9994,74 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "const": "events_my_pagination_required",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "legacy_limit": {
+                      "const": 100,
+                      "type": "integer"
+                    },
+                    "pagination_url": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "const": 409,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "trace_id": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance",
+                    "trace_id",
+                    "code",
+                    "legacy_limit",
+                    "pagination_url"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The legacy list exceeds its capacity; use the paginated endpoint.",
+            "headers": {
+              "Link": {
+                "description": "Alternate paginated My-events endpoint.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "422": {
             "content": {
               "application/json": {
@@ -10122,6 +10190,7 @@
               "default": "newest",
               "enum": [
                 "newest",
+                "newest_desc",
                 "popular",
                 "upcoming"
               ],
@@ -10144,6 +10213,24 @@
                 }
               ],
               "title": "Upcoming After"
+            }
+          },
+          {
+            "description": "Requested My-events locale; unsupported values use the usual locale fallback.",
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Requested My-events locale; unsupported values use the usual locale fallback.",
+              "title": "Lang"
             }
           },
           {
@@ -14704,11 +14791,13 @@
         "operationId": "healthz_healthz_get",
         "parameters": [
           {
+            "description": "Legacy parameter, ignored: public responses omit diagnostic details.",
             "in": "query",
             "name": "brief",
             "required": false,
             "schema": {
               "default": false,
+              "description": "Legacy parameter, ignored: public responses omit diagnostic details.",
               "title": "Brief",
               "type": "boolean"
             }

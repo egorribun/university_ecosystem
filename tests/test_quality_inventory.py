@@ -3333,13 +3333,22 @@ def test_audit_tracking_requires_real_adjacent_comment_evidence(
         "",
         "# Wrong document\n| AUD-327 | not a registry |\n",
         "## 7. Реестр открытых находок\nNo registered entries.\n## 8. Evidence\n",
-        "## 7. Реестр открытых находок\n| AUD-0327 | malformed ID |\n"
-        "## 8. Evidence\n",
+        "## 7. Реестр открытых находок\n| AUD-0327 | malformed ID |\n## 8. Evidence\n",
         "## 7. Реестр открытых находок\n| AUD-327 | valid row |\n"
         "| AUD-0328 | malformed second row |\n## 8. Evidence\n",
         "## 7. Реестр открытых находок\n| AUD-327 | incomplete registry |\n",
         "## 7. Реестр открытых находок\n```text\n"
         "| AUD-327 | example, not registry data |\n```\n## 8. Evidence\n",
+        "```text\n## 7. Реестр открытых находок\n"
+        "| AUD-327 | fenced example |\n## 8. Evidence\n```\n",
+        "<!--\n## 7. Реестр открытых находок\n"
+        "| AUD-327 | commented example |\n## 8. Evidence\n-->\n",
+        "~~~text\n## 7. Реестр открытых находок\n"
+        "| AUD-327 | unclosed fenced example |\n## 8. Evidence\n",
+        "```text\n~~~\n## 7. Реестр открытых находок\n"
+        "| AUD-327 | mismatched fence example |\n## 8. Evidence\n",
+        "```text\nopaque prelude\n```\n## 7. Реестр открытых находок\n"
+        "| AUD-327 | opaque authority prefix |\n## 8. Evidence\n",
         "## 7. Реестр открытых находок\n| AUD-327 | first registry |\n"
         "## 7. Реестр открытых находок\n| AUD-327 | second registry |\n"
         "## 8. Evidence\n",

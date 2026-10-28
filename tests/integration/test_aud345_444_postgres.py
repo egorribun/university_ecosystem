@@ -17,6 +17,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 
 def _require_postgres() -> None:
     if database.engine.dialect.name != "postgresql":
+        # AUD-345 AUD-444 @egorribun: contention needs the PostgreSQL driver.
         pytest.skip("registration contention requires PostgreSQL")
 
 
