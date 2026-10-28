@@ -469,7 +469,8 @@ export const idbPersister: Persister = {
 }
 
 const PERSIST_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
-const APP_VERSION_BUSTER = (import.meta.env.VITE_APP_VERSION as string) || "1.0.0"
+const APP_VERSION_BUSTER =
+  import.meta.env.VITE_APP_RELEASE || (import.meta.env.VITE_APP_VERSION as string) || "1.0.0"
 
 export const persistOptions: Omit<PersistQueryClientOptions, "queryClient"> = {
   persister: idbPersister,
