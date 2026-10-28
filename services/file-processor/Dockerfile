@@ -52,6 +52,7 @@ RUN probe_module="github.com/grpc-ecosystem/grpc-health-probe@${GRPC_HEALTH_PROB
     cp -R "$(go env GOMODCACHE)/${probe_module}/." . && \
     chmod -R u+w . && \
     go get \
+      github.com/go-jose/go-jose/v4@v4.1.6 \
       github.com/spiffe/go-spiffe/v2@v2.9.0 \
       google.golang.org/grpc@v1.84.0 \
       golang.org/x/net@v0.60.0 \

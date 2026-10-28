@@ -201,6 +201,9 @@ test("a student resets with the Mailpit link without retaining tokens or followi
   await expectResetFragmentAvailableForReload(page, token)
   await page.reload()
   await expectResetFragmentAvailableForReload(page, token)
+  await page.waitForFunction(() => window.__APP_HYDRATED === true, undefined, {
+    timeout: RESET_REPLAY_ACTION_TIMEOUT_MS,
+  })
   await page.getByLabel("Пароль", { exact: true }).fill(newPassword)
   await page.getByLabel("Повторите пароль", { exact: true }).fill(newPassword)
   await page.getByRole("button", { name: "Сохранить пароль" }).click()

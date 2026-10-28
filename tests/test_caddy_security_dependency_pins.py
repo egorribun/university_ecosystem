@@ -5,17 +5,19 @@ from pathlib import Path
 
 import pytest
 
-# Direct requirements from github.com/caddyserver/caddy/v2 v2.11.7/go.mod.
+# Requirements from github.com/caddyserver/caddy/v2 v2.11.7/go.mod.
 # Keep these release-scoped values synchronized when the pinned Caddy release changes.
 _UPSTREAM_REQUIREMENTS = {
+    "github.com/go-jose/go-jose/v4": "v4.1.5",
     "golang.org/x/net": "v0.59.0",
     "golang.org/x/text": "v0.42.0",
     "google.golang.org/grpc": "v1.83.2",
 }
 
-# Treat the selected x/net, text, and grpc versions as minimum floors.
+# Treat the selected dependency versions as minimum security floors.
 # Future higher replacements remain compatible with these floors.
 _SELECTED_VERSION_FLOORS = {
+    "github.com/go-jose/go-jose/v4": "v4.1.6",
     "golang.org/x/net": "v0.60.0",
     "golang.org/x/text": "v0.42.0",
     "google.golang.org/grpc": "v1.83.2",

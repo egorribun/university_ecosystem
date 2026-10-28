@@ -923,9 +923,13 @@ jobs:
 
 
           def identity():
+              global identity_check
+              identity_check = "source-format"
               tested, source = os.environ["GITHUB_SHA"], os.environ["EXPECTED_SOURCE_SHA"]
               require(all(re.fullmatch(r"[0-9a-f]{40}", value) for value in (tested, source)))
+              identity_check = "checkout-head"
               require(git("rev-parse", "--verify", "HEAD") == tested)
+              identity_check = "source-parent"
               if source != tested:
                   size = git("cat-file", "-s", "HEAD")
                   require(re.fullmatch(r"[1-9][0-9]{0,5}", size) is not None and int(size) <= 65536)
@@ -935,13 +939,18 @@ jobs:
                   parents = [line[7:].decode("ascii") for line in headers if line.startswith(b"parent ")]
                   require(len(parents) == 2 and all(re.fullmatch(r"[0-9a-f]{40}", value) for value in parents))
                   require(parents[1] == source)
+              identity_check = "tracked-clean"
               git("diff", "--quiet", "--no-ext-diff", "--no-textconv", "HEAD", "--")
+              identity_check = "workflow-blob"
               workflow = git("rev-parse", "HEAD:.github/workflows/reusable-security-audit.yml")
               require(re.fullmatch(r"[0-9a-f]{40}", workflow) is not None)
+              identity_check = "run-identity"
               run, attempt = os.environ["GITHUB_RUN_ID"], os.environ["GITHUB_RUN_ATTEMPT"]
               require(all(re.fullmatch(r"[1-9][0-9]{0,19}", value) for value in (run, attempt)))
+              identity_check = "scan-outcome"
               outcome = os.environ["TRIVY_FS_OUTCOME"]
               require(outcome in ("success", "failure"))
+              identity_check = "complete"
               return {"tested_sha": tested, "source_sha": source, "workflow_blob": workflow,
                       "run_id": run, "run_attempt": attempt, "scan_outcome": outcome}
 
@@ -1021,6 +1030,7 @@ jobs:
 
 
           stage = "self-checks"
+          identity_check = "not-started"
           try:
               checked = self_checks()
               stage = "identity-before"
@@ -1041,7 +1051,8 @@ jobs:
               require(len(output.encode("utf-8")) <= 32768)
           except (OSError, UnicodeError, ValueError, TypeError, KeyError, IndexError,
                   OverflowError, RecursionError, subprocess.SubprocessError):
-              print("Trivy metadata diagnostic rejected its input (stage=" + stage + "); original security gates remain authoritative.", file=sys.stderr)
+              check = identity_check if stage in ("identity-before", "identity-after") else "not-applicable"
+              print("Trivy metadata diagnostic rejected its input (stage=" + stage + "; identity-check=" + check + "); original security gates remain authoritative.", file=sys.stderr)
               raise SystemExit(1) from None
           sys.stdout.write(output)
           TRIVY_METADATA
@@ -1147,174 +1158,6 @@ jobs:
           done
           exit $exit_code
 
-      - name: Capture approved go-jose module checksums without changing source
-        if: ${{ !cancelled() }}
-        timeout-minutes: 2
-        shell: bash
-        run: |
-          python3 -I -B - <<'GO_JOSE_CHECKSUMS'
-          import base64
-          from datetime import UTC, datetime, timedelta
-          import json
-          import os
-          from pathlib import Path
-          import re
-          import selectors
-          import shutil
-          import signal
-          import stat
-          import subprocess
-          import sys
-          import tempfile
-          import time
-          from urllib.error import URLError
-          from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
-
-          MODULE = "github.com/go-jose/go-jose/v4"
-          VERSION = "v4.1.6"
-          TAG_URL = "https://api.github.com/repos/go-jose/go-jose/git/ref/tags/v4.1.6"
-          SOURCE_URL = "https://github.com/go-jose/go-jose"
-
-          def require(value):
-              if not value:
-                  raise ValueError("invalid checksum diagnostic input")
-
-          def unique_object(pairs):
-              value = {}
-              for key, item in pairs:
-                  require(key not in value)
-                  value[key] = item
-              return value
-
-          def decode_json(raw, limit):
-              require(type(raw) is bytes and 0 < len(raw) <= limit)
-              value = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object)
-              require(type(value) is dict)
-              return value
-
-          def command(arguments, directory, environment, seconds, limit):
-              process = subprocess.Popen(arguments, cwd=directory, env=environment,
-                                         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                         stderr=subprocess.DEVNULL, start_new_session=True)
-              output = bytearray()
-              deadline = time.monotonic() + seconds
-              try:
-                  with selectors.DefaultSelector() as selector:
-                      selector.register(process.stdout, selectors.EVENT_READ)
-                      while selector.get_map():
-                          remaining = deadline - time.monotonic()
-                          require(remaining > 0)
-                          require(selector.select(remaining))
-                          chunk = os.read(process.stdout.fileno(), min(4096, limit + 1 - len(output)))
-                          if not chunk:
-                              selector.unregister(process.stdout)
-                          else:
-                              output.extend(chunk)
-                              require(len(output) <= limit)
-                  remaining = deadline - time.monotonic()
-                  require(remaining > 0 and process.wait(timeout=remaining) == 0)
-                  return bytes(output)
-              finally:
-                  try:
-                      os.killpg(process.pid, signal.SIGKILL)
-                  except ProcessLookupError:
-                      pass
-                  process.wait(timeout=5)
-                  process.stdout.close()
-
-          class NoRedirect(HTTPRedirectHandler):
-              def redirect_request(self, request, response, code, message, headers, newurl):
-                  raise ValueError("redirect rejected")
-
-          def official_tag():
-              request = Request(TAG_URL, headers={"Accept": "application/vnd.github+json",
-                                                "User-Agent": "university-ecosystem-checksum-diagnostic"})
-              with build_opener(ProxyHandler({}), NoRedirect()).open(request, timeout=10) as response:
-                  require(response.status == 200 and response.geturl() == TAG_URL)
-                  raw = response.read(16385)
-              value = decode_json(raw, 16384)
-              require(value.get("ref") == "refs/tags/" + VERSION)
-              target = value["object"]
-              require(type(target) is dict and target.get("type") == "commit")
-              commit = target.get("sha")
-              require(type(commit) is str and re.fullmatch(r"[0-9a-f]{40}", commit))
-              return commit
-
-          def checksum(value):
-              require(type(value) is str and re.fullmatch(r"h1:[A-Za-z0-9+/]{43}=", value))
-              decoded = base64.b64decode(value[3:], validate=True)
-              require(len(decoded) == 32 and base64.b64encode(decoded).decode("ascii") == value[3:])
-              return value
-
-          def identity(root):
-              sha = os.environ["GITHUB_SHA"]
-              require(re.fullmatch(r"[0-9a-f]{40}", sha))
-              git = ["/usr/bin/git", "--no-optional-locks", "--no-replace-objects", "-c", "core.fsmonitor=false"]
-              require(command([*git, "rev-parse", "--verify", "HEAD"], root, None, 5, 128).decode("ascii").strip() == sha)
-              command([*git, "diff", "--quiet", "--no-ext-diff", "--no-textconv", "HEAD", "--"], root, None, 5, 128)
-              run, attempt = os.environ["GITHUB_RUN_ID"], os.environ["GITHUB_RUN_ATTEMPT"]
-              require(all(re.fullmatch(r"[1-9][0-9]{0,19}", value) for value in (run, attempt)))
-              return {"checkout_sha": sha, "run_id": run, "run_attempt": attempt}
-
-          try:
-              root = Path.cwd().resolve()
-              require(root == Path(os.environ["GITHUB_WORKSPACE"]).resolve())
-              before = identity(root)
-              upstream_commit = official_tag()
-              go = shutil.which("go")
-              require(go is not None)
-              go = str(Path(go).resolve())
-              environment = os.environ.copy()
-              for proxy_variable in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
-                                     "http_proxy", "https_proxy", "all_proxy"):
-                  environment.pop(proxy_variable, None)
-              environment.update({"GOENV": "off", "GOWORK": "off", "GOTOOLCHAIN": "local",
-                                  "GOFLAGS": "", "GOPROXY": "https://proxy.golang.org",
-                                  "GOSUMDB": "sum.golang.org", "GOPRIVATE": "",
-                                  "GONOSUMDB": "", "GONOPROXY": "", "GOINSECURE": "", "GOAUTH": "off"})
-              with tempfile.TemporaryDirectory(prefix="go-jose-checksums-", dir=os.environ["RUNNER_TEMP"]) as temporary:
-                  directory = Path(temporary).resolve()
-                  cache = directory / "module-cache"
-                  environment["GOMODCACHE"] = str(cache)
-                  environment["GOCACHE"] = str(directory / "build-cache")
-                  environment["GOPATH"] = str(directory / "gopath")
-                  environment["HOME"] = str(directory)
-                  environment["XDG_CONFIG_HOME"] = str(directory / "config")
-                  environment["XDG_CACHE_HOME"] = str(directory / "cache")
-                  require(command([go, "env", "GOVERSION"], directory, environment, 5, 128).strip() == b"go1.26.10")
-                  (directory / "go.mod").write_text("module diagnostic.invalid/go-jose-checksums\n\ngo 1.26.4\n", encoding="ascii")
-                  raw = command([go, "mod", "download", "-json", MODULE + "@" + VERSION], directory, environment, 60, 32768)
-                  module = decode_json(raw, 32768)
-                  require(module.get("Path") == MODULE and module.get("Version") == VERSION and "Error" not in module)
-                  sums = [checksum(module["Sum"]), checksum(module["GoModSum"])]
-                  origin = module["Origin"]
-                  require(type(origin) is dict and origin.get("VCS") == "git" and origin.get("URL") == SOURCE_URL)
-                  require(origin.get("Ref") == "refs/tags/" + VERSION and origin.get("Hash") == upstream_commit)
-                  info_path = Path(module["Info"])
-                  require(info_path.is_absolute() and info_path.resolve() == info_path)
-                  require(info_path.is_relative_to(cache))
-                  info_stat = info_path.lstat()
-                  require(stat.S_ISREG(info_stat.st_mode) and not stat.S_ISLNK(info_stat.st_mode) and 0 < info_stat.st_size <= 16384)
-                  info = decode_json(info_path.read_bytes(), 16384)
-                  require(info.get("Version") == VERSION)
-                  released = info.get("Time")
-                  require(type(released) is str and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", released))
-                  released_at = datetime.fromisoformat(released.replace("Z", "+00:00"))
-                  require(released_at <= datetime.now(UTC) - timedelta(days=7))
-                  records = [MODULE + " " + VERSION + " " + sums[0],
-                             MODULE + " " + VERSION + "/go.mod " + sums[1]]
-              require(identity(root) == before)
-              report = {"kind": "approved-go-jose-checksums-not-update-validation", **before,
-                        "module": MODULE, "version": VERSION, "upstream_commit": upstream_commit,
-                        "module_time": released, "sumdb": "sum.golang.org", "records": records}
-              output = "GO_JOSE_CHECKSUMS " + json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n"
-              require(len(output.encode("ascii")) <= 2048)
-          except (OSError, URLError, UnicodeError, ValueError, TypeError, KeyError, IndexError,
-                  OverflowError, RecursionError, subprocess.SubprocessError):
-              print("Approved go-jose checksum capture failed closed; existing audit remains authoritative.", file=sys.stderr)
-              raise SystemExit(1) from None
-          sys.stdout.write(output)
-          GO_JOSE_CHECKSUMS
 
   # ── SBOM generation ────────────────────────────────────────────────────────
   sbom:

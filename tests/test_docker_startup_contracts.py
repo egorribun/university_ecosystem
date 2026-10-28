@@ -3223,6 +3223,7 @@ def test_file_processor_builds_health_probe_with_patched_dependencies() -> None:
 
     assert "GRPC_HEALTH_PROBE_VERSION=v0.4.57" in health_probe
     for dependency in (
+        "github.com/go-jose/go-jose/v4@v4.1.6",
         "github.com/spiffe/go-spiffe/v2@v2.9.0",
         "google.golang.org/grpc@v1.84.0",
         "golang.org/x/net@v0.60.0",

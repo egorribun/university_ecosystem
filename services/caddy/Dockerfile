@@ -26,6 +26,7 @@ RUN apk add --no-cache \
 RUN xcaddy build v${CADDY_VERSION} \
     --output /usr/bin/caddy \
     --with github.com/mholt/caddy-ratelimit@v0.1.0 \
+    --replace github.com/go-jose/go-jose/v4=github.com/go-jose/go-jose/v4@v4.1.6 \
     --replace golang.org/x/net=golang.org/x/net@v0.60.0 \
     --replace golang.org/x/text=golang.org/x/text@v0.42.0 \
     --replace google.golang.org/grpc=google.golang.org/grpc@v1.83.2
