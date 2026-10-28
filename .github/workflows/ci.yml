@@ -1146,6 +1146,15 @@ jobs:
             --exclude require-enum-value-ordering
           )
           while IFS= read -r migration; do
+            # AUD148_ORDINARY_TRAPS_RESET_BEGIN
+            if [[ "${aud148_trap_active:-0}" == 1 ]]; then
+              trap - ERR EXIT
+              aud148_trap_active=0
+              if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+                printf 'aud148_ordinary_exit=0\n' >> "$GITHUB_OUTPUT" || :
+              fi
+            fi
+            # AUD148_ORDINARY_TRAPS_RESET_END
             [ -z "$migration" ] && continue
             read -r revision down_revision < <(
               uv run python scripts/quality/read_alembic_revision.py "$migration"
@@ -1291,6 +1300,21 @@ jobs:
               fail("input could not be read or decoded")
           sys.stdout.write(output)
           AUD148_ORDINARY
+              # Retain the file identity for the later diagnostic-only JSON pass.
+              # A handoff failure must not prevent the existing raw scan.
+              if ordinary_sha="$(/usr/bin/sha256sum -- "$sql_file" | /usr/bin/cut -d ' ' -f 1)" &&
+                 ordinary_identity="$(/usr/bin/stat -c '%d:%i' -- "$sql_file")"; then
+                printf 'aud148_ordinary_sql=%s\naud148_ordinary_sha256=%s\naud148_ordinary_identity=%s\n' \
+                  "$sql_file" "$ordinary_sha" "$ordinary_identity" >> "$GITHUB_OUTPUT" ||
+                  echo "AUD148 ordinary JSON handoff could not be recorded" >&2
+              else
+                echo "AUD148 ordinary JSON handoff could not be recorded" >&2
+              fi
+              # AUD148_ORDINARY_TRAPS_INSTALL_BEGIN
+              trap 'aud148_raw_exit=$?; trap - ERR EXIT; if [[ -n "${GITHUB_OUTPUT:-}" ]]; then printf "aud148_ordinary_exit=%s\n" "$aud148_raw_exit" >> "$GITHUB_OUTPUT" || :; fi; exit "$aud148_raw_exit"' ERR
+              trap 'aud148_raw_exit=$?; if [[ "$aud148_raw_exit" -eq 0 && -n "${GITHUB_OUTPUT:-}" ]]; then printf "aud148_ordinary_exit=0\n" >> "$GITHUB_OUTPUT" || :; fi; exit "$aud148_raw_exit"' EXIT
+              aud148_trap_active=1
+              # AUD148_ORDINARY_TRAPS_INSTALL_END
             fi
             "$squawk_binary_path" "${squawk_args[@]}" "$sql_file"
           done <<< "$changed_files"
@@ -1307,6 +1331,11 @@ jobs:
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           RUN_INTEGRATION_TESTS: "1"
           ORIGINAL_SQUAWK_OUTCOME: ${{ steps.migration-squawk.outcome }}
+          AUD148_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          AUD148_ORDINARY_SQL: ${{ steps.migration-squawk.outputs.aud148_ordinary_sql }}
+          AUD148_ORDINARY_SHA256: ${{ steps.migration-squawk.outputs.aud148_ordinary_sha256 }}
+          AUD148_ORDINARY_IDENTITY: ${{ steps.migration-squawk.outputs.aud148_ordinary_identity }}
+          AUD148_RAW_ORDINARY_EXIT: ${{ steps.migration-squawk.outputs.aud148_ordinary_exit }}
         shell: bash
         run: |
           set -euo pipefail
@@ -1480,15 +1509,217 @@ jobs:
           PY
           lint_log="$(mktemp)"
           lint_status=0
+          AUD148_EXPANDED_SHA256=""
+          AUD148_EXPANDED_IDENTITY=""
+          if [[ -n "$AUD148_ORDINARY_SQL" ]]; then
+            AUD148_EXPANDED_SHA256="$(/usr/bin/sha256sum -- "$sql_file" | /usr/bin/cut -d ' ' -f 1)" || AUD148_EXPANDED_SHA256=""
+            AUD148_EXPANDED_IDENTITY="$(/usr/bin/stat -c '%d:%i' -- "$sql_file")" || AUD148_EXPANDED_IDENTITY=""
+          fi
           printf '%s  %s\n' "$expected_sha256" "$squawk_binary_path" |
             /usr/bin/sha256sum --check --strict
           "$squawk_binary_path" "${squawk_args[@]}" "$sql_file" > "$lint_log" 2>&1 || lint_status=$?
+          raw_expanded_exit="$lint_status"
           echo "AUD148_EXPANDED_SQUAWK_BEGIN"
           if ! print_bounded "$lint_log" 131072; then
             [ "$lint_status" -ne 0 ] || lint_status=1
           fi
           echo "AUD148_EXPANDED_SQUAWK_END"
           echo "AUD148_EXPANDED_SQUAWK_EXIT=$lint_status"
+          capture_status=0
+          if [[ -n "$AUD148_ORDINARY_SQL" ]]; then
+            AUD148_RAW_EXPANDED_EXIT="$raw_expanded_exit"
+            AUD148_SQUAWK_BINARY_EXPECTED_SHA256="$expected_sha256"
+            export AUD148_EXPANDED_SHA256 AUD148_EXPANDED_IDENTITY AUD148_RAW_EXPANDED_EXIT AUD148_SQUAWK_BINARY_EXPECTED_SHA256
+            uv run python - "$squawk_binary_path" "$AUD148_ORDINARY_SQL" "$sql_file" "${squawk_args[@]}" <<'AUD148_JSON' || capture_status=$?
+          import hashlib
+          import json
+          import os
+          import re
+          import resource
+          import subprocess
+          import sys
+          import tempfile
+          from pathlib import Path
+
+
+          def fail(reason):
+              raise SystemExit("AUD148 Squawk JSON: " + reason)
+
+
+          def physical(path):
+              absolute = path.absolute()
+              if any(part.is_symlink() for part in (absolute, *absolute.parents)):
+                  fail("symlink input is forbidden")
+              if not absolute.is_file():
+                  fail("input must be a regular file")
+              return absolute
+
+
+          def read_limited(path, limit):
+              with physical(path).open("rb") as source:
+                  data = source.read(limit + 1)
+              if not 0 < len(data) <= limit:
+                  fail("input is empty or exceeds its byte limit")
+              return data
+
+
+          def identity(path):
+              stat = physical(path).stat()
+              return f"{stat.st_dev}:{stat.st_ino}"
+
+
+          def validate():
+              binary, ordinary, expanded = map(Path, sys.argv[1:4])
+              args = sys.argv[4:]
+              exclusions = (
+                  "prefer-robust-stmts", "prefer-text-field", "prefer-bigint-over-int",
+                  "prefer-identity", "prefer-timestamp-tz", "disallowed-unique-constraint",
+                  "require-enum-value-ordering",
+              )
+              expected_args = [value for rule in exclusions for value in ("--exclude", rule)]
+              if args != expected_args:
+                  fail("scanner arguments do not match the raw gates")
+              expected_binary = os.environ.get("AUD148_SQUAWK_BINARY_EXPECTED_SHA256", "")
+              if not re.fullmatch(r"[0-9a-f]{64}", expected_binary):
+                  fail("scanner checksum is invalid")
+              if os.environ.get("AUD148_SQUAWK_BINARY_SHA256") != expected_binary:
+                  fail("scanner checksum provenance is invalid")
+              if os.environ.get("AUD148_SQUAWK_VERSION") != "squawk 2.67.0":
+                  fail("scanner version is invalid")
+              checkout = os.environ.get("AUD148_CHECKOUT_SHA", "")
+              if not re.fullmatch(r"[0-9a-f]{40}", checkout) or checkout != os.environ.get("GITHUB_SHA"):
+                  fail("checkout provenance is invalid")
+              pr_head = os.environ.get("AUD148_PR_HEAD_SHA", "")
+              if pr_head and not re.fullmatch(r"[0-9a-f]{40}", pr_head):
+                  fail("pull request provenance is invalid")
+              run_id = os.environ.get("GITHUB_RUN_ID", "")
+              attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "")
+              if not all(re.fullmatch(r"[1-9][0-9]{0,19}", value) for value in (run_id, attempt)):
+                  fail("workflow run provenance is invalid")
+              if os.environ.get("GITHUB_JOB") != "alembic-migrations":
+                  fail("producer job is invalid")
+              outcome = os.environ.get("ORIGINAL_SQUAWK_OUTCOME", "")
+              if outcome not in ("success", "failure"):
+                  fail("ordinary raw outcome is invalid")
+              ordinary_exit = os.environ.get("AUD148_RAW_ORDINARY_EXIT", "")
+              if not re.fullmatch(r"0|[1-9][0-9]{0,2}", ordinary_exit) or int(ordinary_exit) > 255:
+                  fail("ordinary raw exit is invalid")
+              if outcome == "success" and ordinary_exit != "0":
+                  fail("ordinary raw exit conflicts with the step outcome")
+              raw_exit = os.environ.get("AUD148_RAW_EXPANDED_EXIT", "")
+              if not re.fullmatch(r"0|[1-9][0-9]{0,2}", raw_exit) or int(raw_exit) > 255:
+                  fail("expanded raw exit is invalid")
+              if identity(ordinary) == identity(expanded):
+                  fail("SQL scenarios must be different physical files")
+              return binary, (ordinary, expanded), args, expected_binary, checkout, pr_head, run_id, attempt, outcome, int(ordinary_exit), int(raw_exit)
+
+
+          def verify_files(binary, sql_paths, expected_binary):
+              if hashlib.sha256(read_limited(binary, 67108864)).hexdigest() != expected_binary:
+                  fail("scanner checksum mismatch")
+              records = []
+              for path, prefix in zip(sql_paths, ("ORDINARY", "EXPANDED"), strict=True):
+                  data = read_limited(path, 65536)
+                  decoded = data.decode("utf-8")
+                  for name in ("SECRET_KEY", "DATABASE_URL"):
+                      private = os.environ.get(name, "")
+                      if private and private in decoded:
+                          fail("SQL contains private runtime context")
+                  digest = hashlib.sha256(data).hexdigest()
+                  physical_id = identity(path)
+                  if digest != os.environ.get(f"AUD148_{prefix}_SHA256"):
+                      fail("SQL checksum mismatch")
+                  if physical_id != os.environ.get(f"AUD148_{prefix}_IDENTITY"):
+                      fail("SQL physical identity mismatch")
+                  records.append((len(data), digest, physical_id))
+              return records
+
+
+          def scan(binary, path, args):
+              def limit_output_files():
+                  # This child-only kernel limit bounds each file during writes.
+                  resource.setrlimit(resource.RLIMIT_FSIZE, (131073, 131073))
+
+              with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+                  try:
+                      process = subprocess.run(
+                          [str(binary), *args, "--reporter", "json", str(path)],
+                          stdout=stdout, stderr=stderr, timeout=30, check=False,
+                          preexec_fn=limit_output_files,
+                      )
+                      exit_code = process.returncode
+                  except subprocess.TimeoutExpired:
+                      exit_code = None
+                  stdout.seek(0)
+                  stderr.seek(0)
+                  out = stdout.read(131073)
+                  err = stderr.read(16385)
+              if len(out) > 131072 or len(err) > 16384:
+                  fail("scanner output exceeds its byte limit")
+              out_text, err_text = out.decode("utf-8"), err.decode("utf-8")
+              try:
+                  parsed = json.loads(out_text)
+              except json.JSONDecodeError:
+                  parsed = None
+              searchable = out_text + err_text + json.dumps(parsed, ensure_ascii=False)
+              for name in ("SECRET_KEY", "DATABASE_URL"):
+                  private = os.environ.get(name, "")
+                  if private and private in searchable:
+                      fail("scanner output contains private runtime context")
+              valid = (
+                  isinstance(parsed, list)
+                  and all(isinstance(item, dict) and item.get("level") != "Error" for item in parsed)
+                  and exit_code in (0, 1)
+              )
+              return exit_code, out_text, err_text, valid
+
+
+          def capture():
+              binary, paths, args, expected, checkout, pr_head, run_id, attempt, outcome, ordinary_exit, raw_exit = validate()
+              records = verify_files(binary, paths, expected)
+              captures = []
+              valid = True
+              for path, scenario, (size, digest, physical_id) in zip(
+                  paths, ("ordinary-parent-live", "expanded-populated-diagnostic"), records, strict=True
+              ):
+                  exit_code, stdout, stderr, scan_valid = scan(binary, path, args)
+                  verify_files(binary, paths, expected)
+                  captures.append({
+                      "scenario": scenario, "sql_path": str(path), "sql_bytes": size,
+                      "sql_sha256": digest, "sql_identity": physical_id, "exit_code": exit_code,
+                      "stdout": stdout, "stderr": stderr,
+                  })
+                  valid = valid and scan_valid
+              report = {
+                  "status": "diagnostic-only-not-an-exception", "checkout_sha": checkout,
+                  "workflow_sha": os.environ["GITHUB_SHA"], "pr_head_sha": pr_head or None,
+                  "workflow_run_id": run_id, "workflow_run_attempt": attempt,
+                  "producer_job": "alembic-migrations", "original_squawk_outcome": outcome,
+                  "raw_ordinary_exit": ordinary_exit, "raw_expanded_exit": raw_exit,
+                  "squawk_version": "squawk 2.67.0",
+                  "squawk_binary_sha256": expected, "squawk_args": args, "captures": captures,
+              }
+              rendered = json.dumps(report, ensure_ascii=True, sort_keys=True, indent=2)
+              output = "AUD148_SQUAWK_JSON_BEGIN\n" + rendered + "\nAUD148_SQUAWK_JSON_END\n"
+              if len(output.encode("utf-8")) >= 262144:
+                  fail("log payload exceeds its byte limit")
+              return output, valid
+
+
+          try:
+              output, valid = capture()
+          except (OSError, UnicodeError, IndexError, subprocess.SubprocessError):
+              fail("input or scanner could not be read")
+          sys.stdout.write(output)
+          if not valid:
+              raise SystemExit(1)
+          AUD148_JSON
+          else
+            echo "AUD148_SQUAWK_JSON_SKIPPED: ordinary SQL was not handed off by the raw gate"
+          fi
+          if [[ "$lint_status" -eq 0 && "$capture_status" -ne 0 ]]; then
+            exit "$capture_status"
+          fi
           exit "$lint_status"
 
       - name: Verify owned PostgreSQL tenant-context acceptance

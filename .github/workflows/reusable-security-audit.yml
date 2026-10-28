@@ -823,8 +823,11 @@ jobs:
           import stat
           import subprocess
           import sys
+          import threading
 
           MAX_BYTES = 4 * 1024 * 1024
+          MAX_TRACKED_DIFF_BYTES = 262144
+          MAX_TRACKED_DIFF_PATHS = 4096
           PREFIX = "TRIVY_FS_METADATA "
           ID = re.compile(r"(?:CVE-[0-9]{4}-[0-9]{4,12}|GHSA-[a-z0-9]{4}(?:-[a-z0-9]{4}){2}|RUSTSEC-[0-9]{4}-[0-9]{4,8}|GO-[0-9]{4}-[0-9]{4,8})")
           PACKAGE = re.compile(r"[A-Za-z0-9@][A-Za-z0-9@._/+~:-]{0,255}")
@@ -920,6 +923,74 @@ jobs:
                                       check=False, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=10)
               require(result.returncode == 0 and len(result.stdout) <= limit)
               return result.stdout if raw else result.stdout.decode("ascii").strip()
+
+
+          def classify_tracked_changes(raw):
+              require(type(raw) is bytes and 0 < len(raw) <= MAX_TRACKED_DIFF_BYTES and raw.endswith(b"\0"))
+              fields = raw[:-1].split(b"\0")
+              require(len(fields) % 2 == 0 and 0 < len(fields) // 2 <= MAX_TRACKED_DIFF_PATHS)
+              seen = set()
+              known = False
+              for status, path in zip(fields[::2], fields[1::2]):
+                  require(status in (b"A", b"D", b"M", b"T", b"U", b"X", b"B"))
+                  require(path and path not in seen)
+                  seen.add(path)
+                  if status == b"M" and path == b"charts/university-ecosystem/charts/redis-0.1.0.tgz":
+                      known = True
+              count = len(seen)
+              return {"knownRedisTgzModified": known, "unknownPathCount": count - int(known), "changedCount": count}
+
+
+          def bounded_process_output(command, timeout=10):
+              process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+              require(process.stdout is not None)
+              data, errors = bytearray(), []
+
+              def collect():
+                  try:
+                      while len(data) <= MAX_TRACKED_DIFF_BYTES:
+                          chunk = os.read(process.stdout.fileno(), min(8192, MAX_TRACKED_DIFF_BYTES + 1 - len(data)))
+                          if not chunk:
+                              return
+                          data.extend(chunk)
+                          if len(data) > MAX_TRACKED_DIFF_BYTES:
+                              try:
+                                  process.kill()
+                              except OSError:
+                                  pass
+                              return
+                  except OSError:
+                      errors.append(True)
+
+              reader = threading.Thread(target=collect, daemon=True)
+              try:
+                  reader.start()
+              except Exception:
+                  process.kill()
+                  process.wait(timeout=1)
+                  process.stdout.close()
+                  raise
+              try:
+                  try:
+                      status = process.wait(timeout=timeout)
+                  except subprocess.TimeoutExpired:
+                      process.kill()
+                      process.wait(timeout=1)
+                      reader.join(timeout=1)
+                      raise
+                  reader.join(timeout=1)
+                  require(not reader.is_alive() and status == 0 and not errors and len(data) <= MAX_TRACKED_DIFF_BYTES)
+                  return bytes(data)
+              finally:
+                  if not reader.is_alive():
+                      process.stdout.close()
+
+
+          def bounded_tracked_diff():
+              raw = bounded_process_output(
+                  ["/usr/bin/git", "--no-optional-locks", "--no-replace-objects", "-c", "core.fsmonitor=false",
+                   "diff", "--name-status", "-z", "--no-renames", "--no-ext-diff", "--no-textconv", "HEAD", "--"])
+              return classify_tracked_changes(raw)
 
 
           def identity():
@@ -1052,6 +1123,12 @@ jobs:
           except (OSError, UnicodeError, ValueError, TypeError, KeyError, IndexError,
                   OverflowError, RecursionError, subprocess.SubprocessError):
               check = identity_check if stage in ("identity-before", "identity-after") else "not-applicable"
+              if stage == "identity-before" and check == "tracked-clean":
+                  try:
+                      diff = bounded_tracked_diff()
+                      print("TRIVY_FS_TRACKED_DIFF " + json.dumps(diff, sort_keys=True, separators=(",", ":")), file=sys.stderr)
+                  except Exception:
+                      pass
               print("Trivy metadata diagnostic rejected its input (stage=" + stage + "; identity-check=" + check + "); original security gates remain authoritative.", file=sys.stderr)
               raise SystemExit(1) from None
           sys.stdout.write(output)
