@@ -6,6 +6,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 import stat
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -13,11 +14,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 
 from botocore.exceptions import ClientError
 
 from app.core.logging import get_logger
+from app.core.storage_urls import (
+    DEFAULT_STATIC_STORAGE_ORIGIN,
+    validate_static_storage_origin,
+)
 
 # RZ-29-01: Business-level timeout guards for S3 operations.
 # DB already has command_timeout=15s (asyncpg), but aioboto3 HTTP calls
@@ -29,7 +34,7 @@ _QUARANTINE_DIRECTORY_ENTRIES_MAX = 10_000
 _QUARANTINE_SCAN_STEPS_MAX = 10_000
 
 if TYPE_CHECKING:
-    from app.core.config import Settings
+    from app.core.config.storage import StorageSettings
 
 logger = get_logger(__name__)
 
@@ -102,9 +107,23 @@ class QuarantineStorageBackend(StorageBackend, Protocol):
 class StaticFSStorage(StorageBackend):
     """Store files on the local filesystem under a static directory."""
 
-    def __init__(self, base_dir: Path, base_url: str = "/static") -> None:
+    def __init__(
+        self,
+        base_dir: Path,
+        base_url: str = "/static",
+        *,
+        static_origin: str = DEFAULT_STATIC_STORAGE_ORIGIN,
+    ) -> None:
         self.base_dir = base_dir
         self.base_url = base_url.rstrip("/") or ""
+        self.static_origin = validate_static_storage_origin(static_origin)
+        if self.base_url.lower().startswith(("http://", "https://")):
+            scheme, remainder = self.base_url.split(":", 1)
+            self._canonical_base_url = f"{scheme.lower()}:{remainder}"
+        else:
+            self._canonical_base_url = (
+                f"{self.static_origin}/{self.base_url.lstrip('/')}".rstrip("/")
+            )
 
     def _normalize_relative_path(self, relative_path: str) -> Path:
         cleaned = relative_path.strip().strip("/")
@@ -319,15 +338,57 @@ class StaticFSStorage(StorageBackend):
             return f"{self.base_url}/{relative_str}"
         return f"/{relative_str}"
 
+    def canonical_file_url(self, relative_path: str) -> str:
+        """Return a private storage identity without creating directories or files."""
+        normalized = self._normalize_relative_path(relative_path)
+        key = normalized.as_posix()
+        if re.fullmatch(r"[A-Za-z0-9._/-]+", key) is None:
+            raise ValueError("Canonical attachment key contains unsafe URL characters")
+        absolute_base = self.base_url.lower().startswith(("http://", "https://"))
+        if (
+            any(char in self.base_url for char in "\\?#")
+            or any(
+                char.isspace() or ord(char) < 32 or ord(char) == 127
+                for char in self.base_url
+            )
+            or (
+                not absolute_base
+                and (self.base_url.startswith("//") or ":" in self.base_url)
+            )
+        ):
+            raise ValueError("Static base URL cannot identify a private attachment")
+        try:
+            parsed = urlsplit(self._canonical_base_url)
+            validate_static_storage_origin(f"{parsed.scheme}://{parsed.netloc}")
+        except ValueError:
+            raise ValueError(
+                "Static base URL cannot identify a private attachment"
+            ) from None
+        self._resolve_validated_path(normalized)
+        return f"{self._canonical_base_url}/{key}"
+
+    @staticmethod
+    def _looks_like_url(value: str) -> bool:
+        return (
+            value.startswith("//")
+            or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", value) is not None
+        )
+
     def _extract_relative_path(self, file_url: str) -> Path | None:
         if not file_url:
             return None
         trimmed = file_url.strip()
         if not trimmed:
             return None
-        prefix = self.base_url.rstrip("/") if self.base_url else ""
-        if prefix and trimmed.startswith(prefix):
-            trimmed = trimmed[len(prefix) :]
+        for prefix in (self.base_url, self._canonical_base_url):
+            if prefix and trimmed == prefix:
+                return None
+            if prefix and trimmed.startswith(f"{prefix}/"):
+                trimmed = trimmed[len(prefix) + 1 :]
+                break
+        else:
+            if self._looks_like_url(trimmed):
+                return None
         trimmed = trimmed.lstrip("/")
         if not trimmed:
             return None
@@ -357,7 +418,9 @@ class StaticFSStorage(StorageBackend):
     async def exists(self, file_url_or_path: str) -> bool:
         relative = self._extract_relative_path(file_url_or_path)
         if relative is None:
-            # Fallback for raw paths
+            if self._looks_like_url(file_url_or_path.strip()):
+                return False
+            # Preserve the existing fallback for literal local keys only.
             relative = self._normalize_relative_path(file_url_or_path)
         target = self._resolve_validated_path(relative)  # RZ-30-02
         return await asyncio.to_thread(target.exists)
@@ -374,7 +437,9 @@ class StaticFSStorage(StorageBackend):
             raise ValueError("max_bytes must be nonnegative")
         relative = self._extract_relative_path(file_url_or_path)
         if relative is None:
-            # Fallback for raw paths
+            if self._looks_like_url(file_url_or_path.strip()):
+                raise FileNotFoundError(f"File not found: {file_url_or_path}")
+            # Preserve the existing fallback for literal local keys only.
             relative = self._normalize_relative_path(file_url_or_path)
         target = self._resolve_validated_path(relative)  # RZ-30-02
         if not await asyncio.to_thread(target.exists):
@@ -742,11 +807,13 @@ class S3Storage(StorageBackend):
             raise FileNotFoundError(f"S3 file not found: {file_url_or_path}") from exc
 
 
-def get_storage_backend(settings: Settings) -> QuarantineStorageBackend:
+def get_storage_backend(settings: StorageSettings) -> QuarantineStorageBackend:
     backend = str(settings.storage_backend).strip().lower()
     if backend in {"static", "filesystem", "local"}:
         return StaticFSStorage(
-            settings.static_dir_path, base_url=settings.storage_static_base_url
+            settings.static_dir_path,
+            base_url=settings.storage_static_base_url,
+            static_origin=settings.storage_static_origin,
         )
     if backend in {"s3", "minio"}:
         return S3Storage(

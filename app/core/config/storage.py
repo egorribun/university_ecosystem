@@ -5,6 +5,11 @@ from pathlib import Path
 
 from pydantic import AliasChoices, Field, field_validator
 
+from app.core.storage_urls import (
+    DEFAULT_STATIC_STORAGE_ORIGIN,
+    validate_static_storage_origin,
+)
+
 from .base import _PROJECT_ROOT, BaseAppSettings, _coerce_int_list, _coerce_str_list
 
 # Canonical message content limit shared by persistence, HTTP schemas and the
@@ -29,6 +34,8 @@ class StorageSettings(BaseAppSettings):
     minio_bucket: str = "uploads"
 
     storage_static_base_url: str = "/static"
+    # Private attachment identity only; public media URLs remain relative.
+    storage_static_origin: str = DEFAULT_STATIC_STORAGE_ORIGIN
     storage_s3_bucket: str = ""
     storage_s3_region: str = ""
     storage_s3_access_key_id: str = ""
@@ -144,6 +151,11 @@ class StorageSettings(BaseAppSettings):
             for e in _coerce_str_list(self.event_file_allowed_extensions)
             if e.strip()
         }
+
+    @field_validator("storage_static_origin")
+    @classmethod
+    def _validate_storage_static_origin(cls, value: str) -> str:
+        return validate_static_storage_origin(value)
 
     @field_validator("storage_backend")
     @classmethod

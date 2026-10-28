@@ -113,10 +113,23 @@ corresponding plaintext variable.
 
 ## 📁 Storage & File Processing
 
+StaticFS public media remains relative by default. Chat attachments persist an
+absolute storage identity but are still downloaded only through the authorized
+chat API; `STORAGE_STATIC_ORIGIN` does not make private directories public or
+cause a redirect. Configure it from trusted backend settings, never request Host
+or frontend origin. Keep it stable after uploading attachments: changing an
+identity prefix does not migrate existing stored URLs. An explicitly absolute
+HTTP(S) `STORAGE_STATIC_BASE_URL` takes precedence; only its scheme casing is
+canonicalized for private identities, leaving public URLs unchanged. Private
+identity generation rejects ambiguous URL keys/bases before final attachment
+directory preparation/save; existing quarantine behavior, generic literal
+local-key operations and S3 behavior are unchanged.
+
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `STORAGE_BACKEND` | `static`, `local`, `s3`, `minio` | `static` |
-| `STORAGE_STATIC_BASE_URL` | Public URL for static files | `/static` |
+| `STORAGE_STATIC_BASE_URL` | Public URL for static files; an absolute HTTP(S) prefix also identifies private StaticFS attachments | `/static` |
+| `STORAGE_STATIC_ORIGIN` | Trusted backend origin with a lowercase HTTP(S) scheme for persisted private StaticFS identities when the public prefix is relative; no path, credentials, query or fragment | `http://localhost:8000` |
 | `STORAGE_QUARANTINE_QUOTA_BYTES` | Charged rejected-upload payload bytes per shared storage scope | `1073741824` |
 | `STORAGE_QUARANTINE_RETENTION_DAYS` | TTL for acknowledged stored quarantine objects; ambiguous pending writes remain charged | `7` |
 | `STORAGE_QUARANTINE_SWEEP_INTERVAL_SECONDS` | API quarantine cleanup interval | `300` |

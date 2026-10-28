@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { Page, Response } from "@playwright/test"
+import * as v from "valibot"
 import {
   withLiveRegistrationAdmission,
   awaitMail,
@@ -18,6 +19,11 @@ import {
   test,
 } from "./fixtures"
 
+import {
+  createOwnedResetAccount,
+  findOwnedResetUserId,
+  readOwnedResetUserId,
+} from "./password-reset-account-identity"
 import { reportLiveHttpStatus, reportLiveRateLimitRetry } from "./http-status-diagnostic"
 import { reportLivePasswordResetRegistrationFailure } from "./live-ui-diagnostic"
 import {
@@ -108,7 +114,8 @@ test("a student resets with the Mailpit link without retaining tokens or followi
   page,
 }, testInfo) => {
   await stubBreachedPasswordLookup(page)
-  const email = `live-reset-${testInfo.project.name}-${randomUUID()}@university.dev`
+  const account = createOwnedResetAccount(testInfo.project.name, randomUUID())
+  const { email, fullName } = account
   const firstPassword = freshPassword()
   const newPassword = freshPassword()
 
@@ -120,7 +127,7 @@ test("a student resets with the Mailpit link without retaining tokens or followi
   )
   const registered = await withRegistrationTimeline(registrationTimeline, async () => {
     await registrationTimeline.setup()
-    await page.getByLabel("Имя", { exact: true }).fill("Live Acceptance")
+    await page.getByLabel("Имя", { exact: true }).fill(fullName)
     await page.getByRole("textbox", { name: "E-mail" }).fill(email)
     await page.getByLabel("Пароль", { exact: true }).fill(firstPassword)
     await page.getByLabel("Повторите пароль", { exact: true }).fill(firstPassword)
@@ -147,11 +154,7 @@ test("a student resets with the Mailpit link without retaining tokens or followi
     )
   })
   expect(registered.ok()).toBe(true)
-  const registrationBody = (await registered.json()) as { id?: unknown }
-  if (typeof registrationBody.id !== "string" || registrationBody.id.length === 0) {
-    throw new Error("Synthetic account registration returned no account id")
-  }
-  const createdUserId = registrationBody.id
+  let createdUserId: string | undefined
   registerOwnedSessionCleanup(async (cleanupBrowser, cleanupDeadlineAtMs) => {
     const cleanupContext = await cleanupBrowser.newContext({
       baseURL: ownedSessionOrigin(),
@@ -161,6 +164,14 @@ test("a student resets with the Mailpit link without retaining tokens or followi
     try {
       const cleanupPage = await cleanupContext.newPage()
       await loginAs(cleanupPage, "admin", cleanupDeadlineAtMs, 5_000)
+      const cleanupUserId =
+        createdUserId ??
+        (await findOwnedResetUserId(
+          cleanupPage.request,
+          ownedSessionOrigin(),
+          account,
+          boundedReplayTimeout(cleanupDeadlineAtMs, 5_000)
+        ))
       const deleteTimeoutMs = boundedReplayTimeout(cleanupDeadlineAtMs, 5_000)
       const deleteStatus = await cleanupPage.evaluate(
         async ({ userId, timeoutMs }) => {
@@ -189,7 +200,7 @@ test("a student resets with the Mailpit link without retaining tokens or followi
             window.clearTimeout(timer)
           }
         },
-        { userId: createdUserId, timeoutMs: deleteTimeoutMs }
+        { userId: cleanupUserId, timeoutMs: deleteTimeoutMs }
       )
       if (deleteStatus !== 200) throw new Error("Synthetic account cleanup did not return 200")
     } finally {
@@ -197,8 +208,28 @@ test("a student resets with the Mailpit link without retaining tokens or followi
     }
   })
 
+  let registrationBody: unknown
+  try {
+    registrationBody = await registered.json()
+  } catch {
+    throw new Error("Synthetic account registration returned an invalid receipt")
+  }
+  const RegistrationReceipt = v.strictObject({ status: v.literal("ok") })
+  if (!v.safeParse(RegistrationReceipt, registrationBody).success) {
+    throw new Error("Synthetic account registration returned an invalid receipt")
+  }
+
   await expect(page).toHaveURL(/\/login/)
   await loginWith(page, email, firstPassword)
+  createdUserId = await readOwnedResetUserId(
+    page.request,
+    ownedSessionOrigin(),
+    account,
+    boundedReplayTimeout(
+      readPlaywrightTestSlotDeadlineAtMs(testInfo, REGISTRATION_MAX_TEST_TIMEOUT_MS),
+      5_000
+    )
+  )
   await page.context().clearCookies()
 
   await page.goto("/forgot-password")

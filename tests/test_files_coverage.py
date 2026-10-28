@@ -79,6 +79,7 @@ async def test_save_attachment_invalid_limit(tmp_path: Path) -> None:
         mock_settings.storage_backend = "local"
         mock_settings.static_dir_path = tmp_path
         mock_settings.storage_static_base_url = "http://localhost/"
+        mock_settings.storage_static_origin = "http://localhost:8000"
 
         # Will raise 415 because detected mime is empty, which triggers quarantine
         with pytest.raises(HTTPException) as exc_info:
@@ -197,6 +198,7 @@ async def test_delete_static_file_scenarios(tmp_path: Path) -> None:
         mock_settings.storage_backend = "local"
         mock_settings.static_dir_path = tmp_path
         mock_settings.storage_static_base_url = "http://localhost/"
+        mock_settings.storage_static_origin = "http://localhost:8000"
 
         # Non-matching URL
         await delete_static_file("http://external-domain.com/avatar.png")

@@ -206,11 +206,7 @@ function evt(over: Partial<Record<string, unknown>> = {}) {
   }
 }
 
-function myPage(
-  items: unknown[],
-  cursor: string | null = null,
-  nextCursor: string | null = null
-) {
+function myPage(items: unknown[], cursor: string | null = null, nextCursor: string | null = null) {
   return {
     items,
     total: null,
