@@ -759,7 +759,7 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
         for step in inventory_job.get("steps", [])
         if isinstance(step, dict)
     )
-    assert "SECRET_KEY=$(openssl rand -hex 32)" in inventory_step_text
+    assert 'secret="$(openssl rand -hex 32)"' in inventory_step_text
     assert '>> "$GITHUB_ENV"' in inventory_step_text
 
     inventory_uploads = [

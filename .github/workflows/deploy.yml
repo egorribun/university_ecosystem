@@ -181,7 +181,11 @@ jobs:
       - name: Generate migration secret key
         # AUD-168: migrations refuse to run on development fallbacks, so this
         # ephemeral PostgreSQL job supplies its own per-run signing key.
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Verify migrations can downgrade
         # RZ-W8-07: Use PostgreSQL (not SQLite) — pgvector, JSONB, partial indexes
@@ -1877,7 +1881,11 @@ jobs:
       - name: Generate migration secret key
         # AUD-168: migrations refuse to run on development fallbacks, so this
         # ephemeral PostgreSQL job supplies its own per-run signing key.
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Test database rollback
         # RZ-W8-07: Use PostgreSQL for rollback test — same dialect as production.

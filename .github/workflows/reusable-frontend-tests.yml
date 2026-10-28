@@ -969,7 +969,7 @@ jobs:
           assert.match(process.env.GITHUB_SHA ?? "", /^[0-9a-f]{40}$/)
           const inventory = spawnSync(
             "/usr/bin/git",
-            ["grep", "--name-only", "--null", "-F", "-e", "maplibre", "-e", "react-map-gl", "--", "src"],
+            ["grep", "--cached", "--name-only", "--null", "-F", "-e", "maplibre", "-e", "react-map-gl", "--", "src"],
             { cwd: root, shell: false, timeout: 10000, maxBuffer: 32768, encoding: "utf8" }
           )
           assert(!inventory.error && inventory.status === 0, "MapLibre source inventory failed")

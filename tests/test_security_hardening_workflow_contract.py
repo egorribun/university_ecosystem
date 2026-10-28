@@ -975,3 +975,71 @@ def test_npm_audit_uses_the_compiler_archive_bootstrap_node_version() -> None:
             path.name,
             name,
         )
+
+
+def test_generated_signing_keys_are_masked_before_environment_export() -> None:
+    openssl = 'secret="$(openssl rand -hex 32)"'
+    python = (
+        'secret="$(python -c \'import secrets; '
+        'print(secrets.token_urlsafe(48))\')"'
+    )
+    conditional = "env.SECRET_KEY == ''"
+    cases = [
+        (
+            CI,
+            name,
+            "Generate CI secret key if not configured (RZ-14-06)",
+            openssl,
+            None,
+            conditional,
+        )
+        for name in (
+            "compose-validate",
+            "backend-type-check",
+            "alembic-migrations",
+            "openapi-verify",
+            "verify-runtime-reqs",
+            "msw-mock-drift",
+        )
+    ]
+    cases.append(
+        (
+            CI,
+            "quality-inventory-check",
+            "Generate ephemeral audit settings",
+            openssl,
+            None,
+            conditional,
+        )
+    )
+    cases.extend(
+        (CI, job, name, python, "bash", None)
+        for job, name in (
+            ("rust-ffi-asan", "Generate ephemeral ASan signing key"),
+            ("rust-ffi-tsan", "Generate ephemeral TSan signing key"),
+        )
+    )
+    cases.extend(
+        (
+            WORKFLOWS / "deploy.yml",
+            job,
+            "Generate migration secret key",
+            openssl,
+            None,
+            None,
+        )
+        for job in ("validate", "rollback")
+    )
+    for path, job_name, step_name, generator, shell, guard in cases:
+        job = _workflow(path)["jobs"][job_name]
+        steps = [step for step in job["steps"] if step.get("name") == step_name]
+        assert len(steps) == 1, (path.name, job_name)
+        step = steps[0]
+        assert step.get("shell") == shell
+        assert step.get("if") == guard
+        assert step["run"].splitlines() == [
+            "set -euo pipefail",
+            generator,
+            "printf '::add-mask::%s\\n' \"$secret\"",
+            "printf 'SECRET_KEY=%s\\n' \"$secret\" >> \"$GITHUB_ENV\"",
+        ], (path.name, job_name)

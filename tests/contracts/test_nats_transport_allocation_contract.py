@@ -211,6 +211,7 @@ _CONSUMER_SELECTORS = (
     "tests/test_docker_startup_contracts.py::test_migrations_disable_inherited_backend_runtime_healthcheck",
     "tests/test_docker_startup_contracts.py::test_ci_caddy_smokes_use_the_pinned_project_runtime",
     "tests/test_security_hardening_workflow_contract.py::test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_locked",
+    "tests/test_security_hardening_workflow_contract.py::test_generated_signing_keys_are_masked_before_environment_export",
     "tests/test_quality_configuration.py::test_virtualenv_security_floor_is_dev_only_and_locked",
     "tests/test_dependency_audit_contract.py::test_storybook_security_floor_and_aligned_lock",
     "tests/test_dnspython_security.py",
