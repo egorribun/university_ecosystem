@@ -286,7 +286,7 @@
   --bg-footer-light:
     radial-gradient(
       120% 180% at -10% -20%,
-      color-mix(in srgb, var(--color-blue-400) var(--glass-alpha-med), transparent),
+      color-mix(in srgb, var(--color-blue-400) calc(var(--glass-alpha-med) * 100%), transparent),
       transparent 60%
     ),
     linear-gradient(112deg, var(--primary-main) 0%, var(--primary-hover) 100%);
