@@ -928,6 +928,138 @@ jobs:
           path: ${{ inputs.working-directory }}/dist
           if-no-files-found: error
 
+      - name: Diagnose MapLibre retained exports without changing build artifacts
+        timeout-minutes: 3
+        run: |
+          node --max-old-space-size=512 --input-type=module <<'MAPLIBRE_PROBE'
+          import assert from "node:assert/strict"
+          import { spawnSync } from "node:child_process"
+          import { createHash } from "node:crypto"
+          import { lstatSync, readFileSync, realpathSync } from "node:fs"
+          import { resolve } from "node:path"
+          import { gzipSync } from "node:zlib"
+          import { rolldown } from "rolldown"
+
+          const root = realpathSync(process.cwd())
+          const hash = (bytes) => createHash("sha256").update(bytes).digest("hex")
+          const read = (name) => {
+            const path = resolve(root, name)
+            const stat = lstatSync(path)
+            assert(stat.isFile() && !stat.isSymbolicLink())
+            assert.equal(realpathSync(path), path)
+            assert(stat.size > 0 && stat.size <= 4 * 1024 * 1024)
+            const bytes = readFileSync(path)
+            assert.equal(bytes.length, stat.size)
+            return bytes
+          }
+          const paths = [
+            "package.json",
+            "package-lock.json",
+            "node_modules/rolldown/package.json",
+            "node_modules/maplibre-gl/package.json",
+            "node_modules/maplibre-gl/dist/maplibre-gl.mjs",
+            "node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs",
+          ]
+          const snapshots = new Map(paths.map((name) => [name, read(name)]))
+          const lock = JSON.parse(snapshots.get("package-lock.json"))
+          for (const [name, version] of [["maplibre-gl", "6.15.0"], ["rolldown", "1.2.12"]]) {
+            assert.equal(lock.packages["node_modules/" + name].version, version)
+            assert.equal(JSON.parse(snapshots.get("node_modules/" + name + "/package.json")).version, version)
+          }
+          assert.match(process.env.GITHUB_SHA ?? "", /^[0-9a-f]{40}$/)
+          const inventory = spawnSync(
+            "/usr/bin/git",
+            ["grep", "--name-only", "--null", "-F", "-e", "maplibre", "-e", "react-map-gl", "--", "src"],
+            { cwd: root, shell: false, timeout: 10000, maxBuffer: 32768, encoding: "utf8" }
+          )
+          assert(!inventory.error && inventory.status === 0, "MapLibre source inventory failed")
+          assert(inventory.stdout.endsWith("\0"), "MapLibre source inventory framing failed")
+          const sourcePaths = inventory.stdout.slice(0, -1).split("\0").sort()
+          assert(sourcePaths.length > 0 && sourcePaths.length <= 256)
+          assert(sourcePaths.every((name) =>
+            name.startsWith("src/") && name.length <= 512 &&
+            !name.split("/").includes("..") && !/[\x00-\x1f\x7f]/.test(name)
+          ), "MapLibre source inventory path failed")
+          const main = resolve(root, "node_modules/maplibre-gl/dist/maplibre-gl.mjs")
+          const interfaceExports = [
+            "Map", "Marker", "Popup", "AttributionControl", "FullscreenControl",
+            "GeolocateControl", "NavigationControl", "ScaleControl", "TerrainControl",
+            "LogoControl", "GlobeControl", "getRTLTextPluginStatus", "setRTLTextPlugin",
+            "setMaxParallelImageRequests", "setWorkerCount", "setWorkerUrl",
+          ]
+          const cases = [
+            { name: "whole-public-namespace", exports: null },
+            { name: "react-map-gl-interface-only-not-application-proof", exports: interfaceExports },
+            { name: "used-surface-lower-bound-not-shippable", exports: ["Map", "Marker", "Popup", "setWorkerUrl"] },
+          ]
+          const measurements = []
+          try {
+            for (const scenario of cases) {
+              const id = "\0maplibre-budget-probe"
+              const source = scenario.exports === null
+                ? "export * from " + JSON.stringify(main)
+                : "export { " + scenario.exports.join(", ") + " } from " + JSON.stringify(main)
+              const bundle = await rolldown({
+                input: id,
+                platform: "browser",
+                treeshake: true,
+                onwarn(warning) {
+                  throw new Error("Unexpected probe warning: " + warning.code)
+                },
+                plugins: [{
+                  name: "bounded-maplibre-export-probe",
+                  resolveId(sourceId) {
+                    if (sourceId === id) return id
+                  },
+                  load(moduleId) {
+                    if (moduleId === id) return source
+                  },
+                }],
+              })
+              try {
+                const { output } = await bundle.generate({ format: "es", minify: true, sourcemap: false })
+                assert.equal(output.length, 1)
+                const chunk = output[0]
+                assert.equal(chunk.type, "chunk")
+                assert.equal(chunk.imports.length, 0, "MapLibre probe retained external imports")
+                assert.equal(chunk.dynamicImports.length, 0, "MapLibre probe retained dynamic imports")
+                assert(chunk.exports.length <= 256 && chunk.exports.every((name) => name.length <= 128))
+                if (scenario.exports) {
+                  assert.equal([...chunk.exports].sort().join(","), [...scenario.exports].sort().join(","))
+                }
+                const bytes = Buffer.from(chunk.code)
+                assert(bytes.length > 0 && bytes.length <= 4 * 1024 * 1024)
+                measurements.push({
+                  name: scenario.name,
+                  rawBytes: bytes.length,
+                  gzipBytes: gzipSync(bytes, { level: 9 }).length,
+                  sha256: hash(bytes),
+                  exportedNames: chunk.exports,
+                  moduleCount: Object.keys(chunk.modules).length,
+                })
+              } finally {
+                await bundle.close()
+              }
+            }
+          } finally {
+            for (const [name, bytes] of snapshots) {
+              assert(read(name).equals(bytes), "MapLibre probe source changed: " + name)
+            }
+          }
+          const report = JSON.stringify({
+            kind: "maplibre-export-probe-not-application-acceptance",
+            checkoutSha: process.env.GITHUB_SHA,
+            maplibre: "6.15.0",
+            rolldown: "1.2.12",
+            inputSha256: Object.fromEntries([...snapshots].map(([name, bytes]) => [name, hash(bytes)])),
+            sourcePaths,
+            sourceInputsUnchanged: true,
+            measurements,
+          })
+          assert(Buffer.byteLength(report) <= 32768)
+          console.log("MAPLIBRE_EXPORT_PROBE " + report)
+          MAPLIBRE_PROBE
+
   # Fail-closed bundle budgets and a machine-readable report for trend tracking.
   bundle-analysis:
     name: Bundle Analysis

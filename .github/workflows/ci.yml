@@ -1104,6 +1104,7 @@ jobs:
         env:
           SECRET_KEY: ${{ env.SECRET_KEY }}
           ENVIRONMENT: testing
+          AUD148_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           squawk_binary_path="${RUNNER_TEMP:?RUNNER_TEMP is required}/university-ecosystem-tools/squawk/v2.67.0/linux-x64/squawk-linux-x64"
@@ -1142,6 +1143,143 @@ jobs:
             uv run python -m scripts.quality.render_live_alembic_sql "$migration" "$sql_file"
             printf '%s  %s\n' "$expected_sha256" "$squawk_binary_path" |
               /usr/bin/sha256sum --check --strict
+            if [[ "$migration" == "alembic/versions/148642dd1207_fix_missing_tables.py" ]]; then
+              [[ "$revision" == "148642dd1207" && "$down_revision" == "f7aa476e968a" ]] || {
+                echo "::error::AUD148 ordinary capture: revision metadata mismatch" >&2
+                exit 1
+              }
+              git diff --quiet HEAD -- \
+                alembic/versions/148642dd1207_fix_missing_tables.py \
+                alembic/env.py alembic.ini \
+                scripts/quality/render_live_alembic_sql.py \
+                scripts/quality/read_alembic_revision.py \
+                .github/workflows/ci.yml .squawk.toml pyproject.toml uv.lock
+              AUD148_CHECKOUT_SHA="$(git rev-parse HEAD)"
+              AUD148_SQUAWK_BINARY_SHA256="$(/usr/bin/sha256sum -- "$squawk_binary_path" | /usr/bin/cut -d ' ' -f 1)"
+              AUD148_SQUAWK_VERSION="$("$squawk_binary_path" --version)"
+              export AUD148_CHECKOUT_SHA AUD148_SQUAWK_VERSION AUD148_SQUAWK_BINARY_SHA256
+              uv run python - "$sql_file" "${squawk_args[@]}" <<'AUD148_ORDINARY'
+          import hashlib
+          import json
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          from scripts.quality.read_alembic_revision import (
+              RevisionMetadataError,
+              read_revision_metadata,
+          )
+
+
+          def fail(reason):
+              raise SystemExit("AUD148 ordinary capture: " + reason)
+
+
+          def regular_file(path):
+              absolute = path.absolute()
+              if any(part.is_symlink() for part in (absolute, *absolute.parents)):
+                  fail("symlink input is forbidden")
+              if not absolute.is_file():
+                  fail("input must be a regular file")
+              return absolute
+
+
+          def git_blob(path):
+              data = regular_file(Path(path)).read_bytes()
+              header = b"blob " + str(len(data)).encode("ascii") + b"\0"
+              return hashlib.sha1(header + data, usedforsecurity=False).hexdigest()
+
+
+          def capture():
+              sql_path = Path(sys.argv[1])
+              physical_sql = regular_file(sql_path)
+              if not 0 < physical_sql.stat().st_size <= 65536:
+                  fail("SQL input exceeds its byte limit or is empty")
+              with physical_sql.open("rb") as source:
+                  sql_bytes = source.read(65537)
+              if not 0 < len(sql_bytes) <= 65536:
+                  fail("SQL input exceeds its byte limit or is empty")
+              sql_text = sql_bytes.decode("utf-8")
+              for name in ("SECRET_KEY", "DATABASE_URL"):
+                  value = os.environ.get(name, "")
+                  if value and value in sql_text:
+                      fail("SQL input contains private runtime context")
+
+              checkout = os.environ.get("AUD148_CHECKOUT_SHA", "")
+              workflow = os.environ.get("GITHUB_SHA", "")
+              pr_head = os.environ.get("AUD148_PR_HEAD_SHA", "")
+              if not re.fullmatch(r"[0-9a-f]{40}", checkout) or checkout != workflow:
+                  fail("checkout provenance is invalid")
+              if pr_head and not re.fullmatch(r"[0-9a-f]{40}", pr_head):
+                  fail("pull request provenance is invalid")
+              run_id = os.environ.get("GITHUB_RUN_ID", "")
+              attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "")
+              if not all(re.fullmatch(r"[1-9][0-9]{0,19}", value) for value in (run_id, attempt)):
+                  fail("workflow run provenance is invalid")
+              if os.environ.get("GITHUB_JOB") != "alembic-migrations":
+                  fail("producer job is invalid")
+              version = os.environ.get("AUD148_SQUAWK_VERSION", "")
+              digest = os.environ.get("AUD148_SQUAWK_BINARY_SHA256", "")
+              if version != "squawk 2.67.0" or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                  fail("verified scanner provenance is invalid")
+
+              migration_path = "alembic/versions/148642dd1207_fix_missing_tables.py"
+              source_paths = (
+                  migration_path,
+                  "alembic/env.py",
+                  "alembic.ini",
+                  "scripts/quality/render_live_alembic_sql.py",
+                  "scripts/quality/read_alembic_revision.py",
+                  ".github/workflows/ci.yml",
+                  ".squawk.toml",
+                  "pyproject.toml",
+                  "uv.lock",
+              )
+              source_blobs = {name: git_blob(name) for name in source_paths}
+              revision, parent = read_revision_metadata(regular_file(Path(migration_path)))
+              if (revision, parent) != ("148642dd1207", "f7aa476e968a"):
+                  fail("migration metadata is invalid")
+              metadata = {
+                  "status": "diagnostic-only-not-an-exception",
+                  "scenario": "ordinary-parent-live",
+                  "checkout_sha": checkout,
+                  "workflow_sha": workflow,
+                  "pr_head_sha": pr_head or None,
+                  "workflow_run_id": run_id,
+                  "workflow_run_attempt": attempt,
+                  "producer_job": "alembic-migrations",
+                  "migration_path": migration_path,
+                  "revision": revision,
+                  "down_revision": parent,
+                  "source_blobs": source_blobs,
+                  "squawk_version": version,
+                  "squawk_binary_sha256": digest,
+                  "squawk_args": sys.argv[2:],
+                  "sql_file": str(sql_path),
+                  "sql_bytes": len(sql_bytes),
+                  "sql_sha256": hashlib.sha256(sql_bytes).hexdigest(),
+                  "sql": sql_text,
+                  "scanner_result": "not-yet-executed",
+              }
+              rendered = json.dumps(metadata, ensure_ascii=True, sort_keys=True, indent=2)
+              output = (
+                  "AUD148_ORDINARY_CAPTURE_BEGIN\n"
+                  + rendered
+                  + "\nAUD148_ORDINARY_CAPTURE_END\n"
+              )
+              if len(output.encode("utf-8")) > 131072:
+                  fail("log payload exceeds its output byte limit")
+              return output
+
+
+          try:
+              output = capture()
+          except (OSError, UnicodeError, RevisionMetadataError):
+              fail("input could not be read or decoded")
+          sys.stdout.write(output)
+          AUD148_ORDINARY
+            fi
             "$squawk_binary_path" "${squawk_args[@]}" "$sql_file"
           done <<< "$changed_files"
 

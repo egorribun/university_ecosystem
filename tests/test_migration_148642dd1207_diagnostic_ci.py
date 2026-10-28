@@ -585,11 +585,13 @@ def test_ordinary_capture_preserves_exact_sql_and_allowlisted_provenance(
     [
         "sql_missing",
         "sql_symlink",
+        "sql_parent_symlink",
         "sql_limit",
         "sql_utf8",
         "output_limit",
         "source_missing",
         "source_symlink",
+        "source_parent_symlink",
         "secret_key",
         "database_url",
         "revision",
@@ -630,6 +632,22 @@ def test_ordinary_capture_rejects_invalid_inputs_before_logging(
         physical = tmp_path / (case + ".target")
         target.rename(physical)
         target.symlink_to(physical)
+    elif case == "sql_parent_symlink":
+        physical_parent = tmp_path / "physical-sql"
+        physical_parent.mkdir()
+        sql_path.rename(physical_parent / sql_path.name)
+        alias = tmp_path / "aliased-sql"
+        alias.symlink_to(physical_parent, target_is_directory=True)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [str(script), str(alias / sql_path.name), *sys.argv[2:]],
+        )
+    elif case == "source_parent_symlink":
+        source_parent = tmp_path / "alembic/versions"
+        physical_parent = tmp_path / "physical-versions"
+        source_parent.rename(physical_parent)
+        source_parent.symlink_to(physical_parent, target_is_directory=True)
     elif case == "sql_limit":
         sql_path.write_bytes(b"x" * 65537)
     elif case == "sql_utf8":

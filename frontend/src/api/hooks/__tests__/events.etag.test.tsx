@@ -7,6 +7,7 @@ import { useAuthStore } from "@/stores/useAuthStore"
 import type { UserState } from "@/types/Auth"
 
 import { resetEtagCache } from "@/api/client"
+import { registerSigningKeyAccessor } from "@/api/interceptors/etagCache"
 import { useEventsListQuery, type EventsListOrder } from "@/api/hooks/events"
 import type { Event } from "@/types/Event"
 import { testEvents } from "@/tests/mocks/handlers"
@@ -25,11 +26,16 @@ const cloneEvents = (source: Event[], label: string, offset: number): Event[] =>
   }))
 
 describe("useEventsListQuery", () => {
-  beforeEach(() =>
+  beforeEach(() => {
+    resetEtagCache()
+    const signingKey = crypto.randomUUID()
+    registerSigningKeyAccessor(() => signingKey)
     useAuthStore.setState({ user: { id: "etag-user" } as UserState, loading: false })
-  )
+  })
   afterEach(() => {
     cleanup()
+    resetEtagCache()
+    registerSigningKeyAccessor(() => null)
     useAuthStore.setState({ user: null, loading: true })
   })
   it("keeps date-order requests and ETags separate through the generated client", async () => {

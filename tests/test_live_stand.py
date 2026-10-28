@@ -4026,10 +4026,13 @@ def test_live_playwright_emits_only_validated_failure_locations(
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_text("// public source\n" * 3, encoding="utf-8")
     private_title = "password=fixture-private-password token=fixture-private-token"
-    frame_sources = [
-        str(tmp_path / source) if path_style == "absolute" else source
+    frame_sources = {
+        source: str(tmp_path / source) if path_style == "absolute" else source
         for source in sources
-    ]
+    }
+    auth_frame = frame_sources["tests/e2e-live/auth-roles.live.spec.ts"]
+    reset_frame = frame_sources["tests/e2e-live/password-reset.live.spec.ts"]
+    fixture_frame = frame_sources["tests/e2e-live/fixtures.ts"]
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(mode="smoke"),
         return_code,
@@ -4037,21 +4040,21 @@ def test_live_playwright_emits_only_validated_failure_locations(
             "  1) [desktop] › tests/e2e-live/auth-roles.live.spec.ts:2:1 › "
             f"{private_title} ─────\n"
             "\n    Error: fixture-private-assertion\n\n"
-            f"        at fixturePrivateFunction ({frame_sources[0]}:3:1)\n"
-            f"        at {frame_sources[0]}:2:1\n"
+            f"        at fixturePrivateFunction ({auth_frame}:3:1)\n"
+            f"        at {auth_frame}:2:1\n"
             "  2) [mobile] › tests/e2e-live/password-reset.live.spec.ts:3:17 › "
             "https://private.invalid/reset?token=fixture-private-token ─────\n"
             "\n    Error: fixture-private-error\n\n"
-            f"        at {frame_sources[1]}:1:17\n"
-            f"        at privateHelper ({frame_sources[-1]}:2:17)\n"
-            f"        at {frame_sources[-1]}:3:1\n"
+            f"        at {reset_frame}:1:17\n"
+            f"        at privateHelper ({fixture_frame}:2:17)\n"
+            f"        at {fixture_frame}:3:1\n"
             "6 passed\n12 failed\n2 skipped\n1 flaky\n3 interrupted\n4 did not run\n"
         ),
         stderr=(
             "  1) [desktop] › tests/e2e-live/auth-roles.live.spec.ts:2:1 › "
             f"{private_title}\n"
             "Error: locator.fill('fixture-private-password')\n"
-            f"        at {frame_sources[0]}:1:1\n"
+            f"        at {auth_frame}:1:1\n"
         ),
     )
     if path_style == "windows":

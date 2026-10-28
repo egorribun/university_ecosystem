@@ -368,50 +368,53 @@ describe("useNewsListQuery queryFn branches", () => {
     expect(result.current.news).toEqual(persistedItems)
   })
 
-  it("304 response with a malformed or cold cache safely returns an empty page", async () => {
+  it("rejects a bodyless 304 instead of publishing a successful empty news page", async () => {
     newsListMock.mockResolvedValue({ status: 304, data: undefined })
 
     const queryClient = freshClient()
-    // With no cached infinite-query entry the optional pages chain must treat
-    // the 304 as a cache miss, not dereference an undefined cache value.
-    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+    const { result, unmount } = renderHook(() => useNewsListQuery({ language: "ru" }), {
       wrapper: makeWrapper(queryClient),
     })
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.news).toEqual([])
-    expect(result.current.pagination).toEqual({
-      items: [],
-      total: 0,
-      limit: 12,
-      cursor: null,
-      next_cursor: null,
-      has_more: false,
-    })
+    try {
+      await waitFor(() => expect(result.current.isError).toBe(true))
+      expect(result.current.isSuccess).toBe(false)
+      expect(result.current.error).toBeInstanceOf(Error)
+      expect(result.current.data).toBeUndefined()
+      expect(result.current.news).toEqual([])
+      expect(result.current.pagination).toBeNull()
+      expect(window.localStorage.getItem("news:list:account:feed-test-user:ru")).toBeNull()
+    } finally {
+      unmount()
+      queryClient.clear()
+    }
   })
 
-  it("304 response tolerates a cached entry without a pages array", async () => {
+  it("rejects a 304 whose cached entry has no usable pages", async () => {
     newsListMock.mockResolvedValue({ status: 304, data: undefined })
 
     const queryClient = freshClient()
-    vi.spyOn(queryClient, "getQueryData").mockReturnValue({
+    const cacheRead = vi.spyOn(queryClient, "getQueryData").mockReturnValue({
       pages: undefined,
     } as never)
 
-    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+    const { result, unmount } = renderHook(() => useNewsListQuery({ language: "ru" }), {
       wrapper: makeWrapper(queryClient),
     })
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.news).toEqual([])
-    expect(result.current.pagination).toEqual({
-      items: [],
-      total: 0,
-      limit: 12,
-      cursor: null,
-      next_cursor: null,
-      has_more: false,
-    })
+    try {
+      await waitFor(() => expect(result.current.isError).toBe(true))
+      expect(result.current.isSuccess).toBe(false)
+      expect(result.current.error).toBeInstanceOf(Error)
+      expect(result.current.data).toBeUndefined()
+      expect(result.current.news).toEqual([])
+      expect(result.current.pagination).toBeNull()
+      expect(window.localStorage.getItem("news:list:account:feed-test-user:ru")).toBeNull()
+    } finally {
+      unmount()
+      cacheRead.mockRestore()
+      queryClient.clear()
+    }
   })
 
   it("returns null pagination for an empty in-memory infinite-data entry", () => {

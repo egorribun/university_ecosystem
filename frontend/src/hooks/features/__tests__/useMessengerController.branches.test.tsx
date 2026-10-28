@@ -1,7 +1,9 @@
 import { renderHook, waitFor, act } from "@testing-library/react"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient, QueryClientProvider, dehydrate } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest"
 import type { ReactNode } from "react"
+import { persistOptions } from "@/app/queryClient"
+import type { MessagesListResponse } from "@/api/chat"
 
 /**
  * Session-14 Lane-C branch top-up for useMessengerController.
@@ -2579,6 +2581,20 @@ describe("useMessengerController — branch top-up", () => {
       mocks.chatApi.editMessage.mockReset().mockResolvedValue({ status: "ok" })
     })
 
+    const createControlledEdit = () => {
+      let resolve!: (value: { status: string }) => void
+      let reject!: (reason: Error) => void
+      const promise = new Promise<{ status: string }>((yes, no) => {
+        resolve = yes
+        reject = no
+      })
+      const handled = promise.then(
+        () => undefined,
+        () => undefined
+      )
+      return { promise, resolve, reject, handled }
+    }
+
     const startPendingEdit = async () => {
       seedChat("chat-1")
       mocks.chatApi.getMessages.mockResolvedValue({
@@ -2605,15 +2621,9 @@ describe("useMessengerController — branch top-up", () => {
         has_more: false,
         next_cursor: null,
       })
-      let rejectEdit!: (reason: Error) => void
-      const pendingEdit = new Promise<never>((_resolve, reject) => {
-        rejectEdit = reject
-      })
-      const pendingEditHandled = pendingEdit.then(
-        () => undefined,
-        () => undefined
-      )
-      mocks.chatApi.editMessage.mockReturnValueOnce(pendingEdit)
+      const firstRequest = createControlledEdit()
+      const requests = [firstRequest]
+      mocks.chatApi.editMessage.mockReturnValueOnce(firstRequest.promise)
       const { queryClient, HookWrapper } = createQueryHarness()
       const cleanup: { unmount?: () => void } = {}
       onTestFinished(async () => {
@@ -2622,9 +2632,10 @@ describe("useMessengerController — branch top-up", () => {
             try {
               cleanup.unmount?.()
             } finally {
-              // Release only this helper's deferred request, even if setup failed.
-              rejectEdit(new Error("controlled edit cleanup"))
-              await pendingEditHandled
+              for (const request of requests) {
+                request.reject(new Error("controlled edit cleanup"))
+              }
+              await Promise.all(requests.map((request) => request.handled))
             }
           })
           await waitFor(() => expect(queryClient.isMutating()).toBe(0))
@@ -2659,15 +2670,388 @@ describe("useMessengerController — branch top-up", () => {
       expect(result.current.editingMessageId).toBeNull()
       expect(result.current.editingMessageContent).toBe("")
 
-      const failEdit = async () => {
+      const settleRequest = async (
+        request: ReturnType<typeof createControlledEdit>,
+        succeeds: boolean,
+        remainingMutations = 0
+      ) => {
         await act(async () => {
-          rejectEdit(new Error("controlled edit failure"))
+          if (succeeds) {
+            request.resolve({ status: "ok" })
+          } else {
+            request.reject(new Error("controlled edit failure"))
+          }
+          await request.handled
         })
-        // Await settlement so an unchanged editor cannot pass before onError runs.
-        await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+        await waitFor(() => expect(queryClient.isMutating()).toBe(remainingMutations))
       }
-      return { result, rerender, queryClient, draft, failEdit }
+
+      const failEdit = (remainingMutations = 0) =>
+        settleRequest(firstRequest, false, remainingMutations)
+
+      const startNextEdit = (content: string, messageId = "msg-1") => {
+        const request = createControlledEdit()
+        requests.push(request)
+        mocks.chatApi.editMessage.mockReturnValueOnce(request.promise)
+        act(() => result.current.handleEditMessage(messageId, "current text"))
+        act(() => result.current.setEditingMessageContent(content))
+        act(() => result.current.handleSaveEdit(messageId))
+        return {
+          fail: (remainingMutations = 0) => settleRequest(request, false, remainingMutations),
+          succeed: (remainingMutations = 0) => settleRequest(request, true, remainingMutations),
+        }
+      }
+
+      return {
+        result,
+        rerender,
+        unmount,
+        queryClient,
+        draft,
+        failEdit,
+        startNextEdit,
+        rejectFirstEdit: () => firstRequest.reject(new Error("controlled first edit failure")),
+      }
     }
+
+    const messageQueryKey = ["messages", "chat-1"] as const
+
+    const getMessagePage = (queryClient: QueryClient) => {
+      const page = queryClient.getQueryData<MessagesListResponse>(messageQueryKey)
+      expect(page).toBeDefined()
+      return page!
+    }
+
+    const getEditedContent = (queryClient: QueryClient) =>
+      getMessagePage(queryClient).items.find((message) => message.id === "msg-1")?.content
+
+    const expectPageWithEdit = (
+      queryClient: QueryClient,
+      page: MessagesListResponse,
+      content: string,
+      editedAt: string | null | undefined
+    ) => {
+      expect(queryClient.getQueryData(messageQueryKey)).toEqual({
+        ...page,
+        items: page.items.map((message) =>
+          message.id === "msg-1" ? { ...message, content, edited_at: editedAt } : message
+        ),
+      })
+    }
+
+    it.each(["older first", "newer first"])(
+      "AUD-155: preserves independent updates when overlapping edits fail (%s)",
+      async (failureOrder) => {
+        const { queryClient, draft, failEdit, startNextEdit } = await startPendingEdit()
+        const firstTarget = getMessagePage(queryClient).items.find(
+          (message) => message.id === "msg-1"
+        )!
+        const second = startNextEdit("second optimistic edit")
+
+        await waitFor(() => {
+          expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)
+          expect(queryClient.isMutating()).toBe(2)
+          expect(getEditedContent(queryClient)).toBe("second optimistic edit")
+        })
+
+        const pendingPage = getMessagePage(queryClient)
+        const secondTarget = pendingPage.items.find((message) => message.id === "msg-1")!
+        const livePage: MessagesListResponse = {
+          ...pendingPage,
+          has_more: true,
+          next_cursor: "older-after-independent-update",
+          items: [
+            ...pendingPage.items.map((message) =>
+              message.id === "msg-1"
+                ? {
+                    ...message,
+                    read_status: true,
+                    read_at: "2026-10-27T12:05:00Z",
+                    reactions: [{ emoji: "👍", count: 2, reacted_by_me: false }],
+                  }
+                : { ...message, content: "independently updated other message" }
+            ),
+            {
+              ...pendingPage.items[1]!,
+              id: "msg-arrived-while-editing",
+              content: "independent arrival",
+              created_at: "2026-10-27T12:06:00Z",
+            },
+          ],
+        }
+        act(() => queryClient.setQueryData(messageQueryKey, livePage))
+
+        if (failureOrder === "older first") {
+          await failEdit(1)
+          expectPageWithEdit(
+            queryClient,
+            livePage,
+            "second optimistic edit",
+            secondTarget.edited_at
+          )
+          await second.fail()
+        } else {
+          await second.fail(1)
+          expectPageWithEdit(queryClient, livePage, draft.trim(), firstTarget.edited_at)
+          await failEdit()
+        }
+
+        expectPageWithEdit(queryClient, livePage, "original", undefined)
+      }
+    )
+
+    it.each(["distinct", "ABA"])(
+      "AUD-155: preserves the latest %s edit through same-tick overlap",
+      async (variant) => {
+        vi.useFakeTimers({ toFake: ["Date"] })
+        vi.setSystemTime(new Date("2026-10-27T12:10:00Z"))
+        try {
+          const { queryClient, draft, failEdit, startNextEdit } = await startPendingEdit()
+          const lastDraft = variant === "ABA" ? draft.trim() : "third optimistic edit"
+
+          // No await between saves: both async onMutate callbacks overlap.
+          const second = startNextEdit("intervening edit")
+          const third = startNextEdit(lastDraft)
+
+          await waitFor(() => {
+            expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(3)
+            expect(queryClient.isMutating()).toBe(3)
+            expect(getEditedContent(queryClient)).toBe(lastDraft)
+          })
+          expect(
+            getMessagePage(queryClient).items.find((message) => message.id === "msg-1")
+              ?.edited_at
+          ).toBe("2026-10-27T12:10:00.000Z")
+
+          const pending = queryClient
+            .getMutationCache()
+            .getAll()
+            .filter((mutation) => mutation.state.status === "pending")
+          expect(pending).toHaveLength(3)
+          for (const mutation of pending) {
+            expect(() => JSON.stringify(mutation.state.context)).not.toThrow()
+            expect(() => JSON.stringify(mutation.state.variables)).not.toThrow()
+          }
+          expect(() =>
+            JSON.stringify({
+              timestamp: Date.now(),
+              buster: "edit-receipt-serialization",
+              clientState: dehydrate(queryClient, persistOptions.dehydrateOptions),
+            })
+          ).not.toThrow()
+
+          await failEdit(2)
+          expect(getEditedContent(queryClient)).toBe(lastDraft)
+          await second.fail(1)
+          expect(getEditedContent(queryClient)).toBe(lastDraft)
+          await third.fail()
+          expect(getEditedContent(queryClient)).toBe("original")
+        } finally {
+          vi.useRealTimers()
+        }
+      }
+    )
+
+    it("AUD-155: retires older rollback ownership before a newer onMutate context is published", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] })
+      vi.setSystemTime(new Date("2026-10-27T12:10:00Z"))
+      try {
+        const { queryClient, draft, rejectFirstEdit, startNextEdit } = await startPendingEdit()
+        const cache = queryClient.getMutationCache()
+        const originalOnError = cache.config.onError
+        const first = cache.getAll().find((mutation) => mutation.state.status === "pending")!
+
+        let entered!: () => void
+        let release!: () => void
+        const errorEntered = new Promise<void>((resolve) => {
+          entered = resolve
+        })
+        const errorReleased = new Promise<void>((resolve) => {
+          release = resolve
+        })
+        cache.config.onError = () => {
+          entered()
+          return errorReleased
+        }
+
+        let releasedForWrite = false
+        let sawUnpublishedContext = false
+        const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+          if (
+            releasedForWrite ||
+            event.type !== "updated" ||
+            event.action.type !== "success" ||
+            event.query.queryKey[0] !== "messages" ||
+            event.query.queryKey[1] !== "chat-1"
+          ) {
+            return
+          }
+          const page = event.query.state.data as MessagesListResponse | undefined
+          if (page?.items.find((message) => message.id === "msg-1")?.content !== draft.trim()) {
+            return
+          }
+
+          releasedForWrite = true
+          sawUnpublishedContext = cache
+            .getAll()
+            .some(
+              (mutation) =>
+                mutation !== first &&
+                mutation.state.status === "pending" &&
+                mutation.state.context === undefined
+            )
+          // Queue the older error continuation before this onMutate returns.
+          release()
+        })
+
+        try {
+          await act(async () => {
+            rejectFirstEdit()
+            await errorEntered
+          })
+
+          // Identical content and timestamp make field equality insufficient.
+          const second = startNextEdit(draft.trim())
+          await waitFor(() => {
+            expect(first.state.status).toBe("error")
+            expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)
+            expect(queryClient.isMutating()).toBe(1)
+          })
+
+          expect(sawUnpublishedContext).toBe(true)
+          expect(getEditedContent(queryClient)).toBe(draft.trim())
+          await second.fail()
+          expect(getEditedContent(queryClient)).toBe("original")
+        } finally {
+          release()
+          unsubscribe()
+          cache.config.onError = originalOnError
+        }
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it.each(["edit", "tombstone"])(
+      "AUD-155: does not roll back an authoritative target %s",
+      async (kind) => {
+        const { queryClient, failEdit } = await startPendingEdit()
+        const page = getMessagePage(queryClient)
+        const serverTime = new Date(Date.now() + 60_000).toISOString()
+        const authoritative: MessagesListResponse = {
+          ...page,
+          items: page.items.map((message) =>
+            message.id !== "msg-1"
+              ? message
+              : kind === "edit"
+                ? {
+                    ...message,
+                    content: "authoritative server edit",
+                    edited_at: serverTime,
+                  }
+                : {
+                    ...message,
+                    content: "",
+                    attachments: [],
+                    deleted_at: serverTime,
+                  }
+          ),
+        }
+
+        act(() => queryClient.setQueryData(messageQueryKey, authoritative))
+        await failEdit()
+        expect(queryClient.getQueryData(messageQueryKey)).toEqual(authoritative)
+      }
+    )
+
+    it.each(["query", "target"])(
+      "AUD-155: does not recreate an absent %s after edit failure",
+      async (removed) => {
+        const { queryClient, unmount, failEdit } = await startPendingEdit()
+        const page = getMessagePage(queryClient)
+        const withoutTarget: MessagesListResponse = {
+          ...page,
+          items: page.items.filter((message) => message.id !== "msg-1"),
+        }
+
+        act(() => {
+          if (removed === "query") {
+            // Keep an illicit recreation observable instead of hiding it with gcTime: 0.
+            queryClient.setQueryDefaults(messageQueryKey, { gcTime: Infinity })
+            unmount()
+            queryClient.removeQueries({ queryKey: messageQueryKey, exact: true })
+          } else {
+            queryClient.setQueryData(messageQueryKey, withoutTarget)
+          }
+        })
+
+        await failEdit()
+        expect(queryClient.getQueryData(messageQueryKey)).toEqual(
+          removed === "query" ? undefined : withoutTarget
+        )
+      }
+    )
+
+    it("AUD-155: does not modify a recreated same-key query with identical edit fields", async () => {
+      const { queryClient, rerender, failEdit } = await startPendingEdit()
+      const retiredQuery = queryClient
+        .getQueryCache()
+        .find({ queryKey: messageQueryKey, exact: true })
+      const pendingPage = getMessagePage(queryClient)
+      const replacement: MessagesListResponse = {
+        ...pendingPage,
+        has_more: true,
+        next_cursor: "replacement-owner-cursor",
+        items: pendingPage.items.map((message) => ({
+          ...message,
+          read_status: true,
+          read_at: "2026-10-27T12:07:00Z",
+        })),
+      }
+
+      act(() => {
+        queryClient.setQueryDefaults(messageQueryKey, { gcTime: Infinity })
+        queryClient.removeQueries({ queryKey: messageQueryKey, exact: true })
+        queryClient.setQueryData(messageQueryKey, replacement)
+        rerender()
+      })
+      expect(
+        queryClient.getQueryCache().find({ queryKey: messageQueryKey, exact: true })
+      ).not.toBe(retiredQuery)
+
+      // Content and edited_at deliberately match the retired optimistic write.
+      await failEdit()
+      expect(queryClient.getQueryData(messageQueryKey)).toEqual(replacement)
+    })
+
+    it("AUD-155: keeps a newer successful edit after its mutation cache entry is removed", async () => {
+      const { queryClient, failEdit, startNextEdit } = await startPendingEdit()
+      const second = startNextEdit("successful later edit")
+
+      await waitFor(() => {
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)
+        expect(queryClient.isMutating()).toBe(2)
+      })
+      await second.succeed(1)
+
+      const successfulPage = getMessagePage(queryClient)
+      expect(successfulPage.items.find((message) => message.id === "msg-1")?.content).toBe(
+        "successful later edit"
+      )
+
+      const cache = queryClient.getMutationCache()
+      const completed = cache.getAll().find(
+        (mutation) =>
+          mutation.state.status === "success" &&
+          (mutation.state.variables as { content?: string } | undefined)?.content ===
+            "successful later edit"
+      )
+      expect(completed).toBeDefined()
+      act(() => cache.remove(completed!))
+
+      await failEdit()
+      expect(queryClient.getQueryData(messageQueryKey)).toEqual(successfulPage)
+    })
 
     it("restores the exact failed draft and editor, then permits a successful retry", async () => {
       const { result, queryClient, draft, failEdit } = await startPendingEdit()
