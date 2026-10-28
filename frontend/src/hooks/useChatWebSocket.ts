@@ -22,6 +22,12 @@ import api from "@/api/client"
 import { getDatabaseLazily } from "@/db/lazy"
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
 import {
+  applyOwnReactionFrame,
+  classifyMessengerServerEdit,
+  confirmMessengerServerEdit,
+  noteMessengerServerEdit,
+} from "@/hooks/messengerProjection"
+import {
   clearReplayCheckpoints,
   peekReplayCheckpoint,
   readAndTouchReplayCheckpoint,
@@ -970,10 +976,50 @@ export function useChatWebSocket({
                 // Wave 205 — no self-echo guard: the frame carries no actor. The
                 // timestamp guard reconciles the author's own current echo while
                 // refusing delayed edits that would roll a newer version backward.
+                const existing = queryClient.getQueryData<MessagesListResponse>([
+                  "messages",
+                  validated.chat_id,
+                ])
+                const target = existing?.items.find(
+                  (message) => message.id === validated.message_id
+                )
+                const accepted = target && isEditFrameCurrent(target, validated)
+                const disposition = accepted
+                  ? classifyMessengerServerEdit(
+                      queryClient,
+                      validated.chat_id,
+                      validated.message_id,
+                      validated.content
+                    )
+                  : { kind: "normal" as const }
+                if (disposition.kind === "refresh") {
+                  // A successful edit has no server timestamp in its HTTP
+                  // response. A different frame may be an older delayed event;
+                  // reconcile against the server rather than guessing its order.
+                  void queryClient.invalidateQueries({
+                    queryKey: ["messages", validated.chat_id],
+                    refetchType: "active",
+                  })
+                  break
+                }
                 queryClient.setQueryData<MessagesListResponse>(
                   ["messages", validated.chat_id],
                   (old) => applyMessageEditedFrame(old, validated)
                 )
+                if (disposition.kind === "confirmed") {
+                  confirmMessengerServerEdit(queryClient, validated.chat_id, validated.message_id)
+                }
+                if (accepted)
+                  noteMessengerServerEdit(
+                    queryClient,
+                    validated.chat_id,
+                    validated.message_id,
+                    {
+                      content: validated.content,
+                      edited_at: validated.edited_at,
+                    },
+                    disposition.kind === "confirmed" ? disposition.before : undefined
+                  )
                 queryClient.invalidateQueries({
                   queryKey: ["messages", validated.chat_id],
                   refetchType: "none",
@@ -1034,15 +1080,22 @@ export function useChatWebSocket({
               }
 
               case "reaction_changed": {
-                // Wave 206 — DELTA frame self-echo guard: the actor already patched
-                // optimistically in toggleReactionMutation, so applying its own echo
-                // would double-count. Other participants apply the delta live; a
-                // missed/duplicate frame self-heals on the next GET /messages.
-                if (validated.user_id === currentUserId) break
-                queryClient.setQueryData<MessagesListResponse>(
-                  ["messages", validated.chat_id],
-                  (old) => applyReactionChangedFrame(old, validated)
-                )
+                // Own frames set the actor's state idempotently; peer frames
+                // remain deltas. Both update canonical data beneath projections.
+                if (validated.user_id === currentUserId) {
+                  const current = queryClient.getQueryData<MessagesListResponse>([
+                    "messages",
+                    validated.chat_id,
+                  ])
+                  const updated = applyOwnReactionFrame(current, validated)
+                  if (updated === current) break
+                  queryClient.setQueryData(["messages", validated.chat_id], updated)
+                } else {
+                  queryClient.setQueryData<MessagesListResponse>(
+                    ["messages", validated.chat_id],
+                    (old) => applyReactionChangedFrame(old, validated)
+                  )
+                }
                 queryClient.invalidateQueries({
                   queryKey: ["messages", validated.chat_id],
                   refetchType: "none",

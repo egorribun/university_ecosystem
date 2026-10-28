@@ -2,7 +2,7 @@
 
 TD-9 / MOD-9 (audit 2026-03-05): Extracted from the monolithic
 app/api/websocket.py to enforce SRP.  This module owns:
-  - In-memory LRU TTL presence cache (OrderedDict, capped at 10 000 entries)
+  - Authoritative presence-audience resolution
   - Redis pub/sub bridge (PresencePubSub)
   - Public cache-invalidation helpers
 """
@@ -14,13 +14,12 @@ import contextlib
 import inspect
 import json
 import uuid
-from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
 from app.core.logging import get_logger
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Sequence
 
     from app.core.protocols import AsyncDatabaseSession
     from app.schemas.chat import PresenceStatus
@@ -31,7 +30,13 @@ from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.core.config import settings
 from app.core.database import async_session
-from app.deps.cache import get_cache, versioned_key
+from app.deps.cache import (
+    StrictCacheInvalidationError,
+    StrictInvalidationScope,
+    get_cache,
+    versioned_key,
+    versioned_key_at,
+)
 from app.repositories.chat_repository import ChatRepository
 
 logger = get_logger(__name__)
@@ -45,64 +50,17 @@ PRESENCE_SOURCE_PUBSUB = "pubsub"
 
 _PRESENCE_INSTANCE_ID = uuid.uuid4().hex
 
-# ── In-memory LRU cache ───────────────────────────────────────────────────────
-# PERF-07 (audit 2026-03-04): Capped OrderedDict prevents OOM under unbounded
-# presence checks when Redis is unavailable.
-_PRESENCE_DB_CACHE: OrderedDict[uuid.UUID, tuple[set[uuid.UUID], float]] = OrderedDict()
-_PRESENCE_DB_CACHE_TTL = 30.0  # seconds
-_PRESENCE_DB_CACHE_MAX_SIZE = 10_000
-# PERF-4 (audit 2026-03-05): Eagerly initialised asyncio.Lock — always safe
-# because this module is imported during lifespan startup.
-_PRESENCE_DB_CACHE_LOCK: asyncio.Lock = asyncio.Lock()
-
-
-def _get_presence_cache_lock() -> asyncio.Lock:
-    return _PRESENCE_DB_CACHE_LOCK
-
-
 # ── Audience resolution ───────────────────────────────────────────────────────
 
 
 async def _get_presence_audience(user_id: uuid.UUID) -> set[uuid.UUID]:
-    """Resolve user IDs that should receive presence updates for user_id."""
-    cache = get_cache()
-    cache_key = versioned_key(f"user:{user_id}:presence_audience")
+    """Read membership from the primary for each authorization decision.
 
-    if cache.enabled:
-        entry = await cache.get(cache_key)
-        if entry:
-            return set(entry.payload)
-
-    loop = asyncio.get_running_loop()
-    now = loop.time()
-    cached = _PRESENCE_DB_CACHE.get(user_id)
-    if cached is not None:
-        _PRESENCE_DB_CACHE.move_to_end(user_id)
-        if (now - cached[1]) < _PRESENCE_DB_CACHE_TTL:
-            return cached[0]
-
-    async with _get_presence_cache_lock():
-        # Refresh timestamp after potentially waiting for the lock; the stale
-        # pre-lock `now` could let an expired entry pass the TTL check.
-        now = loop.time()
-        cached = _PRESENCE_DB_CACHE.get(user_id)
-        if cached is not None:
-            _PRESENCE_DB_CACHE.move_to_end(user_id)
-            if (now - cached[1]) < _PRESENCE_DB_CACHE_TTL:
-                return cached[0]
-
-        async with async_session() as session:
-            repo = ChatRepository(session)
-            audience = await repo.get_presence_audience(user_id)
-
-        _PRESENCE_DB_CACHE[user_id] = (audience, loop.time())
-        if len(_PRESENCE_DB_CACHE) > _PRESENCE_DB_CACHE_MAX_SIZE:
-            _PRESENCE_DB_CACHE.popitem(last=False)
-
-    if cache.enabled:
-        await cache.set(cache_key, list(audience), ttl=3600)
-
-    return audience
+    An older in-flight lookup can otherwise repopulate a cache after member
+    removal. A database failure therefore propagates instead of using stale data.
+    """
+    async with async_session() as session:
+        return await ChatRepository(session).get_presence_audience(user_id)
 
 
 async def invalidate_presence_audience_cache(*user_ids: uuid.UUID) -> None:
@@ -120,6 +78,41 @@ async def invalidate_chat_participants_cache(chat_id: uuid.UUID) -> None:
     if not cache.enabled:
         return
     await cache.invalidate(versioned_key(f"chat:{chat_id}:participants"))
+
+
+async def invalidate_participant_caches_strict(
+    chat_id: uuid.UUID | str | None,
+    participant_ids: Sequence[uuid.UUID | str],
+    cache_key_version: int | None,
+) -> StrictInvalidationScope:
+    """Invalidate a validated, bounded historical namespace without suppression."""
+    if not isinstance(cache_key_version, int) or isinstance(cache_key_version, bool):
+        raise ValueError("Invalid cache key version")
+    if not isinstance(participant_ids, list) or not 1 <= len(participant_ids) <= 128:
+        raise ValueError("Invalid participant cache batch")
+
+    def parse_id(value: uuid.UUID | str | None) -> uuid.UUID:
+        try:
+            parsed = uuid.UUID(str(value))
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError("Invalid participant cache identifier") from None
+        if str(parsed) != str(value):
+            raise ValueError("Non-canonical participant cache identifier")
+        return parsed
+
+    parsed_chat = parse_id(chat_id)
+    parsed_participants = [parse_id(value) for value in participant_ids]
+    if len(set(parsed_participants)) != len(parsed_participants):
+        raise ValueError("Duplicate participant cache identifier")
+    keys = [versioned_key_at(f"chat:{parsed_chat}:participants", cache_key_version)]
+    keys.extend(
+        versioned_key_at(f"user:{user_id}:presence_audience", cache_key_version)
+        for user_id in parsed_participants
+    )
+    scope = await get_cache().invalidate_strict(*keys)
+    if scope not in ("shared", "process_only", "disabled"):
+        raise StrictCacheInvalidationError("Unknown strict cache invalidation scope")
+    return scope
 
 
 # ── PresencePubSub ────────────────────────────────────────────────────────────

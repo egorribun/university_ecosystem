@@ -384,10 +384,7 @@ for (const failedStep of ["arm-response", "click", "await-response"]) {
       assert.deepEqual(events, failedStep === "arm-response"
         ? ["arm", "report"] : ["arm", "click", "report"]);
     `)
-    assert.equal(
-      output,
-      `UE_LIVE_RESET_REGISTRATION_V1 project=desktop step=${failedStep}\n`
-    )
+    assert.equal(output, `UE_LIVE_RESET_REGISTRATION_V1 project=desktop step=${failedStep}\n`)
   })
 }
 
@@ -1037,4 +1034,298 @@ test("reset V2 caps snapshot scheduling at 250ms with a long remaining deadline"
       csrfResponse: "not-observed",
     },
   ])
+})
+
+function resetV3InChild(calls) {
+  return registrationActionInChild(`
+    const createTimeline = actionModule.createPasswordResetRegistrationTimeline;
+    assert.equal(typeof createTimeline, "function", "bounded registration V3 timeline is missing");
+    const { JSDOM } = await import("jsdom");
+    class TimelinePage {
+      constructor() {
+        this.dom = new JSDOM(
+          '<form novalidate><input id="full_name"><button id="register-submit" type="button"></button></form>',
+          { url: "https://owned.invalid/register", runScripts: "outside-only" }
+        );
+        this.installations = 0;
+        this.handles = [];
+        this.failNextEvaluation = false;
+      }
+      async evaluateHandle(callback) {
+        this.installations += 1;
+        const observer = this.dom.window.eval("(" + callback.toString() + ")()");
+        const page = this;
+        const handle = {
+          observer,
+          released: false,
+          async evaluate(callback) {
+            if (page.failNextEvaluation) {
+              page.failNextEvaluation = false;
+              throw new Error("private-evaluate");
+            }
+            return callback(observer);
+          },
+          async dispose() { this.released = true; },
+        };
+        this.handles.push(handle);
+        return handle;
+      }
+    }
+    ${calls}
+  `)
+}
+
+function resetV3Records(output) {
+  return output
+    .trimEnd()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      assert.ok(line.startsWith("UE_LIVE_RESET_REGISTRATION_V3 "))
+      return JSON.parse(line.slice("UE_LIVE_RESET_REGISTRATION_V3 ".length))
+    })
+}
+
+test("reset V3 captures classified setup, input, and click events without raw data", () => {
+  const output = resetV3InChild(`
+    const page = new TimelinePage();
+    const timeline = createTimeline(page, "mobile", performance.now() + 1000);
+    await timeline.setup();
+    const name = page.dom.window.document.querySelector("#full_name");
+    name.value = "private-name";
+    page.dom.window.__APP_HYDRATED = true;
+    name.dispatchEvent(new page.dom.window.Event("input", { bubbles: true }));
+    name.value = "x";
+    page.dom.window.document.querySelector("form").insertAdjacentHTML(
+      "beforeend", '<p id="register-name-error" role="alert">private-error</p>'
+    );
+    page.dom.window.document.querySelector("#register-submit").click();
+    await timeline.reportFailure("await-response");
+    await timeline.dispose();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(page.installations, 1);
+    assert.equal(page.handles[0].released, true);
+    page.dom.window.close();
+  `)
+  assert.deepEqual(resetV3Records(output), [
+    {
+      project: "mobile",
+      step: "await-response",
+      beforeName: { hydrated: false, nameState: "empty", nameError: false },
+      afterName: { hydrated: true, nameState: "at-least-two", nameError: false },
+      beforeSubmit: { hydrated: true, nameState: "short", nameError: true, trigger: "click" },
+    },
+  ])
+  assert.doesNotMatch(output, /private|https?:|value|input/u)
+})
+
+test("reset V3 observes invalid and submit fallback events and ignores disabled or missing buttons", () => {
+  const output = resetV3InChild(`
+    for (const trigger of ["invalid", "submit", "disabled", "missing"]) {
+      const page = new TimelinePage();
+      const timeline = createTimeline(page, "mobile", performance.now() + 1000);
+      await timeline.setup();
+      const document = page.dom.window.document;
+      const name = document.querySelector("#full_name");
+      const button = document.querySelector("#register-submit");
+      if (trigger === "invalid") name.dispatchEvent(new page.dom.window.Event("invalid"));
+      if (trigger === "submit") document.querySelector("form").dispatchEvent(
+        new page.dom.window.Event("submit", { bubbles: true, cancelable: true })
+      );
+      if (trigger === "disabled") { button.disabled = true; button.click(); }
+      if (trigger === "missing") { button.remove(); document.body.click(); }
+      await timeline.reportFailure("click");
+      await timeline.dispose();
+      page.dom.window.close();
+    }
+  `)
+  const records = resetV3Records(output)
+  assert.equal(records.length, 3, "identical missing-event records are deduplicated")
+  assert.deepEqual(
+    records.map((record) => record.beforeSubmit?.trigger ?? null),
+    ["invalid", "submit", null]
+  )
+  assert.ok(records.every((record) => record.afterName === null))
+})
+
+test("reset V3 is silent on success, removes listeners, and preserves the action result", () => {
+  const output = resetV3InChild(`
+    const page = new TimelinePage();
+    const timeline = createTimeline(page, "mobile", performance.now() + 1000);
+    await timeline.setup();
+    const handle = page.handles[0];
+    const response = { status: 200 };
+    const diagnostic = {
+      reportFailure: step => timeline.reportFailure(step),
+      dispose: () => timeline.dispose(),
+    };
+    assert.equal(await run(() => Promise.resolve(response), async () => {}, () => {}, diagnostic), response);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(handle.released, true);
+    const name = page.dom.window.document.querySelector("#full_name");
+    name.value = "private-name";
+    name.dispatchEvent(new page.dom.window.Event("input", { bubbles: true }));
+    page.dom.window.document.querySelector("#register-submit").click();
+    assert.equal(handle.observer.read().afterName, null);
+    assert.equal(handle.observer.read().beforeSubmit, null);
+    page.dom.window.close();
+  `)
+  assert.equal(output, "")
+})
+
+test("reset V3 rejects malformed reads and preserves the registration failure", () => {
+  const output = resetV3InChild(`
+    const page = new TimelinePage();
+    const timeline = createTimeline(page, "desktop", performance.now() + 1000);
+    await timeline.setup();
+    const original = new Error("private-original");
+    page.handles[0].evaluate = async () => ({
+      beforeName: { hydrated: true, nameState: "empty", nameError: false, value: "private" },
+      afterName: null, beforeSubmit: null,
+    });
+    await assert.rejects(
+      run(() => Promise.reject(original), async () => {}, () => {}, {
+        reportFailure: step => timeline.reportFailure(step),
+        dispose: () => timeline.dispose(),
+      }),
+      error => error === original
+    );
+    page.dom.window.close();
+  `)
+  assert.deepEqual(resetV3Records(output), [
+    {
+      project: "desktop",
+      step: "await-response",
+      beforeName: null,
+      afterName: null,
+      beforeSubmit: null,
+    },
+  ])
+  assert.doesNotMatch(output, /private|value/u)
+})
+
+test("reset V3 bounds late setup and releases its late observer", () => {
+  const output = resetV3InChild(`
+    const page = new TimelinePage();
+    let resolveHandle;
+    page.evaluateHandle = () => new Promise(resolve => { resolveHandle = resolve; });
+    const originalSetTimeout = globalThis.setTimeout;
+    const originalClearTimeout = globalThis.clearTimeout;
+    const requested = [];
+    const cleared = [];
+    const handleId = {};
+    let expire;
+    globalThis.setTimeout = (callback, delay) => { requested.push(delay); expire = callback; return handleId; };
+    globalThis.clearTimeout = timer => { cleared.push(timer); };
+    let detached = false;
+    let released = false;
+    const late = {
+      evaluate: async callback => callback({ dispose: () => { detached = true; } }),
+      dispose: async () => { released = true; },
+    };
+    const timeline = createTimeline(page, "mobile", performance.now() + 1000);
+    try {
+      const pending = timeline.setup();
+      await new Promise(resolve => setImmediate(resolve));
+      assert.deepEqual(requested, [250]);
+      expire();
+      await pending;
+      assert.deepEqual(cleared, [handleId]);
+      await timeline.dispose();
+      resolveHandle(late);
+      await new Promise(resolve => setImmediate(resolve));
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(detached, true);
+      assert.equal(released, true);
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+      globalThis.clearTimeout = originalClearTimeout;
+      page.dom.window.close();
+    }
+  `)
+  assert.equal(output, "")
+})
+
+test("reset V3 stalled teardown does not delay a successful response or replace a failure", () => {
+  const output = resetV3InChild(`
+    for (const outcome of ["success", "failure"]) {
+      const page = new TimelinePage();
+      const timeline = createTimeline(page, "mobile", performance.now() + 1000);
+      await timeline.setup();
+      const handle = page.handles[0];
+      handle.evaluate = () => new Promise(() => {});
+      const originalSetTimeout = globalThis.setTimeout;
+      const originalClearTimeout = globalThis.clearTimeout;
+      let expire;
+      globalThis.setTimeout = callback => { expire = callback; return {}; };
+      globalThis.clearTimeout = () => {};
+      const response = { status: 200 };
+      const original = new Error("private-original");
+      try {
+        const pending = run(
+          () => outcome === "success" ? Promise.resolve(response) : Promise.reject(original),
+          async () => {}, () => {},
+          { reportFailure: async () => {}, dispose: () => timeline.dispose() }
+        ).then(value => ({ value }), error => ({ error }));
+        const observed = await Promise.race([
+          pending,
+          new Promise(resolve => setImmediate(() => resolve({ blocked: true }))),
+        ]);
+        if (outcome === "success") assert.equal(observed.value, response);
+        else assert.equal(observed.error, original);
+        assert.equal(typeof expire, "function");
+        expire();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(handle.released, true);
+      } finally {
+        globalThis.setTimeout = originalSetTimeout;
+        globalThis.clearTimeout = originalClearTimeout;
+        page.dom.window.close();
+      }
+    }
+  `)
+  assert.equal(output, "")
+})
+
+test("reset V3 invokes both failure reporters if the V2 sink throws synchronously", () => {
+  const output = registrationActionInChild(`
+    const combine = actionModule.withPasswordResetRegistrationTimeline;
+    const events = [];
+    const diagnostic = {
+      reportFailure() { events.push("v2"); throw new Error("private-sink"); },
+      dispose() { events.push("v2-dispose"); },
+    };
+    const timeline = {
+      async reportFailure() { events.push("v3"); },
+      dispose() { events.push("v3-dispose"); },
+    };
+    const combined = combine(diagnostic, timeline);
+    await combined.reportFailure("click", new Error("private-original"));
+    combined.dispose();
+    assert.deepEqual(events, ["v2", "v3", "v2-dispose", "v3-dispose"]);
+  `)
+  assert.equal(output, "")
+})
+
+test("reset V3 cleans up when setup, field filling, or admission exits before the action", () => {
+  const output = registrationActionInChild(`
+    const wrap = actionModule.withRegistrationTimeline;
+    assert.equal(typeof wrap, "function");
+    for (const outcome of ["setup", "fill", "admission", "success"]) {
+      const original = new Error("private-original");
+      const response = { status: 200 };
+      let disposals = 0;
+      const timeline = { dispose() { disposals += 1; throw new Error("private-cleanup"); } };
+      const pending = wrap(timeline, async () => {
+        for (const phase of ["setup", "fill", "admission"]) {
+          if (outcome === phase) throw original;
+        }
+        return response;
+      });
+      if (outcome === "success") assert.equal(await pending, response);
+      else await assert.rejects(pending, error => error === original);
+      assert.equal(disposals, 1);
+    }
+  `)
+  assert.equal(output, "")
 })

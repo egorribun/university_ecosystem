@@ -1036,7 +1036,7 @@ async def test_message_sent_nats_failure_keeps_outbox_row_retryable(monkeypatch)
     monkeypatch.setattr(outbox_module, "event_bus", bus)
     event_handlers.configure_event_handlers()
     monkeypatch.setattr(
-        ws_manager, "_get_chat_participants_cached", AsyncMock(return_value=[])
+        ws_manager, "_get_chat_participants", AsyncMock(return_value=[])
     )
 
     async def publish_core(_subject, _payload, *, strict=False):

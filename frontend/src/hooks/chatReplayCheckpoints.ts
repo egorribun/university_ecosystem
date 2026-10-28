@@ -3,8 +3,8 @@
  *
  * Each authenticated user owns an LRU registry of chat id → last accepted
  * stream sequence and opaque resume token. Registries live in process memory
- * (bounded to the most recently used users) and are mirrored to
- * sessionStorage so a reload can resume every room without replaying it.
+ * (bounded to the most recently used users) and a size-bounded snapshot is
+ * mirrored to sessionStorage.
  */
 
 export type ReplayCheckpoint = { sequence: number; resumeToken: string }
@@ -21,6 +21,7 @@ type StoredCheckpoint = [chatId: string, sequence: number, resumeToken: string]
 // Keyed like the mount counts; an anonymous (undefined) user never gets a registry.
 const replayCheckpointMemory = new Map<string | undefined, Map<string, ReplayCheckpoint>>()
 const replayCheckpointMounts = new Map<string | undefined, number>()
+const protectedRooms = new WeakMap<Map<string, ReplayCheckpoint>, string>()
 
 export function replayCheckpointKey(userId: string): string {
   return `${REPLAY_CHECKPOINT_PREFIX}${encodeURIComponent(userId)}`
@@ -28,16 +29,30 @@ export function replayCheckpointKey(userId: string): string {
 
 function persistReplayCheckpoints(userId: string, registry: Map<string, ReplayCheckpoint>): void {
   try {
-    window.sessionStorage.setItem(
-      replayCheckpointKey(userId),
-      JSON.stringify({
-        entries: [...registry.entries()].map(([chatId, checkpoint]) => [
-          chatId,
-          checkpoint.sequence,
-          checkpoint.resumeToken,
-        ]),
-      })
-    )
+    const encoder = new TextEncoder()
+    const entries = [...registry.entries()].map(([chatId, checkpoint]) => {
+      const json = JSON.stringify([chatId, checkpoint.sequence, checkpoint.resumeToken])
+      return { chatId, json, bytes: encoder.encode(json).byteLength }
+    })
+    const prefix = '{"entries":['
+    const suffix = "]}"
+    let bytes =
+      prefix.length +
+      suffix.length +
+      Math.max(0, entries.length - 1) +
+      entries.reduce((total, entry) => total + entry.bytes, 0)
+    const protectedRoom = protectedRooms.get(registry)
+    let index = 0
+    while (bytes > REPLAY_CHECKPOINT_STORAGE_LIMIT && index < entries.length) {
+      if (entries[index]!.chatId === protectedRoom) {
+        index += 1
+        continue
+      }
+      const [removed] = entries.splice(index, 1)
+      bytes -= removed!.bytes + Number(entries.length > 0)
+    }
+    const json = `${prefix}${entries.map((entry) => entry.json).join(",")}${suffix}`
+    window.sessionStorage.setItem(replayCheckpointKey(userId), json)
   } catch {
     // The in-memory registry still protects this mounted browser session.
   }
@@ -117,12 +132,13 @@ export function readAndTouchReplayCheckpoint(
 ): ReplayCheckpoint | undefined {
   if (!userId) return undefined
   const registry = replayCheckpointRegistry(userId)
+  protectedRooms.set(registry, chatId)
   const checkpoint = registry.get(chatId)
   if (checkpoint === undefined) return undefined
   registry.delete(chatId)
   registry.set(chatId, checkpoint)
   persistReplayCheckpoints(userId, registry)
-  return checkpoint
+  return { ...checkpoint }
 }
 
 /** Read a room checkpoint without changing its recency. */
@@ -131,7 +147,8 @@ export function peekReplayCheckpoint(
   chatId: string
 ): ReplayCheckpoint | undefined {
   if (!userId) return undefined
-  return replayCheckpointRegistry(userId).get(chatId)
+  const checkpoint = replayCheckpointRegistry(userId).get(chatId)
+  return checkpoint === undefined ? undefined : { ...checkpoint }
 }
 
 export function writeReplayCheckpoint(
@@ -141,8 +158,10 @@ export function writeReplayCheckpoint(
   resumeToken: string,
   protectedChatId: string | null
 ): void {
-  if (!userId) return
+  if (!userId || !isStoredCheckpoint([chatId, sequence, resumeToken])) return
   const registry = replayCheckpointRegistry(userId)
+  if (protectedChatId === null) protectedRooms.delete(registry)
+  else protectedRooms.set(registry, protectedChatId)
   registry.delete(chatId)
   registry.set(chatId, { sequence, resumeToken })
   // One entry was added, so at most one is over the limit. The written room

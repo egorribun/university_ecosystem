@@ -99,6 +99,29 @@ test("password reset registration keeps admission and observes only a finite fai
   )
 })
 
+test("password reset installs one bounded event observer before typing without delaying the armed click", () => {
+  const source = readFileSync(specPath, "utf8")
+  const goto = source.indexOf('  await page.goto("/register")')
+  const setup = source.indexOf("await registrationTimeline.setup()", goto)
+  const fill = source.indexOf('.fill("Live Acceptance")', goto)
+  const admission = source.indexOf("withLiveRegistrationAdmission(page, 1", fill)
+  const click = source.indexOf(
+    '.getByRole("button", { name: "Зарегистрироваться" }).click()',
+    admission
+  )
+  assert.ok(
+    goto >= 0 && goto < setup && setup < fill && fill < admission && admission < click,
+    "observer setup precedes typing and the admitted action"
+  )
+  assert.doesNotMatch(source, /registrationTimeline\.capture\(/u)
+  assert.match(source, /withPasswordResetRegistrationTimeline\([\s\S]*?registrationTimeline\s*\)/u)
+  assert.match(
+    source,
+    /withRegistrationTimeline\(registrationTimeline, async \(\) => \{[\s\S]*?await registrationTimeline\.setup\(\)[\s\S]*?return withLiveRegistrationAdmission\(/u
+  )
+  assert.doesNotMatch(source, /(?:test|testInfo)\.setTimeout|test\.slow\(/u)
+})
+
 test("password reset waits for document hydration before typing after reload", () => {
   const source = readFileSync(specPath, "utf8")
   const config = readFileSync(configPath, "utf8")

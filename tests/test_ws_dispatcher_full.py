@@ -611,6 +611,10 @@ async def test_websocket_route_uses_app_container_per_get_online_frame() -> None
                 new=AsyncMock(return_value=(user, "test-jti", None)),
             ),
             patch("app.api.websocket.manager", manager),
+            patch(
+                "app.api.websocket._resolve_user_from_ids",
+                AsyncMock(return_value=(user, "test-jti")),
+            ),
             patch("app.api.websocket.metrics.inc_ws_connections"),
             patch("app.api.websocket.metrics.dec_ws_connections"),
             patch(

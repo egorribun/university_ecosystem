@@ -120,11 +120,11 @@ def _validate_gate_state_entry(entry: Any) -> dict[str, Any]:
 
 
 def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    """Reject ambiguous duplicate keys in persisted gate state JSON."""
+    """Reject ambiguous duplicate keys in JSON objects."""
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError("Duplicate key in hook gate state.")
+            raise ValueError("Duplicate key in JSON object.")
         result[key] = value
     return result
 
@@ -233,11 +233,11 @@ def read_json_stdin() -> dict[str, Any]:
     """Read and parse camelCase JSON payload from sys.stdin."""
     try:
         if sys.stdin and sys.stdin.isatty():
-            return {}
+            return {"__hook_parse_error__": "Hook input is empty."}
         raw = sys.stdin.read()
         if not raw or not raw.strip():
-            return {}
-        payload = json.loads(raw)
+            return {"__hook_parse_error__": "Hook input is empty."}
+        payload = json.loads(raw, object_pairs_hook=_unique_json_object)
         if not isinstance(payload, dict):
             return {"__hook_parse_error__": "Hook input must be a JSON object."}
         return payload

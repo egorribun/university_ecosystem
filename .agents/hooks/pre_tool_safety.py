@@ -562,21 +562,48 @@ def evaluate_file_modification(tool_name: str, args: dict[str, Any]) -> dict[str
     }
 
 
+def _has_conflicting_fields(data: dict[str, Any], *keys: str) -> bool:
+    """Reject aliases that give different values for the same protocol field."""
+    values = [data[key] for key in keys if key in data]
+    return any(
+        type(value) is not type(values[0]) or value != values[0] for value in values[1:]
+    )
+
+
 def evaluate_pre_tool(payload: dict[str, Any]) -> dict[str, Any]:
     """Main evaluation entry point for PreToolUse events."""
-    tool_call = get_field(payload, "toolCall", "tool_call", default={})
+    if not isinstance(payload, dict) or _has_conflicting_fields(
+        payload, "toolCall", "tool_call"
+    ):
+        return {"decision": "deny", "reason": "Malformed or ambiguous tool call."}
+    tool_call = get_field(payload, "toolCall", "tool_call")
     if not isinstance(tool_call, dict):
-        return {"decision": "allow", "reason": "No toolCall in payload."}
+        return {"decision": "deny", "reason": "Missing or malformed tool call."}
 
-    tool_name = get_field(tool_call, "name", "tool_name", default="")
-    args = get_field(tool_call, "args", "arguments", default={})
-    if not isinstance(args, dict):
-        args = {}
+    if _has_conflicting_fields(
+        tool_call, "name", "tool_name"
+    ) or _has_conflicting_fields(tool_call, "args", "arguments"):
+        return {"decision": "deny", "reason": "Ambiguous tool call fields."}
+
+    tool_name = get_field(tool_call, "name", "tool_name")
+    args = get_field(tool_call, "args", "arguments")
+    if (
+        not isinstance(tool_name, str)
+        or not tool_name.strip()
+        or not isinstance(args, dict)
+    ):
+        return {
+            "decision": "deny",
+            "reason": "Missing or malformed tool name or arguments.",
+        }
 
     if tool_name in {"run_command", "shell_command", "exec_command", "terminal"}:
-        cmd_line = get_field(
-            args, "CommandLine", "commandLine", "command_line", "cmd", default=""
-        )
+        command_keys = ("CommandLine", "commandLine", "command_line", "cmd")
+        if _has_conflicting_fields(args, *command_keys):
+            return {"decision": "deny", "reason": "Ambiguous command arguments."}
+        cmd_line = get_field(args, *command_keys)
+        if not isinstance(cmd_line, str) or not cmd_line.strip():
+            return {"decision": "deny", "reason": "Missing or malformed command."}
         return evaluate_run_command(cmd_line)
 
     if tool_name in {
@@ -586,7 +613,13 @@ def evaluate_pre_tool(payload: dict[str, Any]) -> dict[str, Any]:
         "edit_file",
         "apply_patch",
     }:
+        target_keys = ("TargetFile", "target_file", "path", "file")
+        if _has_conflicting_fields(args, *target_keys):
+            return {"decision": "deny", "reason": "Ambiguous target file arguments."}
+        target = get_field(args, *target_keys)
+        if not isinstance(target, str) or not target.strip():
+            return {"decision": "deny", "reason": "Missing or malformed target file."}
         return evaluate_file_modification(tool_name, args)
 
-    # Default to allow for read-only / other harmless tools
+    # Preserve the existing behavior for other, well-formed tool calls.
     return {"decision": "allow", "reason": f"Tool '{tool_name}' allowed by default."}

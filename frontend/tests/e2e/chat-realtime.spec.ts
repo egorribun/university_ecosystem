@@ -14,8 +14,8 @@ import { gotoWithTransientRetry } from "./utils/navigation"
  *     connection is closed and delivers subsequent messages.
  *   - Typing indicator: verifies the indicator UI appears when a typing
  *     event arrives over the WebSocket channel.
- *   - Message delivery confirmation: verifies the sent-message receipt
- *     UI changes from "pending" to "delivered" after the backend ACK.
+ *   - Message sent confirmation: verifies the server accepted the exact
+ *     message and the matching bubble shows its accessible sent/read status.
  */
 
 const REALTIME_ENABLED = process.env.REALTIME_E2E === "true"
@@ -104,28 +104,41 @@ test.describe("Chat real-time behaviour", () => {
     await expect(typingIndicator).toBeVisible({ timeout: 5000 })
   })
 
-  // ── 3. Message delivery confirmation ──────────────────────────────────
+  // ── 3. Message sent confirmation ──────────────────────────────────────
   //
-  // Sends a message and verifies the UI progresses from a pending/sending
-  // state to a delivered/sent confirmation (tick, check-mark, or similar).
-  test("shows delivery confirmation after message is sent", async ({ page }) => {
+  // Sends a message, checks the server response, and scopes the status to that
+  // message rather than looking for a nonexistent global delivery marker.
+  test("shows sent confirmation after the server accepts the message", async ({ page }) => {
     await gotoWithTransientRetry(page, "/messenger", { waitUntil: "networkidle" })
     await page.getByRole("listitem").first().click()
     await page.waitForTimeout(500)
 
     const messageText = `e2e-delivery-${Date.now()}`
     const input = page.getByRole("textbox", { name: /message|сообщение/i })
+    const sendResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        /\/chats\/[^/]+\/messages\/?$/u.test(new URL(response.url()).pathname)
+    )
     await input.fill(messageText)
     await input.press("Enter")
 
-    // The sent message should appear in the chat.
-    const sentMessage = page.getByText(messageText)
-    await expect(sentMessage).toBeVisible({ timeout: 5000 })
+    const response = await sendResponse
+    expect(response.ok()).toBe(true)
+    const acceptedMessage = (await response.json()) as { id?: string; content?: string }
+    expect(acceptedMessage.id).toBeTruthy()
+    expect(acceptedMessage.content).toBe(messageText)
 
-    // After the backend ACK, a "delivered" indicator should appear near the
-    // message (double-tick icon, aria-label, or data-testid).
-    const deliveredIndicator = page.locator('[data-testid="message-status-delivered"]')
-    await expect(deliveredIndicator.last()).toBeVisible({ timeout: 10_000 })
+    const sentMessage = page.getByText(messageText, { exact: true })
+    await expect(sentMessage).toBeVisible({ timeout: 5000 })
+    const sentRow = sentMessage.locator(
+      "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
+    )
+    await expect(
+      sentRow.getByRole("img", {
+        name: /^(Отправлено|Прочитано получателем|Sent|Read by recipient)$/i,
+      })
+    ).toBeVisible({ timeout: 10_000 })
   })
 
   // ── 4. Message read confirmation & Seen-by-N ──────────────────────────

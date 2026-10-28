@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     from app.models import User
     from app.models.chat import Attachment
-    from app.repositories.chat_repository import SendReceiptState
+    from app.repositories.chat_repository import LockedChatMembership, SendReceiptState
     from app.repositories.unit_of_work import UnitOfWork
     from app.schemas.chat import (
         AttachmentResponse,
@@ -39,6 +39,14 @@ if TYPE_CHECKING:
     from .notification_service import ChatNotificationService
 
 from fastapi import HTTPException, status
+from nats.errors import (
+    ConnectionClosedError,
+    ConnectionDrainingError,
+    ConnectionReconnectingError,
+    NoRespondersError,
+    NoServersError,
+    StaleConnectionError,
+)
 from redis.exceptions import (
     ConnectionError as RedisConnectionError,
 )
@@ -60,11 +68,13 @@ from app.api.validation import (
 from app.api.ws.connection_manager import manager as ws_manager
 from app.api.ws.presence import (
     invalidate_chat_participants_cache,
+    invalidate_participant_caches_strict,
     invalidate_presence_audience_cache,
 )
 from app.core.config import settings
 from app.core.events import EventEmitterMixin, MessageSent
 from app.core.logging import get_logger
+from app.deps.cache import StrictCacheInvalidationError, current_cache_key_version
 from app.models import Message
 from app.models.chat import Attachment
 from app.models.enums import UserRole
@@ -76,6 +86,9 @@ from app.schemas.chat import (
 )
 
 logger = get_logger(__name__)
+
+_MEMBERSHIP_CACHE_BATCH_SIZE = 128
+_MEMBERSHIP_FAST_PATH_SECONDS = 2.0
 
 
 def _make_idempotency_key(
@@ -1225,6 +1238,7 @@ class ChatMaintenanceService:
                 else str(user.email),
             },
             exclude_user_id=user.id,
+            db_session=self.uow.session,
         )
 
     def _require_group_participant(
@@ -1243,6 +1257,19 @@ class ChatMaintenanceService:
             raise_validation_error("errors.chat.not_a_group", locale)
         return participant_ids
 
+    async def _lock_group_membership(
+        self, chat_id: uuid.UUID, user_id: uuid.UUID, locale: str
+    ) -> LockedChatMembership:
+        """Authorize against the roster protected by the chat-first lock."""
+        snapshot = await self.repository.lock_membership_snapshot(chat_id)
+        ensure_exists(snapshot, "chat", locale)
+        assert snapshot is not None  # noqa: S101
+        if user_id not in snapshot.participant_ids:
+            raise_forbidden(locale, "errors.chat.not_participant")
+        if snapshot.chat_type != "group":
+            raise_validation_error("errors.chat.not_a_group", locale)
+        return snapshot
+
     async def add_participant(
         self,
         chat_id: uuid.UUID,
@@ -1260,18 +1287,22 @@ class ChatMaintenanceService:
         member-change frames). add_participant is idempotent (added == False ⇒ no
         membership change ⇒ skip the invalidation).
         """
-        chat = await self.repository.get_by_id(chat_id)
-        ensure_exists(chat, "chat", locale)
-        assert chat is not None  # noqa: S101
-
-        participant_ids = self._require_group_participant(chat, user, locale)
-
-        target = await self.repository.get_user(new_user_id)
-        ensure_exists(target, "users", locale)
-
-        added = await self.repository.add_participant(chat_id, new_user_id)
-        async with self.uow:
+        user_id = user.id
+        try:
+            snapshot = await self._lock_group_membership(chat_id, user_id, locale)
+            participant_ids = set(snapshot.participant_ids)
+            target = await self.repository.get_user(new_user_id)
+            ensure_exists(target, "users", locale)
+            added = await self.repository.add_participant(chat_id, new_user_id)
             await self.uow.commit()
+        except (
+            BaseException
+        ):  # RZ-22-01-JUSTIFIED: rollback before re-raising transaction failure
+            try:
+                await self.uow.rollback()
+            except Exception:  # RZ-22-01-JUSTIFIED: cleanup preserves original failure
+                logger.warning("chat_add_participant_rollback_failed")
+            raise
 
         if added:
             await invalidate_chat_participants_cache(chat_id)
@@ -1288,74 +1319,122 @@ class ChatMaintenanceService:
 
         The owner (created_by) may remove anyone; any member may remove themselves
         (leave); anyone else → 403 remove_forbidden. After commit, invalidate the
-        same caches as add (security invariant). Removing a non-member is a benign
-        no-op (affected == 0 ⇒ skip the invalidation).
+        same caches as add (security invariant). A permitted no-op retries the
+        fast cache cleanup without creating additional outbox events.
         """
-        chat = await self.repository.get_by_id(chat_id)
-        ensure_exists(chat, "chat", locale)
-        assert chat is not None  # noqa: S101
+        from app.core.events import ChatParticipantCacheInvalidation
+        from app.core.events import ChatParticipantRemoved as _ChatParticipantRemoved
+        from app.models.domain_events import StoredEvent as _StoredEvent
+        from app.utils.uuid_v7 import generate_uuid7 as _generate_uuid7
 
-        participant_ids = self._require_group_participant(chat, user, locale)
-
-        is_self_leave = target_user_id == user.id
-        is_owner = chat.created_by == user.id
-        if not (is_self_leave or is_owner):
-            raise_forbidden(locale, "errors.chat.remove_forbidden")
-
-        affected = await self.repository.remove_participant(chat_id, target_user_id)
+        user_id = user.id
         removal_event_id: uuid.UUID | None = None
-        if affected:
-            from app.core.events import (
-                ChatParticipantRemoved as _ChatParticipantRemoved,
-            )
-            from app.models.domain_events import StoredEvent as _StoredEvent
-            from app.utils.uuid_v7 import generate_uuid7 as _generate_uuid7
+        try:
+            snapshot = await self._lock_group_membership(chat_id, user_id, locale)
+            if target_user_id != user_id and snapshot.created_by != user_id:
+                raise_forbidden(locale, "errors.chat.remove_forbidden")
 
-            removal_event_id = _generate_uuid7()
-            self.repository.add(
-                _StoredEvent(
-                    id=removal_event_id,
-                    event_type=_ChatParticipantRemoved.EVENT_TYPE,
-                    aggregate_type="Chat",
-                    aggregate_id=str(chat_id),
-                    payload={
-                        "chat_id": str(chat_id),
-                        "user_id": str(target_user_id),
-                    },
+            participant_ids = sorted(set(snapshot.participant_ids) | {target_user_id})
+            cache_version = current_cache_key_version()
+            affected = await self.repository.remove_participant(chat_id, target_user_id)
+            if affected:
+                removal_event_id = _generate_uuid7()
+                self.repository.add(
+                    _StoredEvent(
+                        id=removal_event_id,
+                        event_type=_ChatParticipantRemoved.EVENT_TYPE,
+                        aggregate_type="Chat",
+                        aggregate_id=str(chat_id),
+                        payload={
+                            "chat_id": str(chat_id),
+                            "user_id": str(target_user_id),
+                        },
+                    )
                 )
-            )
-        async with self.uow:
+                for start in range(
+                    0, len(participant_ids), _MEMBERSHIP_CACHE_BATCH_SIZE
+                ):
+                    cache_event_id = _generate_uuid7()
+                    batch = participant_ids[
+                        start : start + _MEMBERSHIP_CACHE_BATCH_SIZE
+                    ]
+                    self.repository.add(
+                        _StoredEvent(
+                            id=cache_event_id,
+                            event_type=ChatParticipantCacheInvalidation.EVENT_TYPE,
+                            aggregate_type="ChatMembershipCache",
+                            aggregate_id=str(cache_event_id),
+                            payload={
+                                "chat_id": str(chat_id),
+                                "cache_key_version": cache_version,
+                                "participant_ids": [
+                                    str(participant) for participant in batch
+                                ],
+                            },
+                        )
+                    )
             await self.uow.commit()
+        except (
+            BaseException
+        ):  # RZ-22-01-JUSTIFIED: rollback before re-raising transaction failure
+            try:
+                await self.uow.rollback()
+            except Exception:  # RZ-22-01-JUSTIFIED: cleanup preserves original failure
+                logger.warning("chat_remove_participant_rollback_failed")
+            raise
 
-        if affected:
-            cache_results = await asyncio.gather(
-                invalidate_chat_participants_cache(chat_id),
-                invalidate_presence_audience_cache(target_user_id, *participant_ids),
-                return_exceptions=True,
-            )
+        async def invalidate_caches() -> None:
+            try:
+                async with asyncio.timeout(_MEMBERSHIP_FAST_PATH_SECONDS):
+                    for start in range(
+                        0, len(participant_ids), _MEMBERSHIP_CACHE_BATCH_SIZE
+                    ):
+                        await invalidate_participant_caches_strict(
+                            chat_id,
+                            participant_ids[
+                                start : start + _MEMBERSHIP_CACHE_BATCH_SIZE
+                            ],
+                            cache_version,
+                        )
+            except (StrictCacheInvalidationError, OSError):
+                logger.warning("chat_membership_cache_invalidation_deferred")
 
-            # The transactionally stored event remains the durable retry path.
-            # Publish the same event identity now for low-latency room eviction;
-            # JetStream deduplicates the outbox retry, and the hub also treats a
-            # repeated eviction as idempotent after refreshing membership.
+        async def evict_room() -> None:
             from app.services.ws_hub_client import invalidate_ws_hub_cache
 
-            await asyncio.gather(
-                invalidate_ws_hub_cache(
-                    str(target_user_id),
-                    str(chat_id),
-                    evict_room=True,
-                    event_id=str(removal_event_id),
-                ),
-                return_exceptions=True,
-            )
-            # A cache failure must not prevent the independent room-revocation
-            # fast path. Preserve the existing error contract after all
-            # post-commit effects have had a chance to run; the stored event
-            # remains available for durable WS-hub retry.
-            for cache_result in cache_results:
-                if isinstance(cache_result, BaseException):
-                    raise cache_result
+            try:
+                async with asyncio.timeout(_MEMBERSHIP_FAST_PATH_SECONDS):
+                    await invalidate_ws_hub_cache(
+                        str(target_user_id),
+                        str(chat_id),
+                        evict_room=True,
+                        event_id=str(removal_event_id),
+                    )
+            except (
+                ConnectionError,
+                TimeoutError,
+                OSError,
+                ConnectionClosedError,
+                ConnectionDrainingError,
+                ConnectionReconnectingError,
+                NoRespondersError,
+                NoServersError,
+                StaleConnectionError,
+            ):
+                logger.warning("chat_membership_hub_eviction_deferred")
+            except RuntimeError as error:
+                # The broker uses this exact error when JetStream is unavailable.
+                if str(error) != "NATS JetStream not available":
+                    raise
+                logger.warning("chat_membership_hub_eviction_deferred")
+
+        effects = [invalidate_caches()]
+        if affected:
+            effects.append(evict_room())
+        outcomes = await asyncio.gather(*effects, return_exceptions=True)
+        for outcome in outcomes:
+            if isinstance(outcome, BaseException):
+                raise outcome
 
     async def rename_chat(
         self, chat_id: uuid.UUID, user: User, name: str, locale: str

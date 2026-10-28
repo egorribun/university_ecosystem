@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider, dehydrate } from "@tanstack/react-que
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest"
 import type { ReactNode } from "react"
 import { createIDBPersister, persistOptions } from "@/app/queryClient"
-import type { MessagesListResponse } from "@/api/chat"
+import type { ChatsListResponse, MessagesListResponse } from "@/api/chat"
 
 /**
  * Session-14 Lane-C branch top-up for useMessengerController.
@@ -1484,30 +1484,40 @@ describe("useMessengerController — branch top-up", () => {
       mocks.chatApi.clearChat.mockResolvedValue({ status: "ok" })
 
       const { queryClient, HookWrapper } = createQueryHarness()
-      const setQueryData = vi.spyOn(queryClient, "setQueryData")
       const { result: hookResult } = renderHook(() => useMessengerController(), {
         wrapper: HookWrapper,
       })
       await waitFor(() => expect(hookResult.current.contacts).toHaveLength(2))
       await waitFor(() => expect(hookResult.current.messages).toHaveLength(1))
+      await waitFor(() => expect(mocks.chatApi.markRead).toHaveBeenCalledWith("chat-1"))
+      await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+      // The successful clear's reconciliation must observe the server's new
+      // history, rather than reintroducing the pre-clear fixture and triggering
+      // an unrelated mark-read refetch of the old chat metadata.
+      mocks.chatApi.getMessages.mockResolvedValue({
+        items: [],
+        has_more: false,
+        next_cursor: null,
+      })
+      const beforeClear = queryClient.getQueryData<ChatsListResponse>(["chats"])!
+      mocks.chatApi.getChats.mockResolvedValue({
+        ...beforeClear,
+        items: beforeClear.items.map((chat) =>
+          chat.id === "chat-1" ? { ...chat, unread_count: 0, last_message: undefined } : chat
+        ),
+      })
 
       act(() => hookResult.current.handleClearChat())
       act(() => hookResult.current.confirmDialog?.onConfirm())
 
-      // Let the awaited `cancelQueries` in onMutate and the resolved mutation
-      // settle without waiting on a mutant-dependent UI predicate. The cache
-      // update itself is the contract under test and fails fast if removed.
-      await act(async () => {
-        await Promise.resolve()
-        await Promise.resolve()
-        await new Promise((resolve) => setTimeout(resolve, 0))
-      })
-
-      const chatsUpdate = setQueryData.mock.calls.find(
-        ([key]) => JSON.stringify(key) === JSON.stringify(["chats"])
+      await waitFor(() =>
+        expect(
+          queryClient
+            .getQueryData<{ items: Array<{ id: string; unread_count: number }> }>(["chats"])
+            ?.items.find((chat) => chat.id === "chat-1")?.unread_count
+        ).toBe(0)
       )
-      expect(chatsUpdate).toBeDefined()
-      const updatedChats = chatsUpdate?.[1] as {
+      const updatedChats = queryClient.getQueryData(["chats"]) as {
         items: Array<{ id: string; unread_count: number; last_message?: unknown }>
       }
       expect(updatedChats.items.find((chat) => chat.id === "chat-1")).toMatchObject({
@@ -2699,6 +2709,7 @@ describe("useMessengerController — branch top-up", () => {
         return {
           fail: (remainingMutations = 0) => settleRequest(request, false, remainingMutations),
           succeed: (remainingMutations = 0) => settleRequest(request, true, remainingMutations),
+          reject: () => request.reject(new Error("controlled queued edit failure")),
         }
       }
 
@@ -2725,37 +2736,21 @@ describe("useMessengerController — branch top-up", () => {
     const getEditedContent = (queryClient: QueryClient) =>
       getMessagePage(queryClient).items.find((message) => message.id === "msg-1")?.content
 
-    const expectPageWithEdit = (
-      queryClient: QueryClient,
-      page: MessagesListResponse,
-      content: string,
-      editedAt: string | null | undefined
-    ) => {
-      expect(queryClient.getQueryData(messageQueryKey)).toEqual({
-        ...page,
-        items: page.items.map((message) =>
-          message.id === "msg-1" ? { ...message, content, edited_at: editedAt } : message
-        ),
-      })
-    }
-
     it.each(["older first", "newer first"])(
       "AUD-155: preserves independent updates when overlapping edits fail (%s)",
       async (failureOrder) => {
-        const { queryClient, draft, failEdit, startNextEdit } = await startPendingEdit()
-        const firstTarget = getMessagePage(queryClient).items.find(
-          (message) => message.id === "msg-1"
-        )!
+        const { queryClient, result, failEdit, startNextEdit } = await startPendingEdit()
         const second = startNextEdit("second optimistic edit")
 
         await waitFor(() => {
-          expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)
+          expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
           expect(queryClient.isMutating()).toBe(2)
-          expect(getEditedContent(queryClient)).toBe("second optimistic edit")
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+            "second optimistic edit"
+          )
         })
 
         const pendingPage = getMessagePage(queryClient)
-        const secondTarget = pendingPage.items.find((message) => message.id === "msg-1")!
         const livePage: MessagesListResponse = {
           ...pendingPage,
           has_more: true,
@@ -2783,20 +2778,33 @@ describe("useMessengerController — branch top-up", () => {
 
         if (failureOrder === "older first") {
           await failEdit(1)
-          expectPageWithEdit(
-            queryClient,
-            livePage,
-            "second optimistic edit",
-            secondTarget.edited_at
+          expect(queryClient.getQueryData(messageQueryKey)).toEqual(livePage)
+          await waitFor(() =>
+            expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+              "second optimistic edit"
+            )
           )
           await second.fail()
         } else {
-          await second.fail(1)
-          expectPageWithEdit(queryClient, livePage, draft.trim(), firstTarget.edited_at)
+          // The second HTTP action cannot overtake the first. A pre-rejected
+          // response remains queued while the newer projection stays visible.
+          second.reject()
+          expect(queryClient.isMutating()).toBe(2)
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+            "second optimistic edit"
+          )
           await failEdit()
+          await second.fail()
         }
 
-        expectPageWithEdit(queryClient, livePage, "original", undefined)
+        expect(queryClient.getQueryData(messageQueryKey)).toEqual(livePage)
+        await waitFor(() =>
+          expect(result.current.messages.find((message) => message.id === "msg-1")).toMatchObject({
+            text: "original",
+            readAt: "2026-10-27T12:05:00Z",
+            reactions: [{ emoji: "👍", count: 2, reactedByMe: false }],
+          })
+        )
       }
     )
 
@@ -2806,7 +2814,7 @@ describe("useMessengerController — branch top-up", () => {
         vi.useFakeTimers({ toFake: ["Date"] })
         vi.setSystemTime(new Date("2026-10-27T12:10:00Z"))
         try {
-          const { queryClient, draft, failEdit, startNextEdit } = await startPendingEdit()
+          const { queryClient, result, draft, failEdit, startNextEdit } = await startPendingEdit()
           const lastDraft = variant === "ABA" ? draft.trim() : "third optimistic edit"
 
           // No await between saves: both async onMutate callbacks overlap.
@@ -2814,13 +2822,15 @@ describe("useMessengerController — branch top-up", () => {
           const third = startNextEdit(lastDraft)
 
           await waitFor(() => {
-            expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(3)
+            expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
             expect(queryClient.isMutating()).toBe(3)
-            expect(getEditedContent(queryClient)).toBe(lastDraft)
+            expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+              lastDraft
+            )
           })
-          expect(
-            getMessagePage(queryClient).items.find((message) => message.id === "msg-1")?.edited_at
-          ).toBe("2026-10-27T12:10:00.000Z")
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.editedAt).toBe(
+            "2026-10-27T12:10:00.000Z"
+          )
 
           const pending = queryClient
             .getMutationCache()
@@ -2853,10 +2863,17 @@ describe("useMessengerController — branch top-up", () => {
           }
 
           await failEdit(2)
-          expect(getEditedContent(queryClient)).toBe(lastDraft)
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+            lastDraft
+          )
           await second.fail(1)
-          expect(getEditedContent(queryClient)).toBe(lastDraft)
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+            lastDraft
+          )
           await third.fail()
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+            "original"
+          )
           expect(getEditedContent(queryClient)).toBe("original")
         } finally {
           vi.useRealTimers()
@@ -2864,11 +2881,12 @@ describe("useMessengerController — branch top-up", () => {
       }
     )
 
-    it("AUD-155: retires older rollback ownership before a newer onMutate context is published", async () => {
+    it("AUD-155: keeps an identical newer edit visible while an older failure is delayed", async () => {
       vi.useFakeTimers({ toFake: ["Date"] })
       vi.setSystemTime(new Date("2026-10-27T12:10:00Z"))
       try {
-        const { queryClient, draft, rejectFirstEdit, startNextEdit } = await startPendingEdit()
+        const { queryClient, result, draft, rejectFirstEdit, startNextEdit } =
+          await startPendingEdit()
         const cache = queryClient.getMutationCache()
         const originalOnError = cache.config.onError
         const first = cache.getAll().find((mutation) => mutation.state.status === "pending")!
@@ -2886,36 +2904,6 @@ describe("useMessengerController — branch top-up", () => {
           return errorReleased
         }
 
-        let releasedForWrite = false
-        let sawUnpublishedContext = false
-        const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
-          if (
-            releasedForWrite ||
-            event.type !== "updated" ||
-            event.action.type !== "success" ||
-            event.query.queryKey[0] !== "messages" ||
-            event.query.queryKey[1] !== "chat-1"
-          ) {
-            return
-          }
-          const page = event.query.state.data as MessagesListResponse | undefined
-          if (page?.items.find((message) => message.id === "msg-1")?.content !== draft.trim()) {
-            return
-          }
-
-          releasedForWrite = true
-          sawUnpublishedContext = cache
-            .getAll()
-            .some(
-              (mutation) =>
-                mutation !== first &&
-                mutation.state.status === "pending" &&
-                mutation.state.context === undefined
-            )
-          // Queue the older error continuation before this onMutate returns.
-          release()
-        })
-
         try {
           await act(async () => {
             rejectFirstEdit()
@@ -2925,18 +2913,28 @@ describe("useMessengerController — branch top-up", () => {
           // Identical content and timestamp make field equality insufficient.
           const second = startNextEdit(draft.trim())
           await waitFor(() => {
+            expect(queryClient.isMutating()).toBe(2)
+            expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+              draft.trim()
+            )
+          })
+          await act(async () => release())
+          await waitFor(() => {
             expect(first.state.status).toBe("error")
             expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)
             expect(queryClient.isMutating()).toBe(1)
           })
-
-          expect(sawUnpublishedContext).toBe(true)
-          expect(getEditedContent(queryClient)).toBe(draft.trim())
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+            draft.trim()
+          )
+          expect(getEditedContent(queryClient)).toBe("original")
           await second.fail()
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+            "original"
+          )
           expect(getEditedContent(queryClient)).toBe("original")
         } finally {
           release()
-          unsubscribe()
           cache.config.onError = originalOnError
         }
       } finally {
@@ -3005,7 +3003,7 @@ describe("useMessengerController — branch top-up", () => {
     )
 
     it("AUD-155: does not modify a recreated same-key query with identical edit fields", async () => {
-      const { queryClient, rerender, failEdit } = await startPendingEdit()
+      const { queryClient, result, draft, rerender, failEdit } = await startPendingEdit()
       const retiredQuery = queryClient
         .getQueryCache()
         .find({ queryKey: messageQueryKey, exact: true })
@@ -3016,6 +3014,12 @@ describe("useMessengerController — branch top-up", () => {
         next_cursor: "replacement-owner-cursor",
         items: pendingPage.items.map((message) => ({
           ...message,
+          ...(message.id === "msg-1"
+            ? {
+                content: draft.trim(),
+                edited_at: result.current.messages.find((item) => item.id === "msg-1")?.editedAt,
+              }
+            : {}),
           read_status: true,
           read_at: "2026-10-27T12:07:00Z",
         })),
@@ -3037,21 +3041,28 @@ describe("useMessengerController — branch top-up", () => {
     })
 
     it("AUD-155: keeps a newer successful edit after its mutation cache entry is removed", async () => {
-      const { queryClient, failEdit, startNextEdit } = await startPendingEdit()
+      const { queryClient, result, failEdit, startNextEdit } = await startPendingEdit()
       const second = startNextEdit("successful later edit")
 
       await waitFor(() => {
-        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
         expect(queryClient.isMutating()).toBe(2)
+        expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+          "successful later edit"
+        )
       })
-      await second.succeed(1)
+      const cache = queryClient.getMutationCache()
+      const first = cache.getAll().find((mutation) => mutation.state.status === "pending")!
+      act(() => cache.remove(first))
+      await failEdit(1)
+      await waitFor(() => expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2))
+      await second.succeed()
 
       const successfulPage = getMessagePage(queryClient)
       expect(successfulPage.items.find((message) => message.id === "msg-1")?.content).toBe(
         "successful later edit"
       )
 
-      const cache = queryClient.getMutationCache()
       const completed = cache
         .getAll()
         .find(
@@ -3063,14 +3074,13 @@ describe("useMessengerController — branch top-up", () => {
       expect(completed).toBeDefined()
       act(() => cache.remove(completed!))
 
-      await failEdit()
       expect(queryClient.getQueryData(messageQueryKey)).toEqual(successfulPage)
     })
 
     it.each(["content", "timestamp"])(
       "AUD-155: starts a new rollback lineage after an authoritative %s change",
       async (changedField) => {
-        const { queryClient, failEdit, startNextEdit } = await startPendingEdit()
+        const { queryClient, result, failEdit, startNextEdit } = await startPendingEdit()
         const pendingPage = getMessagePage(queryClient)
         const authoritative: MessagesListResponse = {
           ...pendingPage,
@@ -3091,27 +3101,33 @@ describe("useMessengerController — branch top-up", () => {
 
         const second = startNextEdit("new edit after the authoritative baseline")
         await waitFor(() => {
-          expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)
+          expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
           expect(queryClient.isMutating()).toBe(2)
-          expect(getEditedContent(queryClient)).toBe("new edit after the authoritative baseline")
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+            "new edit after the authoritative baseline"
+          )
         })
-        const optimisticPage = getMessagePage(queryClient)
 
         await failEdit(1)
-        expect(queryClient.getQueryData(messageQueryKey)).toEqual(optimisticPage)
+        expect(queryClient.getQueryData(messageQueryKey)).toEqual(authoritative)
+        expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+          "new edit after the authoritative baseline"
+        )
         await second.fail()
         expect(queryClient.getQueryData(messageQueryKey)).toEqual(authoritative)
       }
     )
 
     it("AUD-155: preserves a completed edit as the baseline for a later failed edit", async () => {
-      const { queryClient, failEdit, startNextEdit } = await startPendingEdit()
+      const { queryClient, result, failEdit, startNextEdit } = await startPendingEdit()
       const second = startNextEdit("completed second edit")
       await waitFor(() => {
-        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
         expect(queryClient.isMutating()).toBe(2)
       })
-      await second.succeed(1)
+      await failEdit(1)
+      await waitFor(() => expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2))
+      await second.succeed()
 
       const completedPage = getMessagePage(queryClient)
       expect(getEditedContent(queryClient)).toBe("completed second edit")
@@ -3130,39 +3146,40 @@ describe("useMessengerController — branch top-up", () => {
       const third = startNextEdit("failed third edit")
       await waitFor(() => {
         expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(3)
-        expect(queryClient.isMutating()).toBe(2)
-        expect(getEditedContent(queryClient)).toBe("failed third edit")
+        expect(queryClient.isMutating()).toBe(1)
+        expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+          "failed third edit"
+        )
       })
 
-      await third.fail(1)
-      expect(queryClient.getQueryData(messageQueryKey)).toEqual(completedPage)
-      await failEdit()
+      await third.fail()
       expect(queryClient.getQueryData(messageQueryKey)).toEqual(completedPage)
     })
 
     it("AUD-155: keeps overlapping edits to different messages independent", async () => {
-      const { queryClient, failEdit, startNextEdit } = await startPendingEdit()
+      const { queryClient, result, failEdit, startNextEdit } = await startPendingEdit()
       const second = startNextEdit("optimistic edit of the other message", "msg-2")
       await waitFor(() => {
         expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)
         expect(queryClient.isMutating()).toBe(2)
-        expect(
-          getMessagePage(queryClient).items.find((message) => message.id === "msg-2")?.content
-        ).toBe("optimistic edit of the other message")
+        expect(result.current.messages.find((message) => message.id === "msg-2")?.text).toBe(
+          "optimistic edit of the other message"
+        )
       })
       const pendingPage = getMessagePage(queryClient)
 
       await failEdit(1)
-      expectPageWithEdit(queryClient, pendingPage, "original", undefined)
+      expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+        "original"
+      )
+      expect(result.current.messages.find((message) => message.id === "msg-2")?.text).toBe(
+        "optimistic edit of the other message"
+      )
       await second.fail()
-      expect(queryClient.getQueryData(messageQueryKey)).toEqual({
-        ...pendingPage,
-        items: pendingPage.items.map((message) => ({
-          ...message,
-          content: message.id === "msg-1" ? "original" : "newer original",
-          edited_at: undefined,
-        })),
-      })
+      expect(queryClient.getQueryData(messageQueryKey)).toEqual(pendingPage)
+      expect(result.current.messages.find((message) => message.id === "msg-2")?.text).toBe(
+        "newer original"
+      )
     })
 
     it.each(["missing", "deleted"])(
@@ -3191,7 +3208,7 @@ describe("useMessengerController — branch top-up", () => {
         await second.fail(1)
         expect(queryClient.getQueryData(messageQueryKey)).toEqual(current)
         await failEdit()
-        expectPageWithEdit(queryClient, current, "original", undefined)
+        expect(queryClient.getQueryData(messageQueryKey)).toEqual(current)
       }
     )
 
@@ -3217,13 +3234,11 @@ describe("useMessengerController — branch top-up", () => {
           queryClient.removeQueries({ queryKey: messageQueryKey, exact: true })
         })
         await act(async () => release())
-        await waitFor(() => {
-          expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)
-          expect(queryClient.isMutating()).toBe(2)
-        })
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
         expect(queryClient.getQueryData(messageQueryKey)).toBeUndefined()
-        await second.fail(1)
         await failEdit()
+        await second.fail()
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
         expect(queryClient.getQueryData(messageQueryKey)).toBeUndefined()
       } finally {
         release()
@@ -3250,7 +3265,7 @@ describe("useMessengerController — branch top-up", () => {
     })
 
     it("AUD-155: starts a fresh edit lineage in a replacement Query incarnation", async () => {
-      const { queryClient, rerender, failEdit, startNextEdit } = await startPendingEdit()
+      const { queryClient, result, rerender, failEdit, startNextEdit } = await startPendingEdit()
       const oldOwner = queryClient.getQueryCache().find({ queryKey: messageQueryKey, exact: true })
       const pendingPage = getMessagePage(queryClient)
       const replacement: MessagesListResponse = {
@@ -3272,11 +3287,15 @@ describe("useMessengerController — branch top-up", () => {
       await waitFor(() => {
         expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)
         expect(queryClient.isMutating()).toBe(2)
-        expect(getEditedContent(queryClient)).toBe("new incarnation's optimistic edit")
+        expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+          "new incarnation's optimistic edit"
+        )
       })
-      const optimisticPage = getMessagePage(queryClient)
       await failEdit(1)
-      expect(queryClient.getQueryData(messageQueryKey)).toEqual(optimisticPage)
+      expect(queryClient.getQueryData(messageQueryKey)).toEqual(replacement)
+      expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+        "new incarnation's optimistic edit"
+      )
       await second.fail()
       expect(queryClient.getQueryData(messageQueryKey)).toEqual(replacement)
     })

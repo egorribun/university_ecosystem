@@ -83,10 +83,20 @@ describe("post-commit refresh translations", () => {
     expect(ruSettings.media.avatar.savedRefreshFailed).not.toBe(
       enSettings.media.avatar.savedRefreshFailed
     )
+    expect(enSettings.media.cover.savedRefreshFailed).toEqual(expect.any(String))
+    expect(ruSettings.media.cover.savedRefreshFailed).toEqual(expect.any(String))
+    expect(ruSettings.media.cover.savedRefreshFailed).not.toBe(
+      enSettings.media.cover.savedRefreshFailed
+    )
     expect(enSettings.security.email.confirmationSentRefreshFailed).toEqual(expect.any(String))
     expect(ruSettings.security.email.confirmationSentRefreshFailed).toEqual(expect.any(String))
     expect(ruSettings.security.email.confirmationSentRefreshFailed).not.toBe(
       enSettings.security.email.confirmationSentRefreshFailed
+    )
+    expect(enSettings.security.snackbar.emailMfaSavedRefreshFailed).toEqual(expect.any(String))
+    expect(ruSettings.security.snackbar.emailMfaSavedRefreshFailed).toEqual(expect.any(String))
+    expect(ruSettings.security.snackbar.emailMfaSavedRefreshFailed).not.toBe(
+      enSettings.security.snackbar.emailMfaSavedRefreshFailed
     )
   })
 })
@@ -657,5 +667,110 @@ describe.each([
 
       expect(image.src).toContain("gravatar.com/avatar/00000000000000000000000000000000")
     })
+  }
+
+  if (kind === "cover") {
+    it("does not report a cover removal failure after switching accounts", async () => {
+      let rejectDelete!: (error: Error) => void
+      mocks.api.delete.mockReturnValueOnce(
+        new Promise<never>((_, reject) => {
+          rejectDelete = reject
+        })
+      )
+      const setSnackbar = vi.fn()
+      const { result, rerender } = renderHook(() => useCoverUpload(setSnackbar))
+      let operation!: Promise<void>
+
+      act(() => {
+        operation = result.current.remove()
+      })
+      expect(mocks.api.delete).toHaveBeenCalledOnce()
+      mocks.useAuth.mockReturnValue({ user: { ...user, id: "user-2" }, setUser: mocks.setUser })
+      rerender()
+      await act(async () => {
+        rejectDelete(new Error("old account cover removal failed"))
+        await operation
+      })
+
+      expect(mocks.fetchCurrentUser).not.toHaveBeenCalled()
+      expect(setSnackbar).not.toHaveBeenCalled()
+      expect(result.current.busy).toBe(false)
+    })
+
+    it.each(["upload", "remove"] as const)(
+      "warns after a committed cover %s when profile refresh rejects",
+      async (action) => {
+        const setSnackbar = vi.fn()
+        mocks.fetchCurrentUser.mockRejectedValueOnce(new Error("profile refresh failed"))
+        const { result } = renderHook(() => useCoverUpload(setSnackbar))
+
+        await act(async () => {
+          if (action === "upload") await result.current.upload(imageFile())
+          else await result.current.remove()
+        })
+
+        expect(action === "upload" ? mocks.api.post : mocks.api.delete).toHaveBeenCalledOnce()
+        expect(mocks.fetchCurrentUser).toHaveBeenCalledOnce()
+        expect(setSnackbar).toHaveBeenCalledOnce()
+        expect(setSnackbar).toHaveBeenLastCalledWith({
+          text: "settings:media.cover.savedRefreshFailed",
+          severity: "warning",
+        })
+        expect(result.current.busy).toBe(false)
+      }
+    )
+
+    it.each(["upload", "remove"] as const)(
+      "warns after a committed cover %s when refresh returns no profile",
+      async (action) => {
+        const setSnackbar = vi.fn()
+        mocks.fetchQuery.mockResolvedValueOnce(null)
+        const { result } = renderHook(() => useCoverUpload(setSnackbar))
+
+        await act(async () => {
+          if (action === "upload") await result.current.upload(imageFile())
+          else await result.current.remove()
+        })
+
+        expect(action === "upload" ? mocks.api.post : mocks.api.delete).toHaveBeenCalledOnce()
+        expect(setSnackbar).toHaveBeenCalledOnce()
+        expect(setSnackbar).toHaveBeenLastCalledWith({
+          text: "settings:media.cover.savedRefreshFailed",
+          severity: "warning",
+        })
+        expect(result.current.busy).toBe(false)
+      }
+    )
+
+    it.each(["upload", "remove"] as const)(
+      "suppresses a rejected cover %s refresh after switching accounts",
+      async (action) => {
+        let rejectRefresh!: (error: Error) => void
+        mocks.fetchCurrentUser.mockReturnValueOnce(
+          new Promise<never>((_, reject) => {
+            rejectRefresh = reject
+          })
+        )
+        const setSnackbar = vi.fn()
+        const { result, rerender } = renderHook(() => useCoverUpload(setSnackbar))
+        let operation!: Promise<void>
+
+        act(() => {
+          operation =
+            action === "upload" ? result.current.upload(imageFile()) : result.current.remove()
+        })
+        await waitFor(() => expect(mocks.fetchCurrentUser).toHaveBeenCalledOnce())
+        mocks.useAuth.mockReturnValue({ user: { ...user, id: "user-2" }, setUser: mocks.setUser })
+        rerender()
+        await act(async () => {
+          rejectRefresh(new Error("old account profile refresh failed"))
+          await operation
+        })
+
+        expect(mocks.setUser).not.toHaveBeenCalled()
+        expect(setSnackbar).not.toHaveBeenCalled()
+        expect(result.current.busy).toBe(false)
+      }
+    )
   }
 })

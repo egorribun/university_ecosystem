@@ -8,7 +8,7 @@ import {
   useRef,
 } from "react"
 import { useNavigate, useParams } from "@tanstack/react-router"
-import { useQuery, useMutation, useQueryClient, type Query } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { formatDate, presets } from "@/utils/date"
 import { compareMessageOrder } from "@/utils/messageOrder"
@@ -17,8 +17,6 @@ import { useMessenger } from "@/contexts/MessengerContext"
 import {
   chatApi,
   type Chat,
-  type ChatMaintenanceResult,
-  type ChatsListResponse,
   type Message as ApiMessage,
   type MessagesListResponse,
 } from "@/api/chat"
@@ -31,38 +29,22 @@ import { chatDisplayInfo } from "@/components/messenger/chatDisplay"
 import type { User } from "@/types/User"
 import type { Message as UiMessage, Contact } from "@/components/messenger"
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
+import { isCurrentBrowserSession } from "@/stores/sessionEpoch"
+import {
+  beginMessengerOperation,
+  beginMessengerEditRefresh,
+  finishClearRefresh,
+  finishMessengerOperation,
+  finishMessengerEditRefresh,
+  getClearRefresh,
+  projectMessengerMessages,
+  runMessengerOperation,
+  useProjectedMessengerChats,
+  useProjectedMessengerMessages,
+} from "@/hooks/messengerProjection"
 
-const EDIT_RECEIPT = Symbol("messenger edit receipt")
-
-type EditFields = Pick<ApiMessage, "content" | "edited_at">
-
-type EditReceipt = {
-  readonly query: Query
-  readonly messageId: string
-  readonly before: EditFields
-  readonly optimistic: EditFields
-  readonly previous?: EditReceipt
-  visible: boolean
-  failed: boolean
-}
-
-type EditReceiptCarrier = {
-  [EDIT_RECEIPT]?: EditReceipt
-}
-
-type EditMessageVariables = EditReceiptCarrier & {
-  chatId: string
-  messageId: string
-  content: string
-}
-
-// Other mutation-variable shapes cannot carry this module-private symbol.
-// The Query reference and lineage must never enter persisted cache data.
-const getEditReceipt = (value: unknown): EditReceipt | undefined =>
-  (value as EditReceiptCarrier | undefined)?.[EDIT_RECEIPT]
-
-const hasSameEditFields = (left: EditFields, right: EditFields): boolean =>
-  left.content === right.content && left.edited_at === right.edited_at
+const OPERATION_RECEIPT = Symbol("messenger operation")
+type ReceiptCarrier = { [OPERATION_RECEIPT]?: object }
 
 // dayjs.extend(utc) removed in favor of native Intl utility
 
@@ -128,7 +110,10 @@ const mergeOlderMessagePage = (
 
 const mergeHydratedMessagePage = (
   current: MessagesListResponse | undefined,
-  fetched: MessagesListResponse
+  fetched: MessagesListResponse,
+  atRequestStart: MessagesListResponse | undefined,
+  cleared: boolean,
+  authoritativeEdits: Set<string>
 ): MessagesListResponse => {
   const byId = new Map<string, ApiMessage>()
   fetched.items.forEach((message) => byId.set(message.id, message))
@@ -138,7 +123,20 @@ const mergeHydratedMessagePage = (
   // otherwise retain the live record plus live-only ids.
   current?.items.forEach((message) => {
     const server = byId.get(message.id)
-    byId.set(message.id, server ? mergeMessageVersions(message, server) : message)
+    const before = atRequestStart?.items.find((item) => item.id === message.id)
+    if (cleared && !server && before === message) return
+    let merged = server ? mergeMessageVersions(message, server) : message
+    if (server && authoritativeEdits.has(message.id) && !message.deleted_at) {
+      merged = { ...merged, content: server.content, edited_at: server.edited_at }
+    }
+    // A fresh aggregate repairs missed or duplicated deltas. If a live frame
+    // changed reactions during the request, retain that later transport state.
+    byId.set(
+      message.id,
+      server && before && before.reactions === message.reactions
+        ? { ...merged, reactions: server.reactions }
+        : merged
+    )
   })
   const items = [...byId.values()].sort((left, right) => {
     const chronological = new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
@@ -181,44 +179,11 @@ const hasSameSendPayload = (left: SendPayloadIdentity, right: SendPayloadIdentit
     return file === right.files[index]
   })
 
-// Wave 206 — API reaction aggregate shape (snake_case, as carried on @/api/chat
-// Message.reactions). The optimistic toggle below operates on this shape in the
-// ["messages", chatId] cache; the transform maps it to the camelCase UI shape.
-type ApiReaction = { emoji: string; count: number; reacted_by_me: boolean }
-
-/**
- * Wave 206 — optimistic toggle of one emoji on a message's reaction aggregate.
- * Unlike applyReactionChangedFrame (which patches count only for a PEER's delta),
- * this is the ACTOR's optimistic patch, so it ALSO flips reacted_by_me. removing →
- * count-1 + reacted_by_me=false (drop at 0); adding → count+1 + reacted_by_me=true
- * (or push a fresh {count:1, reacted_by_me:true}). noUncheckedIndexedAccess-safe.
- */
-const toggleReactionAggregate = (
-  reactions: ApiReaction[] | undefined,
-  emoji: string,
-  currentlyReacted: boolean
-): ApiReaction[] => {
-  const next = [...(reactions ?? [])]
-  const idx = next.findIndex((r) => r.emoji === emoji)
-  const existing = next[idx] // idx === -1 → undefined (noUncheckedIndexedAccess)
-  if (currentlyReacted) {
-    if (existing) {
-      const count = existing.count - 1
-      if (count <= 0) next.splice(idx, 1)
-      else next[idx] = { ...existing, count, reacted_by_me: false }
-    }
-  } else if (existing) {
-    next[idx] = { ...existing, count: existing.count + 1, reacted_by_me: true }
-  } else {
-    next.push({ emoji, count: 1, reacted_by_me: true })
-  }
-  return next
-}
-
 export const useMessengerController = () => {
   const { t, i18n } = useTranslation(["messenger", "common"])
   const { user } = useAuth()
   const accountId = user?.id ?? null
+  const sessionIsCurrent = isCurrentBrowserSession()
   // W145 SW2 — `as` cast removed; TanStack v1 `useParams({ strict: false })`
   // returns the union of all route params, so destructured `chatId` is
   // `string | undefined` natively. Matches NewsDetail.tsx + EventDetail.tsx +
@@ -246,6 +211,10 @@ export const useMessengerController = () => {
       editAttemptGenerationRef.current += 1
     }
   }, [accountId, selectedChatId])
+
+  useIsomorphicLayoutEffect(() => {
+    if (!sessionIsCurrent) editAttemptGenerationRef.current += 1
+  }, [sessionIsCurrent])
 
   // Wave 207 — reply/quote compose state. Set by handleStartReply when the user
   // taps "reply" on a bubble; the MessageInput chip renders it; the send handler
@@ -352,7 +321,7 @@ export const useMessengerController = () => {
   // "no chats" from "network error".
   const messageQueryOptions = messagesQueryOptions(selectedChatId)
   const {
-    data: chatsData,
+    data: canonicalChats,
     isLoading: chatsLoading,
     isError: chatsError,
     refetch: refetchChats,
@@ -360,6 +329,7 @@ export const useMessengerController = () => {
     ...chatsQueryOptions(),
     enabled: !!user,
   })
+  const chatsData = useProjectedMessengerChats(canonicalChats, accountId)
   const chats = useMemo(() => chatsData?.items ?? [], [chatsData?.items])
 
   // Wave 180 SW3 — single-chat fallback useQuery (fires when chat is NOT in
@@ -369,28 +339,63 @@ export const useMessengerController = () => {
   // without exponential backoff, matching pre-W180 line 78 behaviour).
   const { data: singleChatData } = useQuery({
     ...chatQueryOptions(chatId),
-    enabled: !!chatId && !chats.some((c) => c.id === chatId),
+    enabled: !!chatId && !(canonicalChats?.items ?? []).some((c) => c.id === chatId),
     retry: false,
   })
+  const singleChatPage = useMemo(
+    () =>
+      singleChatData ? { items: [singleChatData], has_more: false, next_cursor: null } : undefined,
+    [singleChatData]
+  )
+  const projectedSingleChat = useProjectedMessengerChats(singleChatPage, accountId)?.items[0]
 
   // Wave 180 SW3 — messages useQuery spreads messagesQueryOptions factory.
   // Pre-W180 `enabled: !!selectedChatId` gate preserved (no other changes).
   // Wave 184 SW3 (Path B) — additionally surface `isError` + `refetch` for
   // ChatWindow fetch-failure error state. Same rationale as chats (above).
   const {
-    data: messagesData,
+    data: canonicalMessages,
     isLoading: messagesLoading,
     isError: messagesError,
     refetch: refetchMessages,
   } = useQuery({
     ...messageQueryOptions,
     queryFn: async (context) => {
+      const atRequestStart = queryClient.getQueryData<MessagesListResponse>(
+        messageQueryOptions.queryKey
+      )
+      const clearRefresh = selectedChatId ? getClearRefresh(queryClient, selectedChatId) : undefined
+      const editRefresh = selectedChatId
+        ? beginMessengerEditRefresh(queryClient, selectedChatId)
+        : new Map<string, object>()
       const fetched = await messageQueryOptions.queryFn(context)
       const liveCache = queryClient.getQueryData<MessagesListResponse>(messageQueryOptions.queryKey)
-      return mergeHydratedMessagePage(liveCache, fetched)
+      const refreshed =
+        selectedChatId && !context.signal.aborted
+          ? finishClearRefresh(queryClient, selectedChatId, clearRefresh, fetched)
+          : { fetched, cleared: false }
+      const authoritativeEdits =
+        selectedChatId && !context.signal.aborted
+          ? finishMessengerEditRefresh(
+              queryClient,
+              selectedChatId,
+              editRefresh,
+              refreshed.fetched,
+              atRequestStart,
+              liveCache
+            )
+          : new Set<string>()
+      return mergeHydratedMessagePage(
+        liveCache,
+        refreshed.fetched,
+        atRequestStart,
+        refreshed.cleared,
+        authoritativeEdits
+      )
     },
     enabled: !!selectedChatId,
   })
+  const messagesData = useProjectedMessengerMessages(canonicalMessages, accountId, selectedChatId)
   const messages = useMemo(() => messagesData?.items ?? [], [messagesData?.items])
 
   const handleLoadOlderMessages = useCallback((): Promise<void> => {
@@ -433,9 +438,9 @@ export const useMessengerController = () => {
     if (!selectedChatId) return null
     const inList = chats.find((c) => c.id === selectedChatId)
     if (inList) return inList
-    if (singleChatData && singleChatData.id === selectedChatId) return singleChatData
+    if (projectedSingleChat && projectedSingleChat.id === selectedChatId) return projectedSingleChat
     return null
-  }, [selectedChatId, chats, singleChatData])
+  }, [selectedChatId, chats, projectedSingleChat])
 
   const transformedMessages = useMemo(() => {
     // Wave 203 SW6 — find the LAST message the current user sent that has been
@@ -706,272 +711,134 @@ export const useMessengerController = () => {
     },
   })
 
-  // Complex mutations with cache manipulation
-
+  // Optimistic actions are projected over the canonical transport cache. A
+  // failed request removes only its own projection; live frames stay intact.
   const clearChatMutation = useMutation({
-    mutationFn: (chatId: string) => chatApi.clearChat(chatId),
-    onMutate: async (chatId) => {
-      await queryClient.cancelQueries({ queryKey: ["messages", chatId] })
-      await queryClient.cancelQueries({ queryKey: ["chats"] })
-
-      const previousMessages = queryClient.getQueryData<MessagesListResponse>(["messages", chatId])
-      const previousChats = queryClient.getQueryData<ChatsListResponse>(["chats"])
-
-      queryClient.setQueryData<MessagesListResponse>(["messages", chatId], {
-        items: [],
-        has_more: false,
-        next_cursor: null,
+    mutationFn: (variables: { chatId: string } & ReceiptCarrier) =>
+      runMessengerOperation(queryClient, variables[OPERATION_RECEIPT], () =>
+        chatApi.clearChat(variables.chatId)
+      ),
+    onMutate: (variables) => {
+      const { chatId } = variables
+      void queryClient.cancelQueries({ queryKey: ["messages", chatId] })
+      void queryClient.cancelQueries({ queryKey: ["chats"] })
+      variables[OPERATION_RECEIPT] = beginMessengerOperation(queryClient, accountId, chatId, {
+        kind: "clear",
+        refreshChats: () => chatApi.getChats(),
       })
-
-      if (previousChats) {
-        queryClient.setQueryData<ChatsListResponse>(["chats"], {
-          ...previousChats,
-          items: previousChats.items.map((chat) =>
-            chat.id === chatId
-              ? {
-                  ...chat,
-                  last_message: undefined,
-                  unread_count: 0,
-                  updated_at: new Date().toISOString(),
-                }
-              : chat
-          ),
-        })
-      }
-
-      return { previousMessages, previousChats }
+      return variables[OPERATION_RECEIPT]
     },
-    onError: (_error, chatId, context) => {
-      if (context?.previousMessages) {
-        queryClient.setQueryData(["messages", chatId], context.previousMessages)
-      }
-      if (context?.previousChats) {
-        queryClient.setQueryData(["chats"], context.previousChats)
-      }
+    onError: (_error, _chatId, token) => {
+      finishMessengerOperation(queryClient, token, false)
     },
-    onSuccess: () => {
-      setShowChatMenu(false)
-    },
-    onSettled: (_data, _error, chatId) => {
-      queryClient.invalidateQueries({ queryKey: ["messages", chatId] })
-      queryClient.invalidateQueries({ queryKey: ["chats"] })
+    onSuccess: (_data, _chatId, token) => {
+      if (finishMessengerOperation(queryClient, token, true)) setShowChatMenu(false)
     },
   })
 
   const deleteChatMutation = useMutation({
-    mutationFn: (chatId: string) => chatApi.deleteChat(chatId),
-    onMutate: async (chatId) => {
-      await queryClient.cancelQueries({ queryKey: ["chats"] })
-      const previousChats = queryClient.getQueryData<ChatsListResponse>(["chats"])
-
-      if (previousChats) {
-        queryClient.setQueryData<ChatsListResponse>(["chats"], {
-          ...previousChats,
-          items: previousChats.items.filter((chat) => chat.id !== chatId),
-        })
-      }
-
-      // Confirmation can outlive the route it was opened on. Do not kick the
-      // user out of a different chat if they navigated before confirming.
-      if (selectedChatId === chatId) {
-        navigate({ to: "/messenger" })
-      }
-
-      return { previousChats }
+    mutationFn: (variables: { chatId: string } & ReceiptCarrier) =>
+      runMessengerOperation(queryClient, variables[OPERATION_RECEIPT], () =>
+        chatApi.deleteChat(variables.chatId)
+      ),
+    onMutate: (variables) => {
+      const { chatId } = variables
+      void queryClient.cancelQueries({ queryKey: ["chats"] })
+      variables[OPERATION_RECEIPT] = beginMessengerOperation(queryClient, accountId, chatId, {
+        kind: "deleteChat",
+      })
+      if (selectedChatId === chatId) navigate({ to: "/messenger" })
+      return variables[OPERATION_RECEIPT]
     },
-    onError: (_error, _chatId, context) => {
-      if (context?.previousChats) {
-        queryClient.setQueryData(["chats"], context.previousChats)
-      }
+    onError: (_error, _chatId, token) => {
+      finishMessengerOperation(queryClient, token, false)
     },
-    onSuccess: (_data: ChatMaintenanceResult, chatId) => {
-      queryClient.removeQueries({ queryKey: ["messages", chatId] })
-      setShowChatMenu(false)
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["chats"] })
+    onSuccess: (_data, _chatId, token) => {
+      if (finishMessengerOperation(queryClient, token, true)) setShowChatMenu(false)
     },
   })
 
-  // Edit rollback owns only content/edited_at, never a message-list snapshot.
-  // Retire previous ownership before publishing a newer optimistic edit.
   const editMessageMutation = useMutation({
-    mutationFn: ({ chatId, messageId, content }: EditMessageVariables) =>
-      chatApi.editMessage(chatId, messageId, content),
-    onMutate: async (variables) => {
+    mutationFn: (
+      variables: {
+        chatId: string
+        messageId: string
+        content: string
+      } & ReceiptCarrier
+    ) =>
+      runMessengerOperation(queryClient, variables[OPERATION_RECEIPT], () =>
+        chatApi.editMessage(variables.chatId, variables.messageId, variables.content)
+      ),
+    onMutate: (variables) => {
       const { chatId, messageId, content } = variables
-      const queryKey = ["messages", chatId] as const
-      await queryClient.cancelQueries({ queryKey })
-
-      const owner = queryClient.getQueryCache().find({ queryKey, exact: true })
-      const current = queryClient.getQueryData<MessagesListResponse>(queryKey)
-      if (!owner || !current) return
-
-      const target = current.items.find((message) => message.id === messageId)
-      if (!target || target.deleted_at) return
-
-      let previous: EditReceipt | undefined
-      for (const mutation of queryClient.getMutationCache().getAll()) {
-        const candidate = getEditReceipt(mutation.state.variables)
-        if (!candidate?.visible || candidate.query !== owner || candidate.messageId !== messageId) {
-          continue
-        }
-        candidate.visible = false
-        if (
-          mutation.state.status === "pending" &&
-          hasSameEditFields(target, candidate.optimistic)
-        ) {
-          previous = candidate
-        }
-        break
-      }
-
-      const receipt: EditReceipt = {
-        query: owner,
+      void queryClient.cancelQueries({ queryKey: ["messages", chatId] })
+      variables[OPERATION_RECEIPT] = beginMessengerOperation(queryClient, accountId, chatId, {
+        kind: "edit",
         messageId,
-        before: { content: target.content, edited_at: target.edited_at },
-        optimistic: { content, edited_at: new Date().toISOString() },
-        previous,
-        visible: true,
-        failed: false,
-      }
-
-      // TanStack publishes variables before awaiting onMutate, but publishes
-      // its returned context afterwards. Register before notifying cache
-      // subscribers so an older failure cannot reclaim this publication gap.
-      variables[EDIT_RECEIPT] = receipt
-      queryClient.setQueryData<MessagesListResponse>(queryKey, {
-        ...current,
-        items: current.items.map((message) =>
-          message.id === messageId ? { ...message, ...receipt.optimistic } : message
-        ),
+        content,
       })
-      return { [EDIT_RECEIPT]: receipt }
+      return variables[OPERATION_RECEIPT]
     },
-    onError: (_error, { chatId }, context) => {
-      const receipt = getEditReceipt(context)
-      if (!receipt) return
-
-      receipt.failed = true
-      if (!receipt.visible) return
-      receipt.visible = false
-
-      const queryKey = ["messages", chatId] as const
-      const owner = queryClient.getQueryCache().find({ queryKey, exact: true })
-      if (owner !== receipt.query) return
-
-      const current = queryClient.getQueryData<MessagesListResponse>(queryKey)
-      if (!current) return
-      const target = current.items.find((message) => message.id === receipt.messageId)
-      if (!target || target.deleted_at || !hasSameEditFields(target, receipt.optimistic)) {
-        return
-      }
-
-      let restored = receipt.before
-      let previous = receipt.previous
-      while (previous?.failed) {
-        restored = previous.before
-        previous = previous.previous
-      }
-      if (previous) {
-        restored = previous.optimistic
-        previous.visible = true
-      }
-
-      queryClient.setQueryData<MessagesListResponse>(queryKey, {
-        ...current,
-        items: current.items.map((message) =>
-          message.id === receipt.messageId ? { ...message, ...restored } : message
-        ),
-      })
+    onError: (_error, _variables, token) => {
+      finishMessengerOperation(queryClient, token, false)
     },
-    onSettled: (_data, _error, { chatId }) => {
-      queryClient.invalidateQueries({ queryKey: ["messages", chatId], refetchType: "none" })
-      queryClient.invalidateQueries({ queryKey: ["chats"], refetchType: "none" })
+    onSuccess: (_data, _variables, token) => {
+      finishMessengerOperation(queryClient, token, true)
     },
   })
 
-  // Wave 205 SW6 — author-only soft-delete (optimistic): stamp deleted_at + clear
-  // content/attachments (the tombstone) immediately; rollback on error.
   const deleteMessageMutation = useMutation({
-    mutationFn: ({ chatId, messageId }: { chatId: string; messageId: string }) =>
-      chatApi.deleteMessage(chatId, messageId),
-    onMutate: async ({ chatId, messageId }) => {
-      await queryClient.cancelQueries({ queryKey: ["messages", chatId] })
-      const previousMessages = queryClient.getQueryData<MessagesListResponse>(["messages", chatId])
-      const deletedAt = new Date().toISOString()
-      queryClient.setQueryData<MessagesListResponse>(["messages", chatId], (old) =>
-        old
-          ? {
-              ...old,
-              items: old.items.map((m) =>
-                m.id === messageId
-                  ? { ...m, deleted_at: deletedAt, content: "", attachments: [] }
-                  : m
-              ),
-            }
-          : old
-      )
-      return { previousMessages, chatId }
+    mutationFn: (variables: { chatId: string; messageId: string } & ReceiptCarrier) =>
+      runMessengerOperation(queryClient, variables[OPERATION_RECEIPT], () =>
+        chatApi.deleteMessage(variables.chatId, variables.messageId)
+      ),
+    onMutate: (variables) => {
+      const { chatId, messageId } = variables
+      void queryClient.cancelQueries({ queryKey: ["messages", chatId] })
+      variables[OPERATION_RECEIPT] = beginMessengerOperation(queryClient, accountId, chatId, {
+        kind: "deleteMessage",
+        messageId,
+      })
+      return variables[OPERATION_RECEIPT]
     },
-    onError: (_error, _vars, context) => {
-      if (context?.previousMessages) {
-        queryClient.setQueryData(["messages", context.chatId], context.previousMessages)
-      }
+    onError: (_error, _variables, token) => {
+      finishMessengerOperation(queryClient, token, false)
     },
-    onSettled: (_data, _error, { chatId }) => {
-      queryClient.invalidateQueries({ queryKey: ["messages", chatId], refetchType: "none" })
-      queryClient.invalidateQueries({ queryKey: ["chats"], refetchType: "none" })
+    onSuccess: (_data, _variables, token) => {
+      finishMessengerOperation(queryClient, token, true)
     },
   })
 
-  // Wave 206 — emoji reaction toggle (optimistic). mutationFn picks add/remove
-  // from currentlyReacted; onMutate flips the aggregate in the ["messages",chatId]
-  // cache immediately (toggleReactionAggregate), rollback on error. The server's
-  // delta broadcast is self-echo-guarded for the actor, so the optimistic patch is
-  // the actor's source of truth; refetch reconciles. Mirrors editMessageMutation.
   const toggleReactionMutation = useMutation({
-    mutationFn: ({
-      chatId,
-      messageId,
-      emoji,
-      currentlyReacted,
-    }: {
-      chatId: string
-      messageId: string
-      emoji: string
-      currentlyReacted: boolean
-    }) =>
-      currentlyReacted
-        ? chatApi.removeReaction(chatId, messageId, emoji)
-        : chatApi.addReaction(chatId, messageId, emoji),
-    onMutate: async ({ chatId, messageId, emoji, currentlyReacted }) => {
-      await queryClient.cancelQueries({ queryKey: ["messages", chatId] })
-      const previousMessages = queryClient.getQueryData<MessagesListResponse>(["messages", chatId])
-      queryClient.setQueryData<MessagesListResponse>(["messages", chatId], (old) =>
-        old
-          ? {
-              ...old,
-              items: old.items.map((m) =>
-                m.id === messageId
-                  ? {
-                      ...m,
-                      reactions: toggleReactionAggregate(m.reactions, emoji, currentlyReacted),
-                    }
-                  : m
-              ),
-            }
-          : old
-      )
-      return { previousMessages, chatId }
+    mutationFn: (
+      variables: {
+        chatId: string
+        messageId: string
+        emoji: string
+        currentlyReacted: boolean
+      } & ReceiptCarrier
+    ) =>
+      runMessengerOperation(queryClient, variables[OPERATION_RECEIPT], () =>
+        variables.currentlyReacted
+          ? chatApi.removeReaction(variables.chatId, variables.messageId, variables.emoji)
+          : chatApi.addReaction(variables.chatId, variables.messageId, variables.emoji)
+      ),
+    onMutate: (variables) => {
+      const { chatId, messageId, emoji, currentlyReacted } = variables
+      void queryClient.cancelQueries({ queryKey: ["messages", chatId] })
+      variables[OPERATION_RECEIPT] = beginMessengerOperation(queryClient, accountId, chatId, {
+        kind: "reaction",
+        messageId,
+        emoji,
+        reacted: !currentlyReacted,
+      })
+      return variables[OPERATION_RECEIPT]
     },
-    onError: (_error, _vars, context) => {
-      if (context?.previousMessages) {
-        queryClient.setQueryData(["messages", context.chatId], context.previousMessages)
-      }
+    onError: (_error, _variables, token) => {
+      finishMessengerOperation(queryClient, token, false)
     },
-    onSettled: (_data, _error, { chatId }) => {
-      queryClient.invalidateQueries({ queryKey: ["messages", chatId], refetchType: "none" })
+    onSuccess: (_data, _variables, token) => {
+      finishMessengerOperation(queryClient, token, true)
     },
   })
 
@@ -1309,7 +1176,7 @@ export const useMessengerController = () => {
       confirmText: t("common:buttons.clear"),
       cancelText: t("common:buttons.cancel"),
       onConfirm: () => {
-        clearChatMutation.mutate(selectedChatId)
+        clearChatMutation.mutate({ chatId: selectedChatId })
         setConfirmDialog(null)
       },
     })
@@ -1325,7 +1192,7 @@ export const useMessengerController = () => {
       confirmText: t("common:buttons.delete"),
       cancelText: t("common:buttons.cancel"),
       onConfirm: () => {
-        deleteChatMutation.mutate(selectedChatId)
+        deleteChatMutation.mutate({ chatId: selectedChatId })
         setConfirmDialog(null)
       },
     })
@@ -1393,13 +1260,18 @@ export const useMessengerController = () => {
   const handleToggleReaction = useCallback(
     (messageId: string, emoji: string) => {
       if (!selectedChatId) return
-      const current = queryClient.getQueryData<MessagesListResponse>(["messages", selectedChatId])
+      const current = projectMessengerMessages(
+        queryClient,
+        accountId,
+        selectedChatId,
+        queryClient.getQueryData<MessagesListResponse>(["messages", selectedChatId])
+      )
       const msg = current?.items.find((m) => m.id === messageId)
       const currentlyReacted =
         msg?.reactions?.some((r) => r.emoji === emoji && r.reacted_by_me) ?? false
       toggleReactionMutate({ chatId: selectedChatId, messageId, emoji, currentlyReacted })
     },
-    [selectedChatId, queryClient, toggleReactionMutate]
+    [selectedChatId, queryClient, accountId, toggleReactionMutate]
   )
 
   const handleViewProfile = () => {

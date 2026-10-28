@@ -43,6 +43,7 @@ import { estimateReadingTime } from "@/utils/readingTime"
 import { TIMEOUTS } from "@/config/timeouts"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { setNewsHeroId } from "@/utils/newsTransition"
+import { captureSessionEpoch } from "@/stores/sessionEpoch"
 
 type NewsSnackbarSeverity = "success" | "error"
 type NewsSnackbarNotice = { message: string; severity: NewsSnackbarSeverity }
@@ -134,11 +135,11 @@ export default function NewsDetail() {
 
   const {
     interactions,
-    toggleLike,
+    toggleLikeAsync,
     addComment,
     isCommenting,
-    updateComment,
-    deleteComment,
+    updateCommentAsync,
+    deleteCommentAsync,
     hasMoreComments,
     isLoadingMoreComments,
     loadMoreComments,
@@ -339,7 +340,17 @@ export default function NewsDetail() {
               onShare={() => {
                 void handleShare()
               }}
-              onToggleLike={() => toggleLike()}
+              onToggleLike={() => {
+                const ownsSession = captureSessionEpoch()
+                void (async () => {
+                  try {
+                    await toggleLikeAsync()
+                  } catch {
+                    if (ownsSession())
+                      showSnackbar(t("news:notifications.interactionError"), "error")
+                  }
+                })()
+              }}
               onToggleBookmark={handleToggleBookmark}
               onEditOpen={() => setEditOpen(true)}
               onDeleteOpen={() => setConfirmDeleteOpen(true)}
@@ -349,12 +360,13 @@ export default function NewsDetail() {
             <NewsDetailBody content={content} />
 
             <NewsComments
+              key={user?.id ?? "anonymous"}
               comments={comments}
               user={user}
               isCommenting={isCommenting}
               addComment={addComment}
-              updateComment={updateComment}
-              deleteComment={deleteComment}
+              updateComment={updateCommentAsync}
+              deleteComment={deleteCommentAsync}
               t={t}
               getMoscowDate={getMoscowDate}
             />

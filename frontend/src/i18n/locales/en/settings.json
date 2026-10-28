@@ -103,7 +103,7 @@
       "deleted": "Avatar removed",
       "uploadFailed": "Couldn't upload avatar",
       "deleteFailed": "Couldn't delete avatar",
-      "savedRefreshFailed": "Your avatar change was saved, but your profile could not refresh. Reload the page to see the latest photo."
+      "savedRefreshFailed": "Your avatar change was saved, but your profile could not refresh. Reload the page to see the current state of your avatar."
     },
     "cover": {
       "title": "Profile cover",
@@ -113,7 +113,8 @@
       "uploadFailed": "Couldn't upload cover",
       "remove": "Remove cover",
       "deleted": "Cover removed",
-      "deleteFailed": "Couldn't remove cover"
+      "deleteFailed": "Couldn't remove cover",
+      "savedRefreshFailed": "Your cover change was saved, but your profile could not refresh. Reload the page to see the current state of your cover."
     }
   },
   "account": {
@@ -260,7 +261,8 @@
       "emailMfaResent": "A new verification code was sent",
       "emailMfaResendFailed": "Couldn't send a new verification code",
       "emailMfaDisabled": "Email verification codes disabled",
-      "emailMfaDisableFailed": "Couldn't disable email verification codes"
+      "emailMfaDisableFailed": "Couldn't disable email verification codes",
+      "emailMfaSavedRefreshFailed": "Your email security change was saved, but your profile could not refresh. Reload the page to see the current settings."
     },
     "stepUp": {
       "description": "Complete multi-factor authentication to continue."

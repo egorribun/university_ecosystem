@@ -3603,7 +3603,7 @@ describe("profile effect lifecycle ownership", () => {
     queryClient.clear()
   })
 
-  it("deduplicates profile cache effects when StrictMode replays committed effects", async () => {
+  it("runs profile side effects once when StrictMode replays the functional updater", async () => {
     const queryClient = createQueryClient()
     const fetchQuery = vi.spyOn(queryClient, "fetchQuery").mockResolvedValue(testUser as never)
     const signingKeyRef = { current: signingKey } as MutableRefObject<string | null>
@@ -3628,14 +3628,19 @@ describe("profile effect lifecycle ownership", () => {
     const storageWrites = vi.spyOn(Storage.prototype, "setItem")
     const queryWrites = vi.spyOn(queryClient, "setQueryData")
     const strictProfile = { ...testUser, full_name: "Committed once" }
+    const updateProfile = vi.fn((previous: UserState) => ({
+      ...previous!,
+      full_name: strictProfile.full_name,
+    }))
 
-    act(() => view.result.current.setUser(strictProfile))
+    act(() => view.result.current.setUser(updateProfile))
     await waitFor(async () => {
       expect(await readCachedUserAsync(signingKey)).toMatchObject({
         full_name: strictProfile.full_name,
       })
     })
 
+    expect(updateProfile).toHaveBeenCalledTimes(2)
     expect(view.result.current.user).toEqual(strictProfile)
     expect(queryWrites.mock.calls.filter(([key]) => key === currentUserQueryKey)).toHaveLength(1)
     expect(

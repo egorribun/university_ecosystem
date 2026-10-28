@@ -27,7 +27,6 @@ async def test_removed_member_is_not_in_next_cached_chat_broadcast(
     cache_key = versioned_key(f"chat:{chat_id}:participants")
     await cache.set(cache_key, [str(user_id) for user_id in old_participants], ttl=3600)
     monkeypatch.setattr(presence, "get_cache", lambda: cache)
-    monkeypatch.setattr(connection_manager, "get_cache", lambda: cache)
     monkeypatch.setattr(nats_broker.broker, "publish_core", AsyncMock())
     monkeypatch.setattr(
         "app.services.ws_hub_client.invalidate_ws_hub_cache", AsyncMock()

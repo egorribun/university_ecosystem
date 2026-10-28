@@ -68,6 +68,10 @@ async def test_websocket_chat_returns_when_connection_limit_rejects_user():
             AsyncMock(return_value=(user, "jti", "subprotocol")),
         ),
         patch("app.api.websocket.manager", manager),
+        patch(
+            "app.api.websocket._resolve_user_from_ids",
+            AsyncMock(return_value=(user, "jti")),
+        ),
         patch("app.api.websocket.metrics.inc_ws_connections") as inc_connections,
         patch("app.api.websocket.metrics.dec_ws_connections") as dec_connections,
         patch(
@@ -100,6 +104,10 @@ async def test_websocket_chat_dispatches_messages_and_handles_disconnect():
             AsyncMock(return_value=(user, "jti", "subprotocol")),
         ),
         patch("app.api.websocket.manager", manager),
+        patch(
+            "app.api.websocket._resolve_user_from_ids",
+            AsyncMock(return_value=(user, "jti")),
+        ),
         patch("app.api.websocket.metrics.inc_ws_connections"),
         patch("app.api.websocket.metrics.dec_ws_connections"),
         patch(
@@ -138,6 +146,10 @@ async def test_websocket_chat_allows_message_limit_with_json_overhead():
             AsyncMock(return_value=(user, "jti", "subprotocol")),
         ),
         patch("app.api.websocket.manager", manager),
+        patch(
+            "app.api.websocket._resolve_user_from_ids",
+            AsyncMock(return_value=(user, "jti")),
+        ),
         patch("app.api.websocket.metrics.inc_ws_connections"),
         patch("app.api.websocket.metrics.dec_ws_connections"),
         patch(
@@ -172,6 +184,10 @@ async def test_websocket_chat_closes_when_message_content_exceeds_limit():
             AsyncMock(return_value=(user, "jti", "subprotocol")),
         ),
         patch("app.api.websocket.manager", manager),
+        patch(
+            "app.api.websocket._resolve_user_from_ids",
+            AsyncMock(return_value=(user, "jti")),
+        ),
         patch("app.api.websocket.metrics.inc_ws_connections"),
         patch("app.api.websocket.metrics.dec_ws_connections"),
         patch(
@@ -202,6 +218,10 @@ async def test_websocket_chat_rejects_non_object_json_without_dispatching():
             AsyncMock(return_value=(user, "jti", "subprotocol")),
         ),
         patch("app.api.websocket.manager", manager),
+        patch(
+            "app.api.websocket._resolve_user_from_ids",
+            AsyncMock(return_value=(user, "jti")),
+        ),
         patch("app.api.websocket.metrics.inc_ws_connections"),
         patch("app.api.websocket.metrics.dec_ws_connections"),
         patch(
@@ -444,7 +464,9 @@ async def test_websocket_chat_keeps_other_socket_online_after_cleanup_db_failure
 ) -> None:
     lifecycle = websocket_lifecycle
     other_socket = AsyncMock()
-    assert await lifecycle.manager.connect(other_socket, lifecycle.user.id)
+    assert await lifecycle.manager.connect(
+        other_socket, lifecycle.user.id, session_jti="other-session"
+    )
     lifecycle.update_last_seen.side_effect = [
         lifecycle.last_seen,
         SQLAlchemyError("last-seen storage unavailable"),

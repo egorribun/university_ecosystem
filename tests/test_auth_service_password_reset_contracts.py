@@ -551,7 +551,11 @@ async def test_reset_link_uses_configured_origin_not_request_host_headers(
             "student@example.edu", request, background_tasks
         )
 
-    reset_link = background_tasks.add_task.call_args.args[2]
+    from app.tasks.email import _open_auth_email_link
+
+    sealed_link = background_tasks.add_task.call_args.args[2]
+    assert background_tasks.add_task.call_args.kwargs["encrypted_link"] is True
+    reset_link = _open_auth_email_link(sealed_link, hmac_material)
     parsed_link = urlsplit(reset_link)
     assert parsed_link.scheme == "https"
     assert parsed_link.netloc == "portal.example.edu"

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import enStories from "@/i18n/locales/en/stories.json"
+import ruStories from "@/i18n/locales/ru/stories.json"
 import StoriesAdmin from "../StoriesAdmin"
 
 const mocks = vi.hoisted(() => ({
@@ -10,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   deleteStory: vi.fn(),
   updateStory: vi.fn(),
   uploadStoryCover: vi.fn(),
+  generatedUploadStoryCover: vi.fn(),
   t: (key: string) => key,
 }))
 
@@ -25,7 +28,13 @@ vi.mock("@/api/client", () => ({
   default: { get: mocks.getStories },
 }))
 
-vi.mock("@/api/stories", () => ({
+vi.mock("@/api/generated", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/generated")>()),
+  uploadStoryCoverApiV1StoriesUploadCoverPost: mocks.generatedUploadStoryCover,
+}))
+
+vi.mock("@/api/stories", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/stories")>()),
   createStory: mocks.createStory,
   deleteStory: mocks.deleteStory,
   updateStory: mocks.updateStory,
@@ -127,6 +136,8 @@ describe("StoriesAdmin", () => {
     mocks.deleteStory.mockReset()
     mocks.updateStory.mockReset()
     mocks.uploadStoryCover.mockReset()
+    mocks.generatedUploadStoryCover.mockReset()
+    mocks.t = (key: string) => key
     mocks.getStories.mockResolvedValue({ data: [] })
     mocks.createStory.mockResolvedValue({ id: "created-story" })
     mocks.deleteStory.mockResolvedValue(undefined)
@@ -459,6 +470,60 @@ describe("StoriesAdmin", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("cover rejected")
     expect(mocks.createStory).not.toHaveBeenCalled()
   })
+
+  it.each([
+    ["English", "create", enStories],
+    ["Russian", "create", ruStories],
+    ["English", "update", enStories],
+    ["Russian", "update", ruStories],
+  ] as const)(
+    "shows the %s localized fallback when cover upload fails during %s",
+    async (_language, action, locale) => {
+      const expectedKey =
+        action === "create" ? "stories:errors.createFailed" : "stories:errors.coverUpdateFailed"
+      const expectedMessage =
+        action === "create" ? locale.errors.createFailed : locale.errors.coverUpdateFailed
+      mocks.t = (key: string) => (key === expectedKey ? expectedMessage : key)
+      mocks.generatedUploadStoryCover.mockResolvedValueOnce({ data: undefined })
+      if (action === "update") mocks.getStories.mockResolvedValue({ data: [story] })
+      const actualStories = await vi.importActual<typeof import("@/api/stories")>("@/api/stories")
+      mocks.uploadStoryCover.mockImplementation(actualStories.uploadStoryCover)
+      const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:cover-failure")
+      const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+      const { unmount } = render(<StoriesAdmin />)
+
+      try {
+        if (action === "create") {
+          await screen.findByText("stories:list.empty")
+          fireEvent.change(screen.getByLabelText("stories:form.titleRu"), {
+            target: { value: "New story" },
+          })
+          fireEvent.change(screen.getByLabelText("stories:form.shortTextRu"), {
+            target: { value: "Story text" },
+          })
+          fireEvent.change(screen.getByLabelText("common:buttons.uploadPhoto"), {
+            target: { files: [new File(["image"], "story.png", { type: "image/png" })] },
+          })
+          fireEvent.click(screen.getByRole("button", { name: "common:buttons.submit" }))
+        } else {
+          await screen.findByText(story.title)
+          fireEvent.change(screen.getAllByLabelText("stories:list.actions.pickCover").at(-1)!, {
+            target: { files: [new File(["image"], "story.png", { type: "image/png" })] },
+          })
+          fireEvent.click(screen.getByRole("button", { name: "stories:list.actions.updateCover" }))
+        }
+
+        expect(await screen.findByRole("alert")).toHaveTextContent(expectedMessage)
+        expect(mocks.generatedUploadStoryCover).toHaveBeenCalledOnce()
+        expect(mocks.createStory).not.toHaveBeenCalled()
+        expect(mocks.updateStory).not.toHaveBeenCalled()
+      } finally {
+        unmount()
+        createObjectUrl.mockRestore()
+        revokeObjectUrl.mockRestore()
+      }
+    }
+  )
 
   it("allows one cover update at a time and requires a new selection after saving", async () => {
     const pendingUpload = deferred<{ url: string }>()

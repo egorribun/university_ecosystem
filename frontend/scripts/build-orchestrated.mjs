@@ -141,6 +141,16 @@ const parseMemoryLimit = (rawValue, fallback) => {
   return Number.isFinite(parsed) && parsed >= 256 ? parsed : fallback
 }
 
+function parseBuildMaxWaitMs(rawValue) {
+  if (rawValue === undefined || rawValue === "") return 360_000
+
+  const milliseconds = Number(rawValue)
+  if (!Number.isSafeInteger(milliseconds) || milliseconds < 1 || milliseconds > 2_147_483_647) {
+    throw new Error("BUILD_MAX_WAIT_MS must be an integer from 1 to 2147483647 milliseconds")
+  }
+  return milliseconds
+}
+
 const readProcessRssBytes = (pid) => {
   if (!pid) return Promise.resolve(null)
 
@@ -228,7 +238,8 @@ async function step2_syncTokens() {
   await run("node", ["./scripts/sync-tokens.mjs"])
 }
 
-async function step3_viteBuild() {
+export async function step3_viteBuild(configuredMaxWaitMs = process.env.BUILD_MAX_WAIT_MS) {
+  const MAX_WAIT_MS = parseBuildMaxWaitMs(configuredMaxWaitMs)
   console.log("== Step 3: vite build (BUILD_SKIP_PWA=true) + kill-after-artifacts ==")
 
   // Spawn `vite build` as a subprocess. Watch for both spa-mode artifacts
@@ -332,8 +343,6 @@ async function step3_viteBuild() {
     let memoryProbeInFlight = false
     const POLL_INTERVAL_MS = 500
     const STABLE_DEBOUNCE_TICKS = 4 // 4 × 500ms = 2s of stability
-    const MAX_WAIT_MS = Number(process.env.BUILD_MAX_WAIT_MS || 360_000) // 6 minutes cap before giving up
-
     const startTime = Date.now()
     // Never terminate a build based on stale artifacts from a previous run.
     const FRESH_MTIME_GRACE_MS = 1500 // tolerate filesystem mtime quantization
@@ -598,13 +607,14 @@ async function step7_bundleBudget() {
 }
 
 async function main() {
+  const maxWaitMs = parseBuildMaxWaitMs(process.env.BUILD_MAX_WAIT_MS)
   console.log(`build-orchestrated.mjs (cwd=${cwd})`)
   if (sanitizedArgs.length > 0) {
     console.log(`Vite args: ${sanitizedArgs.join(" ")}`)
   }
   await step1_wasm()
   await step2_syncTokens()
-  await step3_viteBuild()
+  await step3_viteBuild(maxWaitMs)
   await step4_swBundle()
   await step5_workboxInject()
   await step6_postBuildShell()

@@ -7,6 +7,8 @@ import json
 import logging
 import secrets
 import ssl
+from datetime import UTC, datetime, timedelta
+from email.message import EmailMessage
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -263,7 +265,8 @@ async def test_smtp_errors_keep_task_logging_and_suppression_contract(
     }
     assert log_event.call_args_list[1].args[1] == "auth.lockout_email.error"
     assert log_event.call_args_list[1].kwargs["extra"] == {"email": "user@example.test"}
-    assert all(call.kwargs["exc_info"] is True for call in log_event.call_args_list)
+    assert log_event.call_args_list[0].kwargs["exc_info"] is False
+    assert log_event.call_args_list[1].kwargs["exc_info"] is True
     assert events == [
         "reset.abort",
         "reset.close",
@@ -360,6 +363,7 @@ async def test_smtp_abort_failure_still_closes_and_preserves_cancellation(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("encrypted", [False, True], ids=["legacy", "encrypted"])
 @pytest.mark.parametrize(
     "abort_error",
     [
@@ -373,8 +377,10 @@ async def test_nats_timeout_cancels_smtp_before_redelivery(
     monkeypatch: pytest.MonkeyPatch,
     configured_smtp: SimpleNamespace,
     abort_error: Exception | None,
+    encrypted: bool,
 ) -> None:
     """Cancel local SMTP work before NATS retry; remote exactly-once is unprovable."""
+    import app.services.auth_service as auth_module
     from app.tasks import email as email_tasks
 
     task_name = "app.tasks.email.send_auth_email"
@@ -389,11 +395,19 @@ async def test_nats_timeout_cancels_smtp_before_redelivery(
         )
     handler = email_tasks.broker._tasks[task_name]
     events: list[str] = []
+    marker = secrets.token_hex(16)
+    link = f"https://example.test/reset-password#token={marker}"
+    if encrypted:
+        secret = secrets.token_hex(32)
+        monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: secret)
+        link = email_tasks.seal_auth_email_link(
+            link, datetime.now(UTC) + timedelta(minutes=5), secret
+        )
     payload = {
         "id": "same-task-id",
         "name": task_name,
-        "args": ["user@example.test", "https://example.test/reset", "Student"],
-        "kwargs": {"locale": "en"},
+        "args": ["user@example.test", link, "Student"],
+        "kwargs": {"locale": "en", "encrypted_link": encrypted},
         "trace_context": {},
     }
     first_message = SimpleNamespace(
@@ -424,9 +438,14 @@ async def test_nats_timeout_cancels_smtp_before_redelivery(
     third_fetch = asyncio.Event()
     active_sends = 0
     maximum_active_sends = 0
+    link_was_delivered: list[bool] = []
 
-    async def blocked_first_send(_message: object) -> None:
+    async def blocked_first_send(_message: EmailMessage) -> None:
         nonlocal active_sends, maximum_active_sends
+        plain_body = _message.get_body(preferencelist=("plain",))
+        link_was_delivered.append(
+            plain_body is not None and marker in plain_body.get_content()
+        )
         active_sends += 1
         maximum_active_sends = max(maximum_active_sends, active_sends)
         events.append("first.send_started")
@@ -440,8 +459,12 @@ async def test_nats_timeout_cancels_smtp_before_redelivery(
         finally:
             active_sends -= 1
 
-    async def successful_retry_send(_message: object) -> None:
+    async def successful_retry_send(_message: EmailMessage) -> None:
         nonlocal active_sends, maximum_active_sends
+        plain_body = _message.get_body(preferencelist=("plain",))
+        link_was_delivered.append(
+            plain_body is not None and marker in plain_body.get_content()
+        )
         active_sends += 1
         maximum_active_sends = max(maximum_active_sends, active_sends)
         events.append("retry.send_started")
@@ -506,6 +529,7 @@ async def test_nats_timeout_cancels_smtp_before_redelivery(
     assert retry_started.is_set()
     assert maximum_active_sends == 1
     assert active_sends == 0
+    assert link_was_delivered == [True, True]
     first_client.transport.abort.assert_called_once()
     first_client.close.assert_called_once()
     retry_client.transport.abort.assert_not_called()

@@ -20,7 +20,7 @@ from redis.exceptions import (
 
 
 @pytest.mark.asyncio
-async def test_presence_audience_cache_is_scoped_to_each_user() -> None:
+async def test_presence_audience_reads_each_users_current_membership() -> None:
     from app.api.ws import presence
 
     first_user, second_user = uuid.uuid4(), uuid.uuid4()
@@ -33,32 +33,26 @@ async def test_presence_audience_cache_is_scoped_to_each_user() -> None:
     repository.get_presence_audience = AsyncMock(
         side_effect=lambda user_id: audiences[user_id]
     )
-    cache = SimpleNamespace(enabled=False)
-    original_cache = presence._PRESENCE_DB_CACHE.copy()
 
     @asynccontextmanager
     async def fake_session():
         yield MagicMock()
 
-    try:
-        presence._PRESENCE_DB_CACHE.clear()
-        with (
-            patch.object(presence, "get_cache", return_value=cache),
-            patch.object(presence, "async_session", fake_session),
-            patch.object(presence, "ChatRepository", return_value=repository),
-        ):
-            assert await presence._get_presence_audience(first_user) == first_audience
-            assert await presence._get_presence_audience(second_user) == second_audience
-            assert await presence._get_presence_audience(first_user) == first_audience
-            assert await presence._get_presence_audience(second_user) == second_audience
+    with (
+        patch.object(presence, "async_session", fake_session),
+        patch.object(presence, "ChatRepository", return_value=repository),
+    ):
+        assert await presence._get_presence_audience(first_user) == first_audience
+        assert await presence._get_presence_audience(second_user) == second_audience
+        assert await presence._get_presence_audience(first_user) == first_audience
+        assert await presence._get_presence_audience(second_user) == second_audience
 
-        assert repository.get_presence_audience.await_args_list == [
-            ((first_user,),),
-            ((second_user,),),
-        ]
-    finally:
-        presence._PRESENCE_DB_CACHE.clear()
-        presence._PRESENCE_DB_CACHE.update(original_cache)
+    assert repository.get_presence_audience.await_args_list == [
+        ((first_user,),),
+        ((second_user,),),
+        ((first_user,),),
+        ((second_user,),),
+    ]
 
 
 @pytest.mark.asyncio

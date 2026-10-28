@@ -1,131 +1,149 @@
-"""MOD-W15-01 / Wave 18.1: Pure-function Redis key format contract tests.
+"""Redis contracts exercised across the actual Python producer and consumer.
 
-These tests verify that the Python backend's Redis key constants and builder
-functions produce keys in the format that Go services expect.  They require
-NO Redis connection and run unconditionally in CI.
-
-Cross-service invariants verified:
-  - Revocation keys: ``revoked:jti:{jti}`` (Go gateway reads this format)
-  - WS upgrade tickets: ``ott:ws:{ticket}`` (Go ws-hub validates via GETDEL)
-  - Rate limit keys: ``rate-limit:{identifier}`` (Python-only, documented)
-  - Session revocations pubsub channel: ``session:revocations``
-
-Source of truth: ``contracts/redis-keys.md``
+The in-memory Redis server keeps the tests hermetic; it does not stand in for
+Go gateway or ws-hub execution. Those services have separate runtime tests.
 """
 
 from __future__ import annotations
 
 import re
-import uuid
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+from uuid import uuid4
 
-# ---------------------------------------------------------------------------
-# Contract: Revocation key format — Python ↔ Go gateway
-# ---------------------------------------------------------------------------
+import pytest
+import pytest_asyncio
+from fakeredis.aioredis import FakeRedis
+from fastapi import Request
+
+from app.api.ws import auth, ticket
+from app.auth.redis_session import RedisSessionBackend
 
 
-def test_revocation_key_format_matches_go_gateway():
-    """Python must write revocation keys as ``revoked:jti:{jti}``.
-
-    Go gateway derives this as ``fmt.Sprintf("revoked:jti:%s", msg.Payload)``
-    in ``services/gateway/middleware/auth.go``.
-    """
-    jti = str(uuid.uuid4())
-    # Import the actual production key-building logic to verify format
-    # app/auth/redis_session.py:72 uses f"revoked:jti:{jti}"
-    python_key = f"revoked:jti:{jti}"
-    # Go gateway format: fmt.Sprintf("revoked:jti:%s", jti)
-    go_format_prefix = "revoked:jti:"
-
-    # Verify the Python key uses the same prefix the Go gateway expects
-    assert python_key == go_format_prefix + jti, (
-        f"Revocation key does not follow 'revoked:jti:' + JTI contract: {python_key!r}. "
-        f"See contracts/redis-keys.md — Session & Revocation section."
+@pytest_asyncio.fixture
+async def ws_ticket_boundary(monkeypatch: pytest.MonkeyPatch):
+    """Share separate cache and revocation stores between production paths."""
+    cache = FakeRedis(decode_responses=True)
+    revocations = FakeRedis(decode_responses=True)
+    user = SimpleNamespace(id=uuid4(), is_active=True, mfa_epoch=0)
+    session = SimpleNamespace(
+        user_id=user.id,
+        jti=str(uuid4()),
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+        revoked_at=None,
+        mfa_epoch=0,
     )
-    # Verify structure: exactly "revoked:jti:" + UUID
-    assert python_key.startswith("revoked:jti:"), (
-        f"Revocation key must start with 'revoked:jti:', got {python_key!r}"
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/ws/ticket",
+            "headers": [],
+            "query_string": b"",
+        }
     )
-    assert re.fullmatch(
-        r"revoked:jti:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
-        python_key,
-    ), f"Revocation key has unexpected format: {python_key!r}"
+    request.state.active_session = session
 
-
-# ---------------------------------------------------------------------------
-# Contract: WS upgrade ticket key format — Python ↔ Go ws-hub
-# ---------------------------------------------------------------------------
-
-
-def test_ws_ticket_key_prefix_matches_go_ws_hub():
-    """TICKET_KEY_PREFIX must be ``ott:ws:`` — Go ws-hub reads this prefix.
-
-    Go ws-hub validates tickets via Redis GETDEL on ``ott:ws:{ticket}``.
-    If the Python prefix changes without updating Go, tickets silently fail.
-    """
-    from app.api.ws.ticket import TICKET_KEY_PREFIX
-
-    assert TICKET_KEY_PREFIX == "ott:ws:", (
-        f"TICKET_KEY_PREFIX must be 'ott:ws:' to match Go ws-hub's expectation. "
-        f"Got {TICKET_KEY_PREFIX!r}. See contracts/redis-keys.md — WS Upgrade Tickets."
+    monkeypatch.setattr(ticket, "get_cache_client", AsyncMock(return_value=cache))
+    monkeypatch.setattr(
+        "app.deps.cache.get_cache_client", AsyncMock(return_value=cache)
+    )
+    monkeypatch.setattr(
+        auth, "get_revocation_redis_client", AsyncMock(return_value=revocations)
     )
 
+    @asynccontextmanager
+    async def database_session():
+        yield object()
 
-def test_ws_ticket_key_full_format():
-    """Full ticket key must be ``ott:ws:{64_hex_chars}``."""
-    from app.api.ws.ticket import TICKET_KEY_PREFIX
-
-    ticket = uuid.uuid4().hex + uuid.uuid4().hex  # 64 hex chars
-    full_key = f"{TICKET_KEY_PREFIX}{ticket}"
-
-    assert re.fullmatch(r"ott:ws:[0-9a-f]{64}", full_key), (
-        f"Full ticket key has unexpected format: {full_key!r}. "
-        f"Expected: ott:ws:{{64 lowercase hex chars}}."
+    # The database is outside this Redis contract. Keep the production session
+    # policy and verify that the consumer actually asks for the issued IDs.
+    user_repo = SimpleNamespace(
+        get=AsyncMock(side_effect=lambda user_id: user if user_id == user.id else None)
     )
-
-
-def test_ws_ticket_value_format():
-    """Ticket value must be ``{user_id}:{jti}`` (colon-joined UUIDs).
-
-    Both Python (app/api/ws/auth.py) and Go (ws-hub/handlers.go) parse this
-    by splitting on ':' to extract user_id and jti.
-    """
-    user_id = str(uuid.uuid4())
-    jti = str(uuid.uuid4())
-    value = f"{user_id}:{jti}"
-
-    parts = value.split(":")
-    # UUID has 4 hyphens, so split on ":" yields exactly 2 parts
-    # (user_id contains hyphens but not colons)
-    assert len(parts) == 2, (
-        f"Ticket value must be '{{user_id}}:{{jti}}' (2 colon-separated parts). "
-        f"Got {len(parts)} parts from {value!r}."
+    session_repo = SimpleNamespace(
+        get_by_jti=AsyncMock(
+            side_effect=lambda jti: session if jti == session.jti else None
+        )
     )
-    assert parts[0] == user_id
-    assert parts[1] == jti
+    monkeypatch.setattr(auth, "async_session", database_session)
+    monkeypatch.setattr(auth, "UserRepository", lambda _: user_repo)
+    monkeypatch.setattr(auth, "SessionRepository", lambda _: session_repo)
+
+    try:
+        yield SimpleNamespace(
+            cache=cache,
+            revocations=revocations,
+            user=user,
+            session=session,
+            request=request,
+            user_repo=user_repo,
+            session_repo=session_repo,
+        )
+    finally:
+        await cache.aclose()
+        await revocations.aclose()
 
 
-# ---------------------------------------------------------------------------
-# Contract: Session revocations pubsub channel
-# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_issued_ticket_is_consumed_once_with_session_expiry(ws_ticket_boundary):
+    """An actual issued ticket crosses Redis and the WS auth consumer."""
+    boundary = ws_ticket_boundary
+    issued = await ticket.issue_ws_upgrade_ticket(boundary.request, boundary.user)
 
-
-def test_revocations_pubsub_channel():
-    """Pubsub channel must be ``session:revocations``.
-
-    Python publishes to this channel in app/auth/redis_session.py:78.
-    Go gateway subscribes in services/gateway/middleware/auth.go.
-
-    This test reads the source file and verifies the channel string via regex,
-    since the channel name is currently hardcoded (not a constant).
-    """
-    import inspect
-
-    from app.auth import redis_session
-
-    source = inspect.getsource(redis_session)
-    # Verify the publish call uses "session:revocations"
-    assert '"session:revocations"' in source or "'session:revocations'" in source, (
-        "app/auth/redis_session.py must publish to 'session:revocations' channel. "
-        "Go gateway subscribes to this exact channel name. "
-        "If you need to rename it, update services/gateway/middleware/auth.go too."
+    assert re.fullmatch(r"[0-9a-f]{64}", issued.ticket)
+    key = f"ott:ws:{issued.ticket}"
+    assert await boundary.cache.get(key) == (
+        f"{boundary.user.id}:{boundary.session.jti}:"
+        f"{int(boundary.session.expires_at.timestamp())}"
     )
+    assert 0 < await boundary.cache.ttl(key) <= issued.expires_in
+
+    assert await auth.get_user_from_ticket(issued.ticket) == (
+        boundary.user,
+        boundary.session.jti,
+    )
+    boundary.user_repo.get.assert_awaited_once_with(boundary.user.id)
+    boundary.session_repo.get_by_jti.assert_awaited_once_with(boundary.session.jti)
+    assert await boundary.cache.get(key) is None
+    assert await auth.get_user_from_ticket(issued.ticket) == (None, None)
+
+
+@pytest.mark.asyncio
+async def test_published_revocation_blocks_an_issued_ticket(ws_ticket_boundary):
+    """The session producer writes a tombstone that WS auth actually reads."""
+    boundary = ws_ticket_boundary
+    backend = RedisSessionBackend(
+        boundary.cache, revocation_redis_client=boundary.revocations
+    )
+    pubsub = boundary.revocations.pubsub()
+    try:
+        await pubsub.subscribe("session:revocations")
+        subscribed = await pubsub.get_message(timeout=1)
+        assert subscribed is not None and subscribed["type"] == "subscribe"
+        await backend.register_session(
+            str(boundary.user.id), boundary.session.jti, boundary.session.expires_at
+        )
+        assert await backend.is_session_valid(boundary.session.jti)
+        issued = await ticket.issue_ws_upgrade_ticket(boundary.request, boundary.user)
+
+        await backend.revoke_session(
+            boundary.session.jti, expires_at=boundary.session.expires_at
+        )
+
+        message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1)
+        assert message is not None
+        assert message["channel"] == "session:revocations"
+        assert message["data"] == boundary.session.jti
+        assert (
+            await boundary.revocations.get(f"revoked:jti:{boundary.session.jti}") == "1"
+        )
+        assert await boundary.cache.get(f"revoked:jti:{boundary.session.jti}") is None
+        assert not await backend.is_session_valid(boundary.session.jti)
+        assert await auth.get_user_from_ticket(issued.ticket) == (None, None)
+        boundary.user_repo.get.assert_not_awaited()
+        boundary.session_repo.get_by_jti.assert_not_awaited()
+    finally:
+        await pubsub.aclose()

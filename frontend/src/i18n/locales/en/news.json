@@ -100,6 +100,7 @@
     "readingTime_other": "{{count}} min read"
   },
   "notifications": {
+    "interactionError": "The action could not be confirmed. Reconnect and check its result before trying again.",
     "updated": "News updated",
     "savedError": "Failed to save the news",
     "deleted": "News deleted",

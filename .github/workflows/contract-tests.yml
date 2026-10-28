@@ -2,14 +2,13 @@
 # Python backend → ws-hub NATS message boundary.
 #
 # Three-stage pipeline:
-#   1. consumer — Python pytest generates the Pact V4 files and uploads them.
-#   2. message providers — Go pact-go/v2 replays ws-hub and file-processor pacts.
+#   1. consumer — Python pytest generates Pact files and ws-hub wire messages.
+#   2. message providers — Go checks the wire messages and replays Pact files.
 #   3. pact-provider-verify — pact-python replays the gateway pact against the
 #      real FastAPI backend process.
 #
-# The boundary under test is WsHubClient.invalidate_cache() → NATS subject
-# "cache.invalidate" → hub.go NATS subscriber.  Any schema drift (renamed
-# field, wrong type, changed HMAC serialisation) fails here, not in prod.
+# Captured backend messages are checked by the Go handler and frontend parser;
+# this pipeline does not start a live NATS or WebSocket transport.
 #
 # Trigger: any change to the producer, consumer, or their contract tests.
 
@@ -20,12 +19,30 @@ on:
     branches: [main]
     paths:
       - "app/services/ws_hub_client.py"
+      - "app/core/nats_broker.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "app/api/ws/**"
+      - "app/api/websocket.py"
+      - "app/services/chat/command_service.py"
+      - "app/services/chat/notification_service.py"
+      - "frontend/src/api/schemas/wsMessage.ts"
+      - "frontend/src/api/schemas/messageLimits.ts"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - "frontend/scripts/verify-backend-ws-wire.mjs"
       - "app/api/health.py"
       - "app/main.py"
       - "services/ws-hub/pkg/hub/hub.go"
+      - "services/ws-hub/pkg/hub/**"
+      - "services/ws-hub/pkg/hub/aud320_python_contract_test.go"
+      - "services/ws-hub/go.mod"
+      - "services/ws-hub/go.sum"
       - "tests/contracts/conftest.py"
       - "tests/contracts/test_pact_artifacts.py"
       - "tests/contracts/test_ws_hub_contract.py"
+      - "tests/contracts/test_ws_message_contract.py"
+      - "tests/contracts/pacts/ws-hub-university-backend.json"
       - "tests/contracts/test_gateway_rest_contract.py"
       - "tests/contracts/test_file_processor_grpc_contract.py"
       - "tests/contracts/test_nats_message_contract.py"
@@ -42,12 +59,30 @@ on:
   pull_request:
     paths:
       - "app/services/ws_hub_client.py"
+      - "app/core/nats_broker.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "app/api/ws/**"
+      - "app/api/websocket.py"
+      - "app/services/chat/command_service.py"
+      - "app/services/chat/notification_service.py"
+      - "frontend/src/api/schemas/wsMessage.ts"
+      - "frontend/src/api/schemas/messageLimits.ts"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - "frontend/scripts/verify-backend-ws-wire.mjs"
       - "app/api/health.py"
       - "app/main.py"
       - "services/ws-hub/pkg/hub/hub.go"
+      - "services/ws-hub/pkg/hub/**"
+      - "services/ws-hub/pkg/hub/aud320_python_contract_test.go"
+      - "services/ws-hub/go.mod"
+      - "services/ws-hub/go.sum"
       - "tests/contracts/conftest.py"
       - "tests/contracts/test_pact_artifacts.py"
       - "tests/contracts/test_ws_hub_contract.py"
+      - "tests/contracts/test_ws_message_contract.py"
+      - "tests/contracts/pacts/ws-hub-university-backend.json"
       - "tests/contracts/test_gateway_rest_contract.py"
       - "tests/contracts/test_file_processor_grpc_contract.py"
       - "tests/contracts/test_nats_message_contract.py"
@@ -100,11 +135,23 @@ jobs:
         # This provides all modules required by shared conftest.py/fixtures.
         run: uv sync --frozen
 
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: frontend
+
       - name: Run consumer contract tests
         # Generates all Pact files consumed by the provider jobs below.
         run: |
           uv run pytest \
             tests/contracts/test_ws_hub_contract.py \
+            tests/contracts/test_ws_message_contract.py \
             tests/contracts/test_gateway_rest_contract.py \
             tests/contracts/test_file_processor_grpc_contract.py \
             tests/contracts/test_nats_message_contract.py \
@@ -119,6 +166,11 @@ jobs:
           PACT_OUTPUT_DIR: ${{ runner.temp }}/pact-contracts-${{ github.run_id }}-${{ github.run_attempt }}
           # Suppress the "pact FFI downloading" progress bar in CI logs.
           PACT_DO_NOT_TRACK: "true"
+
+      - name: Verify backend frames with frontend parser
+        run: node frontend/scripts/verify-backend-ws-wire.mjs
+        env:
+          WS_BACKEND_FRAMES: ${{ runner.temp }}/pact-contracts-${{ github.run_id }}-${{ github.run_attempt }}/ws-backend-frames.json
 
       - name: Upload pact file artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -150,6 +202,27 @@ jobs:
           go-version: "1.26.10"
           cache: true
 
+      - name: Set up Python for ws-hub producer
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv for ws-hub producer
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install locked Python dependencies for ws-hub producer
+        run: uv sync --frozen
+
+      - name: Generate ws-hub wire input
+        run: |
+          uv run pytest tests/contracts/test_ws_hub_contract.py -n 0 -q --tb=short -p no:cacheprovider
+        env:
+          PACT_OUTPUT_DIR: ${{ runner.temp }}/ws-hub-wire-${{ github.run_id }}-${{ github.run_attempt }}
+          PACT_DO_NOT_TRACK: "true"
+
       - name: Download pact artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -177,6 +250,14 @@ jobs:
         env:
           PACT_DO_NOT_TRACK: "true"
 
+      - name: Run Python-to-ws-hub wire contract
+        run: |
+          chmod 600 "$WS_HUB_WIRE_FIXTURES"
+          go test -tags contract ./pkg/hub -run '^TestPythonCacheInvalidationWire$' -count=1 -timeout 5m
+        working-directory: services/ws-hub
+        env:
+          WS_HUB_WIRE_FIXTURES: ${{ runner.temp }}/ws-hub-wire-${{ github.run_id }}-${{ github.run_attempt }}/ws-hub-cache-invalidation.json
+
       - name: Run Go provider contract test
         run: |
           go test -tags contract ./internal/contract/... -v -count=1 -timeout 5m
@@ -186,9 +267,6 @@ jobs:
           # CGO_ENABLED is required; pact-go/v2 links against the Rust FFI lib.
           CGO_ENABLED: "1"
           LD_LIBRARY_PATH: /usr/local/lib
-          # Use a placeholder secret — the contract verifies schema structure,
-          # not a specific HMAC value.  Real secrets never appear in CI logs.
-          WS_HUB_INTERNAL_SECRET: "contract-test-placeholder-secret-not-for-production" # pragma: allowlist secret
           PACT_DO_NOT_TRACK: "true"
 
       - name: Download file-processor Go module dependencies

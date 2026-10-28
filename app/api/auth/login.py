@@ -35,6 +35,7 @@ from app.auth.schemas import (
     PendingMfaResponse,
 )
 from app.core.config import settings
+from app.core.exceptions.domain import EntityAlreadyExists
 from app.core.fingerprint import extract_request_fingerprint
 from app.core.localization import resolve_locale, translate
 from app.core.logging import get_logger
@@ -502,7 +503,18 @@ async def register(
 ) -> dict[str, Any]:
     locale = resolve_locale(request=request)
     try:
-        new_user = await compliance_service.register_user(user)
+        await compliance_service.register_user(user)
+    except EntityAlreadyExists as exc:
+        await db.rollback()
+        if (
+            exc.details.get("entity") == "User"
+            and exc.details.get("identifier") == user.email.strip().lower()
+        ):
+            return {"status": "ok"}
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=translate("errors.users.create_failed", locale=locale),
+        ) from exc
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(
@@ -517,7 +529,7 @@ async def register(
             detail=message,
         ) from exc
 
-    return {"status": "ok", "id": new_user.id}
+    return {"status": "ok"}
 
 
 @router.get("/session/signing-key", response_model=SessionSigningKeyOut)

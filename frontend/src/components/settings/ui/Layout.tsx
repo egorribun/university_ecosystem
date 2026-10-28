@@ -1,6 +1,10 @@
 import React, { useId, useRef, useState } from "react"
 import { m } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { cn } from "@/utils/cn"
+
+// Framer snapshots MotionConfig per element on mount. Key motion elements by
+// the preference so they also respond when the OS setting changes later.
 
 // Section Components
 export function SectionCard({
@@ -126,6 +130,7 @@ export function AccordionSection({
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const contentId = useId()
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   return (
     <div
@@ -151,7 +156,10 @@ export function AccordionSection({
             {subtitle && <p className="text-xs text-(--text-secondary)">{subtitle}</p>}
           </div>
           <m.svg
+            key={String(prefersReducedMotion)}
+            initial={{ rotate: expanded ? 180 : 0 }}
             animate={{ rotate: expanded ? 180 : 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : undefined}
             className="h-5 w-5 shrink-0 text-brand transition-transform duration-base"
             fill="none"
             viewBox="0 0 24 24"
@@ -330,6 +338,8 @@ export function Tab({
   tabId?: string
   panelId?: string
 }) {
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+
   return (
     <button
       type="button"
@@ -353,9 +363,12 @@ export function Tab({
     >
       {selected && (
         <m.div
+          key={String(prefersReducedMotion)}
           layoutId={layoutId}
           className="absolute inset-0 z-hide rounded-xl bg-brand/[calc(var(--opacity-subtle)*100%)] ring-1 ring-brand/[calc(var(--opacity-dim)*100%)]"
-          transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+          transition={
+            prefersReducedMotion ? { duration: 0 } : { type: "spring", bounce: 0.2, duration: 0.6 }
+          }
         />
       )}
       <span className="relative z-deep">{label}</span>

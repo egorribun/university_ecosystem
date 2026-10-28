@@ -20,6 +20,7 @@ interface EventsListProps {
   hasNextPage: boolean
   fetchNextPage: () => void
   refreshEvents: () => void
+  onRetry?: () => void
   onAddClick: () => void
   isAdmin: boolean
   isOnline: boolean
@@ -27,6 +28,15 @@ interface EventsListProps {
   onTabChange: (t: EventTabKey) => void
   activeKeyboardIndex?: number
   registerCardRef?: (index: number, el: HTMLElement | null) => void
+  filterUnavailable?: boolean
+  myPagination?: {
+    atFirst: boolean
+    hasPrevious: boolean
+    hasNext: boolean
+    onFirst: () => void
+    onPrevious: () => void
+    onNext: () => void
+  }
 }
 
 const SKELETON_COUNT = 6
@@ -41,6 +51,7 @@ export const EventsList = ({
   hasNextPage,
   fetchNextPage,
   refreshEvents,
+  onRetry,
   onAddClick,
   isAdmin,
   isOnline,
@@ -48,21 +59,26 @@ export const EventsList = ({
   onTabChange,
   activeKeyboardIndex = -1,
   registerCardRef,
+  filterUnavailable = false,
+  myPagination,
 }: EventsListProps) => {
   const { t } = useTranslation(["events", "common"])
   const showEmptyState =
     !isInitialLoading &&
     !isFetchingNextPage &&
     !hasNextPage &&
+    !myPagination?.hasNext &&
+    !filterUnavailable &&
     eventsList.length === 0 &&
     (!queryError || !isOnline)
 
   /* ── Infinite scroll sentinel ── */
   const sentinelRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     const sentinel = sentinelRef.current
-    if (!sentinel || !hasNextPage || isFetchingNextPage) return
+    if (tab === "my" || !sentinel || !hasNextPage || isFetchingNextPage) return
 
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -75,9 +91,14 @@ export const EventsList = ({
 
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+  }, [tab, hasNextPage, isFetchingNextPage, fetchNextPage])
 
-  const handleRetry = useCallback(() => refreshEvents(), [refreshEvents])
+  const handleRetry = useCallback(() => (onRetry ?? refreshEvents)(), [onRetry, refreshEvents])
+
+  const changeMyPage = (action: () => void) => {
+    panelRef.current?.focus({ preventScroll: true })
+    action()
+  }
 
   /* ── Card grid ── */
   const showRefetchBar = isFetching && !isInitialLoading && !isFetchingNextPage
@@ -93,11 +114,13 @@ export const EventsList = ({
    */
   return (
     <section
+      ref={panelRef}
       aria-label={t("events:pageTitle")}
       role="tabpanel"
       id="events-tabpanel"
       aria-labelledby={`events-tab-${tab}`}
-      aria-busy={isInitialLoading || undefined}
+      aria-busy={isInitialLoading || (tab === "my" && isFetching) || undefined}
+      tabIndex={tab === "my" ? -1 : undefined}
     >
       {/* ── Loading skeleton ── */}
       {isInitialLoading && (
@@ -119,6 +142,12 @@ export const EventsList = ({
           <Button variant="outline" size="sm" onClick={handleRetry}>
             {t("common:statuses.tryAgain")}
           </Button>
+        </div>
+      )}
+
+      {filterUnavailable && !isInitialLoading && (
+        <div role="alert" className="my-6 text-sm text-(--error-text)">
+          {t("events:filters.timezoneUnavailable")}
         </div>
       )}
 
@@ -191,6 +220,7 @@ export const EventsList = ({
                   <EventCard
                     {...event}
                     onChange={handleRetry}
+                    qrStorage={tab === "my" ? "memory" : "persistent"}
                     maxWidth="100%"
                     animationIndex={index}
                     priority={index === 0}
@@ -209,7 +239,7 @@ export const EventsList = ({
           </div>
 
           {/* Infinite scroll sentinel */}
-          {hasNextPage && (
+          {tab !== "my" && hasNextPage && (
             <div
               ref={sentinelRef}
               data-testid="events-next-page-sentinel"
@@ -218,6 +248,35 @@ export const EventsList = ({
             />
           )}
         </>
+      )}
+
+      {tab === "my" && myPagination && (
+        <nav aria-label={t("events:tabs.my")} className="mt-6 flex flex-wrap justify-center gap-2">
+          <Button
+            variant="outline"
+            className="min-h-11 min-w-11"
+            disabled={isFetching || myPagination.atFirst}
+            onClick={() => changeMyPage(myPagination.onFirst)}
+          >
+            {t("common:pagination.firstPage")}
+          </Button>
+          <Button
+            variant="outline"
+            className="min-h-11 min-w-11"
+            disabled={isFetching || !myPagination.hasPrevious}
+            onClick={() => changeMyPage(myPagination.onPrevious)}
+          >
+            {t("common:pagination.prevPage")}
+          </Button>
+          <Button
+            variant="outline"
+            className="min-h-11 min-w-11"
+            disabled={isFetching || !myPagination.hasNext}
+            onClick={() => changeMyPage(myPagination.onNext)}
+          >
+            {t("common:pagination.nextPage")}
+          </Button>
+        </nav>
       )}
     </section>
   )

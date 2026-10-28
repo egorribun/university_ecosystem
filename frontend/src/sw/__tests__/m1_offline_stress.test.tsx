@@ -105,7 +105,7 @@ describe("Milestone 1 — Offline-First Adversarial Stress Tests", () => {
       expect(reloadedRecords[0].timestamp).toBeLessThanOrEqual(reloadedRecords[2].timestamp)
     })
 
-    it("preserves retryCount and remaining queue items across SW restarts after network errors", async () => {
+    it("preserves unbound mutations across worker restarts without trying the network", async () => {
       onlineSpy.mockReturnValue(true)
 
       await storePendingMutation({
@@ -122,41 +122,41 @@ describe("Milestone 1 — Offline-First Adversarial Stress Tests", () => {
       // Attempt processing
       await processPendingMutations()
 
-      // Record should NOT be deleted, retryCount should be incremented to 1
+      // No request was made, so the stored retry count remains unchanged.
       const records1 = await readPendingMutations()
       expect(records1).toHaveLength(1)
-      expect(records1[0].retryCount).toBe(1)
+      expect(records1[0].retryCount).toBe(0)
+      expect(fetchMock).not.toHaveBeenCalled()
 
       // Simulate SW process restart / re-init
       await initOfflineQueue()
 
       const records2 = await readPendingMutations()
       expect(records2).toHaveLength(1)
-      expect(records2[0].retryCount).toBe(1)
+      expect(records2).toEqual(records1)
     })
 
-    it("discards mutation after reaching max retries (5) and broadcasts PERMANENT_FAILURE", async () => {
+    it("preserves unbound mutations and retry counts across repeated holds", async () => {
       onlineSpy.mockReturnValue(true)
 
       await storePendingMutation({
         url: "/api/test/retry-cap",
         method: "POST",
         payload: { attempt: "max" },
-        retryCount: 4, // 5th failure will increment retryCount to 5
+        retryCount: 4,
       })
 
       const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 500 })
       vi.stubGlobal("fetch", fetchMock)
 
-      // 1st processing: fetch fails, retryCount incremented from 4 to 5
       await processPendingMutations()
       const records = await readPendingMutations()
-      expect(records[0].retryCount).toBe(5)
+      expect(records[0].retryCount).toBe(4)
 
-      // 2nd processing: loop detects retryCount >= 5, evicts record, broadcasts failure
       await processPendingMutations()
       const remaining = await readPendingMutations()
-      expect(remaining).toHaveLength(0) // Deleted from IDB after max retries
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(remaining).toEqual(records)
     })
   })
 
@@ -189,7 +189,7 @@ describe("Milestone 1 — Offline-First Adversarial Stress Tests", () => {
       expect(sanitized.hugeList).toHaveLength(100) // Truncated array
     })
 
-    it("handles non-retriable 4xx HTTP responses by discarding mutation immediately", async () => {
+    it("does not send an unbound mutation even when a 4xx response is available", async () => {
       onlineSpy.mockReturnValue(true)
 
       await storePendingMutation({
@@ -205,7 +205,8 @@ describe("Milestone 1 — Offline-First Adversarial Stress Tests", () => {
       await processPendingMutations()
 
       const records = await readPendingMutations()
-      expect(records).toHaveLength(0) // Deleted immediately (non-retriable)
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(records).toEqual([expect.objectContaining({ payload: { invalid: "data" } })])
     })
   })
 })

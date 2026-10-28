@@ -352,10 +352,10 @@ def test_hook_stdin_rejects_valid_non_object_json(
     assert parsed == {"__hook_parse_error__": "Hook input must be a JSON object."}
 
 
-def test_hook_stdin_keeps_empty_input_compatibility(monkeypatch: Any) -> None:
+def test_hook_stdin_rejects_empty_input(monkeypatch: Any) -> None:
     monkeypatch.setattr(common.sys, "stdin", io.StringIO(" \n"))
 
-    assert common.read_json_stdin() == {}
+    assert common.read_json_stdin() == {"__hook_parse_error__": "Hook input is empty."}
 
 
 def test_run_process_decodes_invalid_utf8_with_replacement() -> None:

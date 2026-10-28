@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -77,8 +76,13 @@ async def test_connect_subprotocol_and_per_user_limit() -> None:
     first = AsyncMock(spec=WebSocket)
     second = AsyncMock(spec=WebSocket)
     with patch.object(module, "settings", settings):
-        assert await manager.connect(first, user_id, subprotocol="chat.v1") is True
-        assert await manager.connect(second, user_id) is False
+        assert (
+            await manager.connect(
+                first, user_id, session_jti="session", subprotocol="chat.v1"
+            )
+            is True
+        )
+        assert await manager.connect(second, user_id, session_jti="session") is False
     first.accept.assert_awaited_once_with(subprotocol="chat.v1")
     second.close.assert_awaited_once_with(code=1008, reason="Connection limit exceeded")
 
@@ -109,43 +113,42 @@ async def test_send_to_user_empty_and_unmapped_dead_connection() -> None:
     dead = AsyncMock(spec=WebSocket)
     dead.send_json.side_effect = RuntimeError("closed")
     manager.active_connections[user_id] = {dead}
-    assert await manager.send_to_user(user_id, {"type": "dead"}) == 0
+    manager.connection_sessions[dead] = "session"
+    with patch.object(
+        module, "_resolve_user_from_ids", AsyncMock(return_value=(object(), "session"))
+    ):
+        assert await manager.send_to_user(user_id, {"type": "dead"}) == 0
     assert dead not in manager.rate_limiters
 
 
 @pytest.mark.asyncio
-async def test_participant_cache_hit_and_single_flight_second_check() -> None:
+async def test_participants_are_reloaded_for_every_broadcast() -> None:
     from app.api.ws import connection_manager as module
 
-    manager = module.ConnectionManager()
     chat_id = uuid.uuid4()
-    participant = uuid.uuid4()
-    cache = AsyncMock()
-    cache.enabled = True
-    cache.get.return_value = SimpleNamespace(payload=[str(participant)])
-    with patch.object(module, "get_cache", return_value=cache):
-        assert await manager._get_chat_participants_cached(chat_id) == [participant]
+    first, second = uuid.uuid4(), uuid.uuid4()
+    repo = MagicMock()
+    repo.get_participants = AsyncMock(side_effect=[[first], [second]])
 
-    second_cache = AsyncMock()
-    second_cache.enabled = True
-    second_cache.get.side_effect = [None, SimpleNamespace(payload=[str(participant)])]
-    manager._participant_locks.clear()
-    with patch.object(module, "get_cache", return_value=second_cache):
-        assert await manager._get_chat_participants_cached(chat_id) == [participant]
-    assert second_cache.get.await_count == 2
+    @asynccontextmanager
+    async def session():
+        yield object()
+
+    manager = module.ConnectionManager(session_factory=session)
+    with patch.object(module, "ChatRepository", return_value=repo):
+        assert await manager._get_chat_participants(chat_id) == [first]
+        assert await manager._get_chat_participants(chat_id) == [second]
+    assert repo.get_participants.await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_participant_cache_miss_injected_factory_and_cache_write() -> None:
+async def test_participant_lookup_uses_injected_session_factory() -> None:
     from app.api.ws import connection_manager as module
 
     chat_id = uuid.uuid4()
     participants = [uuid.uuid4(), uuid.uuid4()]
     repo = MagicMock()
     repo.get_participants = AsyncMock(return_value=participants)
-    cache = AsyncMock()
-    cache.enabled = True
-    cache.get.return_value = None
 
     @asynccontextmanager
     async def invalid_context():
@@ -156,24 +159,20 @@ async def test_participant_cache_miss_injected_factory_and_cache_write() -> None
             return invalid_context()
 
     manager = module.ConnectionManager(session_factory=Factory())
-    with (
-        patch.object(module, "get_cache", return_value=cache),
-        patch.object(module, "ChatRepository", return_value=repo),
-    ):
-        result = await manager._get_chat_participants_cached(chat_id)
+    with patch.object(module, "ChatRepository", return_value=repo):
+        result = await manager._get_chat_participants(chat_id)
     assert result == participants
-    cache.set.assert_awaited_once()
+    repo.get_participants.assert_awaited_once_with(chat_id)
 
 
 @pytest.mark.asyncio
-async def test_participant_cache_miss_uses_global_factory_fallback() -> None:
+async def test_participant_lookup_uses_global_factory_fallback() -> None:
     from app.api.ws import connection_manager as module
 
     chat_id = uuid.uuid4()
     participants = [uuid.uuid4()]
     repo = MagicMock()
     repo.get_participants = AsyncMock(return_value=participants)
-    cache = MagicMock(enabled=False)
 
     class SessionFactory:
         def __call__(self):
@@ -187,14 +186,11 @@ async def test_participant_cache_miss_uses_global_factory_fallback() -> None:
             return Context()
 
     manager = module.ConnectionManager()
-    retained_lock = asyncio.Lock()
-    manager._participant_locks[chat_id] = retained_lock
     with (
-        patch.object(module, "get_cache", return_value=cache),
         patch.object(module, "ChatRepository", return_value=repo),
         patch("app.core.database.async_session", new=SessionFactory()),
     ):
-        result = await manager._get_chat_participants_cached(chat_id)
+        result = await manager._get_chat_participants(chat_id)
     assert result == participants
 
 
@@ -206,7 +202,7 @@ async def test_broadcast_to_chat_excludes_sender_and_mirrors_to_nats() -> None:
     chat_id = uuid.uuid4()
     sender = uuid.uuid4()
     recipient = uuid.uuid4()
-    manager._get_chat_participants_cached = AsyncMock(return_value=[sender, recipient])
+    manager._get_chat_participants = AsyncMock(return_value=[sender, recipient])
     manager.send_to_user = AsyncMock(return_value=1)
     broker = SimpleNamespace(publish_core=AsyncMock())
     message = {"type": "chat.message", "text": "hello"}
@@ -225,7 +221,7 @@ async def test_broadcast_to_chat_keeps_local_delivery_when_nats_fails() -> None:
     manager = module.ConnectionManager()
     chat_id = uuid.uuid4()
     recipient = uuid.uuid4()
-    manager._get_chat_participants_cached = AsyncMock(return_value=[recipient])
+    manager._get_chat_participants = AsyncMock(return_value=[recipient])
     manager.send_to_user = AsyncMock(return_value=2)
     broker = SimpleNamespace(
         publish_core=AsyncMock(side_effect=ConnectionError("down"))
@@ -241,7 +237,7 @@ async def test_broadcast_to_chat_can_propagate_nats_failure_for_outbox_retry() -
     manager = module.ConnectionManager()
     chat_id = uuid.uuid4()
     recipient = uuid.uuid4()
-    manager._get_chat_participants_cached = AsyncMock(return_value=[recipient])
+    manager._get_chat_participants = AsyncMock(return_value=[recipient])
     manager.send_to_user = AsyncMock(return_value=1)
     broker = SimpleNamespace(
         publish_core=AsyncMock(side_effect=ConnectionError("nats unavailable"))
@@ -412,7 +408,7 @@ async def test_outbox_broadcast_propagates_nats_disconnect() -> None:
     assert broker._nc is None
 
     with (
-        patch.object(manager, "_get_chat_participants_cached", participant_lookup),
+        patch.object(manager, "_get_chat_participants", participant_lookup),
         patch.object(manager, "send_to_user", local_send),
         patch("app.core.nats_broker.broker", broker),
         pytest.raises(ConnectionError),

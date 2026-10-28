@@ -23,6 +23,7 @@ from xml.etree import ElementTree
 
 from validate_quality_contract import (
     NORMALIZER_VERSION,
+    _source_policy_glob_matches,
     validate_contract,
     validate_manifest_evidence,
     validate_metric_at_legacy_baseline,
@@ -30,6 +31,9 @@ from validate_quality_contract import (
 )
 from validate_quality_contract import (
     _effective_legacy_migration_records as _source_bound_legacy_migration_records,
+)
+from validate_quality_contract import (
+    _load_frontend_source_policy as _validated_frontend_source_policy,
 )
 
 DEFAULT_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -2853,67 +2857,11 @@ def _decode_git_paths(raw: bytes, operation: str) -> list[str]:
         raise _InputError(f"unable to {operation}: Git path is not UTF-8") from error
 
 
-def _expand_brace_pattern(pattern: str) -> tuple[str, ...]:
-    match = re.search(r"\{([^{}]+)\}", pattern)
-    if match is None:
-        return (pattern,)
-    alternatives = match.group(1).split(",")
-    if not alternatives or any(not alternative for alternative in alternatives):
-        raise _InputError("coverage source policy contains an invalid brace pattern")
-    expanded: list[str] = []
-    for alternative in alternatives:
-        replacement = pattern[: match.start()] + alternative + pattern[match.end() :]
-        expanded.extend(_expand_brace_pattern(replacement))
-    return tuple(expanded)
-
-
 def _load_frontend_coverage_policy() -> tuple[tuple[str, ...], tuple[str, ...]]:
-    policy_path = REPOSITORY_ROOT / "quality" / "coverage-source-policy.json"
     try:
-        document = json.loads(
-            policy_path.read_text(encoding="utf-8"),
-            object_pairs_hook=_duplicate_key_object,
-            parse_constant=_reject_json_constant,
-        )
-    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
-        raise _InputError(f"invalid coverage source policy: {error}") from error
-    if not isinstance(document, dict) or set(document) != {"frontend"}:
-        raise _InputError("coverage source policy must contain only frontend")
-    frontend = document["frontend"]
-    if not isinstance(frontend, dict) or set(frontend) != {"include", "exclude"}:
-        raise _InputError(
-            "frontend coverage source policy requires include and exclude"
-        )
-
-    normalized: dict[str, tuple[str, ...]] = {}
-    for policy_field in ("include", "exclude"):
-        values = frontend[policy_field]
-        if (
-            not isinstance(values, list)
-            or not values
-            or not all(isinstance(value, str) and value for value in values)
-            or len(values) != len(set(values))
-        ):
-            raise _InputError(
-                f"frontend coverage source policy {policy_field} must be unique strings"
-            )
-        expanded: list[str] = []
-        for value in cast(list[str], values):
-            if (
-                "\\" in value
-                or value.startswith("/")
-                or ".." in PurePosixPath(value).parts
-                or any(unicodedata.category(character) == "Cc" for character in value)
-            ):
-                raise _InputError(
-                    "frontend coverage source policy "
-                    f"{policy_field} contains an unsafe path"
-                )
-            expanded.extend(
-                f"frontend/{pattern}" for pattern in _expand_brace_pattern(value)
-            )
-        normalized[policy_field] = tuple(expanded)
-    return normalized["include"], normalized["exclude"]
+        return _validated_frontend_source_policy(REPOSITORY_ROOT)
+    except ValueError as error:
+        raise _InputError(str(error)) from error
 
 
 def _source_control_scope(contract_path: Path) -> list[str]:
@@ -2998,22 +2946,8 @@ def _tier0_source_requires_coverage(component: str, relative_path: str) -> bool:
 
 
 def _glob_matches_path(path: str, pattern: str) -> bool:
-    """Match a repo path with Vitest-style ``**`` allowing zero directories."""
-    candidates: set[str] = set()
-    pending = [pattern]
-    while pending:
-        candidate = pending.pop()
-        if candidate in candidates:
-            continue
-        candidates.add(candidate)
-        start = 0
-        while (index := candidate.find("/**/", start)) >= 0:
-            pending.append(candidate[:index] + "/" + candidate[index + 4 :])
-            start = index + 1
-    if os.name == "nt":
-        path = path.casefold()
-        candidates = {candidate.casefold() for candidate in candidates}
-    return any(fnmatch.fnmatchcase(path, candidate) for candidate in candidates)
+    """Use the same frontend source matcher as the manifest validator."""
+    return _source_policy_glob_matches(path, pattern)
 
 
 def _matches_frontend_coverage_policy(relative_path: str) -> bool:

@@ -8,6 +8,8 @@ import test from "node:test"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { join, resolve } from "node:path"
 
+import "./aud162-engine-contract.test.mjs"
+import "./maplibre-build-metadata.test.mjs"
 import strykerConfig, { mutationRunnerReuse, mutationThresholds } from "../stryker.config.mjs"
 
 const frontendRoot = new URL("../", import.meta.url)
@@ -864,6 +866,72 @@ test("the PR Node suite executes release-version regressions exactly once", asyn
 
   assert.deepEqual(matching, ["../scripts/tests/prepare-release-version.test.mjs"])
 })
+
+for (const lhci of ["false", "true"]) {
+  test(`MapLibre metadata producer is registered only for client builds (LHCI ${lhci})`, async () => {
+    const root = fileURLToPath(frontendRoot)
+    const configFile = fileURLToPath(new URL("../vite.config.mts", import.meta.url))
+    const directory = await mkdtemp(join(tmpdir(), "maplibre-registration-"))
+    const outputPath = join(directory, "metadata.json")
+    const probe = `
+      import assert from "node:assert/strict"
+      import { readFile } from "node:fs/promises"
+      import { resolve } from "node:path"
+      import { resolveConfig } from "vite"
+      process.argv[1] = ${JSON.stringify(configFile)}
+      const config = await resolveConfig({
+        root: ${JSON.stringify(root)},
+        configFile: ${JSON.stringify(configFile)},
+        configLoader: "runner",
+        logLevel: "silent",
+      }, "build", "production")
+      assert.equal(resolve(config.configFile), resolve(${JSON.stringify(configFile)}))
+      const producers = config.plugins.filter((plugin) => plugin.name === "maplibre-build-metadata")
+      assert.equal(producers.length, 1, "the real Vite build must register one metadata producer")
+      const producer = producers[0]
+      assert.equal(producer.apply, "build")
+      assert.equal(typeof producer.applyToEnvironment, "function")
+      const environment = (name, options) => ({ name, config: { ...config, ...options } })
+      assert.equal(await producer.applyToEnvironment(environment("client", {
+        ...config.environments.client, consumer: "client", isWorker: false,
+      })), true)
+      assert.equal(await producer.applyToEnvironment(environment("ssr", {
+        ...config.environments.ssr, consumer: "server", isWorker: false,
+      })), false)
+      assert.equal(await producer.applyToEnvironment(environment("client", {
+        ...config.environments.client, consumer: "client", isWorker: true,
+      })), false)
+      assert.equal(config.env.VITE_LHCI, ${JSON.stringify(lhci)})
+      const client = environment("client", {
+        ...config.environments.client, consumer: "client", isWorker: false,
+      })
+      await producer.writeBundle.call({ environment: client }, {
+        dir: ${JSON.stringify(directory)}, format: "es",
+      }, {})
+      const report = JSON.parse(await readFile(${JSON.stringify(outputPath)}, "utf8"))
+      assert.equal(report.profile.lhci, ${lhci === "true"})
+      assert.equal(report.profile.lhciEnv, ${lhci === "true"})
+      assert.equal(report.profile.mode, "production")
+      assert.equal(report.profile.consumer, "client")
+    `
+    try {
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", probe], {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          NODE_ENV: "production",
+          VITE_LHCI: lhci,
+          MAPLIBRE_BUILD_METADATA_OUTPUT: outputPath,
+        },
+        timeout: 60_000,
+      })
+      assert.equal(result.status, 0, result.stderr)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+}
 
 let viteDevelopmentPolicyPromise
 

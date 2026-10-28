@@ -47,6 +47,10 @@ async def test_heartbeat_frame_reaches_dispatch_after_auth_rate_and_payload_gate
             new=AsyncMock(return_value=(user, "session", None)),
         ) as authenticate,
         patch("app.api.websocket.manager", manager),
+        patch(
+            "app.api.websocket._resolve_user_from_ids",
+            AsyncMock(return_value=(user, "session")),
+        ),
         patch("app.api.websocket.metrics.inc_ws_connections"),
         patch("app.api.websocket.metrics.dec_ws_connections"),
         patch(
@@ -96,6 +100,10 @@ async def test_oversized_heartbeat_frame_is_rejected_before_rate_limit() -> None
             new=AsyncMock(return_value=(user, "session", None)),
         ),
         patch("app.api.websocket.manager", manager),
+        patch(
+            "app.api.websocket._resolve_user_from_ids",
+            AsyncMock(return_value=(user, "session")),
+        ),
         patch("app.api.websocket.metrics.inc_ws_connections"),
         patch("app.api.websocket.metrics.dec_ws_connections"),
         patch(

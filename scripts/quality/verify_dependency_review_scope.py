@@ -826,6 +826,16 @@ def _base_pins(root: Path, base_sha: str) -> dict[tuple[str, str], str | None]:
 
 
 def _parse_config(text: str) -> tuple[dict[str, str], dict[str, list[str]]]:
+    # Parse only the simple, explicit policy format used by this repository.
+    # YAML has aliases, flow collections, quoted keys and duplicate-key forms
+    # that a line-oriented reader must not silently reinterpret as empty lists.
+    scalar_keys = {
+        "fail-on-severity",
+        "vulnerability-check",
+        "license-check",
+        "comment-summary-in-pr",
+    }
+    list_keys = {"allow-licenses", "allow-dependencies-licenses", "allow-ghsas"}
     scalars: dict[str, str] = {}
     sections: dict[str, list[str]] = {}
     active = None
@@ -834,22 +844,47 @@ def _parse_config(text: str) -> tuple[dict[str, str], dict[str, list[str]]]:
         if not line or line.startswith("#"):
             continue
         if raw[:1].isspace():
-            if active is not None and line.startswith("- "):
-                value = line[2:].strip()
-                if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-                    value = value[1:-1]
-                sections[active].append(value)
+            if active is None or not raw.startswith("  - "):
+                raise ValueError("unsupported dependency review YAML nesting")
+            value = raw[4:].strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+                value = value[1:-1]
+                valid = re.fullmatch(r"[A-Za-z0-9@%:/._+~ -]+", value) is not None
+            else:
+                valid = re.fullmatch(
+                    r"(?:0BSD|[A-Za-z][A-Za-z0-9.+/-]*(?: [A-Za-z0-9.+/-]+)*)",
+                    value,
+                ) is not None and value.lower() not in {
+                    "y",
+                    "n",
+                    "yes",
+                    "no",
+                    "true",
+                    "false",
+                    "on",
+                    "off",
+                    "null",
+                }
+            if not valid:
+                raise ValueError("unsupported dependency review YAML list value")
+            sections[active].append(value)
             continue
         if ":" not in raw:
             raise ValueError("unrecognized dependency review YAML line")
         key, value = raw.split(":", 1)
         key, value = key.strip(), value.strip()
         active = None
-        if value:
+        if key not in scalar_keys | list_keys or key in scalars or key in sections:
+            raise ValueError("unsupported or duplicate dependency review YAML key")
+        if key in scalar_keys:
+            if not re.fullmatch(r"[A-Za-z0-9-]+", value):
+                raise ValueError("unsupported dependency review YAML scalar")
             scalars[key] = value
         else:
+            if value not in {"", "[]"}:
+                raise ValueError("unsupported dependency review YAML list format")
             sections[key] = []
-            active = key
+            active = key if not value else None
     return scalars, sections
 
 

@@ -16,7 +16,13 @@ import SmartImage from "@/components/media/SmartImage"
 import { useAuth } from "@/contexts/AuthContext"
 import { useScheduleClock } from "@/hooks/useScheduleClock"
 import type { StoryItem } from "@/types/Story"
-import { createStory, deleteStory, updateStory, uploadStoryCover } from "@/api/stories"
+import {
+  createStory,
+  deleteStory,
+  StoryCoverUploadError,
+  updateStory,
+  uploadStoryCover,
+} from "@/api/stories"
 import apiClient from "@/api/client"
 import { useLocaleFormatters } from "@/i18n/formatters"
 import { cn } from "@/utils/cn"
@@ -50,6 +56,7 @@ function formatTimeLeft(expiresAt: string, now: Date) {
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof StoryCoverUploadError) return fallback
   if (isAxiosError(error)) {
     const detail = error.response?.data as { detail?: unknown } | undefined
     if (detail) {

@@ -24,7 +24,7 @@
  * - **Embedded vite preview API** (NOT spawned subprocess): on Windows,
  *   detached node child processes don't stay alive without TTY stdin.
  *   `import { preview } from "vite"` keeps the server in this process.
- * - **Direct Lighthouse invocation per URL × per run**: Lighthouse
+ * - **Direct locked Lighthouse invocation per URL × per run**: Lighthouse
  *   writes the LHR JSON to `--output-path` BEFORE chrome-launcher's
  *   destroyTmp runs, so the LHR survives EPERM. `lhci collect` instead
  *   chains lighthouse + assertion-buffering, which loses the LHR if EPERM
@@ -63,6 +63,7 @@
  * - `SKIP_BUILD`       — if set, skip `npm run build` (assumes dist/ exists)
  * - `LHCI_THROTTLING`  — `devtools` (default) or `provided`
  * - `LHCI_FORM_FACTOR` — `mobile` (default) or `desktop`
+ * - `LIGHTHOUSE_VERSION` — if set, must match the version in the lockfile
  * - `VITE_LHCI`        — auto-set to "true" (auth bypass per `_auth.tsx`)
  *
  * ## Notes
@@ -75,7 +76,7 @@
  *   build (174,839 bytes; auth bypass tree-shaken out of prod).
  */
 
-import { mkdir, readdir, readFile, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -130,11 +131,6 @@ const PORT = Number.parseInt(process.env.LHCI_PREVIEW_PORT ?? "4174", 10)
 const RUNS = Number.parseInt(process.env.LHCI_RUNS ?? "3", 10)
 const THROTTLING = process.env.LHCI_THROTTLING ?? "devtools"
 const FORM_FACTOR = process.env.LHCI_FORM_FACTOR ?? "mobile"
-// Wave 121 SW8 — Lighthouse 13.x fixes the LanternError cycle-detection bug
-// that blocked /activity + /map on 12.x. Default to 13.1.0 (latest stable);
-// override via LIGHTHOUSE_VERSION=12.8.2 to compare with W120 baselines.
-const LIGHTHOUSE_VERSION = process.env.LIGHTHOUSE_VERSION ?? "13.1.0"
-
 // Keep the Windows fallback on the canonical route inventory used by the
 // Linux runner and post-collection route-policy gate. The config intentionally
 // stores prepared static-shell URLs with explicit trailing slashes so a
@@ -154,7 +150,17 @@ export function resolveLhciPaths(value) {
         .map(normalizePath)
         .filter((p, i, arr) => arr.indexOf(p) === i) // dedupe
     : undefined
-  return overridePaths?.length ? overridePaths : DEFAULT_PATHS
+  const paths = overridePaths?.length ? overridePaths : DEFAULT_PATHS
+  const reportNames = new Set()
+  for (const urlPath of paths) {
+    const pathname = new URL(`http://localhost${urlPath}`).pathname
+    const reportName = urlToFilename(pathname).toLowerCase()
+    if (reportNames.has(reportName)) {
+      throw new Error(`Lighthouse report filename collision for ${urlPath}`)
+    }
+    reportNames.add(reportName)
+  }
+  return paths
 }
 
 const URL_PATHS = resolveLhciPaths(process.env.LHCI_URLS)
@@ -228,16 +234,16 @@ async function startPreview() {
   return server
 }
 
-async function clearLhrDir() {
-  if (existsSync(lhrDir)) {
-    const files = await readdir(lhrDir)
+export async function clearLhrDir(directory = lhrDir) {
+  if (existsSync(directory)) {
+    const files = await readdir(directory)
     await Promise.all(
       files
         .filter((f) => f.startsWith("lhr_"))
-        .map((f) => rm(path.join(lhrDir, f), { force: true }))
+        .map((f) => rm(path.join(directory, f), { force: true }))
     )
   } else {
-    await mkdir(lhrDir, { recursive: true })
+    await mkdir(directory, { recursive: true })
   }
 }
 
@@ -275,7 +281,7 @@ function isKnownLighthouseCleanupFailure(
     platform !== "win32" ||
     !error ||
     typeof error !== "object" ||
-    error.command !== "npm" ||
+    error.command !== process.execPath ||
     error.exitCode !== 1 ||
     typeof error.description !== "string" ||
     !/^lighthouse https?:\/\/\S+ run [1-9]\d*$/u.test(error.description) ||
@@ -321,20 +327,44 @@ export async function recoverLhrAfterKnownCleanupFailure(error, outputPath, opti
   return outputPath
 }
 
-export async function runLighthouse(url, runIndex, commandRunner = runCommand) {
-  const urlName = urlToFilename(new URL(url).pathname)
-  const outputPath = path.join(lhrDir, `lhr_${urlName}_run${runIndex}.json`)
+export async function resolveLockedLighthouseCli(root = frontendRoot) {
+  const packageRoot = path.join(root, "node_modules", "lighthouse")
+  const [lockfile, installed] = await Promise.all([
+    readFile(path.join(root, "package-lock.json"), "utf8").then(JSON.parse),
+    readFile(path.join(packageRoot, "package.json"), "utf8").then(JSON.parse),
+  ])
+  const locked = lockfile.packages?.["node_modules/lighthouse"]
+  if (
+    typeof locked?.version !== "string" ||
+    locked.version.length === 0 ||
+    locked.bin?.lighthouse !== "cli/index.js" ||
+    installed.name !== "lighthouse" ||
+    installed.version !== locked.version ||
+    installed.bin?.lighthouse !== "cli/index.js"
+  ) {
+    throw new Error("Installed Lighthouse does not match frontend lockfile")
+  }
+  if (process.env.LIGHTHOUSE_VERSION && process.env.LIGHTHOUSE_VERSION !== locked.version) {
+    throw new Error("LIGHTHOUSE_VERSION must match the Lighthouse version in the lockfile")
+  }
+  return path.join(packageRoot, "cli", "index.js")
+}
 
-  // Invoke Lighthouse through npm's JavaScript CLI. The CLI writes the LHR to
+export async function runLighthouse(url, runIndex, commandRunner = runCommand, directory = lhrDir) {
+  const urlName = urlToFilename(new URL(url).pathname)
+  const lighthouseCli = await resolveLockedLighthouseCli()
+  await mkdir(directory, { recursive: true })
+  // Isolate attempts even when other wrapper processes measure the same URL.
+  const attemptDir = await mkdtemp(path.join(directory, "attempt-"))
+  const outputPath = path.join(attemptDir, `lhr_${urlName}_run${runIndex}.json`)
+
+  // Invoke the lockfile-installed Lighthouse CLI directly, without npm exec's
+  // package download or Windows shell. The CLI writes the LHR to
   // `--output-path` synchronously BEFORE chrome-launcher's destroyTmp
   // attempts the rmSync that triggers EPERM on Windows. Even when EPERM
   // fires, the LHR file already exists on disk, so the run is recoverable.
   const args = [
-    "exec",
-    "--yes",
-    `--package=lighthouse@${LIGHTHOUSE_VERSION}`,
-    "--",
-    "lighthouse",
+    lighthouseCli,
     url,
     `--output=json`,
     `--output-path=${outputPath}`,
@@ -356,7 +386,9 @@ export async function runLighthouse(url, runIndex, commandRunner = runCommand) {
   }
 
   try {
-    await commandRunner("npm", args, `lighthouse ${url} run ${runIndex}`, { silent: true })
+    await commandRunner(process.execPath, args, `lighthouse ${url} run ${runIndex}`, {
+      silent: true,
+    })
   } catch (error) {
     return recoverLhrAfterKnownCleanupFailure(error, outputPath)
   }

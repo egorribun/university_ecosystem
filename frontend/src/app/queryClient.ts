@@ -318,6 +318,14 @@ const withoutSensitiveQueries = (client: PersistedClient): PersistedClient => ({
   },
 })
 
+const withoutNonPersistentMutations = (client: PersistedClient): PersistedClient => ({
+  ...client,
+  clientState: {
+    ...client.clientState,
+    mutations: client.clientState.mutations.filter((mutation) => mutation.meta?.persist !== false),
+  },
+})
+
 const isExactNewsListQueryKey = (queryKey: readonly unknown[]): boolean => {
   if (queryKey.length !== 3) return false
   if (queryKey[0] !== "news") return false
@@ -420,7 +428,7 @@ export const idbPersister: Persister = {
     // Check an available profile witness before filtering it out. The current
     // cache identity and per-owner namespace bind new profile-free snapshots.
     if (!belongsToOwner(client, owner)) return
-    const persistableClient = withoutSensitiveQueries(client)
+    const persistableClient = withoutNonPersistentMutations(withoutSensitiveQueries(client))
     const key = scopedKey(owner)
     const owns = () => session() && cacheIdentity === owner && cacheEpoch === epoch
     const write = persistenceQueue.then(async () => {
@@ -454,8 +462,10 @@ export const idbPersister: Persister = {
       await write
       if (!owns()) return undefined
     }
-    restoredClient = sanitized
-    return sanitized
+    // Keep the stored legacy snapshot intact; only the hydration view excludes
+    // mutations that explicitly opted out of persistence.
+    restoredClient = withoutNonPersistentMutations(sanitized)
+    return restoredClient
   },
   async removeClient() {
     const owner = cacheIdentity
@@ -482,6 +492,7 @@ export const persistOptions: Omit<PersistQueryClientOptions, "queryClient"> = {
       query.meta?.persist !== false &&
       !isCurrentUserProfileKey(query.queryKey),
     shouldDehydrateMutation: (mutation) =>
-      mutation.state.isPaused || mutation.state.status === "pending",
+      mutation.options.meta?.persist !== false &&
+      (mutation.state.isPaused || mutation.state.status === "pending"),
   },
 }

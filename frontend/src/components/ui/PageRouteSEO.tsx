@@ -32,11 +32,18 @@ export const PAGE_SEO_ROUTE_IDS: ReadonlySet<string> = new Set([
 
 export function PageRouteSEO() {
   const routeId = useRouterState({
-    // Route layouts render only inside a resolved root-to-leaf match chain.
-    select: (state) => state.matches[state.matches.length - 1]!.routeId.toString(),
+    // Root fallback metadata is suppressed for successful page-SEO matches.
+    // A failed leaf may still have a successful mapped parent (e.g. a reset
+    // token route), so choose the deepest successful mapped match.
+    select: (state) =>
+      state.matches
+        .slice()
+        .reverse()
+        .find((match) => match.status === "success" && match.routeId.toString() in PAGE_TITLE_KEYS)
+        ?.routeId.toString(),
   })
   const { t } = useTranslation(["auth", "settings", "system", "messenger"])
-  const titleKey = PAGE_TITLE_KEYS[routeId as keyof typeof PAGE_TITLE_KEYS]
+  const titleKey = routeId ? PAGE_TITLE_KEYS[routeId as keyof typeof PAGE_TITLE_KEYS] : undefined
 
   if (!titleKey) return null
 

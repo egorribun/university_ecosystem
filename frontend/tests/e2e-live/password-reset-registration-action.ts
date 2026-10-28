@@ -1,4 +1,4 @@
-import type { Page, Request, Response } from "@playwright/test"
+import type { JSHandle, Page, Request, Response } from "@playwright/test"
 
 export type ResetRegistrationStep = "arm-response" | "click" | "await-response"
 
@@ -299,6 +299,377 @@ export function createPasswordResetRegistrationDiagnostics(
       }
     },
     dispose,
+  }
+}
+
+type RegistrationNameState = "missing" | "empty" | "short" | "at-least-two"
+type RegistrationTimelineSnapshot = {
+  hydrated: boolean
+  nameState: RegistrationNameState
+  nameError: boolean
+}
+type RegistrationSubmitSnapshot = RegistrationTimelineSnapshot & {
+  trigger: "click" | "invalid" | "submit"
+}
+type RegistrationTimelineReadout = {
+  beforeName: RegistrationTimelineSnapshot | null
+  afterName: RegistrationTimelineSnapshot | null
+  beforeSubmit: RegistrationSubmitSnapshot | null
+}
+type RegistrationBrowserObserver = {
+  read: () => RegistrationTimelineReadout
+  dispose: () => void
+}
+type RegistrationTimeline = {
+  setup: () => Promise<void>
+  reportFailure: (step: ResetRegistrationStep) => Promise<void>
+  dispose: () => void
+}
+
+const emittedRegistrationTimelines = new Set<string>()
+
+function validateRegistrationTimelineSnapshot(
+  value: unknown,
+  requireTrigger: boolean
+): RegistrationTimelineSnapshot | RegistrationSubmitSnapshot | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null
+  try {
+    const descriptors = Object.getOwnPropertyDescriptors(value)
+    const keys = Reflect.ownKeys(descriptors)
+    const expected = requireTrigger
+      ? ["hydrated", "nameState", "nameError", "trigger"]
+      : ["hydrated", "nameState", "nameError"]
+    if (
+      keys.length !== expected.length ||
+      keys.some((key) => typeof key !== "string" || !expected.includes(key))
+    ) {
+      return null
+    }
+    const hydrated = descriptors.hydrated
+    const nameState = descriptors.nameState
+    const nameError = descriptors.nameError
+    if (
+      !hydrated ||
+      !("value" in hydrated) ||
+      typeof hydrated.value !== "boolean" ||
+      !nameError ||
+      !("value" in nameError) ||
+      typeof nameError.value !== "boolean" ||
+      !nameState ||
+      !("value" in nameState) ||
+      (nameState.value !== "missing" &&
+        nameState.value !== "empty" &&
+        nameState.value !== "short" &&
+        nameState.value !== "at-least-two")
+    ) {
+      return null
+    }
+    const snapshot = {
+      hydrated: hydrated.value,
+      nameState: nameState.value,
+      nameError: nameError.value,
+    }
+    if (!requireTrigger) return snapshot
+    const trigger = descriptors.trigger
+    if (
+      !trigger ||
+      !("value" in trigger) ||
+      (trigger.value !== "click" && trigger.value !== "invalid" && trigger.value !== "submit")
+    ) {
+      return null
+    }
+    return { ...snapshot, trigger: trigger.value }
+  } catch {
+    return null
+  }
+}
+
+function validateRegistrationTimelineReadout(value: unknown): RegistrationTimelineReadout {
+  const empty: RegistrationTimelineReadout = {
+    beforeName: null,
+    afterName: null,
+    beforeSubmit: null,
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return empty
+  try {
+    const descriptors = Object.getOwnPropertyDescriptors(value)
+    const keys = Reflect.ownKeys(descriptors)
+    if (
+      keys.length !== 3 ||
+      keys.some((key) => key !== "beforeName" && key !== "afterName" && key !== "beforeSubmit")
+    ) {
+      return empty
+    }
+    const beforeName = descriptors.beforeName
+    const afterName = descriptors.afterName
+    const beforeSubmit = descriptors.beforeSubmit
+    if (
+      !beforeName ||
+      !("value" in beforeName) ||
+      !afterName ||
+      !("value" in afterName) ||
+      !beforeSubmit ||
+      !("value" in beforeSubmit)
+    ) {
+      return empty
+    }
+    return {
+      beforeName: validateRegistrationTimelineSnapshot(beforeName.value, false),
+      afterName: validateRegistrationTimelineSnapshot(afterName.value, false),
+      beforeSubmit: validateRegistrationTimelineSnapshot(
+        beforeSubmit.value,
+        true
+      ) as RegistrationSubmitSnapshot | null,
+    }
+  } catch {
+    return empty
+  }
+}
+
+function timelineRemainingMs(deadlineAtMs: number | null): number {
+  return typeof deadlineAtMs === "number" && Number.isFinite(deadlineAtMs)
+    ? Math.max(0, Math.floor(deadlineAtMs - performance.now()))
+    : 0
+}
+
+async function withinTimelineBudget<T>(
+  pending: Promise<T>,
+  deadlineAtMs: number | null,
+  fallback: T,
+  onExpire?: () => void
+): Promise<T> {
+  const remainingMs = timelineRemainingMs(deadlineAtMs)
+  if (remainingMs < 1) {
+    onExpire?.()
+    void pending.catch(() => undefined)
+    return fallback
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const expired = new Promise<T>((resolve) => {
+      timer = setTimeout(
+        () => {
+          onExpire?.()
+          resolve(fallback)
+        },
+        Math.min(MAX_SNAPSHOT_MS, remainingMs)
+      )
+    })
+    return await Promise.race([pending, expired])
+  } catch {
+    return fallback
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
+
+export function createPasswordResetRegistrationTimeline(
+  page: Page,
+  project: string,
+  deadlineAtMs: number | null
+): RegistrationTimeline {
+  const noop: RegistrationTimeline = {
+    setup: async () => undefined,
+    reportFailure: async () => undefined,
+    dispose: () => undefined,
+  }
+  if (project !== "desktop" && project !== "mobile") return noop
+  let observer: JSHandle<RegistrationBrowserObserver> | null = null
+  let closed = false
+  let setupStarted = false
+  let setupExpired = false
+
+  const release = async (candidate: JSHandle<RegistrationBrowserObserver>): Promise<void> => {
+    try {
+      const detach = candidate
+        .evaluate((value) => value.dispose())
+        .then(
+          () => undefined,
+          () => undefined
+        )
+      await withinTimelineBudget(detach, deadlineAtMs, undefined)
+    } catch {
+      // A closed page has already removed its document listeners.
+    }
+    try {
+      const disposeHandle = candidate.dispose().then(
+        () => undefined,
+        () => undefined
+      )
+      await withinTimelineBudget(disposeHandle, deadlineAtMs, undefined)
+    } catch {
+      // Handle cleanup never replaces a test outcome.
+    }
+  }
+
+  return {
+    async setup() {
+      if (closed || setupStarted || timelineRemainingMs(deadlineAtMs) < 1) return
+      setupStarted = true
+      try {
+        const pending = page
+          .evaluateHandle(() => {
+            const snapshot = (): RegistrationTimelineSnapshot => {
+              const input = document.getElementById("full_name")
+              const length = input instanceof HTMLInputElement ? input.value.length : null
+              return {
+                hydrated: (window as Window & { __APP_HYDRATED?: unknown }).__APP_HYDRATED === true,
+                nameState:
+                  length === null
+                    ? "missing"
+                    : length === 0
+                      ? "empty"
+                      : length === 1
+                        ? "short"
+                        : "at-least-two",
+                nameError: Boolean(document.querySelector('#register-name-error[role="alert"]')),
+              }
+            }
+            const result: RegistrationTimelineReadout = {
+              beforeName: snapshot(),
+              afterName: null,
+              beforeSubmit: null,
+            }
+            const onInput = (event: Event) => {
+              if (event.target instanceof HTMLInputElement && event.target.id === "full_name") {
+                result.afterName = snapshot()
+              }
+            }
+            const onAction = (event: Event) => {
+              if (result.beforeSubmit !== null) return
+              const button = document.getElementById("register-submit")
+              const form = button?.closest("form")
+              if (!button || !form) return
+              if (event.type === "click") {
+                if (
+                  !(event.target instanceof Element) ||
+                  event.target.closest("#register-submit") !== button
+                )
+                  return
+              } else if (event.type === "invalid") {
+                if (!(event.target instanceof Element) || event.target.closest("form") !== form)
+                  return
+              } else if (event.type === "submit") {
+                if (event.target !== form) return
+              } else {
+                return
+              }
+              result.beforeSubmit = {
+                ...snapshot(),
+                trigger: event.type as "click" | "invalid" | "submit",
+              }
+            }
+            document.addEventListener("input", onInput, true)
+            document.addEventListener("click", onAction, true)
+            document.addEventListener("invalid", onAction, true)
+            document.addEventListener("submit", onAction, true)
+            return {
+              read: () => ({ ...result }),
+              dispose: () => {
+                document.removeEventListener("input", onInput, true)
+                document.removeEventListener("click", onAction, true)
+                document.removeEventListener("invalid", onAction, true)
+                document.removeEventListener("submit", onAction, true)
+              },
+            }
+          })
+          .then(
+            (candidate) => {
+              if (closed || setupExpired) {
+                void release(candidate)
+                return null
+              }
+              return candidate
+            },
+            () => null
+          )
+        const candidate = await withinTimelineBudget(pending, deadlineAtMs, null, () => {
+          setupExpired = true
+        })
+        if (candidate !== null) {
+          if (closed) void release(candidate)
+          else observer = candidate
+        }
+      } catch {
+        // A failed setup leaves all observations unavailable.
+      }
+    },
+    async reportFailure(step) {
+      if (
+        closed ||
+        (step !== "arm-response" && step !== "click" && step !== "await-response") ||
+        emittedRegistrationTimelines.size >= MAX_REGISTRATION_DIAGNOSTICS
+      ) {
+        return
+      }
+      let readout: RegistrationTimelineReadout = {
+        beforeName: null,
+        afterName: null,
+        beforeSubmit: null,
+      }
+      if (observer !== null) {
+        try {
+          const pending = observer
+            .evaluate((value) => value.read())
+            .then(validateRegistrationTimelineReadout, () => readout)
+          readout = await withinTimelineBudget(pending, deadlineAtMs, readout)
+        } catch {
+          // A failed read leaves all observations unavailable.
+        }
+      }
+      const record = { project, step, ...readout }
+      const line = "UE_LIVE_RESET_REGISTRATION_V3 " + JSON.stringify(record) + "\n"
+      if (emittedRegistrationTimelines.has(line)) return
+      emittedRegistrationTimelines.add(line)
+      try {
+        process.stdout.write(line)
+      } catch {
+        // Diagnostics cannot replace the registration action's original error.
+      }
+    },
+    dispose() {
+      if (closed) return
+      closed = true
+      const candidate = observer
+      observer = null
+      if (candidate !== null) void release(candidate)
+    },
+  }
+}
+
+export function withPasswordResetRegistrationTimeline(
+  diagnostics: ResetRegistrationDiagnostics,
+  timeline: RegistrationTimeline
+): ResetRegistrationDiagnostics {
+  return {
+    async reportFailure(step, error) {
+      await Promise.allSettled([
+        Promise.resolve().then(() => diagnostics.reportFailure(step, error)),
+        Promise.resolve().then(() => timeline.reportFailure(step)),
+      ])
+    },
+    dispose() {
+      try {
+        diagnostics.dispose()
+      } finally {
+        timeline.dispose()
+      }
+    },
+  }
+}
+
+export async function withRegistrationTimeline<T>(
+  timeline: RegistrationTimeline,
+  action: () => Promise<T>
+): Promise<T> {
+  try {
+    return await action()
+  } finally {
+    try {
+      timeline.dispose()
+    } catch {
+      // Cleanup cannot replace the original response or failure.
+    }
   }
 }
 

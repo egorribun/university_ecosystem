@@ -1,5 +1,11 @@
 import { useEffect, useRef } from "react"
-import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router"
+import {
+  createFileRoute,
+  Outlet,
+  redirect,
+  useNavigate,
+  useRouterState,
+} from "@tanstack/react-router"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { resolveRedirectPath } from "@/utils/redirect"
 import { evaluatePublicGuard } from "./guards"
@@ -69,6 +75,49 @@ export function PublicLayout() {
   )
 }
 
+function containsUnsafeRedirectCharacters(value: string): boolean {
+  return Array.from(value).some((character) => {
+    const code = character.charCodeAt(0)
+    return code < 32 || code === 127 || character === "\\"
+  })
+}
+
+function resolveSsrPublicRedirect(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value || containsUnsafeRedirectCharacters(value)) return
+
+  const isRelative = value.startsWith("/") && !value.startsWith("//")
+  try {
+    const origin = globalThis.__ssrOriginGetter__?.()
+    if (!isRelative && (!origin || !/^https?:\/\//iu.test(value))) return
+    const base = new URL(origin ?? "https://public-redirect.invalid")
+    const target = new URL(value, base)
+    if (
+      !["http:", "https:"].includes(target.protocol) ||
+      target.origin !== base.origin ||
+      target.username ||
+      target.password ||
+      target.pathname.startsWith("//") ||
+      /%(?:2f|5c|25)/iu.test(target.pathname)
+    ) {
+      return
+    }
+
+    const pathname = decodeURIComponent(target.pathname)
+    // HTTP URL paths always begin with '/', so this segment is present.
+    const firstSegment = pathname.split("/")[1]!.toLowerCase()
+    if (
+      containsUnsafeRedirectCharacters(pathname) ||
+      ["login", "register", "forgot-password", "reset-password"].includes(firstSegment)
+    ) {
+      return
+    }
+
+    return `${target.pathname}${target.search}${target.hash}`
+  } catch {
+    return
+  }
+}
+
 export const Route = createFileRoute("/_public")({
   // Wave 154 SW1 — removed `ssr: false` workaround (W150 polish-followup commit
   // 7c97de583) since W153 SW2 (commit d931492e3) closed the React #418
@@ -81,9 +130,8 @@ export const Route = createFileRoute("/_public")({
   // SSR-suppress the specific offending component via `import.meta.env.SSR`
   // pattern matching W153 SW2.
   //
-  // Wave 174 SW1 — read live Zustand state via useAuthStore.getState()
-  // instead of stale `context.auth.*`. See _auth.tsx for full rationale
-  // (W152 Phase 1.7 removed the App.tsx reactive context bridge).
+  // SSR uses request-scoped auth; the client uses live Zustand state because
+  // its router context does not update when authentication changes.
   //
   // Wave 178 SW1 — beforeLoad still runs ONCE on initial route mount; the
   // PublicLayout component above adds the reactive useEffect that catches
@@ -91,6 +139,18 @@ export const Route = createFileRoute("/_public")({
   // mechanism (closes W177 §Honesty #2).
   // Wave 179 SW8 — beforeLoad extracted to pure `evaluatePublicGuard`
   // (closes W174 §Honesty #4-routeGuards). Behavior preserved exactly.
-  beforeLoad: () => evaluatePublicGuard(useAuthStore.getState()),
+  beforeLoad: ({ context, location }) => {
+    if (!import.meta.env.SSR) return evaluatePublicGuard(useAuthStore.getState())
+
+    const auth = {
+      user: context.auth.isAuth ? context.auth.user : null,
+      loading: context.auth.loading,
+    }
+    if (!auth.loading && auth.user) {
+      const target = resolveSsrPublicRedirect((location.search as { redirect?: unknown }).redirect)
+      if (target) throw redirect({ href: target })
+    }
+    evaluatePublicGuard(auth)
+  },
   component: PublicLayout,
 })

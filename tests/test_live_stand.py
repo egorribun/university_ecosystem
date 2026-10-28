@@ -13102,6 +13102,213 @@ def test_live_reset_registration_runner_uses_failure_stdout_only(
     assert completed.stdout == completed.stderr == b""
 
 
+def _reset_registration_v3_record(**overrides: object) -> dict[str, object]:
+    record: dict[str, object] = {
+        "project": "mobile",
+        "step": "await-response",
+        "beforeName": {"hydrated": False, "nameState": "empty", "nameError": False},
+        "afterName": {
+            "hydrated": True,
+            "nameState": "at-least-two",
+            "nameError": False,
+        },
+        "beforeSubmit": {
+            "hydrated": True,
+            "nameState": "short",
+            "nameError": True,
+            "trigger": "click",
+        },
+    }
+    record.update(overrides)
+    return record
+
+
+def _reset_registration_v3_row(record: dict[str, object]) -> str:
+    return (
+        "UE_LIVE_RESET_REGISTRATION_V3 "
+        + json.dumps(record, separators=(",", ":"))
+        + "\n"
+    )
+
+
+def test_live_reset_registration_v3_accepts_only_finite_timeline_observations() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v3", None)
+    assert callable(parser), "bounded registration V3 parser is missing"
+    record = _reset_registration_v3_record()
+    unavailable = _reset_registration_v3_record(
+        project="desktop",
+        step="click",
+        beforeName=None,
+        afterName=None,
+        beforeSubmit=None,
+    )
+    assert parser(
+        _reset_registration_v3_row(record) + _reset_registration_v3_row(unavailable)
+    ) == [
+        record,
+        unavailable,
+    ]
+    for field in ("beforeName", "afterName", "beforeSubmit"):
+        for name_state in ("missing", "empty", "short", "at-least-two"):
+            snapshot = {
+                "hydrated": True,
+                "nameState": name_state,
+                "nameError": False,
+            }
+            if field == "beforeSubmit":
+                snapshot["trigger"] = "click"
+            probe = _reset_registration_v3_record(**{field: snapshot})
+            assert parser(_reset_registration_v3_row(probe)) == [probe]
+    for trigger in ("click", "invalid", "submit"):
+        probe = _reset_registration_v3_record(
+            beforeSubmit={
+                "hydrated": True,
+                "nameState": "empty",
+                "nameError": False,
+                "trigger": trigger,
+            }
+        )
+        assert parser(_reset_registration_v3_row(probe)) == [probe]
+
+
+def test_live_reset_registration_v3_rejects_private_or_malformed_records() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v3", None)
+    assert callable(parser), "bounded registration V3 parser is missing"
+    valid = _reset_registration_v3_record()
+    invalid = [
+        {**valid, "url": "private"},
+        {
+            **valid,
+            "beforeName": {
+                "hydrated": True,
+                "nameState": "empty",
+                "nameError": False,
+                "value": "private",
+            },
+        },
+        {
+            **valid,
+            "beforeName": {
+                "hydrated": True,
+                "nameState": "private",
+                "nameError": False,
+            },
+        },
+        {
+            **valid,
+            "beforeName": {"hydrated": 1, "nameState": "empty", "nameError": False},
+        },
+        {
+            **valid,
+            "beforeName": {"hydrated": True, "nameState": "empty", "nameError": 0},
+        },
+        {**valid, "beforeName": {"hydrated": True, "nameState": "empty"}},
+        {
+            **valid,
+            "beforeSubmit": {
+                "hydrated": True,
+                "nameState": "empty",
+                "nameError": False,
+            },
+        },
+        {
+            **valid,
+            "beforeSubmit": {
+                "hydrated": True,
+                "nameState": "empty",
+                "nameError": False,
+                "trigger": "private",
+            },
+        },
+        {**valid, "beforeName": []},
+        {**valid, "project": "private"},
+        {**valid, "step": "private"},
+        {key: value for key, value in valid.items() if key != "afterName"},
+    ]
+    for field in ("beforeName", "afterName", "beforeSubmit"):
+        for wrong in (True, 1, "empty", [], {}):
+            invalid.append({**valid, field: wrong})
+    assert (
+        parser("".join(_reset_registration_v3_row(record) for record in invalid)) == []
+    )
+
+
+def test_live_reset_registration_v3_rejects_duplicate_keys_and_untrusted_framing() -> (
+    None
+):
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v3", None)
+    assert callable(parser), "bounded registration V3 parser is missing"
+    valid = _reset_registration_v3_row(_reset_registration_v3_record())
+    invalid = [
+        valid[:-1],
+        "private " + valid,
+        "\x1b[31m" + valid,
+        valid.replace('"hydrated":false', '"hydrated":false,"hydrated":true'),
+        valid.replace('"hydrated":false', '"hydrated":NaN'),
+        valid.rstrip("\n") + " private\n",
+        "UE_LIVE_RESET_REGISTRATION_V3 " + "x" * 1024 + "\n",
+    ]
+    assert all(parser(row) == [] for row in invalid)
+
+
+def test_live_reset_registration_v3_deduplicates_and_caps_output() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v3", None)
+    assert callable(parser), "bounded registration V3 parser is missing"
+    records = [
+        _reset_registration_v3_record(project=project, step=step)
+        for project in ("desktop", "mobile")
+        for step in ("arm-response", "click", "await-response")
+    ]
+    rows = "".join(_reset_registration_v3_row(record) * 2 for record in records)
+    overflow = _reset_registration_v3_row(
+        _reset_registration_v3_record(beforeName=None)
+    )
+    assert parser(rows + overflow) == records
+
+
+@pytest.mark.parametrize("return_code", [0, 1])
+def test_live_reset_registration_v3_runner_uses_failure_stdout_only(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    return_code: int,
+) -> None:
+    command = live_stand._live_e2e_command(mode="smoke")
+    record = _reset_registration_v3_record()
+    valid = _reset_registration_v3_row(record)
+    stderr_only = _reset_registration_v3_row(
+        _reset_registration_v3_record(project="desktop")
+    )
+    private = "private-diagnostic-noise"
+    completed = subprocess.CompletedProcess(
+        command,
+        return_code,
+        stdout=(valid + valid + private + "\n").encode(),
+        stderr=(stderr_only + private).encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    if return_code:
+        with pytest.raises(live_stand.StandError, match="exit code 1"):
+            live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    else:
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    captured = capsys.readouterr()
+    expected = ["+ " + " ".join(command)]
+    if return_code:
+        expected.append(
+            "live E2E reset-registration-v3 "
+            + json.dumps(record, separators=(",", ":"), sort_keys=True)
+        )
+    outcome = "failed" if return_code else "passed"
+    expected.append(f"live E2E outcome={outcome} exit_code={return_code}")
+    assert captured.out.splitlines() == expected
+    assert captured.err == ""
+    assert private not in captured.out
+    assert completed.stdout == completed.stderr == b""
+
+
 def _aud174_install_window_log_selector(
     monkeypatch: pytest.MonkeyPatch,
     *,

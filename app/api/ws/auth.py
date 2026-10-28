@@ -8,20 +8,28 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import cast
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 
 from redis.exceptions import RedisError
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.auth.revocation import get_revocation_redis_client
 from app.core.database import async_session
 from app.core.logging import get_logger
-from app.models import User
+from app.models import ActiveSession, User
 from app.repositories.session_repository import SessionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.dtos import UserDTO
 from app.services.auth.session_policy import session_is_usable
 
 logger = get_logger(__name__)
+
+if TYPE_CHECKING:
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 try:
     import jwt as _jwt_lib
@@ -210,6 +218,56 @@ async def _resolve_user_from_ids(
     except Exception:  # RZ-22-01-JUSTIFIED: fail-closed auth — user resolution failure returns None (reviewed TD-27-04)
         logger.exception("WS ticket: unexpected error resolving user")
         return None, None
+
+
+async def require_fresh_ws_reads(session: AsyncSession) -> None:
+    """Reject PostgreSQL snapshots that can outlive committed revocations."""
+    connection = await session.connection()
+    if connection.dialect.name == "postgresql":
+        if await connection.get_isolation_level() != "READ COMMITTED":
+            raise RuntimeError("WebSocket authorization requires READ COMMITTED")
+
+
+async def validate_borrowed_ws_session(
+    user_id: uuid.UUID, jti: str, session: AsyncSession, db_lock: asyncio.Lock
+) -> bool:
+    """Validate one socket without opening or ending the caller's transaction."""
+    try:
+        redis = await get_revocation_redis_client()
+        if await redis.exists(f"revoked:jti:{jti}"):
+            return False
+
+        # The caller owns this AsyncSession and may have pending ORM changes.
+        # Query scalar columns under a per-broadcast lock so the identity map
+        # and autoflush cannot supply or overwrite authorization state.
+        async with db_lock:
+            await require_fresh_ws_reads(session)
+            with session.no_autoflush:
+                result = await session.execute(
+                    select(
+                        User.id,
+                        User.is_active,
+                        User.mfa_epoch,
+                        ActiveSession.user_id,
+                        ActiveSession.revoked_at,
+                        ActiveSession.expires_at,
+                        ActiveSession.mfa_epoch,
+                    )
+                    .join(ActiveSession, ActiveSession.user_id == User.id)
+                    .where(User.id == user_id, ActiveSession.jti == jti)
+                )
+                row = result.one_or_none()
+
+        if row is None or not row[1]:
+            return False
+        user = SimpleNamespace(id=row[0], mfa_epoch=row[2])
+        active_session = SimpleNamespace(
+            user_id=row[3], revoked_at=row[4], expires_at=row[5], mfa_epoch=row[6]
+        )
+        return session_is_usable(active_session, user)
+    except (RedisError, RuntimeError, OSError, SQLAlchemyError, ValueError):
+        logger.warning("WebSocket borrowed-session verification unavailable")
+        return False
 
 
 async def update_last_seen(session_jti: str | None) -> datetime:

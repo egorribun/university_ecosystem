@@ -561,6 +561,7 @@ def test_standalone_security_scanners_verify_trusted_base_before_consuming_polic
         assert verify["env"] == {
             "BASE_SHA": "${{ github.event.pull_request.base.sha }}",
             "BASE_REPOSITORY": "${{ github.event.pull_request.base.repo.full_name }}",
+            "HEAD_REPOSITORY": "${{ github.event.pull_request.head.repo.full_name }}",
             "PR_AUTHOR": "${{ github.event.pull_request.user.login }}",
         }
         run = verify["run"]

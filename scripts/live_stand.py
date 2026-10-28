@@ -6374,6 +6374,93 @@ def _live_playwright_reset_registration_v2(output: str) -> list[dict[str, object
     return records
 
 
+_RESET_REGISTRATION_V3_KEYS = (
+    "project",
+    "step",
+    "beforeName",
+    "afterName",
+    "beforeSubmit",
+)
+_RESET_REGISTRATION_V3_SNAPSHOT_KEYS = ("hydrated", "nameState", "nameError")
+
+
+def _validated_reset_registration_v3(value: object) -> dict[str, object] | None:
+    record = _auth_diag_object(value, _RESET_REGISTRATION_V3_KEYS)
+    if record is None:
+        return None
+    if not isinstance(record["project"], str) or record["project"] not in (
+        "desktop",
+        "mobile",
+    ):
+        return None
+    if not isinstance(record["step"], str) or record["step"] not in (
+        "arm-response",
+        "click",
+        "await-response",
+    ):
+        return None
+    for field in ("beforeName", "afterName", "beforeSubmit"):
+        if record[field] is None:
+            continue
+        snapshot_keys = (
+            (*_RESET_REGISTRATION_V3_SNAPSHOT_KEYS, "trigger")
+            if field == "beforeSubmit"
+            else _RESET_REGISTRATION_V3_SNAPSHOT_KEYS
+        )
+        snapshot = _auth_diag_object(record[field], snapshot_keys)
+        if snapshot is None or any(
+            type(snapshot[key]) is not bool for key in ("hydrated", "nameError")
+        ):
+            return None
+        state = snapshot["nameState"]
+        if not isinstance(state, str) or state not in (
+            "missing",
+            "empty",
+            "short",
+            "at-least-two",
+        ):
+            return None
+        if field == "beforeSubmit" and (
+            not isinstance(snapshot["trigger"], str)
+            or snapshot["trigger"] not in ("click", "invalid", "submit")
+        ):
+            return None
+    return dict(record)
+
+
+def _live_playwright_reset_registration_v3(output: str) -> list[dict[str, object]]:
+    prefix = "UE_LIVE_RESET_REGISTRATION_V3 "
+    records: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if (
+            len(line.encode("utf-8")) > 1_024
+            or not line.isprintable()
+            or not line.startswith(prefix)
+        ):
+            continue
+        try:
+            value = json.loads(
+                line[len(prefix) :],
+                object_pairs_hook=_auth_diag_json_object,
+                parse_constant=_reject_auth_diag_json_constant,
+            )
+        except (json.JSONDecodeError, ValueError):
+            continue
+        record = _validated_reset_registration_v3(value)
+        if record is None:
+            continue
+        identity = json.dumps(record, sort_keys=True, separators=(",", ":"))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        records.append(record)
+        if len(records) == 6:
+            break
+    return records
+
+
 def _live_playwright_registration_admission_diagnostics(
     output: str,
 ) -> list[dict[str, object]]:
@@ -7796,6 +7883,9 @@ def _run_live_playwright(
     reset_registration_v2 = (
         _live_playwright_reset_registration_v2(stdout) if return_code != 0 else []
     )
+    reset_registration_v3 = (
+        _live_playwright_reset_registration_v3(stdout) if return_code != 0 else []
+    )
     registration_admission_diagnostics = (
         _live_playwright_registration_admission_diagnostics(stdout)
         if return_code != 0
@@ -7944,6 +8034,12 @@ def _run_live_playwright(
     for record in reset_registration_v2:
         print(
             "live E2E reset-registration-v2 "
+            + json.dumps(record, separators=(",", ":"), sort_keys=True),
+            flush=True,
+        )
+    for record in reset_registration_v3:
+        print(
+            "live E2E reset-registration-v3 "
             + json.dumps(record, separators=(",", ":"), sort_keys=True),
             flush=True,
         )

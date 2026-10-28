@@ -5,7 +5,7 @@ import time
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
@@ -233,12 +233,9 @@ async def liveness() -> dict[str, str]:
     return {"status": "alive"}
 
 
-@router.get("/healthz", summary="Full Health Check")
 async def healthz(
-    # LOW-W19: brief=True omits migration versions, pool internals, and latency
-    # details from the response — use this for public/external health checks to
-    # avoid leaking infrastructure details.  Internal/ops dashboards should use
-    # the default brief=False to retain full diagnostic information.
+    # Internal probe retains full diagnostic information for in-process callers.
+    # The public route below always requests the filtered representation.
     brief: bool = False,
 ) -> JSONResponse:
     now = time.monotonic()
@@ -431,6 +428,18 @@ async def healthz(
         )
 
     return JSONResponse(status_code=http_status, content=full_payload)
+
+
+@router.get("/healthz", summary="Full Health Check", operation_id="healthz_healthz_get")
+async def public_healthz(
+    brief: bool = Query(
+        default=False,
+        description="Legacy parameter, ignored: public responses omit diagnostic details.",
+    ),
+) -> JSONResponse:
+    # Retain the legacy query argument but never expose detailed diagnostics
+    # through the anonymous endpoint, even when brief=false was requested.
+    return await healthz(brief=True)
 
 
 @router.get("/ready", summary="Legacy Readiness Check")

@@ -245,7 +245,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
             ]
           : []),
         { property: "og:url", content: "/" },
-        ...(includeRootSeo ? [{ property: "og:image", content: "/og-image.png" }] : []),
+        ...(includeRootSeo ? [{ property: "og:image", content: "/icon-512.png" }] : []),
         { property: "og:locale", content: getRootLanguage() === "en" ? "en_US" : "ru_RU" },
         ...(includeRootSeo
           ? [
@@ -255,7 +255,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
                 name: "twitter:description",
                 content: getRootMetadataText("navigation:socialDescription"),
               },
-              { name: "twitter:image", content: "/og-image.png" },
+              { name: "twitter:image", content: "/icon-512.png" },
             ]
           : []),
         { name: "google-site-verification", content: "not-applicable" },
@@ -309,11 +309,11 @@ export function ActivityRootSeoFallback() {
       <meta property="og:type" content="website" />
       <meta property="og:title" content={brandName} />
       <meta property="og:description" content={socialDescription} />
-      <meta property="og:image" content="/og-image.png" />
+      <meta property="og:image" content="/icon-512.png" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content={brandName} />
       <meta name="twitter:description" content={socialDescription} />
-      <meta name="twitter:image" content="/og-image.png" />
+      <meta name="twitter:image" content="/icon-512.png" />
     </>
   )
 }

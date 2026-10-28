@@ -348,7 +348,7 @@ func (c *Client) processNextMessage(ctx context.Context) bool {
 		c.RevokeSession(websocket.ClosePolicyViolation, "Session revoked")
 		return false
 	}
-	return true
+	return ctx.Err() == nil && (c.ctx == nil || c.ctx.Err() == nil)
 }
 
 func (c *Client) authorizeAndHandleIncomingMessage(ctx context.Context, msg Message, data []byte) error {
@@ -563,7 +563,7 @@ func (c *Client) finishAuthorizedRoomJoin(
 	decision *roomJoinDecision,
 ) {
 	if decision.replayUnavailable {
-		c.sendReplayJoinError(msg.Room, "replay_unavailable", "chat history replay is temporarily unavailable")
+		c.sendReplayJoinError(msg.Room, replayUnavailableCode, replayUnavailableDetail)
 		return
 	}
 	if decision.replayEnabled {
@@ -572,6 +572,7 @@ func (c *Client) finishAuthorizedRoomJoin(
 			return
 		}
 		if decision.replayLimited {
+			c.sendReplayJoinError(msg.Room, replayRateLimitedCode, replayRateLimitedDetail)
 			return
 		}
 		if decision.replayState != nil {
@@ -688,12 +689,17 @@ func (c *Client) sendReplayJoinError(room, code, detail string) {
 	frame, err := json.Marshal(map[string]string{
 		"type": "error", "room": room, "code": code, "detail": detail,
 	})
-	if err == nil {
-		_ = safeSend(c.Send, frame)
+	if err != nil || !safeSend(c.Send, frame) {
+		// The client cannot retry a rejected replay it never hears about. Close
+		// the transport so its existing reconnect path retains the signed cursor.
+		// ReadPump owns the subsequent unregister; waiting on the Hub here could
+		// deadlock while the caller holds the session action gate.
+		c.cancelConnection()
+		c.closeTransport("Failed to close session after replay rejection")
 	}
 }
 
-func (c *Client) allowReplayJoin(room string) bool {
+func (c *Client) allowReplayJoin(_ string) bool {
 	c.replayMu.Lock()
 	if c.replayJoinLimiter == nil {
 		c.replayJoinLimiter = newReplayJoinLimiterFunc()
@@ -704,7 +710,6 @@ func (c *Client) allowReplayJoin(room string) bool {
 		return true
 	}
 	ReplayJoinRateLimitedTotal.Inc()
-	c.sendReplayJoinError(room, "replay_join_rate_limited", "replay join rate limit exceeded")
 	return false
 }
 
@@ -1092,6 +1097,10 @@ func (c *Client) sendReplayWithRetry(ctx context.Context, data []byte) bool {
 const (
 	roomAccessRevokedCode   = "room_access_revoked"
 	roomAccessRevokedDetail = "Access to this chat was revoked"
+	replayUnavailableCode   = "replay_unavailable"
+	replayUnavailableDetail = "chat history replay is temporarily unavailable"
+	replayRateLimitedCode   = "replay_join_rate_limited"
+	replayRateLimitedDetail = "replay join rate limit exceeded"
 )
 
 func isRoomAccessRevokedNotice(data []byte, room string) bool {
@@ -1104,6 +1113,21 @@ func isRoomAccessRevokedNotice(data []byte, room string) bool {
 	return err == nil && bytes.Equal(data, expected)
 }
 
+func isReplayJoinRejection(data []byte, room string) bool {
+	for _, rejection := range []struct{ code, detail string }{
+		{replayUnavailableCode, replayUnavailableDetail},
+		{replayRateLimitedCode, replayRateLimitedDetail},
+	} {
+		expected, err := json.Marshal(map[string]string{
+			"type": "error", "room": room, "code": rejection.code, "detail": rejection.detail,
+		})
+		if err == nil && bytes.Equal(data, expected) {
+			return true
+		}
+	}
+	return false
+}
+
 func queuedFrameRoom(data []byte) (string, bool) {
 	var frame struct {
 		Type string `json:"type"`
@@ -1112,7 +1136,7 @@ func queuedFrameRoom(data []byte) (string, bool) {
 	if err := json.Unmarshal(data, &frame); err != nil || frame.Room == "" {
 		return "", false
 	}
-	if frame.Type == "error" && isRoomAccessRevokedNotice(data, frame.Room) {
+	if frame.Type == "error" && (isRoomAccessRevokedNotice(data, frame.Room) || isReplayJoinRejection(data, frame.Room)) {
 		return "", false
 	}
 	return frame.Room, true

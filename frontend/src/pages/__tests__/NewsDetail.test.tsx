@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { invalidateSessionEpoch } from "@/stores/sessionEpoch"
 import NewsDetail from "../NewsDetail"
 
 const article = {
@@ -77,11 +78,11 @@ vi.mock("@/api/hooks/news", () => ({
 vi.mock("@/hooks/useNewsInteraction", () => ({
   useNewsInteraction: () => ({
     interactions: mocks.interactions,
-    toggleLike: mocks.toggleLike,
+    toggleLikeAsync: mocks.toggleLike,
     addComment: vi.fn(),
     isCommenting: false,
-    updateComment: vi.fn(),
-    deleteComment: vi.fn(),
+    updateCommentAsync: vi.fn(),
+    deleteCommentAsync: vi.fn(),
     hasMoreComments: mocks.hasMoreComments,
     isLoadingMoreComments: false,
     loadMoreComments: mocks.loadMoreComments,
@@ -316,6 +317,29 @@ describe("NewsDetail", () => {
       vi.useRealTimers()
       vi.restoreAllMocks()
     }
+  })
+
+  it("reports a like request whose outcome could not be confirmed", async () => {
+    mocks.toggleLike.mockRejectedValueOnce(new Error("Network Error"))
+    render(<NewsDetail />)
+    fireEvent.click(screen.getByRole("button", { name: "like" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "news:notifications.interactionError"
+    )
+  })
+
+  it("does not show a late like failure after the session changes", async () => {
+    let reject!: (error: Error) => void
+    mocks.toggleLike.mockReturnValueOnce(
+      new Promise((_resolve, fail) => {
+        reject = fail
+      })
+    )
+    render(<NewsDetail />)
+    fireEvent.click(screen.getByRole("button", { name: "like" }))
+    invalidateSessionEpoch()
+    await act(async () => reject(new Error("Network Error")))
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })
 
   it.each([

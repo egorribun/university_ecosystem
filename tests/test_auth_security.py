@@ -295,7 +295,11 @@ async def test_register_normalizes_email(async_client, db_session):
     body = response.json()
     assert body["status"] == "ok"
 
-    user = await db_session.get(models.User, uuid.UUID(body["id"]))
+    user = (
+        await db_session.execute(
+            select(models.User).where(models.User.email == raw_email.lower())
+        )
+    ).scalar_one_or_none()
     assert user is not None
     assert user.email == raw_email.lower()
 

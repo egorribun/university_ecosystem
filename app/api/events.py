@@ -1,7 +1,9 @@
 import hashlib
 import json
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime
+from functools import wraps
 from typing import Annotated, Any, Literal
 
 from dishka import FromComponent
@@ -40,7 +42,7 @@ from app.auth.rbac import PermissionChecker
 from app.core.cache_versioning import events_cache_version
 from app.core.config import settings
 from app.core.di.read_replica import READ_COMPONENT
-from app.core.localization import normalize_locale, resolve_locale
+from app.core.localization import normalize_locale, resolve_locale, translate
 from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
@@ -53,10 +55,12 @@ from app.services.content_media import (
     event_image_owned_by,
 )
 from app.services.event_service import (
+    LEGACY_MY_EVENTS_LIMIT,
     EventService,
     InvalidEventsCursor,
     InvalidMyEventsCursor,
     InvalidMyEventsQuery,
+    MyEventsPaginationRequired,
 )
 from app.services.file_scanner import scan_for_malware
 from app.services.private_attachments import (
@@ -80,6 +84,42 @@ router = APIRouter(prefix="/events", tags=["events"])
 _EVENTS_CACHE_CONTROL = "private, max-age=180"
 
 
+def _fresh_private_event_endpoint(
+    endpoint: Callable[..., Awaitable[Any]],
+) -> Callable[..., Awaitable[Response]]:
+    """Compute conditional responses only after reading the current private data."""
+
+    @wraps(endpoint)
+    async def wrapper(*args: Any, **kwargs: Any) -> Response:
+        payload = await endpoint(*args, **kwargs)
+        if isinstance(payload, list):
+            encoded = (
+                "["
+                + ",".join(item.model_dump_json(by_alias=True) for item in payload)
+                + "]"
+            )
+        else:
+            encoded = payload.model_dump_json(by_alias=True)
+        body = encoded.encode("utf-8")
+        digest = hashlib.sha256(body).hexdigest()
+        request: Request = kwargs["request"]
+        locale = resolve_locale(request=request, user=kwargs.get("user"))
+        if_none_match = kwargs.get("if_none_match") or request.headers.get(
+            "if-none-match"
+        )
+        response = (
+            Response(status_code=status.HTTP_304_NOT_MODIFIED)
+            if etag_matches(digest, if_none_match)
+            else Response(content=body, media_type="application/json")
+        )
+        response.headers["ETag"] = format_etag(digest)
+        response.headers["Cache-Control"] = "private, no-store"
+        _set_language_headers(response, locale)
+        return response
+
+    return wrapper
+
+
 def _document_event_detail_lang(
     _lang: str | None = Query(
         default=None,
@@ -93,6 +133,17 @@ def _document_event_detail_lang(
     ),
 ) -> None:
     """Expose the existing request locale query in OpenAPI without handler input."""
+    return None
+
+
+def _document_my_events_lang(
+    _lang: str | None = Query(
+        default=None,
+        alias="lang",
+        description="Requested My-events locale; unsupported values use the usual locale fallback.",
+    ),
+) -> None:
+    """Expose the existing locale query for the paginated My-events endpoint."""
     return None
 
 
@@ -303,17 +354,17 @@ async def unregister_event(
     return await events.unregister_attendance(data, user_id=user.id)
 
 
-@router.get("/my/page", response_model=schemas.PaginatedEvents)
-@cached_endpoint(
-    version_resolver=events_cache_version,
-    cache_prefix="ue:events:my:page",
-    cache_control=_EVENTS_CACHE_CONTROL,
+@router.get(
+    "/my/page",
+    response_model=schemas.PaginatedEvents,
+    dependencies=[Depends(_document_my_events_lang)],
 )
+@_fresh_private_event_endpoint
 @inject
 async def my_events_page(
     request: Request,
     response: Response,
-    events: Annotated[EventService, FromComponent(READ_COMPONENT)],
+    events: FromDishka[EventService],
     user: models.User = Depends(get_current_user_from_dishka),
     limit: int = Query(20, ge=1, le=100, alias="limit"),
     cursor: str | None = Query(None, min_length=1, max_length=1024, alias="cursor"),
@@ -323,7 +374,7 @@ async def my_events_page(
     | None = Query(None),
     date_range: Literal["today", "week", "month"] | None = Query(None),
     date_anchor: date | None = Query(None),
-    sort: Literal["newest", "popular", "upcoming"] = Query("newest"),
+    sort: Literal["newest", "newest_desc", "popular", "upcoming"] = Query("newest"),
     upcoming_after: datetime | None = Query(None),
     if_none_match: str | None = Header(default=None),
 ) -> schemas.PaginatedEvents | Response | Any:
@@ -360,22 +411,89 @@ async def my_events_page(
     return payload
 
 
-@router.get("/my", response_model=list[schemas.EventOut])
-@cached_endpoint(
-    version_resolver=events_cache_version,
-    cache_prefix="ue:events:my",
-    cache_control=_EVENTS_CACHE_CONTROL,
+@router.get(
+    "/my",
+    response_model=list[schemas.EventOut],
+    responses={
+        409: {
+            "description": "The legacy list exceeds its capacity; use the paginated endpoint.",
+            "headers": {
+                "Link": {
+                    "description": "Alternate paginated My-events endpoint.",
+                    "schema": {"type": "string"},
+                }
+            },
+            "content": {
+                "application/problem+json": {
+                    "schema": {
+                        "type": "object",
+                        "required": [
+                            "type",
+                            "title",
+                            "status",
+                            "detail",
+                            "instance",
+                            "trace_id",
+                            "code",
+                            "legacy_limit",
+                            "pagination_url",
+                        ],
+                        "properties": {
+                            "type": {"type": "string"},
+                            "title": {"type": "string"},
+                            "status": {"type": "integer", "const": 409},
+                            "detail": {"type": "string"},
+                            "instance": {"type": "string"},
+                            "trace_id": {
+                                "anyOf": [{"type": "string"}, {"type": "null"}]
+                            },
+                            "code": {
+                                "type": "string",
+                                "const": "events_my_pagination_required",
+                            },
+                            "legacy_limit": {
+                                "type": "integer",
+                                "const": LEGACY_MY_EVENTS_LIMIT,
+                            },
+                            "pagination_url": {"type": "string"},
+                        },
+                    }
+                }
+            },
+        }
+    },
 )
+@_fresh_private_event_endpoint
 @inject
 async def my_events(
     request: Request,
     response: Response,
-    events: Annotated[EventService, FromComponent(READ_COMPONENT)],
+    events: FromDishka[EventService],
     user: models.User = Depends(get_current_user_from_dishka),
     if_none_match: str | None = Header(default=None),
 ) -> list[schemas.EventOut] | Response | Any:
     locale = resolve_locale(request=request, user=user)
-    return await events.get_my_events(user_id=user.id, locale=locale)
+    try:
+        return await events.get_my_events(user_id=user.id, locale=locale)
+    except MyEventsPaginationRequired as exc:
+        error_locale = resolve_locale(request=request)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "events_my_pagination_required",
+                "message": translate(
+                    "errors.events.my_pagination_required", locale=error_locale
+                ),
+                "legacy_limit": LEGACY_MY_EVENTS_LIMIT,
+                "pagination_url": "/api/v1/events/my/page",
+            },
+            headers={
+                "Link": '</api/v1/events/my/page>; rel="alternate"',
+                "Cache-Control": "private, no-store",
+                "Content-Language": error_locale,
+                "Vary": "Accept-Language, Cookie, Authorization",
+            },
+        ) from exc
 
 
 @router.post(
@@ -674,11 +792,7 @@ async def delete_event(
     response_model=schemas.EventOut,
     dependencies=[Depends(_document_event_detail_lang)],
 )
-@cached_endpoint(
-    version_resolver=events_cache_version,
-    cache_prefix="ue:events:detail",
-    cache_control=_EVENTS_CACHE_CONTROL,
-)
+@_fresh_private_event_endpoint
 @inject
 async def get_event(
     event_id: uuid.UUID | int,

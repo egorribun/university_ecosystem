@@ -717,6 +717,19 @@ class ChatParticipantRemoved(DomainEvent):
 
 @register_domain_event
 @dataclass
+class ChatParticipantCacheInvalidation(DomainEvent):
+    """Retry exact shared-cache invalidation after a committed removal."""
+
+    EVENT_VERSION: ClassVar[int] = 1
+    EVENT_TYPE: ClassVar[str] = "chat.participant_cache_invalidation"
+
+    chat_id: UUID | str | None = None
+    cache_key_version: int | None = None
+    participant_ids: list[UUID | str] = field(default_factory=list)
+
+
+@register_domain_event
+@dataclass
 class ChatDeleted(DomainEvent):
     """Fired when a chat is permanently deleted.
 
@@ -1243,6 +1256,7 @@ event_bus = EventBus()
 
 __all__ = [
     "ChatDeleted",
+    "ChatParticipantCacheInvalidation",
     "ChatParticipantRemoved",
     "DomainEvent",
     "EventBus",

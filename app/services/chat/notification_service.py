@@ -98,7 +98,7 @@ class ChatNotificationService:
         DM so existing callers/tests are unaffected.
         """
         # WebSocket real-time notification
-        presence = await build_presence_map([message.sender_id])
+        presence = await build_presence_map([message.sender_id], db=self.session)
         await ws_manager.broadcast_to_chat(
             message.chat_id,
             {
@@ -108,6 +108,7 @@ class ChatNotificationService:
             },
             exclude_user_id=sender.id,
             propagate_nats_failure=propagate_nats_failure,
+            db_session=self.session,
         )
 
         # Push Notification

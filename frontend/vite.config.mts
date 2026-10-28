@@ -14,6 +14,7 @@ import { MASKABLE_ICON_BASE64 } from "./pwa-maskable-icons.ts"
 import { generateManifests } from "./scripts/generate-manifests.mjs"
 import { BUNDLE_BUDGETS } from "./scripts/check-bundle-budget.mjs"
 import { mapLibreWorkerAssets } from "./scripts/maplibre-worker-assets.mjs"
+import { mapLibreBuildMetadata } from "./scripts/maplibre-build-metadata.mjs"
 import { buildMemoryTelemetry } from "./scripts/build-memory-telemetry.mjs"
 // Shared with the Windows-safe standalone build orchestrator.
 import { PWA_INJECT_CONFIG } from "./scripts/workbox-config.mjs"
@@ -307,6 +308,12 @@ export default defineConfig(({ mode }) => {
     // Build-only preloads for the critical RU body and display-font subsets.
     withFontPreload(),
     buildMemoryTelemetry(),
+    mapLibreBuildMetadata({
+      outputPath: process.env.MAPLIBRE_BUILD_METADATA_OUTPUT,
+      isLhci,
+      isReactDevMode,
+      isUnminified,
+    }),
   ]
 
   if (analyze) {

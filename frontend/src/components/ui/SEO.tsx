@@ -68,7 +68,7 @@ export const SEO: FC<SEOProps> = ({ title, description, image, type = "website" 
   const fullTitle = `${title} | ${siteTitle}`
   const resolvedDescription = description?.trim() || t("brandDescription")
   const resolvedSocialDescription = description?.trim() || t("socialDescription")
-  const resolvedImage = image?.trim() || "/og-image.png"
+  const resolvedImage = image?.trim() || "/icon-512.png"
 
   return (
     <>

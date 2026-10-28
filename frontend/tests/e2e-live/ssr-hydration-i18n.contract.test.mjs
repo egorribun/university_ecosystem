@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises"
 import { URL } from "node:url"
 import test from "node:test"
 import { createInstance } from "i18next"
+import sharp from "sharp"
 import { extractSeoMetadata, matchesRequestedCatalogTitle } from "./seo-metadata.mjs"
 
 const specUrl = new URL("./ssr-hydration-i18n.live.spec.ts", import.meta.url)
@@ -113,6 +114,34 @@ test("live dashboard acceptance covers real RU/EN SSR hydration without raw keys
   assert.match(spec, /expectedRootHeadSnapshot\(language\)/u)
   assert.doesNotMatch(spec, /page\.route|routeWebSocket|useMockApi|page\.request/u)
   assert.doesNotMatch(spec, /console\.(?:log|info|warn|error)/u)
+})
+
+test("AUD-137 live News checks the requested locale in SPA, SSR and hydrated markup", async () => {
+  const spec = await readFile(specUrl, "utf8")
+  assert.match(spec, /import \{ matchesNewsSearchLocale \} from "\.\/ssr-news-locale\.mjs"/u)
+  assert.match(
+    spec,
+    /const spaNewsMarkup = await page\.locator\("#root"\)\.evaluate\(\(root\) => root\.outerHTML\)/u
+  )
+  assert.match(
+    spec,
+    /const hydratedNewsMarkup = await page\.locator\("#root"\)\.evaluate\(\(root\) => root\.outerHTML\)/u
+  )
+
+  const spa = spec.indexOf("const spaNewsMarkup =")
+  const reload = spec.indexOf("const newsResponse = await page.reload(")
+  const server = spec.indexOf("matchesNewsSearchLocale(newsServerMarkup ?? null,")
+  const hydrated = spec.indexOf("const hydratedNewsMarkup =")
+  const activity = spec.indexOf("const activityLink = page.locator(")
+  assert.ok(spa >= 0 && spa < reload && reload < server && server < hydrated && hydrated < activity)
+
+  for (const snapshot of ["spaNewsMarkup", "newsServerMarkup \\?\\? null", "hydratedNewsMarkup"]) {
+    const assertion = new RegExp(
+      `expect\\(\\s*matchesNewsSearchLocale\\(\\s*${snapshot},\\s*NEWS_SEARCH_PLACEHOLDER_CATALOGS\\[language\\]\\s*\\)\\s*\\)\\.toBe\\(\\s*true\\s*\\)`,
+      "u"
+    )
+    assert.match(spec, assertion)
+  }
 })
 
 test("live acceptance verifies each finite route title against its requested locale on SSR and client", async () => {
@@ -268,11 +297,11 @@ test("shared SEO metadata extraction preserves values and counts for a root head
     <meta property="og:type" content="website">
     <meta property="og:title" content="University Ecosystem">
     <meta property="og:description" content="University services">
-    <meta property="og:image" content="/og-image.png">
+    <meta property="og:image" content="/icon-512.png">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="University Ecosystem">
     <meta name="twitter:description" content="University services">
-    <meta name="twitter:image" content="/og-image.png">
+    <meta name="twitter:image" content="/icon-512.png">
   </head></html>`
 
   assert.deepEqual(extractSeoMetadata(markup), {
@@ -284,11 +313,11 @@ test("shared SEO metadata extraction preserves values and counts for a root head
     ogType: "website",
     ogTitle: "University Ecosystem",
     ogDescription: "University services",
-    ogImage: "/og-image.png",
+    ogImage: "/icon-512.png",
     twitterCard: "summary_large_image",
     twitterTitle: "University Ecosystem",
     twitterDescription: "University services",
-    twitterImage: "/og-image.png",
+    twitterImage: "/icon-512.png",
     seoMetaCounts: {
       'meta[name="title"]': 0,
       'meta[name="description"]': 1,
@@ -302,6 +331,22 @@ test("shared SEO metadata extraction preserves values and counts for a root head
       'meta[name="twitter:image"]': 1,
     },
   })
+})
+
+test("static shell social images reference a decodable public PNG", async () => {
+  const markup = await readFile(new URL("../../index.html", import.meta.url), "utf8")
+  const metadata = extractSeoMetadata(markup)
+
+  assert.equal(metadata.ogImage, "/icon-512.png")
+  assert.equal(metadata.twitterImage, "/icon-512.png")
+  assert.equal(metadata.seoMetaCounts['meta[property="og:image"]'], 1)
+  assert.equal(metadata.seoMetaCounts['meta[name="twitter:image"]'], 1)
+
+  const imageBytes = await readFile(new URL("../../public/icon-512.png", import.meta.url))
+  const image = sharp(imageBytes)
+  const { format, width, height } = await image.metadata()
+  assert.deepEqual({ format, width, height }, { format: "png", width: 512, height: 512 })
+  assert.ok((await image.raw().toBuffer()).length > 0)
 })
 
 test("SSR locale probe catches ordinary fallback that raw-key scanning misses", async () => {

@@ -340,7 +340,7 @@ describe("SEO and news boundary contracts", () => {
     expect(document.querySelectorAll('meta[property="og:image"]')).toHaveLength(1)
     expect(document.querySelector('meta[property="og:image"]')).toHaveAttribute(
       "content",
-      "/og-image.png"
+      "/icon-512.png"
     )
     expect(document.querySelectorAll('meta[name="twitter:description"]')).toHaveLength(1)
     expect(document.querySelector('meta[name="twitter:description"]')).toHaveAttribute(
@@ -350,7 +350,7 @@ describe("SEO and news boundary contracts", () => {
     expect(document.querySelectorAll('meta[name="twitter:image"]')).toHaveLength(1)
     expect(document.querySelector('meta[name="twitter:image"]')).toHaveAttribute(
       "content",
-      "/og-image.png"
+      "/icon-512.png"
     )
     expect(document.querySelector('meta[property="og:type"]')).toHaveAttribute("content", "website")
   })

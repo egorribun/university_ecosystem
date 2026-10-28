@@ -123,8 +123,8 @@ function renderComments(role: User["role"] = "student") {
         user={{ id: "019961d3-bb00-7000-8000-000000000010", role }}
         isCommenting={interaction.isCommenting}
         addComment={interaction.addComment}
-        updateComment={interaction.updateComment}
-        deleteComment={interaction.deleteComment}
+        updateComment={interaction.updateCommentAsync}
+        deleteComment={interaction.deleteCommentAsync}
         t={(key) => key}
         getMoscowDate={(date) => date}
       />
@@ -309,6 +309,96 @@ describe("NewsComments pending actions", () => {
       ).toBeEnabled()
       expect(fixture.actions).toEqual([])
     } finally {
+      await fixture.dispose()
+    }
+  })
+
+  it("keeps the new comment draft and reports an offline failure without opening the queue", async () => {
+    const fixture = renderComments()
+    const open = vi.spyOn(indexedDB, "open")
+    const originalOnline = Object.getOwnPropertyDescriptor(navigator, "onLine")
+    try {
+      await fixture.submit()
+      Object.defineProperty(navigator, "onLine", { configurable: true, value: false })
+      await act(async () => fixture.post.resolve(HttpResponse.error()))
+      await waitFor(
+        () =>
+          expect(screen.getByRole("alert")).toHaveTextContent(
+            "news:notifications.interactionError"
+          ),
+        { timeout: 3000 }
+      )
+      expect(screen.getByRole("textbox", { name: "news:form.commentAriaLabel" })).toHaveValue(
+        CONTENT
+      )
+      expect(screen.queryByText(CONTENT, { selector: "p" })).not.toBeInTheDocument()
+      expect(open).not.toHaveBeenCalled()
+    } finally {
+      open.mockRestore()
+      if (originalOnline) Object.defineProperty(navigator, "onLine", originalOnline)
+      else Reflect.deleteProperty(navigator, "onLine")
+      await fixture.dispose()
+    }
+  })
+
+  it("retains an inline edit and reports an offline failure without opening the queue", async () => {
+    const fixture = renderComments()
+    const open = vi.spyOn(indexedDB, "open")
+    const originalOnline = Object.getOwnPropertyDescriptor(navigator, "onLine")
+    try {
+      await screen.findByText(PERSISTED.content)
+      server.use(http.patch("*/news/comments/:commentId", () => HttpResponse.error()))
+      Object.defineProperty(navigator, "onLine", { configurable: true, value: false })
+      await fixture.user.click(
+        row(PERSISTED.content).getByRole("button", { name: "news:actions.editComment" })
+      )
+      const editor = screen.getByRole("textbox", { name: "news:form.editCommentAriaLabel" })
+      await fixture.user.clear(editor)
+      await fixture.user.type(editor, "Draft edit held offline")
+      await fixture.user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+      await waitFor(
+        () =>
+          expect(screen.getByRole("alert")).toHaveTextContent(
+            "news:notifications.interactionError"
+          ),
+        { timeout: 3000 }
+      )
+      expect(screen.getByRole("textbox", { name: "news:form.editCommentAriaLabel" })).toHaveValue(
+        "Draft edit held offline"
+      )
+      expect(open).not.toHaveBeenCalled()
+    } finally {
+      open.mockRestore()
+      if (originalOnline) Object.defineProperty(navigator, "onLine", originalOnline)
+      else Reflect.deleteProperty(navigator, "onLine")
+      await fixture.dispose()
+    }
+  })
+
+  it("restores a deleted comment and reports an offline failure without opening the queue", async () => {
+    const fixture = renderComments()
+    const open = vi.spyOn(indexedDB, "open")
+    const originalOnline = Object.getOwnPropertyDescriptor(navigator, "onLine")
+    try {
+      await screen.findByText(PERSISTED.content)
+      server.use(http.delete("*/news/comments/:commentId", () => HttpResponse.error()))
+      Object.defineProperty(navigator, "onLine", { configurable: true, value: false })
+      await fixture.user.click(
+        row(PERSISTED.content).getByRole("button", { name: "news:actions.deleteComment" })
+      )
+      const dialog = screen.getByRole("alertdialog")
+      await fixture.user.click(
+        within(dialog).getByRole("button", { name: "common:buttons.delete" })
+      )
+      await waitFor(() =>
+        expect(screen.getByRole("alert")).toHaveTextContent("news:notifications.interactionError")
+      )
+      expect(screen.getByText(PERSISTED.content)).toBeVisible()
+      expect(open).not.toHaveBeenCalled()
+    } finally {
+      open.mockRestore()
+      if (originalOnline) Object.defineProperty(navigator, "onLine", originalOnline)
+      else Reflect.deleteProperty(navigator, "onLine")
       await fixture.dispose()
     }
   })

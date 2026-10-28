@@ -11,6 +11,7 @@ import { FC, memo, useCallback, useEffect, useMemo, useRef, useState, lazy } fro
 import { useTranslation } from "react-i18next"
 import api from "@/api/client"
 import { useAuth } from "@/contexts/AuthContext"
+import { captureSessionEpoch } from "@/stores/sessionEpoch"
 
 const NewsCardView = lazy(() => import("./NewsCardView").then((m) => ({ default: m.NewsCardView })))
 
@@ -101,7 +102,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   }, [editSession, isAdmin])
 
   // Feed cards show counts only; the comment list is requested on the detail page.
-  const { interactions, toggleLike } = useNewsInteraction(id, {
+  const { interactions, toggleLikeAsync } = useNewsInteraction(id, {
     initialData: {
       likes_count: initialLikes,
       comments_count: initialComments,
@@ -112,6 +113,17 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const likesCount = interactions?.likes_count ?? initialLikes
   const isLiked = interactions?.is_liked ?? initialIsLiked
   const commentsCount = interactions?.comments_count ?? initialComments
+  const handleToggleLike = useCallback(() => {
+    const ownsSession = captureSessionEpoch()
+    setError("")
+    void (async () => {
+      try {
+        await toggleLikeAsync()
+      } catch {
+        if (ownsSession()) setError(t("news:notifications.interactionError"))
+      }
+    })()
+  }, [t, toggleLikeAsync])
 
   const spotlight = useSpotlight()
   const { isBookmarked, toggleBookmark } = useBookmarks()
@@ -235,7 +247,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       confirmDeleteOpen={confirmDeleteOpen}
       editData={activeEditSession?.initialData ?? editData}
       spotlight={spotlight}
-      onToggleLike={toggleLike}
+      onToggleLike={handleToggleLike}
       onToggleBookmark={handleToggleBookmark}
       onEditOpen={openEdit}
       onEditClose={closeEdit}

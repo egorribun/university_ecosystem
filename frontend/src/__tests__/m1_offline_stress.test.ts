@@ -84,7 +84,7 @@ describe("Milestone 1 — Adversarial Offline-First & Stress Test Suite", () => 
   })
 
   describe("2. Service Worker Offline Mutation Queue — Edge Cases", () => {
-    it("preserves ordering by timestamp during replay", async () => {
+    it("preserves every timestamped mutation without replaying it", async () => {
       const m1 = {
         url: "/api/test",
         method: "POST" as const,
@@ -103,21 +103,20 @@ describe("Milestone 1 — Adversarial Offline-First & Stress Test Suite", () => 
       await storePendingMutation(m2)
       await storePendingMutation(m3)
 
-      const executionOrder: number[] = []
-      const fetchMock = vi.fn().mockImplementation((_url, opts) => {
-        const body = JSON.parse(opts.body)
-        executionOrder.push(body.step)
-        return Promise.resolve({ ok: true, status: 200 })
-      })
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
       vi.stubGlobal("fetch", fetchMock)
 
       await processPendingMutations()
 
-      expect(fetchMock).toHaveBeenCalledTimes(3)
-      expect(executionOrder).toEqual([2, 1, 3]) // Sorted by timestamp: 500, 1000, 1500
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(await readPendingMutations()).toEqual([
+        expect.objectContaining(m1),
+        expect.objectContaining(m2),
+        expect.objectContaining(m3),
+      ])
     })
 
-    it("4xx non-retriable client error (400, 403, 404) discards mutation immediately and sends MUTATION_REJECTED", async () => {
+    it("holds an unbound mutation without a 4xx request or payload broadcast", async () => {
       await storePendingMutation({
         url: "/api/invalid-resource",
         method: "PUT",
@@ -140,18 +139,12 @@ describe("Milestone 1 — Adversarial Offline-First & Stress Test Suite", () => 
       await processPendingMutations()
 
       const remaining = await readPendingMutations()
-      expect(remaining).toHaveLength(0) // Discarded from queue
-      expect(channelMessages).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            type: "MUTATION_REJECTED",
-            status: 404,
-          }),
-        ])
-      )
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(remaining).toEqual([expect.objectContaining({ payload: { invalid: true } })])
+      expect(channelMessages).toEqual([])
     })
 
-    it("429 rate limit status triggers retry instead of discarding", async () => {
+    it("does not attempt or increment retry counts for an unbound rate-limited mutation", async () => {
       await storePendingMutation({
         url: "/api/rate-limited",
         method: "POST",
@@ -165,10 +158,11 @@ describe("Milestone 1 — Adversarial Offline-First & Stress Test Suite", () => 
 
       const remaining = (await readPendingMutations()) as PendingMutationRecord[]
       expect(remaining).toHaveLength(1)
-      expect(remaining[0]!.retryCount).toBe(1)
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(remaining[0]!.retryCount).toBe(0)
     })
 
-    it("5xx server error increments retryCount and keeps mutation in queue", async () => {
+    it("preserves an unbound mutation without attempting a server request", async () => {
       await storePendingMutation({
         url: "/api/server-error",
         method: "POST",
@@ -182,10 +176,11 @@ describe("Milestone 1 — Adversarial Offline-First & Stress Test Suite", () => 
 
       const remaining = (await readPendingMutations()) as PendingMutationRecord[]
       expect(remaining).toHaveLength(1)
-      expect(remaining[0]!.retryCount).toBe(1)
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(remaining[0]!.retryCount).toBe(0)
     })
 
-    it("discards mutation after reaching 5 max retries and broadcasts MUTATION_FAILED_PERMANENT", async () => {
+    it("retains exhausted unbound mutations without broadcasting their payload", async () => {
       await storePendingMutation({
         url: "/api/permanent-fail",
         method: "POST",
@@ -210,17 +205,11 @@ describe("Milestone 1 — Adversarial Offline-First & Stress Test Suite", () => 
 
       expect(fetchMock).not.toHaveBeenCalled()
       const remaining = await readPendingMutations()
-      expect(remaining).toHaveLength(0)
-      expect(channelMessages).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            type: "MUTATION_FAILED_PERMANENT",
-          }),
-        ])
-      )
+      expect(remaining).toEqual([expect.objectContaining({ retryCount: 5 })])
+      expect(channelMessages).toEqual([])
     })
 
-    it("prevents execution during offline mode and flushes when toggled online", async () => {
+    it("holds unbound mutations both offline and after reconnection", async () => {
       await storePendingMutation({
         url: "http://localhost/api/offline-test",
         method: "POST",
@@ -238,9 +227,11 @@ describe("Milestone 1 — Adversarial Offline-First & Stress Test Suite", () => 
       // Toggle online
       onlineSpy.mockReturnValue(true)
       await processPendingMutations()
-      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock).not.toHaveBeenCalled()
       const remainingMutations = await readPendingMutations()
-      expect(remainingMutations).toHaveLength(0)
+      expect(remainingMutations).toEqual([
+        expect.objectContaining({ payload: { text: "offline" } }),
+      ])
     })
   })
 

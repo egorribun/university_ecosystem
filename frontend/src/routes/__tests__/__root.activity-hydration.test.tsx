@@ -118,14 +118,14 @@ function expectRootFallbackMetadata(head: HTMLHeadElement): void {
       'meta[property="og:description"]',
       "Your personal account: profile, schedule, news, and campus events.",
     ],
-    ['meta[property="og:image"]', "/og-image.png"],
+    ['meta[property="og:image"]', "/icon-512.png"],
     ['meta[name="twitter:card"]', "summary_large_image"],
     ['meta[name="twitter:title"]', "GUU Ecosystem"],
     [
       'meta[name="twitter:description"]',
       "Your personal account: profile, schedule, news, and campus events.",
     ],
-    ['meta[name="twitter:image"]', "/og-image.png"],
+    ['meta[name="twitter:image"]', "/icon-512.png"],
   ] as const
 
   expect(Array.from(head.querySelectorAll("title"), (title) => title.textContent)).toEqual([

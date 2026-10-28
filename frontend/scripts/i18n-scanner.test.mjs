@@ -214,6 +214,79 @@ test("scope contract explicitly excludes tests, generated sources, and vendors",
   assert.deepEqual(report.included, ["src/App.tsx", "src/components/Button.tsx"])
 })
 
+test("production stories modules and routes are included while Storybook files stay excluded", () => {
+  const report = scanScopeContract([
+    "src/api/stories.ts",
+    "src/routes/_admin/admin.stories.tsx",
+    "src/components/stories/StoryList.stories.tsx",
+    "src/components/Button.story.tsx",
+    "src/api/stories.test.ts",
+    "src/api/__tests__/stories.ts",
+  ])
+
+  assert.deepEqual(report.included, [
+    "src/api/stories.ts",
+    "src/routes/_admin/admin.stories.tsx",
+    "src/components/Button.story.tsx",
+  ])
+  assert.deepEqual(report.excluded, [
+    "src/components/stories/StoryList.stories.tsx",
+    "src/api/stories.test.ts",
+    "src/api/__tests__/stories.ts",
+  ])
+})
+
+test("repository scan blocks missing keys in product stories files but ignores Storybook", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "i18n-stories-scope-"))
+  const sourceRoot = path.join(root, "src")
+  const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+  const apiFile = path.join(sourceRoot, "api", "stories.ts")
+  const routeFile = path.join(sourceRoot, "routes", "_admin", "admin.stories.tsx")
+  const storybookFile = path.join(sourceRoot, "components", "StoryList.stories.tsx")
+  const reportPath = (filePath) => path.relative(frontendRoot, filePath).replaceAll(path.sep, "/")
+
+  try {
+    for (const filePath of [apiFile, routeFile, storybookFile]) {
+      await mkdir(path.dirname(filePath), { recursive: true })
+    }
+    await writeFile(apiFile, 'export const value = t("common:missingApi")\n')
+    await writeFile(routeFile, 'export const value = t("common:missingRoute")\n')
+    await writeFile(storybookFile, 'export const value = t("common:missingStorybook")\n')
+
+    const report = await scanRepository({
+      sourceRoot,
+      catalogs,
+      dynamicRegistry: {},
+      includeBackend: false,
+    })
+
+    assert.equal(report.ok, false)
+    assert.deepEqual([...report.scope.included].sort(), [apiFile, routeFile].map(reportPath).sort())
+    assert.deepEqual(report.scope.excluded, [reportPath(storybookFile)])
+    assert.deepEqual(
+      report.errors
+        .map(({ filePath, code, key }) => ({ filePath, code, key }))
+        .sort((a, b) => a.key.localeCompare(b.key)),
+      ["en", "ru"]
+        .flatMap(() => [
+          {
+            filePath: reportPath(apiFile),
+            code: "TRANSLATION_KEY_MISSING",
+            key: "common:missingApi",
+          },
+          {
+            filePath: reportPath(routeFile),
+            code: "TRANSLATION_KEY_MISSING",
+            key: "common:missingRoute",
+          },
+        ])
+        .sort((a, b) => a.key.localeCompare(b.key))
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test("backend email and notification template keys resolve in both locales", () => {
   const backendCatalog = {
     "email.reset.subject": { en: "Password reset", ru: "Сброс пароля" },
@@ -436,6 +509,8 @@ test("repository report retains a stable machine-readable contract", async () =>
   assert.ok(Array.isArray(machine.references))
   assert.equal(machine.backend.references.length, 0)
   assert.ok(machine.registry.entries > 0)
+  assert.ok(machine.scope.included.includes("src/api/stories.ts"))
+  assert.ok(machine.scope.included.includes("src/routes/_admin/admin.stories.tsx"))
   assert.ok(
     machine.scope.excluded.some((filePath) =>
       /(?:^|\/)(?:test|tests|__tests__)(?:\/|$)/u.test(filePath)

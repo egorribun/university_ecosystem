@@ -81,18 +81,20 @@ storyVisibilityTest(
     const activeProgress = dialog.locator('[role="progressbar"][aria-live="polite"]')
     const readProgress = async () => Number(await activeProgress.getAttribute("aria-valuenow"))
     await expect.poll(readProgress).toBeGreaterThan(0)
-    const pausedProgress = await readProgress()
-    expect(pausedProgress).toBeLessThan(100)
 
     const backgroundPage = await openStoryBackgroundTab(page)
     try {
       await backgroundPage.bringToFront()
       await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe("hidden")
-      // Keep the real page hidden beyond the normal story duration. After it
-      // returns, it must still show the same story and continue from its saved
-      // progress rather than advancing immediately.
+      // Sample after the visibility transition, then prove the same story's
+      // progress stays frozen throughout a full auto-advance interval.
+      const pausedProgress = await readProgress()
+      expect(pausedProgress).toBeGreaterThan(0)
+      expect(pausedProgress).toBeLessThan(100)
       await page.waitForTimeout(STORY_HIDDEN_DURATION_MS)
       await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe("hidden")
+      await expect(dialog).toHaveAccessibleName(SEEDED_STORY_TITLE)
+      expect(await readProgress()).toBe(pausedProgress)
 
       await page.bringToFront()
       await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe("visible")

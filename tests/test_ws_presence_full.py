@@ -1,6 +1,6 @@
 """Comprehensive tests for app/api/ws/presence.py and app/api/ws/auth.py.
 
-Covers: presence audience cache (LRU eviction, TTL), PresencePubSub,
+Covers: authoritative presence audience, PresencePubSub,
 build_presence_map, cache invalidation helpers, auth token validation,
 bearer extraction, subprotocol handling.
 """
@@ -66,7 +66,7 @@ class TestUpdateLastSeen:
 
 class TestGetPresenceAudience:
     @pytest.mark.asyncio
-    async def test_fetches_from_db_on_miss(self):
+    async def test_fetches_from_db(self):
         user_id = uuid.uuid4()
         audience = {uuid.uuid4(), uuid.uuid4()}
 
@@ -78,44 +78,33 @@ class TestGetPresenceAudience:
         async def fake_session():
             yield mock_session
 
-        # Clear in-memory cache
-        from app.api.ws import presence
-
-        presence._PRESENCE_DB_CACHE.clear()
-
         with (
             patch("app.api.ws.presence.async_session", fake_session),
             patch("app.api.ws.presence.ChatRepository", return_value=mock_repo),
-            patch("app.api.ws.presence.get_cache") as mock_cache,
         ):
-            cache_instance = MagicMock()
-            cache_instance.enabled = False
-            mock_cache.return_value = cache_instance
-
             result = await _get_presence_audience(user_id)
 
         assert result == audience
         mock_repo.get_presence_audience.assert_called_once_with(user_id)
 
     @pytest.mark.asyncio
-    async def test_returns_cached_on_hit(self):
+    async def test_second_call_reloads_changed_audience(self):
         user_id = uuid.uuid4()
-        audience = {uuid.uuid4()}
+        first, second = {uuid.uuid4()}, {uuid.uuid4()}
+        repo = MagicMock()
+        repo.get_presence_audience = AsyncMock(side_effect=[first, second])
 
-        from app.api.ws import presence
+        @asynccontextmanager
+        async def fake_session():
+            yield MagicMock()
 
-        loop = asyncio.get_running_loop()
-        presence._PRESENCE_DB_CACHE[user_id] = (audience, loop.time())
-
-        with patch("app.api.ws.presence.get_cache") as mock_cache:
-            cache_instance = MagicMock()
-            cache_instance.enabled = False
-            mock_cache.return_value = cache_instance
-
-            result = await _get_presence_audience(user_id)
-
-        assert result == audience
-        presence._PRESENCE_DB_CACHE.clear()
+        with (
+            patch("app.api.ws.presence.async_session", fake_session),
+            patch("app.api.ws.presence.ChatRepository", return_value=repo),
+        ):
+            assert await _get_presence_audience(user_id) == first
+            assert await _get_presence_audience(user_id) == second
+        assert repo.get_presence_audience.await_count == 2
 
 
 # ===========================================================================

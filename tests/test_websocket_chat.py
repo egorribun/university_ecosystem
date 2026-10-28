@@ -13,8 +13,12 @@ from tests.fixtures.auth.auth_fixtures import create_access_token
 
 
 @pytest.fixture
-def connection_manager() -> ConnectionManager:
+def connection_manager(monkeypatch: pytest.MonkeyPatch) -> ConnectionManager:
     """Create a fresh ConnectionManager for testing."""
+    monkeypatch.setattr(
+        "app.api.ws.connection_manager._resolve_user_from_ids",
+        AsyncMock(return_value=(object(), "session")),
+    )
     return ConnectionManager()
 
 
@@ -27,7 +31,7 @@ class TestConnectionManager:
         mock_ws = AsyncMock(spec=WebSocket)
         user_id = uuid.uuid4()
 
-        await connection_manager.connect(mock_ws, user_id)
+        await connection_manager.connect(mock_ws, user_id, session_jti="session")
 
         assert user_id in connection_manager.active_connections
         assert mock_ws in connection_manager.active_connections[user_id]
@@ -43,8 +47,8 @@ class TestConnectionManager:
         mock_ws2 = AsyncMock(spec=WebSocket)
         user_id = uuid.uuid4()
 
-        await connection_manager.connect(mock_ws1, user_id)
-        await connection_manager.connect(mock_ws2, user_id)
+        await connection_manager.connect(mock_ws1, user_id, session_jti="session")
+        await connection_manager.connect(mock_ws2, user_id, session_jti="session")
 
         assert len(connection_manager.active_connections[user_id]) == 2
         assert mock_ws1 in connection_manager.active_connections[user_id]
@@ -80,6 +84,9 @@ class TestConnectionManager:
         connection_manager.active_connections[user_id] = {mock_ws1, mock_ws2}
         connection_manager.connection_users[mock_ws1] = user_id
         connection_manager.connection_users[mock_ws2] = user_id
+        connection_manager.connection_sessions.update(
+            {mock_ws1: "session", mock_ws2: "session"}
+        )
 
         await connection_manager.disconnect(mock_ws1)
 
@@ -116,6 +123,9 @@ class TestConnectionManager:
         connection_manager.active_connections[user_id] = {mock_ws1, mock_ws2}
         connection_manager.connection_users[mock_ws1] = user_id
         connection_manager.connection_users[mock_ws2] = user_id
+        connection_manager.connection_sessions.update(
+            {mock_ws1: "session", mock_ws2: "session"}
+        )
 
         sent = await connection_manager.send_to_user(user_id, message)
 
@@ -137,6 +147,9 @@ class TestConnectionManager:
         connection_manager.active_connections[user_id] = {mock_ws1, mock_ws2}
         connection_manager.connection_users[mock_ws1] = user_id
         connection_manager.connection_users[mock_ws2] = user_id
+        connection_manager.connection_sessions.update(
+            {mock_ws1: "session", mock_ws2: "session"}
+        )
 
         sent = await connection_manager.send_to_user(user_id, message)
 
@@ -161,7 +174,11 @@ class TestConnectionManager:
 
     @pytest.mark.asyncio
     async def test_broadcast_presence_targets_chat_participants_only(
-        self, connection_manager: ConnectionManager, db_session, user_factory
+        self,
+        connection_manager: ConnectionManager,
+        db_session,
+        user_factory,
+        monkeypatch,
     ):
         """Presence updates should only go to users sharing a chat."""
         user_a = await user_factory()
@@ -177,8 +194,10 @@ class TestConnectionManager:
         ws_c = AsyncMock(spec=WebSocket)
         connection_manager.active_connections[user_b.id] = {ws_b}
         connection_manager.connection_users[ws_b] = user_b.id
+        connection_manager.connection_sessions[ws_b] = "session"
         connection_manager.active_connections[user_c.id] = {ws_c}
         connection_manager.connection_users[ws_c] = user_c.id
+        connection_manager.connection_sessions[ws_c] = "session"
 
         last_seen = datetime.now(UTC)
         await connection_manager.broadcast_presence(
@@ -192,6 +211,19 @@ class TestConnectionManager:
 
         ws_b.send_json.assert_called_once()
         ws_c.send_json.assert_not_called()
+
+        async def incorrect_audience(_user_id: uuid.UUID) -> set[uuid.UUID]:
+            return {user_b.id, user_c.id}
+
+        monkeypatch.setattr(
+            "app.api.ws.presence._get_presence_audience", incorrect_audience
+        )
+        await connection_manager.broadcast_presence(
+            user_a.id, True, last_seen, source="ping", force=True, publish=False
+        )
+        # Negative control: the nonparticipant socket must be capable of
+        # receiving if an incorrect audience selects it.
+        ws_c.send_json.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_broadcast_presence_throttles_pings(

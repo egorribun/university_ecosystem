@@ -381,6 +381,68 @@ describe("settings session isolation", () => {
     })
   })
 
+  it.each(["coverUpload", "coverRemove", "emailConfirm", "emailDisable"] as const)(
+    "warns after committed %s when the real query refresh rejects",
+    async (kind) => {
+      const hook = renderSettings()
+      const action =
+        kind === "coverRemove"
+          ? { request: mocks.delete, run: () => hook.result.current.cover.remove() }
+          : await prepareAction(kind === "coverUpload" ? "cover" : kind, hook)
+      mocks.fetchCurrentUser.mockRejectedValueOnce(new Error("profile refresh failed"))
+
+      await act(action.run)
+
+      expect(action.request).toHaveBeenCalledOnce()
+      expect(mocks.fetchCurrentUser).toHaveBeenCalledOnce()
+      expect(mocks.setUser).not.toHaveBeenCalled()
+      expect(hook.queryClient.getQueryData(["users", "me"])).toBeUndefined()
+      expect(hook.setSnackbar).toHaveBeenCalledOnce()
+      expect(hook.setSnackbar).toHaveBeenLastCalledWith({
+        text:
+          kind === "coverUpload" || kind === "coverRemove"
+            ? "settings:media.cover.savedRefreshFailed"
+            : "settings:security.snackbar.emailMfaSavedRefreshFailed",
+        severity: "warning",
+      })
+      if (kind === "emailConfirm") {
+        expect(hook.result.current.emailMfa.emailChallenge).toBeNull()
+        expect(hook.result.current.emailMfa.emailMfaError).toBeNull()
+      }
+    }
+  )
+
+  it.each(["coverUpload", "coverRemove", "emailConfirm", "emailDisable"] as const)(
+    "suppresses the rejected %s refresh after the session changes",
+    async (kind) => {
+      const hook = renderSettings()
+      const action =
+        kind === "coverRemove"
+          ? { request: mocks.delete, run: () => hook.result.current.cover.remove() }
+          : await prepareAction(kind === "coverUpload" ? "cover" : kind, hook)
+      const pending = deferred<User>()
+      mocks.fetchCurrentUser.mockReturnValueOnce(pending.promise)
+      let operation!: Promise<void>
+      act(() => {
+        operation = action.run()
+      })
+      await waitFor(() => expect(mocks.fetchCurrentUser).toHaveBeenCalledOnce())
+
+      rotateBrowserSession()
+      mocks.user = account("account-b")
+      hook.rerender()
+      await act(async () => {
+        pending.reject(new Error("old session profile refresh failed"))
+        await operation
+      })
+
+      expect(action.request).toHaveBeenCalledOnce()
+      expect(mocks.setUser).not.toHaveBeenCalled()
+      expect(hook.queryClient.getQueryData(["users", "me"])).toBeUndefined()
+      expect(hook.setSnackbar).not.toHaveBeenCalled()
+    }
+  )
+
   it("discards the previous account's secret-bearing enrollment response", async () => {
     const pending = deferred<unknown>()
     mocks.startTotpEnrollment.mockReturnValue(pending.promise)

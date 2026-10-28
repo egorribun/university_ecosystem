@@ -45,6 +45,10 @@ async def test_raw_oversized_frame_is_rejected_before_rate_limit_and_dispatch() 
             new=AsyncMock(return_value=(user, "session", None)),
         ),
         patch("app.api.websocket.manager", manager),
+        patch(
+            "app.api.websocket._resolve_user_from_ids",
+            AsyncMock(return_value=(user, "session")),
+        ),
         patch("app.api.websocket.metrics.inc_ws_connections"),
         patch("app.api.websocket.metrics.dec_ws_connections"),
         patch("app.api.ws.dispatcher.MessageDispatcher", return_value=dispatcher),
@@ -77,6 +81,10 @@ async def test_malformed_json_sends_error_then_cleans_up_on_disconnect() -> None
             new=AsyncMock(return_value=(user, "session", None)),
         ),
         patch("app.api.websocket.manager", manager),
+        patch(
+            "app.api.websocket._resolve_user_from_ids",
+            AsyncMock(return_value=(user, "session")),
+        ),
         patch("app.api.websocket.metrics.inc_ws_connections"),
         patch("app.api.websocket.metrics.dec_ws_connections"),
         patch("app.api.ws.dispatcher.MessageDispatcher", return_value=dispatcher),

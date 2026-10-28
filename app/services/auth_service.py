@@ -49,7 +49,7 @@ from app.schemas import schemas
 from app.schemas.dtos import UserDTO
 from app.services.audit_service import AuditService
 from app.services.session_cleanup import revoke_sessions_matching
-from app.tasks.email import send_auth_email
+from app.tasks.email import seal_auth_email_link, send_auth_email
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES
 
 # _UserT is used for functions that return the same type as passed in
@@ -168,15 +168,19 @@ class AuthService:
 
                 base = settings.app_base_url_clean
                 reset_link = f"{base}/reset-password#token={quote(token, safe='')}"
+                sealed_link = seal_auth_email_link(
+                    reset_link, expires, _token_hmac_secret()
+                )
                 locale = resolve_locale(request=request, user=user)
 
                 # RZ-1 Fix: Offload email fully to background to not block response
                 bg.add_task(
                     send_auth_email.kick,
                     str(user.email),
-                    reset_link,
+                    sealed_link,
                     user.full_name or "",
                     locale,
+                    encrypted_link=True,
                 )
                 self.audit.log(
                     "password.reset.initiated",
@@ -457,13 +461,15 @@ class AuthService:
 
         base = settings.app_base_url_clean
         confirm_link = f"{base}/settings/email-confirm?token={token}"
+        sealed_link = seal_auth_email_link(confirm_link, expires, _token_hmac_secret())
         await send_auth_email.kick(
             validated_email,
-            confirm_link,
+            sealed_link,
             str(user.profile.full_name)
             if user.profile and user.profile.full_name
             else "",
             locale,
+            encrypted_link=True,
         )
 
         self.audit.log(

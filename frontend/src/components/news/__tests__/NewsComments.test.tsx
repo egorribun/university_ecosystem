@@ -15,6 +15,8 @@ vi.mock("react-i18next", () => ({
 import { NewsComments } from "@/components/news/NewsComments"
 import type { NewsComment } from "@/hooks/useNewsInteraction"
 import type { User } from "@/types/User"
+import enNews from "@/i18n/locales/en/news.json"
+import ruNews from "@/i18n/locales/ru/news.json"
 
 const SAMPLE_COMMENTS: NewsComment[] = [
   {
@@ -47,6 +49,45 @@ const baseProps = {
 }
 
 describe("NewsComments", () => {
+  it("provides localized failure guidance that does not ask users to discard their drafts", () => {
+    expect(enNews.notifications.interactionError).toMatch(/check.*result/i)
+    expect(ruNews.notifications.interactionError).toMatch(/проверьте результат/i)
+    expect(enNews.notifications.interactionError).not.toMatch(/reload|refresh/i)
+    expect(ruNews.notifications.interactionError).not.toMatch(/обновите/i)
+  })
+  it.each(["post", "edit", "delete"] as const)(
+    "reports a synchronous %s failure without losing the draft",
+    async (action) => {
+      const user = userEvent.setup()
+      const fail = () => {
+        throw new Error("action failed")
+      }
+      render(
+        <NewsComments {...baseProps} addComment={fail} updateComment={fail} deleteComment={fail} />
+      )
+      if (action === "post") {
+        const composer = screen.getByLabelText("news:form.commentAriaLabel")
+        await user.type(composer, "Unsaved text")
+        await user.click(screen.getByRole("button", { name: "news:actions.postComment" }))
+        expect(composer).toHaveValue("Unsaved text")
+      } else if (action === "edit") {
+        await user.click(screen.getAllByLabelText("news:actions.editComment")[0]!)
+        const editor = screen.getByLabelText("news:form.editCommentAriaLabel")
+        await user.clear(editor)
+        await user.type(editor, "Unsaved edit")
+        await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+        expect(editor).toHaveValue("Unsaved edit")
+      } else {
+        await user.click(screen.getAllByLabelText("news:actions.deleteComment")[0]!)
+        await user.click(
+          within(screen.getByRole("alertdialog")).getByRole("button", {
+            name: "common:buttons.delete",
+          })
+        )
+      }
+      expect(screen.getByRole("alert")).toHaveTextContent("news:notifications.interactionError")
+    }
+  )
   it("renders heading, count, and each comment", () => {
     render(<NewsComments {...baseProps} />)
     expect(screen.getByRole("heading", { name: "news:sections.comments" })).toBeInTheDocument()

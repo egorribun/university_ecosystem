@@ -73,6 +73,15 @@ class SendReceiptState:
     observed_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class LockedChatMembership:
+    """Fresh chat identity and roster held under the membership lock order."""
+
+    chat_type: str
+    created_by: uuid.UUID | None
+    participant_ids: tuple[uuid.UUID, ...]
+
+
 def _receipt_utc(value: datetime) -> datetime:
     """SQLite returns naive timestamps; receipt comparisons are always UTC."""
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value
@@ -281,6 +290,25 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             .with_for_update()
         )
         return list(result.scalars().all())
+
+    async def lock_membership_snapshot(
+        self, chat_id: uuid.UUID
+    ) -> LockedChatMembership | None:
+        """Lock chat then roster, reading scalar values rather than ORM state."""
+        result = await self.db.execute(
+            select(Chat.chat_type, Chat.created_by)
+            .where(Chat.id == chat_id)
+            .with_for_update()
+        )
+        row = result.one_or_none()
+        if row is None:
+            return None
+        participants = await self.lock_participant_ids_for_maintenance(chat_id)
+        return LockedChatMembership(
+            chat_type=row.chat_type,
+            created_by=row.created_by,
+            participant_ids=tuple(participants),
+        )
 
     async def get_chats_for_user(
         self, user_id: uuid.UUID, cursor: str | None, limit: int

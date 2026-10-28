@@ -220,15 +220,44 @@ def test_diff_reader_enforces_a_hard_byte_limit_on_real_subprocess_output(
         read([*command, "262145"])
 
 
+def _event_wait_command() -> list[str]:
+    return [
+        sys.executable,
+        "-I",
+        "-B",
+        "-c",
+        "from threading import Event; print('READY', flush=True); Event().wait()",
+    ]
+
+
+def test_timeout_fixture_signals_readiness_then_blocks_until_reaped() -> None:
+    async def exercise() -> None:
+        process = await asyncio.create_subprocess_exec(
+            *_event_wait_command(),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            assert process.stdout is not None
+            ready = await asyncio.wait_for(process.stdout.readline(), timeout=10)
+            assert ready.rstrip(b"\r\n") == b"READY"
+            with pytest.raises(TimeoutError):
+                await asyncio.wait_for(process.wait(), timeout=0.2)
+        finally:
+            if process.returncode is None:
+                process.kill()
+            await process.wait()
+        assert process.returncode is not None and process.returncode != 0
+
+    asyncio.run(exercise())
+
+
 def test_diff_reader_rejects_failure_and_timeout(tmp_path: Path) -> None:
     read = _function("bounded_process_output", tmp_path)
     with pytest.raises(ValueError):
         read([sys.executable, "-I", "-B", "-c", "raise SystemExit(2)"])
     with pytest.raises(subprocess.TimeoutExpired):
-        read(
-            [sys.executable, "-I", "-B", "-c", "import time; time.sleep(5)"],
-            timeout=0.2,
-        )
+        read(_event_wait_command(), timeout=0.2)
 
 
 @pytest.mark.parametrize("exception", ["ValueError", "RuntimeError"])

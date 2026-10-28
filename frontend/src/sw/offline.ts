@@ -1,8 +1,8 @@
 /// <reference lib="webworker" />
 declare const self: ServiceWorkerGlobalScope
 
-import { openDB, type IDBPDatabase } from "idb"
-import { log, warn } from "./logger"
+import { openDB } from "idb"
+import { log } from "./logger"
 import {
   NOTIFICATION_INTERACTIONS_DB_NAME as CLICK_DB_NAME,
   NOTIFICATION_INTERACTIONS_DB_VERSION as DB_VERSION,
@@ -212,160 +212,34 @@ export async function readPendingMutations() {
   return db.getAll(STORES.MUTATION)
 }
 
-export async function processPendingMutations() {
-  if (!isOnline()) return
-  const db = await getDatabase()
-  type PersistedPendingMutationRecord = PendingMutationRecord & { id: number }
-  const records = (await db.getAll(STORES.MUTATION)) as PersistedPendingMutationRecord[]
-  if (!records || !records.length) return
-
-  records.sort((a, b) => a.timestamp - b.timestamp)
-
-  const broadcast =
-    typeof BroadcastChannel !== "undefined"
-      ? new BroadcastChannel("offline-mutation-sync-channel")
-      : null
-  const notifyBroadcast = (msg: unknown) => {
-    if (broadcast && typeof broadcast.postMessage === "function") {
-      try {
-        broadcast.postMessage(msg)
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-
-  try {
-    for (const record of records) {
-      if (record.retryCount >= 5) {
-        warn("Mutation exceeded max retries, discarding:", record)
-        await db.delete(STORES.MUTATION, record.id)
-        notifyBroadcast({ type: "MUTATION_FAILED_PERMANENT", record })
-        continue
-      }
-
-      try {
-        const response = await fetch(record.url, {
-          method: record.method,
-          headers: {
-            "Content-Type": "application/json",
-            "Idempotency-Key": record.idempotencyKey,
-            ...(record.headers ?? {}),
-          },
-          body: record.payload ? JSON.stringify(record.payload) : undefined,
-          signal: AbortSignal.timeout(10_000),
-        })
-
-        if (response.ok) {
-          await db.delete(STORES.MUTATION, record.id)
-          notifyBroadcast({ type: "MUTATION_SYNCED", record })
-        } else if (response.status >= 400 && response.status < 500 && response.status !== 429) {
-          warn(`Mutation returned non-retriable status ${response.status}:`, record)
-          await db.delete(STORES.MUTATION, record.id)
-          notifyBroadcast({ type: "MUTATION_REJECTED", record, status: response.status })
-        } else {
-          record.retryCount += 1
-          await db.put(STORES.MUTATION, record)
-        }
-      } catch (_err) {
-        record.retryCount += 1
-        await db.put(STORES.MUTATION, record)
-      }
-    }
-  } finally {
-    broadcast?.close()
-  }
+export function processPendingMutations(): Promise<void> {
+  return processOfflineQueues()
 }
 
-export async function processOfflineQueues() {
-  if (!isOnline()) return
+// Bootstrap, sync and message events can overlap in the same worker. Queue each
+// trigger so a later one also sees records added during the previous flush.
+let pendingQueueProcessing: Promise<void> = Promise.resolve()
 
-  log("Processing offline queues...")
-  const db = await getDatabase()
-
-  await Promise.all([
-    processPendingNavigations(),
-    processPendingReports(),
-    processNewsInteractionQueue(db),
-    processPendingMutations(),
-  ])
+export function processOfflineQueues(): Promise<void> {
+  const next = pendingQueueProcessing.then(flushOfflineQueues, flushOfflineQueues)
+  pendingQueueProcessing = next
+  return next
 }
 
-export async function processPendingNavigations() {
+async function flushOfflineQueues() {
   if (!isOnline()) return
-  const db = await getDatabase()
-  const records = await db.getAll(STORES.NAVIGATION)
-  for (const record of records) {
-    log("Processing navigation", record)
-    if (self.clients && typeof self.clients.openWindow === "function") {
-      await self.clients.openWindow(record.url).catch(() => {})
-    }
-    await db.delete(STORES.NAVIGATION, record.id)
-  }
+
+  // The legacy stores do not identify their originating session. A worker can
+  // wake after another account signs in, so keep every record untouched until
+  // a session-bound, CSRF-safe replay protocol is available.
+  log("Legacy offline queues are held pending safe replay")
+  await getDatabase()
 }
 
-// RZ-NEW-06 + TD-NEW-06 (audit 2026-03): Replaced sequential for-loop (which
-// aborted remaining records on first failure) with Promise.allSettled so that
-// all reports are attempted in parallel. AbortSignal.timeout(10_000) prevents
-// a single slow endpoint from stalling the entire flush.
-export async function processPendingReports() {
-  if (!isOnline()) return
-  const db = await getDatabase()
-  const records = await db.getAll(STORES.REPORT)
-
-  const results = await Promise.allSettled(
-    records.map(async (record) => {
-      const headers: Record<string, string> = { "Content-Type": "application/json" }
-      // DEBT-04: forward idempotency key so the server can deduplicate retries
-      if (record.idempotencyKey) {
-        headers["Idempotency-Key"] = record.idempotencyKey
-      }
-      const method = (record.method ?? "POST").toUpperCase()
-      const response = await fetch(record.reportUrl, {
-        method,
-        ...(method !== "GET" && method !== "HEAD" ? { body: JSON.stringify(record.payload) } : {}),
-        headers,
-        keepalive: true,
-        signal: AbortSignal.timeout(10_000),
-      })
-      if (response.ok) {
-        await db.delete(STORES.REPORT, record.id)
-      }
-    })
-  )
-
-  results
-    .filter((r): r is PromiseRejectedResult => r.status === "rejected")
-    .forEach((r) => warn("Failed to sync report", r.reason))
+export function processPendingNavigations(): Promise<void> {
+  return processOfflineQueues()
 }
 
-// PERF-03 (audit 2026-03-06): process all queued interactions concurrently instead
-// of sequentially. The old for-loop stalled on first network failure (break) and
-// kept all subsequent records un-synced for the entire offline period.
-// Promise.allSettled fires every fetch in parallel and collects outcomes without
-// short-circuiting — a single timeout does not block the rest of the queue.
-async function processNewsInteractionQueue(db: IDBPDatabase) {
-  const records = await db.getAll(STORES.NEWS_INTERACTION)
-
-  const results = await Promise.allSettled(
-    records.map(async (record) => {
-      const { url, method = "POST", payload } = record
-      const options: RequestInit = {
-        method,
-        headers: { "Content-Type": "application/json" },
-        ...(method !== "GET" && method !== "HEAD" ? { body: JSON.stringify(payload) } : {}),
-      }
-
-      const response = await fetch(url, options)
-      if (response.ok || response.status === 400 || response.status === 404) {
-        // Drop records that succeeded or can never succeed (client errors)
-        await db.delete(STORES.NEWS_INTERACTION, record.id)
-      }
-    })
-  )
-
-  // Log failures without breaking the loop
-  results
-    .filter((r): r is PromiseRejectedResult => r.status === "rejected")
-    .forEach((r) => warn("Failed to sync news interaction", r.reason))
+export function processPendingReports(): Promise<void> {
+  return processOfflineQueues()
 }

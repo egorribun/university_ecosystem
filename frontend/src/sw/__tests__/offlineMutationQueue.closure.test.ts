@@ -89,7 +89,7 @@ describe("offline mutation queue — retry and sync branches", () => {
     expect(record?.idempotencyKey).toBe("5678.4")
   })
 
-  it("syncs success and tolerates BroadcastChannel postMessage failures", async () => {
+  it("does not open a channel or send an unbound mutation even if the server would succeed", async () => {
     const closeMock = vi.fn()
     class ThrowingBroadcastChannel {
       postMessage() {
@@ -101,16 +101,20 @@ describe("offline mutation queue — retry and sync branches", () => {
       }
     }
     vi.stubGlobal("BroadcastChannel", ThrowingBroadcastChannel)
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 }))
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    vi.stubGlobal("fetch", fetchMock)
 
     await enqueue({ mutationId: "success", idempotencyKey: "key-success" })
     await processPendingMutations()
 
-    expect(await readPendingMutations()).toHaveLength(0)
-    expect(closeMock).toHaveBeenCalledOnce()
+    expect(await readPendingMutations()).toEqual([
+      expect.objectContaining({ mutationId: "success", retryCount: 0 }),
+    ])
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(closeMock).not.toHaveBeenCalled()
   })
 
-  it("closes the BroadcastChannel after a failed replay", async () => {
+  it("does not broadcast or increment retries for an unbound mutation", async () => {
     const closeMock = vi.fn()
     class TrackingBroadcastChannel {
       postMessage = vi.fn()
@@ -120,18 +124,20 @@ describe("offline mutation queue — retry and sync branches", () => {
       }
     }
     vi.stubGlobal("BroadcastChannel", TrackingBroadcastChannel)
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")))
+    const fetchMock = vi.fn().mockRejectedValue(new Error("network down"))
+    vi.stubGlobal("fetch", fetchMock)
 
     await enqueue({ mutationId: "failed", idempotencyKey: "key-failed" })
     await processPendingMutations()
 
-    expect(closeMock).toHaveBeenCalledOnce()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(closeMock).not.toHaveBeenCalled()
     expect(await readPendingMutations()).toEqual([
-      expect.objectContaining({ mutationId: "failed", retryCount: 1 }),
+      expect.objectContaining({ mutationId: "failed", retryCount: 0 }),
     ])
   })
 
-  it("applies mutation defaults and omits the request body for an empty payload", async () => {
+  it("applies mutation defaults and preserves an empty payload without sending", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
     vi.stubGlobal("fetch", fetchMock)
 
@@ -146,14 +152,11 @@ describe("offline mutation queue — retry and sync branches", () => {
 
     await processPendingMutations()
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost/api/defaulted-mutation",
-      expect.objectContaining({ method: "POST", body: undefined })
-    )
-    expect(await readPendingMutations()).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(await readPendingMutations()).toEqual([stored])
   })
 
-  it("deletes non-retriable records, increments retryable records, and discards exhausted ones", async () => {
+  it("preserves unbound records and retry counts regardless of prior retry state", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({ ok: false, status: 400 })
@@ -170,18 +173,19 @@ describe("offline mutation queue — retry and sync branches", () => {
     await processPendingMutations()
 
     const remaining = await readPendingMutations()
-    expect(remaining.map((record) => record.mutationId)).toEqual(["server-error", "network-error"])
-    expect(remaining.map((record) => record.retryCount)).toEqual([1, 1])
-    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(remaining.map((record) => record.mutationId)).toEqual([
+      "bad-request",
+      "server-error",
+      "network-error",
+      "exhausted",
+    ])
+    expect(remaining.map((record) => record.retryCount)).toEqual([0, 0, 0, 5])
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it.each([
-    { status: 404, retained: false },
-    { status: 429, retained: true },
-    { status: 500, retained: true },
-  ])(
-    "treats mutation status $status according to its retry contract",
-    async ({ status, retained }) => {
+  it.each([403, 404, 429, 500])(
+    "does not send an unbound mutation even when the response would be %s",
+    async (status) => {
       const fetchMock = vi.fn().mockResolvedValue({ ok: false, status })
       vi.stubGlobal("fetch", fetchMock)
       await enqueue({ mutationId: `status-${status}`, idempotencyKey: `key-${status}` })
@@ -189,12 +193,14 @@ describe("offline mutation queue — retry and sync branches", () => {
       await processPendingMutations()
 
       const remaining = await readPendingMutations()
-      expect(remaining).toHaveLength(retained ? 1 : 0)
-      if (retained) expect(remaining[0]).toMatchObject({ retryCount: 1 })
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(remaining).toEqual([
+        expect.objectContaining({ mutationId: `status-${status}`, retryCount: 0 }),
+      ])
     }
   )
 
-  it("replays a mutation with its idempotency key, custom headers, and JSON payload", async () => {
+  it("retains the idempotency key, custom headers and JSON payload without broadcasting them", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
     vi.stubGlobal("fetch", fetchMock)
     await enqueue({
@@ -206,17 +212,14 @@ describe("offline mutation queue — retry and sync branches", () => {
 
     await processPendingMutations()
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost/api/mutation",
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(await readPendingMutations()).toEqual([
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ value: "payload" }),
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": "key-headers",
-          Authorization: "Bearer test",
-        },
-      })
-    )
+        payload: { value: "payload" },
+        idempotencyKey: "key-headers",
+        headers: { Authorization: "Bearer test" },
+      }),
+    ])
   })
 })

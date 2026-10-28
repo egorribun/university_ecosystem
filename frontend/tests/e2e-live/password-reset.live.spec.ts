@@ -22,7 +22,10 @@ import { reportLiveHttpStatus, reportLiveRateLimitRetry } from "./http-status-di
 import { reportLivePasswordResetRegistrationFailure } from "./live-ui-diagnostic"
 import {
   createPasswordResetRegistrationDiagnostics,
+  createPasswordResetRegistrationTimeline,
   runPasswordResetRegistrationAction,
+  withPasswordResetRegistrationTimeline,
+  withRegistrationTimeline,
 } from "./password-reset-registration-action"
 import {
   readPlaywrightTestSlotDeadlineAtMs,
@@ -110,28 +113,39 @@ test("a student resets with the Mailpit link without retaining tokens or followi
   const newPassword = freshPassword()
 
   await page.goto("/register")
-  await page.getByLabel("Имя", { exact: true }).fill("Live Acceptance")
-  await page.getByRole("textbox", { name: "E-mail" }).fill(email)
-  await page.getByLabel("Пароль", { exact: true }).fill(firstPassword)
-  await page.getByLabel("Повторите пароль", { exact: true }).fill(firstPassword)
-  const registered = await withLiveRegistrationAdmission(page, 1, () =>
-    runPasswordResetRegistrationAction(
-      () =>
-        page.waitForResponse(
-          (response) =>
-            response.request().method() === "POST" &&
-            new URL(response.url()).pathname.endsWith("/auth/register")
-        ),
-      () => page.getByRole("button", { name: "Зарегистрироваться" }).click(),
-      (step) => reportLivePasswordResetRegistrationFailure(testInfo.project.name, step),
-      createPasswordResetRegistrationDiagnostics(
-        page,
-        testInfo.project.name,
-        ownedSessionOrigin(),
-        readPlaywrightTestSlotDeadlineAtMs(testInfo, REGISTRATION_MAX_TEST_TIMEOUT_MS)
+  const registrationTimeline = createPasswordResetRegistrationTimeline(
+    page,
+    testInfo.project.name,
+    readPlaywrightTestSlotDeadlineAtMs(testInfo, REGISTRATION_MAX_TEST_TIMEOUT_MS)
+  )
+  const registered = await withRegistrationTimeline(registrationTimeline, async () => {
+    await registrationTimeline.setup()
+    await page.getByLabel("Имя", { exact: true }).fill("Live Acceptance")
+    await page.getByRole("textbox", { name: "E-mail" }).fill(email)
+    await page.getByLabel("Пароль", { exact: true }).fill(firstPassword)
+    await page.getByLabel("Повторите пароль", { exact: true }).fill(firstPassword)
+    return withLiveRegistrationAdmission(page, 1, () =>
+      runPasswordResetRegistrationAction(
+        () =>
+          page.waitForResponse(
+            (response) =>
+              response.request().method() === "POST" &&
+              new URL(response.url()).pathname.endsWith("/auth/register")
+          ),
+        () => page.getByRole("button", { name: "Зарегистрироваться" }).click(),
+        (step) => reportLivePasswordResetRegistrationFailure(testInfo.project.name, step),
+        withPasswordResetRegistrationTimeline(
+          createPasswordResetRegistrationDiagnostics(
+            page,
+            testInfo.project.name,
+            ownedSessionOrigin(),
+            readPlaywrightTestSlotDeadlineAtMs(testInfo, REGISTRATION_MAX_TEST_TIMEOUT_MS)
+          ),
+          registrationTimeline
+        )
       )
     )
-  )
+  })
   expect(registered.ok()).toBe(true)
   const registrationBody = (await registered.json()) as { id?: unknown }
   if (typeof registrationBody.id !== "string" || registrationBody.id.length === 0) {

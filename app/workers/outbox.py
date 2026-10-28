@@ -26,6 +26,7 @@ from sqlalchemy.orm import aliased
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.events import (
+    ChatParticipantCacheInvalidation,
     ChatParticipantRemoved,
     DurableEventDeferred,
     EventMetadata,
@@ -233,6 +234,10 @@ class OutboxWorker:
         _OUTBOX_BATCH_RETRY_PENDING.set(False)
         with tracer.start_as_current_span("outbox.process_batch") as span:
             async with async_session() as db:
+                critical_chat_events = (
+                    ChatParticipantRemoved.EVENT_TYPE,
+                    ChatParticipantCacheInvalidation.EVENT_TYPE,
+                )
                 # Only the earliest pending row visible in this poll snapshot is
                 # eligible for its aggregate. A locked predecessor remains visible
                 # to the predecessor check, so SKIP LOCKED cannot expose its next
@@ -241,14 +246,14 @@ class OutboxWorker:
                 # serialization; this check does not lock aggregate-key gaps.
                 membership_retry = and_(
                     StoredEvent.processed_at.is_(None),
-                    StoredEvent.event_type == ChatParticipantRemoved.EVENT_TYPE,
+                    StoredEvent.event_type.in_(critical_chat_events),
                     StoredEvent.error_count > 0,
                 )
                 normal_pending = and_(
                     StoredEvent.processed_at.is_(None),
                     StoredEvent.error_count < self.max_retries,
                     or_(
-                        StoredEvent.event_type != ChatParticipantRemoved.EVENT_TYPE,
+                        StoredEvent.event_type.not_in(critical_chat_events),
                         StoredEvent.error_count == 0,
                     ),
                 )
@@ -383,9 +388,7 @@ class OutboxWorker:
                     events = result.scalars().all()
 
                 if self.batch_size == 1 and events:
-                    selected_membership = (
-                        events[0].event_type == ChatParticipantRemoved.EVENT_TYPE
-                    )
+                    selected_membership = events[0].event_type in critical_chat_events
                     selected_retry = selected_membership and events[0].error_count > 0
                     if selected_retry:
                         self._prefer_membership_retry_next = False
@@ -438,9 +441,7 @@ class OutboxWorker:
                         )
                         # Store first 500 chars of error for audit trail
                         se.last_error = last_error[:500]
-                        retry_until_published = (
-                            se.event_type == ChatParticipantRemoved.EVENT_TYPE
-                        )
+                        retry_until_published = se.event_type in critical_chat_events
                         # MOD-08: Move to DLQ after max_retries instead of
                         # silently abandoning the event. Membership revocation
                         # is security-critical: keep it pending until its durable

@@ -86,7 +86,7 @@ describe("SEO Component", () => {
     )
     expect(document.head.querySelector('meta[property="og:image"]')).toHaveAttribute(
       "content",
-      "/og-image.png"
+      "/icon-512.png"
     )
     expect(document.head.querySelector('meta[name="twitter:description"]')).toHaveAttribute(
       "content",
@@ -94,7 +94,7 @@ describe("SEO Component", () => {
     )
     expect(document.head.querySelector('meta[name="twitter:image"]')).toHaveAttribute(
       "content",
-      "/og-image.png"
+      "/icon-512.png"
     )
 
     await act(async () => {
@@ -110,6 +110,26 @@ describe("SEO Component", () => {
     await act(async () => {
       await i18n.changeLanguage(originalLanguage)
     })
+  })
+
+  it.each([
+    [undefined, "/icon-512.png"],
+    ["", "/icon-512.png"],
+    ["   ", "/icon-512.png"],
+    ["  https://example.com/custom.png  ", "https://example.com/custom.png"],
+  ])("resolves image %s to %s for both social platforms", (image, expected) => {
+    render(<SEO title="Image" image={image} />)
+
+    expect(document.head.querySelectorAll('meta[property="og:image"]')).toHaveLength(1)
+    expect(document.head.querySelector('meta[property="og:image"]')).toHaveAttribute(
+      "content",
+      expected
+    )
+    expect(document.head.querySelectorAll('meta[name="twitter:image"]')).toHaveLength(1)
+    expect(document.head.querySelector('meta[name="twitter:image"]')).toHaveAttribute(
+      "content",
+      expected
+    )
   })
 
   it("defaults the Open Graph type to website", () => {

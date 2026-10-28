@@ -1,3 +1,4 @@
+import sqlite3
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime
@@ -26,6 +27,45 @@ from app.services.user.logic import anonymize_user_data
 from app.services.user.media_service import UserMediaService
 
 logger = get_logger(__name__)
+
+
+def _is_registration_email_conflict(exc: IntegrityError) -> bool:
+    """Recognize only the users email uniqueness constraints from our schemas."""
+    names = {
+        "ix_users_email",
+        "ix_users_email_lower",
+        "uq_users_email",
+        "users_email_key",
+        "ux_users_lower_email",
+    }
+    current: BaseException | None = exc.orig
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        diagnostic = getattr(current, "diag", current)
+        sqlstate = getattr(current, "sqlstate", None) or getattr(
+            current, "pgcode", None
+        )
+        if (
+            sqlstate == "23505"
+            and getattr(diagnostic, "constraint_name", None) in names
+            and getattr(diagnostic, "table_name", None) in (None, "users")
+        ):
+            return True
+        if (
+            isinstance(current, sqlite3.IntegrityError)
+            and getattr(current, "sqlite_errorcode", None)
+            == sqlite3.SQLITE_CONSTRAINT_UNIQUE
+            and str(current)
+            in {
+                "UNIQUE constraint failed: users.email",
+                "UNIQUE constraint failed: index 'ix_users_email_lower'",
+                "UNIQUE constraint failed: index 'ux_users_lower_email'",
+            }
+        ):
+            return True
+        current = current.__cause__
+    return False
 
 
 class _ExportPageItem(Protocol):
@@ -273,10 +313,21 @@ class UserComplianceService:
     async def register_user(self, user_in: schemas.UserCreate) -> UserDTO:
         raw_role = getattr(user_in, "role", None)
         requested_role = UserRole(raw_role) if raw_role else UserRole.STUDENT
+        if requested_role not in (UserRole.STUDENT, UserRole.TEACHER, UserRole.ADMIN):
+            raise BusinessRuleViolation("errors.users.create_failed")
         normalized_email = user_in.email.strip().lower()
 
-        if await self.repo.check_email_exists(normalized_email):
-            raise EntityAlreadyExists("User", normalized_email)
+        # Perform password policy and hashing for both new and existing emails,
+        # before locking an invite so slow hashing never holds its row lock.
+        if settings.password_hibp_check_enabled:
+            await validate_password_hibp(user_in.password)
+        hashed_password = await get_password_hash(user_in.password)
+
+        if (
+            user_in.group_id is not None
+            and not await self.repo.registration_group_exists(user_in.group_id)
+        ):
+            raise BusinessRuleViolation("errors.users.create_failed")
 
         code = None
         if hasattr(user_in, "invite_code") and requested_role in (
@@ -293,9 +344,10 @@ class UserComplianceService:
                 raise BusinessRuleViolation("errors.users.invalid_invite")
             code = code_obj
 
-        if settings.password_hibp_check_enabled:
-            await validate_password_hibp(user_in.password)
-        hashed_password = await get_password_hash(user_in.password)
+        # Validate the invitation before checking the email, or an invalid
+        # invitation would make occupied and available addresses distinguishable.
+        if await self.repo.check_email_exists(normalized_email):
+            raise EntityAlreadyExists("User", normalized_email)
 
         user_data = user_in.model_dump(
             exclude={
@@ -329,6 +381,12 @@ class UserComplianceService:
             async with self.uow:
                 await self.uow.commit()
             return db_user
+        except IntegrityError as exc:
+            await self.uow.rollback()
+            if _is_registration_email_conflict(exc):
+                raise EntityAlreadyExists("User", normalized_email) from exc
+            logger.error("user_registration_failed", exception_type=type(exc).__name__)
+            raise BusinessRuleViolation("errors.users.create_failed") from exc
         except Exception as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps errors into BusinessRuleViolation (reviewed TD-27-04)
             # Database exceptions can embed password hashes in SQL parameters.
             # Keep diagnostics stable without rendering parameters or tracebacks.

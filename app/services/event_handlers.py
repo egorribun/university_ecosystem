@@ -21,6 +21,7 @@ from app.core.database import async_session
 from app.core.events import (
     AttachmentCleanupRequested,
     ChatDeleted,
+    ChatParticipantCacheInvalidation,
     ChatParticipantRemoved,
     DomainEvent,
     DurableEventDeferred,
@@ -544,6 +545,19 @@ async def handle_chat_participant_removed(event: ChatParticipantRemoved) -> None
     )
 
 
+async def handle_chat_participant_cache_invalidation(
+    event: ChatParticipantCacheInvalidation,
+) -> None:
+    """Keep a cache job pending until its exact shared keys are invalidated."""
+    from app.api.ws.presence import invalidate_participant_caches_strict
+
+    scope = await invalidate_participant_caches_strict(
+        event.chat_id, event.participant_ids, event.cache_key_version
+    )
+    if scope != "shared":
+        logger.info("chat_cache_invalidation_local_scope", scope=scope)
+
+
 async def handle_notifications_requested(event: NotificationsRequested) -> None:
     """Redeliver requested notifications through the transactional outbox."""
     if not event.notification_ids:
@@ -703,6 +717,10 @@ def configure_event_handlers() -> None:
     event_bus.subscribe(
         "chat.participant_removed",
         handle_chat_participant_removed,  # type: ignore[arg-type]
+    )
+    event_bus.subscribe(
+        "chat.participant_cache_invalidation",
+        handle_chat_participant_cache_invalidation,  # type: ignore[arg-type]
     )
     # PERF-W10-05: OutboxWorker delivers file cleanup with at-least-once guarantees.
     event_bus.subscribe(

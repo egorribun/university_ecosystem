@@ -138,7 +138,7 @@ async def test_scan_for_malware_scenarios() -> None:
                     await scan_for_malware(b"data")
                 assert exc_info.value.status_code == 503
 
-    # 4. Trigger CircuitBreakerOpenError with allow_on_unavailable = True (fail open cleanly)
+    # 4. The retired setting cannot make an open circuit accept an upload.
     with patch("app.services.file_scanner.settings") as mock_settings:
         mock_settings.event_file_scanner_enabled = True
         mock_settings.event_file_scanner_backend = "clamd"
@@ -152,5 +152,6 @@ async def test_scan_for_malware_scenarios() -> None:
                     "clamav", remaining_seconds=5.0, failure_count=3
                 )
 
-                # Should not raise exception
-                await scan_for_malware(b"data")
+                with pytest.raises(HTTPException) as exc_info:
+                    await scan_for_malware(b"data")
+                assert exc_info.value.status_code == 503

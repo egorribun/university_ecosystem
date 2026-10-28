@@ -1263,9 +1263,15 @@ async def test_websocket_chat_rate_limit():
         mock_user = MagicMock()
         mock_user.id = uuid.uuid4()
 
-        with patch(
-            "app.api.ws.authenticator.authenticator.authenticate_upgrade",
-            AsyncMock(return_value=(mock_user, "jti", "subprotocol")),
+        with (
+            patch(
+                "app.api.ws.authenticator.authenticator.authenticate_upgrade",
+                AsyncMock(return_value=(mock_user, "jti", "subprotocol")),
+            ),
+            patch(
+                "app.api.websocket._resolve_user_from_ids",
+                AsyncMock(return_value=(mock_user, "jti")),
+            ),
         ):
             await websocket_api.websocket_chat(websocket)
             websocket.send_json.assert_called_with(
@@ -1298,6 +1304,10 @@ async def test_websocket_chat_payload_too_large():
             AsyncMock(return_value=(mock_user, "jti", "subprotocol")),
         ),
         patch("app.api.websocket.manager") as mock_manager,
+        patch(
+            "app.api.websocket._resolve_user_from_ids",
+            AsyncMock(return_value=(mock_user, "jti")),
+        ),
     ):
         mock_manager.connect = AsyncMock(return_value=True)
         mock_manager.broadcast_presence = AsyncMock()
@@ -1334,6 +1344,10 @@ async def test_websocket_chat_rejects_utf8_oversized_frame_before_json_dispatch(
             AsyncMock(return_value=(mock_user, "jti", "subprotocol")),
         ),
         patch("app.api.websocket.manager") as mock_manager,
+        patch(
+            "app.api.websocket._resolve_user_from_ids",
+            AsyncMock(return_value=(mock_user, "jti")),
+        ),
     ):
         mock_manager.connect = AsyncMock(return_value=True)
         mock_manager.broadcast_presence = AsyncMock()
@@ -1367,6 +1381,10 @@ async def test_websocket_chat_malformed_json():
             AsyncMock(return_value=(mock_user, "jti", "subprotocol")),
         ),
         patch("app.api.websocket.manager") as mock_manager,
+        patch(
+            "app.api.websocket._resolve_user_from_ids",
+            AsyncMock(return_value=(mock_user, "jti")),
+        ),
     ):
         mock_manager.connect = AsyncMock(return_value=True)
         mock_manager.broadcast_presence = AsyncMock()

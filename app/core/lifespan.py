@@ -155,21 +155,40 @@ async def _handle_schema_and_extensions() -> None:
         return
 
     from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError
 
     try:
         async with engine.begin() as conn:
             sqlite_metadata_snapshot: list[tuple[Any, Any, bool | None]] = []
             try:
                 if conn.dialect.name == "postgresql":
+                    recoverable_extension_error: DBAPIError | None = None
                     try:
-                        await conn.execute(
-                            text("CREATE EXTENSION IF NOT EXISTS vector")
-                        )
-                    except (
-                        OSError,
-                        ConnectionError,
-                    ) as e:  # RZ-22-01: narrowed — DB extension creation errors
-                        _logger.warning("pgvector unavailable: %s", e)
+                        async with conn.begin_nested():
+                            try:
+                                await conn.execute(
+                                    text("CREATE EXTENSION IF NOT EXISTS vector")
+                                )
+                            except DBAPIError as exc:
+                                sqlstate = getattr(
+                                    exc.orig, "sqlstate", None
+                                ) or getattr(exc.orig, "pgcode", None)
+                                # Consumers read settings directly; a runtime
+                                # override cannot safely disable enabled search.
+                                if (
+                                    exc.connection_invalidated
+                                    or settings.semantic_search_enabled
+                                    or sqlstate not in {"0A000", "58P01"}
+                                ):
+                                    raise
+                                recoverable_extension_error = exc
+                                raise
+                    except DBAPIError as exc:
+                        # Continue only after the failed statement's savepoint was
+                        # rolled back; an error during rollback is not recoverable.
+                        if exc is not recoverable_extension_error:
+                            raise
+                        _logger.warning("pgvector unavailable: %s", exc)
                         runtime_flags.disable("semantic_search_enabled")
                 else:
                     # SQLite cannot compile PostgreSQL's tsvector expression.

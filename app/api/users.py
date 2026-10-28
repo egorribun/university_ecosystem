@@ -468,9 +468,39 @@ async def export_access_audit(
 
     from fastapi import HTTPException
 
-    # RZ-03: Enforce max date range to prevent full-table sequential scans.
-    # A query spanning years would lock the DB reader replica under heavy load.
-    if start_at and end_at and (end_at - start_at) > timedelta(days=31):
+    # Keep the SQL query bounded even when the caller omits one or both dates.
+    # Naive timestamps follow the export service's existing UTC interpretation.
+    try:
+        if start_at is not None:
+            start_at = (
+                start_at.replace(tzinfo=UTC)
+                if start_at.tzinfo is None
+                else start_at.astimezone(UTC)
+            )
+        if end_at is not None:
+            end_at = (
+                end_at.replace(tzinfo=UTC)
+                if end_at.tzinfo is None
+                else end_at.astimezone(UTC)
+            )
+
+        if start_at is None:
+            if end_at is None:
+                end_at = datetime.now(UTC)
+            start_at = end_at - timedelta(days=31)
+        elif end_at is None:
+            end_at = start_at + timedelta(days=31)
+    except OverflowError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_date_range",
+                "message": "Date range is outside supported datetime bounds",
+            },
+        ) from exc
+
+    # RZ-03: Prevent multi-year queries from overloading the reader replica.
+    if (end_at - start_at) > timedelta(days=31):
         raise HTTPException(
             status_code=400,
             detail={

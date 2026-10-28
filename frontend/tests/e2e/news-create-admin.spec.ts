@@ -7,21 +7,15 @@
  * that break the entire news subtree.
  */
 import { test, expect } from "./test"
+import { pageErrorsThroughReady } from "./aud151-readiness.mjs"
 
 test.describe("News & Admin — Wave 11", () => {
   test("app root loads without uncaught JS errors", async ({ page }) => {
-    const errors: string[] = []
-    page.on("pageerror", (err) => {
-      if (
-        !err.message.includes("ResizeObserver") &&
-        !err.message.includes("AbortError") &&
-        !err.message.includes("NetworkError")
-      ) {
-        errors.push(err.message)
-      }
+    const errors = await pageErrorsThroughReady(page, async () => {
+      await expect(page).toHaveURL((url) => url.pathname === "/login")
+      await expect(page.getByRole("textbox", { name: /^e-?mail$/i })).toBeVisible()
+      await expect(page.getByLabel(/^(пароль|password)$/i)).toBeVisible()
     })
-
-    await page.goto("/", { waitUntil: "commit", timeout: 30_000 })
     expect(errors).toHaveLength(0)
   })
 

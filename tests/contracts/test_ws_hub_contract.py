@@ -1,396 +1,72 @@
-"""MOD-07 (audit 2026-03-16 Wave 10): Consumer-Driven Contract Tests for the
-Python backend → ws-hub NATS message boundary.
+"""Produce real signed cache-invalidation wire messages for the Go hub test.
 
-Consumer: ws-hub  (subscribes to NATS cache.invalidate subject)
-Provider: university-backend  (Python backend — publishes to NATS)
-
-Flow
-----
-1. This test (consumer side) defines the expected message schema and merges it
-   into ``ws-hub-university-backend.json`` in the run's fresh output directory.
-2. The Go provider test in ``services/ws-hub/internal/contract/`` reads that
-   pact file and verifies that the ws-hub message handler can process any
-   message matching the schema.
-
-Why this matters
-----------------
-Python's ``WsHubClient.invalidate_cache`` signs NATS messages with
-HMAC-SHA256 using ``json.dumps(sort_keys=True, separators=(',', ':'))``.
-The Go subscriber re-serialises with ``json.Marshal`` on a struct whose fields
-are ordered alphabetically by JSON tag.  Any drift — a new field, a renamed
-key, a changed type — would cause every cache invalidation to be silently
-dropped by Go's HMAC check.  These contract tests catch such drift at CI time.
+The shared artifact contains the bytes passed to JetStream by the backend's
+actual WsHubClient and NatsTaskBroker. The Go contract job feeds those bytes to
+its production cache-invalidation handler, including a tampered-message control.
+The transport itself is captured in memory; this is not a live NATS test.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
-import re
-import sys
+import os
+import secrets
 from pathlib import Path
 from typing import Any
 
-import pytest
-
-pact_lib = None
-if sys.platform != "win32":
-    try:
-        import pact
-
-        pact_lib = pact
-    except ImportError:
-        pass
-
-if pact_lib is None:
-    PACT_UNAVAILABLE_REASON = (
-        "pact-python is not installed or failed to load DLL (e.g. on Windows)"
-    )
-
-    class DummyPact:
-        pass
-
-    Pact = DummyPact
-    match = None
-else:
-    PACT_UNAVAILABLE_REASON = ""
-    Pact = pact_lib.Pact
-    match = pact_lib.match
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-CONSUMER_NAME = "ws-hub"
-PROVIDER_NAME = "university-backend"
-
-# UUID v1/v4: 8-4-4-4-12 hex groups, case-insensitive.
-_UUID_PATTERN: str = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-# HMAC-SHA256 hex digest is always exactly 64 lower-case hex characters.
-_HMAC_HEX_PATTERN: str = r"^[0-9a-f]{64}$"
-
-# Representative sample values used in the pact interaction body.
-_SAMPLE_USER_ID = "550e8400-e29b-41d4-a716-446655440000"
-_SAMPLE_ROOM_ID = "550e8400-e29b-41d4-a716-446655440001"
-_SAMPLE_TIMESTAMP = 1710000000000  # uuid1().time, non-negative integer
-_SAMPLE_SIGNATURE = "a" * 64  # 64-char hex string placeholder
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+USER_ID = "11111111-1111-1111-1111-111111111111"
+ROOM_ID = "22222222-2222-2222-2222-222222222222"
+FIXTURE_NAME = "ws-hub-cache-invalidation.json"
 
 
-@pytest.fixture(scope="module")
-def pact(pact_output_dir: Path) -> Pact:
-    """Module-scoped Pact instance with its own consumer message handlers.
+class CapturedJetStream:
+    def __init__(self) -> None:
+        self.events: list[dict[str, Any]] = []
 
-    On teardown (after all tests in the module), writes the pact contract file
-    to the fresh output directory, merging the other ws-hub module's messages.
-    The combined file is consumed by the Go provider test.
-    """
-    p = Pact(CONSUMER_NAME, PROVIDER_NAME)
-    yield p.with_specification("V4")
-    p.write_file(pact_output_dir, overwrite=False)
-
-
-# ---------------------------------------------------------------------------
-# Consumer message verifier (mirrors ws-hub logic)
-# ---------------------------------------------------------------------------
-
-
-def _ws_hub_handler(msg: str | bytes | None, context: dict[str, Any]) -> dict[str, Any]:
-    """Simulate the ws-hub NATS cache.invalidate subscriber (hub.go).
-
-    This verifier is invoked by pact.verify() against the mock message
-    generated from the interaction definition.  It must pass iff the mock
-    message satisfies every structural invariant the Go code enforces before
-    performing the HMAC check.
-
-    Mirrors the checks in ``services/ws-hub/pkg/hub/hub.go`` lines 431-475:
-    - JSON must unmarshal to ``struct { Data {...}; Signature string }``
-    - ``data.user_id`` must be a valid UUID; ``data.room_id`` may be empty only
-      for a user-wide cache invalidation, and eviction requires a room UUID
-    - ``data.timestamp`` must be a non-negative integer
-    - ``signature`` must be a 64-char lowercase hex string
-
-    (We do not replay the HMAC check here — that depends on a shared secret
-    and is verified structurally by the regex matcher on the signature field.)
-    """
-    assert msg is not None, "NATS message body must not be None"
-
-    payload: dict[str, Any] = json.loads(msg)
-    assert isinstance(payload, dict), "Top-level payload must be a JSON object"
-
-    # Required top-level fields ------------------------------------------
-    assert "data" in payload, "Missing required top-level field: 'data'"
-    assert "signature" in payload, "Missing required top-level field: 'signature'"
-
-    # Required data sub-fields -------------------------------------------
-    data = payload["data"]
-    assert isinstance(data, dict), "'data' must be a JSON object"
-    for field in ("user_id", "room_id", "timestamp"):
-        assert field in data, f"Missing required field: 'data.{field}'"
-
-    # UUID format validation ---------------------------------------------
-    _uuid_re = re.compile(_UUID_PATTERN, re.IGNORECASE)
-    assert _uuid_re.match(str(data["user_id"])), (
-        f"data.user_id is not a valid UUID: {data['user_id']!r}"
-    )
-    room_id = data["room_id"]
-    evict_room = data.get("evict_room", False)
-    assert isinstance(evict_room, bool), "data.evict_room must be a boolean"
-    if evict_room or room_id != "":
-        assert _uuid_re.match(str(room_id)), (
-            f"data.room_id is not a valid UUID: {room_id!r}"
+    async def publish(
+        self, subject: str, data: bytes, *, headers: dict[str, str]
+    ) -> None:
+        self.events.append(
+            {"subject": subject, "wire": data.decode("utf-8"), "headers": headers}
         )
 
-    # Timestamp must be a non-negative integer ----------------------------
-    ts = data["timestamp"]
-    assert isinstance(ts, int) and ts >= 0, (
-        f"data.timestamp must be a non-negative integer, got {ts!r}"
-    )
 
-    # Signature must be a 64-char lowercase hex string -------------------
-    sig = payload["signature"]
-    assert re.fullmatch(_HMAC_HEX_PATTERN, str(sig)), (
-        f"signature must be exactly 64 lower-case hex chars, got {sig!r}"
-    )
+def test_cache_invalidation_producer_writes_wire_fixture(pact_output_dir: Path) -> None:
+    """Capture the production publisher and broker, not a hand-built message."""
+    from app.core.nats_broker import NatsTaskBroker
+    from app.services.ws_hub_client import WsHubClient
 
-    return payload
+    # Per-run test-only key; it is shared only with this generated fixture and
+    # never used by a running service or printed in test output.
+    test_hmac_key = secrets.token_urlsafe(32)
 
-
-def _broadcast_handler(
-    msg: str | bytes | None, context: dict[str, Any]
-) -> dict[str, Any]:
-    """Simulate the ws-hub NATS broadcast.all subscriber.
-
-    Mirrors the structural checks the Go code enforces on broadcast messages.
-    Expected schema: {data: {payload, sender_id, timestamp}, signature}.
-    """
-    assert msg is not None, "NATS message body must not be None"
-
-    payload: dict[str, Any] = json.loads(msg)
-    assert isinstance(payload, dict), "Top-level payload must be a JSON object"
-
-    assert "data" in payload, "Missing required top-level field: 'data'"
-    assert "signature" in payload, "Missing required top-level field: 'signature'"
-
-    data = payload["data"]
-    assert isinstance(data, dict), "'data' must be a JSON object"
-    for field in ("payload", "sender_id", "timestamp"):
-        assert field in data, f"Missing required field: 'data.{field}'"
-
-    _uuid_re = re.compile(_UUID_PATTERN, re.IGNORECASE)
-    assert _uuid_re.match(str(data["sender_id"])), (
-        f"data.sender_id is not a valid UUID: {data['sender_id']!r}"
-    )
-
-    ts = data["timestamp"]
-    assert isinstance(ts, int) and ts >= 0, (
-        f"data.timestamp must be a non-negative integer, got {ts!r}"
-    )
-
-    sig = payload["signature"]
-    assert re.fullmatch(_HMAC_HEX_PATTERN, str(sig)), (
-        f"signature must be exactly 64 lower-case hex chars, got {sig!r}"
-    )
-
-    return payload
-
-
-def _heartbeat_handler(
-    msg: str | bytes | None, context: dict[str, Any]
-) -> dict[str, Any]:
-    """Simulate the ws-hub NATS client.timeout subscriber.
-
-    Mirrors the structural checks the Go code enforces on heartbeat timeout messages.
-    Expected schema: {data: {user_id, reason, timestamp}, signature}.
-    """
-    assert msg is not None, "NATS message body must not be None"
-
-    payload: dict[str, Any] = json.loads(msg)
-    assert isinstance(payload, dict), "Top-level payload must be a JSON object"
-
-    assert "data" in payload, "Missing required top-level field: 'data'"
-    assert "signature" in payload, "Missing required top-level field: 'signature'"
-
-    data = payload["data"]
-    assert isinstance(data, dict), "'data' must be a JSON object"
-    for field in ("user_id", "reason", "timestamp"):
-        assert field in data, f"Missing required field: 'data.{field}'"
-
-    _uuid_re = re.compile(_UUID_PATTERN, re.IGNORECASE)
-    assert _uuid_re.match(str(data["user_id"])), (
-        f"data.user_id is not a valid UUID: {data['user_id']!r}"
-    )
-
-    ts = data["timestamp"]
-    assert isinstance(ts, int) and ts >= 0, (
-        f"data.timestamp must be a non-negative integer, got {ts!r}"
-    )
-
-    sig = payload["signature"]
-    assert re.fullmatch(_HMAC_HEX_PATTERN, str(sig)), (
-        f"signature must be exactly 64 lower-case hex chars, got {sig!r}"
-    )
-
-    return payload
-
-
-def _verify_ws_hub_message(
-    msg: str | bytes | None, context: dict[str, Any]
-) -> dict[str, Any]:
-    """Dispatch accumulated async pact interactions by their NATS subject."""
-    subject = context.get("nats_subject")
-    if subject == "cache.invalidate":
-        return _ws_hub_handler(msg, context)
-    if subject == "broadcast.all":
-        return _broadcast_handler(msg, context)
-    if subject == "client.timeout":
-        return _heartbeat_handler(msg, context)
-    raise AssertionError(f"Unexpected NATS subject in pact metadata: {subject!r}")
-
-
-# ---------------------------------------------------------------------------
-# Contract interaction tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("room_id", "evict_room", "valid"),
-    [
-        (_SAMPLE_ROOM_ID, False, True),
-        ("", False, True),
-        ("", True, False),
-        ("not-a-uuid", False, False),
-    ],
-)
-def test_cache_invalidation_identifier_scope(
-    room_id: str, evict_room: bool, valid: bool
-) -> None:
-    """User-wide invalidation may omit a room; eviction must name one."""
-    data: dict[str, Any] = {
-        "user_id": _SAMPLE_USER_ID,
-        "room_id": room_id,
-        "timestamp": _SAMPLE_TIMESTAMP,
-    }
-    if evict_room:
-        data["evict_room"] = True
-    payload = {"data": data, "signature": _SAMPLE_SIGNATURE}
-
-    if valid:
-        assert _ws_hub_handler(json.dumps(payload), {}) == payload
-    else:
-        with pytest.raises(AssertionError):
-            _ws_hub_handler(json.dumps(payload), {})
-
-
-@pytest.mark.skipif(pact_lib is None, reason=PACT_UNAVAILABLE_REASON)
-def test_cache_invalidation_event_contract(pact: Pact) -> None:
-    """Contract: ws-hub expects cache invalidation messages in this schema.
-
-    Published by the Python backend to the ``cache.invalidate`` NATS subject.
-    The interaction is recorded in the Pact V4 format and consumed by the Go
-    provider verification test.
-
-    Schema
-    ~~~~~~
-    .. code-block:: json
-
-        {
-          "data": {
-            "user_id":   "<UUID string>",
-            "room_id":   "<UUID string>",
-            "timestamp": <non-negative integer — uuid1().time>
-          },
-          "signature": "<HMAC-SHA256 hex, 64 chars>"
-        }
-
-    Field-order note
-    ~~~~~~~~~~~~~~~~
-    Go's ``json.Marshal`` serialises struct fields in declaration order.
-    The hub.go struct declares them as ``RoomID``, ``Timestamp``, ``UserID``
-    (alphabetical by JSON tag) to match Python's ``sort_keys=True``.  This
-    contract does NOT enforce field order directly (JSON objects are unordered)
-    but the regex on ``signature`` proves the canonical serialisation is stable.
-    """
-    (
-        pact.upon_receiving("a cache invalidation event", "Async")
-        .with_body(
-            {
-                "data": {
-                    "user_id": match.regex(_SAMPLE_USER_ID, regex=_UUID_PATTERN),
-                    "room_id": match.regex(_SAMPLE_ROOM_ID, regex=_UUID_PATTERN),
-                    "timestamp": match.like(_SAMPLE_TIMESTAMP),
-                },
-                "signature": match.regex(_SAMPLE_SIGNATURE, regex=_HMAC_HEX_PATTERN),
-            },
-            "application/json",
+    async def produce() -> list[dict[str, Any]]:
+        jetstream = CapturedJetStream()
+        broker = NatsTaskBroker()
+        broker._js = jetstream
+        client = WsHubClient.__new__(WsHubClient)
+        client._broker = broker
+        client._secret = test_hmac_key
+        await client.invalidate_cache(USER_ID, ROOM_ID, event_id="contract-room")
+        await client.invalidate_cache(USER_ID, "", event_id="contract-user-wide")
+        await client.invalidate_cache(
+            USER_ID, ROOM_ID, evict_room=True, event_id="contract-eviction"
         )
-        .with_metadata({"nats_subject": "cache.invalidate"})
-    )
-    pact.verify(_verify_ws_hub_message, "Async")
+        return jetstream.events
 
-
-@pytest.mark.skipif(pact_lib is None, reason=PACT_UNAVAILABLE_REASON)
-def test_user_wide_cache_invalidation_contract(pact: Pact) -> None:
-    """Contract: an empty room ID invalidates every cached room for the user."""
-    (
-        pact.upon_receiving("a user-wide cache invalidation event", "Async")
-        .with_body(
-            {
-                "data": {
-                    "user_id": match.regex(_SAMPLE_USER_ID, regex=_UUID_PATTERN),
-                    "room_id": "",
-                    "timestamp": match.like(_SAMPLE_TIMESTAMP),
-                },
-                "signature": match.regex(_SAMPLE_SIGNATURE, regex=_HMAC_HEX_PATTERN),
-            },
-            "application/json",
-        )
-        .with_metadata({"nats_subject": "cache.invalidate"})
-    )
-    pact.verify(_verify_ws_hub_message, "Async")
-
-
-@pytest.mark.skipif(pact_lib is None, reason=PACT_UNAVAILABLE_REASON)
-def test_broadcast_to_many_contract(pact: Pact) -> None:
-    """Contract: ws-hub expects broadcast event payloads in this schema."""
-    (
-        pact.upon_receiving("a broadcast event to all clients", "Async")
-        .with_body(
-            {
-                "data": {
-                    "payload": match.like(
-                        "Attention: System maintenance scheduled tonight."
-                    ),
-                    "sender_id": match.regex(_SAMPLE_USER_ID, regex=_UUID_PATTERN),
-                    "timestamp": match.like(_SAMPLE_TIMESTAMP),
-                },
-                "signature": match.regex(_SAMPLE_SIGNATURE, regex=_HMAC_HEX_PATTERN),
-            },
-            "application/json",
-        )
-        .with_metadata({"nats_subject": "broadcast.all"})
-    )
-    pact.verify(_verify_ws_hub_message, "Async")
-
-
-@pytest.mark.skipif(pact_lib is None, reason=PACT_UNAVAILABLE_REASON)
-def test_heartbeat_timeout_contract(pact: Pact) -> None:
-    """Contract: Python backend expects heartbeat timeout notifications in this schema."""
-    (
-        pact.upon_receiving("a client heartbeat timeout event", "Async")
-        .with_body(
-            {
-                "data": {
-                    "user_id": match.regex(_SAMPLE_USER_ID, regex=_UUID_PATTERN),
-                    "reason": match.like("ping timeout after 30 seconds"),
-                    "timestamp": match.like(_SAMPLE_TIMESTAMP),
-                },
-                "signature": match.regex(_SAMPLE_SIGNATURE, regex=_HMAC_HEX_PATTERN),
-            },
-            "application/json",
-        )
-        .with_metadata({"nats_subject": "client.timeout"})
-    )
-    pact.verify(_verify_ws_hub_message, "Async")
+    events = asyncio.run(produce())
+    assert len(events) == 3
+    assert [event["subject"] for event in events] == ["cache.invalidate"] * 3
+    assert [event["headers"]["Nats-Msg-Id"] for event in events] == [
+        "contract-room",
+        "contract-user-wide",
+        "contract-eviction",
+    ]
+    destination = pact_output_dir / FIXTURE_NAME
+    fd = os.open(destination, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as output:
+        json.dump({"test_hmac_key": test_hmac_key, "events": events}, output, indent=2)
+        output.write("\n")
+    if os.name == "posix":
+        assert destination.stat().st_mode & 0o077 == 0

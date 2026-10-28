@@ -6,11 +6,13 @@ import hashlib
 import io
 import json
 import math
+import os
 import re
 import shutil
 import subprocess
 import sys
 import tarfile
+import unicodedata
 from collections.abc import Mapping, Sequence
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, localcontext
@@ -102,6 +104,10 @@ MUTATION_REGISTRY_FIELDS = frozenset({"version", "exclusions"})
 DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 WILDCARD_CHARACTERS = "*?[]"
 MAX_JSON_NESTING_DEPTH = 1_024
+MAX_SOURCE_POLICY_PATTERN_LENGTH = 4_096
+MAX_SOURCE_POLICY_BRACE_GROUPS = 128
+MAX_SOURCE_POLICY_EXPANSIONS = 4_096
+SOURCE_POLICY_EXACT_GLOB_PREFIX = "\0"
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 METRICS = ("lines", "statements", "branches", "functions")
 LEGACY_MIGRATION_BASE_SHA = "ac74e915ae539f098f0fa1e7c83b355703069984"
@@ -943,6 +949,8 @@ def _validate_register(
             f"{record_field}.expires_on",
             errors,
         )
+        if created_on is not None and created_on > today:
+            errors.append(f"{record_field}.created_on must not be after validation day")
         if expires_on is not None and expires_on <= today:
             errors.append(f"{record_field}.expires_on must be after validation day")
         if created_on is not None and expires_on is not None:
@@ -1610,33 +1618,117 @@ def _source_suffixes(component: str) -> frozenset[str]:
 
 
 def _expand_source_policy_braces(pattern: str) -> tuple[str, ...]:
-    """Expand the small brace-pattern dialect used by the Vitest policy."""
-    match = re.search(r"\{([^{}]+)\}", pattern)
-    if match is None:
-        return (pattern,)
-    return tuple(
-        expanded
-        for alternative in match.group(1).split(",")
-        for expanded in _expand_source_policy_braces(
-            pattern[: match.start()] + alternative + pattern[match.end() :]
-        )
-    )
+    """Validate and expand the supported finite POSIX glob dialect."""
+    if len(pattern) > MAX_SOURCE_POLICY_PATTERN_LENGTH:
+        raise ValueError("coverage source policy glob exceeds supported length")
+
+    current = [""]
+    stack: list[tuple[list[str], list[str]]] = []
+    groups = 0
+    index = 0
+    while index < len(pattern):
+        character = pattern[index]
+        if character in "[]()?|":
+            raise ValueError(
+                "coverage source policy contains an unsupported glob construct"
+            )
+        if character in "?*+@!" and pattern[index + 1 : index + 2] == "(":
+            raise ValueError("coverage source policy contains an unsupported extglob")
+        if character == "{":
+            groups += 1
+            if groups > MAX_SOURCE_POLICY_BRACE_GROUPS:
+                raise ValueError("coverage source policy has too many brace groups")
+            stack.append((current, []))
+            current = [""]
+        elif character == "," and stack:
+            prefix, alternatives = stack[-1]
+            if any(not alternative for alternative in current):
+                raise ValueError(
+                    "coverage source policy contains an invalid brace pattern"
+                )
+            alternatives.extend(current)
+            if len(alternatives) > MAX_SOURCE_POLICY_EXPANSIONS:
+                raise ValueError("coverage source policy has too many glob expansions")
+            stack[-1] = (prefix, alternatives)
+            current = [""]
+        elif character == "}":
+            if not stack or any(not alternative for alternative in current):
+                raise ValueError(
+                    "coverage source policy contains an invalid brace pattern"
+                )
+            prefix, alternatives = stack.pop()
+            if not alternatives:
+                raise ValueError(
+                    "coverage source policy contains an unsupported singleton brace"
+                )
+            alternatives.extend(current)
+            if any(".." in alternative for alternative in alternatives):
+                raise ValueError(
+                    "coverage source policy contains an unsupported brace range"
+                )
+            if len(prefix) * len(alternatives) > MAX_SOURCE_POLICY_EXPANSIONS:
+                raise ValueError("coverage source policy has too many glob expansions")
+            current = [left + right for left in prefix for right in alternatives]
+        else:
+            current = [item + character for item in current]
+        index += 1
+    if stack:
+        raise ValueError("coverage source policy contains an invalid brace pattern")
+    return tuple(current)
+
+
+def _source_policy_nocase(value: str) -> str:
+    """Use ECMAScript's non-Unicode case canonicalization for picomatch parity."""
+    result: list[str] = []
+    for character in value:
+        upper = character.upper()
+        if (
+            ord(character) > 0xFFFF
+            or len(upper) != 1
+            or (ord(character) >= 0x80 and ord(upper) < 0x80)
+        ):
+            result.append(character)
+        else:
+            result.append(upper)
+    return "".join(result)
 
 
 def _source_policy_glob_matches(path: str, pattern: str) -> bool:
-    """Match a POSIX repository path with ``**`` also matching zero folders."""
-    candidates = {pattern}
-    pending = [pattern]
-    while pending:
-        candidate = pending.pop()
-        start = 0
-        while (index := candidate.find("/**/", start)) >= 0:
-            shortened = candidate[:index] + "/" + candidate[index + 4 :]
-            if shortened not in candidates:
-                candidates.add(shortened)
-                pending.append(shortened)
-            start = index + 1
-    return any(fnmatch.fnmatchcase(path, candidate) for candidate in candidates)
+    """Match path segments using Vitest's globstar and dotfile behavior."""
+    if pattern.startswith(SOURCE_POLICY_EXACT_GLOB_PREFIX):
+        return path == pattern[len(SOURCE_POLICY_EXACT_GLOB_PREFIX) :]
+    if path == pattern:
+        return True
+    if os.name == "nt":
+        path = _source_policy_nocase(path)
+        pattern = _source_policy_nocase(pattern)
+    path_segments = path.split("/")
+    pattern_segments = pattern.split("/")
+    positions = {0}
+    for pattern_index, segment in enumerate(pattern_segments):
+        next_positions: set[int] = set()
+        if segment == "**":
+            for start in positions:
+                if pattern_index < len(pattern_segments) - 1:
+                    next_positions.add(start)
+                for index in range(start, len(path_segments)):
+                    if path_segments[index].startswith("."):
+                        break
+                    next_positions.add(index + 1)
+        else:
+            allows_dot = segment.startswith(".")
+            for index in positions:
+                if index == len(path_segments):
+                    continue
+                item = path_segments[index]
+                if item.startswith(".") and not allows_dot:
+                    continue
+                if fnmatch.fnmatchcase(item, segment):
+                    next_positions.add(index + 1)
+        positions = next_positions
+        if not positions:
+            return False
+    return len(path_segments) in positions
 
 
 def _path_is_under_root(path: str, root: str) -> bool:
@@ -1669,42 +1761,74 @@ def _tier0_source_requires_coverage(
 
 def _load_frontend_source_policy(
     repository_root: Path,
-) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
-    """Load the canonical frontend production-source policy.
-
-    A malformed or absent policy is represented as ``None``.  The caller then
-    falls back to conservative filename filters; any resulting manifest drift
-    is still rejected by the Tier0 inventory comparison.
-    """
-    path = repository_root / "quality" / "coverage-source-policy.json"
-    try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-        frontend = document["frontend"]
-        include = frontend["include"]
-        exclude = frontend["exclude"]
-        if (
-            not isinstance(include, list)
-            or not isinstance(exclude, list)
-            or not include
-            or not exclude
-            or not all(isinstance(value, str) and value for value in include)
-            or not all(isinstance(value, str) and value for value in exclude)
-        ):
-            return None
-    except (OSError, UnicodeDecodeError, TypeError, KeyError, ValueError):
-        return None
-    return (
-        tuple(
-            expanded
-            for value in include
-            for expanded in _expand_source_policy_braces(f"frontend/{value}")
-        ),
-        tuple(
-            expanded
-            for value in exclude
-            for expanded in _expand_source_policy_braces(f"frontend/{value}")
-        ),
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Load the canonical frontend production-source policy or fail closed."""
+    path_errors: list[str] = []
+    path = _safe_repository_file(
+        repository_root,
+        "quality/coverage-source-policy.json",
+        "coverage source policy",
+        path_errors,
     )
+    if path is None:
+        raise ValueError("; ".join(path_errors))
+    try:
+        policy_text = path.read_text(encoding="utf-8")
+        _reject_excessive_json_nesting(policy_text)
+        document = json.loads(
+            policy_text,
+            object_pairs_hook=_duplicate_key_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (OSError, UnicodeDecodeError, ValueError, RecursionError) as error:
+        raise ValueError(f"invalid coverage source policy: {error}") from error
+    if not isinstance(document, dict) or set(document) != {"frontend"}:
+        raise ValueError("coverage source policy must contain only frontend")
+    frontend = document["frontend"]
+    if not isinstance(frontend, dict) or set(frontend) != {"include", "exclude"}:
+        raise ValueError("frontend coverage source policy requires include and exclude")
+
+    normalized: dict[str, tuple[str, ...]] = {}
+    expansion_count = 0
+    for field in ("include", "exclude"):
+        values = frontend[field]
+        if (
+            not isinstance(values, list)
+            or not values
+            or not all(isinstance(value, str) and value for value in values)
+            or len(values) != len(set(values))
+        ):
+            raise ValueError(
+                f"frontend coverage source policy {field} must be unique strings"
+            )
+        expanded: list[str] = []
+        for value in cast(list[str], values):
+            if (
+                "\\" in value
+                or value.startswith("/")
+                or value.startswith("!")
+                or ".." in PurePosixPath(value).parts
+                or any(unicodedata.category(character) == "Cc" for character in value)
+            ):
+                raise ValueError(
+                    f"frontend coverage source policy {field} contains an unsafe path"
+                )
+            patterns = _expand_source_policy_braces(f"frontend/{value}")
+            # Picomatch also accepts an exact, case-sensitive match with the
+            # original brace glob, even though its normal match uses expansion.
+            exact_pattern = (
+                f"{SOURCE_POLICY_EXACT_GLOB_PREFIX}frontend/{value}"
+                if "{" in value
+                else None
+            )
+            expansion_count += len(patterns) + int(exact_pattern is not None)
+            if expansion_count > MAX_SOURCE_POLICY_EXPANSIONS:
+                raise ValueError("coverage source policy has too many glob expansions")
+            expanded.extend(patterns)
+            if exact_pattern is not None:
+                expanded.append(exact_pattern)
+        normalized[field] = tuple(expanded)
+    return normalized["include"], normalized["exclude"]
 
 
 def _is_production_source(
@@ -1713,30 +1837,18 @@ def _is_production_source(
     frontend_policy: tuple[tuple[str, ...], tuple[str, ...]] | None = None,
 ) -> bool:
     pure = PurePosixPath(path)
+    if component == "frontend":
+        if frontend_policy is None:
+            raise ValueError("frontend coverage source policy is required")
+        include, exclude = frontend_policy
+        return any(
+            _source_policy_glob_matches(path, pattern) for pattern in include
+        ) and not any(_source_policy_glob_matches(path, pattern) for pattern in exclude)
     if pure.suffix not in _source_suffixes(component):
         return False
     lowered = pure.name.lower()
     if component.startswith("go-") and lowered.endswith("_test.go"):
         return False
-    if component == "frontend":
-        if frontend_policy is not None:
-            include, exclude = frontend_policy
-            return any(
-                _source_policy_glob_matches(path, pattern) for pattern in include
-            ) and not any(
-                _source_policy_glob_matches(path, pattern) for pattern in exclude
-            )
-        if (
-            ".test." in lowered
-            or ".spec." in lowered
-            or ".stories." in lowered
-            or "__tests__" in pure.parts
-            or "test" in pure.parts
-            or ("api" in pure.parts and "generated" in pure.parts)
-            or lowered in {"setuptests.ts", "routetree.gen.ts"}
-            or lowered.endswith(".d.ts")
-        ):
-            return False
     if component.startswith("rust-"):
         lowered_parts = {part.casefold() for part in pure.parts}
         if lowered_parts.intersection({"tests", "benches", "fuzz", "target"}):

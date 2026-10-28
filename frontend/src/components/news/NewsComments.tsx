@@ -19,8 +19,8 @@ interface NewsCommentsProps {
   user?: Pick<User, "id" | "role"> | null
   isCommenting: boolean
   addComment: (content: string) => void | Promise<unknown>
-  updateComment: (id: string, content: string) => void
-  deleteComment: (id: string) => void
+  updateComment: (id: string, content: string) => void | Promise<unknown>
+  deleteComment: (id: string) => void | Promise<unknown>
   t: (key: string, options?: Record<string, unknown>) => string
   getMoscowDate: (date: string) => string
 }
@@ -41,15 +41,24 @@ export function NewsComments({
   const [editingCommentText, setEditingCommentText] = useState<string>(String)
   const [commentText, setCommentText] = useState("")
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null)
+  const [interactionError, setInteractionError] = useState(false)
+  const [editPending, setEditPending] = useState(false)
 
   const handlePostComment = () => {
+    setInteractionError(false)
     const submittedText = commentText
-    const result = addComment(submittedText)
+    let result: void | Promise<unknown>
+    try {
+      result = addComment(submittedText)
+    } catch {
+      setInteractionError(true)
+      return
+    }
     const clearSubmittedDraft = () =>
       setCommentText((current) => (current === submittedText ? "" : current))
 
     if (result && typeof result.then === "function") {
-      void result.then(clearSubmittedDraft, () => undefined)
+      void result.then(clearSubmittedDraft, () => setInteractionError(true))
       return
     }
 
@@ -57,8 +66,25 @@ export function NewsComments({
   }
 
   const handleUpdateComment = (id: string) => {
-    updateComment(id, editingCommentText)
-    setEditingCommentId(null)
+    setInteractionError(false)
+    try {
+      const result = updateComment(id, editingCommentText)
+      if (result && typeof result.then === "function") {
+        setEditPending(true)
+        void result.then(
+          () => {
+            setEditPending(false)
+            setEditingCommentId(null)
+          },
+          () => {
+            setEditPending(false)
+            setInteractionError(true)
+          }
+        )
+      } else setEditingCommentId(null)
+    } catch {
+      setInteractionError(true)
+    }
   }
 
   return (
@@ -80,6 +106,11 @@ export function NewsComments({
       </div>
 
       {/* ── Comments list ── */}
+      {interactionError && (
+        <p role="alert" className="mb-4 text-sm text-(--error-text)">
+          {t("news:notifications.interactionError")}
+        </p>
+      )}
       <div className="flex flex-col gap-3 mb-8">
         {comments.length === 0 ? (
           <p className="text-(--text-secondary) italic py-6 text-center text-sm">
@@ -107,7 +138,9 @@ export function NewsComments({
                     <div className="flex items-center gap-0.5">
                       <button
                         type="button"
-                        disabled={comment.id.startsWith(OPTIMISTIC_COMMENT_ID_PREFIX)}
+                        disabled={
+                          editPending || comment.id.startsWith(OPTIMISTIC_COMMENT_ID_PREFIX)
+                        }
                         onClick={() => {
                           setEditingCommentId(comment.id)
                           setEditingCommentText(comment.content)
@@ -120,7 +153,9 @@ export function NewsComments({
                       </button>
                       <button
                         type="button"
-                        disabled={comment.id.startsWith(OPTIMISTIC_COMMENT_ID_PREFIX)}
+                        disabled={
+                          editPending || comment.id.startsWith(OPTIMISTIC_COMMENT_ID_PREFIX)
+                        }
                         onClick={() => setDeleteConfirmationId(comment.id)}
                         className="p-1.5 rounded-lg hover:bg-(--error-text)/[calc(var(--opacity-subtle)*100%)] text-(--error-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)/[calc(var(--opacity-medium)*100%)]"
                         title={t("news:actions.deleteComment")}
@@ -142,6 +177,7 @@ export function NewsComments({
                       setEditingCommentText(event.target.value.slice(0, COMMENT_MAX_LENGTH))
                     }
                     aria-label={t("news:form.editCommentAriaLabel")}
+                    disabled={editPending}
                     className="min-h-20 text-sm"
                     maxLength={COMMENT_MAX_LENGTH}
                     // eslint-disable-next-line jsx-a11y/no-autofocus
@@ -162,13 +198,18 @@ export function NewsComments({
                     </span>
                   </div>
                   <div className="flex justify-end gap-2">
-                    <Button variant="glass" size="sm" onClick={() => setEditingCommentId(null)}>
+                    <Button
+                      variant="glass"
+                      size="sm"
+                      onClick={() => setEditingCommentId(null)}
+                      disabled={editPending}
+                    >
                       {t("common:buttons.cancel")}
                     </Button>
                     <Button
                       size="sm"
                       onClick={() => handleUpdateComment(comment.id)}
-                      disabled={!editingCommentText.trim()}
+                      disabled={!editingCommentText.trim() || editPending}
                     >
                       {t("common:buttons.save")}
                     </Button>
@@ -231,7 +272,15 @@ export function NewsComments({
         cancelText={t("common:buttons.cancel")}
         variant="danger"
         onConfirm={() => {
-          void deleteComment(deleteConfirmationId!)
+          setInteractionError(false)
+          try {
+            const result = deleteComment(deleteConfirmationId!)
+            if (result && typeof result.then === "function") {
+              void result.catch(() => setInteractionError(true))
+            }
+          } catch {
+            setInteractionError(true)
+          }
           setDeleteConfirmationId(null)
         }}
         onCancel={() => setDeleteConfirmationId(null)}

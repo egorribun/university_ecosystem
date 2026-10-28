@@ -19,11 +19,14 @@ import json
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.api.ws.auth import (
+    _resolve_user_from_ids,
+)
 from app.api.ws.auth import (
     update_last_seen as _update_last_seen,
 )
@@ -47,8 +50,12 @@ from app.core.config.storage import (
 from app.core.logging import get_logger
 from app.models.chat import Message
 
+if TYPE_CHECKING:
+    from app.models import User
+
 logger = get_logger(__name__)
 router = APIRouter(prefix="/ws", tags=["websocket"])
+_WS_SESSION_REVALIDATION_SECONDS = 30.0
 
 # ── Route-handler helpers (still needed here) ──────────────────────────────
 # These helpers are used by websocket_chat route handler which is defined below.
@@ -127,6 +134,47 @@ def _is_websocket_payload_within_limits(text_data: str, data: object) -> bool:
 # MOVED: _handle_presence_pubsub is now in app/api/ws/presence.py
 
 
+async def _receive_with_session_revalidation(
+    websocket: WebSocket, user_id: uuid.UUID, session_jti: str, next_check_at: float
+) -> tuple[str, User | None, float] | None:
+    """Check admitted frames and idle sessions without querying on dropped frames.
+
+    A None user in the returned tuple indicates a rate-limited or oversized
+    frame, which the caller rejects. The deadline survives dropped frames so
+    an idle or constantly rate-limited socket is still periodically checked.
+    """
+    receive_task = asyncio.create_task(websocket.receive_text())
+    loop = asyncio.get_running_loop()
+    try:
+        while True:
+            done, _ = await asyncio.wait(
+                {receive_task}, timeout=max(0.0, next_check_at - loop.time())
+            )
+            text_data = receive_task.result() if done else None
+            if not done or loop.time() >= next_check_at:
+                user, _ = await _resolve_user_from_ids(str(user_id), session_jti)
+                if user is None:
+                    await websocket.close(
+                        code=4001, reason="Session expired or revoked"
+                    )
+                    return None
+                next_check_at = loop.time() + _WS_SESSION_REVALIDATION_SECONDS
+            if text_data is None:
+                continue
+            if len(text_data.encode("utf-8")) > CHAT_MAX_WEBSOCKET_FRAME_BYTES:
+                return text_data, None, next_check_at
+            if not manager.check_rate_limit(websocket):
+                return text_data, None, next_check_at
+            user, _ = await _resolve_user_from_ids(str(user_id), session_jti)
+            if user is None:
+                await websocket.close(code=4001, reason="Session expired or revoked")
+                return None
+            return text_data, user, loop.time() + _WS_SESSION_REVALIDATION_SECONDS
+    finally:
+        receive_task.cancel()
+        await asyncio.gather(receive_task, return_exceptions=True)
+
+
 @router.websocket("/chat")
 async def websocket_chat(websocket: WebSocket) -> None:
     """
@@ -175,7 +223,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
         websocket
     )
 
-    if not user:
+    if not user or not session_jti:
         logger.warning(
             "WebSocket auth failed - no valid credentials"
         )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
@@ -184,7 +232,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
 
     # Connect and register — may reject if per-user limit is reached
     accepted = await manager.connect(
-        websocket, user.id, subprotocol=selected_subprotocol
+        websocket, user.id, subprotocol=selected_subprotocol, session_jti=session_jti
     )
     if not accepted:
         return  # close frame already sent inside connect()
@@ -205,9 +253,17 @@ async def websocket_chat(websocket: WebSocket) -> None:
                 manager,
                 container=getattr(websocket.app.state, "dishka_container", None),
             )
+            next_check_at = (
+                asyncio.get_running_loop().time() + _WS_SESSION_REVALIDATION_SECONDS
+            )
             while True:
                 try:
-                    text_data = await websocket.receive_text()
+                    received = await _receive_with_session_revalidation(
+                        websocket, user.id, session_jti, next_check_at
+                    )
+                    if received is None:
+                        return
+                    text_data, current_user, next_check_at = received
                     # Reject over-limit raw frames before parsing, matching ws-hub's
                     # 60 KiB ingress guard and avoiding unnecessary JSON work.
                     if len(text_data.encode("utf-8")) > CHAT_MAX_WEBSOCKET_FRAME_BYTES:
@@ -218,7 +274,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
                         return
 
                     # 1. Message Rate Limiting (Audit 6.3)
-                    if not manager.check_rate_limit(websocket):
+                    if current_user is None:
                         logger.warning(
                             "WS rate limit exceeded for user %s - dropping message",
                             user.id,
@@ -229,6 +285,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
                         await asyncio.sleep(0.1)
                         continue
 
+                    user = current_user
                     data = orjson.loads(text_data)
                     if not isinstance(data, dict):
                         await websocket.send_json(

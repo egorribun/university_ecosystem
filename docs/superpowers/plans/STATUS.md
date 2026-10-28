@@ -2,9 +2,56 @@
 
 Обновлено: 2026-10-28 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
-## Controlled handoff and pause — 2026-10-28 UTC
+## Autonomous audit resumption — 2026-10-28 UTC
 
-**Work is paused at the owner's request. Accepted lower bound: 351/512 (68.6%);
+По новому поручению владельца автономная работа возобновлена; полный октябрьский
+аудит остаётся первым приоритетом [мастер-плана](MVP_MASTER_PLAN.md). Пауза и
+подготовленные кандидаты в следующем разделе описывают историческое состояние
+до этого поручения. **Принятая нижняя граница по-прежнему 351/512 (68,6%);
+161 ID остаётся непринятым.** Новая работа сама по себе не добавляет приёмок.
+
+Опубликованная база при возобновлении — документационный
+[3fa77d7f31668e9fd8d740e91e775f74c5352adf](https://github.com/egorribun/university_ecosystem/commit/3fa77d7f31668e9fd8d740e91e775f74c5352adf),
+[PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343),
+`egorribun` → `main`. Сохраняется один checkout; root отвечает за интеграцию,
+агенты — только GPT-6.1 Terra Max, до 64 одновременно. Незавершённые изменения
+рабочего дерева не являются доказательствами опубликованного SHA.
+
+После возобновления опубликован диагностический
+[0b4bab061774a67c3cba2e053c6083331aa46282](https://github.com/egorribun/university_ecosystem/commit/0b4bab061774a67c3cba2e053c6083331aa46282):
+два workflow и два теста добавляют ограниченный Trivy classifier и захват
+Squawk JSON, сохраняя существующие blocking gates. Исключение Squawk и новый
+лимит MapLibre не активированы. Применимые локальные commit hooks прошли на
+`fd128b9c43ab9b859b8b2e89eb092fc8c9d032da`; его tree идентичен опубликованному
+`0b4bab06`, остальные hooks без подходящих файлов были SKIPPED.
+
+Hosted проверки нового SHA ещё выполнялись на 09:53 UTC. Уже завершившийся
+[Source/Test Inventory](https://github.com/egorribun/university_ecosystem/actions/runs/40666989844/job/122743861588)
+имеет **FAILURE**: inventory отклонил тестовый `time.sleep` без явной границы
+или retry pragma в `tests/test_trivy_identity_before_diagnostic.py:229`.
+Это новая открытая ошибка, а не полный итог CI; доказательства для 3fa77d7f
+ниже не переносятся на 0b4bab06.
+
+Срез GitHub на 09:10 UTC для 3fa77d7f: **141 уникальная проверка, 110 SUCCESS,
+25 SKIPPED, одна NEUTRAL, пять FAILURE, активных нет**. Неуспешны
+[Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/40651347414/job/122691893858),
+[filesystem security](https://github.com/egorribun/university_ecosystem/actions/runs/40651347556/job/122692354574),
+[Bundle Analysis](https://github.com/egorribun/university_ecosystem/actions/runs/40651347556/job/122694229784),
+[Alembic Migrations](https://github.com/egorribun/university_ecosystem/actions/runs/40651347556/job/122694630028)
+и зависимый [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/40651347556/job/122714475410).
+Coverage & Quality и Trusted Codecov пропущены. Owned Core завершил 47 browser
+PASS, один mobile password-reset FAIL и два SKIP; NATS outage был пропущен,
+остановка owned stand прошла. Это не all-green и не release acceptance.
+
+Текущие направления используют рамки ниже: hosted evidence Trivy classifier,
+регистрационный тест и metadata-only MapLibre producer, hosted захват Squawk JSON,
+работа по AUD-155/AUD-307 и доказательства AUD-162/AUD-164/AUD-167.
+Ни исключение Squawk, ни новый лимит MapLibre этим не активируются. Любой новый
+source SHA требует собственных проверок и подтверждений.
+
+## Historical controlled handoff and pause — 2026-10-28 UTC
+
+**At this handoff, work was paused at the owner's request. Accepted lower bound: 351/512 (68.6%);
 161 IDs remain unaccepted. This is not a release-ready or all-green checkpoint.**
 Older dated sections below retain their historical counts and evidence scope.
 
@@ -61,7 +108,10 @@ No global all-four-metric compliance is inferred from unit/aggregate success.
   passed. Catalog, pre-commit and baseline checks passed; baseline remains
   exactly 319 identities.
 - [Go vulnerability scan](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669120636)
-  **SUCCESS**, eight module analyses without reported vulnerabilities.
+  **SUCCESS**, eight module analyses without code-affecting vulnerabilities.
+  Five analyses also reported two or three vulnerabilities in required modules,
+  zero in imported packages and no apparent calls; this is not proof that the
+  affected modules are absent.
   [SPIFFE race/lint job](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122672388816)
   passes both 4096-bit acceptance and 4097-bit rejection, with 100% statement
   coverage for that suite. The unchanged 4097-bit test failed on c2ac4938.
@@ -229,13 +279,14 @@ policy 347 finite dispositions, baseline 319 identities, Gitleaks 26,
 78 required context/app pairs, blocking CodeQL, hooks and coverage floors.
 Version freeze remains in force except the exact approved scopes above.
 
-After the documentation checkpoint is read back and its relevant documentation
-checks are recorded, no autonomous writes, new tasks or background monitoring
-remain scheduled. Resume only on a new owner instruction. A later source SHA
-always requires its own validation; this handoff is not authorization to treat
-historical green jobs as current. The documentation push may start normal
-GitHub Actions workflows; those may continue under their existing cleanup
-lifecycle after the autonomous handoff, without an inherited success claim.
+At this handoff the owner requested a pause after documentation readback and
+relevant documentation checks, with no autonomous writes, new tasks or background
+monitoring scheduled until a new owner instruction. That instruction has since
+resumed work as recorded above. A later source SHA always requires its own
+validation; this handoff is not authorization to treat historical green jobs as
+current. The documentation push could start normal GitHub Actions workflows;
+those could continue under their existing cleanup lifecycle after the handoff,
+without an inherited success claim.
 
 ## Scoped token, Vite and release-cache acceptance — source-bound checkpoint, 2026-10-28 UTC
 

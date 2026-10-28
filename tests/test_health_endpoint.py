@@ -51,9 +51,10 @@ class _FailingSession:
 
 
 def _assert_latency_present(data: dict, key: str) -> None:
-    assert key in data
-    assert isinstance(data[key], int | float)
-    assert 0 <= data[key] < 60_000
+    assert key not in data
+    internal_payload = health._health_cache["payload"]
+    assert isinstance(internal_payload[key], int | float)
+    assert 0 <= internal_payload[key] < 60_000
 
 
 @pytest.fixture(autouse=True)
@@ -332,7 +333,7 @@ async def test_healthcheck_notification_queue_missing_table(async_client, monkey
 
 
 @pytest.mark.asyncio
-async def test_healthcheck_reports_migration_versions_on_drift(
+async def test_healthcheck_detects_migration_drift_without_exposing_versions(
     async_client, monkeypatch
 ):
     async def _mock_migrations_are_current(
@@ -350,8 +351,10 @@ async def test_healthcheck_reports_migration_versions_on_drift(
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert data["db"] == "error"
     assert data["db_migrations"] == "error"
-    assert data["db_migrations_current"] == ["current"]
-    assert data["db_migrations_expected"] == ["expected"]
+    assert "db_migrations_current" not in data
+    assert "db_migrations_expected" not in data
+    assert health._health_cache["payload"]["db_migrations_current"] == ["current"]
+    assert health._health_cache["payload"]["db_migrations_expected"] == ["expected"]
     _assert_latency_present(data, "db_latency_ms")
 
 
