@@ -2,6 +2,241 @@
 
 Обновлено: 2026-10-28 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Controlled handoff and pause — 2026-10-28 UTC
+
+**Work is paused at the owner's request. Accepted lower bound: 351/512 (68.6%);
+161 IDs remain unaccepted. This is not a release-ready or all-green checkpoint.**
+Older dated sections below retain their historical counts and evidence scope.
+
+### Start here: source identity and accepted scope
+
+- Verified implementation checkpoint for this audit continuation:
+  [9fe5e34c4cf546e790fb2be1e511e96394a41819](https://github.com/egorribun/university_ecosystem/commit/9fe5e34c4cf546e790fb2be1e511e96394a41819).
+  Its tested PR merge is `3714b2da53687b95df9dd61af95c3f6a3521951c`;
+  both have tree `362fceebc64c6efe101dfcbe84b30a1ea819b969`.
+- The commit introducing this handoff is **documentation-only**, after that
+  implementation source, while preserving any subsequent owner commits. Read
+  its actual SHA from the branch/commit history;
+  evidence for 9fe5e34c is not automatically evidence for the newer docs SHA.
+  Before any further write, read the current `egorribun` head and preserve any
+  subsequent owner changes; do not publish a stale prepared tree.
+- [Four scoped acceptances](../../audits/AUDIT-2026-10.md#scoped-aud-356-aud-364-aud-376-and-aud-394-acceptance-2026-10-28)
+  preserve all 347 prior IDs and add **AUD-356/364/376/394 only**. AUD-356/364
+  have named fec45dcf backend receipts; AUD-376/394 have c2ac4938 semantic
+  RED-to-GREEN and complete frontend-file receipts. Mocked database, permission
+  service, browser push/storage boundaries and global-coverage limits are
+  recorded there. Do not substitute these finding-level decisions for release
+  acceptance.
+
+### Exact implementation-source verification
+
+[Matrix run 40643936500](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500)
+is terminal **FAILURE** at 07:29:13 UTC: **91 jobs — 71 SUCCESS, 16 SKIPPED,
+four FAILURE, zero active**. The all-pages source-head snapshot contains
+**141 unique checks — 111 SUCCESS, 25 SKIPPED, one NEUTRAL, four FAILURE,
+zero active**; all 23 workflows are terminal (20 successful, two skipped,
+one failed). The fourth failed Matrix job is the fail-closed
+[CI Success aggregate](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122688724512),
+not another independent defect.
+
+All four backend shards and both backend aggregates passed. Main pytest
+populations were 4,966 PASS / 108 SKIP, 4,377 / 68, 6,759 / 85 and 4,351 / 89;
+the separate focused populations are not added as unique-test totals.
+**Coverage & Quality and Trusted Codecov were SKIPPED**, not accepted as GREEN.
+No global all-four-metric compliance is inferred from unit/aggregate success.
+
+- [Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/40643936368/job/122668252375)
+  **SUCCESS**, completed 06:48:25 UTC: 290 Node contracts, one runtime adapter
+  test, 48 real desktop/mobile browser passes and two existing auth-project
+  skips; no flakes. Both password-reset cases reached replay rejection,
+  Caddy redaction was verified for both projects, NATS outage and owned stop
+  succeeded. Receipt artifact `12798125542`, 465 bytes, SHA-256
+  `84866fb55aecb2df8f312313cde6c5d35ef5d9d0e81a9b6221c7b1813d1d8ce6`
+  matches the producing log; artifact ZIP contents were not independently
+  decoded. This proves this exact run, not that hydration explains every prior
+  intermittent failure.
+- [Contract job](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122668996585)
+  **SUCCESS**: consumer 2,783 PASS, security dispositions 633 PASS, named audit
+  cohort 41 PASS. All nine prior NATS selector-population failures individually
+  passed. Catalog, pre-commit and baseline checks passed; baseline remains
+  exactly 319 identities.
+- [Go vulnerability scan](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669120636)
+  **SUCCESS**, eight module analyses without reported vulnerabilities.
+  [SPIFFE race/lint job](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122672388816)
+  passes both 4096-bit acceptance and 4097-bit rejection, with 100% statement
+  coverage for that suite. The unchanged 4097-bit test failed on c2ac4938.
+  [Security and Types](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122668996876)
+  passes detect-secrets and mypy.
+- All six rebuilt image scans passed: [backend](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669479538),
+  [frontend](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669479537),
+  [gateway](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669479603),
+  [ws-hub](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669479507),
+  [file-processor](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669479514)
+  and [Caddy](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669479521).
+  Their existing `ignore-unfixed: true` setting is unchanged. A clean scan is
+  not proof that an unfixed module is absent or unreachable.
+
+### Remaining blocking boundaries: continue in this order
+
+1. **Filesystem security evidence.**
+   [Container Security Scan](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669120675)
+   remains failed. Its bounded metadata diagnostic now proves the failing
+   guard is `stage=identity-before; identity-check=tracked-clean`; checkout
+   and source-parent guards passed. It has not read/projected SARIF, so the
+   three HIGH alerts still lack verified classes/advisory identities. Both
+   vulnerability and secret scanning are enabled; do not label all three as
+   package vulnerabilities or conflate them with go-jose.
+   Helm dependency generation precedes this scan; a regenerated tracked Redis
+   archive is a hypothesis, not a proven file-level cause.
+   The prepared next diagnostic is only a bounded NUL-delimited diff classifier:
+   fixed `knownRedisTgzModified`, `unknownPathCount`, `changedCount` fields,
+   no paths/content, original rejection and exit 1 retained. It is **not
+   published or executed**. Establish the actual delta before designing
+   generated-artifact provenance; do not restore files, move scans, weaken the
+   clean guard silently or publish raw secret findings.
+2. **MapLibre bundle budget.**
+   [Bundle Analysis](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122672034745)
+   remains failed at the existing 280-KiB lazy-chunk budget; MapLibre 6.15 was
+   measured at about 285.83 KiB. Two finite minifier alternatives still exceeded
+   280; no optimization claim is made.
+   The owner approved an explicit **286-KiB limit only for one proven
+   noninitial MapLibre vendor chunk**, all other lazy chunks remaining 280,
+   with strict version/chunk identity, ADR and negative tests. **Not implemented.**
+   First publish/review the tests-first real-config registration probe, then
+   a metadata-only client build producer; inspect actual module composition,
+   entry reachability, exact emitted bytes, package/lock identity and effective
+   build profile. Only then implement the narrow consumer/ADR. No dependency
+   update, worker/SSR behavior change or generic budget increase is approved.
+3. **Historical148 Squawk.**
+   [Alembic Migrations](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669479430)
+   remains failed. The verified inventory is 37 occurrences across ordinary
+   13 and expanded 24 reports, 24 rule/statement groups and 20 SQL statements
+   in revision `148642dd1207`. These are real lock/rewrite/drop risks.
+   On this exact 9fe run, 113 focused migration tests and 46 tenant-context
+   tests passed; those passing subsets do not convert raw lint failures into
+   acceptance or prove later changed revisions were linted after the first failure.
+   The owner approved preparation for **new empty greenfield MVP databases
+   only**, ending `2026-11-13T00:00:00Z`; no populated execution, deployment,
+   migration rewrite or atomicity change. No matching exception is active.
+   Next capture actual checksum-verified Squawk 2.67.0 JSON from the same two
+   physical SQL files **after both unchanged raw gates**, preserving raw
+   stdout/stderr/exits and all other migration checks. The two-file collector
+   and tests are unexecuted textual drafts, not accepted source.
+   Reconcile actual messages/help/UTF-8 byte spans before implementing a finite
+   matcher; reject new, changed, missing or reordered observations, errors and
+   expiry. Activation needs its exact reviewed diff and genuine producer/run
+   provenance, not a supplied “equivalent” boolean or a test-controlled clock.
+
+The [original historical148 proposal](2026-10-27-historical-148-squawk-proposal.md)
+is retained as dated evidence; its original broader maintenance/populated
+discussion is **not** authorized by the later greenfield-only approval.
+Fresh hosted JSON is still missing. The ordinary SQL capture is 17,031 bytes,
+SHA-256 `7e27d9cfec48afbe26d8efeb03cf27ff9140982507af0652960e512a34f39305`;
+expanded SQL is 18,373 bytes,
+`7b3143428c7811d6f919a2d7b340b572e6e17ce340e68bdf4d682cea7086d82c`.
+Both can be recovered from
+[the retained raw capture job](https://github.com/egorribun/university_ecosystem/actions/runs/40635073461/job/122641602887).
+The Alembic producer and global workflow configuration are byte-identical from
+fec45dcf through c2ac4938/9fe5e34c; that preserves historical source equivalence,
+not a new hosted receipt or permission to update whole-workflow pins blindly.
+
+### Security change and residual question
+
+The owner-approved freeze exception updated **only go-jose/v4 4.1.5 to 4.1.6**
+in four module graphs/sums and the existing Caddy/probe overrides, with matching
+contracts. [The upstream fix](https://github.com/go-jose/go-jose/commit/a0111f82742fa92bceec9ede40845e73319e6230)
+addresses CVE-2026-116587 / GHSA-mgcc-cww5-fp2q; the October 14 release met the
+seven-day maturity requirement. Exact checksums came from the sumdb-verified
+[hosted capture](https://github.com/egorribun/university_ecosystem/actions/runs/40641292995/job/122660222891),
+not guessed hashes. No unrelated dependency or scanner exclusion changed.
+
+Caddy's build also downloaded affected go-jose/v3 3.0.5; download is not proof
+of final linked-binary presence or remote reachability. Existing reports do not
+provide a final binary module inventory. Before claiming whole-Caddy remediation,
+inspect fixed final Caddy/probe binaries without starting services, following
+replacement versions rather than only original module versions. No v3 upgrade,
+new waiver or new dependency freeze exception has been approved.
+
+### Prepared but unpublished work: do not mistake drafts for fixes
+
+After the blocking evidence paths above, resume the master plan's remaining P1
+operational proofs before broadening lower-priority UI work. The items below
+are handoff constraints, not an instruction to activate every draft at once.
+
+- **MapLibre:** metadata-only helper, Vite registration and focused unit-test
+  designs were reviewed for bounded output/privacy. No producer source,
+  implementation commit, ADR or 286-KiB consumer is in this branch.
+  The registration-test-only blob
+  `266d561f93ea89e30f4907453e9157058947098d` was uploaded as a candidate but is
+  not in any branch commit; it has not run. If recovered as a candidate,
+  rebase/review it against the current
+  `frontend/scripts/frontend-quality-contract.test.mjs`, whose implementation
+  checkpoint blob is `8e7c6dde3f5de3412298286a407549d254bb80dd`.
+  Ordinary and LHCI builds must not share a falsely labelled production proof.
+- **AUD-155 remains OPEN:** source review, not newly executed regression proof,
+  identifies the following risks. Clear/delete-chat/delete-message/reaction still
+  restore whole snapshots. Accepted WS deletion can leave an optimistic
+  tombstone byte-identical; removed rows cannot receive WS updates; mixed
+  failed edit/delete can resurrect failed text; reaction rollback must preserve
+  peer deltas. A controller-only equality patch is insufficient.
+  Preferred design under review retains canonical transport records and uses
+  messenger-owned projections shared by controller, MessengerProvider and
+  MessengerShellProvider. Success retirement, query/session incarnation,
+  MutationCache GC, clear cutoffs and reaction reconciliation are unresolved.
+  Ten drafted failure cases are unexecuted and need public-UI preconditions
+  rather than forced internal optimistic-cache shapes. Add real UUID-valid WS
+  acceptance and both providers' unread consistency. No production patch or
+  AUD-155 closure is ready.
+  Checkpoint source paths are `frontend/src/hooks/features/useMessengerController.ts`,
+  `frontend/src/hooks/useChatWebSocket.ts`, `frontend/src/app/sessionMutationCache.ts`,
+  `frontend/src/contexts/MessengerContext.tsx` and
+  `frontend/src/contexts/MessengerShellProvider.tsx`. Controller blob is `645c196823350b11334648f6ae06763f1f53cedb`,
+  WS hook `d3397e5b5c7bbab8d37c4b8c0c4705cb427c9ee4`, session fence
+  `8cbb67846c676ac3d13d540a988814db00c49e6a`, providers
+  `340b8009e089a8a37259273f878c2f7aa68e2a9f` /
+  `1bbaa2d850a16251d05cb6be5bb2d5ba7ff63f69`, existing 109-case test
+  `466bf073e4280109716ddf5258cb94c85516c10c`.
+- **AUD-307 remains OPEN:** `/og-image.png` is absent. Coordinate four
+  metadata producers in three files: route head and Activity fallback in
+  `__root.tsx`, `SEO.tsx` and `index.html`. A possible existing fallback is
+  `public/icon-512.png` (blob `ee48b370623de8d8de18b1625e7e41b94eae91eb`,
+  33,745 bytes); manifest/generator declare 512-square, but binary dimensions
+  were not independently decoded. Preserve explicit custom-image semantics.
+  This is incomplete read-only design, not a prepared or tested patch.
+- **Other acceptance work stays open:** AUD-162 still needs its own named
+  engine-contract receipt. AUD-164/AUD-167 need actual owned-peer,
+  two-client/spoof proof; source designs are not runtime evidence.
+  AUD-169 needs real enforcing-CNI reachability; no privileged cluster,
+  production credentials or deployment is authorized by this checkpoint.
+  A separate clean greenfield bootstrap is only feasibility analysis:
+  `create_all + stamp` omits retained/migration-owned schema objects.
+  Keep upgrade history; an ADR, exact catalog/behavior equivalence and a future
+  upgrade bridge are prerequisites, not completed work.
+
+### Cleanup and safe resumption
+
+Completed temporary minifier/formatter diagnostics and the go-jose checksum
+capture have been removed. The bounded Trivy SARIF diagnostic remains in
+`.github/workflows/reusable-security-audit.yml`; remove or consolidate it only
+after the real failure is understood and a reviewed durable evidence path
+exists. Retain ordinary/expanded migration proof until the reviewed consumer
+replaces that purpose; do not remove raw failures as “cleanup”.
+
+For autonomous continuation use GitHub plugin access only, the existing
+`egorribun` branch, fresh-head comparison and non-force CAS updates. Do not
+merge, deploy, force-push, overwrite owner changes or weaken gates. Preserve
+policy 347 finite dispositions, baseline 319 identities, Gitleaks 26,
+78 required context/app pairs, blocking CodeQL, hooks and coverage floors.
+Version freeze remains in force except the exact approved scopes above.
+
+After the documentation checkpoint is read back and its relevant documentation
+checks are recorded, no autonomous writes, new tasks or background monitoring
+remain scheduled. Resume only on a new owner instruction. A later source SHA
+always requires its own validation; this handoff is not authorization to treat
+historical green jobs as current. The documentation push may start normal
+GitHub Actions workflows; those may continue under their existing cleanup
+lifecycle after the autonomous handoff, without an inherited success claim.
+
 ## Scoped token, Vite and release-cache acceptance — source-bound checkpoint, 2026-10-28 UTC
 
 Accepted lower bound is **347/512 (67.8%)**; **165 IDs remain unaccepted**.
