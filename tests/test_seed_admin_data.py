@@ -710,7 +710,7 @@ async def test_owned_notification_queue_fixture_is_inert_and_idempotent(
         "attempts",
         "last_error",
         "claimed_at",
-        "next_retry_at",
+        pytest.param("next_retry_at", id="scheduled-at"),
     ),
 )
 async def test_owned_notification_queue_fixture_rejects_collisions_before_inserts(

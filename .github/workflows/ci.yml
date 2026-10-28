@@ -2814,7 +2814,7 @@ jobs:
               ),
               (
                   "tests.test_seed_admin_data",
-                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[next_retry_at]",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[scheduled-at]",
               ),
           }
 
@@ -2928,7 +2928,7 @@ jobs:
             'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[attempts]' \
             'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[last_error]' \
             'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[claimed_at]' \
-            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[next_retry_at]' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[scheduled-at]' \
             -n 0 -vv --tb=short --show-capture=no --no-cov --maxfail=0 \
             -p no:cacheprovider --basetemp="$probe_root/basetemp" \
             --junitxml="$probe_root/junit.xml" \

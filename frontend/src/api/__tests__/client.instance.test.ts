@@ -269,7 +269,7 @@ describe("api/client — defensive response cleanup", () => {
           data: { ok: true },
           status: 200,
           statusText: "OK",
-          headers: AxiosHeaders.from({ etag: '"stale-tag"' }),
+          headers: AxiosHeaders.from({ etag: '"stale-tag"', "content-type": "application/json" }),
           config,
           request: {},
         }
@@ -298,9 +298,12 @@ describe("api/client — defensive response cleanup", () => {
 
     const requestConfig = { etagCacheKey: "events:failed-response" } as never
     await api.get("/events", requestConfig)
+    expect(responseCache.get("events:failed-response")?.data).toEqual({ ok: true })
+    expect(etagCache.get("events:failed-response")).toBe('"stale-tag"')
     await expect(api.get("/events", requestConfig)).rejects.toMatchObject({
       response: { status: 500 },
     })
+    expect(etagCache.get("events:failed-response")).toBeUndefined()
     await api.get("/events", requestConfig)
 
     expect(AxiosHeaders.from(seen[1]!.headers).get("if-none-match")).toBe('"stale-tag"')

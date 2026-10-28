@@ -5,6 +5,8 @@ import { Bell } from "lucide-react"
 import { usePushPreferences } from "@/hooks/usePushPreferences"
 
 import {
+  Alert,
+  Button,
   TextField,
   SwitchControl,
   SectionCard,
@@ -39,7 +41,7 @@ export function NotificationsSection({
   onDndEndChange,
   onDndEndBlur,
 }: NotificationsSectionProps) {
-  const { t } = useTranslation(["settings", "notifications"])
+  const { t } = useTranslation(["settings", "notifications", "common"])
 
   const {
     pushSupported,
@@ -54,6 +56,9 @@ export function NotificationsSection({
     topicState,
     topicLabels,
     topicsReady,
+    topicsError,
+    topicsFetching,
+    refetchTopics,
     handleTopicToggle,
   } = usePushPreferences({ onNotify: setSnackbar })
 
@@ -120,6 +125,22 @@ export function NotificationsSection({
                   ? t("settings:notifications.topics.hint")
                   : t("settings:notifications.topics.disabledHint")}
               </p>
+              {topicsFetching ? (
+                <p role="status" className="text-sm text-text-muted">
+                  {t("settings:notifications.loading")}
+                </p>
+              ) : topicsError ? (
+                <div className="flex flex-col gap-2">
+                  <Alert severity="error">{t("settings:notifications.topics.loadError")}</Alert>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void refetchTopics({ cancelRefetch: false })}
+                  >
+                    {t("common:statuses.tryAgain")}
+                  </Button>
+                </div>
+              ) : null}
               {topicKeys.map((topic) => (
                 <label
                   key={topic}

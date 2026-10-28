@@ -72,7 +72,8 @@
     "topics": {
       "legend": "Notification topics",
       "hint": "Choose what push notifications are about. Your choice applies to all your devices.",
-      "disabledHint": "Your topic choice applies once you turn notifications on."
+      "disabledHint": "Your topic choice applies once you turn notifications on.",
+      "loadError": "Couldn't load notification topics. Try again."
     }
   },
   "dnd": {

@@ -3027,9 +3027,9 @@ describe("useMessengerController — branch top-up", () => {
         queryClient.setQueryData(messageQueryKey, replacement)
         rerender()
       })
-      expect(
-        queryClient.getQueryCache().find({ queryKey: messageQueryKey, exact: true })
-      ).not.toBe(retiredQuery)
+      expect(queryClient.getQueryCache().find({ queryKey: messageQueryKey, exact: true })).not.toBe(
+        retiredQuery
+      )
 
       // Content and edited_at deliberately match the retired optimistic write.
       await failEdit()
@@ -3052,12 +3052,14 @@ describe("useMessengerController — branch top-up", () => {
       )
 
       const cache = queryClient.getMutationCache()
-      const completed = cache.getAll().find(
-        (mutation) =>
-          mutation.state.status === "success" &&
-          (mutation.state.variables as { content?: string } | undefined)?.content ===
-            "successful later edit"
-      )
+      const completed = cache
+        .getAll()
+        .find(
+          (mutation) =>
+            mutation.state.status === "success" &&
+            (mutation.state.variables as { content?: string } | undefined)?.content ===
+              "successful later edit"
+        )
       expect(completed).toBeDefined()
       act(() => cache.remove(completed!))
 
@@ -3200,10 +3202,12 @@ describe("useMessengerController — branch top-up", () => {
         release = resolve
       })
       const originalCancel = queryClient.cancelQueries.bind(queryClient)
-      const cancelSpy = vi.spyOn(queryClient, "cancelQueries").mockImplementation(async (...args) => {
-        await originalCancel(...args)
-        await cancellationGate
-      })
+      const cancelSpy = vi
+        .spyOn(queryClient, "cancelQueries")
+        .mockImplementation(async (...args) => {
+          await originalCancel(...args)
+          await cancellationGate
+        })
       try {
         const second = startNextEdit("edit waiting for cancellation")
         await waitFor(() => expect(cancelSpy).toHaveBeenCalledOnce())
@@ -3234,14 +3238,14 @@ describe("useMessengerController — branch top-up", () => {
       await act(async () => {
         await queryClient.resetQueries({ queryKey: messageQueryKey, exact: true })
       })
-      expect(
-        queryClient.getQueryCache().find({ queryKey: messageQueryKey, exact: true })
-      ).toBe(owner)
+      expect(queryClient.getQueryCache().find({ queryKey: messageQueryKey, exact: true })).toBe(
+        owner
+      )
       expect(queryClient.getQueryData(messageQueryKey)).toBeUndefined()
       await failEdit()
-      expect(
-        queryClient.getQueryCache().find({ queryKey: messageQueryKey, exact: true })
-      ).toBe(owner)
+      expect(queryClient.getQueryCache().find({ queryKey: messageQueryKey, exact: true })).toBe(
+        owner
+      )
       expect(queryClient.getQueryData(messageQueryKey)).toBeUndefined()
     })
 
@@ -3261,9 +3265,9 @@ describe("useMessengerController — branch top-up", () => {
         queryClient.setQueryData(messageQueryKey, replacement)
         rerender()
       })
-      expect(
-        queryClient.getQueryCache().find({ queryKey: messageQueryKey, exact: true })
-      ).not.toBe(oldOwner)
+      expect(queryClient.getQueryCache().find({ queryKey: messageQueryKey, exact: true })).not.toBe(
+        oldOwner
+      )
       const second = startNextEdit("new incarnation's optimistic edit")
       await waitFor(() => {
         expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)

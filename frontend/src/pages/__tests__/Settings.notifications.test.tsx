@@ -13,6 +13,11 @@ import { server } from "@/tests/mocks/server"
 import type { User } from "@/types/User"
 import i18n from "../../i18n/config"
 
+// jsdom cannot interpolate the Switch's CSS-variable colors; keep real query and DOM behavior.
+vi.mock("framer-motion", async () =>
+  (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
+)
+
 const tNotifications = (key: string, options?: Record<string, unknown>) =>
   i18n.t(`notifications:${key}`, options)
 
