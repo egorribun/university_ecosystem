@@ -8,7 +8,7 @@ import {
   useRef,
 } from "react"
 import { useNavigate, useParams } from "@tanstack/react-router"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient, type Query } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { formatDate, presets } from "@/utils/date"
 import { compareMessageOrder } from "@/utils/messageOrder"
@@ -31,6 +31,38 @@ import { chatDisplayInfo } from "@/components/messenger/chatDisplay"
 import type { User } from "@/types/User"
 import type { Message as UiMessage, Contact } from "@/components/messenger"
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
+
+const EDIT_RECEIPT = Symbol("messenger edit receipt")
+
+type EditFields = Pick<ApiMessage, "content" | "edited_at">
+
+type EditReceipt = {
+  readonly query: Query
+  readonly messageId: string
+  readonly before: EditFields
+  readonly optimistic: EditFields
+  readonly previous?: EditReceipt
+  visible: boolean
+  failed: boolean
+}
+
+type EditReceiptCarrier = {
+  [EDIT_RECEIPT]?: EditReceipt
+}
+
+type EditMessageVariables = EditReceiptCarrier & {
+  chatId: string
+  messageId: string
+  content: string
+}
+
+// Other mutation-variable shapes cannot carry this module-private symbol.
+// The Query reference and lineage must never enter persisted cache data.
+const getEditReceipt = (value: unknown): EditReceipt | undefined =>
+  (value as EditReceiptCarrier | undefined)?.[EDIT_RECEIPT]
+
+const hasSameEditFields = (left: EditFields, right: EditFields): boolean =>
+  left.content === right.content && left.edited_at === right.edited_at
 
 // dayjs.extend(utc) removed in favor of native Intl utility
 
@@ -761,41 +793,97 @@ export const useMessengerController = () => {
     },
   })
 
-  // Wave 205 SW6 — author-only edit (optimistic): write the new content +
-  // client-time edited_at to the cache immediately; the W205 SW3 broadcast echo
-  // reconciles to the authoritative server edited_at (applyMessageEditedFrame is
-  // idempotent). Rollback on error. Mirrors clearChatMutation's onMutate/onError/
-  // onSettled snapshot pattern, scoped to one message.
+  // Edit rollback owns only content/edited_at, never a message-list snapshot.
+  // Retire previous ownership before publishing a newer optimistic edit.
   const editMessageMutation = useMutation({
-    mutationFn: ({
-      chatId,
-      messageId,
-      content,
-    }: {
-      chatId: string
-      messageId: string
-      content: string
-    }) => chatApi.editMessage(chatId, messageId, content),
-    onMutate: async ({ chatId, messageId, content }) => {
-      await queryClient.cancelQueries({ queryKey: ["messages", chatId] })
-      const previousMessages = queryClient.getQueryData<MessagesListResponse>(["messages", chatId])
-      const editedAt = new Date().toISOString()
-      queryClient.setQueryData<MessagesListResponse>(["messages", chatId], (old) =>
-        old
-          ? {
-              ...old,
-              items: old.items.map((m) =>
-                m.id === messageId ? { ...m, content, edited_at: editedAt } : m
-              ),
-            }
-          : old
-      )
-      return { previousMessages, chatId }
-    },
-    onError: (_error, _vars, context) => {
-      if (context?.previousMessages) {
-        queryClient.setQueryData(["messages", context.chatId], context.previousMessages)
+    mutationFn: ({ chatId, messageId, content }: EditMessageVariables) =>
+      chatApi.editMessage(chatId, messageId, content),
+    onMutate: async (variables) => {
+      const { chatId, messageId, content } = variables
+      const queryKey = ["messages", chatId] as const
+      await queryClient.cancelQueries({ queryKey })
+
+      const owner = queryClient.getQueryCache().find({ queryKey, exact: true })
+      const current = queryClient.getQueryData<MessagesListResponse>(queryKey)
+      if (!owner || !current) return
+
+      const target = current.items.find((message) => message.id === messageId)
+      if (!target || target.deleted_at) return
+
+      let previous: EditReceipt | undefined
+      for (const mutation of queryClient.getMutationCache().getAll()) {
+        const candidate = getEditReceipt(mutation.state.variables)
+        if (!candidate?.visible || candidate.query !== owner || candidate.messageId !== messageId) {
+          continue
+        }
+        candidate.visible = false
+        if (
+          mutation.state.status === "pending" &&
+          hasSameEditFields(target, candidate.optimistic)
+        ) {
+          previous = candidate
+        }
+        break
       }
+
+      const receipt: EditReceipt = {
+        query: owner,
+        messageId,
+        before: { content: target.content, edited_at: target.edited_at },
+        optimistic: { content, edited_at: new Date().toISOString() },
+        previous,
+        visible: true,
+        failed: false,
+      }
+
+      // TanStack publishes variables before awaiting onMutate, but publishes
+      // its returned context afterwards. Register before notifying cache
+      // subscribers so an older failure cannot reclaim this publication gap.
+      variables[EDIT_RECEIPT] = receipt
+      queryClient.setQueryData<MessagesListResponse>(queryKey, {
+        ...current,
+        items: current.items.map((message) =>
+          message.id === messageId ? { ...message, ...receipt.optimistic } : message
+        ),
+      })
+      return { [EDIT_RECEIPT]: receipt }
+    },
+    onError: (_error, { chatId }, context) => {
+      const receipt = getEditReceipt(context)
+      if (!receipt) return
+
+      receipt.failed = true
+      if (!receipt.visible) return
+      receipt.visible = false
+
+      const queryKey = ["messages", chatId] as const
+      const owner = queryClient.getQueryCache().find({ queryKey, exact: true })
+      if (owner !== receipt.query) return
+
+      const current = queryClient.getQueryData<MessagesListResponse>(queryKey)
+      if (!current) return
+      const target = current.items.find((message) => message.id === receipt.messageId)
+      if (!target || target.deleted_at || !hasSameEditFields(target, receipt.optimistic)) {
+        return
+      }
+
+      let restored = receipt.before
+      let previous = receipt.previous
+      while (previous?.failed) {
+        restored = previous.before
+        previous = previous.previous
+      }
+      if (previous) {
+        restored = previous.optimistic
+        previous.visible = true
+      }
+
+      queryClient.setQueryData<MessagesListResponse>(queryKey, {
+        ...current,
+        items: current.items.map((message) =>
+          message.id === receipt.messageId ? { ...message, ...restored } : message
+        ),
+      })
     },
     onSettled: (_data, _error, { chatId }) => {
       queryClient.invalidateQueries({ queryKey: ["messages", chatId], refetchType: "none" })

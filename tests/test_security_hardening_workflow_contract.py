@@ -980,8 +980,7 @@ def test_npm_audit_uses_the_compiler_archive_bootstrap_node_version() -> None:
 def test_generated_signing_keys_are_masked_before_environment_export() -> None:
     openssl = 'secret="$(openssl rand -hex 32)"'
     python = (
-        'secret="$(python -c \'import secrets; '
-        'print(secrets.token_urlsafe(48))\')"'
+        "secret=\"$(python -c 'import secrets; print(secrets.token_urlsafe(48))')\""
     )
     conditional = "env.SECRET_KEY == ''"
     cases = [
@@ -1041,5 +1040,5 @@ def test_generated_signing_keys_are_masked_before_environment_export() -> None:
             "set -euo pipefail",
             generator,
             "printf '::add-mask::%s\\n' \"$secret\"",
-            "printf 'SECRET_KEY=%s\\n' \"$secret\" >> \"$GITHUB_ENV\"",
+            'printf \'SECRET_KEY=%s\\n\' "$secret" >> "$GITHUB_ENV"',
         ], (path.name, job_name)

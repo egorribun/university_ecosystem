@@ -2,6 +2,70 @@
 
 Обновлено: 2026-10-28 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Scoped token, Vite and release-cache acceptance — source-bound checkpoint, 2026-10-28 UTC
+
+Accepted lower bound is **347/512 (67.8%)**; **165 IDs remain unaccepted**.
+The [dated audit decision](../../audits/AUDIT-2026-10.md#scoped-aud-072-aud-377-and-aud-472-acceptance-2026-10-28)
+preserves all 344 prior IDs and adds only AUD-072, AUD-377 and AUD-472. Historical
+checkpoints below retain their original counts and evidence scope.
+
+- **AUD-072:** all 45 relevant numeric-alpha token names are mapped to the
+  expanded real CSSOM probes, including applicable light/dark variants and
+  actual dashboard scope. Source 456e16d7 and tested merge 1ba01343 share tree
+  bf05c29e. Its [owned Core result](https://github.com/egorribun/university_ecosystem/actions/runs/40614488933/job/122573671018)
+  is 46 browser PASS / two reset failures / two existing auth project skips.
+  Complete selected-population and failure-location reconciliation establishes
+  both semantic-token executions passed; individual computed values and ZIP
+  contents are not claimed inspected. The remaining 27 direct numeric-alpha
+  sites were inspected exhaustively as already-valid percentage forms, not
+  individually browser-tested. This closes the original numeric/percentage
+  defect, not every visual/accessibility property or the failed full Core run.
+- **AUD-377:** actual config plus owned loopback HTTP tests showed three
+  semantic failures on 4a3e895b, then all four target cases passed on dd175947.
+  [GREEN job 122607600583](https://github.com/egorribun/university_ecosystem/actions/runs/40624560986/job/122607600583)
+  reports 678 Node PASS / zero failures / one existing skip. Only three blanket
+  Vite overrides were removed; explicit trusted-LAN CLI use, proxy/SW headers
+  and production/container bindings remain unchanged. The fixture never
+  invokes Vite's wildcard port allocator or opens a LAN listener.
+- **AUD-472:** dd175947 established two real persistence failures and three
+  passing controls. [Source 910bc33c](https://github.com/egorribun/university_ecosystem/commit/910bc33c8967dade32c6d0ae5cd6cff1c62739c4)
+  prefers the canonical producer's existing VITE_APP_RELEASE over the legacy
+  fallback; ownership/session guards and seven-day retention are unchanged.
+  [Exact-source shard 1](https://github.com/egorribun/university_ecosystem/actions/runs/40628946791/job/122621734418)
+  passes the entire 54-test persistence file, including the unchanged five-case
+  cohort. Same-tree tested merge is 5e950d0f, tree 502dd0d5. This is application
+  IndexedDB persister/TanStack save-restore proof under fake-indexeddb in jsdom,
+  not native-browser IndexedDB, a deployed-browser upgrade or a guarantee of
+  unique identifiers in every ad-hoc build. Existing no-identifier
+  development fallback remains available.
+
+The 910bc33c Matrix is terminal FAILURE at 04:04:30 UTC (60 jobs: 17 successful,
+11 failed, 32 skipped, zero active). Its Core stops before Docker on the strict registration-diagnostic
+schema RED. The separately reviewed source correction adds six fixed booleans only,
+without message/input/credential capture. Actual 4a3e evidence is 289 Node contracts
+(273 PASS / 16 schema assertion failures) plus the separate consumer cohort
+(2768 PASS / three old-parser failures); the 12 new parameterized Python cases
+were not selected by that consumer command and are not claimed executed.
+
+The owner approved publication of these three audit documents at 04:36 UTC
+and both previously blocked source packets at 04:37 UTC: the 11-file frontend/CI
+fix packet and two registration-observer/parser files. The earlier refusals were
+not bypassed; the explicit grants permit the reviewed continuation, not a claim
+that its new source has passed CI. The remaining named blockers include
+AUD-155/AUD-376 regressions, unchanged Ruff/baseline metadata drift, the MapLibre
+285.83/280 KiB bundle boundary, and a Trivy filesystem security scan failure.
+The latter reports three HIGH alerts but their classes/advisory identities are not yet
+available from the permitted read surfaces; no version update or waiver is
+inferred. The configuration/Helm scans passed.
+
+Ordinary migration proof capture and the finite minifier diagnostic remain
+subject to their own publication/validation. Historical148 Squawk dispositions
+are not approved or active. P1 client-IP/two-client/spoof and enforcing-CNI
+acceptance remain open; offline producer design is not runtime acceptance.
+Policy 347, baseline 319 identities, Gitleaks 26, all 78 required contexts,
+blocking CodeQL, hooks, budgets and coverage floors are unchanged. No merge,
+deployment or release-readiness claim is made.
+
 ## Scoped RED/GREEN checkpoint — source 29711392, 2026-10-28 UTC
 
 Accepted lower bound is **344/512 (67.2%)**; **168 IDs remain unaccepted**.

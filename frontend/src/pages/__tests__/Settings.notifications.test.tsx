@@ -1,9 +1,15 @@
-import { act, renderHook, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { domAnimation, LazyMotion } from "framer-motion"
+import { http, HttpResponse } from "msw"
 import type { ChangeEvent, ReactElement, ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { usePushPreferences } from "@/hooks/usePushPreferences"
+import { NotificationsSection } from "@/pages/settings/sections/NotificationsSection"
+import { getConfirmedUserId } from "@/stores/authIdentity"
+import { acceptBrowserSessionGeneration } from "@/stores/sessionEpoch"
 import { useAuthStore } from "@/stores/useAuthStore"
+import { server } from "@/tests/mocks/server"
 import type { User } from "@/types/User"
 import i18n from "../../i18n/config"
 
@@ -372,5 +378,172 @@ describe("usePushPreferences notifications flow", () => {
     )
     expect(result.current.notificationsEnabled).toBe(false)
     expect(result.current.notificationPermission).toBe("granted")
+  })
+})
+
+describe("NotificationsSection canonical topic load recovery", () => {
+  it.each([
+    {
+      language: "en",
+      error: "Couldn't load notification topics. Try again.",
+      retry: "Try again",
+    },
+    {
+      language: "ru",
+      error: "Не удалось загрузить темы уведомлений. Попробуйте снова.",
+      retry: "Попробовать снова",
+    },
+  ])("recovers from an authenticated 503 without overwriting topics ($language)", async (copy) => {
+    await i18n.changeLanguage(copy.language)
+    acceptBrowserSessionGeneration()
+    expect(getConfirmedUserId(useAuthStore.getState())).toBe(AUTH_USER_ID)
+    MockNotification.permission = "granted"
+    getExistingPushSubscriptionMock.mockResolvedValue(createMockSubscription())
+
+    // Disable automatic retries only for this controlled failure/recovery test.
+    // The production query policy remains unchanged.
+    queryClient.setDefaultOptions({
+      queries: {
+        retry: false,
+        gcTime: Infinity,
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
+      },
+    })
+    await import("@/api/client")
+    const actual =
+      await vi.importActual<typeof import("@/api/notifications")>("@/api/notifications")
+    fetchPushTopicsMock.mockImplementation(actual.fetchPushTopics)
+
+    const topicsQueryKey = ["notifications", "push-topics", AUTH_USER_ID]
+    let releaseRetry: (() => void) | undefined
+    const retryGate = new Promise<void>((resolve) => {
+      releaseRetry = resolve
+    })
+    let requests = 0
+    const responseStatuses: number[] = []
+    server.use(
+      http.get("*/api/v1/push/topics", async () => {
+        requests += 1
+        if (requests === 1) {
+          responseStatuses.push(503)
+          return HttpResponse.text("Controlled topic service unavailable", { status: 503 })
+        }
+        await retryGate
+        responseStatuses.push(200)
+        return HttpResponse.json({
+          allowed: [
+            "news.published",
+            "schedule.changed",
+            "events.published",
+            "chat.message.created",
+            "system.release",
+          ],
+          topics: [],
+          has_preferences: true,
+          updated_at: null,
+        })
+      })
+    )
+
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <LazyMotion features={domAnimation}>
+          <NotificationsSection
+            setSnackbar={vi.fn()}
+            dndEnabled={false}
+            dndStart="22:00"
+            dndEnd="07:00"
+            dndSaving={false}
+            onDndToggle={vi.fn()}
+            onDndStartChange={vi.fn()}
+            onDndStartBlur={vi.fn()}
+            onDndEndChange={vi.fn()}
+            onDndEndBlur={vi.fn()}
+          />
+        </LazyMotion>
+      </QueryClientProvider>
+    )
+
+    const expectNoPreferenceWrites = () => {
+      expect(updatePushTopicsMock).not.toHaveBeenCalled()
+      expect(ensurePushSubscriptionMock).not.toHaveBeenCalled()
+      expect(deleteSubscriptionMock).not.toHaveBeenCalled()
+      expect(setPushConsentMock).not.toHaveBeenCalled()
+    }
+
+    try {
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: [
+            i18n.t("settings:notifications.push.title"),
+            i18n.t("settings:notifications.push.subtitle"),
+          ].join(" "),
+        })
+      )
+      const group = await screen.findByRole("group", {
+        name: i18n.t("settings:notifications.topics.legend"),
+      })
+      const topicSwitches = within(group).getAllByRole("switch")
+      expect(topicSwitches).toHaveLength(5)
+      await waitFor(() =>
+        expect(queryClient.getQueryState(topicsQueryKey)).toMatchObject({
+          status: "error",
+          fetchStatus: "idle",
+        })
+      )
+      expect(responseStatuses).toEqual([503])
+      expect(requests).toBe(1)
+      expect(fetchPushTopicsMock).toHaveBeenCalledOnce()
+      for (const control of topicSwitches) {
+        expect(control).toBeDisabled()
+      }
+      expectNoPreferenceWrites()
+      expect(setPersistedTopicsMock).not.toHaveBeenCalled()
+
+      const alert = await within(group).findByRole("alert")
+      expect(alert).toHaveTextContent(copy.error)
+      expect(alert).not.toHaveTextContent(/Invalid API response|\/api\/v1\/push\/topics/)
+      const retry = within(group).getByRole("button", { name: copy.retry })
+      expect(retry.tagName).toBe("BUTTON")
+      expect(retry).toBeEnabled()
+      fireEvent.click(retry)
+      await waitFor(() => expect(requests).toBe(2))
+      for (const control of topicSwitches) {
+        expect(control).toBeDisabled()
+      }
+      // A pending retry may replace its button with loading feedback, but must
+      // never offer a second active retry or permit placeholder topic writes.
+      const pendingRetry = within(group).queryByRole("button", { name: copy.retry })
+      if (pendingRetry !== null) {
+        expect(pendingRetry).toBeDisabled()
+        fireEvent.click(pendingRetry)
+      }
+      expect(requests).toBe(2)
+      expectNoPreferenceWrites()
+      expect(setPersistedTopicsMock).not.toHaveBeenCalled()
+
+      await act(async () => {
+        releaseRetry?.()
+      })
+      await waitFor(() => {
+        for (const control of topicSwitches) {
+          expect(control).toBeEnabled()
+          expect(control).not.toBeChecked()
+        }
+      })
+      expect(within(group).queryByRole("alert")).not.toBeInTheDocument()
+      expect(within(group).queryByRole("button", { name: copy.retry })).not.toBeInTheDocument()
+      expect(responseStatuses).toEqual([503, 200])
+      expect(requests).toBe(2)
+      expect(fetchPushTopicsMock).toHaveBeenCalledTimes(2)
+      expect(setPersistedTopicsMock).toHaveBeenCalledOnce()
+      expect(setPersistedTopicsMock).toHaveBeenCalledWith([], { userId: AUTH_USER_ID })
+      expectNoPreferenceWrites()
+    } finally {
+      releaseRetry?.()
+      view.unmount()
+      await queryClient.cancelQueries()
+    }
   })
 })

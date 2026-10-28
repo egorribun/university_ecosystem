@@ -6259,11 +6259,20 @@ def _live_playwright_reset_registration_steps(output: str) -> list[tuple[str, st
     return records
 
 
+_RESET_REGISTRATION_V2_ERROR_KEYS = (
+    "nameError",
+    "emailError",
+    "inviteError",
+    "passwordError",
+    "confirmError",
+    "rootError",
+)
 _RESET_REGISTRATION_V2_SNAPSHOT_KEYS = (
     "hydrated",
     "formPresent",
     "formInvalid",
     "formError",
+    *_RESET_REGISTRATION_V2_ERROR_KEYS,
     "submitPresent",
     "submitDisabled",
     "submitBusy",
@@ -6319,6 +6328,10 @@ def _validated_reset_registration_v2(value: object) -> dict[str, object] | None:
         return None
     if not record["formPresent"] and any(
         record[key] for key in _RESET_REGISTRATION_V2_SNAPSHOT_KEYS[2:]
+    ):
+        return None
+    if not record["formError"] and any(
+        record[key] for key in _RESET_REGISTRATION_V2_ERROR_KEYS
     ):
         return None
     if not record["submitPresent"] and (

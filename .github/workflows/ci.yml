@@ -2633,6 +2633,23 @@ jobs:
               "tests/test_aud354_jwt_issuer.py",
               "tests/test_security_headers.py",
               "tests/test_csp_settings_closure.py",
+              "app/services/session_service.py",
+              "app/models/auth.py",
+              "tests/test_session_service_user_agent_aud356.py",
+              "app/api/ws/dispatcher.py",
+              "app/api/websocket.py",
+              "app/auth/rbac.py",
+              "app/core/di/spicedb.py",
+              "tests/test_ws_dispatcher_full.py",
+              "scripts/seed_admin_data.py",
+              "tests/test_seed_admin_data.py",
+              "app/services/notification_queue.py",
+              "app/models/notifications.py",
+              "tests/conftest.py",
+              "tests/fixtures/services/websocket_fixtures.py",
+              "tests/fixtures/database/database.py",
+              "pyproject.toml",
+              "uv.lock",
           )
           EXPECTED = {
               (
@@ -2715,6 +2732,90 @@ jobs:
                   "tests.test_csp_settings_closure",
                   "test_production_csp_defaults_match_shared_frontend_contract",
               ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[ordinary-ascii]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[ascii-boundary]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[ascii-overflow]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[multibyte-boundary]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[multibyte-overflow]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[none]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[empty]",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_admin_gets_online_list",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_non_admin_denied",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_stale_admin_role_is_denied_by_spicedb",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_spicedb_unavailable_fails_closed_without_online_list",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_missing_app_container_fails_closed",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_ping_and_read_do_not_resolve_permission_checker",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full",
+                  "test_websocket_route_uses_app_container_per_get_online_frame",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_is_inert_and_idempotent",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[dead_lettered]",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[locale]",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[attempts]",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[last_error]",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[claimed_at]",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[next_retry_at]",
+              ),
           }
 
 
@@ -2771,12 +2872,12 @@ jobs:
                   raise SystemExit("Missing or oversized Scoped audit JUnit report")
               document = ElementTree.parse(report)
               suites = list(document.getroot().iter("testsuite"))
-              totals = {"tests": "20", "failures": "0", "errors": "0", "skipped": "0"}
+              totals = {"tests": "41", "failures": "0", "errors": "0", "skipped": "0"}
               if len(suites) != 1 or any(suites[0].get(key) != value for key, value in totals.items()):
-                  raise SystemExit("Scoped audit JUnit totals are not exactly twenty passes")
+                  raise SystemExit("Scoped audit JUnit totals are not exactly forty-one passes")
               cases = list(document.getroot().iter("testcase"))
               observed = [(case.get("classname"), case.get("name")) for case in cases]
-              if len(observed) != 20 or set(observed) != EXPECTED:
+              if len(observed) != 41 or set(observed) != EXPECTED:
                   raise SystemExit("Scoped audit JUnit identities are missing, extra or duplicated")
               if any(list(document.getroot().iter(tag)) for tag in ("failure", "error", "skipped")):
                   raise SystemExit("Scoped audit cohort contains failure, error or skip")
@@ -2807,7 +2908,28 @@ jobs:
             tests/test_security_headers.py::test_security_headers_development_report_only \
             tests/test_security_headers.py::test_security_headers_credentialless_coep \
             tests/test_csp_settings_closure.py::test_production_csp_defaults_match_shared_frontend_contract \
-            -n 0 -v --tb=short --show-capture=no --no-cov --maxfail=0 \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[ordinary-ascii]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[ascii-boundary]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[ascii-overflow]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[multibyte-boundary]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[multibyte-overflow]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[none]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[empty]' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_admin_gets_online_list' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_non_admin_denied' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_stale_admin_role_is_denied_by_spicedb' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_spicedb_unavailable_fails_closed_without_online_list' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_missing_app_container_fails_closed' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_ping_and_read_do_not_resolve_permission_checker' \
+            'tests/test_ws_dispatcher_full.py::test_websocket_route_uses_app_container_per_get_online_frame' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_is_inert_and_idempotent' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[dead_lettered]' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[locale]' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[attempts]' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[last_error]' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[claimed_at]' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[next_retry_at]' \
+            -n 0 -vv --tb=short --show-capture=no --no-cov --maxfail=0 \
             -p no:cacheprovider --basetemp="$probe_root/basetemp" \
             --junitxml="$probe_root/junit.xml" \
             > "$probe_root/pytest.log" 2>&1 || pytest_status=$?

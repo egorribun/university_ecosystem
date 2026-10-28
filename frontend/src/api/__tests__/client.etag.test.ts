@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { isCancel } from "axios"
 import { http, HttpResponse } from "msw"
 
 import { etagCache, registerSigningKeyAccessor, responseCache } from "@/api/interceptors/etagCache"
@@ -146,7 +145,7 @@ describe("API ETag interceptor", () => {
   })
 
   it("does not turn an aborted bodyless-cache request into network recovery", async () => {
-    const { default: api } = await import("@/api/client")
+    const { default: api, isAbortError } = await import("@/api/client")
     etagCache.set("events:aborted", '"orphaned-tag"')
     const requests: string[] = []
     server.use(
@@ -166,7 +165,7 @@ describe("API ETag interceptor", () => {
     controller.abort()
     const config = { etagCacheKey: "events:aborted", signal: controller.signal }
 
-    await expect(api.get("/events", config)).rejects.toSatisfy(isCancel)
+    await expect(api.get("/events", config)).rejects.toSatisfy(isAbortError)
     expect(requests).toEqual([])
     expect(responseCache.get("events:aborted")).toBeUndefined()
   })

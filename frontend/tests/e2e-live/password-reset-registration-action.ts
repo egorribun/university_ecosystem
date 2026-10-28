@@ -12,6 +12,12 @@ type RegistrationSnapshot = {
   formPresent: boolean
   formInvalid: boolean
   formError: boolean
+  nameError: boolean
+  emailError: boolean
+  inviteError: boolean
+  passwordError: boolean
+  confirmError: boolean
+  rootError: boolean
   submitPresent: boolean
   submitDisabled: boolean
   submitBusy: boolean
@@ -19,11 +25,21 @@ type RegistrationSnapshot = {
 
 type CsrfResponseClass = "not-observed" | "success" | "http-error" | "mixed" | "unavailable"
 
+const ERROR_SNAPSHOT_KEYS = [
+  "nameError",
+  "emailError",
+  "inviteError",
+  "passwordError",
+  "confirmError",
+  "rootError",
+] as const
+
 const SNAPSHOT_KEYS = [
   "hydrated",
   "formPresent",
   "formInvalid",
   "formError",
+  ...ERROR_SNAPSHOT_KEYS,
   "submitPresent",
   "submitDisabled",
   "submitBusy",
@@ -79,6 +95,7 @@ function validateRegistrationSnapshot(value: unknown): RegistrationSnapshot | nu
           snapshot.submitPresent ||
           snapshot.submitDisabled ||
           snapshot.submitBusy)) ||
+      (!snapshot.formError && ERROR_SNAPSHOT_KEYS.some((key) => snapshot[key])) ||
       (!snapshot.submitPresent && (snapshot.submitDisabled || snapshot.submitBusy))
     ) {
       return null
@@ -110,6 +127,14 @@ async function registrationSnapshot(
           formPresent: form !== null,
           formInvalid: form?.matches(":invalid") ?? false,
           formError: Boolean(form?.querySelector('[role="alert"]')),
+          nameError: Boolean(form?.querySelector('#register-name-error[role="alert"]')),
+          emailError: Boolean(form?.querySelector('#register-email-error[role="alert"]')),
+          inviteError: Boolean(form?.querySelector('#register-invite-error[role="alert"]')),
+          passwordError: Boolean(form?.querySelector('#register-password-error[role="alert"]')),
+          confirmError: Boolean(
+            form?.querySelector('#register-confirm-password-error[role="alert"]')
+          ),
+          rootError: Boolean(form?.querySelector(':scope > [role="alert"][aria-live="assertive"]')),
           submitPresent,
           submitDisabled: submitPresent && (submit as HTMLButtonElement).disabled,
           submitBusy: submitPresent && submit?.getAttribute("aria-busy") === "true",
@@ -251,6 +276,12 @@ export function createPasswordResetRegistrationDiagnostics(
         formPresent: snapshot?.formPresent ?? false,
         formInvalid: snapshot?.formInvalid ?? false,
         formError: snapshot?.formError ?? false,
+        nameError: snapshot?.nameError ?? false,
+        emailError: snapshot?.emailError ?? false,
+        inviteError: snapshot?.inviteError ?? false,
+        passwordError: snapshot?.passwordError ?? false,
+        confirmError: snapshot?.confirmError ?? false,
+        rootError: snapshot?.rootError ?? false,
         submitPresent: snapshot?.submitPresent ?? false,
         submitDisabled: snapshot?.submitDisabled ?? false,
         submitBusy: snapshot?.submitBusy ?? false,

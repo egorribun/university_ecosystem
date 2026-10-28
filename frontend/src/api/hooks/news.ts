@@ -143,15 +143,6 @@ const parsePaginatedNewsResponse = (
     has_more: page.has_more,
   }
 }
-const createEmptyPaginatedNewsPage = (fallbackLimit: number): PaginatedResponse<NewsItem> => ({
-  items: [],
-  total: 0,
-  limit: fallbackLimit,
-  cursor: null,
-  next_cursor: null,
-  has_more: false,
-})
-
 const ensurePaginatedResponse = (
   payload: PaginatedResponse<NewsItem> | null | undefined,
   fallbackLimit: number
@@ -333,10 +324,9 @@ const createNewsListQueryFn =
       if (cachedPage) return cachedPage
 
       const persistedPage = readPersistedNewsPage(normalized.language, normalized.limit, owner)
-      return (
-        ensurePaginatedResponse(persistedPage, normalized.limit) ??
-        createEmptyPaginatedNewsPage(normalized.limit)
-      )
+      const fallbackPage = ensurePaginatedResponse(persistedPage, normalized.limit)
+      if (fallbackPage) return fallbackPage
+      throw new Error("News response was not modified without an available cached page")
     }
 
     return parsePaginatedNewsResponse(response.data, normalized.limit)

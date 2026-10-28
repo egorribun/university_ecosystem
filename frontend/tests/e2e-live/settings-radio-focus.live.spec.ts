@@ -197,10 +197,9 @@ async function readSemanticTokens(page: Page, scheme: "light" | "dark") {
         {
           name: "raw-shadow-premium",
           property: "box-shadow",
-          expected: [
-            shadow("0 20px 50px", "black", 10),
-            shadow("0 8px 16px", "black", 5),
-          ].join(", "),
+          expected: [shadow("0 20px 50px", "black", 10), shadow("0 8px 16px", "black", 5)].join(
+            ", "
+          ),
         },
         {
           name: "raw-shadow-premium-lift",
