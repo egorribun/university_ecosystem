@@ -7849,7 +7849,11 @@ def _run_live_playwright(
         )
         skip_accounting_passed = (
             _live_playwright_counts(stdout)
-            == {"passed": 212, "skipped": len(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)}
+            == {
+                "passed": _PLAYWRIGHT_FULL_COLLECTION_COUNT
+                - len(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES),
+                "skipped": len(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES),
+            }
             and not skip_rejected_rows
             and not skip_overflow
             and sorted(skip_identities) == sorted(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)

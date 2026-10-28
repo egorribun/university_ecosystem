@@ -460,6 +460,12 @@ describe("NewsDetail comment pagination", () => {
       expect(screen.getByRole("button", { name: "news:actions.deleteComment" })).toBeEnabled()
       await act(async () => edit.resolve())
       await waitFor(() => expect(client.isMutating()).toBe(0))
+      expect(client.getQueryData(["news", articleA, "interactions"])).toMatchObject({
+        pages: [{ comments: [commentA] }],
+      })
+      expect(client.getQueryData(["news", articleB, "interactions"])).toMatchObject({
+        pages: [{ comments: [commentB] }],
+      })
       expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     } finally {
       await act(async () => edit.resolve())

@@ -1199,6 +1199,7 @@ export const handlers = [
 
     const resultArray = [
       [await getMyEventsApiV1EventsMyGet200Response(), { status: 200 }],
+      [await getMyEventsApiV1EventsMyGet409Response(), { status: 409 }],
       [await getMyEventsApiV1EventsMyGet422Response(), { status: 422 }],
     ] as [any, { status: number }][];
 
@@ -8055,6 +8056,10 @@ export function getMyEventsApiV1EventsMyGet200Response() {
       title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
     }));
   })();
+}
+
+export function getMyEventsApiV1EventsMyGet409Response() {
+  return null;
 }
 
 export function getMyEventsApiV1EventsMyGet422Response() {

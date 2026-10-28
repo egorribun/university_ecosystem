@@ -5299,6 +5299,20 @@ export type MyEventsApiV1EventsMyGetData = {
 
 export type MyEventsApiV1EventsMyGetErrors = {
   /**
+   * The legacy list exceeds its capacity; use the paginated endpoint.
+   */
+  409: {
+    code: "events_my_pagination_required"
+    detail: string
+    instance: string
+    legacy_limit: 100
+    pagination_url: string
+    status: 409
+    title: string
+    trace_id: string | null
+    type: string
+  }
+  /**
    * Validation Error
    */
   422: HttpValidationError
@@ -5353,11 +5367,17 @@ export type MyEventsPageApiV1EventsMyPageGetData = {
     /**
      * Sort
      */
-    sort?: "newest" | "popular" | "upcoming"
+    sort?: "newest" | "newest_desc" | "popular" | "upcoming"
     /**
      * Upcoming After
      */
     upcoming_after?: string | null
+    /**
+     * Lang
+     *
+     * Requested My-events locale; unsupported values use the usual locale fallback.
+     */
+    lang?: string | null
   }
   url: "/api/v1/events/my/page"
 }
@@ -8034,6 +8054,8 @@ export type HealthzHealthzGetData = {
   query?: {
     /**
      * Brief
+     *
+     * Legacy parameter, ignored: public responses omit diagnostic details.
      */
     brief?: boolean
   }

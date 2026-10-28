@@ -53,6 +53,10 @@ type NewsSnackbarNotice = { message: string; severity: NewsSnackbarSeverity }
    ══════════════════════════════════════════════════════════ */
 export default function NewsDetail() {
   const { id = "" } = useParams({ strict: false })
+  return <NewsDetailArticle key={id} id={id} />
+}
+
+function NewsDetailArticle({ id }: { id: string }) {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { anonymous } = useAnonymousReadMode()

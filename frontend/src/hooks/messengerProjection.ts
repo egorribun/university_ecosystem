@@ -675,13 +675,56 @@ export function finishClearRefresh(
   return { fetched: { ...fetched, items }, cleared: true }
 }
 
+const CHAT_REFRESH_QUIET_MS = 100
+
+function waitForQuietChatsAfterClear(
+  client: QueryClient,
+  operation: Extract<Operation, { kind: "clear" }>
+): Promise<boolean> {
+  if (!ownsChats(client, operation)) return Promise.resolve(false)
+  return new Promise((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let detach: (() => void) | undefined
+    let settled = false
+    const finish = (current: boolean) => {
+      if (settled) return
+      settled = true
+      if (timer !== undefined) clearTimeout(timer)
+      detach?.()
+      resolve(current)
+    }
+    const restartQuietPeriod = () => {
+      if (settled) return
+      if (timer !== undefined) clearTimeout(timer)
+      timer = setTimeout(() => finish(ownsChats(client, operation)), CHAT_REFRESH_QUIET_MS)
+    }
+    detach = client.getQueryCache().subscribe((event) => {
+      if (!ownsChats(client, operation)) {
+        finish(false)
+        return
+      }
+      if (
+        event.query === operation.chatsQuery &&
+        event.type === "updated" &&
+        event.action.type === "success"
+      ) {
+        restartQuietPeriod()
+      }
+    })
+    restartQuietPeriod()
+  })
+}
+
 async function reconcileChatsAfterClear(
   client: QueryClient,
   operation: Extract<Operation, { kind: "clear" }>
 ) {
   // A response cannot replace a WebSocket update received while it was in
-  // flight. Retry a bounded number of times until a request sees a quiet cache.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  // flight. After three immediate collisions, coalesce external data changes
+  // into one quiet-period attempt instead of dropping the pending correction.
+  let collisions = 0
+  while (ownsChats(client, operation)) {
+    if (collisions >= 3 && !(await waitForQuietChatsAfterClear(client, operation))) return
     if (!ownsChats(client, operation)) return
     const before = client.getQueryData<ChatsListResponse>(["chats"])
     if (!before) return
@@ -692,7 +735,10 @@ async function reconcileChatsAfterClear(
       return
     }
     if (!ownsChats(client, operation)) return
-    if (client.getQueryData<ChatsListResponse>(["chats"]) !== before) continue
+    if (client.getQueryData<ChatsListResponse>(["chats"]) !== before) {
+      collisions += 1
+      continue
+    }
     client.setQueryData<ChatsListResponse>(["chats"], {
       ...fetched,
       items: fetched.items.map((chat) => {

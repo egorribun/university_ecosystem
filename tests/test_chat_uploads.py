@@ -1,4 +1,5 @@
 import io
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException, UploadFile, status
@@ -6,11 +7,15 @@ from sqlalchemy import select
 from starlette.datastructures import Headers
 
 from app.core.config import settings
+from app.core.config.storage import StorageSettings
 from app.core.localization import translate
 from app.models.chat import Attachment, Chat
+from app.repositories.unit_of_work import uow_from_session
+from app.services.chat import attachment_service as attachment_module
 from app.services.chat.attachment_service import ChatAttachmentService
 from app.services.chat.command_service import ChatMessageDispatcher
 from app.services.chat.notification_service import ChatNotificationService
+from app.services.storage import StaticFSStorage, get_storage_backend
 from app.utils import files
 
 
@@ -197,3 +202,75 @@ async def test_send_message_exposes_authorized_attachment_urls(
     assert method == "save"
     assert relative_path.startswith(f"chat_uploads/chat_{chat.id}_")
     assert kwargs["content_type"] == "text/plain"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "public_base",
+    [None, "https://objects.example.test/static"],
+    ids=["declared-static-default", "explicit-absolute-base"],
+)
+async def test_real_static_chat_upload_persists_and_remains_readable(
+    tmp_path, monkeypatch, db_session, user_factory, public_base
+):
+    sender = await user_factory()
+    recipient = await user_factory()
+    chat = Chat(participants=[sender, recipient])
+    db_session.add(chat)
+    await db_session.commit()
+    await db_session.refresh(chat)
+
+    default_base = StorageSettings.model_fields["storage_static_base_url"].default
+    monkeypatch.setattr(settings, "storage_backend", "static")
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+    monkeypatch.setattr(
+        settings,
+        "storage_static_base_url",
+        default_base if public_base is None else public_base,
+    )
+    monkeypatch.setattr(settings, "chat_attachment_allowed_mime_types", ["text/plain"])
+    monkeypatch.setattr(settings, "chat_attachment_allowed_extensions", [".txt"])
+    monkeypatch.setattr(settings, "chat_attachment_max_size_bytes", 1024)
+    backend = get_storage_backend(settings)
+    assert isinstance(backend, StaticFSStorage)
+    monkeypatch.setattr(files, "storage_backend", backend)
+    monkeypatch.setattr(files, "_default_storage_backend", backend)
+    monkeypatch.setattr(
+        files, "_storage_backend_snapshot", files._storage_backend_signature()
+    )
+    monkeypatch.setattr(attachment_module, "scan_for_malware", AsyncMock())
+    monkeypatch.setattr(files, "scan_for_malware", AsyncMock())
+    monkeypatch.setattr(ChatNotificationService, "notify_new_message", AsyncMock())
+
+    payload = b"hello"
+    upload = UploadFile(
+        filename="note.txt",
+        file=io.BytesIO(payload),
+        size=len(payload),
+        headers=Headers({"content-type": "text/plain"}),
+    )
+    dispatcher = ChatMessageDispatcher(
+        uow_from_session(db_session),
+        ChatAttachmentService(),
+        ChatNotificationService(db_session),
+    )
+    try:
+        message = await dispatcher.send_message(
+            chat.id, user=sender, content="Attachment", files=[upload], locale="en"
+        )
+    finally:
+        await upload.close()
+
+    assert len(message.attachments) == 1
+    attachment = message.attachments[0]
+    assert attachment.url.startswith(
+        f"/api/v1/chats/{chat.id}/attachments/chat_{chat.id}_"
+    )
+    assert attachment.size == len(payload)
+    stored = (
+        await db_session.execute(
+            select(Attachment).where(Attachment.id == attachment.id)
+        )
+    ).scalar_one()
+    assert stored.url.startswith(("http://", "https://"))
+    assert await backend.read_file(stored.url, max_bytes=len(payload)) == payload
